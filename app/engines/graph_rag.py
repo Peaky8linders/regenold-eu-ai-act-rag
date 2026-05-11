@@ -616,6 +616,68 @@ def _deterministic_parse(question: str) -> GraphQuery:
             dimension_hint = dim_id
             break
 
+    # KB-keyword → entity injection.
+    #
+    # The regex above only extracts "Art. N" / "Annex N" tokens present
+    # in the question text. Questions that name a CONCEPT instead of an
+    # article number (e.g. "What is a GPAI model?", "What are systemic
+    # risk obligations?") produce entities=[] — then _retrieve_from_kb
+    # skips the EC_CHECKER_OBLIGATION_MAP lookup entirely and dumps the
+    # full MATURITY_DIMENSIONS catalog, generating wrong answer text.
+    #
+    # Fix: mirror the KEYWORD_TO_ARTICLE mapping already used by the
+    # scope filter to derive anchor articles. We add only the *primary*
+    # article for each concept phrase and skip entries already present
+    # via the regex path. The mapping is intentionally conservative —
+    # covering the most-cited concept-anchors whose KB obligation rows
+    # carry meaningfully different content from the generic high-risk
+    # dimensions. A superset would include every scope.py keyword, but
+    # that risks over-eager entity injection for questions whose primary
+    # intent isn't the mapped article.
+    _KEYWORD_ENTITY_MAP: list[tuple[str, str]] = [
+        # GPAI / general-purpose AI (Arts. 51-55)
+        ("gpai", "Art. 53"),
+        ("general-purpose ai", "Art. 53"),
+        ("general purpose ai", "Art. 53"),
+        ("general-purpose ai model", "Art. 53"),
+        ("general purpose ai model", "Art. 53"),
+        ("gpai model", "Art. 53"),
+        ("systemic risk", "Art. 55"),
+        ("model evaluation", "Art. 55"),
+        ("code of practice", "Art. 56"),
+        # Transparency / deepfakes / chatbots (Art. 50)
+        ("deepfake", "Art. 50"),
+        ("deep fake", "Art. 50"),
+        ("ai-generated content", "Art. 50"),
+        ("ai generated content", "Art. 50"),
+        ("synthetic content", "Art. 50"),
+        ("watermarking", "Art. 50"),
+        ("chatbot disclosure", "Art. 50"),
+        # Fundamental Rights Impact Assessment (Art. 27)
+        ("fundamental rights impact assessment", "Art. 27"),
+        ("fria", "Art. 27"),
+        # Post-market monitoring (Art. 72)
+        ("post-market monitoring", "Art. 72"),
+        ("pmmp", "Art. 72"),
+        # Conformity assessment / CE marking / registration (Arts. 43/47/48/49)
+        ("conformity assessment", "Art. 43"),
+        ("declaration of conformity", "Art. 47"),
+        ("ce marking", "Art. 48"),
+        ("registration", "Art. 49"),
+        # AI Office / governance (Arts. 64/65)
+        ("ai office", "Art. 64"),
+        ("european ai board", "Art. 65"),
+        # Market surveillance / penalties (Arts. 74/99)
+        ("market surveillance", "Art. 74"),
+        ("serious incident", "Art. 73"),
+        ("incident reporting", "Art. 73"),
+        ("fines", "Art. 99"),
+        ("penalties", "Art. 99"),
+    ]
+    for kw, art_ref in _KEYWORD_ENTITY_MAP:
+        if kw in q_lower and art_ref not in entities:
+            entities.append(art_ref)
+
     return GraphQuery(
         intent=intent,
         entities=entities,
