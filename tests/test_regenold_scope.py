@@ -258,21 +258,35 @@ class TestClassifyConversation:
         assert cv.in_scope is True
         assert "Art. 27" in cv.anchor_articles
 
-    def test_unknown_in_history_blocks_in_scope_live(self) -> None:
-        """A bogus reference ANYWHERE in the conversation triggers refusal.
+    def test_unknown_only_in_history_allows_valid_live_question(self) -> None:
+        """History-only bogus ref does NOT block a valid live question.
 
-        Even if the live question is in-scope, the LLM's prompt
-        includes prior-turn context; the bogus ref might bleed into the
-        answer. Pre-emptive refusal.
+        When the user corrects themselves (turn 1 asked about Art. 200,
+        turn 2 asks about Art. 13), we should answer Art. 13 rather than
+        repeating the Art. 200 refusal. The bogus ref is tracked in
+        ``history_unknown_articles`` for audit; the hallucination defences
+        (drift guard, reference validation) prevent it from leaking into
+        the wire answer.
         """
         cv = classify_conversation(_msgs(
             ("user", "What does Art. 200 say?"),
             ("assistant", "I'm sorry, that article doesn't exist."),
             ("user", "What does Art. 13 require?"),
         ))
+        assert cv.in_scope is True
+        assert cv.reason == ScopeReason.IN_SCOPE
+        assert "Art. 200" in cv.history_unknown_articles
+
+    def test_unknown_in_live_question_still_refuses(self) -> None:
+        """Unknown article in the LIVE question always refuses."""
+        cv = classify_conversation(_msgs(
+            ("user", "What does Art. 13 require?"),
+            ("assistant", "Art. 13 covers transparency."),
+            ("user", "And Art. 999?"),
+        ))
         assert cv.in_scope is False
         assert cv.reason == ScopeReason.NON_EXISTENT_ARTICLE
-        assert "Art. 200" in cv.history_unknown_articles
+        assert "Art. 999" in cv.verdict.unknown_articles
 
     def test_keyword_anchor_carries(self) -> None:
         """FRIA keyword (no Art. ref) seeds Art. 27 as an anchor."""
@@ -510,9 +524,13 @@ class TestRouteScopeRefusal:
         refs = body["references"]
         assert any("Article 13" in r or "Article 26" in r for r in refs), refs
 
-    def test_history_unknown_article_blocks_live_in_scope(self) -> None:
-        """Bogus ref in earlier turn poisons the conversation —
-        even if the live question is in-scope, refuse."""
+    def test_history_unknown_does_not_block_valid_live_question(self) -> None:
+        """Bogus ref only in history does NOT block a valid live question.
+
+        The user corrected themselves: turn 1 asked about Art. 200 (refused),
+        turn 2 asks about Art. 13 (valid). The route should answer Art. 13.
+        Hallucination defences prevent Art. 200 from leaking into the answer.
+        """
         c = _authed_client()
         r = c.post(
             "/api/v1/regenold/eu-ai-act/ask",
@@ -524,8 +542,11 @@ class TestRouteScopeRefusal:
         )
         assert r.status_code == 200
         body = r.json()
-        assert body["references"] == []
-        assert "Art. 200" in body["answer"]
+        # Must NOT be a refusal — the live question asks about a valid article.
+        assert "outside the EU AI Act" not in body["answer"]
+        assert "does not appear" not in body["answer"]
+        # Art. 200 must not leak into references (reference validation gate).
+        assert not any("200" in ref for ref in (body.get("references") or []))
 
     def test_audit_chain_records_scope_reason(self) -> None:
         """The chain entry stamps the scope_reason for forensic filter."""
