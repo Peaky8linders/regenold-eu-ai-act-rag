@@ -95,11 +95,25 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     "Art. 5": {
         "dimension": "risk_mgmt",
         "summary": (
-            "Prohibits eight categories of AI practice (subliminal manipulation, "
-            "exploitation of vulnerabilities, social scoring, predictive policing of "
-            "individuals, untargeted facial-image scraping, emotion recognition in "
-            "workplaces and education, biometric categorisation by protected "
-            "attribute, and real-time remote biometric identification in public spaces)."
+            "Prohibits eight categories of AI practice: (a) subliminal / "
+            "manipulative / deceptive techniques causing significant harm; "
+            "(b) exploitation of vulnerabilities by age, disability, or "
+            "socio-economic situation; (c) social scoring leading to "
+            "unjustified detrimental treatment in unrelated contexts; "
+            "(d) profiling for criminal-risk assessment based solely on "
+            "personality traits (exception for human-assessment support on "
+            "objective facts); (e) untargeted scraping of facial images for "
+            "facial-recognition databases; (f) emotion-inference in "
+            "workplaces and educational institutions (narrow medical / "
+            "safety exception); (g) biometric categorisation by sensitive "
+            "attributes (race, political views, union membership, etc.); "
+            "(h) real-time remote biometric identification in publicly "
+            "accessible spaces by law enforcement (narrow exceptions). "
+            "Art. 5(5) lets Member States impose stricter national laws on "
+            "remote biometric ID. (Pending: Digital Omnibus political "
+            "agreement of 7 May 2026 adds a 9th prohibition for AI systems "
+            "generating CSAM or non-consensual intimate imagery, applying "
+            "from 2 December 2026 once adopted.)"
         ),
     },
     "Art. 6": {
@@ -546,11 +560,17 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
         "dimension": "post_market",
         "summary": (
             "Requires providers of high-risk AI systems placed on the EU "
-            "market to report any serious incident to the market-surveillance "
-            "authorities of Member States where the incident occurred — "
-            "immediately, and no later than 15 days after becoming aware (2 "
-            "days for widespread infringement or critical-infrastructure "
-            "disruption, 10 days for death)."
+            "market to report serious incidents to market-surveillance "
+            "authorities of the Member State where the incident occurred — "
+            "tiered deadlines: immediately for widespread infringement or "
+            "critical-infrastructure disruption (and ≤ 2 days after "
+            "awareness); ≤ 10 days for death; ≤ 15 days for other serious "
+            "incidents (or immediately on established causal link). "
+            "'Serious incident' (Art. 3(49)) covers death, serious "
+            "irreversible critical-infrastructure disruption, fundamental-"
+            "rights violation, or serious property / environmental harm. "
+            "Dual reporting exemption for medical devices (Reg. 2017/745) "
+            "and IVDs (Reg. 2017/746) except fundamental-rights infringements."
         ),
     },
     "Art. 74": {
@@ -575,11 +595,18 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     "Art. 113": {
         "dimension": "governance",
         "summary": (
-            "Entry into force + application: enters into force 20 days after "
-            "publication (2 August 2024); applies from 2 August 2026 generally; "
-            "prohibitions (Art. 5) + AI-literacy (Art. 4) from 2 February 2025; "
-            "GPAI obligations (Chapter V) from 2 August 2025; high-risk systems "
-            "covered by Annex I from 2 August 2027."
+            "Entry into force + application (Regulation 2024/1689): in force "
+            "1 August 2024; applies generally from 2 August 2026; "
+            "prohibitions (Art. 5) + AI literacy (Art. 4) from 2 February "
+            "2025; GPAI obligations (Chapter V) from 2 August 2025; "
+            "high-risk Annex I systems from 2 August 2027; pre-existing "
+            "high-risk for public-authority use from 2 August 2030. (Pending: "
+            "the Digital Omnibus political agreement of 7 May 2026 defers "
+            "Annex III high-risk obligations to 2 December 2027 and Annex I "
+            "embedded-product obligations to 2 August 2028, with a "
+            "transitional period for Art. 50(2) watermarking on legacy "
+            "systems running until 2 December 2026 — not yet adopted but "
+            "expected before 2 August 2026.)"
         ),
     },
     # ─── Additional Annexes ──────────────────────────────────────────────────
@@ -642,6 +669,323 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "parameters, dataset quality + size, training compute, input + "
             "output modalities, benchmarks + capability evaluations, reach "
             "(business users / EU registered end-users), registered users."
+        ),
+    },
+    # ─── Title III: Cooperation duty (Art. 21) ───────────────────────────────
+    "Art. 21": {
+        "dimension": "governance",
+        "summary": (
+            "Providers of high-risk AI systems must, upon a reasoned request "
+            "from a national competent authority, provide all information + "
+            "documentation necessary to demonstrate conformity with Section-2 "
+            "requirements, in an official Union language. Information shared "
+            "is treated as confidential (IP, trade secrets, source code per "
+            "Art. 78)."
+        ),
+    },
+    # ─── Title III: Art. 6(3) — non-high-risk carve-out for Annex III ────────
+    "Art. 6.3": {
+        "dimension": "risk_mgmt",
+        "summary": (
+            "Carve-out: an Annex-III system is NOT high-risk if it doesn't "
+            "pose a significant risk of harm AND one of four conditions is "
+            "met — (a) performs a narrow procedural task; (b) improves the "
+            "result of a previously completed human activity; (c) detects "
+            "decision-making patterns or deviations without replacing the "
+            "human assessment; (d) performs a preparatory task to an "
+            "Annex-III use case. Kill-switch: the exception does NOT apply "
+            "when the system performs profiling of natural persons. Provider "
+            "must document the assessment before placing on market and "
+            "still register the system per Art. 49(2)."
+        ),
+    },
+    # ─── Title V: Art. 50 sub-articles — transparency obligations ────────────
+    "Art. 50.1": {
+        "dimension": "transparency",
+        "summary": (
+            "Provider obligation: AI systems intended to interact directly "
+            "with natural persons must be designed so that affected persons "
+            "are informed they are interacting with an AI system (unless "
+            "obvious from context). Exception for AI systems authorised "
+            "by law to detect / prevent / investigate criminal offences, "
+            "subject to safeguards — but the exception is reversed when the "
+            "system is available to the public to report criminal offences."
+        ),
+    },
+    "Art. 50.2": {
+        "dimension": "transparency",
+        "summary": (
+            "Provider obligation: providers of generative AI systems "
+            "(including GPAI) that generate synthetic audio, image, video, "
+            "or text content must ensure outputs are marked in a machine-"
+            "readable format and detectable as artificially generated / "
+            "manipulated — solutions must be effective, interoperable, "
+            "robust, and reliable. Exemptions: standard editing functions "
+            "that don't substantially alter input data; legal authorisation "
+            "for criminal-investigation use."
+        ),
+    },
+    "Art. 50.3": {
+        "dimension": "transparency",
+        "summary": (
+            "Deployer obligation: deployers of emotion-recognition or "
+            "biometric-categorisation systems must inform exposed natural "
+            "persons and process personal data per GDPR / LED / EUDPR. "
+            "Exceptions: systems used for detecting / preventing / "
+            "investigating criminal offences (with safeguards); ancillary "
+            "use inseparable from the primary service (Recital 16)."
+        ),
+    },
+    "Art. 50.4": {
+        "dimension": "transparency",
+        "summary": (
+            "Deployer obligation: deployers of AI that generates deep fakes "
+            "must disclose the content is artificially generated. Deployers "
+            "of AI that generates / manipulates text published to inform "
+            "the public on matters of public interest must disclose AI "
+            "origin. Exceptions: artistic / creative / satirical / fictional "
+            "works (relaxed disclosure that doesn't disrupt the work); "
+            "legal authorisation for criminal investigation; AI-generated "
+            "text where a human reviewer or editor takes editorial "
+            "responsibility."
+        ),
+    },
+    # ─── Title VI: Sandbox + real-world testing detail (Arts. 58, 59, 61, 62, 63) ─
+    "Art. 58": {
+        "dimension": "governance",
+        "summary": (
+            "Sandbox modalities + detailed arrangements set by Commission "
+            "implementing acts covering eligibility, application, selection, "
+            "participation, monitoring, exit, termination, and applicable "
+            "T&C. Sandboxes provide controlled environment with regulatory "
+            "guidance + safeguarded mitigation of identified risks."
+        ),
+    },
+    "Art. 59": {
+        "dimension": "data_gov",
+        "summary": (
+            "Personal data processing in AI regulatory sandboxes is lawful "
+            "under conditions: (1) substantial public interest (public "
+            "health, energy sustainability, critical-infrastructure safety, "
+            "etc.); (2) strict necessity — no anonymised or synthetic "
+            "alternative; (3) separate protected sandbox environment with "
+            "technical + organisational measures; (4) full description of "
+            "training / testing / validation processes retained with "
+            "results; processing must not adversely affect data subjects."
+        ),
+    },
+    "Art. 61": {
+        "dimension": "governance",
+        "summary": (
+            "Informed consent for real-world testing outside the sandbox "
+            "(Art. 60): test subjects must give freely, specifically, "
+            "informed, unambiguous, prior consent, with right to withdraw "
+            "without detriment; participation must not adversely affect "
+            "subjects; outcomes reversible / disregardable. Records of "
+            "consent retained alongside testing plan."
+        ),
+    },
+    "Art. 62": {
+        "dimension": "governance",
+        "summary": (
+            "Measures for providers + deployers, in particular SMEs "
+            "including start-ups: priority access to sandboxes (free for "
+            "SMEs), specific awareness + training activities, dedicated "
+            "communication channels, fee reductions for conformity "
+            "assessment + database registration proportionate to size + "
+            "market stage. (Digital Omnibus political agreement of 7 May "
+            "2026 extends these privileges to 'small mid-cap' enterprises.)"
+        ),
+    },
+    "Art. 63": {
+        "dimension": "governance",
+        "summary": (
+            "Derogations for SMEs (and post-Omnibus small mid-caps): "
+            "simplified compliance with Art. 17 quality-management-system "
+            "obligations in a manner appropriate to size + market stage, "
+            "without compromising the level of protection or compliance "
+            "with the Section-2 requirements."
+        ),
+    },
+    # ─── Title VII: Advisory Forum + Scientific Panel (Arts. 67, 68, 69) ─────
+    "Art. 67": {
+        "dimension": "governance",
+        "summary": (
+            "Establishes an Advisory Forum to provide technical expertise + "
+            "advice to the Board + Commission, with balanced selection of "
+            "stakeholders (industry, start-ups, SMEs, civil society, "
+            "academia). Members appointed for renewable 2-year terms."
+        ),
+    },
+    "Art. 68": {
+        "dimension": "governance",
+        "summary": (
+            "Establishes a Scientific Panel of independent experts to "
+            "support enforcement of Chapter V (GPAI) by alerting the AI "
+            "Office to systemic risks, contributing to development of "
+            "tools + methodologies for evaluating capabilities of GPAI "
+            "models, and providing advice on classification of GPAI models "
+            "with systemic risk."
+        ),
+    },
+    "Art. 69": {
+        "dimension": "governance",
+        "summary": (
+            "National competent authorities may request access to the "
+            "Scientific Panel's expert pool for support in enforcing the "
+            "Regulation, against a fee determined by the Commission to "
+            "cover Panel-related costs."
+        ),
+    },
+    # ─── Title VIII: Enforcement + remedies (Arts. 85, 86, 87, 89) ───────────
+    "Art. 85": {
+        "dimension": "post_market",
+        "summary": (
+            "Right to lodge a complaint with a market-surveillance "
+            "authority. Broader than GDPR Art. 77: any natural OR legal "
+            "person may complain about any infringement of the AI Act "
+            "(not just infringements affecting their own rights). "
+            "Authorities must inform complainants of the progress + outcome "
+            "of the complaint within reasonable time, including possible "
+            "judicial remedies under Art. 86."
+        ),
+    },
+    "Art. 86": {
+        "dimension": "post_market",
+        "summary": (
+            "Right to explanation of individual decision-making: any "
+            "affected person subject to a decision taken by the deployer "
+            "on the basis of output from a high-risk AI system listed in "
+            "Annex III (excluding Annex III(2) critical infrastructure) — "
+            "where the decision produces legal effects or similarly "
+            "significant adverse effects on health, safety, or fundamental "
+            "rights — has the right to obtain from the deployer clear + "
+            "meaningful explanation of the AI system's role in the "
+            "decision-making procedure and the main elements of the "
+            "decision. Complements (does not replace) GDPR Art. 22."
+        ),
+    },
+    "Art. 87": {
+        "dimension": "post_market",
+        "summary": (
+            "Whistleblower protection: reporting of infringements of the "
+            "AI Act and protection of persons reporting such infringements "
+            "is governed by Directive (EU) 2019/1937 (the EU "
+            "Whistleblowing Directive)."
+        ),
+    },
+    "Art. 89": {
+        "dimension": "post_market",
+        "summary": (
+            "Downstream-provider complaints to the AI Office regarding a "
+            "GPAI model: must be well-substantiated and contain the "
+            "complainant's provider identity + contact details, a "
+            "description of the relevant facts + the provisions of the "
+            "Regulation concerned, the reasons why the complainant "
+            "considers an infringement has occurred, and any other "
+            "information considered relevant."
+        ),
+    },
+    # ─── Title IX: Codes of conduct + penalties (Arts. 95, 100, 101) ─────────
+    "Art. 95": {
+        "dimension": "governance",
+        "summary": (
+            "Voluntary codes of conduct: the AI Office + Member States "
+            "encourage providers of non-high-risk AI systems to voluntarily "
+            "apply some or all of the Section-2 high-risk requirements, "
+            "adapted to intended purpose + risk. Codes must be based on "
+            "clear objectives + KPIs measuring achievement; inclusive "
+            "development. Applies from 2 August 2026. Commission evaluates "
+            "impact by 2 August 2028 and every 3 years thereafter."
+        ),
+    },
+    "Art. 100": {
+        "dimension": "governance",
+        "summary": (
+            "Penalties for EU institutions, bodies, offices, and agencies "
+            "imposed by the European Data Protection Supervisor (EDPS): up "
+            "to EUR 1 500 000 for Art. 5 prohibited-practice violations, "
+            "and up to EUR 750 000 for other infringements. Fines must not "
+            "impair operational effectiveness of the institution; collected "
+            "funds accrue to the Union general budget."
+        ),
+    },
+    "Art. 101": {
+        "dimension": "gpai_specific",
+        "summary": (
+            "GPAI penalties: the Commission may impose fines on GPAI model "
+            "providers of up to EUR 15 000 000 or 3 % of worldwide annual "
+            "turnover (whichever is higher) for breaches of Chapter V "
+            "obligations, supplying incorrect / incomplete / misleading "
+            "information, or failing to comply with a Commission request "
+            "for measures. Applies from 2 August 2026. Provider has right "
+            "to be heard; CJEU judicial review."
+        ),
+    },
+    # ─── Title XII: Transition + review (Arts. 111, 112) ─────────────────────
+    "Art. 111": {
+        "dimension": "governance",
+        "summary": (
+            "Transitional provisions for AI systems and GPAI models already "
+            "on the market / in service: high-risk AI for public-authority "
+            "use placed on the market before 2 August 2026 must comply "
+            "from 2 August 2030 (only if significant design change); pre-"
+            "2 August 2025 GPAI models brought into compliance by 2 August "
+            "2027; large-scale IT systems listed in Annex X covered by the "
+            "Regulation from 31 December 2030."
+        ),
+    },
+    "Art. 112": {
+        "dimension": "governance",
+        "summary": (
+            "Commission evaluation + review: annual assessment of the need "
+            "to amend the list of prohibited practices in Art. 5 and the "
+            "list of Annex III high-risk use cases; biennial review of "
+            "Member-State penalty regimes (Art. 99) and the AI Office's "
+            "functioning; comprehensive review by 2 August 2028 and every "
+            "4 years thereafter, reporting to the Parliament + Council."
+        ),
+    },
+    # ─── Additional Annexes (II, V, VIII) ────────────────────────────────────
+    "Annex II": {
+        "dimension": "risk_mgmt",
+        "summary": (
+            "List of criminal offences referred to in Art. 5(1)(h) "
+            "permitting real-time remote biometric identification by law "
+            "enforcement: terrorism, trafficking in human beings, sexual "
+            "exploitation of children, illicit trafficking in narcotic drugs "
+            "/ weapons / nuclear material, murder, kidnapping, rape, armed "
+            "robbery, organised crime, participation in a criminal "
+            "organisation, environmental crime — provided the offence is "
+            "punishable in the relevant Member State by a custodial "
+            "sentence of at least 4 years."
+        ),
+    },
+    "Annex V": {
+        "dimension": "conformity",
+        "summary": (
+            "EU declaration of conformity contents: system name + type + "
+            "additional unambiguous reference; provider identity (+ "
+            "authorised representative); statement that the DoC is issued "
+            "under sole responsibility of the provider; statement of "
+            "conformity with the Regulation + applicable Union "
+            "harmonisation legislation; references to harmonised standards "
+            "or common specifications applied; notified-body identity + "
+            "certificate reference where applicable; date + signatory + "
+            "function."
+        ),
+    },
+    "Annex VIII": {
+        "dimension": "governance",
+        "summary": (
+            "Information for registration in the EU database (Art. 49): "
+            "Section A populated by provider / authorised representative "
+            "(system name, intended purpose, components/datasets, design "
+            "specifications, instructions for use, CE marking, conformity-"
+            "assessment certificate, supervisory authority); Section B for "
+            "Art. 6(3) non-high-risk assessments; Section C populated by "
+            "public-authority deployers. Public-access carve-out for law "
+            "enforcement / migration / asylum / border-control systems."
         ),
     },
 }

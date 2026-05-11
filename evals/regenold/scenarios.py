@@ -980,6 +980,7 @@ def _build_full_scenarios() -> tuple[Scenario, ...]:
     """
     extra_mt: tuple[Scenario, ...] = ()
     extra_tr: tuple[Scenario, ...] = ()
+    extra_om: tuple[Scenario, ...] = ()
     try:
         from evals.regenold.scenarios_multiturn_extended import (
             EXTRA_MULTITURN_SCENARIOS,
@@ -994,16 +995,24 @@ def _build_full_scenarios() -> tuple[Scenario, ...]:
         extra_tr = tuple(EXTRA_TRICKY_SCENARIOS)
     except ModuleNotFoundError:
         pass
-    return SCENARIOS + extra_mt + extra_tr
+    try:
+        from evals.regenold.scenarios_omnibus_extended import (
+            EXTRA_OMNIBUS_SCENARIOS,
+        )
+        extra_om = tuple(EXTRA_OMNIBUS_SCENARIOS)
+    except ModuleNotFoundError:
+        pass
+    return SCENARIOS + extra_mt + extra_tr + extra_om
 
 
 SCENARIOS = _build_full_scenarios()
 # Hard floor: if the round-5 extensions silently drop, fail loud. 51 is
-# the baseline; the full set is 251. Anything in between means one of
-# the extensions failed to import for a non-ModuleNotFoundError reason
-# OR an extension is malformed and lost scenarios.
+# the baseline; ~251 is the round-5 set; 271+ once the omnibus extension
+# ships. Anything in between means one of the extensions failed to import
+# for a non-ModuleNotFoundError reason OR an extension is malformed and
+# lost scenarios.
 assert len(SCENARIOS) == 51 or len(SCENARIOS) >= 200, (
-    f"Expected 51 (baseline-only) or ≥200 (with round-5 expansion); "
+    f"Expected 51 (baseline-only) or ≥200 (with extensions); "
     f"got {len(SCENARIOS)} — an extension file is broken."
 )
 
