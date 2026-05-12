@@ -1685,7 +1685,14 @@ _ROLE_PHRASES: tuple[tuple[str, str], ...] = (
 )
 
 _RISK_CLASS_PHRASES: tuple[tuple[str, str], ...] = (
-    # GPAI variants
+    # GPAI-with-systemic-risk variants — must precede plain "gpai" so
+    # longest-match in _detect_role_and_risk_class picks the systemic
+    # row. The "gpai model with systemic risk" form appears in
+    # competition Q&A more often than the abbreviation-only forms.
+    ("gpai model with systemic risk", "gpai_systemic"),
+    ("gpai system with systemic risk", "gpai_systemic"),
+    ("general-purpose ai model with systemic risk", "gpai_systemic"),
+    ("general purpose ai model with systemic risk", "gpai_systemic"),
     ("gpai with systemic risk", "gpai_systemic"),
     ("gpai systemic risk", "gpai_systemic"),
     ("systemic gpai", "gpai_systemic"),
@@ -1762,20 +1769,28 @@ def _detect_role_and_risk_class(question: str) -> tuple[str | None, str | None]:
     Returns ``(None, None)`` if either dimension isn't found. Both must
     be present for the role-obligation path to fire — otherwise we
     don't know which row of the matrix to consult.
+
+    Both dimensions use **longest-match** selection: when the question
+    contains both ``"gpai"`` and ``"gpai with systemic risk"``, the
+    longer phrase wins so ``"systemic"`` is not silently dropped. The
+    same applies to role phrases (``"downstream provider"`` beats
+    ``"provider"``).
     """
     if not question:
         return None, None
     low = question.lower()
     role_id: str | None = None
+    best_role_len = 0
     for phrase, rid in _ROLE_PHRASES:
-        if phrase in low:
+        if phrase in low and len(phrase) > best_role_len:
             role_id = rid
-            break
+            best_role_len = len(phrase)
     risk_id: str | None = None
+    best_risk_len = 0
     for phrase, rcid in _RISK_CLASS_PHRASES:
-        if phrase in low:
+        if phrase in low and len(phrase) > best_risk_len:
             risk_id = rcid
-            break
+            best_risk_len = len(phrase)
     return role_id, risk_id
 
 

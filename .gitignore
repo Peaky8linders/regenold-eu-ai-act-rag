@@ -13,3 +13,9 @@ dist/
 build/
 evals/regenold_results_local*.json
 evals/regenold_results_anthropic_wrapper*.json
+
+# Scratch dev artefacts from session-driven optimization
+_v1_scaffold/
+_competition_rules.txt
+evals/regenold_results_baseline_pre_optimization.json
+evals/regenold_results_round16_optimization.json

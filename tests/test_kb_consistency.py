@@ -231,3 +231,128 @@ class TestCrossRefGraphConsistency:
             assert source != target, (
                 f"Self-edge {source!r} → {target!r} in cross-ref graph"
             )
+
+
+# ── Manual cross-reference linter ─────────────────────────────────────
+
+
+class TestManualXRefLinter:
+    """The manually-curated edge list in ``kb_xrefs.MANUAL_XREFS``.
+
+    Edges authored by hand are the highest-value but also the easiest to
+    break: a typo in ``Art. 5OO`` or ``Annex XIV`` would silently ship a
+    hallucinated citation. The lint enforces:
+
+    1. Every endpoint resolves in :data:`ARTICLE_EXISTENCE`.
+    2. No duplicate ``(source, target)`` pairs (manual edges should not
+       overlap themselves; overlap with the regex-extracted set is
+       fine — the merge in ``_build_xref_graph`` deduplicates).
+    3. Bidirectional edges (those whose reverse is also in the manual
+       set) are present in both directions.
+    """
+
+    def test_manual_xrefs_lint_runs_at_import(self) -> None:
+        """``MANUAL_XREFS_LINTED`` is populated only if the import-time
+        lint passed."""
+        from app.data.kb_xrefs import MANUAL_XREFS, MANUAL_XREFS_LINTED
+        assert MANUAL_XREFS_LINTED is MANUAL_XREFS or (
+            tuple(MANUAL_XREFS_LINTED) == tuple(MANUAL_XREFS)
+        )
+
+    def test_manual_xref_endpoints_resolve(self) -> None:
+        from app.data.kb_xrefs import MANUAL_XREFS
+        for source, target, _reason in MANUAL_XREFS:
+            assert _is_known_or_prefix_known(source), (
+                f"MANUAL_XREFS source {source!r} not in ARTICLE_EXISTENCE"
+            )
+            assert _is_known_or_prefix_known(target), (
+                f"MANUAL_XREFS source={source!r} → target={target!r}: "
+                f"target not in ARTICLE_EXISTENCE"
+            )
+
+    def test_manual_xrefs_have_no_duplicates(self) -> None:
+        """Each ``(source, target)`` pair appears at most once."""
+        from app.data.kb_xrefs import MANUAL_XREFS
+        seen: set[tuple[str, str]] = set()
+        for source, target, _reason in MANUAL_XREFS:
+            pair = (source, target)
+            assert pair not in seen, (
+                f"Duplicate MANUAL_XREFS edge {pair!r}"
+            )
+            seen.add(pair)
+
+    def test_manual_xrefs_no_self_edges(self) -> None:
+        from app.data.kb_xrefs import MANUAL_XREFS
+        for source, target, _reason in MANUAL_XREFS:
+            assert source != target, (
+                f"MANUAL_XREFS self-edge {source!r} → {target!r}"
+            )
+
+    def test_manual_xrefs_reasons_non_empty(self) -> None:
+        from app.data.kb_xrefs import MANUAL_XREFS
+        for source, target, reason in MANUAL_XREFS:
+            assert reason and reason.strip(), (
+                f"MANUAL_XREFS {source!r} → {target!r} has empty reason"
+            )
+
+    def test_manual_xrefs_bidirectional_pairs_have_both_directions(self) -> None:
+        """Every Annex↔Article edge that the curated list claims is
+        bidirectional must actually appear in both directions.
+
+        The intent of the manual set is to fix the directed-graph
+        asymmetry of the regex extractor. If an edge is added in one
+        direction only, the reverse-lookup ("what references Annex IV?")
+        will silently miss the connection — defeating the purpose.
+        """
+        from app.data.kb_xrefs import MANUAL_XREFS
+        pairs = {(s, t) for s, t, _ in MANUAL_XREFS}
+        # The pairs we explicitly intend to be bidirectional are those
+        # where BOTH the (a, b) and (b, a) entries exist in the curated
+        # list. The lint just verifies each such pair has its mate.
+        for source, target in list(pairs):
+            reverse = (target, source)
+            if reverse in pairs:
+                # Trivially holds, but the assert makes the intent
+                # explicit in the test surface.
+                assert reverse in pairs
+
+        # The substantive check: every Annex referenced as a source in
+        # any manual edge must have at least one reverse mate from an
+        # Art. anchor — otherwise the manual edge is unidirectional.
+        annex_sources = {s for s, _, _ in MANUAL_XREFS if s.startswith("Annex")}
+        for annex in annex_sources:
+            forward = [t for s, t, _ in MANUAL_XREFS if s == annex]
+            assert forward, f"Annex {annex} has no outbound edges"
+            # At least one reverse mate must exist somewhere in the set.
+            reverse_count = sum(
+                1 for s, t, _ in MANUAL_XREFS if t == annex and s in forward
+            )
+            assert reverse_count >= 1, (
+                f"Annex {annex} has outbound edges {forward} but no "
+                f"corresponding inbound edge — manual graph is "
+                f"unidirectional, which is the bug this layer fixes"
+            )
+
+    def test_merged_graph_contains_manual_edges(self) -> None:
+        """After merge, every manual edge appears in ``cross_refs``."""
+        from app.data.kb_xrefs import MANUAL_XREFS, cross_refs
+        for source, target, _reason in MANUAL_XREFS:
+            # `cross_refs` enforces a default limit; raise it so the
+            # merge result is not truncated for hub articles.
+            refs = cross_refs(source, limit=100)
+            assert target in refs, (
+                f"Manual edge {source!r} → {target!r} missing from "
+                f"merged cross_refs({source!r}); got {refs}"
+            )
+
+    def test_cross_refs_with_reason_returns_pairs(self) -> None:
+        """``cross_refs_with_reason`` returns ``(target, reason)`` tuples."""
+        from app.data.kb_xrefs import cross_refs_with_reason
+        pairs = cross_refs_with_reason("Annex IV", limit=10)
+        # Annex IV → Art. 11 is the canonical example.
+        target_to_reason = dict(pairs)
+        assert "Art. 11" in target_to_reason, (
+            f"Expected Art. 11 in cross_refs_with_reason('Annex IV'); got {pairs}"
+        )
+        # The reason must be the curated one, not the fallback.
+        assert "technical documentation" in target_to_reason["Art. 11"].lower()

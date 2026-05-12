@@ -56,9 +56,139 @@ _ART_RE = re.compile(r"\bArt\.?\s*(\d{1,3})\b", re.IGNORECASE)
 _ANNEX_RE = re.compile(r"\bAnnex\s+([IVXLC]+)\b", re.IGNORECASE)
 
 
+# ── Manually-curated cross-reference edges ─────────────────────────────
+#
+# The regex extractor above only catches Art./Annex mentions that appear
+# verbatim in a summary string. Two important classes of edge get missed:
+#
+# 1. Annex ↔ Article edges where the Annex doesn't appear in any
+#    obligation summary (e.g. Annex IV doesn't have its own row in
+#    EC_CHECKER_OBLIGATION_MAP, so the regex never sees its source side).
+# 2. Reverse edges that the author of the summary didn't write
+#    explicitly. The regex graph is directed; we need both directions
+#    to answer "what references Annex IV?".
+#
+# Each tuple is ``(source, target, reason)``. The ``reason`` is surfaced
+# by :func:`cross_refs_with_reason` so answer composition can cite the
+# semantic relationship rather than just both refs side by side.
+#
+# Endpoints are validated at import time by ``MANUAL_XREFS_LINTED``
+# below — a typo here fails the module load, not the user query.
+MANUAL_XREFS: tuple[tuple[str, str, str], ...] = (
+    (
+        "Annex IV",
+        "Art. 11",
+        "Annex IV enumerates the contents of the technical documentation "
+        "required by Art. 11",
+    ),
+    (
+        "Art. 11",
+        "Annex IV",
+        "Reverse: Art. 11 documentation contents are specified in Annex IV",
+    ),
+    (
+        "Annex V",
+        "Art. 47",
+        "Annex V specifies the contents of the EU declaration of conformity "
+        "required by Art. 47",
+    ),
+    ("Art. 47", "Annex V", "Reverse"),
+    (
+        "Annex VI",
+        "Art. 43",
+        "Annex VI is the conformity assessment procedure based on internal "
+        "control referenced in Art. 43",
+    ),
+    (
+        "Annex VII",
+        "Art. 43",
+        "Annex VII is the conformity assessment based on QMS + technical doc "
+        "assessment referenced in Art. 43",
+    ),
+    ("Art. 43", "Annex VI", "Reverse"),
+    ("Art. 43", "Annex VII", "Reverse"),
+    (
+        "Annex III",
+        "Art. 6",
+        "Annex III enumerates the high-risk use cases referenced in Art. 6(2)",
+    ),
+    ("Art. 6", "Annex III", "Reverse"),
+    (
+        "Annex I",
+        "Art. 6",
+        "Annex I lists Union harmonisation legislation whose safety "
+        "components are high-risk under Art. 6(1)",
+    ),
+    ("Art. 6", "Annex I", "Reverse"),
+    (
+        "Annex II",
+        "Art. 5",
+        "Annex II is the list of offences relevant to the Art. 5(1)(h) RBI "
+        "law-enforcement carve-out",
+    ),
+    ("Art. 5", "Annex II", "Reverse"),
+    (
+        "Annex XI",
+        "Art. 53",
+        "Annex XI is the technical documentation for GPAI providers required "
+        "by Art. 53(1)(a)",
+    ),
+    (
+        "Annex XII",
+        "Art. 53",
+        "Annex XII is the information required for downstream providers "
+        "under Art. 53(1)(b)",
+    ),
+    (
+        "Annex XIII",
+        "Art. 51",
+        "Annex XIII is the criteria for designating GPAI models with systemic "
+        "risk under Art. 51",
+    ),
+    ("Art. 53", "Annex XI", "Reverse"),
+    ("Art. 53", "Annex XII", "Reverse"),
+    ("Art. 51", "Annex XIII", "Reverse"),
+)
+
+
+def _lint_manual_xrefs() -> tuple[tuple[str, str, str], ...]:
+    """Validate every endpoint in :data:`MANUAL_XREFS` at import time.
+
+    A bad edge (typo in ``Art. 5OO`` or ``Annex XIV``) raises an
+    ``AssertionError`` here rather than silently propagating into a
+    user-facing citation set. This is the same fail-fast posture as the
+    consistency lint in ``tests/test_kb_consistency.py``, run a layer
+    earlier so the module simply will not load on a bad edit.
+
+    Returns the (immutable) validated edge list. Stored as
+    :data:`MANUAL_XREFS_LINTED` so consumers can prove the lint ran.
+    """
+    for source, target, reason in MANUAL_XREFS:
+        assert source in ARTICLE_EXISTENCE, (
+            f"MANUAL_XREFS source {source!r} not in ARTICLE_EXISTENCE "
+            f"(edge: {source!r} → {target!r})"
+        )
+        assert target in ARTICLE_EXISTENCE, (
+            f"MANUAL_XREFS target {target!r} not in ARTICLE_EXISTENCE "
+            f"(edge: {source!r} → {target!r})"
+        )
+        assert source != target, (
+            f"MANUAL_XREFS self-edge {source!r} → {target!r}"
+        )
+        assert reason, (
+            f"MANUAL_XREFS edge {source!r} → {target!r} has empty reason"
+        )
+    return MANUAL_XREFS
+
+
+#: The lint-validated copy of :data:`MANUAL_XREFS`. Import-time evaluation
+#: means a bad edge prevents the module from loading at all.
+MANUAL_XREFS_LINTED: tuple[tuple[str, str, str], ...] = _lint_manual_xrefs()
+
+
 @lru_cache(maxsize=1)
-def _build_xref_graph() -> dict[str, tuple[str, ...]]:
-    """Build the cross-reference adjacency map at import time.
+def _build_regex_xref_graph() -> dict[str, tuple[str, ...]]:
+    """Build the regex-extracted cross-reference adjacency map.
 
     Walks every obligation summary, extracts Art. N / Annex X mentions,
     validates each against :data:`ARTICLE_EXISTENCE`, and stores the
@@ -66,6 +196,9 @@ def _build_xref_graph() -> dict[str, tuple[str, ...]]:
 
     Self-references are dropped: an obligation that mentions its own
     article in its summary doesn't need a self-edge in the graph.
+
+    This is the legacy graph — the public :func:`_build_xref_graph` and
+    :func:`cross_refs` overlay :data:`MANUAL_XREFS` on top of it.
     """
     graph: dict[str, list[str]] = {}
 
@@ -99,6 +232,43 @@ def _build_xref_graph() -> dict[str, tuple[str, ...]]:
     return {k: tuple(v) for k, v in graph.items()}
 
 
+@lru_cache(maxsize=1)
+def _build_xref_graph() -> dict[str, tuple[str, ...]]:
+    """Build the merged regex + manual cross-reference graph.
+
+    The merge preserves regex-extracted order (round-1 stable behaviour)
+    and appends only the manually-curated edges that aren't already
+    present from the regex pass. This keeps :func:`cross_refs` strictly
+    additive against the legacy graph: an answer that previously cited
+    Art. 11 → (whatever the regex found) still cites those refs, plus
+    the new Art. 11 → Annex IV manual edge appended at the tail.
+    """
+    regex_graph = _build_regex_xref_graph()
+    graph: dict[str, list[str]] = {k: list(v) for k, v in regex_graph.items()}
+
+    for source, target, _reason in MANUAL_XREFS:
+        if source == target:
+            continue
+        bucket = graph.setdefault(source, [])
+        if target not in bucket:
+            bucket.append(target)
+
+    return {k: tuple(v) for k, v in graph.items()}
+
+
+@lru_cache(maxsize=1)
+def _build_xref_reason_index() -> dict[tuple[str, str], str]:
+    """Index ``(source, target) → reason`` for manual edges.
+
+    Regex-extracted edges have no semantic reason (the surface text just
+    mentioned the target), so they fall back to a generic
+    ``"mentioned by"`` label in :func:`cross_refs_with_reason`. Manual
+    edges win on collision — if a manual edge restates a regex one with
+    a richer reason, the manual reason is what gets surfaced.
+    """
+    return {(source, target): reason for source, target, reason in MANUAL_XREFS}
+
+
 def cross_refs(article_ref: str, *, limit: int = 5) -> tuple[str, ...]:
     """Return up to ``limit`` cross-referenced articles for ``article_ref``.
 
@@ -111,6 +281,32 @@ def cross_refs(article_ref: str, *, limit: int = 5) -> tuple[str, ...]:
     """
     graph = _build_xref_graph()
     return graph.get(article_ref, ())[:limit]
+
+
+def cross_refs_with_reason(
+    article_ref: str, *, limit: int = 5
+) -> tuple[tuple[str, str], ...]:
+    """Return up to ``limit`` ``(target, reason)`` pairs for ``article_ref``.
+
+    Wraps :func:`cross_refs` with the semantic reason from the manual
+    edge table. Regex-extracted edges (where there is no curated reason)
+    fall back to a generic ``"mentioned in obligation summary"`` label,
+    which is still useful: the route layer can decide to suppress those
+    when answering "why does X link to Y?" but keep the manual ones.
+
+    The pair order matches the order returned by :func:`cross_refs`, so a
+    caller can swap the two functions without re-sorting.
+    """
+    targets = cross_refs(article_ref, limit=limit)
+    reasons = _build_xref_reason_index()
+    out: list[tuple[str, str]] = []
+    for target in targets:
+        reason = reasons.get(
+            (article_ref, target),
+            "mentioned in obligation summary",
+        )
+        out.append((target, reason))
+    return tuple(out)
 
 
 def all_edges() -> tuple[tuple[str, str], ...]:
@@ -127,4 +323,10 @@ def all_edges() -> tuple[tuple[str, str], ...]:
     return tuple(edges)
 
 
-__all__ = ["cross_refs", "all_edges"]
+__all__ = [
+    "cross_refs",
+    "cross_refs_with_reason",
+    "all_edges",
+    "MANUAL_XREFS",
+    "MANUAL_XREFS_LINTED",
+]

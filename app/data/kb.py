@@ -988,4 +988,197 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "enforcement / migration / asylum / border-control systems."
         ),
     },
+    # ─── Title III Ch. 4: Notified-body lifecycle (Arts. 28-34) ──────────────
+    "Art. 28": {
+        "dimension": "conformity",
+        "summary": (
+            "Requires each Member State to designate or establish at least "
+            "one notifying authority responsible for setting up and carrying "
+            "out the procedures for assessment, designation, notification, "
+            "and monitoring of conformity-assessment bodies. Art. 28(2)-(4) "
+            "require notifying authorities to be objective + impartial, "
+            "organised so notification decisions are taken by competent "
+            "persons different from those who carried out the assessment, "
+            "and to safeguard the confidentiality of information obtained."
+        ),
+    },
+    "Art. 29": {
+        "dimension": "conformity",
+        "summary": (
+            "Sets the application procedure for conformity-assessment bodies "
+            "seeking notification under Art. 28(1)(b): the body must submit "
+            "the application to the notifying authority of the Member State "
+            "in which it is established, together with a description of the "
+            "conformity-assessment activities, modules, AI technologies, and "
+            "evidence of compliance with the Art. 31 requirements. Per Art. "
+            "29(2)-(3) an accreditation certificate from a national "
+            "accreditation body may serve as such evidence."
+        ),
+    },
+    "Art. 31": {
+        "dimension": "conformity",
+        "summary": (
+            "Sets substantive requirements that notified bodies must meet "
+            "and continuously satisfy: establishment under national law with "
+            "legal personality (Art. 31(1)), independence from the provider "
+            "and from the system being assessed (Art. 31(4)), no involvement "
+            "in design / marketing / use of the AI systems they assess "
+            "(Art. 31(5)), safeguards against conflicts of interest, "
+            "documented procedures, sufficient permanent personnel with "
+            "appropriate competences in AI technologies + data + computing, "
+            "and adequate cybersecurity. Per Art. 31(12) notified bodies "
+            "must hold appropriate liability insurance unless that "
+            "liability is assumed by the Member State."
+        ),
+    },
+    "Art. 33": {
+        "dimension": "conformity",
+        "summary": (
+            "Sets operational obligations of notified bodies when carrying "
+            "out conformity-assessment activities under Annex VII: "
+            "assessments must be carried out proportionately, avoiding "
+            "unnecessary burdens for providers, with particular regard for "
+            "the size of the provider, the sector of operation, and the "
+            "degree of complexity of the AI system (Art. 33(1)). Art. 33(2)-"
+            "(4) require notified bodies to respect the degree of rigour + "
+            "level of protection required, make publicly available fees, "
+            "and notify the notifying authority of any refusal, restriction, "
+            "suspension, or withdrawal of certificates."
+        ),
+    },
+    "Art. 34": {
+        "dimension": "conformity",
+        "summary": (
+            "Governs subsidiaries and subcontracting by notified bodies: "
+            "where a notified body subcontracts specific assessment tasks "
+            "or has recourse to a subsidiary, it must ensure the "
+            "subcontractor / subsidiary meets the Art. 31 requirements and "
+            "inform the notifying authority accordingly (Art. 34(1)-(2)). "
+            "The notified body remains fully responsible for the tasks "
+            "performed by subcontractors or subsidiaries, and "
+            "subcontracting / subsidiary recourse may only take place with "
+            "the agreement of the provider."
+        ),
+    },
+    # ─── Title III Ch. 5: Harmonised standards + common specs (Arts. 40-42) ──
+    "Art. 40": {
+        "dimension": "conformity",
+        "summary": (
+            "High-risk AI systems and GPAI models in conformity with "
+            "harmonised standards (or parts thereof) whose references have "
+            "been published in the Official Journal under Regulation (EU) "
+            "No 1025/2012 are presumed to conform with the corresponding "
+            "Section-2 requirements of Chapter III, or with the Chapter V "
+            "GPAI obligations, to the extent those standards cover those "
+            "requirements (Art. 40(1)). Art. 40(2)-(3) require the "
+            "Commission to issue standardisation requests covering the "
+            "essential requirements without undue delay, and to promote "
+            "stakeholder involvement in the European standardisation "
+            "process."
+        ),
+    },
+    "Art. 41": {
+        "dimension": "conformity",
+        "summary": (
+            "Empowers the Commission to adopt, by implementing acts, common "
+            "specifications for the Section-2 high-risk requirements or for "
+            "the Chapter V GPAI obligations where harmonised standards do "
+            "not exist, the Commission's standardisation request was not "
+            "accepted, the request is unduly delayed, or the resulting "
+            "standards are insufficient (Art. 41(1)). High-risk AI systems "
+            "(and GPAI models) in conformity with such common specifications "
+            "are presumed to conform with the corresponding requirements "
+            "(Art. 41(3)). Providers that do not apply the common "
+            "specifications must justify equivalent technical solutions."
+        ),
+    },
+    "Art. 42": {
+        "dimension": "conformity",
+        "summary": (
+            "Adds two further presumptions of conformity beyond Arts. 40-41: "
+            "Art. 42(1) — high-risk AI systems trained and tested on data "
+            "reflecting the specific geographical, behavioural, contextual, "
+            "or functional setting in which they are intended to be used are "
+            "presumed to comply with the relevant data-governance "
+            "requirements of Art. 10(4); Art. 42(2) — high-risk AI systems "
+            "certified or for which a statement of conformity has been "
+            "issued under a cybersecurity scheme under Regulation (EU) "
+            "2019/881 (the Cybersecurity Act) and whose references are "
+            "published in the Official Journal are presumed to comply with "
+            "the cybersecurity requirements of Art. 15 to the extent the "
+            "cybersecurity certificate or statement covers those "
+            "requirements."
+        ),
+    },
+    # ─── Title VIII: Confidentiality + GPAI enforcement (Arts. 78, 88) ───────
+    "Art. 78": {
+        "dimension": "governance",
+        "summary": (
+            "Confidentiality obligation binding the Commission, market-"
+            "surveillance authorities, notified bodies, and any other "
+            "natural or legal person involved in the application of the "
+            "Regulation: they must respect the confidentiality of "
+            "information and data obtained in carrying out their tasks, in "
+            "particular to protect intellectual-property rights, "
+            "confidential business information + trade secrets (including "
+            "source code, except as Art. 74(13) allows), the effective "
+            "implementation of the Regulation (including investigations), "
+            "public + national security interests, and the integrity of "
+            "criminal / administrative proceedings (Art. 78(1)). Art. "
+            "78(2)-(4) qualify intra-authority + cross-border information "
+            "exchange."
+        ),
+    },
+    "Art. 88": {
+        "dimension": "gpai_specific",
+        "summary": (
+            "Vests enforcement of the Chapter V obligations of providers of "
+            "general-purpose AI models exclusively in the Commission, acting "
+            "through the AI Office, which exercises the powers laid down in "
+            "the Regulation without prejudice to the institutional powers "
+            "set out in the Treaties (Art. 88(1)). Art. 88(2) requires the "
+            "Commission and the Member States to cooperate, in particular "
+            "where a GPAI model is integrated into an AI system over which "
+            "national market-surveillance authorities have competence under "
+            "Art. 74."
+        ),
+    },
+    # ─── Additional Annexes (IX, X) ──────────────────────────────────────────
+    "Annex IX": {
+        "dimension": "governance",
+        "summary": (
+            "Annex IX lists the Union legislative acts on large-scale IT "
+            "systems in the area of freedom, security and justice referred "
+            "to in Art. 6(1) and Art. 111: the Schengen Information System "
+            "(SIS), the Visa Information System (VIS), Eurodac, the Entry/"
+            "Exit System (EES), the European Travel Information and "
+            "Authorisation System (ETIAS), the regulations on "
+            "interoperability between EU information systems, and the "
+            "European Criminal Records Information System for third-country "
+            "nationals (ECRIS-TCN). AI systems intended to be used as safety "
+            "components of, or by Union institutions in the management of, "
+            "the IT systems listed in Annex IX fall under the high-risk "
+            "regime with transitional dates set by Art. 111(1)."
+        ),
+    },
+    "Annex X": {
+        "dimension": "tech_docs",
+        "summary": (
+            "Annex X sets the information that providers (and, where "
+            "applicable, authorised representatives) and public-authority "
+            "deployers must enter in the EU database when registering "
+            "high-risk AI systems referred to in Art. 49: provider / "
+            "authorised-representative / deployer identity + contact "
+            "details, system name + trade name + additional unambiguous "
+            "reference, intended purpose, status of the system (on the "
+            "market / in service / no longer placed on the market / "
+            "recalled), type + number of the conformity-assessment "
+            "certificate + identity of the issuing notified body where "
+            "applicable, Member States in which the system is placed on "
+            "the market or put into service, and a copy of the EU "
+            "declaration of conformity (Art. 47) + the instructions for "
+            "use. Public-access carve-outs in Annex X apply to law-"
+            "enforcement, migration, asylum, and border-control systems."
+        ),
+    },
 }
