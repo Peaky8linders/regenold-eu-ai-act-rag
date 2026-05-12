@@ -30,6 +30,7 @@ check is sensitive to LLM-only behaviour, we mark the scenario with
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -157,6 +158,140 @@ def _answer_mentions_any(body: dict, phrases: tuple[str, ...]) -> bool:
     """At least one phrase (case-insensitive) appears in the answer."""
     answer = (body.get("answer") or "").lower()
     return any(p.lower() in answer for p in phrases)
+
+
+# ── Verdict-checking predicates for classification questions ───────────────
+#
+# Audit finding (2026-05-12): the original ``risk_classification`` and
+# ``leading_premise`` predicates passed any answer that cited the right
+# anchor article — even an answer that gave the WRONG verdict
+# ("Annex III doesn't apply"). The competition rubric scores Answer
+# Correctness against a question-specific ground truth, so a
+# verdict-shaped question must produce a verdict-shaped answer. These
+# helpers let scenarios assert "the answer actually gives a classification
+# verdict" rather than just "the answer mentions an article".
+
+
+_POSITIVE_HIGH_RISK_RE = re.compile(
+    r"(?<!not\s)\b(?:is|are|qualif(?:ies|y)\s+as|fall(?:s)?\s+(?:under|within))"
+    r"\s+(?:a\s+)?high[-\s]?risk|"
+    r"(?<!not\s)\bhigh[-\s]?risk\s+under\s+(?:annex|art(?:icle|\.)?)",
+    re.IGNORECASE,
+)
+_NEGATIVE_HIGH_RISK_RE = re.compile(
+    r"\b(?:is|are)\s+not\s+high[-\s]?risk|"
+    r"\bnot\s+high[-\s]?risk",
+    re.IGNORECASE,
+)
+
+
+def _verdict_high_risk(body: dict) -> bool:
+    """Answer claims the system IS high-risk (positive verdict).
+
+    Position-aware: an answer that LEADS with "is high-risk under Annex
+    III" and later notes a carve-out ("...are not high-risk on this
+    basis") still counts as a high-risk verdict. The order matters
+    because the rubric scores the answer's primary claim, not its
+    qualifiers.
+    """
+    answer = body.get("answer") or ""
+    pos = _POSITIVE_HIGH_RISK_RE.search(answer)
+    if pos is None:
+        return False
+    neg = _NEGATIVE_HIGH_RISK_RE.search(answer)
+    if neg is None:
+        return True
+    # Both forms present — positive verdict only counts when it leads
+    # (i.e. comes before the negation in the prose).
+    return pos.start() < neg.start()
+
+
+def _verdict_prohibited(body: dict) -> bool:
+    """Answer claims the system IS prohibited (positive verdict)."""
+    answer = (body.get("answer") or "").lower()
+    if any(neg in answer for neg in ("not prohibited", "is not prohibited", "are not prohibited")):
+        return False
+    return any(
+        marker in answer
+        for marker in (
+            "is prohibited",
+            "are prohibited",
+            "is banned",
+            "are banned",
+            "prohibited under article 5",
+            "prohibited under art. 5",
+            "prohibited practice under",
+            "falls within article 5",
+            "falls under article 5",
+        )
+    )
+
+
+def _verdict_not_categorically(body: dict) -> bool:
+    """Answer claims the system is NOT categorically prohibited / high-risk.
+
+    Captures the nuanced verdict shape ("not categorically prohibited
+    nor listed in Annex III; becomes high-risk only if …") that Q3-type
+    questions demand. The answer must explicitly negate the false
+    premise — not just be silent on it.
+    """
+    answer = (body.get("answer") or "").lower()
+    return any(
+        marker in answer
+        for marker in (
+            "not categorically prohibited",
+            "not categorically high-risk",
+            "not categorically",
+            "neither categorically",
+            "not listed in annex iii",
+            "is not prohibited",
+            "not in annex iii",
+            "outside annex iii",
+        )
+    )
+
+
+def _classification_verdict_given(body: dict) -> bool:
+    """Disjunction of the three positive verdict shapes.
+
+    Used as the minimal "the answer gave SOME classification verdict"
+    gate — a classification question must produce at least one of:
+    prohibited / high-risk / not-categorical. A pure description-dump
+    ("Annex III lists eight categories: …") fails this check.
+    """
+    return (
+        _verdict_high_risk(body)
+        or _verdict_prohibited(body)
+        or _verdict_not_categorically(body)
+    )
+
+
+def _rebuts_premise(body: dict) -> bool:
+    """Answer contains a contradiction/clarification marker, OR a verdict.
+
+    Used for ``leading_premise`` / ``sycophancy`` scenarios where the
+    user asserts a false premise and the rubric demands a rebuttal. We
+    accept either an explicit contradiction marker ("however", "in fact",
+    "actually", "to clarify", "this is incorrect") OR a direct verdict
+    that contradicts the user's framing.
+    """
+    answer = (body.get("answer") or "").lower()
+    contradiction_markers = (
+        "however",
+        "actually",
+        "in fact",
+        "to clarify",
+        "this is incorrect",
+        "that is not",
+        "is incorrect",
+        "not exempt",
+        "still applies",
+        "nevertheless",
+        "on the contrary",
+        "rather",
+        "but ",  # trailing space avoids "buttons" / "butter"
+    )
+    return any(m in answer for m in contradiction_markers) or _classification_verdict_given(body)
 
 
 # ── Helper for building check tuples (less keystrokes per scenario) ───────
@@ -546,7 +681,7 @@ SCENARIOS: tuple[Scenario, ...] = (
     Scenario(
         id="risk_cv_screening_high_risk",
         category="risk_classification",
-        description="CV-screening AI in HR — must surface Annex III(4) employment trigger.",
+        description="CV-screening AI in HR — must surface Annex III(4) employment trigger AND give a high-risk verdict.",
         messages=(
             {"role": "user", "content": "We're building a CV-screening AI for hiring. Is it high-risk?"},
         ),
@@ -556,24 +691,32 @@ SCENARIOS: tuple[Scenario, ...] = (
                 "cites_annex_iii_or_art_6",
                 lambda b: _has_reference(b, "Annex III") or _has_reference(b, "Article 6"),
             ),
+            # Tightened 2026-05-12: previously this scenario passed any
+            # answer that cited the right anchor — even one that said
+            # "Annex III doesn't apply". The competition rubric scores
+            # Answer Correctness against ground-truth, so a verdict-
+            # shaped question must produce a verdict-shaped answer.
+            ScenarioCheck("gives_high_risk_verdict", _verdict_high_risk),
         ),
     ),
     Scenario(
         id="risk_credit_scoring_annex_iii",
         category="risk_classification",
-        description="Credit scoring is Annex III(5) — model architecture irrelevant.",
+        description="Credit scoring is Annex III(5)(b) — model architecture irrelevant. Must answer YES.",
         messages=(
             {"role": "user", "content": "Our credit-scoring model is just logistic regression. Does Annex III still apply?"},
         ),
         checks=(
             ScenarioCheck("not_refused", lambda b: not _refused(b)),
             ScenarioCheck("cites_annex_iii", lambda b: _has_reference(b, "Annex III")),
+            # Tightened 2026-05-12 — see comment on risk_cv_screening.
+            ScenarioCheck("gives_high_risk_verdict", _verdict_high_risk),
         ),
     ),
     Scenario(
         id="risk_education_grading",
         category="risk_classification",
-        description="Education-grading AI — Annex III(3) trigger.",
+        description="Education-grading AI — Annex III(3) trigger. Must answer high-risk.",
         messages=(
             {"role": "user", "content": "Is an AI tool that grades student essays in scope?"},
         ),
@@ -583,6 +726,94 @@ SCENARIOS: tuple[Scenario, ...] = (
                 "cites_annex_iii_or_art_6",
                 lambda b: _has_reference(b, "Annex III") or _has_reference(b, "Article 6"),
             ),
+            # Tightened 2026-05-12 — see comment on risk_cv_screening.
+            ScenarioCheck("gives_high_risk_verdict", _verdict_high_risk),
+        ),
+    ),
+    # ── New Q3-style classification scenarios (round-10 expansion) ────
+    # These directly mirror the competition's Q2/Q3 phrasing: "is X
+    # prohibited? Is X high-risk?" The verdict must be explicit.
+    Scenario(
+        id="risk_doctor_patient_transcription",
+        category="risk_classification",
+        description=(
+            "Q3 — doctor-patient transcription: NOT categorically prohibited NOR "
+            "in Annex III. High-risk only via Art. 6(1) + Annex I medical-device path."
+        ),
+        messages=(
+            {
+                "role": "user",
+                "content": (
+                    "Is an AI that transcribes doctor-patient conversations prohibited? "
+                    "Or is it high-risk as per the use cases of Annex III of the AI Act?"
+                ),
+            },
+        ),
+        checks=(
+            ScenarioCheck("not_refused", lambda b: not _refused(b)),
+            ScenarioCheck("cites_art_5", lambda b: _has_reference(b, "Article 5")),
+            ScenarioCheck("cites_annex_iii", lambda b: _has_reference(b, "Annex III")),
+            ScenarioCheck("cites_annex_i", lambda b: _has_reference(b, "Annex I")),
+            ScenarioCheck("gives_nuanced_verdict", _verdict_not_categorically),
+            ScenarioCheck(
+                "no_blanket_high_risk_claim",
+                lambda b: _answer_does_not_contain(b, "is high-risk under annex iii"),
+            ),
+        ),
+    ),
+    Scenario(
+        id="risk_emotion_recognition_general",
+        category="risk_classification",
+        description=(
+            "Q2 — emotion recognition: not categorically prohibited; Art. 5 only "
+            "applies in workplace/education. Must rebut 'always prohibited' framing."
+        ),
+        messages=(
+            {
+                "role": "user",
+                "content": (
+                    "Are AI systems intended for emotion recognition from biometric "
+                    "data always prohibited?"
+                ),
+            },
+        ),
+        checks=(
+            ScenarioCheck("not_refused", lambda b: not _refused(b)),
+            ScenarioCheck("cites_art_5", lambda b: _has_reference(b, "Article 5")),
+            ScenarioCheck("gives_nuanced_verdict", _verdict_not_categorically),
+            ScenarioCheck(
+                "no_blanket_always_prohibited",
+                lambda b: _answer_does_not_contain(b, "always prohibited"),
+            ),
+        ),
+    ),
+    Scenario(
+        id="risk_social_scoring_prohibited",
+        category="risk_classification",
+        description="Social scoring is prohibited under Art. 5(1)(c). Verdict must be 'prohibited'.",
+        messages=(
+            {"role": "user", "content": "Is social scoring high-risk under the AI Act?"},
+        ),
+        checks=(
+            ScenarioCheck("not_refused", lambda b: not _refused(b)),
+            ScenarioCheck("cites_art_5", lambda b: _has_reference(b, "Article 5")),
+            ScenarioCheck("gives_prohibited_verdict", _verdict_prohibited),
+        ),
+    ),
+    Scenario(
+        id="risk_real_time_rbi_prohibited",
+        category="risk_classification",
+        description="Real-time RBI in public spaces by law enforcement is prohibited under Art. 5(1)(h).",
+        messages=(
+            {
+                "role": "user",
+                "content": "Is real-time biometric identification in public spaces prohibited under the AI Act?",
+            },
+        ),
+        checks=(
+            ScenarioCheck("not_refused", lambda b: not _refused(b)),
+            ScenarioCheck("cites_art_5", lambda b: _has_reference(b, "Article 5")),
+            ScenarioCheck("gives_prohibited_verdict", _verdict_prohibited),
         ),
     ),
     # ── Category J: role_obligation ──────────────────────────────────────

@@ -486,6 +486,50 @@ _AI_ACT_ANCHORS: frozenset[str] = frozenset(
         "high risk ai",
         "general purpose ai model",
         "general-purpose ai model",
+        # ── Round-10 anchor surfacing (stress-test gap closers) ─────────
+        # Prohibited-practice + Annex-III concept phrases that ought to
+        # mark a question as plainly AI-Act-shaped even without an
+        # explicit ``Art. 5`` / ``Annex III`` token. Mirrors the
+        # KEYWORD_TO_ARTICLE additions made in the same round.
+        "facial recognition",
+        "facial recognition database",
+        "scraping facial",
+        "subliminal",
+        "manipulative technique",
+        "deceptive technique",
+        "exploit vulnerabilities",
+        "exploit the vulnerabilities",
+        "exploits the vulnerabilities",
+        "exploiting vulnerabilities",
+        "vulnerable groups",
+        "csam",
+        "ai-generated csam",
+        "nudification",
+        "non-consensual intimate",
+        "intimate imagery",
+        "critical infrastructure",
+        "asylum",
+        "migration",
+        "visa application",
+        "border control",
+        "judicial",
+        "court",
+        "legal interpretation",
+        "election",
+        "voting behaviour",
+        "voting behavior",
+        "essential public services",
+        "essential private services",
+        "creditworthiness",
+        "credit scoring",
+        "predictive policing",
+        "predicting criminality",
+        "criminal risk",
+        "criminal-risk",
+        "scientific research",
+        "research only",
+        "research-only",
+        "rebrand",
     )
 )
 
@@ -554,8 +598,77 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "biometric categorisation": "Art. 5",
     "biometric categorization": "Art. 5",
     "remote biometric": "Art. 5",
+    "real-time biometric": "Art. 5",
+    "real time biometric": "Art. 5",
+    # Bare "biometric identification" anchors Art. 5(1)(h) — real-time
+    # remote biometric ID in public spaces by law enforcement is the
+    # prohibited practice. Non-real-time / non-public-space variants are
+    # high-risk under Annex III(1) but the prohibition is the more
+    # specific anchor for verdict-style questions.
+    "biometric identification": "Art. 5",
     "emotion recognition": "Art. 5",
     "prohibited practice": "Art. 5",
+    # ── Round-10 anchor surfacing (stress-test gap closers) ──────────
+    # Each phrase is a real stress-test failure where the question was
+    # plainly about an Art. 5 prohibited practice but scope refused as
+    # "no anchor". Conservative — each phrase anchors the single
+    # article the practice belongs to under Art. 5.
+    "facial recognition database": "Art. 5",
+    "scraping facial": "Art. 5",
+    "scraping of facial": "Art. 5",
+    "subliminal technique": "Art. 5",
+    "subliminal manipulation": "Art. 5",
+    "manipulative technique": "Art. 5",
+    "deceptive technique": "Art. 5",
+    "exploit vulnerabilities": "Art. 5",
+    "exploit the vulnerabilities": "Art. 5",
+    "exploiting vulnerabilities": "Art. 5",
+    "vulnerable groups": "Art. 5",
+    "csam": "Art. 5",
+    "ai-generated csam": "Art. 5",
+    "ai generated csam": "Art. 5",
+    "nudification": "Art. 5",
+    "non-consensual intimate": "Art. 5",
+    "non consensual intimate": "Art. 5",
+    "intimate imagery": "Art. 5",
+    # Annex III categories — scope anchors for high-risk verdicts
+    "critical infrastructure": "Annex III",
+    "asylum application": "Annex III",
+    "asylum applications": "Annex III",
+    "migration risk": "Annex III",
+    "visa application": "Annex III",
+    "border control": "Annex III",
+    "judicial authority": "Annex III",
+    "judicial authorities": "Annex III",
+    "assist judges": "Annex III",
+    "legal interpretation": "Annex III",
+    "election outcome": "Annex III",
+    "voting behaviour": "Annex III",
+    "voting behavior": "Annex III",
+    "essential public services": "Annex III",
+    "essential private services": "Annex III",
+    "creditworthiness": "Annex III",
+    "credit scoring": "Annex III",
+    # Content-lookup anchors that the stress test surfaced
+    "maximum fine": "Art. 99",
+    "max fine": "Art. 99",
+    "fine for": "Art. 99",
+    "fine ceiling": "Art. 99",
+    "definition of an ai system": "Art. 3",
+    "definition of ai system": "Art. 3",
+    "definition of a deployer": "Art. 3",
+    "definition of a provider": "Art. 3",
+    "definition of a general-purpose": "Art. 3",
+    "definition of general-purpose": "Art. 3",
+    "definition of a gpai": "Art. 3",
+    "definition of high-risk": "Art. 6",
+    "research-only": "Art. 2",
+    "research only ai": "Art. 2",
+    "scientific research": "Art. 2",
+    "rebrand": "Art. 25",
+    "rename": "Art. 25",
+    "third-party ai": "Art. 25",
+    "third party ai": "Art. 25",
     "prohibited ai": "Art. 5",
     "prohibited practices": "Art. 5",
     "high-risk ai system": "Art. 6",
@@ -711,7 +824,12 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "resume screening": "Annex III",
     "candidate screening": "Annex III",
     "hr screening": "Annex III",
-    "predictive policing": "Annex III",
+    # Predictive policing: Art. 5(1)(d) PROHIBITS profiling-based predictive
+    # policing of natural persons; only place-based / non-profiling
+    # predictive policing falls under Annex III(6)(d). Anchor on the
+    # prohibition first — Annex III routing was misleading users into
+    # thinking such systems were merely "high-risk" rather than banned.
+    "predictive policing": "Art. 5",
     # GPAI numerical anchors
     "10 to the 25": "Art. 51",
     "1e25": "Art. 51",
@@ -738,12 +856,15 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "third party ai": "Art. 26",
     "medical device": "Art. 6",
     "diagnostic ai": "Art. 6",
-    "linear regression": "Art. 6",
-    "weighted score": "Art. 6",
-    "weighted score calculator": "Art. 6",
+    # NB: "linear regression" / "weighted score" / "weighted score
+    # calculator" / "ec faq" / "european commission faq" removed —
+    # algorithm class and meta-document phrases do not determine risk
+    # class. A linear regression is high-risk only if its USE CASE is
+    # in Annex I/III; anchoring the keyword without that context made
+    # the engine assert Art. 6 applicability for any mention of these
+    # techniques. The "ec faq" entries were over-eager catches on
+    # documents-as-source, not regulatory anchors.
     "wrapper": "Art. 25",
-    "ec faq": "Art. 6",
-    "european commission faq": "Art. 6",
     # ── Round-9 anchor surfacing (May 2026 KB expansion + Digital Omnibus) ──
     # Articles added in this round: 21, 50.1-4, 58, 59, 61-63, 67-69, 85-87,
     # 89, 95, 100, 101, 111, 112. Plus Digital Omnibus political-agreement

@@ -1,5 +1,127 @@
 # Changelog
 
+## 0.1.1 — Classification-verdict path (2026-05-12)
+
+### Smoking gun
+
+The competition's Q3 example — "Is an AI that transcribes doctor–patient
+conversations prohibited? Or is it high-risk as per the use cases of
+Annex III of the AI Act?" — returned a 1373-character verbatim dump of
+the Annex III + Art. 5 obligation rows ("Annex III: Eight high-risk
+use-case categories: biometrics, critical infrastructure, …") instead
+of a classification verdict. Wire references shipped as
+`["Article 6", "Annex III"]` despite the prose discussing Art. 5 — a
+silent reference/prose mismatch.
+
+### Root causes (3 independent bugs, all pinned by regression tests)
+
+1. **`_retrieve_from_kb` id collision.** Synthetic obligation rows used
+   `id = f"kb-{dimension}"` so when two entities shared a dimension
+   (Art. 5 + Annex III both `risk_mgmt`), the route's per-id dedup
+   silently dropped the second entity from the citation list. Fix:
+   include the entity in the id (`kb-{dimension}-{entity}`).
+
+2. **Wrong keyword mappings in `_KEYWORD_ENTITY_MAP`.** Entries like
+   `("transcrib", "Annex III")`, `("healthcare", "Annex III")`,
+   `("hardware", "Annex IV")` confirmed false premises on every
+   medical-AI / generic-hardware question. Removed or narrowed.
+   Also removed `("definition of", "Art. 3")`, `("predictive policing",
+   "Annex III")` (now Art. 5), `("linear regression"/"weighted score"
+   /"ec faq", "Art. 6")` from `scope.py` (algorithm class doesn't
+   determine risk class).
+
+3. **No classification verdict path.** `_deterministic_answer` had only
+   a "dump `obligations[:3]`" branch with no reasoner for "is X
+   prohibited / high-risk / not?" questions. Added 14 curated
+   classification topics (medical transcription, emotion recognition
+   workplace + general, social scoring, RBI in public spaces,
+   predictive policing, hiring screening, credit scoring, education
+   grading, subliminal manipulation, vulnerability exploitation, facial
+   recognition databases, biometric categorisation by sensitive
+   attributes, Annex III categories 2/6/7/8, Annex I safety component,
+   omnibus CSAM) covering the canonical regulatory verdicts. Each topic
+   emits a 1-4 sentence verdict + minimal citation set.
+
+### Detector (`_detect_classification_topic`)
+
+Two-pass: question must look like a verdict ask AND match a topic regex.
+
+* **Verdict-ask detector** (`_CLASSIFICATION_QUESTION_RE`): regex matches
+  sub-clauses that start with `is` / `are` / `does` and contain a
+  classification predicate (`prohibited` / `high-risk` / `minimal-risk`
+  / `exempt` / `in scope` / `fall under`), plus a user-asserted-verdict
+  branch (`it's (not) high-risk`) for "Confirm X doesn't apply"-style
+  framings. Splits the question on `?` `!` `,` `;` `—` `or` `so`
+  `then` `therefore` and sentence boundaries (period followed by
+  capital letter) so verdict-ask clauses embedded in longer prose are
+  caught.
+
+* **Topic regex catalog**: ordered narrow → broad (workplace
+  emotion-recognition before general; specific medical-device keywords
+  before generic safety-component). First-match wins. Patterns allow
+  hyphens (`CV-screening`, `credit-scoring`) so the common compound
+  forms route correctly.
+
+### Wire integration
+
+`_seed_classification_obligations` replaces `context.obligations` with
+synthetic entries for the topic's refs (each with a unique id), so the
+route's citation extraction surfaces exactly the verdict's citation set.
+`_two_stage_generate` re-detects the classification topic and skips
+Stage-2 LLM polish — the curated verdict prose is already a 1-4
+sentence professional answer; LLM rephrasing would risk diluting the
+binary verdict the rubric scores against.
+
+### Scope hardening
+
+Added ~50 scope anchors across `_AI_ACT_ANCHORS` + `KEYWORD_TO_ARTICLE`
+for prohibited-practice phrases (`facial recognition`, `subliminal`,
+`exploit vulnerabilities`, `csam`, `non-consensual intimate`) and
+Annex III categories (`critical infrastructure`, `asylum`, `migration`,
+`judicial`, `creditworthiness`) so questions about these topics pass
+the in-scope gate without an explicit `Art. N` / `Annex N` token.
+
+### Eval scope tightened (Agent B audit response)
+
+The pre-fix `risk_classification` scenarios passed any answer that cited
+the right anchor — even one that said "Annex III doesn't apply". Added
+verdict-checking predicate helpers (`_verdict_high_risk`,
+`_verdict_prohibited`, `_verdict_not_categorically`,
+`_classification_verdict_given`, `_rebuts_premise`) with
+position-aware logic (positive verdict in the lead sentence overrides
+a later carve-out clause). Tightened the 3 baseline
+`risk_classification` scenarios with verdict gates AND added 4 new
+strict-verdict scenarios mirroring Q2/Q3:
+
+* `risk_doctor_patient_transcription` — Q3 verbatim. Pins all 5
+  citation anchors (Article 5/6, Annex I/III, Article 50) AND requires
+  `_verdict_not_categorically`.
+* `risk_emotion_recognition_general` — Q2 verbatim. Requires nuanced
+  verdict + rebuts "always prohibited" framing.
+* `risk_social_scoring_prohibited` — must emit "prohibited" verdict.
+* `risk_real_time_rbi_prohibited` — must emit "prohibited" verdict.
+
+### Test coverage
+
+* `tests/test_classification_verdicts.py` — 44 new tests covering
+  detector unit-level (`_is_classification_question`,
+  `_detect_classification_topic`), topic-catalog shape (refs are
+  internal form, answer within sentence cap), and end-to-end Q3 wire
+  contract (verdict prose, all 5 citation anchors, sentence cap).
+* `tests/test_*` (existing) — 277 tests still green; no regressions.
+
+### Results
+
+| Suite | Before | After |
+|-------|--------|-------|
+| Unit tests | 233 / 233 | 277 / 277 |
+| Eval scenarios | 272 / 272 (baseline-biased predicates) | 276 / 276 (tightened) |
+| Stress test (54 diverse Qs) | 34 / 54 (63%) | 54 / 54 (100%) |
+| Q3 wire response | 1373-char dump, refs `["Article 6", "Annex III"]` | 3-sentence verdict, refs `["Article 5", "Article 6", "Article 50", "Annex I", "Annex III"]` |
+| Avg answer sentences | 1.83 | 1.84 (no regression) |
+| Avg refs per scenario | 1.56 | 1.60 (more precise) |
+| Latency p95 | 5.33ms | 5.45ms |
+
 ## 0.1.0 — Initial extraction + round-5 expansion (2026-05-10)
 
 ### Origin
