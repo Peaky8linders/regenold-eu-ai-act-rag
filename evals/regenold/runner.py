@@ -1,8 +1,23 @@
-"""Eval runner — exercises every :data:`evals.regenold.scenarios.SCENARIOS`
-row through the live FastAPI app via ``TestClient`` and emits a
-human-readable + machine-readable report.
+"""Regenold eval harness.
 
-The runner is deliberately stateless and CI-safe:
+Scoring follows the methodology of Davvetas et al. (arXiv:2603.09435v1),
+"AI Act Evaluation Benchmark", with two extensions for the Regenold
+competition rubric:
+
+  * Per-scenario binary ``passed`` flag (the gate) — substring/regex
+    predicates per scenario.
+  * Per-class precision/recall/F1 for the two paper-grade tasks where
+    gold values are available:
+      - Risk-level classification (4 classes: prohibited / high_risk /
+        limited / minimal, plus a "refusal" bucket for out-of-scope or
+        non-existent article queries).
+      - Article-retrieval (precision/recall against ``expected_references``
+        gold sets on scenarios where the set is unambiguous).
+
+Scenarios without a ``risk_label`` or ``expected_references`` gold set are
+excluded from the F1 numerator/denominator (not counted as misses).
+
+Implementation notes (CI-safe + stateless):
 
 * Uses ``TestClient`` so no real Mistral/Anthropic key is required.
 * Resets the app's ``slowapi`` rate limiter between scenarios so we
@@ -10,7 +25,8 @@ The runner is deliberately stateless and CI-safe:
 * Reads the response, applies every scenario check, records
   pass/fail + the response excerpt for the report.
 * Tracks Regenold-rubric quality metrics across the whole batch:
-  citation format conformance, sentence-cap conformance, latency p50/p95.
+  citation format conformance, sentence-cap conformance, latency p50/p95,
+  plus the paper-aligned per-class F1 + article-retrieval P/R/F1.
 
 CLI:
     py -3.12 -m evals.regenold.runner
@@ -85,6 +101,18 @@ class ScenarioResult:
     """How many references shipped."""
     answer_sentence_count: int = 0
     """How many sentences the answer parses to."""
+    # ── Paper-aligned per-scenario classification + retrieval state ─────
+    # Populated for downstream aggregation in
+    # ``_compute_classification_metrics`` / ``_compute_retrieval_metrics``.
+    # ``None`` when the scenario has no gold value (skipped from F1).
+    risk_label_gold: str | None = None
+    """The scenario's ``risk_label`` gold (or ``None`` if unlabeled)."""
+    risk_label_pred: str | None = None
+    """The predicted risk class extracted from the response answer text."""
+    expected_references: tuple[str, ...] = ()
+    """The scenario's ``expected_references`` gold (or empty if unlabeled)."""
+    predicted_references: tuple[str, ...] = ()
+    """The article/annex heads we read off the response references list."""
 
 
 def _compute_quality_flags(body: dict) -> dict[str, Any]:
@@ -126,6 +154,304 @@ def _compute_quality_flags(body: dict) -> dict[str, Any]:
         "refs_within_max": refs_within_max,
         "refs_count": refs_count,
         "answer_sentence_count": sentence_count,
+    }
+
+
+# ── Paper-aligned metric helpers (Davvetas et al., Section 5) ────────────
+#
+# The paper reports per-class precision/recall/F1 for risk classification
+# and article-retrieval. We keep the prediction heuristic deliberately
+# simple (substring sniff on the answer text) so the metric is reproducible
+# and doesn't depend on a separate classifier model.
+
+# Class labels per the 4-tier risk pyramid + a "refusal" bucket for
+# out-of-scope / non-existent-article queries (see Section 3.2 of the
+# paper). The "out_of_scope" alias is normalised to "refusal" in metrics.
+RISK_CLASSES: tuple[str, ...] = (
+    "prohibited",
+    "high_risk",
+    "limited",
+    "minimal",
+    "refusal",
+)
+
+
+def _normalise_risk_label(label: str | None) -> str | None:
+    """Collapse ``out_of_scope`` → ``refusal`` for confusion-matrix bucketing.
+
+    The scenarios file uses both labels with the same intended meaning
+    (the system declines to classify because the question is off-topic
+    or refers to a non-existent article). The paper has no "out_of_scope"
+    class; folding to "refusal" keeps the matrix square.
+    """
+    if label is None:
+        return None
+    if label == "out_of_scope":
+        return "refusal"
+    return label
+
+
+_HIGH_RISK_POS_MARKERS = (
+    "is high-risk",
+    "are high-risk",
+    "is high risk",
+    "are high risk",
+    "qualifies as high-risk",
+    "falls under high-risk",
+    "falls within high-risk",
+)
+_HIGH_RISK_NEG_MARKERS = (
+    "not high-risk",
+    "not high risk",
+    "is not high",
+    "are not high",
+)
+_PROHIBITED_POS_MARKERS = (
+    "is prohibited",
+    "are prohibited",
+    "is banned",
+    "are banned",
+    "prohibited under article 5",
+    "prohibited practice",
+)
+_PROHIBITED_NEG_MARKERS = (
+    "not prohibited",
+    "is not prohibited",
+    "are not prohibited",
+)
+
+
+def _first_match(haystack: str, needles: tuple[str, ...]) -> int:
+    """Return the lowest index where any needle appears, or -1."""
+    best = -1
+    for n in needles:
+        i = haystack.find(n)
+        if i != -1 and (best == -1 or i < best):
+            best = i
+    return best
+
+
+def _predict_risk_class(body: dict) -> str | None:
+    """Extract the predicted risk class from the response.
+
+    Heuristic — sniffs the answer text for the four paper classes plus a
+    refusal signal. Returns ``None`` when no class can be inferred (the
+    response neither states a verdict nor refuses).
+
+    Position-aware: a positive verdict that *leads* the prose counts
+    even if a narrower negation appears later (matching the
+    ``_verdict_high_risk`` regex pattern in scenarios.py).
+    """
+    answer = (body.get("answer") or "").lower()
+    refs = body.get("references") or []
+
+    # Refusal signal — empty references + a scope marker, OR a 4xx status.
+    # Re-implemented here (rather than importing scenarios._refused) so
+    # the runner stays decoupled from scenario predicates.
+    refusal_markers = (
+        "no matching obligation",
+        "not part of the eu ai act",
+        "outside the scope of this assistant",
+        "i only answer questions about the eu ai act",
+        "i can only answer eu ai act",
+        "doesn't appear in the eu ai act",
+        "does not appear in the eu ai act",
+        "this assistant only covers the eu ai act",
+        "this assistant only answers eu ai act",
+    )
+    is_refusal = (not refs) and any(m in answer for m in refusal_markers)
+    if is_refusal or body.get("__http_status", 200) in (400, 401, 403, 404, 422):
+        return "refusal"
+
+    if not answer:
+        return None
+
+    # Prohibited verdict — positive marker that leads, no leading
+    # negation. Position-aware to handle nuanced answers that note a
+    # carve-out later in the prose.
+    pos_p = _first_match(answer, _PROHIBITED_POS_MARKERS)
+    neg_p = _first_match(answer, _PROHIBITED_NEG_MARKERS)
+    if pos_p != -1 and (neg_p == -1 or pos_p < neg_p):
+        return "prohibited"
+
+    # High-risk verdict — same position-aware logic. Mirrors the
+    # ``_verdict_high_risk`` regex in scenarios.py so an answer that
+    # leads with "are high-risk under Annex III" and later notes a
+    # carve-out ("…are not high-risk on this basis") still counts as
+    # the high-risk class.
+    pos_h = _first_match(answer, _HIGH_RISK_POS_MARKERS)
+    neg_h = _first_match(answer, _HIGH_RISK_NEG_MARKERS)
+    if pos_h != -1 and (neg_h == -1 or pos_h < neg_h):
+        return "high_risk"
+
+    # Minimal — explicit "minimal" framing.
+    if "minimal-risk" in answer or "minimal risk" in answer:
+        return "minimal"
+
+    # Limited — explicit Art. 50 transparency-only framing.
+    if "limited-risk" in answer or "limited risk" in answer:
+        return "limited"
+
+    return None
+
+
+def _ref_head(ref: str) -> str | None:
+    """Strip a reference like ``Article 13.1.a`` down to ``Article 13``.
+
+    Returns ``None`` for unparseable refs (defensive; the wire is
+    spec-clean by the time we read it, but the runner shouldn't crash
+    on a malformed payload).
+    """
+    if not isinstance(ref, str):
+        return None
+    if ref.startswith("Article "):
+        body = ref[len("Article "):]
+        return "Article " + body.split(".")[0]
+    if ref.startswith("Annex "):
+        body = ref[len("Annex "):]
+        return "Annex " + body.split(".")[0]
+    return None
+
+
+def _predicted_ref_heads(body: dict) -> tuple[str, ...]:
+    """Return the unique article/annex heads in the response references list."""
+    refs = body.get("references") or []
+    if not isinstance(refs, list):
+        return ()
+    heads: list[str] = []
+    seen: set[str] = set()
+    for r in refs:
+        h = _ref_head(r)
+        if h is None or h in seen:
+            continue
+        seen.add(h)
+        heads.append(h)
+    return tuple(heads)
+
+
+def _compute_classification_metrics(
+    results: list[ScenarioResult],
+) -> dict[str, Any]:
+    """Per-class precision/recall/F1 + macro-F1 on labeled scenarios.
+
+    Returns ``{"labeled_scenarios": 0, ...}`` with empty per-class
+    structure when no scenario carries a ``risk_label``. F1 for a class
+    with zero true-positives + zero false-positives + zero false-negatives
+    is reported as ``None`` (NaN-equivalent) — there's nothing to score.
+    """
+    labeled: list[ScenarioResult] = [
+        r for r in results if r.risk_label_gold is not None
+    ]
+    if not labeled:
+        return {
+            "labeled_scenarios": 0,
+            "per_class_f1": {c: None for c in RISK_CLASSES},
+            "per_class_precision": {c: None for c in RISK_CLASSES},
+            "per_class_recall": {c: None for c in RISK_CLASSES},
+            "macro_f1": None,
+            "confusion": {},
+        }
+
+    # Build confusion (gold → pred → count) over normalised labels.
+    confusion: dict[str, dict[str, int]] = {}
+    for r in labeled:
+        gold = _normalise_risk_label(r.risk_label_gold) or "_unknown"
+        pred = _normalise_risk_label(r.risk_label_pred) or "_unpredicted"
+        confusion.setdefault(gold, {})
+        confusion[gold][pred] = confusion[gold].get(pred, 0) + 1
+
+    per_p: dict[str, float | None] = {}
+    per_r: dict[str, float | None] = {}
+    per_f: dict[str, float | None] = {}
+    for cls in RISK_CLASSES:
+        tp = sum(
+            1
+            for r in labeled
+            if _normalise_risk_label(r.risk_label_gold) == cls
+            and _normalise_risk_label(r.risk_label_pred) == cls
+        )
+        fp = sum(
+            1
+            for r in labeled
+            if _normalise_risk_label(r.risk_label_gold) != cls
+            and _normalise_risk_label(r.risk_label_pred) == cls
+        )
+        fn = sum(
+            1
+            for r in labeled
+            if _normalise_risk_label(r.risk_label_gold) == cls
+            and _normalise_risk_label(r.risk_label_pred) != cls
+        )
+        if tp + fp == 0 and tp + fn == 0:
+            per_p[cls] = None
+            per_r[cls] = None
+            per_f[cls] = None
+            continue
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        if precision + recall == 0:
+            f1 = 0.0
+        else:
+            f1 = 2 * precision * recall / (precision + recall)
+        per_p[cls] = round(precision, 4)
+        per_r[cls] = round(recall, 4)
+        per_f[cls] = round(f1, 4)
+
+    scored_f1 = [v for v in per_f.values() if v is not None]
+    macro_f1 = round(sum(scored_f1) / len(scored_f1), 4) if scored_f1 else None
+
+    return {
+        "labeled_scenarios": len(labeled),
+        "per_class_f1": per_f,
+        "per_class_precision": per_p,
+        "per_class_recall": per_r,
+        "macro_f1": macro_f1,
+        "confusion": confusion,
+    }
+
+
+def _compute_retrieval_metrics(
+    results: list[ScenarioResult],
+) -> dict[str, Any]:
+    """Article-retrieval precision/recall/F1 against ``expected_references``.
+
+    Weighted-mean across labeled scenarios. Scenarios with empty gold are
+    skipped (so the metric reflects retrieval on the unambiguous subset
+    only, not the full eval).
+    """
+    labeled = [r for r in results if r.expected_references]
+    if not labeled:
+        return {
+            "labeled_scenarios": 0,
+            "weighted_precision": None,
+            "weighted_recall": None,
+            "weighted_f1": None,
+        }
+    p_sum = 0.0
+    r_sum = 0.0
+    f_sum = 0.0
+    for row in labeled:
+        gold = set(row.expected_references)
+        pred = set(row.predicted_references)
+        tp = len(gold & pred)
+        # Precision is 0.0 when predicted is empty per the spec — the
+        # model cited nothing, so it "got 0 of its 0 citations right",
+        # which we interpret strictly as recall-failure not vacuous-pass.
+        precision = tp / len(pred) if pred else 0.0
+        recall = tp / len(gold) if gold else 0.0
+        if precision + recall == 0:
+            f1 = 0.0
+        else:
+            f1 = 2 * precision * recall / (precision + recall)
+        p_sum += precision
+        r_sum += recall
+        f_sum += f1
+    n = len(labeled)
+    return {
+        "labeled_scenarios": n,
+        "weighted_precision": round(p_sum / n, 4),
+        "weighted_recall": round(r_sum / n, 4),
+        "weighted_f1": round(f_sum / n, 4),
     }
 
 
@@ -184,6 +510,8 @@ def _run_scenario(client: TestClient, scenario: Scenario) -> ScenarioResult:
                 excerpt[f] = body[f]
 
     quality = _compute_quality_flags(body)
+    predicted_class = _predict_risk_class(body)
+    predicted_refs = _predicted_ref_heads(body)
     return ScenarioResult(
         scenario_id=scenario.id,
         category=scenario.category,
@@ -193,6 +521,10 @@ def _run_scenario(client: TestClient, scenario: Scenario) -> ScenarioResult:
         check_results=check_results,
         passed=all_passed,
         duration_ms=duration_ms,
+        risk_label_gold=scenario.risk_label,
+        risk_label_pred=predicted_class,
+        expected_references=scenario.expected_references,
+        predicted_references=predicted_refs,
         **quality,
     )
 
@@ -301,6 +633,34 @@ def _format_report(
             f"p95={_percentile(durations, 95):.0f}ms · "
             f"max={max(durations):.0f}ms"
         )
+        # Paper-aligned per-class F1 + article-retrieval block (Davvetas
+        # et al., Section 5 / Table 4). Only printed when at least one
+        # scenario carries a gold label — silence otherwise.
+        cls_metrics = _compute_classification_metrics(results)
+        ret_metrics = _compute_retrieval_metrics(results)
+        if cls_metrics.get("labeled_scenarios", 0) > 0:
+            per_f = cls_metrics.get("per_class_f1") or {}
+            parts = []
+            for cls in RISK_CLASSES:
+                v = per_f.get(cls)
+                if v is None:
+                    parts.append(f"{cls}=–")
+                else:
+                    parts.append(f"{cls}={v:.2f}")
+            macro_f1 = cls_metrics.get("macro_f1")
+            macro_txt = f"{macro_f1:.2f}" if macro_f1 is not None else "–"
+            lines.append(
+                f"RISK_F1 (n={cls_metrics['labeled_scenarios']}): "
+                f"{' · '.join(parts)} · macro={macro_txt}"
+            )
+        if ret_metrics.get("labeled_scenarios", 0) > 0:
+            wp = ret_metrics.get("weighted_precision")
+            wr = ret_metrics.get("weighted_recall")
+            wf = ret_metrics.get("weighted_f1")
+            lines.append(
+                f"RETRIEVAL (n={ret_metrics['labeled_scenarios']}): "
+                f"P={wp:.2f} · R={wr:.2f} · F1={wf:.2f}"
+            )
     lines.append("")
     for cat in sorted(by_cat):
         rows = by_cat[cat]
@@ -375,6 +735,8 @@ def _serialise_results(results: list[ScenarioResult]) -> dict[str, Any]:
         "latency_p50_ms": round(_percentile(durations, 50), 2),
         "latency_p95_ms": round(_percentile(durations, 95), 2),
         "latency_max_ms": round(max(durations) if durations else 0.0, 2),
+        "risk_classification": _compute_classification_metrics(results),
+        "article_retrieval": _compute_retrieval_metrics(results),
     }
 
     return {
@@ -399,6 +761,10 @@ def _serialise_results(results: list[ScenarioResult]) -> dict[str, Any]:
                 "refs_within_max": r.refs_within_max,
                 "refs_count": r.refs_count,
                 "answer_sentence_count": r.answer_sentence_count,
+                "risk_label_gold": r.risk_label_gold,
+                "risk_label_pred": r.risk_label_pred,
+                "expected_references": list(r.expected_references),
+                "predicted_references": list(r.predicted_references),
             }
             for r in results
         ],

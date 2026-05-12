@@ -53,6 +53,7 @@ EXTRA_OMNIBUS_SCENARIOS: tuple[Scenario, ...] = (
                 lambda b: _has_reference(b, "Article 21"),
             ),
         ),
+        expected_references=("Article 21",),
     ),
     Scenario(
         id="omnibus_art85_right_to_complain",
@@ -71,6 +72,7 @@ EXTRA_OMNIBUS_SCENARIOS: tuple[Scenario, ...] = (
                 lambda b: _has_reference(b, "Article 85"),
             ),
         ),
+        expected_references=("Article 85",),
     ),
     Scenario(
         id="omnibus_art86_right_to_explanation",
@@ -92,6 +94,7 @@ EXTRA_OMNIBUS_SCENARIOS: tuple[Scenario, ...] = (
                 lambda b: _has_reference(b, "Article 86"),
             ),
         ),
+        expected_references=("Article 86",),
     ),
     Scenario(
         id="omnibus_art87_whistleblower",
@@ -110,6 +113,7 @@ EXTRA_OMNIBUS_SCENARIOS: tuple[Scenario, ...] = (
                 lambda b: _has_reference(b, "Article 87"),
             ),
         ),
+        expected_references=("Article 87",),
     ),
     Scenario(
         id="omnibus_art100_edps_penalties",
@@ -128,6 +132,7 @@ EXTRA_OMNIBUS_SCENARIOS: tuple[Scenario, ...] = (
                 lambda b: _has_reference(b, "Article 100"),
             ),
         ),
+        expected_references=("Article 100",),
     ),
     Scenario(
         id="omnibus_art101_gpai_penalties",
@@ -146,6 +151,7 @@ EXTRA_OMNIBUS_SCENARIOS: tuple[Scenario, ...] = (
                 lambda b: _has_reference(b, "Article 101"),
             ),
         ),
+        expected_references=("Article 101",),
     ),
     Scenario(
         id="omnibus_art112_review_clause",
@@ -164,6 +170,7 @@ EXTRA_OMNIBUS_SCENARIOS: tuple[Scenario, ...] = (
                 lambda b: _has_reference(b, "Article 112"),
             ),
         ),
+        expected_references=("Article 112",),
     ),
     Scenario(
         id="omnibus_art95_voluntary_codes",
@@ -182,6 +189,7 @@ EXTRA_OMNIBUS_SCENARIOS: tuple[Scenario, ...] = (
                 lambda b: _has_reference(b, "Article 95"),
             ),
         ),
+        expected_references=("Article 95",),
     ),
     Scenario(
         id="omnibus_art59_sandbox_pii",
@@ -203,6 +211,7 @@ EXTRA_OMNIBUS_SCENARIOS: tuple[Scenario, ...] = (
                 lambda b: _has_reference(b, "Article 59"),
             ),
         ),
+        expected_references=("Article 59",),
     ),
     Scenario(
         id="omnibus_art61_informed_consent",
@@ -221,6 +230,7 @@ EXTRA_OMNIBUS_SCENARIOS: tuple[Scenario, ...] = (
                 lambda b: _has_reference(b, "Article 61"),
             ),
         ),
+        expected_references=("Article 61",),
     ),
     Scenario(
         id="omnibus_art67_advisory_forum",
@@ -239,6 +249,7 @@ EXTRA_OMNIBUS_SCENARIOS: tuple[Scenario, ...] = (
                 lambda b: _has_reference(b, "Article 67"),
             ),
         ),
+        expected_references=("Article 67",),
     ),
     Scenario(
         id="omnibus_art68_scientific_panel",
@@ -257,6 +268,7 @@ EXTRA_OMNIBUS_SCENARIOS: tuple[Scenario, ...] = (
                 lambda b: _has_reference(b, "Article 68"),
             ),
         ),
+        expected_references=("Article 68",),
     ),
     Scenario(
         id="omnibus_annex_ii_offences",

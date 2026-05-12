@@ -1,5 +1,120 @@
 # Changelog
 
+## 0.1.4 — Paper-aligned eval metrics: per-class F1 + article retrieval (2026-05-12)
+
+### What's new
+
+Eval harness extended to align with Davvetas et al. (arXiv:2603.09435v1),
+"AI Act Evaluation Benchmark — An Open, Transparent, and Reproducible
+Evaluation Dataset for NLP and RAG Systems". The paper's methodology
+scores risk-level classification and article retrieval with per-class
+precision / recall / F1. Our prior runner only computed binary pass/fail
++ latency. Round 18 closes that gap.
+
+### Added — `evals/regenold/scenarios.py`
+
+* `Scenario` dataclass extended with two optional fields (default-safe
+  so every existing scenario construction stays valid):
+  * **`expected_references: tuple[str, ...]`** — gold reference SET for
+    scenarios where the complete citation set is unambiguous. 25
+    scenarios populated (13 base + 12 omnibus extension).
+  * **`risk_label: str | None`** — 4-tier taxonomy per the paper's
+    hypotheses 1–4 (prohibited / high_risk / limited / minimal) plus a
+    "refusal" / "out_of_scope" bucket for queries that should not yield
+    a verdict. 18 scenarios labeled (2 prohibited, 3 high_risk, 13
+    refusal). Limited + minimal intentionally left empty — the local
+    suite lacks unambiguous gold for these two tiers, mirroring the
+    paper's own edge-case acknowledgement (§4.2 "Edge Cases").
+
+### Anti-bias guardrail (round-17 → round-18 carryover)
+
+* **`risk_doctor_patient_transcription`** and
+  **`risk_emotion_recognition_general`** (the two scenarios that
+  mirror PDF examples Q2 and Q3) are deliberately **NOT labeled** with
+  a `risk_label`. The third example (Annex IV technical-doc hardware)
+  has no risk-label scenarios. Adding a gold tier to these would bias
+  the F1 metric toward the competition's example list.
+
+### Added — `evals/regenold/runner.py`
+
+* Paper-aligned module docstring citing Davvetas et al. as the
+  methodological basis.
+* New helpers:
+  * `_predict_risk_class(answer_text, references)` — heuristic
+    extraction of the predicted tier from the response prose +
+    citations. Position-aware (mirrors the existing
+    `scenarios._verdict_high_risk` positivity guard) so a verdict
+    embedded inside a carve-out clause doesn't poison the prediction.
+  * `_predicted_ref_heads`, `_ref_head` — normalise refs to their head
+    article/annex for set-overlap computation.
+  * `_normalise_risk_label` — collapse `"out_of_scope"` → `"refusal"`
+    so the confusion matrix is square against the paper's 4+1 taxonomy.
+  * `_compute_classification_metrics(results)` — per-class P/R/F1 +
+    macro F1 + confusion matrix. Skips unlabeled scenarios cleanly.
+  * `_compute_retrieval_metrics(results)` — weighted-mean P/R/F1 over
+    scenarios with non-empty `expected_references`.
+* `ScenarioResult` extended with `risk_label`, `predicted_risk`,
+  `expected_references`, `predicted_refs` so callers (eval harness,
+  downstream notebooks) can recompute metrics or inspect per-scenario
+  rows.
+* JSON summary now includes a `quality.risk_classification` block
+  (labeled count, per-class F1, macro F1, confusion matrix) and a
+  `quality.article_retrieval` block (labeled count, weighted P/R/F1).
+* `_format_report` appends a brief paper-aligned summary at the bottom
+  — the existing line-by-line scenario report is unchanged.
+
+### Added — `tests/test_eval_metrics.py`
+
+* 20 unit tests for the new metric helpers:
+  * F1 of a perfect classifier = 1.0; F1 on empty labeled set = `None`
+    (handled gracefully, not NaN).
+  * Precision with empty predicted set = 0.0; recall with gold ⊂
+    predicted = 1.0.
+  * Position-aware verdict regex handles carve-out clauses correctly.
+  * Confusion matrix has all label rows even when a class has zero
+    instances (square shape preserved).
+
+### Round-18 eval results
+
+| Class       | Our F1 (n)              | Paper F1 (Table 4, n=339)   |
+| ----------- | ----------------------- | --------------------------- |
+| prohibited  | 1.00 (n=2)              | 0.87                        |
+| high_risk   | 1.00 (n=3)              | 0.85                        |
+| limited     | — (no labeled scenarios)| 0.65                        |
+| minimal     | — (no labeled scenarios)| 0.45                        |
+| refusal     | 1.00 (n=13)             | — (paper doesn't model this) |
+| **macro F1**| **1.00**                | 0.69 (weighted)             |
+
+**Interpretation:** the small-N classification scores (n=18 total) are
+not directly comparable to the paper's n=339. What matters is that the
+rubric is now in place and aligned with academic methodology. Adding
+more risk-labeled scenarios across all 4 tiers is a future direction.
+
+| Article retrieval | n  | Weighted P | Weighted R | Weighted F1 |
+| ----------------- | -- | ---------- | ---------- | ----------- |
+| Round 18          | 25 | 0.52       | 1.00       | **0.64**    |
+
+**This is the actionable signal.** Perfect recall means every gold ref
+is in the predicted set, but precision is dragged down by over-citation
+— the system cites the head article *plus* extra anchors when the gold
+set is tight. The smallest-cover citation pass landed in round 17
+addresses exactly this, and the F1 baseline now makes the gain
+measurable on future iterations.
+
+### Eval scorecard (deterministic-fallback)
+
+| Round | Pass    | p50    | p95    | avg refs | avg sentences | Retrieval F1 |
+| ----- | ------- | ------ | ------ | -------- | ------------- | ------------ |
+| 15    | 276/276 | 3.04ms | 4.41ms | 2.12     | 2.29          | (not measured) |
+| 17    | 276/276 | 4.31ms | 7.30ms | 2.12     | 2.04          | (not measured) |
+| 18    | 276/276 | 6.29ms | 9.08ms | 2.12     | 2.04          | 0.64         |
+
+### Tests
+* 430 → 450 passing (+20 from `test_eval_metrics`).
+* Round-18 eval: 276/276 = 100% pass-rate preserved.
+
+---
+
 ## 0.1.3 — Competition-rubric optimization: smallest-cover refs + 3-sentence cap + ontology-in-BM25 + definitions + manual xrefs (2026-05-12)
 
 ### What's new

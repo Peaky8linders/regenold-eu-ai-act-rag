@@ -60,6 +60,13 @@ class Scenario:
     query param so checks can inspect ``confidence`` /
     ``retrieval_path`` / ``nodes_traversed``. Default ``False`` to
     exercise the spec-clean default response shape.
+
+    ``expected_references`` and ``risk_label`` are the paper-aligned
+    gold values used by the per-class precision/recall/F1 metrics in
+    the runner (see Davvetas et al., arXiv:2603.09435v1, Section 5).
+    Both are *optional* — scenarios without an unambiguous gold value
+    leave them at their defaults and are excluded from the F1
+    numerator/denominator (not counted as misses).
     """
 
     id: str
@@ -69,6 +76,16 @@ class Scenario:
     checks: tuple[ScenarioCheck, ...]
     query_param_telemetry: bool = False
     notes: str = ""
+    # Gold reference SET against which precision/recall/F1 is computed.
+    # Only populate where the answer has a well-defined "complete"
+    # citation set — most multi-turn / scope / trick scenarios don't
+    # have one and should leave this empty.
+    expected_references: tuple[str, ...] = ()
+    # Risk-class label per the 4-tier taxonomy from Davvetas et al. 2026:
+    # "prohibited", "high_risk", "limited", "minimal", or "refusal" /
+    # "out_of_scope". Only populate where the scenario is a clear
+    # classification target.
+    risk_label: str | None = None
 
 
 # ── Predicate helpers (work against parsed JSON response dict) ────────────
@@ -324,6 +341,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             ScenarioCheck("not_refused", lambda b: not _refused(b)),
             ScenarioCheck("cites_art_13", lambda b: _has_reference(b, "Article 13")),
         ),
+        expected_references=("Article 13",),
     ),
     Scenario(
         id="art26_deployer",
@@ -336,6 +354,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             ScenarioCheck("not_refused", lambda b: not _refused(b)),
             ScenarioCheck("cites_art_26", lambda b: _has_reference(b, "Article 26")),
         ),
+        expected_references=("Article 26",),
     ),
     Scenario(
         id="annex_iv_tech_docs",
@@ -348,6 +367,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             ScenarioCheck("not_refused", lambda b: not _refused(b)),
             ScenarioCheck("cites_annex_iv", lambda b: _has_reference(b, "Annex IV")),
         ),
+        expected_references=("Annex IV",),
     ),
     Scenario(
         id="art5_prohibited",
@@ -360,6 +380,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             ScenarioCheck("not_refused", lambda b: not _refused(b)),
             ScenarioCheck("cites_art_5", lambda b: _has_reference(b, "Article 5")),
         ),
+        expected_references=("Article 5",),
     ),
     # ── Category B: in_scope_multi_turn ───────────────────────────────────
     Scenario(
@@ -410,6 +431,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             ScenarioCheck("not_refused", lambda b: not _refused(b)),
             ScenarioCheck("cites_art_27", lambda b: _has_reference(b, "Article 27")),
         ),
+        expected_references=("Article 27",),
     ),
     # ── Category C: off_topic_regulation ─────────────────────────────────
     Scenario(
@@ -429,6 +451,7 @@ SCENARIOS: tuple[Scenario, ...] = (
                 and _answer_does_not_contain(b, "Under GDPR"),
             ),
         ),
+        risk_label="out_of_scope",
     ),
     Scenario(
         id="off_hipaa",
@@ -438,6 +461,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             {"role": "user", "content": "Tell me about HIPAA breach notification rules."},
         ),
         checks=_refusal_checks(),
+        risk_label="out_of_scope",
     ),
     Scenario(
         id="off_ccpa",
@@ -447,6 +471,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             {"role": "user", "content": "What does CCPA require for opt-out signals?"},
         ),
         checks=_refusal_checks(),
+        risk_label="out_of_scope",
     ),
     Scenario(
         id="off_dma_dsa",
@@ -456,6 +481,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             {"role": "user", "content": "What does the Digital Markets Act require for gatekeepers?"},
         ),
         checks=_refusal_checks(),
+        risk_label="out_of_scope",
     ),
     # ── Category D: non_existent_article ─────────────────────────────────
     Scenario(
@@ -483,6 +509,7 @@ SCENARIOS: tuple[Scenario, ...] = (
                 ),
             ),
         ),
+        risk_label="refusal",
     ),
     Scenario(
         id="non_existent_art_999",
@@ -498,6 +525,7 @@ SCENARIOS: tuple[Scenario, ...] = (
                 lambda b: _no_reference_to(b, "Article 999"),
             ),
         ),
+        risk_label="refusal",
     ),
     Scenario(
         id="non_existent_annex_xx",
@@ -513,6 +541,7 @@ SCENARIOS: tuple[Scenario, ...] = (
                 lambda b: _no_reference_to(b, "Annex XX"),
             ),
         ),
+        risk_label="refusal",
     ),
     Scenario(
         id="non_existent_annex_arabic_99",
@@ -522,6 +551,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             {"role": "user", "content": "What does Annex 99 contain?"},
         ),
         checks=_refusal_checks(),
+        risk_label="refusal",
     ),
     # ── Category E: conversational ───────────────────────────────────────
     Scenario(
@@ -532,6 +562,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             {"role": "user", "content": "Hi! How are you today?"},
         ),
         checks=_refusal_checks(),
+        risk_label="out_of_scope",
     ),
     Scenario(
         id="conv_thanks",
@@ -541,6 +572,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             {"role": "user", "content": "Thanks!"},
         ),
         checks=_refusal_checks(),
+        risk_label="out_of_scope",
     ),
     Scenario(
         id="conv_off_topic",
@@ -550,6 +582,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             {"role": "user", "content": "What's the weather like in Brussels today?"},
         ),
         checks=_refusal_checks(),
+        risk_label="out_of_scope",
     ),
     Scenario(
         id="conv_nonsense",
@@ -559,6 +592,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             {"role": "user", "content": "zxqv mnbv asdf 12345 678 hjkl"},
         ),
         checks=_refusal_checks(),
+        risk_label="out_of_scope",
     ),
     Scenario(
         id="conv_general_knowledge",
@@ -568,6 +602,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             {"role": "user", "content": "What is the capital of France?"},
         ),
         checks=_refusal_checks(),
+        risk_label="out_of_scope",
     ),
     # ── Category F: leading ──────────────────────────────────────────────
     Scenario(
@@ -698,6 +733,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             # shaped question must produce a verdict-shaped answer.
             ScenarioCheck("gives_high_risk_verdict", _verdict_high_risk),
         ),
+        risk_label="high_risk",
     ),
     Scenario(
         id="risk_credit_scoring_annex_iii",
@@ -712,6 +748,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             # Tightened 2026-05-12 — see comment on risk_cv_screening.
             ScenarioCheck("gives_high_risk_verdict", _verdict_high_risk),
         ),
+        risk_label="high_risk",
     ),
     Scenario(
         id="risk_education_grading",
@@ -729,6 +766,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             # Tightened 2026-05-12 — see comment on risk_cv_screening.
             ScenarioCheck("gives_high_risk_verdict", _verdict_high_risk),
         ),
+        risk_label="high_risk",
     ),
     # ── New Q3-style classification scenarios (round-10 expansion) ────
     # These directly mirror the competition's Q2/Q3 phrasing: "is X
@@ -799,6 +837,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             ScenarioCheck("cites_art_5", lambda b: _has_reference(b, "Article 5")),
             ScenarioCheck("gives_prohibited_verdict", _verdict_prohibited),
         ),
+        risk_label="prohibited",
     ),
     Scenario(
         id="risk_real_time_rbi_prohibited",
@@ -815,6 +854,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             ScenarioCheck("cites_art_5", lambda b: _has_reference(b, "Article 5")),
             ScenarioCheck("gives_prohibited_verdict", _verdict_prohibited),
         ),
+        risk_label="prohibited",
     ),
     # ── Category J: role_obligation ──────────────────────────────────────
     Scenario(
@@ -924,6 +964,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             ScenarioCheck("not_refused", lambda b: not _refused(b)),
             ScenarioCheck("cites_art_27", lambda b: _has_reference(b, "Article 27")),
         ),
+        expected_references=("Article 27",),
     ),
     # ── Category N: transparency_art50 ───────────────────────────────────
     Scenario(
@@ -937,6 +978,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             ScenarioCheck("not_refused", lambda b: not _refused(b)),
             ScenarioCheck("cites_art_50", lambda b: _has_reference(b, "Article 50")),
         ),
+        expected_references=("Article 50",),
     ),
     # ── Category O: out_of_scope_carveouts ───────────────────────────────
     Scenario(
@@ -981,6 +1023,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             ScenarioCheck("not_refused", lambda b: not _refused(b)),
             ScenarioCheck("cites_art_3", lambda b: _has_reference(b, "Article 3")),
         ),
+        expected_references=("Article 3",),
     ),
     Scenario(
         id="def_substantial_modification",
@@ -993,6 +1036,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             ScenarioCheck("not_refused", lambda b: not _refused(b)),
             ScenarioCheck("cites_art_3", lambda b: _has_reference(b, "Article 3")),
         ),
+        expected_references=("Article 3",),
     ),
     # ── Category Q: penalties ────────────────────────────────────────────
     Scenario(
@@ -1006,6 +1050,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             ScenarioCheck("not_refused", lambda b: not _refused(b)),
             ScenarioCheck("cites_art_99", lambda b: _has_reference(b, "Article 99")),
         ),
+        expected_references=("Article 99",),
     ),
     # ── Category R: harmonised_standards ─────────────────────────────────
     Scenario(
@@ -1035,6 +1080,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             ScenarioCheck("not_refused", lambda b: not _refused(b)),
             ScenarioCheck("cites_art_73", lambda b: _has_reference(b, "Article 73")),
         ),
+        expected_references=("Article 73",),
     ),
     # ── Category T: sandbox ──────────────────────────────────────────────
     Scenario(
@@ -1063,6 +1109,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         messages=(
             {"role": "user", "content": "What does Annex IV(2)(c) require for technical documentation?"},
         ),
+        expected_references=("Annex IV",),
         checks=(
             ScenarioCheck("not_refused", lambda b: not _refused(b)),
             ScenarioCheck("cites_annex_iv", lambda b: _has_reference(b, "Annex IV")),
@@ -1170,6 +1217,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             ScenarioCheck("not_refused", lambda b: not _refused(b)),
             ScenarioCheck("cites_art_13", lambda b: _has_reference(b, "Article 13")),
         ),
+        expected_references=("Article 13",),
     ),
     # ── Category Z: role_play_jailbreak ──────────────────────────────────
     Scenario(

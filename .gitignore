@@ -17,5 +17,6 @@ evals/regenold_results_anthropic_wrapper*.json
 # Scratch dev artefacts from session-driven optimization
 _v1_scaffold/
 _competition_rules.txt
+_paper_methodology.txt
 evals/regenold_results_baseline_pre_optimization.json
 evals/regenold_results_round16_optimization.json

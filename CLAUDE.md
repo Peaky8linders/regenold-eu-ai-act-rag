@@ -159,13 +159,27 @@ app/routes/regenold.py
 ## Eval harness
 
 `evals/regenold/runner.py` runs all 276 scenarios against an in-process
-`TestClient(app)`. Two layers:
+`TestClient(app)`. Three layers — the last two added in round 18 to
+align with Davvetas et al. (arXiv:2603.09435v1), "AI Act Evaluation
+Benchmark":
 
 - **Binary `passed` flag** — every scenario's `ScenarioCheck` predicate
   must return True. This is the gate.
 - **Quality metrics** — reference-format conformance, sentence-cap
   conformance, refs-within-max, latency p50/p95/max. Reported but
   non-gating.
+- **Paper-aligned IR metrics** (new in round 18):
+  - **Risk-level classification** F1 per class (prohibited / high_risk /
+    limited / minimal / refusal). Computed only on scenarios with a
+    populated `risk_label`. Currently 18 scenarios labeled (2 prohibited,
+    3 high_risk, 13 refusal). Macro F1 = 1.00 on this small sample —
+    the rubric is the artefact, not the score; meaningful comparison to
+    the paper's 0.85 / 0.87 requires labeling more scenarios.
+  - **Article retrieval** weighted precision / recall / F1 against
+    `expected_references` gold sets. 25 scenarios with explicit gold
+    sets. **Current baseline: P=0.52, R=1.00, F1=0.64** — recall is
+    perfect, precision drags from over-citation. This is the
+    actionable competition lever the smallest-cover pass targets.
 
 Run via:
 ```
@@ -173,8 +187,8 @@ Run via:
 ```
 
 The harness measures TestClient-against-deterministic-fallback latency
-(~5ms p50). Competition will measure real provider latency — single-digit
-ms here is a measurement artefact, not a competition predictor.
+(~5–7ms p50). Competition will measure real provider latency — single-
+digit ms here is a measurement artefact, not a competition predictor.
 
 ## Verification entries
 
@@ -196,7 +210,8 @@ ms here is a measurement artefact, not a competition predictor.
 | Round  | Pass     | p50    | p95    | avg refs | avg sentences | Notes                                      |
 | ------ | -------- | ------ | ------ | -------- | ------------- | ------------------------------------------ |
 | 15     | 276/276  | 3.04ms | 4.41ms | 2.12     | 2.29          | Pre-optimization baseline (ontology + matrix). |
-| 17     | 276/276  | 4.31ms | 7.30ms | 2.12     | 2.04          | Post-optimization (this round).            |
+| 17     | 276/276  | 4.31ms | 7.30ms | 2.12     | 2.04          | Structural optimizations (smallest-cover + 3-sent cap + ontology-in-BM25 + KB stubs + definitions + xrefs). |
+| 18     | 276/276  | 6.29ms | 9.08ms | 2.12     | 2.04          | Paper-aligned IR metrics added. Article-retrieval F1=0.64 (P=0.52 R=1.00) — actionable precision lever. |
 
 Δ on the local rubric is modest (-11% sentences, +12% p50 latency) because
 the local harness is binary substring-matched and already saturated. The
