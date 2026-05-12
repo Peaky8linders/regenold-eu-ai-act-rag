@@ -530,6 +530,15 @@ _AI_ACT_ANCHORS: frozenset[str] = frozenset(
         "research only",
         "research-only",
         "rebrand",
+        # Records / log retention (Art. 18 + Art. 19)
+        "records be kept",
+        "logs be kept",
+        "retention period",
+        # Substantial modification / re-training (Art. 25)
+        "re-train",
+        "retrain",
+        "re-training",
+        "retraining",
     )
 )
 

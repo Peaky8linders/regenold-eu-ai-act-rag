@@ -1,5 +1,168 @@
 # Changelog
 
+## 0.1.2 — Typed ontology + BM25 + cross-ref graph + role-obligation matrix (2026-05-12)
+
+### What's new
+
+The May 2026 deep-dive replaced the previously-implicit EU AI Act
+ontology (scattered across ~660 keyword entries in 5 files) with a
+**typed source-of-truth** in `app/data/ontology.py`. Lessons mapped from
+the llm-wiki design pattern (`llm-wiki.md.txt`) — three patterns that
+fit a static-regulation Q&A system, three patterns intentionally
+skipped (memory lifecycle / mesh sync / vector embeddings — wrong fit
+for a single-source deterministic competition endpoint).
+
+### Added — typed ontology (`app/data/ontology.py`)
+
+5 typed entity registries + 1 lookup matrix:
+
+* **`ActorRole`** — 8 enum members for the AI Act value chain:
+  provider, deployer, importer, distributor, authorised_representative,
+  downstream_provider, notified_body, affected_person.
+* **`RiskClass`** — 7 mutually-exclusive risk classes: prohibited,
+  high_risk_annex_i, high_risk_annex_iii, limited_risk, minimal_risk,
+  gpai, gpai_systemic.
+* **`Practice`** — 9 dataclass instances for each Art. 5(1)(a–h)
+  prohibited practice + the Digital Omnibus 9th paragraph (CSAM/NCII).
+  Each carries `citation` (sub-paragraph chain), `description`,
+  `exceptions`, `related_high_risk_anchor`, `effective_phase`,
+  `keywords`.
+* **`AnnexIIICategory`** — 8 dataclass instances for the high-risk
+  use-case categories: biometrics, critical_infrastructure,
+  education_grading, employment, essential_services, law_enforcement,
+  migration_asylum, justice_democracy. Each carries `sub_points` +
+  `related_prohibitions`.
+* **`Phase`** — 6 applicability dates (2 Feb 2025, 2 Aug 2025, 2 Aug
+  2026, 2 Aug 2027, plus Digital Omnibus deferrals 2 Dec 2026 + 2 Aug
+  2028). Each carries `effective_date`, `articles`, `superseded_by`
+  pointer for amendments.
+* **`ROLE_OBLIGATIONS`** — `(ActorRole, RiskClass) → tuple[article_ref]`
+  matrix encoding "I'm a deployer of an Annex III system, what do I
+  owe?" answers without LLM cost.
+
+### Added — retrieval upgrades
+
+* **`app/data/kb_search.py`** — pure-Python BM25 over `EC_CHECKER_OBLIGATION_MAP`
+  summaries. ~110 documents indexed at import (sub-50ms build, sub-1ms
+  query). Fires ONLY when the curated keyword path produced zero
+  entities (strict `== 0` gate). Closes the novel-phrasing recall gap:
+  "How long must logs be kept?" → Art. 19 (was: no match).
+* **`app/data/kb_xrefs.py`** — implicit cross-reference graph
+  auto-extracted via regex from obligation-summary prose. Surfaces
+  edges already present in the corpus (e.g. Art. 16's summary names
+  Arts. 11/17/18/19/20/21/43/47/48/49). Used by `_retrieve_from_kb`
+  to expand the citation set by up to 2 cross-refs per primary entity.
+* **Role-obligation matrix path** in `_deterministic_answer` — detects
+  role-self-ID ("I am a deployer") OR predicate ("what are the
+  obligations of a deployer") AND a risk-class signal in the question.
+  When both extractable, returns the matrix's verdict + citation set,
+  bypassing the obligation-dump branch.
+
+### Added — testing infrastructure
+
+* **`tests/test_kb_consistency.py`** — 15 lint tests verifying every
+  reference in the typed ontology + the four legacy lookup maps
+  (`EC_CHECKER_OBLIGATION_MAP`, `_KEYWORD_ENTITY_MAP`,
+  `KEYWORD_TO_ARTICLE`, `_CLASSIFICATION_TOPICS`) resolves in
+  `ARTICLE_EXISTENCE`. The xref graph is also linted (every edge
+  endpoint must be a known article).
+* **`tests/test_retrieval_upgrades.py`** — 31 tests covering BM25
+  ranking, xref expansion, role-obligation matrix lookups, ontology
+  keyword helpers, and end-to-end wire contracts including 4 negative
+  tests pinning the role-obligation gate (no risk class → no fire,
+  third-person noun-phrase → no fire, verdict question → classification
+  wins, etc.).
+* **`evals/crystallize.py`** — eval-failure → KB-stub proposal
+  generator. Runs the full suite, identifies failures by kind
+  (verdict / content / scope_refusal / scope_pass), drafts a candidate
+  patch for each, and appends to `evals/crystallized_proposals.md` for
+  human review. Closes the eval-feedback loop without auto-mutating
+  the KB.
+* **`evals/stress_test_diverse.py`** — 54 diverse questions across
+  Art. 5(a-h), Annex III(1-8), Annex I, content lookups, multi-turn,
+  refusals, prompt-injection, leading-premise tricks.
+
+### Added — schema document
+
+* **`docs/ontology/ONTOLOGY.md`** — canonical schema doc covering the
+  entity types, relationship types, lookup-table derivation, how to
+  extend (add new prohibited practices / Annex III categories / phases),
+  and the invariants the lint suite enforces. Per the llm-wiki
+  insight: "the schema document is the real product."
+
+### Regulatory-accuracy fixes (independent code-review audit)
+
+A senior-engineer review (May 2026) caught 4 wrong entries in the
+initial `ROLE_OBLIGATIONS` matrix — fixed:
+
+1. **NOTIFIED_BODY × HIGH_RISK_* cited Art. 29** — wrong (Art. 29 is a
+   deployer article). Corrected to `Art. 31, Art. 33, Art. 34,
+   Annex VII`.
+2. **DEPLOYER × HIGH_RISK_ANNEX_I included Art. 27 FRIA** — wrong (FRIA
+   under Art. 27(1) is limited to Annex III deployers). Removed.
+3. **PROVIDER × GPAI / GPAI_SYSTEMIC cited Art. 54** — wrong (Art. 54
+   is the authorised-rep article for third-country GPAI providers, not
+   a general GPAI provider obligation). Removed.
+4. **PROVIDER × HIGH_RISK_* missed Art. 12 record-keeping** — added.
+
+Plus 2 design improvements:
+
+* **`social_scoring.exceptions`** reworded — credit scoring isn't an
+  Art. 5(1)(c) exception, it's a separate Annex III(5)(b) high-risk
+  path. The original wording risked misleading downstream consumers.
+* **`_ROLE_PREDICATE_RE`** anchored at sentence-start boundary so a
+  question like "How do deployer obligations differ from provider
+  obligations?" doesn't seed the role-obligation matrix (no role-self-
+  ID, no risk class — content question).
+* **`_seed_role_obligation_obligations` + `_seed_classification_obligations`**
+  now also clear `context.article_info` to prevent stale citation
+  leakage alongside the curated verdict refs.
+
+### Wired into existing pipeline
+
+* `_deterministic_parse` — BM25 fallback fires only when entities=[]
+  after keyword pass.
+* `_retrieve_from_kb` — xref expansion adds ≤2 cross-refs per primary
+  entity from obligation-summary prose.
+* `_deterministic_answer` — three-tier short-circuit: classification
+  verdict path (winning for "is X prohibited?"); role-obligation matrix
+  path (winning for "I am a deployer, what do I owe?"); default
+  obligation-dump path (winning for content lookups).
+
+### Test results
+
+| Suite | Before this PR | After |
+|-------|--------|-------|
+| Unit tests | 277 | **323** (+15 lint + 31 retrieval) |
+| Eval scenarios | 276 / 276 | **276 / 276** (no regression) |
+| Stress test | 54 / 54 | **54 / 54** (no regression) |
+| Avg refs / scenario | 1.60 | 2.12 (richer via xref expansion) |
+| Avg sentences / answer | 1.84 | 2.29 (matrix answers explain obligations) |
+| p50 latency | 4.20 ms | 3.04 ms (faster — fewer regex passes) |
+| p95 latency | 5.45 ms | 4.41 ms |
+
+Quality dimensions unchanged at 100%: reference format conformance,
+answer sentence cap, refs within max.
+
+### What was intentionally NOT built
+
+Per the llm-wiki pattern-mapping audit, these patterns were
+**rejected** for this domain:
+
+* **Vector embeddings / dense retrieval** — corpus is too small
+  (~110 documents); BM25 ties or beats embeddings while staying
+  deterministic and sub-millisecond.
+* **Memory lifecycle / forgetting curves** — the regulation is the
+  source of truth forever (until amended, which is a structured Phase
+  event, not a decay curve). Decay would silently weaken correct
+  answers.
+* **Multi-agent mesh sync / shared-vs-private scoping** — one source,
+  one truth, deterministic competition rubric.
+* **Automation hooks (on-source, on-session-end)** — the AI Act source
+  updates yearly, not per-session.
+* **Auto-LLM rewrite of KB entries** — every entry is a regulatory
+  claim; the human is the last gate on KB mutations.
+
 ## 0.1.1 — Classification-verdict path (2026-05-12)
 
 ### Smoking gun

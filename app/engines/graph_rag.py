@@ -846,6 +846,40 @@ def _deterministic_parse(question: str) -> GraphQuery:
         ("research-only", "Art. 2"),
         ("research only ai", "Art. 2"),
         ("scientific research", "Art. 2"),
+        # Territorial / personal scope (Art. 2) — sync with scope.py
+        # keyword anchors so engine retrieves Art. 2 KB row directly
+        # instead of falling back to BM25 which scores against unrelated
+        # rows (e.g. Art. 95 codes of conduct match the bare "ai act"
+        # tokens).
+        ("us company", "Art. 2"),
+        ("no eu office", "Art. 2"),
+        ("no eu users", "Art. 2"),
+        ("subject to the ai act", "Art. 2"),
+        ("subject to the act", "Art. 2"),
+        ("subject to the regulation", "Art. 2"),
+        ("internal use", "Art. 2"),
+        # Records-retention anchors (Arts. 18 + 19). Stress-test surfaced
+        # "How long must records be kept?" as a recall gap — the KB
+        # summaries don't use the word "records" (Art. 19 says "logs",
+        # Art. 18 says "documentation") so BM25 alone misses them.
+        ("how long must records", "Art. 19"),
+        ("how long are records", "Art. 19"),
+        ("how long must logs", "Art. 19"),
+        ("how long must documentation", "Art. 18"),
+        ("how long must i keep", "Art. 18"),
+        ("records be kept", "Art. 19"),
+        ("logs be kept", "Art. 19"),
+        ("retention period", "Art. 18"),
+        # Re-training / model updates (Art. 25 substantial modification
+        # path — a re-trained model can become a "new" provider's system).
+        ("re-train", "Art. 25"),
+        ("retrain", "Art. 25"),
+        ("re train", "Art. 25"),
+        ("retraining", "Art. 25"),
+        ("re-training", "Art. 25"),
+        ("re train quarterly", "Art. 25"),
+        ("if we re-train", "Art. 25"),
+        ("if we retrain", "Art. 25"),
         ("when does the ai act apply", "Art. 113"),
         ("when does the eu ai act apply", "Art. 113"),
         ("when will the ai act apply", "Art. 113"),
@@ -991,6 +1025,31 @@ def _deterministic_parse(question: str) -> GraphQuery:
     for kw, art_ref in _KEYWORD_ENTITY_MAP:
         if kw in q_lower and art_ref not in entities:
             entities.append(art_ref)
+
+    # BM25 fallback over the obligation-row corpus. Fires ONLY when the
+    # curated keyword + regex paths produced zero entities — at that
+    # point, the question has no direct anchor and we'd otherwise return
+    # the default "no matching obligation" dump. BM25 over ~110 rows ×
+    # ~50 tokens ranks below 1ms and closes the novel-phrasing recall
+    # gap (e.g. "How long must records be kept?" → Art. 19 + Art. 18).
+    # See :mod:`app.data.kb_search` for the algorithm + tuning rationale.
+    #
+    # The strict ``== 0`` gate is load-bearing: questions like
+    # "Summarise EU AI Act Art. 13" already have ``Art. 13`` extracted
+    # but the literal tokens "eu", "ai", "act" score against many
+    # unrelated rows in BM25 — surfacing them would pollute the
+    # citation set and inflate the answer to 7+ sentences. The
+    # keyword path is the high-precision primary; BM25 is the
+    # zero-precision fallback.
+    if not entities:
+        try:
+            from app.data.kb_search import top_articles_by_relevance
+            bm25_hits = top_articles_by_relevance(question, k=3, min_score=2.5)
+            for ref in bm25_hits:
+                if ref not in entities:
+                    entities.append(ref)
+        except Exception as exc:  # noqa: BLE001 — BM25 must never block parse
+            logger.debug("bm25_fallback_failed: %s", exc)
 
     return GraphQuery(
         intent=intent,
@@ -1589,8 +1648,244 @@ def _seed_classification_obligations(context: GraphContext, topic: dict) -> None
         for ref in topic["refs"]
     ]
     context.obligations = synthetic
+    # Also clear ``context.article_info`` so the route's reference
+    # extraction doesn't surface stale citations from an earlier
+    # retrieval pass alongside the curated verdict refs. See May 2026
+    # audit C5.
+    context.article_info = []
     # Telemetry: surface the verdict's citation count as obligations_found
     # so a downstream consumer sees a coherent picture instead of zero.
+    context.nodes_traversed = max(context.nodes_traversed, len(synthetic))
+
+
+# ─── Role-obligation matrix path ─────────────────────────────────────────
+#
+# Compositional questions like "I'm a deployer of an Annex III hiring
+# AI — what do I have to do?" don't fit either the classification path
+# (no verdict to give) or the standard obligation-dump path (which would
+# return whichever single article the keyword map landed on). They need
+# the typed ``ROLE_OBLIGATIONS`` matrix in :mod:`app.data.ontology` —
+# the answer is "Art. 26, Art. 27, Art. 13, Art. 86" because that's
+# what the regulation says binds a deployer of an Annex III system,
+# regardless of phrasing.
+
+_ROLE_PHRASES: tuple[tuple[str, str], ...] = (
+    # Order matters — longer phrases first so "authorised representative"
+    # wins over "provider" if both are in the question.
+    ("authorised representative", "authorised_representative"),
+    ("authorized representative", "authorised_representative"),
+    ("downstream provider", "downstream_provider"),
+    ("notified body", "notified_body"),
+    ("affected person", "affected_person"),
+    ("data subject", "affected_person"),
+    ("distributor", "distributor"),
+    ("importer", "importer"),
+    ("deployer", "deployer"),
+    ("provider", "provider"),
+)
+
+_RISK_CLASS_PHRASES: tuple[tuple[str, str], ...] = (
+    # GPAI variants
+    ("gpai with systemic risk", "gpai_systemic"),
+    ("gpai systemic risk", "gpai_systemic"),
+    ("systemic gpai", "gpai_systemic"),
+    ("systemic-risk gpai", "gpai_systemic"),
+    ("systemic risk model", "gpai_systemic"),
+    ("gpai", "gpai"),
+    ("general-purpose ai model", "gpai"),
+    ("general purpose ai model", "gpai"),
+    # High-risk variants
+    ("annex iii high-risk", "high_risk_annex_iii"),
+    ("annex iii", "high_risk_annex_iii"),
+    ("annex i safety component", "high_risk_annex_i"),
+    ("annex i", "high_risk_annex_i"),
+    ("safety component", "high_risk_annex_i"),
+    ("high-risk", "high_risk_annex_iii"),  # default high-risk → Annex III path
+    ("high risk", "high_risk_annex_iii"),
+    # Limited / minimal
+    ("limited-risk", "limited_risk"),
+    ("limited risk", "limited_risk"),
+    ("minimal-risk", "minimal_risk"),
+    ("minimal risk", "minimal_risk"),
+    # Prohibited
+    ("prohibited", "prohibited"),
+)
+
+# Role-obligation detection runs as TWO independent signals so multi-
+# sentence questions like "I am a deployer of an Annex III system. What
+# do I owe?" — where the role subject and the obligation predicate live
+# in separate sentences — still match. Either signal alone is
+# necessary; both contribute evidence. The detector then verifies
+# role + risk-class are extractable before firing.
+
+# Subject signal: "I am / we are / as a <ROLE>" — declares the user's role.
+_ROLE_SUBJECT_RE = re.compile(
+    r"(?:^|[\s,.;])"
+    r"(?:i'm|i\s+am|we're|we\s+are|as\s+(?:a|an|the))"
+    r"\s+(?:a|an|the\s+)?\s*"
+    r"(?:provider|deployer|importer|distributor|"
+    r"authorised\s+representative|authorized\s+representative|"
+    r"downstream\s+provider|notified\s+body|affected\s+person|data\s+subject)",
+    re.IGNORECASE,
+)
+
+# Predicate signal: "What are the obligations / duties / requirements"
+# OR "what must I / do I / should I do / owe / need to do".
+#
+# The predicate branches are anchored at a sentence-start-like boundary
+# (start-of-text, sentence terminator, or comma) so a question like
+# "How do deployer obligations differ from provider obligations?" does
+# NOT match the "obligations of <role>" alternative — the relevant noun
+# phrase is buried inside a content question, not a role-self-ID. The
+# May 2026 audit flagged this case as a potential false-positive.
+_ROLE_PREDICATE_RE = re.compile(
+    r"(?:^|[.,;?!]\s*|\s—\s*)"
+    r"(?:"
+    r"what\s+(?:are|is)\s+(?:my\s+|our\s+|the\s+)?"
+    r"(?:obligation|duty|duties|requirement|responsibility|"
+    r"compliance\s+obligation)"
+    r"|what(?:'s|\s+do|\s+does|\s+must|\s+should)?\s+(?:i|we)\s+"
+    r"(?:owe|need|must|have\s+to|need\s+to)"
+    r"|how\s+(?:do|does|should)\s+(?:i|we|a|an|the)\s+[\w\s\-]{0,40}?\s+comply"
+    r"|what\s+(?:must|should)\s+(?:a|an|the|i|we)"
+    r"|what\s+are\s+the\s+obligations?\s+of\s+(?:a|an|the)?\s*"
+    r"(?:provider|deployer|importer|distributor|"
+    r"authorised\s+representative|notified\s+body)"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _detect_role_and_risk_class(question: str) -> tuple[str | None, str | None]:
+    """Extract (role_id, risk_class_id) from the question text.
+
+    Returns ``(None, None)`` if either dimension isn't found. Both must
+    be present for the role-obligation path to fire — otherwise we
+    don't know which row of the matrix to consult.
+    """
+    if not question:
+        return None, None
+    low = question.lower()
+    role_id: str | None = None
+    for phrase, rid in _ROLE_PHRASES:
+        if phrase in low:
+            role_id = rid
+            break
+    risk_id: str | None = None
+    for phrase, rcid in _RISK_CLASS_PHRASES:
+        if phrase in low:
+            risk_id = rcid
+            break
+    return role_id, risk_id
+
+
+def _detect_role_obligation_query(question: str) -> tuple[str, str] | None:
+    """Return ``(role_id, risk_class_id)`` when the question fits the role-
+    obligation pattern AND both dimensions are extractable. ``None`` otherwise.
+
+    Detection requires AT LEAST ONE of:
+
+    * **Subject signal**: question declares the user's role with
+      ``"I am a deployer"`` / ``"As a provider"`` framing.
+    * **Predicate signal**: question asks ``"what are the obligations"``
+      / ``"what do I owe"`` / ``"obligations of a deployer"``.
+
+    Either signal is sufficient — many questions have both, but a
+    fused single-sentence question ``"What does a deployer of an Annex
+    III system owe?"`` carries only the predicate, while a query like
+    ``"I'm a deployer of a high-risk system in HR. What do I owe?"``
+    has the subject in clause 1 and the predicate in clause 2.
+
+    After the signal check we extract role + risk-class from the FULL
+    live question. Both must be extractable for the matrix path to fire.
+    """
+    if not question:
+        return None
+    live = question
+    if "Latest question:" in live:
+        live = live.split("Latest question:", 1)[-1]
+    if not (_ROLE_SUBJECT_RE.search(live) or _ROLE_PREDICATE_RE.search(live)):
+        return None
+    role_id, risk_id = _detect_role_and_risk_class(live)
+    if role_id is None or risk_id is None:
+        return None
+    return role_id, risk_id
+
+
+def _build_role_obligation_answer(role_id: str, risk_id: str) -> tuple[str, tuple[str, ...]] | None:
+    """Render the role × risk-class → obligations matrix as a verdict.
+
+    Returns ``(answer_text, references_tuple)`` or ``None`` if the
+    matrix has no entry for the requested combination (e.g. deployer of
+    a GPAI model — deployer obligations attach to the AI system built
+    on top, not the model itself).
+    """
+    try:
+        from app.data.ontology import ActorRole, RiskClass, obligations_for
+        role = ActorRole(role_id)
+        risk_class = RiskClass(risk_id)
+    except (ValueError, ImportError):
+        return None
+
+    refs = obligations_for(role, risk_class)
+    if not refs:
+        return None
+
+    role_label = {
+        "provider": "Providers",
+        "deployer": "Deployers",
+        "importer": "Importers",
+        "distributor": "Distributors",
+        "authorised_representative": "Authorised representatives",
+        "downstream_provider": "Downstream providers",
+        "notified_body": "Notified bodies",
+        "affected_person": "Affected persons",
+    }.get(role_id, "Operators")
+
+    risk_label = {
+        "prohibited": "a prohibited AI practice",
+        "high_risk_annex_i": "a high-risk AI system used as a safety component of an Annex I product",
+        "high_risk_annex_iii": "a high-risk AI system listed in Annex III",
+        "limited_risk": "a limited-risk AI system",
+        "minimal_risk": "a minimal-risk AI system",
+        "gpai": "a general-purpose AI model",
+        "gpai_systemic": "a general-purpose AI model with systemic risk",
+    }.get(risk_id, "an AI system")
+
+    # Concise verdict — name the top 3-4 refs in prose, leave the rest
+    # to the wire reference list. The route caps refs at 5.
+    headline_refs = list(refs)[:3]
+    refs_prose = ", ".join(headline_refs[:-1]) + (
+        f", and {headline_refs[-1]}" if len(headline_refs) > 1 else headline_refs[0]
+    ) if headline_refs else ""
+
+    answer = (
+        f"{role_label} of {risk_label} are bound by {refs_prose}"
+        + (" (plus follow-on obligations summarised in the references list)." if len(refs) > 3 else ".")
+    )
+    return answer, refs
+
+
+def _seed_role_obligation_obligations(context: GraphContext, role_id: str, risk_id: str, refs: tuple[str, ...]) -> None:
+    """Replace ``context.obligations`` with synthetic entries for the role-
+    obligation refs so the route's citation extraction surfaces them on
+    the wire. Mirrors :func:`_seed_classification_obligations`.
+
+    Also clears ``context.article_info`` because the route's reference
+    extraction reads from BOTH lists — leaving stale article info from
+    an earlier retrieval pass would leak unrelated citations alongside
+    the matrix verdict. See May 2026 audit C5.
+    """
+    synthetic = [
+        {
+            "id": f"role-obligation-{role_id}-{risk_id}-{ref}",
+            "text": f"Role-obligation matrix entry: {role_id} × {risk_id} → {ref}.",
+            "article": ref,
+        }
+        for ref in refs
+    ]
+    context.obligations = synthetic
+    context.article_info = []
     context.nodes_traversed = max(context.nodes_traversed, len(synthetic))
 
 
@@ -1605,6 +1900,18 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     if classification is not None:
         _seed_classification_obligations(context, classification)
         return classification["answer"]
+
+    # Role × risk-class matrix path. "What does a deployer of an Annex III
+    # system owe?" needs the typed matrix in :mod:`app.data.ontology`,
+    # not whichever obligation row the keyword map happened to land on.
+    role_match = _detect_role_obligation_query(question)
+    if role_match is not None:
+        role_id, risk_id = role_match
+        built = _build_role_obligation_answer(role_id, risk_id)
+        if built is not None:
+            answer, refs = built
+            _seed_role_obligation_obligations(context, role_id, risk_id, refs)
+            return answer
 
     parts: list[str] = []
 
@@ -1780,6 +2087,32 @@ def _retrieve_from_kb(
                 "text": mapping["summary"],
                 "article": entity,
             })
+
+    # Cross-reference expansion: when an entity's KB row names another
+    # article in its prose (e.g. Art. 16 mentions Arts. 11, 17, 18,
+    # 19, 20, 21, 43, 47, 48, 49), surface those as supplementary
+    # obligations so the citation set reflects the regulatory graph.
+    # Cap at 2 cross-refs per source entity to avoid hub-article
+    # explosion (a single Art. 16 query would otherwise add 10 cites).
+    # See :mod:`app.data.kb_xrefs` for the build algorithm.
+    try:
+        from app.data.kb_xrefs import cross_refs
+        seen_articles = {o["article"] for o in context.obligations}
+        for primary in list(query.entities):
+            for xref in cross_refs(primary, limit=2):
+                if xref in seen_articles:
+                    continue
+                xref_mapping = EC_CHECKER_OBLIGATION_MAP.get(xref)
+                if not xref_mapping:
+                    continue
+                context.obligations.append({
+                    "id": f"kb-xref-{xref_mapping['dimension']}-{xref}",
+                    "text": xref_mapping["summary"],
+                    "article": xref,
+                })
+                seen_articles.add(xref)
+    except Exception as exc:  # noqa: BLE001 — xref expansion must never block retrieve
+        logger.debug("xref_expansion_failed: %s", exc)
 
     # Add dimension info
     for dim in dims[:10]:
