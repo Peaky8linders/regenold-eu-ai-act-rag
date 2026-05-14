@@ -772,6 +772,17 @@ def _serialise_results(results: list[ScenarioResult]) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # The human-readable report uses ``->`` arrow and ``·`` separators
+    # which the Windows default cp1252 stdout cannot encode. Reconfigure
+    # to utf-8 with a replacement fallback so the report prints cleanly
+    # everywhere instead of crashing with UnicodeEncodeError mid-output.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:  # noqa: BLE001 — best-effort; never block eval
+                pass
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--json",

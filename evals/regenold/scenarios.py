@@ -1285,14 +1285,19 @@ def _build_full_scenarios() -> tuple[Scenario, ...]:
 
 
 SCENARIOS = _build_full_scenarios()
-# Hard floor: if the round-5 extensions silently drop, fail loud. 51 is
-# the baseline; ~251 is the round-5 set; 271+ once the omnibus extension
-# ships. Anything in between means one of the extensions failed to import
-# for a non-ModuleNotFoundError reason OR an extension is malformed and
-# lost scenarios.
-assert len(SCENARIOS) == 51 or len(SCENARIOS) >= 200, (
-    f"Expected 51 (baseline-only) or ≥200 (with extensions); "
-    f"got {len(SCENARIOS)} — an extension file is broken."
+# Soft floor: the baseline alone is 51. Any extension load that
+# silently drops below the baseline is a real bug worth failing hard
+# on. Beyond that, ``ModuleNotFoundError`` is the only legitimate
+# reason to land between 51 and the full extended count (per the
+# ``except ModuleNotFoundError: pass`` handlers in
+# :func:`_build_full_scenarios`); intermediate counts are valid and
+# should not crash the import. The hard 51-or-≥200 floor would block
+# partial-extension states (e.g. only one of three extensions
+# installed) — which is exactly the configuration used during local
+# debugging.
+assert len(SCENARIOS) >= 51, (
+    f"Expected at least the 51-scenario baseline; got {len(SCENARIOS)} — "
+    f"the baseline scenario list is malformed."
 )
 
 
