@@ -37,7 +37,13 @@ class RegenoldChatMessage(BaseModel):
 class RegenoldAskRequest(BaseModel):
     """Regenold API request for grounded EU AI Act Q&A."""
 
-    messages: list[RegenoldChatMessage] = Field(min_length=1)
+    # ``max_length`` bound is defence-in-depth against request-body DoS.
+    # Each item is already capped at 4 KB (see RegenoldChatMessage.content),
+    # so 64 × 4 KB = ~256 KB upper bound on input body even before FastAPI
+    # / proxy-side limits. Realistic conversation depth is 4-8 turns; 64
+    # leaves plenty of headroom while preventing a caller from sustaining
+    # multi-megabyte body parsing on the anonymous rate-limit tier.
+    messages: list[RegenoldChatMessage] = Field(min_length=1, max_length=64)
 
     @model_validator(mode="after")
     def _last_user_message_must_be_non_empty(self) -> RegenoldAskRequest:
@@ -311,6 +317,12 @@ def _extract_subpoints(tail: str) -> list[str]:
     certainly a hallucination AND the strict output regex would happily
     accept ``Article 13.99``. The bound is intentionally loose; the
     actual paragraphs max out around 12 today.
+
+    Reject the WHOLE chain on any malformed or out-of-range token —
+    not just the offending one. ``Art. 13(99)(a)`` previously dropped
+    the ``99`` but kept ``a``, shipping ``Article 13.a`` as a
+    valid-looking but wrong reference (phantom precision). The all-or-
+    nothing policy mirrors :func:`_capture_subpoint_chain` in scope.py.
     """
     tokens: list[str] = []
     # Unified single-pass extraction: capture either a ``(...)`` group
@@ -321,18 +333,20 @@ def _extract_subpoints(tail: str) -> list[str]:
     for paren_tok, dot_tok in re.findall(r"\(([^)]+)\)|\.([A-Za-z0-9]+)", tail):
         raw = (paren_tok or dot_tok).strip()
         if not raw:
-            continue
+            return []
         if not re.fullmatch(r"[A-Za-z0-9]+", raw):
-            continue
+            return []
         # Numeric-token sanity check: the regulation has no paragraph
-        # numbered > 20. ``Art. 13(99)`` is a hallucination; drop the
-        # token so the formatter doesn't ship ``Article 13.99``.
+        # numbered > 20. ``Art. 13(99)`` is a hallucination; reject the
+        # whole chain so the formatter doesn't ship ``Article 13.99`` —
+        # or worse, ``Article 13.a`` when a later token would otherwise
+        # survive.
         if raw.isdigit():
             try:
                 if int(raw) > 20:
-                    continue
+                    return []
             except ValueError:
-                continue
+                return []
         tokens.append(raw)
     return tokens
 
