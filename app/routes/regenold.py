@@ -398,9 +398,8 @@ def _build_scope_refusal_response(
     in-scope branch does — so an auditor can grep "every refused
     request" by ``retrieval_path`` and see the rationale.
     """
-    from app.evidence.models import EvidenceEntryType
-    from app.evidence.store import get_evidence_store
-
+    # ``EvidenceEntryType`` and ``get_evidence_store`` are imported at
+    # module top — no shadow imports here.
     answer_text = refusal_copy_for(scope.verdict)
     confidence = 0.0
     retrieval_path: Any = "no_match"
@@ -645,9 +644,30 @@ def _build_question_from_history(messages: list[Any]) -> tuple[str, str | None]:
 
     # Engine cap — GraphRAGRequest.question is 2000-char max, system
     # description 1000-char max. Truncate from the LEFT (drop oldest
-    # turns first) so the live question always survives.
+    # turns first) so the live question always survives. The naive
+    # ``question[-2000:]`` would slice mid-history and drop the
+    # ``Latest question:\n`` marker that `_detect_classification_topic`,
+    # `_detect_role_obligation_query`, and `_needs_stage2_enhancement`
+    # rely on to isolate the live question from prior turns — without
+    # the marker, those detectors would test against the entire
+    # flattened prompt and a prior assistant turn could trigger a
+    # verdict response for an unrelated current question.
     if len(question) > 2000:
-        question = question[-2000:]
+        live_marker = "Latest question:\n"
+        marker_idx = question.rfind(live_marker)
+        if marker_idx >= 0:
+            live_part = question[marker_idx:]
+            if len(live_part) >= 2000:
+                # Live question alone overflows; keep the marker + tail
+                # of the live question so the boundary still survives.
+                tail_budget = 2000 - len(live_marker)
+                question = live_marker + live_part[len(live_marker):][-tail_budget:]
+            else:
+                history_budget = 2000 - len(live_part)
+                history_part = question[:marker_idx][-history_budget:]
+                question = history_part + live_part
+        else:
+            question = question[-2000:]
     if system_context is not None and len(system_context) > 1000:
         system_context = system_context[-1000:]
 

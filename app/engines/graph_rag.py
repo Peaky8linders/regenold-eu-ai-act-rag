@@ -539,6 +539,401 @@ def _llm_generate_answer(
         return _deterministic_answer(question, context)
 
 
+# Module-level constant: keyword -> article anchor map used by
+# :func:`_deterministic_parse` to inject concept-level anchors. Lifted out
+# of the function body so the ~370-entry literal is built ONCE at import
+# instead of allocated on every request (perf fix: was the largest
+# single hot-path allocation in the deterministic path).
+_KEYWORD_ENTITY_MAP: tuple[tuple[str, str], ...] = (
+    # GPAI / general-purpose AI (Arts. 51-55)
+    ("gpai", "Art. 53"),
+    ("general-purpose ai", "Art. 53"),
+    ("general purpose ai", "Art. 53"),
+    ("general-purpose ai model", "Art. 53"),
+    ("general purpose ai model", "Art. 53"),
+    ("gpai model", "Art. 53"),
+    ("systemic risk", "Art. 55"),
+    ("model evaluation", "Art. 55"),
+    ("code of practice", "Art. 56"),
+    # Transparency / deepfakes / chatbots (Art. 50)
+    ("deepfake", "Art. 50"),
+    ("deep fake", "Art. 50"),
+    ("ai-generated content", "Art. 50"),
+    ("ai generated content", "Art. 50"),
+    ("synthetic content", "Art. 50"),
+    ("watermarking", "Art. 50"),
+    ("chatbot disclosure", "Art. 50"),
+    # Fundamental Rights Impact Assessment (Art. 27)
+    ("fundamental rights impact assessment", "Art. 27"),
+    ("fria", "Art. 27"),
+    # Post-market monitoring (Art. 72)
+    ("post-market monitoring", "Art. 72"),
+    ("pmmp", "Art. 72"),
+    # Conformity assessment / CE marking / registration (Arts. 43/47/48/49)
+    ("conformity assessment", "Art. 43"),
+    ("declaration of conformity", "Art. 47"),
+    ("ce marking", "Art. 48"),
+    ("registration", "Art. 49"),
+    # AI Office / governance (Arts. 64/65)
+    ("ai office", "Art. 64"),
+    ("european ai board", "Art. 65"),
+    # Market surveillance / penalties (Arts. 74/99)
+    ("market surveillance", "Art. 74"),
+    ("serious incident", "Art. 73"),
+    ("incident reporting", "Art. 73"),
+    ("fines", "Art. 99"),
+    ("penalties", "Art. 99"),
+    # Singular + question-shape variants — "the maximum fine" / "fine
+    # for using" are real stress-test phrasings that the plural-only
+    # entries missed. "fine-tuning" / "fine tune" still take their own
+    # explicit Art. 25 entries above, so substring collisions are
+    # already disambiguated.
+    ("maximum fine", "Art. 99"),
+    ("max fine", "Art. 99"),
+    ("fine for", "Art. 99"),
+    ("fine ceiling", "Art. 99"),
+    ("fines for", "Art. 99"),
+    ("infringement of", "Art. 99"),
+    ("violation of", "Art. 99"),
+    # Prohibited practices (Art. 5) — must appear before generic high-risk keywords
+    ("prohibited", "Art. 5"),
+    ("prohibition", "Art. 5"),
+    ("always prohibited", "Art. 5"),
+    ("unacceptable risk", "Art. 5"),
+    ("banned", "Art. 5"),
+    ("social scoring", "Art. 5"),
+    ("subliminal manipulation", "Art. 5"),
+    ("predictive policing", "Art. 5"),
+    ("real-time biometric", "Art. 5"),
+    ("remote biometric identification", "Art. 5"),
+    ("biometric categorisation", "Art. 5"),
+    # Emotion recognition — prohibited in workplaces/education (Art. 5) AND
+    # transparency obligation for all other contexts (Art. 50)
+    ("emotion recognition", "Art. 5"),
+    ("emotion recognition", "Art. 50"),
+    # Technical documentation / hardware specs (Art. 11 — Annex IV is the *contents*)
+    # NB: bare "hardware" / "system architecture" / "training methodology"
+    # used to route to Annex IV. Removed because (a) "hardware" is a
+    # generic English word that fires on any GPU/device question, and
+    # (b) the Annex IV reference is a SUB-bullet of the tech-doc
+    # requirement — Art. 11 is the actual obligation. "System
+    # architecture" / "training methodology" now route to Art. 11.
+    ("technical documentation", "Art. 11"),
+    ("system architecture", "Art. 11"),
+    ("training methodology", "Art. 11"),
+    # High-risk classification (Art. 6 / Annex III).
+    # NB: "biometric identification" routes Art. 5 FIRST (real-time RBI
+    # in public spaces is prohibited per Art. 5(1)(h)) and Annex III(1)
+    # second (remote biometric ID + categorisation + emotion recognition).
+    # "healthcare" and "transcrib" removed — neither is per-se Annex III;
+    # healthcare AI routes via Art. 6(1)+Annex I as a safety component
+    # of an MDR/IVDR medical device, and transcription is a generic ML
+    # capability with no per-se Annex III row. Misrouting these caused
+    # the doctor-patient transcription question (Q3) to dump the
+    # Annex III description as if it applied.
+    ("high-risk classification", "Art. 6"),
+    ("classified as high-risk", "Art. 6"),
+    ("annex iii use case", "Annex III"),
+    ("annex iii use cases", "Annex III"),
+    ("biometric identification", "Art. 5"),
+    ("biometric identification", "Annex III"),
+    # Definitions + scope (Arts. 1-4).
+    # NB: bare "definition of" removed — too generic; compound
+    # forms below already cover the legitimate Art. 3 lookups, and
+    # the bare phrase shadowed article-specific definition questions
+    # like "what's the definition of high-risk under Art. 6?".
+    ("definition of an ai system", "Art. 3"),
+    ("definition of ai system", "Art. 3"),
+    ("definition of a deployer", "Art. 3"),
+    ("definition of a provider", "Art. 3"),
+    ("definition of a general-purpose", "Art. 3"),
+    ("definition of general-purpose", "Art. 3"),
+    ("definition of a gpai", "Art. 3"),
+    ("definition of high-risk", "Art. 6"),
+    ("definition of high risk", "Art. 6"),
+    ("what is an ai system", "Art. 3"),
+    ("what is a deployer", "Art. 3"),
+    ("what is a provider", "Art. 3"),
+    ("substantial modification", "Art. 3"),
+    ("putting into service", "Art. 3"),
+    ("placing on the market", "Art. 3"),
+    ("ai literacy", "Art. 4"),
+    ("scope of the regulation", "Art. 2"),
+    ("territorial scope", "Art. 2"),
+    ("extraterritorial", "Art. 2"),
+    ("military", "Art. 2"),
+    ("national security", "Art. 2"),
+    ("research and development", "Art. 2"),
+    ("scientific research", "Art. 2"),
+    ("free and open-source", "Art. 2"),
+    ("open source", "Art. 2"),
+    # Value chain (Arts. 16, 22-25)
+    ("provider obligations", "Art. 16"),
+    ("authorised representative", "Art. 22"),
+    ("authorized representative", "Art. 22"),
+    ("importer", "Art. 23"),
+    ("importer obligations", "Art. 23"),
+    ("distributor", "Art. 24"),
+    ("distributor obligations", "Art. 24"),
+    ("value chain", "Art. 25"),
+    ("along the value chain", "Art. 25"),
+    # Documentation retention (Arts. 18, 19)
+    ("documentation retention", "Art. 18"),
+    ("keep documentation", "Art. 18"),
+    ("10 years", "Art. 18"),
+    ("log retention", "Art. 19"),
+    ("6 months", "Art. 19"),
+    # Annex I products / safety component (high-risk under Art. 6(1))
+    ("safety component", "Art. 6"),
+    ("product safety", "Annex I"),
+    ("union harmonisation", "Annex I"),
+    ("union harmonization", "Annex I"),
+    # GPAI classification + procedure (Arts. 51, 52, 54)
+    ("10^25", "Art. 51"),
+    ("flops threshold", "Art. 51"),
+    ("training compute", "Art. 51"),
+    ("classification of gpai", "Art. 51"),
+    ("gpai classification", "Art. 51"),
+    ("gpai authorised representative", "Art. 54"),
+    ("notification procedure", "Art. 52"),
+    # GPAI documentation annexes — explicit Annex N strings are caught by regex
+    ("gpai technical documentation", "Annex XI"),
+    ("downstream provider information", "Annex XII"),
+    ("downstream provider", "Annex XII"),
+    ("systemic risk designation", "Annex XIII"),
+    # Conformity-assessment procedures (Annexes VI, VII)
+    ("internal control", "Annex VI"),
+    ("notified body", "Annex VII"),
+    # Innovation support (Arts. 57, 60)
+    ("regulatory sandbox", "Art. 57"),
+    ("ai sandbox", "Art. 57"),
+    ("sandbox", "Art. 57"),
+    ("real-world testing", "Art. 60"),
+    ("real world testing", "Art. 60"),
+    # Governance (Arts. 66, 70, 71)
+    ("board tasks", "Art. 66"),
+    ("national competent authority", "Art. 70"),
+    ("notifying authority", "Art. 70"),
+    ("eu database", "Art. 71"),
+    # Enforcement (Arts. 20, 79)
+    ("corrective action", "Art. 20"),
+    ("withdraw from the market", "Art. 20"),
+    ("recall", "Art. 20"),
+    ("non-compliance procedure", "Art. 79"),
+    ("ai system presenting a risk", "Art. 79"),
+    # Applicability / entry into force (Art. 113).
+    # Question-shape variants ("when did/does/will … apply / start")
+    # added because the existing entries only matched phrasings like
+    # "the entry into force" / "the applicability date". Stress-test
+    # scenarios used "When did the Article 5 prohibitions start to
+    # apply?" / "When do the high-risk AI obligations start to apply?".
+    ("entry into force", "Art. 113"),
+    ("applicability date", "Art. 113"),
+    ("start to apply", "Art. 113"),
+    ("starts to apply", "Art. 113"),
+    ("started to apply", "Art. 113"),
+    ("begin to apply", "Art. 113"),
+    ("begins to apply", "Art. 113"),
+    ("when did", "Art. 113"),
+    ("prohibitions start", "Art. 113"),
+    ("obligations start", "Art. 113"),
+    # Value chain — explicit rebrand / rename trigger for Art. 25
+    # (becomes-a-provider via name/trademark change).
+    ("rebrand", "Art. 25"),
+    ("rename", "Art. 25"),
+    # GPAI penalty variant — questions about penalties for GPAI
+    # provider violations need Art. 101 in addition to Art. 99.
+    ("penalty for a gpai", "Art. 101"),
+    ("penalty for a general-purpose", "Art. 101"),
+    ("max penalty for a gpai", "Art. 101"),
+    ("max penalty for a general-purpose", "Art. 101"),
+    # What-is-a-GPAI definition question (routes to Art. 3 alongside
+    # the obligation-side Art. 53 entry already present).
+    ("what is a general-purpose", "Art. 3"),
+    ("what is a general purpose", "Art. 3"),
+    ("what is a gpai", "Art. 3"),
+    # Research / R&D scope exclusion (Art. 2)
+    ("research-only", "Art. 2"),
+    ("research only ai", "Art. 2"),
+    ("scientific research", "Art. 2"),
+    # Territorial / personal scope (Art. 2) — sync with scope.py
+    # keyword anchors so engine retrieves Art. 2 KB row directly
+    # instead of falling back to BM25 which scores against unrelated
+    # rows (e.g. Art. 95 codes of conduct match the bare "ai act"
+    # tokens).
+    ("us company", "Art. 2"),
+    ("no eu office", "Art. 2"),
+    ("no eu users", "Art. 2"),
+    ("subject to the ai act", "Art. 2"),
+    ("subject to the act", "Art. 2"),
+    ("subject to the regulation", "Art. 2"),
+    ("internal use", "Art. 2"),
+    # Records-retention anchors (Arts. 18 + 19). Stress-test surfaced
+    # "How long must records be kept?" as a recall gap — the KB
+    # summaries don't use the word "records" (Art. 19 says "logs",
+    # Art. 18 says "documentation") so BM25 alone misses them.
+    ("how long must records", "Art. 19"),
+    ("how long are records", "Art. 19"),
+    ("how long must logs", "Art. 19"),
+    ("how long must documentation", "Art. 18"),
+    ("how long must i keep", "Art. 18"),
+    ("records be kept", "Art. 19"),
+    ("logs be kept", "Art. 19"),
+    ("retention period", "Art. 18"),
+    # Re-training / model updates (Art. 25 substantial modification
+    # path — a re-trained model can become a "new" provider's system).
+    ("re-train", "Art. 25"),
+    ("retrain", "Art. 25"),
+    ("re train", "Art. 25"),
+    ("retraining", "Art. 25"),
+    ("re-training", "Art. 25"),
+    ("re train quarterly", "Art. 25"),
+    ("if we re-train", "Art. 25"),
+    ("if we retrain", "Art. 25"),
+    ("when does the ai act apply", "Art. 113"),
+    ("when does the eu ai act apply", "Art. 113"),
+    ("when will the ai act apply", "Art. 113"),
+    ("become subject to obligations", "Art. 113"),
+    ("when will high-risk", "Art. 113"),
+    ("when will high risk", "Art. 113"),
+    ("when does annex iii apply", "Art. 113"),
+    ("2 february 2025", "Art. 113"),
+    ("2 august 2025", "Art. 113"),
+    ("2 august 2026", "Art. 113"),
+    ("2 august 2027", "Art. 113"),
+    # GPAI threshold variants (Art. 51)
+    ("threshold makes a gpai", "Art. 51"),
+    ("threshold for systemic risk", "Art. 51"),
+    ("what threshold makes", "Art. 51"),
+    ("training flops", "Art. 51"),
+    # Chapter III Section 2 (Art. 8 — overarching requirement)
+    ("section 2 requirements", "Art. 8"),
+    ("chapter iii requirements", "Art. 8"),
+    # Annex III amendment (Art. 7)
+    ("amend annex iii", "Art. 7"),
+    ("annex iii amendment", "Art. 7"),
+    ("add use case", "Art. 7"),
+    # Cooperation duty (Art. 21)
+    ("cooperate with authorities", "Art. 21"),
+    ("cooperation with authorities", "Art. 21"),
+    ("cooperation with competent", "Art. 21"),
+    ("provide documentation to authorities", "Art. 21"),
+    ("provider must supply", "Art. 21"),
+    ("supply to a national competent", "Art. 21"),
+    ("information must a provider supply", "Art. 21"),
+    ("reasoned request from", "Art. 21"),
+    # Art. 6(3) non-high-risk carve-out
+    ("non-high-risk exception", "Art. 6.3"),
+    ("art. 6(3)", "Art. 6.3"),
+    ("art 6(3)", "Art. 6.3"),
+    ("article 6(3)", "Art. 6.3"),
+    ("narrow procedural task", "Art. 6.3"),
+    # Art. 50 sub-articles
+    ("ai chatbot disclosure", "Art. 50.1"),
+    ("interact with natural person", "Art. 50.1"),
+    ("watermark", "Art. 50.2"),
+    ("synthetic audio", "Art. 50.2"),
+    ("synthetic image", "Art. 50.2"),
+    ("synthetic video", "Art. 50.2"),
+    ("generative ai output", "Art. 50.2"),
+    ("deepfake disclosure", "Art. 50.4"),
+    ("inform exposed person", "Art. 50.3"),
+    # Sandboxes (Arts. 58, 59, 61, 62, 63)
+    ("sandbox modalities", "Art. 58"),
+    ("personal data in sandbox", "Art. 59"),
+    ("personal data in a sandbox", "Art. 59"),
+    ("personal data inside", "Art. 59"),
+    ("processed inside an ai", "Art. 59"),
+    ("processed inside a sandbox", "Art. 59"),
+    ("personal data processing in sandbox", "Art. 59"),
+    ("gdpr sandbox", "Art. 59"),
+    ("sandbox without gdpr", "Art. 59"),
+    ("sandbox without consent", "Art. 59"),
+    ("informed consent for testing", "Art. 61"),
+    ("informed consent", "Art. 61"),
+    ("sme support", "Art. 62"),
+    ("sme privileges", "Art. 62"),
+    ("small mid-cap", "Art. 62"),
+    ("small mid cap", "Art. 62"),
+    ("smc", "Art. 62"),
+    ("startup support", "Art. 62"),
+    ("start-up support", "Art. 62"),
+    ("derogation for sme", "Art. 63"),
+    # Governance bodies (Arts. 67, 68, 69)
+    ("advisory forum", "Art. 67"),
+    ("scientific panel", "Art. 68"),
+    ("expert pool", "Art. 69"),
+    # Remedies (Arts. 85, 86, 87, 89)
+    ("right to lodge a complaint", "Art. 85"),
+    ("right to complain", "Art. 85"),
+    ("lodge a complaint", "Art. 85"),
+    ("can complain", "Art. 85"),
+    ("complain about", "Art. 85"),
+    ("complaint about", "Art. 85"),
+    ("right to explanation", "Art. 86"),
+    ("right to an explanation", "Art. 86"),
+    ("explanation of decision", "Art. 86"),
+    ("right to know", "Art. 86"),
+    ("explanation when an ai", "Art. 86"),
+    ("whistleblower", "Art. 87"),
+    ("whistleblowing", "Art. 87"),
+    ("reporting of infringements", "Art. 87"),
+    ("protections for whistle", "Art. 87"),
+    ("downstream complaint", "Art. 89"),
+    ("complaint to ai office", "Art. 89"),
+    # Codes of conduct + penalties (Arts. 95, 100, 101)
+    ("voluntary code of conduct", "Art. 95"),
+    ("code of conduct", "Art. 95"),
+    ("codes of conduct", "Art. 95"),
+    ("penalties for eu institutions", "Art. 100"),
+    ("eu institutions", "Art. 100"),
+    ("eu bodies", "Art. 100"),
+    ("fines for eu institutions", "Art. 100"),
+    ("edps fines", "Art. 100"),
+    ("gpai penalty", "Art. 101"),
+    ("gpai fine", "Art. 101"),
+    ("penalty for gpai", "Art. 101"),
+    ("penalty for general-purpose", "Art. 101"),
+    ("penalty for general purpose", "Art. 101"),
+    ("commission impose", "Art. 101"),
+    # Transition + review (Arts. 111, 112)
+    ("transitional provision", "Art. 111"),
+    ("pre-existing high-risk", "Art. 111"),
+    ("review of the regulation", "Art. 112"),
+    ("evaluation of the regulation", "Art. 112"),
+    ("commission review", "Art. 112"),
+    # Annex II / V / VIII
+    ("criminal offences for biometric", "Annex II"),
+    ("article 5(1)(h) offences", "Annex II"),
+    ("declaration of conformity contents", "Annex V"),
+    ("contents of declaration of conformity", "Annex V"),
+    ("must the eu declaration", "Annex V"),
+    ("must the declaration", "Annex V"),
+    ("registration information", "Annex VIII"),
+    ("eu database information", "Annex VIII"),
+    ("eu ai database", "Annex VIII"),
+    ("registered in the eu", "Annex VIII"),
+    ("information must be registered", "Annex VIII"),
+    # Digital Omnibus (May 2026 political agreement)
+    ("digital omnibus", "Art. 113"),
+    ("2 december 2027", "Art. 113"),
+    ("2 august 2028", "Art. 113"),
+    # New prohibited categories under Digital Omnibus
+    ("ai-generated csam", "Art. 5"),
+    ("ai csam", "Art. 5"),
+    ("non-consensual intimate", "Art. 5"),
+    ("nudification", "Art. 5"),
+    ("intimate imagery", "Art. 5"),
+    # Definitions (Art. 3)
+    ("serious incident", "Art. 3"),
+    ("definition of serious incident", "Art. 3"),
+    ("definition of deepfake", "Art. 3"),
+    ("definition of ai system", "Art. 3"),
+    ("definition of provider", "Art. 3"),
+    ("definition of deployer", "Art. 3"),
+)
+
+
 # ─── Deterministic fallbacks (no LLM required) ──────────────────────────────
 
 def _deterministic_parse(question: str) -> GraphQuery:
@@ -564,8 +959,8 @@ def _deterministic_parse(question: str) -> GraphQuery:
     # short-form silently loses the entity on common multi-turn shapes).
     # Annex refs are catalogued as `Annex IV` etc.; the route's anchor
     # surfacing depends on `query.entities` carrying them through so
-    # retrieval can find article-specific obligations.
-    import re
+    # retrieval can find article-specific obligations. (`re` is imported
+    # at module scope above — no shadow import here.)
     article_nums = re.findall(
         r"\b(?:Art\.?|Article)\s*(\d{1,3})\b", question, re.IGNORECASE,
     )
@@ -634,394 +1029,7 @@ def _deterministic_parse(question: str) -> GraphQuery:
     # dimensions. A superset would include every scope.py keyword, but
     # that risks over-eager entity injection for questions whose primary
     # intent isn't the mapped article.
-    _KEYWORD_ENTITY_MAP: list[tuple[str, str]] = [
-        # GPAI / general-purpose AI (Arts. 51-55)
-        ("gpai", "Art. 53"),
-        ("general-purpose ai", "Art. 53"),
-        ("general purpose ai", "Art. 53"),
-        ("general-purpose ai model", "Art. 53"),
-        ("general purpose ai model", "Art. 53"),
-        ("gpai model", "Art. 53"),
-        ("systemic risk", "Art. 55"),
-        ("model evaluation", "Art. 55"),
-        ("code of practice", "Art. 56"),
-        # Transparency / deepfakes / chatbots (Art. 50)
-        ("deepfake", "Art. 50"),
-        ("deep fake", "Art. 50"),
-        ("ai-generated content", "Art. 50"),
-        ("ai generated content", "Art. 50"),
-        ("synthetic content", "Art. 50"),
-        ("watermarking", "Art. 50"),
-        ("chatbot disclosure", "Art. 50"),
-        # Fundamental Rights Impact Assessment (Art. 27)
-        ("fundamental rights impact assessment", "Art. 27"),
-        ("fria", "Art. 27"),
-        # Post-market monitoring (Art. 72)
-        ("post-market monitoring", "Art. 72"),
-        ("pmmp", "Art. 72"),
-        # Conformity assessment / CE marking / registration (Arts. 43/47/48/49)
-        ("conformity assessment", "Art. 43"),
-        ("declaration of conformity", "Art. 47"),
-        ("ce marking", "Art. 48"),
-        ("registration", "Art. 49"),
-        # AI Office / governance (Arts. 64/65)
-        ("ai office", "Art. 64"),
-        ("european ai board", "Art. 65"),
-        # Market surveillance / penalties (Arts. 74/99)
-        ("market surveillance", "Art. 74"),
-        ("serious incident", "Art. 73"),
-        ("incident reporting", "Art. 73"),
-        ("fines", "Art. 99"),
-        ("penalties", "Art. 99"),
-        # Singular + question-shape variants — "the maximum fine" / "fine
-        # for using" are real stress-test phrasings that the plural-only
-        # entries missed. "fine-tuning" / "fine tune" still take their own
-        # explicit Art. 25 entries above, so substring collisions are
-        # already disambiguated.
-        ("maximum fine", "Art. 99"),
-        ("max fine", "Art. 99"),
-        ("fine for", "Art. 99"),
-        ("fine ceiling", "Art. 99"),
-        ("fines for", "Art. 99"),
-        ("infringement of", "Art. 99"),
-        ("violation of", "Art. 99"),
-        # Prohibited practices (Art. 5) — must appear before generic high-risk keywords
-        ("prohibited", "Art. 5"),
-        ("prohibition", "Art. 5"),
-        ("always prohibited", "Art. 5"),
-        ("unacceptable risk", "Art. 5"),
-        ("banned", "Art. 5"),
-        ("social scoring", "Art. 5"),
-        ("subliminal manipulation", "Art. 5"),
-        ("predictive policing", "Art. 5"),
-        ("real-time biometric", "Art. 5"),
-        ("remote biometric identification", "Art. 5"),
-        ("biometric categorisation", "Art. 5"),
-        # Emotion recognition — prohibited in workplaces/education (Art. 5) AND
-        # transparency obligation for all other contexts (Art. 50)
-        ("emotion recognition", "Art. 5"),
-        ("emotion recognition", "Art. 50"),
-        # Technical documentation / hardware specs (Art. 11 — Annex IV is the *contents*)
-        # NB: bare "hardware" / "system architecture" / "training methodology"
-        # used to route to Annex IV. Removed because (a) "hardware" is a
-        # generic English word that fires on any GPU/device question, and
-        # (b) the Annex IV reference is a SUB-bullet of the tech-doc
-        # requirement — Art. 11 is the actual obligation. "System
-        # architecture" / "training methodology" now route to Art. 11.
-        ("technical documentation", "Art. 11"),
-        ("system architecture", "Art. 11"),
-        ("training methodology", "Art. 11"),
-        # High-risk classification (Art. 6 / Annex III).
-        # NB: "biometric identification" routes Art. 5 FIRST (real-time RBI
-        # in public spaces is prohibited per Art. 5(1)(h)) and Annex III(1)
-        # second (remote biometric ID + categorisation + emotion recognition).
-        # "healthcare" and "transcrib" removed — neither is per-se Annex III;
-        # healthcare AI routes via Art. 6(1)+Annex I as a safety component
-        # of an MDR/IVDR medical device, and transcription is a generic ML
-        # capability with no per-se Annex III row. Misrouting these caused
-        # the doctor-patient transcription question (Q3) to dump the
-        # Annex III description as if it applied.
-        ("high-risk classification", "Art. 6"),
-        ("classified as high-risk", "Art. 6"),
-        ("annex iii use case", "Annex III"),
-        ("annex iii use cases", "Annex III"),
-        ("biometric identification", "Art. 5"),
-        ("biometric identification", "Annex III"),
-        # Definitions + scope (Arts. 1-4).
-        # NB: bare "definition of" removed — too generic; compound
-        # forms below already cover the legitimate Art. 3 lookups, and
-        # the bare phrase shadowed article-specific definition questions
-        # like "what's the definition of high-risk under Art. 6?".
-        ("definition of an ai system", "Art. 3"),
-        ("definition of ai system", "Art. 3"),
-        ("definition of a deployer", "Art. 3"),
-        ("definition of a provider", "Art. 3"),
-        ("definition of a general-purpose", "Art. 3"),
-        ("definition of general-purpose", "Art. 3"),
-        ("definition of a gpai", "Art. 3"),
-        ("definition of high-risk", "Art. 6"),
-        ("definition of high risk", "Art. 6"),
-        ("what is an ai system", "Art. 3"),
-        ("what is a deployer", "Art. 3"),
-        ("what is a provider", "Art. 3"),
-        ("substantial modification", "Art. 3"),
-        ("putting into service", "Art. 3"),
-        ("placing on the market", "Art. 3"),
-        ("ai literacy", "Art. 4"),
-        ("scope of the regulation", "Art. 2"),
-        ("territorial scope", "Art. 2"),
-        ("extraterritorial", "Art. 2"),
-        ("military", "Art. 2"),
-        ("national security", "Art. 2"),
-        ("research and development", "Art. 2"),
-        ("scientific research", "Art. 2"),
-        ("free and open-source", "Art. 2"),
-        ("open source", "Art. 2"),
-        # Value chain (Arts. 16, 22-25)
-        ("provider obligations", "Art. 16"),
-        ("authorised representative", "Art. 22"),
-        ("authorized representative", "Art. 22"),
-        ("importer", "Art. 23"),
-        ("importer obligations", "Art. 23"),
-        ("distributor", "Art. 24"),
-        ("distributor obligations", "Art. 24"),
-        ("value chain", "Art. 25"),
-        ("along the value chain", "Art. 25"),
-        # Documentation retention (Arts. 18, 19)
-        ("documentation retention", "Art. 18"),
-        ("keep documentation", "Art. 18"),
-        ("10 years", "Art. 18"),
-        ("log retention", "Art. 19"),
-        ("6 months", "Art. 19"),
-        # Annex I products / safety component (high-risk under Art. 6(1))
-        ("safety component", "Art. 6"),
-        ("product safety", "Annex I"),
-        ("union harmonisation", "Annex I"),
-        ("union harmonization", "Annex I"),
-        # GPAI classification + procedure (Arts. 51, 52, 54)
-        ("10^25", "Art. 51"),
-        ("flops threshold", "Art. 51"),
-        ("training compute", "Art. 51"),
-        ("classification of gpai", "Art. 51"),
-        ("gpai classification", "Art. 51"),
-        ("gpai authorised representative", "Art. 54"),
-        ("notification procedure", "Art. 52"),
-        # GPAI documentation annexes — explicit Annex N strings are caught by regex
-        ("gpai technical documentation", "Annex XI"),
-        ("downstream provider information", "Annex XII"),
-        ("downstream provider", "Annex XII"),
-        ("systemic risk designation", "Annex XIII"),
-        # Conformity-assessment procedures (Annexes VI, VII)
-        ("internal control", "Annex VI"),
-        ("notified body", "Annex VII"),
-        # Innovation support (Arts. 57, 60)
-        ("regulatory sandbox", "Art. 57"),
-        ("ai sandbox", "Art. 57"),
-        ("sandbox", "Art. 57"),
-        ("real-world testing", "Art. 60"),
-        ("real world testing", "Art. 60"),
-        # Governance (Arts. 66, 70, 71)
-        ("board tasks", "Art. 66"),
-        ("national competent authority", "Art. 70"),
-        ("notifying authority", "Art. 70"),
-        ("eu database", "Art. 71"),
-        # Enforcement (Arts. 20, 79)
-        ("corrective action", "Art. 20"),
-        ("withdraw from the market", "Art. 20"),
-        ("recall", "Art. 20"),
-        ("non-compliance procedure", "Art. 79"),
-        ("ai system presenting a risk", "Art. 79"),
-        # Applicability / entry into force (Art. 113).
-        # Question-shape variants ("when did/does/will … apply / start")
-        # added because the existing entries only matched phrasings like
-        # "the entry into force" / "the applicability date". Stress-test
-        # scenarios used "When did the Article 5 prohibitions start to
-        # apply?" / "When do the high-risk AI obligations start to apply?".
-        ("entry into force", "Art. 113"),
-        ("applicability date", "Art. 113"),
-        ("start to apply", "Art. 113"),
-        ("starts to apply", "Art. 113"),
-        ("started to apply", "Art. 113"),
-        ("begin to apply", "Art. 113"),
-        ("begins to apply", "Art. 113"),
-        ("when did", "Art. 113"),
-        ("prohibitions start", "Art. 113"),
-        ("obligations start", "Art. 113"),
-        # Value chain — explicit rebrand / rename trigger for Art. 25
-        # (becomes-a-provider via name/trademark change).
-        ("rebrand", "Art. 25"),
-        ("rename", "Art. 25"),
-        # GPAI penalty variant — questions about penalties for GPAI
-        # provider violations need Art. 101 in addition to Art. 99.
-        ("penalty for a gpai", "Art. 101"),
-        ("penalty for a general-purpose", "Art. 101"),
-        ("max penalty for a gpai", "Art. 101"),
-        ("max penalty for a general-purpose", "Art. 101"),
-        # What-is-a-GPAI definition question (routes to Art. 3 alongside
-        # the obligation-side Art. 53 entry already present).
-        ("what is a general-purpose", "Art. 3"),
-        ("what is a general purpose", "Art. 3"),
-        ("what is a gpai", "Art. 3"),
-        # Research / R&D scope exclusion (Art. 2)
-        ("research-only", "Art. 2"),
-        ("research only ai", "Art. 2"),
-        ("scientific research", "Art. 2"),
-        # Territorial / personal scope (Art. 2) — sync with scope.py
-        # keyword anchors so engine retrieves Art. 2 KB row directly
-        # instead of falling back to BM25 which scores against unrelated
-        # rows (e.g. Art. 95 codes of conduct match the bare "ai act"
-        # tokens).
-        ("us company", "Art. 2"),
-        ("no eu office", "Art. 2"),
-        ("no eu users", "Art. 2"),
-        ("subject to the ai act", "Art. 2"),
-        ("subject to the act", "Art. 2"),
-        ("subject to the regulation", "Art. 2"),
-        ("internal use", "Art. 2"),
-        # Records-retention anchors (Arts. 18 + 19). Stress-test surfaced
-        # "How long must records be kept?" as a recall gap — the KB
-        # summaries don't use the word "records" (Art. 19 says "logs",
-        # Art. 18 says "documentation") so BM25 alone misses them.
-        ("how long must records", "Art. 19"),
-        ("how long are records", "Art. 19"),
-        ("how long must logs", "Art. 19"),
-        ("how long must documentation", "Art. 18"),
-        ("how long must i keep", "Art. 18"),
-        ("records be kept", "Art. 19"),
-        ("logs be kept", "Art. 19"),
-        ("retention period", "Art. 18"),
-        # Re-training / model updates (Art. 25 substantial modification
-        # path — a re-trained model can become a "new" provider's system).
-        ("re-train", "Art. 25"),
-        ("retrain", "Art. 25"),
-        ("re train", "Art. 25"),
-        ("retraining", "Art. 25"),
-        ("re-training", "Art. 25"),
-        ("re train quarterly", "Art. 25"),
-        ("if we re-train", "Art. 25"),
-        ("if we retrain", "Art. 25"),
-        ("when does the ai act apply", "Art. 113"),
-        ("when does the eu ai act apply", "Art. 113"),
-        ("when will the ai act apply", "Art. 113"),
-        ("become subject to obligations", "Art. 113"),
-        ("when will high-risk", "Art. 113"),
-        ("when will high risk", "Art. 113"),
-        ("when does annex iii apply", "Art. 113"),
-        ("2 february 2025", "Art. 113"),
-        ("2 august 2025", "Art. 113"),
-        ("2 august 2026", "Art. 113"),
-        ("2 august 2027", "Art. 113"),
-        # GPAI threshold variants (Art. 51)
-        ("threshold makes a gpai", "Art. 51"),
-        ("threshold for systemic risk", "Art. 51"),
-        ("what threshold makes", "Art. 51"),
-        ("training flops", "Art. 51"),
-        # Chapter III Section 2 (Art. 8 — overarching requirement)
-        ("section 2 requirements", "Art. 8"),
-        ("chapter iii requirements", "Art. 8"),
-        # Annex III amendment (Art. 7)
-        ("amend annex iii", "Art. 7"),
-        ("annex iii amendment", "Art. 7"),
-        ("add use case", "Art. 7"),
-        # Cooperation duty (Art. 21)
-        ("cooperate with authorities", "Art. 21"),
-        ("cooperation with authorities", "Art. 21"),
-        ("cooperation with competent", "Art. 21"),
-        ("provide documentation to authorities", "Art. 21"),
-        ("provider must supply", "Art. 21"),
-        ("supply to a national competent", "Art. 21"),
-        ("information must a provider supply", "Art. 21"),
-        ("reasoned request from", "Art. 21"),
-        # Art. 6(3) non-high-risk carve-out
-        ("non-high-risk exception", "Art. 6.3"),
-        ("art. 6(3)", "Art. 6.3"),
-        ("art 6(3)", "Art. 6.3"),
-        ("article 6(3)", "Art. 6.3"),
-        ("narrow procedural task", "Art. 6.3"),
-        # Art. 50 sub-articles
-        ("ai chatbot disclosure", "Art. 50.1"),
-        ("interact with natural person", "Art. 50.1"),
-        ("watermark", "Art. 50.2"),
-        ("synthetic audio", "Art. 50.2"),
-        ("synthetic image", "Art. 50.2"),
-        ("synthetic video", "Art. 50.2"),
-        ("generative ai output", "Art. 50.2"),
-        ("deepfake disclosure", "Art. 50.4"),
-        ("inform exposed person", "Art. 50.3"),
-        # Sandboxes (Arts. 58, 59, 61, 62, 63)
-        ("sandbox modalities", "Art. 58"),
-        ("personal data in sandbox", "Art. 59"),
-        ("personal data in a sandbox", "Art. 59"),
-        ("personal data inside", "Art. 59"),
-        ("processed inside an ai", "Art. 59"),
-        ("processed inside a sandbox", "Art. 59"),
-        ("personal data processing in sandbox", "Art. 59"),
-        ("gdpr sandbox", "Art. 59"),
-        ("sandbox without gdpr", "Art. 59"),
-        ("sandbox without consent", "Art. 59"),
-        ("informed consent for testing", "Art. 61"),
-        ("informed consent", "Art. 61"),
-        ("sme support", "Art. 62"),
-        ("sme privileges", "Art. 62"),
-        ("small mid-cap", "Art. 62"),
-        ("small mid cap", "Art. 62"),
-        ("smc", "Art. 62"),
-        ("startup support", "Art. 62"),
-        ("start-up support", "Art. 62"),
-        ("derogation for sme", "Art. 63"),
-        # Governance bodies (Arts. 67, 68, 69)
-        ("advisory forum", "Art. 67"),
-        ("scientific panel", "Art. 68"),
-        ("expert pool", "Art. 69"),
-        # Remedies (Arts. 85, 86, 87, 89)
-        ("right to lodge a complaint", "Art. 85"),
-        ("right to complain", "Art. 85"),
-        ("lodge a complaint", "Art. 85"),
-        ("can complain", "Art. 85"),
-        ("complain about", "Art. 85"),
-        ("complaint about", "Art. 85"),
-        ("right to explanation", "Art. 86"),
-        ("right to an explanation", "Art. 86"),
-        ("explanation of decision", "Art. 86"),
-        ("right to know", "Art. 86"),
-        ("explanation when an ai", "Art. 86"),
-        ("whistleblower", "Art. 87"),
-        ("whistleblowing", "Art. 87"),
-        ("reporting of infringements", "Art. 87"),
-        ("protections for whistle", "Art. 87"),
-        ("downstream complaint", "Art. 89"),
-        ("complaint to ai office", "Art. 89"),
-        # Codes of conduct + penalties (Arts. 95, 100, 101)
-        ("voluntary code of conduct", "Art. 95"),
-        ("code of conduct", "Art. 95"),
-        ("codes of conduct", "Art. 95"),
-        ("penalties for eu institutions", "Art. 100"),
-        ("eu institutions", "Art. 100"),
-        ("eu bodies", "Art. 100"),
-        ("fines for eu institutions", "Art. 100"),
-        ("edps fines", "Art. 100"),
-        ("gpai penalty", "Art. 101"),
-        ("gpai fine", "Art. 101"),
-        ("penalty for gpai", "Art. 101"),
-        ("penalty for general-purpose", "Art. 101"),
-        ("penalty for general purpose", "Art. 101"),
-        ("commission impose", "Art. 101"),
-        # Transition + review (Arts. 111, 112)
-        ("transitional provision", "Art. 111"),
-        ("pre-existing high-risk", "Art. 111"),
-        ("review of the regulation", "Art. 112"),
-        ("evaluation of the regulation", "Art. 112"),
-        ("commission review", "Art. 112"),
-        # Annex II / V / VIII
-        ("criminal offences for biometric", "Annex II"),
-        ("article 5(1)(h) offences", "Annex II"),
-        ("declaration of conformity contents", "Annex V"),
-        ("contents of declaration of conformity", "Annex V"),
-        ("must the eu declaration", "Annex V"),
-        ("must the declaration", "Annex V"),
-        ("registration information", "Annex VIII"),
-        ("eu database information", "Annex VIII"),
-        ("eu ai database", "Annex VIII"),
-        ("registered in the eu", "Annex VIII"),
-        ("information must be registered", "Annex VIII"),
-        # Digital Omnibus (May 2026 political agreement)
-        ("digital omnibus", "Art. 113"),
-        ("2 december 2027", "Art. 113"),
-        ("2 august 2028", "Art. 113"),
-        # New prohibited categories under Digital Omnibus
-        ("ai-generated csam", "Art. 5"),
-        ("ai csam", "Art. 5"),
-        ("non-consensual intimate", "Art. 5"),
-        ("nudification", "Art. 5"),
-        ("intimate imagery", "Art. 5"),
-        # Definitions (Art. 3)
-        ("serious incident", "Art. 3"),
-        ("definition of serious incident", "Art. 3"),
-        ("definition of deepfake", "Art. 3"),
-        ("definition of ai system", "Art. 3"),
-        ("definition of provider", "Art. 3"),
-        ("definition of deployer", "Art. 3"),
-    ]
+    # Uses module-level :data:`_KEYWORD_ENTITY_MAP` (defined above the function).
     for kw, art_ref in _KEYWORD_ENTITY_MAP:
         if kw in q_lower and art_ref not in entities:
             entities.append(art_ref)

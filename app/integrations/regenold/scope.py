@@ -1073,6 +1073,21 @@ _DIMENSION_KEYWORDS: frozenset[str] = frozenset(
 )
 
 
+# Pre-compiled alternation over the combined anchor + dimension vocab.
+# Replaces the ~170-entry per-request substring scan in
+# :func:`_has_ai_act_anchor` and :func:`_looks_like_nonsense` with a
+# single linear C-level regex match. Sorted longest-first so a shorter
+# substring doesn't shadow a longer specific anchor (e.g. "ai" inside
+# "ai system" — the longest-first ordering is belt-and-braces here
+# because the regex engine itself returns the first match position).
+_ANCHOR_VOCAB: tuple[str, ...] = tuple(
+    sorted(_AI_ACT_ANCHORS | _DIMENSION_KEYWORDS, key=len, reverse=True)
+)
+_ANCHOR_RE: re.Pattern[str] = re.compile(
+    "|".join(re.escape(s) for s in _ANCHOR_VOCAB)
+)
+
+
 # Conversational fillers. Match start-of-text or a short standalone
 # phrase. Combined with the no-anchor rule below to fire only on
 # pure-filler questions ("Hi how are you?"), not on filler-prefixed
@@ -1239,11 +1254,7 @@ def _has_ai_act_anchor(text: str) -> bool:
     the same anchor — users freely vary between the two forms.
     """
     low = text.lower().replace("-", " ")
-    if any(anchor in low for anchor in _AI_ACT_ANCHORS):
-        return True
-    if any(dim in low for dim in _DIMENSION_KEYWORDS):
-        return True
-    return False
+    return _ANCHOR_RE.search(low) is not None
 
 
 def _has_other_regulation_mention(text: str) -> bool:
@@ -1281,7 +1292,7 @@ def _looks_like_nonsense(text: str) -> bool:
     low_tokens = {t.lower() for t in tokens}
     if low_tokens & common:
         return False
-    if any(anchor in " ".join(low_tokens) for anchor in _AI_ACT_ANCHORS):
+    if _ANCHOR_RE.search(" ".join(low_tokens)) is not None:
         return False
     return True
 
