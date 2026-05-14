@@ -141,19 +141,27 @@ class TestExtractSubpointsMixedTails:
     ) -> None:
         assert _extract_subpoints(tail) == expected
 
-    def test_high_numeric_dropped(self) -> None:
-        # ``(99)`` is rejected as > 20; the trailing letter survives.
-        assert _extract_subpoints("(99)(z)") == ["z"]
+    def test_high_numeric_rejects_entire_chain(self) -> None:
+        # ``(99)`` is rejected as > 20. Policy is all-or-nothing: if any
+        # token in the chain is out of range, drop the WHOLE chain — a
+        # partial keep would ship phantom precision (``Article 13.z``
+        # from ``Art. 13(99)(z)`` looks valid but doesn't reflect what
+        # the input said).
+        assert _extract_subpoints("(99)(z)") == []
 
     def test_high_numeric_alone_yields_empty(self) -> None:
         # ``(99)`` on its own → entire ref shapes as bare ``Article N``.
         assert _extract_subpoints("(99)") == []
 
     def test_at_threshold_boundary(self) -> None:
-        # 20 is the inclusive upper bound; 21 is rejected.
+        # 20 is the inclusive upper bound; 21 is rejected (and the
+        # whole chain drops if 21 is anywhere in it).
         assert _extract_subpoints("(20)") == ["20"]
         assert _extract_subpoints("(21)") == []
+        assert _extract_subpoints("(21)(a)") == []
 
-    def test_malformed_token_dropped(self) -> None:
-        # Hyphen in the paren content fails ``[A-Za-z0-9]+`` — token dropped.
-        assert _extract_subpoints("(1-2)(a)") == ["a"]
+    def test_malformed_token_rejects_entire_chain(self) -> None:
+        # Hyphen in the paren content fails ``[A-Za-z0-9]+``. Same
+        # all-or-nothing policy — the trailing valid letter doesn't
+        # rescue a chain that contains a malformed earlier segment.
+        assert _extract_subpoints("(1-2)(a)") == []

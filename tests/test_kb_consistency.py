@@ -162,28 +162,12 @@ class TestLegacyMapConsistency:
 
     def test_keyword_entity_map_targets_resolve(self) -> None:
         """Every ``_KEYWORD_ENTITY_MAP`` target article is real."""
-        from app.engines.graph_rag import _deterministic_parse
+        from app.engines.graph_rag import _KEYWORD_ENTITY_MAP
 
-        # _KEYWORD_ENTITY_MAP isn't a module-level constant; it's defined
-        # inside _deterministic_parse. We exercise it indirectly by
-        # asking the parser to extract entities from a question that
-        # contains every keyword — but that's impractical, so instead
-        # we import the source module and pull the list via the
-        # function's closure. Tactical: just walk the literal value at
-        # import time by re-reading the module file.
-        import inspect
-        source = inspect.getsource(_deterministic_parse)
-        # Each entry in _KEYWORD_ENTITY_MAP looks like ``("kw", "Art. X")``.
-        # Extract the second element with a tight regex over the literal.
-        import re as _re
-        refs = _re.findall(r'\(\s*"[^"]+"\s*,\s*"([^"]+)"\s*\)', source)
-        # The function source also contains ``"_KEYWORD_ENTITY_MAP: list[…]"``
-        # type annotation and the dict's inline definition; the regex
-        # over (str, str) tuples captures only the keyword→article pairs.
-        assert refs, "Could not extract _KEYWORD_ENTITY_MAP refs from source"
-        for ref in refs:
+        assert _KEYWORD_ENTITY_MAP, "_KEYWORD_ENTITY_MAP is empty"
+        for keyword, ref in _KEYWORD_ENTITY_MAP:
             assert _is_known_or_prefix_known(ref), (
-                f"_KEYWORD_ENTITY_MAP entry maps to {ref!r}, not in "
+                f"_KEYWORD_ENTITY_MAP[{keyword!r}] = {ref!r}, not in "
                 f"ARTICLE_EXISTENCE"
             )
 

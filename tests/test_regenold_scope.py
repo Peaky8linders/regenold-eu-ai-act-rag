@@ -599,8 +599,11 @@ class TestRegenoldEvalGate:
         sycophancy traps) that the deterministic-fallback path
         cannot fully handle without LLM reasoning — those categories
         intentionally pin the LLM-path's "value over deterministic".
-        Floor here is the round-5 deterministic baseline (78%) with
-        an 8-pt buffer so a real regression still trips.
+        Floor: the deterministic path currently lands the full 276-
+        scenario surface at 100%. We ratchet to 0.98 so a 5-scenario
+        regression trips CI but a single intentional churn (e.g. a
+        tightened predicate) doesn't. Lowering past 0.98 should be a
+        deliberate, reviewed change — bump down with a comment if so.
         """
         from evals.regenold.runner import run_all
 
@@ -611,7 +614,7 @@ class TestRegenoldEvalGate:
         # Show context if it fails so the operator sees which scenarios
         # regressed without re-running the suite separately.
         failures = [r for r in results if not r.passed]
-        assert ratio >= 0.70, (
+        assert ratio >= 0.98, (
             f"Eval pass rate dropped to {ratio:.1%} ({passed}/{total}). "
             f"Failures: {[(r.category, r.scenario_id) for r in failures]}"
         )

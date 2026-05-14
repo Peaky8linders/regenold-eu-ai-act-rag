@@ -633,25 +633,31 @@ def test_references_match_strict_spec_format() -> None:
 def test_answer_capped_at_max_sentences() -> None:
     """Spec: "Short (3-4 sentences max) but professionally worded answers".
 
-    We post-truncate to MAX_ANSWER_SENTENCES so a verbose engine
-    output never violates the cap. Sentence boundary = end-of-sentence
-    punctuation followed by whitespace.
+    Hard rule (per CLAUDE.md): ``MAX_ANSWER_SENTENCES == 3``. This test
+    pins both the truncation behaviour AND the constant itself so a
+    quiet bump back up to 4 trips the suite — that change should be a
+    deliberate, measured one, not a stealth re-relax.
     """
-    import re
-
     from app.integrations.regenold.models import (
         MAX_ANSWER_SENTENCES,
+        _split_sentences,
         _truncate_to_sentences,
     )
 
-    # Pure unit — confirm we cap to exactly N sentences.
-    long_answer = " ".join(f"Sentence {i}." for i in range(1, 10))  # 9 sentences
-    truncated = _truncate_to_sentences(long_answer, max_sentences=4)
-    sentence_count = len(re.findall(r"[.!?]+(?:\s+|$)", truncated))
-    assert sentence_count == 4, f"expected 4 sentences, got {sentence_count}: {truncated!r}"
+    # Hard rule: must be exactly 3. Don't relax this without measuring
+    # the conciseness delta against the eval (see CLAUDE.md hard rule #2).
+    assert MAX_ANSWER_SENTENCES == 3, (
+        f"MAX_ANSWER_SENTENCES drifted to {MAX_ANSWER_SENTENCES}; expected 3"
+    )
 
-    # Exact spec floor — must not relax past 4 sentences.
-    assert MAX_ANSWER_SENTENCES <= 4
+    # Confirm we cap to exactly N sentences (using the production
+    # abbreviation-aware splitter so "Art. 26." isn't mis-counted as 2).
+    long_answer = " ".join(f"Sentence {i}." for i in range(1, 10))  # 9 sentences
+    truncated = _truncate_to_sentences(long_answer, max_sentences=MAX_ANSWER_SENTENCES)
+    sentence_count = len(_split_sentences(truncated))
+    assert sentence_count == MAX_ANSWER_SENTENCES, (
+        f"expected {MAX_ANSWER_SENTENCES} sentences, got {sentence_count}: {truncated!r}"
+    )
 
 
 def test_answer_endpoint_truncates_long_engine_output() -> None:
