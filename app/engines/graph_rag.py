@@ -2146,7 +2146,47 @@ def _retrieve_from_kb(
             "obligation_count": 0,
         })
 
-    context.nodes_traversed = len(context.obligations) + len(context.dimension_info)
+    # Per-paragraph article requirements — ported from CodexAI as a richer
+    # signal source on top of the dimension-level EC_CHECKER_OBLIGATION_MAP.
+    # Each ``ARTICLE_REQUIREMENTS`` row carries the paragraph text + remediation
+    # + effort estimate per sub-paragraph (e.g. ``"9(2)(a)"``). We surface them
+    # via ``article_info`` so the engine + downstream consumers can reach for
+    # paragraph-level prose when a question anchors on a specific article.
+    #
+    # Strictly additive: ``article_info`` is unused in the deterministic
+    # answer path today, so loading rows here can't change the wire response
+    # by itself. The cap of 6 paragraphs/article keeps the structure bounded
+    # for hub articles (Art. 13 has 12 paragraphs). This is hidden behind
+    # ``try / except`` because the requirements module is fully optional —
+    # the engine must keep producing answers if it's unavailable.
+    try:
+        from app.data.article_requirements_full import get_article_requirements
+        for entity in query.entities:
+            req = get_article_requirements(entity)
+            if not req:
+                continue
+            paragraphs = req.get("paragraphs", {}) or {}
+            for idx, (pid, prow) in enumerate(paragraphs.items()):
+                if idx >= 6:
+                    break
+                context.article_info.append({
+                    "article": entity,
+                    "paragraph_id": pid,
+                    "title": req.get("title", ""),
+                    "chapter": req.get("chapter", ""),
+                    "enforcement": req.get("enforcement", ""),
+                    "text": prow.get("text", ""),
+                    "remediation": prow.get("remediation", ""),
+                    "effort_hours": prow.get("effort_hours", 0),
+                })
+    except Exception as exc:  # noqa: BLE001 — article-requirements is optional
+        logger.debug("article_requirements_full_failed: %s", exc)
+
+    context.nodes_traversed = (
+        len(context.obligations)
+        + len(context.dimension_info)
+        + len(context.article_info)
+    )
     return context
 
 

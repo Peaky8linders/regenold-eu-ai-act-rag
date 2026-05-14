@@ -71,18 +71,287 @@ MATURITY_DIMENSIONS: tuple[MaturityDimension, ...] = (
         label="General-Purpose AI obligations (Arts. 51-56)",
         questions=("GPAI classification assessed?", "Annex XI documentation prepared?"),
     ),
+    # ─── Extended dimensions ported from CodexAI (May 2026 — round 19+) ────
+    # The 16 entries below extend the original 8-dimension skeleton to the
+    # full 24-dimension surface used by the parent CodexAI compliance
+    # platform. These are NOT consumed by the Regenold deterministic
+    # fallback as classification topics (hard rule #3 in CLAUDE.md) — the
+    # engine only reads ``dim.id`` / ``dim.label`` / ``len(dim.questions)``
+    # for dimension catalogue surfacing. They are added so:
+    #
+    #   * a question hinting at a downstream dimension (``dimension_hint``)
+    #     can resolve cleanly instead of falling back to "no match",
+    #   * the role × risk-class matrix in ``get_dimensions_for_role_and_risk``
+    #     can filter the full 24-dimension set (matching CodexAI semantics),
+    #   * the KB stays the single source of truth for the dimension catalogue
+    #     the parent app's typed ontology references.
+    #
+    # The ``questions`` tuples are deliberately short — they're not
+    # classification anchors, they're a synthesised summary of the
+    # source ``AssessmentQuestion.text`` payload to keep the dimension
+    # self-documenting without ballooning module size.
+    MaturityDimension(
+        id="ai_literacy",
+        label="AI literacy (Art. 4)",
+        questions=(
+            "AI literacy training programme for staff?",
+            "Training covers context of AI system use?",
+            "Persons affected by AI considered in literacy programme?",
+        ),
+    ),
+    MaturityDimension(
+        id="logging",
+        label="Record-keeping / automatic logging (Art. 12)",
+        questions=(
+            "Automatic event logging for AI decisions?",
+            "Logs capture inputs, outputs, and timestamps?",
+            "Logs tamper-resistant with defined retention?",
+            "AI incident response playbooks rehearsed?",
+        ),
+    ),
+    MaturityDimension(
+        id="human_oversight",
+        label="Human oversight (Art. 14)",
+        questions=(
+            "Human can override or stop the AI?",
+            "Escalation procedures for edge cases?",
+            "Automation-bias safeguards in place?",
+            "Interface enables understanding of AI output?",
+        ),
+    ),
+    MaturityDimension(
+        id="security",
+        label="Accuracy, robustness, cybersecurity (Art. 15)",
+        questions=(
+            "Accuracy metrics defined and declared?",
+            "Tested against adversarial inputs?",
+            "Cybersecurity measures proportionate to risk?",
+            "Continuous performance monitoring in place?",
+            "Disparate impact analysis with bias mitigation?",
+        ),
+    ),
+    MaturityDimension(
+        id="quality_management",
+        label="Quality management system (Art. 17)",
+        questions=(
+            "QMS documented with compliance strategy and objectives?",
+            "Design and development procedures defined?",
+            "Testing and validation protocols established?",
+            "Incident handling and corrective-action procedures in place?",
+            "RACI matrix defines responsibilities across AI lifecycle?",
+        ),
+    ),
+    MaturityDimension(
+        id="deployer_obligations",
+        label="Deployer obligations + FRIA (Arts. 26-27)",
+        questions=(
+            "Using the AI system per provider's instructions?",
+            "Human oversight by competent individuals?",
+            "Input data relevant and representative?",
+            "Monitoring operation and reporting to provider?",
+            "Fundamental Rights Impact Assessment conducted?",
+            "Affected individuals informed of AI use?",
+        ),
+    ),
+    MaturityDimension(
+        id="content_transparency",
+        label="Content transparency / deepfakes (Art. 50)",
+        questions=(
+            "Synthetic content marked in machine-readable format?",
+            "Marking solutions interoperable and robust?",
+            "Deep-fake content disclosed as AI-generated?",
+            "Emotion-recognition / biometric users informed?",
+            "Disclosures provided clearly at first interaction?",
+        ),
+    ),
+    MaturityDimension(
+        id="gpai_systemic_risk",
+        label="GPAI systemic risk (Arts. 51, 55-56)",
+        questions=(
+            "Systemic risk evaluation performed (10^25 FLOP threshold)?",
+            "Model evaluation + red-teaming conducted?",
+            "Systemic risk mitigation measures documented?",
+            "Serious incident reporting to AI Office established?",
+            "Adequate cybersecurity for the GPAI model?",
+        ),
+    ),
+    MaturityDimension(
+        id="decision_governance",
+        label="Decision governance / runtime interception (Arts. 9, 14, 15, 72)",
+        questions=(
+            "Behavioural rules defined for AI decision outputs?",
+            "Decision interception layer captures all AI actions before execution?",
+            "Escalation paths configured for blocked or uncertain decisions?",
+            "Decision audit trail with full context retained?",
+            "Behavioural baselines monitored for anomalous patterns?",
+            "Confidence calibration validated against actual outcomes?",
+        ),
+    ),
+    MaturityDimension(
+        id="access_control",
+        label="Access control & identity (Art. 15 / ISO 27002)",
+        questions=(
+            "RBAC enforced for AI infrastructure, model repos, and endpoints?",
+            "Service-account keys rotated, vaulted, no defaults?",
+            "MFA required for all admin / privileged AI access?",
+        ),
+    ),
+    MaturityDimension(
+        id="infra_mlops",
+        label="Infrastructure & MLOps security (Art. 15)",
+        questions=(
+            "Network segmentation separates training, staging, production?",
+            "CIS benchmarks applied to AI workload configuration?",
+            "MLOps CI/CD pipeline secured with artifact signing?",
+        ),
+    ),
+    MaturityDimension(
+        id="supply_chain",
+        label="Supply chain & third-party risk (Art. 15)",
+        questions=(
+            "Due diligence on external AI models and services?",
+            "SCA scanning with CVE remediation and license compliance?",
+            "Data-provider agreements include security + audit clauses?",
+        ),
+    ),
+    MaturityDimension(
+        id="agent_inventory",
+        label="Agent inventory — 4-facet (Art. 11 + Nannini §3)",
+        questions=(
+            "Documented agent inventory artefact at the repo root?",
+            "Deployment category declared (HR / Clinical / DevOps / etc.)?",
+            "Each external action classified read-only / write / exec / network / payment?",
+        ),
+    ),
+    MaturityDimension(
+        id="tool_governance",
+        label="Tool governance — prEN 18282 (Art. 15(4))",
+        questions=(
+            "Each tool's permission enforced at API level, not via prompt?",
+            "Open-ended code execution bounded (sandbox, allow-list)?",
+            "Credentials provisioned just-in-time with short TTLs (NHI)?",
+            "Audit-log writes distinguish user-initiated from AI-initiated?",
+        ),
+    ),
+    MaturityDimension(
+        id="chain_transparency",
+        label="Multi-party chain transparency (Arts. 12, 13, 50)",
+        questions=(
+            "Each decision record carries a parent_decision_id?",
+            "Agent identities cryptographically signed (not self-asserted)?",
+            "Synthetic content marked machine-readably before downstream tool calls?",
+        ),
+    ),
+    MaturityDimension(
+        id="runtime_drift",
+        label="Runtime drift / Art. 3(23) substantial modification",
+        questions=(
+            "Upstream model pinned to a dated snapshot?",
+            "System prompts stored as versioned templates?",
+            "Tool catalogue declared in a versioned manifest?",
+            "Trajectory / behavioural monitoring against a conformity baseline?",
+            "Documented Art. 3(23) substantial-modification threshold procedure?",
+        ),
+    ),
+    MaturityDimension(
+        id="regulatory_perimeter",
+        label="Regulatory perimeter — cross-instrument (Nannini Table 5)",
+        questions=(
+            "GDPR personal-data trace completed for every tool?",
+            "Data Act applicability assessed?",
+            "DSA applicability assessed?",
+            "CRA applicability assessed (product with digital elements)?",
+            "NIS2 applicability assessed (essential / important entity)?",
+            "Sectoral legislation reviewed (MDR / MiFID II / PSD2 / DORA)?",
+            "adjacent-legislation.md summarising the regulatory map?",
+        ),
+    ),
+    MaturityDimension(
+        id="voluntary_codes",
+        label="Voluntary codes of conduct (Art. 95)",
+        questions=(
+            "Voluntary code of conduct adopted?",
+            "Environmental sustainability considered?",
+            "AI literacy promoted among stakeholders?",
+            "Diversity and inclusion in design process?",
+        ),
+    ),
 )
+
+
+# ─── Role × risk-class dimension filter ──────────────────────────────────────
+# Deployers of third-party high-risk AI carry roughly ~30-40% of the provider
+# obligation surface. The map below mirrors the CodexAI surface — ``None``
+# keeps the full dimension, a tuple of question-prefix tokens trims to a
+# relevant subset. Because the Regenold bundle ships questions as plain
+# strings (not :class:`AssessmentQuestion` instances with stable IDs), the
+# subset filter operates on the leading substring of each question. Engines
+# that don't need the trim ignore this surface entirely.
+DEPLOYER_APPLICABLE_DIMENSIONS: dict[str, tuple[str, ...] | None] = {
+    "ai_literacy": None,
+    "deployer_obligations": None,
+    "transparency": ("Instructions for use", "Capabilities"),
+    "human_oversight": ("Human can override", "Escalation", "Interface enables"),
+    "security": ("Cybersecurity", "Continuous performance"),
+    "decision_governance": ("Behavioural rules", "Escalation paths", "Decision audit trail"),
+    "supply_chain": None,
+    "access_control": ("RBAC", "MFA"),
+    "content_transparency": None,
+}
 
 
 def get_dimensions_for_risk_level(risk_level: str | None) -> tuple[MaturityDimension, ...]:
     """Return dimensions in scope for ``risk_level``.
 
-    The minimal bundle returns the full 4-dimension stub for every risk
+    The minimal bundle returns the full dimension catalogue for every risk
     level. The full CodexAI implementation maps each level to a subset.
     """
     if risk_level not in {"high", "limited", "minimal", "unacceptable", None}:
         raise ValueError(f"Unknown risk level: {risk_level!r}")
     return MATURITY_DIMENSIONS
+
+
+def get_dimensions_for_role_and_risk(
+    risk_level: str | None,
+    operator_role: str | None = None,
+) -> tuple[MaturityDimension, ...]:
+    """Return dimensions filtered by both risk level and operator role.
+
+    * ``provider`` / ``None`` — same as :func:`get_dimensions_for_risk_level`.
+    * ``deployer`` — restricted to :data:`DEPLOYER_APPLICABLE_DIMENSIONS`,
+      with question lists trimmed to the role-relevant subset.
+    * any other role — returns the full risk-level set unchanged (other roles
+      surface through the typed role-obligation matrix in
+      :mod:`app.data.role_obligations` and :data:`app.data.ontology.ROLE_OBLIGATIONS`).
+
+    Ported from the CodexAI accessor to keep the engine surface symmetrical
+    with the parent app. The Regenold deterministic fallback doesn't yet
+    branch on operator role, but the helper is available for downstream
+    consumers (and future Stage-2 enhancements) that need the filter.
+    """
+    base = get_dimensions_for_risk_level(risk_level)
+    if operator_role is None or operator_role == "provider":
+        return base
+    if operator_role != "deployer":
+        return base
+
+    filtered: list[MaturityDimension] = []
+    for dim in base:
+        if dim.id not in DEPLOYER_APPLICABLE_DIMENSIONS:
+            continue
+        allowed_prefixes = DEPLOYER_APPLICABLE_DIMENSIONS[dim.id]
+        if allowed_prefixes is None:
+            filtered.append(dim)
+            continue
+        subset = tuple(
+            q for q in dim.questions
+            if any(q.startswith(prefix) for prefix in allowed_prefixes)
+        )
+        if subset:
+            filtered.append(
+                MaturityDimension(id=dim.id, label=dim.label, questions=subset)
+            )
+    return tuple(filtered)
 
 
 # EC-Checker → KB-dimension surface. Used by the engine when a question

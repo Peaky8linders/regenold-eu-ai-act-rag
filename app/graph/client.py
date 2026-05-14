@@ -1,32 +1,309 @@
-"""Neo4j graph client — disabled stub.
+"""Neo4j Graph Client — connection management and query execution.
 
-The full CodexAI engine uses Neo4j as a cache layer over the KB-projected
-compliance graph. The stub returns a client with ``enabled=False`` so
-``graph_rag.py`` takes its built-in KB-fallback path. Restoring real
-Neo4j is a one-file swap: drop the ``neo4j`` SDK into the venv and
-replace this file with the parent-repo version.
+Port of the parent CodexAI client, adapted to the Regenold bundle:
+
+* Singleton pattern (matching ``get_evidence_store()`` / ``get_drift_detector()``
+  in the parent repo).
+* **Opt-in activation.** The client wires up a real Neo4j driver only
+  when ``NEO4J_URI`` is set in the environment AND the optional ``neo4j``
+  Python driver is importable. Otherwise ``enabled`` stays ``False`` and
+  the engine takes its deterministic KB-fallback path (BM25 + curated
+  keyword + obligation map). This is the disabled default in this bundle.
+* ``neo4j`` is treated as an **optional dependency**. The import is deferred
+  to inside the activation guard, so this module loads cleanly even when
+  the package isn't installed.
+* Pooled session usage and bounded retry on ``ServiceUnavailable`` so a
+  transient cluster blip doesn't take the request path down.
+
+The wire-side public API is intentionally stable: ``enabled``,
+``execute_read(query, parameters)``, ``execute_write(query, parameters)``,
+``close()``. The engine only depends on ``enabled`` + ``execute_read``.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
+import os
+import threading
+import time
+from typing import Any
+
+from app.graph.config import GraphSettings
+from app.graph.ontology import GraphStats
+
+logger = logging.getLogger(__name__)
+
+_client: GraphClient | None = None
+_client_lock = threading.Lock()
+
+# Allowlist of node labels for stats queries (never from user input).
+_STATS_LABELS = frozenset([
+    "Article", "Obligation", "Dimension", "Question",
+    "RiskLevel", "AnnexIIICategory", "RoadmapTask",
+    "NISTSubcategory", "ISOClause", "KBMetadata",
+])
 
 
-@dataclass
-class _DisabledClient:
-    enabled: bool = False
+def _neo4j_available() -> bool:
+    """Return True if the optional ``neo4j`` driver package is importable."""
+    try:
+        import neo4j  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
-    def execute_read(self, *_args: object, **_kwargs: object) -> list[dict]:
+
+def _should_activate(settings: GraphSettings) -> bool:
+    """Hard activation gate.
+
+    Activates only when ``NEO4J_URI`` is set in the process environment
+    AND the ``neo4j`` driver is importable. The pydantic ``enabled`` flag
+    is treated as advisory — the env-var presence is what flips the
+    switch for this bundle. This keeps the disabled default
+    non-negotiable for the eval/test envs that don't set ``NEO4J_URI``.
+    """
+    if not os.environ.get("NEO4J_URI"):
+        return False
+    if not _neo4j_available():
+        logger.warning(
+            "NEO4J_URI is set but the 'neo4j' driver package is not installed — "
+            "graph features remain disabled. Install with: pip install neo4j>=5.0"
+        )
+        return False
+    # Honour an explicit opt-out even when URI + driver are both present.
+    if not settings.enabled and os.environ.get("NEO4J_ENABLED", "").lower() in {"0", "false", "no"}:
+        return False
+    return True
+
+
+class GraphClient:
+    """Neo4j driver wrapper with connection pooling, retry, and health checks."""
+
+    def __init__(self, settings: GraphSettings) -> None:
+        self._settings = settings
+        self._driver: Any = None
+
+        if not _should_activate(settings):
+            # Disabled stub path — driver stays ``None`` and ``enabled``
+            # reports ``False``. The engine takes the KB-fallback path.
+            return
+
+        try:
+            # Deferred import — ``neo4j`` is an optional dependency. The
+            # ``_should_activate`` guard above already confirmed it's
+            # importable, so failures here are environmental.
+            import neo4j
+
+            self._driver = neo4j.GraphDatabase.driver(
+                settings.uri,
+                auth=(settings.username, settings.password.get_secret_value()),
+                max_connection_pool_size=settings.max_connection_pool_size,
+                connection_timeout=settings.connection_timeout,
+            )
+            logger.info("Neo4j driver initialized: %s", settings.uri)
+        except Exception as exc:  # noqa: BLE001
+            # Catch-all so a misconfigured driver never breaks request
+            # serving. We log and fall back to disabled.
+            logger.warning("Neo4j connection failed: %s — graph features disabled", exc)
+            self._driver = None
+
+    @property
+    def enabled(self) -> bool:
+        return self._driver is not None
+
+    # ─── Internal helpers ────────────────────────────────────────────────
+
+    def _service_unavailable_class(self) -> type[BaseException] | None:
+        """Resolve the ``ServiceUnavailable`` exception class lazily.
+
+        We can't import this at module top because ``neo4j`` is optional.
+        Returns ``None`` if the package is unavailable.
+        """
+        try:
+            from neo4j.exceptions import ServiceUnavailable  # type: ignore[import-not-found]
+            return ServiceUnavailable
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _run_read(self, query: str, parameters: dict | None) -> list[dict]:
+        """Single attempt at a read query within a pooled session."""
+        # ``with driver.session(...)`` returns a session from the pool.
+        with self._driver.session(database=self._settings.database) as session:
+            result = session.run(query, parameters or {})
+            return [dict(record) for record in result]
+
+    # ─── Public API ──────────────────────────────────────────────────────
+
+    def execute_read(self, query: str, parameters: dict | None = None) -> list[dict]:
+        """Execute a read-only Cypher query and return results as dicts.
+
+        Retries up to ``settings.max_retries`` times on
+        ``ServiceUnavailable`` with a linear backoff. Any other exception
+        is logged and an empty list is returned so the engine can fall
+        back gracefully without leaking driver internals to the wire.
+        """
+        if self._driver is None:
+            return []
+
+        unavailable = self._service_unavailable_class()
+        attempts = max(1, self._settings.max_retries + 1)
+        last_exc: BaseException | None = None
+
+        for attempt in range(attempts):
+            try:
+                return self._run_read(query, parameters)
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                # Only retry the well-known transient class.
+                if unavailable is not None and isinstance(exc, unavailable) and attempt < attempts - 1:
+                    backoff = self._settings.retry_backoff_seconds * (attempt + 1)
+                    logger.info(
+                        "Neo4j read transient failure (attempt %d/%d), backing off %.2fs: %s",
+                        attempt + 1, attempts, backoff, exc,
+                    )
+                    time.sleep(backoff)
+                    continue
+                logger.warning("Neo4j execute_read failed: %s", exc)
+                return []
+
+        # Should be unreachable — every loop branch either returns or
+        # continues. Defensive only.
+        logger.warning("Neo4j execute_read exhausted retries: %s", last_exc)
         return []
 
+    def execute_write(self, query: str, parameters: dict | None = None) -> list[dict]:
+        """Execute a write Cypher query within a managed transaction."""
+        if self._driver is None:
+            return []
+
+        def _work(tx: Any) -> list[dict]:
+            result = tx.run(query, parameters or {})
+            return [dict(record) for record in result]
+
+        try:
+            with self._driver.session(database=self._settings.database) as session:
+                return session.execute_write(_work)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Neo4j execute_write failed: %s", exc)
+            return []
+
+    def execute_write_batch(self, queries: list[tuple[str, dict]]) -> None:
+        """Execute multiple write queries in a single transaction."""
+        if self._driver is None:
+            return
+        try:
+            with self._driver.session(database=self._settings.database) as session:
+                with session.begin_transaction() as tx:
+                    for query, params in queries:
+                        tx.run(query, params)
+                    tx.commit()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Neo4j execute_write_batch failed: %s", exc)
+            raise
+
+    def health_check(self) -> dict[str, Any]:
+        """Check Neo4j connectivity and return status."""
+        if not self.enabled:
+            return {"status": "disabled", "message": "NEO4J_URI not set or neo4j driver missing"}
+        try:
+            result = self.execute_read("RETURN 1 AS ping")
+            return {"status": "healthy", "ping": result[0]["ping"] if result else None}
+        except Exception:  # noqa: BLE001
+            logger.warning("Neo4j health check failed", exc_info=True)
+            return {"status": "unhealthy", "error": "Graph database unavailable"}
+
+    def get_stats(self) -> GraphStats:
+        """Return graph summary statistics.
+
+        The parent repo projects the in-process KB into a ``GraphStats``
+        shape when the cache is cold. The Regenold bundle ships only the
+        Q&A surface and doesn't include the framework/agentic-taxonomy
+        modules the parent projection reads from, so when disabled we
+        return an empty ``GraphStats`` with ``healthy=False`` — the
+        engine never calls ``get_stats`` on the request path, so this is
+        observational only.
+        """
+        if not self.enabled:
+            return GraphStats(healthy=False)
+
+        # Per-label node counts via the static allowlist (the
+        # ``db.stats.retrieve`` procedure isn't available on every Neo4j
+        # edition, so we go straight to the per-label path which works
+        # on Community as well as Enterprise).
+        nodes_by_type: dict[str, int] = {}
+        for label in _STATS_LABELS:
+            try:
+                # Labels are from a hardcoded allowlist, not user input.
+                result = self.execute_read(
+                    f"MATCH (n:{label}) RETURN count(n) AS cnt"
+                )
+                if result:
+                    nodes_by_type[label] = result[0]["cnt"]
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("graph_stats_label_count_failed label=%s error=%s", label, exc)
+
+        edges_by_type: dict[str, int] = {}
+        try:
+            edge_results = self.execute_read(
+                "MATCH ()-[r]->() RETURN type(r) AS rel_type, count(r) AS cnt"
+            )
+            edges_by_type = {r["rel_type"]: r["cnt"] for r in edge_results}
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("graph_stats_edge_count_failed error=%s", exc)
+
+        seed_version = ""
+        try:
+            meta = self.execute_read(
+                "MATCH (m:KBMetadata) RETURN m.seed_version AS v LIMIT 1"
+            )
+            if meta:
+                seed_version = meta[0]["v"] or ""
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("graph_stats_seed_version_failed error=%s", exc)
+
+        return GraphStats(
+            total_nodes=sum(nodes_by_type.values()),
+            total_edges=sum(edges_by_type.values()),
+            nodes_by_type=nodes_by_type,
+            edges_by_type=edges_by_type,
+            seed_version=seed_version,
+            healthy=True,
+        )
+
+    def clear_graph(self) -> None:
+        """Delete all nodes and edges. Use with caution."""
+        if not self.enabled:
+            return
+        self.execute_write("MATCH (n) DETACH DELETE n")
+
     def close(self) -> None:
-        return None
+        """Close the Neo4j driver."""
+        if self._driver is not None:
+            try:
+                self._driver.close()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Neo4j driver close failed: %s", exc)
+            self._driver = None
 
 
-_SINGLETON: _DisabledClient | None = None
+def get_graph_client() -> GraphClient:
+    """Get or create the singleton graph client (thread-safe)."""
+    global _client
+    if _client is None:
+        with _client_lock:
+            if _client is None:
+                # Re-read settings on first access so a late env-var
+                # rebind (e.g. via Railway) still takes effect.
+                _client = GraphClient(GraphSettings())
+    return _client
 
 
-def get_graph_client() -> _DisabledClient:
-    global _SINGLETON
-    if _SINGLETON is None:
-        _SINGLETON = _DisabledClient()
-    return _SINGLETON
+def _reset_singleton_for_tests() -> None:
+    """Test hook — drop the cached singleton so a fresh ``GraphSettings``
+    is read on the next ``get_graph_client()`` call. Not part of the
+    public API."""
+    global _client
+    with _client_lock:
+        if _client is not None:
+            _client.close()
+        _client = None

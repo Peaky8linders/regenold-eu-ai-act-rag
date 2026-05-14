@@ -17,28 +17,45 @@ For transparency with the Regenold review team this slice has been lifted into a
 - Snapshot eval results from the rounds run inside `legit-ai` (`evals/regenold_results_round*.json`).
 - The integration + partner-facing docs from `docs/partners/regenold/`.
 
-What was deliberately **stubbed** rather than copied:
+## What ships in this repo
 
-- The full audit-chain (`app/evidence/store.py`) — replaced with a no-op recorder. The wire shape of audit entries is preserved; nothing is persisted to disk.
-- Neo4j graph client (`app/graph/client.py`) — replaced with a disabled stub so the engine takes the KB-fallback path. Restoring Neo4j is a one-file swap.
-- The Mistral provider (`app/llm/mistral_provider.py`) — replaced with a thin shape-only adapter. To run the engine with a real LLM, plug in your own Anthropic / Mistral key via `app/config.py::GraphRAGSettings` or `MISTRAL_API_KEY` env var.
-- The 24-dimension Knowledge Base — only `KB_VERSION` + a minimal 4-dimension stub is shipped. The full KB lives in CodexAI's product KB and is not regulator-defensible by itself.
-
-## Origin
-
-Extracted from `legit-ai` (`Peaky8linders/legit-ai`) — the CodexAI EU AI Act Path-to-Production compliance platform — at version **1.2.132** (2026-05-10).
-
-Module structure mirrors the parent repo 1:1 so the file paths in `CLAUDE.md` verification entries still resolve here.
-
-## Two follow-up engineering fixes shipped in this repo
-
-After the extraction, two concrete fixes were applied on top of the parent-repo snapshot:
-
-1. **`app/integrations/regenold/scope.py::_live_question_borrows_anchor`** — extended `follow_markers` with `"are these"`, `"how often"`, and `"what if we re-train"`. Closes 3 multi-conversation eval refusals where a short follow-up that mentioned a concrete data/process question was previously being rejected as "no anchor".
-
-2. **`app/engines/graph_rag.py::_llm_parse_query`** — robust JSON cleanup. The original markdown-fence stripper only handled the case where the entire response was wrapped in ```` ```json ... ``` ````. The new helper tolerates prose-before-JSON, prose-after-JSON, multiple fences, language tags after backticks, and the `{...}`-block extraction fallback. Closes 2 simple-question reference-misses where Claude Sonnet 4.6 returned markdown-fenced JSON with explanatory prose.
-
-Both fixes carry regression tests under `tests/test_regenold_followup_fixes.py`.
+- **Hash-chained audit store** — `app/evidence/store.py` keeps the full
+  cryptographic audit chain in process memory and tamper-detects on
+  `verify_chain()`. Set `DATABASE_URL=postgres(ql)://…` and install
+  `sqlalchemy` to flip on the durable Postgres backend (cross-process
+  row-locking via `SELECT … FOR UPDATE`). In-memory is the default.
+- **Optional Neo4j graph client** — `app/graph/client.py` activates the
+  pooled Neo4j client when `NEO4J_URI` is set AND the `neo4j` driver is
+  installed; otherwise the engine takes the KB-fallback path. The
+  graph-side typed ontology + reasoning module (`app/graph/ontology.py`
+  / `app/graph/reasoning.py`) are bundled with it.
+- **24-dimension compliance KB** — `app/data/kb.py` carries the full
+  `MaturityDimension` taxonomy (26 dims after additive port) plus the
+  93+ Articles / Annexes covered by `EC_CHECKER_OBLIGATION_MAP` (the
+  competition-load-bearing obligation row corpus). The agentic-AI
+  compound-risk taxonomy (`app/data/agentic_taxonomy.py`), the
+  role-obligations registry (`app/data/role_obligations.py`),
+  per-paragraph article requirements
+  (`app/data/article_requirements_full.py`), severity ordering
+  (`app/data/severity.py`), and W3C DPV / AIRO ontology mappings
+  (`app/data/ontology_mapping_full.py`) ship alongside it.
+- **Mistral provider** — `app/llm/mistral_provider.py` is a real
+  httpx-backed implementation. Set `MISTRAL_API_KEY` (and optionally
+  `MISTRAL_BASE_URL`) to enable.
+- **Intent classifier** — `app/llm/intent_classifier.py` consults
+  Claude Haiku 4.5 (or Sonnet 4.6 via `REGENOLD_INTENT_MODEL`) through
+  the local `claude-code-openai-wrapper` so each Q&A request can route
+  through a Claude Max subscription instead of per-token API billing.
+  Activates auto when the wrapper is up + authenticated; falls through
+  to the deterministic path otherwise (LRU cache + 3-failure circuit
+  breaker keep latency bounded).
+- **Deliberately not ported from the parent CodexAI product**: NIST AI
+  RMF / ISO 42001 framework crosswalks, MITRE ATLAS / OWASP attack
+  taxonomies, the parent app's GDPR Art. 17 erasure surface, document
+  package export pipeline, and the per-article control specs for
+  Arts. 9/10/11/13/14/15. The engine retrieves grounded EU AI Act
+  text only — cross-framework mappings would dilute the Regenold
+  rubric's "minimal set of relevant references" scoring.
 
 ## Layout
 
