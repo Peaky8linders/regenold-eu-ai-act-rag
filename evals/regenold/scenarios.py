@@ -789,9 +789,21 @@ SCENARIOS: tuple[Scenario, ...] = (
         ),
         checks=(
             ScenarioCheck("not_refused", lambda b: not _refused(b)),
-            ScenarioCheck("cites_art_5", lambda b: _has_reference(b, "Article 5")),
+            # Q3 names "Annex III" explicitly — that's the only ref in the
+            # citation list per the round-19 precision pruning pass. The
+            # cross-references (Art. 5, Annex I, Art. 6) are narrated in
+            # the ANSWER PROSE where they ground the verdict; the rubric
+            # scores citations against single-anchor gold and prose
+            # against tone/correctness criteria separately.
             ScenarioCheck("cites_annex_iii", lambda b: _has_reference(b, "Annex III")),
-            ScenarioCheck("cites_annex_i", lambda b: _has_reference(b, "Annex I")),
+            ScenarioCheck(
+                "narrates_art_5",
+                lambda b: _answer_mentions_any(b, ("Article 5", "Art. 5")),
+            ),
+            ScenarioCheck(
+                "narrates_annex_i",
+                lambda b: _answer_mentions_any(b, ("Annex I",)),
+            ),
             ScenarioCheck("gives_nuanced_verdict", _verdict_not_categorically),
             ScenarioCheck(
                 "no_blanket_high_risk_claim",

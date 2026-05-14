@@ -244,7 +244,13 @@ class TestRoleObligationWireContract:
         assert "deployer" in answer
         assert "Article 26" in refs
 
-    def test_importer_annex_iii_gives_art_23(self, client) -> None:
+    def test_importer_annex_iii_surfaces_art_23_in_answer(self, client) -> None:
+        """User names "Annex III" — the citations list ships Annex III
+        (the explicit anchor). Per the round-19 precision pruning, the
+        importer cross-reference (Art. 23) appears in the ANSWER PROSE
+        as the narrated obligation rather than in the citations list.
+        See :func:`app.routes.regenold._prune_non_anchor_refs`.
+        """
         r = client.post(
             "/api/v1/regenold/eu-ai-act/ask",
             json=[{
@@ -254,7 +260,15 @@ class TestRoleObligationWireContract:
         )
         assert r.status_code == 200
         body = r.json()
-        assert "Article 23" in body.get("references", [])
+        refs = body.get("references", [])
+        answer = body.get("answer", "")
+        # Explicit anchor survives pruning.
+        assert "Annex III" in refs, f"Missing Annex III; got {refs}"
+        # The importer-obligations cross-reference (Art. 23) is
+        # narrated in the answer prose.
+        assert "Article 23" in answer or "Art. 23" in answer, (
+            f"Art. 23 cross-ref missing from answer prose; got: {answer[:200]!r}"
+        )
 
     def test_provider_gpai_systemic_gives_art_53_55(self, client) -> None:
         r = client.post(
@@ -360,11 +374,24 @@ class TestRoleObligationNegativeCases:
 
 
 class TestCrossRefExpansionWireContract:
-    """End-to-end: cross-ref expansion enriches the citation set."""
+    """End-to-end: cross-ref expansion enriches the engine's retrieval set.
 
-    def test_art_16_question_surfaces_related_articles(self, client) -> None:
+    Post-round-19 the citations list ships only the user's explicit
+    anchor (per :func:`app.routes.regenold._prune_non_anchor_refs`)
+    while cross-references appear in the answer PROSE. These tests
+    verify both layers — the explicit anchor in refs AND the cross-ref
+    narration in the answer text.
+    """
+
+    def test_art_16_question_narrates_related_obligations(self, client) -> None:
         """Art. 16's summary names Arts. 11, 17, 18, 19, … as cross-refs.
-        A question about Art. 16 should surface at least one of those."""
+
+        Pre-round-19 those cross-refs landed in the citation list.
+        Post-round-19 they land in the answer prose instead — same
+        information surface, different layer. The citation list ships
+        only ``Article 16`` (the explicit anchor) to maximise precision
+        against the competition rubric's single-anchor gold sets.
+        """
         r = client.post(
             "/api/v1/regenold/eu-ai-act/ask",
             json=[{
@@ -373,15 +400,21 @@ class TestCrossRefExpansionWireContract:
             }],
         )
         assert r.status_code == 200
-        refs = r.json().get("references", [])
-        assert "Article 16" in refs
-        # At least one of the canonical cross-refs should appear.
-        # The xref expansion is capped at 2 per primary entity, so we
-        # don't expect all of them — just evidence that SOMETHING got
-        # surfaced beyond the bare primary.
-        canonical = {"Article 11", "Article 17", "Article 18", "Article 19",
-                     "Article 43", "Article 47", "Article 48"}
-        hit = canonical & set(refs)
-        assert hit, (
-            f"Expected at least one of {canonical} via xref expansion; got {refs}"
+        body = r.json()
+        refs = body.get("references", [])
+        answer = body.get("answer", "")
+        # Explicit anchor survives pruning.
+        assert "Article 16" in refs, f"Missing Art. 16; got {refs}"
+        # At least one canonical cross-ref must be narrated in prose
+        # so a reader can follow the obligation chain.
+        canonical_short = ["Art. 11", "Art. 17", "Art. 18", "Art. 19",
+                           "Art. 43", "Art. 47", "Art. 48"]
+        canonical_long = ["Article 11", "Article 17", "Article 18",
+                          "Article 19", "Article 43", "Article 47",
+                          "Article 48"]
+        hit_short = [c for c in canonical_short if c in answer]
+        hit_long = [c for c in canonical_long if c in answer]
+        assert hit_short or hit_long, (
+            f"Expected at least one of {canonical_short} (or long form) "
+            f"in the answer prose; got: {answer[:300]!r}"
         )
