@@ -589,7 +589,17 @@ def _build_scope_refusal_response(
     try:
         store = get_evidence_store()
         chain_payload: dict[str, Any] = {
+            # Round-24: full question + answer persisted to the audit
+            # store. Earlier policy stored only ``question_hash`` and a
+            # 500-char ``answer_excerpt`` for GDPR-Art.4(5)
+            # pseudonymisation. Operators wiring ``DATABASE_URL`` opt
+            # into full-text retention on their own Postgres instance
+            # (data-controller responsibility shifts to them at that
+            # point); the hash is kept alongside as a stable forensic
+            # join key across rows that mention the same question.
+            "question": question,
             "question_hash": question_hash(question),
+            "answer": out.answer or "",
             "has_system_context": bool(system_context),
             # Clamp at 0 — a request with only system messages should
             # report ``history_turns_used=0``, not ``-1``.
@@ -1120,11 +1130,17 @@ def regenold_eu_ai_act_ask(
             reasoning="",
         )
 
-    # Best-effort audit-chain entry (no secrets, no raw question text).
+    # Round-24 audit-chain entry: full question + answer persisted.
+    # ``DATABASE_URL`` activates the Postgres backend at startup; without
+    # it the entry lands in the bounded in-memory chain (lost on
+    # restart). When Postgres is wired, every Regenold Q&A round-trip
+    # is durably stored and hash-chained for tamper-evidence.
     try:
         store = get_evidence_store()
         chain_payload = {
+            "question": question,
             "question_hash": question_hash(question),
+            "answer": out.answer or "",
             "has_system_context": bool(system_context),
             # Clamp at 0 — turns BEFORE the live user question. A request
             # with only system messages should report 0, not -1.

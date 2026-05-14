@@ -389,13 +389,37 @@ class PostgresAuditStore:
         deployment of this bundle would require ``sqlalchemy`` (and
         a Postgres driver) on the install line, which contradicts the
         "zero-dependency competition harness" design.
+
+        URL normalisation handled here:
+
+        * Railway / Heroku-style ``postgres://`` → ``postgresql://``
+          (SQLAlchemy 2 drops the legacy bare ``postgres`` scheme).
+        * Bare ``postgresql://`` → ``postgresql+psycopg://`` so the
+          v3 driver from ``requirements.txt`` is selected. SQLAlchemy
+          2 defaults to ``psycopg2``, which we don't ship.
+
+        Pool sizing: ``pool_pre_ping=True`` survives Railway's idle
+        connection reaper; small pool to play nice with their
+        ``max_connections`` budget on the free tier.
         """
         if self._engine is not None:
             return self._engine
         from sqlalchemy import create_engine  # noqa: PLC0415 — lazy
         from sqlalchemy import text  # noqa: PLC0415 — lazy
 
-        engine = create_engine(self._database_url, future=True)
+        url = self._database_url
+        if url.startswith("postgres://"):
+            url = "postgresql://" + url[len("postgres://"):]
+        if url.startswith("postgresql://") and "+psycopg" not in url.split("://", 1)[0]:
+            url = "postgresql+psycopg://" + url[len("postgresql://"):]
+
+        engine = create_engine(
+            url,
+            future=True,
+            pool_pre_ping=True,
+            pool_size=5,
+            max_overflow=5,
+        )
         with engine.begin() as conn:
             for stmt in self._SCHEMA_SQL.strip().split(";"):
                 if stmt.strip():

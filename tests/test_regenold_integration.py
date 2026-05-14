@@ -530,6 +530,51 @@ def test_authenticated_request_writes_partner_tenant_chain_entry() -> None:
     assert "ip_hash" not in payload
 
 
+def test_chain_entry_persists_full_question_and_answer() -> None:
+    """Round-24 audit policy: full question + answer text are persisted.
+
+    Earlier rounds stored only ``question_hash`` + 500-char
+    ``answer_excerpt`` for GDPR-Art.4(5) pseudonymisation. With a
+    ``DATABASE_URL`` configured on the deployment, operators opt into
+    durable full-text retention on their own Postgres — this test
+    pins that contract so a future refactor that drops the raw text
+    breaks loudly.
+    """
+    from app.evidence.store import get_evidence_store
+
+    settings.regenold.api_key = SecretStr("regenold-test-key")
+    store = get_evidence_store()
+    c = _client()
+    question_text = "What does EU AI Act Art. 13(1)(a) require?"
+    r = c.post(
+        "/api/v1/regenold/eu-ai-act/ask",
+        headers={"X-Regenold-Api-Key": "regenold-test-key"},
+        json=_messages(question_text),
+    )
+    assert r.status_code == 200, r.json()
+
+    rows = list(store.get_chain(tenant_id="partner:regenold", limit=10))
+    assert rows, "no chain entry was written"
+    payload = rows[0].payload if isinstance(rows[0].payload, dict) else {}
+    # Full raw question must be in the payload (not just the hash).
+    assert payload.get("question") == question_text, (
+        f"expected raw question {question_text!r}, got payload keys "
+        f"{sorted(payload.keys())} (question={payload.get('question')!r})"
+    )
+    # Full answer text must be in the payload (not just a 500-char excerpt).
+    answer = payload.get("answer")
+    assert isinstance(answer, str) and answer, (
+        f"expected non-empty 'answer' string in payload; got {answer!r}"
+    )
+    assert answer == r.json().get("answer"), (
+        "chain-payload 'answer' must match the wire response 'answer'"
+    )
+    # The legacy hash + excerpt fields are still emitted alongside —
+    # downstream forensic pipelines that key off them keep working.
+    assert "question_hash" in payload
+    assert "answer_excerpt" in payload
+
+
 # ─── Competition spec contract guards ──────────────────────────────────────
 
 
