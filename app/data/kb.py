@@ -1450,4 +1450,528 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "enforcement, migration, asylum, and border-control systems."
         ),
     },
+    # ─── Title III Ch. 4: Notified-body lifecycle gap-fill (Arts. 30, 32) ────
+    "Art. 30": {
+        "dimension": "conformity",
+        "summary": (
+            "Notification procedure: the notifying authority may notify only "
+            "conformity-assessment bodies that satisfy the Art. 31 "
+            "requirements (Art. 30(1)). Per Art. 30(2)-(3) the notifying "
+            "authority must notify the Commission and the other Member "
+            "States, using the electronic notification tool developed and "
+            "managed by the Commission, of each conformity-assessment body "
+            "it has assessed — including the assessment activities, "
+            "conformity-assessment modules, AI technologies covered, and "
+            "the relevant attestation of competence. A body may carry out "
+            "the activities of a notified body only if no objection is "
+            "raised by the Commission or other Member States within 2 weeks "
+            "of validation (where the accreditation certificate is used) "
+            "or within 2 months (where it is not)."
+        ),
+    },
+    "Art. 32": {
+        "dimension": "conformity",
+        "summary": (
+            "Presumption of conformity with requirements relating to "
+            "notified bodies: where a conformity-assessment body "
+            "demonstrates its conformity with the criteria laid down in "
+            "the relevant harmonised standards (or parts thereof) the "
+            "references of which have been published in the Official "
+            "Journal of the European Union, it is presumed to comply with "
+            "the Art. 31 requirements to the extent those harmonised "
+            "standards cover those requirements (Art. 32)."
+        ),
+    },
+    # ─── Title III Ch. 4: Notified-body coordination + lifecycle (Arts. 35-39) ─
+    "Art. 35": {
+        "dimension": "conformity",
+        "summary": (
+            "Identification numbers and lists of notified bodies "
+            "designated under the Regulation: the Commission assigns a "
+            "single identification number to each notified body, even "
+            "where the body is notified under several Union acts (Art. "
+            "35(1)). The Commission makes publicly available the list of "
+            "the bodies notified under the Regulation, including their "
+            "identification numbers and the activities for which they "
+            "have been notified, and keeps that list up to date (Art. "
+            "35(2))."
+        ),
+    },
+    "Art. 36": {
+        "dimension": "conformity",
+        "summary": (
+            "Changes to notifications: the notifying authority must use "
+            "the electronic notification tool to notify the Commission "
+            "and the other Member States of any relevant changes to the "
+            "notification of a notified body (Art. 36(1)). Where a "
+            "notifying authority has ascertained — or has been informed "
+            "— that a notified body no longer meets the Art. 31 "
+            "requirements or is failing to fulfil its obligations, it "
+            "must restrict, suspend, or withdraw the notification as "
+            "appropriate, depending on the seriousness of the failure, "
+            "and inform the Commission and the other Member States "
+            "(Art. 36(3)-(4)). Where notification is restricted, "
+            "suspended, or withdrawn, or the notified body has ceased "
+            "activity, the notifying authority must take appropriate "
+            "steps to ensure the files of that body are either taken "
+            "over by another notified body or kept available for the "
+            "responsible notifying and market-surveillance authorities."
+        ),
+    },
+    "Art. 37": {
+        "dimension": "conformity",
+        "summary": (
+            "Challenge to the competence of notified bodies: the "
+            "Commission must, where necessary, investigate all cases "
+            "where there are reasons to doubt the competence of a "
+            "notified body or whether a notified body continues to fulfil "
+            "the Art. 31 requirements and its applicable responsibilities "
+            "(Art. 37(1)). The notifying Member State must provide the "
+            "Commission, on request, with all information relating to the "
+            "notification or the maintenance of the competence of the "
+            "body. Where the Commission ascertains that a notified body "
+            "does not meet — or no longer meets — the notification "
+            "requirements, it adopts an implementing act requesting the "
+            "notifying Member State to take the necessary corrective "
+            "measures, including, where necessary, the withdrawal of the "
+            "notification (Art. 37(2)-(4))."
+        ),
+    },
+    "Art. 38": {
+        "dimension": "conformity",
+        "summary": (
+            "Coordination of notified bodies: the Commission ensures that "
+            "appropriate coordination and cooperation between notified "
+            "bodies active in the conformity-assessment procedures under "
+            "the Regulation is put in place and properly operated in the "
+            "form of a sectoral group of notified bodies (Art. 38(1)). "
+            "Member States must ensure that the bodies they have notified "
+            "participate in the work of that group, directly or through "
+            "designated representatives (Art. 38(2))."
+        ),
+    },
+    "Art. 39": {
+        "dimension": "conformity",
+        "summary": (
+            "Conformity-assessment bodies established under the law of a "
+            "third country may be authorised to carry out the activities "
+            "of notified bodies under the Regulation only where the Union "
+            "has concluded an agreement with the third country concerned "
+            "and the third-country body satisfies the Art. 31 "
+            "requirements or ensures an equivalent level of compliance "
+            "(Art. 39)."
+        ),
+    },
+    # ─── Title III Ch. 5: Certificates + information + derogation (Arts. 44-46) ─
+    "Art. 44": {
+        "dimension": "conformity",
+        "summary": (
+            "Certificates of conformity issued by notified bodies under "
+            "Annex VII: certificates must be drawn up in a language "
+            "easily understandable by the relevant authorities of the "
+            "Member State in which the notified body is established (Art. "
+            "44(1)). Certificates are valid for the period they indicate, "
+            "not exceeding 5 years for Annex-I systems and 4 years for "
+            "Annex-III systems, with possible extensions on the basis of "
+            "re-assessment (Art. 44(2)). Where a notified body finds that "
+            "a system no longer meets the Section-2 requirements, it must "
+            "— taking account of the principle of proportionality — "
+            "suspend or withdraw the certificate issued, or impose "
+            "restrictions on it, unless compliance is ensured by "
+            "appropriate corrective action by the provider within the "
+            "deadline set by the notified body. The notified body must "
+            "give reasons for its decision and provide a procedure for "
+            "appeal (Art. 44(3))."
+        ),
+    },
+    "Art. 45": {
+        "dimension": "conformity",
+        "summary": (
+            "Information obligations of notified bodies: notified bodies "
+            "must inform the notifying authority of (a) any Union "
+            "technical-documentation assessment certificates, supplements "
+            "to those certificates, and quality-management-system "
+            "approvals issued under Annex VII, (b) any refusal, "
+            "restriction, suspension, or withdrawal of such certificates "
+            "or approvals, (c) any circumstances affecting the scope or "
+            "conditions of notification, (d) any request for information "
+            "on conformity-assessment activities they have received from "
+            "market-surveillance authorities, and (e) on request, the "
+            "conformity-assessment activities they have performed within "
+            "the scope of their notification and any other activity "
+            "performed, including cross-border activities and "
+            "subcontracting (Art. 45(1)-(2)). Notified bodies must also "
+            "provide the other bodies notified under the Regulation that "
+            "carry out similar activities with relevant information on "
+            "issues relating to negative — and, on request, positive — "
+            "conformity-assessment results (Art. 45(3))."
+        ),
+    },
+    "Art. 46": {
+        "dimension": "conformity",
+        "summary": (
+            "Derogation from the conformity-assessment procedure: by way "
+            "of derogation from Art. 43, a market-surveillance authority "
+            "may authorise the placing on the market or putting into "
+            "service of specific high-risk AI systems within the "
+            "territory of the Member State concerned, for exceptional "
+            "reasons of public security or the protection of life and "
+            "health of persons, environmental protection, or the "
+            "protection of key industrial and infrastructural assets "
+            "(Art. 46(1)). The authorisation is granted for a limited "
+            "period while the necessary conformity-assessment procedures "
+            "are being carried out, taking into account the exceptional "
+            "reasons that justify the derogation, and terminates as soon "
+            "as those procedures have been completed (Art. 46(2)). The "
+            "authorising Member State must immediately inform the "
+            "Commission and the other Member States; the Commission may, "
+            "where the authorisation is unjustified, raise objections and "
+            "require the Member State to withdraw it (Art. 46(3)-(5)). "
+            "Law-enforcement / civil-protection authorities may, in a "
+            "duly justified situation of urgency, put a specific high-"
+            "risk AI system into service without the authorisation "
+            "provided that authorisation is requested without undue delay "
+            "(Art. 46(4))."
+        ),
+    },
+    # ─── Title IX: Market-surveillance + enforcement gap-fill (Arts. 75-84, 90-94) ──
+    # Appended at end-of-dict so concurrent subagent merges stay
+    # line-disjoint (CLAUDE.md hard rule #5 — every emitted citation
+    # must resolve in ARTICLE_EXISTENCE; all 13 keys are catalog members).
+    "Art. 75": {
+        "dimension": "governance",
+        "summary": (
+            "Art. 75: mutual assistance + control of AI systems based "
+            "on GPAI models. Where the model + system share a provider, "
+            "the AI Office holds market-surveillance powers under Reg. "
+            "(EU) 2019/1020; national authorities may request the AI "
+            "Office to exercise its Art. 91-93 powers over a GPAI model "
+            "they cannot otherwise investigate."
+        ),
+    },
+    "Art. 76": {
+        "dimension": "post_market",
+        "summary": (
+            "Art. 76: market-surveillance supervision of real-world "
+            "testing under Art. 60. Authorities verify registration, "
+            "informed consent + incident reporting; may require the "
+            "provider or prospective-provider deployer to modify, "
+            "suspend, or terminate the test, including by unannounced "
+            "on-site inspection."
+        ),
+    },
+    "Art. 77": {
+        "dimension": "governance",
+        "summary": (
+            "Art. 77: powers of national authorities protecting "
+            "fundamental rights. On reasoned request they may obtain "
+            "any documentation drawn up under the AI Act for Annex-III "
+            "high-risk systems and may ask the market-surveillance "
+            "authority to organise technical testing where the "
+            "documentation proves insufficient."
+        ),
+    },
+    "Art. 80": {
+        "dimension": "risk_mgmt",
+        "summary": (
+            "Art. 80: procedure for AI systems classified by the "
+            "provider as non-high-risk under the Art. 6(3) carve-out. "
+            "Where misclassification is suspected, the authority runs "
+            "an Art. 79-style evaluation, may fine the provider, and "
+            "may rely on the EU registration database."
+        ),
+    },
+    "Art. 81": {
+        "dimension": "governance",
+        "summary": (
+            "Art. 81: Union safeguard procedure. Where a Member State "
+            "or the Commission objects to a national measure under "
+            "Art. 79/80/82, the Commission decides within 6 months "
+            "(60 days for Art. 5 prohibitions) whether the measure is "
+            "justified; if so, it applies Union-wide."
+        ),
+    },
+    "Art. 82": {
+        "dimension": "post_market",
+        "summary": (
+            "Art. 82: compliant high-risk AI systems that nevertheless "
+            "present a risk to safety, fundamental rights, or other "
+            "public-interest protection. The market-surveillance "
+            "authority requires the operator to take appropriate "
+            "measures and may trigger the Art. 81 safeguard procedure."
+        ),
+    },
+    "Art. 83": {
+        "dimension": "conformity",
+        "summary": (
+            "Art. 83: formal non-compliance — missing or incorrect CE "
+            "marking, EU declaration of conformity, authorised "
+            "representative, technical documentation, EU-database "
+            "registration, or instructions for use. The authority "
+            "requires rectification within a set period, escalating to "
+            "recall or withdrawal if non-compliance persists."
+        ),
+    },
+    "Art. 84": {
+        "dimension": "governance",
+        "summary": (
+            "Art. 84: Union AI testing support structures designated "
+            "by the Commission to provide independent technical + "
+            "scientific advice to national market-surveillance "
+            "authorities — including for the technical evaluations "
+            "underpinning Art. 79-83 enforcement."
+        ),
+    },
+    "Art. 90": {
+        "dimension": "gpai_systemic_risk",
+        "summary": (
+            "Art. 90: alerts of systemic risks by the scientific panel "
+            "(Art. 68). The panel may issue a qualified alert to the "
+            "AI Office where a general-purpose AI model poses a "
+            "concrete Union-level risk or meets the Art. 51 systemic-"
+            "risk thresholds, triggering Art. 91-93 powers."
+        ),
+    },
+    "Art. 91": {
+        "dimension": "gpai_specific",
+        "summary": (
+            "Art. 91: power to request documentation + information. "
+            "The Commission, through the AI Office, may by reasoned "
+            "decision require GPAI-model providers to supply the "
+            "Annex XI / Annex XII / systemic-risk documentation drawn "
+            "up under Arts. 53 + 55 and any further information "
+            "needed to assess Chapter V compliance."
+        ),
+    },
+    "Art. 92": {
+        "dimension": "gpai_specific",
+        "summary": (
+            "Art. 92: power to conduct evaluations. The AI Office may "
+            "evaluate a general-purpose AI model — directly or via "
+            "independent experts — to assess Chapter V compliance "
+            "where Art. 91 documentation is insufficient, or to "
+            "investigate Art. 90 systemic-risk alerts. Art. 92(6) "
+            "foresees an implementing act."
+        ),
+    },
+    "Art. 93": {
+        "dimension": "gpai_specific",
+        "summary": (
+            "Art. 93: power to request measures. The Commission, "
+            "through the AI Office, may require a GPAI-model provider "
+            "to comply with Chapter V, mitigate identified systemic "
+            "risk at Union level, or restrict / withdraw / recall the "
+            "model — subject to the Art. 94 procedural rights."
+        ),
+    },
+    "Art. 94": {
+        "dimension": "governance",
+        "summary": (
+            "Art. 94: procedural rights of economic operators. The "
+            "Art. 18 rights of defence in Reg. (EU) 2019/1020 apply "
+            "mutatis mutandis to GPAI-model providers facing Art. "
+            "91-93 / 101 enforcement — right to be heard, file "
+            "access, judicial review before the CJEU, and Art. 78 "
+            "confidentiality."
+        ),
+    },
+    # ─── Title XII: Final provisions — guidelines, delegation, comitology, ───
+    # sectoral amendments (Arts. 96-98, 102-110) ────────────────────────────
+    "Art. 96": {
+        "dimension": "governance",
+        "summary": (
+            "Empowers the Commission to develop non-binding guidelines on "
+            "the practical implementation of the Regulation, in particular "
+            "on: the application of the requirements and obligations for "
+            "high-risk AI systems (including responsibilities along the AI "
+            "value chain, Arts. 8-15 and Art. 25); the application of the "
+            "prohibited practices in Art. 5; the practical implementation "
+            "of the provisions on substantial modification; the practical "
+            "implementation of the transparency obligations laid down in "
+            "Art. 50; detailed information on the relationship of the "
+            "Regulation with the Union harmonisation legislation listed in "
+            "Annex I and with other relevant Union law (including as "
+            "regards consistency in their enforcement); and the "
+            "application of the AI system definition in Art. 3(1) (Art. "
+            "96(1)). The Commission pays particular attention to the needs "
+            "of SMEs (including start-ups), local public authorities, and "
+            "the sectors most likely to be affected, and updates the "
+            "guidelines as necessary (Art. 96(2))."
+        ),
+    },
+    "Art. 97": {
+        "dimension": "governance",
+        "summary": (
+            "Exercise of the delegation: the power to adopt delegated "
+            "acts is conferred on the Commission subject to the "
+            "conditions set out in this Article. The delegations under "
+            "Arts. 6(6)-(7), 7(1) and (3), 11(3), 43(5) and (6), 47(5), "
+            "51(3), 52(4) and 53(5)-(6) are conferred for a period of "
+            "five years from 1 August 2024 (Art. 97(2)). The Commission "
+            "must draw up a report on the delegation not later than nine "
+            "months before the end of the five-year period, and the "
+            "delegation is tacitly extended for further five-year periods "
+            "unless the European Parliament or the Council opposes the "
+            "extension at least three months before the end of each "
+            "period (Art. 97(2)). The delegation may be revoked at any "
+            "time by the Parliament or the Council (Art. 97(3)). Before "
+            "adopting a delegated act the Commission consults experts "
+            "designated by each Member State in accordance with the "
+            "Interinstitutional Agreement of 13 April 2016 on Better "
+            "Law-Making (Art. 97(4)). A delegated act enters into force "
+            "only if no objection is raised by the Parliament or the "
+            "Council within three months of notification, extendable by "
+            "a further three months (Art. 97(6))."
+        ),
+    },
+    "Art. 98": {
+        "dimension": "governance",
+        "summary": (
+            "Committee procedure: the Commission is assisted by a "
+            "committee within the meaning of Regulation (EU) No 182/2011 "
+            "(Art. 98(1)). Where reference is made to this Article, "
+            "Art. 5 of Regulation (EU) No 182/2011 — the examination "
+            "procedure — applies (Art. 98(2)). Implementing acts adopted "
+            "under the AI Act follow this comitology track, under which "
+            "the Commission is assisted by a committee of Member-State "
+            "representatives that delivers an opinion on draft "
+            "implementing acts before adoption."
+        ),
+    },
+    "Art. 102": {
+        "dimension": "regulatory_perimeter",
+        "summary": (
+            "Amends Regulation (EC) No 300/2008 on common rules in the "
+            "field of civil aviation security. A new point is inserted "
+            "into Art. 4(3) of Regulation (EC) No 300/2008 so that, when "
+            "adopting detailed measures relating to technical "
+            "specifications and procedures for the approval and use of "
+            "security equipment concerning AI systems within the meaning "
+            "of the AI Act, the requirements laid down in Chapter III, "
+            "Section 2 of the AI Act (the essential requirements for "
+            "high-risk AI systems) are taken into account. Civil-aviation "
+            "security is one of the Section-B Annex I sectors where the "
+            "AI Act applies through the existing sectoral safety regime "
+            "rather than through a stand-alone AI conformity assessment."
+        ),
+    },
+    "Art. 103": {
+        "dimension": "regulatory_perimeter",
+        "summary": (
+            "Amends Regulation (EU) No 167/2013 on the approval and "
+            "market surveillance of agricultural and forestry vehicles. "
+            "An equivalent insertion is made so that, when adopting "
+            "delegated or implementing acts under Regulation (EU) No "
+            "167/2013 concerning AI systems that are safety components "
+            "within the meaning of the AI Act, the essential requirements "
+            "for high-risk AI systems set out in Chapter III, Section 2 "
+            "of the AI Act are taken into account. Agricultural and "
+            "forestry vehicles are an Annex I, Section B sector — AI "
+            "safety components are high-risk but conformity is verified "
+            "through the existing type-approval framework."
+        ),
+    },
+    "Art. 104": {
+        "dimension": "regulatory_perimeter",
+        "summary": (
+            "Amends Regulation (EU) No 168/2013 on the approval and "
+            "market surveillance of two- or three-wheel vehicles and "
+            "quadricycles. Mirrors Arts. 102-103: when the Commission "
+            "adopts delegated or implementing acts under Regulation (EU) "
+            "No 168/2013 concerning AI systems that are safety components "
+            "within the meaning of the AI Act, it must take into account "
+            "the essential requirements for high-risk AI systems set out "
+            "in Chapter III, Section 2 of the AI Act. Two- or three-wheel "
+            "vehicles and quadricycles are an Annex I, Section B sector."
+        ),
+    },
+    "Art. 105": {
+        "dimension": "regulatory_perimeter",
+        "summary": (
+            "Amends Directive 2014/90/EU on marine equipment. When the "
+            "Commission adopts implementing acts under Directive 2014/90/"
+            "EU concerning AI systems that are safety components within "
+            "the meaning of the AI Act, the essential requirements for "
+            "high-risk AI systems set out in Chapter III, Section 2 of "
+            "the AI Act must be taken into account. Marine equipment is "
+            "an Annex I, Section B sector: AI safety components are "
+            "treated as high-risk but conformity is verified through the "
+            "existing marine-equipment framework."
+        ),
+    },
+    "Art. 106": {
+        "dimension": "regulatory_perimeter",
+        "summary": (
+            "Amends Directive (EU) 2016/797 on the interoperability of "
+            "the rail system within the European Union. When the "
+            "Commission adopts delegated or implementing acts under "
+            "Directive (EU) 2016/797 concerning AI systems that are "
+            "safety components within the meaning of the AI Act, the "
+            "essential requirements for high-risk AI systems set out in "
+            "Chapter III, Section 2 of the AI Act must be taken into "
+            "account. Rail systems are an Annex I, Section B sector."
+        ),
+    },
+    "Art. 107": {
+        "dimension": "regulatory_perimeter",
+        "summary": (
+            "Amends Regulation (EU) 2018/858 on the approval and market "
+            "surveillance of motor vehicles and their trailers, and of "
+            "systems, components and separate technical units intended "
+            "for such vehicles. When the Commission adopts delegated or "
+            "implementing acts under Regulation (EU) 2018/858 concerning "
+            "AI systems that are safety components within the meaning of "
+            "the AI Act, the essential requirements for high-risk AI "
+            "systems set out in Chapter III, Section 2 of the AI Act "
+            "must be taken into account. Motor vehicles are an Annex I, "
+            "Section B sector — AI safety components are high-risk but "
+            "conformity flows through the EU type-approval framework."
+        ),
+    },
+    "Art. 108": {
+        "dimension": "regulatory_perimeter",
+        "summary": (
+            "Makes parallel amendments to Regulation (EU) 2018/1139 on "
+            "common rules in the field of civil aviation and Regulation "
+            "(EU) 2019/2144 on type-approval requirements for motor "
+            "vehicles and their trailers as regards general safety. In "
+            "both cases, when the Commission adopts delegated or "
+            "implementing acts concerning AI systems that are safety "
+            "components within the meaning of the AI Act, the essential "
+            "requirements for high-risk AI systems set out in Chapter "
+            "III, Section 2 of the AI Act must be taken into account. "
+            "Both sectors are listed in Annex I, Section B."
+        ),
+    },
+    "Art. 109": {
+        "dimension": "governance",
+        "summary": (
+            "Amends Regulation (EU) 2019/1020 on market surveillance and "
+            "compliance of products to integrate the AI Act into the "
+            "horizontal market-surveillance framework. The Annex to "
+            "Regulation (EU) 2019/1020 is amended by adding the AI Act "
+            "to the list of Union harmonisation legislation it covers, "
+            "so that the powers, procedures and cooperation mechanisms "
+            "of Regulation (EU) 2019/1020 — including the broad "
+            "investigative and corrective powers of market-surveillance "
+            "authorities and the procedural safeguards in Art. 18 of "
+            "Regulation (EU) 2019/1020 — apply to AI systems governed by "
+            "the AI Act, without prejudice to the AI-specific additions "
+            "made by Chapter IX of the AI Act (e.g. fundamental-rights "
+            "risks added to Art. 3(19) by Art. 79(1) of the AI Act)."
+        ),
+    },
+    "Art. 110": {
+        "dimension": "governance",
+        "summary": (
+            "Amends Directive (EU) 2020/1828 on representative actions "
+            "for the protection of the collective interests of consumers. "
+            "Annex I to Directive (EU) 2020/1828 is amended by adding a "
+            "reference to the AI Act, so that qualified entities may "
+            "bring representative actions on behalf of consumers against "
+            "infringements of the AI Act. The amendment brings AI Act "
+            "infringements within the scope of consumer collective "
+            "redress under Union law."
+        ),
+    },
 }

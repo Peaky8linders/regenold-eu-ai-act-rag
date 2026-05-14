@@ -279,6 +279,18 @@ _DEFINITIONS: tuple[Definition, ...] = (
         keywords=("withdrawal", "withdrawals", "withdrawal of an ai system"),
     ),
     Definition(
+        citation="Art. 3.18",
+        term="performance of an AI system",
+        description=(
+            "The ability of an AI system to achieve its intended purpose."
+        ),
+        keywords=(
+            "performance of an ai system",
+            "ai system performance",
+            "system performance",
+        ),
+    ),
+    Definition(
         citation="Art. 3.19",
         term="harmonised standard",
         description=(
@@ -303,6 +315,19 @@ _DEFINITIONS: tuple[Definition, ...] = (
         keywords=(
             "common specification",
             "common specifications",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.21",
+        term="training data",
+        description=(
+            "Data used for training an AI system through fitting its learnable "
+            "parameters."
+        ),
+        keywords=(
+            "training data",
+            "training dataset",
+            "training datasets",
         ),
     ),
     Definition(
@@ -356,6 +381,103 @@ _DEFINITIONS: tuple[Definition, ...] = (
         keywords=(
             "substantial modification",
             "substantial modifications",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.26",
+        term="validation data",
+        description=(
+            "Data used for providing an evaluation of the trained AI system and "
+            "for tuning its non-learnable parameters and its learning process."
+        ),
+        keywords=(
+            "validation data",
+            "validation dataset",
+            "validation datasets",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.27",
+        term="testing data",
+        description=(
+            "Data used for providing an independent evaluation of the AI system "
+            "in order to confirm the expected performance of that system before "
+            "its placing on the market or putting into service."
+        ),
+        keywords=(
+            "testing data",
+            "test data",
+            "testing dataset",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.28",
+        term="input data",
+        description=(
+            "Data provided to or directly acquired by an AI system on the basis "
+            "of which the system produces an output."
+        ),
+        keywords=(
+            "input data",
+            "input dataset",
+            "system input",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.29",
+        term="CE marking",
+        description=(
+            "A marking by which a provider indicates that an AI system is in "
+            "conformity with the requirements set out in Chapter III, Section 2 "
+            "and other applicable Union harmonisation legislation."
+        ),
+        keywords=(
+            "ce marking",
+            "ce mark",
+            "ce conformity marking",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.30",
+        term="post-market monitoring system",
+        description=(
+            "All activities carried out by providers of AI systems to collect "
+            "and review experience gained from the use of AI systems they place "
+            "on the market or put into service for the purpose of identifying "
+            "any need to immediately apply any necessary corrective or "
+            "preventive actions."
+        ),
+        keywords=(
+            "post-market monitoring system",
+            "post market monitoring",
+            "post-market monitoring",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.31",
+        term="market surveillance authority",
+        description=(
+            "The national authority carrying out the activities and taking the "
+            "measures pursuant to Regulation (EU) 2019/1020."
+        ),
+        keywords=(
+            "market surveillance authority",
+            "market surveillance authorities",
+            "market surveillance",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.32",
+        term="national competent authority",
+        description=(
+            "A notifying authority or a market surveillance authority designated "
+            "by a Member State to ensure the application and implementation of "
+            "this Regulation."
+        ),
+        keywords=(
+            "national competent authority",
+            "national competent authorities",
+            "competent authority",
         ),
     ),
     Definition(
@@ -444,6 +566,22 @@ _DEFINITIONS: tuple[Definition, ...] = (
         ),
     ),
     Definition(
+        citation="Art. 3.40",
+        term="remote biometric identification system",
+        description=(
+            "An AI system for the purpose of identifying natural persons, "
+            "without their active involvement, typically at a distance through "
+            "the comparison of a person's biometric data with the biometric "
+            "data contained in a reference database."
+        ),
+        keywords=(
+            "remote biometric identification system",
+            "rbi system",
+            "remote biometric identification",
+            "rbi",
+        ),
+    ),
+    Definition(
         citation="Art. 3.41",
         term="biometric categorisation system",
         description=(
@@ -458,6 +596,115 @@ _DEFINITIONS: tuple[Definition, ...] = (
         ),
     ),
     Definition(
+        citation="Art. 3.42",
+        term="publicly accessible space",
+        description=(
+            "Any publicly or privately owned physical place accessible to an "
+            "undetermined number of natural persons, regardless of whether "
+            "certain conditions for access may apply, and regardless of the "
+            "potential capacity restrictions."
+        ),
+        keywords=(
+            "publicly accessible space",
+            "publicly accessible spaces",
+            "public space",
+            "public spaces",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.43",
+        term="law enforcement authority",
+        description=(
+            "Any public authority competent for the prevention, investigation, "
+            "detection or prosecution of criminal offences or the execution of "
+            "criminal penalties, including the safeguarding against and the "
+            "prevention of threats to public security; or any other body or "
+            "entity entrusted by Member State law to exercise public authority "
+            "for those purposes."
+        ),
+        keywords=(
+            "law enforcement authority",
+            "law enforcement authorities",
+            "police authority",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.44",
+        term="law enforcement",
+        description=(
+            "Activities carried out by law enforcement authorities or on their "
+            "behalf for the prevention, investigation, detection or prosecution "
+            "of criminal offences or the execution of criminal penalties, "
+            "including the safeguarding against and the prevention of threats "
+            "to public security."
+        ),
+        keywords=(
+            "law enforcement",
+            "criminal law enforcement",
+            "policing",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.45",
+        term="profiling",
+        description=(
+            "Profiling as defined in Article 4, point (4), of Regulation (EU) "
+            "2016/679."
+        ),
+        keywords=(
+            "profiling",
+            "profile",
+            "automated profiling",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.46",
+        term="testing in real-world conditions",
+        description=(
+            "The temporary testing of an AI system for its intended purpose in "
+            "real-world conditions outside a laboratory or otherwise simulated "
+            "environment, with a view to gathering reliable and robust data and "
+            "to assessing and verifying the conformity of the AI system with "
+            "the requirements of this Regulation."
+        ),
+        keywords=(
+            "testing in real-world conditions",
+            "real-world testing",
+            "real world testing",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.47",
+        term="real-world testing plan",
+        description=(
+            "A document that describes the objectives, methodology, geographical, "
+            "population and temporal scope, monitoring, organisation and conduct "
+            "of testing in real-world conditions."
+        ),
+        keywords=(
+            "real-world testing plan",
+            "real world testing plan",
+            "rwt plan",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.48",
+        term="AI regulatory sandbox",
+        description=(
+            "A controlled framework set up by a competent authority which "
+            "offers providers or prospective providers of AI systems the "
+            "possibility to develop, train, validate and test, where "
+            "appropriate in real-world conditions, an innovative AI system, "
+            "pursuant to a sandbox plan for a limited time under regulatory "
+            "supervision."
+        ),
+        keywords=(
+            "ai regulatory sandbox",
+            "regulatory sandbox",
+            "sandbox",
+        ),
+    ),
+    Definition(
         citation="Art. 3.39",
         term="emotion recognition system",
         description=(
@@ -468,6 +715,92 @@ _DEFINITIONS: tuple[Definition, ...] = (
         keywords=(
             "emotion recognition system",
             "emotion recognition",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.50",
+        term="special categories of personal data",
+        description=(
+            "The categories of personal data referred to in Article 9(1) of "
+            "Regulation (EU) 2016/679, Article 10 of Directive (EU) 2016/680 "
+            "and Article 10(1) of Regulation (EU) 2018/1725."
+        ),
+        keywords=(
+            "special categories of personal data",
+            "special category data",
+            "sensitive personal data",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.51",
+        term="sensitive operational data",
+        description=(
+            "Operational data related to activities of prevention, detection, "
+            "investigation or prosecution of criminal offences, the disclosure "
+            "of which could jeopardise the integrity of criminal proceedings."
+        ),
+        keywords=(
+            "sensitive operational data",
+            "operational data",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.52",
+        term="informed consent",
+        description=(
+            "A subject's freely-given, specific, unambiguous and voluntary "
+            "expression of his or her willingness to participate in a particular "
+            "testing in real-world conditions, after having been informed of all "
+            "aspects of the testing that are relevant to the subject's decision "
+            "to participate."
+        ),
+        keywords=(
+            "informed consent",
+            "subject consent",
+            "consent",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.53",
+        term="high-impact capabilities",
+        description=(
+            "Capabilities that match or exceed the capabilities recorded in the "
+            "most advanced general-purpose AI models."
+        ),
+        keywords=(
+            "high-impact capabilities",
+            "high impact capabilities",
+            "frontier capabilities",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.54",
+        term="floating-point operation",
+        description=(
+            "Any mathematical operation or assignment involving floating-point "
+            "numbers, which are a subset of the real numbers typically "
+            "represented on computers by an integer of fixed precision scaled "
+            "by an integer exponent of a fixed base."
+        ),
+        keywords=(
+            "floating-point operation",
+            "floating point operation",
+            "flop",
+            "flops",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.55",
+        term="downstream provider",
+        description=(
+            "A provider of an AI system, including a general-purpose AI system, "
+            "which integrates an AI model, regardless of whether the AI model "
+            "is provided by themselves and vertically integrated or provided by "
+            "another entity based on contractual relations."
+        ),
+        keywords=(
+            "downstream provider",
+            "downstream providers",
         ),
     ),
     Definition(
@@ -505,6 +838,73 @@ _DEFINITIONS: tuple[Definition, ...] = (
         keywords=("ai literacy", "literacy"),
     ),
     Definition(
+        citation="Art. 3.57",
+        term="testing in real world conditions plan",
+        description=(
+            "A document that describes the objectives, methodology, "
+            "geographical, population and temporal scope, monitoring, "
+            "organisation and conduct of testing in real-world conditions."
+        ),
+        keywords=(
+            "testing in real world conditions plan",
+            "real world conditions plan",
+            "real-world conditions plan",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.58",
+        term="sandbox plan",
+        description=(
+            "A document agreed between the participating provider and the "
+            "competent authority describing the objectives, conditions, "
+            "timeframe, methodology and requirements for the activities carried "
+            "out within the sandbox."
+        ),
+        keywords=(
+            "sandbox plan",
+            "regulatory sandbox plan",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.59",
+        term="subject of testing in real-world conditions",
+        description=(
+            "A natural person who participates in testing in real-world "
+            "conditions."
+        ),
+        keywords=(
+            "subject of testing in real-world conditions",
+            "testing subject",
+            "real-world testing subject",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.61",
+        term="notifying authority",
+        description=(
+            "The national authority responsible for setting up and carrying out "
+            "the necessary procedures for the assessment, designation and "
+            "notification of conformity assessment bodies and for their "
+            "monitoring."
+        ),
+        keywords=(
+            "notifying authority",
+            "notifying authorities",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.62",
+        term="critical infrastructure",
+        description=(
+            "Critical infrastructure as defined in Article 2, point (4), of "
+            "Directive (EU) 2022/2557."
+        ),
+        keywords=(
+            "critical infrastructure",
+            "critical infrastructures",
+        ),
+    ),
+    Definition(
         citation="Art. 3.63",
         term="general-purpose AI model",
         description=(
@@ -522,6 +922,21 @@ _DEFINITIONS: tuple[Definition, ...] = (
             "gpai models",
             "foundation model",
             "foundation models",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.64",
+        term="AI Office",
+        description=(
+            "The Commission's function of contributing to the implementation, "
+            "monitoring and supervision of AI systems and general-purpose AI "
+            "models, and AI governance, provided for in Commission Decision of "
+            "24 January 2024."
+        ),
+        keywords=(
+            "ai office",
+            "the ai office",
+            "european ai office",
         ),
     ),
     Definition(
@@ -550,6 +965,36 @@ _DEFINITIONS: tuple[Definition, ...] = (
             "general purpose ai system",
             "gpai system",
             "gpai systems",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.67",
+        term="European Artificial Intelligence Board",
+        description=(
+            "The Board established pursuant to Article 65, composed of "
+            "representatives of the Member States, which advises and assists "
+            "the Commission and Member States in order to facilitate the "
+            "consistent and effective application of this Regulation."
+        ),
+        keywords=(
+            "european artificial intelligence board",
+            "ai board",
+            "the board",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.68",
+        term="European Data Protection Supervisor",
+        description=(
+            "The independent supervisory authority established by Regulation "
+            "(EU) 2018/1725, responsible for monitoring the application of "
+            "data protection rules to Union institutions, bodies, offices and "
+            "agencies."
+        ),
+        keywords=(
+            "european data protection supervisor",
+            "edps",
+            "data protection supervisor",
         ),
     ),
 )
