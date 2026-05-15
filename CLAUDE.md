@@ -175,6 +175,61 @@ Every axis improved or held steady. The biggest wins are on reference
 correctness (the davidath dataset's primary scoring axis) and multi-turn
 coherence (0.80 → 1.00 perfect on the 20-scenario probe).
 
+## Round 25 — Ansvar-Systems corpus integration (2026-05-15)
+
+### `app/data/eu_ai_act_corpus.py` (new, generated)
+Ports the EUR-Lex AI Act corpus from
+[Ansvar-Systems/EU_compliance_MCP](https://github.com/Ansvar-Systems/EU_compliance_MCP)
+(Apache 2.0; regulation text itself is public-domain under Article 297 TFEU):
+
+- 126 articles + annexes — **full EUR-Lex prose** for every entry.
+- **68 Art. 3 definitions** (was 31 hand-curated).
+- 180 recitals indexed by number.
+- 8 severity-rated **pitfalls** anchored to specific articles.
+- 7-tier **proportionality matrix** (prohibited / high-risk Annex I / high-risk
+  Annex III / limited / GPAI standard / GPAI systemic / minimal).
+- 10 sector-applicability rules with `basis_article` + `confidence`.
+
+Regenerated via `py -3.12 scripts/generate_ansvar_corpus.py`; pinned to
+upstream SHAs in the module header.
+
+### `app/data/kb_search.py` — BM25 corpus expansion + source-weighted scoring
+- Corpus 133 → 348 docs: 126 full-prose article docs + 68 definition virtual
+  docs alongside the existing KB summary + ontology rows.
+- Source-aware weighting: `kb`=1.0, `ontology`=1.0, `corpus`=0.6, `definition`=0.8.
+  Stops long EUR-Lex prose from over-firing on scenario questions where a
+  tight hand-authored summary should win.
+
+### `app/engines/scenario_classifier.py` — widened markers
+Verb-stem markers (`"manipulat"`, `"exploit"`, `"over-donat"`) catch
+phrasings like "manipulates low-income families" that the literal forms
+missed. Added `"economic vulnerability"`, `"persuasion tool"`, etc.
+
+### Round 25 — Scorecard vs Round 24 (476 items)
+
+| Axis                       | Round 24 | Round 25  | Δ        |
+| -------------------------- | -------- | --------- | -------- |
+| Ans Correctness (Loose)    | 0.0755   | 0.0757    | +0.000   |
+| Ans Correctness (Strict)   | 0.1757   | 0.1773    | +0.002 ✓ |
+| Ans Conciseness            | 0.4118   | 0.4074    | -0.004   |
+| Ref Correctness (Loose)    | 0.3471   | 0.3619    | **+0.015 ✓** |
+| Ref Correctness (Strict)   | 0.2969   | 0.3093    | **+0.012 ✓** |
+| Ref Conciseness            | 0.3887   | 0.3936    | +0.005 ✓ |
+| Regulatory Tone            | 1.0000   | 1.0000    |  0.000   |
+| Latency p50 (ms)           | 4.36     | 4.76      | +0.40    |
+| Latency p95 (ms)           | 5.67     | 6.11      | +0.44    |
+| Multi-turn coherence rate  | 1.00     | 1.00      |  0.000   |
+
+QA reference correctness lifted +0.029 (loose) / +0.017 (strict);
+scenarios lifted +0.009 (loose) / +0.011 (strict). Tone and multi-turn
+coherence held at 1.0. Latency cost ~0.4 ms p50 from the 2.6× larger
+BM25 corpus — well within rubric budget.
+
+Cumulative since baseline (Round 23 → Round 25): Ref Correctness Loose
+**+0.078 (0.284 → 0.362)**, Strict **+0.073 (0.236 → 0.309)**, Ans
+Correctness Strict **+0.025 (0.152 → 0.177)**, multi-turn coherence
+**+0.20 (0.80 → 1.00)**, tone held at 1.0, latency held under 5 ms p50.
+
 ## Eval scorecard (deterministic-fallback, local 276-scenario suite)
 
 | Round  | Pass     | p50    | p95    | avg refs | avg sentences | Retrieval F1 | Notes |

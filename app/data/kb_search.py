@@ -101,8 +101,19 @@ from app.data.ontology import (
     PRACTICE_REGISTRY,
 )
 
+# Round 25 — augment the BM25 corpus with the full EUR-Lex prose from the
+# Ansvar-Systems/EU_compliance_MCP snapshot (Apache 2.0; regulation text
+# itself is public domain under Article 297 TFEU). Ports 126 articles +
+# annexes (~600 KB) into the retrieval corpus. Lifts loose recall on
+# Articles where our hand-curated summary was sparse (Arts. 1, 2, 18,
+# 26, 43-49, 56-60, 70-90 — top miss zones on the davidath benchmark).
+from app.data.eu_ai_act_corpus import (
+    ARTICLE_FULL_TEXT as _UPSTREAM_FULL_TEXT,
+    ART_3_DEFINITIONS as _UPSTREAM_DEFINITIONS,
+)
 
-DocSource = Literal["kb", "ontology"]
+
+DocSource = Literal["kb", "ontology", "corpus", "definition"]
 
 
 # Domain-tuned stopwords. Keeps `bias`, `fairness`, `data` (informative)
@@ -319,6 +330,30 @@ def _build_index() -> _BM25Index:
     for article_ref, source, text in _build_ontology_docs():
         _add(article_ref, source, text)
 
+    # Round 25 — upstream EUR-Lex corpus. Adds full prose for the 126
+    # article/annex entries from the Ansvar-Systems snapshot. Each doc
+    # is tagged ``source="corpus"`` so consumers can filter; BM25 ranks
+    # against every doc independently. The KB summary row for the same
+    # article remains present (different tokens), so a question that
+    # phrases its terms close to our terse summary still favours that
+    # doc, while a question that phrases like the legal text now finds
+    # the upstream prose instead of falling through to BM25 noise.
+    for article_ref, full_text in _UPSTREAM_FULL_TEXT.items():
+        if not full_text:
+            continue
+        _add(article_ref, "corpus", f"{article_ref} {full_text}")
+
+    # Round 25 — Art. 3 definitions as virtual docs. Each of the 68
+    # terms becomes its own doc anchored to ``Art. 3`` so questions
+    # phrased as "What does X mean?" / "Definition of Y" naturally
+    # surface Art. 3 even when our keyword map doesn't carry that
+    # specific phrase. The ``term`` is included as a leading anchor in
+    # the doc text so a literal match scores highest.
+    for term, body in _UPSTREAM_DEFINITIONS.items():
+        if not body:
+            continue
+        _add("Art. 3", "definition", f"definition of {term}: {body}")
+
     n_docs = len(docs)
     if n_docs == 0:
         return _BM25Index(
@@ -404,11 +439,32 @@ def top_articles_by_relevance(
 
     # Score every doc, then collapse to one entry per article_key
     # keeping the maximum score across kb + ontology rows.
+    #
+    # Source-aware weighting (Round 25): KB summary + ontology docs are
+    # hand-authored and tight; the upstream EUR-Lex corpus docs are
+    # long-form legal prose where BM25 length-normalisation under-shoots
+    # the dilution penalty (`len(corpus_doc) >> avg_doc_len`, but the
+    # b=0.75 normalisation tapers off). Without scaling, a query like
+    # "ai that generates a logo" matches Art. 11 (technical
+    # documentation) in the corpus higher than Art. 50 (transparency)
+    # in the KB summary, because Art. 11's corpus text contains
+    # "generates", "AI system", and "documentation". Scaling the
+    # corpus + definition sources down to 0.6× keeps them as a SAFETY
+    # NET (they still win when the KB doc has zero overlap) without
+    # over-displacing authored summaries.
+    _SOURCE_WEIGHT = {
+        "kb": 1.0,
+        "ontology": 1.0,
+        "corpus": 0.6,
+        "definition": 0.8,
+    }
     best: dict[str, float] = {}
     for doc_idx, article_ref in enumerate(index.article_refs):
-        s = _score(index, doc_idx, query_tokens)
-        if s < min_score:
+        raw = _score(index, doc_idx, query_tokens)
+        if raw < min_score:
             continue
+        weight = _SOURCE_WEIGHT.get(index.sources[doc_idx], 1.0)
+        s = raw * weight
         prev = best.get(article_ref)
         if prev is None or s > prev:
             best[article_ref] = s
