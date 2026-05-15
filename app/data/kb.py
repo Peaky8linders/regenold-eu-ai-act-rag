@@ -729,7 +729,14 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "Classifies a general-purpose AI model as having 'systemic risk' "
             "when it has high-impact capabilities (presumed when cumulative "
             "training compute exceeds 10^25 FLOPs) or when so designated by the "
-            "Commission based on Annex XIII criteria."
+            "Commission based on Annex XIII criteria. Commission's 18 July 2025 "
+            "GPAI Guidelines presume a model is general-purpose (Art. 3(63)) "
+            "when training compute exceeds 10^23 FLOPs and the model can "
+            "generate language, image, audio, or video output. Fine-tuned or "
+            "modified models become new providers under Art. 25 when their "
+            "additional training compute exceeds one-third of the base model's "
+            "compute (or one-third of the 10^25 systemic threshold, ~3.3×10^24 "
+            "FLOPs, when base compute is unknown)."
         ),
     },
     "Art. 52": {
@@ -865,17 +872,15 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
         "dimension": "governance",
         "summary": (
             "Entry into force + application (Regulation 2024/1689): in force "
-            "1 August 2024; applies generally from 2 August 2026; "
-            "prohibitions (Art. 5) + AI literacy (Art. 4) from 2 February "
-            "2025; GPAI obligations (Chapter V) from 2 August 2025; "
-            "high-risk Annex I systems from 2 August 2027; pre-existing "
-            "high-risk for public-authority use from 2 August 2030. (Pending: "
-            "the Digital Omnibus political agreement of 7 May 2026 defers "
-            "Annex III high-risk obligations to 2 December 2027 and Annex I "
-            "embedded-product obligations to 2 August 2028, with a "
-            "transitional period for Art. 50(2) watermarking on legacy "
-            "systems running until 2 December 2026 — not yet adopted but "
-            "expected before 2 August 2026.)"
+            "1 August 2024; prohibitions (Art. 5) + AI literacy (Art. 4) from "
+            "2 February 2025; GPAI obligations (Chapter V) from 2 August 2025; "
+            "general application from 2 August 2026; pre-existing high-risk "
+            "for public-authority use from 2 August 2030. Digital Omnibus on "
+            "AI (political agreement reached 7 May 2026 between Parliament + "
+            "Council) defers Annex III high-risk obligations to 2 December "
+            "2027 and Annex I embedded-product obligations to 2 August 2028 "
+            "to allow harmonised standards + AI Office guidelines to land "
+            "first; remaining provisions unchanged."
         ),
     },
     # ─── Additional Annexes ──────────────────────────────────────────────────

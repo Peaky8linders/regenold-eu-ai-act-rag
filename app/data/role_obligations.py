@@ -46,6 +46,14 @@ ROLE_AUTHORIZED_REPRESENTATIVE = "authorized_representative"
 ROLE_GPAI_PROVIDER = "gpai_provider"
 ROLE_GPAI_SYSTEMIC_PROVIDER = "gpai_systemic_provider"
 ROLE_EXTRATERRITORIAL_NON_EU = "extraterritorial_non_eu"
+# Round 27 — Digital Omnibus political agreement (7 May 2026) extended
+# the Art. 62/63 SME privileges (simplified QMS, derogated documentation
+# format, reduced sandbox fees) to *small mid-cap* companies — entities
+# above the SME ceiling but below the large-enterprise ceiling per
+# Recommendation 2003/361/EC as amended. Treated as a *modifier* role:
+# inherits the underlying actor obligations (Provider / Deployer / etc.)
+# and overlays the SME-style reliefs.
+ROLE_SMALL_MID_CAP = "small_mid_cap"
 
 
 # Canonical role list — order matches the obligation hierarchy in §3 of the
@@ -53,6 +61,7 @@ ROLE_EXTRATERRITORIAL_NON_EU = "extraterritorial_non_eu"
 # distributor > deployer > authorized_rep > GPAI provider > systemic GPAI).
 # The extraterritorial role is treated as *modifier* — a non-EU entity in
 # any of the above roles inherits MSR Art. 4 obligations on top.
+# ``small_mid_cap`` is also a *modifier* role layered on top.
 CANONICAL_ROLE_IDS = (
     ROLE_PROVIDER,
     ROLE_DEPLOYER,
@@ -63,6 +72,7 @@ CANONICAL_ROLE_IDS = (
     ROLE_GPAI_PROVIDER,
     ROLE_GPAI_SYSTEMIC_PROVIDER,
     ROLE_EXTRATERRITORIAL_NON_EU,
+    ROLE_SMALL_MID_CAP,
 )
 
 
@@ -338,6 +348,42 @@ ROLE_OBLIGATIONS: list[RoleObligation] = [
             "MSAs may request and access documentation and source code (Art. 74(12)-(13)); Art. 74(5) remote enforcement; Art. 74(11) joint cross-Member-State investigations (lines 1073-1075).",
         ],
     },
+    {
+        "id": ROLE_SMALL_MID_CAP,
+        "label": "Small Mid-Cap Enterprise",
+        "art_3_definition": (
+            "Digital Omnibus on AI (political agreement 7 May 2026) — entity "
+            "above the SME ceiling per Recommendation 2003/361/EC but below "
+            "the large-enterprise threshold; benefits from SME-equivalent "
+            "reliefs under Art. 62/63 and Art. 17(3)."
+        ),
+        "summary": (
+            "Inherits SME privileges originally granted under Art. 62 + "
+            "Art. 63: simplified quality-management documentation appropriate "
+            "to size + market stage (Art. 17(3)); priority access to AI "
+            "regulatory sandboxes with reduced fees; tailored awareness + "
+            "training from the AI Office. As a modifier role, layered on top "
+            "of the underlying actor obligations (Provider / Deployer / "
+            "Importer / etc.) — does not displace primary duties."
+        ),
+        "source": (
+            "Digital Omnibus on AI (political agreement reached 7 May 2026) "
+            "+ Art. 62 + Art. 63 + Art. 17(3)"
+        ),
+        "paper_lines": "Omnibus press release 7 May 2026, paragraph 5",
+        "primary_articles": ["Art. 62", "Art. 63"],
+        "secondary_articles": ["Art. 17", "Art. 57"],
+        "kb_dimensions": ["sme_support", "quality_management", "sandboxes"],
+        "flips_provider_under": [],
+        "notes": [
+            "Modifier role — overlays SME-style reliefs on the entity's "
+            "underlying actor obligations. Same activation logic as the "
+            "extraterritorial_non_eu role.",
+            "Confirmed by the 7 May 2026 political agreement: 'Certain "
+            "privileges for small and medium-sized enterprises are extended "
+            "to small mid-cap companies.'",
+        ],
+    },
 ]
 
 
@@ -445,6 +491,7 @@ __all__ = [
     "ROLE_GPAI_PROVIDER",
     "ROLE_GPAI_SYSTEMIC_PROVIDER",
     "ROLE_EXTRATERRITORIAL_NON_EU",
+    "ROLE_SMALL_MID_CAP",
     "CANONICAL_ROLE_IDS",
     "RoleObligation",
     "ROLE_OBLIGATIONS",

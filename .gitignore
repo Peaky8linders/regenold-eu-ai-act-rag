@@ -31,3 +31,9 @@ evals/regenold_results_no_orphan.json
 # (evals/bench/data/) is committed for reproducibility; the per-run
 # results, durable SQLite ledger, and audit-chain mirror are not.
 evals/bench/results/
+
+# Round 27 vector-rerank intermediate exports (the .tvim + ONNX + tokenizer
+# are committed; only the temporary `_bge_export/` / `_bge_tok_export/`
+# scratch folders the offline indexer creates are excluded).
+app/data/vectors/_bge_export/
+app/data/vectors/_bge_tok_export/

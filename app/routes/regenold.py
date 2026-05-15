@@ -322,8 +322,26 @@ def _try_extractive_answer(
             continue
         seen_refs.add(ref)
         sentence = select_answer_sentence(question, ref)
-        if sentence:
-            return sentence
+        if not sentence:
+            continue
+        # Round-27 optional vector rerank — when
+        # REGENOLD_VECTOR_RERANK=1 and the bge-small ONNX +
+        # turbovec index are present on disk, fuse the BM25 sentence
+        # pick with the vector top-k via Reciprocal Rank Fusion. The
+        # rerank module returns ``None`` when the env-gate is off or
+        # any asset is missing — pure passthrough.
+        try:
+            from app.engines.vector_rerank import (  # noqa: PLC0415
+                is_enabled as _vrr_enabled,
+                rerank_sentences as _vrr,
+            )
+            if _vrr_enabled():
+                fused = _vrr(question, ref, sentence)
+                if fused:
+                    return fused
+        except Exception:  # noqa: BLE001 — never let rerank break the route
+            pass
+        return sentence
     return None
 
 
