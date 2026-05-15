@@ -27,3 +27,7 @@ evals/regenold_results_no_orphan.json
 *.zip
 *.txt
 
+# Round 24 reproducible-benchmark artefacts. The dataset itself
+# (evals/bench/data/) is committed for reproducibility; the per-run
+# results, durable SQLite ledger, and audit-chain mirror are not.
+evals/bench/results/

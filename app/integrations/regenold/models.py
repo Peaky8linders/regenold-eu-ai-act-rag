@@ -491,6 +491,26 @@ _META_OPENER_RE = re.compile(
     r"^(?:Direct Answer|Answer|Summary|Direct Response)\s*[.:]\s*",
     re.IGNORECASE,
 )
+
+# Strip the leading ``Art. N(.sub)*:`` / ``Article N:`` / ``Annex X:``
+# label from KB-stub sentences. The engine emits these labels so the
+# in-app UI can highlight the citation; on the Regenold wire they're
+# noise — the ``references`` field already carries the same article
+# numbers and the gold-style competition answer is plain prose
+# ("Lays down harmonised rules…") not citation-prefixed
+# ("Art. 1: Lays down harmonised rules…").
+#
+# Pattern matches:
+#     "Art. 1:"                  → drop
+#     "Art. 50.3:"               → drop
+#     "Article 13(1)(a):"        → drop
+#     "Annex IV:"                → drop
+#     "Annex III.2:"             → drop
+_KB_STUB_LABEL_RE = re.compile(
+    r"^(?:Art\.|Article)\s+\d+(?:[.\(][^:]*)?\s*:\s*"
+    r"|^Annex\s+[IVXLC]+(?:\.[A-Za-z0-9]+)*\s*:\s*",
+    re.IGNORECASE,
+)
 # Whole-sentence opener: a sentence that is JUST the opener label (e.g.
 # the markdown stripper turned ``**Direct Answer:**`` into the sentence
 # ``Direct Answer.``). Drop these entirely.
@@ -522,6 +542,27 @@ def _strip_sentence_opener(sentence: str) -> str:
     fallback. Keeping them looks robotic; the spec wants prose.
     """
     return _META_OPENER_RE.sub("", sentence).lstrip()
+
+
+def _strip_kb_stub_label(sentence: str) -> str:
+    """Drop ``Art. N:`` / ``Annex IV:`` prefix from a KB-stub sentence.
+
+    The engine prefixes each KB stub with its article number for the
+    in-app UI to highlight; on the Regenold wire that prefix
+    inflates length without adding information (the ``references``
+    field already carries the article numbers). Round-24 benchmark
+    surfaced a 3.5x median over-length on QA answers driven almost
+    entirely by these prefixes.
+
+    Capitalises the first letter of the surviving prose so a label
+    like ``Art. 1: Lays down...`` doesn't survive as ``lays down...``.
+    """
+    stripped = _KB_STUB_LABEL_RE.sub("", sentence)
+    if stripped != sentence:
+        stripped = stripped.lstrip()
+        if stripped and stripped[0].islower():
+            stripped = stripped[0].upper() + stripped[1:]
+    return stripped
 
 
 # Markdown shapes the in-app UI uses but Regenold's spec says no to.
@@ -813,4 +854,14 @@ def normalise_answer_for_regenold(
             break
         drop_idx = max(non_cite_idxs, key=lambda i: len(capped[i]))
         capped.pop(drop_idx)
+
+    # Strip ``Art. N:`` / ``Annex IV:`` KB-stub prefixes — done LAST so
+    # the cite-anchor detection above (which keeps cite-bearing sentences
+    # during the soft-cap pass) still sees the prefix as load-bearing
+    # signal. The references field already carries the article numbers
+    # so the wire stays informationally complete after the strip.
+    # Round-24 benchmark: prefix-strip cuts QA pred-len median 499→373
+    # without losing the citation-prose-priority guarantee.
+    capped = [_strip_kb_stub_label(s) for s in capped]
+    capped = [s for s in capped if s.strip()]
     return " ".join(capped).rstrip()

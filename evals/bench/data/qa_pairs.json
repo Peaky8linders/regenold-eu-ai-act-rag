@@ -1,0 +1,690 @@
+{
+    "license": "Creative Commons Attribution 4.0 International, available at https://creativecommons.org/licenses/by/4.0/",
+    "data": [
+        {
+            "question": "What is the primary purpose of the AI Regulation?",
+            "answer": "To improve the internal market, promote trustworthy, human‑centric AI, protect health, safety and fundamental rights, and support innovation.",
+            "relevant_article": 1
+        },
+        {
+            "question": "Who must comply with the AI Regulation?",
+            "answer": "Providers, deployers, importers, distributors, product manufacturers, authorised representatives, and affected persons located in the Union, regardless of where the provider is established.",
+            "relevant_article": 2
+        },
+        {
+            "question": "Does the AI Regulation apply to AI systems used for military or national security purposes?",
+            "answer": "No, it does not apply to AI systems placed on the market or used exclusively for military, defence or national security purposes.",
+            "relevant_article": 2
+        },
+        {
+            "question": "What is the definition of an ‘AI system’ under the Regulation?",
+            "answer": "A machine‑based system designed to operate with varying autonomy that infers from input to generate outputs such as predictions, content, recommendations or decisions that can influence physical or virtual environments.",
+            "relevant_article": 3
+        },
+        {
+            "question": "How is ‘risk’ defined in the AI Regulation?",
+            "answer": "The combination of the probability of an occurrence of harm and the severity of that harm.",
+            "relevant_article": 3
+        },
+        {
+            "question": "Who is considered a ‘provider’ of an AI system?",
+            "answer": "A natural or legal person, public authority or other body that develops an AI system or general‑purpose AI model and places it on the market or puts it into service under its own name or trademark.",
+            "relevant_article": 3
+        },
+        {
+            "question": "What does ‘deployer’ mean in the context of the AI Regulation?",
+            "answer": "A natural or legal person, public authority, agency or other body using an AI system under its authority, except for personal non‑professional use.",
+            "relevant_article": 3
+        },
+        {
+            "question": "What is required regarding AI literacy for providers and deployers?",
+            "answer": "They must ensure, to the best of their ability, that staff and persons dealing with AI have sufficient AI literacy considering their technical knowledge, experience, education and the AI’s context of use.",
+            "relevant_article": 4
+        },
+        {
+            "question": "Name one prohibited AI practice under Article 5.",
+            "answer": "The use of subliminal techniques that materially distort a person’s behaviour and impair their ability to make an informed decision.",
+            "relevant_article": 5
+        },
+        {
+            "question": "Are real‑time remote biometric identification systems allowed in public spaces for law enforcement?",
+            "answer": "Only if strictly necessary for specific objectives such as locating missing persons, preventing imminent threats, or identifying suspects, and subject to prior judicial or administrative authorisation.",
+            "relevant_article": 5
+        },
+        {
+            "question": "When is a ‘high‑risk AI system’ classified according to Article 6?",
+            "answer": "When it is a safety component of a product covered by Union harmonisation legislation that requires third‑party conformity assessment, or when listed in Annex III, unless it does not pose a significant risk.",
+            "relevant_article": 6
+        },
+        {
+            "question": "Can a provider consider an Annex III AI system as not high‑risk?",
+            "answer": "Yes, if it meets certain conditions such as performing a narrow procedural task, improving a prior human activity, or detecting decision‑making patterns without replacing human assessment, and documents this assessment.",
+            "relevant_article": 6
+        },
+        {
+            "question": "What must high‑risk AI systems comply with according to Article 8?",
+            "answer": "All requirements set out in Chapter III, Section 2, taking into account their intended purpose and the state of the art.",
+            "relevant_article": 8
+        },
+        {
+            "question": "What are the main steps of the risk management system for high‑risk AI systems?",
+            "answer": "Identify and analyse risks, estimate and evaluate risks, evaluate other risks from post‑market data, and adopt appropriate risk‑management measures.",
+            "relevant_article": 9
+        },
+        {
+            "question": "What quality of data sets must high‑risk AI systems use according to Article 10?",
+            "answer": "Training, validation and testing data sets must meet quality criteria, be relevant, sufficiently representative, free of errors, and appropriate for the intended purpose.",
+            "relevant_article": 10
+        },
+        {
+            "question": "What must the technical documentation of a high‑risk AI system contain?",
+            "answer": "All information set out in Annex IV, sufficient to demonstrate conformity with the Regulation’s requirements, and must be kept up‑to‑date.",
+            "relevant_article": 11
+        },
+        {
+            "question": "How long must providers keep technical documentation for high‑risk AI systems?",
+            "answer": "For ten years after the system has been placed on the market or put into service.",
+            "relevant_article": 18
+        },
+        {
+            "question": "What logging capabilities must high‑risk AI systems have under Article 12?",
+            "answer": "Automatic recording of events over the system’s lifetime to identify risk situations, facilitate post‑market monitoring, and monitor operation.",
+            "relevant_article": 12
+        },
+        {
+            "question": "For how long must providers retain automatically generated logs?",
+            "answer": "At least six months, unless longer periods are required by Union or national law.",
+            "relevant_article": 19
+        },
+        {
+            "question": "What transparency information must be provided to deployers of high‑risk AI systems?",
+            "answer": "Identity of the provider, system capabilities and limitations, accuracy metrics, known risks, human‑oversight measures, hardware requirements, and maintenance information.",
+            "relevant_article": 13
+        },
+        {
+            "question": "What is the purpose of human oversight for high‑risk AI systems?",
+            "answer": "To prevent or minimise risks to health, safety or fundamental rights when the system is used as intended or under foreseeable misuse.",
+            "relevant_article": 14
+        },
+        {
+            "question": "When must a high‑risk AI system be withdrawn or recalled according to Article 20?",
+            "answer": "When the provider considers it not in conformity with the Regulation, or when a serious risk is identified, the provider must take immediate corrective action, including withdrawal, disabling or recall.",
+            "relevant_article": 20
+        },
+        {
+            "question": "What must providers do when a competent authority requests information?",
+            "answer": "Provide all necessary information and documentation to demonstrate conformity, in an official EU language, and grant access to logs if under their control.",
+            "relevant_article": 21
+        },
+        {
+            "question": "When must a provider appoint an authorised representative?",
+            "answer": "If the provider is established in a third country and places a high‑risk AI system on the Union market, it must appoint an authorised representative established in the Union.",
+            "relevant_article": 22
+        },
+        {
+            "question": "What are the importers’ obligations before placing a high‑risk AI system on the market?",
+            "answer": "Verify conformity assessment, technical documentation, CE marking, EU declaration of conformity, and that an authorised representative has been appointed.",
+            "relevant_article": 23
+        },
+        {
+            "question": "What must distributors verify before making a high‑risk AI system available?",
+            "answer": "That the system bears the CE marking, is accompanied by the EU declaration of conformity and instructions for use, and that the provider and importer have complied with their obligations.",
+            "relevant_article": 24
+        },
+        {
+            "question": "When can a distributor be considered a provider of a high‑risk AI system?",
+            "answer": "If it puts its name or trademark on the system, makes a substantial modification, or changes the intended purpose so that it becomes high‑risk.",
+            "relevant_article": 25
+        },
+        {
+            "question": "What are the main obligations of deployers of high‑risk AI systems?",
+            "answer": "Use the system according to instructions, assign competent human oversight, ensure relevant input data, monitor operation, report serious incidents, keep logs, and inform workers where applicable.",
+            "relevant_article": 26
+        },
+        {
+            "question": "When must deployers conduct a fundamental rights impact assessment?",
+            "answer": "Before deploying a high‑risk AI system listed in Annex III, unless the assessment is already covered by a data‑protection impact assessment.",
+            "relevant_article": 27
+        },
+        {
+            "question": "What is the role of the notifying authority under Article 28?",
+            "answer": "To designate and monitor conformity‑assessment bodies, ensuring their impartiality and competence.",
+            "relevant_article": 28
+        },
+        {
+            "question": "What must a conformity‑assessment body submit when applying for notification?",
+            "answer": "A description of its activities, the conformity‑assessment modules, types of AI systems, and an accreditation certificate or equivalent evidence.",
+            "relevant_article": 29
+        },
+        {
+            "question": "What are the requirements for notified bodies under Article 31?",
+            "answer": "They must be independent, have appropriate organisational structure, resources, cybersecurity measures, and ensure confidentiality of information.",
+            "relevant_article": 31
+        },
+        {
+            "question": "When can a provider use a harmonised standard to demonstrate conformity?",
+            "answer": "When the standard is published in the Official Journal and covers the relevant requirements, the provider is presumed to comply with those requirements.",
+            "relevant_article": 40
+        },
+        {
+            "question": "What are common specifications and when are they used?",
+            "answer": "Common specifications are technical specifications adopted by the Commission when harmonised standards are unavailable or insufficient, providing a presumption of conformity.",
+            "relevant_article": 41
+        },
+        {
+            "question": "What does Article 42 presumption of conformity relate to?",
+            "answer": "High‑risk AI systems trained on data reflecting their specific geographical, contextual or functional setting are presumed to meet data‑governance requirements, and those certified under a cybersecurity scheme are presumed to meet cybersecurity requirements.",
+            "relevant_article": 42
+        },
+        {
+            "question": "Which conformity‑assessment procedures apply to high‑risk AI systems listed in Annex III?",
+            "answer": "Either internal control (Annex VI) or assessment involving a notified body (Annex VII), depending on the existence of harmonised standards or common specifications.",
+            "relevant_article": 43
+        },
+        {
+            "question": "How long is a certificate of conformity valid for high‑risk AI systems covered by Annex I?",
+            "answer": "Up to five years, with possible extensions of up to five years each after re‑assessment.",
+            "relevant_article": 44
+        },
+        {
+            "question": "What must providers do if a serious incident occurs?",
+            "answer": "Report it to the market‑surveillance authority within the specified time limits (up to 15 days, or sooner for severe cases) and cooperate with investigations.",
+            "relevant_article": 73
+        },
+        {
+            "question": "What is the purpose of the EU database established under Article 71?",
+            "answer": "To store information on high‑risk AI systems listed in Annex III, including registration data, technical documentation and, where applicable, non‑public sections for law‑enforcement related systems.",
+            "relevant_article": 71
+        },
+        {
+            "question": "What post‑market monitoring obligations do providers have?",
+            "answer": "Establish a post‑market monitoring system, document it, and include a monitoring plan in the technical documentation to collect and analyse performance data throughout the system’s lifetime.",
+            "relevant_article": 72
+        },
+        {
+            "question": "When must a provider register a non‑high‑risk AI system?",
+            "answer": "If the provider concludes the system is not high‑risk under Article 6(3), it must register the system in the EU database before placing it on the market or putting it into service.",
+            "relevant_article": 49
+        },
+        {
+            "question": "What transparency obligations apply to AI systems that interact directly with natural persons?",
+            "answer": "Providers must ensure that natural persons are informed they are interacting with an AI system, unless this is obvious to a reasonably well‑informed user.",
+            "relevant_article": 50
+        },
+        {
+            "question": "What labeling requirement exists for deep‑fake content?",
+            "answer": "Providers must ensure that AI‑generated or manipulated image, audio or video content is marked in a machine‑readable format and detectable as artificially generated or manipulated.",
+            "relevant_article": 50
+        },
+        {
+            "question": "What is a ‘general‑purpose AI model’ according to Article 63?",
+            "answer": "An AI model capable of performing a wide range of distinct tasks, trainable on large data sets, and integrable into various downstream systems, except when used solely for research, development or prototyping before market placement.",
+            "relevant_article": 63
+        },
+        {
+            "question": "When is a general‑purpose AI model classified as having systemic risk?",
+            "answer": "If it has high‑impact capabilities evaluated by technical tools or is designated by the Commission based on criteria in Annex XIII.",
+            "relevant_article": 51
+        },
+        {
+            "question": "What notification obligation does a provider have for a general‑purpose AI model with systemic risk?",
+            "answer": "The provider must notify the Commission within two weeks after meeting the systemic‑risk condition, providing necessary information.",
+            "relevant_article": 52
+        },
+        {
+            "question": "What are the obligations of providers of general‑purpose AI models?",
+            "answer": "Maintain up‑to‑date technical documentation, provide information to downstream providers, comply with copyright reservations, and publish a summary of training data.",
+            "relevant_article": 53
+        },
+        {
+            "question": "When are authorised representatives required for general‑purpose AI models?",
+            "answer": "When the provider is established in a third country and places the model on the Union market, a written mandate must appoint an authorised representative in the Union.",
+            "relevant_article": 54
+        },
+        {
+            "question": "What additional obligations apply to providers of general‑purpose AI models with systemic risk?",
+            "answer": "Conduct standardized model evaluation, assess and mitigate systemic risks, report serious incidents, and ensure adequate cybersecurity.",
+            "relevant_article": 55
+        },
+        {
+            "question": "What is the role of the AI Office?",
+            "answer": "To contribute to implementation, monitoring and supervision of AI systems and models, and to support the Commission in enforcing the Regulation.",
+            "relevant_article": 64
+        },
+        {
+            "question": "What is the European Artificial Intelligence Board?",
+            "answer": "A Board composed of one representative per Member State, tasked with advising and assisting the Commission and ensuring consistent application of the Regulation.",
+            "relevant_article": 65
+        },
+        {
+            "question": "What does the advisory forum provide?",
+            "answer": "Technical expertise and advice to the Board and the Commission, representing a balanced mix of industry, SMEs, civil society and academia.",
+            "relevant_article": 67
+        },
+        {
+            "question": "What is the purpose of the scientific panel of independent experts?",
+            "answer": "To support enforcement by providing alerts on systemic risks, evaluating models, and advising the AI Office and Commission.",
+            "relevant_article": 68
+        },
+        {
+            "question": "When must Member States designate a notifying authority?",
+            "answer": "At least one notifying authority must be designated to assess, designate and monitor conformity‑assessment bodies, in cooperation with other Member States.",
+            "relevant_article": 28
+        },
+        {
+            "question": "What are AI regulatory sandboxes?",
+            "answer": "Controlled environments established by competent authorities to foster innovation, allowing providers to develop, test and validate AI systems under regulatory supervision before market placement.",
+            "relevant_article": 57
+        },
+        {
+            "question": "When must AI regulatory sandboxes be operational?",
+            "answer": "By 2 August 2026, each Member State must have at least one sandbox operational.",
+            "relevant_article": 57
+        },
+        {
+            "question": "What is required for testing high‑risk AI systems in real‑world conditions outside sandboxes?",
+            "answer": "A real‑world testing plan approved by the market‑surveillance authority, registration in the EU database, informed consent from subjects, and compliance with duration and safety limits.",
+            "relevant_article": 60
+        },
+        {
+            "question": "What does informed consent for real‑world testing need to include?",
+            "answer": "Clear information on the test’s nature, objectives, duration, rights to withdraw, and the unique identification number of the test.",
+            "relevant_article": 61
+        },
+        {
+            "question": "What rights do affected persons have regarding decisions made by high‑risk AI systems?",
+            "answer": "They have the right to obtain clear and meaningful explanations of the AI system’s role and the main elements of the decision affecting them.",
+            "relevant_article": 86
+        },
+        {
+            "question": "What are the penalties for non‑compliance with prohibited AI practices?",
+            "answer": "Administrative fines up to €35 million or 7 % of worldwide annual turnover, whichever is higher.",
+            "relevant_article": 99
+        },
+        {
+            "question": "What is the maximum fine for operators who breach obligations other than prohibited practices?",
+            "answer": "Up to €15 million or 3 % of worldwide annual turnover, whichever is higher.",
+            "relevant_article": 99
+        },
+        {
+            "question": "How are fines adjusted for SMEs and start‑ups?",
+            "answer": "The fine percentages or amounts are reduced to the lower of the two applicable limits for SMEs.",
+            "relevant_article": 99
+        },
+        {
+            "question": "What procedural safeguards apply to administrative fines?",
+            "answer": "The affected party must be given the opportunity to be heard, and fines must be proportionate, effective and dissuasive.",
+            "relevant_article": 99
+        },
+        {
+            "question": "What is the role of market‑surveillance authorities regarding AI systems?",
+            "answer": "To monitor compliance, conduct inspections, enforce corrective actions, and cooperate with other authorities, applying powers from Regulation (EU) 2019/1020.",
+            "relevant_article": 74
+        },
+        {
+            "question": "When can a market‑surveillance authority suspend or withdraw a certificate?",
+            "answer": "If the notified body finds the AI system no longer meets the requirements, it may suspend or withdraw the certificate after giving the provider a deadline to correct the non‑compliance.",
+            "relevant_article": 44
+        },
+        {
+            "question": "What information must be included in the EU declaration of conformity?",
+            "answer": "All details required by Annex V, confirming that the high‑risk AI system meets the Regulation’s requirements, and it must be kept for ten years.",
+            "relevant_article": 47
+        },
+        {
+            "question": "What does the CE marking indicate for high‑risk AI systems?",
+            "answer": "That the system conforms to the Regulation’s requirements; it must be affixed visibly, legibly and indelibly, or on packaging/documentation if not possible.",
+            "relevant_article": 48
+        },
+        {
+            "question": "When must providers of general‑purpose AI models comply with the AI Office’s codes of practice?",
+            "answer": "Until a harmonised standard is published, providers may rely on approved codes of practice to demonstrate compliance.",
+            "relevant_article": 56
+        },
+        {
+            "question": "What is the purpose of the post‑market monitoring plan template to be adopted by the Commission?",
+            "answer": "To provide a standardised format for providers to document their monitoring activities and ensure consistent post‑market surveillance.",
+            "relevant_article": 72
+        },
+        {
+            "question": "What are the conditions for a provider to be exempt from the quality‑management‑system requirement?",
+            "answer": "Micro‑enterprises without partner or linked enterprises may comply with a simplified quality‑management system, as guided by the Commission.",
+            "relevant_article": 63
+        },
+        {
+            "question": "What must a provider do if a substantial modification is made to a high‑risk AI system?",
+            "answer": "Conduct a new conformity assessment, unless the modification was pre‑determined at the initial assessment and does not affect compliance.",
+            "relevant_article": 43
+        },
+        {
+            "question": "What are the reporting obligations for serious incidents causing death?",
+            "answer": "Report immediately after establishing a causal link, but no later than ten days after becoming aware of the incident.",
+            "relevant_article": 73
+        },
+        {
+            "question": "What is the timeframe for a market‑surveillance authority to object to a notified body’s designation?",
+            "answer": "Two weeks if an accreditation certificate is provided, otherwise two months.",
+            "relevant_article": 30
+        },
+        {
+            "question": "When can a provider rely on the presumption of conformity with harmonised standards?",
+            "answer": "When the relevant harmonised standard is published in the Official Journal and covers the applicable requirements.",
+            "relevant_article": 40
+        },
+        {
+            "question": "What must be included in the instructions for use of a high‑risk AI system?",
+            "answer": "Provider identity, system capabilities, accuracy metrics, known risks, human‑oversight measures, hardware requirements, maintenance, and logging mechanisms.",
+            "relevant_article": 13
+        },
+        {
+            "question": "What is the role of the AI Office in AI regulatory sandboxes?",
+            "answer": "To provide technical support, guidance, and to take into account exit reports for conformity‑assessment and market‑surveillance purposes.",
+            "relevant_article": 57
+        },
+        {
+            "question": "What are the obligations of downstream providers regarding high‑risk AI systems?",
+            "answer": "They must ensure that the AI system complies with the Regulation, maintain logs, and cooperate with competent authorities in case of incidents.",
+            "relevant_article": 26
+        },
+        {
+            "question": "What is the purpose of the fundamental‑rights impact assessment for high‑risk AI systems?",
+            "answer": "To identify and mitigate potential impacts on fundamental rights before deployment, especially for public‑law bodies and certain high‑risk categories.",
+            "relevant_article": 27
+        },
+        {
+            "question": "When must deployers inform the provider of a serious incident?",
+            "answer": "Immediately after becoming aware of the incident, and without undue delay if the incident presents a risk under Article 79(1).",
+            "relevant_article": 26
+        },
+        {
+            "question": "What is the maximum duration allowed for testing high‑risk AI systems in real‑world conditions?",
+            "answer": "Six months, extendable by an additional six months with prior notification and justification.",
+            "relevant_article": 60
+        },
+        {
+            "question": "What are the confidentiality obligations for market‑surveillance authorities?",
+            "answer": "They must protect intellectual property, trade secrets, public security, and any classified information, and only request data strictly necessary for risk assessment.",
+            "relevant_article": 78
+        },
+        {
+            "question": "What is the procedure if a market‑surveillance authority finds an AI system presents a risk?",
+            "answer": "It evaluates compliance, may require corrective actions, withdrawal or recall, and informs the Commission and other Member States if the risk is cross‑border.",
+            "relevant_article": 79
+        },
+        {
+            "question": "What are the obligations of providers regarding accessibility requirements?",
+            "answer": "They must ensure compliance with Directives (EU) 2016/2102 and (EU) 2019/882 on accessibility.",
+            "relevant_article": 16
+        },
+        {
+            "question": "When must a provider of a high‑risk AI system draw up an EU declaration of conformity?",
+            "answer": "Before placing the system on the market or putting it into service, and keep it for ten years.",
+            "relevant_article": 47
+        },
+        {
+            "question": "What is the role of the European Data Protection Supervisor regarding AI systems used by Union institutions?",
+            "answer": "It acts as the competent authority for market surveillance of AI systems used by Union bodies.",
+            "relevant_article": 70
+        },
+        {
+            "question": "What are the reporting obligations for providers regarding the post‑market monitoring plan?",
+            "answer": "The plan must be part of the technical documentation and follow the template adopted by the Commission.",
+            "relevant_article": 72
+        },
+        {
+            "question": "What must providers do if they receive a request for information from the scientific panel?",
+            "answer": "Supply the requested documentation or access to the AI model within the specified deadline, under penalty of fines for non‑compliance.",
+            "relevant_article": 91
+        },
+        {
+            "question": "What are the conditions for a provider to be exempt from the conformity‑assessment procedure for products covered by Union harmonisation legislation?",
+            "answer": "The provider must have applied all relevant harmonised standards or common specifications covering the requirements of this Regulation.",
+            "relevant_article": 43
+        },
+        {
+            "question": "When does the AI Regulation become applicable to high‑risk AI systems listed in Annex III?",
+            "answer": "From 2 August 2026, with certain provisions applying earlier for specific sections.",
+            "relevant_article": 113
+        },
+        {
+            "question": "What is the purpose of the AI Office’s codes of practice for general‑purpose AI models?",
+            "answer": "To facilitate voluntary compliance with obligations on model evaluation, systemic‑risk mitigation, incident reporting and cybersecurity.",
+            "relevant_article": 56
+        },
+        {
+            "question": "What must providers do regarding cybersecurity for high‑risk AI systems?",
+            "answer": "Implement technical solutions appropriate to the risks, protecting against unauthorised alteration, data poisoning, adversarial attacks and other vulnerabilities.",
+            "relevant_article": 15
+        },
+        {
+            "question": "What are the obligations of providers concerning the provision of logs to competent authorities?",
+            "answer": "Provide automatically generated logs upon a reasoned request, in a format that allows assessment of compliance.",
+            "relevant_article": 21
+        },
+        {
+            "question": "What is the maximum fine for providers of general‑purpose AI models that fail to comply with obligations?",
+            "answer": "Up to 3 % of worldwide annual turnover or €15 million, whichever is higher.",
+            "relevant_article": 101
+        },
+        {
+            "question": "When must a provider of a general‑purpose AI model with systemic risk conduct adversarial testing?",
+            "answer": "As part of the obligations under Article 55, before placing the model on the market or putting it into service.",
+            "relevant_article": 55
+        },
+        {
+            "question": "What is the role of the AI Office in the Union safeguard procedure?",
+            "answer": "To support the Commission in assessing systemic‑risk alerts and taking appropriate measures.",
+            "relevant_article": 90
+        },
+        {
+            "question": "What information must be included in the EU database for law‑enforcement related high‑risk AI systems?",
+            "answer": "Only non‑public sections containing specific annex data (Annex VIII sections A‑C and Annex IX points) accessible to the Commission and national authorities.",
+            "relevant_article": 49
+        },
+        {
+            "question": "What are the obligations of providers regarding the quality‑management system?",
+            "answer": "Establish, document and maintain a quality‑management system covering design, development, testing, data management, risk management, post‑market monitoring and corrective actions.",
+            "relevant_article": 17
+        },
+        {
+            "question": "When can a market‑surveillance authority issue a provisional suspension of an AI system?",
+            "answer": "If the system is found non‑compliant and the non‑compliance is not limited to the national territory, the authority may act within 15 working days.",
+            "relevant_article": 79
+        },
+        {
+            "question": "What is the purpose of the AI Office’s single information platform?",
+            "answer": "To provide stakeholders with easy access to information on AI regulatory sandboxes, testing plans and related guidance.",
+            "relevant_article": 57
+        },
+        {
+            "question": "What must providers do if a serious incident occurs during real‑world testing?",
+            "answer": "Report the incident to the national market‑surveillance authority, adopt immediate mitigation measures, and possibly suspend or terminate the testing.",
+            "relevant_article": 60
+        },
+        {
+            "question": "What are the conditions for a provider to use a free and open‑source AI model without an authorised representative?",
+            "answer": "If the model is released under a free and open‑source licence that provides access, usage, modification and distribution, and does not present systemic risk.",
+            "relevant_article": 12
+        },
+        {
+            "question": "When must deployers inform workers about the use of a high‑risk AI system?",
+            "answer": "Before putting the system into service at the workplace, they must inform workers’ representatives and affected workers.",
+            "relevant_article": 26
+        },
+        {
+            "question": "What is the maximum period for which a provider must keep technical documentation after a system is placed on the market?",
+            "answer": "Ten years.",
+            "relevant_article": 18
+        },
+        {
+            "question": "What are the obligations of importers regarding storage and transport conditions?",
+            "answer": "Ensure that storage or transport does not jeopardise the system’s compliance with the Regulation’s requirements.",
+            "relevant_article": 23
+        },
+        {
+            "question": "What must a provider do if it determines that a high‑risk AI system is not in conformity?",
+            "answer": "Immediately take corrective actions, withdraw, disable or recall the system, and inform distributors, deployers, authorised representatives and importers.",
+            "relevant_article": 20
+        },
+        {
+            "question": "What is the role of the European Artificial Intelligence Board’s standing sub‑groups?",
+            "answer": "To facilitate cooperation among market‑surveillance authorities and notifying authorities, and to address specific issues.",
+            "relevant_article": 65
+        },
+        {
+            "question": "When can a provider rely on a code of conduct to demonstrate compliance for a general‑purpose AI model?",
+            "answer": "Until a harmonised standard is published, provided the code of practice is approved by the AI Office.",
+            "relevant_article": 56
+        },
+        {
+            "question": "What is the purpose of the AI Office’s evaluation of systemic risks?",
+            "answer": "To assess whether a general‑purpose AI model poses a systemic risk at Union level and to recommend mitigation measures.",
+            "relevant_article": 90
+        },
+        {
+            "question": "What must providers do regarding the provision of a summary of training data for general‑purpose AI models?",
+            "answer": "Publish a sufficiently detailed summary using the template provided by the AI Office.",
+            "relevant_article": 53
+        },
+        {
+            "question": "What are the obligations of providers concerning the provision of a CE marking?",
+            "answer": "Affix the CE marking visibly, legibly and indelibly, or on packaging/documentation if not possible, and include the notified body’s identification number if applicable.",
+            "relevant_article": 48
+        },
+        {
+            "question": "When must a provider of a general‑purpose AI model with systemic risk report serious incidents?",
+            "answer": "Without undue delay to the AI Office and, as appropriate, to national competent authorities.",
+            "relevant_article": 55
+        },
+        {
+            "question": "What is the maximum fine for non‑compliance with the prohibition of AI practices?",
+            "answer": "Up to €35 million or 7 % of worldwide annual turnover, whichever is higher.",
+            "relevant_article": 99
+        },
+        {
+            "question": "What is the purpose of the AI Office’s codes of practice for voluntary application of specific requirements?",
+            "answer": "To encourage the voluntary adoption of certain requirements by AI systems other than high‑risk systems, promoting trustworthiness and sustainability.",
+            "relevant_article": 95
+        },
+        {
+            "question": "When does the AI Regulation apply to AI systems placed on the market before 2 August 2026?",
+            "answer": "They must be brought into compliance by 31 December 2030 for large‑scale IT systems, and by 2 August 2030 for high‑risk AI systems used by public authorities.",
+            "relevant_article": 111
+        },
+        {
+            "question": "What are the reporting obligations for providers regarding the EU database registration?",
+            "answer": "Register the system and provider details in the EU database before placing the high‑risk AI system on the market or putting it into service.",
+            "relevant_article": 49
+        },
+        {
+            "question": "What is the role of the AI Office in supporting AI regulatory sandboxes?",
+            "answer": "To provide technical support, guidance, and to evaluate exit reports for conformity‑assessment and market‑surveillance purposes.",
+            "relevant_article": 57
+        },
+        {
+            "question": "When must a provider of a general‑purpose AI model notify the Commission of systemic‑risk classification?",
+            "answer": "Within two weeks after meeting the systemic‑risk condition or becoming aware that it will be met.",
+            "relevant_article": 52
+        },
+        {
+            "question": "What are the obligations of providers regarding the provision of a post‑market monitoring plan?",
+            "answer": "Document the plan, include it in the technical documentation, and follow the template adopted by the Commission.",
+            "relevant_article": 72
+        },
+        {
+            "question": "What must providers do if a market‑surveillance authority requests access to source code?",
+            "answer": "Provide access only if the authority has exhausted other verification methods and the request is necessary to assess conformity.",
+            "relevant_article": 74
+        },
+        {
+            "question": "What is the purpose of the AI Office’s scientific panel alerts?",
+            "answer": "To inform the Commission of possible systemic risks posed by general‑purpose AI models, prompting further assessment.",
+            "relevant_article": 90
+        },
+        {
+            "question": "When can a provider be exempt from the conformity‑assessment procedure for a product covered by Union harmonisation legislation?",
+            "answer": "If it has applied all relevant harmonised standards or common specifications covering the Regulation’s requirements.",
+            "relevant_article": 43
+        },
+        {
+            "question": "What are the obligations of providers regarding the provision of a summary of training data for general‑purpose AI models?",
+            "answer": "Publish a detailed summary of the content used for training, using the AI Office’s template.",
+            "relevant_article": 53
+        },
+        {
+            "question": "What is the maximum duration a sandbox plan may be in effect?",
+            "answer": "The sandbox plan is for a limited time as defined in the agreement between the provider and the competent authority, with no specific maximum set in the Regulation.",
+            "relevant_article": 57
+        },
+        {
+            "question": "What must providers do if a high‑risk AI system continues to learn after being placed on the market?",
+            "answer": "Ensure that any changes pre‑determined at the initial conformity assessment do not constitute a substantial modification, and implement measures to prevent biased feedback loops.",
+            "relevant_article": 43
+        },
+        {
+            "question": "When must a provider of a high‑risk AI system keep logs for at least six months?",
+            "answer": "Automatically generated logs must be retained for a minimum of six months, unless longer retention is required by applicable law.",
+            "relevant_article": 19
+        },
+        {
+            "question": "What is the role of the European Data Protection Supervisor for Union institutions?",
+            "answer": "It acts as the competent authority for market surveillance of AI systems used by Union bodies.",
+            "relevant_article": 70
+        },
+        {
+            "question": "What are the obligations of providers regarding the provision of a CE marking for digital AI systems?",
+            "answer": "Use a digital CE marking that can be easily accessed via the system’s interface or a machine‑readable code.",
+            "relevant_article": 48
+        },
+        {
+            "question": "When must a provider inform the market‑surveillance authority of a serious incident involving death?",
+            "answer": "Immediately after establishing a causal link, but no later than ten days after becoming aware of the incident.",
+            "relevant_article": 73
+        },
+        {
+            "question": "What is the purpose of the AI Office’s guidelines on the practical implementation of the Regulation?",
+            "answer": "To clarify the application of requirements, prohibited practices, substantial modifications, transparency obligations, and relationships with other Union legislation.",
+            "relevant_article": 96
+        },
+        {
+            "question": "When can a market‑surveillance authority suspend a high‑risk AI system without prior notice?",
+            "answer": "If the system presents a serious risk to health, safety or fundamental rights, the authority may act immediately under the powers of Regulation (EU) 2019/1020.",
+            "relevant_article": 79
+        },
+        {
+            "question": "What are the obligations of providers regarding the provision of a post‑market monitoring system?",
+            "answer": "Establish, document and maintain a system proportionate to the AI technology and risks, and continuously collect and analyse performance data.",
+            "relevant_article": 72
+        },
+        {
+            "question": "What must providers do if a notified body withdraws a certificate?",
+            "answer": "Cease placing the AI system on the market or put it into service until compliance is restored, and may seek to remedy the non‑compliance within the deadline set by the notified body.",
+            "relevant_article": 44
+        },
+        {
+            "question": "When must a provider of a general‑purpose AI model with systemic risk conduct adversarial testing?",
+            "answer": "Before placing the model on the market or putting it into service, as part of the obligations under Article 55.",
+            "relevant_article": 55
+        },
+        {
+            "question": "What is the maximum fine for a provider that supplies incorrect information to a notified body?",
+            "answer": "Up to €7.5 million or 1 % of worldwide annual turnover, whichever is higher.",
+            "relevant_article": 99
+        },
+        {
+            "question": "What are the obligations of providers regarding the provision of a CE marking for high‑risk AI systems?",
+            "answer": "Affix the CE marking visibly, legibly and indelibly on the system or its packaging/documentation, and include the notified body’s identification number if applicable.",
+            "relevant_article": 48
+        },
+        {
+            "question": "When must a provider of a high‑risk AI system conduct a risk‑management process?",
+            "answer": "Continuously throughout the entire lifecycle, from design to post‑market monitoring, as required by Article 9.",
+            "relevant_article": 9
+        },
+        {
+            "question": "What is the purpose of the AI Office’s single information platform?",
+            "answer": "To provide stakeholders with easy access to information on AI regulatory sandboxes, testing plans and related guidance.",
+            "relevant_article": 57
+        }
+    ]
+}

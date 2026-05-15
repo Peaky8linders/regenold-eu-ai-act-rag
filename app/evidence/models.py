@@ -60,6 +60,15 @@ class EvidenceEntryType(str, Enum):
     # from any future tenant buckets.
     regenold_question = "regenold_question"
 
+    # Reproducible-benchmark run. Written once per
+    # ``evals.bench.runner`` invocation with a summary blob (per-axis
+    # means, latency percentiles, dataset SHA-pin) so the audit chain
+    # carries every benchmark score the system has ever produced. The
+    # tenant bucket is ``"partner:regenold"`` so a chain restored from
+    # backup keeps the benchmark history alongside the live partner
+    # queries.
+    benchmark_run = "benchmark_run"
+
 
 class EvidenceEntry(BaseModel):
     """A single evidence-chain entry with hash linkage for tamper resistance.
