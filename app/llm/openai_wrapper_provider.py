@@ -45,6 +45,30 @@ class OpenAIWrapperResponse(BaseModel):
     elapsed_ms: int = 0
 
 
+# Cap on Retry-After we'll honour. The Regenold latency budget is
+# sub-second p95 on the deterministic path; a 60 s sleep mid-Stage-2
+# would block the request thread for far longer than any partner is
+# willing to wait. On anything above this cap we surface api_status_429
+# and let the engine fall back to deterministic immediately.
+_MAX_RETRY_AFTER_SECONDS = float(os.getenv("OPENAI_MAX_RETRY_AFTER", "8"))
+
+
+def _parse_retry_after(header_value: str | None) -> float:
+    """Parse the Retry-After header per RFC 7231 §7.1.3.
+
+    Returns 0.0 when missing or unparseable. Honours both the
+    ``delta-seconds`` integer form (slowapi's default) and an
+    HTTP-date — we don't bother with HTTP-date because the upstream
+    wrapper's slowapi always emits integer seconds.
+    """
+    if not header_value:
+        return 0.0
+    try:
+        return max(0.0, float(header_value.strip()))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def is_openai_wrapper_enabled() -> bool:
     """The wrapper is enabled when any non-empty base URL OR a non-default
     OPENAI_API_KEY is present. We don't network-probe at import time —
@@ -123,6 +147,37 @@ class _OpenAIWrapperProvider:
                 model=req.model,
                 elapsed_ms=int((time.perf_counter() - start) * 1000),
             )
+
+        # One-shot retry on HTTP 429 (the upstream wrapper's slowapi
+        # gate defaults to RATE_LIMIT_CHAT_PER_MINUTE=10, which is easy
+        # to brush past on benchmark runs or bursty partner traffic).
+        # We honour the Retry-After hint capped at _MAX_RETRY_AFTER so
+        # we don't block the request thread longer than the engine's
+        # latency budget tolerates. Single attempt — if the second call
+        # also 429s the caller falls back to deterministic.
+        if response.status_code == 429:
+            retry_after = _parse_retry_after(
+                response.headers.get("Retry-After")
+            )
+            if retry_after > 0 and retry_after <= _MAX_RETRY_AFTER_SECONDS:
+                logger.info(
+                    "openai_wrapper.429_retry_after=%.1fs (capped at %.0fs)",
+                    retry_after,
+                    _MAX_RETRY_AFTER_SECONDS,
+                )
+                time.sleep(retry_after)
+                try:
+                    response = self._client.post(
+                        "/chat/completions",
+                        headers=self._headers(),
+                        json=body,
+                    )
+                except httpx.HTTPError as exc:
+                    return OpenAIWrapperResponse(
+                        error=f"network_error_on_retry: {exc!s}"[:200],
+                        model=req.model,
+                        elapsed_ms=int((time.perf_counter() - start) * 1000),
+                    )
 
         if response.status_code != 200:
             return OpenAIWrapperResponse(

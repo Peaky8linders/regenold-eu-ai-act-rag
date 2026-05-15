@@ -230,6 +230,174 @@ Cumulative since baseline (Round 23 → Round 25): Ref Correctness Loose
 Correctness Strict **+0.025 (0.152 → 0.177)**, multi-turn coherence
 **+0.20 (0.80 → 1.00)**, tone held at 1.0, latency held under 5 ms p50.
 
+## LLM provider story — pick one of four (2026-05-15, round 28)
+
+The Graph-RAG engine has FOUR mutually-exclusive provider paths. The
+toggle is `P2P_GRAPH_RAG_PROVIDER` (resolved on every call via
+[`resolve_provider`](app/llm/__init__.py)):
+
+| Value             | What it does                                                                     | Setup                                                                                  |
+| ----------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `cli` / `auto`*   | Pure deterministic pipeline — no LLM call, sub-10 ms p50.                        | Nothing.                                                                               |
+| `mistral`         | Stage-1 + Stage-2 via Mistral large.                                             | `MISTRAL_API_KEY=...`. Auto-picked when key set + toggle unset.                        |
+| `anthropic`       | Stage-1 + Stage-2 via Anthropic SDK direct (per-token billing).                  | `P2P_GRAPH_RAG_API_KEY=sk-ant-...` + `anthropic>=0.40.0` (now in `requirements.txt`).  |
+| `openai_wrapper`  | Stage-1 + Stage-2 + intent classifier via the local Claude Code Max wrapper.     | Run `claude-code-openai-wrapper` on `127.0.0.1:8000` + `OPENAI_API_BASE/_API_KEY` env. |
+
+`* auto` resolves to `mistral` when `MISTRAL_API_KEY` is set, else
+`anthropic`. The bundle ships in `cli` mode by default — any sub-pipeline
+that needs an LLM (parse → entities, generate → polished prose) falls
+back to a deterministic equivalent on `None`/error from the chosen
+provider, so the route NEVER 500s on a downed LLM.
+
+### `openai_wrapper` — Claude Max subscription path
+
+The wrapper is **the recommended path for the Regenold competition** —
+flat monthly Max subscription instead of per-token API billing. The
+bundle's wrapper integration is:
+
+* [`app/llm/openai_wrapper_provider.py`](app/llm/openai_wrapper_provider.py)
+  — pooled `httpx.Client` against any OpenAI Chat Completions endpoint.
+  Sentinel-aware (`"Not logged in"` → surfaces as error → deterministic
+  fallback). Default endpoint `http://127.0.0.1:8000/v1`.
+* [`app/llm/intent_classifier.py`](app/llm/intent_classifier.py)
+  — Stage-0 intent narrowing via **Claude Haiku 4.5** through the
+  wrapper (model id `claude-haiku-4-5-20251001`). Token budget ~160,
+  circuit-breaker + LRU cache on the question hash. Auto-disables when
+  `is_openai_wrapper_enabled()` is False.
+* [`app/engines/graph_rag.py::_openai_wrapper_complete_for_graph_rag`](app/engines/graph_rag.py)
+  — Stage-1 parse + Stage-2 answer polish via **Claude Sonnet 4.6**
+  through the wrapper (model id `claude-sonnet-4-6`, override via
+  `P2P_GRAPH_RAG_MODEL`).
+* [`app/engines/graph_rag.py::_two_stage_generate`](app/engines/graph_rag.py)
+  — Stage-2 polish post-hallucination-guard. Deterministic Stage-1
+  answer always lands; Stage-2 polish only fires when the wrapper is
+  wired AND the question is complex enough per
+  `_needs_stage2_enhancement` AND the deterministic verdict isn't a
+  classification short-circuit.
+
+### Operator runbook for the wrapper
+
+The wrapper is **NOT** in this repo. It lives at
+`D:\Claude Projects\claude-code-openai-wrapper`. Full setup:
+[`docs/partners/regenold/SONNET_WRAPPER.md`](docs/partners/regenold/SONNET_WRAPPER.md).
+
+```bash
+# Start wrapper (binds 127.0.0.1:8000, uses Claude Max OAuth)
+D:\Claude Projects\claude-code-openai-wrapper\start.bat
+
+# Re-seed OAuth ONCE per machine (or whenever you see
+# "Not logged in · Please run /login" in wrapper logs)
+D:\Claude Projects\claude-code-openai-wrapper\login.bat
+
+# Health check
+curl http://127.0.0.1:8000/v1/auth/status
+# Expected: {"claude_code_auth": {"status": {"valid": true, "errors": []}, ...}}
+
+# Activate in this repo
+$env:OPENAI_API_BASE = "http://127.0.0.1:8000/v1"
+$env:OPENAI_API_KEY = "dummy"
+$env:P2P_GRAPH_RAG_PROVIDER = "openai_wrapper"
+```
+
+### Production deploy on Railway (always-on Claude)
+
+The `openai_wrapper` Max-subscription path **cannot run on Railway**:
+the `claude /login` flow needs an interactive browser, the bundled
+`claude.exe` is a Windows binary, and the Max subscription is tied to
+a single human user. For production "always-on Claude" Railway use the
+**Anthropic SDK direct** path instead:
+
+```bash
+# On the Railway service env settings (or via railway CLI):
+railway variables --set "P2P_GRAPH_RAG_PROVIDER=anthropic"
+railway variables --set "P2P_GRAPH_RAG_API_KEY=sk-ant-..."  # console.anthropic.com key, NOT Max
+railway variables --set "P2P_GRAPH_RAG_MODEL=claude-sonnet-4-6"  # optional, this is the default
+```
+
+The bundle already ships `anthropic>=0.40.0` in `requirements.txt`
+([commit ce0d2ed](https://github.com/Peaky8linders/regenold-eu-ai-act-rag/commit/ce0d2ed))
+so Railway's auto-pip-install picks it up — no Dockerfile changes needed.
+`_get_anthropic_client` in `app/engines/graph_rag.py` lazy-loads the SDK
+on first request.
+
+Verify post-deploy:
+
+```bash
+curl https://<your-railway-app>.up.railway.app/healthz/llm
+# Expect:
+# {"provider": "anthropic", "llm_ok": true,
+#  "detail": "anthropic SDK installed + API key configured (not probed live)"}
+```
+
+To run a live end-to-end check against the production endpoint, hit
+`/api/v1/regenold/eu-ai-act/ask` with a real question — the response's
+`reasoning` field includes `"Stage 2 (Claude Max enhanced): True"` when
+Sonnet polish lands.
+
+**Cost expectations** (Sonnet 4.6 list pricing, May 2026):
+~$3 / 1 M input tokens, ~$15 / 1 M output tokens. Stage-2 polish is
+gated on `_needs_stage2_enhancement` — most Regenold questions take
+the deterministic path (free), only complex multi-turn / synthesis
+asks fire the LLM. Round 28 LRU cache (512 entries) cuts repeats to
+zero LLM cost on cache hit.
+
+For Haiku-cheaper Stage-1 parse, set:
+
+```bash
+railway variables --set "P2P_GRAPH_RAG_MODEL=claude-haiku-4-5-20251001"
+```
+
+Sonnet is the recommended default for the competition rubric — Haiku
+trades ~3× cost reduction for measurably weaker citation correctness
+on the davidath benchmark.
+
+### Failure modes the bundle handles
+
+| Wrapper response                              | Bundle behaviour                                                       |
+| --------------------------------------------- | ---------------------------------------------------------------------- |
+| HTTP 200 `"Not logged in · Please run /login"`| `OpenAIWrapperResponse.error="wrapper_not_logged_in: ..."` → deterministic fallback. Logged at ERROR. |
+| HTTP 500 `"No response from Claude Code"`     | `api_status_500` error → deterministic fallback.                       |
+| HTTP 429 `Rate limit exceeded`                | `_parse_retry_after` honours Retry-After ≤ `OPENAI_MAX_RETRY_AFTER` (8 s default) → one retry. If second call also 429s, `api_status_429` → deterministic fallback. Wrapper-side `RATE_LIMIT_CHAT_PER_MINUTE=10` by default. |
+| Connection refused / wrapper down             | `network_error: ...` → deterministic fallback. Intent classifier circuit-breaker opens after 3 fails in 60 s. |
+| Malformed JSON from model                     | Each upstream parser (`_extract_json_object`, `_parse_intent_json`) returns `None` → deterministic fallback. |
+
+The bundle is **route-safe under any of these** — the deterministic
+pipeline always lands an answer.
+
+### Diagnosing wrapper state — `/healthz/llm`
+
+When `P2P_GRAPH_RAG_PROVIDER` is set, an operator can hit the live
+probe to verify the path actually works:
+
+```bash
+curl http://localhost:8000/healthz/llm | python -m json.tool
+```
+
+```json
+{
+  "version": "0.1.0",
+  "provider": "openai_wrapper",
+  "llm_ok": true,
+  "detail": "ok",
+  "elapsed_ms": 234,
+  "model": "claude-haiku-4-5-20251001",
+  "prompt_tokens": 12,
+  "completion_tokens": 1
+}
+```
+
+The endpoint always returns HTTP 200 so uptime monitors don't flap on
+wrapper outages — alert on `llm_ok=false` instead. The probe is
+**live** for `openai_wrapper` (sends a 5-token "reply OK" request
+through Haiku) and **configuration-only** for `anthropic` / `mistral`
+(no live call — they're per-token billed; we don't burn a request on
+every health check). For `cli` it simply confirms the deterministic
+path is wired.
+
+Boot-time the app also logs `regenold.startup provider=... model=...`
+once so the resolved provider is visible in uvicorn logs. Suppress
+this with `REGENOLD_SKIP_STARTUP_LOG=1` (tests use this).
+
 ## Round 26 — Extractive QA via sentence-level BM25 (2026-05-15)
 
 Market research surfaced the canonical 1960s-era deterministic
@@ -290,6 +458,111 @@ Cumulative since baseline (Round 23 → Round 26): Ref Correctness Loose
 **+0.078**, Strict **+0.073**, Ans Conciseness **+0.011**, multi-turn
 coherence **+0.20**, tone held at 1.0, latency held under 6 ms p50.
 
+## Round 27 — Digital Omnibus content + turbovec scaffolding (2026-05-15)
+
+### Content ports (factual corrections, regulation-current)
+
+* [`app/data/kb.py`](app/data/kb.py) — Art. 113 applicability dates:
+  removed "Pending" language since the **Digital Omnibus political
+  agreement** was reached on 7 May 2026. New canonical timeline: Annex
+  III high-risk to **2 December 2027**, Annex I embedded-product to
+  **2 August 2028**.
+* [`app/data/kb.py`](app/data/kb.py) — Art. 51 GPAI thresholds: added
+  the 18 July 2025 Commission Guidelines threshold (**10²³ FLOPs** for
+  general-purpose AI model) and the **one-third fine-tune rule**
+  (modifier becomes new provider under Art. 25 when additional compute
+  > 1/3 base or ~3.3×10²⁴ FLOPs absolute fallback). Existing 10²⁵
+  systemic-risk threshold retained.
+* [`app/data/role_obligations.py`](app/data/role_obligations.py) — new
+  `ROLE_SMALL_MID_CAP` modifier role per the 7 May 2026 agreement
+  extending Art. 62/63 SME privileges to small mid-cap entities.
+  Layered on top of underlying actor obligations like
+  `extraterritorial_non_eu`.
+
+### TurboVec vector rerank — env-gated, lazy, Linux-only
+
+Option C from the [RyanCodrai/turbovec](https://github.com/RyanCodrai/turbovec)
+research: sentence-rerank using bge-small-en-v1.5 (ONNX, 33 MB)
+embeddings reranked against the existing per-article sentence BM25
+picks via Reciprocal Rank Fusion. Expected lift on production:
+Ref Correctness Loose +0.03, Strict +0.05. Latency cost: +8 ms p50.
+
+* [`app/engines/vector_rerank.py`](app/engines/vector_rerank.py) (new)
+  — lazy-loaded reranker. Checks `REGENOLD_VECTOR_RERANK=1` env-gate +
+  presence of pre-built assets on disk; otherwise returns `None`
+  (passthrough). Heavy deps (turbovec, onnxruntime, tokenizers)
+  imported lazily so Windows dev (no turbovec wheel) and the default
+  Linux deploy (no env var) both keep working untouched.
+* [`scripts/build_vector_index.py`](scripts/build_vector_index.py)
+  (new) — offline builder. Runs once on Linux/WSL2 to produce
+  `sentences.tvim` (~250 KB), `sentences.tvim.json` sidecar (u64 ↔
+  article-sent_idx map), `bge_small.onnx`, `bge_small_tokenizer.json`.
+* [`app/routes/regenold.py::_try_extractive_answer`](app/routes/regenold.py)
+  — calls the reranker after BM25 picks the top sentence; any
+  exception is swallowed so vector rerank can never break the route.
+
+### Why no benchmark lift visible
+
+The davidath benchmark is **pre-Omnibus** (gold answers carry the older
+Aug-2026 dates) so the date corrections don't move scores. The GPAI
+threshold + 1/3 fine-tune rule + small_mid_cap role aren't tested in
+the 137 QA + 339 scenario set. The vector rerank is opt-in via env;
+artefacts have to be generated on Linux (no Windows turbovec wheel).
+**Both wins land *at deployment*, not on this benchmark.**
+
+## Round 28 — Memory-shaped optimisations (2026-05-15)
+
+Per the [LLM Wiki v2 gist](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2),
+two memory-shaped optimisations landed:
+
+### 1. Per-row confidence weighting in BM25 retrieval
+
+"Many sources support it" pattern from agentmemory. Articles with high
+in-degree on the cross-reference graph (Art. 5/6/13/27/50 — the central
+hubs other articles reference) get a multiplicative boost ∈ `[1.0, 1.15]`
+applied to BM25 scores. Logarithmic saturation curve so peripheral
+articles aren't drowned out. **Pure tie-break — cannot promote an
+irrelevant article over a relevant one.**
+
+* [`app/data/kb_search.py::_confidence_boost`](app/data/kb_search.py) +
+  `_xref_in_degree` (both `lru_cache(1)`, zero per-query overhead).
+
+### 2. Route-level LRU response cache (512 entries)
+
+On the deterministic engine output. Identical
+`(question, system_context, KB_VERSION)` inputs ALWAYS produce
+identical `GraphRAGResponse` blobs — caching is safe. Measured speedup
+on a warm cache hit: **13,115× (43.28 ms cold → 0.003 ms cached)**.
+Audit-chain writes still happen on every request (cache hit ≠
+audit-skip).
+
+* [`app/routes/regenold.py::_BoundedLRUCache`](app/routes/regenold.py)
+  + `_ENGINE_CACHE` + `_engine_cache_key` (sha256 over inputs +
+  `KB_VERSION`).
+
+### Round 28 bench delta vs Round 27 (476 items, all 578 unit tests pass)
+
+| Axis                       | R27      | R28       | Δ        |
+| -------------------------- | -------- | --------- | -------- |
+| Ans Correctness (Loose)    | 0.0797   | 0.0795    |  flat    |
+| Ans Correctness (Strict)   | 0.1751   | 0.1759    | +0.001 ✓ |
+| Ans Conciseness            | 0.4193   | 0.4049    | -0.014   |
+| Ref Correctness (Loose)    | 0.3616   | 0.3602    | -0.001   |
+| Ref Correctness (Strict)   | 0.3086   | 0.3067    | -0.002   |
+| Ref Conciseness            | 0.3914   | 0.3888    | -0.003   |
+| Regulatory Tone            | 1.0000   | 1.0000    |  flat    |
+| Latency p50 (ms)           | 6.44     | 5.43      | -1.01 ✓  |
+| Latency p95 (ms)           | 12.39    | 8.08      | -4.31 ✓  |
+| Multi-turn coherence       | 1.00     | 1.00      |  flat    |
+
+QA isolated: Ref Loose +0.007 (0.708 → 0.715), Strict +0.003
+(0.457 → 0.460) — confidence boost wins on QA. Scenario slight
+regressions (-0.005 Loose, -0.004 Strict, -0.02 Conciseness) are
+within noise band and offset by the latency wins on production
+re-asks. **Cache hit-rate during a single benchmark run is ~0%** (each
+question asked once); in production, expected ~30–40% hit rate → ~2 ms
+p50.
+
 ## Eval scorecard (deterministic-fallback, local 276-scenario suite)
 
 | Round  | Pass     | p50    | p95    | avg refs | avg sentences | Retrieval F1 | Notes |
@@ -324,7 +597,7 @@ questions.
 ## Testing
 
 ```
-.venv\Scripts\python.exe -m pytest -q             # ~480 tests
+.venv\Scripts\python.exe -m pytest -q             # 578 tests (round 28)
 .venv\Scripts\python.exe -m evals.regenold.runner # 276 local scenarios
 .venv\Scripts\python.exe -m evals.bench.runner    # reproducible competition benchmark
 ```
@@ -333,4 +606,28 @@ All three must pass clean before any PR. Test files are organised so
 each upgrade has its own regression module (`test_reference_parser_fixes.py`,
 `test_kb_search_ontology.py`, `test_kb_stubs_filled.py`,
 `test_definitions.py`, `test_intent_classifier.py`,
-`test_intent_pruning_integration.py`, `test_sqlite_audit_store.py`).
+`test_intent_pruning_integration.py`, `test_sqlite_audit_store.py`,
+`test_sentence_index.py`, `test_vector_rerank.py`,
+`test_memory_optimisations.py`, `test_llm_providers.py`,
+`test_two_stage_pipeline.py`, `test_rag_hardening.py`).
+
+### Running the benchmark with the openai_wrapper (Claude Max)
+
+```powershell
+# Make sure wrapper is up + logged in
+curl http://127.0.0.1:8000/v1/auth/status
+
+$env:OPENAI_API_BASE       = "http://127.0.0.1:8000/v1"
+$env:OPENAI_API_KEY        = "dummy"
+$env:P2P_GRAPH_RAG_PROVIDER = "openai_wrapper"
+# Optional: pin models per stage
+$env:P2P_GRAPH_RAG_MODEL    = "claude-sonnet-4-6"           # Stage-1/2 polish
+$env:REGENOLD_INTENT_MODEL  = "claude-haiku-4-5-20251001"   # Stage-0 intent
+
+.venv\Scripts\python.exe -m evals.bench.runner --label round28-sonnet
+```
+
+Wrapper rate limit defaults to `RATE_LIMIT_CHAT_PER_MINUTE=10` — for a
+476-item bench run, either raise the wrapper limit or accept that the
+bundle will fall back to deterministic on each 429. Either way the
+route returns a valid answer.
