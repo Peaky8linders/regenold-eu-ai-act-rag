@@ -398,18 +398,11 @@ def classify_intent(
     if len(trimmed) > 1500:
         trimmed = trimmed[-1500:]
 
-    # Honour the configured wrapper timeout but cap to our short one —
-    # latency budget is sub-second for the classifier path.
-    prev_timeout = os.environ.get("OPENAI_TIMEOUT_SECONDS")
-    os.environ["OPENAI_TIMEOUT_SECONDS"] = str(_TIMEOUT_SECONDS)
-    try:
-        provider = get_openai_wrapper_provider()
-    finally:
-        if prev_timeout is None:
-            os.environ.pop("OPENAI_TIMEOUT_SECONDS", None)
-        else:
-            os.environ["OPENAI_TIMEOUT_SECONDS"] = prev_timeout
-
+    # Pass our short 2.5 s budget per-request — DON'T mutate the env.
+    # The provider is a process-wide singleton and an env mutation here
+    # poisoned the timeout for all Stage-1/2 Sonnet calls (which need
+    # 10-20 s) too. Fixed by adding `timeout_seconds` to the request.
+    provider = get_openai_wrapper_provider()
     start = time.perf_counter()
     response = provider.complete(
         OpenAIWrapperRequest(
@@ -418,6 +411,7 @@ def classify_intent(
             model=model,
             max_tokens=160,
             temperature=0.0,
+            timeout_seconds=_TIMEOUT_SECONDS,
         )
     )
     elapsed_ms = int((time.perf_counter() - start) * 1000)

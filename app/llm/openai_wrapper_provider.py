@@ -34,6 +34,13 @@ class OpenAIWrapperRequest(BaseModel):
     model: str = "claude-sonnet-4-6"
     max_tokens: int = 1024
     temperature: float = 0.0
+    timeout_seconds: float | None = None
+    """Per-call timeout override. When ``None``, uses the provider
+    singleton's default (``OPENAI_TIMEOUT_SECONDS`` env, 60 s fallback).
+    The intent classifier sets a short 2.5 s timeout via this so its
+    failure path is fast, without poisoning the singleton's timeout for
+    Stage-1/2 Sonnet calls that take 10-20 s.
+    """
 
 
 class OpenAIWrapperResponse(BaseModel):
@@ -89,13 +96,16 @@ class _OpenAIWrapperProvider:
             or "http://127.0.0.1:8000/v1"
         )
         self._api_key = os.getenv("OPENAI_API_KEY", "dummy")
-        # 8 s default — the Regenold latency budget is sub-second p95 on the
-        # deterministic path; Stage-2 polish is allowed to stretch but a
-        # 60-s upstream stall would block the request thread for a full
-        # minute. On timeout, the wrapper returns an error and the engine
-        # falls back to the Stage-1 KG answer. Operators can raise the cap
-        # by setting OPENAI_TIMEOUT_SECONDS explicitly.
-        self._timeout = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "8"))
+        # 60 s default — Claude Sonnet 4.6 Stage-2 polish through the
+        # claude-code-openai-wrapper takes 10-20 s for non-trivial
+        # questions; the deterministic Stage-1 already landed, so the
+        # caller is willing to wait for the polish. On timeout the wrapper
+        # returns an error and the engine falls back to Stage-1. The 8-s
+        # bound that was here before was a competition-rubric leftover and
+        # killed every real Sonnet call in production. Per-call shorter
+        # budgets (e.g. intent classifier's 2.5 s) come via
+        # ``OpenAIWrapperRequest.timeout_seconds``, not by mutating env.
+        self._timeout = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "60"))
         # Pooled client — see mistral_provider.py for the rationale.
         self._client = httpx.Client(
             base_url=self._base_url,
@@ -134,12 +144,23 @@ class _OpenAIWrapperProvider:
         }
         body["messages"] = [m for m in body["messages"] if m is not None]
 
+        # Per-request timeout override — the intent classifier wants a
+        # short 2.5 s budget for its fast-fail behaviour but the
+        # Stage-1/2 Sonnet calls need 60 s. Without this knob a single
+        # caller setting OPENAI_TIMEOUT_SECONDS via env would poison the
+        # singleton for everyone (the bug that killed bench round 29).
+        request_timeout: float | httpx.Timeout = (
+            req.timeout_seconds if req.timeout_seconds is not None
+            else self._timeout
+        )
+
         start = time.perf_counter()
         try:
             response = self._client.post(
                 "/chat/completions",
                 headers=self._headers(),
                 json=body,
+                timeout=request_timeout,
             )
         except httpx.HTTPError as exc:
             return OpenAIWrapperResponse(
@@ -171,6 +192,7 @@ class _OpenAIWrapperProvider:
                         "/chat/completions",
                         headers=self._headers(),
                         json=body,
+                        timeout=request_timeout,
                     )
                 except httpx.HTTPError as exc:
                     return OpenAIWrapperResponse(

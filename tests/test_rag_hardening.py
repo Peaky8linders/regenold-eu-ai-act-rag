@@ -282,10 +282,14 @@ class TestTwoStageGenerateDriftFallback:
 
 
 class TestOpenAIWrapperTimeoutDefault:
-    """Default per-call timeout must be ≤ 10 s so a hung upstream cannot
-    blow the Regenold latency budget for a full minute."""
+    """Singleton timeout is the Stage-1/2 Sonnet polish ceiling — generous
+    (60 s) to let Sonnet through Claude Max actually answer. The
+    *latency-budget protection* lives on the intent classifier's
+    per-request ``timeout_seconds=2.5`` (the only call on the hot
+    latency path; Stage-2 polish runs after Stage-1 already landed an
+    answer, so a slow polish doesn't blow the partner's wait time)."""
 
-    def test_default_timeout_is_short(self) -> None:
+    def test_default_timeout_is_generous_for_sonnet_polish(self) -> None:
         # Force a clean re-instantiation against the current env var.
         from app.llm import openai_wrapper_provider as mod
 
@@ -293,14 +297,28 @@ class TestOpenAIWrapperTimeoutDefault:
         try:
             importlib.reload(mod)
             provider = mod._OpenAIWrapperProvider()
-            assert provider._timeout <= 10.0, (
-                f"Default timeout {provider._timeout}s is too lenient — "
-                "must be ≤ 10 s to protect latency budget."
+            # Sonnet 4.6 through the wrapper takes 10-20 s on real
+            # questions. Sub-10s defaults killed every real call.
+            assert 30.0 <= provider._timeout <= 180.0, (
+                f"Default timeout {provider._timeout}s is outside the "
+                "30-180 s window — too short kills Sonnet polish, "
+                "too long lets a wedged wrapper pin a request thread."
             )
         finally:
             if old is not None:
                 os.environ["OPENAI_TIMEOUT_SECONDS"] = old
             importlib.reload(mod)
+
+    def test_intent_classifier_uses_short_per_request_timeout(self) -> None:
+        """The actual latency-budget protection: intent classifier sets
+        ``timeout_seconds=2.5`` per request, independent of the
+        singleton's 60 s default."""
+        from app.llm.intent_classifier import _TIMEOUT_SECONDS
+
+        assert _TIMEOUT_SECONDS <= 5.0, (
+            f"Intent classifier timeout {_TIMEOUT_SECONDS}s is too long — "
+            "this is the only LLM call on the hot latency budget."
+        )
 
     def test_env_override_still_honoured(self) -> None:
         from app.llm import openai_wrapper_provider as mod

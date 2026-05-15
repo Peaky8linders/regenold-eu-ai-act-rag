@@ -423,6 +423,71 @@ class TestOpenAIWrapperRetryAfter:
         assert call_count["n"] == 2  # one attempt + one retry
 
 
+class TestOpenAIWrapperPerCallTimeout:
+    """Per-request ``timeout_seconds`` overrides the singleton default.
+
+    The bug this fixes: the intent classifier used to mutate
+    ``OPENAI_TIMEOUT_SECONDS=2.5`` env var before constructing the
+    singleton, then restore. Since the singleton is process-wide, all
+    subsequent Stage-1/2 Sonnet calls inherited the 2.5 s cap and
+    timed out (Sonnet through the wrapper takes 10-20 s). Now the
+    timeout lives on the request, not the env.
+    """
+
+    def test_request_timeout_override_passed_to_post(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.llm.openai_wrapper_provider import _OpenAIWrapperProvider
+
+        captured_timeouts: list[object] = []
+
+        def _handler(_req: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={"model": "x", "choices": [{"message": {"content": "ok"}}]},
+            )
+
+        provider = _OpenAIWrapperProvider()
+        provider._timeout = 60.0  # singleton default
+        provider._client = httpx.Client(
+            transport=httpx.MockTransport(_handler),
+            base_url="https://api.test.invalid",
+        )
+
+        # Wrap the client to capture the per-call timeout kwarg.
+        orig_post = provider._client.post
+
+        def _capturing_post(url, **kwargs):  # type: ignore[no-untyped-def]
+            captured_timeouts.append(kwargs.get("timeout"))
+            return orig_post(url, **kwargs)
+
+        provider._client.post = _capturing_post  # type: ignore[assignment]
+
+        # Default — no per-request override → use singleton timeout.
+        provider.complete(OpenAIWrapperRequest(user="ping"))
+        assert captured_timeouts[-1] == 60.0
+
+        # Short override — should NOT poison subsequent calls.
+        provider.complete(
+            OpenAIWrapperRequest(user="quick", timeout_seconds=2.5)
+        )
+        assert captured_timeouts[-1] == 2.5
+
+        # Next call without override — should be 60 again (no poisoning).
+        provider.complete(OpenAIWrapperRequest(user="back to normal"))
+        assert captured_timeouts[-1] == 60.0
+
+    def test_singleton_default_is_60s_not_8s(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression for the round-29 8s-default-killed-Sonnet bug."""
+        monkeypatch.delenv("OPENAI_TIMEOUT_SECONDS", raising=False)
+        from app.llm.openai_wrapper_provider import _OpenAIWrapperProvider
+
+        provider = _OpenAIWrapperProvider()
+        assert provider._timeout == 60.0
+
+
 def test_parse_retry_after_helper() -> None:
     from app.llm.openai_wrapper_provider import _parse_retry_after
 
