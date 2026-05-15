@@ -624,6 +624,307 @@ class PostgresAuditStore:
         )
 
 
+# ─── SQLite backend (optional, stdlib-only) ─────────────────────────────────
+
+
+class SQLiteAuditStore:
+    """SQLite-backed hash-chained audit store using stdlib ``sqlite3``.
+
+    Activated when ``DATABASE_URL`` starts with ``sqlite://`` or
+    ``sqlite:///`` (e.g. ``sqlite:///./regenold_audit.db`` or
+    ``sqlite:////app/data/audit.db`` for an absolute path). Zero extra
+    dependencies — Python ships ``sqlite3`` in the standard library.
+
+    Trade-offs vs :class:`PostgresAuditStore`:
+
+    * **Pro**: Durable across process restarts without ``sqlalchemy`` /
+      ``psycopg``. The whole chain is one file you can ``cp`` or
+      ``rsync`` for backups.
+    * **Pro**: WAL journaling enabled below for read-while-write
+      concurrency.
+    * **Con**: Multiple gunicorn workers contend on a single SQLite
+      file. Writes serialize on file lock; small bursts are fine, but
+      hundreds of concurrent writers would benefit from Postgres.
+    * **Con**: On ephemeral container deploys (Railway, Fly.io without
+      volumes), the file is lost on every redeploy. Mount a persistent
+      volume and point ``DATABASE_URL`` at a path inside it (e.g.
+      Railway volume mounted at ``/data`` → ``DATABASE_URL=sqlite:////data/audit.db``).
+
+    Schema mirrors :class:`PostgresAuditStore` so a chain written here
+    is structurally identical to one written there; ``verify_chain``
+    semantics are byte-identical.
+    """
+
+    _SCHEMA_SQL = """
+    CREATE TABLE IF NOT EXISTS evidence_entries (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT NOT NULL UNIQUE,
+        timestamp TEXT NOT NULL,
+        entry_type TEXT NOT NULL,
+        data_hash TEXT NOT NULL,
+        previous_hash TEXT NOT NULL DEFAULT '',
+        payload_json TEXT NOT NULL,
+        article_ref TEXT DEFAULT '',
+        correlation_id TEXT NOT NULL,
+        created_by TEXT DEFAULT 'system',
+        tenant_id TEXT DEFAULT NULL
+    )
+    """
+    _INDEX_SQL = (
+        "CREATE INDEX IF NOT EXISTS idx_evidence_timestamp ON evidence_entries(timestamp)",
+        "CREATE INDEX IF NOT EXISTS idx_evidence_type ON evidence_entries(entry_type)",
+        "CREATE INDEX IF NOT EXISTS idx_evidence_correlation ON evidence_entries(correlation_id)",
+        "CREATE INDEX IF NOT EXISTS idx_evidence_tenant ON evidence_entries(tenant_id)",
+    )
+
+    def __init__(self, *, db_path: str) -> None:
+        self._db_path = db_path
+        self._lock = threading.Lock()
+        self._initialized = False
+
+    def _connect(self) -> Any:
+        import sqlite3  # noqa: PLC0415 — stdlib lazy import keeps import-time clean
+        from pathlib import Path  # noqa: PLC0415
+
+        if self._db_path != ":memory:":
+            parent = Path(self._db_path).parent
+            if str(parent) not in ("", "."):
+                parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(
+            self._db_path,
+            timeout=10.0,
+            check_same_thread=False,
+            isolation_level=None,  # autocommit; we manage transactions explicitly
+        )
+        # WAL journaling: readers don't block writers, durability preserved.
+        conn.execute("PRAGMA journal_mode=WAL")
+        # Wait up to 5s if another writer holds the lock — handles small
+        # bursts across gunicorn workers without raising SQLITE_BUSY.
+        conn.execute("PRAGMA busy_timeout=5000")
+        # Enforce foreign keys (none today, but cheap insurance).
+        conn.execute("PRAGMA foreign_keys=ON")
+        return conn
+
+    def _setup(self) -> None:
+        if self._initialized:
+            return
+        with self._lock:
+            if self._initialized:
+                return
+            conn = self._connect()
+            try:
+                conn.execute("BEGIN")
+                conn.execute(self._SCHEMA_SQL)
+                for ddl in self._INDEX_SQL:
+                    conn.execute(ddl)
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+            finally:
+                conn.close()
+            self._initialized = True
+
+    def record(
+        self,
+        *,
+        entry_type: Any,
+        payload: dict[str, Any],
+        article_ref: str = "",
+        correlation_id: str | None = None,
+        created_by: str = "system",
+        tenant_id: str | None = None,
+    ) -> EvidenceEntry:
+        """Append an entry to the chain. Serializes within the process via
+        the lock; across processes via SQLite's file-level write lock
+        (``busy_timeout=5000`` handles contention bursts).
+        """
+        self._setup()
+        et = _coerce_entry_type(entry_type)
+        try:
+            et_enum = EvidenceEntryType(et)
+        except ValueError:
+            et_enum = EvidenceEntryType.regenold_question
+
+        payload_copy = dict(payload)
+        with self._lock:
+            conn = self._connect()
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                cur = conn.execute(
+                    "SELECT data_hash FROM evidence_entries ORDER BY seq DESC LIMIT 1"
+                )
+                row = cur.fetchone()
+                previous_hash = row[0] if row else ""
+                data_hash = _compute_data_hash(payload_copy, previous_hash)
+                entry = EvidenceEntry(
+                    id=str(uuid.uuid4()),
+                    timestamp=_utc_now_iso(),
+                    entry_type=et_enum,
+                    data_hash=data_hash,
+                    previous_hash=previous_hash,
+                    payload=payload_copy,
+                    article_ref=article_ref,
+                    correlation_id=correlation_id or str(uuid.uuid4()),
+                    created_by=created_by,
+                    tenant_id=tenant_id,
+                )
+                conn.execute(
+                    "INSERT INTO evidence_entries "
+                    "(id, timestamp, entry_type, data_hash, previous_hash, "
+                    " payload_json, article_ref, correlation_id, created_by, tenant_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        entry.id,
+                        entry.timestamp,
+                        entry.entry_type.value,
+                        entry.data_hash,
+                        entry.previous_hash,
+                        json.dumps(payload_copy, default=str),
+                        entry.article_ref,
+                        entry.correlation_id,
+                        entry.created_by,
+                        entry.tenant_id,
+                    ),
+                )
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+            finally:
+                conn.close()
+        return entry
+
+    def get_chain(
+        self,
+        *,
+        tenant_id: str | None = None,
+        limit: int = 100,
+        entry_type: str | None = None,
+        ascending: bool = False,
+    ) -> Iterator[EvidenceEntry]:
+        """Return entries from the SQLite chain, newest-first by default."""
+        self._setup()
+        order = "ASC" if ascending else "DESC"
+        where_parts: list[str] = []
+        params: list[Any] = []
+        if entry_type is not None:
+            where_parts.append("entry_type = ?")
+            params.append(entry_type)
+        if tenant_id is not None:
+            where_parts.append("(tenant_id = ? OR tenant_id IS NULL)")
+            params.append(tenant_id)
+        where_sql = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+        sql = (
+            f"SELECT id, timestamp, entry_type, data_hash, previous_hash, "
+            f"       payload_json, article_ref, correlation_id, created_by, "
+            f"       tenant_id "
+            f"FROM evidence_entries {where_sql} ORDER BY seq {order} LIMIT ?"
+        )
+        params.append(int(limit))
+        conn = self._connect()
+        try:
+            rows = list(conn.execute(sql, params).fetchall())
+        finally:
+            conn.close()
+        entries: list[EvidenceEntry] = []
+        for row in rows:
+            try:
+                payload = json.loads(row[5]) if row[5] else {}
+            except (json.JSONDecodeError, TypeError):
+                payload = {}
+            try:
+                et_enum = EvidenceEntryType(row[2])
+            except ValueError:
+                et_enum = EvidenceEntryType.regenold_question
+            entries.append(
+                EvidenceEntry(
+                    id=row[0],
+                    timestamp=row[1],
+                    entry_type=et_enum,
+                    data_hash=row[3],
+                    previous_hash=row[4],
+                    payload=payload,
+                    article_ref=row[6] or "",
+                    correlation_id=row[7],
+                    created_by=row[8] or "system",
+                    tenant_id=row[9],
+                )
+            )
+        return iter(entries)
+
+    def count(self, *, tenant_id: str | None = None) -> int:
+        self._setup()
+        conn = self._connect()
+        try:
+            if tenant_id is None:
+                row = conn.execute("SELECT COUNT(*) FROM evidence_entries").fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM evidence_entries "
+                    "WHERE tenant_id = ? OR tenant_id IS NULL",
+                    (tenant_id,),
+                ).fetchone()
+        finally:
+            conn.close()
+        return int(row[0] if row else 0)
+
+    def verify_chain(self) -> ChainStatus:
+        """Walk every row in seq order and recompute the hash chain."""
+        self._setup()
+        conn = self._connect()
+        try:
+            total = int(
+                conn.execute("SELECT COUNT(*) FROM evidence_entries").fetchone()[0] or 0
+            )
+            if total == 0:
+                return ChainStatus(
+                    is_valid=True,
+                    total_entries=0,
+                    verified_entries=0,
+                    message="Empty chain — nothing to verify",
+                )
+            rows = list(
+                conn.execute(
+                    "SELECT data_hash, previous_hash, payload_json "
+                    "FROM evidence_entries ORDER BY seq ASC"
+                ).fetchall()
+            )
+        finally:
+            conn.close()
+
+        prev_hash = ""
+        for idx, (data_hash, previous_hash, payload_json) in enumerate(rows):
+            if previous_hash != prev_hash:
+                return ChainStatus(
+                    is_valid=False,
+                    total_entries=total,
+                    verified_entries=idx,
+                    first_broken_at=idx,
+                    message=f"Chain broken at entry {idx}: previous_hash mismatch",
+                )
+            try:
+                payload = json.loads(payload_json) if payload_json else {}
+            except (json.JSONDecodeError, TypeError):
+                payload = {}
+            expected = _compute_data_hash(payload, prev_hash)
+            if data_hash != expected:
+                return ChainStatus(
+                    is_valid=False,
+                    total_entries=total,
+                    verified_entries=idx,
+                    first_broken_at=idx,
+                    message=f"Hash mismatch at entry {idx}: data has been modified",
+                )
+            prev_hash = data_hash
+        return ChainStatus(
+            is_valid=True,
+            total_entries=total,
+            verified_entries=total,
+            message="Chain integrity verified — all entries authentic",
+        )
+
+
 # ─── Type alias for back-compat ─────────────────────────────────────────────
 
 # The CodexAI parent re-exports ``AuditStore`` as the public class
@@ -640,6 +941,25 @@ _SINGLETON: Any | None = None
 _SINGLETON_LOCK = threading.Lock()
 
 
+def _sqlite_path_from_url(url: str) -> str:
+    """Extract the filesystem path from a ``sqlite://`` / ``sqlite:///``
+    URL. Handles both relative (``sqlite:///./audit.db`` → ``./audit.db``)
+    and absolute (``sqlite:////app/data/audit.db`` → ``/app/data/audit.db``)
+    forms, plus the special ``sqlite://`` (no path) which resolves to
+    the in-memory database — useful for tests.
+    """
+    # sqlite:// + nothing  → in-memory
+    # sqlite:///./foo.db   → relative path "./foo.db"
+    # sqlite:////app/x.db  → absolute path "/app/x.db"
+    if url == "sqlite://" or url == "sqlite:///":
+        return ":memory:"
+    if url.startswith("sqlite:///"):
+        return url[len("sqlite:///"):]
+    if url.startswith("sqlite://"):
+        return url[len("sqlite://"):]
+    return url
+
+
 def _select_backend() -> Any:
     """Pick the backend at first-call time based on env state.
 
@@ -648,14 +968,21 @@ def _select_backend() -> Any:
          If SQLAlchemy import fails, fall back to in-memory with a
          debug log — we never want the route to lose audit writes
          because of a missing dep.
-      2. Anything else → :class:`InMemoryAuditStore`.
+      2. ``DATABASE_URL=sqlite://...`` → :class:`SQLiteAuditStore`.
+         Zero extra deps (stdlib ``sqlite3``). The path can be
+         relative (``sqlite:///./audit.db``) or absolute
+         (``sqlite:////app/data/audit.db`` — note 4 slashes for
+         absolute paths). On Railway / Fly, mount a persistent
+         volume and point the URL inside it; without a volume the
+         file is lost on every redeploy.
+      3. Anything else → :class:`InMemoryAuditStore`.
 
     The env var is read once per ``reset_evidence_store_for_tests``
     cycle. Tests that want to flip backends per case can set the env
     var and call the reset hook.
     """
     dsn = os.getenv("DATABASE_URL", "").strip()
-    if dsn and (dsn.startswith("postgres://") or dsn.startswith("postgresql://")):
+    if dsn.startswith("postgres://") or dsn.startswith("postgresql://"):
         try:
             # Probe-import: don't actually open the connection here
             # (that happens lazily on the first record/read), but verify
@@ -668,6 +995,9 @@ def _select_backend() -> Any:
                 "evidence.postgres_unavailable falling back to in-memory: %s",
                 exc,
             )
+    if dsn.startswith("sqlite://"):
+        # No probe-import needed — ``sqlite3`` is stdlib.
+        return SQLiteAuditStore(db_path=_sqlite_path_from_url(dsn))
     return InMemoryAuditStore()
 
 
