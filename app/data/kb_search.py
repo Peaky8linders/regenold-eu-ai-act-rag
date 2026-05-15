@@ -480,7 +480,37 @@ def top_articles_by_relevance(
             best[article_ref] = s
 
     scored = sorted(best.items(), key=lambda t: t[1], reverse=True)
-    return [ref for ref, _ in scored[:k]]
+    bm25_top = [ref for ref, _ in scored[:k]]
+
+    # Round 31 — when the TurboQuant dense path is enabled
+    # (``REGENOLD_TURBOQUANT_DENSE=1``), use the dense ranking to APPEND
+    # recall candidates BM25 didn't surface — never to reshape BM25's
+    # ranking. First-cut Round-31 benchmark showed RRF (symmetric
+    # fusion) traded ~0.004 Ref Correctness Strict for ~0.004 Ans
+    # Correctness Strict — wash. Additive fill is purely recall-positive:
+    # if BM25 already filled ``k`` slots, the dense path is a no-op;
+    # otherwise dense refs fill the remaining slots in dense-rank order.
+    #
+    # Lazy import — the module imports numpy + optional turboquant at
+    # build time. Skipping the import when the env-flag is off keeps the
+    # zero-overhead promise for the deterministic baseline path.
+    try:
+        from app.engines.turboquant_index import (  # noqa: PLC0415
+            additive_dense_fill,
+            dense_top_k,
+            is_enabled as _dense_enabled,
+        )
+    except Exception:  # noqa: BLE001 — numpy missing on a stripped install
+        return bm25_top
+    if not _dense_enabled():
+        return bm25_top
+    try:
+        dense_hits = dense_top_k(question, k=k * 2)
+    except Exception:  # noqa: BLE001 — never let a rerank bug 500 the route
+        return bm25_top
+    if not dense_hits:
+        return bm25_top
+    return additive_dense_fill(bm25_top, dense_hits, k=k)
 
 
 @lru_cache(maxsize=1)

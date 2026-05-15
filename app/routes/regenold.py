@@ -1321,6 +1321,24 @@ def regenold_eu_ai_act_ask(
     ):
         references = _drop_orphan_refs(references, answer_text)
 
+    # Round 31 — sentence-level citation guard (Layer G of the High-
+    # Precision RAG architecture PDF). Opt-in via
+    # ``REGENOLD_CITATION_GUARD=1``. The guard drops sentences whose
+    # token set has zero overlap with the surfaced refs' KB pool, while
+    # preserving a minimum of one sentence. Inverse of the
+    # ``_drop_orphan_refs`` pass above: that one drops refs, this one
+    # drops sentences. They're orthogonal — both can run, both default
+    # OFF, both honour the floor-of-one-sentence invariant.
+    if (
+        retrieval_path != "no_match"
+        and references
+        and answer_text
+    ):
+        from app.integrations.regenold.citation_guard import (  # noqa: PLC0415
+            maybe_apply_guard,
+        )
+        answer_text = maybe_apply_guard(answer_text, tuple(references))
+
     # Surface the engine's graph_stats so a downstream verifier (when
     # telemetry is requested) can judge retrieval breadth without
     # re-asking. The closed-world refusal branch above kept graph_stats

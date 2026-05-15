@@ -30,3 +30,17 @@ psycopg[binary]>=3.2.0
 # so the wire contract never breaks.
 anthropic>=0.40.0
 
+# Round 31 — Pure-NumPy TurboQuant codec (Zandieh et al., ICLR 2026)
+# powering the Windows-friendly dense retrieval companion to the
+# Linux-only ``turbovec`` path in ``app/engines/vector_rerank.py``.
+# Activated only when ``REGENOLD_TURBOQUANT_DENSE=1`` is set;
+# :mod:`app.engines.turboquant_index` gracefully degrades to plain
+# float32 vectors when the package is unavailable, so production
+# wheels without it still work. Pulls in numpy ≥ 1.26 + scipy ≥ 1.10
+# (both already in the wider scientific-Python wheel zoo on
+# Railway/Render auto-detect builds).
+# NB: PyPI distribution name is ``turboquant-py``; the import name is
+# ``turboquant``. The Apache-2.0 fork from msilverblatt is the
+# pure-NumPy reference implementation.
+turboquant-py>=0.1.0,<1.0
+
