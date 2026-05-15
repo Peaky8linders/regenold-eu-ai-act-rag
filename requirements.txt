@@ -20,3 +20,13 @@ python-multipart>=0.0.9
 sqlalchemy>=2.0.30
 psycopg[binary]>=3.2.0
 
+# Anthropic SDK for the Stage-2 LLM enhancement path. Activated only
+# when ``P2P_GRAPH_RAG_API_KEY`` is set on the deploy (Anthropic API
+# key from console.anthropic.com — separate from Claude Max). The
+# engine's ``_get_anthropic_client`` lazily imports + soft-fails when
+# the SDK is absent, but pinning it here lets Railway auto-detect
+# deploys land Sonnet 4.6 quality without a manual extras flag. The
+# deterministic Stage-1 path remains the fallback on any LLM error
+# so the wire contract never breaks.
+anthropic>=0.40.0
+
