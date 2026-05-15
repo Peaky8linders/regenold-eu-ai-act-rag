@@ -88,6 +88,74 @@ logger = structlog.get_logger(__name__)
 regenold_router = APIRouter(tags=["regenold"])
 
 
+# Round 28 — bounded LRU cache for the deterministic engine result.
+# Keyed on the sha256 of (question + system_context); value is the raw
+# GraphRAGResponse object. Sized at 512 entries so a steady-state
+# production workload (say ~100 unique partner queries per hour) lives
+# fully in-cache. The eviction is a stdlib OrderedDict-backed LRU so
+# we have zero new deps. Thread-safe via a single re-entrant lock —
+# uvicorn's per-worker model means contention is bounded by worker
+# count, not request rate.
+import hashlib  # noqa: E402,PLC0415 — keep imports adjacent to the cache
+import threading  # noqa: E402,PLC0415
+from collections import OrderedDict  # noqa: E402,PLC0415
+
+
+class _BoundedLRUCache:
+    """Tiny stdlib LRU — get/put with capacity-based eviction.
+
+    Mirrors the audit-store ``_lock`` pattern: every public method
+    acquires the lock so concurrent gunicorn handlers can race on get
+    + put without corrupting the OrderedDict insertion order.
+    """
+
+    def __init__(self, capacity: int = 512) -> None:
+        self._capacity = capacity
+        self._data: OrderedDict[str, Any] = OrderedDict()
+        self._lock = threading.RLock()
+        # Round-28 telemetry — these counters are visible via
+        # ``include_telemetry=true`` in case a partner wants to confirm
+        # cache effectiveness. Reset never; lifetime-of-process.
+        self.hits = 0
+        self.misses = 0
+
+    def get(self, key: str) -> Any | None:
+        with self._lock:
+            value = self._data.get(key)
+            if value is None:
+                self.misses += 1
+                return None
+            # LRU touch — move-to-end keeps eviction honest.
+            self._data.move_to_end(key)
+            self.hits += 1
+            return value
+
+    def put(self, key: str, value: Any) -> None:
+        with self._lock:
+            if key in self._data:
+                self._data.move_to_end(key)
+                self._data[key] = value
+                return
+            self._data[key] = value
+            if len(self._data) > self._capacity:
+                self._data.popitem(last=False)
+
+
+_ENGINE_CACHE = _BoundedLRUCache(capacity=512)
+
+
+def _engine_cache_key(question: str, system_context: str | None) -> str:
+    """Sha256-hash of the engine input fingerprint.
+
+    Includes the KB version so a redeploy with a new corpus
+    invalidates the whole cache implicitly — different KB version
+    means different deterministic output, so reusing the old cached
+    answer would be a stale hit.
+    """
+    blob = f"{KB_VERSION}\n{question}\n{system_context or ''}".encode("utf-8")
+    return hashlib.sha256(blob).hexdigest()
+
+
 # Closed-world refusal threshold. Below this, an answer with empty
 # references gets replaced by a structured no-match response. 0.5 is
 # the engine's "sparse data" floor (per ``_compute_confidence`` in
@@ -1096,7 +1164,17 @@ def regenold_eu_ai_act_ask(
         system_description=system_context,
     )
 
-    rag_res = ask_compliance_question(rag_req)
+    # Round 28 — response memoisation (LLM Wiki v2 gist pattern). The
+    # engine is fully deterministic; identical question+system_context
+    # pairs ALWAYS produce identical GraphRAGResponse blobs. Cache the
+    # engine result on a fingerprint of the input — sub-microsecond
+    # hash lookup vs ~3-5 ms cold compute. Audit-chain writes still
+    # happen on every request (a cache hit isn't an audit-skip).
+    cache_key = _engine_cache_key(question, system_context)
+    rag_res = _ENGINE_CACHE.get(cache_key)
+    if rag_res is None:
+        rag_res = ask_compliance_question(rag_req)
+        _ENGINE_CACHE.put(cache_key, rag_res)
 
     # Normalise answer first so we can use it to filter orphan references.
     # Fixes UnboundLocalError in _drop_orphan_refs pass (P1 #4).

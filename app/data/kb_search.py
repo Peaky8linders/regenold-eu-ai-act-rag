@@ -452,6 +452,15 @@ def top_articles_by_relevance(
     # corpus + definition sources down to 0.6× keeps them as a SAFETY
     # NET (they still win when the KB doc has zero overlap) without
     # over-displacing authored summaries.
+    #
+    # Round 28 — confidence-weighted boost (per the LLM Wiki v2 gist's
+    # "many sources support it" pattern). Articles linked by many other
+    # KB rows (high in-degree on the cross-reference graph) are
+    # structurally more important than peripheral leaf nodes. Multiply
+    # the source-tier weight by a confidence boost ∈ [1.0, 1.15] derived
+    # from the article's in-degree on :data:`kb_xrefs._build_xref_graph`.
+    # Tiny effect on already-strong matches; meaningful tie-break on
+    # close-score competitors. See :func:`_confidence_boost`.
     _SOURCE_WEIGHT = {
         "kb": 1.0,
         "ontology": 1.0,
@@ -464,13 +473,58 @@ def top_articles_by_relevance(
         if raw < min_score:
             continue
         weight = _SOURCE_WEIGHT.get(index.sources[doc_idx], 1.0)
-        s = raw * weight
+        boost = _confidence_boost(article_ref)
+        s = raw * weight * boost
         prev = best.get(article_ref)
         if prev is None or s > prev:
             best[article_ref] = s
 
     scored = sorted(best.items(), key=lambda t: t[1], reverse=True)
     return [ref for ref, _ in scored[:k]]
+
+
+@lru_cache(maxsize=1)
+def _xref_in_degree() -> dict[str, int]:
+    """Count how many KB articles cross-reference each target article.
+
+    High in-degree = many other regulatory provisions mention this
+    article = central / structurally important. We use it as a
+    confidence multiplier on the BM25 rank (LLM Wiki v2 gist pattern:
+    "a fact supported by many sources is more reliable than one
+    supported by few"). The in-degree is computed once per process
+    from :mod:`app.data.kb_xrefs`.
+    """
+    # Lazy import — keeps the build-time dependency graph clean.
+    from app.data.kb_xrefs import _build_xref_graph  # noqa: PLC0415
+
+    counts: dict[str, int] = {}
+    for _source, targets in _build_xref_graph().items():
+        for t in targets:
+            counts[t] = counts.get(t, 0) + 1
+    return counts
+
+
+def _confidence_boost(article_ref: str) -> float:
+    """Map in-degree to a score multiplier in [1.0, 1.15].
+
+    Articles never referenced elsewhere get 1.0 (no boost). Articles
+    with 1-2 in-edges get 1.05 (mild boost). High-hub articles (the
+    central Art. 5, Art. 6, Art. 13 et al.) get up to 1.15. The cap is
+    deliberately small so confidence weighting cannot promote an
+    irrelevant article over a relevant one — it only tie-breaks among
+    close competitors.
+
+    Pure function of ``article_ref``; no per-query state. The boost
+    table is memoised via :func:`_xref_in_degree`.
+    """
+    deg = _xref_in_degree().get(article_ref, 0)
+    if deg <= 0:
+        return 1.0
+    # Logarithmic curve so the boost saturates: deg=1 → 1.05,
+    # deg=3 → 1.08, deg=10 → 1.12, deg=50+ → 1.15.
+    import math  # noqa: PLC0415 — local; the module already imports math
+
+    return min(1.0 + 0.05 * math.log2(1 + deg) / 2.0, 1.15)
 
 
 def relevance_score(question: str, article_ref: str) -> float:
