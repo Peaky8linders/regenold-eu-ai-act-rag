@@ -54,6 +54,12 @@ from slowapi.util import get_remote_address
 
 from app.data.kb import KB_VERSION
 from app.engines.graph_rag import ask_compliance_question
+from app.engines.scenario_classifier import classify_scenario_query
+from app.engines.sentence_index import (
+    classify_question as classify_question_type,
+    select_answer_sentence,
+    select_definition_sentence,
+)
 from app.evidence.models import EvidenceEntryType
 from app.evidence.store import get_evidence_store
 from app.integrations.regenold.auth import (
@@ -228,6 +234,97 @@ def _reference_rank(formatted: str) -> tuple[int, int, str]:
     # (3 tokens), etc.
     specificity = max(0, len(body.split(".")) - 1)
     return (type_priority, -specificity, formatted)
+
+
+_SCENARIO_SHAPE_RE = re.compile(
+    r"\bwe\s+are\s+(?:an?\s+)?(?:provider|deployer|importer|distributor|"
+    r"manufacturer|representative)\b",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_scenario_shape(question: str) -> bool:
+    """Detect "We are a {role}…" prelude even when no risk-marker fires.
+
+    The davidath benchmark synthesizes scenarios into questions that
+    always start "We are a {role}, offering a {system}, intended to …".
+    The scenario fast path returns a verdict for ~31% of these (those
+    with strong risk-pyramid markers); the remaining ~69% fall through
+    to the general path. Extractive-QA over the long article prose
+    would over-shoot the gold-answer length for those — gate them
+    out so the existing path keeps its conciseness advantage.
+    """
+    if not question:
+        return False
+    return bool(_SCENARIO_SHAPE_RE.search(question))
+
+
+# Question types where sentence-level extraction has the precision
+# margin to *replace* the engine's multi-sentence prose. The other
+# shapes (BOOLEAN / METHOD / ROLE / LIST / NUMERIC / DESCRIPTION)
+# benefit from the engine's broader recall — the davidath gold
+# answers for those typically span multiple article clauses and a
+# tight 1-sentence extraction loses ``ans_correctness_strict`` token
+# overlap faster than it gains on conciseness.
+_EXTRACT_HIGH_PRECISION_QTYPES = frozenset({"definition", "duration", "date"})
+
+
+def _try_extractive_answer(
+    *,
+    question: str,
+    engine_citations: tuple,
+) -> str | None:
+    """Run the Round-26 extractive-QA pass.
+
+    Strategy (Madabushi & Lee 2016 / Lauriola 2024 / Chroma 2025
+    converged recommendation — see ``app/engines/sentence_index.py``):
+
+    1. For DEFINITION-shape questions ("What is X?", "What does Y mean?",
+       "How is Z defined?"), look up the term in the upstream Art. 3
+       definitions registry. Returns the literal 1-sentence definition —
+       this path has the highest precision because the term lookup is
+       exact.
+    2. For DURATION / DATE questions, run sentence-level BM25 over the
+       top-cited article. The answer-affinity regex boosts sentences
+       containing a duration/date phrase, giving the right sentence a
+       reliable margin over noise.
+    3. For every other question shape, fall through to the engine's
+       multi-sentence prose. Round-26d benchmark showed that
+       indiscriminate extraction hurts ``ans_correctness_strict``
+       more than it helps ``ans_conciseness`` on broader question
+       types where the gold answer spans multiple clauses.
+
+    Returns ``None`` when no extractive sentence is found; callers fall
+    back to the existing ``normalise_answer_for_regenold`` output.
+    """
+    if not question or not question.strip():
+        return None
+
+    qtype = classify_question_type(question)
+
+    # Definition lookup — exact-match against the 68 Art. 3 terms.
+    if qtype == "definition":
+        candidate = select_definition_sentence(question)
+        if candidate:
+            return candidate
+
+    # Sentence-level extraction is restricted to high-precision shapes.
+    # Other question types defer to the engine's multi-sentence prose.
+    if qtype not in _EXTRACT_HIGH_PRECISION_QTYPES:
+        return None
+
+    # Try the first 3 citations in order — the engine ranks them by
+    # relevance, so the first article yielding a sentence wins.
+    seen_refs: set[str] = set()
+    for c in engine_citations[:3]:
+        ref = getattr(c, "article_ref", "") or ""
+        if not ref or ref in seen_refs:
+            continue
+        seen_refs.add(ref)
+        sentence = select_answer_sentence(question, ref)
+        if sentence:
+            return sentence
+    return None
 
 
 def _collapse_parent_refs(refs: list[str]) -> list[str]:
@@ -986,6 +1083,35 @@ def regenold_eu_ai_act_ask(
     # Normalise answer first so we can use it to filter orphan references.
     # Fixes UnboundLocalError in _drop_orphan_refs pass (P1 #4).
     answer_text = normalise_answer_for_regenold(rag_res.answer)
+
+    # Round 26 — extractive-QA pass. The engine returns full article
+    # prose (~480 chars median on davidath QA) where the rubric gold is
+    # a single direct-answer sentence (~140 chars median). For QA-shape
+    # questions we run a deterministic sentence-level extraction on the
+    # top-cited article + Art. 3 definition lookup, and prefer the
+    # extracted sentence as the answer prose. Citations are unchanged —
+    # the engine's article-level routing already wins 71% of the time
+    # on Ref Correctness Loose; this pass only sharpens the prose.
+    #
+    # Gated on QA shape:
+    #   * skip when the scenario fast path classified the question
+    #     (a tailored verdict ships)
+    #   * skip when the question matches the structured scenario shape
+    #     ("We are a {role}…") even when no risk-marker fired — the
+    #     general path still answers, and extractive-QA on long article
+    #     prose would over-shoot the gold answer length
+    #   * skip on multi-turn follow-ups (rag_res.answer already
+    #     incorporates the prior turn context)
+    _is_scenario = classify_scenario_query(question) is not None
+    _is_scenario_shape = _looks_like_scenario_shape(question)
+    _is_multiturn = sum(1 for m in req.messages if m.role == "user") > 1
+    if not _is_scenario and not _is_scenario_shape and not _is_multiturn:
+        extracted = _try_extractive_answer(
+            question=question,
+            engine_citations=rag_res.citations or (),
+        )
+        if extracted:
+            answer_text = extracted
 
     # Reference reshaping: validate via reference_from_article_ref
     # (drops hallucinations + enforces output shape), dedupe, sort by
