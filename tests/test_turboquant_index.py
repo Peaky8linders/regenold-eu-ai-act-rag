@@ -299,3 +299,41 @@ def test_top_articles_by_relevance_changes_when_dense_on(monkeypatch):
     # regardless of the fusion path).
     assert "Art. 5" in bm25_only
     assert "Art. 5" in fused
+
+
+# ── Round-31 eng-review BLOCK: env-flag-aware engine cache key ───────────
+
+
+def test_engine_cache_key_includes_dense_env_flag(monkeypatch):
+    """Flipping ``REGENOLD_TURBOQUANT_DENSE`` must change the cache key.
+
+    Eng-review BLOCK: the LRU cache in ``app/routes/regenold.py`` keys
+    on ``(question, system_context, KB_VERSION)``. The dense rerank
+    appends refs based on the env flag; if the flag flips at runtime
+    a stale BM25-only ``rag_res`` could be returned. Folding both env
+    flags into the cache key prevents that cross-state poisoning.
+    """
+    from app.routes.regenold import _engine_cache_key
+
+    q = "What documents must be kept by deployers?"
+    monkeypatch.delenv("REGENOLD_TURBOQUANT_DENSE", raising=False)
+    monkeypatch.delenv("REGENOLD_CITATION_GUARD", raising=False)
+    key_off = _engine_cache_key(q, None)
+
+    monkeypatch.setenv("REGENOLD_TURBOQUANT_DENSE", "1")
+    key_dense_on = _engine_cache_key(q, None)
+    assert key_dense_on != key_off, (
+        "dense env flag must change the cache key — Round-30 cache-poisoning "
+        "guard pattern"
+    )
+
+    monkeypatch.setenv("REGENOLD_CITATION_GUARD", "1")
+    key_both_on = _engine_cache_key(q, None)
+    assert key_both_on != key_off
+    assert key_both_on != key_dense_on
+
+    # Repeatable: same env state → same key.
+    monkeypatch.delenv("REGENOLD_TURBOQUANT_DENSE", raising=False)
+    monkeypatch.delenv("REGENOLD_CITATION_GUARD", raising=False)
+    key_off2 = _engine_cache_key(q, None)
+    assert key_off2 == key_off, "deterministic key for identical env"

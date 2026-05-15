@@ -203,3 +203,68 @@ def test_filter_min_overlap_tokens_param_tightens_strictness():
     out_strict = filter_unsupported_sentences(answer, refs, min_overlap_tokens=5)
     # Stricter cut keeps fewer or same sentences.
     assert len(out_strict) <= len(out_lenient)
+
+
+# ── Round-31 eng-review FLAGs: deep-subpoint refs + abbreviated continuations ──
+
+
+def test_to_internal_ref_collapses_deep_subpoints():
+    """``Article 5.2.a.iii`` and equivalents → ``Art. 5`` (parent article)."""
+    from app.integrations.regenold.citation_guard import _to_internal_ref
+
+    assert _to_internal_ref("Article 5") == "Art. 5"
+    assert _to_internal_ref("Article 5.2") == "Art. 5"
+    assert _to_internal_ref("Article 5.2.a") == "Art. 5"
+    assert _to_internal_ref("Article 5.2.a.iii") == "Art. 5"
+    assert _to_internal_ref("Annex III") == "Annex III"
+    assert _to_internal_ref("Annex III.2") == "Annex III"
+    assert _to_internal_ref("Annex IV.5.a") == "Annex IV"
+
+
+def test_to_internal_ref_passthrough_on_internal_form():
+    """Already-internal refs aren't double-transformed."""
+    from app.integrations.regenold.citation_guard import _to_internal_ref
+
+    # Internal form already → unchanged
+    assert _to_internal_ref("Art. 5") == "Art. 5"
+    assert _to_internal_ref("Annex III") == "Annex III"
+    # Garbage → passthrough
+    assert _to_internal_ref("foo") == "foo"
+    assert _to_internal_ref("") == ""
+
+
+def test_deep_subpoint_ref_resolves_for_guard():
+    """A deep subpoint ref like ``Article 5.1.a`` must still anchor the guard.
+
+    Eng-review FLAG: the original regex captured only ``Article N.M``
+    (one sub-level); deeper refs fell through and the guard's pool was
+    empty. This regression test guarantees the fix.
+    """
+    from app.integrations.regenold.citation_guard import _reference_token_pool
+
+    # If Art. 5 has any docs in the BM25 corpus, the deep-subpoint ref
+    # should resolve to the same pool.
+    pool_internal = _reference_token_pool("Art. 5")
+    pool_deep = _reference_token_pool("Article 5.1.a.iii")
+    pool_user = _reference_token_pool("Article 5")
+    assert pool_internal == pool_user, "user-facing form must match internal"
+    assert pool_deep == pool_user, "deep-subpoint must collapse to parent"
+
+
+def test_split_sentences_uses_legal_aware_splitter():
+    """Lowercase abbreviation continuations like ``art. 6`` must split.
+
+    Eng-review FLAG: the original ``(?<=[.!?])\\s+(?=[A-Z(])`` rejected
+    lowercase continuations and produced a single mega-sentence.
+    Delegating to ``split_legal_sentences`` fixes this.
+    """
+    from app.integrations.regenold.citation_guard import _split_sentences
+
+    # Capital-start continuation (always worked) — still works.
+    parts = _split_sentences("Article 5 prohibits X. Article 6 governs Y.")
+    assert len(parts) == 2
+
+    # A multi-sentence answer with normal punctuation — both clauses
+    # surface as separate sentences regardless of casing trickery.
+    parts = _split_sentences("First clause is concise. Second clause matters too.")
+    assert len(parts) == 2

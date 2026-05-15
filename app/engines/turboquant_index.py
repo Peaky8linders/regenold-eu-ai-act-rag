@@ -440,6 +440,18 @@ def reciprocal_rank_fusion(
 ) -> list[str]:
     """Fuse a BM25 ranking with the dense ranking via weighted RRF.
 
+    **Currently a dormant tuning knob.** The Round-31 wire path uses
+    :func:`additive_dense_fill` instead — symmetric RRF traded ~0.004
+    Strict Ref for ~0.004 Strict Ans on the davidath benchmark (a wash)
+    so we chose the precision-safer additive fill. RRF stays in the
+    public surface because the recall vs precision trade-off is a
+    parameter-tunable knob: a future round can switch
+    ``kb_search.top_articles_by_relevance`` to RRF with
+    ``bm25_weight=2.0, dense_weight=1.0`` to keep BM25 mostly
+    dominant while letting the dense ranker reshape close-score ties.
+    The tests in ``tests/test_turboquant_index.py`` exercise the math
+    so the tuning surface is still verified.
+
     For each article ref ``r``, the fused score is::
 
         score(r) = w_bm25 / (rrf_k + rank_bm25(r))

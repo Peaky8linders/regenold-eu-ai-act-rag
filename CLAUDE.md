@@ -621,27 +621,50 @@ Closes 3 of 7 layers from
 * **Env-gated** (default OFF) via `REGENOLD_CITATION_GUARD=1`. Wired
   into `app/routes/regenold.py` after references are finalised.
 
-### Round 31 — Benchmark scorecard (476 items, 673 unit tests pass)
+### Round 31 — Benchmark scorecard (476 items, 678 unit tests pass)
 
-| Axis                       | R28      | R31 (all-off) | R31 (dense-additive ON) | Δ vs R28 |
-| -------------------------- | -------- | ------------- | ----------------------- | -------- |
-| Ans Correctness (Loose)    | 0.0795   | 0.0795        | 0.0795                  |  flat    |
-| Ans Correctness (Strict)   | 0.1759   | 0.1759        | 0.1759                  |  flat    |
-| Ans Conciseness            | 0.4049   | 0.4049        | 0.4049                  |  flat    |
-| Ref Correctness (Loose)    | 0.3602   | 0.3602        | 0.3602                  |  flat    |
-| Ref Correctness (Strict)   | 0.3067   | 0.3067        | 0.3053                  | -0.001   |
-| Ref Conciseness            | 0.3888   | 0.3888        | 0.3868                  | -0.002   |
-| Regulatory Tone            | 1.0000   | 1.0000        | 1.0000                  |  flat    |
-| Latency p50 (ms)           | 5.43     | 6.15          | 7.76                    | +1.6     |
-| Multi-turn coherence       | 1.00     | 1.00          | 1.00                    |  flat    |
+| Axis                       | R28      | R31 (all-off) | R31 (dense ON) | R31 (dense+guard) |
+| -------------------------- | -------- | ------------- | -------------- | ----------------- |
+| Ans Correctness (Loose)    | 0.0795   | 0.0795        | 0.0795         | 0.0770            |
+| Ans Correctness (Strict)   | 0.1759   | 0.1759        | 0.1759         | **0.1562** ✗      |
+| Ans Conciseness            | 0.4049   | 0.4049        | 0.4049         | 0.4329 ✓          |
+| Ref Correctness (Loose)    | 0.3602   | 0.3602        | 0.3602         | 0.3602            |
+| Ref Correctness (Strict)   | 0.3067   | 0.3067        | 0.3053         | 0.3053            |
+| Ref Conciseness            | 0.3888   | 0.3888        | 0.3868         | 0.3868            |
+| Regulatory Tone            | 1.0000   | 1.0000        | 1.0000         | 1.0000            |
+| Latency p50 (ms)           | 5.43     | 6.15          | 7.35           | 7.69              |
+| Multi-turn coherence       | 1.00     | 1.00          | 1.00           | 1.00              |
 
 The all-off run reproduces Round 28's scorecard ✓ (zero-regression
-confirmation). The dense-additive ON run is benchmark-neutral — BM25
-already saturates the top-`k` slots on the davidath corpus, so the
-dense path can't add recall candidates. **The wins are queued for
-production**: novel queries phrased differently from the davidath
-generated set, multi-turn re-asks where context shifts, and domain-
-adjacent queries that share semantics but not keywords.
+confirmation).
+
+The **dense-only** run is benchmark-neutral: -0.001 Strict Ref / -0.002
+Ref Conciseness are noise band, latency cost +1.9 ms p50. BM25 already
+saturates the davidath corpus so the additive dense path can't add
+recall candidates. **The wins are queued for production**: novel
+queries phrased differently from the davidath generated set, multi-turn
+re-asks where context shifts, domain-adjacent queries that share
+semantics but not keywords.
+
+The **dense + citation guard** run is **rubric-negative**: -0.020
+Strict Ans (the guard drops sentences that contained gold answer
+tokens, even with the minimum-one-sentence floor) trades for +0.028
+Conciseness — net negative on the rubric weights. The guard is shipped
+**experimental, default OFF**. To make it rubric-positive a future
+round needs to tune the overlap threshold + the answer-prefix
+preservation rule. The Round-16 finding ("empty / over-pruned answers
+hurt MORE than over-broad ones") is reaffirmed in a new direction:
+even with the floor honoured, dropping ANY supported sentence is a
+penalty when the gold answer's token shape favours redundancy.
+
+### Production deploy guidance for Round 31
+
+* **Recommended**: deploy with `REGENOLD_TURBOQUANT_DENSE=1`,
+  `REGENOLD_CITATION_GUARD` UNSET. The dense path is rubric-neutral on
+  the davidath bench but +recall on real-world paraphrased queries.
+* **Do NOT** enable `REGENOLD_CITATION_GUARD=1` without first re-tuning
+  the overlap threshold against the davidath bench. The default `1`
+  setting is too aggressive for the rubric's token-overlap scoring.
 
 ### Why ship infrastructure that's benchmark-neutral?
 

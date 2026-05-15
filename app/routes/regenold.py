@@ -155,8 +155,26 @@ def _engine_cache_key(question: str, system_context: str | None) -> str:
     invalidates the whole cache implicitly — different KB version
     means different deterministic output, so reusing the old cached
     answer would be a stale hit.
+
+    Round 31 — folds the dense-rerank + citation-guard env flags into
+    the key so a runtime flip (operator turns
+    ``REGENOLD_TURBOQUANT_DENSE`` or ``REGENOLD_CITATION_GUARD`` on/off
+    without a worker restart) doesn't serve cached output from the
+    other flag state. Same protection pattern as the Round-30
+    cache-poisoning fix; that round inlined the rate-limit tier bit and
+    documented the requirement: ANY input that flips engine behaviour
+    must be in the key.
     """
-    blob = f"{KB_VERSION}\n{question}\n{system_context or ''}".encode("utf-8")
+    # Lazy import — keeps the cold-start dependency graph clean. Both
+    # flags default OFF, so the resolved value is normally `"00"`.
+    from app.engines.turboquant_index import is_enabled as _dense_enabled  # noqa: PLC0415
+    from app.integrations.regenold.citation_guard import (  # noqa: PLC0415
+        is_enabled as _guard_enabled,
+    )
+    flag_bits = f"{int(_dense_enabled())}{int(_guard_enabled())}"
+    blob = (
+        f"{KB_VERSION}\n{question}\n{system_context or ''}\nflags:{flag_bits}"
+    ).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()
 
 
@@ -1329,15 +1347,31 @@ def regenold_eu_ai_act_ask(
     # ``_drop_orphan_refs`` pass above: that one drops refs, this one
     # drops sentences. They're orthogonal — both can run, both default
     # OFF, both honour the floor-of-one-sentence invariant.
+    #
+    # Re-run ``normalise_answer_for_regenold`` after the guard so the
+    # 3-sentence + 600-char soft cap is re-applied to the (possibly
+    # shrunk) answer. The guard joins kept sentences with a single
+    # space; in rare cases that reshuffles which sentence is the
+    # longest non-citation-anchored one. The normaliser is idempotent
+    # on already-normalised input, so this is a no-op when the guard
+    # is disabled (its env-flag short-circuit above keeps ``answer_text``
+    # unchanged).
     if (
         retrieval_path != "no_match"
         and references
         and answer_text
     ):
         from app.integrations.regenold.citation_guard import (  # noqa: PLC0415
+            is_enabled as _guard_enabled,
             maybe_apply_guard,
         )
-        answer_text = maybe_apply_guard(answer_text, tuple(references))
+        if _guard_enabled():
+            answer_text = maybe_apply_guard(answer_text, tuple(references))
+            # Re-apply the spec caps (3 sentences, 600 chars) — the
+            # guard CAN merge two long sentences whose pre-guard total
+            # length was within the cap only because the cap saw them
+            # as separate entries. Cheap idempotent pass otherwise.
+            answer_text = normalise_answer_for_regenold(answer_text)
 
     # Surface the engine's graph_stats so a downstream verifier (when
     # telemetry is requested) can judge retrieval breadth without

@@ -65,12 +65,13 @@ def is_enabled() -> bool:
     return val in ("1", "true", "yes", "on")
 
 
-_USER_FACING_ARTICLE_RE = re.compile(
-    r"^Article\s+(\d+)(?:\.(\d+(?:\.[a-zA-Z]+)?))?$"
-)
-_USER_FACING_ANNEX_RE = re.compile(
-    r"^Annex\s+([IVXLCDM]+)(?:\.(\d+))?$"
-)
+# Round 31 — accept arbitrary sub-point depth on the leading numeric /
+# Roman tag. The wire-contract regex in
+# ``app/integrations/regenold/models.py::_ARTICLE_OUTPUT_RE`` permits
+# ``Article 5.2.a.iii`` and equivalents, so the citation guard must
+# collapse those to the parent article number too.
+_USER_FACING_ARTICLE_RE = re.compile(r"^Article\s+(\d+)(?:\.[\w.]+)?$")
+_USER_FACING_ANNEX_RE = re.compile(r"^Annex\s+([IVXLCDM]+)(?:\.[\w.]+)?$")
 
 
 def _to_internal_ref(ref: str) -> str:
@@ -80,6 +81,7 @@ def _to_internal_ref(ref: str) -> str:
     Returns ``ref`` unchanged when already in internal form or when the
     shape doesn't match. The BM25 index keys collapse sub-points to the
     parent article, so a user-facing ``Article 13.2`` maps to ``Art. 13``.
+    Deep subpoints like ``Article 5.2.a.iii`` collapse to ``Art. 5``.
     """
     ref = (ref or "").strip()
     m = _USER_FACING_ARTICLE_RE.match(ref)
@@ -136,22 +138,32 @@ def _reference_pool(refs: tuple[str, ...]) -> frozenset[str]:
     return frozenset(out)
 
 
-# Sentence splitter — same shape as the engine output normaliser.
-_SENT_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z(])")
+# Sentence splitter — reuses the abbreviation-aware logic from the
+# sentence-index module so legal abbreviations (``Art.``, ``Annex IV.``,
+# ``e.g.``, ``i.e.``) don't trigger false splits. We don't re-implement
+# here; lazy import keeps module-load cheap.
 
 
 def _split_sentences(text: str) -> list[str]:
     """Split an answer string into sentences, preserving punctuation.
 
-    Conservative — falls back to the whole text as a single sentence
-    when the splitter finds no boundary. The engine's own sentence
-    normaliser is stricter; we don't duplicate that logic, we just
-    need a coarse split so per-sentence support analysis can work.
+    Delegates to :func:`app.engines.sentence_index.split_legal_sentences`
+    — the canonical regulatory-aware splitter (round-26 BM25 sentence
+    index). Falls back to the whole text as a single sentence when no
+    boundary is found.
+
+    Re-importing here instead of duplicating the regex tree keeps the
+    abbreviation list (``Art.``, ``Annex N.``, ``e.g.``, ``i.e.``,
+    numbered list markers) in one place — earlier Round-31 first-cut
+    used a naive ``(?<=[.!?])\\s+(?=[A-Z(])`` regex that rejected
+    lowercase continuations like "Art. 5 ... art. 6 ..." and produced
+    a single mega-sentence the guard couldn't split.
     """
     if not text or not text.strip():
         return []
-    parts = _SENT_SPLIT_RE.split(text.strip())
-    return [p.strip() for p in parts if p.strip()]
+    # Lazy import — keeps module-load cheap and avoids a circular path.
+    from app.engines.sentence_index import split_legal_sentences  # noqa: PLC0415
+    return split_legal_sentences(text)
 
 
 def filter_unsupported_sentences(
