@@ -231,6 +231,57 @@ class TestStage2ClaudeMaxProxy:
         assert result.answer
 
 
+# ─── Stage-2 cache-poisoning guard ───────────────────────────────────────────
+
+
+class TestStage2CallFailedFlag:
+    """Round-30: Stage-2 transient failure must NOT be cacheable.
+
+    Without this flag the route-level LRU cache stores the deterministic
+    fallback answer and every subsequent identical question gets the
+    un-polished answer forever (until LRU eviction). A single ~20%-rate
+    wrapper hiccup permanently disables Stage-2 for that question.
+    """
+
+    def test_stage2_call_failed_set_when_wrapper_returns_none(self) -> None:
+        with (
+            patch("app.llm.openai_wrapper_provider.is_openai_wrapper_enabled", return_value=True),
+            patch(
+                "app.engines.graph_rag._openai_wrapper_complete_for_graph_rag",
+                return_value=None,
+            ),
+        ):
+            req = GraphRAGRequest(question=_MULTI_TURN_Q[:2000])
+            result = ask_compliance_question(req)
+        assert result.graph_stats.get("stage2_call_failed") is True
+
+    def test_stage2_call_failed_unset_when_stage2_succeeds(self) -> None:
+        with (
+            patch("app.llm.openai_wrapper_provider.is_openai_wrapper_enabled", return_value=True),
+            patch(
+                "app.engines.graph_rag._openai_wrapper_complete_for_graph_rag",
+                return_value="Polished answer.",
+            ),
+        ):
+            req = GraphRAGRequest(question=_MULTI_TURN_Q[:2000])
+            result = ask_compliance_question(req)
+        assert result.graph_stats.get("stage2_call_failed") is False
+
+    def test_stage2_call_failed_unset_when_stage2_not_needed(self) -> None:
+        """Simple single-article question doesn't trigger Stage-2 — not a failure."""
+        with patch("app.llm.openai_wrapper_provider.is_openai_wrapper_enabled", return_value=True):
+            req = GraphRAGRequest(question=_SIMPLE_Q)
+            result = ask_compliance_question(req)
+        assert result.graph_stats.get("stage2_call_failed") is False
+
+    def test_stage2_call_failed_unset_when_wrapper_disabled(self) -> None:
+        """Wrapper not configured — also not a failure, just not applicable."""
+        with patch("app.llm.openai_wrapper_provider.is_openai_wrapper_enabled", return_value=False):
+            req = GraphRAGRequest(question=_MULTI_TURN_Q[:2000])
+            result = ask_compliance_question(req)
+        assert result.graph_stats.get("stage2_call_failed") is False
+
+
 # ─── _two_stage_generate unit tests ──────────────────────────────────────────
 
 

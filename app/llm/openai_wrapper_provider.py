@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 
 import httpx
@@ -241,10 +242,22 @@ class _OpenAIWrapperProvider:
 
 
 _SINGLETON: _OpenAIWrapperProvider | None = None
+_SINGLETON_LOCK = threading.Lock()
 
 
 def get_openai_wrapper_provider() -> _OpenAIWrapperProvider:
+    """Return the process-wide pooled provider. Thread-safe on first call.
+
+    Without the lock, two concurrent cold-start requests could each
+    construct an ``_OpenAIWrapperProvider``; the first's pooled
+    ``httpx.Client`` would be silently leaked (its atexit close still
+    fires, but the in-flight requests using it have no path back to
+    the leaked instance). Double-checked locking keeps the hot path
+    lock-free after init.
+    """
     global _SINGLETON
     if _SINGLETON is None:
-        _SINGLETON = _OpenAIWrapperProvider()
+        with _SINGLETON_LOCK:
+            if _SINGLETON is None:
+                _SINGLETON = _OpenAIWrapperProvider()
     return _SINGLETON

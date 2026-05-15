@@ -155,10 +155,10 @@ def healthz_llm() -> dict[str, object]:
     }
 
     # The probe is provider-specific because each path has its own
-    # failure surface. We only implement the openai_wrapper probe live —
-    # the other paths (anthropic SDK direct / Mistral) are pay-per-token
-    # so we don't burn a request on every health check; for those we
-    # only report "configured / not configured".
+    # failure surface. The openai_wrapper probe is fully live; the
+    # anthropic probe uses ``client.models.list()`` which authenticates
+    # the API key without burning a billable token; the Mistral probe
+    # is shape-only because their models-list endpoint is rate-limited.
     if provider_label == "openai_wrapper":
         if not is_openai_wrapper_enabled():
             base["detail"] = (
@@ -166,18 +166,30 @@ def healthz_llm() -> dict[str, object]:
                 "OPENAI_API_BASE nor OPENAI_API_KEY is set"
             )
             return base
+        # Probe with the SAME model used for Stage-2 polish (the
+        # load-bearing call) — the Haiku-only probe we shipped in
+        # round 29 could pass while Sonnet was broken (different rate
+        # limit pool, model-scoped auth scopes on some providers,
+        # tunnel routing rules, etc.). Operators can still pin a
+        # cheaper probe via REGENOLD_HEALTHZ_PROBE_MODEL.
+        probe_model = (
+            os.getenv("REGENOLD_HEALTHZ_PROBE_MODEL", "").strip()
+            or settings.graph_rag.model
+            or "claude-sonnet-4-6"
+        )
         try:
             prov = get_openai_wrapper_provider()
             response = prov.complete(
                 OpenAIWrapperRequest(
                     system="Reply with the exact word OK and nothing else.",
                     user="ping",
-                    model=os.getenv(
-                        "REGENOLD_INTENT_MODEL",
-                        "claude-haiku-4-5-20251001",
-                    ),
+                    model=probe_model,
                     max_tokens=8,
                     temperature=0.0,
+                    # Cap the probe at 10 s so an uptime monitor doesn't
+                    # block forever on a hung wrapper — the singleton's
+                    # 60 s default is for real Stage-2 calls.
+                    timeout_seconds=10.0,
                 )
             )
         except Exception as exc:  # noqa: BLE001 — health probe must never raise
@@ -199,13 +211,50 @@ def healthz_llm() -> dict[str, object]:
         api_key = settings.graph_rag.api_key
         if not api_key:
             base["detail"] = "P2P_GRAPH_RAG_API_KEY not set"
-        else:
-            try:
-                import anthropic  # noqa: F401
-                base["llm_ok"] = True
-                base["detail"] = "anthropic SDK installed + API key configured (not probed live)"
-            except ImportError:
-                base["detail"] = "anthropic SDK not installed (pip install anthropic)"
+            return base
+        try:
+            import anthropic
+        except ImportError:
+            base["detail"] = "anthropic SDK not installed (pip install anthropic)"
+            return base
+        # Live probe — round-29 shipped a configured-only probe that
+        # said llm_ok=True whenever the key was set, even if revoked /
+        # malformed / pointed at the wrong tenant. We now call
+        # ``models.list()`` which authenticates the key against the
+        # Anthropic API but does NOT consume any input/output tokens
+        # (it's a metadata endpoint, free per the pricing page). The
+        # 10-second timeout caps the probe latency. Operators who want
+        # the old "don't touch the network at health-check time"
+        # behaviour can set REGENOLD_HEALTHZ_PROBE_ANTHROPIC=0.
+        if os.getenv("REGENOLD_HEALTHZ_PROBE_ANTHROPIC", "1").strip() == "0":
+            base["llm_ok"] = True
+            base["detail"] = (
+                "anthropic SDK installed + API key configured "
+                "(REGENOLD_HEALTHZ_PROBE_ANTHROPIC=0, not probed live)"
+            )
+            return base
+        import time as _time
+        start = _time.perf_counter()
+        try:
+            client = anthropic.Anthropic(
+                api_key=api_key.get_secret_value(),
+                timeout=10.0,
+            )
+            client.models.list(limit=1)
+        except Exception as exc:  # noqa: BLE001 — health probe must never raise
+            # Anthropic raises typed exceptions (AuthenticationError,
+            # APIConnectionError, etc.) but we don't want to depend on
+            # the SDK's class hierarchy in main.py — the string is
+            # enough for an operator to diagnose.
+            base["detail"] = (
+                f"anthropic_probe_failed: {type(exc).__name__}: {exc!s}"
+            )[:200]
+            base["elapsed_ms"] = int((_time.perf_counter() - start) * 1000)
+            return base
+        base["llm_ok"] = True
+        base["detail"] = "ok"
+        base["elapsed_ms"] = int((_time.perf_counter() - start) * 1000)
+        base["model"] = settings.graph_rag.model
         return base
 
     if provider_label == "mistral":

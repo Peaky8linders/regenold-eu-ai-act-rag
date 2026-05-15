@@ -253,6 +253,124 @@ class TestHealthzLLMAnthropicProvider:
         assert body["llm_ok"] is False
         assert "P2P_GRAPH_RAG_API_KEY" in body["detail"]
 
+    def test_anthropic_live_probe_failure_reports_not_ok(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Round-30: a bad key on Railway must report llm_ok=False, not silently
+        say "configured" — the configured-only probe we shipped in round 29
+        would lie when the key was revoked / typo'd / pointed at the wrong tenant.
+        """
+        anthropic = pytest.importorskip("anthropic")
+        monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "anthropic")
+        monkeypatch.setenv("P2P_GRAPH_RAG_API_KEY", "sk-ant-broken")
+        # Force settings re-read so the new env propagates to the live
+        # probe (cached pydantic settings keep the previous value).
+        from app.config import settings
+        from pydantic import SecretStr as _SS
+        monkeypatch.setattr(
+            settings.graph_rag, "api_key", _SS("sk-ant-broken"), raising=True
+        )
+
+        class _Boom:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                pass
+            class models:  # noqa: D401, N801 — match SDK shape
+                @staticmethod
+                def list(*args: object, **kwargs: object) -> object:
+                    raise RuntimeError("authentication failed")
+
+        monkeypatch.setattr(anthropic, "Anthropic", _Boom)
+        r = client.get("/healthz/llm")
+
+        assert r.status_code == 200
+        body = r.json()
+        assert body["provider"] == "anthropic"
+        assert body["llm_ok"] is False
+        assert "anthropic_probe_failed" in body["detail"]
+        # Reset for downstream tests.
+        monkeypatch.setattr(settings.graph_rag, "api_key", None, raising=True)
+
+    def test_anthropic_live_probe_success_reports_ok(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        anthropic = pytest.importorskip("anthropic")
+        monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "anthropic")
+        monkeypatch.setenv("P2P_GRAPH_RAG_API_KEY", "sk-ant-fake")
+        from app.config import settings
+        from pydantic import SecretStr as _SS
+        monkeypatch.setattr(
+            settings.graph_rag, "api_key", _SS("sk-ant-fake"), raising=True
+        )
+
+        class _OK:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                pass
+            class models:  # noqa: N801
+                @staticmethod
+                def list(*args: object, **kwargs: object) -> object:
+                    return {"data": []}
+
+        monkeypatch.setattr(anthropic, "Anthropic", _OK)
+        r = client.get("/healthz/llm")
+
+        assert r.status_code == 200
+        body = r.json()
+        assert body["provider"] == "anthropic"
+        assert body["llm_ok"] is True
+        assert body["detail"] == "ok"
+        monkeypatch.setattr(settings.graph_rag, "api_key", None, raising=True)
+
+    def test_anthropic_probe_can_be_disabled_via_env(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Operators can opt out of the live probe to preserve the old
+        configured-only behaviour."""
+        pytest.importorskip("anthropic")
+        monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "anthropic")
+        monkeypatch.setenv("P2P_GRAPH_RAG_API_KEY", "sk-ant-fake")
+        monkeypatch.setenv("REGENOLD_HEALTHZ_PROBE_ANTHROPIC", "0")
+        from app.config import settings
+        from pydantic import SecretStr as _SS
+        monkeypatch.setattr(
+            settings.graph_rag, "api_key", _SS("sk-ant-fake"), raising=True
+        )
+
+        r = client.get("/healthz/llm")
+        body = r.json()
+        assert body["provider"] == "anthropic"
+        assert body["llm_ok"] is True
+        assert "not probed live" in body["detail"]
+        monkeypatch.setattr(settings.graph_rag, "api_key", None, raising=True)
+
+    def test_anthropic_sdk_missing_reports_not_ok(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When the SDK isn't installed at all the probe must surface a clear
+        pip-install hint rather than blowing up."""
+        monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "anthropic")
+        monkeypatch.setenv("P2P_GRAPH_RAG_API_KEY", "sk-ant-fake")
+        from app.config import settings
+        from pydantic import SecretStr as _SS
+        monkeypatch.setattr(
+            settings.graph_rag, "api_key", _SS("sk-ant-fake"), raising=True
+        )
+
+        import builtins as _builtins
+        orig_import = _builtins.__import__
+
+        def _no_anthropic(name: str, *args: object, **kwargs: object) -> object:
+            if name == "anthropic":
+                raise ImportError("not installed")
+            return orig_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(_builtins, "__import__", _no_anthropic)
+        r = client.get("/healthz/llm")
+        body = r.json()
+        assert body["provider"] == "anthropic"
+        assert body["llm_ok"] is False
+        assert "not installed" in body["detail"]
+        monkeypatch.setattr(settings.graph_rag, "api_key", None, raising=True)
+
 
 class TestHealthzLLMMistralProvider:
     def test_mistral_no_key(

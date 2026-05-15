@@ -121,14 +121,18 @@ class _BoundedLRUCache:
 
     def get(self, key: str) -> Any | None:
         with self._lock:
-            value = self._data.get(key)
-            if value is None:
+            # Use ``in`` rather than ``.get() is None`` — the latter
+            # conflates "missing key" with "stored value is None". The
+            # engine never stores None today, but a future caller that
+            # legitimately caches a None payload would see every "hit"
+            # treated as a miss and trigger unbounded recompute.
+            if key not in self._data:
                 self.misses += 1
                 return None
             # LRU touch — move-to-end keeps eviction honest.
             self._data.move_to_end(key)
             self.hits += 1
-            return value
+            return self._data[key]
 
     def put(self, key: str, value: Any) -> None:
         with self._lock:
@@ -1170,11 +1174,23 @@ def regenold_eu_ai_act_ask(
     # engine result on a fingerprint of the input — sub-microsecond
     # hash lookup vs ~3-5 ms cold compute. Audit-chain writes still
     # happen on every request (a cache hit isn't an audit-skip).
+    #
+    # Cache-poisoning guard: when Stage-2 was attempted and the wrapper
+    # call itself failed (transient outage / 429 / network error), the
+    # response we'd cache is the deterministic-fallback prose. Caching
+    # that would mean every subsequent identical question gets the
+    # un-polished answer FOREVER (until LRU eviction or process
+    # restart) — a single ~20%-rate hiccup permanently disables
+    # Stage-2 for that question. Skip the ``put`` when the engine
+    # signals the failure so the next ask retries Stage-2. Drift /
+    # "Stage-2 not needed" / "wrapper disabled" are deterministic
+    # outcomes and remain cacheable.
     cache_key = _engine_cache_key(question, system_context)
     rag_res = _ENGINE_CACHE.get(cache_key)
     if rag_res is None:
         rag_res = ask_compliance_question(rag_req)
-        _ENGINE_CACHE.put(cache_key, rag_res)
+        if not (rag_res.graph_stats or {}).get("stage2_call_failed"):
+            _ENGINE_CACHE.put(cache_key, rag_res)
 
     # Normalise answer first so we can use it to filter orphan references.
     # Fixes UnboundLocalError in _drop_orphan_refs pass (P1 #4).

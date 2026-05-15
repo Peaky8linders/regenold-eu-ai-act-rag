@@ -7,13 +7,19 @@ bounded LRU memoisation (compiled-not-rederived).
 """
 from __future__ import annotations
 
-import pytest
+from unittest.mock import patch
 
+import pytest
+from fastapi.testclient import TestClient
+from pydantic import SecretStr
+
+from app.config import settings
 from app.data.kb_search import (
     _confidence_boost,
     _xref_in_degree,
     top_articles_by_relevance,
 )
+from app.models import CitationNode, GraphRAGResponse
 from app.routes.regenold import (
     _BoundedLRUCache,
     _ENGINE_CACHE,
@@ -108,6 +114,22 @@ class TestLRUCache:
         assert cache.get("a") is None
         assert cache.get("b") == 2
 
+    def test_get_distinguishes_missing_from_stored_none(self):
+        # Round-30: ``get()`` must NOT treat a legitimately-cached None
+        # as a miss — that would trigger unbounded recompute on every
+        # subsequent hit. The fix uses ``in`` rather than ``.get() is None``.
+        cache = _BoundedLRUCache(capacity=4)
+        cache.put("k", None)
+        # First "get" is a hit, returning None. The miss counter must not
+        # advance — the entry exists.
+        result = cache.get("k")
+        assert result is None
+        assert cache.hits == 1
+        assert cache.misses == 0
+        # And a truly-missing key still counts as a miss.
+        assert cache.get("nope") is None
+        assert cache.misses == 1
+
 
 class TestEngineCacheKey:
     def test_key_changes_with_question(self):
@@ -135,3 +157,86 @@ class TestEngineCacheKey:
         k = _engine_cache_key("hello", "world")
         assert len(k) == 64
         assert all(c in "0123456789abcdef" for c in k)
+
+
+# ─── Round-30 cache-poisoning guard at the route layer ──────────────────────
+
+
+class TestRouteCachePoisoningGuard:
+    """When Stage-2 was attempted and the wrapper call failed, the route
+    must NOT cache the deterministic fallback — otherwise every
+    subsequent identical question would skip Stage-2 forever (until the
+    LRU evicts the entry). This is the exact case the user flagged
+    ("20% of Sonnet calls still 500 intermittently").
+    """
+
+    @pytest.fixture(autouse=True)
+    def _reset_cache(self):
+        # Memory-cache state spans tests; wipe before each.
+        _ENGINE_CACHE._data.clear()
+        _ENGINE_CACHE.hits = 0
+        _ENGINE_CACHE.misses = 0
+        settings.regenold.api_key = SecretStr("regenold-test-key")
+        yield
+        _ENGINE_CACHE._data.clear()
+
+    def _fake_response(self, *, stage2_call_failed: bool) -> GraphRAGResponse:
+        return GraphRAGResponse(
+            answer="Article 13 requires transparency.",
+            citations=[
+                CitationNode(
+                    node_type="Obligation",
+                    node_id="art13",
+                    text="transparency",
+                    article_ref="Art. 13",
+                )
+            ],
+            confidence=0.85,
+            reasoning_trace=[],
+            suggested_followups=[],
+            graph_stats={
+                "nodes_traversed": 3,
+                "edges_followed": 0,
+                "obligations_found": 1,
+                "gaps_found": 0,
+                "satisfied_found": 0,
+                "stage2_call_failed": stage2_call_failed,
+            },
+        )
+
+    def test_stage2_failure_response_is_NOT_cached(self) -> None:
+        from app.main import app
+
+        with patch(
+            "app.routes.regenold.ask_compliance_question",
+            return_value=self._fake_response(stage2_call_failed=True),
+        ) as engine:
+            c = TestClient(app)
+            for _ in range(3):
+                r = c.post(
+                    "/api/v1/regenold/eu-ai-act/ask",
+                    headers={"X-Regenold-Api-Key": "regenold-test-key"},
+                    json=[{"role": "user", "content": "What does Art. 13 require?"}],
+                )
+                assert r.status_code == 200
+        # Three identical questions should each invoke the engine — the
+        # cache MUST NOT swallow them when Stage-2 failed.
+        assert engine.call_count == 3
+
+    def test_stage2_success_response_IS_cached(self) -> None:
+        from app.main import app
+
+        with patch(
+            "app.routes.regenold.ask_compliance_question",
+            return_value=self._fake_response(stage2_call_failed=False),
+        ) as engine:
+            c = TestClient(app)
+            for _ in range(3):
+                r = c.post(
+                    "/api/v1/regenold/eu-ai-act/ask",
+                    headers={"X-Regenold-Api-Key": "regenold-test-key"},
+                    json=[{"role": "user", "content": "Other Art. 13 question."}],
+                )
+                assert r.status_code == 200
+        # Cache hit on 2nd + 3rd identical request.
+        assert engine.call_count == 1

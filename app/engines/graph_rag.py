@@ -318,6 +318,13 @@ class GraphContext:
     transitive_deps: list[dict] = field(default_factory=list)
     nodes_traversed: int = 0
     edges_followed: int = 0
+    # Stage-2 telemetry — populated by :func:`_two_stage_generate`.
+    # ``stage2_call_failed`` is True ONLY when the wrapper call was
+    # attempted AND the underlying HTTP/transport call returned an error
+    # (vs. Stage-2 being skipped because it wasn't needed, or returning
+    # a drifted result). The route checks this to avoid caching a
+    # deterministic fallback that masks a transient wrapper outage.
+    stage2_call_failed: bool = False
 
 
 # ─── LLM Integration ────────────────────────────────────────────────────────
@@ -2604,11 +2611,20 @@ def _two_stage_generate(
         system_description=system_description,
     )
     if enhanced is None:
+        # Wrapper call failed (network error, timeout, 429, wrapper auth
+        # error, etc.). Mark this on the context so the route knows NOT
+        # to cache this response — the failure is transient, and caching
+        # the kg_answer here would block Stage-2 retry for the lifetime
+        # of the cache entry.
+        context.stage2_call_failed = True
         return kg_answer, False
 
     # Post-Stage-2 hallucination guard: every Art./Annex mention in the
     # polished prose must resolve to a real provision in ARTICLE_EXISTENCE.
-    # On drift, drop the polish and ship the Stage-1 KG answer.
+    # On drift, drop the polish and ship the Stage-1 KG answer. The
+    # underlying call succeeded — at temperature 0 this drift is
+    # deterministic, so this branch IS cacheable (no
+    # ``stage2_call_failed`` flag).
     drifted, bad_ref = _polished_prose_has_unknown_citations(enhanced)
     if drifted:
         logger.warning(
@@ -2708,6 +2724,11 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
             "obligations_found": len(context.obligations),
             "gaps_found": len(context.gaps),
             "satisfied_found": len(context.satisfied),
+            # Forensic signal — True only when Stage-2 was attempted and
+            # the wrapper call itself failed (transient outage). Route
+            # uses this to skip caching so a single bad call doesn't
+            # poison the cache for the question's lifetime.
+            "stage2_call_failed": context.stage2_call_failed,
         },
     )
 
