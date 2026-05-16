@@ -136,6 +136,47 @@ def test_force_pure_no_mutation():
 # ── Integration ──────────────────────────────────────────────────────────
 
 
+def test_build_verdict_prefix_fires_on_each_practice():
+    """Every PRACTICE_REGISTRY entry has a curated verdict clause."""
+    from app.engines.prohibited_gatekeeper import build_verdict_prefix
+
+    examples = [
+        ("Subliminal manipulation by a chatbot", "Article 5(1)(a)"),
+        ("AI exploiting vulnerabilities of elderly", "Article 5(1)(b)"),
+        ("Is social scoring banned?", "Article 5(1)(c)"),
+        ("Predictive policing using personality profiling", "Article 5(1)(d)"),
+        ("Scraping facial images for a database", "Article 5(1)(e)"),
+        ("Emotion recognition in the workplace", "Article 5(1)(f)"),
+        ("Biometric categorisation by political opinion", "Article 5(1)(g)"),
+        ("Real-time biometric identification in public", "Article 5(1)(h)"),
+    ]
+    for question, expected_anchor in examples:
+        prefix = build_verdict_prefix(question)
+        assert prefix is not None, f"verdict missing for {question!r}"
+        assert expected_anchor in prefix, (
+            f"verdict for {question!r} missing {expected_anchor}; got {prefix!r}"
+        )
+        # Tone: regulator-voice, no first-person.
+        assert "I think" not in prefix
+        assert "as an AI" not in prefix
+        # Length: tight enough to fit inside the 600-char soft cap when
+        # combined with the engine prose.
+        assert len(prefix) <= 250, f"verdict too long: {len(prefix)} chars"
+
+
+def test_build_verdict_prefix_passthrough_on_non_prohibition():
+    """Non-prohibition questions → no verdict prefix."""
+    from app.engines.prohibited_gatekeeper import build_verdict_prefix
+
+    qs = [
+        "What is the maximum fine?",
+        "What is a deployer?",
+        "How long must records be kept?",
+    ]
+    for q in qs:
+        assert build_verdict_prefix(q) is None
+
+
 def test_gatekeeper_on_davidath_emotion_question():
     """Regression for one of the documented competition example questions.
 

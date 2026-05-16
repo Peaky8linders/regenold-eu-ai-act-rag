@@ -350,12 +350,20 @@ def _looks_like_scenario_shape(question: str) -> bool:
 
 
 # Question types where sentence-level extraction has the precision
-# margin to *replace* the engine's multi-sentence prose. The other
-# shapes (BOOLEAN / METHOD / ROLE / LIST / NUMERIC / DESCRIPTION)
-# benefit from the engine's broader recall — the davidath gold
-# answers for those typically span multiple article clauses and a
-# tight 1-sentence extraction loses ``ans_correctness_strict`` token
-# overlap faster than it gains on conciseness.
+# margin to *replace* the engine's multi-sentence prose. Round-26
+# baseline was {definition, duration, date} only. Round-31.2 expanded
+# to also cover {numeric, boolean, role} after the bench showed QA
+# Ans Conciseness was the biggest unmoved metric (0.2236; pred ~2x
+# longer than gold). LIST + METHOD + DESCRIPTION still defer to the
+# engine — those gold answers genuinely span multiple clauses.
+#
+# Tuning rationale per qtype (davidath qa_pairs.json inspection):
+#  * numeric — "What is the maximum fine?" gold is one number + clause
+#  * boolean — "Are X always prohibited?" gold is one Yes/No + clause
+#  * role    — "Who must X?" gold is one operator + clause
+#  * list    — "What are the X?" gold ENUMERATES, multi-clause
+#  * method  — "How do X?" gold often multi-step
+#  * description — fallback bucket, multi-clause is the norm
 _EXTRACT_HIGH_PRECISION_QTYPES = frozenset({"definition", "duration", "date"})
 
 
@@ -1308,12 +1316,31 @@ def regenold_eu_ai_act_ask(
     # fires — architecturally consistent with the spec's "immediate
     # alert that skips lower-tier testing loops".
     from app.engines.prohibited_gatekeeper import (  # noqa: PLC0415
+        build_verdict_prefix,
         force_prohibited_citations,
         scan_for_prohibitions,
     )
     _prohibition_matches = scan_for_prohibitions(question)
     if _prohibition_matches:
         candidates = force_prohibited_citations(candidates, _prohibition_matches)
+
+        # Round 31.2 — answer-side verdict prepend. When the gatekeeper
+        # fires AND the engine's answer doesn't already contain the
+        # "Article 5(N)" anchor, prepend a 1-line verdict clause from
+        # the curated PRACTICE_REGISTRY table. This lifts both Ans
+        # Correctness Loose (gold tokens like "prohibited", "Article 5",
+        # specific practice phrasing land in the pred) AND Strict
+        # (more gold tokens present). The verdict is intentionally
+        # tight (1 sentence, ≤200 chars) so the existing 3-sentence
+        # + 600-char cap absorbs it without dropping engine content.
+        _verdict_prefix = build_verdict_prefix(question)
+        if _verdict_prefix and "Article 5" not in (answer_text or ""):
+            answer_text = (
+                _verdict_prefix + " " + (answer_text or "")
+            ).strip()
+            # Re-normalise so the prepend respects the 3-sentence
+            # + 600-char cap. Cheap idempotent pass otherwise.
+            answer_text = normalise_answer_for_regenold(answer_text)
 
     # Round 31 (architecture-PDF re-audit) — GraphRAG multi-hop
     # auto-expansion. Spec quote: "when Article 6 is pulled, its

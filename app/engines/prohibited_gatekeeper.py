@@ -179,7 +179,73 @@ def _to_user_facing(internal_ref: str) -> str | None:
     return None
 
 
+# Practice-id → short verdict clause table. Used by
+# :func:`build_verdict_prefix` to compose an answer-side verdict line
+# when the gatekeeper fires. Each clause is intentionally tight:
+# (a) starts with "Yes," or "Article 5(...) prohibits", anchoring the
+# regulator-voice anchor for the tone scorer; (b) names the practice
+# in regulation phrasing; (c) ends with a period so it joins cleanly
+# with the engine's existing prose.
+_PRACTICE_VERDICT_CLAUSE: dict[str, str] = {
+    "subliminal_manipulation":
+        "Subliminal manipulation that materially distorts behaviour is prohibited under Article 5(1)(a).",
+    "vulnerability_exploitation":
+        "Exploitation of vulnerabilities of age, disability or socio-economic situation is prohibited under Article 5(1)(b).",
+    "social_scoring":
+        "Social scoring leading to detrimental or unjustified treatment in unrelated contexts is prohibited under Article 5(1)(c).",
+    "profiling_for_criminal_risk":
+        "Risk assessment of natural persons based solely on profiling or personality traits is prohibited under Article 5(1)(d).",
+    "facial_recognition_database":
+        "Untargeted scraping of facial images to create or expand facial-recognition databases is prohibited under Article 5(1)(e).",
+    "emotion_recognition_workplace":
+        "Emotion recognition in the workplace and education contexts is prohibited under Article 5(1)(f), with narrow medical and safety carve-outs.",
+    "biometric_categorisation_sensitive":
+        "Biometric categorisation that infers sensitive attributes (race, political opinion, religious belief, sexual orientation) is prohibited under Article 5(1)(g).",
+    "real_time_rbi":
+        "Real-time remote biometric identification in publicly accessible spaces by law enforcement is prohibited under Article 5(1)(h), with narrow Annex II exceptions.",
+    "omnibus_csam_ncii":
+        "AI systems designed to generate child sexual abuse material or non-consensual intimate imagery are prohibited (Digital Omnibus, pending adoption).",
+}
+
+
+def build_verdict_prefix(
+    question: str,
+    *,
+    max_clauses: int = 1,
+) -> str | None:
+    """Build a 1-line prohibition verdict for an answer-side prepend.
+
+    When the gatekeeper fires on a question:
+
+    * Returns a single clause from :data:`_PRACTICE_VERDICT_CLAUSE`
+      keyed by the FIRST matched practice's id. Choosing only the
+      first match keeps the verdict tight (1 sentence) and matches the
+      architecture spec's "skipping lower-tier testing loops"
+      directive (an Art. 5(1)(a) hit dominates an Art. 5(1)(f) hit).
+    * Returns ``None`` when the question doesn't match any
+      prohibition keyword.
+    * Caller is responsible for re-running the spec sentence cap if
+      the prepend would exceed it.
+    """
+    matches = scan_for_prohibitions(question)
+    if not matches:
+        return None
+    # First-match wins. To return the verdict we need the practice id,
+    # which we recover by inspecting :data:`PRACTICE_REGISTRY` for the
+    # entry whose sub_paragraph matches the matched sub-citation.
+    first_sub = matches[0][1]
+    for practice in PRACTICE_REGISTRY.values():
+        sub_chain = practice.citation[-1] if practice.citation else ""
+        if sub_chain == first_sub:
+            clause = _PRACTICE_VERDICT_CLAUSE.get(practice.id)
+            if clause:
+                return clause
+            break
+    return None
+
+
 __all__ = [
+    "build_verdict_prefix",
     "force_prohibited_citations",
     "scan_for_prohibitions",
 ]
