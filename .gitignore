@@ -37,3 +37,9 @@ evals/bench/results/
 # scratch folders the offline indexer creates are excluded).
 app/data/vectors/_bge_export/
 app/data/vectors/_bge_tok_export/
+
+# AIReg-Bench secondary benchmark — local cache of HuggingFace dataset
+# (re-fetched on first run; not committed).
+.aireg-bench-cache/
+_aireg_*.json
+_aireg_*.parquet

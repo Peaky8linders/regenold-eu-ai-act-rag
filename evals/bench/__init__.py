@@ -20,4 +20,12 @@ Results are written to:
     2. `evals/bench/results/ledger.sqlite` (durable local ledger).
     3. The audit-chain store (Postgres when `DATABASE_URL` is set, else
        in-memory) under EvidenceEntryType.BENCHMARK_RUN.
+
+A secondary runner — ``evals.bench.aireg_runner`` — consumes the
+``camlsys/AIReg-Bench`` dataset (Marino et al., 2025) and adds a
+**verdict match** axis on top of the seven shared rubric axes. It
+writes sidecars to ``evals/bench/results/aireg-<label>.json`` and is
+opt-in via ``py -3.12 -m evals.bench.aireg_runner``. See the
+:mod:`evals.bench.aireg_dataset` module docstring for the HF-mirror
+caveat (the ``documentation/`` folder is not currently published).
 """
