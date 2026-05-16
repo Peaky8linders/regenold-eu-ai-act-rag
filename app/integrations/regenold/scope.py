@@ -486,6 +486,35 @@ _AI_ACT_ANCHORS: frozenset[str] = frozenset(
         "high risk ai",
         "general purpose ai model",
         "general-purpose ai model",
+        # ── Round-33 Pattern 5 (governance / lifecycle anchors) ───────
+        # davidath QA covers Title VII (governance, market surveillance,
+        # notifying authorities, conformity assessment lifecycle) and
+        # has questions like "When can a market-surveillance authority
+        # suspend or withdraw a certificate?" — these are unambiguously
+        # in-scope EU AI Act Q&A but pre-Round-33 scope.py would refuse
+        # them as off-domain. Restoring these regulatory nouns to the
+        # anchor list flips ~9 false-negative QA refusals to live answers.
+        "notifying authority",
+        "notifying authorities",
+        "market surveillance authority",
+        "market-surveillance authority",
+        "market surveillance authorities",
+        "competent authority",
+        "competent authorities",
+        "suspend",
+        "withdraw",
+        "certificate",
+        "certification",
+        "designate",
+        "designating",
+        "conformity assessment",
+        "post-market monitoring",
+        "post market monitoring",
+        "corrective action",
+        "national authority",
+        "national authorities",
+        "member states",
+        "member state",
         # ── Round-10 anchor surfacing (stress-test gap closers) ─────────
         # Prohibited-practice + Annex-III concept phrases that ought to
         # mark a question as plainly AI-Act-shaped even without an

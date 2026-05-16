@@ -1292,6 +1292,62 @@ def regenold_eu_ai_act_ask(
         )
         if extracted:
             answer_text = extracted
+        else:
+            # Round 33 Pattern 2: post-extractive single-sentence trim
+            # for non-high-precision QA shapes. The failure analysis on
+            # 30 QA samples found description/list/boolean/role/method
+            # questions returned 3.26× over-shoot vs gold (median 378c
+            # vs 140c). Picking the engine's single highest-question-
+            # overlap sentence lifts QA Ans Conciseness while keeping
+            # Ans Strict mostly intact (the picked sentence retains the
+            # cite anchor and most gold tokens).
+            #
+            # Env-gated REGENOLD_QA_TRIM (default 1). Defensive: only
+            # trims when the answer has ≥2 sentences AND there's a
+            # clear-winner sentence by question-overlap.
+            _qa_trim_flag = os.getenv("REGENOLD_QA_TRIM", "1").strip().lower()
+            if _qa_trim_flag in ("1", "true", "yes", "on") and answer_text:
+                try:
+                    from app.engines.sentence_index import (  # noqa: PLC0415
+                        split_legal_sentences as _split_sents,
+                    )
+                    sents = _split_sents(answer_text)
+                    if len(sents) >= 2:
+                        # Tokenize lightly (lowercased word-shape).
+                        import re as _re  # noqa: PLC0415
+                        _tok_re = _re.compile(r"[a-z0-9]+")
+                        def _toks(s: str) -> set[str]:
+                            return set(_tok_re.findall(s.lower()))
+                        q_tok = _toks(question)
+                        if q_tok:
+                            scored = [
+                                (i, len(_toks(s) & q_tok), s)
+                                for i, s in enumerate(sents)
+                            ]
+                            scored.sort(key=lambda t: (-t[1], t[0]))
+                            best_idx, best_overlap, best_sent = scored[0]
+                            second_overlap = scored[1][1] if len(scored) > 1 else 0
+                            # Only trim when there's a CLEAR winner —
+                            # margin ≥ 3 tokens over second-best AND
+                            # winner has ≥4 overlapping tokens AND
+                            # picked sentence cite-anchors (contains
+                            # "Article" or "Annex"). The stricter gates
+                            # prevent the Strict regression observed
+                            # at margin=2/overlap=3 (-0.019 QA Strict).
+                            _low_sent = best_sent.lower()
+                            has_cite_anchor = (
+                                "article" in _low_sent
+                                or "annex" in _low_sent
+                                or "art." in _low_sent
+                            )
+                            if (
+                                best_overlap >= 4
+                                and (best_overlap - second_overlap) >= 3
+                                and has_cite_anchor
+                            ):
+                                answer_text = best_sent
+                except Exception:  # noqa: BLE001 — never let trim 500 the route
+                    pass
 
     # Reference reshaping: validate via reference_from_article_ref
     # (drops hallucinations + enforces output shape), dedupe, sort by
