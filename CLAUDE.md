@@ -742,6 +742,112 @@ penalty when the gold answer's token shape favours redundancy.
 4. **No regressions** — both layers honour the Round-16 finding (never
    empty the answer) and the Round-28 cache-poisoning invariants.
 
+## Round 35 — Neo4j graph integration (seeder + 2-hop expand + healthz) (2026-05-16)
+
+User confirmed a Neo4j instance is available. Three parallel agents built:
+
+### `scripts/seed_neo4j_kb.py` — KB seeder (924 LOC)
+Pushes the in-process KB into Neo4j via `MERGE` for idempotency:
+- **505 nodes**: 113 articles + 13 annexes + 180 recitals + 68 definitions
+  + 113 obligations + 8 Annex III categories + 4 risk levels + 5 operator
+  roles + 1 KBMetadata.
+- **351 edges**: HAS_OBLIGATION (113), HAS_DEFINITION (68), CROSS_REFERENCES
+  (115 — pulled from `kb_xrefs._build_xref_graph`), TRIGGERS_HIGH_RISK_UNDER
+  (8 — Annex III → Art. 6), APPLIES_AT (47 — Obligation → RiskLevel).
+- CLI: `--dry-run`, `--clear`, `--verbose`, `--neo4j-uri`, `--neo4j-database`.
+- Offline-runnable for tests; the `--dry-run` path never touches the network.
+- 29 tests, all green.
+
+### `app/engines/graph_expand_2hop.py` — 2-hop graph expansion (480 LOC)
+Env-gated `REGENOLD_GRAPH_2HOP=1`. When disabled (default), all functions
+short-circuit in 1 µs — zero bench impact confirmed. When enabled AND
+Neo4j is reachable AND the seed has run, a 2-hop CROSS_REFERENCES
+traversal surfaces non-obvious connections that BM25 + 1-hop in-memory
+expansion miss. Cypher:
+```cypher
+MATCH (a:Article)-[:CROSS_REFERENCES*1..2]-(b:Article)
+WHERE a.number IN $seed_nums AND a.number <> b.number
+RETURN DISTINCT b.number AS num,
+       length(shortestPath((a)-[:CROSS_REFERENCES*]-(b))) AS hops
+ORDER BY hops, num LIMIT $cap
+```
+50-ms timeout via `concurrent.futures.ThreadPoolExecutor` (Windows-safe).
+Existence-gated against `ARTICLE_EXISTENCE`. Purely additive — never
+displaces a BM25 winner. Wired into
+`kb_search.top_articles_by_relevance` after the existing turboquant +
+embeddings additive paths. 33 tests, all green.
+
+### `/healthz/graph` endpoint + `NEO4J_RUNBOOK.md`
+`app/main.py` — new `/healthz/graph` route alongside `/healthz/llm`.
+Returns `{graph_enabled, graph_ok, detail, elapsed_ms, seed_version,
+kb_version, node_counts, edge_counts}`. Three paths:
+- **Disabled** (no `NEO4J_URI`): `graph_enabled=false`, HTTP 200
+- **Unhealthy** (driver fails / connection refused): `graph_ok=false`
+  with truncated error detail
+- **Healthy**: full payload with per-label node + edge counts via the
+  existing `_STATS_LABELS` allowlist
+
+Boot-time logging extended: `regenold.startup graph_enabled=True
+seed_version=... node_count=...` so operators see status without
+hitting the probe. Read-only; never raises; always HTTP 200. 14 tests,
+all green.
+
+[`docs/partners/regenold/NEO4J_RUNBOOK.md`](docs/partners/regenold/NEO4J_RUNBOOK.md)
+— operator runbook (498 words): what it gets you (audit forensics,
+multi-hop reasoning, cross-framework mapping potential), one-time setup
+(env vars, driver install, seed), verifying (curl + boot log),
+re-seeding (`--clear`), troubleshooting (6 common failure modes),
+known limitations (single-tenant, no audit chain mirror yet, no wire
+write path).
+
+### Honest expectations: where Neo4j helps vs doesn't
+
+**No competition-bench lift expected.** Verified: bench with
+`REGENOLD_GRAPH_2HOP=0` (default) is byte-for-byte identical to R34
+(Ans Strict 0.3062, Ref Loose 0.5509, Ref Strict 0.4372, latency p50
+6.76 ms). The davidath corpus is BM25-saturated; multi-hop expansion
+can't add precision-positive recall here.
+
+**Where Neo4j moves the needle in production**:
+1. **Audit forensics** — `app/graph/reasoning.py` already has the
+   Cypher to traverse `Question→Obligation→RoadmapTask` chains and
+   compute gap analyses per tenant. Unblocked now that the seed
+   exists.
+2. **Cross-framework mapping** (NIST / ISO / harmonised-standard
+   edges) — not seeded today (the data modules don't ship those
+   maps) but the schema is in place to add them.
+3. **2-hop recall for paraphrased queries** — likely to lift
+   AIR-Bench-style benchmarks where queries don't share keywords
+   with the gold articles. Bench-test against AIR-Bench when the
+   `eu_mandatory` subset is wired.
+4. **Persistent audit chain** at production scale — extension point
+   for `evidence/store.py` to mirror writes into a `Campaign →
+   AuditResult → ComplianceGap` graph.
+
+### Production deploy commands
+
+```bash
+# 1. Set Neo4j env vars on Railway
+railway variables --set "NEO4J_URI=bolt+s://<host>:7687" \
+                  --set "NEO4J_USER=neo4j" \
+                  --set "NEO4J_PASSWORD=<password>"
+
+# 2. Seed the KB (one-time, idempotent)
+NEO4J_URI=bolt+s://<host>:7687 NEO4J_USER=neo4j \
+NEO4J_PASSWORD=<password> python -m scripts.seed_neo4j_kb
+
+# 3. Verify
+curl https://<app>.up.railway.app/healthz/graph
+
+# 4. Enable 2-hop expansion (after measuring impact)
+railway variables --set "REGENOLD_GRAPH_2HOP=1"
+```
+
+### Round 35 tests
+
+1047/1047 pass (+76 new across the 3 modules). Bench parity confirmed
+with R34. No regressions on any axis.
+
 ## Round 34 — Eng-review architecture optimisations + correctness audit (2026-05-16)
 
 Triggered by an **autonomous engineering review** (`/plan-eng-review`) plus an

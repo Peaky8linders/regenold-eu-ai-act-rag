@@ -116,6 +116,55 @@ def _log_llm_provider_status() -> None:
             provider_label,
         )
 
+    # ─── Neo4j boot-time status ────────────────────────────────────────────
+    # Mirror the LLM startup log. Operators who set ``NEO4J_URI`` want a
+    # single boot-log line confirming the graph is reachable AND seeded,
+    # without having to curl ``/healthz/graph`` from inside the cluster.
+    # We deliberately keep the failure path quiet (one warning, no traceback)
+    # so a misconfigured Neo4j never blocks startup — the engine just falls
+    # back to its deterministic KB path.
+    if os.getenv("NEO4J_URI"):
+        try:
+            from app.graph.client import get_graph_client
+            _gc = get_graph_client()
+            if _gc.enabled:
+                _hc = _gc.health_check()
+                if _hc.get("status") == "healthy":
+                    try:
+                        _stats = _gc.get_stats()
+                        logger.info(
+                            "regenold.startup graph_enabled=True "
+                            "seed_version=%s node_count=%d edge_count=%d",
+                            _stats.seed_version or "<unset>",
+                            _stats.total_nodes,
+                            _stats.total_edges,
+                        )
+                    except Exception as _se:  # noqa: BLE001
+                        logger.warning(
+                            "regenold.startup graph_enabled=True "
+                            "stats_unavailable=%s",
+                            _se,
+                        )
+                else:
+                    logger.warning(
+                        "regenold.startup graph_enabled=True but health_check "
+                        "returned status=%s — engine will use deterministic "
+                        "fallback. Hit /healthz/graph for details.",
+                        _hc.get("status"),
+                    )
+            else:
+                logger.warning(
+                    "regenold.startup NEO4J_URI is set but the graph client "
+                    "did not activate (driver missing or connect failed). "
+                    "Engine will use deterministic fallback."
+                )
+        except Exception as _exc:  # noqa: BLE001 — boot log must never block startup
+            logger.warning(
+                "regenold.startup graph probe failed: %s — engine will use "
+                "deterministic fallback",
+                _exc,
+            )
+
 
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
@@ -269,6 +318,145 @@ def healthz_llm() -> dict[str, object]:
     # cli / deterministic path
     base["llm_ok"] = True
     base["detail"] = "deterministic-only path — no LLM call required"
+    return base
+
+
+@app.get("/healthz/graph")
+def healthz_graph() -> dict[str, object]:
+    """Probe Neo4j connectivity + KB seed status.
+
+    Returns HTTP 200 always — uptime monitors should alert on
+    ``graph_ok=False`` (not on HTTP status), so a downed graph doesn't
+    flap the uptime page when the engine's deterministic fallback is
+    still serving requests fine.
+
+    Three paths:
+
+    * **disabled** — ``NEO4J_URI`` is unset, or the ``neo4j`` driver is
+      not importable. Returns ``graph_enabled=False`` with a clear hint.
+    * **unhealthy** — driver imports + connects but ``RETURN 1 AS ping``
+      fails. Returns ``graph_ok=False`` with a truncated error.
+    * **healthy** — full status: ping, seed_version, kb_version,
+      per-label node counts, edge-type counts, total elapsed_ms.
+
+    The probe runs read-only Cypher only. It never writes. All read
+    queries inherit the driver's ``connection_timeout`` (5 s by default,
+    see :class:`app.graph.config.GraphSettings`).
+    """
+    import time as _time
+
+    from app.data.kb import KB_VERSION
+    from app.graph.client import _STATS_LABELS, get_graph_client
+
+    base: dict[str, object] = {
+        "version": settings.version,
+        "graph_enabled": False,
+        "graph_ok": False,
+        "detail": "",
+        "elapsed_ms": 0,
+        "seed_version": "",
+        "kb_version": KB_VERSION,
+        "node_counts": {},
+        "edge_counts": {},
+    }
+
+    # ─── Disabled path ────────────────────────────────────────────────────
+    if not os.environ.get("NEO4J_URI"):
+        base["detail"] = "NEO4J_URI not set"
+        return base
+
+    start = _time.perf_counter()
+    try:
+        client = get_graph_client()
+    except Exception as exc:  # noqa: BLE001 — health probe must never raise
+        base["detail"] = f"graph_client_init_failed: {exc!s}"[:200]
+        base["elapsed_ms"] = int((_time.perf_counter() - start) * 1000)
+        return base
+
+    if not client.enabled:
+        # NEO4J_URI was set but the client didn't activate (driver missing
+        # or connection refused at __init__ time).
+        base["detail"] = (
+            "graph_disabled: NEO4J_URI is set but the neo4j driver is not "
+            "installed or the connection was refused at init. Install with "
+            "`pip install neo4j>=5.0` and verify the URI."
+        )
+        base["elapsed_ms"] = int((_time.perf_counter() - start) * 1000)
+        return base
+
+    base["graph_enabled"] = True
+
+    # ─── Unhealthy path — ping fails ──────────────────────────────────────
+    try:
+        hc = client.health_check()
+    except Exception as exc:  # noqa: BLE001 — health probe must never raise
+        base["detail"] = f"health_check_exception: {exc!s}"[:200]
+        base["elapsed_ms"] = int((_time.perf_counter() - start) * 1000)
+        return base
+
+    status = hc.get("status")
+    if status != "healthy":
+        err = hc.get("error") or hc.get("message") or "unknown"
+        base["detail"] = f"unhealthy: {err}"[:200]
+        base["elapsed_ms"] = int((_time.perf_counter() - start) * 1000)
+        return base
+
+    # ─── Healthy path — collect seed info + counts ────────────────────────
+    # Each individual Cypher is wrapped: a single label-count failure must
+    # not break the overall probe. ``client.execute_read`` already swallows
+    # driver-level errors and returns ``[]``.
+    seed_version = ""
+    try:
+        meta = client.execute_read(
+            "MATCH (m:KBMetadata) "
+            "RETURN m.seed_version AS seed_version, m.kb_version AS kb_version "
+            "LIMIT 1"
+        )
+        if meta:
+            row = meta[0]
+            seed_version = row.get("seed_version") or ""
+            # Prefer the seed's recorded kb_version when present; falls back
+            # to the in-process KB_VERSION (the seed and the code can drift
+            # — that's exactly the kind of state an operator wants visible).
+            kb_v = row.get("kb_version")
+            if kb_v:
+                base["kb_version"] = kb_v
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("healthz_graph seed_version probe failed: %s", exc)
+
+    node_counts: dict[str, int] = {}
+    for label in _STATS_LABELS:
+        try:
+            rows = client.execute_read(
+                f"MATCH (n:{label}) RETURN count(n) AS cnt"
+            )
+            if rows:
+                cnt = int(rows[0].get("cnt") or 0)
+                if cnt > 0:
+                    # Skip empty labels — keeps the response readable.
+                    node_counts[label] = cnt
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("healthz_graph label=%s count failed: %s", label, exc)
+
+    edge_counts: dict[str, int] = {}
+    try:
+        edge_rows = client.execute_read(
+            "MATCH ()-[r]->() RETURN type(r) AS rel_type, count(r) AS cnt"
+        )
+        for row in edge_rows:
+            rt = row.get("rel_type")
+            cnt = int(row.get("cnt") or 0)
+            if rt and cnt > 0:
+                edge_counts[rt] = cnt
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("healthz_graph edge count probe failed: %s", exc)
+
+    base["graph_ok"] = True
+    base["detail"] = "ok"
+    base["seed_version"] = seed_version
+    base["node_counts"] = node_counts
+    base["edge_counts"] = edge_counts
+    base["elapsed_ms"] = int((_time.perf_counter() - start) * 1000)
     return base
 
 

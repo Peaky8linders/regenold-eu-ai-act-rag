@@ -557,7 +557,31 @@ def top_articles_by_relevance(
     emb_refs = sorted(article_max.items(), key=lambda t: t[1], reverse=True)
     if not emb_refs:
         return fused
-    return additive_dense_fill(fused, emb_refs, k=k)
+    fused = additive_dense_fill(fused, emb_refs, k=k)
+
+    # Round 35 — Neo4j 2-hop graph expansion (env-gated REGENOLD_GRAPH_2HOP).
+    # When OFF (default) the call returns empty in 1 µs and ``fused`` is
+    # unchanged. When ON AND a seeded Neo4j instance is reachable, the
+    # 2-hop CROSS_REFERENCES traversal surfaces non-obvious connections
+    # that BM25 + dense paths miss — primarily for paraphrased / novel-
+    # phrase production queries (NOT davidath, which BM25 already saturates).
+    # Defensive: never raises, capped at 50 ms timeout, existence-gated
+    # against ARTICLE_EXISTENCE.
+    try:
+        from app.engines.graph_expand_2hop import (  # noqa: PLC0415
+            expand_2hop as _g2,
+            fuse_with_kb_xrefs as _g2_fuse,
+            is_enabled as _g2_enabled,
+        )
+    except Exception:  # noqa: BLE001 — neo4j missing on a stripped install
+        return fused
+    if not _g2_enabled():
+        return fused
+    try:
+        expansion = _g2(fused[:3])  # seed from top-3 BM25 winners
+    except Exception:  # noqa: BLE001 — never let graph expand 500 the route
+        return fused
+    return _g2_fuse(fused, expansion, budget=k)
 
 
 @lru_cache(maxsize=1)
