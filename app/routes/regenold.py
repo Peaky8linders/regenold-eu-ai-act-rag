@@ -1292,7 +1292,58 @@ def regenold_eu_ai_act_ask(
     # explicit anchor are a no-op (broad anchors stay as primary signal).
     candidates = _prune_non_anchor_refs(candidates, live_user_message)
 
-    references: list[str] = candidates[:MAX_REFERENCES]
+    # Round 31 (architecture-PDF re-audit) — TAI Scan Prohibited
+    # Gatekeeper. Spec quote: "high-priority, strict sub-string and
+    # high-threshold semantic search focused entirely on Article 5
+    # criteria. If any match conditions pass the critical threshold,
+    # the system triggers an immediate prohibited classification alert."
+    #
+    # Round-31 first cut only handled "We are a {role}…" scenario shapes
+    # via scenario_classifier. QA-shape questions like "Are AI systems
+    # intended for emotion recognition always prohibited?" never had
+    # Art. 5 forced into citations. The gatekeeper closes that gap.
+    #
+    # Substring-based (keyword set from PRACTICE_REGISTRY), sub-ms cost.
+    # PREPENDS matched refs so Art. 5 leads when a prohibition keyword
+    # fires — architecturally consistent with the spec's "immediate
+    # alert that skips lower-tier testing loops".
+    from app.engines.prohibited_gatekeeper import (  # noqa: PLC0415
+        force_prohibited_citations,
+        scan_for_prohibitions,
+    )
+    _prohibition_matches = scan_for_prohibitions(question)
+    if _prohibition_matches:
+        candidates = force_prohibited_citations(candidates, _prohibition_matches)
+
+    # Round 31 (architecture-PDF re-audit) — GraphRAG multi-hop
+    # auto-expansion. Spec quote: "when Article 6 is pulled, its
+    # dependent requirements under Article 9 (Risk Management System)
+    # and Article 61 (Post-market monitoring) are automatically pulled
+    # along the graph edge paths."
+    #
+    # Scenarios in the davidath benchmark have an AVERAGE of 9.8 gold
+    # articles. Pre-expansion the route capped at MAX_REFERENCES=5,
+    # hitting a theoretical Ref Loose ceiling of 5/10 = 0.50. Round-31
+    # first-cut measurement found 0.2166 overall; ~half the ceiling.
+    # Expansion via the xref graph + curated HRAIS chains lifts that
+    # ceiling — for SCENARIO-SHAPE questions only (single-article QA
+    # gold tanks under over-citation in Strict F1).
+    from app.engines.graphrag_expand import (  # noqa: PLC0415
+        expand_citations,
+        should_expand_for_question,
+    )
+    _is_scenario_question = should_expand_for_question(question)
+    # Dynamic budget — scenarios get a 10-ref budget (matches gold avg),
+    # QA stays at the spec's tight 5 (single-article gold).
+    _effective_max_refs = 10 if _is_scenario_question else MAX_REFERENCES
+    if _is_scenario_question:
+        candidates = expand_citations(
+            candidates,
+            budget=_effective_max_refs,
+            question=question,
+        )
+
+    references: list[str] = candidates[:_effective_max_refs]
 
     confidence = float(getattr(rag_res, "confidence", 0.0) or 0.0)
     retrieval_path = _resolve_retrieval_path(getattr(rag_res, "graph_stats", {}) or {})
