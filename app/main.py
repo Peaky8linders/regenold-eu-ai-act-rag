@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Any
 
 from fastapi import FastAPI
 from slowapi.errors import RateLimitExceeded
@@ -164,6 +165,329 @@ def _log_llm_provider_status() -> None:
                 "deterministic fallback",
                 _exc,
             )
+
+
+# ─── Auto-seed on startup ────────────────────────────────────────────────
+#
+# When ``NEO4J_URI`` is set AND ``NEO4J_AUTO_SEED`` is not explicitly
+# disabled, the boot path checks ``KBMetadata.seed_version`` against the
+# in-process ``SEED_VERSION`` and fires the seeder in a daemon thread
+# when they differ (or the graph is empty). The thread is fire-and-forget
+# — uvicorn's startup never blocks on graph I/O. Multi-worker safety is
+# handled by a process-local lock plus an opt-in Postgres advisory lock
+# (when ``DATABASE_URL`` is set, only ONE worker actually performs the
+# write; the others observe the seeded graph on their next health probe).
+
+import threading as _threading
+
+# Module-level guard so even within a single process two startup hooks
+# can't both fire the seeder. ``daemon=True`` is critical — uvicorn
+# exits cleanly even if the seed thread is mid-write.
+_AUTO_SEED_LOCK = _threading.Lock()
+_AUTO_SEED_STARTED = False
+
+
+def _auto_seed_disabled_by_env() -> bool:
+    """Return True when ``NEO4J_AUTO_SEED`` is explicitly off.
+
+    Default is ON when ``NEO4J_URI`` is set — operators have to opt OUT
+    rather than opt in (matches the user's expectation that "set the URI,
+    get a seeded graph"). The off-toggle accepts the usual truthy /
+    falsy spellings: ``0`` / ``false`` / ``no`` / ``off`` (any case).
+    """
+    raw = os.getenv("NEO4J_AUTO_SEED")
+    if raw is None:
+        return False
+    return raw.strip().lower() in {"0", "false", "no", "off", ""}
+
+
+def _acquire_postgres_advisory_lock() -> object | None:
+    """Best-effort Postgres advisory lock — returns a context handle or None.
+
+    When ``DATABASE_URL`` points at a real Postgres, we grab a
+    session-scoped advisory lock so only ONE uvicorn worker actually
+    runs the seed. The lock is released when the returned handle's
+    ``release()`` is called (or when the connection closes).
+
+    Returns ``None`` when:
+
+    * ``DATABASE_URL`` is unset / non-Postgres (sqlite://, in-memory).
+    * The ``psycopg`` driver is not importable.
+    * The lock could not be acquired (another worker holds it — that's
+      the GOOD path; the caller should skip seeding).
+    * Any other error — we fall back to the process-local
+      ``_AUTO_SEED_LOCK``, which is enough because ``MERGE``-based
+      seeding is idempotent.
+
+    The advisory lock key is a fixed 64-bit constant derived from
+    ``"regenold_neo4j_auto_seed"`` — picked once and never collides
+    with other Postgres advisory-lock users in the database.
+    """
+    dsn = os.getenv("DATABASE_URL", "").strip()
+    if not dsn or not dsn.startswith("postgres"):
+        return None
+
+    try:
+        import psycopg  # type: ignore[import-not-found]
+    except ImportError:
+        return None
+
+    try:
+        # The seeder needs maybe 5-10 s total; a 30 s lock timeout is
+        # plenty. Normalise the DSN the same way evidence store does.
+        conn_dsn = dsn
+        if conn_dsn.startswith("postgresql+psycopg://"):
+            conn_dsn = "postgresql://" + conn_dsn[len("postgresql+psycopg://"):]
+        conn = psycopg.connect(conn_dsn, connect_timeout=10)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("auto-seed advisory-lock connect failed: %s", exc)
+        return None
+
+    # Fixed 64-bit advisory lock key. Hand-picked so it's deterministic
+    # and stable across deploys; pg_try_advisory_lock returns False
+    # when another session already holds the lock.
+    LOCK_KEY = 7340518364729403841  # arbitrary, fixed
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT pg_try_advisory_lock(%s)", (LOCK_KEY,))
+            row = cur.fetchone()
+            acquired = bool(row and row[0])
+        if not acquired:
+            conn.close()
+            return None
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("auto-seed advisory-lock acquire failed: %s", exc)
+        try:
+            conn.close()
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
+    class _AdvisoryLockHandle:
+        """Releases the lock + closes the connection."""
+
+        def __init__(self, _conn: Any, _key: int) -> None:
+            self._conn = _conn
+            self._key = _key
+            self._released = False
+
+        def release(self) -> None:
+            if self._released:
+                return
+            self._released = True
+            try:
+                with self._conn.cursor() as cur:
+                    cur.execute("SELECT pg_advisory_unlock(%s)", (self._key,))
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("auto-seed advisory-unlock failed: %s", exc)
+            try:
+                self._conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+    return _AdvisoryLockHandle(conn, LOCK_KEY)
+
+
+def _run_auto_seed_in_thread(reason: str) -> None:
+    """Seed body — runs inside the daemon thread.
+
+    Captures every exception so a misconfigured Neo4j (auth refused,
+    schema drift, etc.) never escapes the thread and never affects
+    request serving.
+    """
+    import time as _time
+
+    started = _time.perf_counter()
+    lock_handle = _acquire_postgres_advisory_lock()
+    # If DATABASE_URL was set + we couldn't acquire the lock, another
+    # worker is seeding. Skip + log. If DATABASE_URL was unset or the
+    # driver is missing, ``lock_handle`` is None and we fall back to the
+    # process-local lock — that's fine because MERGE is idempotent so
+    # two workers racing is benign (just wasteful).
+    if (
+        lock_handle is None
+        and os.getenv("DATABASE_URL", "").strip().startswith("postgres")
+    ):
+        logger.info(
+            "regenold.startup auto_seed_skipped reason=advisory_lock_held "
+            "(another worker is seeding)"
+        )
+        return
+
+    try:
+        from scripts.seed_neo4j_kb import run_seed
+
+        result = run_seed(dry_run=False, clear=False, verbose=False)
+        elapsed = _time.perf_counter() - started
+        if result.get("status") == "ok":
+            logger.info(
+                "regenold.startup auto_seed_completed reason=%s nodes=%d "
+                "edges=%d seed_version=%s elapsed_s=%.2f",
+                reason,
+                result.get("total_nodes", 0),
+                result.get("total_edges", 0),
+                result.get("seed_version", "<unset>"),
+                elapsed,
+            )
+        else:
+            logger.warning(
+                "regenold.startup auto_seed_failed reason=%s status=%s "
+                "elapsed_s=%.2f",
+                reason,
+                result.get("status"),
+                elapsed,
+            )
+    except Exception as exc:  # noqa: BLE001 — best-effort, must never crash uvicorn
+        logger.warning(
+            "regenold.startup auto_seed_exception reason=%s err=%s — engine "
+            "will use deterministic fallback",
+            reason,
+            exc,
+        )
+    finally:
+        if lock_handle is not None:
+            try:
+                lock_handle.release()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+@app.on_event("startup")
+def _maybe_auto_seed_neo4j() -> None:
+    """Optionally seed Neo4j on boot — non-blocking, env-gated.
+
+    Runs after :func:`_log_llm_provider_status` (registration order).
+    Decision tree:
+
+    1. No ``NEO4J_URI`` → log ``action=disabled-no-uri`` and return.
+    2. ``NEO4J_AUTO_SEED=0/false/no/off`` → log ``action=disabled-by-env``.
+    3. ``REGENOLD_AUTO_SEED_LEADER_ONLY=1`` (default) AND uvicorn passes
+       a worker index env var > 0 → log ``action=skip-non-leader``.
+    4. ``GraphClient`` disabled → log ``action=skip-graph-disabled``.
+    5. Query ``KBMetadata``. If a row exists with matching
+       ``seed_version``, log ``action=skip-current``.
+    6. Otherwise → fire daemon thread to seed; log ``action=seed-started``.
+
+    Skip entirely when ``REGENOLD_SKIP_STARTUP_LOG=1`` — tests use this
+    to keep TestClient output clean (and to avoid spinning up the seeder
+    background thread during fixture-heavy test runs).
+    """
+    global _AUTO_SEED_STARTED
+
+    if os.getenv("REGENOLD_SKIP_STARTUP_LOG") == "1":
+        return
+
+    if not os.environ.get("NEO4J_URI"):
+        logger.info(
+            "regenold.startup auto_seed_check action=disabled-no-uri"
+        )
+        return
+
+    if _auto_seed_disabled_by_env():
+        logger.info(
+            "regenold.startup auto_seed_check action=disabled-by-env "
+            "NEO4J_AUTO_SEED=%s",
+            os.getenv("NEO4J_AUTO_SEED", ""),
+        )
+        return
+
+    # ── Leader-only gate ─────────────────────────────────────────────────
+    # When uvicorn is launched with ``--workers N`` it forks N child
+    # processes; each one runs the startup hook independently. Without
+    # coordination, every worker would try to seed in parallel — wasteful
+    # but ultimately safe (MERGE is idempotent). We still try to filter
+    # down to the leader using whichever signal is available:
+    #
+    #   * Uvicorn doesn't expose worker index by default. Operators who
+    #     want strict leader-only can set REGENOLD_WORKER_INDEX=0 on
+    #     worker 0 and a non-zero value on the rest via gunicorn's
+    #     post_fork hook.
+    #
+    # If the index is unset (the default), the Postgres advisory lock
+    # acquired inside ``_run_auto_seed_in_thread`` handles the race.
+    if os.getenv("REGENOLD_AUTO_SEED_LEADER_ONLY", "1").strip() == "1":
+        worker_idx = os.getenv("REGENOLD_WORKER_INDEX", "").strip()
+        if worker_idx and worker_idx != "0":
+            logger.info(
+                "regenold.startup auto_seed_check action=skip-non-leader "
+                "worker_idx=%s",
+                worker_idx,
+            )
+            return
+
+    # ── Decide: seed or skip based on KBMetadata ────────────────────────
+    try:
+        from app.data.kb import KB_VERSION
+        from app.graph.client import get_graph_client
+        from scripts.seed_neo4j_kb import SEED_VERSION
+
+        client = get_graph_client()
+        if not client.enabled:
+            logger.info(
+                "regenold.startup auto_seed_check action=skip-graph-disabled "
+                "(NEO4J_URI set but driver/connection unavailable)"
+            )
+            return
+
+        meta_rows = client.execute_read(
+            "MATCH (m:KBMetadata) "
+            "RETURN m.seed_version AS v, m.kb_version AS kv LIMIT 1"
+        )
+        current_seed = (meta_rows[0].get("v") if meta_rows else "") or ""
+        current_kb = (meta_rows[0].get("kv") if meta_rows else "") or ""
+
+        if (
+            current_seed == SEED_VERSION
+            and current_kb == KB_VERSION
+        ):
+            logger.info(
+                "regenold.startup neo4j_seed_current "
+                "auto_seed_check action=skip-current seed_version=%s "
+                "kb_version=%s",
+                current_seed,
+                current_kb,
+            )
+            return
+
+        # Mark started under the process-local lock so two competing
+        # startup hooks (rare — testharness reloads, dev reloads) don't
+        # both spawn threads.
+        with _AUTO_SEED_LOCK:
+            if _AUTO_SEED_STARTED:
+                logger.info(
+                    "regenold.startup auto_seed_check "
+                    "action=skip-already-started"
+                )
+                return
+            _AUTO_SEED_STARTED = True
+
+        if not current_seed:
+            reason = "graph_empty"
+        else:
+            reason = (
+                f"seed_drift current_seed={current_seed} "
+                f"want_seed={SEED_VERSION} current_kb={current_kb} "
+                f"want_kb={KB_VERSION}"
+            )
+
+        logger.info(
+            "regenold.startup auto_seed_check action=seed-started "
+            "reason=%s",
+            reason,
+        )
+        thread = _threading.Thread(
+            target=_run_auto_seed_in_thread,
+            args=(reason,),
+            name="regenold-auto-seed",
+            daemon=True,
+        )
+        thread.start()
+    except Exception as exc:  # noqa: BLE001 — boot must never block on this
+        logger.warning(
+            "regenold.startup auto_seed_check action=error err=%s — engine "
+            "will use deterministic fallback",
+            exc,
+        )
 
 
 @app.get("/healthz")

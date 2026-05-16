@@ -30,6 +30,19 @@ psycopg[binary]>=3.2.0
 # so the wire contract never breaks.
 anthropic>=0.40.0
 
+# Round 35 — Neo4j Python driver for the optional graph-RAG path.
+# Activated only when ``NEO4J_URI`` is set on the deploy (Neo4j Aura
+# or self-hosted). ``app.graph.client`` lazily imports + soft-fails
+# when the driver is missing, so production wheels without it still
+# work — but on Railway we want it auto-detected so the seeded graph
+# (Article / Obligation / Recital / Definition / CROSS_REFERENCES) is
+# reachable + the optional 2-hop expansion (REGENOLD_GRAPH_2HOP=1)
+# activates without a manual ``pip install neo4j`` after each deploy.
+# The wire contract never depends on the graph being up — every Cypher
+# call is wrapped in try/except returning empty/None, so the
+# deterministic-fallback path always lands.
+neo4j>=5.0
+
 # Round 31 — Pure-NumPy TurboQuant codec (Zandieh et al., ICLR 2026)
 # powering the Windows-friendly dense retrieval companion to the
 # Linux-only ``turbovec`` path in ``app/engines/vector_rerank.py``.

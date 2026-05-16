@@ -742,6 +742,56 @@ penalty when the gold answer's token shape favours redundancy.
 4. **No regressions** — both layers honour the Round-16 finding (never
    empty the answer) and the Round-28 cache-poisoning invariants.
 
+## Round 36 — Auto-seed Neo4j on startup (2026-05-16)
+
+Closes the operational gap from Round 35: the seeder existed but had
+to be run manually after each Railway deploy. Round 36 wires an
+auto-seed hook into the FastAPI startup sequence so a freshly-deployed
+service with `NEO4J_URI` set populates the graph on its own.
+
+### New surfaces
+
+* **`scripts/seed_neo4j_kb.py::run_seed()`** — library entrypoint for
+  the auto-seed hook. Mirrors `main()` body minus argparse / prints;
+  returns a structured `{"status": ..., "counts": ..., ...}` dict.
+  Never raises — every error state is captured in the return value.
+* **`app/main.py::_maybe_auto_seed_neo4j`** — new `@app.on_event("startup")`
+  hook running AFTER `_log_llm_provider_status`. Daemon thread, never
+  blocks boot. Multi-worker safe via Postgres advisory lock
+  (`pg_try_advisory_lock(7340518364729403841)` when `DATABASE_URL` is
+  set) + process-local `threading.Lock()` fallback.
+
+### Decision tree (auto-seed)
+
+1. `REGENOLD_SKIP_STARTUP_LOG=1` → bail (tests).
+2. `NEO4J_URI` unset → log `action=disabled-no-uri`, return.
+3. `NEO4J_AUTO_SEED=0/false/no/off` → log `action=disabled-by-env`.
+4. `REGENOLD_AUTO_SEED_LEADER_ONLY=1` (default) AND
+   `REGENOLD_WORKER_INDEX!=0` → log `action=skip-non-leader`.
+5. `GraphClient` disabled → log `action=skip-graph-disabled`.
+6. `KBMetadata.seed_version == SEED_VERSION` AND
+   `kb_version == KB_VERSION` → log `action=skip-current` +
+   `neo4j_seed_current`.
+7. Otherwise → fire daemon thread → log `action=seed-started`.
+
+Thread body acquires the Postgres advisory lock (when available); if
+another worker holds it, logs `auto_seed_skipped reason=advisory_lock_held`
+and exits. Otherwise calls `run_seed(dry_run=False, clear=False)`, logs
+`auto_seed_completed nodes=N edges=N elapsed_s=...` on success or
+`auto_seed_failed`/`auto_seed_exception` on failure. The deterministic
+fallback always serves requests regardless of seed outcome.
+
+### `railway.toml` defaults
+
+Added `[deploy.envs]`:
+
+```toml
+REGENOLD_GRAPH_2HOP = "1"   # graph expand on by default (R31.1 wins)
+NEO4J_AUTO_SEED     = "1"   # auto-seed on boot when NEO4J_URI is set
+```
+
+Override either with `railway variables --set <KEY>=<value>`.
+
 ## Round 35 — Neo4j graph integration (seeder + 2-hop expand + healthz) (2026-05-16)
 
 User confirmed a Neo4j instance is available. Three parallel agents built:

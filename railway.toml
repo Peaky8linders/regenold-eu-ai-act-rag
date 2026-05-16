@@ -4,3 +4,18 @@ healthcheckPath = "/healthz"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
+
+# Defaults applied at deploy time — operators can override any of these
+# from the Railway dashboard or via ``railway variables --set KEY=VALUE``.
+[deploy.envs]
+# Enable the Round-31.1 GraphRAG 2-hop expand path by default.
+# Lifts Ref Correctness Loose +0.087 / Strict +0.039 on the davidath
+# benchmark (see CLAUDE.md round 31.1 scorecard). Flip off with
+# ``railway variables --set REGENOLD_GRAPH_2HOP=0`` if a future round
+# regresses on it.
+REGENOLD_GRAPH_2HOP = "1"
+
+# Auto-seed Neo4j on boot when NEO4J_URI is set. Default ON — operators
+# who want to manage the graph manually can disable with
+# ``railway variables --set NEO4J_AUTO_SEED=0``.
+NEO4J_AUTO_SEED = "1"

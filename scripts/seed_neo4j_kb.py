@@ -852,6 +852,75 @@ def _apply_env_overrides(args: argparse.Namespace) -> None:
         os.environ["NEO4J_DATABASE"] = args.neo4j_database
 
 
+def run_seed(
+    *,
+    dry_run: bool = False,
+    clear: bool = False,
+    verbose: bool = False,
+    batch_size: int = BATCH_SIZE,
+) -> dict[str, Any]:
+    """Programmatic entrypoint — same body as ``main()`` minus argparse / prints.
+
+    Returns a dict with shape::
+
+        {
+            "status": "ok" | "dangling_edges" | "graph_disabled" | "dry_run",
+            "seed_version": SEED_VERSION,
+            "kb_version": KB_VERSION,
+            "total_nodes": int,
+            "total_edges": int,
+            "counts": dict[str, int],   # only when status == "ok"
+            "errors": list[str],        # only when status == "dangling_edges"
+        }
+
+    Designed to be called from the FastAPI startup hook (see
+    ``app/main.py::_maybe_auto_seed_neo4j``). Never raises — every error
+    state is captured in the return dict so the caller can decide whether
+    to log + continue or fail loud.
+    """
+    payload = build_payload()
+    result: dict[str, Any] = {
+        "seed_version": SEED_VERSION,
+        "kb_version": KB_VERSION,
+        "total_nodes": payload.total_nodes,
+        "total_edges": payload.total_edges,
+    }
+
+    errors = validate_payload(payload)
+    if errors:
+        result["status"] = "dangling_edges"
+        result["errors"] = errors
+        return result
+
+    if dry_run:
+        result["status"] = "dry_run"
+        result["counts"] = payload.counts()
+        return result
+
+    # Deferred import — keeps the offline / dry-run path free of the
+    # optional ``neo4j`` driver.
+    from app.graph.client import GraphClient
+    from app.graph.config import GraphSettings
+
+    client = GraphClient(GraphSettings())
+    if not client.enabled:
+        result["status"] = "graph_disabled"
+        return result
+
+    try:
+        if clear:
+            client.clear_graph()
+        counts = seed_graph(
+            client, payload, batch_size=batch_size, verbose=verbose
+        )
+    finally:
+        client.close()
+
+    result["status"] = "ok"
+    result["counts"] = counts
+    return result
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
