@@ -94,6 +94,20 @@ __all__ = [
 _DEFAULT_MAX_RECORDS = int(os.getenv("REGENOLD_AUDIT_CAP", "10000"))
 
 
+# Postgres advisory-lock key for the audit-chain append transaction.
+# A signed 64-bit integer, fixed and stable across deploys, distinct
+# from the Neo4j auto-seed key (``7340518364729403841`` in
+# ``app/main.py``) so the two subsystems never contend.
+#
+# ``pg_advisory_xact_lock(_AUDIT_CHAIN_LOCK_KEY)`` is held for the
+# duration of the append transaction (auto-released on COMMIT or
+# ROLLBACK). It serialises EVERY append regardless of whether the
+# table is empty — fixing the genesis-row fork and READ COMMITTED
+# tail-reread races that a bare ``SELECT ... FOR UPDATE ... LIMIT 1``
+# can't cover. SQLite uses ``BEGIN IMMEDIATE`` for the same purpose.
+_AUDIT_CHAIN_LOCK_KEY = 4923170562839014572
+
+
 # ─── Shared hash function ───────────────────────────────────────────────────
 
 
@@ -348,10 +362,16 @@ class PostgresAuditStore:
     fallback and return an :class:`InMemoryAuditStore` so the route
     keeps writing audit rows instead of blowing up at startup.
 
-    Concurrency model: row-level ``SELECT ... FOR UPDATE`` on the tail
-    row inside the INSERT transaction prevents two gunicorn workers
-    from forking the chain (same model the CodexAI ``PostgresAuditStore``
-    uses).
+    Concurrency model: ``pg_advisory_xact_lock`` keyed on
+    :data:`_AUDIT_CHAIN_LOCK_KEY` is acquired at the top of every
+    ``record()`` transaction so concurrent appends queue serially.
+    This fixes the genesis-row fork that a bare ``SELECT ... FOR
+    UPDATE ... LIMIT 1`` cannot guard against — an empty-table SELECT
+    returns no rows and locks nothing, letting two writers each
+    insert a row with ``previous_hash=""`` (Issue #39). The advisory
+    lock auto-releases on COMMIT/ROLLBACK so there is no leak path.
+    The SQLite backend achieves the same property via ``BEGIN
+    IMMEDIATE``.
     """
 
     _SCHEMA_SQL = """
@@ -437,7 +457,19 @@ class PostgresAuditStore:
         created_by: str = "system",
         tenant_id: str | None = None,
     ) -> EvidenceEntry:
-        """Append an entry to the chain with row-level locking."""
+        """Append an entry to the chain with transaction-scoped advisory locking.
+
+        ``pg_advisory_xact_lock(_AUDIT_CHAIN_LOCK_KEY)`` is acquired at
+        the TOP of the transaction, BEFORE the tail SELECT. This
+        serialises ALL concurrent appends — including the empty-table
+        genesis case where ``SELECT ... FOR UPDATE ... LIMIT 1`` locks
+        nothing and lets two writers compute ``previous_hash=""`` in
+        parallel (Issue #39 — hash-chain fork). The lock is
+        automatically released when the transaction commits or rolls
+        back, so we don't need an explicit unlock. With the advisory
+        lock in place the ``FOR UPDATE`` row-lock on the tail is
+        redundant (and unsafe on empty tables) so it has been dropped.
+        """
         from sqlalchemy import text  # noqa: PLC0415 — lazy
 
         engine = self._setup()
@@ -450,10 +482,17 @@ class PostgresAuditStore:
         payload_copy = dict(payload)
         with self._lock:
             with engine.begin() as conn:
+                # Acquire the chain-wide advisory lock FIRST. Held for
+                # the lifetime of this transaction; queues every
+                # concurrent writer regardless of table emptiness.
+                conn.execute(
+                    text("SELECT pg_advisory_xact_lock(:lock_key)"),
+                    {"lock_key": _AUDIT_CHAIN_LOCK_KEY},
+                )
                 row = conn.execute(
                     text(
                         "SELECT data_hash FROM evidence_entries "
-                        "ORDER BY seq DESC LIMIT 1 FOR UPDATE"
+                        "ORDER BY seq DESC LIMIT 1"
                     )
                 ).fetchone()
                 previous_hash = row[0] if row else ""

@@ -154,8 +154,17 @@ class _OpenAIWrapperProvider:
             req.timeout_seconds if req.timeout_seconds is not None
             else self._timeout
         )
+        # Issue #48: end-to-end deadline. The caller's `timeout_seconds`
+        # is a budget for the WHOLE call (including any 429 backoff),
+        # not just one HTTP attempt. Track a wall-clock deadline so a
+        # Retry-After sleep can't blow past the caller's budget.
+        if isinstance(request_timeout, (int, float)):
+            budget_seconds = float(request_timeout)
+        else:
+            budget_seconds = self._timeout
 
         start = time.perf_counter()
+        deadline = start + budget_seconds
         try:
             response = self._client.post(
                 "/chat/completions",
@@ -182,25 +191,45 @@ class _OpenAIWrapperProvider:
                 response.headers.get("Retry-After")
             )
             if retry_after > 0 and retry_after <= _MAX_RETRY_AFTER_SECONDS:
-                logger.info(
-                    "openai_wrapper.429_retry_after=%.1fs (capped at %.0fs)",
-                    retry_after,
-                    _MAX_RETRY_AFTER_SECONDS,
-                )
-                time.sleep(retry_after)
-                try:
-                    response = self._client.post(
-                        "/chat/completions",
-                        headers=self._headers(),
-                        json=body,
-                        timeout=request_timeout,
+                # Issue #48: skip the retry if Retry-After + a ~250 ms
+                # network allowance would push past the caller's budget.
+                # Surface api_status_429 immediately so the engine falls
+                # back to deterministic instead of waiting past the
+                # caller's deadline.
+                remaining = deadline - time.perf_counter()
+                if retry_after + 0.250 >= remaining:
+                    logger.info(
+                        "openai_wrapper.429_skip_retry "
+                        "retry_after=%.1fs remaining=%.2fs",
+                        retry_after,
+                        remaining,
                     )
-                except httpx.HTTPError as exc:
-                    return OpenAIWrapperResponse(
-                        error=f"network_error_on_retry: {exc!s}"[:200],
-                        model=req.model,
-                        elapsed_ms=int((time.perf_counter() - start) * 1000),
+                else:
+                    logger.info(
+                        "openai_wrapper.429_retry_after=%.1fs "
+                        "(capped at %.0fs, remaining=%.2fs)",
+                        retry_after,
+                        _MAX_RETRY_AFTER_SECONDS,
+                        remaining,
                     )
+                    time.sleep(retry_after)
+                    # Retry POST inherits the SHORTENED remaining budget.
+                    retry_timeout = max(
+                        0.001, deadline - time.perf_counter()
+                    )
+                    try:
+                        response = self._client.post(
+                            "/chat/completions",
+                            headers=self._headers(),
+                            json=body,
+                            timeout=retry_timeout,
+                        )
+                    except httpx.HTTPError as exc:
+                        return OpenAIWrapperResponse(
+                            error=f"network_error_on_retry: {exc!s}"[:200],
+                            model=req.model,
+                            elapsed_ms=int((time.perf_counter() - start) * 1000),
+                        )
 
         if response.status_code != 200:
             return OpenAIWrapperResponse(

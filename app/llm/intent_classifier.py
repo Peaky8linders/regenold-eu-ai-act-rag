@@ -68,6 +68,7 @@ from app.llm.openai_wrapper_provider import (
     get_openai_wrapper_provider,
     is_openai_wrapper_enabled,
 )
+from app.security.prompt_guard import sanitize_for_llm
 
 logger = logging.getLogger(__name__)
 
@@ -392,9 +393,18 @@ def classify_intent(
             model=cached.model,
         )
 
-    # Cap user text — the classifier only needs the live question,
-    # not multi-turn history. Long inputs explode tokens for no gain.
-    trimmed = question.strip()
+    # Issue #53: sanitise prompt-injection vectors BEFORE truncation
+    # (sanitisation can change length). The user-supplied question is
+    # forwarded directly into the classifier system prompt — without
+    # this, an attacker who crafts a question containing model-control
+    # delimiters (e.g. ``<|im_start|>``, ``[INST]``, ``</user_query>``)
+    # can steer the classifier output and bias downstream citation
+    # pruning. Mirrors the hardening already in
+    # ``app/engines/graph_rag.py`` (Stage-1 parse).
+    sanitised = sanitize_for_llm(question.strip(), context_type="query")
+    if not sanitised:
+        return None
+    trimmed = sanitised
     if len(trimmed) > 1500:
         trimmed = trimmed[-1500:]
 
@@ -402,18 +412,33 @@ def classify_intent(
     # The provider is a process-wide singleton and an env mutation here
     # poisoned the timeout for all Stage-1/2 Sonnet calls (which need
     # 10-20 s) too. Fixed by adding `timeout_seconds` to the request.
-    provider = get_openai_wrapper_provider()
+    #
+    # Issue #50: wrap provider acquisition + the call itself in
+    # ``try / except Exception``. The classifier docstring promises a
+    # fail-soft None on any failure path, but provider singleton init
+    # (httpx pool construction, env-derived URL parsing) and the
+    # provider.complete() call can raise httpx-internal exceptions that
+    # bypass the provider's inner ``except httpx.HTTPError``. Without
+    # this guard, those exceptions propagate to
+    # ``app/routes/regenold.py::_intent_anchor_set`` and turn into a
+    # 500 instead of the deterministic-fallback path.
     start = time.perf_counter()
-    response = provider.complete(
-        OpenAIWrapperRequest(
-            system=_SYSTEM_PROMPT,
-            user=_USER_TEMPLATE.format(q=trimmed),
-            model=model,
-            max_tokens=160,
-            temperature=0.0,
-            timeout_seconds=_TIMEOUT_SECONDS,
+    try:
+        provider = get_openai_wrapper_provider()
+        response = provider.complete(
+            OpenAIWrapperRequest(
+                system=_SYSTEM_PROMPT,
+                user=_USER_TEMPLATE.format(q=trimmed),
+                model=model,
+                max_tokens=160,
+                temperature=0.0,
+                timeout_seconds=_TIMEOUT_SECONDS,
+            )
         )
-    )
+    except Exception as exc:  # noqa: BLE001 — fail-soft contract
+        _BREAKER.record_failure()
+        logger.debug("intent_classifier_exception: %s", str(exc)[:200])
+        return None
     elapsed_ms = int((time.perf_counter() - start) * 1000)
 
     if response.error:

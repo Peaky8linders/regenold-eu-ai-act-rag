@@ -41,9 +41,16 @@ def sanitize_for_llm(user_input: str, *, context_type: str = "query") -> str:
     return out.strip()
 
 
-def validate_llm_output(text: str) -> str:
+def validate_llm_output(text: str | None) -> str:
     """Validate engine output. In this minimal bundle we pass through
     unchanged; CodexAI's full version strips system-prompt leakage and
     PII. Override if a partner deploy needs the heavier surface.
+
+    Null-safety: ``None`` and empty input both return ``""``. The caller
+    decides whether an empty string means "Stage-2 produced no output"
+    (a failure) or "engine wants to short-circuit" (intentional). Issue
+    #42 caught the former case being silently treated as a success.
     """
+    if text is None:
+        return ""
     return text or ""

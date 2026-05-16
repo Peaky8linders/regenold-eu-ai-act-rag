@@ -53,7 +53,10 @@ from pydantic import ValidationError
 from slowapi.util import get_remote_address
 
 from app.data.kb import KB_VERSION
-from app.engines.graph_rag import ask_compliance_question
+from app.engines.graph_rag import (
+    _detect_classification_topic,
+    ask_compliance_question,
+)
 from app.engines.scenario_classifier import classify_scenario_query
 from app.engines.sentence_index import (
     classify_question as classify_question_type,
@@ -563,7 +566,23 @@ def _intent_anchor_set(
 
     Caller (the pruning pass) treats empty as "no intent guidance" and
     falls through to the explicit-anchor rule.
+
+    Round-36 issue #53 hardening: the classifier is an LLM output and
+    may surface anchors that don't exist in the EU AI Act surface
+    (``Art. 999``, ``Annex XV``). Worst case: an attacker who can
+    influence the classifier via prompt-injection could narrow the
+    citation set to a fabricated article and smuggle a poisoned ref
+    onto the wire. Validate every anchor against
+    :data:`app.data.article_existence.ARTICLE_EXISTENCE` before adding
+    to the prune set — unknown anchors are silently dropped (we don't
+    want a bogus classifier output to crash a request, just to be
+    ignored). The 113-article + 13-annex catalog covers the entire
+    regulation surface, so a real anchor is never rejected.
     """
+    # Local import — keeps the route module's cold-start cheap and
+    # avoids a circular-import risk with app.data on bench-runner paths.
+    from app.data.article_existence import ARTICLE_EXISTENCE  # noqa: PLC0415
+
     intent = classify_intent(live_question)
     if intent is None or intent.confidence < _INTENT_MIN_CONFIDENCE:
         return set(), set(), ""
@@ -574,11 +593,19 @@ def _intent_anchor_set(
             continue
         m = re.match(r"^Art\.?\s+(\d{1,3})$", anchor)
         if m:
-            article_nums.add(m.group(1))
+            num = m.group(1)
+            # Issue #53: drop anchors not in the canonical 113-article
+            # catalog. ``Art. 999`` from a hallucinating classifier or a
+            # prompt-injected response never narrows the citation set.
+            if f"Art. {num}" in ARTICLE_EXISTENCE:
+                article_nums.add(num)
             continue
         m = re.match(r"^Annex\s+([IVXLC]+)$", anchor, re.IGNORECASE)
         if m:
-            annex_romans.add(m.group(1).upper())
+            roman = m.group(1).upper()
+            # Issue #53: drop annexes outside Annex I-XIII.
+            if f"Annex {roman}" in ARTICLE_EXISTENCE:
+                annex_romans.add(roman)
     return article_nums, annex_romans, intent.intent
 
 
@@ -1260,9 +1287,27 @@ def regenold_eu_ai_act_ask(
         if not (rag_res.graph_stats or {}).get("stage2_call_failed"):
             _ENGINE_CACHE.put(cache_key, rag_res)
 
+    # Round-36 issue #49 — classification short-circuit detection.
+    # When ``_detect_classification_topic`` matches, the engine returns a
+    # curated 1-4 sentence verdict verbatim (Stage-2 polish is skipped
+    # inside ``_two_stage_generate``). The route's normalise + verdict-
+    # prefix prepend + CLARA injection passes would mutate that prose —
+    # the 3-sentence + 600-char cap can lop off the trailing clause, and
+    # a prepended Art. 5 prefix would push the canonical opening past
+    # position 0. Detect the classification shape here so the downstream
+    # mutations can skip when the engine's curated text should be
+    # shipped verbatim. Detector is pure-function + deterministic; the
+    # cost is one regex sweep over the question (sub-µs).
+    _is_classification_topic = _detect_classification_topic(question) is not None
+
     # Normalise answer first so we can use it to filter orphan references.
     # Fixes UnboundLocalError in _drop_orphan_refs pass (P1 #4).
-    answer_text = normalise_answer_for_regenold(rag_res.answer)
+    # Round-36 issue #49: classification verdicts are pre-shaped by the
+    # engine — preserve them verbatim, skip the soft-cap pass.
+    if _is_classification_topic:
+        answer_text = rag_res.answer
+    else:
+        answer_text = normalise_answer_for_regenold(rag_res.answer)
 
     # Round 26 — extractive-QA pass. The engine returns full article
     # prose (~480 chars median on davidath QA) where the rubric gold is
@@ -1285,7 +1330,17 @@ def regenold_eu_ai_act_ask(
     _is_scenario = classify_scenario_query(question) is not None
     _is_scenario_shape = _looks_like_scenario_shape(question)
     _is_multiturn = sum(1 for m in req.messages if m.role == "user") > 1
-    if not _is_scenario and not _is_scenario_shape and not _is_multiturn:
+    # Round-36 issue #49: classification verdicts are pre-curated by the
+    # engine — both the extractive-QA pass and the QA-trim would reshape
+    # the prose down to a single sentence, lopping off the regulatory
+    # context the verdict carries (e.g. "Outside those settings it is
+    # high-risk under Annex III...").
+    if (
+        not _is_scenario
+        and not _is_scenario_shape
+        and not _is_multiturn
+        and not _is_classification_topic
+    ):
         extracted = _try_extractive_answer(
             question=question,
             engine_citations=rag_res.citations or (),
@@ -1432,7 +1487,14 @@ def regenold_eu_ai_act_ask(
         # tight (1 sentence, ≤200 chars) so the existing 3-sentence
         # + 600-char cap absorbs it without dropping engine content.
         _verdict_prefix = build_verdict_prefix(question)
-        if _verdict_prefix and "Article 5" not in (answer_text or ""):
+        if (
+            _verdict_prefix
+            and "Article 5" not in (answer_text or "")
+            # Round-36 issue #49: classification verdicts already lead
+            # with the canonical anchor — a re-prepend duplicates it and
+            # re-normalisation would lop off the closing clause.
+            and not _is_classification_topic
+        ):
             answer_text = (
                 _verdict_prefix + " " + (answer_text or "")
             ).strip()
@@ -1448,12 +1510,22 @@ def regenold_eu_ai_act_ask(
     # (max_inject=2) plus an optional verdict prepend when confidence
     # is high and the engine's answer doesn't already name the verdict.
     #
+    # Round-36 issue #46 hardening: skip CLARA citation injection
+    # entirely when the upstream candidate set is empty. Empty
+    # candidates is the strongest closed-world signal — GraphRAG
+    # returned no grounding, so post-hoc CLARA citations would smuggle
+    # around the no-match refusal at the bottom of this block. CLARA
+    # only fires when there's at least one engine-derived candidate to
+    # enrich.
+    #
     # Default behaviour (no env-flag): the integration is ON. Set
     # REGENOLD_CLARA_VERDICT=0 to disable for benchmark A/B.
     _clara_flag = os.getenv("REGENOLD_CLARA_VERDICT", "1").strip().lower()
     if (
         _clara_flag in ("1", "true", "yes", "on")
         and not _prohibition_matches  # Art. 5 already handled by gatekeeper
+        and candidates  # Round-36 issue #46 — don't inject onto empty grounding
+        and not _is_classification_topic  # Round-36 issue #49 — curated verdict is final
     ):
         try:
             from app.engines.clara_logic import analyse as _clara_analyse  # noqa: PLC0415
@@ -1526,7 +1598,18 @@ def regenold_eu_ai_act_ask(
     confidence = float(getattr(rag_res, "confidence", 0.0) or 0.0)
     retrieval_path = _resolve_retrieval_path(getattr(rag_res, "graph_stats", {}) or {})
 
-    if not references and confidence < _CONFIDENCE_FLOOR_FOR_ANSWER:
+    if not references:
+        # Round-36 issue #40 hardening: empty references is the
+        # strongest closed-world signal — refuse regardless of
+        # confidence. ``_compute_confidence`` returns exactly 0.5 for
+        # sparse retrieval (nodes_traversed < 5); the pre-fix strict-
+        # less-than check (``confidence < _CONFIDENCE_FLOOR_FOR_ANSWER``)
+        # let an empty-refs + conf-0.5 response slip through with engine
+        # prose intact. The confidence axis is now redundant: an empty
+        # grounding set means we have no citations to back the prose,
+        # so we ship the deterministic no-match string rather than
+        # ungrounded LLM content.
+        #
         # The static no-match string is already plain prose at 3
         # sentences; no normalisation needed.
         answer_text = _NO_MATCH_ANSWER

@@ -95,9 +95,21 @@ class ScopeVerdict:
 # audience is EU-wide; partner agents may pass non-English fragments).
 # Capture group 1 = the article number (decimal int).
 _ARTICLE_REF_RE = re.compile(
-    r"\b(?:Art(?:icle|ikel)?\.?)\s*(-?\d+)\b",
+    r"\b(?:Art(?:icles?|ikels?|ikeln)?\.?)\s*"
+    r"(-?\d+)"
+    # Issue #38 — capture the optional comma/and tail so plural forms
+    # like ``Articles 13 and 14`` / ``Articles 13, 14, and 15`` expand
+    # into multiple anchors. The repeat unit ``(?:\s*sep)+`` consumes
+    # one or more separator tokens (each preceded by optional space),
+    # then exactly one number — letting ``, and 15`` (comma followed by
+    # ``and``) chain past a single separator.
+    r"((?:(?:\s*(?:,|&|/|\band\b|\bor\b))+\s*-?\d+){0,5})"
+    r"\b",
     re.IGNORECASE,
 )
+# Helper — pull every numeric token out of the tail group so plural-form
+# matches expand into multiple anchors. ``", 14, and 15"`` → ``[14, 15]``.
+_ARTICLE_TAIL_NUM_RE = re.compile(r"-?\d+")
 # Match `Annex IV`, `Annex 99`, `annex iii`, etc. Captures group 1 =
 # raw number/Roman text after `Annex `. The validator below interprets
 # Roman numerals 1-13 OR Arabic numerals (rejected).
@@ -137,12 +149,32 @@ def _roman_to_int(s: str) -> int | None:
 # Art. 22 EU-rep answer for a GDPR question. The regex now also claims
 # the optional ``\s*(?:and|,|&)\s*\d+`` tail so both numbers land in the
 # claimed span.
+#
+# Issue #47 — Roman-numeral annex bypass. Pre-fix the numeric tail was
+# bare ``\d+(?:...)*``, so ``DMA Annex IV`` failed to claim the span —
+# the bare ``Annex IV`` was then picked up by ``_ANNEX_REF_RE`` and
+# resolved against the EU AI Act catalog (which has an Annex IV),
+# letting the gatekeeper treat the query as in-scope. We now split the
+# tail into two branches:
+#
+#   * ``(?:Annex)``       — accepts Roman numerals (e.g. ``Annex IV``)
+#     OR Arabic numerals, plus a multi-token tail of either form.
+#   * ``(?:Article|...)`` — Arabic numerals only (the regulation surface
+#     uses Arabic for Articles / Sections).
 _OTHER_REGULATION_BEFORE_ARTICLE_RE = re.compile(
     r"(?:GDPR|HIPAA|CCPA|CPRA|DSA|DMA|SOX|GLBA|FERPA|"
     r"general\s+data\s+protection|sarbanes[- ]oxley|"
     r"california\s+consumer\s+privacy|digital\s+(?:markets?|services?)\s+act)"
-    r"\s+(?:Art(?:icle)?s?\.?|Annex|Section|§|Sec\.?)\s*"
-    r"\d+(?:\s*(?:and|,|&|/|\bor\b)\s*\d+){0,5}",
+    r"\s+(?:"
+    # Branch 1 — Annex (Roman OR Arabic, optional multi-token tail).
+    r"Annex\s*"
+    r"(?:\d+|[IVXLCDMivxlcdm]+)"
+    r"(?:\s*(?:and|,|&|/|\bor\b)\s*(?:\d+|[IVXLCDMivxlcdm]+)){0,5}"
+    r"|"
+    # Branch 2 — Article / Section / § / Sec. (Arabic only).
+    r"(?:Art(?:icle)?s?\.?|Section|§|Sec\.?)\s*"
+    r"\d+(?:\s*(?:and|,|&|/|\bor\b)\s*\d+){0,5}"
+    r")",
     re.IGNORECASE,
 )
 
@@ -164,6 +196,28 @@ def _claimed_spans(text: str) -> tuple[tuple[int, int], ...]:
 
 def _position_in_any_span(pos: int, spans: tuple[tuple[int, int], ...]) -> bool:
     return any(start <= pos < end for start, end in spans)
+
+
+def _strip_claimed_spans(text: str) -> str:
+    """Return ``text`` with all other-regulation claimed spans replaced
+    by spaces (preserving offsets is not required at the call site, but
+    spaces are safer than empty strings since the substring scanners
+    require word boundaries).
+
+    Issue #47 — used by :func:`classify_scope` before the anchor/keyword
+    passes so a phrase like ``DMA Annex IV`` doesn't get picked up by
+    the AI Act anchor vocabulary's literal ``annex iv`` entry. The
+    claimed span belongs to the OTHER regulation; for the AI Act gate
+    it must not exist.
+    """
+    spans = _claimed_spans(text)
+    if not spans:
+        return text
+    out = list(text)
+    for start, end in spans:
+        for i in range(start, min(end, len(out))):
+            out[i] = " "
+    return "".join(out)
 
 
 def extract_referenced_articles(text: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -200,33 +254,49 @@ def extract_referenced_articles(text: str) -> tuple[tuple[str, ...], tuple[str, 
     claimed = _claimed_spans(text)
 
     for m in _ARTICLE_REF_RE.finditer(text):
-        try:
-            num = int(m.group(1))
-        except (ValueError, TypeError):
-            continue
         if _position_in_any_span(m.start(), claimed):
             # Non-AI-Act regulation owns this reference — skip it. The
             # ``other_regulation`` branch in classify_scope picks it up
             # via the regulation-keyword check and ships the right
             # refusal copy.
             continue
+        # Issue #38 — plural ``Articles N and M`` matches carry a
+        # multi-number tail in group 2. Expand head + tail into a list
+        # of integer article numbers; the head's sub-paragraph chain
+        # attaches to the head only (sub-chains after ``and 14`` are
+        # vanishingly rare and would over-capture into the next clause).
+        try:
+            head_num = int(m.group(1))
+        except (ValueError, TypeError):
+            continue
+        tail = m.group(2) or ""
+        tail_nums: list[int] = []
+        if tail:
+            for tnum in _ARTICLE_TAIL_NUM_RE.findall(tail):
+                try:
+                    tail_nums.append(int(tnum))
+                except (ValueError, TypeError):
+                    continue
         # Round-3 hardening (eng-review H8): capture sub-paragraph
         # chains like ``(2)(c)`` or ``.2.c`` so the anchor carries the
         # full specificity for downstream surfacing. Without this, the
         # deterministic-fallback path emits only the bare article ref
         # (``Art. 13``) even when the user explicitly cited
         # ``Art. 13(1)(a)`` — losing the sub-point in the wire response.
+        # Sub-chain belongs to the HEAD article only.
         sub_chain = _capture_subpoint_chain(text, m.end())
-        ref = f"Art. {num}{sub_chain}"
-        # Existence gate uses bare ref (catalog only stores ``Art. N``);
-        # but we PRESERVE the sub-chain on the emitted ref so the route's
-        # surfacing path can ship ``Article N.x.y`` not just ``Article N``.
-        if f"Art. {num}" in ARTICLE_EXISTENCE:
-            if ref not in known:
-                known.append(ref)
-        else:
-            if f"Art. {num}" not in unknown:
-                unknown.append(f"Art. {num}")
+        for idx, num in enumerate([head_num, *tail_nums]):
+            ref = f"Art. {num}{sub_chain}" if idx == 0 else f"Art. {num}"
+            # Existence gate uses bare ref (catalog only stores ``Art. N``);
+            # but we PRESERVE the sub-chain on the emitted ref so the
+            # route's surfacing path can ship ``Article N.x.y`` not just
+            # ``Article N``.
+            if f"Art. {num}" in ARTICLE_EXISTENCE:
+                if ref not in known:
+                    known.append(ref)
+            else:
+                if f"Art. {num}" not in unknown:
+                    unknown.append(f"Art. {num}")
 
     for m in _ANNEX_REF_RE.finditer(text):
         if _position_in_any_span(m.start(), claimed):
@@ -1051,14 +1121,25 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
 #
 # Eng-review round-6 perf finding: parent CLAUDE.md flagged the O(N*M)
 # walk as a deferred optimisation. Closed here.
+#
+# Issue #44 — the alternation is now wrapped in ``(?<!\w)`` /
+# ``(?!\w)`` boundaries so substrings inside unrelated words can't
+# match. Pre-fix repros: ``"space marking"`` matched ``ce marking``
+# → Art. 48; ``"friar"`` matched ``fria`` → Art. 27; ``"blogging"``
+# matched ``logging`` → Art. 12; ``"smcorp"`` matched ``smc`` →
+# Art. 62. The boundary uses ``\w`` (which includes digits + ``_``)
+# so digit-prefixed keys like ``10^25`` / ``2 december 2027`` still
+# match when they sit between whitespace. Hyphens are already
+# normalised to spaces before matching, so multi-word forms like
+# ``high-risk`` ("high risk" after normalisation) match cleanly.
 _NORMALIZED_KEYWORD_TO_ARTICLE: dict[str, str] = {
     k.replace("-", " "): v for k, v in KEYWORD_TO_ARTICLE.items()
 }
 _KEYWORD_ALTERNATION_RE = re.compile(
-    "(" + "|".join(
+    r"(?<!\w)(" + "|".join(
         re.escape(k)
         for k in sorted(_NORMALIZED_KEYWORD_TO_ARTICLE.keys(), key=len, reverse=True)
-    ) + ")",
+    ) + r")(?!\w)",
     re.IGNORECASE,
 )
 
@@ -1405,6 +1486,15 @@ def classify_scope(question: str) -> ScopeVerdict:
             unknown_articles=unknown,
         )
 
+    # Issue #47 — the anchor / keyword passes below must NOT see text
+    # that belongs to a non-AI-Act regulation. Pre-fix, ``DMA Annex IV``
+    # was correctly stripped from the EU-AI-Act ref pool but ``Annex IV``
+    # was still a substring of the raw text, so ``_has_ai_act_anchor``
+    # matched the literal ``annex iv`` and the gatekeeper flipped the
+    # query in-scope. The cleaned text strips the claimed spans before
+    # the anchor / keyword passes run.
+    cleaned_text = _strip_claimed_spans(text)
+
     # 4. In-scope: known refs OR anchor keywords.
     if known:
         return ScopeVerdict(
@@ -1413,12 +1503,30 @@ def classify_scope(question: str) -> ScopeVerdict:
             evidence=f"Valid EU AI Act reference(s): {', '.join(known)}",
             referenced_articles=known,
         )
-    if _has_ai_act_anchor(text):
+    if _has_ai_act_anchor(cleaned_text):
         return ScopeVerdict(
             in_scope=True,
             reason=ScopeReason.IN_SCOPE,
             evidence="AI Act anchor keyword(s) present.",
             referenced_articles=known,
+        )
+    # Issue #43 follow-up — the previous behaviour relied on
+    # ``classify_conversation`` to keyword-derive an anchor from the
+    # live message and let the rescue path flip CONVERSATIONAL to
+    # IN_SCOPE. With the rescue pool now restricted to PRIOR turns,
+    # legitimate single-turn keyword-only questions (e.g. ``EU AI
+    # database`` → Annex VIII) would refuse. Promoting the
+    # keyword-derived anchor into ``classify_scope`` keeps these
+    # in-scope without re-opening the live-self-seed rescue hole.
+    keyword_refs = derive_anchor_articles_from_keywords(cleaned_text)
+    if keyword_refs:
+        return ScopeVerdict(
+            in_scope=True,
+            reason=ScopeReason.IN_SCOPE,
+            evidence=(
+                f"AI Act keyword anchor(s) present: {', '.join(keyword_refs)}"
+            ),
+            referenced_articles=keyword_refs,
         )
 
     # 5. Other regulation — only if no in-scope signal.
@@ -1740,7 +1848,25 @@ def classify_conversation(
             return str(m.get(attr) or "")
         return str(getattr(m, attr, "") or "")
 
-    # 1. Collect anchors + unknowns from PRIOR USER messages only.
+    # 1. Find the live user message FIRST (last non-empty user role).
+    #    Its index is the cut-off for the rescue-anchor pool. The full
+    #    anchor pool (used for downstream surfacing) still includes the
+    #    live message — but the rescue pool (``prior_anchors``) must not,
+    #    or a single-turn message can self-seed and bypass the
+    #    prompt-injection / other-regulation gates (Issue #43).
+    live_text = ""
+    live_index: int | None = None
+    for idx in range(len(messages) - 1, -1, -1):
+        m = messages[idx]
+        if _get(m, "role") != "user":
+            continue
+        candidate = _get(m, "content").strip()
+        if candidate:
+            live_text = candidate
+            live_index = idx
+            break
+
+    # 2. Collect anchors + unknowns.
     #    Anchors come from two sources:
     #      a. Explicit ``Art. N`` / ``Annex X`` references.
     #      b. Well-known anchor keywords (FRIA → Art. 27, GPAI → Art. 53,
@@ -1757,15 +1883,24 @@ def classify_conversation(
     # Assistant content is still scanned for ``unknown`` refs (a
     # hallucinated assistant cite must still block the chain) but not
     # for in-scope anchor accumulation.
+    #
+    # Issue #43 — split the pool in two:
+    #   * ``anchors``       — full pool (includes live turn); surfaced
+    #     on the verdict so single-turn in-scope queries still ship a
+    #     citation.
+    #   * ``prior_anchors`` — anchors from PRIOR user turns only; the
+    #     coreference rescue's input. Live messages cannot self-seed it.
     anchors: list[str] = []
+    prior_anchors: list[str] = []
     unknowns: list[str] = []
-    for m in messages:
+    for idx, m in enumerate(messages):
         role = _get(m, "role")
         if role == "system":
             continue
         content = _get(m, "content")
         if not content:
             continue
+        is_prior_for_rescue = (live_index is None) or (idx < live_index)
         k, u = extract_referenced_articles(content)
         # Unknown refs ALWAYS block (precedence guard) regardless of role
         # — a hallucinated assistant ref still poisons the next prompt.
@@ -1778,18 +1913,14 @@ def classify_conversation(
         for ref in k:
             if ref not in anchors:
                 anchors.append(ref)
+            if is_prior_for_rescue and ref not in prior_anchors:
+                prior_anchors.append(ref)
         # Keyword-driven anchors — also user-turn only for the same reason.
         for ref in derive_anchor_articles_from_keywords(content):
             if ref not in anchors:
                 anchors.append(ref)
-
-    # 2. Find the live user message (last non-empty user role).
-    live_text = ""
-    for m in reversed(messages):
-        if _get(m, "role") == "user":
-            live_text = _get(m, "content").strip()
-            if live_text:
-                break
+            if is_prior_for_rescue and ref not in prior_anchors:
+                prior_anchors.append(ref)
 
     # 3. Non-existent reference precedence — refuse when the LIVE question
     #    mentions an unknown article. History-only unknowns (from prior turns
@@ -1830,14 +1961,31 @@ def classify_conversation(
         )
 
     # 5. Coreference rescue — "What about deployers?" with anchor=[Art. 13].
-    if _live_question_borrows_anchor(live_text, tuple(anchors)):
+    #    Issue #43 — the rescue path uses ``prior_anchors`` (anchors
+    #    extracted strictly from prior user turns) so the live message
+    #    cannot self-seed the rescue pool. Without this split, a
+    #    single-turn message carrying its own ``Article N`` anchor + a
+    #    strong follow-up marker would bypass the prompt-injection /
+    #    other-regulation gates.
+    #
+    #    Issue #45 — also guards against rescuing hard refusals
+    #    (PROMPT_INJECTION / OTHER_REGULATION). Those are security /
+    #    topic-block decisions that the rescue path must not overturn.
+    hard_refusal_reasons = {
+        ScopeReason.PROMPT_INJECTION,
+        ScopeReason.OTHER_REGULATION,
+    }
+    if (
+        live_verdict.reason not in hard_refusal_reasons
+        and _live_question_borrows_anchor(live_text, tuple(prior_anchors))
+    ):
         rescued = ScopeVerdict(
             in_scope=True,
             reason=ScopeReason.IN_SCOPE,
             evidence=(
-                f"Coreference rescue: anchor(s) {', '.join(anchors)} from prior turn(s)."
+                f"Coreference rescue: anchor(s) {', '.join(prior_anchors)} from prior turn(s)."
             ),
-            referenced_articles=tuple(anchors),
+            referenced_articles=tuple(prior_anchors),
         )
         return ConversationVerdict(
             verdict=rescued,

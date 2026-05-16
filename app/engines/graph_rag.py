@@ -325,6 +325,15 @@ class GraphContext:
     # a drifted result). The route checks this to avoid caching a
     # deterministic fallback that masks a transient wrapper outage.
     stage2_call_failed: bool = False
+    # Issue #55 — graph retrieval degraded signal. ``degraded=True``
+    # means the Neo4j-backed retrieval path raised, the KB fallback ran
+    # in its place, and downstream consumers should treat this context
+    # as lower-confidence. ``_compute_confidence`` caps the confidence
+    # score, and the route's closed-world refusal logic can use this
+    # to surface a "graph backend unavailable, partial data only"
+    # disclaimer if it wants. Distinct from "no results found" (which
+    # is a healthy zero-hit response).
+    degraded: bool = False
 
 
 # ─── LLM Integration ────────────────────────────────────────────────────────
@@ -1177,7 +1186,12 @@ def _deterministic_parse(question: str) -> GraphQuery:
     if not entities:
         try:
             from app.data.kb_search import top_articles_by_relevance
-            bm25_hits = top_articles_by_relevance(question, k=3, min_score=2.5)
+            # Issue #54 — drop the absolute floor to 1.0. The
+            # ``top_articles_by_relevance`` helper now honours a
+            # relative-to-best cutoff too, so a 1-2 token query whose
+            # top raw score sits below 2.5 still surfaces a clear
+            # winner instead of returning empty.
+            bm25_hits = top_articles_by_relevance(question, k=3, min_score=1.0)
             for ref in bm25_hits:
                 if ref not in entities:
                     entities.append(ref)
@@ -2163,14 +2177,33 @@ def _retrieve_from_graph(
     risk_level: str | None = None,
     answers: dict[str, Any] | None = None,
 ) -> GraphContext:
-    """Query the Neo4j graph based on the structured query."""
+    """Query the Neo4j graph based on the structured query.
+
+    Issue #55 — on a hard graph-backend exception the function now:
+
+    1. Discards any partially-populated context (so the engine doesn't
+       reason against a half-populated result it can't explain).
+    2. Falls back to ``_retrieve_from_kb`` so the request still has
+       something to answer with.
+    3. Sets ``context.degraded = True`` so ``_compute_confidence`` (and
+       any future closed-world refusal logic) can distinguish "graph
+       backend is sick" from "we ran clean and found nothing".
+
+    Previously the bare ``try / except`` swallowed every exception and
+    returned the partially-mutated context with no degradation signal —
+    ``execute_read`` returning ``[]`` on success was indistinguishable
+    from ``execute_read`` raising an exception caught here.
+    """
     from app.graph.client import get_graph_client
 
     client = get_graph_client()
     context = GraphContext()
 
     if not client.enabled:
-        # Fall back to KB-based context
+        # Fall back to KB-based context — this is the expected disabled
+        # path, NOT a degradation. The bundle ships with Neo4j off by
+        # default, so this is the steady-state codepath for most
+        # deploys.
         return _retrieve_from_kb(query, risk_level)
 
     effective_risk = query.risk_context or risk_level or "high"
@@ -2226,7 +2259,22 @@ def _retrieve_from_graph(
                 context.edges_followed += reasoning.get("total_obligations", 0)
 
     except Exception as exc:
-        logger.warning("Graph retrieval failed: %s", exc)
+        # Issue #55 — fall back to KB and mark degraded. The partially
+        # populated context we built above is discarded because a
+        # mid-retrieval failure means the obligations / article_info /
+        # dimension_info lists are inconsistent with each other (e.g.
+        # obligations populated but article_info missing because the
+        # per-entity loop raised). KB retrieval is offline-safe and
+        # populates a self-consistent context.
+        logger.warning("Graph retrieval failed, falling back to KB: %s", exc)
+        try:
+            context = _retrieve_from_kb(query, risk_level)
+        except Exception as fallback_exc:  # noqa: BLE001 — last-resort guard
+            logger.error(
+                "KB fallback also failed after graph error: %s", fallback_exc,
+            )
+            context = GraphContext()
+        context.degraded = True
 
     return context
 
@@ -2463,21 +2511,100 @@ def _build_context_references_block(context: GraphContext) -> str:
 # Regexes used by the post-Stage-2 hallucination guard. Tight enough to
 # pick up the citation shapes Sonnet emits in prose, loose enough not to
 # false-positive on incidental digits.
+#
+# Issue #52 — widened from ``Art.?|Article`` to also accept the plural
+# form ``Articles`` (Sonnet emits "Articles 9 and 10 apply" in the
+# multi-article enumeration shape). Roman-numeral set extended to
+# ``[IVXLCDM]`` for forward compatibility — no annex uses D / M today
+# but matching them keeps the check from silently letting a future
+# fabricated ``Annex D`` slip through.
 _PROSE_ARTICLE_RE = re.compile(
-    r"\b(?:Art\.?|Article)\s+(\d{1,3})(?![\d])",
+    r"\b(?:Art\.?|Articles?)\s+(\d{1,3})(?![\d])",
     re.IGNORECASE,
 )
-_PROSE_ANNEX_RE = re.compile(r"\bAnnex\s+([IVXLC]+)\b", re.IGNORECASE)
+_PROSE_ANNEX_RE = re.compile(r"\bAnnex\s+([IVXLCDM]+)\b", re.IGNORECASE)
 
 
-def _polished_prose_has_unknown_citations(prose: str) -> tuple[bool, str | None]:
+def _extract_context_grounded_refs(context: "GraphContext") -> set[str]:
+    """Return the set of Art./Annex references present in ``context``.
+
+    Walks ``obligations``, ``article_info``, and ``gaps`` looking for
+    the article anchor under the ``article``, ``article_number``, or
+    ``article_id`` field (different retrieval paths populate different
+    field names). Normalises ``Art. N`` shapes by stripping sub-paragraph
+    suffixes — so ``Art. 13(1)(a)`` in the context grounds a polished
+    citation of ``Art. 13``.
+
+    Defensive: returns an empty set on any error so callers fall back
+    to catalog-only checking rather than over-flag drift.
+    """
+    grounded: set[str] = set()
+    try:
+        sources = (
+            list(getattr(context, "obligations", []) or [])
+            + list(getattr(context, "article_info", []) or [])
+            + list(getattr(context, "gaps", []) or [])
+        )
+        for entry in sources:
+            if not isinstance(entry, dict):
+                continue
+            for key in ("article", "article_number", "article_id"):
+                raw = entry.get(key)
+                if not raw:
+                    continue
+                ref = str(raw).strip()
+                # ``article_id`` sometimes carries the lowercase ``artN``
+                # form from the Cypher path — normalise that back to
+                # ``Art. N``.
+                if ref.startswith("art") and ref[3:].isdigit():
+                    ref = f"Art. {ref[3:]}"
+                # Drop any sub-paragraph paren suffix: ``Art. 13(1)(a)`` →
+                # ``Art. 13``.
+                idx_paren = ref.find("(")
+                if idx_paren > 0:
+                    ref = ref[:idx_paren].strip()
+                # Strip dotted-chain suffix on Art. refs: ``Art. 13.1.a``
+                # → ``Art. 13``. Done via a regex anchored on the
+                # ``Art. NNN`` prefix so we don't accidentally rewrite
+                # Annex refs.
+                m_art = re.match(
+                    r"^Art\.?\s+(\d{1,3})\b", ref, re.IGNORECASE,
+                )
+                if m_art:
+                    grounded.add(f"Art. {int(m_art.group(1))}")
+                    continue
+                m_annex = re.match(
+                    r"^Annex\s+([IVXLCDM]+)\b", ref, re.IGNORECASE,
+                )
+                if m_annex:
+                    grounded.add(f"Annex {m_annex.group(1).upper()}")
+                    continue
+                grounded.add(ref)
+    except Exception:  # noqa: BLE001 — guard must never raise on malformed context
+        return set()
+    return grounded
+
+
+def _polished_prose_has_unknown_citations(
+    prose: str,
+    context: "GraphContext | None" = None,
+) -> tuple[bool, str | None]:
     """Detect citation drift in Stage-2 polished prose.
 
     Returns ``(drifted, first_unknown)``. ``drifted=True`` when prose
-    mentions any ``Art./Article N`` or ``Annex X`` that is NOT in the EU
-    AI Act catalog (:data:`ARTICLE_EXISTENCE`). The caller drops the
-    polished output and falls back to the deterministic KG answer rather
-    than ship a fabricated citation.
+    mentions any ``Art./Article N`` or ``Annex X`` that:
+
+    * is NOT in the EU AI Act catalog (:data:`ARTICLE_EXISTENCE`); OR
+    * (Issue #51) IS in the catalog but is NOT in the request-specific
+      ``context`` — Stage-2 was told to cite only the supplied
+      references, so a real-but-ungrounded citation is still drift.
+
+    The caller drops the polished output and falls back to the
+    deterministic KG answer rather than ship a fabricated citation.
+
+    Backward compat: when ``context`` is None, only the catalog check
+    runs (matches the Round-15 behaviour pinned by
+    ``test_rag_hardening.TestPolishedProseDriftGuard``).
 
     This is the LAST line of defence against hallucination — the
     Stage-2 prompt already supplies the structured references block AND
@@ -2488,13 +2615,28 @@ def _polished_prose_has_unknown_citations(prose: str) -> tuple[bool, str | None]
     """
     from app.data.article_existence import ARTICLE_EXISTENCE
 
-    for num in _PROSE_ARTICLE_RE.findall(prose):
-        ref = f"Art. {num}"
+    grounded_refs = (
+        _extract_context_grounded_refs(context) if context is not None else set()
+    )
+
+    for raw_num in _PROSE_ARTICLE_RE.findall(prose):
+        # Issue #52 — int-normalise leading-zero captures so
+        # "Art. 013" maps to "Art. 13" (real catalog entry) before the
+        # membership check. Pre-fix this was wrongly flagged as drift.
+        try:
+            num_int = int(raw_num)
+        except ValueError:
+            num_int = -1
+        ref = f"Art. {num_int}" if num_int >= 0 else f"Art. {raw_num}"
         if ref not in ARTICLE_EXISTENCE:
+            return True, ref
+        if grounded_refs and ref not in grounded_refs:
             return True, ref
     for roman in _PROSE_ANNEX_RE.findall(prose):
         ref = f"Annex {roman.upper()}"
         if ref not in ARTICLE_EXISTENCE:
+            return True, ref
+        if grounded_refs and ref not in grounded_refs:
             return True, ref
     return False, None
 
@@ -2559,7 +2701,20 @@ def _claude_max_enhance_answer(
         )
         if text_raw is None:
             return None
-        return validate_llm_output(text_raw.strip())
+        validated = validate_llm_output(text_raw.strip())
+        # Issue #42 — empty / whitespace-only polish is a failure, not a
+        # success. ``validate_llm_output`` is null-safe (returns "" on
+        # both None and ""), so an empty Stage-2 response would
+        # previously flow through as "polished successfully" and get
+        # cached by the route. Treating it as None forces the caller
+        # to set ``stage2_call_failed`` and skip caching.
+        if not validated or not validated.strip():
+            logger.warning(
+                "stage2_claude_max_enhance returned empty/whitespace output "
+                "— treating as failure"
+            )
+            return None
+        return validated
     except Exception as exc:  # noqa: BLE001
         logger.warning("stage2_claude_max_enhance failed, keeping kg_answer: %s", exc)
         return None
@@ -2620,12 +2775,15 @@ def _two_stage_generate(
         return kg_answer, False
 
     # Post-Stage-2 hallucination guard: every Art./Annex mention in the
-    # polished prose must resolve to a real provision in ARTICLE_EXISTENCE.
-    # On drift, drop the polish and ship the Stage-1 KG answer. The
+    # polished prose must resolve to a real provision in ARTICLE_EXISTENCE
+    # AND must be grounded in the request-specific context (Issue #51 —
+    # the Stage-2 prompt told the model to cite only the supplied
+    # references, so a real-but-ungrounded citation is still drift). On
+    # drift, drop the polish and ship the Stage-1 KG answer. The
     # underlying call succeeded — at temperature 0 this drift is
     # deterministic, so this branch IS cacheable (no
     # ``stage2_call_failed`` flag).
-    drifted, bad_ref = _polished_prose_has_unknown_citations(enhanced)
+    drifted, bad_ref = _polished_prose_has_unknown_citations(enhanced, context)
     if drifted:
         logger.warning(
             "stage2_drift_detected: prose cites %s (not in catalog) — "
@@ -2679,11 +2837,22 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
         f"Stage 2 (Claude Max enhanced): {stage2_used}",
     ]
 
-    # Stage 4 — Extract citations from context
+    # Stage 4 — Extract citations from context.
+    #
+    # Issue #41 — dedup BEFORE the per-slot slice. Applying ``[:15]`` /
+    # ``[:10]`` to the source list and only THEN deduping wastes
+    # citation slots on duplicate IDs that appear early in the list and
+    # starves later-position unique citations. This bit contexts where
+    # the same obligation surfaces through both ``obligations`` AND
+    # ``article_info`` — the dups filled the [:15] prefix and the
+    # tail-unique items never reached the wire.
     citations: list[CitationNode] = []
     seen_ids: set[str] = set()
 
-    for obl in (context.obligations + context.article_info)[:15]:
+    _obl_slot_cap = 15
+    for obl in context.obligations + context.article_info:
+        if len(citations) >= _obl_slot_cap:
+            break
         oid = obl.get("id", obl.get("obligation_id", ""))
         if oid and oid not in seen_ids:
             seen_ids.add(oid)
@@ -2694,7 +2863,11 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
                 article_ref=obl.get("article", ""),
             ))
 
-    for gap in context.gaps[:10]:
+    _gap_slot_cap = 10
+    _gap_added = 0
+    for gap in context.gaps:
+        if _gap_added >= _gap_slot_cap:
+            break
         gid = gap.get("obligation_id", gap.get("id", ""))
         if gid and gid not in seen_ids:
             seen_ids.add(gid)
@@ -2704,6 +2877,7 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
                 text=gap.get("text", ""),
                 article_ref=gap.get("article", ""),
             ))
+            _gap_added += 1
 
     # Suggested follow-ups based on intent
     from app.data.graph_rag_prompts import SUGGESTED_QUESTIONS
@@ -2762,7 +2936,18 @@ def _suggest_followups(
 
 
 def _compute_confidence(context: GraphContext) -> float:
-    """Compute answer confidence based on graph data richness."""
+    """Compute answer confidence based on graph data richness.
+
+    Issue #55 — a degraded context (graph backend raised, KB fallback
+    served the response) caps confidence at 0.2 regardless of how much
+    data the KB fallback surfaced. This is the signal downstream
+    closed-world refusal logic + the route's caching policy use to
+    distinguish "we ran clean" from "we ran in fallback mode" — caching
+    a low-confidence degraded response would otherwise mask a transient
+    backend outage.
+    """
+    if getattr(context, "degraded", False):
+        return 0.2
     if context.nodes_traversed == 0:
         return 0.3  # No graph data — low confidence
     if context.nodes_traversed < 5:

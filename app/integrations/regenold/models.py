@@ -312,15 +312,17 @@ def _extract_subpoints(tail: str) -> list[str]:
     characters not in ``[A-Za-z0-9]`` is dropped (defensive — a
     malformed token would break the strict output regex anyway).
 
-    Numeric tokens with value > 20 are also rejected: the EU AI Act has
-    no paragraph numbered higher than 20, so ``Art. 13(99)`` is almost
-    certainly a hallucination AND the strict output regex would happily
-    accept ``Article 13.99``. The bound is intentionally loose; the
-    actual paragraphs max out around 12 today.
+    Numeric tokens with value > 99 are also rejected: the EU AI Act
+    has no paragraph numbered higher than ~68 (Art. 3's definitions
+    list — confirmed via ``app/data/definitions.py``). The previous
+    ceiling of 20 incorrectly dropped real refs like ``Art. 3.63``
+    (general-purpose AI model). 99 is a safe loose ceiling well past
+    real values while still catching obvious hallucinations like
+    ``Art. 13(999)``.
 
     Reject the WHOLE chain on any malformed or out-of-range token —
-    not just the offending one. ``Art. 13(99)(a)`` previously dropped
-    the ``99`` but kept ``a``, shipping ``Article 13.a`` as a
+    not just the offending one. ``Art. 13(999)(a)`` previously dropped
+    the ``999`` but kept ``a``, shipping ``Article 13.a`` as a
     valid-looking but wrong reference (phantom precision). The all-or-
     nothing policy mirrors :func:`_capture_subpoint_chain` in scope.py.
     """
@@ -337,13 +339,13 @@ def _extract_subpoints(tail: str) -> list[str]:
         if not re.fullmatch(r"[A-Za-z0-9]+", raw):
             return []
         # Numeric-token sanity check: the regulation has no paragraph
-        # numbered > 20. ``Art. 13(99)`` is a hallucination; reject the
-        # whole chain so the formatter doesn't ship ``Article 13.99`` —
-        # or worse, ``Article 13.a`` when a later token would otherwise
-        # survive.
+        # numbered > 99 (the highest real subpoint today is Art. 3.68).
+        # ``Art. 13(999)`` is a hallucination; reject the whole chain
+        # so the formatter doesn't ship ``Article 13.999`` — or worse,
+        # ``Article 13.a`` when a later token would otherwise survive.
         if raw.isdigit():
             try:
-                if int(raw) > 20:
+                if int(raw) > 99:
                     return []
             except ValueError:
                 return []
@@ -390,6 +392,14 @@ def reference_from_article_ref(article_ref: str) -> str | None:
         tail = annex_m.group("tail") or ""
         tokens = _extract_subpoints(tail)
         if not tokens:
+            # Distinguish "tail absent (base ref)" from "tail present but
+            # parser rejected it (malformed/hallucinated subpoint)". The
+            # latter must NOT silently downgrade to the base ref — a
+            # hallucinated ``Annex IV(99)`` would otherwise ship as a
+            # confident-looking ``Annex IV``. Reject the whole reference
+            # instead so the caller can drop it.
+            if tail.strip():
+                return None
             formatted = f"Annex {annex_roman}"
         else:
             # FIX: previously only used tokens[0] which dropped sub-chains
@@ -407,6 +417,16 @@ def reference_from_article_ref(article_ref: str) -> str | None:
     tail = art_m.group("tail") or ""
     tokens = _extract_subpoints(tail)
     if not tokens:
+        # Distinguish "tail absent (base ref)" from "tail present but
+        # parser rejected it (malformed/hallucinated subpoint)". A
+        # hallucinated ``Art. 13(99)`` previously fail-opened to the
+        # base ref ``Article 13`` — passing existence (Art. 13 IS in
+        # the catalog) while quietly stripping the bogus subpoint.
+        # That's a silent corruption: the caller can no longer tell
+        # whether the LLM said "Article 13" or "Article 13.99 (and I
+        # made it up)". Reject so the caller drops the citation.
+        if tail.strip():
+            return None
         formatted = f"Article {int(art_num)}"
     else:
         # Regenold wants a single dot-separated subpoint chain.

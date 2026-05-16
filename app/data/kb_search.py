@@ -429,6 +429,19 @@ def top_articles_by_relevance(
 
     Empty list if no document scores above the threshold or the query
     is empty after tokenisation.
+
+    Issue #54 — short-query rescue. The absolute ``min_score`` cutoff
+    is well-tuned for 4+ token queries, but a 1-2 token query can have
+    a *clear* top winner whose score never clears the floor (e.g. the
+    1-token query "vehicle" scores ~1.5 against Annex I but ≤ the 2.5
+    floor the engine uses on the deterministic-parse fallback path).
+    Pre-fix, this returned zero hits and the deterministic parse fell
+    back to "no matching obligation". Post-fix, a candidate also
+    survives when its raw score is ≥ ``MIN_SCORE_FACTOR`` (0.4) of the
+    best raw score AND that best is itself above a low absolute sanity
+    floor (``MIN_ABSOLUTE_RESCUE``, 0.5) — so the rescue can never
+    promote pure noise but does keep a clearly-dominant short-query
+    winner.
     """
     query_tokens = _tokenize(question)
     if not query_tokens:
@@ -468,10 +481,39 @@ def top_articles_by_relevance(
         "corpus": 0.6,
         "definition": 0.8,
     }
-    best: dict[str, float] = {}
+    # Issue #54 — relative-cutoff parameters.
+    _MIN_SCORE_FACTOR = 0.4
+    _MIN_ABSOLUTE_RESCUE = 0.5
+
+    # Pass 1 — score every doc unfiltered so we can compute the best
+    # raw score for the relative-cutoff threshold.
+    raw_scores: list[tuple[int, str, float]] = []
+    best_raw = 0.0
     for doc_idx, article_ref in enumerate(index.article_refs):
         raw = _score(index, doc_idx, query_tokens)
-        if raw < min_score:
+        if raw > best_raw:
+            best_raw = raw
+        raw_scores.append((doc_idx, article_ref, raw))
+
+    # Relative floor — only effective when the absolute best score is
+    # itself meaningful (≥ ``_MIN_ABSOLUTE_RESCUE``). This stops the
+    # rescue from turning a corpus full of zero-overlap matches into a
+    # noise spew.
+    relative_floor = (
+        best_raw * _MIN_SCORE_FACTOR
+        if best_raw >= _MIN_ABSOLUTE_RESCUE
+        else float("inf")
+    )
+
+    best: dict[str, float] = {}
+    for doc_idx, article_ref, raw in raw_scores:
+        # Keep candidates that clear EITHER the absolute floor OR the
+        # relative-to-best floor. The relative path is what unlocks
+        # short-query recall — a 1-token query whose top raw score is
+        # 1.5 (below the engine's 2.5 cutoff) still surfaces here.
+        if raw < min_score and raw < relative_floor:
+            continue
+        if raw <= 0.0:
             continue
         weight = _SOURCE_WEIGHT.get(index.sources[doc_idx], 1.0)
         boost = _confidence_boost(article_ref)
