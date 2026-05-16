@@ -279,6 +279,28 @@ def _score(idx: _SentenceIndex, sent_idx: int, qt: list[str]) -> float:
 # still needs to be competitive.
 
 _QTYPE_PATTERNS: tuple[tuple[str, re.Pattern[str], re.Pattern[str]], ...] = (
+    # PURPOSE — "what is the purpose / role / function of X" (Round 34 P0).
+    # Articles 71 (EU database), 99 (penalties), 31 (notified bodies), 63
+    # (oversight), 57 (sandboxes) etc. carry their purpose statement in the
+    # OPENING paragraph (sentence 0, typically 200-900 chars). The default
+    # sentence picker's 500-char gate was silently dropping these — see
+    # CLAUDE.md Round 34. Affinity hits sentences containing the canonical
+    # "purpose / objective / in order to / established to" phrasing.
+    (
+        "purpose",
+        re.compile(
+            r"\bwhat\s+is\s+the\s+(?:purpose|role|function|objective|aim)\s+of\b|"
+            r"\bwhat\s+(?:does|do)\s+\S.*\s+(?:contain|cover|establish|provide\s+for)\b|"
+            r"\bwhat\s+is\s+the\s+role\s+of\s+the\b",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"\b(?:purpose|in\s+order\s+to|to\s+(?:ensure|protect|enable|store|register|"
+            r"facilitate|support|provide|monitor)|established\s+to|"
+            r"contain(?:s|ing)?\s+information|shall\s+contain)\b",
+            re.IGNORECASE,
+        ),
+    ),
     # DURATION — "how long", "for how many years/months"
     (
         "duration",
@@ -412,7 +434,8 @@ def select_answer_sentence(
     min_score: float = 0.5,
     affinity_boost: float = 1.5,
     confidence_ratio: float = 1.6,
-    max_sentence_chars: int = 500,
+    max_sentence_chars: int = 1000,
+    leading_paragraph_boost: float = 1.3,
 ) -> str | None:
     """Return the top-1 sentence from ``article_ref`` for ``question``.
 
@@ -469,6 +492,15 @@ def select_answer_sentence(
         score = raw
         if apply_affinity and affinity_re.search(sent):
             score *= affinity_boost
+        # Round 34 P0 — leading-paragraph boost. Sentence 0 of an EUR-Lex
+        # article is overwhelmingly the topic / purpose statement. When
+        # the question asks about purpose / role / scope and sentence 0
+        # is substantive (≥ 200 chars), bias toward it. Without this
+        # boost, BM25 over-rewards short later sentences that happen to
+        # carry a query token (e.g. "6. The Commission shall be the
+        # controller" beats the actual EU-database purpose paragraph).
+        if i == 0 and len(sent) >= 200 and qtype in ("purpose", "description"):
+            score *= leading_paragraph_boost
         candidates.append((score, i))
     if not candidates:
         return None

@@ -492,8 +492,14 @@ _AI_ACT_ANCHORS: frozenset[str] = frozenset(
         # has questions like "When can a market-surveillance authority
         # suspend or withdraw a certificate?" — these are unambiguously
         # in-scope EU AI Act Q&A but pre-Round-33 scope.py would refuse
-        # them as off-domain. Restoring these regulatory nouns to the
-        # anchor list flips ~9 false-negative QA refusals to live answers.
+        # them as off-domain.
+        #
+        # Round-34 P0 follow-up — keep MULTI-WORD forms only (they have
+        # natural boundaries). Bare verbs like "suspend" / "withdraw" /
+        # "certificate" / "designate" were causing FALSE POSITIVES on
+        # off-topic queries ("Suspend my Netflix subscription" → flipped
+        # to AI Act in-scope pre-fix). The multi-word phrases below
+        # cannot substring-match unrelated questions.
         "notifying authority",
         "notifying authorities",
         "market surveillance authority",
@@ -501,20 +507,31 @@ _AI_ACT_ANCHORS: frozenset[str] = frozenset(
         "market surveillance authorities",
         "competent authority",
         "competent authorities",
-        "suspend",
-        "withdraw",
-        "certificate",
-        "certification",
-        "designate",
-        "designating",
         "conformity assessment",
         "post-market monitoring",
         "post market monitoring",
         "corrective action",
         "national authority",
         "national authorities",
-        "member states",
-        "member state",
+        # ── Round-34 P0 (architecture-review-driven scope additions) ──
+        # Five specific bench QA items were still refused after R33
+        # because their anchor nouns weren't covered. All multi-word
+        # forms — no substring false-positive risk.
+        "european artificial intelligence board",
+        "artificial intelligence board",
+        "standing sub-group",
+        "standing subgroup",
+        "regulatory sandbox plan",
+        "sandbox plan",
+        "european data protection supervisor",
+        "data protection supervisor",
+        "maximum fine",
+        "administrative fine",
+        "administrative fines",
+        "union institution",
+        "union institutions",
+        "union body",
+        "union bodies",
         # ── Round-10 anchor surfacing (stress-test gap closers) ─────────
         # Prohibited-practice + Annex-III concept phrases that ought to
         # mark a question as plainly AI-Act-shaped even without an
@@ -1112,6 +1129,11 @@ _DIMENSION_KEYWORDS: frozenset[str] = frozenset(
 _ANCHOR_VOCAB: tuple[str, ...] = tuple(
     sorted(_AI_ACT_ANCHORS | _DIMENSION_KEYWORDS, key=len, reverse=True)
 )
+# Substring matching is INTENTIONAL — many anchors are noun forms whose
+# plural/possessive variants must still match ("ai system" → "ai systems",
+# "notified body" → "notified bodies"). Adding \b or \W boundaries breaks
+# this. Bare-verb anchors that cause false positives are controlled at
+# the keyword-list level (drop them) rather than at the regex level.
 _ANCHOR_RE: re.Pattern[str] = re.compile(
     "|".join(re.escape(s) for s in _ANCHOR_VOCAB)
 )
@@ -1718,12 +1740,23 @@ def classify_conversation(
             return str(m.get(attr) or "")
         return str(getattr(m, attr, "") or "")
 
-    # 1. Collect anchors + unknowns from EVERY non-system message.
+    # 1. Collect anchors + unknowns from PRIOR USER messages only.
     #    Anchors come from two sources:
     #      a. Explicit ``Art. N`` / ``Annex X`` references.
     #      b. Well-known anchor keywords (FRIA → Art. 27, GPAI → Art. 53,
     #         technical documentation → Annex IV, …) — covers questions
     #         that mention concepts but not article numbers.
+    #
+    # Round 34 P1 — security hardening. Pre-fix, anchors were collected
+    # from EVERY non-system message including ``assistant``-role turns.
+    # A user could spoof a prior assistant turn containing ``Article 13``
+    # and then ask an off-topic live question — the coreference rescue
+    # would flip it to in-scope. We now restrict anchor extraction to
+    # PRIOR USER turns (the live user message is reclassified at step 4
+    # via ``classify_scope`` so it contributes its own anchors naturally).
+    # Assistant content is still scanned for ``unknown`` refs (a
+    # hallucinated assistant cite must still block the chain) but not
+    # for in-scope anchor accumulation.
     anchors: list[str] = []
     unknowns: list[str] = []
     for m in messages:
@@ -1734,14 +1767,18 @@ def classify_conversation(
         if not content:
             continue
         k, u = extract_referenced_articles(content)
-        for ref in k:
-            if ref not in anchors:
-                anchors.append(ref)
+        # Unknown refs ALWAYS block (precedence guard) regardless of role
+        # — a hallucinated assistant ref still poisons the next prompt.
         for ref in u:
             if ref not in unknowns:
                 unknowns.append(ref)
-        # Keyword-driven anchors — only for non-system messages so we
-        # don't promote standing instructions to citations.
+        # Anchors only from USER turns. Assistant turns are advisory.
+        if role != "user":
+            continue
+        for ref in k:
+            if ref not in anchors:
+                anchors.append(ref)
+        # Keyword-driven anchors — also user-turn only for the same reason.
         for ref in derive_anchor_articles_from_keywords(content):
             if ref not in anchors:
                 anchors.append(ref)

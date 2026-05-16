@@ -709,9 +709,50 @@ def _hash_inputs(question: str, history_str: str) -> str:
     return h.hexdigest()
 
 
-@lru_cache(maxsize=256)
+# Round 34 P1 — success-only cache. Pre-fix this function used
+# ``@lru_cache(maxsize=256)`` which cached ``None`` failures permanently:
+# a single transient wrapper outage would freeze the LLM-extraction path
+# for that question until process restart. Now we use a bounded dict
+# with explicit ``get`` / ``put`` and only ``put`` on the success path,
+# mirroring ``app/llm/intent_classifier.py`` (see line ~440 there).
+_LLM_CACHE: dict[str, BooleanTags] = {}
+_LLM_CACHE_ORDER: list[str] = []
+_LLM_CACHE_MAX = 256
+_LLM_CACHE_LOCK = threading.RLock()
+
+
+def _llm_cache_get(cache_key: str) -> BooleanTags | None:
+    """Return a cached BooleanTags or None on miss. Thread-safe."""
+    with _LLM_CACHE_LOCK:
+        return _LLM_CACHE.get(cache_key)
+
+
+def _llm_cache_put(cache_key: str, tags: BooleanTags) -> None:
+    """Insert into bounded LRU. Pop the oldest when full. Thread-safe."""
+    with _LLM_CACHE_LOCK:
+        if cache_key in _LLM_CACHE:
+            return
+        _LLM_CACHE[cache_key] = tags
+        _LLM_CACHE_ORDER.append(cache_key)
+        while len(_LLM_CACHE_ORDER) > _LLM_CACHE_MAX:
+            stale = _LLM_CACHE_ORDER.pop(0)
+            _LLM_CACHE.pop(stale, None)
+
+
 def _llm_cached(cache_key: str, question: str, history_str: str) -> BooleanTags | None:
-    """Lazy-imported LLM call. ``cache_key`` is the hash that drives LRU."""
+    """Lazy-imported LLM call. ``cache_key`` is the hash that drives the cache.
+
+    Cache semantics (Round 34): hits return immediately; misses run the
+    LLM call. **Only successful results are cached.** Transient failures
+    (timeout, parse error, circuit-breaker open) return ``None`` but
+    leave the cache key empty so the NEXT identical question retries the
+    LLM. The deterministic ``extract_tags_deterministic`` fallback handles
+    the route's actual answer-shaping work; this cache only optimises
+    repeat LLM hits.
+    """
+    cached = _llm_cache_get(cache_key)
+    if cached is not None:
+        return cached
     # Local import — keeps the top-level import cheap and lets test
     # suites monkey-patch the import on a per-test basis.
     try:
@@ -750,6 +791,7 @@ def _llm_cached(cache_key: str, question: str, history_str: str) -> BooleanTags 
         _BREAKER.record_failure()
         return None
     _BREAKER.record_success()
+    _llm_cache_put(cache_key, parsed)
     return parsed
 
 
@@ -1197,8 +1239,10 @@ def analyse(
 
 
 def _reset_for_tests() -> None:
-    """Test-only: clear the LRU cache + breaker state."""
-    _llm_cached.cache_clear()
+    """Test-only: clear the cache + breaker state."""
+    with _LLM_CACHE_LOCK:
+        _LLM_CACHE.clear()
+        _LLM_CACHE_ORDER.clear()
     with _BREAKER.lock:
         _BREAKER.failures = 0
         _BREAKER.last_failure_ts = 0.0

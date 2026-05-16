@@ -298,10 +298,15 @@ def _slugify_definition_term(term: str) -> str:
 # ──────────────────────────────────────────────────────────────────────────
 
 
-# Paragraph heading at start of text OR after at least one whitespace
-# (NBSP counts as \s).  ``N.\s+`` where the digits represent the paragraph
-# number 1..99 (no 0-prefix).
-_PARA_HEADING_RE = re.compile(r"(?:^|(?<=\s))(\d{1,2})\.\s+")
+# Paragraph heading — Round 34 P1 tightened. Pre-fix the lookbehind was
+# ``(?<=\s)`` which matched after ANY whitespace, so "in paragraph 2.
+# The..." inside paragraph bodies was incorrectly detected as a heading
+# (causing duplicate ``art_5_p_2`` etc. — 24 articles had duplicate
+# children + impossible paragraph numbers like 47/49/50). The heading
+# must now come at start-of-text, after newline, or after clause-end
+# punctuation followed by whitespace. NBSP (\xa0) is treated as part of
+# the heading's trailing whitespace via ``\s+`` (NBSP is in \s).
+_PARA_HEADING_RE = re.compile(r"(?:^|(?<=[\n;.!?])\s+)(\d{1,2})\.\s+")
 
 # Sub-point marker — list-item shape: ``[:;]\s+(letter)\s+``. The
 # leading punctuation requirement is what distinguishes a real list item
