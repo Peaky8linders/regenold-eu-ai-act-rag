@@ -865,6 +865,22 @@ because the longer paragraphs carry more gold tokens.
 (R31.2 → R34): **Ans Strict +0.129 (+73%), Ref Loose +0.104 (+23%), Ans Loose
 +0.088 (+110%)**.
 
+### Gemini "Complete Production Pack" — reviewed and rejected
+
+A user-supplied "Complete Production Pack" from Gemini (27.2 KB zip, 6 files,
+544 LOC) was reviewed for integration alongside the architecture work. **Result:
+rejected.** The pack imports non-existent functions (`execute_graph_rag_pipeline`),
+hardcodes fake API keys (`reg-prod-key-8891`) into source, references bug fixes
+for "line 142" of files that are 86 lines long, and wholesale-rewrites a 1700-LOC
+route into 20 LOC that returns generic exception strings. Classic LLM-rewrite
+hallucination. Full file-by-file analysis at
+[`docs/partners/regenold/GEMINI_PACK_REVIEW.md`](docs/partners/regenold/GEMINI_PACK_REVIEW.md).
+
+The real production hardening of this round came from the **parallel-agent
+correctness audit** (P0 scope.py false-positive blocker, P1 history-injection
+vulnerability, P1 cache-poisoning, P1 tree regex over-match) and the
+**architecture review** (sentence-picker length-gate + leading-paragraph bonus).
+
 ### Industry-benchmark research (parallel agent deliverable)
 
 A separate agent surveyed the industry EU AI Act benchmark space. Key finding:
