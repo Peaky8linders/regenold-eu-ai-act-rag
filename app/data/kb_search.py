@@ -89,6 +89,7 @@ this small.
 from __future__ import annotations
 
 import math
+import os
 import re
 from dataclasses import dataclass
 from functools import lru_cache
@@ -494,23 +495,69 @@ def top_articles_by_relevance(
     # Lazy import — the module imports numpy + optional turboquant at
     # build time. Skipping the import when the env-flag is off keeps the
     # zero-overhead promise for the deterministic baseline path.
+    fused = bm25_top
+    # Round 31 — TurboQuant additive dense fill (NumPy TF-IDF + SVD,
+    # Windows-friendly). Env-gated REGENOLD_TURBOQUANT_DENSE=1.
     try:
         from app.engines.turboquant_index import (  # noqa: PLC0415
             additive_dense_fill,
             dense_top_k,
             is_enabled as _dense_enabled,
         )
+        if _dense_enabled():
+            try:
+                dense_hits = dense_top_k(question, k=k * 2)
+            except Exception:  # noqa: BLE001 — never 500 the route
+                dense_hits = []
+            if dense_hits:
+                fused = additive_dense_fill(fused, dense_hits, k=k)
     except Exception:  # noqa: BLE001 — numpy missing on a stripped install
-        return bm25_top
-    if not _dense_enabled():
-        return bm25_top
+        pass
+
+    # Round 32 — Embeddings sentence-index additive recall (Layer A+D
+    # dense path). Aggregates sentence hits → article refs taking max
+    # cosine sim. Purely additive (never displaces a BM25 winner). Env-
+    # gated REGENOLD_EMBEDDINGS_INDEX=1 (default ON when assets are
+    # present; the asset-presence check inside ``is_available`` makes
+    # this a no-op on stripped installs).
     try:
-        dense_hits = dense_top_k(question, k=k * 2)
-    except Exception:  # noqa: BLE001 — never let a rerank bug 500 the route
-        return bm25_top
-    if not dense_hits:
-        return bm25_top
-    return additive_dense_fill(bm25_top, dense_hits, k=k)
+        from app.engines.embeddings_index import (  # noqa: PLC0415
+            is_available as _emb_available,
+            query as _emb_query,
+        )
+    except Exception:  # noqa: BLE001 — module guards its own import
+        return fused
+    if not _emb_available():
+        return fused
+    env_flag = os.getenv("REGENOLD_EMBEDDINGS_INDEX", "1").strip().lower()
+    if env_flag not in ("1", "true", "yes", "on"):
+        return fused
+    try:
+        emb_hits = _emb_query(question, top_k=k * 4, threshold=0.15)
+    except Exception:  # noqa: BLE001 — never 500 the route
+        return fused
+    if not emb_hits:
+        return fused
+    # Aggregate sentence hits → article-level candidates, max sim per article.
+    article_max: dict[str, float] = {}
+    for hit in emb_hits:
+        ref = hit.article_ref
+        if not ref:
+            continue
+        # Normalise to internal BM25 key shape (e.g. "Article 6" → "Art. 6").
+        if ref.startswith("Article "):
+            internal = "Art. " + ref[len("Article "):]
+        elif ref.startswith("Annex "):
+            internal = ref  # already in internal form
+        else:
+            internal = ref
+        prev = article_max.get(internal, -1.0)
+        if hit.similarity > prev:
+            article_max[internal] = hit.similarity
+    emb_refs = sorted(article_max.items(), key=lambda t: t[1], reverse=True)
+    if not emb_refs:
+        return fused
+    return additive_dense_fill(fused, emb_refs, k=k)
 
 
 @lru_cache(maxsize=1)
