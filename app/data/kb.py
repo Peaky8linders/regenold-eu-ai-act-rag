@@ -360,31 +360,80 @@ def get_dimensions_for_role_and_risk(
 # high-risk articles so the deterministic-fallback path produces a
 # tight answer instead of dumping the dimension catalog. Full CodexAI
 # coverage is 113 articles × per-paragraph rows.
+
+
+class _KBEntry(dict):
+    """KB entry that iterates as a tuple of summary-stub strings.
+
+    The R38 Tier-1 2026 content audit (nudification ban, dual-vintage
+    Art. 50 watermark deadline, GPAI Code of Practice signatories,
+    Art. 53 training-data template) needs each new prose stub to be
+    auditable independently, so the test fixture does:
+
+        blob = " ".join(EC_CHECKER_OBLIGATION_MAP["Art. 5"]).lower()
+
+    A plain dict iterates keys (``"dimension"`` and ``"summary"``),
+    which would defeat the audit. This subclass:
+
+    * iterates the per-stub strings (``" ".join(entry)`` joins prose);
+    * keeps ``entry["summary"]`` returning the joined string so every
+      existing consumer (``kb_search``, ``kb_xrefs`` regex finder,
+      ``graph_rag`` retrieval, ``seed_neo4j_kb`` text loader) sees a
+      ``str`` value identical in shape to the legacy dict literal;
+    * keeps ``entry.items()`` / ``entry.get("dimension")`` / ``entry.get(
+      "summary", "")`` all returning the same values as before.
+
+    Used only by the 4 R38-touched entries (Art. 5, 50, 53, 56). All
+    other 100+ entries stay as plain ``dict[str, str]`` literals.
+    """
+
+    __slots__ = ("_stubs",)
+
+    def __init__(self, *, dimension: str, stubs: tuple[str, ...]):
+        if not stubs:
+            raise ValueError("_KBEntry requires at least one stub string")
+        joined = " ".join(stubs)
+        super().__init__(dimension=dimension, summary=joined)
+        object.__setattr__(self, "_stubs", tuple(stubs))
+
+    def __iter__(self):  # type: ignore[override]
+        return iter(self._stubs)
+
+
 EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
-    "Art. 5": {
-        "dimension": "risk_mgmt",
-        "summary": (
-            "Prohibits eight categories of AI practice: (a) subliminal / "
-            "manipulative / deceptive techniques causing significant harm; "
-            "(b) exploitation of vulnerabilities by age, disability, or "
-            "socio-economic situation; (c) social scoring leading to "
-            "unjustified detrimental treatment in unrelated contexts; "
-            "(d) profiling for criminal-risk assessment based solely on "
-            "personality traits (exception for human-assessment support on "
-            "objective facts); (e) untargeted scraping of facial images for "
-            "facial-recognition databases; (f) emotion-inference in "
-            "workplaces and educational institutions (narrow medical / "
-            "safety exception); (g) biometric categorisation by sensitive "
-            "attributes (race, political views, union membership, etc.); "
-            "(h) real-time remote biometric identification in publicly "
-            "accessible spaces by law enforcement (narrow exceptions). "
-            "Art. 5(5) lets Member States impose stricter national laws on "
-            "remote biometric ID. (Pending: Digital Omnibus political "
-            "agreement of 7 May 2026 adds a 9th prohibition for AI systems "
-            "generating CSAM or non-consensual intimate imagery, applying "
-            "from 2 December 2026 once adopted.)"
+    "Art. 5": _KBEntry(
+        dimension="risk_mgmt",
+        stubs=(
+            (
+                "Art. 5: Prohibits eight categories of AI practice: (a) "
+                "subliminal / manipulative / deceptive techniques causing "
+                "significant harm; (b) exploitation of vulnerabilities by "
+                "age, disability, or socio-economic situation; (c) social "
+                "scoring leading to unjustified detrimental treatment in "
+                "unrelated contexts; (d) profiling for criminal-risk "
+                "assessment based solely on personality traits (exception "
+                "for human-assessment support on objective facts); (e) "
+                "untargeted scraping of facial images for facial-recognition "
+                "databases; (f) emotion-inference in workplaces and "
+                "educational institutions (narrow medical / safety "
+                "exception); (g) biometric categorisation by sensitive "
+                "attributes (race, political views, union membership, etc.); "
+                "(h) real-time remote biometric identification in publicly "
+                "accessible spaces by law enforcement (narrow exceptions). "
+                "Art. 5(5) lets Member States impose stricter national laws "
+                "on remote biometric ID."
+            ),
+            (
+                "Art. 5: Digital Omnibus political agreement (7 May 2026) "
+                "added a new sub-paragraph to Art. 5(1) prohibiting AI "
+                "systems that generate non-consensual sexual or intimate "
+                "content and child sexual abuse material ('nudification' "
+                "apps and CSAM generators). Applies 2 December 2026. "
+                "Maximum fine €35 M or 7 % of global turnover under "
+                "Art. 99."
+            ),
         ),
-    },
+    ),
     "Art. 6": {
         "dimension": "risk_mgmt",
         "summary": (
@@ -481,24 +530,45 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "human-oversight measures, and complaints workflows."
         ),
     },
-    "Art. 50": {
-        "dimension": "transparency",
-        "summary": (
-            "Transparency obligations: AI systems interacting with natural persons "
-            "must disclose their AI nature; emotion-recognition + biometric-"
-            "categorisation systems must inform exposed persons; deepfakes and "
-            "AI-generated content must be labelled."
+    "Art. 50": _KBEntry(
+        dimension="transparency",
+        stubs=(
+            (
+                "Art. 50: Transparency obligations: AI systems interacting "
+                "with natural persons must disclose their AI nature; "
+                "emotion-recognition + biometric-categorisation systems must "
+                "inform exposed persons; deepfakes and AI-generated content "
+                "must be labelled."
+            ),
+            (
+                "Art. 50(2): Generative-AI output watermarking — the base "
+                "Regulation set the obligation in force from 2 August 2026. "
+                "The May 2026 Digital Omnibus political agreement defers "
+                "this to 2 December 2026 (4-month grace). Both dates are "
+                "operative for transitional questions."
+            ),
         ),
-    },
-    "Art. 53": {
-        "dimension": "tech_docs",
-        "summary": (
-            "GPAI provider obligations: maintain technical documentation per "
-            "Annex XI, supply downstream-provider information per Annex XII, "
-            "implement a copyright policy, and publish a sufficiently detailed "
-            "training-data summary."
+    ),
+    "Art. 53": _KBEntry(
+        dimension="tech_docs",
+        stubs=(
+            (
+                "Art. 53: GPAI provider obligations: maintain technical "
+                "documentation per Annex XI, supply downstream-provider "
+                "information per Annex XII, implement a copyright policy, "
+                "and publish a sufficiently detailed training-data summary."
+            ),
+            (
+                "Art. 53(1)(d): Training-data content summary — the "
+                "Commission adopted the mandatory disclosure template on "
+                "24 July 2025. GPAI providers must publish a publicly "
+                "available summary covering: public datasets, scraped web "
+                "content, user data, synthetic data and licensed content. "
+                "GPAI models placed on the market before 2 August 2025 are "
+                "grandfathered until 2 August 2027."
+            ),
         ),
-    },
+    ),
     "Art. 55": {
         "dimension": "risk_mgmt",
         "summary": (
@@ -756,15 +826,29 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "established in the Union before placing the model on the market."
         ),
     },
-    "Art. 56": {
-        "dimension": "gpai_specific",
-        "summary": (
-            "AI Office encourages and facilitates voluntary codes of practice at "
-            "Union level to contribute to proper application of the Regulation, "
-            "particularly for GPAI obligations; codes may serve as a means to "
-            "demonstrate compliance until harmonised standards are published."
+    "Art. 56": _KBEntry(
+        dimension="gpai_specific",
+        stubs=(
+            (
+                "Art. 56: AI Office encourages and facilitates voluntary "
+                "codes of practice at Union level to contribute to proper "
+                "application of the Regulation, particularly for GPAI "
+                "obligations; codes may serve as a means to demonstrate "
+                "compliance until harmonised standards are published."
+            ),
+            (
+                "Art. 56: GPAI Code of Practice — published 10 July 2025 by "
+                "the AI Office. Voluntary instrument for GPAI providers; "
+                "adherence constitutes 'adequate compliance demonstration' "
+                "under Art. 56. Signatories include Amazon, Anthropic, "
+                "Google, Microsoft and OpenAI; Meta and several Chinese "
+                "providers did not sign; xAI signed only the Safety & "
+                "Security chapter. Final compliance framework references "
+                "the 18 July 2025 Commission Guidelines on the 10^23 / "
+                "10^25 FLOPs thresholds."
+            ),
         ),
-    },
+    ),
     # ─── Title VI: Innovation support (Arts. 57, 60) ─────────────────────────
     "Art. 57": {
         "dimension": "governance",

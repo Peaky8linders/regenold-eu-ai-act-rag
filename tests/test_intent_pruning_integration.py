@@ -85,7 +85,11 @@ def test_fria_intent_narrows_to_art_27(client) -> None:
         body = _post(client, "Who has to do a Fundamental Rights Impact Assessment?")
 
     refs = body["references"]
-    assert "Article 27" in refs
+    # R38 sub-point emitter may upgrade Article 27 → Article 27.1; accept
+    # either the base or any leaf form (the test's point is that the
+    # FRIA-anchored ref survived, not the exact granularity).
+    assert any(r == "Article 27" or r.startswith("Article 27.") for r in refs), \
+        f"Article 27 (or leaf) missing; got {refs}"
     assert "Annex III" not in refs, f"Annex III should be pruned; got {refs}"
 
 
@@ -138,8 +142,11 @@ def test_intent_does_not_override_explicit_anchor(client) -> None:
         body = _post(client, "What does Article 50 require for deepfake labels?")
 
     refs = body["references"]
-    # Explicit Art. 50 wins; intent's Art. 73 must NOT appear.
-    assert "Article 50" in refs
+    # Explicit Art. 50 wins; intent's Art. 73 must NOT appear. R38 sub-
+    # point emitter may upgrade Article 50 → Article 50.4 (deepfake
+    # leaf) — accept either form.
+    assert any(r == "Article 50" or r.startswith("Article 50.") for r in refs), \
+        f"Article 50 (or leaf) missing; got {refs}"
     assert "Article 73" not in refs
 
 

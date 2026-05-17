@@ -622,8 +622,49 @@ def top_articles_by_relevance(
     try:
         expansion = _g2(fused[:3])  # seed from top-3 BM25 winners
     except Exception:  # noqa: BLE001 — never let graph expand 500 the route
-        return fused
-    return _g2_fuse(fused, expansion, budget=k)
+        expansion = []
+    fused = _g2_fuse(fused, expansion, budget=k) if expansion else fused
+
+    # R39 / B6 — HippoRAG 2 Personalized PageRank over Neo4j. Strictly
+    # additive: PPR candidates fill remaining slots in `fused`, never
+    # displace BM25 winners. Env-gated REGENOLD_GRAPH_PPR=1; default OFF.
+    try:
+        from app.engines.graph_ppr import (  # noqa: PLC0415
+            is_ppr_available,
+            ppr_candidates,
+        )
+        if is_ppr_available():
+            seed_articles = []
+            for ref in fused[:3]:
+                if ref.startswith("Art. "):
+                    seed_articles.append(ref)
+            ppr_extra = ppr_candidates(seed_articles=seed_articles, top_k=k)
+            for extra_ref in ppr_extra:
+                if extra_ref not in fused and len(fused) < k * 2:
+                    fused.append(extra_ref)
+    except Exception:  # noqa: BLE001 — fail-soft
+        pass
+
+    # R39 / B7 — PathRAG relational-path retrieval over Neo4j. Same
+    # additive policy. Env-gated REGENOLD_PATH_RAG=1.
+    try:
+        from app.engines.path_rag import (  # noqa: PLC0415
+            is_pathrag_available,
+            pathrag_candidates,
+        )
+        if is_pathrag_available():
+            seed_articles = []
+            for ref in fused[:3]:
+                if ref.startswith("Art. "):
+                    seed_articles.append(ref)
+            path_extra = pathrag_candidates(seed_articles=seed_articles, top_k=k)
+            for extra_ref in path_extra:
+                if extra_ref not in fused and len(fused) < k * 2:
+                    fused.append(extra_ref)
+    except Exception:  # noqa: BLE001 — fail-soft
+        pass
+
+    return fused
 
 
 @lru_cache(maxsize=1)

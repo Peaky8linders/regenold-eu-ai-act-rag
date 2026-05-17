@@ -305,8 +305,11 @@ class TestQ3EndToEnd:
         body = r.json()
         refs = body.get("references", [])
         answer = body.get("answer", "")
-        # The explicit anchor named by the user must survive pruning.
-        assert "Annex III" in refs, f"Missing explicit anchor 'Annex III'; got {refs}"
+        # The explicit anchor named by the user must survive pruning. R38
+        # sub-point emitter may upgrade Annex III → Annex III.5 (doctor-
+        # patient transcription leaf) — accept either form.
+        assert any(r == "Annex III" or r.startswith("Annex III.") for r in refs), \
+            f"Missing explicit anchor 'Annex III' (or leaf); got {refs}"
         # Conciseness: must respect MAX_REFERENCES cap.
         assert len(refs) <= MAX_REFERENCES
         # Cross-references should ground the verdict in the answer

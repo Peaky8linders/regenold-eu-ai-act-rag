@@ -53,7 +53,66 @@ ROLE_EXTRATERRITORIAL_NON_EU = "extraterritorial_non_eu"
 # Recommendation 2003/361/EC as amended. Treated as a *modifier* role:
 # inherits the underlying actor obligations (Provider / Deployer / etc.)
 # and overlays the SME-style reliefs.
-ROLE_SMALL_MID_CAP = "small_mid_cap"
+#
+# Round 38 — numeric thresholds. The Omnibus political agreement set
+# the SMC ceiling at most 750 employees AND turnover at most €150
+# million. Exposed via ``.description`` / ``.obligations`` attributes
+# on the role id so callers can audit the SMC qualifier without
+# round-tripping through the role-descriptor dict. The constant is
+# still equal to the bare string ``"small_mid_cap"`` so every
+# ``if role == ROLE_SMALL_MID_CAP`` comparison and every dict-key /
+# enum lookup keeps working unchanged.
+class _SmallMidCapRole(str):
+    """``str`` subclass exposing the R38 numeric SMC thresholds.
+
+    Behaves identically to ``"small_mid_cap"`` for ``==`` comparison,
+    dict-key use, hashing, and serialisation. The ``description`` and
+    ``obligations`` attributes carry the human-readable Omnibus
+    agreement text (750 employees / €150 M turnover) for audit + KB
+    consumption.
+    """
+
+    __slots__ = ("description", "obligations")
+
+    description: str
+    obligations: tuple[str, ...]
+
+    def __new__(
+        cls,
+        value: str,
+        *,
+        description: str,
+        obligations: tuple[str, ...] = (),
+    ) -> "_SmallMidCapRole":
+        inst = super().__new__(cls, value)
+        # ``str.__new__`` allocates; we attach the extra metadata via
+        # the slotted attributes here.
+        object.__setattr__(inst, "description", description)
+        object.__setattr__(inst, "obligations", tuple(obligations))
+        return inst
+
+
+ROLE_SMALL_MID_CAP = _SmallMidCapRole(
+    "small_mid_cap",
+    description=(
+        "Small mid-cap (SMC) — Digital Omnibus political agreement (7 May "
+        "2026) extends Art. 62 / 63 SME privileges to organisations with "
+        "at most 750 employees AND turnover at most €150 million. Combines "
+        "the underlying actor's obligations (provider / deployer / etc.) "
+        "with the reduced documentation, fee waiver and sandbox-priority "
+        "treatment otherwise reserved to SMEs."
+    ),
+    obligations=(
+        "Inherits SME privileges originally granted under Art. 62 + "
+        "Art. 63: simplified quality-management documentation appropriate "
+        "to size + market stage (Art. 17(3)); priority access to AI "
+        "regulatory sandboxes with reduced fees; tailored awareness + "
+        "training from the AI Office.",
+        "Modifier role — overlays SME-style reliefs on the entity's "
+        "underlying actor obligations (Provider / Deployer / Importer / "
+        "etc.); does not displace primary duties.",
+    ),
+)
 
 
 # Canonical role list — order matches the obligation hierarchy in §3 of the

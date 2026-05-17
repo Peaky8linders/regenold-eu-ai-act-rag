@@ -159,6 +159,24 @@ class RegenoldAskResponse(BaseModel):
 # while leaving headroom for queries that genuinely span 3-4 articles.
 MAX_REFERENCES = 5
 
+# R38 Issue A3: per-intent reference budget. Driven by the 8-class
+# question-type classifier in app/engines/sentence_index.py. The
+# Regenold rubric scores ref-conciseness (count vs gold) so over-citing
+# kills score. Definitional gold typically has 1 ref; classification
+# 2-3; scenarios 5-10.
+INTENT_REF_BUDGET: dict[str, int] = {
+    "DEFINITION":  2,
+    "BOOLEAN":     3,
+    "DURATION":    2,
+    "DATE":        2,
+    "NUMERIC":     2,
+    "LIST":        5,
+    "METHOD":      4,
+    "ROLE":        4,
+    "PURPOSE":     3,
+    "DESCRIPTION": 8,  # default for scenario-shape and long-form
+}
+
 # Spec: "Short (3-4 sentences max)" answer. We cap at 3 sentences
 # (the lower end of the spec range) and truncate post-hoc so we never
 # ship a long LLM ramble even when the engine doesn't honour an in-prompt
