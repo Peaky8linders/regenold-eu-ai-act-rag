@@ -650,21 +650,27 @@ def top_articles_by_relevance(
     # queries (NOT davidath, which BM25 already saturates). Defensive:
     # never raises, capped at 50 ms timeout, existence-gated against
     # ARTICLE_EXISTENCE.
+    # R44: changed from ``return fused`` early-exit to fall-through so the
+    # R44 definition-graph expansion below can fire even when Neo4j is
+    # offline / unseeded. Graph-2hop becomes a no-op (its public API is
+    # already safe to skip), and the route continues into PPR / PathRAG /
+    # R44 with the BM25-only ``fused`` list.
+    _g2_ok = False
     try:
         from app.engines.graph_expand_2hop import (  # noqa: PLC0415
             expand_2hop as _g2,
             fuse_with_kb_xrefs as _g2_fuse,
             is_enabled as _g2_enabled,
         )
+        _g2_ok = _g2_enabled()
     except Exception:  # noqa: BLE001 — neo4j missing on a stripped install
-        return fused
-    if not _g2_enabled():
-        return fused
-    try:
-        expansion = _g2(fused[:3])  # seed from top-3 BM25 winners
-    except Exception:  # noqa: BLE001 — never let graph expand 500 the route
-        expansion = []
-    fused = _g2_fuse(fused, expansion, budget=k) if expansion else fused
+        _g2_ok = False
+    if _g2_ok:
+        try:
+            expansion = _g2(fused[:3])  # seed from top-3 BM25 winners
+        except Exception:  # noqa: BLE001 — never let graph expand 500 the route
+            expansion = []
+        fused = _g2_fuse(fused, expansion, budget=k) if expansion else fused
 
     # R39 / B6 — HippoRAG 2 Personalized PageRank over Neo4j. Strictly
     # additive: PPR candidates fill remaining slots in `fused`, never
@@ -702,6 +708,18 @@ def top_articles_by_relevance(
             for extra_ref in path_extra:
                 if extra_ref not in fused and len(fused) < k * 2:
                     fused.append(extra_ref)
+    except Exception:  # noqa: BLE001 — fail-soft
+        pass
+
+    # R44 — definition-graph recursive resolution. When a surfaced article's
+    # text uses an Art. 3(N) defined term, add Art. 3 as a citation. Strictly
+    # additive; capped at max_added=3 so we don't over-cite the definitions
+    # article on every multi-cite question.
+    try:
+        from app.engines.definition_expand import (  # noqa: PLC0415
+            expand_with_definitions,
+        )
+        fused = expand_with_definitions(fused, max_added=3)
     except Exception:  # noqa: BLE001 — fail-soft
         pass
 

@@ -38,7 +38,14 @@ from app.config import settings
 from app.main import app
 from app.rate_limit import limiter
 
-from evals.bench import aireg_bench, holdout, metrics, regenold_probe
+from evals.bench import (
+    aireg_bench,
+    citation_faithfulness,
+    holdout,
+    metrics,
+    refusal_probe,
+    regenold_probe,
+)
 
 
 _EVAL_KEY = "regenold-unbiased-eval-key"
@@ -214,6 +221,85 @@ def _run_probe(
     return regenold_probe.score_regenold_probe(items, agent)
 
 
+# ── Citation faithfulness (davidath hold-out) ────────────────────────────
+
+
+def _run_citation_faithfulness(
+    client: TestClient,
+    qa_limit: int | None,
+    scenario_limit: int | None,
+) -> dict[str, Any]:
+    """Score citation faithfulness on the davidath hold-out slice.
+
+    Same items as ``_run_holdout`` (so we don't double-pay the wire
+    latency in production), but here we ignore gold answers + gold
+    refs entirely and only score whether the wire's OWN answer prose
+    is grounded in the wire's OWN cited references.
+
+    Returns a payload with both per-source summaries and an overall
+    average — same shape conventions as the existing
+    ``davidath_holdout`` block so downstream consumers can index by
+    ``qa`` / ``scenarios`` / ``overall``.
+    """
+    qa_items = holdout.load_holdout_qa()
+    sc_items = holdout.load_holdout_scenarios()
+    if qa_limit is not None:
+        qa_items = qa_items[:qa_limit]
+    if scenario_limit is not None:
+        sc_items = sc_items[:scenario_limit]
+
+    qa_scores: list[citation_faithfulness.FaithfulnessScore] = []
+    sc_scores: list[citation_faithfulness.FaithfulnessScore] = []
+
+    for item in qa_items:
+        q = item.get("question") or ""
+        body, _ = _ask(client, q)
+        score = citation_faithfulness.score_citation_faithfulness(
+            answer=body.get("answer") or "",
+            references=body.get("references") or [],
+        )
+        qa_scores.append(score)
+
+    for item in sc_items:
+        q = _scenario_to_question(item)
+        body, _ = _ask(client, q)
+        score = citation_faithfulness.score_citation_faithfulness(
+            answer=body.get("answer") or "",
+            references=body.get("references") or [],
+        )
+        sc_scores.append(score)
+
+    return {
+        "qa": citation_faithfulness.aggregate(qa_scores),
+        "scenarios": citation_faithfulness.aggregate(sc_scores),
+        "overall": citation_faithfulness.aggregate(qa_scores + sc_scores),
+        "qa_n_run": len(qa_items),
+        "scenarios_n_run": len(sc_items),
+    }
+
+
+# ── Refusal correctness (hand-crafted probe) ─────────────────────────────
+
+
+def _build_refusal_agent(client: TestClient):
+    """Wrap the wire as an ``agent_fn`` callable for the refusal probe."""
+
+    def _agent(item: dict[str, Any]) -> dict[str, Any]:
+        body, _ = _ask(client, item.get("question", ""))
+        return {
+            "answer": body.get("answer") or "",
+            "references": body.get("references") or [],
+        }
+
+    return _agent
+
+
+def _run_refusal(client: TestClient) -> dict[str, Any]:
+    items = refusal_probe.load_refusal_probe()
+    agent = _build_refusal_agent(client)
+    return refusal_probe.score_refusal_correctness(items, agent)
+
+
 # ── Top-level run() ──────────────────────────────────────────────────────
 
 
@@ -237,6 +323,8 @@ def run(
 
     prev_key = settings.regenold.api_key
     settings.regenold.api_key = SecretStr(_EVAL_KEY)
+    citation_block: dict[str, Any] = {"error": "not_run"}
+    refusal_block: dict[str, Any] = {"error": "not_run"}
     try:
         with TestClient(
             app, headers={"X-Regenold-Api-Key": _EVAL_KEY}
@@ -244,6 +332,19 @@ def run(
             davidath_block = _run_holdout(client, qa_limit, scenario_limit)
             aireg_block = _run_aireg(client, aireg_limit, source="fixture")
             probe_block = _run_probe(client, probe_limit)
+            # New R44 sections — defensive so a regression in one
+            # doesn't poison the existing davidath / aireg / probe
+            # numbers.
+            try:
+                citation_block = _run_citation_faithfulness(
+                    client, qa_limit, scenario_limit
+                )
+            except Exception as exc:  # noqa: BLE001
+                citation_block = {"error": f"{type(exc).__name__}: {exc}"[:240]}
+            try:
+                refusal_block = _run_refusal(client)
+            except Exception as exc:  # noqa: BLE001
+                refusal_block = {"error": f"{type(exc).__name__}: {exc}"[:240]}
     finally:
         settings.regenold.api_key = prev_key
 
@@ -256,6 +357,8 @@ def run(
         "davidath_holdout": davidath_block,
         "aireg_bench": aireg_block,
         "regenold_probe": probe_block,
+        "citation_faithfulness": citation_block,
+        "refusal_correctness": refusal_block,
     }
 
     sidecar_path = out_dir / f"unbiased-{label}.json"
@@ -332,6 +435,63 @@ def _format_summary(payload: dict[str, Any]) -> str:
             f"(canon={q.get('ref_strict_canonical','-')}/"
             f"para={q.get('ref_strict_paraphrase','-')})  "
             f"AnsOverlap={q.get('ans_overlap','-')}"
+        )
+
+    # Citation Faithfulness (R44)
+    cf = payload.get("citation_faithfulness", {}) or {}
+    lines.append("")
+    if "error" in cf:
+        lines.append(f"[CITATION FAITHFULNESS] error={cf.get('error','?')}")
+    else:
+        overall = cf.get("overall") or {}
+        qa = cf.get("qa") or {}
+        sc = cf.get("scenarios") or {}
+        n = overall.get("n", 0)
+        lines.append(
+            f"[CITATION FAITHFULNESS]  n={n} davidath-holdout"
+        )
+        lines.append(
+            f"  Recall={overall.get('citation_recall','-')}  "
+            f"Precision={overall.get('citation_precision','-')}  "
+            f"F1={overall.get('citation_f1','-')}  "
+            f"n_supported={overall.get('n_supported_total','-')}/"
+            f"{overall.get('n_sentences_total','-')}  "
+            f"n_used_refs={overall.get('n_used_refs_total','-')}"
+        )
+        for src_name, block in (("qa", qa), ("scenarios", sc)):
+            if not block or not block.get("n"):
+                continue
+            lines.append(
+                f"  {src_name.upper():<10} n={block.get('n','-')}  "
+                f"Recall={block.get('citation_recall','-')}  "
+                f"Precision={block.get('citation_precision','-')}  "
+                f"F1={block.get('citation_f1','-')}"
+            )
+
+    # Refusal Correctness (R44)
+    rc = payload.get("refusal_correctness", {}) or {}
+    lines.append("")
+    if "error" in rc:
+        lines.append(f"[REFUSAL CORRECTNESS] error={rc.get('error','?')}")
+    else:
+        n = rc.get("n", 0)
+        n_oos = rc.get("n_out_of_scope", 0)
+        n_is = rc.get("n_in_scope", 0)
+        lines.append(
+            f"[REFUSAL CORRECTNESS]  n={n} hand-crafted probe"
+        )
+        lines.append(
+            f"  Refusal accuracy={rc.get('refusal_accuracy','-')}  "
+            f"(correct refusals {rc.get('correct_refusals','-')} out of {n_oos})"
+        )
+        lines.append(
+            f"  In-scope queries correctly accepted: "
+            f"{rc.get('correct_acceptances','-')}/{n_is}  "
+            f"(false refusals={rc.get('false_refusals','-')})"
+        )
+        lines.append(
+            f"  Overall accuracy={rc.get('overall_accuracy','-')}  "
+            f"(false acceptances={rc.get('false_acceptances','-')})"
         )
 
     lines.append("")

@@ -1470,6 +1470,58 @@ _ANCHOR_DISQUALIFIERS: tuple[tuple[str, re.Pattern[str]], ...] = (
             re.IGNORECASE,
         ),
     ),
+    # R44 — "criminal defense / civil defense / legal defense in {country}" —
+    # legal-adjacent query, not the Art. 2(3) military-defense scope
+    # carve-out. The "defense" anchor in scope.py was intended to catch
+    # questions about the Art. 2 military/national-defense exclusion;
+    # consumer queries about legal defense in a national jurisdiction
+    # tripped it (R44 refusal-probe finding). Disqualifier matches when
+    # "defense" co-occurs with a legal-context modifier OR a country-
+    # locator phrase ("in Germany" / "in France" / "in the US").
+    (
+        "defense",
+        re.compile(
+            r"(?:"
+            # Adjective modifier — civil / criminal / legal / contract.
+            r"(?:civil|criminal|legal|contract|tort|patent|copyright|"
+            r"product\s+liability)\s+defense"
+            r"|"
+            # Country-locator AFTER "defense" — "defense in {country}".
+            r"defense\s+(?:[^.!?]{0,40}?)\b"
+            r"(?:in\s+(?:germany|france|spain|italy|the\s+(?:us|uk|"
+            r"united\s+states|united\s+kingdom)|"
+            r"poland|the\s+netherlands|belgium|ireland|portugal|"
+            r"sweden|finland|denmark|austria|greece|romania|hungary|"
+            r"czech\s+republic|slovakia|bulgaria|croatia|cyprus|"
+            r"estonia|latvia|lithuania|luxembourg|malta|slovenia)|"
+            # Lawyer / court / case-law context.
+            r"lawyer|attorney|court\s+case|case\s+law|prosecutor|"
+            r"barrister|solicitor|judge|defendant|plaintiff|"
+            r"trial|sentencing|appeal)\b"
+            r")",
+            re.IGNORECASE,
+        ),
+    ),
+    # R44 — "defence in {country} / legal defence" — UK-spelling variant
+    # of the criminal-defense disqualifier. Same pattern as the "defense"
+    # entry above with the alternate spelling.
+    (
+        "defence",
+        re.compile(
+            r"(?:"
+            r"(?:civil|criminal|legal|contract|tort|patent|copyright|"
+            r"product\s+liability)\s+defence"
+            r"|"
+            r"defence\s+(?:[^.!?]{0,40}?)\b"
+            r"(?:in\s+(?:germany|france|spain|italy|the\s+(?:us|uk|"
+            r"united\s+states|united\s+kingdom)|"
+            r"poland|the\s+netherlands|belgium|ireland|portugal)|"
+            r"lawyer|attorney|court\s+case|case\s+law|prosecutor|"
+            r"barrister|solicitor|judge|defendant|plaintiff)\b"
+            r")",
+            re.IGNORECASE,
+        ),
+    ),
 )
 
 

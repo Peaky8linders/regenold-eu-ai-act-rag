@@ -61,9 +61,18 @@ class TestBM25Search:
         assert "Art. 19" in hits, f"Expected Art. 19 in BM25 hits; got {hits}"
 
     def test_returns_at_most_k_results(self) -> None:
+        # R44: the BM25 head respects ``k`` strictly, but the
+        # definition-graph recursive resolution may append up to 3
+        # Art. 3 sub-citations to the tail (capped at ``max_added=3``).
+        # Verify the BM25-only head is exactly ``k`` and the tail is
+        # only Art. 3 sub-citations.
         from app.data.kb_search import top_articles_by_relevance
         hits = top_articles_by_relevance("AI documentation", k=2, min_score=0.0)
-        assert len(hits) <= 2
+        # Head respects ``k``; tail is Art. 3 sub-citations only.
+        non_art3 = [r for r in hits if not r.startswith("Art. 3.")]
+        assert len(non_art3) <= 2, f"BM25 head exceeded k=2: {hits}"
+        # Overall cap: k + R44 max_added.
+        assert len(hits) <= 2 + 3, f"R44 expansion exceeded budget: {hits}"
 
     def test_min_score_filters_noise(self) -> None:
         """A high threshold drops marginal hits."""
