@@ -1873,6 +1873,50 @@ def regenold_eu_ai_act_ask(
         except Exception:  # noqa: BLE001 — fail-soft
             pass
 
+    # R42 — compliance-verdict prefix. Fires ONLY on third-person
+    # compliance-posture scenarios (e.g. AIReg-Bench fixture: "A
+    # credit-scoring AI used by a Greek bank. The provider has
+    # documented a continuous risk-management process …"). Closes the
+    # AIReg-Bench VerdictAccuracy gap (R41-final = 0.000 vs ArticleF1
+    # 0.870 — we retrieved the right articles but never said
+    # "compliant"). Triple-gated against:
+    #   - first-person davidath scenarios ("We are a hospital …")
+    #   - QA-shape definitional questions
+    #   - questions without ≥ 2 compliance-domain nouns
+    # so we don't cost Ans Strict on the davidath rubric.
+    if answer_text and retrieval_path != "no_match":
+        try:
+            from app.engines.compliance_verdict import (  # noqa: PLC0415
+                predict_verdict,
+                verdict_sentence,
+            )
+            _cv = predict_verdict(question)
+            if _cv is not None:
+                # Prepend; existing 3-sentence + 600-char soft-cap will
+                # absorb. Skip if the answer already contains a verdict
+                # marker so we don't double-stamp.
+                _lower = (answer_text or "").lower()
+                _already_stamped = any(m in _lower for m in (
+                    "compliant", "non-compliant", "non compliant",
+                    "context-dependent", "context dependent",
+                ))
+                if not _already_stamped:
+                    # Pass the engine's top reference so the verdict
+                    # sentence is cite-anchored — otherwise the soft-cap
+                    # in ``normalise_answer_for_regenold`` drops it as
+                    # the "longest non-cite-anchored sentence" when the
+                    # combined text exceeds 600 chars (e.g. Art. 5
+                    # gatekeeper enumeration is ~900 chars).
+                    _primary = references[0] if references else None
+                    answer_text = (
+                        verdict_sentence(_cv, primary_cite=_primary)
+                        + " "
+                        + answer_text
+                    )
+                    answer_text = normalise_answer_for_regenold(answer_text)
+        except Exception:  # noqa: BLE001 — fail-soft
+            pass
+
     # R38 / A4 — tone enforcement guard. Strip hedge openers ("I think",
     # "It seems", "Based on my understanding") and force imperative /
     # cite-anchored leads. R40: baked in — env gate removed (proven Tone

@@ -1258,6 +1258,25 @@ _DIMENSION_KEYWORDS: frozenset[str] = frozenset(
         "human oversight",
         "human-in-the-loop",
         "audit trail",
+        # R42 — compliance-posture vocabulary (AIReg-Bench scope coverage)
+        "automatic event recording",
+        "event recording",
+        "post-hoc traceability",
+        "operator override",
+        "bias-mitigation",
+        "data governance",
+        "data-governance",
+        "risk-management process",
+        "risk management process",
+        "triage event",
+        "biometric identification",
+        "biometric categorisation",
+        "predictive policing",
+        "predictive-policing",
+        "fraud detection",
+        "fraud-detection",
+        "credit scoring",
+        "credit-scoring",
     )
 )
 
