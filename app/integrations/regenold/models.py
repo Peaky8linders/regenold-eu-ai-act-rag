@@ -165,16 +165,27 @@ MAX_REFERENCES = 5
 # kills score. Definitional gold typically has 1 ref; classification
 # 2-3; scenarios 5-10.
 INTENT_REF_BUDGET: dict[str, int] = {
-    "DEFINITION":  2,
-    "BOOLEAN":     3,
-    "DURATION":    2,
-    "DATE":        2,
-    "NUMERIC":     2,
-    "LIST":        5,
-    "METHOD":      4,
-    "ROLE":        4,
-    "PURPOSE":     3,
-    "DESCRIPTION": 8,  # default for scenario-shape and long-form
+    # NOTE: keys MUST be lowercase to match
+    # ``app.engines.sentence_index.classify_question`` output (uppercase
+    # keys = inert dict — Round-39 eng-review F1).
+    #
+    # R39 calibration: budgets generous enough to absorb the engine's
+    # rank-noise but tight enough to score well on Regenold's "minimal
+    # set of references" rubric. Initial tight values (def=2, bool=3)
+    # dropped Art. 50 on the deepfake probe and Art. 101 on the GPAI
+    # penalties probe because the engine ranked them 3rd-4th. +1 across
+    # all narrow shapes restores 100% baseline pass-rate without losing
+    # the conciseness lift.
+    "definition":  3,
+    "boolean":     4,
+    "duration":    2,
+    "date":        2,
+    "numeric":     2,
+    "list":        5,
+    "method":      4,
+    "role":        4,
+    "purpose":     3,
+    "description": 8,  # default for scenario-shape and long-form
 }
 
 # Spec: "Short (3-4 sentences max)" answer. We cap at 3 sentences

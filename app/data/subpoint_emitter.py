@@ -236,4 +236,36 @@ def upgrade_references(
                 if leaf not in seen:
                     refs_out.append(leaf)
                     seen.add(leaf)
+
+    # R39 eng-review F3: INJECT missing topic-mapped leaves. The pass
+    # above only UPGRADES base refs the engine already surfaced — but if
+    # the engine missed the base entirely (e.g. ``Annex III`` for a
+    # ``physician-patient dialogue`` question that BM25 doesn't catch),
+    # the leaf can never appear. So: for every topic that matches the
+    # question, emit any leaf whose base is NOT yet represented in the
+    # candidate set. Strictly additive — never displaces an engine
+    # winner. Caps total leaves injected at 2 to avoid over-citation.
+    bases_present = {_base_of(r) for r in refs_out}
+    injected = 0
+    for pattern, candidates in SUBPOINT_TOPIC_MAP:
+        if injected >= 2:
+            break
+        if not pattern.search(question):
+            continue
+        for leaf, conf in candidates:
+            if injected >= 2:
+                break
+            # Only inject leaves at confidence >= 0.8 — ambiguous
+            # multi-leaf topics already get diluted ranks, and we don't
+            # want to over-inject speculative leaves the engine never
+            # voted for.
+            if conf < 0.8:
+                continue
+            base = _base_of(leaf)
+            if base in bases_present or leaf in seen:
+                continue
+            refs_out.append(leaf)
+            seen.add(leaf)
+            bases_present.add(base)
+            injected += 1
     return refs_out

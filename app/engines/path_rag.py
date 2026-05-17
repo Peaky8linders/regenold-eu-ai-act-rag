@@ -58,14 +58,19 @@ def prune_redundant_paths(
 
 _ART_NUM_RE = re.compile(r"Art(?:icle|\.)\s+(\d+)", re.I)
 
+# R39 eng-review F2: the previous Cypher used `nodes(r)` on a
+# *relationship list* from a variable-length pattern, which is a type
+# error in Cypher (`nodes()` requires a Path). Bind a path variable
+# `p` and call `nodes(p)` instead. Also: seeder stores `Article.number`
+# as STRING, so the parameter must be `list[str]` (eng-review F1).
 _PATHS_CYPHER = """
-MATCH (a:Article)-[r:CROSS_REFERENCES*1..2]-(b:Article)
+MATCH p = (a:Article)-[r:CROSS_REFERENCES*1..2]-(b:Article)
 WHERE a.number IN $seed_nums AND b.number IS NOT NULL
   AND a.number <> b.number
 RETURN
   a.number AS src,
-  [n IN nodes(r) | n.number] AS path_nodes,
-  length(r) AS hops
+  [n IN nodes(p) | n.number] AS path_nodes,
+  length(p) AS hops
 ORDER BY hops, b.number LIMIT $cap
 """
 
@@ -80,14 +85,15 @@ def pathrag_candidates(
     """
     if not is_pathrag_available():
         return []
-    seed_nums: list[int] = []
+    # R39 eng-review F1: keep numbers as STRINGS — Article.number is
+    # stored as string in Neo4j by the seeder, so int comparison fails.
+    seed_nums: list[str] = []
     for s in seed_articles or []:
         m = _ART_NUM_RE.search(s)
         if m:
-            try:
-                seed_nums.append(int(m.group(1)))
-            except ValueError:
-                continue
+            num_str = m.group(1)
+            if num_str and num_str not in seed_nums:
+                seed_nums.append(num_str)
     if not seed_nums:
         return []
     client = get_graph_client()

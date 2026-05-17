@@ -1437,7 +1437,14 @@ def regenold_eu_ai_act_ask(
         candidates, seen_refs, scope.anchor_articles, live_user_message
     )
 
-    candidates.sort(key=_reference_rank)
+    # R39 eng-review: stable sort with engine position as the implicit
+    # tiebreak. ``_reference_rank`` returns (type, -specificity, formatted)
+    # — the last field's alphabetical tiebreak landed ``Article 109`` before
+    # ``Article 3`` (lex order). The original engine ordering is
+    # relevance-ranked, so we want it preserved within the same type +
+    # specificity bucket. Solution: rank by (type, -specificity) only,
+    # and rely on Python's stable sort to keep engine order for ties.
+    candidates.sort(key=lambda r: _reference_rank(r)[:2])
     # Smallest-cover pass: drop parent references when a more-specific
     # child is also in the set. ``Article 13`` vs. ``Article 13.2`` —
     # the parent adds no information for the reader. Applied AFTER the
@@ -1603,12 +1610,26 @@ def regenold_eu_ai_act_ask(
     # the binary scenario / QA split with an 8-way per-intent budget
     # keyed off sentence_index.classify_question. Definitional gold has
     # 1-2 refs; classification 2-3; scenario 5-8. Env-gated; default ON.
-    if os.getenv("REGENOLD_REFBUDGET_PER_INTENT", "1") in ("1", "true", "yes", "on"):
+    # R39 eng-review F8: take MAX of scenario-10 and per-intent budget
+    # so we never silently regress R31.1's scenario lift when a
+    # description-shape scenario falls into the per-intent table.
+    # R39: default OFF after eng-review found per-intent budgets
+    # regressed transparency_deepfake + omnibus_art101_gpai eval
+    # scenarios because the engine's rank-ordering doesn't always put
+    # gold at position 1-2. Operators can opt in via the env flag once
+    # they've calibrated budgets against their bench.
+    if os.getenv("REGENOLD_REFBUDGET_PER_INTENT", "0") in ("1", "true", "yes", "on"):
         try:
             from app.engines.sentence_index import classify_question  # noqa: PLC0415
             from app.integrations.regenold.models import INTENT_REF_BUDGET  # noqa: PLC0415
             _qtype = classify_question(question)
-            _effective_max_refs = INTENT_REF_BUDGET.get(_qtype, _effective_max_refs)
+            _intent_budget = INTENT_REF_BUDGET.get(_qtype)
+            if _intent_budget is not None:
+                _effective_max_refs = (
+                    max(_effective_max_refs, _intent_budget)
+                    if _is_scenario_question
+                    else _intent_budget
+                )
         except Exception:  # noqa: BLE001 — fail-soft
             pass
     if _is_scenario_question:
@@ -1617,6 +1638,17 @@ def regenold_eu_ai_act_ask(
             budget=_effective_max_refs,
             question=question,
         )
+
+    # R39 eng-review F2 — re-collapse parents AFTER subpoint emit +
+    # gatekeeper + CLARA injection + graphrag expand. Each of those
+    # passes can re-introduce a parent ref (e.g. gatekeeper prepends
+    # BOTH ``Article 5`` AND ``Article 5.1.f``; CLARA injects base
+    # articles; the engine expand returns parents alongside leaves).
+    # The initial collapse at the top of this section only covers what
+    # the engine surfaced; without this second pass the wire ships
+    # ``[Article 5, Article 5.1.f]`` which costs Ref Conciseness on the
+    # Regenold "minimal set of references" rubric.
+    candidates = _collapse_parent_refs(candidates)
 
     references: list[str] = candidates[:_effective_max_refs]
 
@@ -1717,7 +1749,13 @@ def regenold_eu_ai_act_ask(
     if (
         retrieval_path != "no_match"
         and answer_text
-        and os.getenv("REGENOLD_ANSWER_TEMPLATE", "1") in ("1", "true", "yes", "on")
+        # R39: default OFF. The R38 case-mismatch bug (eng-review F1)
+        # made this dict-lookup silently no-op, so the original R38
+        # bench numbers were achieved WITHOUT the template applied.
+        # Fixing the case mismatch revealed that the template over-
+        # trims (davidath full bench Ans Strict 0.30 -> 0.15). Opt in
+        # via env after re-tuning length caps per gold-distribution.
+        and os.getenv("REGENOLD_ANSWER_TEMPLATE", "0") in ("1", "true", "yes", "on")
     ):
         try:
             from app.engines.sentence_index import classify_question  # noqa: PLC0415
