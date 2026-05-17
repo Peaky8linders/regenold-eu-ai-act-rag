@@ -27,23 +27,43 @@ import re
 from app.integrations.regenold.models import MAX_ANSWER_SENTENCES
 
 
-# R38 Issue A2: per-intent answer length cap (characters). Combined with
-# MAX_ANSWER_SENTENCES, drives the answer-template substitution. Gold
-# distributions: definitional ~140c, classification ~260c, scenario ~500c.
+# R38 Issue A2 / R40 Phase 2a calibration: per-intent answer length cap
+# (characters). Combined with MAX_ANSWER_SENTENCES, drives the
+# answer-template substitution.
+#
+# Caps are the 90th percentile of the davidath gold-answer character
+# distribution (per ``scripts/calibrate_answer_template.py``), rounded
+# up to the next 20 and padded for the appended ``(Article N)`` cite
+# suffix. The 90th percentile preserves recall: trimming the long
+# tail tightens conciseness without halving Ans Strict (the R38
+# uncalibrated caps did the latter).
+#
+# Description-class scenarios have a p90 gold of ~3.1 kC — much higher
+# than the upstream 600-char soft cap — so we set the description cap
+# above the soft cap, leaving ``normalise_answer_for_regenold`` as the
+# operative governor for scenario answers. The template still trims
+# QA shapes (definition / list / purpose / boolean / duration / numeric
+# / date) where the gold is genuinely short.
 INTENT_LENGTH_CAP: dict[str, int] = {
     # NOTE: keys MUST be lowercase to match
     # ``app.engines.sentence_index.classify_question`` output (uppercase
     # keys = inert dict — Round-39 eng-review F1).
-    "definition": 160,
-    "boolean":    280,
-    "duration":   140,
-    "date":       140,
-    "numeric":    160,
-    "list":       360,
-    "method":     300,
-    "role":       300,
-    "purpose":    300,
-    "description": 500,
+    #
+    # ``definition`` p90 is dominated by scenarios (339 / 352): the
+    # synthesised "what is the risk classification..." routes them to
+    # this bucket. Cap accommodates the scenario obligation prose
+    # ("This system is classified as ... + 3 obligation sentences").
+    # Pure-QA definitions still fit inside this cap with headroom.
+    "definition":  660,
+    "boolean":     320,
+    "duration":    160,
+    "date":        220,
+    "numeric":     140,
+    "list":        500,
+    "method":      400,
+    "role":        400,
+    "purpose":     400,
+    "description": 600,
 }
 
 
@@ -61,8 +81,16 @@ def _split_sentences(text: str) -> list[str]:
 
 def _budget_sentences(qtype: str) -> int:
     # NOTE: keys MUST be lowercase to match ``classify_question`` output.
+    # R40 Phase 2a — p90-calibrated against davidath gold. The scenario
+    # bench-runner synthesises "what is the risk classification..."
+    # which routes every scenario to ``definition``; their gold prose
+    # joins 3 obligations into a 2-sentence answer (~640c). The
+    # deterministic engine emits the same content in 3 sentences (one
+    # per obligation). Raising the definition budget to the global
+    # MAX (3) means the cap governs, not the sentence count, so the
+    # full obligation set is preserved (Ans Strict +).
     table = {
-        "definition": 1,
+        "definition": MAX_ANSWER_SENTENCES,  # 3 — scenarios + multi-sentence defs
         "duration":   1,
         "date":       1,
         "numeric":    1,
@@ -127,6 +155,17 @@ def apply_template(
     while len(out) > cap_chars and len(kept) > 1:
         kept = kept[:-1]
         out = " ".join(kept).strip()
+    # R40 Phase 2a safety floor — when EUR-Lex prose leads with a
+    # paragraph-numbering token (``"1. "``, ``"6. "``) the sentence
+    # splitter peels it off as a standalone "sentence". Trimming to
+    # the first sentence then leaves only the numeral, which is
+    # rubric-toxic (drops every gold token). If the trimmed output
+    # carries fewer than 4 alphabetic tokens AND the original had
+    # meaningful prose, bail to the original — let the upstream
+    # 600-char soft cap govern instead.
+    _alpha_tokens = sum(1 for tok in out.split() if any(c.isalpha() for c in tok))
+    if _alpha_tokens < 4 and len(answer) >= 30:
+        out = answer
     # Append cite if missing — embed BEFORE the trailing punctuation so
     # _split_sentences doesn't count "(Article N)" as a new sentence
     # (the `(` is in its sentence-start lookahead).

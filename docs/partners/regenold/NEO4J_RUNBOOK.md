@@ -106,6 +106,61 @@ writes — only the seed script does. ~30 s against AuraDB Free.
 deterministic KB path keeps serving the same wire contract. The graph
 is an observability multiplier, never a hard dependency.
 
+## GDS plugin (required for PPR + PathRAG)
+
+The Round-39 advanced-retrieval paths — Personalized PageRank
+(`app/engines/graph_ppr.py`) and PathRAG (`app/engines/path_rag.py`) —
+need the **Neo4j Graph Data Science** plugin and a materialised
+projection called `eu_ai_act_graph` over `(:Article|:Annex)
+-[:CROSS_REFERENCES]->`.
+
+GDS availability is **not** automatic on every Neo4j tier:
+
+* **Aura Free / Aura Professional Single-Node** — GDS is **not**
+  available. PPR + PathRAG cannot run; the deterministic + BM25 +
+  embeddings + 2-hop xref paths still serve every query.
+* **Aura Enterprise (with the GDS add-on)** — GDS plugin is provisioned
+  per request; talk to Neo4j support to enable.
+* **Self-hosted Neo4j Enterprise / Community** — install the GDS jar
+  matching your Neo4j version under `plugins/`, then bounce the server.
+
+Diagnose your tier without touching the dashboard:
+
+```bash
+curl -s http://localhost:8000/healthz/graph | python -m json.tool
+# Look for these two fields in the response:
+# "gds_available": true,
+# "gds_projection_exists": true
+```
+
+Both fields are populated by every `/healthz/graph` call (always HTTP
+200; values are cached at module level after the first probe so a tight
+uptime-monitor loop stays fast). The boot-time log line carries the same
+status:
+
+```
+regenold.startup graph_enabled=True seed_version=2026-05-16-r35
+node_count=505 edge_count=388 gds_available=False
+gds_projection_exists=False
+```
+
+When `gds_available=True` the seeder (`scripts/seed_neo4j_kb.py`)
+automatically materialises the `eu_ai_act_graph` projection at the end
+of a successful run. The creation is idempotent — re-seeding is a
+no-op against an existing projection.
+
+To opt **in** to the advanced retrieval paths once GDS is confirmed:
+
+```bash
+# After verifying gds_available=true and gds_projection_exists=true:
+export REGENOLD_GRAPH_PPR=1     # Personalized PageRank candidates
+export REGENOLD_PATH_RAG=1      # Relational-path retrieval + Jaccard prune
+```
+
+If `gds_available=False` and you set the flags anyway, the modules
+fail-soft and return `[]` — no impact on request serving, just no
+upside from PPR / PathRAG.
+
 ## What it doesn't do (yet)
 
 * **Single-tenant only.** The ontology defines `Tenant_<hash>` shard

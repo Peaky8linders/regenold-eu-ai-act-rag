@@ -1,13 +1,20 @@
-"""R39 RAG-Fusion + RRF query expansion (Issue B8)."""
+"""R39 RAG-Fusion + RRF query expansion (Issue B8). R40 contract update:
+``expand_query`` now returns paraphrases ONLY (the original is folded in
+by the caller in :mod:`app.data.kb_search`)."""
 from unittest.mock import patch, MagicMock
 
 from app.engines.query_expansion import (
+    _reset_for_tests,
     expand_query,
     reciprocal_rank_fusion,
 )
 
 
-def test_expand_query_returns_original_plus_paraphrases():
+def setup_function(_func):
+    _reset_for_tests()
+
+
+def test_expand_query_returns_paraphrases():
     fake_provider = MagicMock()
     fake_response = MagicMock()
     fake_response.text = (
@@ -20,16 +27,17 @@ def test_expand_query_returns_original_plus_paraphrases():
                return_value=fake_provider), \
          patch("app.engines.query_expansion.is_openai_wrapper_enabled",
                return_value=True):
-        queries = expand_query("Who is a provider under the AI Act?", intent_label="definition")
-    assert queries[0] == "Who is a provider under the AI Act?"  # original first
-    assert len(queries) >= 2
+        paraphrases = expand_query("Who is a provider under the AI Act?")
+    assert len(paraphrases) >= 1
+    assert all(isinstance(p, str) and p for p in paraphrases)
+    assert "Who is a provider under the AI Act?" not in paraphrases
 
 
-def test_expand_query_returns_only_original_on_wrapper_disabled():
+def test_expand_query_returns_empty_on_wrapper_disabled():
     with patch("app.engines.query_expansion.is_openai_wrapper_enabled",
                return_value=False):
-        queries = expand_query("Who is a provider?", intent_label="definition")
-    assert queries == ["Who is a provider?"]
+        paraphrases = expand_query("Who is a provider?")
+    assert paraphrases == []
 
 
 def test_expand_query_falls_soft_on_provider_exception():
@@ -37,8 +45,8 @@ def test_expand_query_falls_soft_on_provider_exception():
                return_value=True), \
          patch("app.engines.query_expansion.get_openai_wrapper_provider",
                side_effect=RuntimeError("boom")):
-        queries = expand_query("Q?", intent_label="definition")
-    assert queries == ["Q?"]
+        paraphrases = expand_query("Q?")
+    assert paraphrases == []
 
 
 def test_reciprocal_rank_fusion_combines_ranked_lists():

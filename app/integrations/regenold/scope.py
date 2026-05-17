@@ -1912,9 +1912,19 @@ def classify_conversation(
     #     citation.
     #   * ``prior_anchors`` — anchors from PRIOR user turns only; the
     #     coreference rescue's input. Live messages cannot self-seed it.
+    # R40 / F17 — the original implementation used ``if ref not in
+    # anchors:`` list-membership checks per insertion. For 10+ turn
+    # conversations with growing anchor pools that's O(n²) per call
+    # (and the live request path hits this on every multi-turn). Switch
+    # to side-sets for O(1) membership checks while preserving list
+    # ordering (the verdict downstream consumers rely on insertion
+    # order — first user-mentioned article ranks higher).
     anchors: list[str] = []
+    _anchors_seen: set[str] = set()
     prior_anchors: list[str] = []
+    _prior_anchors_seen: set[str] = set()
     unknowns: list[str] = []
+    _unknowns_seen: set[str] = set()
     for idx, m in enumerate(messages):
         role = _get(m, "role")
         if role == "system":
@@ -1927,21 +1937,26 @@ def classify_conversation(
         # Unknown refs ALWAYS block (precedence guard) regardless of role
         # — a hallucinated assistant ref still poisons the next prompt.
         for ref in u:
-            if ref not in unknowns:
+            if ref not in _unknowns_seen:
+                _unknowns_seen.add(ref)
                 unknowns.append(ref)
         # Anchors only from USER turns. Assistant turns are advisory.
         if role != "user":
             continue
         for ref in k:
-            if ref not in anchors:
+            if ref not in _anchors_seen:
+                _anchors_seen.add(ref)
                 anchors.append(ref)
-            if is_prior_for_rescue and ref not in prior_anchors:
+            if is_prior_for_rescue and ref not in _prior_anchors_seen:
+                _prior_anchors_seen.add(ref)
                 prior_anchors.append(ref)
         # Keyword-driven anchors — also user-turn only for the same reason.
         for ref in derive_anchor_articles_from_keywords(content):
-            if ref not in anchors:
+            if ref not in _anchors_seen:
+                _anchors_seen.add(ref)
                 anchors.append(ref)
-            if is_prior_for_rescue and ref not in prior_anchors:
+            if is_prior_for_rescue and ref not in _prior_anchors_seen:
+                _prior_anchors_seen.add(ref)
                 prior_anchors.append(ref)
 
     # 3. Non-existent reference precedence — refuse when the LIVE question

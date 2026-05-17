@@ -185,8 +185,43 @@ INTENT_REF_BUDGET: dict[str, int] = {
     "method":      4,
     "role":        4,
     "purpose":     3,
-    "description": 8,  # default for scenario-shape and long-form
+    # R40 / F18 — split the fallback ``description`` budget into a
+    # narrow novel-shape default (3 refs) and a scenario-wide budget
+    # (8 refs). The single 8-ref value over-cited every novel QA shape
+    # the engine couldn't pin down to one of the 9 other qtypes,
+    # tanking Ref Conciseness. The route picks ``description_scenario``
+    # when ``_looks_like_scenario_shape(question)`` fires;
+    # ``description_short`` otherwise. ``description`` is the alias for
+    # ``description_short`` so existing callers that fall through to
+    # ``classify_question`` continue to see a value (the explicit-key
+    # path remains the source of truth).
+    "description_short":    3,
+    "description_scenario": 8,
+    "description":          3,  # alias for description_short
 }
+
+
+def intent_budget_for(qtype: str | None, is_scenario_shape: bool) -> int | None:
+    """R40 / F18 — resolve the per-intent ref budget for a question.
+
+    The plain ``INTENT_REF_BUDGET[qtype]`` lookup loses one bit of
+    information for ``description`` shapes: novel-shape QA ("Tell me
+    about transparency") and scenario shapes ("We are a hospital that
+    uses an AI system to triage patients...") both classify as
+    ``description`` but want very different ref budgets (3 vs 8). This
+    helper picks ``description_scenario`` when the caller has already
+    determined the question is scenario-shaped, ``description_short``
+    otherwise. All other qtypes pass through unchanged.
+
+    Returns ``None`` when the qtype isn't in the budget table — the
+    caller should treat this as "use the route's default budget".
+    """
+    if qtype == "description":
+        key = "description_scenario" if is_scenario_shape else "description_short"
+        return INTENT_REF_BUDGET.get(key)
+    if qtype is None:
+        return None
+    return INTENT_REF_BUDGET.get(qtype)
 
 # Spec: "Short (3-4 sentences max)" answer. We cap at 3 sentences
 # (the lower end of the spec range) and truncate post-hoc so we never

@@ -13,6 +13,27 @@ In this bundle the engine only enters this module when the Neo4j client
 is enabled (``NEO4J_URI`` set + ``neo4j`` driver installed). With Neo4j
 disabled the engine's ``_retrieve_from_kb`` deterministic path is taken
 instead — this module is the cache-powered fast path for the same data.
+
+.. note::
+    **NOT WIRED IN ROUND 40.** R39 eng-review F13 — this module is a
+    forward-looking extension point for cross-framework compliance
+    mapping (questionnaire-driven gap analysis, NIST AI RMF subcategory
+    mapping, ISO 42001 clause mapping, roadmap-task remediation
+    chains). The Cypher below references node labels
+    ``:Question``, ``:RoadmapTask``, ``:NISTSubcategory``,
+    ``:ISOClause``, plus relationships ``:ASSESSES``,
+    ``:MAPS_TO_NIST``, ``:MAPS_TO_ISO``, ``:REMEDIATES`` that the
+    R35 KB seeder (``scripts/seed_neo4j_kb.py``) does NOT create.
+    Calling these functions today against a production Neo4j seeded
+    only by the KB seeder will return empty result sets — they do
+    not signal failure, they simply have no matching data.
+
+    The module is kept in-tree so the route wiring + tests are ready
+    when the cross-framework mapping data (assessment questionnaires,
+    NIST AI RMF crosswalk, ISO 42001 crosswalk, remediation roadmap
+    templates) lands in a future round. Until then, prefer the
+    in-memory ``app/engines/graph_rag.py::_retrieve_from_kb`` path
+    for gap reasoning.
 """
 
 from __future__ import annotations

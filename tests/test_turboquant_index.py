@@ -337,3 +337,84 @@ def test_engine_cache_key_includes_dense_env_flag(monkeypatch):
     monkeypatch.delenv("REGENOLD_CITATION_GUARD", raising=False)
     key_off2 = _engine_cache_key(q, None)
     assert key_off2 == key_off, "deterministic key for identical env"
+
+
+# ── R40 / F5 — folds the R39 retrieval flags into the cache key ─────────
+
+
+def test_engine_cache_key_includes_graph_ppr_flag(monkeypatch):
+    """R40 / F5: flipping ``REGENOLD_GRAPH_PPR`` must change the cache key.
+
+    PPR appends additional candidate articles via Neo4j GDS. A stale
+    cached response that pre-dates the flag flip would silently serve
+    the BM25-only candidate list. The cache key MUST fold the flag in
+    for the same reason as ``REGENOLD_TURBOQUANT_DENSE``.
+    """
+    from app.routes.regenold import _engine_cache_key
+
+    q = "Which obligations apply to a deployer of a high-risk system?"
+    for flag in (
+        "REGENOLD_TURBOQUANT_DENSE",
+        "REGENOLD_CITATION_GUARD",
+        "REGENOLD_GRAPH_PPR",
+        "REGENOLD_PATH_RAG",
+    ):
+        monkeypatch.delenv(flag, raising=False)
+    key_off = _engine_cache_key(q, None)
+
+    monkeypatch.setenv("REGENOLD_GRAPH_PPR", "1")
+    key_ppr_on = _engine_cache_key(q, None)
+    assert key_ppr_on != key_off, "PPR env flag must change the cache key"
+
+
+def test_engine_cache_key_includes_path_rag_flag(monkeypatch):
+    """R40 / F5: flipping ``REGENOLD_PATH_RAG`` must change the cache key.
+
+    PathRAG injects relational-path candidates via Neo4j CROSS_REFERENCES
+    walks + Jaccard prune. Same cache-poisoning class as PPR.
+    """
+    from app.routes.regenold import _engine_cache_key
+
+    q = "Which obligations apply to a deployer of a high-risk system?"
+    for flag in (
+        "REGENOLD_TURBOQUANT_DENSE",
+        "REGENOLD_CITATION_GUARD",
+        "REGENOLD_GRAPH_PPR",
+        "REGENOLD_PATH_RAG",
+    ):
+        monkeypatch.delenv(flag, raising=False)
+    key_off = _engine_cache_key(q, None)
+
+    monkeypatch.setenv("REGENOLD_PATH_RAG", "1")
+    key_path_on = _engine_cache_key(q, None)
+    assert key_path_on != key_off, "PathRAG env flag must change the cache key"
+
+
+def test_engine_cache_key_distinguishes_all_four_retrieval_flags(monkeypatch):
+    """R40 / F5: every combination of the 4 retrieval flags must hash distinctly.
+
+    Defends against an accidental collision (e.g. concatenating both
+    bits into a single string without a separator). 2⁴=16 distinct
+    states; check a representative subset.
+    """
+    from app.routes.regenold import _engine_cache_key
+
+    q = "When is an AI system considered high-risk?"
+    for flag in (
+        "REGENOLD_TURBOQUANT_DENSE",
+        "REGENOLD_CITATION_GUARD",
+        "REGENOLD_GRAPH_PPR",
+        "REGENOLD_PATH_RAG",
+    ):
+        monkeypatch.delenv(flag, raising=False)
+    key_all_off = _engine_cache_key(q, None)
+
+    monkeypatch.setenv("REGENOLD_GRAPH_PPR", "1")
+    key_ppr = _engine_cache_key(q, None)
+    monkeypatch.setenv("REGENOLD_PATH_RAG", "1")
+    key_ppr_path = _engine_cache_key(q, None)
+    monkeypatch.delenv("REGENOLD_GRAPH_PPR", raising=False)
+    key_path = _engine_cache_key(q, None)
+
+    keys = {key_all_off, key_ppr, key_ppr_path, key_path}
+    assert len(keys) == 4, "each unique flag state must produce a unique key"

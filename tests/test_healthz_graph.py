@@ -33,6 +33,8 @@ _EXPECTED_KEYS = frozenset({
     "kb_version",
     "node_counts",
     "edge_counts",
+    "gds_available",
+    "gds_projection_exists",
 })
 
 
@@ -59,6 +61,13 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     from app.graph import client as _gc_module
     _gc_module._reset_singleton_for_tests()
 
+    # Drop the GDS cache so the gds_available + gds_projection_exists
+    # probes re-run against whatever client this test pins. Without
+    # this reset, test order would influence the GDS fields (first
+    # test pins False, every subsequent test reads the cached False).
+    from app import main as _main_module
+    _main_module._reset_gds_cache_for_tests()
+
     from app.main import app
     test_client = TestClient(app)
     yield test_client
@@ -66,6 +75,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     # Clean up — defensive — so a test that mocks the client doesn't
     # leak into the next module.
     _gc_module._reset_singleton_for_tests()
+    _main_module._reset_gds_cache_for_tests()
 
 
 # ─── Shape invariants ────────────────────────────────────────────────────────
@@ -107,6 +117,10 @@ class TestDisabledPath:
         assert body["node_counts"] == {}
         assert body["edge_counts"] == {}
         assert body["seed_version"] == ""
+        # GDS fields default to False on the disabled path. Operators
+        # need a deterministic shape regardless of NEO4J_URI being set.
+        assert body["gds_available"] is False
+        assert body["gds_projection_exists"] is False
 
     def test_returns_http_200(self, client: TestClient) -> None:
         """Uptime monitors must see 200 even when the graph is off."""
@@ -156,6 +170,13 @@ class _FakeGraphClient:
         if self._read_exc is not None:
             raise self._read_exc
         # Match on a discriminating fragment of each Cypher we expect.
+        # GDS-availability probe: ``CALL gds.list()`` — return whatever
+        # the test pinned under "gds_list" (default: empty list = no GDS).
+        if "gds.list" in query:
+            return self._read_responses.get("gds_list", [])
+        # GDS-projection probe: ``CALL gds.graph.exists(...) YIELD exists``.
+        if "gds.graph.exists" in query:
+            return self._read_responses.get("gds_exists", [])
         if "KBMetadata" in query:
             return self._read_responses.get("metadata", [])
         if "RETURN type(r)" in query:
@@ -310,6 +331,10 @@ class TestHealthyPath:
         assert body["edge_counts"]["CROSS_REFERENCES"] == 142
         assert "DEAD" not in body["edge_counts"]
         assert body["elapsed_ms"] >= 0
+        # No GDS data pinned in this test — both GDS probes degrade to
+        # False, exactly the Aura-Free-tier outcome.
+        assert body["gds_available"] is False
+        assert body["gds_projection_exists"] is False
 
     def test_healthy_with_missing_metadata(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
@@ -360,6 +385,119 @@ class TestHealthyPath:
         # catch driver hangs.
         assert isinstance(body["elapsed_ms"], int)
         assert body["elapsed_ms"] >= 0
+
+
+# ─── GDS status reporting ────────────────────────────────────────────────────
+
+
+class TestGDSStatus:
+    """Verify ``gds_available`` + ``gds_projection_exists`` reflect the
+    three production scenarios: GDS absent (Aura Free), GDS present but
+    no projection (post-install, pre-seed), GDS + projection both ready.
+    """
+
+    def test_gds_absent_reports_false(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Aura Free tier: ``CALL gds.list()`` raises Unknown function;
+        ``execute_read`` swallows it and returns ``[]``."""
+        monkeypatch.setenv("NEO4J_URI", "bolt://nope:7687")
+        fake = _FakeGraphClient(
+            enabled=True,
+            health={"status": "healthy", "ping": 1},
+            read_responses={
+                "metadata": [{"seed_version": "v1", "kb_version": "v1"}],
+                "labels": {"Article": [{"cnt": 113}]},
+                "edges": [{"rel_type": "CROSS_REFERENCES", "cnt": 115}],
+                "gds_list": [],          # GDS plugin not installed
+                "gds_exists": [],        # never reached
+            },
+        )
+        _patch_client(monkeypatch, fake)
+
+        r = client.get("/healthz/graph")
+        body = r.json()
+        assert body["graph_ok"] is True
+        assert body["gds_available"] is False
+        assert body["gds_projection_exists"] is False
+
+    def test_gds_present_but_projection_missing(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GDS installed but the seeder hasn't run yet (or the seeder
+        couldn't create the projection — e.g. neo4j role lacks the
+        ``role-create-projection`` permission)."""
+        monkeypatch.setenv("NEO4J_URI", "bolt://nope:7687")
+        fake = _FakeGraphClient(
+            enabled=True,
+            health={"status": "healthy", "ping": 1},
+            read_responses={
+                "metadata": [{"seed_version": "v1", "kb_version": "v1"}],
+                "labels": {"Article": [{"cnt": 113}]},
+                "edges": [{"rel_type": "CROSS_REFERENCES", "cnt": 115}],
+                "gds_list": [{"name": "gds.pageRank.stream"}],
+                "gds_exists": [{"exists": False}],
+            },
+        )
+        _patch_client(monkeypatch, fake)
+
+        r = client.get("/healthz/graph")
+        body = r.json()
+        assert body["graph_ok"] is True
+        assert body["gds_available"] is True
+        assert body["gds_projection_exists"] is False
+
+    def test_gds_and_projection_both_present(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Aura Enterprise (with GDS) + a successful seed run."""
+        monkeypatch.setenv("NEO4J_URI", "bolt://nope:7687")
+        fake = _FakeGraphClient(
+            enabled=True,
+            health={"status": "healthy", "ping": 1},
+            read_responses={
+                "metadata": [{"seed_version": "v1", "kb_version": "v1"}],
+                "labels": {"Article": [{"cnt": 113}]},
+                "edges": [{"rel_type": "CROSS_REFERENCES", "cnt": 115}],
+                "gds_list": [{"name": "gds.pageRank.stream"}],
+                "gds_exists": [{"exists": True}],
+            },
+        )
+        _patch_client(monkeypatch, fake)
+
+        r = client.get("/healthz/graph")
+        body = r.json()
+        assert body["graph_ok"] is True
+        assert body["gds_available"] is True
+        assert body["gds_projection_exists"] is True
+
+    def test_gds_probe_exception_degrades_to_false(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An exception thrown straight back from ``execute_read``
+        during the GDS probes must surface as ``False`` (not crash the
+        route). The route already returns ``graph_ok=True`` because
+        ``health_check`` passed; only the GDS fields go to ``False``.
+
+        Note: this test installs ``read_exc`` which makes EVERY
+        ``execute_read`` raise — including the metadata + per-label
+        counts. The route swallows those too; we're verifying the
+        whole healthz remains 200 + ``graph_ok=True``.
+        """
+        monkeypatch.setenv("NEO4J_URI", "bolt://nope:7687")
+        fake = _FakeGraphClient(
+            enabled=True,
+            health={"status": "healthy", "ping": 1},
+            read_exc=RuntimeError("read blew up"),
+        )
+        _patch_client(monkeypatch, fake)
+
+        r = client.get("/healthz/graph")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["graph_ok"] is True
+        assert body["gds_available"] is False
+        assert body["gds_projection_exists"] is False
 
 
 # ─── Exception safety: probe must NEVER 500 ──────────────────────────────────

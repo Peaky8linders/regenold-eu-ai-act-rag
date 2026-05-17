@@ -14,8 +14,18 @@ def test_length_cap_table_complete():
         assert k in INTENT_LENGTH_CAP
 
 
-def test_definitional_cap_tight():
-    assert INTENT_LENGTH_CAP["definition"] <= 200
+def test_caps_within_calibrated_bounds():
+    """R40 Phase 2a — caps are p90 of davidath gold-answer character
+    length per qtype (see ``scripts/calibrate_answer_template.py``).
+
+    Lower bound: 100 (no qtype should be tighter than ~100c, the
+    p90 of one-word numeric answers). Upper bound: 700 (the davidath
+    scenario-question synthesiser routes every scenario to
+    ``definition`` via the qtype classifier, and scenario gold has
+    p90 ~640c — so the cap must accommodate that without trimming).
+    """
+    for qt, cap in INTENT_LENGTH_CAP.items():
+        assert 100 <= cap <= 700, f"{qt} cap {cap} outside [100, 700]"
 
 
 def test_definitional_truncates_long_answer():

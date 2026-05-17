@@ -673,71 +673,176 @@ def seed_graph(
     """
     counts: dict[str, int] = {}
 
-    # ── Nodes ─────────────────────────────────────────────────────────
-    counts["Article"] = _write_rows(
-        client, _CYPHER_ARTICLE, payload.article_nodes,
-        batch_size=batch_size, label="Article", verbose=verbose,
+    # R40 / F11 — partial-seed guard. Wrap the node + edge writes so a
+    # mid-batch failure (transient network blip, hitting a Neo4j memory
+    # limit, schema-constraint violation on bad data) doesn't leave the
+    # graph half-seeded with no operator visibility. We log the partial
+    # state (label -> rows_written) then re-raise so the caller
+    # (run_seed / main / auto-seed thread) sees the failure and can
+    # decide retry / alerting; swallowing here would mask the failure.
+    _node_labels = (
+        "Article", "Annex", "Recital", "Definition", "Obligation",
+        "AnnexIIICategory", "RiskLevel", "OperatorRole", "KBMetadata",
     )
-    counts["Annex"] = _write_rows(
-        client, _CYPHER_ANNEX, payload.annex_nodes,
-        batch_size=batch_size, label="Annex", verbose=verbose,
-    )
-    counts["Recital"] = _write_rows(
-        client, _CYPHER_RECITAL, payload.recital_nodes,
-        batch_size=batch_size, label="Recital", verbose=verbose,
-    )
-    counts["Definition"] = _write_rows(
-        client, _CYPHER_DEFINITION, payload.definition_nodes,
-        batch_size=batch_size, label="Definition", verbose=verbose,
-    )
-    counts["Obligation"] = _write_rows(
-        client, _CYPHER_OBLIGATION, payload.obligation_nodes,
-        batch_size=batch_size, label="Obligation", verbose=verbose,
-    )
-    counts["AnnexIIICategory"] = _write_rows(
-        client, _CYPHER_ANNEX_III, payload.annex_iii_nodes,
-        batch_size=batch_size, label="AnnexIIICategory", verbose=verbose,
-    )
-    counts["RiskLevel"] = _write_rows(
-        client, _CYPHER_RISK_LEVEL, payload.risk_level_nodes,
-        batch_size=batch_size, label="RiskLevel", verbose=verbose,
-    )
-    counts["OperatorRole"] = _write_rows(
-        client, _CYPHER_OPERATOR_ROLE, payload.operator_role_nodes,
-        batch_size=batch_size, label="OperatorRole", verbose=verbose,
-    )
-    counts["KBMetadata"] = _write_rows(
-        client, _CYPHER_METADATA, [payload.metadata_node],
-        batch_size=batch_size, label="KBMetadata", verbose=verbose,
+    _edge_labels = (
+        "HAS_OBLIGATION", "HAS_DEFINITION", "CROSS_REFERENCES",
+        "HAS_RECITAL_ANCHOR", "TRIGGERS_HIGH_RISK_UNDER", "APPLIES_AT",
     )
 
-    # ── Edges ─────────────────────────────────────────────────────────
-    counts["HAS_OBLIGATION"] = _write_rows(
-        client, _CYPHER_HAS_OBLIGATION, payload.has_obligation_edges,
-        batch_size=batch_size, label="HAS_OBLIGATION", verbose=verbose,
-    )
-    counts["HAS_DEFINITION"] = _write_rows(
-        client, _CYPHER_HAS_DEFINITION, payload.has_definition_edges,
-        batch_size=batch_size, label="HAS_DEFINITION", verbose=verbose,
-    )
-    counts["CROSS_REFERENCES"] = _write_rows(
-        client, _CYPHER_CROSS_REFERENCES, payload.cross_reference_edges,
-        batch_size=batch_size, label="CROSS_REFERENCES", verbose=verbose,
-    )
-    counts["HAS_RECITAL_ANCHOR"] = _write_rows(
-        client, _CYPHER_HAS_RECITAL_ANCHOR, payload.has_recital_anchor_edges,
-        batch_size=batch_size, label="HAS_RECITAL_ANCHOR", verbose=verbose,
-    )
-    counts["TRIGGERS_HIGH_RISK_UNDER"] = _write_rows(
-        client, _CYPHER_TRIGGERS_HIGH_RISK, payload.triggers_high_risk_edges,
-        batch_size=batch_size, label="TRIGGERS_HIGH_RISK_UNDER", verbose=verbose,
-    )
-    counts["APPLIES_AT"] = _write_rows(
-        client, _CYPHER_APPLIES_AT, payload.applies_at_edges,
-        batch_size=batch_size, label="APPLIES_AT", verbose=verbose,
-    )
+    try:
+        # ── Nodes ─────────────────────────────────────────────────────
+        counts["Article"] = _write_rows(
+            client, _CYPHER_ARTICLE, payload.article_nodes,
+            batch_size=batch_size, label="Article", verbose=verbose,
+        )
+        counts["Annex"] = _write_rows(
+            client, _CYPHER_ANNEX, payload.annex_nodes,
+            batch_size=batch_size, label="Annex", verbose=verbose,
+        )
+        counts["Recital"] = _write_rows(
+            client, _CYPHER_RECITAL, payload.recital_nodes,
+            batch_size=batch_size, label="Recital", verbose=verbose,
+        )
+        counts["Definition"] = _write_rows(
+            client, _CYPHER_DEFINITION, payload.definition_nodes,
+            batch_size=batch_size, label="Definition", verbose=verbose,
+        )
+        counts["Obligation"] = _write_rows(
+            client, _CYPHER_OBLIGATION, payload.obligation_nodes,
+            batch_size=batch_size, label="Obligation", verbose=verbose,
+        )
+        counts["AnnexIIICategory"] = _write_rows(
+            client, _CYPHER_ANNEX_III, payload.annex_iii_nodes,
+            batch_size=batch_size, label="AnnexIIICategory", verbose=verbose,
+        )
+        counts["RiskLevel"] = _write_rows(
+            client, _CYPHER_RISK_LEVEL, payload.risk_level_nodes,
+            batch_size=batch_size, label="RiskLevel", verbose=verbose,
+        )
+        counts["OperatorRole"] = _write_rows(
+            client, _CYPHER_OPERATOR_ROLE, payload.operator_role_nodes,
+            batch_size=batch_size, label="OperatorRole", verbose=verbose,
+        )
+        counts["KBMetadata"] = _write_rows(
+            client, _CYPHER_METADATA, [payload.metadata_node],
+            batch_size=batch_size, label="KBMetadata", verbose=verbose,
+        )
+
+        # ── Edges ─────────────────────────────────────────────────────
+        counts["HAS_OBLIGATION"] = _write_rows(
+            client, _CYPHER_HAS_OBLIGATION, payload.has_obligation_edges,
+            batch_size=batch_size, label="HAS_OBLIGATION", verbose=verbose,
+        )
+        counts["HAS_DEFINITION"] = _write_rows(
+            client, _CYPHER_HAS_DEFINITION, payload.has_definition_edges,
+            batch_size=batch_size, label="HAS_DEFINITION", verbose=verbose,
+        )
+        counts["CROSS_REFERENCES"] = _write_rows(
+            client, _CYPHER_CROSS_REFERENCES, payload.cross_reference_edges,
+            batch_size=batch_size, label="CROSS_REFERENCES", verbose=verbose,
+        )
+        counts["HAS_RECITAL_ANCHOR"] = _write_rows(
+            client, _CYPHER_HAS_RECITAL_ANCHOR, payload.has_recital_anchor_edges,
+            batch_size=batch_size, label="HAS_RECITAL_ANCHOR", verbose=verbose,
+        )
+        counts["TRIGGERS_HIGH_RISK_UNDER"] = _write_rows(
+            client, _CYPHER_TRIGGERS_HIGH_RISK, payload.triggers_high_risk_edges,
+            batch_size=batch_size, label="TRIGGERS_HIGH_RISK_UNDER", verbose=verbose,
+        )
+        counts["APPLIES_AT"] = _write_rows(
+            client, _CYPHER_APPLIES_AT, payload.applies_at_edges,
+            batch_size=batch_size, label="APPLIES_AT", verbose=verbose,
+        )
+    except Exception as e:  # noqa: BLE001 — re-raised below; visibility is the goal
+        nodes_written = sum(counts.get(lbl, 0) for lbl in _node_labels)
+        edges_written = sum(counts.get(lbl, 0) for lbl in _edge_labels)
+        logger.error(
+            "partial_seed_state nodes_written=%d edges_written=%d "
+            "completed_labels=%s error=%s",
+            nodes_written,
+            edges_written,
+            sorted(counts.keys()),
+            e,
+        )
+        raise
+
+    # ── Optional: materialise the GDS projection ─────────────────────
+    # PPR + PathRAG (app/engines/graph_ppr.py, app/engines/path_rag.py)
+    # rely on a named GDS projection called ``eu_ai_act_graph``. Create
+    # it idempotently here so a successful seed leaves the optional
+    # advanced-retrieval paths immediately usable. Tier-mismatched
+    # instances (Aura Free, on-prem Community) simply raise
+    # ``Unknown function 'gds.graph.exists'`` — swallowed, logged at
+    # debug, seeding still succeeds.
+    _create_projection_if_gds(client)
 
     return counts
+
+
+# Name of the GDS projection materialised after a successful seed. Used
+# by both this script and :func:`app.engines.graph_ppr.ppr_candidates` —
+# keep in sync.
+GDS_PROJECTION_NAME = "eu_ai_act_graph"
+
+
+def _create_projection_if_gds(client: Any) -> None:
+    """Best-effort: create the ``eu_ai_act_graph`` GDS projection.
+
+    Idempotent: the procedure call is wrapped in
+    ``gds.graph.exists(...)`` so a re-run after the projection already
+    exists is a no-op. On a Neo4j without GDS (or one where the calling
+    user lacks the elevated role needed for projection management) the
+    procedure call raises — we swallow the exception, log at debug,
+    and return. Seeding is not aborted because the deterministic
+    fallback path stays functional in either case.
+
+    Cypher uses ``CALL gds.graph.exists`` to short-circuit on the
+    happy path; the actual project call uses the modern (5.x+) form
+    of ``gds.graph.project`` which takes node labels + relationship
+    types as plain string lists.
+    """
+    check_cypher = (
+        "CALL gds.graph.exists($name) YIELD exists RETURN exists"
+    )
+    project_cypher = (
+        "CALL gds.graph.project("
+        "  $name, "
+        "  ['Article', 'Annex'], "
+        "  'CROSS_REFERENCES'"
+        ") YIELD graphName RETURN graphName"
+    )
+
+    try:
+        rows = client.execute_read(check_cypher, {"name": GDS_PROJECTION_NAME})
+    except Exception as exc:  # noqa: BLE001 — GDS absent / permissions / driver
+        logger.debug("GDS exists-check failed (plugin likely missing): %s", exc)
+        return
+
+    # ``execute_read`` swallows "Unknown function" itself and returns
+    # ``[]`` — that path also means "no GDS" so we exit cleanly.
+    if not rows:
+        logger.debug(
+            "GDS exists-check returned empty result — plugin likely not "
+            "installed; skipping projection creation"
+        )
+        return
+
+    if rows[0].get("exists"):
+        logger.info(
+            "GDS projection %r already exists; skipping creation",
+            GDS_PROJECTION_NAME,
+        )
+        return
+
+    try:
+        client.execute_write(project_cypher, {"name": GDS_PROJECTION_NAME})
+        logger.info(
+            "Created GDS projection %r over (:Article|:Annex) "
+            "-[:CROSS_REFERENCES]-> edges",
+            GDS_PROJECTION_NAME,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("GDS projection creation failed: %s", exc)
 
 
 def validate_payload(payload: SeedPayload) -> list[str]:

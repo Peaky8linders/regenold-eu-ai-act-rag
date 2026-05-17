@@ -25,9 +25,11 @@ once a seeded Neo4j is wired.
 
 ## Hard guarantees
 
-* **Default OFF**: `REGENOLD_GRAPH_2HOP=1` is required to switch on.
-  When unset (or any value other than ``"1"``), :func:`is_enabled`
-  returns ``False`` and every public function is a passthrough.
+* **R40: baked in.** The env gate was dropped after R31.1 proved
+  +0.087 Ref Loose on davidath scenarios with no rubric regression.
+  :func:`is_enabled` now returns True iff the graph client is
+  connected; every public function still short-circuits to a
+  passthrough when the graph is offline / unseeded.
 * **Never raises**: every Neo4j call is wrapped — any exception, any
   timeout, any malformed response collapses to an empty
   :class:`GraphExpansion`. The route is route-safe under a downed /
@@ -66,7 +68,6 @@ That's a follow-up PR; this module just exports the primitives.
 from __future__ import annotations
 
 import logging
-import os
 import re
 import time
 from dataclasses import dataclass
@@ -80,20 +81,6 @@ if TYPE_CHECKING:  # pragma: no cover — typing only
     from app.graph.client import GraphClient
 
 logger = logging.getLogger(__name__)
-
-# ── Env gate ────────────────────────────────────────────────────────────────
-
-_ENV_VAR = "REGENOLD_GRAPH_2HOP"
-
-
-def _env_enabled() -> bool:
-    """Return True iff the env-var is exactly ``"1"``.
-
-    Strict equality so accidental ``"0"`` / ``""`` / ``"false"`` never
-    flip the switch.
-    """
-    return os.environ.get(_ENV_VAR, "") == "1"
-
 
 # ── Public dataclass ────────────────────────────────────────────────────────
 
@@ -245,14 +232,13 @@ LIMIT $cap
 
 
 def is_enabled() -> bool:
-    """True iff the env-var is set AND the graph client is connected.
+    """True iff the graph client is connected.
 
-    Both conditions must hold. The env-var alone isn't enough — if
-    Neo4j is down or the driver isn't installed, the module stays in
-    passthrough mode.
+    R40: the env-var gate was dropped — the 2-hop path is always
+    active when Neo4j is reachable, and a passthrough otherwise.
+    If Neo4j is down or the driver isn't installed, this returns
+    False and every public function short-circuits.
     """
-    if not _env_enabled():
-        return False
     # Lazy client import — defers the heavy ``app.graph.client`` load
     # until the first ``is_enabled()`` / ``expand_2hop`` call.
     try:
@@ -324,9 +310,8 @@ def expand_2hop(
         :class:`GraphExpansion`. Never raises — every error path
         produces an empty expansion with the original seeds echoed.
     """
-    # Fast path: gate off → no work.
-    if not _env_enabled():
-        return _empty_expansion(seed_articles)
+    # R40: env gate dropped. Resolve client first; passthrough when
+    # Neo4j is offline / unseeded.
     if not seed_articles:
         return GraphExpansion()
     if max_hop2 <= 0:

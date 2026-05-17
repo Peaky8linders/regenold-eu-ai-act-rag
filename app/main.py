@@ -128,12 +128,25 @@ def _log_llm_provider_status() -> None:
                 if _hc.get("status") == "healthy":
                     try:
                         _stats = _gc.get_stats()
+                        # Probe + cache GDS status once at boot so the
+                        # log line, the healthz handler, and downstream
+                        # PPR / PathRAG consumers all agree.
+                        try:
+                            _gds_ok, _proj_ok = _resolve_gds_status(_gc)
+                        except Exception as _ge:  # noqa: BLE001
+                            logger.debug(
+                                "regenold.startup gds probe failed: %s", _ge
+                            )
+                            _gds_ok, _proj_ok = False, False
                         logger.info(
                             "regenold.startup graph_enabled=True "
-                            "seed_version=%s node_count=%d edge_count=%d",
+                            "seed_version=%s node_count=%d edge_count=%d "
+                            "gds_available=%s gds_projection_exists=%s",
                             _stats.seed_version or "<unset>",
                             _stats.total_nodes,
                             _stats.total_edges,
+                            _gds_ok,
+                            _proj_ok,
                         )
                     except Exception as _se:  # noqa: BLE001
                         logger.warning(
@@ -633,6 +646,89 @@ def healthz_llm() -> dict[str, object]:
     return base
 
 
+_GDS_PROJECTION_NAME = "eu_ai_act_graph"
+
+# Module-level cache for the GDS-availability probe. We resolve it lazily
+# the first time ``/healthz/graph`` (or a consumer module) asks, then
+# memoise — operators inevitably hit healthz on a tight loop from uptime
+# monitors and we don't want every probe to fire two extra Cypher calls
+# against the graph. The cache is invalidated only by a process restart;
+# operators who install GDS post-deploy bounce the service to pick it up.
+_GDS_AVAILABLE_CACHE: bool | None = None
+_GDS_PROJECTION_CACHE: bool | None = None
+_GDS_CACHE_LOCK = _threading.Lock()
+
+
+def _probe_gds_available(client: Any) -> bool:
+    """One-shot probe: does the bound Neo4j have the GDS plugin?
+
+    Cypher: ``CALL gds.list() YIELD name RETURN name LIMIT 1``. On a
+    Neo4j without GDS, the driver raises ``Unknown function 'gds.list'``
+    which ``execute_read`` swallows and returns ``[]`` — equivalent to
+    "not available" without exposing the error to the wire. Any other
+    failure mode (driver disabled, connection refused, GDS but with a
+    permission error) also degrades to ``False``. Never raises.
+    """
+    try:
+        rows = client.execute_read(
+            "CALL gds.list() YIELD name RETURN name LIMIT 1"
+        )
+    except Exception as exc:  # noqa: BLE001 — never raise from probe
+        logger.debug("gds_available probe failed: %s", exc)
+        return False
+    return bool(rows)
+
+
+def _probe_gds_projection_exists(client: Any) -> bool:
+    """One-shot probe: does the ``eu_ai_act_graph`` projection exist?
+
+    Returns ``False`` whenever GDS is missing OR the projection has not
+    been created OR the probe fails. Never raises.
+    """
+    try:
+        rows = client.execute_read(
+            "CALL gds.graph.exists($name) YIELD exists RETURN exists",
+            {"name": _GDS_PROJECTION_NAME},
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("gds_projection_exists probe failed: %s", exc)
+        return False
+    if not rows:
+        return False
+    return bool(rows[0].get("exists"))
+
+
+def _resolve_gds_status(client: Any) -> tuple[bool, bool]:
+    """Resolve (gds_available, gds_projection_exists), cached.
+
+    The cache is shared between the boot-time log line and the healthz
+    handler so they never disagree.
+    """
+    global _GDS_AVAILABLE_CACHE, _GDS_PROJECTION_CACHE
+    with _GDS_CACHE_LOCK:
+        if _GDS_AVAILABLE_CACHE is None:
+            _GDS_AVAILABLE_CACHE = _probe_gds_available(client)
+        gds_ok = _GDS_AVAILABLE_CACHE
+        if _GDS_PROJECTION_CACHE is None:
+            # Only probe the projection when GDS is present — saves an
+            # extra wasted Cypher round-trip on Aura tiers without GDS.
+            _GDS_PROJECTION_CACHE = (
+                _probe_gds_projection_exists(client) if gds_ok else False
+            )
+        proj_ok = _GDS_PROJECTION_CACHE
+    return gds_ok, proj_ok
+
+
+def _reset_gds_cache_for_tests() -> None:
+    """Drop the GDS cache. Called from the healthz_graph tests so each
+    test scenario starts from a known state. Not intended for production.
+    """
+    global _GDS_AVAILABLE_CACHE, _GDS_PROJECTION_CACHE
+    with _GDS_CACHE_LOCK:
+        _GDS_AVAILABLE_CACHE = None
+        _GDS_PROJECTION_CACHE = None
+
+
 @app.get("/healthz/graph")
 def healthz_graph() -> dict[str, object]:
     """Probe Neo4j connectivity + KB seed status.
@@ -650,6 +746,20 @@ def healthz_graph() -> dict[str, object]:
       fails. Returns ``graph_ok=False`` with a truncated error.
     * **healthy** — full status: ping, seed_version, kb_version,
       per-label node counts, edge-type counts, total elapsed_ms.
+
+    Two additional GDS-status fields are reported in every path so an
+    operator can see at a glance whether the optional Personalized
+    PageRank + PathRAG paths can run:
+
+    * ``gds_available`` — ``True`` iff ``CALL gds.list()`` returns at
+      least one row. ``False`` on Aura tiers without the plugin.
+    * ``gds_projection_exists`` — ``True`` iff the ``eu_ai_act_graph``
+      projection is materialised in the catalog. Only set by the seeder
+      when GDS is present.
+
+    Both GDS probes are cached at module level — see
+    ``_resolve_gds_status`` — so the healthz handler stays fast on a
+    tight monitor loop.
 
     The probe runs read-only Cypher only. It never writes. All read
     queries inherit the driver's ``connection_timeout`` (5 s by default,
@@ -670,6 +780,8 @@ def healthz_graph() -> dict[str, object]:
         "kb_version": KB_VERSION,
         "node_counts": {},
         "edge_counts": {},
+        "gds_available": False,
+        "gds_projection_exists": False,
     }
 
     # ─── Disabled path ────────────────────────────────────────────────────
@@ -763,11 +875,25 @@ def healthz_graph() -> dict[str, object]:
     except Exception as exc:  # noqa: BLE001
         logger.debug("healthz_graph edge count probe failed: %s", exc)
 
+    # ─── GDS status probes (cached at module level) ──────────────────────
+    # Both probes are best-effort. ``execute_read`` already swallows
+    # driver-level errors and returns ``[]``; the helper layer above
+    # converts every error path to ``False``. We honour the module-level
+    # cache so a tight uptime-monitor loop doesn't fire two extra Cypher
+    # round-trips per probe.
+    try:
+        gds_ok, projection_ok = _resolve_gds_status(client)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("healthz_graph gds_status probe failed: %s", exc)
+        gds_ok, projection_ok = False, False
+
     base["graph_ok"] = True
     base["detail"] = "ok"
     base["seed_version"] = seed_version
     base["node_counts"] = node_counts
     base["edge_counts"] = edge_counts
+    base["gds_available"] = gds_ok
+    base["gds_projection_exists"] = projection_ok
     base["elapsed_ms"] = int((_time.perf_counter() - start) * 1000)
     return base
 

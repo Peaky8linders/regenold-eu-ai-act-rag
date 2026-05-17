@@ -145,19 +145,20 @@ py -3.12 -m venv .venv
 
 ## Feature flags
 
-All default-ON in `railway.toml`. Flip OFF to A/B against earlier rounds.
+R40 baked five proven features into the default code path — sub-point
+ref emission, tone guard, Neo4j 2-hop expand, CLARA verdict, and the
+embeddings sentence index. They now run unconditionally and degrade
+silently when their assets / external services are unavailable.
+
+The remaining opt-in flags are off by default and exist for benchmark
+A/B comparison:
 
 | Flag | Effect |
 |---|---|
-| `REGENOLD_SUBPOINT_EMIT` | Upgrade base refs to leaf sub-points |
-| `REGENOLD_ANSWER_TEMPLATE` | Per-intent length cap |
-| `REGENOLD_REFBUDGET_PER_INTENT` | 10-way ref-count budget |
-| `REGENOLD_TONE_GUARD` | Strip hedge openers |
-| `REGENOLD_GRAPH_2HOP` | Neo4j 2-hop cross-ref expansion |
+| `REGENOLD_ANSWER_TEMPLATE` | Per-intent length cap (off — needs calibration) |
+| `REGENOLD_REFBUDGET_PER_INTENT` | 10-way ref-count budget (off — needs topic-aware rank) |
 | `REGENOLD_GRAPH_PPR` | Neo4j Personalized PageRank (needs GDS plugin) |
 | `REGENOLD_PATH_RAG` | Relational-path retrieval with Jaccard prune |
-| `REGENOLD_CLARA_VERDICT` | Neuro-symbolic verdict (37-tag matrix) |
-| `REGENOLD_EMBEDDINGS_INDEX` | NumPy TF-IDF + SVD-128 sentence index |
 
 ## License
 

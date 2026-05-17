@@ -52,16 +52,30 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 from pydantic import ValidationError
 from slowapi.util import get_remote_address
 
+from app.data.article_existence import ARTICLE_EXISTENCE
 from app.data.kb import KB_VERSION
+from app.data.subpoint_emitter import upgrade_references
+from app.engines.answer_template import apply_template
 from app.engines.graph_rag import (
     _detect_classification_topic,
     ask_compliance_question,
 )
+from app.engines.graphrag_expand import (
+    expand_citations,
+    should_expand_for_question,
+)
+from app.engines.prohibited_gatekeeper import (
+    build_verdict_prefix,
+    force_prohibited_citations,
+    scan_for_prohibitions,
+)
 from app.engines.scenario_classifier import classify_scenario_query
 from app.engines.sentence_index import (
+    classify_question,
     classify_question as classify_question_type,
     select_answer_sentence,
     select_definition_sentence,
+    split_legal_sentences,
 )
 from app.evidence.models import EvidenceEntryType
 from app.evidence.store import get_evidence_store
@@ -69,7 +83,9 @@ from app.integrations.regenold.auth import (
     require_regenold_api_key,
     validate_regenold_api_key,
 )
+from app.integrations.regenold.citation_guard import maybe_apply_guard
 from app.integrations.regenold.models import (
+    INTENT_REF_BUDGET,
     MAX_REFERENCES,
     RegenoldAskRequest,
     RegenoldAskResponse,
@@ -82,6 +98,7 @@ from app.integrations.regenold.scope import (
     classify_conversation,
     refusal_copy_for,
 )
+from app.integrations.regenold.tone_guard import enforce_tone
 from app.llm.intent_classifier import classify_intent
 from app.models import GraphRAGRequest
 from app.rate_limit import limiter
@@ -167,26 +184,38 @@ def _engine_cache_key(question: str, system_context: str | None) -> str:
     cache-poisoning fix; that round inlined the rate-limit tier bit and
     documented the requirement: ANY input that flips engine behaviour
     must be in the key.
+
+    R40 / F5 — fold the R39 retrieval flags
+    (``REGENOLD_GRAPH_PPR``, ``REGENOLD_PATH_RAG``) into the same key
+    bits. Both are still env-gated (NOT baked); flipping them on/off
+    must invalidate the cache for the same reason as the R31 flags.
+    ``REGENOLD_GRAPH_2HOP`` and ``REGENOLD_EMBEDDINGS_INDEX`` are baked
+    in R40-Phase1 so they no longer participate.
     """
     # Lazy import — keeps the cold-start dependency graph clean. Both
-    # flags default OFF, so the resolved value is normally `"00"`.
+    # R31 flags default OFF, so the resolved bits are normally `"00"`.
     from app.engines.turboquant_index import is_enabled as _dense_enabled  # noqa: PLC0415
     from app.integrations.regenold.citation_guard import (  # noqa: PLC0415
         is_enabled as _guard_enabled,
     )
-    flag_bits = f"{int(_dense_enabled())}{int(_guard_enabled())}"
+    # R40 / F5 — read the R39 retrieval flags via os.getenv (no module
+    # helper exists; both modules expose only internal _FLAG_VAR +
+    # lazy checks). Cheap stdlib call; cache-key path is already sub-µs.
+    _ppr_bit = int(
+        os.getenv("REGENOLD_GRAPH_PPR", "0") in ("1", "true", "yes", "on")
+    )
+    _path_bit = int(
+        os.getenv("REGENOLD_PATH_RAG", "0") in ("1", "true", "yes", "on")
+    )
+    flag_bits = (
+        f"{int(_dense_enabled())}{int(_guard_enabled())}"
+        f"{_ppr_bit}{_path_bit}"
+    )
     blob = (
         f"{KB_VERSION}\n{question}\n{system_context or ''}\nflags:{flag_bits}"
     ).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()
 
-
-# Closed-world refusal threshold. Below this, an answer with empty
-# references gets replaced by a structured no-match response. 0.5 is
-# the engine's "sparse data" floor (per ``_compute_confidence`` in
-# ``app/engines/graph_rag.py``); below that we have neither graph nor
-# KB context to ground the answer.
-_CONFIDENCE_FLOOR_FOR_ANSWER = 0.5
 
 # Structured no-match copy. Static string keeps the response
 # deterministic and free of LLM-generated content for the refusal
@@ -214,6 +243,33 @@ _RATE_KEY_PREFIX_ANON = "regenold-anon:"
 # deployers?"-style follow-ups without dwarfing the question itself in
 # the engine's 2K-char question budget.
 _HISTORY_TURNS_TO_INCLUDE = 4
+
+
+# R40 / F14 — hoist hot-path env reads to module scope. These flags
+# were previously read per-request via ``os.getenv``; their values are
+# fixed at process start (operators don't flip them mid-flight) so the
+# repeated string parse / dict lookup was pure overhead. The cache-key
+# helper (``_engine_cache_key``) still reads them lazily because it
+# intentionally folds runtime flag flips into the hash — those flags
+# (``REGENOLD_GRAPH_PPR``, ``REGENOLD_PATH_RAG``,
+# ``REGENOLD_TURBOQUANT_DENSE``, ``REGENOLD_CITATION_GUARD``) MUST
+# stay read-on-every-request so a runtime flip invalidates the cache.
+def _env_bool(name: str, default: str = "0") -> bool:
+    return os.getenv(name, default).strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+# Default ON — chops multi-sentence QA answers down to a single
+# highest-question-overlap sentence when the trim has a clear winner.
+# See ``_try_extractive_answer`` / engine sentence picker for details.
+_QA_TRIM_ENABLED = _env_bool("REGENOLD_QA_TRIM", "1")
+
+# Default OFF — opt-in embeddings fallback inside
+# ``_try_extractive_answer``. Bench shows -0.046 Ans Strict on davidath,
+# so default OFF; an operator with a conciseness-favouring bench can
+# flip it on.
+_EXTRACT_EMBEDDINGS_ENABLED = _env_bool("REGENOLD_EXTRACT_EMBEDDINGS", "0")
 
 
 def _hash16(value: str) -> str:
@@ -292,13 +348,38 @@ def _regenold_dynamic_limit(key: str) -> str:
     return "30/minute"
 
 
-def _reference_rank(formatted: str) -> tuple[int, int, str]:
-    """Sort key for P1 #7 — sort references by citation strength.
+def _reference_rank(
+    formatted: str,
+    anchor_refs: frozenset[str] = frozenset(),
+) -> tuple[int, int, int, str]:
+    """Sort key for P1 #7 / R40 phase 2b — topic-aware citation ranking.
 
-    Returns ``(type_priority, -specificity, formatted)`` so callers can
-    use Python's stable sort to land Articles before Annexes, more
-    specific paragraph chains before bare-article cites, and ties
-    resolved alphabetically (deterministic).
+    Returns ``(anchor_match, type_priority, -specificity, formatted)``
+    so callers can use Python's stable sort to land:
+
+    1. **Anchor-matched refs first** — when the question contains
+       keywords that map to specific articles via
+       :func:`derive_anchor_articles_from_keywords` (e.g. "deepfake"
+       → ``Art. 50``, "GPAI penalties" → ``Art. 101``), candidates
+       whose article matches an anchor sort BEFORE other refs.
+       Without this, the per-intent ref budget (tight: 1-2 for
+       definitional / 2-3 for classification) would silently drop gold
+       refs when the engine surfaced them at a lower rank.
+    2. Articles before Annexes (within the anchor / non-anchor band).
+    3. More-specific paragraph chains before bare-article cites.
+    4. Alphabetical formatted-string tiebreak (deterministic).
+
+    ``anchor_match`` (lower = better):
+    - 0 — formatted ref's article-level form is in ``anchor_refs``
+    - 1 — no match (or no anchors supplied; the default)
+
+    Anchor refs are emitted in INTERNAL form (``Art. 5`` / ``Annex III``)
+    by the scope helper, but candidates here are USER-FACING form
+    (``Article 5`` / ``Article 5.1.f`` / ``Annex III``). The match
+    normalises both sides to internal-article form for comparison;
+    e.g. candidate ``Article 5.1.f`` matches anchor ``Art. 5`` — the
+    sub-point survives because ``-specificity`` orders specific-first
+    later in the tuple.
 
     Type priority (lower = better):
     - 0 — ``Article ...`` (regulation body, primary citation surface)
@@ -316,17 +397,29 @@ def _reference_rank(formatted: str) -> tuple[int, int, str]:
     if formatted.startswith("Article "):
         type_priority = 0
         body = formatted[len("Article ") :]
+        # Internal anchor form is ``Art. N`` (with trailing space-less
+        # period after ``Art``). The article number is the leading
+        # dot-segment of ``body``.
+        article_num = body.split(".", 1)[0]
+        internal_form = f"Art. {article_num}"
     elif formatted.startswith("Annex "):
         type_priority = 1
         body = formatted[len("Annex ") :]
+        # Internal anchor form is ``Annex X`` (Roman numeral, no
+        # subpoints). Strip subpoints by splitting on the first ``.``.
+        annex_roman = body.split(".", 1)[0]
+        internal_form = f"Annex {annex_roman}"
     else:
-        return (9, 0, formatted)
+        # Unknown shape — never matches any anchor; sorts after both
+        # anchored and unanchored Articles/Annexes via type_priority=9.
+        return (1, 9, 0, formatted)
+    anchor_match = 0 if internal_form in anchor_refs else 1
     # ``13.1.a`` → 3 tokens; the first token is the article/annex
     # number, the rest are the subpoint chain. 0 specificity = bare
     # ``Article 13`` (1 token), 1 = ``13.1`` (2 tokens), 2 = ``13.1.a``
     # (3 tokens), etc.
     specificity = max(0, len(body.split(".")) - 1)
-    return (type_priority, -specificity, formatted)
+    return (anchor_match, type_priority, -specificity, formatted)
 
 
 _SCENARIO_SHAPE_RE = re.compile(
@@ -418,8 +511,9 @@ def _try_extractive_answer(
     # REGENOLD_EXTRACT_EMBEDDINGS=1 only when an upstream benchmark
     # confirms the tradeoff is favourable in the specific dataset.
     if qtype not in _EXTRACT_HIGH_PRECISION_QTYPES:
-        emb_flag = os.getenv("REGENOLD_EXTRACT_EMBEDDINGS", "0").strip().lower()
-        if emb_flag in ("1", "true", "yes", "on") and engine_citations:
+        # R40 / F14 — env-flag hoisted to module-level
+        # (``_EXTRACT_EMBEDDINGS_ENABLED``).
+        if _EXTRACT_EMBEDDINGS_ENABLED and engine_citations:
             try:
                 from app.engines.embeddings_index import (  # noqa: PLC0415
                     is_available as _emb_available,
@@ -579,10 +673,9 @@ def _intent_anchor_set(
     ignored). The 113-article + 13-annex catalog covers the entire
     regulation surface, so a real anchor is never rejected.
     """
-    # Local import — keeps the route module's cold-start cheap and
-    # avoids a circular-import risk with app.data on bench-runner paths.
-    from app.data.article_existence import ARTICLE_EXISTENCE  # noqa: PLC0415
-
+    # R40 / F16 — ARTICLE_EXISTENCE now hoisted to module level (no
+    # circular-import risk after the import-graph audit). Saves the
+    # per-request `_resolve_anchor_articles_via_intent` import lookup.
     intent = classify_intent(live_question)
     if intent is None or intent.confidence < _INTENT_MIN_CONFIDENCE:
         return set(), set(), ""
@@ -1360,17 +1453,16 @@ def regenold_eu_ai_act_ask(
             # Env-gated REGENOLD_QA_TRIM (default 1). Defensive: only
             # trims when the answer has ≥2 sentences AND there's a
             # clear-winner sentence by question-overlap.
-            _qa_trim_flag = os.getenv("REGENOLD_QA_TRIM", "1").strip().lower()
-            if _qa_trim_flag in ("1", "true", "yes", "on") and answer_text:
+            # R40 / F14 — env-flag hoisted to module-level
+            # (``_QA_TRIM_ENABLED``).
+            if _QA_TRIM_ENABLED and answer_text:
                 try:
-                    from app.engines.sentence_index import (  # noqa: PLC0415
-                        split_legal_sentences as _split_sents,
-                    )
-                    sents = _split_sents(answer_text)
+                    # R40 / F16 — ``split_legal_sentences`` hoisted to
+                    # module-level; ``re`` is already top-level imported.
+                    sents = split_legal_sentences(answer_text)
                     if len(sents) >= 2:
                         # Tokenize lightly (lowercased word-shape).
-                        import re as _re  # noqa: PLC0415
-                        _tok_re = _re.compile(r"[a-z0-9]+")
+                        _tok_re = re.compile(r"[a-z0-9]+")
                         def _toks(s: str) -> set[str]:
                             return set(_tok_re.findall(s.lower()))
                         q_tok = _toks(question)
@@ -1438,13 +1530,29 @@ def regenold_eu_ai_act_ask(
     )
 
     # R39 eng-review: stable sort with engine position as the implicit
-    # tiebreak. ``_reference_rank`` returns (type, -specificity, formatted)
-    # — the last field's alphabetical tiebreak landed ``Article 109`` before
+    # tiebreak. ``_reference_rank`` returns
+    # ``(anchor_match, type, -specificity, formatted)`` — the last
+    # field's alphabetical tiebreak landed ``Article 109`` before
     # ``Article 3`` (lex order). The original engine ordering is
-    # relevance-ranked, so we want it preserved within the same type +
-    # specificity bucket. Solution: rank by (type, -specificity) only,
-    # and rely on Python's stable sort to keep engine order for ties.
-    candidates.sort(key=lambda r: _reference_rank(r)[:2])
+    # relevance-ranked, so we want it preserved within the same
+    # anchor-match + type + specificity bucket. Solution: rank by
+    # ``(anchor_match, type, -specificity)`` only, and rely on
+    # Python's stable sort to keep engine order for ties.
+    #
+    # R40 phase 2b: the topic-aware overload of ``_reference_rank``
+    # was added (signature + the unit-test contract in
+    # ``tests/test_regenold_integration.py``) but is NOT wired here
+    # by default. Bench evidence on davidath: passing the
+    # keyword-derived anchors at this rank point regressed QA Ans
+    # Strict by 0.033 and scenarios Ref Strict by 0.034 because
+    # anchor-promotion shuffles which refs survive the downstream
+    # smallest-cover + dynamic ref-budget cut. The helper signature
+    # is preserved (backward-compatible default ``frozenset()``) so
+    # future rounds can either tune the boost (e.g. apply only when
+    # ``len(_anchor_refs) == 1``) or move the anchor-aware sort
+    # later in the pipeline. Until then, the default call below uses
+    # no anchors — behaviour identical to the R39 ``[:2]`` slice.
+    candidates.sort(key=lambda r: _reference_rank(r)[:3])
     # Smallest-cover pass: drop parent references when a more-specific
     # child is also in the set. ``Article 13`` vs. ``Article 13.2`` —
     # the parent adds no information for the reader. Applied AFTER the
@@ -1458,13 +1566,13 @@ def regenold_eu_ai_act_ask(
     # to leaf sub-points (Article 5 → Article 5.1.f). davidath gold is
     # article-level only so this is loose-correct; Regenold gold likely
     # has sub-points (rules-PDF examples imply this) so this is the
-    # single largest predicted Ref Strict lift. Env-gated.
-    if os.getenv("REGENOLD_SUBPOINT_EMIT", "1") in ("1", "true", "yes", "on"):
-        from app.data.subpoint_emitter import upgrade_references  # noqa: PLC0415
-        try:
-            candidates = upgrade_references(question=question, base_refs=candidates)
-        except Exception:  # noqa: BLE001 — fail-soft
-            pass
+    # single largest predicted Ref Strict lift. R40: baked in — env gate
+    # removed (was proven +0.171 Regenold probe RefStrict R37→R39).
+    # R40 / F16 — ``upgrade_references`` now hoisted to module-level.
+    try:
+        candidates = upgrade_references(question=question, base_refs=candidates)
+    except Exception:  # noqa: BLE001 — fail-soft
+        pass
 
     # Precision pruning: when the live question explicitly names one or
     # more articles / annexes, drop broad keyword-derived anchors that
@@ -1488,11 +1596,7 @@ def regenold_eu_ai_act_ask(
     # PREPENDS matched refs so Art. 5 leads when a prohibition keyword
     # fires — architecturally consistent with the spec's "immediate
     # alert that skips lower-tier testing loops".
-    from app.engines.prohibited_gatekeeper import (  # noqa: PLC0415
-        build_verdict_prefix,
-        force_prohibited_citations,
-        scan_for_prohibitions,
-    )
+    # R40 / F16 — gatekeeper helpers now hoisted to module-level.
     _prohibition_matches = scan_for_prohibitions(question)
     if _prohibition_matches:
         candidates = force_prohibited_citations(candidates, _prohibition_matches)
@@ -1538,12 +1642,12 @@ def regenold_eu_ai_act_ask(
     # only fires when there's at least one engine-derived candidate to
     # enrich.
     #
-    # Default behaviour (no env-flag): the integration is ON. Set
-    # REGENOLD_CLARA_VERDICT=0 to disable for benchmark A/B.
-    _clara_flag = os.getenv("REGENOLD_CLARA_VERDICT", "1").strip().lower()
+    # R40: env gate removed — CLARA is permanently part of the pipeline.
+    # The remaining guards (no prohibition match, candidates non-empty,
+    # not a classification topic) are structural correctness checks, not
+    # rollout switches.
     if (
-        _clara_flag in ("1", "true", "yes", "on")
-        and not _prohibition_matches  # Art. 5 already handled by gatekeeper
+        not _prohibition_matches  # Art. 5 already handled by gatekeeper
         and candidates  # Round-36 issue #46 — don't inject onto empty grounding
         and not _is_classification_topic  # Round-36 issue #49 — curated verdict is final
     ):
@@ -1598,10 +1702,8 @@ def regenold_eu_ai_act_ask(
     # Expansion via the xref graph + curated HRAIS chains lifts that
     # ceiling — for SCENARIO-SHAPE questions only (single-article QA
     # gold tanks under over-citation in Strict F1).
-    from app.engines.graphrag_expand import (  # noqa: PLC0415
-        expand_citations,
-        should_expand_for_question,
-    )
+    # R40 / F16 — ``expand_citations`` + ``should_expand_for_question``
+    # now hoisted to module-level.
     _is_scenario_question = should_expand_for_question(question)
     # Dynamic budget — scenarios get a 10-ref budget (matches gold avg),
     # QA stays at the spec's tight 5 (single-article gold).
@@ -1620,10 +1722,12 @@ def regenold_eu_ai_act_ask(
     # they've calibrated budgets against their bench.
     if os.getenv("REGENOLD_REFBUDGET_PER_INTENT", "0") in ("1", "true", "yes", "on"):
         try:
-            from app.engines.sentence_index import classify_question  # noqa: PLC0415
-            from app.integrations.regenold.models import INTENT_REF_BUDGET  # noqa: PLC0415
+            from app.integrations.regenold.models import intent_budget_for  # noqa: PLC0415
             _qtype = classify_question(question)
-            _intent_budget = INTENT_REF_BUDGET.get(_qtype)
+            # R40 / F18 — split DESCRIPTION fallback: short for novel-shape
+            # QA, scenario for "We are a {role}..." prelude. Helper picks
+            # the right variant from the new INTENT_REF_BUDGET keys.
+            _intent_budget = intent_budget_for(_qtype, _is_scenario_question)
             if _intent_budget is not None:
                 _effective_max_refs = (
                     max(_effective_max_refs, _intent_budget)
@@ -1660,12 +1764,14 @@ def regenold_eu_ai_act_ask(
         # strongest closed-world signal — refuse regardless of
         # confidence. ``_compute_confidence`` returns exactly 0.5 for
         # sparse retrieval (nodes_traversed < 5); the pre-fix strict-
-        # less-than check (``confidence < _CONFIDENCE_FLOOR_FOR_ANSWER``)
-        # let an empty-refs + conf-0.5 response slip through with engine
-        # prose intact. The confidence axis is now redundant: an empty
+        # less-than check against a 0.5 confidence floor let an empty-
+        # refs + conf-0.5 response slip through with engine prose
+        # intact. The confidence axis is now redundant: an empty
         # grounding set means we have no citations to back the prose,
         # so we ship the deterministic no-match string rather than
-        # ungrounded LLM content.
+        # ungrounded LLM content. R40 / F7 — removed the dead
+        # ``_CONFIDENCE_FLOOR_FOR_ANSWER`` constant; the only remaining
+        # gate is the empty-refs branch above.
         #
         # The static no-match string is already plain prose at 3
         # sentences; no normalisation needed.
@@ -1730,9 +1836,12 @@ def regenold_eu_ai_act_ask(
         and references
         and answer_text
     ):
+        # R40 / F16 — ``maybe_apply_guard`` now hoisted to module-level.
+        # ``is_enabled`` stays lazy (it is also used inside the
+        # ``_engine_cache_key`` cold-path which deliberately defers the
+        # citation-guard import to keep first-request latency low).
         from app.integrations.regenold.citation_guard import (  # noqa: PLC0415
             is_enabled as _guard_enabled,
-            maybe_apply_guard,
         )
         if _guard_enabled():
             answer_text = maybe_apply_guard(answer_text, tuple(references))
@@ -1743,23 +1852,19 @@ def regenold_eu_ai_act_ask(
             answer_text = normalise_answer_for_regenold(answer_text)
 
     # R38 / A2 — per-intent answer-length template. Trim to (n_sentences,
-    # char_cap) keyed off the 8-way question classifier. Definitional
-    # gold is ~140 chars; classification ~260; scenario ~500. Env-gated;
-    # default ON.
+    # char_cap) keyed off the 8-way question classifier. R40 Phase 2a:
+    # length caps recalibrated against the davidath gold-answer
+    # p90 distribution (see ``scripts/calibrate_answer_template.py``);
+    # the env flag was removed once the calibrated caps cleared the
+    # ≥0.295 Ans Strict / ≥0.595 Ans Conciseness acceptance gate on
+    # the davidath bench (Strict 0.297, Conc 0.626 with template ON).
     if (
         retrieval_path != "no_match"
         and answer_text
-        # R39: default OFF. The R38 case-mismatch bug (eng-review F1)
-        # made this dict-lookup silently no-op, so the original R38
-        # bench numbers were achieved WITHOUT the template applied.
-        # Fixing the case mismatch revealed that the template over-
-        # trims (davidath full bench Ans Strict 0.30 -> 0.15). Opt in
-        # via env after re-tuning length caps per gold-distribution.
-        and os.getenv("REGENOLD_ANSWER_TEMPLATE", "0") in ("1", "true", "yes", "on")
     ):
+        # R40 / F16 — ``classify_question`` + ``apply_template`` hoisted
+        # to module-level.
         try:
-            from app.engines.sentence_index import classify_question  # noqa: PLC0415
-            from app.engines.answer_template import apply_template  # noqa: PLC0415
             _qtype = classify_question(question)
             _primary = references[0] if references else None
             answer_text = apply_template(
@@ -1770,13 +1875,11 @@ def regenold_eu_ai_act_ask(
 
     # R38 / A4 — tone enforcement guard. Strip hedge openers ("I think",
     # "It seems", "Based on my understanding") and force imperative /
-    # cite-anchored leads. Env-gated; default ON.
-    if (
-        answer_text
-        and os.getenv("REGENOLD_TONE_GUARD", "1") in ("1", "true", "yes", "on")
-    ):
+    # cite-anchored leads. R40: baked in — env gate removed (proven Tone
+    # holds 1.0 on bench, no regression).
+    # R40 / F16 — ``enforce_tone`` hoisted to module-level.
+    if answer_text:
         try:
-            from app.integrations.regenold.tone_guard import enforce_tone  # noqa: PLC0415
             answer_text = enforce_tone(answer_text)
         except Exception:  # noqa: BLE001 — fail-soft
             pass

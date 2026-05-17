@@ -412,36 +412,27 @@ def _score(index: _BM25Index, doc_idx: int, query_tokens: list[str]) -> float:
     return score
 
 
-def top_articles_by_relevance(
-    question: str, *, k: int = 3, min_score: float = 1.5,
+_SOURCE_WEIGHT = {
+    "kb": 1.0,
+    "ontology": 1.0,
+    "corpus": 0.6,
+    "definition": 0.8,
+}
+# Issue #54 — relative-cutoff parameters.
+_MIN_SCORE_FACTOR = 0.4
+_MIN_ABSOLUTE_RESCUE = 0.5
+
+
+def _bm25_top_refs(
+    question: str, *, k: int, min_score: float,
 ) -> list[str]:
-    """Return up to ``k`` article references most relevant to ``question``.
+    """Run a single BM25 ranking pass over the indexed corpus.
 
-    The score threshold filters noise: a document scoring ≤ 1.5 against
-    a query usually shares only one or two non-stopword terms, which is
-    not a strong signal. The default keeps recall conservative — BM25
-    is a fallback, not an oracle.
-
-    Returns refs in descending relevance order. Duplicate article keys
-    are de-duplicated (the same article may appear in both the KB and
-    the ontology corpus, but a caller wants each key at most once in
-    the output). The highest-scoring doc wins for each key.
-
-    Empty list if no document scores above the threshold or the query
-    is empty after tokenisation.
-
-    Issue #54 — short-query rescue. The absolute ``min_score`` cutoff
-    is well-tuned for 4+ token queries, but a 1-2 token query can have
-    a *clear* top winner whose score never clears the floor (e.g. the
-    1-token query "vehicle" scores ~1.5 against Annex I but ≤ the 2.5
-    floor the engine uses on the deterministic-parse fallback path).
-    Pre-fix, this returned zero hits and the deterministic parse fell
-    back to "no matching obligation". Post-fix, a candidate also
-    survives when its raw score is ≥ ``MIN_SCORE_FACTOR`` (0.4) of the
-    best raw score AND that best is itself above a low absolute sanity
-    floor (``MIN_ABSOLUTE_RESCUE``, 0.5) — so the rescue can never
-    promote pure noise but does keep a clearly-dominant short-query
-    winner.
+    Extracted (R40 / Phase 4) so it can be called both for the original
+    question and for each LLM-generated paraphrase (RAG-Fusion). All the
+    Round 24 / 25 / 28 weighting + confidence boost + Issue #54 rescue
+    semantics live here; this is the single source of truth for
+    BM25-only article ranking.
     """
     query_tokens = _tokenize(question)
     if not query_tokens:
@@ -450,40 +441,6 @@ def top_articles_by_relevance(
     index = _build_index()
     if not index.docs:
         return []
-
-    # Score every doc, then collapse to one entry per article_key
-    # keeping the maximum score across kb + ontology rows.
-    #
-    # Source-aware weighting (Round 25): KB summary + ontology docs are
-    # hand-authored and tight; the upstream EUR-Lex corpus docs are
-    # long-form legal prose where BM25 length-normalisation under-shoots
-    # the dilution penalty (`len(corpus_doc) >> avg_doc_len`, but the
-    # b=0.75 normalisation tapers off). Without scaling, a query like
-    # "ai that generates a logo" matches Art. 11 (technical
-    # documentation) in the corpus higher than Art. 50 (transparency)
-    # in the KB summary, because Art. 11's corpus text contains
-    # "generates", "AI system", and "documentation". Scaling the
-    # corpus + definition sources down to 0.6× keeps them as a SAFETY
-    # NET (they still win when the KB doc has zero overlap) without
-    # over-displacing authored summaries.
-    #
-    # Round 28 — confidence-weighted boost (per the LLM Wiki v2 gist's
-    # "many sources support it" pattern). Articles linked by many other
-    # KB rows (high in-degree on the cross-reference graph) are
-    # structurally more important than peripheral leaf nodes. Multiply
-    # the source-tier weight by a confidence boost ∈ [1.0, 1.15] derived
-    # from the article's in-degree on :data:`kb_xrefs._build_xref_graph`.
-    # Tiny effect on already-strong matches; meaningful tie-break on
-    # close-score competitors. See :func:`_confidence_boost`.
-    _SOURCE_WEIGHT = {
-        "kb": 1.0,
-        "ontology": 1.0,
-        "corpus": 0.6,
-        "definition": 0.8,
-    }
-    # Issue #54 — relative-cutoff parameters.
-    _MIN_SCORE_FACTOR = 0.4
-    _MIN_ABSOLUTE_RESCUE = 0.5
 
     # Pass 1 — score every doc unfiltered so we can compute the best
     # raw score for the relative-cutoff threshold.
@@ -523,7 +480,49 @@ def top_articles_by_relevance(
             best[article_ref] = s
 
     scored = sorted(best.items(), key=lambda t: t[1], reverse=True)
-    bm25_top = [ref for ref, _ in scored[:k]]
+    return [ref for ref, _ in scored[:k]]
+
+
+def top_articles_by_relevance(
+    question: str, *, k: int = 3, min_score: float = 1.5,
+) -> list[str]:
+    """Return up to ``k`` article references most relevant to ``question``.
+
+    The score threshold filters noise: a document scoring ≤ 1.5 against
+    a query usually shares only one or two non-stopword terms, which is
+    not a strong signal. The default keeps recall conservative — BM25
+    is a fallback, not an oracle.
+
+    Returns refs in descending relevance order. Duplicate article keys
+    are de-duplicated (the same article may appear in both the KB and
+    the ontology corpus, but a caller wants each key at most once in
+    the output). The highest-scoring doc wins for each key.
+
+    Empty list if no document scores above the threshold or the query
+    is empty after tokenisation.
+
+    Issue #54 — short-query rescue. The absolute ``min_score`` cutoff
+    is well-tuned for 4+ token queries, but a 1-2 token query can have
+    a *clear* top winner whose score never clears the floor (e.g. the
+    1-token query "vehicle" scores ~1.5 against Annex I but ≤ the 2.5
+    floor the engine uses on the deterministic-parse fallback path).
+    Pre-fix, this returned zero hits and the deterministic parse fell
+    back to "no matching obligation". Post-fix, a candidate also
+    survives when its raw score is ≥ ``MIN_SCORE_FACTOR`` (0.4) of the
+    best raw score AND that best is itself above a low absolute sanity
+    floor (``MIN_ABSOLUTE_RESCUE``, 0.5) — so the rescue can never
+    promote pure noise but does keep a clearly-dominant short-query
+    winner.
+    """
+    # Preserve the pre-R40 early-return semantics: an empty tokenisation
+    # or empty index ⇒ short-circuit before any additive dense path.
+    query_tokens = _tokenize(question)
+    if not query_tokens:
+        return []
+    index = _build_index()
+    if not index.docs:
+        return []
+    bm25_top = _bm25_top_refs(question, k=k, min_score=min_score)
 
     # Round 31 — when the TurboQuant dense path is enabled
     # (``REGENOLD_TURBOQUANT_DENSE=1``), use the dense ranking to APPEND
@@ -558,57 +557,99 @@ def top_articles_by_relevance(
 
     # Round 32 — Embeddings sentence-index additive recall (Layer A+D
     # dense path). Aggregates sentence hits → article refs taking max
-    # cosine sim. Purely additive (never displaces a BM25 winner). Env-
-    # gated REGENOLD_EMBEDDINGS_INDEX=1 (default ON when assets are
-    # present; the asset-presence check inside ``is_available`` makes
-    # this a no-op on stripped installs).
+    # cosine sim. Purely additive (never displaces a BM25 winner).
+    # R40: env gate removed — baked into the default path. The asset-
+    # presence check inside ``is_available`` still makes this a no-op
+    # on stripped installs without pre-built artefacts.
+    #
+    # R40 / Phase 4: changed from early-return on missing assets to
+    # fall-through so the query-expansion + graph_2hop paths below get
+    # a chance to fire. Pre-R40 the embeddings block would early-return
+    # `fused` and skip every downstream additive pass — fine when the
+    # only downstream was graph_2hop (also a no-op on a stripped
+    # install), but query-expansion adds real recall on production
+    # paraphrased queries even when the embeddings asset is absent.
     try:
         from app.engines.embeddings_index import (  # noqa: PLC0415
             is_available as _emb_available,
             query as _emb_query,
         )
+        _emb_ok = _emb_available()
     except Exception:  # noqa: BLE001 — module guards its own import
-        return fused
-    if not _emb_available():
-        return fused
-    env_flag = os.getenv("REGENOLD_EMBEDDINGS_INDEX", "1").strip().lower()
-    if env_flag not in ("1", "true", "yes", "on"):
-        return fused
-    try:
-        emb_hits = _emb_query(question, top_k=k * 4, threshold=0.15)
-    except Exception:  # noqa: BLE001 — never 500 the route
-        return fused
-    if not emb_hits:
-        return fused
-    # Aggregate sentence hits → article-level candidates, max sim per article.
-    article_max: dict[str, float] = {}
-    for hit in emb_hits:
-        ref = hit.article_ref
-        if not ref:
-            continue
-        # Normalise to internal BM25 key shape (e.g. "Article 6" → "Art. 6").
-        if ref.startswith("Article "):
-            internal = "Art. " + ref[len("Article "):]
-        elif ref.startswith("Annex "):
-            internal = ref  # already in internal form
-        else:
-            internal = ref
-        prev = article_max.get(internal, -1.0)
-        if hit.similarity > prev:
-            article_max[internal] = hit.similarity
-    emb_refs = sorted(article_max.items(), key=lambda t: t[1], reverse=True)
-    if not emb_refs:
-        return fused
-    fused = additive_dense_fill(fused, emb_refs, k=k)
+        _emb_ok = False
+        _emb_query = None  # type: ignore[assignment]
+    if _emb_ok and _emb_query is not None:
+        try:
+            emb_hits = _emb_query(question, top_k=k * 4, threshold=0.15)
+        except Exception:  # noqa: BLE001 — never 500 the route
+            emb_hits = []
+        if emb_hits:
+            # Aggregate sentence hits → article-level candidates, max sim per
+            # article.
+            article_max: dict[str, float] = {}
+            for hit in emb_hits:
+                ref = hit.article_ref
+                if not ref:
+                    continue
+                # Normalise to internal BM25 key shape ("Article 6" → "Art. 6").
+                if ref.startswith("Article "):
+                    internal = "Art. " + ref[len("Article "):]
+                elif ref.startswith("Annex "):
+                    internal = ref  # already in internal form
+                else:
+                    internal = ref
+                prev = article_max.get(internal, -1.0)
+                if hit.similarity > prev:
+                    article_max[internal] = hit.similarity
+            emb_refs = sorted(article_max.items(), key=lambda t: t[1], reverse=True)
+            if emb_refs:
+                fused = additive_dense_fill(fused, emb_refs, k=k)
 
-    # Round 35 — Neo4j 2-hop graph expansion (env-gated REGENOLD_GRAPH_2HOP).
-    # When OFF (default) the call returns empty in 1 µs and ``fused`` is
-    # unchanged. When ON AND a seeded Neo4j instance is reachable, the
-    # 2-hop CROSS_REFERENCES traversal surfaces non-obvious connections
-    # that BM25 + dense paths miss — primarily for paraphrased / novel-
-    # phrase production queries (NOT davidath, which BM25 already saturates).
-    # Defensive: never raises, capped at 50 ms timeout, existence-gated
-    # against ARTICLE_EXISTENCE.
+    # R40 / Phase 4 — RAG-Fusion query expansion. Strictly additive: each
+    # paraphrase produces its own BM25 ranking; RRF over all paraphrase
+    # ranklists yields a fused list whose top refs are appended to
+    # ``fused`` only when they're not already present. Never displaces a
+    # BM25 winner. Fail-soft: wrapper down / circuit open ⇒ no-op in
+    # microseconds.
+    try:
+        from app.engines.query_expansion import (  # noqa: PLC0415
+            expand_query as _expand_query,
+            is_query_expansion_enabled as _qe_enabled,
+            reciprocal_rank_fusion as _rrf,
+        )
+        # Local import — ``additive_dense_fill`` lives in turboquant_index.
+        # Re-import here so this block is robust when the turboquant block
+        # above silently failed (numpy missing on a stripped install).
+        from app.engines.turboquant_index import (  # noqa: PLC0415
+            additive_dense_fill as _add_fill,
+        )
+        if _qe_enabled():
+            paraphrases = _expand_query(question)
+            if paraphrases:
+                rank_lists: list[list[str]] = []
+                for para in paraphrases:
+                    para_refs = _bm25_top_refs(
+                        para, k=k * 2, min_score=min_score,
+                    )
+                    if para_refs:
+                        rank_lists.append(para_refs)
+                if rank_lists:
+                    rrf_top = _rrf(rank_lists)
+                    # Additive only — append novel paraphrase hits.
+                    qe_pairs = [(ref, 1.0) for ref in rrf_top]
+                    fused = _add_fill(fused, qe_pairs, k=k)
+    except Exception:  # noqa: BLE001 — fail-soft, never 500 the route
+        pass
+
+    # Round 35 — Neo4j 2-hop graph expansion. R40: env gate dropped —
+    # ``is_enabled`` now reflects client connectivity only, so the call
+    # returns empty in 1 µs when the graph is offline / unseeded and
+    # exercises the 2-hop CROSS_REFERENCES traversal otherwise. The
+    # traversal surfaces non-obvious connections that BM25 + dense
+    # paths miss — primarily for paraphrased / novel-phrase production
+    # queries (NOT davidath, which BM25 already saturates). Defensive:
+    # never raises, capped at 50 ms timeout, existence-gated against
+    # ARTICLE_EXISTENCE.
     try:
         from app.engines.graph_expand_2hop import (  # noqa: PLC0415
             expand_2hop as _g2,

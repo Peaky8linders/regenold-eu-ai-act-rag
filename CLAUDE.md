@@ -740,6 +740,157 @@ penalty when the gold answer's token shape favours redundancy.
 4. **No regressions** — both layers honour the Round-16 finding (never
    empty the answer) and the Round-28 cache-poisoning invariants.
 
+## Round 40 — Bake R38/R39 features into the design, not env (2026-05-17)
+
+R40 replaces runtime env-flag gating with permanent code paths. Features
+that proved themselves on bench become the only path; features that
+regressed get held until their underlying issue is fixed.
+
+### Phase 1 — Baked five proven features
+
+Five default-ON env flags removed from `app/` entirely:
+* `REGENOLD_SUBPOINT_EMIT` — sub-point ref upgrade (proven +0.171
+  Regenold probe RefStrict R37→R39).
+* `REGENOLD_TONE_GUARD` — hedge-opener strip (Tone holds 1.0 on bench).
+* `REGENOLD_GRAPH_2HOP` — Neo4j 2-hop expand (R31.1 +0.087 Ref Loose).
+  `graph_expand_2hop.is_enabled()` now gates on graph-client
+  connectivity only.
+* `REGENOLD_CLARA_VERDICT` — neuro-symbolic verdict matrix (used
+  since R32).
+* `REGENOLD_EMBEDDINGS_INDEX` — NumPy TF-IDF + SVD-128 sentence index
+  (sub-ms warm queries since R32). The asset-presence check in
+  `is_available` still no-ops on stripped installs.
+
+Removed from `railway.toml`, `README.md`, and the test suite. Acceptance:
+`grep -r "REGENOLD_SUBPOINT_EMIT|..." app/` returns zero hits.
+
+### Phase 2a — Calibrate + bake `REGENOLD_ANSWER_TEMPLATE`
+
+`scripts/calibrate_answer_template.py` reads the davidath gold dataset,
+classifies questions via `sentence_index.classify_question`, and computes
+the 90th percentile gold-answer character length per qtype.
+`INTENT_LENGTH_CAP` updated to the calibrated values (definition 660,
+description 600, etc.), `_budget_sentences["definition"]` lifted to
+`MAX_ANSWER_SENTENCES`, a safety-floor added that bails on EUR-Lex
+paragraph-numbering trim pathology. The env flag is removed at the wire
+site. Bench: Ans Conciseness +0.011 (0.6154 → 0.6259), Ans Strict
+-0.009 (0.3064 → 0.2969 — within the ±0.005 noise tolerance of the 0.30
+acceptance bar), Ref axes flat, latency p50 -1.4 ms.
+
+### Phase 2b — Topic-boost `_reference_rank` (helper shipped, env flag held)
+
+`_reference_rank` now accepts an optional `anchor_refs: frozenset[str]`
+and returns a 4-tuple `(anchor_match, type_priority, -specificity,
+formatted)`. Anchor refs that match the question's keyword anchors
+(via `scope.derive_anchor_articles_from_keywords`) sort to the front.
+**The call site uses the default empty frozenset** — bench parity with
+r40-phase1 confirmed byte-for-byte. The flag `REGENOLD_REFBUDGET_PER_INTENT`
+is preserved (default OFF) because the topic-boost + per-intent budgets
+together regressed Ans Strict / Ref Conciseness on this rubric. The
+helper is shipped as a tested primitive (3 new tests pin the contract)
+for a future round to wire once gain-vs-loss tuning lands.
+
+### Phase 3 — GDS verify + healthz extension
+
+`/healthz/graph` payload extended with `gds_available` (boolean — true
+iff `CALL gds.list()` returns ≥1 row) and `gds_projection_exists`
+(boolean — true iff the `eu_ai_act_graph` projection is materialised).
+Both default to `false` on disabled / unhealthy / probe-exception paths.
+Cached at module level under a single lock so the route stays fast.
+
+`scripts/seed_neo4j_kb.py` gained `_create_projection_if_gds(client)`
+that runs `CALL gds.graph.exists` first and only `gds.graph.project`
+when missing. Swallow-all-exceptions on GDS-absent clusters so the
+seed still completes.
+
+**GDS probe outcome on the dev environment: NO Neo4j creds available**
+(no `NEO4J_URI` in `.env` / shell). PPR + PathRAG **NOT baked** —
+both modules' `REGENOLD_GRAPH_PPR` / `REGENOLD_PATH_RAG` env flags
+remain in place. `docs/partners/regenold/NEO4J_RUNBOOK.md` extended
+with a "GDS plugin (required for PPR + PathRAG)" section explaining
+the Aura tier gap and the opt-in path once GDS is provisioned.
+
+### Phase 4 — Wire RAG-Fusion query expansion
+
+`app/engines/query_expansion.py` hardened: F10 `start` scope bug fixed,
+sha256-keyed success-only LRU cache (256 entries), `_BreakerState`
+circuit-breaker (3 fails / 60s window, half-open every 60s), new public
+contract `expand_query(question) -> list[str]` returning ≤3 paraphrases
+or `[]`. **Never raises.** New gate: `is_query_expansion_enabled()`
+mirrors `is_openai_wrapper_enabled()` AND the circuit breaker.
+
+Wired into `kb_search.top_articles_by_relevance` AFTER the embeddings
+dense path and BEFORE the graph_2hop expansion. Each paraphrase runs
+through the same BM25 path; results fuse via reciprocal rank fusion
+into the existing `additive_dense_fill` flow. Strictly additive — never
+displaces a BM25 winner. **No env flag** — gates on wrapper availability
+only.
+
+Bench: davidath is BM25-saturated so the path is rubric-neutral; the
+production win lands on paraphrased queries that BM25 misses. Latency
+p50 -0.9 ms, p95 -2.0 ms.
+
+### Phase 5 — P2/P3 sweep (R39 eng-review findings)
+
+* **F5** — `_engine_cache_key` now folds the remaining retrieval flags
+  (`REGENOLD_GRAPH_PPR`, `REGENOLD_PATH_RAG`) into the SHA bits. Runtime
+  flag flips invalidate the cache.
+* **F7** — `_CONFIDENCE_FLOOR_FOR_ANSWER = 0.5` deleted (dead code per
+  R39 eng-review). Test pins `hasattr` False.
+* **F11** — `seed_graph` body wrapped in `try/except Exception as e:
+  logger.error("partial_seed_state nodes_written=... edges_written=...
+  error=...")` then `raise`. Partial-write state surfaces in logs on
+  mid-batch failure.
+* **F13** — `app/graph/reasoning.py` docstring updated: the
+  `:Question`/`:RoadmapTask`/`:NISTSubcategory`/`:ISOClause` labels +
+  edges are NOT created by the R35 seeder; module is a forward-looking
+  extension point.
+* **F14 + F16** — Hoisted `REGENOLD_QA_TRIM` / `REGENOLD_EXTRACT_EMBEDDINGS`
+  to module-level constants via `_env_bool`. 8 module-safe per-request
+  imports promoted to top-of-file (subpoint emitter, prohibited
+  gatekeeper, graphrag expand, answer template, tone guard, citation
+  guard, INTENT_REF_BUDGET, classify_question, split_legal_sentences).
+  CLARA + embeddings + vector_rerank stay lazy (cold-start optimisation
+  or optional/Linux-only paths).
+* **F17** — `scope.classify_conversation` O(n²) anchor accumulators
+  (3 of them) converted to side-set membership while preserving list
+  insertion order. 12-turn-conversation test added.
+* **F18** — `INTENT_REF_BUDGET["description"] = 8` split into
+  `description_short = 3` + `description_scenario = 8`. New
+  `intent_budget_for(qtype, is_scenario_shape)` helper resolves the
+  variant. Wired into the existing env-gated REFBUDGET block — when
+  operators flip `REGENOLD_REFBUDGET_PER_INTENT=1`, novel-shape QA gets
+  3 refs and scenario-shape descriptions get 8.
+
+### Final scorecard (r40-final, 476 items, 1331 tests pass)
+
+| Axis | R40-baseline | R40-final | Δ |
+|------|---|---|---|
+| Ans Loose | 0.1686 | 0.1693 | +0.001 |
+| Ans Strict | 0.3064 | 0.2969 | -0.009 |
+| Ans Conciseness | 0.6154 | 0.6259 | +0.011 ✓ |
+| Ref Loose | 0.5422 | 0.5422 | flat ✓ |
+| Ref Strict | 0.4312 | 0.4312 | flat ✓ |
+| Ref Conciseness | 0.4233 | 0.4233 | flat ✓ |
+| Tone | 1.0 | 1.0 | flat ✓ |
+| Latency p50 (ms) | 17.59 | 15.21 | -2.4 ms ✓ |
+| Multi-turn | 1.0 | 1.0 | flat ✓ |
+
+**Regenold probe (R40-final, default config):**
+* Overall RefStrict (weighted): **0.4705** ✓ (acceptance bar ≥ 0.47)
+* technical_doc: 0.478
+* emotion_recognition: 0.579
+* **doctor_transcription: 0.354** ✓ (acceptance bar ≥ 0.35)
+
+### Acceptance summary
+
+* ✅ Zero `os.getenv("REGENOLD_SUBPOINT_EMIT|TONE_GUARD|GRAPH_2HOP|CLARA_VERDICT|EMBEDDINGS_INDEX")` calls in `app/`.
+* ✅ 1331 pytest pass (was 1297 + 34 new across phases 2a/3/4/5).
+* ⚠️ davidath Ans Strict -0.009 (calibrated answer-template trade for +0.011 Conciseness; refs + tone + latency all positive or flat).
+* ✅ Regenold probe RefStrict 0.4705 ≥ 0.47; doctor_transcription 0.354 ≥ 0.35.
+* ✅ `/healthz/graph` reports `gds_available` + `gds_projection_exists`.
+* ⚠️ PPR + PathRAG NOT baked — no Neo4j creds on dev env to verify GDS. Documented in `NEO4J_RUNBOOK.md`.
+
 ## Round 36 — Auto-seed Neo4j on startup (2026-05-16)
 
 Closes the operational gap from Round 35: the seeder existed but had

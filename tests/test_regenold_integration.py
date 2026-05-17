@@ -314,11 +314,95 @@ def test_p1_reference_rank_falls_through_unknown_shape() -> None:
     ``reference_from_article_ref`` is the only producer, but the helper
     must not crash on unrecognised input — it returns priority 9 so
     unknown shapes sort last.
+
+    R40 phase 2b: tuple shape changed to
+    ``(anchor_match, type_priority, -specificity, formatted)``. The
+    type_priority for unknown shapes is the second slot (``rank[1]``)
+    and remains ``9``; ``rank[0]`` is the anchor-match flag (``1`` =
+    no match, the default with an empty anchor set).
     """
     from app.routes.regenold import _reference_rank
 
     rank = _reference_rank("Recital 65")
-    assert rank[0] == 9
+    assert rank[1] == 9
+    # Unknown shapes can never anchor-match (no Article/Annex prefix).
+    assert rank[0] == 1
+
+
+def test_r40_reference_rank_anchor_match_leads() -> None:
+    """R40 phase 2b — topic-aware anchor matching.
+
+    When ``anchor_refs={"Art. 50"}`` is passed, candidates whose
+    article matches sort BEFORE non-matching ones, regardless of
+    base citation-strength order. Within the anchor band, the
+    existing specificity rule applies (more-specific first).
+
+    Without the topic-boost, the per-intent ref budget (definitional
+    1-2, classification 2-3) would drop gold refs like Art. 50 for
+    "deepfake disclosure" or Art. 101 for "GPAI penalties" when the
+    engine ranked them lower than non-gold refs.
+    """
+    from app.routes.regenold import _reference_rank
+
+    refs = ["Article 5", "Article 50", "Article 50.4"]
+    anchors = frozenset({"Art. 50"})
+    sorted_refs = sorted(refs, key=lambda r: _reference_rank(r, anchors))
+    assert sorted_refs == [
+        "Article 50.4",  # anchor-match + deepest specificity
+        "Article 50",    # anchor-match + bare article
+        "Article 5",     # non-match (sorts last despite being lex-first)
+    ]
+
+
+def test_r40_reference_rank_no_anchors_preserves_behaviour() -> None:
+    """R40 phase 2b — empty anchor set = unchanged ranking.
+
+    The new signature is backward-compatible: with ``anchor_refs``
+    defaulting to ``frozenset()``, ``anchor_match`` is always ``1`` so
+    the (type, -specificity, formatted) sub-ordering matches the
+    pre-R40 behaviour byte-for-byte.
+    """
+    from app.routes.regenold import _reference_rank
+
+    refs = [
+        "Article 13",
+        "Article 13.1.a",
+        "Annex IV.2",
+        "Article 13.1",
+        "Annex IV",
+    ]
+    # No anchors → same order as the original three-tuple test above.
+    sorted_refs = sorted(refs, key=_reference_rank)
+    assert sorted_refs == [
+        "Article 13.1.a",
+        "Article 13.1",
+        "Article 13",
+        "Annex IV.2",
+        "Annex IV",
+    ]
+
+
+def test_r40_reference_rank_annex_anchor_match() -> None:
+    """R40 phase 2b — Annex anchors also surface via internal-form match.
+
+    Anchor refs from ``derive_anchor_articles_from_keywords`` for
+    Annex hits come back as ``Annex III`` etc., and candidates carry
+    user-facing form like ``Annex III`` / ``Annex III.2``. Both
+    normalise to ``Annex III`` (subpoints stripped on the candidate
+    side) so an Annex.subpoint candidate matches a bare-Annex anchor.
+    """
+    from app.routes.regenold import _reference_rank
+
+    refs = ["Article 6", "Annex III", "Annex III.2", "Annex IV"]
+    anchors = frozenset({"Annex III"})
+    sorted_refs = sorted(refs, key=lambda r: _reference_rank(r, anchors))
+    # Article 6 (non-anchor Article) and Annex IV (non-anchor Annex)
+    # both lose to the anchor-matched Annex III entries. Within the
+    # non-anchor band, Articles still beat Annexes (type_priority 0 < 1).
+    assert sorted_refs[0] == "Annex III.2"   # anchor + most specific
+    assert sorted_refs[1] == "Annex III"      # anchor + bare
+    assert sorted_refs[2] == "Article 6"      # non-anchor; Article < Annex
+    assert sorted_refs[3] == "Annex IV"       # non-anchor; Annex last
 
 
 def test_p1_reference_sort_applied_via_route_truncation() -> None:

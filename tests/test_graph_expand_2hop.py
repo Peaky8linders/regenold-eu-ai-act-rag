@@ -1,13 +1,16 @@
 """Tests for ``app.engines.graph_expand_2hop`` — Neo4j 2-hop expansion.
 
-Covers env-gating, mocked Cypher returns (hop1/hop2 split), exception
-swallowing, existence-validation, additive fusion + budget caps. The
-real Neo4j driver is never invoked — every test mocks
+Covers client-availability gating, mocked Cypher returns (hop1/hop2
+split), exception swallowing, existence-validation, additive fusion +
+budget caps. The real Neo4j driver is never invoked — every test mocks
 ``app.graph.client.get_graph_client``.
+
+R40: the env-var gate was dropped. ``is_enabled`` now only checks
+client connectivity; legacy ``monkeypatch.setenv`` calls remain in
+older tests as harmless no-ops.
 """
 from __future__ import annotations
 
-import os
 from typing import Any
 from unittest.mock import patch
 
@@ -52,13 +55,6 @@ class _FakeClient:
         return list(self._return_value)
 
 
-@pytest.fixture(autouse=True)
-def _clear_env(monkeypatch):
-    """Default to env-var unset for every test (explicit set inside)."""
-    monkeypatch.delenv("REGENOLD_GRAPH_2HOP", raising=False)
-    yield
-
-
 def _install_fake(monkeypatch, client: _FakeClient) -> None:
     """Patch ``get_graph_client`` at the import site used by g2."""
     # graph_expand_2hop does a *deferred* import inside is_enabled / _resolve_client,
@@ -72,36 +68,20 @@ def _install_fake(monkeypatch, client: _FakeClient) -> None:
 # ── is_enabled() ──────────────────────────────────────────────────────────
 
 
-def test_is_enabled_false_when_env_unset(monkeypatch):
-    """No env-var → disabled even with a healthy client."""
-    _install_fake(monkeypatch, _FakeClient(enabled=True))
-    assert is_enabled() is False
-
-
-def test_is_enabled_false_when_env_zero(monkeypatch):
-    """Env-var ``"0"`` → disabled (strict ``"1"`` match)."""
-    monkeypatch.setenv("REGENOLD_GRAPH_2HOP", "0")
-    _install_fake(monkeypatch, _FakeClient(enabled=True))
-    assert is_enabled() is False
-
-
 def test_is_enabled_false_when_client_disabled(monkeypatch):
-    """Env-var set but ``client.enabled=False`` → disabled."""
-    monkeypatch.setenv("REGENOLD_GRAPH_2HOP", "1")
+    """``client.enabled=False`` → disabled (R40: env gate dropped)."""
     _install_fake(monkeypatch, _FakeClient(enabled=False))
     assert is_enabled() is False
 
 
-def test_is_enabled_true_when_both_conditions_met(monkeypatch):
-    """Env-var ``"1"`` AND ``client.enabled=True`` → enabled."""
-    monkeypatch.setenv("REGENOLD_GRAPH_2HOP", "1")
+def test_is_enabled_true_when_client_connected(monkeypatch):
+    """``client.enabled=True`` → enabled (no env required after R40)."""
     _install_fake(monkeypatch, _FakeClient(enabled=True))
     assert is_enabled() is True
 
 
 def test_is_enabled_false_when_client_factory_raises(monkeypatch):
     """``get_graph_client`` raises → treated as disabled."""
-    monkeypatch.setenv("REGENOLD_GRAPH_2HOP", "1")
     import app.graph.client as gc
 
     def _boom():
@@ -111,25 +91,11 @@ def test_is_enabled_false_when_client_factory_raises(monkeypatch):
     assert is_enabled() is False
 
 
-# ── expand_2hop() — env-gate / passthrough ───────────────────────────────
-
-
-def test_expand_2hop_returns_empty_passthrough_when_disabled(monkeypatch):
-    """Env-var unset → seed echo, no Cypher call."""
-    client = _FakeClient(enabled=True, return_value=[{"num": "9", "hops": 1}])
-    _install_fake(monkeypatch, client)
-    result = expand_2hop(["Art. 6"])
-    assert isinstance(result, GraphExpansion)
-    assert result.seed_articles == ("Art. 6",)
-    assert result.hop1_articles == ()
-    assert result.hop2_articles == ()
-    # Most importantly: no Cypher call was issued.
-    assert client.calls == []
+# ── expand_2hop() — passthrough on offline graph ─────────────────────────
 
 
 def test_expand_2hop_returns_empty_passthrough_when_client_disabled(monkeypatch):
-    """Env on but client.enabled=False → no Cypher call."""
-    monkeypatch.setenv("REGENOLD_GRAPH_2HOP", "1")
+    """``client.enabled=False`` → no Cypher call, seed echoed."""
     client = _FakeClient(enabled=False, return_value=[{"num": "9", "hops": 1}])
     _install_fake(monkeypatch, client)
     result = expand_2hop(["Art. 6"])
