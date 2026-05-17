@@ -1,4 +1,4 @@
-"""Minimal settings module — Regenold + GraphRAG + Mistral.
+"""Minimal settings module — Regenold + GraphRAG.
 
 Trimmed-down extract of CodexAI's full ``app/config.py``. Only the
 sub-settings the Regenold pipeline + Graph-RAG engine actually read are
@@ -33,17 +33,6 @@ class RegenoldSettings(BaseSettings):
     """
 
 
-class MistralSettings(BaseSettings):
-    """Mistral provider config (read on every call so a Railway env-var
-    rebind takes effect immediately)."""
-
-    model_config = SettingsConfigDict(env_prefix="MISTRAL_", extra="ignore")
-
-    api_key: SecretStr | None = None
-    timeout_seconds: float = 30.0
-    max_retries: int = 1
-
-
 class RateLimitSettings(BaseSettings):
     """slowapi limiter knobs."""
 
@@ -60,7 +49,6 @@ class AppSettings(BaseSettings):
 
     graph_rag: GraphRAGSettings = Field(default_factory=GraphRAGSettings)
     regenold: RegenoldSettings = Field(default_factory=RegenoldSettings)
-    mistral: MistralSettings = Field(default_factory=MistralSettings)
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
 
     version: str = "0.1.0"

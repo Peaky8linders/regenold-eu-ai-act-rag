@@ -1,185 +1,164 @@
-# Regenold EU AI Act RAG — Partner Transparency Bundle
+# Regenold EU AI Act RAG
 
-> Grounded EU AI Act Q&A — extracted as a standalone Python package so partners can audit, reproduce, and run the same retrieval + scope + reference-formatting logic that powers the Regenold competition entry under `legit-ai`.
+Grounded EU AI Act Q&A — a FastAPI service that answers regulatory questions with verifiable Article / Annex references against EUR-Lex 2024/1689 and the May 2026 Digital Omnibus political agreement.
 
----
-
-## Why this repo exists
-
-The Regenold partner integration in the parent CodexAI / `legit-ai` codebase has grown a substantial purpose-built surface — a scope filter, a reference parser/formatter, a multi-turn coreference engine, an EU AI Act existence catalog (113 articles + 13 annexes), an answer-normalisation pipeline, a Graph-RAG retrieval engine, and a categorised eval harness.
-
-For transparency with the Regenold review team this slice has been lifted into a **standalone, self-contained repo** with:
-
-- The full `app/integrations/regenold/` module (auth, models, scope, route).
-- The Graph RAG engine that backs it (`app/engines/graph_rag.py`) with its prompts (`app/data/graph_rag_prompts.py`).
-- The EU AI Act surface catalog (`app/data/article_existence.py`) + a minimal KB stub so the engine's KB-fallback path resolves cleanly.
-- The full eval harness under `evals/regenold/` with 25 baseline scenarios + 200 expanded scenarios (100 multi-conversation + 100 tricky/misleading).
-- Snapshot eval results from the rounds run inside `legit-ai` (`evals/regenold_results_round*.json`).
-- The integration + partner-facing docs from `docs/partners/regenold/`.
-
-## What ships in this repo
-
-- **Hash-chained audit store** — `app/evidence/store.py` keeps the full
-  cryptographic audit chain in process memory and tamper-detects on
-  `verify_chain()`. Set `DATABASE_URL=postgres(ql)://…` and install
-  `sqlalchemy` to flip on the durable Postgres backend (cross-process
-  row-locking via `SELECT … FOR UPDATE`). In-memory is the default.
-- **Optional Neo4j graph client** — `app/graph/client.py` activates the
-  pooled Neo4j client when `NEO4J_URI` is set AND the `neo4j` driver is
-  installed; otherwise the engine takes the KB-fallback path. The
-  graph-side typed ontology + reasoning module (`app/graph/ontology.py`
-  / `app/graph/reasoning.py`) are bundled with it.
-- **24-dimension compliance KB** — `app/data/kb.py` carries the full
-  `MaturityDimension` taxonomy (26 dims after additive port) plus the
-  93+ Articles / Annexes covered by `EC_CHECKER_OBLIGATION_MAP` (the
-  competition-load-bearing obligation row corpus). The agentic-AI
-  compound-risk taxonomy (`app/data/agentic_taxonomy.py`), the
-  role-obligations registry (`app/data/role_obligations.py`),
-  per-paragraph article requirements
-  (`app/data/article_requirements_full.py`), severity ordering
-  (`app/data/severity.py`), and W3C DPV / AIRO ontology mappings
-  (`app/data/ontology_mapping_full.py`) ship alongside it.
-- **Mistral provider** — `app/llm/mistral_provider.py` is a real
-  httpx-backed implementation. Set `MISTRAL_API_KEY` (and optionally
-  `MISTRAL_BASE_URL`) to enable.
-- **Intent classifier** — `app/llm/intent_classifier.py` consults
-  Claude Haiku 4.5 (or Sonnet 4.6 via `REGENOLD_INTENT_MODEL`) through
-  the local `claude-code-openai-wrapper` so each Q&A request can route
-  through a Claude Max subscription instead of per-token API billing.
-  Activates auto when the wrapper is up + authenticated; falls through
-  to the deterministic path otherwise (LRU cache + 3-failure circuit
-  breaker keep latency bounded).
-- **Deliberately not ported from the parent CodexAI product**: NIST AI
-  RMF / ISO 42001 framework crosswalks, MITRE ATLAS / OWASP attack
-  taxonomies, the parent app's GDPR Art. 17 erasure surface, document
-  package export pipeline, and the per-article control specs for
-  Arts. 9/10/11/13/14/15. The engine retrieves grounded EU AI Act
-  text only — cross-framework mappings would dilute the Regenold
-  rubric's "minimal set of relevant references" scoring.
-
-## Layout
+## Architecture (end-to-end)
 
 ```
-regenold-eu-ai-act-rag/
-├── app/
-│   ├── config.py                  # Minimal settings: Regenold + GraphRAG + Mistral.
-│   ├── main.py                    # FastAPI app mounting just /regenold/eu-ai-act/ask.
-│   ├── models.py                  # GraphRAGRequest / Response / CitationNode + risk enum.
-│   ├── rate_limit.py              # slowapi limiter (per-tier buckets).
-│   ├── data/
-│   │   ├── article_existence.py   # 113 articles + 13 annexes catalog.
-│   │   ├── graph_rag_prompts.py   # QUERY_PARSE_SYSTEM + ANSWER_GENERATE_SYSTEM + Cypher templates.
-│   │   └── kb.py                  # KB_VERSION + 4-dimension stub.
-│   ├── engines/
-│   │   └── graph_rag.py           # Two-stage RAG: parse → retrieve → generate.
-│   ├── evidence/
-│   │   ├── models.py              # EvidenceEntryType.regenold_question.
-│   │   └── store.py               # NO-OP recorder (in-memory).
-│   ├── graph/
-│   │   └── client.py              # Disabled stub (forces KB fallback).
-│   ├── integrations/regenold/
-│   │   ├── __init__.py
-│   │   ├── auth.py                # X-Regenold-Api-Key dep (optional + required variants).
-│   │   ├── models.py              # RegenoldAskRequest / Response, reference parser, answer normaliser.
-│   │   ├── scope.py               # Conversation scope classifier + refusal copy.
-│   │   └── mcp_stub.py            # Reference MCP-tool envelope (not enabled).
-│   ├── llm/
-│   │   ├── __init__.py            # resolve_provider helper.
-│   │   └── mistral_provider.py    # Stub shape-only adapter.
-│   ├── routes/
-│   │   └── regenold.py            # POST /regenold/eu-ai-act/ask.
-│   └── security/
-│       └── prompt_guard.py        # sanitize_for_llm + validate_llm_output (minimal).
-├── evals/
-│   ├── __init__.py
-│   ├── regenold/
-│   │   ├── __init__.py
-│   │   ├── scenarios.py           # 25 baseline + 200 expanded (multi-turn + tricky/misleading).
-│   │   └── runner.py              # TestClient-driven harness with Regenold-rubric metrics.
-│   └── regenold_results_*.json    # Snapshots from rounds run under legit-ai.
-├── tests/
-│   ├── test_regenold_integration.py
-│   ├── test_regenold_scope.py
-│   └── test_regenold_followup_fixes.py   # Regression guards for the 2 fixes shipped here.
-├── docs/partners/regenold/
-│   ├── INTEGRATION.md             # Wire contract + auth + telemetry.
-│   ├── PARTNER-GUIDE.md           # Reference partner-side client example.
-│   └── mcp-tool.json              # MCP envelope sample.
-├── pyproject.toml
-├── requirements.txt
-├── .gitignore
-├── .env.example
-└── README.md
+┌──────────────────────────────────────────────────────────────────┐
+│ POST /api/v1/regenold/eu-ai-act/ask                              │
+│      messages (OpenAI/LiteLLM history) → answer + references     │
+└────────────────────────────┬─────────────────────────────────────┘
+                             │
+                  ┌──────────▼──────────┐
+                  │ Scope gate          │  app/integrations/regenold/scope.py
+                  │ • Prompt-injection  │  • prior-user-turn anchors only
+                  │ • Out-of-regulation │  • plural Articles N supported
+                  │ • Coref rescue      │  • hard refusals never flipped
+                  └──────────┬──────────┘
+                             │
+                  ┌──────────▼──────────┐
+                  │ Intent + qtype      │  app/llm/intent_classifier.py
+                  │ classifier          │  app/engines/sentence_index.py
+                  │ • Haiku 4.5         │  • 8-way deterministic shape
+                  │ • Davvetas 4-task   │    (DEFINITION / BOOLEAN / …)
+                  │ • Fail-soft         │  • drives templates + budgets
+                  └──────────┬──────────┘
+                             │
+            ┌────────────────▼────────────────┐
+            │ Retrieval pipeline (additive)   │
+            │ ┌──────────────────────────────┐│  app/data/kb_search.py
+            │ │ BM25 over 348-doc corpus     ││  • EUR-Lex full prose
+            │ │  (KB + ontology + definitions)│   • source-weighted scoring
+            │ └──────────────────────────────┘│
+            │ ┌──────────────────────────────┐│  app/engines/embeddings_index.py
+            │ │ NumPy TF-IDF + SVD-128       ││  • 919 sentence index
+            │ │ additive recall              ││  • sub-ms warm queries
+            │ └──────────────────────────────┘│
+            │ ┌──────────────────────────────┐│  app/engines/graph_*.py
+            │ │ Neo4j: 2-hop xref expand     ││  • 113 articles + 13 annexes
+            │ │ + Personalized PageRank      ││    + 180 recitals + 68 defs
+            │ │ + PathRAG (Jaccard prune)    ││    + 351 typed edges
+            │ └──────────────────────────────┘│
+            └────────────────┬────────────────┘
+                             │
+            ┌────────────────▼────────────────┐
+            │ Engine (graph_rag.py)           │
+            │ • Stage-1 deterministic parse   │  always lands an answer
+            │ • CLARA neuro-symbolic verdict  │  37 boolean tags → tier
+            │ • Prohibited Gatekeeper (Art. 5)│  TAI Scan Layer C
+            │ • Stage-2 Sonnet 4.6 polish     │  via openai_wrapper or
+            │   (optional, fail-soft)         │  Anthropic SDK direct
+            └────────────────┬────────────────┘
+                             │
+            ┌────────────────▼────────────────┐
+            │ Post-engine pipeline            │  app/routes/regenold.py
+            │ • Smallest-cover ref dedup      │  drops parents when child cited
+            │ • Sub-point emission (R38)      │  Art. 5 → Art. 5.1.f
+            │ • Per-intent ref-budget         │  definitional=2 … scenario=8
+            │ • Closed-world refusal gate     │  empty refs ⇒ no-match
+            │ • Per-intent answer template    │  length cap by question shape
+            │ • Tone guard                    │  strip hedges, force imperative
+            │ • Citation guard (optional)     │  sentence-level token overlap
+            └────────────────┬────────────────┘
+                             │
+            ┌────────────────▼────────────────┐
+            │ Hash-chained audit store        │  app/evidence/store.py
+            │ (in-memory / SQLite / Postgres) │  every Q&A round-trip persisted
+            └────────────────┬────────────────┘
+                             │
+                  ┌──────────▼──────────┐
+                  │ RegenoldAskResponse │
+                  │ { answer,           │
+                  │   references,       │
+                  │   reasoning }       │
+                  └─────────────────────┘
 ```
 
-## Quick start
+**LLM provider:** picked via `P2P_GRAPH_RAG_PROVIDER` env (resolved on every call).
+
+| Value | Behaviour | Setup |
+|---|---|---|
+| `cli` (default) | Pure deterministic. Sub-10 ms p50. | nothing |
+| `anthropic` | Stage-2 polish via Anthropic SDK direct. | `P2P_GRAPH_RAG_API_KEY=sk-ant-…` |
+| `openai_wrapper` | Stage-2 polish via local `claude-code-openai-wrapper` (Claude Max). | wrapper on `127.0.0.1:8000`; see [`SONNET_WRAPPER.md`](docs/partners/regenold/SONNET_WRAPPER.md) |
+
+The deterministic path always lands an answer — the LLM polish is opportunistic. The route never 500s on a downed LLM.
+
+## Wire contract
 
 ```bash
-# Python 3.12+
-py -3.12 -m venv .venv
-.venv\Scripts\python.exe -m pip install -e .          # runtime deps only
-# OR for dev/test:
-.venv\Scripts\python.exe -m pip install -e ".[dev]"
-
-# Run the FastAPI app (KB-fallback mode — no LLM key required)
-.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8002
-
-# In another terminal:
 curl -X POST http://127.0.0.1:8002/api/v1/regenold/eu-ai-act/ask \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","content":"What does Art. 13 require?"}]}'
 ```
 
-### Port allocations
-
-The bundle's FastAPI app binds to `8002` by convention (the parent `legit-ai` uses `8001`). The optional `claude-code-openai-wrapper` (Sonnet path) binds to `8000`. They never conflict because they listen on different ports.
-
-### Reverse-proxy deployments
-
-When deploying behind a CDN or reverse proxy (Railway, Cloudflare, nginx), set `REGENOLD_TRUST_PROXY=true` so the anonymous-tier rate limiter reads `X-Forwarded-For` instead of the direct socket address. **WARNING**: only enable when your proxy overwrites (not appends) XFF, otherwise an attacker can spoof their IP to bypass the per-IP bucket.
-
-## Run the evals
-
-```bash
-# Run the full 225-scenario suite against the in-process app
-.venv\Scripts\python.exe -m evals.regenold.runner --json evals/regenold_results_local.json
-
-# With telemetry surfaced in the run report
-.venv\Scripts\python.exe -m evals.regenold.runner --json evals/regenold_results_local.json --label baseline
-```
-
-By default the runner exercises the **deterministic-fallback** path (no LLM key required, fully reproducible). To run against a live LLM:
-
-- **Mistral**: set `MISTRAL_API_KEY` and `P2P_GRAPH_RAG_PROVIDER=mistral` (the engine's auto-default picks Mistral when the key is present).
-- **Anthropic**: set `ANTHROPIC_API_KEY` in `app/config.py::GraphRAGSettings.api_key` or via env.
-- **Claude Code Max subscription** via the `claude-code-openai-wrapper`: start the wrapper at `127.0.0.1:8000`, then set `OPENAI_API_BASE=http://127.0.0.1:8000/v1` and `OPENAI_API_KEY=dummy`. See `docs/partners/regenold/SONNET_WRAPPER.md` for the full setup.
-
-## Wire contract
-
-`POST /api/v1/regenold/eu-ai-act/ask`
-
-```json
-{
-  "messages": [
-    {"role": "user", "content": "What does Art. 13 require for transparency?"}
-  ]
-}
-```
-
-Response (spec-clean default):
-
 ```json
 {
   "answer": "Article 13(1) requires high-risk AI providers to design their systems to be sufficiently transparent for deployers to understand the system's output and use it appropriately. Article 13(2) requires accompanying instructions for use that include the provider's identity, the system's intended purpose, its capabilities and limitations, expected lifetime, and necessary maintenance.",
-  "references": ["Article 13", "Article 13.1", "Article 13.2"],
+  "references": ["Article 13.1", "Article 13.2"],
   "reasoning": ""
 }
 ```
 
-Optional `?include_telemetry=true` query param exposes `confidence`, `retrieval_path`, `kb_version`, `nodes_traversed`, `obligations_found`, `gaps_found` for verifier-style flows.
+References are strict: `Article N(.subpoint)*` (Arabic) or `Annex X(.subpoint)*` (Roman). Validated by `_ARTICLE_OUTPUT_RE` / `_ANNEX_OUTPUT_RE` in [`app/integrations/regenold/models.py`](app/integrations/regenold/models.py).
 
-See `docs/partners/regenold/INTEGRATION.md` for the full contract.
+Telemetry block (confidence, retrieval path, KB version, graph stats) appears when `?include_telemetry=true`.
+
+## Quick start
+
+```powershell
+# Python 3.12+
+py -3.12 -m venv .venv
+.venv\Scripts\python.exe -m pip install -e .
+
+# Run (deterministic mode — no LLM required)
+.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8002
+
+# Run the full pytest suite (~1300 tests)
+.venv\Scripts\python.exe -m pytest -q
+
+# Run the canonical competition benchmark (476 items)
+.venv\Scripts\python.exe -m evals.bench.runner --label baseline
+
+# Run the unbiased eval (holdout + AIReg-Bench + Regenold probe)
+.venv\Scripts\python.exe -m evals.bench.unbiased_runner --label baseline
+```
+
+## Where to look
+
+| Concern | Module |
+|---|---|
+| Wire contract + models | [`app/integrations/regenold/models.py`](app/integrations/regenold/models.py) |
+| Route + post-engine pipeline | [`app/routes/regenold.py`](app/routes/regenold.py) |
+| Scope gate | [`app/integrations/regenold/scope.py`](app/integrations/regenold/scope.py) |
+| Engine + Stage-1/2 | [`app/engines/graph_rag.py`](app/engines/graph_rag.py) |
+| BM25 + embeddings retrieval | [`app/data/kb_search.py`](app/data/kb_search.py), [`app/engines/embeddings_index.py`](app/engines/embeddings_index.py) |
+| Neo4j PPR + PathRAG | [`app/engines/graph_ppr.py`](app/engines/graph_ppr.py), [`app/engines/path_rag.py`](app/engines/path_rag.py) |
+| Sub-point emitter | [`app/data/subpoint_emitter.py`](app/data/subpoint_emitter.py) |
+| Answer template + tone guard | [`app/engines/answer_template.py`](app/engines/answer_template.py), [`app/integrations/regenold/tone_guard.py`](app/integrations/regenold/tone_guard.py) |
+| KB (113 articles + 13 annexes) | [`app/data/kb.py`](app/data/kb.py), [`app/data/article_existence.py`](app/data/article_existence.py) |
+| Audit chain | [`app/evidence/store.py`](app/evidence/store.py) |
+| Evals | [`evals/bench/`](evals/bench/), [`evals/regenold/`](evals/regenold/) |
+| Partner docs | [`docs/partners/regenold/`](docs/partners/regenold/) |
+| Detailed change history | [`CLAUDE.md`](CLAUDE.md), [`CHANGELOG.md`](CHANGELOG.md) |
+
+## Feature flags
+
+All default-ON in `railway.toml`. Flip OFF to A/B against earlier rounds.
+
+| Flag | Effect |
+|---|---|
+| `REGENOLD_SUBPOINT_EMIT` | Upgrade base refs to leaf sub-points |
+| `REGENOLD_ANSWER_TEMPLATE` | Per-intent length cap |
+| `REGENOLD_REFBUDGET_PER_INTENT` | 10-way ref-count budget |
+| `REGENOLD_TONE_GUARD` | Strip hedge openers |
+| `REGENOLD_GRAPH_2HOP` | Neo4j 2-hop cross-ref expansion |
+| `REGENOLD_GRAPH_PPR` | Neo4j Personalized PageRank (needs GDS plugin) |
+| `REGENOLD_PATH_RAG` | Relational-path retrieval with Jaccard prune |
+| `REGENOLD_CLARA_VERDICT` | Neuro-symbolic verdict (37-tag matrix) |
+| `REGENOLD_EMBEDDINGS_INDEX` | NumPy TF-IDF + SVD-128 sentence index |
 
 ## License
 
-Apache 2.0 — same as the parent project, granted for partner review + reproduction.
+Apache 2.0.

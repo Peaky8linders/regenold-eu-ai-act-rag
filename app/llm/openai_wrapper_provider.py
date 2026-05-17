@@ -12,7 +12,7 @@ Activate via env:
 
 Why this exists in the bundle:
 The Regenold eval round-5 plan A/Bs Sonnet 4.6 against the deterministic
-+ Mistral paths. A regulator + a partner can plug in their own
++ Anthropic SDK paths. A regulator + a partner can plug in their own
 ``OPENAI_API_BASE`` (any OpenAI-spec endpoint — OpenAI, OpenRouter,
 the wrapper, etc.) and exercise the same eval suite end-to-end.
 """
@@ -107,7 +107,9 @@ class _OpenAIWrapperProvider:
         # budgets (e.g. intent classifier's 2.5 s) come via
         # ``OpenAIWrapperRequest.timeout_seconds``, not by mutating env.
         self._timeout = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "60"))
-        # Pooled client — see mistral_provider.py for the rationale.
+        # Pooled long-lived client = one TLS handshake + persistent
+        # connection pool. Per-request `httpx.post` opens a fresh TLS
+        # handshake AND leaks sockets in TIME_WAIT under concurrent load.
         self._client = httpx.Client(
             base_url=self._base_url,
             timeout=self._timeout,

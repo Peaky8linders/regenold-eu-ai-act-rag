@@ -139,8 +139,8 @@ def _extract_json_object(text: str) -> dict | None:
     Strategy:
 
     1. **Direct parse**: the response is already valid JSON (the happy
-       path — Mistral + the deterministic-fallback path always ship
-       clean JSON, so this is the production hot path).
+       path — the deterministic-fallback path always ships clean JSON,
+       so this is the production hot path).
     2. **Fenced-block extraction**: walk every ```` ``` ```` fenced span
        (with optional ``json``/``json5``/``jsonc`` language tag). When
        multiple fences carry valid JSON, prefer the one with the most
@@ -158,7 +158,7 @@ def _extract_json_object(text: str) -> dict | None:
         return None
     cleaned = text.strip()
 
-    # 1. Direct parse — strict JSON response (HOT path on Mistral).
+    # 1. Direct parse — strict JSON response (HOT path).
     direct = _try_parse(cleaned)
     if direct is not None:
         return direct
@@ -191,11 +191,10 @@ def _extract_json_object(text: str) -> dict | None:
 def _graph_rag_provider() -> str:
     """Resolve the graph-RAG LLM provider per call.
 
-    Honours an explicit ``P2P_GRAPH_RAG_PROVIDER=mistral`` /
-    ``=anthropic``. When the toggle is unset or set to ``auto``, picks
-    Mistral if ``MISTRAL_API_KEY`` is present in the process env, else
-    falls back to the historical Anthropic path. Read on every call so a
-    Railway env-var rebind takes effect on the next request.
+    Honours an explicit ``P2P_GRAPH_RAG_PROVIDER=anthropic`` /
+    ``=openai_wrapper`` / ``=cli``. When the toggle is unset or set to
+    ``auto``, falls back to the historical Anthropic path. Read on every
+    call so a Railway env-var rebind takes effect on the next request.
     """
     from app.llm import resolve_provider
 
@@ -205,40 +204,6 @@ def _graph_rag_provider() -> str:
     )
 
 
-def _mistral_complete_for_graph_rag(
-    *, system: str, user: str, max_tokens: int, temperature: float
-) -> str | None:
-    """One Mistral call for graph-RAG. ``None`` on any error so callers fall back."""
-    from app.llm import MistralRequest, get_mistral_provider, is_mistral_enabled
-
-    if not is_mistral_enabled():
-        return None
-    try:
-        from app.config import settings
-        # Reuse the model knob the deploy already configures for the
-        # Anthropic path so an operator who pinned a model gets a
-        # Mistral-equivalent rather than a silently-different one.
-        configured = settings.graph_rag.model
-    except Exception:  # noqa: BLE001 — soft-fail; we'll just use the provider default
-        configured = ""
-    model = (
-        configured if configured.startswith("mistral-") else "mistral-large-latest"
-    )
-    response = get_mistral_provider().complete(
-        MistralRequest(
-            system=system,
-            user=user,
-            model=model,
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
-    )
-    if response.error:
-        logger.warning("graph_rag.mistral_call_failed: %s", response.error[:200])
-        return None
-    return response.text
-
-
 def _openai_wrapper_complete_for_graph_rag(
     *, system: str, user: str, max_tokens: int, temperature: float
 ) -> str | None:
@@ -246,7 +211,7 @@ def _openai_wrapper_complete_for_graph_rag(
 
     Returns ``None`` on any error so callers fall back to deterministic.
     The model picks up the deploy's ``graph_rag.model`` knob; defaults
-    to ``claude-sonnet-4-6`` when unset or set to a Mistral model.
+    to ``claude-sonnet-4-6`` when unset.
     """
     from app.llm.openai_wrapper_provider import (
         OpenAIWrapperRequest,
@@ -258,11 +223,7 @@ def _openai_wrapper_complete_for_graph_rag(
         configured = settings.graph_rag.model
     except Exception:  # noqa: BLE001
         configured = ""
-    model = (
-        configured
-        if (configured and not configured.startswith("mistral-"))
-        else "claude-sonnet-4-6"
-    )
+    model = configured or "claude-sonnet-4-6"
 
     response = get_openai_wrapper_provider().complete(
         OpenAIWrapperRequest(
@@ -366,17 +327,7 @@ def _llm_parse_query(question: str) -> GraphQuery:
         sanitized_question = sanitize_for_llm(question, context_type="query")
         system_prompt = PROMPT_HARDENING_PREFIX + QUERY_PARSE_SYSTEM
 
-        if provider == "mistral":
-            text_raw = _mistral_complete_for_graph_rag(
-                system=system_prompt,
-                user=sanitized_question,
-                max_tokens=512,
-                temperature=0.0,
-            )
-            if text_raw is None:
-                return _deterministic_parse(question)
-            text = text_raw.strip()
-        elif provider == "openai_wrapper":
+        if provider == "openai_wrapper":
             text_raw = _openai_wrapper_complete_for_graph_rag(
                 system=system_prompt,
                 user=sanitized_question,
@@ -516,17 +467,6 @@ def _llm_generate_answer(
         user_message += f"EU AI ACT REFERENCES:\n{context_text}"
 
         full_system = PROMPT_HARDENING_PREFIX + ANSWER_GENERATE_SYSTEM
-
-        if provider == "mistral":
-            text_raw = _mistral_complete_for_graph_rag(
-                system=full_system,
-                user=user_message,
-                max_tokens=settings.graph_rag.max_tokens,
-                temperature=settings.graph_rag.temperature,
-            )
-            if text_raw is None:
-                return _deterministic_answer(question, context)
-            return validate_llm_output(text_raw.strip())
 
         if provider == "openai_wrapper":
             text_raw = _openai_wrapper_complete_for_graph_rag(

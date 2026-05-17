@@ -15,11 +15,6 @@ requirement bullets for, not the full 113-article + 13-Annex regulation
 surface. Polluting it with 90+ stub entries to satisfy the validator would
 degrade the engines that consume it for actual requirement content.
 
-Production reproduction: refine-a9f98d0f-…-1777288429 (Railway 1.2.20,
-2026-04-27 11:13 GMT+3) — Mistral correctly cited Art. 16, Art. 19-24,
-Art. 28-31, Annex III, Annex IV across 5 of 6 iterations; every proposal
-blocked by ``kb_reality: not found in TASK_REGISTRY or EU AI Act regulation
-catalog``. Logged in CLAUDE.md verification entry following #419.
 """
 from __future__ import annotations
 

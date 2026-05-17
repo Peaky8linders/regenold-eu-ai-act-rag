@@ -22,7 +22,7 @@ from app.routes.regenold import regenold_router
 logger = logging.getLogger(__name__)
 
 # Fail-loud at module-import on a typo in P2P_GRAPH_RAG_PROVIDER. Without
-# this, a typo like "mistraal" silently degrades every request to the
+# this, a typo like "anthropc" silently degrades every request to the
 # deterministic-fallback path with no operator-visible signal — the eval
 # snapshot would "complete normally" but every scenario took the non-LLM
 # path. Boot-time validation surfaces the typo before any traffic hits.
@@ -34,7 +34,7 @@ try:
 except ValueError as _exc:
     raise RuntimeError(
         f"P2P_GRAPH_RAG_PROVIDER is misconfigured: {_exc}. "
-        "Valid values: mistral / anthropic / cli / openai_wrapper / auto / "
+        "Valid values: anthropic / cli / openai_wrapper / auto / "
         "(unset = auto). See app/llm/__init__.py::resolve_provider."
     ) from _exc
 
@@ -72,8 +72,8 @@ app.mount("/api/v1", api_v1)
 def _log_llm_provider_status() -> None:
     """Log the resolved LLM provider once at boot.
 
-    Operator-visible signal that the wrapper / Mistral / Anthropic
-    knobs took effect. We deliberately do NOT probe the wrapper live
+    Operator-visible signal that the wrapper / Anthropic knobs took
+    effect. We deliberately do NOT probe the wrapper live
     here — a long boot-time probe (the Claude CLI subprocess takes
     several seconds to spin up) would block uvicorn's startup and
     delay the first /healthz return. Operators who need a live probe
@@ -105,11 +105,6 @@ def _log_llm_provider_status() -> None:
             "regenold.startup provider=anthropic api_key_configured=%s model=%s",
             configured,
             settings.graph_rag.model,
-        )
-    elif provider_label == "mistral":
-        logger.info(
-            "regenold.startup provider=mistral api_key_configured=%s",
-            bool(os.getenv("MISTRAL_API_KEY")),
         )
     else:
         logger.info(
@@ -530,8 +525,7 @@ def healthz_llm() -> dict[str, object]:
     # The probe is provider-specific because each path has its own
     # failure surface. The openai_wrapper probe is fully live; the
     # anthropic probe uses ``client.models.list()`` which authenticates
-    # the API key without burning a billable token; the Mistral probe
-    # is shape-only because their models-list endpoint is rate-limited.
+    # the API key without burning a billable token.
     if provider_label == "openai_wrapper":
         if not is_openai_wrapper_enabled():
             base["detail"] = (
@@ -628,15 +622,6 @@ def healthz_llm() -> dict[str, object]:
         base["detail"] = "ok"
         base["elapsed_ms"] = int((_time.perf_counter() - start) * 1000)
         base["model"] = settings.graph_rag.model
-        return base
-
-    if provider_label == "mistral":
-        from app.llm import is_mistral_enabled
-        if is_mistral_enabled():
-            base["llm_ok"] = True
-            base["detail"] = "MISTRAL_API_KEY set (not probed live)"
-        else:
-            base["detail"] = "MISTRAL_API_KEY not set"
         return base
 
     # cli / deterministic path

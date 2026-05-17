@@ -230,21 +230,20 @@ Cumulative since baseline (Round 23 → Round 25): Ref Correctness Loose
 Correctness Strict **+0.025 (0.152 → 0.177)**, multi-turn coherence
 **+0.20 (0.80 → 1.00)**, tone held at 1.0, latency held under 5 ms p50.
 
-## LLM provider story — pick one of four (2026-05-15, round 28)
+## LLM provider story — pick one of three (R38, post-Mistral removal)
 
-The Graph-RAG engine has FOUR mutually-exclusive provider paths. The
+The Graph-RAG engine has THREE mutually-exclusive provider paths. The
 toggle is `P2P_GRAPH_RAG_PROVIDER` (resolved on every call via
 [`resolve_provider`](app/llm/__init__.py)):
 
 | Value             | What it does                                                                     | Setup                                                                                  |
 | ----------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | `cli` / `auto`*   | Pure deterministic pipeline — no LLM call, sub-10 ms p50.                        | Nothing.                                                                               |
-| `mistral`         | Stage-1 + Stage-2 via Mistral large.                                             | `MISTRAL_API_KEY=...`. Auto-picked when key set + toggle unset.                        |
-| `anthropic`       | Stage-1 + Stage-2 via Anthropic SDK direct (per-token billing).                  | `P2P_GRAPH_RAG_API_KEY=sk-ant-...` + `anthropic>=0.40.0` (now in `requirements.txt`).  |
+| `anthropic`       | Stage-1 + Stage-2 via Anthropic SDK direct (per-token billing).                  | `P2P_GRAPH_RAG_API_KEY=sk-ant-...` + `anthropic>=0.40.0` (in `requirements.txt`).      |
 | `openai_wrapper`  | Stage-1 + Stage-2 + intent classifier via the local Claude Code Max wrapper.     | Run `claude-code-openai-wrapper` on `127.0.0.1:8000` + `OPENAI_API_BASE/_API_KEY` env. |
 
-`* auto` resolves to `mistral` when `MISTRAL_API_KEY` is set, else
-`anthropic`. The bundle ships in `cli` mode by default — any sub-pipeline
+`* auto` resolves to `anthropic` when an API key is set, else `cli`. The
+bundle ships in `cli` mode by default — any sub-pipeline
 that needs an LLM (parse → entities, generate → polished prose) falls
 back to a deterministic equivalent on `None`/error from the chosen
 provider, so the route NEVER 500s on a downed LLM.
@@ -389,10 +388,9 @@ curl http://localhost:8000/healthz/llm | python -m json.tool
 The endpoint always returns HTTP 200 so uptime monitors don't flap on
 wrapper outages — alert on `llm_ok=false` instead. The probe is
 **live** for `openai_wrapper` (sends a 5-token "reply OK" request
-through Haiku) and **configuration-only** for `anthropic` / `mistral`
-(no live call — they're per-token billed; we don't burn a request on
-every health check). For `cli` it simply confirms the deterministic
-path is wired.
+through Haiku) and **configuration-only** for `anthropic` (no live
+call — it's per-token billed; we don't burn a request on every health
+check). For `cli` it simply confirms the deterministic path is wired.
 
 Boot-time the app also logs `regenold.startup provider=... model=...`
 once so the resolved provider is visible in uvicorn logs. Suppress

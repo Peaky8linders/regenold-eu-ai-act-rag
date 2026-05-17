@@ -6,20 +6,15 @@ This bundle ships an `openai_wrapper` provider so you can route the Graph-RAG en
 
 | Provider | Cost model | Setup | When |
 |----------|------------|-------|------|
-| **`mistral`** | Pay-as-you-go API | `MISTRAL_API_KEY` env var | Production analogue (CodexAI default since v1.2.111). Auto-picked when the API key is present and `P2P_GRAPH_RAG_PROVIDER` is unset. |
-| **`openai_wrapper`** (Sonnet via Claude Max) | Flat monthly Max fee | Local wrapper at `127.0.0.1:8000` + interactive `/login` on the bundled CLI | A/B Sonnet against Mistral during eval rounds without burning per-token API budget. |
-| **`anthropic`** | Pay-as-you-go API | `P2P_GRAPH_RAG_API_KEY=sk-ant-...` env var | Reproducible token-usage telemetry; parallel batch evals where Claude Max's hourly cap is too low. |
+| **`openai_wrapper`** (Sonnet via Claude Max) | Flat monthly Max fee | Local wrapper at `127.0.0.1:8000` + interactive `/login` on the bundled CLI | Recommended for eval rounds without burning per-token API budget. |
+| **`anthropic`** | Pay-as-you-go API | `P2P_GRAPH_RAG_API_KEY=sk-ant-...` env var | Reproducible token-usage telemetry; production deploys (Railway) where Claude Max's OAuth flow can't run. |
 | **`cli`** | Free (deterministic fallback only) | Nothing — engine handles every step with rule-based logic | CI runs, offline reproductions. The `evals/regenold/runner.py` default. |
 
 ## Provider override
 
 ```bash
-# Default — auto-picks Mistral if MISTRAL_API_KEY set, else falls back to anthropic.
+# Default — falls back to anthropic when unset.
 unset P2P_GRAPH_RAG_PROVIDER
-
-# Explicit Mistral
-export P2P_GRAPH_RAG_PROVIDER=mistral
-export MISTRAL_API_KEY=sk-...
 
 # Explicit openai_wrapper (the Sonnet path)
 export P2P_GRAPH_RAG_PROVIDER=openai_wrapper
@@ -119,4 +114,4 @@ Expected runtime: ~25 minutes for 251 scenarios at ~6s per Sonnet call. The `--q
 * It does **not** retry on 429 / 5xx — single shot. Re-run the eval to retry transient failures. The wrapper itself handles Max subscription rate-limiting internally.
 * It does **not** preserve session_id across calls — each scenario is independent, the wrapper allocates a fresh session per request.
 
-For production Regenold traffic, the parent `legit-ai` repo routes everything through Mistral via `MISTRAL_API_KEY`. The wrapper is a developer convenience for A/B comparisons and is never on the production hot path.
+For production Regenold traffic on Railway, the bundle routes everything through the Anthropic SDK via `P2P_GRAPH_RAG_API_KEY`. The wrapper is a developer-side convenience for A/B comparisons against Claude Max and is never on the production hot path.

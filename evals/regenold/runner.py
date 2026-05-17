@@ -19,7 +19,7 @@ excluded from the F1 numerator/denominator (not counted as misses).
 
 Implementation notes (CI-safe + stateless):
 
-* Uses ``TestClient`` so no real Mistral/Anthropic key is required.
+* Uses ``TestClient`` so no real Anthropic key is required.
 * Resets the app's ``slowapi`` rate limiter between scenarios so we
   don't trip the per-IP 30/min cap inside a single eval batch.
 * Reads the response, applies every scenario check, records

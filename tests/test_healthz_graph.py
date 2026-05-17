@@ -49,7 +49,6 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         "NEO4J_ENABLED",
         "P2P_GRAPH_RAG_PROVIDER",
         "P2P_GRAPH_RAG_API_KEY",
-        "MISTRAL_API_KEY",
         "OPENAI_API_BASE",
         "OPENAI_API_KEY",
     ):

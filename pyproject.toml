@@ -24,7 +24,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-mistral = ["mistralai>=1.0.0"]
 anthropic = ["anthropic>=0.40.0"]
 neo4j = ["neo4j>=5.0.0"]
 dev = [

@@ -6,8 +6,9 @@ The endpoint must:
     visible — but we already validate that at boot, so this is belt-and-braces).
   * Probe the openai_wrapper LIVE (we want to know the wrapper actually
     answers, not just that it's reachable).
-  * NOT burn a live API call on the anthropic / mistral paths (per-token
-    cost — only confirm "configured").
+  * NOT burn a live API call on the anthropic path beyond a free
+    ``models.list()`` metadata probe (per-token cost — only confirm
+    the key authenticates).
   * Reflect the bundled ``OpenAIWrapperResponse.error`` shape verbatim
     so operators see "Not logged in", "api_status_429", etc. without
     needing to inspect logs.
@@ -27,7 +28,6 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     for k in (
         "P2P_GRAPH_RAG_PROVIDER",
         "P2P_GRAPH_RAG_API_KEY",
-        "MISTRAL_API_KEY",
         "OPENAI_API_BASE",
         "OPENAI_API_KEY",
     ):
@@ -370,29 +370,6 @@ class TestHealthzLLMAnthropicProvider:
         assert body["llm_ok"] is False
         assert "not installed" in body["detail"]
         monkeypatch.setattr(settings.graph_rag, "api_key", None, raising=True)
-
-
-class TestHealthzLLMMistralProvider:
-    def test_mistral_no_key(
-        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "mistral")
-        r = client.get("/healthz/llm")
-        body = r.json()
-        assert body["provider"] == "mistral"
-        assert body["llm_ok"] is False
-        assert "MISTRAL_API_KEY" in body["detail"]
-
-    def test_mistral_with_key(
-        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "mistral")
-        monkeypatch.setenv("MISTRAL_API_KEY", "sk-test")
-        r = client.get("/healthz/llm")
-        body = r.json()
-        assert body["provider"] == "mistral"
-        assert body["llm_ok"] is True
-        assert "MISTRAL_API_KEY" in body["detail"]
 
 
 def test_healthz_always_returns_200(client: TestClient) -> None:
