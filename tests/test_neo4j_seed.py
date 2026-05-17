@@ -83,19 +83,24 @@ def client() -> RecordingClient:
 # ─── Payload composition ─────────────────────────────────────────────────
 
 
-def test_payload_seeds_113_articles(payload: SeedPayload) -> None:
-    assert len(payload.article_nodes) == 113
-    # Every article ID should be ``article_<N>`` for N in [1, 113].
+def test_payload_seeds_all_articles(payload: SeedPayload) -> None:
+    # R41 / Omnibus inserts Art. 4a, 60a, 75a-75e — 113 + 7 = 120.
+    assert len(payload.article_nodes) == 120
     ids = {node["id"] for node in payload.article_nodes}
-    assert ids == {f"article_{n}" for n in range(1, 114)}
+    expected = {f"article_{n}" for n in range(1, 114)} | {
+        "article_4a", "article_60a",
+        "article_75a", "article_75b", "article_75c", "article_75d", "article_75e",
+    }
+    assert ids == expected
 
 
-def test_payload_seeds_13_annexes(payload: SeedPayload) -> None:
-    assert len(payload.annex_nodes) == 13
+def test_payload_seeds_all_annexes(payload: SeedPayload) -> None:
+    # R41 / Omnibus inserts Annex XIV — 13 + 1 = 14.
+    assert len(payload.annex_nodes) == 14
     romans = {node["number"] for node in payload.annex_nodes}
     assert romans == {
         "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX",
-        "X", "XI", "XII", "XIII",
+        "X", "XI", "XII", "XIII", "XIV",
     }
 
 
@@ -131,8 +136,8 @@ def test_payload_seeds_obligations_with_article_match(
 
     Annex rows in EC_CHECKER_OBLIGATION_MAP are deliberately filtered out
     (they land as Annex nodes, not Obligations), so the count is bounded
-    above by 113 (one per article) and below by the number of articles
-    with KB stubs.
+    above by the article surface (113 baseline + R41 letter-suffix inserts)
+    and below by the number of articles with KB stubs.
     """
     article_ids = {node["id"] for node in payload.article_nodes}
     for obl in payload.obligation_nodes:

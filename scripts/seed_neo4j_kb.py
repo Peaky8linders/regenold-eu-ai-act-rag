@@ -111,7 +111,7 @@ RISK_LEVELS: tuple[dict[str, str], ...] = (
 # ─── Helpers ─────────────────────────────────────────────────────────────
 
 
-_ART_NUMBER_RE = re.compile(r"^Art\.\s*(\d{1,3})$")
+_ART_NUMBER_RE = re.compile(r"^Art\.\s*(\d{1,3}[a-z]?)$")
 _ANNEX_NUMBER_RE = re.compile(r"^Annex\s+([IVXLC]+)$", re.IGNORECASE)
 
 
@@ -148,6 +148,23 @@ def _article_number(ref: str) -> str:
 
 def _is_annex(ref: str) -> bool:
     return bool(_ANNEX_NUMBER_RE.match(ref))
+
+
+def _article_sort_key(ref: str) -> tuple[int, str]:
+    """Sort key tolerating R41 letter-suffix articles (Art. 4a, 75a-e).
+
+    ``int(_article_number(r))`` ValueErrors on "4a" / "75c" because the
+    Omnibus inserts new articles with a letter suffix to avoid renumbering
+    the existing 1-113. Decompose into ``(integer_part, suffix)`` so
+    Python's stable sort lands "Art. 4" before "Art. 4a" before "Art. 5".
+    """
+    num = _article_number(ref)
+    m = re.match(r"^(\d+)([a-z]*)$", num)
+    if not m:
+        # Defensive — shouldn't happen since _ART_NUMBER_RE already vetted
+        # the ref. Sort unknown shapes last.
+        return (10**9, num)
+    return (int(m.group(1)), m.group(2))
 
 
 def _short_title(ref: str) -> str:
@@ -269,11 +286,11 @@ def build_payload() -> SeedPayload:
     Pure function — no I/O, no driver use. Suitable for tests and for the
     ``--dry-run`` accounting pass.
     """
-    # ── Articles (113) ────────────────────────────────────────────────
+    # ── Articles (113 + R41 letter-suffix inserts) ────────────────────
     article_nodes: list[dict] = []
     for ref in sorted(
         (r for r in ARTICLE_EXISTENCE if r.startswith("Art. ")),
-        key=lambda r: int(_article_number(r)),
+        key=_article_sort_key,
     ):
         num = _article_number(ref)
         article_nodes.append(

@@ -424,24 +424,82 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
                 "on remote biometric ID."
             ),
             (
-                "Art. 5: Digital Omnibus political agreement (7 May 2026) "
-                "added a new sub-paragraph to Art. 5(1) prohibiting AI "
-                "systems that generate non-consensual sexual or intimate "
-                "content and child sexual abuse material ('nudification' "
-                "apps and CSAM generators). Applies 2 December 2026. "
-                "Maximum fine €35 M or 7 % of global turnover under "
-                "Art. 99."
+                "Art. 5(1)(ba) [Digital Omnibus, COREPER 9247/26, applies "
+                "2 December 2026]: prohibits the placing on the market, "
+                "putting into service or use of an AI system that generates "
+                "or manipulates realistic images, videos, audio or similar "
+                "material of an identifiable natural person's intimate parts, "
+                "or of an identifiable natural person engaged in sexually "
+                "explicit activities, without that person's freely-given, "
+                "specific, informed, unambiguous and explicit consent for "
+                "that generation or manipulation (non-consensual intimate "
+                "material / 'nudification' prohibition)."
+            ),
+            (
+                "Art. 5(1)(bb) [Digital Omnibus, applies 2 December 2026]: "
+                "prohibits the placing on the market, putting into service "
+                "or use of an AI system that generates or manipulates "
+                "material or performance within the meaning of Article 2, "
+                "points (c) and (e), of Directive 2011/93/EU (AI-generated "
+                "or manipulated child sexual abuse material), save where a "
+                "'without right' defence applies under national law."
+            ),
+            (
+                "Art. 5(1a) [Digital Omnibus]: scope rule for (ba)/(bb) on "
+                "the provider side — placing on the market or putting into "
+                "service is only prohibited where (i) that generation or "
+                "manipulation is the intended purpose of the AI system, OR "
+                "(ii) the system's design, training, architecture, "
+                "capabilities or user-facing functionalities make it a "
+                "reasonably foreseeable reproducible outcome without "
+                "significant technical modification AND the system lacks "
+                "reasonable and adequate technical safety measures and "
+                "other safeguards to reliably prevent that generation or "
+                "manipulation and to correct observed or reported misuse."
+            ),
+            (
+                "Art. 5(1b) [Digital Omnibus]: scope rule for (ba)/(bb) on "
+                "the deployer side — the use of the AI system is only "
+                "prohibited where the deployer uses the system for the "
+                "purpose of generating or manipulating such material. "
+                "Maximum fine for breach of Art. 5: EUR 35 000 000 or 7% "
+                "of worldwide annual turnover (Art. 99(3))."
             ),
         ),
     ),
-    "Art. 6": {
-        "dimension": "risk_mgmt",
-        "summary": (
-            "Classifies an AI system as high-risk when it is intended as a safety "
-            "component of a product covered by Annex I, or falls into one of the "
-            "eight Annex III use cases."
+    "Art. 6": _KBEntry(
+        dimension="risk_mgmt",
+        stubs=(
+            (
+                "Art. 6(1)-(2): classifies an AI system as high-risk when it is "
+                "intended as a safety component of a product covered by Annex I "
+                "(Section A New Legislative Framework + Section B sectoral) AND "
+                "required to undergo third-party conformity assessment under that "
+                "Union harmonisation legislation, OR when it falls into one of "
+                "the eight Annex III use cases."
+            ),
+            (
+                "Art. 6(1a) [Digital Omnibus, COREPER 9247/26]: AI systems that "
+                "are solely used for non-safety related aspects of user "
+                "assistance, performance optimisation, service efficiency, "
+                "automation or convenience or quality control shall NOT qualify "
+                "as safety components — therefore not high-risk under Art. 6(1) "
+                "on the safety-component leg."
+            ),
+            (
+                "Art. 6(1b) [Digital Omnibus]: override — AI systems whose "
+                "failure or malfunctioning would endanger the health and safety "
+                "of persons or property qualify as safety components "
+                "notwithstanding paragraph 1a, and therefore remain high-risk."
+            ),
+            (
+                "Art. 6(1c) [Digital Omnibus]: third-party conformity assessment "
+                "carried out solely with respect to radio-spectrum or "
+                "electromagnetic-interference (EMI) risks does NOT satisfy the "
+                "third-party CA requirement of Art. 6(1)(b)."
+            ),
         ),
-    },
+    ),
     "Art. 9": {
         "dimension": "risk_mgmt",
         "summary": (
@@ -462,10 +520,13 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     "Art. 11": {
         "dimension": "tech_docs",
         "summary": (
-            "Requires technical documentation drawn up before placement on the "
-            "market, kept up to date, demonstrating conformity to the essential "
-            "requirements, with content per Annex IV. SMEs may use the simplified "
-            "form supplied by the Commission."
+            "Art. 11(1): requires technical documentation drawn up before "
+            "placement on the market, kept up to date, demonstrating conformity "
+            "to the Section-2 essential requirements, with content per Annex IV. "
+            "Per Digital Omnibus COREPER 9247/26, SMEs and small mid-cap "
+            "enterprises (SMCs) may use a SIMPLIFIED technical-documentation "
+            "form to be published by the Commission; notified bodies must "
+            "accept that simplified form."
         ),
     },
     "Art. 12": {
@@ -589,10 +650,17 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     "Art. 99": {
         "dimension": "risk_mgmt",
         "summary": (
-            "Penalty regime: up to EUR 35M or 7% of worldwide annual turnover for "
-            "Article 5 prohibited-practice violations; up to EUR 15M / 3% for other "
-            "obligations breaches; up to EUR 7.5M / 1% for incorrect or misleading "
-            "information to authorities."
+            "Penalty regime: up to EUR 35 000 000 or 7% of worldwide annual "
+            "turnover for Art. 5 prohibited-practice violations; up to EUR "
+            "15 000 000 or 3% for other obligations breaches (incl. Art. 25(2) "
+            "and (4) per Digital Omnibus Art. 99(4)(da)); up to EUR 7 500 000 "
+            "or 1% for incorrect / incomplete / misleading information to "
+            "authorities. Per Digital Omnibus, Art. 99(1) requires Member-"
+            "State penalty regimes to take SME / SMC viability into account; "
+            "Art. 99(6) extends the SME fine cap (lower of % or amount) to "
+            "ALL paragraphs (3, 4, 5), not just selected ones; Art. 99(6a) "
+            "[NEW] introduces an SMC fine cap — lower of the % or the amount "
+            "under paragraphs 4 or 5 — to small mid-cap enterprises."
         ),
     },
     "Annex IV": {
@@ -649,10 +717,31 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     "Art. 4": {
         "dimension": "governance",
         "summary": (
-            "Requires providers and deployers to take measures to ensure a "
-            "sufficient level of AI literacy among their staff and other persons "
-            "dealing with AI systems on their behalf, considering technical "
-            "knowledge, experience, education, training, and context of use."
+            "Art. 4 (replaced by Digital Omnibus COREPER 9247/26): providers "
+            "and deployers of AI systems shall take measures to SUPPORT the "
+            "development of AI literacy of their staff and other persons "
+            "dealing with the operation and use of AI systems on their behalf, "
+            "taking into account their technical knowledge, experience, "
+            "education, training and context of use. This obligation shall NOT "
+            "be understood as requiring providers or deployers to guarantee any "
+            "specific level of AI literacy of any individual — the duty is "
+            "organisational ('take measures to support'), not an individual-"
+            "level outcome guarantee."
+        ),
+    },
+    "Art. 4a": {
+        "dimension": "data_gov",
+        "summary": (
+            "Art. 4a [NEW, Digital Omnibus COREPER 9247/26]: legal basis for "
+            "processing special categories of personal data (Art. 9(1) GDPR, "
+            "Art. 10(1) Reg. 2018/1725, Art. 10(1) Dir. 2016/680) for the "
+            "purposes of bias detection and correction. Providers of high-risk "
+            "AI systems may process special-category data to the extent strictly "
+            "necessary to detect and correct biases in HRAIS, subject to "
+            "documented technical and organisational safeguards (pseudonymisation, "
+            "access controls, deletion after the bias-correction purpose is "
+            "served). Deployers and providers of other (non-HRAIS) AI systems "
+            "operate under a lighter regime — moved from former Art. 10(5)."
         ),
     },
     # ─── Title III: High-risk providers + value chain (Arts. 7, 8, 16-25) ────
@@ -863,10 +952,29 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     "Art. 60": {
         "dimension": "governance",
         "summary": (
-            "Permits testing of high-risk AI systems in real-world conditions "
-            "outside the sandbox, subject to a real-world-testing plan, "
-            "informed consent of test subjects, registration in the EU "
-            "database, and oversight by the market-surveillance authority."
+            "Art. 60 [extended by Digital Omnibus]: permits testing of high-risk "
+            "AI systems in real-world conditions outside an AI regulatory "
+            "sandbox, subject to a real-world-testing plan, informed consent of "
+            "test subjects, registration in the EU database, and oversight by "
+            "the market-surveillance authority. The Omnibus extends real-world "
+            "testing to HRAIS covered by Section A Annex I Union harmonisation "
+            "legislation; Section B sectoral systems go through Art. 60a."
+        ),
+    },
+    "Art. 60a": {
+        "dimension": "governance",
+        "summary": (
+            "Art. 60a [NEW, Digital Omnibus COREPER 9247/26]: Section B Annex I "
+            "sectoral real-world-testing framework. For HRAIS that are safety "
+            "components of products covered by Section B Annex I legislation "
+            "(civil aviation Reg. 2018/1139, agricultural vehicles Reg. "
+            "167/2013, two/three-wheel vehicles Reg. 168/2013, marine equipment "
+            "Dir. 2014/90/EU, rail Dir. 2016/797, motor vehicles Reg. 2018/858 "
+            "+ Reg. 2019/2144, machinery Reg. 2023/1230), real-world testing "
+            "is governed by the Member-State framework established under the "
+            "sectoral legislation rather than by Art. 60. References to the "
+            "market-surveillance authority in Art. 76(1) are construed as "
+            "references to the relevant sectoral national competent authority."
         ),
     },
     # ─── Title VII: Governance (Arts. 64-66, 70) ─────────────────────────────
@@ -952,21 +1060,42 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
         ),
     },
     # ─── Title XII / final provisions (Art. 113 — applicability dates) ───────
-    "Art. 113": {
-        "dimension": "governance",
-        "summary": (
-            "Entry into force + application (Regulation 2024/1689): in force "
-            "1 August 2024; prohibitions (Art. 5) + AI literacy (Art. 4) from "
-            "2 February 2025; GPAI obligations (Chapter V) from 2 August 2025; "
-            "general application from 2 August 2026; pre-existing high-risk "
-            "for public-authority use from 2 August 2030. Digital Omnibus on "
-            "AI (political agreement reached 7 May 2026 between Parliament + "
-            "Council) defers Annex III high-risk obligations to 2 December "
-            "2027 and Annex I embedded-product obligations to 2 August 2028 "
-            "to allow harmonised standards + AI Office guidelines to land "
-            "first; remaining provisions unchanged."
+    "Art. 113": _KBEntry(
+        dimension="governance",
+        stubs=(
+            (
+                "Art. 113 [revised applicability cascade per Digital Omnibus "
+                "COREPER 9247/26, 13 May 2026]: Regulation (EU) 2024/1689 "
+                "entered into force 1 August 2024. Chapters I (general "
+                "provisions) and II (prohibited practices) apply from "
+                "2 February 2025, EXCEPT the new Art. 5(1)(ba), Art. 5(1)(bb), "
+                "Art. 5(1a) and Art. 5(1b) prohibitions (non-consensual "
+                "intimate material + AI-CSAM + provider/deployer scope), which "
+                "apply from 2 December 2026."
+            ),
+            (
+                "Art. 113: Chapter III, Sections 1, 2 and 3 (high-risk AI "
+                "systems requirements + provider/deployer/value-chain "
+                "obligations), with the exception of Art. 6(5), apply (i) on "
+                "2 December 2027 as regards AI systems classified as high-risk "
+                "pursuant to Art. 6(2) and Annex III (use-case high-risk), and "
+                "(ii) on 2 August 2028 as regards AI systems classified as "
+                "high-risk pursuant to Art. 6(1) and Annex I (safety-component "
+                "high-risk under Union harmonisation legislation)."
+            ),
+            (
+                "Art. 113: Chapter V (GPAI) obligations apply from 2 August "
+                "2025; remaining provisions apply from 2 August 2026. "
+                "Arts. 102 to 110 (sectoral amendments to Reg. 300/2008, "
+                "167/2013, 168/2013, Dir. 2014/90/EU, Dir. 2016/797, Reg. "
+                "2018/858, Reg. 2018/1139, Reg. 2019/1020, Reg. 2019/2144, "
+                "Dir. 2020/1828) apply from the date of entry into force of "
+                "the Digital Omnibus amending Regulation. Public-authority "
+                "deployers of pre-existing HRAIS must comply by 2 August 2030 "
+                "(Art. 111(2))."
+            ),
         ),
-    },
+    ),
     # ─── Additional Annexes ──────────────────────────────────────────────────
     "Annex I": {
         "dimension": "risk_mgmt",
@@ -1027,6 +1156,23 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "parameters, dataset quality + size, training compute, input + "
             "output modalities, benchmarks + capability evaluations, reach "
             "(business users / EU registered end-users), registered users."
+        ),
+    },
+    "Annex XIV": {
+        "dimension": "conformity",
+        "summary": (
+            "Annex XIV [NEW, Digital Omnibus COREPER 9247/26]: notified-body "
+            "designation-scope code typology. Three families: AIP codes "
+            "(AIP 0101–0112) for AI systems subject to Annex I Section A "
+            "Union harmonisation legislation; AIB codes for biometric "
+            "high-risk systems (AIB 0201 remote biometric identification, "
+            "AIB 0202 biometric categorisation, AIB 0203 emotion "
+            "recognition); AIH codes for AI techniques (AIH 0101 symbolic / "
+            "knowledge-based, AIH 0201–0205 machine-learning by data "
+            "modality, AIH 0301 generative AI including GPAI-built "
+            "systems, AIH 0401 'other emerging AI technologies not covered "
+            "by other codes, including Agentic AI'). The Commission may "
+            "amend Annex XIV by delegated act."
         ),
     },
     # ─── Title III: Cooperation duty (Art. 21) ───────────────────────────────
@@ -1158,11 +1304,15 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     "Art. 63": {
         "dimension": "governance",
         "summary": (
-            "Derogations for SMEs (and post-Omnibus small mid-caps): "
-            "simplified compliance with Art. 17 quality-management-system "
-            "obligations in a manner appropriate to size + market stage, "
-            "without compromising the level of protection or compliance "
-            "with the Section-2 requirements."
+            "Art. 63(1) [extended by Digital Omnibus COREPER 9247/26]: "
+            "derogations for specific operators. The simplified Art. 17 "
+            "quality-management-system regime — previously available only to "
+            "microenterprises — is extended to ALL SMEs (including start-ups) "
+            "without partner enterprises or linked enterprises, and to small "
+            "mid-cap enterprises (SMCs). Simplification is proportionate to "
+            "size and market stage and must not compromise the level of "
+            "protection or compliance with the Section-2 essential "
+            "requirements."
         ),
     },
     # ─── Title VII: Advisory Forum + Scientific Panel (Arts. 67, 68, 69) ─────
@@ -1730,12 +1880,87 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     "Art. 75": {
         "dimension": "governance",
         "summary": (
-            "Art. 75: mutual assistance + control of AI systems based "
-            "on GPAI models. Where the model + system share a provider, "
-            "the AI Office holds market-surveillance powers under Reg. "
-            "(EU) 2019/1020; national authorities may request the AI "
-            "Office to exercise its Art. 91-93 powers over a GPAI model "
-            "they cannot otherwise investigate."
+            "Art. 75 [Digital Omnibus COREPER 9247/26]: AI Office exclusive "
+            "competence over (a) AI systems built on a GPAI model where the "
+            "system and model share the same provider or belong to the same "
+            "undertaking — with carve-outs for Annex I products, Annex III(2) "
+            "critical infrastructure, law-enforcement / border / financial "
+            "systems supervised under Art. 74(6), and Annex III(8) justice + "
+            "democratic-processes systems; (b) AI systems integrated into "
+            "VLOPs / VLOSEs designated under the Digital Services Act. "
+            "Deployer scope is limited to same-undertaking deployers of those "
+            "systems. The AI Office exercises Art. 75a–75e investigatory + "
+            "enforcement powers (information requests, on-site inspections, "
+            "commitments, fines, periodic penalties)."
+        ),
+    },
+    "Art. 75a": {
+        "dimension": "governance",
+        "summary": (
+            "Art. 75a [NEW, Digital Omnibus COREPER 9247/26]: AI Office "
+            "information-request powers. The AI Office may, by reasoned "
+            "decision, require providers, deployers, importers, distributors "
+            "and authorised representatives of AI systems within its Art. 75 "
+            "exclusive competence to supply all information and documentation "
+            "necessary to assess compliance with the AI Act — including "
+            "technical documentation, logs, source-code access where strictly "
+            "necessary, and information on the AI value chain. Subject to "
+            "Art. 78 confidentiality and Art. 75d procedural safeguards."
+        ),
+    },
+    "Art. 75b": {
+        "dimension": "governance",
+        "summary": (
+            "Art. 75b [NEW, Digital Omnibus COREPER 9247/26]: AI Office "
+            "on-site inspection and commitment powers. The AI Office may "
+            "conduct inspections (including unannounced) at the premises "
+            "of operators within its Art. 75 exclusive competence, examine "
+            "business records, seal premises for the duration of the "
+            "inspection, and request explanations from staff. Operators "
+            "may offer commitments that, if made binding by the AI Office, "
+            "terminate the proceedings."
+        ),
+    },
+    "Art. 75c": {
+        "dimension": "governance",
+        "summary": (
+            "Art. 75c [NEW, Digital Omnibus COREPER 9247/26]: AI Office "
+            "fines and periodic penalty payments. The Commission, through "
+            "the AI Office, may impose fines on operators within its Art. 75 "
+            "exclusive competence per the Art. 99 brackets applied mutatis "
+            "mutandis (up to EUR 35 000 000 or 7% worldwide turnover for "
+            "Art. 5; up to EUR 15 000 000 or 3% for other obligations; up to "
+            "EUR 7.5 000 000 or 1% for incorrect / incomplete / misleading "
+            "information). Periodic penalty payments may compel compliance "
+            "with information requests, inspections, commitments or remedial "
+            "measures — capped at 5% of average daily worldwide income or "
+            "turnover per day of non-compliance."
+        ),
+    },
+    "Art. 75d": {
+        "dimension": "governance",
+        "summary": (
+            "Art. 75d [NEW, Digital Omnibus COREPER 9247/26]: procedural "
+            "safeguards. Operators subject to Art. 75a–75c investigations "
+            "have the right to be heard before the AI Office adopts a "
+            "decision adversely affecting them, the right to access the file "
+            "(subject to legitimate confidentiality interests), the right to "
+            "be assisted by counsel, the right to interpretation, and the "
+            "right to judicial review before the Court of Justice of the "
+            "European Union. Self-incrimination protections apply."
+        ),
+    },
+    "Art. 75e": {
+        "dimension": "governance",
+        "summary": (
+            "Art. 75e [NEW, Digital Omnibus COREPER 9247/26]: limitation "
+            "periods. The power of the AI Office to impose fines and "
+            "periodic penalty payments under Art. 75c expires 5 years after "
+            "the day on which the infringement was committed, or — in the "
+            "case of continuing or repeated infringements — 5 years after "
+            "the day on which the infringement ceased. The limitation period "
+            "is suspended for the duration of any review proceedings before "
+            "the Court of Justice."
         ),
     },
     "Art. 76": {
@@ -1746,7 +1971,10 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "informed consent + incident reporting; may require the "
             "provider or prospective-provider deployer to modify, "
             "suspend, or terminate the test, including by unannounced "
-            "on-site inspection."
+            "on-site inspection. Per Digital Omnibus, references to the "
+            "MSA under Art. 76(1) are construed as references to the "
+            "national competent authority under Section B Annex I where "
+            "testing is conducted under Art. 60a."
         ),
     },
     "Art. 77": {

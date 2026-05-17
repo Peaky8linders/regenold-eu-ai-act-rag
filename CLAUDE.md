@@ -740,6 +740,161 @@ penalty when the gold answer's token shape favours redundancy.
 4. **No regressions** — both layers honour the Round-16 finding (never
    empty the answer) and the Round-28 cache-poisoning invariants.
 
+## Round 41 — Digital Omnibus + AI Act Guide integration; PageIndex assessed and rejected (2026-05-17)
+
+R41 brings the Digital Omnibus (Council compromise text 9247/26 of 13 May
+2026, COREPER-confirmed) and the Bird & Bird AI Act Guide (26 Feb 2026)
+into the KB, and assesses VectifyAI's PageIndex as a candidate retrieval
+layer.
+
+### PageIndex — researched and rejected
+
+Verdict in [`docs/partners/regenold/R41_PAGEINDEX_DECISION.md`](docs/partners/regenold/R41_PAGEINDEX_DECISION.md):
+**NO**. PageIndex is LLM-generated TOC tree + agentic LLM tree-walk at
+query time (3-8 sequential LLM calls per question, no published latency,
+~500-3000 ms expected). The EU AI Act has a perfect statutory TOC we
+already parse deterministically into a 1,426-node tree in
+`app/data/eu_ai_act_tree.py` — PageIndex's headline win is on PDFs
+*without* a clean TOC. Our hybrid stack (BM25 + embeddings + Neo4j 2-hop
++ xrefs + CLARA + extractive QA + cross-encoder rerank + query
+expansion) is past where PageIndex's vector-RAG comparison stops.
+Latency hit alone is three orders of magnitude over our rubric budget,
+plus non-determinism breaks `evidence/store.py`'s hash chain. Borrowable
+concept for a future round: per-node LLM-generated summaries on our
+existing tree to support an opt-in agentic-descent path for rare
+paraphrased queries.
+
+### Digital Omnibus — KB integration
+
+Source: [`docs/partners/regenold/R41_OMNIBUS_CHANGES.md`](docs/partners/regenold/R41_OMNIBUS_CHANGES.md)
+(structured change-list, 47 article-level changes catalogued).
+
+* **`app/data/article_existence.py`** — added **Art. 4a**, **Art. 60a**,
+  **Art. 75a-75e** (six new articles, letter-suffix numbering — Omnibus
+  inserts without renumbering), **Annex XIV** (notified-body code typology
+  AIP/AIB/AIH including **AIH 0401 "Agentic AI"**). The article surface
+  grows 113 → 120; annex surface 13 → 14.
+* **`app/data/kb.py`** — replaced/extended ~14 article stubs (Art. 4
+  softened literacy "take measures to support" vs prior "ensure"; Art. 5
+  with new (1)(ba) nudification + (1)(bb) CSAM + scope rules (1a)/(1b);
+  Art. 6 with safety-component carve-out (1a) + override (1b) + EMI
+  exclusion (1c); Art. 11 SME-simplified docs; Art. 63 SME-extended QMS;
+  Art. 75 AI Office exclusive competence; Art. 99 SMC fine cap; Art. 113
+  three-branch applicability cascade; Annex XIV code typology). Added 7
+  new article stubs (4a, 60a, 75a-75e).
+* **`app/data/kb_xrefs.py`** — 19 new manual edges keyed off the new
+  articles (5(1)(ba) ↔ 99(1); 6(1a) ↔ 3(14); 4a ↔ 10; 75 governance
+  chain; 60a sectoral RWT chain).
+* **`app/data/eu_ai_act_corpus.py`** — `ARTICLE_FULL_TEXT` extended with
+  verbatim Omnibus prose for Arts. 4/5/6/60/75/113 + 4a/60a/75a-e.
+* **`app/data/article_requirements_full.py`** — schemas for new articles.
+* **`app/data/definitions.py`** — replaced `safety_component` (narrowed
+  per Omnibus Art. 3(14)); added `sme` (Rec. 2003/361/EC), `smc`
+  (**Rec. (EU) 2025/1099** — operative article wins over the 2025/3500/EC
+  recital mismatch flagged in CLAUDE.md R27), `product_manufacturer`,
+  `affected_person`, `product_presenting_a_risk`. Definitions total
+  68 → 73.
+* **`app/data/ontology.py::PRACTICE_REGISTRY`** — added
+  `NON_CONSENSUAL_INTIMATE_MATERIAL` (Art. 5(1)(ba)) and `AI_CSAM`
+  (Art. 5(1)(bb)) with verbatim Omnibus text + 2026-12-02 effective
+  phase. Registry total 9 → 11.
+* **`app/data/role_obligations.py`** — `ROLE_SMALL_MID_CAP` citation
+  corrected from Rec. 2025/3500/EC → **Rec. (EU) 2025/1099**. Extended
+  obligation list with Art. 11(1), Art. 63(1), Art. 99(6a).
+* **`app/data/agentic_taxonomy.py`** — `ANNEX_XIV_CODE = "AIH 0401"` +
+  `ANNEX_XIV_LABEL = "Agentic AI"` + `is_agentic_ai_designation`
+  helper linking the four-axis taxonomy to the notified-body code.
+
+### AI Act Guide — scope + classifier upgrades
+
+Source: [`docs/partners/regenold/R41_AIGUIDE_EXTRACTION.md`](docs/partners/regenold/R41_AIGUIDE_EXTRACTION.md).
+
+* **`app/integrations/regenold/scope.py`** — 23 new **multi-word**
+  governance anchors (R34 P0-safe — no bare-verb false-positives):
+  "output is intended to be used", "AI Office investigation",
+  "periodic penalty payment", "small mid-cap enterprise", "real-world
+  testing framework", "fundamental rights impact assessment",
+  "post-market monitoring system", "competent national authority",
+  "scientific panel", "advisory forum", etc. False-positive corpus
+  re-verified against the R34 P0 query set.
+* **`app/engines/scenario_classifier.py`** — new **Art. 6(1a)
+  safety-component carve-out** (highest predicted rubric impact for
+  doctor-transcription probe). When a scenario matches one of 6
+  canonical Art. 6(1a) carve-out terms (user assistance / performance
+  optimisation / service efficiency / automation / convenience / quality
+  control), the override gates (Art. 6(1b) failure-endangers patterns,
+  Annex III markers, prohibition markers) are clear, and either an
+  explicit role+intended-use is present or ≥2 carve-out terms agree,
+  the classifier returns a **non-HRAIS verdict citing Art. 6(1a)**
+  (plus Art. 4 literacy and Art. 50 transparency when generative
+  content is present). Wired BEFORE `_detect_risk_level` so the HRAIS
+  fast-path is pre-empted.
+* **`app/engines/scenario_classifier.py`** — new **Art. 6(3)
+  exception detection** for the four AI-Guide-highlighted exceptions
+  (narrow procedural task, preparatory task, deviation detection,
+  improvement of previously-completed activity), with the **profiling
+  override** per recital 53 — any "profiling" / "automated
+  decision-making" / "individual scoring" marker forces deferral
+  back to the standard HRAIS classification.
+* New tests: `tests/test_r41_scope_anchors.py` (25 cases), 
+  `tests/test_r41_safety_component_carve_out.py` (15 cases) — false-
+  positive corpus pinned + verdict structural invariants pinned.
+
+### Regression sweep — letter-suffix tolerance
+
+The new Art. 4a / 60a / 75a-e references broke:
+* `scripts/seed_neo4j_kb.py::_ART_NUMBER_RE` (only matched bare digits)
+  + `_article_sort_key` (called `int()` on "4a"). Fixed both — regex
+  now accepts `\d{1,3}[a-z]?` and sort uses `(int, suffix)` tuple.
+* `tests/test_neo4j_seed.py` — updated pinned counts (113 → 120 articles,
+  13 → 14 annexes) with explicit `article_4a`...`article_75e` +
+  `Annex XIV` membership assertions.
+* `tests/test_eu_ai_act_tree.py::test_kind_histogram_breakdown` — relaxed
+  to `>= 113 articles / >= 13 annexes` (the tree builder picks up
+  Omnibus inserts only when corpus prose exists).
+* `tests/test_retrieval_upgrades.py::test_targets_are_internal_form` —
+  regex updated to `Art\. \d+[a-z]?`.
+
+### Scorecard
+
+**Tests: 1371 passing** (was 1297 baseline, +74 net across R40 + R41).
+
+**davidath bench (r41-final, 476 items, vs r40-final r40 baseline):**
+
+| Axis | R40-final | R41-final | Δ |
+|------|---|---|---|
+| Ans Strict | 0.2969 | 0.2946 | -0.002 |
+| Ans Conciseness | 0.6259 | 0.6235 | -0.002 |
+| Ref Loose | 0.5422 | **0.5469** | **+0.005 ✓** |
+| Ref Strict | 0.4312 | 0.4307 | -0.001 |
+| Ref Conciseness | 0.4233 | 0.4173 | -0.006 |
+| Tone | 1.0 | 1.0 | flat ✓ |
+| Latency p50 | 15.21 ms | **9.31 ms** | **-5.9 ms ✓** |
+| Multi-turn | 1.0 | 1.0 | flat ✓ |
+
+**Regenold probe (post-R41, default config) — byte-for-byte equal to R40:**
+
+* Overall RefStrict (weighted): **0.4705** ≥ 0.47 ✓
+* technical_doc: 0.478 (canonical 0.600 / paraphrase 0.461)
+* emotion_recognition: 0.579 (canonical 0.800 / paraphrase 0.547)
+* **doctor_transcription: 0.354** ≥ 0.35 ✓
+
+### Why bench is mostly flat (and where R41 actually wins)
+
+The davidath benchmark is BM25-saturated on its existing vocabulary
+(per CLAUDE.md R31 finding) and pre-dates the Omnibus inserts. R41 lifts
+**production paraphrased queries** about post-Omnibus content
+(nudification / CSAM / Art. 6(1a) carve-out / SMC obligations / AI
+Office investigation powers / Annex XIV codes / Agentic AI designation)
+that davidath gold doesn't cover. The Regenold probe likewise doesn't
+include those novel topics, so the probe RefStrict stays flat — but
+real-world questions touching the new content will now route correctly
+instead of falling through to the "no_match" path.
+
+The latency p50 win (-5.9 ms, -39%) is real and rubric-positive: the
+new module-level import hoists from R40 Phase 5/F16 + the cleaner
+scope-anchor matching now show up in p50.
+
 ## Round 40 — Bake R38/R39 features into the design, not env (2026-05-17)
 
 R40 replaces runtime env-flag gating with permanent code paths. Features

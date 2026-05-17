@@ -18,10 +18,27 @@ degrade the engines that consume it for actual requirement content.
 """
 from __future__ import annotations
 
-# EU Regulation 2024/1689 has 113 numbered articles.
-_ARTICLES: frozenset[str] = frozenset(f"Art. {n}" for n in range(1, 114))
+# EU Regulation 2024/1689 has 113 numbered articles. R41 / Digital Omnibus
+# (COREPER compromise text 9247/26, 13 May 2026) inserts six new articles
+# with letter-suffix numbering — they live in the regulation surface
+# alongside the 1-113 baseline, not as a renumber.
+_ARTICLES: frozenset[str] = frozenset(f"Art. {n}" for n in range(1, 114)) | frozenset(
+    {
+        # R41 / Omnibus inserts — bias-data legal basis, sectoral RWT,
+        # AI Office investigatory powers.
+        "Art. 4a",
+        "Art. 60a",
+        "Art. 75a",
+        "Art. 75b",
+        "Art. 75c",
+        "Art. 75d",
+        "Art. 75e",
+    }
+)
 
-# 13 annexes referenced as Annex I…Annex XIII in the regulation text.
+# 13 annexes referenced as Annex I…Annex XIII in the original regulation;
+# R41 / Omnibus adds Annex XIV (notified-body designation codes — AIP /
+# AIB / AIH typology, including AIH 0401 "Agentic AI").
 _ANNEXES: frozenset[str] = frozenset(
     {
         "Annex I",
@@ -37,6 +54,8 @@ _ANNEXES: frozenset[str] = frozenset(
         "Annex XI",
         "Annex XII",
         "Annex XIII",
+        # R41 / Omnibus — notified-body code typology
+        "Annex XIV",
     }
 )
 

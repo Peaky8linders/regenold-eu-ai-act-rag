@@ -431,9 +431,250 @@ ARTICLE_REQUIREMENTS: dict[str, dict] = {
         "kb_dimensions": ["ai_literacy"],
         "paragraphs": {
             "4(1)": {
-                "text": "Providers and deployers of AI systems shall take measures to ensure, to the best extent possible, a sufficient level of AI literacy of their staff and other persons dealing with the operation and use of AI systems on their behalf.",
-                "remediation": "Create AI literacy training programme covering capabilities, limitations, and risks of the AI system.",
+                "text": (
+                    "[Digital Omnibus COREPER 9247/26, replaces Art. 4 in full] "
+                    "Providers and deployers of AI systems shall take measures to "
+                    "support the development of AI literacy of their staff and "
+                    "other persons dealing with the operation and use of AI "
+                    "systems on their behalf, taking into account their technical "
+                    "knowledge, experience, education and training and the "
+                    "context the AI systems are to be used in. This obligation "
+                    "shall not be understood as requiring providers or deployers "
+                    "to guarantee any specific level of AI literacy of any "
+                    "individual."
+                ),
+                "remediation": (
+                    "Establish an organisational AI-literacy programme: "
+                    "(1) audit staff roles touching AI systems, (2) deliver "
+                    "context-of-use training scaled to role + risk tier, "
+                    "(3) document programme + uptake. The duty is "
+                    "organisational ('take measures to support'), NOT an "
+                    "individual-level outcome guarantee."
+                ),
                 "effort_hours": 8,
+            },
+        },
+    },
+    "Art. 4a": {
+        "title": "Processing of Special-Category Personal Data for Bias Detection and Correction",
+        "chapter": "I",
+        "enforcement": "EIF-Omnibus",
+        "kb_dimensions": ["data_gov"],
+        "paragraphs": {
+            "4a(1)": {
+                "text": (
+                    "[NEW, Digital Omnibus COREPER 9247/26] Providers of "
+                    "high-risk AI systems may process special categories of "
+                    "personal data (Art. 9(1) GDPR, Art. 10(1) Reg. 2018/1725, "
+                    "Art. 10(1) Dir. 2016/680) to the extent that this is "
+                    "strictly necessary for the purposes of ensuring bias "
+                    "detection and correction in relation to high-risk AI "
+                    "systems, subject to appropriate safeguards for the "
+                    "fundamental rights and freedoms of natural persons."
+                ),
+                "remediation": (
+                    "Document the legal basis for processing special-category "
+                    "data under Art. 4a: necessity test, technical limitations "
+                    "on re-use, state-of-the-art pseudonymisation, strict "
+                    "access controls, deletion after correction or retention "
+                    "period (whichever first), and records-of-processing entry "
+                    "explaining why other data could not satisfy the bias-"
+                    "examination purpose. Subsumes former Art. 10(5)."
+                ),
+                "effort_hours": 16,
+            },
+            "4a(3)": {
+                "text": (
+                    "[NEW, Digital Omnibus] Deployers and providers of AI "
+                    "systems OTHER THAN high-risk AI systems may process "
+                    "special-category data for bias detection and correction "
+                    "subject to a lighter set of safeguards proportionate to "
+                    "the risks of the processing, taking into account the "
+                    "state of the art."
+                ),
+                "remediation": (
+                    "Apply a proportionate safeguard set when non-HRAIS uses "
+                    "special-category data for bias work: minimum-necessary "
+                    "principle, scoped access controls, deletion policy. "
+                    "Document the proportionality rationale."
+                ),
+                "effort_hours": 6,
+            },
+        },
+    },
+    "Art. 60a": {
+        "title": "Real-World Testing for Section B Annex I High-Risk AI Systems",
+        "chapter": "VI",
+        "enforcement": "EIF-Omnibus",
+        "kb_dimensions": ["governance"],
+        "paragraphs": {
+            "60a(1)": {
+                "text": (
+                    "[NEW, Digital Omnibus COREPER 9247/26] Testing of high-"
+                    "risk AI systems that are safety components of products "
+                    "covered by Union harmonisation legislation listed in "
+                    "Section B of Annex I (in particular Reg. 167/2013, Reg. "
+                    "168/2013, Dir. 2014/90/EU, Dir. 2016/797, Reg. 2018/858, "
+                    "Reg. 2018/1139, Reg. 2019/2144 and Reg. 2023/1230) in "
+                    "real world conditions may be conducted in the framework "
+                    "established by that sectoral Union harmonisation "
+                    "legislation, instead of under Article 60."
+                ),
+                "remediation": (
+                    "For Section B Annex I HRAIS real-world testing: route "
+                    "the test plan through the relevant sectoral framework "
+                    "(aviation, rail, marine, motor, agri, machinery), align "
+                    "to the Section 2 essential requirements (Art. 9 risk "
+                    "management, Art. 14 human oversight), and treat Art. "
+                    "76(1) MSA references as references to the sectoral NCA."
+                ),
+                "effort_hours": 12,
+            },
+        },
+    },
+    "Art. 75a": {
+        "title": "AI Office — Power to Request Information",
+        "chapter": "IX",
+        "enforcement": "EIF-Omnibus",
+        "kb_dimensions": ["governance"],
+        "paragraphs": {
+            "75a(1)": {
+                "text": (
+                    "[NEW, Digital Omnibus] The Commission, acting through "
+                    "the AI Office, may by simple request or by reasoned "
+                    "decision require operators of AI systems within the "
+                    "Art. 75 exclusive AI Office competence to provide all "
+                    "information and documentation necessary to assess "
+                    "compliance — including technical documentation, "
+                    "automatically generated logs, and, where strictly "
+                    "necessary, source-code access."
+                ),
+                "remediation": (
+                    "Maintain a single-pane index of Annex IV technical "
+                    "documentation, Art. 12 logs, and source-code access "
+                    "playbook so an Art. 75a reasoned decision can be "
+                    "fulfilled within the AI Office's deadline. Confidentiality "
+                    "claims must be flagged at submission per Art. 78."
+                ),
+                "effort_hours": 8,
+            },
+        },
+    },
+    "Art. 75b": {
+        "title": "AI Office — Power to Conduct Inspections",
+        "chapter": "IX",
+        "enforcement": "EIF-Omnibus",
+        "kb_dimensions": ["governance"],
+        "paragraphs": {
+            "75b(1)": {
+                "text": (
+                    "[NEW, Digital Omnibus] The AI Office may conduct on-site "
+                    "inspections (including unannounced) at the premises of "
+                    "operators of AI systems within its Art. 75 exclusive "
+                    "competence, examine business records, seal premises for "
+                    "the duration of the inspection, and request explanations "
+                    "from staff. Operators may offer commitments that, if "
+                    "made binding, terminate proceedings."
+                ),
+                "remediation": (
+                    "Stand up an AI-Office-inspection runbook: legal "
+                    "representative on call, document custodianship map, "
+                    "staff briefing on Art. 75d procedural rights, and a "
+                    "commitments-offer template aligned to the Art. 75b "
+                    "binding-commitment procedure."
+                ),
+                "effort_hours": 12,
+            },
+        },
+    },
+    "Art. 75c": {
+        "title": "AI Office — Fines and Periodic Penalty Payments",
+        "chapter": "IX",
+        "enforcement": "EIF-Omnibus",
+        "kb_dimensions": ["governance"],
+        "paragraphs": {
+            "75c(1)": {
+                "text": (
+                    "[NEW, Digital Omnibus] The AI Office may impose fines "
+                    "on operators within its Art. 75 exclusive competence in "
+                    "accordance with the Art. 99 brackets applied mutatis "
+                    "mutandis."
+                ),
+                "remediation": (
+                    "Map each compliance gap to the Art. 99 bracket it would "
+                    "fall under (up to EUR 35M / 7% for Art. 5; up to EUR "
+                    "15M / 3% for Section-2 obligations; up to EUR 7.5M / 1% "
+                    "for information offences) so fine-risk is visible in the "
+                    "compliance dashboard."
+                ),
+                "effort_hours": 4,
+            },
+            "75c(4)": {
+                "text": (
+                    "[NEW, Digital Omnibus] The periodic penalty payment "
+                    "shall not exceed 5% of the average daily worldwide "
+                    "income or turnover in the preceding business year per "
+                    "day of non-compliance, calculated from the date set in "
+                    "the decision."
+                ),
+                "remediation": (
+                    "Daily-revenue base for the 5% periodic-penalty cap must "
+                    "be precomputed and reviewable. Internal time-to-comply "
+                    "SLA should target ≤ 7 days from any AI Office decision "
+                    "to keep cumulative exposure below 35% of daily revenue."
+                ),
+                "effort_hours": 6,
+            },
+        },
+    },
+    "Art. 75d": {
+        "title": "AI Office — Procedural Safeguards",
+        "chapter": "IX",
+        "enforcement": "EIF-Omnibus",
+        "kb_dimensions": ["governance"],
+        "paragraphs": {
+            "75d(1)": {
+                "text": (
+                    "[NEW, Digital Omnibus] Before adopting an adverse "
+                    "decision under Arts. 75a / 75b / 75c, the AI Office "
+                    "shall give the operator the opportunity to be heard. "
+                    "Operators have the right of access to the file (subject "
+                    "to confidentiality), the right to counsel, "
+                    "self-incrimination protections, and judicial review by "
+                    "the CJEU."
+                ),
+                "remediation": (
+                    "Standing legal-team workflow for AI Office proceedings: "
+                    "right-to-be-heard response template, file-access "
+                    "request, business-secret claim register, and CJEU "
+                    "review timeline tracker."
+                ),
+                "effort_hours": 8,
+            },
+        },
+    },
+    "Art. 75e": {
+        "title": "AI Office — Limitation Period",
+        "chapter": "IX",
+        "enforcement": "EIF-Omnibus",
+        "kb_dimensions": ["governance"],
+        "paragraphs": {
+            "75e(1)": {
+                "text": (
+                    "[NEW, Digital Omnibus] The powers of the AI Office to "
+                    "impose fines and periodic penalty payments under Art. "
+                    "75c shall be subject to a limitation period of 5 years "
+                    "from the day the infringement was committed (or, for "
+                    "continuing/repeated infringements, the day it ceased). "
+                    "The limitation is suspended during CJEU review."
+                ),
+                "remediation": (
+                    "Retention policy for compliance evidence (technical "
+                    "documentation, logs, internal audits): minimum 5 years "
+                    "from end of infringement window, extended for any "
+                    "active CJEU proceedings."
+                ),
+                "effort_hours": 2,
             },
         },
     },

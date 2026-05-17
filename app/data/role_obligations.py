@@ -50,9 +50,15 @@ ROLE_EXTRATERRITORIAL_NON_EU = "extraterritorial_non_eu"
 # the Art. 62/63 SME privileges (simplified QMS, derogated documentation
 # format, reduced sandbox fees) to *small mid-cap* companies — entities
 # above the SME ceiling but below the large-enterprise ceiling per
-# Recommendation 2003/361/EC as amended. Treated as a *modifier* role:
-# inherits the underlying actor obligations (Provider / Deployer / etc.)
-# and overlays the SME-style reliefs.
+# Recommendation 2003/361/EC as amended. The SMC threshold itself is
+# defined by reference to point (2) of the Annex to Commission
+# Recommendation **(EU) 2025/1099** (per the COREPER compromise text
+# 9247/26 of 13 May 2026, which inserts Art. 3(14b) referencing 2025/1099
+# in the operative article). An earlier recital flagged 2025/3500/EC,
+# but the operative article wins — the canonical citation is
+# Recommendation (EU) 2025/1099. Treated as a *modifier* role: inherits
+# the underlying actor obligations (Provider / Deployer / etc.) and
+# overlays the SME-style reliefs.
 #
 # Round 38 — numeric thresholds. The Omnibus political agreement set
 # the SMC ceiling at most 750 employees AND turnover at most €150
@@ -95,11 +101,14 @@ class _SmallMidCapRole(str):
 ROLE_SMALL_MID_CAP = _SmallMidCapRole(
     "small_mid_cap",
     description=(
-        "Small mid-cap (SMC) — Digital Omnibus political agreement (7 May "
-        "2026) extends Art. 62 / 63 SME privileges to organisations with "
-        "at most 750 employees AND turnover at most €150 million. Combines "
-        "the underlying actor's obligations (provider / deployer / etc.) "
-        "with the reduced documentation, fee waiver and sandbox-priority "
+        "Small mid-cap (SMC) — Digital Omnibus on AI (COREPER compromise "
+        "13 May 2026, document 9247/26) extends Art. 62/63 SME privileges "
+        "to organisations with at most 750 employees AND turnover at most "
+        "€150 million. The SMC label itself is defined by reference to "
+        "point (2) of the Annex to Commission Recommendation (EU) "
+        "2025/1099 (Art. 3(14b) of the post-Omnibus AI Act). Combines the "
+        "underlying actor's obligations (provider / deployer / etc.) with "
+        "the reduced documentation, fee waiver and sandbox-priority "
         "treatment otherwise reserved to SMEs."
     ),
     obligations=(
@@ -108,6 +117,15 @@ ROLE_SMALL_MID_CAP = _SmallMidCapRole(
         "to size + market stage (Art. 17(3)); priority access to AI "
         "regulatory sandboxes with reduced fees; tailored awareness + "
         "training from the AI Office.",
+        "Art. 11(1) — may use the SIMPLIFIED technical-documentation form "
+        "the Commission publishes for SMEs and SMCs; notified bodies must "
+        "accept it (Omnibus amendment to Art. 11(1)).",
+        "Art. 63(1) — simplified QMS originally available only to "
+        "microenterprises is extended by the Omnibus to all SMEs and SMCs "
+        "without partner / linked enterprises.",
+        "Art. 99(6a) — administrative-fine cap: the SMC pays the LOWER of "
+        "the percentage or the amount under Art. 99(4) or (5) (Omnibus-new "
+        "SMC fine cap mirroring the SME cap in Art. 99(6)).",
         "Modifier role — overlays SME-style reliefs on the entity's "
         "underlying actor obligations (Provider / Deployer / Importer / "
         "etc.); does not displace primary duties.",
@@ -411,33 +429,57 @@ ROLE_OBLIGATIONS: list[RoleObligation] = [
         "id": ROLE_SMALL_MID_CAP,
         "label": "Small Mid-Cap Enterprise",
         "art_3_definition": (
-            "Digital Omnibus on AI (political agreement 7 May 2026) — entity "
-            "above the SME ceiling per Recommendation 2003/361/EC but below "
-            "the large-enterprise threshold; benefits from SME-equivalent "
-            "reliefs under Art. 62/63 and Art. 17(3)."
+            "Art. 3(14b) (post-Omnibus) — 'small mid-cap enterprise' ('SMC') "
+            "as defined in point (2) of the Annex to Commission "
+            "Recommendation (EU) 2025/1099. Entity above the SME ceiling "
+            "per Recommendation 2003/361/EC but below the large-enterprise "
+            "threshold (at most 750 employees AND turnover at most €150 "
+            "million per the political agreement); benefits from "
+            "SME-equivalent reliefs under Arts. 11(1), 17(3), 62, 63(1) "
+            "and the Art. 99(6a) fine cap."
         ),
         "summary": (
             "Inherits SME privileges originally granted under Art. 62 + "
             "Art. 63: simplified quality-management documentation appropriate "
-            "to size + market stage (Art. 17(3)); priority access to AI "
-            "regulatory sandboxes with reduced fees; tailored awareness + "
-            "training from the AI Office. As a modifier role, layered on top "
-            "of the underlying actor obligations (Provider / Deployer / "
-            "Importer / etc.) — does not displace primary duties."
+            "to size + market stage (Art. 17(3)); simplified "
+            "technical-documentation form under Art. 11(1); simplified QMS "
+            "under Art. 63(1) (Omnibus extension from microenterprises to "
+            "all SMEs and SMCs); priority access to AI regulatory sandboxes "
+            "with reduced fees; tailored awareness + training from the AI "
+            "Office; administrative-fine cap under Art. 99(6a). As a "
+            "modifier role, layered on top of the underlying actor "
+            "obligations (Provider / Deployer / Importer / etc.) — does "
+            "not displace primary duties."
         ),
         "source": (
-            "Digital Omnibus on AI (political agreement reached 7 May 2026) "
-            "+ Art. 62 + Art. 63 + Art. 17(3)"
+            "Digital Omnibus on AI (COREPER compromise 13 May 2026, "
+            "document 9247/26) — inserts Art. 3(14b) referencing "
+            "Recommendation (EU) 2025/1099 + amends Arts. 11(1), 17(2), "
+            "63(1) and inserts Art. 99(6a) (SMC fine cap)."
         ),
-        "paper_lines": "Omnibus press release 7 May 2026, paragraph 5",
-        "primary_articles": ["Art. 62", "Art. 63"],
-        "secondary_articles": ["Art. 17", "Art. 57"],
+        "paper_lines": (
+            "Omnibus compromise 9247/26 — Arts. 3(14b), 11(1), 17(2), "
+            "63(1), 99(6a); political agreement 7 May 2026"
+        ),
+        "primary_articles": [
+            "Art. 11(1)",
+            "Art. 62",
+            "Art. 63",
+            "Art. 63(1)",
+            "Art. 99(6a)",
+        ],
+        "secondary_articles": ["Art. 17", "Art. 57", "Art. 95", "Art. 99"],
         "kb_dimensions": ["sme_support", "quality_management", "sandboxes"],
         "flips_provider_under": [],
         "notes": [
             "Modifier role — overlays SME-style reliefs on the entity's "
             "underlying actor obligations. Same activation logic as the "
             "extraterritorial_non_eu role.",
+            "Citation source for the SMC label: Recommendation (EU) "
+            "2025/1099 (point (2) of the Annex), referenced by the "
+            "operative Art. 3(14b) of the post-Omnibus AI Act. An earlier "
+            "recital flagged Recommendation 2025/3500/EC, but the "
+            "operative article wins — use 2025/1099.",
             "Confirmed by the 7 May 2026 political agreement: 'Certain "
             "privileges for small and medium-sized enterprises are extended "
             "to small mid-cap companies.'",

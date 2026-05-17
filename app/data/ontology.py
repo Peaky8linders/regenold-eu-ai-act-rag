@@ -439,6 +439,95 @@ PRACTICE_REGISTRY: dict[str, Practice] = {
                   "non-consensual intimate", "non consensual intimate",
                   "intimate imagery"),
     ),
+    # R41 — Digital Omnibus on AI (COREPER compromise 13 May 2026, document
+    # 9247/26) inserts a new Art. 5(1)(ba) prohibiting AI systems that
+    # generate or manipulate realistic intimate imagery of a natural person
+    # without that person's freely-given, specific, informed, unambiguous
+    # and explicit consent. Distinct from `omnibus_csam_ncii` (which is
+    # the omnibus pre-spec placeholder): this entry pins the canonical
+    # Art. 5(1)(ba) sub-paragraph the compromise text actually emits.
+    "non_consensual_intimate_material": Practice(
+        id="non_consensual_intimate_material",
+        sub_paragraph="Art. 5.1.ba",
+        short_name="Non-consensual intimate AI imagery",
+        description=(
+            "The placing on the market, the putting into service or the use of "
+            "an AI system that generates or manipulates realistic images, "
+            "videos, audio or similar material of an identifiable natural "
+            "person's intimate parts, or of an identifiable natural person "
+            "engaged in sexually explicit activities, without that person's "
+            "freely-given, specific, informed, unambiguous and explicit "
+            "consent for that generation or manipulation. Inserted by the "
+            "Digital Omnibus on AI (COREPER compromise 13 May 2026, document "
+            "9247/26); applies from 2 December 2026."
+        ),
+        citation=("Art. 5", "Art. 5.1.ba"),
+        exceptions=(
+            "Provider liability only attaches where the generation or "
+            "manipulation is the intended purpose of the AI system, OR where "
+            "the system's design, training, architecture, capabilities or "
+            "user-facing functionalities make that generation or manipulation "
+            "a reasonably foreseeable reproducible outcome without significant "
+            "technical modification AND the system lacks reasonable and "
+            "adequate technical safety measures to prevent it (Art. 5(1a)).",
+            "Deployer liability only attaches where the deployer uses the "
+            "system for the purpose of generating or manipulating such "
+            "material (Art. 5(1b)).",
+        ),
+        effective_phase="phase_omnibus_2026_12_02",
+        keywords=(
+            "nudification",
+            "intimate parts",
+            "sexually explicit",
+            "non-consensual",
+            "non consensual",
+            "freely-given consent",
+            "freely given consent",
+            "explicit consent for generation",
+            "non-consensual intimate material",
+            "non consensual intimate material",
+        ),
+    ),
+    # R41 — Digital Omnibus on AI inserts Art. 5(1)(bb) prohibiting AI
+    # systems that generate or manipulate child sexual abuse material
+    # ('CSAM') as defined by reference to Directive 2011/93/EU Art. 2(c)
+    # and (e). The 'without right' defence preserved by the compromise
+    # leaves Member State criminal-law carve-outs (e.g. forensic /
+    # investigative use under judicial authorisation) intact.
+    "ai_csam": Practice(
+        id="ai_csam",
+        sub_paragraph="Art. 5.1.bb",
+        short_name="AI-generated child sexual abuse material",
+        description=(
+            "The placing on the market, the putting into service or the use of "
+            "an AI system that generates or manipulates material or "
+            "performance within the meaning of Article 2, points (c) and (e), "
+            "of Directive 2011/93/EU, save where a 'without right' defence "
+            "applies under national law. Inserted by the Digital Omnibus on "
+            "AI (COREPER compromise 13 May 2026, document 9247/26); applies "
+            "from 2 December 2026."
+        ),
+        citation=("Art. 5", "Art. 5.1.bb"),
+        exceptions=(
+            "Member State 'without right' defences under national criminal "
+            "law (e.g. forensic, investigative or judicial-authorisation use) "
+            "remain unaffected.",
+            "Same provider-foreseeability / deployer-purpose gating as "
+            "Art. 5(1a) / (1b) — strict liability only when generation is "
+            "the intended purpose or a foreseeable reproducible outcome "
+            "without adequate safeguards.",
+        ),
+        effective_phase="phase_omnibus_2026_12_02",
+        keywords=(
+            "child sexual abuse material",
+            "csam",
+            "directive 2011/93/eu",
+            "without right defence",
+            "without right defense",
+            "ai-generated csam",
+            "ai csam",
+        ),
+    ),
 }
 
 

@@ -39,6 +39,51 @@ from typing import TypedDict
 TAXONOMY_VERSION = "2026.04.27.v1"
 
 
+# ─── Annex XIV cross-link (R41 Digital Omnibus on AI) ────────────────────
+#
+# The Digital Omnibus on AI (COREPER compromise 13 May 2026, document
+# 9247/26) inserts a new Annex XIV that lists notified-body designation
+# scope codes (AIP / AIB / AIH). The Agentic-AI taxonomy in this module
+# is the canonical home for compound-risk axes; the new Annex XIV code
+# 'AIH 0401 — Other emerging AI technologies including Agentic AI' is
+# the regulatory hook that connects this taxonomy to the notified-body
+# designation surface. Surfacing the constant here means downstream
+# consumers (notified-body lookup, scope.py governance anchors, KB
+# answer assembly) can cite the canonical code without re-deriving it.
+
+ANNEX_XIV_CODE = "AIH 0401"
+ANNEX_XIV_LABEL = "Agentic AI"
+ANNEX_XIV_DESCRIPTION = (
+    "Per Annex XIV of the post-Omnibus AI Act, 'AIH 0401 — Other emerging "
+    "AI technologies including Agentic AI' is the notified-body designation "
+    "code for systems exhibiting the four compound-risk axes (cascading, "
+    "emergent, attribution, temporal)."
+)
+
+
+def is_agentic_ai_designation(annex_xiv_code: str) -> bool:
+    """Return True iff ``annex_xiv_code`` is the canonical Agentic-AI code.
+
+    Matches ``"AIH 0401"`` (the post-Omnibus Annex XIV designation for
+    'Other emerging AI technologies including Agentic AI'). Case- and
+    whitespace-insensitive: ``"aih 0401"`` and ``" AIH  0401 "`` both
+    match. Returns False for the empty string, ``None``-like inputs,
+    and every other Annex XIV code (AIP / AIB rows + the AIH non-0401
+    rows).
+
+    Example:
+        >>> is_agentic_ai_designation("AIH 0401")
+        True
+        >>> is_agentic_ai_designation("aih 0401")
+        True
+        >>> is_agentic_ai_designation("AIH 0301")  # generative AI / GPAI
+        False
+    """
+    if not annex_xiv_code:
+        return False
+    return " ".join(annex_xiv_code.split()).upper() == ANNEX_XIV_CODE
+
+
 class CompoundRiskType(str, Enum):
     """Four-axis compound-risk taxonomy from working-paper §10.4 lines 2227-2245."""
 
@@ -585,6 +630,9 @@ def threat_categories_for_compound_risk(risk_id: str) -> list[ThreatCategoryEntr
 
 __all__ = [
     "TAXONOMY_VERSION",
+    "ANNEX_XIV_CODE",
+    "ANNEX_XIV_LABEL",
+    "ANNEX_XIV_DESCRIPTION",
     "CompoundRiskType",
     "ThreatCategory",
     "AgentArchetype",
@@ -603,4 +651,5 @@ __all__ = [
     "compound_risks_for_kb_dimension",
     "compound_risks_for_article",
     "threat_categories_for_compound_risk",
+    "is_agentic_ai_designation",
 ]

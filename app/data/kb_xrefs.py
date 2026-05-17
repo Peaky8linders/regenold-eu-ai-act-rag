@@ -148,6 +148,134 @@ MANUAL_XREFS: tuple[tuple[str, str, str], ...] = (
     ("Art. 53", "Annex XI", "Reverse"),
     ("Art. 53", "Annex XII", "Reverse"),
     ("Art. 51", "Annex XIII", "Reverse"),
+    # ─── R41 / Digital Omnibus edges (COREPER 9247/26, 13 May 2026) ────────
+    # Art. 5(1)(ba) non-consensual intimate material ↔ Art. 99(1) penalty
+    # link per recital 6c — recorded at bare-article granularity since the
+    # existence catalog tracks articles, not sub-points (lint floor).
+    (
+        "Art. 5",
+        "Art. 99",
+        "Art. 5(1)(ba) non-consensual intimate material breach is fined "
+        "under Art. 99(1) prohibited-practice bracket (up to EUR 35M / 7%) "
+        "per Digital Omnibus recital 6c",
+    ),
+    (
+        "Art. 99",
+        "Art. 5",
+        "Reverse: Art. 99(1) penalty regime references Art. 5 prohibited "
+        "practices including the new (ba) non-consensual intimate material "
+        "and (bb) AI-CSAM prohibitions",
+    ),
+    # Art. 6(1a) safety-component carve-out ↔ Art. 3(14) revised
+    # safety-component definition (intended-purpose-as-safety-function gate)
+    (
+        "Art. 6",
+        "Art. 3",
+        "Art. 6(1a) safety-component non-qualification cross-references "
+        "the revised Art. 3(14) 'safety component' definition (intended "
+        "purpose to prevent or mitigate risks to health and safety)",
+    ),
+    # Art. 4a bias-data legal basis ↔ Art. 10 data-governance regime
+    (
+        "Art. 4a",
+        "Art. 10",
+        "Art. 4a establishes the legal basis for processing special-"
+        "category personal data for bias detection / correction; "
+        "Art. 10(2)(f)+(g) define the data-quality + bias-examination "
+        "obligations the bias-data is used to satisfy",
+    ),
+    (
+        "Art. 10",
+        "Art. 4a",
+        "Reverse: Art. 10(2)(f)+(g) bias-examination references Art. 4a "
+        "for the legal basis to process special-category data",
+    ),
+    # Art. 75 ↔ Art. 75a–75e governance chain (AI Office investigatory +
+    # enforcement powers, procedural safeguards, limitation period)
+    (
+        "Art. 75",
+        "Art. 75a",
+        "Art. 75 exclusive AI Office competence → Art. 75a information-"
+        "request powers",
+    ),
+    (
+        "Art. 75",
+        "Art. 75b",
+        "Art. 75 exclusive AI Office competence → Art. 75b on-site "
+        "inspection + commitment powers",
+    ),
+    (
+        "Art. 75",
+        "Art. 75c",
+        "Art. 75 exclusive AI Office competence → Art. 75c fines + "
+        "periodic penalty payments (5% of average daily income/turnover "
+        "per day cap)",
+    ),
+    (
+        "Art. 75",
+        "Art. 75d",
+        "Art. 75 exclusive AI Office competence → Art. 75d procedural "
+        "safeguards (right to be heard, file access, CJEU review)",
+    ),
+    (
+        "Art. 75",
+        "Art. 75e",
+        "Art. 75 exclusive AI Office competence → Art. 75e 5-year "
+        "limitation period for fines + periodic penalties",
+    ),
+    (
+        "Art. 75a",
+        "Art. 75d",
+        "Art. 75a information-request power triggers Art. 75d procedural "
+        "safeguards (right to be heard, self-incrimination protections)",
+    ),
+    (
+        "Art. 75b",
+        "Art. 75d",
+        "Art. 75b on-site inspection power triggers Art. 75d procedural "
+        "safeguards (right to counsel, sealing of premises)",
+    ),
+    (
+        "Art. 75c",
+        "Art. 75d",
+        "Art. 75c fine + periodic-penalty power triggers Art. 75d "
+        "procedural safeguards before adverse decision",
+    ),
+    (
+        "Art. 75c",
+        "Art. 75e",
+        "Art. 75c fines are subject to the Art. 75e 5-year limitation "
+        "period",
+    ),
+    # Art. 60a Section B Annex I sectoral real-world testing ↔ Art. 60
+    # (Section A RWT) ↔ Art. 76(1) MSA-to-NCA reference rule
+    (
+        "Art. 60a",
+        "Art. 60",
+        "Art. 60a Section B Annex I real-world-testing framework runs in "
+        "parallel to Art. 60 Section A real-world-testing under sectoral "
+        "Member-State frameworks",
+    ),
+    (
+        "Art. 60",
+        "Art. 60a",
+        "Reverse: Art. 60 real-world testing extension to Section A Annex I "
+        "complemented by Art. 60a Section B Annex I framework",
+    ),
+    (
+        "Art. 60a",
+        "Art. 76",
+        "Art. 60a — references to the market-surveillance authority in "
+        "Art. 76(1) are construed as references to the relevant Section B "
+        "Annex I national competent authority where testing is conducted "
+        "under Art. 60a",
+    ),
+    (
+        "Art. 76",
+        "Art. 60a",
+        "Reverse: Art. 76(1) MSA scope rule cross-references Art. 60a "
+        "Section B Annex I sectoral testing",
+    ),
 )
 
 

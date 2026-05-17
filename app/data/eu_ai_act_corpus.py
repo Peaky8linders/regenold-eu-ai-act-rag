@@ -947,12 +947,22 @@ ARTICLE_FULL_TEXT: dict[str, str] = {
         'any identified shortcomings.'
     ),
     'Art. 113': (
+        # Digital Omnibus COREPER 9247/26 (13 May 2026) replaces the applicability
+        # cascade. Three branches: prohibitions (2 Feb 2025 except the new
+        # Art. 5(1)(ba)/(bb)/(1a)/(1b) at 2 Dec 2026), HRAIS (split 2 Dec 2027
+        # Annex III / 2 Aug 2028 Annex I), and sectoral amendments from Omnibus EIF.
         'This Regulation shall enter into force on the twentieth day following that of its '
-        'publication in the Official Journal of the European Union.  It shall apply from 2\xa0August'
-        ' 2026.  However:  (a)  Chapters\xa0I\xa0and II shall apply from 2\xa0February 2025;  (b)  (c)  '
-        'Article\xa06(1) and the corresponding obligations in this Regulation shall apply from '
-        '2\xa0August 2027.  This Regulation shall be binding in its entirety and directly applicable'
-        ' in all Member States.'
+        'publication in the Official Journal of the European Union. It shall apply from 2 August '
+        '2026. However: (a) Chapters I and II shall apply from 2 February 2025, except for '
+        'Article 5(1), first subparagraph, points (ba) and (bb), Article 5(1a) and Article 5(1b) '
+        'which shall apply from 2 December 2026; (b) Chapter V (GPAI obligations) shall apply '
+        'from 2 August 2025; (c) Chapter III, Sections 1, 2 and 3, with the exception of Article '
+        '6(5), shall apply (i) on 2 December 2027 as regards AI systems classified as high-risk '
+        'pursuant to Article 6(2) and Annex III, and (ii) on 2 August 2028 as regards AI systems '
+        'classified as high-risk pursuant to Article 6(1) and Annex I; (d) Articles 102 to 110 '
+        'shall apply from the date of entry into force of the amending Regulation (the Digital '
+        'Omnibus on AI). This Regulation shall be binding in its entirety and directly applicable '
+        'in all Member States.'
     ),
     'Art. 12': (
         '1.\xa0\xa0\xa0High-risk AI systems shall technically allow for the automatic recording of events '
@@ -2028,12 +2038,46 @@ ARTICLE_FULL_TEXT: dict[str, str] = {
         'Standards, conformity assessment, certificates, registration'
     ),
     'Art. 4': (
-        'Providers and deployers of AI systems shall take measures to ensure, to their best '
-        'extent, a\xa0sufficient level of AI literacy of their staff and other persons dealing with '
-        'the operation and use of AI systems on their behalf, taking into account their technical'
-        ' knowledge, experience, education and training and the context the AI systems are to be '
-        'used in, and considering the persons or groups of persons on whom the AI systems are to '
-        'be used.  PROHIBITED AI PRACTICES'
+        # Digital Omnibus COREPER 9247/26 (13 May 2026) replaces Article 4 in full:
+        '1. Providers and deployers of AI systems shall take measures to support the development '
+        'of AI literacy of their staff and other persons dealing with the operation and use of AI '
+        'systems on their behalf, taking into account their technical knowledge, experience, '
+        'education and training and the context the AI systems are to be used in, and considering '
+        'the persons or groups of persons on whom the AI systems are to be used. This obligation '
+        'shall not be understood as requiring providers or deployers to guarantee any specific '
+        'level of AI literacy of any individual. PROHIBITED AI PRACTICES'
+    ),
+    'Art. 4a': (
+        # Digital Omnibus COREPER 9247/26 (13 May 2026) inserts new Article 4a:
+        '1. Providers of high-risk AI systems may process special categories of personal data '
+        'referred to in Article 9(1) of Regulation (EU) 2016/679, Article 10(1) of Regulation '
+        '(EU) 2018/1725 and Article 10(1) of Directive (EU) 2016/680 to the extent that this is '
+        'strictly necessary for the purposes of ensuring bias detection and correction in relation '
+        'to high-risk AI systems, subject to appropriate safeguards for the fundamental rights and '
+        'freedoms of natural persons, including technical limitations on the re-use and use of '
+        'state-of-the-art security and privacy-preserving measures, such as pseudonymisation. '
+        '2. The processing referred to in paragraph 1 shall be subject to all of the following '
+        'conditions: (a) the bias detection and correction cannot be effectively fulfilled by '
+        'processing other data, including synthetic or anonymised data; (b) the special categories '
+        'of personal data are subject to technical limitations on the re-use of the personal data, '
+        'and the use of state-of-the-art security and privacy-preserving measures, including '
+        'pseudonymisation; (c) the special categories of personal data are subject to measures to '
+        'ensure that the personal data processed are secured, protected, subject to suitable '
+        'safeguards, including strict controls and documentation of access, to avoid misuse and '
+        'ensure that only authorised persons have access to those personal data with appropriate '
+        'confidentiality obligations; (d) the special categories of personal data are not to be '
+        'transmitted, transferred or otherwise accessed by other parties; (e) the special '
+        'categories of personal data are deleted once the bias has been corrected or the personal '
+        'data has reached the end of its retention period, whichever comes first; (f) the records '
+        'of processing activities pursuant to Regulations (EU) 2016/679 and (EU) 2018/1725 and '
+        'Directive (EU) 2016/680 include the reasons why the processing of special categories of '
+        'personal data was strictly necessary to detect and correct biases, and why that objective '
+        'could not be achieved by processing other data. 3. Deployers and providers of AI systems '
+        'other than high-risk AI systems may process special categories of personal data for bias '
+        'detection and correction subject to a lighter set of safeguards proportionate to the '
+        'risks of the processing, taking into account the state of the art. (Note: this article '
+        'subsumes the former Article 10(5) on special-category data processing for bias '
+        'examination.)'
     ),
     'Art. 40': (
         '1.\xa0\xa0\xa0High-risk AI systems or general-purpose AI models which are in conformity with '
@@ -2476,7 +2520,31 @@ ARTICLE_FULL_TEXT: dict[str, str] = {
         'the annual reports referred to in paragraph\xa06. Those annual reports shall not include '
         'sensitive operational data of the related law enforcement activities.  8.\xa0\xa0\xa0This Article'
         ' shall not affect the prohibitions that apply where an AI practice infringes other Union'
-        ' law.  HIGH-RISK AI SYSTEMS  SECTION\xa01  Classification of AI systems as high-risk'
+        ' law. '
+        # Digital Omnibus COREPER 9247/26 (13 May 2026) — new points (ba) + (bb) of
+        # Article 5(1), new paragraphs (1a) + (1b). Applicable from 2 December 2026.
+        '(ba) the placing on the market, the putting into service or the use of an AI system that '
+        'generates or manipulates realistic images, videos, audio or similar material of an '
+        'identifiable natural person’s intimate parts, or of an identifiable natural person '
+        'engaged in sexually explicit activities, without that person’s freely-given, specific, '
+        'informed, unambiguous and explicit consent for that generation or manipulation; '
+        '(bb) the placing on the market, the putting into service or the use of an AI system that '
+        'generates or manipulates material or performance within the meaning of Article 2, points '
+        '(c) and (e), of Directive 2011/93/EU, save where a ‘without right’ defence applies under '
+        'national law. '
+        '1a. For the purposes of points (ba) and (bb) of paragraph 1: (a) the placing on the '
+        'market or putting into service of an AI system that generates or manipulates the material '
+        'referred to in those points is only prohibited where: (i) that generation or manipulation '
+        'is the intended purpose of the AI system; or (ii) the system’s design, training, '
+        'architecture, capabilities or user-facing functionalities make that generation or '
+        'manipulation a reasonably foreseeable reproducible outcome, without requiring significant '
+        'technical modification, and the system does not have reasonable and adequate technical '
+        'safety measures and other safeguards to reliably prevent that generation or manipulation '
+        'and to correct observed or reported misuse. '
+        '1b. The use of an AI system that generates or manipulates the material referred to in '
+        'points (ba) and (bb) of paragraph 1 is only prohibited where the deployer uses the system '
+        'for the purpose of generating or manipulating such material. '
+        ' HIGH-RISK AI SYSTEMS  SECTION\xa01  Classification of AI systems as high-risk'
     ),
     'Art. 50': (
         '1.\xa0\xa0\xa0Providers shall ensure that AI systems intended to interact directly with natural '
@@ -3017,6 +3085,18 @@ ARTICLE_FULL_TEXT: dict[str, str] = {
         'fundamental rights provided for by this Regulation and shall ensure consistency with the'
         ' delegated acts adopted pursuant to Article\xa07(1), and take account of market and '
         'technological developments.'
+        # Digital Omnibus COREPER 9247/26 (13 May 2026) inserts new paragraphs 1a, 1b
+        # and 1c into Article 6 — safety-component carve-out, failure-or-malfunction
+        # override, and radio-spectrum/EMI third-party CA exclusion.
+        ' 1a. For the purposes of this Regulation including paragraph 1 of this Article, AI '
+        'systems that are solely used for non-safety related aspects of user assistance, '
+        'performance optimisation, service efficiency, automation or convenience or quality '
+        'control shall not qualify as safety components. '
+        '1b. AI systems whose failure or malfunctioning would endanger health and safety shall '
+        'qualify as safety components notwithstanding paragraph 1a. '
+        '1c. For the purposes of paragraph 1, point (b), third-party conformity assessment carried '
+        'out solely with respect to risks linked to radio spectrum or electromagnetic interference '
+        'shall not satisfy the requirement under that point.'
     ),
     'Art. 60': (
         '1.\xa0\xa0\xa0Testing of high-risk AI systems in real world conditions outside AI regulatory '
@@ -3111,6 +3191,26 @@ ARTICLE_FULL_TEXT: dict[str, str] = {
         ' provider or prospective provider shall be liable under applicable Union and national '
         'liability law for any damage caused in the course of their testing in real world '
         'conditions.'
+    ),
+    'Art. 60a': (
+        # Digital Omnibus COREPER 9247/26 (13 May 2026) inserts new Article 60a:
+        '1. Testing of high-risk AI systems that are safety components of products covered by '
+        'Union harmonisation legislation listed in Section B of Annex I (in particular Regulation '
+        '(EU) No 167/2013, Regulation (EU) No 168/2013, Directive 2014/90/EU, Directive (EU) '
+        '2016/797, Regulation (EU) 2018/858, Regulation (EU) 2018/1139, Regulation (EU) 2019/2144 '
+        'and Regulation (EU) 2023/1230) in real world conditions may be conducted in the framework '
+        'established by that sectoral Union harmonisation legislation, and in accordance with the '
+        'detailed rules adopted by the Member States in that framework, instead of under Article '
+        '60. 2. The provider or prospective provider shall ensure that the real-world testing plan '
+        'is consistent with the requirements of Section 2 of Chapter III, including the risk '
+        'management system referred to in Article 9 and the human oversight measures referred to '
+        'in Article 14. 3. The Commission may, by means of implementing acts, specify the '
+        'detailed elements of the real-world testing plan template for the purposes of this '
+        'Article. Those implementing acts shall be adopted in accordance with the examination '
+        'procedure referred to in Article 98(2). 4. For the purposes of this Article, references '
+        'to the market surveillance authority in Article 76(1) are to be construed as references '
+        'to the national competent authority designated under the relevant sectoral Union '
+        'harmonisation legislation listed in Section B of Annex I.'
     ),
     'Art. 61': (
         '1.\xa0\xa0\xa0For the purpose of testing in real world conditions under Article\xa060, freely-given '
@@ -3656,6 +3756,107 @@ ARTICLE_FULL_TEXT: dict[str, str] = {
         ' surveillance authorities shall safeguard the confidentiality of the information that '
         'they obtain in accordance with Article\xa078 of this Regulation. The procedure provided for'
         ' in Chapter\xa0VI of Regulation (EU) 2019/1020 shall apply mutatis\xa0mutandis.'
+        # Digital Omnibus COREPER 9247/26 (13 May 2026) replaces Article 75 to vest
+        # exclusive AI Office competence over AI systems built on a GPAI model where
+        # the same provider or undertaking supplies both, plus VLOPs/VLOSEs under DSA.
+        ' [Digital Omnibus] The AI Office shall have exclusive competence to supervise and '
+        'enforce this Regulation in respect of: (a) AI systems built on a general-purpose AI '
+        'model where the AI system and the general-purpose AI model are provided by the same '
+        'provider, or where the provider of the AI system belongs to the same undertaking as the '
+        'provider of the general-purpose AI model, with the exception of: (i) AI systems that are '
+        'safety components of products covered by Union harmonisation legislation listed in Annex '
+        'I; (ii) AI systems covered by point 2 of Annex III (critical infrastructure); (iii) AI '
+        'systems supervised by authorities for the purposes of Article 74(6) (law enforcement, '
+        'border control, migration and asylum, financial services); and (iv) AI systems covered '
+        'by point 8 of Annex III (administration of justice and democratic processes); and (b) AI '
+        'systems integrated into very large online platforms or very large online search engines '
+        'designated under Regulation (EU) 2022/2065 (Digital Services Act). Deployer-side AI '
+        'Office competence is limited to deployers belonging to the same undertaking as the '
+        'provider of the AI system. The AI Office exercises its powers under Articles 75a to 75e.'
+    ),
+    'Art. 75a': (
+        # Digital Omnibus COREPER 9247/26 (13 May 2026) inserts new Article 75a:
+        '1. The Commission, acting through the AI Office, may by simple request or by reasoned '
+        'decision require providers, deployers, importers, distributors and authorised '
+        'representatives of AI systems falling within the exclusive competence of the AI Office '
+        'under Article 75 to provide all information and documentation necessary to assess '
+        'compliance with this Regulation, including technical documentation, the records of '
+        'serious incidents reported under Article 73, automatically generated logs, and, where '
+        'strictly necessary, access to source code. 2. The simple request shall state the legal '
+        'basis and the purpose of the request, specify the information required and fix a '
+        'reasonable time limit for the reply. 3. The decision shall, in addition, state the '
+        'penalties provided for under Article 75c in the event of failure to comply, and indicate '
+        'the right to have the decision reviewed by the Court of Justice of the European Union '
+        'pursuant to Article 75d. 4. Article 78 (confidentiality) and the procedural safeguards '
+        'in Article 75d shall apply to all information and documentation obtained pursuant to '
+        'this Article.'
+    ),
+    'Art. 75b': (
+        # Digital Omnibus COREPER 9247/26 (13 May 2026) inserts new Article 75b:
+        '1. The Commission, acting through the AI Office, may conduct on-site inspections, '
+        'including unannounced inspections, at the premises of providers, deployers, importers, '
+        'distributors and authorised representatives of AI systems falling within the exclusive '
+        'competence of the AI Office under Article 75. 2. Officials of the AI Office and other '
+        'accompanying persons authorised by the Commission shall be empowered: (a) to enter any '
+        'premises, land and means of transport of the operator concerned; (b) to examine the '
+        'books and other records related to the business, irrespective of the medium on which '
+        'they are stored; (c) to take or obtain in any form copies of or extracts from such books '
+        'or records; (d) to seal any premises and books or records for the period and to the '
+        'extent necessary for the inspection; (e) to ask any representative or member of staff of '
+        'the operator for explanations on facts or documents relating to the subject matter and '
+        'purpose of the inspection and to record the answers. 3. Operators that are the subject '
+        'of proceedings may offer commitments addressing the AI Office’s concerns. Where the AI '
+        'Office, by decision, makes those commitments binding, it may close the proceedings.'
+    ),
+    'Art. 75c': (
+        # Digital Omnibus COREPER 9247/26 (13 May 2026) inserts new Article 75c:
+        '1. The Commission, acting through the AI Office, may impose fines on operators of AI '
+        'systems falling within the exclusive competence of the AI Office under Article 75, in '
+        'accordance with the brackets set out in Article 99, where the operator intentionally or '
+        'negligently: (a) infringes a provision of this Regulation; or (b) fails to comply with a '
+        'request for information under Article 75a, an on-site inspection under Article 75b, or '
+        'binding commitments made pursuant to Article 75b(3). 2. In setting the amount of the '
+        'fine, the AI Office shall take into account the nature, gravity and duration of the '
+        'infringement, the size and market share of the operator, and any aggravating or '
+        'mitigating circumstances. 3. The Commission, acting through the AI Office, may impose '
+        'on operators referred to in paragraph 1 periodic penalty payments to compel them: (a) to '
+        'supply complete and correct information requested by decision pursuant to Article 75a; '
+        '(b) to submit to an on-site inspection ordered by decision pursuant to Article 75b; or '
+        '(c) to comply with the commitments made binding under Article 75b(3) or with measures '
+        'addressed to them by decision under this Regulation. 4. The periodic penalty payment '
+        'shall not exceed 5% of the average daily worldwide income or turnover in the preceding '
+        'business year per day of non-compliance, calculated from the date set in the decision.'
+    ),
+    'Art. 75d': (
+        # Digital Omnibus COREPER 9247/26 (13 May 2026) inserts new Article 75d:
+        '1. Before adopting a decision pursuant to Article 75a, Article 75b or Article 75c that '
+        'is adversely affecting an operator, the AI Office shall give that operator the '
+        'opportunity to be heard on the matters in respect of which the AI Office has raised '
+        'objections. The AI Office shall base its decisions only on objections on which the '
+        'operators concerned have been able to comment. 2. The rights of defence of the operators '
+        'concerned shall be fully respected in the proceedings. They shall be entitled to have '
+        'access to the file, subject to the legitimate interest of other operators in the '
+        'protection of their business secrets. The right of access to the file shall not extend '
+        'to confidential information and internal documents of the Commission or competent '
+        'authorities of the Member States. 3. Operators concerned may be assisted by counsel of '
+        'their choice. 4. No person may be compelled to provide answers that would entail '
+        'acknowledging an infringement of this Regulation. 5. Decisions adopted pursuant to '
+        'Articles 75a, 75b and 75c may be reviewed by the Court of Justice of the European Union '
+        'in accordance with Article 261 of the Treaty on the Functioning of the European Union. '
+        'The Court of Justice shall have unlimited jurisdiction to review fines and periodic '
+        'penalty payments.'
+    ),
+    'Art. 75e': (
+        # Digital Omnibus COREPER 9247/26 (13 May 2026) inserts new Article 75e:
+        '1. The powers conferred on the AI Office to impose fines and periodic penalty payments '
+        'pursuant to Article 75c shall be subject to a limitation period of five years. 2. Time '
+        'shall begin to run on the day on which the infringement is committed. However, in the '
+        'case of continuing or repeated infringements, time shall begin to run on the day on '
+        'which the infringement ceases. 3. The limitation period shall be interrupted by any '
+        'action of the AI Office for the purpose of the investigation or proceedings in respect '
+        'of an infringement of this Regulation. The limitation period shall be suspended for as '
+        'long as a decision of the AI Office is the subject of proceedings pending before the '
+        'Court of Justice of the European Union.'
     ),
     'Art. 76': (
         '1.\xa0\xa0\xa0Market surveillance authorities shall have competences and powers to ensure that '

@@ -655,6 +655,46 @@ _AI_ACT_ANCHORS: frozenset[str] = frozenset(
         "retrain",
         "re-training",
         "retraining",
+        # ── Round-41 Phase C (Digital Omnibus + AI Guide governance) ──
+        # Multi-word governance / lifecycle phrases drawn from the AI
+        # Guide extraction (chapters 2, 4, 8) and the Digital Omnibus
+        # changes spec. ALL multi-word — bare-verb / single-noun forms
+        # were rejected against the four R34 false-positive queries:
+        #   "Birth certificate processing time in France?"
+        #   "I want to suspend my Netflix subscription"
+        #   "When did the queen withdraw from public life?"
+        #   "Who is your favourite musician?"
+        # None of the additions below substring-matches any of the
+        # four; each is verified by tests/test_r41_scope_anchors.py.
+        # ``presumption of conformity`` and ``fundamental rights
+        # impact assessment`` are intentionally elided here — already
+        # present in the anchor set above.
+        "output is intended to be used",
+        "product manufacturer",
+        "making available on the market",
+        "household exemption",
+        "new legislative framework",
+        "scientific panel",
+        "advisory forum",
+        "single point of contact",
+        "fulfil a safety function",
+        "fulfill a safety function",
+        "third-party conformity assessment",
+        "third party conformity assessment",
+        "affected person",
+        "product presenting a risk",
+        "ai office investigation",
+        "periodic penalty payment",
+        "negotiated disclosure",
+        "small mid-cap enterprise",
+        "small mid cap enterprise",
+        "real-world testing framework",
+        "real world testing framework",
+        "single application unified assessment",
+        "intended purpose",
+        "post-market monitoring system",
+        "post market monitoring system",
+        "competent national authority",
     )
 )
 

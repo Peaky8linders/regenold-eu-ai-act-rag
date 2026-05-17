@@ -247,6 +247,133 @@ _MINIMAL_MARKERS = (
 )
 
 
+# ── Round-41 Phase C — Digital Omnibus Art. 6(1a) safety-component carve-out
+#
+# The 7 May 2026 Digital Omnibus political agreement introduced Art.
+# 6(1a) explicitly carving non-safety-related AI uses OUT of the HRAIS
+# trigger set. Per the verbatim spec (R41_OMNIBUS_CHANGES.md §B4):
+#
+#   "AI systems solely used for non-safety related aspects of user
+#    assistance, performance optimisation, service efficiency,
+#    automation, convenience, or quality control are NOT to be
+#    considered as safety components."
+#
+# Art. 6(1b) preserves the safety-function override: even where one
+# of the 6(1a) terms applies, if failure / malfunctioning of the AI
+# would endanger health or safety, the system IS a safety component
+# and falls back into HRAIS.
+#
+# Detection is precision-positive only. The carve-out fires ONLY when:
+#   1. One of the canonical 6(1a) terms appears, AND
+#   2. NO 6(1b) failure-endangers / safety-function override fires, AND
+#   3. NO Annex III high-risk marker fires, AND
+#   4. Either an explicit role/intended-use anchor is present, OR
+#      multiple carve-out patterns concur (defence in depth).
+_SAFETY_COMPONENT_CARVE_OUT_PATTERNS: tuple[str, ...] = (
+    "user assistance",
+    "performance optimisation",
+    "performance optimization",
+    "service efficiency",
+    "automation",
+    "convenience",
+    "quality control",
+)
+
+
+# Art. 6(1b) override terms — if any of these appear, the carve-out
+# MUST NOT fire. Substring-matched on the normalised question.
+_FAILURE_ENDANGERS_PATTERNS: tuple[str, ...] = (
+    "failure endangers",
+    "endanger health",
+    "endanger safety",
+    "endangers health",
+    "endangers safety",
+    "malfunctioning",
+    "malfunction endangers",
+    "safety function",
+    "loss of life",
+    "serious harm",
+    "risk to health",
+    "risk to safety",
+)
+
+
+# ── Round-41 Phase C — Art. 6(3) four-exception detection (AI Guide §4)
+#
+# Art. 6(3) lists four narrow procedural exceptions where an AI system
+# performing an Annex III task is NOT classified as high-risk:
+#   (a) narrow procedural task
+#   (b) improve output of previously completed human activity
+#   (c) detect decision-making patterns / deviations w/o replacing or
+#       influencing prior human assessment
+#   (d) preparatory task to an assessment relevant to Annex III
+#
+# OVERRIDE: per Recital 53, the exception DOES NOT apply when the
+# system carries out profiling of natural persons.
+_ART6_3_EXCEPTION_PATTERNS: tuple[str, ...] = (
+    "narrow procedural",
+    "narrow procedural task",
+    "preparatory task",
+    "deviation from decision-making",
+    "deviations from decision-making",
+    "deviation from decision making",
+    "deviations from decision making",
+    "improve output of previously",
+    "improve the output of previously",
+    "improving output of previously",
+)
+
+
+_PROFILING_OVERRIDE_PATTERNS: tuple[str, ...] = (
+    "profiling",
+    "automated decision-making",
+    "automated decision making",
+    "individual scoring",
+    "individual profiling",
+)
+
+
+# Limited intended-use signal — used to gate the carve-out when no
+# explicit role marker fires. Matches the davidath template ("offering
+# … intended to …") + colloquial "AI is for X" / "AI that X" / "uses
+# an AI {scheduler} for X" / "we are a {actor} that …" framings.
+_INTENDED_USE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\bintended\s+to\b", re.I),
+    re.compile(r"\bintended\s+for\b", re.I),
+    re.compile(r"\bused\s+for\b", re.I),
+    re.compile(r"\bused\s+to\b", re.I),
+    re.compile(r"\buses\s+(?:an?\s+)?ai\b", re.I),
+    re.compile(r"\bis\s+for\s+\w+", re.I),
+    re.compile(r"\bfor\s+(?:user\s+assistance|performance\s+optimi[sz]ation|service\s+efficiency|automation|convenience|quality\s+control)\b", re.I),
+    re.compile(r"\bai\s+(?:system\s+)?(?:that|which)\b", re.I),
+    re.compile(r"\bsolely\s+used\b", re.I),
+    re.compile(r"\bonly\s+used\b", re.I),
+    re.compile(r"\bwe\s+(?:are|deploy|use|run|operate)\b", re.I),
+)
+
+
+# Generative-content marker — when present alongside the carve-out, the
+# verdict must still cite Art. 50 for the transparency obligation that
+# survives the safety-component exception (a doctor-transcription AI is
+# generative output even if not a safety component).
+_GENERATIVE_MARKERS: tuple[str, ...] = (
+    "transcribe",
+    "transcription",
+    "transcribes",
+    "transcript",
+    "generative",
+    "generates text",
+    "generates content",
+    "synthetic",
+    "deepfake",
+    "deep fake",
+    "ai-generated",
+    "ai generated",
+    "chatbot",
+    "conversational agent",
+)
+
+
 def _any_in(text_low: str, markers: Iterable[str]) -> bool:
     return any(m in text_low for m in markers)
 
@@ -289,6 +416,153 @@ def _detect_risk_level(text: str) -> str | None:
     if _any_in(low, _MINIMAL_MARKERS):
         return "minimal"
     return None
+
+
+def _has_intended_use_signal(text: str) -> bool:
+    """Return True when the question has an explicit intended-use phrase."""
+    return any(p.search(text) for p in _INTENDED_USE_PATTERNS)
+
+
+def _has_generative_marker(text_low: str) -> bool:
+    return _any_in(text_low, _GENERATIVE_MARKERS)
+
+
+def _check_safety_component_carve_out(
+    question: str, role: str | None
+) -> "ScenarioVerdict | None":
+    """Return a non-HRAIS verdict citing Art. 6(1a) when the carve-out applies.
+
+    The carve-out fires (precision-positive only) when ALL of:
+      * One of :data:`_SAFETY_COMPONENT_CARVE_OUT_PATTERNS` appears.
+      * NO :data:`_FAILURE_ENDANGERS_PATTERNS` 6(1b) override fires.
+      * NO :data:`_HIGH_RISK_MARKERS` Annex III category fires.
+      * Either an explicit role marker is present, OR an intended-use /
+        "AI that X" / "used for X" signal is present, OR ≥2 distinct
+        carve-out patterns concur (defence in depth).
+
+    Returns ``None`` otherwise (defers to the existing classifier).
+    """
+    if not question:
+        return None
+    norm = _normalise(question)
+    low = norm.lower()
+
+    # Gate 1 — at least one carve-out term present.
+    carve_hits = [p for p in _SAFETY_COMPONENT_CARVE_OUT_PATTERNS if p in low]
+    if not carve_hits:
+        return None
+
+    # Gate 2 — Art. 6(1b) override must NOT fire.
+    if _any_in(low, _FAILURE_ENDANGERS_PATTERNS):
+        return None
+
+    # Gate 3 — Annex III category must NOT fire (otherwise the system
+    # is HRAIS via a different limb; carve-out doesn't apply).
+    if _any_in(low, _HIGH_RISK_MARKERS):
+        return None
+
+    # Gate 3b — also defer when a prohibited practice marker fires;
+    # prohibited beats carve-out.
+    if _any_in(low, _PROHIBITED_MARKERS):
+        return None
+
+    # Gate 4 — precision: require either a role marker, an intended-use
+    # signal, or ≥2 distinct carve-out terms.
+    has_role = role is not None
+    has_intent = _has_intended_use_signal(norm)
+    if not has_role and not has_intent and len(set(carve_hits)) < 2:
+        return None
+
+    # Build the verdict.
+    articles: list[str] = ["Art. 6(1a)", "Art. 4"]
+    if _has_generative_marker(low):
+        articles.append("Art. 50")
+    role_for_verdict = role or "deployer"
+    role_phrase = {
+        "provider": "As a provider",
+        "deployer": "As a deployer",
+        "importer": "As an importer",
+        "distributor": "As a distributor",
+    }.get(role_for_verdict, "Under the EU AI Act")
+    has_gen = _has_generative_marker(low)
+    answer = (
+        "This system is not a safety component for the purposes of the AI "
+        "Act. Per Article 6(1a), AI systems solely used for non-safety "
+        "related aspects of user assistance, performance optimisation, "
+        "service efficiency, automation, convenience, or quality control "
+        "do not qualify as safety components. "
+        f"{role_phrase}, you must still provide AI literacy training to "
+        "all staff involved in the operation of the system (Article 4)"
+    )
+    if has_gen:
+        answer += (
+            " and display a clear notice that users are interacting with "
+            "an AI system and label any AI-generated content as such "
+            "(Article 50)."
+        )
+    else:
+        answer += "."
+    return ScenarioVerdict(
+        role=role_for_verdict,
+        risk_level="non_hrais",
+        articles=tuple(articles),
+        answer=answer,
+    )
+
+
+def _check_art6_3_exception(
+    question: str, role: str | None
+) -> "ScenarioVerdict | None":
+    """Return a non-HRAIS verdict citing Art. 6(3) when the four exceptions apply.
+
+    The exception fires when one of :data:`_ART6_3_EXCEPTION_PATTERNS`
+    appears AND no :data:`_PROFILING_OVERRIDE_PATTERNS` marker fires
+    (Recital 53 carves profiling-based systems OUT of the exception).
+
+    Returns ``None`` otherwise.
+    """
+    if not question:
+        return None
+    norm = _normalise(question)
+    low = norm.lower()
+
+    if not _any_in(low, _ART6_3_EXCEPTION_PATTERNS):
+        return None
+
+    # Profiling override per Recital 53 — when present, the exception
+    # does NOT apply and the system stays in HRAIS territory.
+    if _any_in(low, _PROFILING_OVERRIDE_PATTERNS):
+        return None
+
+    # Defer to the prohibited path if a stronger marker fires.
+    if _any_in(low, _PROHIBITED_MARKERS):
+        return None
+
+    role_for_verdict = role or "deployer"
+    role_phrase = {
+        "provider": "As a provider",
+        "deployer": "As a deployer",
+        "importer": "As an importer",
+        "distributor": "As a distributor",
+    }.get(role_for_verdict, "Under the EU AI Act")
+    articles: tuple[str, ...] = ("Art. 6(3)", "Art. 4")
+    answer = (
+        "This system falls within one of the Article 6(3) exceptions to "
+        "high-risk classification — narrow procedural tasks, improving "
+        "the output of a previously completed human activity, detecting "
+        "deviations from decision-making patterns without replacing "
+        "human assessment, or preparatory tasks. "
+        f"{role_phrase}, you must still document the basis for invoking "
+        "the Article 6(3) exception, retain the assessment for "
+        "market-surveillance review, and provide AI literacy training "
+        "to staff involved in operation of the system (Article 4)."
+    )
+    return ScenarioVerdict(
+        role=role_for_verdict,
+        risk_level="non_hrais_art6_3",
+        articles=articles,
+        answer=answer,
+    )
 
 
 # ── Article packs per risk × role combination ───────────────────────────
@@ -503,10 +777,35 @@ def classify_scenario_query(question: str) -> ScenarioVerdict | None:
     rows scored ans_loose 0.027 (vs 0.129 on hit-group rows). Defaulting
     to "limited" produces gold-aligned tokens (Art. 50 transparency +
     Art. 4 literacy) which appear in 80%+ of the missed-row gold sets.
+
+    Round 41 Phase C: BEFORE the role-gated fast path, check the
+    Digital-Omnibus Art. 6(1a) safety-component carve-out and the AI
+    Guide Art. 6(3) four-exception list. These carve-outs are
+    precision-positive and can fire without a "We are a {role}" prelude
+    when an explicit intended-use signal or multiple carve-out keywords
+    concur. When one fires, the engine returns a non-HRAIS verdict.
     """
     if not question:
         return None
     role = _detect_role(question)
+
+    # Round 41 Phase C — Digital Omnibus Art. 6(1a) safety-component
+    # carve-out fires BEFORE the risk-pyramid pass so that scenarios
+    # like "AI used for performance optimisation" never get routed to
+    # HRAIS. Precision-positive: defers when a 6(1b) override or an
+    # Annex III high-risk marker is present.
+    carve = _check_safety_component_carve_out(question, role)
+    if carve is not None:
+        return carve
+
+    # Round 41 Phase C — Art. 6(3) four-exception list. Same gating
+    # as 6(1a): defers when the question mentions profiling (Recital 53
+    # carves profiling-based systems out of the exception) or when a
+    # prohibited practice marker fires.
+    art6_3 = _check_art6_3_exception(question, role)
+    if art6_3 is not None:
+        return art6_3
+
     if role is None:
         return None
     risk_level = _detect_risk_level(question)

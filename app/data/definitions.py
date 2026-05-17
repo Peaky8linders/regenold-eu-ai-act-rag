@@ -242,9 +242,60 @@ _DEFINITIONS: tuple[Definition, ...] = (
             "A component of a product or of an AI system which fulfils a safety "
             "function for that product or AI system, or the failure or "
             "malfunctioning of which endangers the health and safety of persons "
-            "or property."
+            "or property; for the purposes of this definition, a component "
+            "fulfils a safety function where its intended purpose is to prevent "
+            "or mitigate risks to health and safety of persons or property "
+            "(Digital Omnibus on AI, COREPER compromise 13 May 2026)."
         ),
         keywords=("safety component", "safety components"),
+    ),
+    Definition(
+        citation="Art. 3.14a",
+        term="small and medium-sized enterprise",
+        description=(
+            "Micro, small and medium-sized enterprise ('SME') as defined in "
+            "Article 2 of the Annex to Commission Recommendation 2003/361/EC. "
+            "Introduced by the Digital Omnibus on AI (COREPER compromise 13 May "
+            "2026, document 9247/26) as a new Art. 3(14a) defined term to "
+            "stabilise the SME label across Arts. 17(2), 62, 63, 95 and 99."
+        ),
+        keywords=(
+            "sme",
+            "smes",
+            "small and medium-sized enterprise",
+            "small and medium sized enterprise",
+            "small and medium-sized enterprises",
+            "small and medium sized enterprises",
+            "micro enterprise",
+            "micro-enterprise",
+            "small enterprise",
+            "medium-sized enterprise",
+        ),
+    ),
+    Definition(
+        citation="Art. 3.14b",
+        term="small mid-cap enterprise",
+        description=(
+            "Small mid-cap enterprise ('SMC') as defined in point (2) of the "
+            "Annex to Commission Recommendation (EU) 2025/1099. Introduced by "
+            "the Digital Omnibus on AI (COREPER compromise 13 May 2026, "
+            "document 9247/26) as a new Art. 3(14b) defined term so the SME-tier "
+            "reliefs under Arts. 11(1), 17(2), 63(1) and the fine cap under "
+            "Art. 99(6a) can be extended to entities above the SME ceiling but "
+            "below the large-enterprise threshold (at most 750 employees AND "
+            "turnover at most €150 million per the political agreement)."
+        ),
+        keywords=(
+            "smc",
+            "small mid-cap",
+            "small mid cap",
+            "small mid-cap enterprise",
+            "small mid cap enterprise",
+            "small mid-cap enterprises",
+            "small mid cap enterprises",
+            "mid-cap enterprise",
+            "mid cap enterprise",
+        ),
     ),
     Definition(
         citation="Art. 3.15",
@@ -995,6 +1046,77 @@ _DEFINITIONS: tuple[Definition, ...] = (
             "european data protection supervisor",
             "edps",
             "data protection supervisor",
+        ),
+    ),
+    Definition(
+        # Art. 3 has no point dedicated to 'product manufacturer'; the term is
+        # defined operationally by reference to the EU New Legislative
+        # Framework product-safety legislation (Recital 87 + Art. 25(3)).
+        # Stored as a sub-form of the Art. 3(8) operator definition so the
+        # prefix-fallback in ARTICLE_EXISTENCE still resolves it to Art. 3.
+        citation="Art. 3.8a",
+        term="product manufacturer",
+        description=(
+            "A manufacturer of a product covered by EU product-safety / New "
+            "Legislative Framework legislation listed in Annex I.A. The AI Act "
+            "does not define the term in Art. 3 — Recital 87 ties it to the "
+            "sectoral product-safety regimes (MDR, IVDR, machinery, toys, "
+            "lifts, PPE, etc.) and Art. 25(3) treats a product manufacturer "
+            "that places a high-risk AI system on the market together with "
+            "their product under their own name as the provider of that AI "
+            "system."
+        ),
+        keywords=(
+            "product manufacturer",
+            "product manufacturers",
+            "manufacturer of a product",
+        ),
+    ),
+    Definition(
+        # Art. 86 grants affected persons the right to an explanation; the
+        # term is operational rather than formally defined in Art. 3. Stored
+        # as a sub-form of Art. 3.56 (AI literacy — which speaks of
+        # 'affected persons').
+        citation="Art. 3.56a",
+        term="affected person",
+        description=(
+            "A natural person who is subject to a decision taken by the "
+            "deployer on the basis of the output of a high-risk AI system "
+            "listed in Annex III (with the exception of the systems listed "
+            "under Annex III point 2) and which produces legal effects or "
+            "similarly significantly affects them in a way that they consider "
+            "to adversely impact their health, safety or fundamental rights. "
+            "Operational term per Art. 86 (right to explanation of individual "
+            "decision-making) and Art. 85 (right to lodge a complaint)."
+        ),
+        keywords=(
+            "affected person",
+            "affected persons",
+            "affected individual",
+            "affected individuals",
+        ),
+    ),
+    Definition(
+        # Art. 79 imports the term from Reg. (EU) 2019/1020 Art. 3(19) by
+        # cross-reference. Stored as a sub-form of Art. 3.62 (which also
+        # imports an external regulatory definition by reference).
+        citation="Art. 3.62a",
+        term="product presenting a risk",
+        description=(
+            "A product presenting a risk as defined in Article 3, point (19), "
+            "of Regulation (EU) 2019/1020. An AI system or high-risk AI system "
+            "qualifies as such where, having regard to its intended purpose, "
+            "it may have an adverse effect on the health and safety of persons "
+            "in general, on health and safety in the workplace, on consumer "
+            "protection, on the environment, on public security, or on the "
+            "protected fundamental rights — to a degree that goes beyond what "
+            "is considered reasonable and acceptable in relation to its "
+            "intended purpose. Triggers the Art. 79 corrective-action procedure."
+        ),
+        keywords=(
+            "product presenting a risk",
+            "products presenting a risk",
+            "product presenting risk",
         ),
     ),
 )

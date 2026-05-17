@@ -108,10 +108,14 @@ class TestCrossRefGraph:
         assert len(refs) <= 3
 
     def test_targets_are_internal_form(self) -> None:
-        """Every cross-ref target uses internal ``Art. N`` / ``Annex N`` form."""
+        """Every cross-ref target uses internal ``Art. N[a-z]?`` / ``Annex X`` form.
+
+        R41 / Omnibus inserts Art. 4a, 60a, 75a-75e + Annex XIV — the
+        regex tolerates the letter-suffix on articles.
+        """
         from app.data.kb_xrefs import all_edges
         import re
-        internal_re = re.compile(r"^(?:Art\. \d+|Annex [IVXLC]+)$")
+        internal_re = re.compile(r"^(?:Art\. \d+[a-z]?|Annex [IVXLC]+)$")
         for source, target in all_edges():
             assert internal_re.match(target), (
                 f"Cross-ref target {target!r} is not internal form"
