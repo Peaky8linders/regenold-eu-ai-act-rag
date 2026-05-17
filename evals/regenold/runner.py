@@ -71,11 +71,23 @@ from evals.regenold.scenarios import (
 # in the JSON report even when every binary check still passes.
 
 # Strict per-spec output regexes (mirror app/integrations/regenold/models.py).
+# R41 letter-suffix support — articles like ``Article 4a`` / ``Article 75e``
+# now ship to the wire and must pass conformance. Body sourced from the
+# canonical ``ARTICLE_NUMBER_RE_BODY`` so the eval gate tracks the same
+# surface the wire emits.
+from app.data.article_existence import ARTICLE_NUMBER_RE_BODY as _ARTICLE_NUMBER_RE_BODY
+
 _REGENOLD_ANNEX_RE = re.compile(r"^Annex [IVXLC]+(?:\.[A-Za-z0-9]+)*$")
-_REGENOLD_ARTICLE_RE = re.compile(r"^Article \d+(?:\.[A-Za-z0-9]+)*$")
+_REGENOLD_ARTICLE_RE = re.compile(
+    r"^Article " + _ARTICLE_NUMBER_RE_BODY + r"(?:\.[A-Za-z0-9]+)*$"
+)
 # Internal-form sniffers — references should NEVER ship in these shapes.
-_INTERNAL_ART_PAREN_RE = re.compile(r"^Art\.\s*\d+(?:\([^)]+\))*$")
-_INTERNAL_ARTICLE_PAREN_RE = re.compile(r"^Article\s+\d+(?:\([^)]+\))*$")
+_INTERNAL_ART_PAREN_RE = re.compile(
+    r"^Art\.\s*" + _ARTICLE_NUMBER_RE_BODY + r"(?:\([^)]+\))*$"
+)
+_INTERNAL_ARTICLE_PAREN_RE = re.compile(
+    r"^Article\s+" + _ARTICLE_NUMBER_RE_BODY + r"(?:\([^)]+\))*$"
+)
 
 
 @dataclass

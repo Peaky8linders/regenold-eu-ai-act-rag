@@ -49,7 +49,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from app.data.article_existence import ARTICLE_EXISTENCE
+from app.data.article_existence import ARTICLE_EXISTENCE, ARTICLE_NUMBER_RE_BODY
 
 # ── Refusal classes ──────────────────────────────────────────────────────
 
@@ -93,23 +93,33 @@ class ScopeVerdict:
 # Also accepts the German "Artikel 13" / French "article 13" form so
 # multi-language partial queries land on the right anchor (Regenold's
 # audience is EU-wide; partner agents may pass non-English fragments).
-# Capture group 1 = the article number (decimal int).
+# Capture group 1 = the article number (decimal int OR R41 letter-suffix
+# token like ``75e`` / ``4a``).
+#
+# R41 / Digital Omnibus introduces letter-suffix articles. The article
+# number token is sourced from the canonical ``ARTICLE_NUMBER_RE_BODY``
+# so a future amendment that adds new letter-suffix articles only has
+# to update the catalog — the regex follows automatically. The ``-?``
+# prefix supports the negative-number unknown-article path
+# (``"Art. -7"`` → routes to ``non_existent_article`` refusal).
+_ART_NUM_TOKEN: str = r"-?" + ARTICLE_NUMBER_RE_BODY
 _ARTICLE_REF_RE = re.compile(
     r"\b(?:Art(?:icles?|ikels?|ikeln)?\.?)\s*"
-    r"(-?\d+)"
+    r"(" + _ART_NUM_TOKEN + r")"
     # Issue #38 — capture the optional comma/and tail so plural forms
     # like ``Articles 13 and 14`` / ``Articles 13, 14, and 15`` expand
     # into multiple anchors. The repeat unit ``(?:\s*sep)+`` consumes
     # one or more separator tokens (each preceded by optional space),
     # then exactly one number — letting ``, and 15`` (comma followed by
     # ``and``) chain past a single separator.
-    r"((?:(?:\s*(?:,|&|/|\band\b|\bor\b))+\s*-?\d+){0,5})"
+    r"((?:(?:\s*(?:,|&|/|\band\b|\bor\b))+\s*" + _ART_NUM_TOKEN + r"){0,5})"
     r"\b",
     re.IGNORECASE,
 )
 # Helper — pull every numeric token out of the tail group so plural-form
-# matches expand into multiple anchors. ``", 14, and 15"`` → ``[14, 15]``.
-_ARTICLE_TAIL_NUM_RE = re.compile(r"-?\d+")
+# matches expand into multiple anchors. ``", 14, and 15"`` → ``[14, 15]``;
+# ``", 75a, and 75b"`` → ``["75a", "75b"]``.
+_ARTICLE_TAIL_NUM_RE = re.compile(r"-?\d{1,3}[a-z]?", re.IGNORECASE)
 # Match `Annex IV`, `Annex 99`, `annex iii`, etc. Captures group 1 =
 # raw number/Roman text after `Annex `. The validator below interprets
 # Roman numerals 1-13 OR Arabic numerals (rejected).
@@ -134,6 +144,31 @@ def _roman_to_int(s: str) -> int | None:
     a generic Roman parser.
     """
     return _ROMAN_NUMERAL_VALUES.get(s.lower())
+
+
+_ART_NUM_NORMALISE_RE = re.compile(r"^(-?)(\d{1,3})([a-z]?)$", re.IGNORECASE)
+
+
+def _normalise_art_num_token(raw: str | None) -> str | None:
+    """Normalise an article-number token to canonical catalog form.
+
+    Returns ``"13"`` / ``"75a"`` / ``"-7"`` (the negative form is used
+    by the route's non-existent-article path so ``"Art. -7"`` produces a
+    valid ``Art. -7`` unknown ref). Letter suffixes are lower-cased so
+    ``"75E"`` and ``"75e"`` both resolve to the catalog entry
+    ``Art. 75e``. Returns ``None`` when the token is unparseable
+    (caller skips the match).
+    """
+    if raw is None:
+        return None
+    m = _ART_NUM_NORMALISE_RE.match(raw.strip())
+    if not m:
+        return None
+    sign, digits, suffix = m.group(1), m.group(2), m.group(3).lower()
+    # Strip leading zeros on the digit part (``"013"`` → ``"13"``). The
+    # int round-trip drops them naturally; suffix sticks on the back.
+    digits = str(int(digits))
+    return f"{sign}{digits}{suffix}"
 
 
 # Patterns that "claim" the next Article reference belongs to a different
@@ -171,10 +206,12 @@ _OTHER_REGULATION_BEFORE_ARTICLE_RE = re.compile(
     r"(?:\d+|[IVXLCDMivxlcdm]+)"
     r"(?:\s*(?:and|,|&|/|\bor\b)\s*(?:\d+|[IVXLCDMivxlcdm]+)){0,5}"
     r"|"
-    # Branch 2 — Article / Section / § / Sec. (Arabic only).
+    # Branch 2 — Article / Section / § / Sec. (Arabic + R41 optional
+    # letter suffix). ``DMA Article 75a`` claims as DMA, not AI Act.
     r"(?:Art(?:icle)?s?\.?|Section|§|Sec\.?)\s*"
-    r"\d+(?:\s*(?:and|,|&|/|\bor\b)\s*\d+){0,5}"
-    r")",
+    + ARTICLE_NUMBER_RE_BODY
+    + r"(?:\s*(?:and|,|&|/|\bor\b)\s*" + ARTICLE_NUMBER_RE_BODY + r"){0,5}"
+    + r")",
     re.IGNORECASE,
 )
 
@@ -262,21 +299,21 @@ def extract_referenced_articles(text: str) -> tuple[tuple[str, ...], tuple[str, 
             continue
         # Issue #38 — plural ``Articles N and M`` matches carry a
         # multi-number tail in group 2. Expand head + tail into a list
-        # of integer article numbers; the head's sub-paragraph chain
-        # attaches to the head only (sub-chains after ``and 14`` are
-        # vanishingly rare and would over-capture into the next clause).
-        try:
-            head_num = int(m.group(1))
-        except (ValueError, TypeError):
+        # of article number tokens (string-typed for R41 letter-suffix
+        # support — ``"75a"`` survives intact, ``"13"`` is unaffected);
+        # the head's sub-paragraph chain attaches to the head only
+        # (sub-chains after ``and 14`` are vanishingly rare and would
+        # over-capture into the next clause).
+        head_token = _normalise_art_num_token(m.group(1))
+        if head_token is None:
             continue
         tail = m.group(2) or ""
-        tail_nums: list[int] = []
+        tail_nums: list[str] = []
         if tail:
             for tnum in _ARTICLE_TAIL_NUM_RE.findall(tail):
-                try:
-                    tail_nums.append(int(tnum))
-                except (ValueError, TypeError):
-                    continue
+                normalised = _normalise_art_num_token(tnum)
+                if normalised is not None:
+                    tail_nums.append(normalised)
         # Round-3 hardening (eng-review H8): capture sub-paragraph
         # chains like ``(2)(c)`` or ``.2.c`` so the anchor carries the
         # full specificity for downstream surfacing. Without this, the
@@ -285,12 +322,12 @@ def extract_referenced_articles(text: str) -> tuple[tuple[str, ...], tuple[str, 
         # ``Art. 13(1)(a)`` — losing the sub-point in the wire response.
         # Sub-chain belongs to the HEAD article only.
         sub_chain = _capture_subpoint_chain(text, m.end())
-        for idx, num in enumerate([head_num, *tail_nums]):
+        for idx, num in enumerate([head_token, *tail_nums]):
             ref = f"Art. {num}{sub_chain}" if idx == 0 else f"Art. {num}"
-            # Existence gate uses bare ref (catalog only stores ``Art. N``);
-            # but we PRESERVE the sub-chain on the emitted ref so the
-            # route's surfacing path can ship ``Article N.x.y`` not just
-            # ``Article N``.
+            # Existence gate uses bare ref (catalog only stores ``Art. N``
+            # / ``Art. 75e``); but we PRESERVE the sub-chain on the
+            # emitted ref so the route's surfacing path can ship
+            # ``Article N.x.y`` not just ``Article N``.
             if f"Art. {num}" in ARTICLE_EXISTENCE:
                 if ref not in known:
                     known.append(ref)
@@ -381,17 +418,28 @@ def _capture_subpoint_chain(text: str, start_pos: int) -> str:
     return "".join(f"({t})" for t in tokens)
 
 
-def _sort_key(ref: str) -> tuple[int, int]:
-    """Sort key for ``Art. N`` / ``Annex X``: Annex first, then by number."""
+def _sort_key(ref: str) -> tuple[int, int, str]:
+    """Sort key for ``Art. N`` / ``Annex X``: Annex first, then by number.
+
+    R41 letter-suffix articles (``Art. 75a``, ``Art. 75b``, …) sort
+    immediately after their numeric parent: ``Art. 75`` < ``Art. 75a``
+    < ``Art. 75b`` < ``Art. 76``. The suffix is the third tuple element
+    so the sort stays stable on bare numerics (``""`` < ``"a"`` by
+    Python string ordering).
+    """
     if ref.startswith("Annex "):
         roman = ref[len("Annex ") :]
-        return (0, _roman_to_int(roman) or 99)
+        return (0, _roman_to_int(roman) or 99, "")
     if ref.startswith("Art. "):
-        try:
-            return (1, int(ref[len("Art. ") :]))
-        except ValueError:
-            return (1, 99)
-    return (2, 0)
+        body = ref[len("Art. ") :]
+        m = re.match(r"^(-?\d{1,3})([a-z]?)$", body, re.IGNORECASE)
+        if m:
+            try:
+                return (1, int(m.group(1)), m.group(2).lower())
+            except ValueError:
+                return (1, 99, "")
+        return (1, 99, "")
+    return (2, 0, "")
 
 
 # ── Out-of-scope keyword sets ────────────────────────────────────────────
@@ -1222,6 +1270,12 @@ def derive_anchor_articles_from_keywords(text: str) -> tuple[str, ...]:
     ``re.finditer`` advances past each matched span. ``"Summarise Annex
     IV"`` matches only ``annex iv``, never the shorter ``annex i`` that
     sits inside it.
+
+    R43 disqualifier: drops keyword matches that fired on a token
+    listed in :data:`_ANCHOR_DISQUALIFIERS` when the consumer-domain
+    pattern co-occurs (e.g. ``"credit scoring report"`` no longer
+    yields ``Annex III``; ``"predictive policing in movies"`` no
+    longer yields ``Art. 5``).
     """
     if not text:
         return ()
@@ -1230,8 +1284,14 @@ def derive_anchor_articles_from_keywords(text: str) -> tuple[str, ...]:
     # Normalize hyphens to spaces so "HR-screening" matches "hr screening".
     # The keyword regex and lookup dict have been pre-normalized to match.
     norm = text.lower().replace("-", " ")
+    # Compute disqualifier hits once per question (cheap — handful of
+    # patterns) so per-match suppression is O(1).
+    disqualified = _any_disqualifier_matches(text)
     for m in _KEYWORD_ALTERNATION_RE.finditer(norm):
-        ref = _NORMALIZED_KEYWORD_TO_ARTICLE.get(m.group(0))
+        token = m.group(0)
+        if token in disqualified:
+            continue
+        ref = _NORMALIZED_KEYWORD_TO_ARTICLE.get(token)
         if ref and ref in ARTICLE_EXISTENCE and ref not in seen:
             seen.add(ref)
             out.append(ref)
@@ -1279,6 +1339,175 @@ _DIMENSION_KEYWORDS: frozenset[str] = frozenset(
         "credit-scoring",
     )
 )
+
+
+# ── R43 anchor disqualifiers — consumer-context false-positive guard ──────
+#
+# Several R41 + R42 anchors are common English phrases that double as
+# legitimate AI Act terms ("intended purpose", "affected person",
+# "household exemption") OR sit inside compliance-vocab the AI Act
+# borrows from finance / criminal law ("credit scoring", "predictive
+# policing", "fraud detection"). The bare-anchor scan substring-matches
+# these in consumer queries that have nothing to do with the regulation:
+#
+#   * "What is the intended purpose of my visit?" — travel context
+#   * "I bought intended purpose paint for my walls" — retail context
+#   * "Affected person rights in tort law?" — tort-law context
+#   * "Can I claim the household exemption on my tax return?" — tax context
+#   * "Can you check my credit scoring report?" — consumer credit report
+#   * "Tell me about predictive policing in movies" — film / TV context
+#   * "Please ensure my fraud detection on Netflix" — streaming context
+#
+# Each entry below is ``(anchor_substring, disqualifier_pattern)``.
+# When BOTH match, the anchor is suppressed — the question routes to
+# the next gate (other-regulation / conversational / nonsense) instead
+# of flipping in-scope on a noise match. The disqualifier patterns are
+# narrow: they require an explicit non-AI-Act domain word in the same
+# question, so legitimate AI Act probes that re-use those domains
+# ("credit scoring AI system used by my bank") still flip in-scope via
+# the longer-anchor ("credit scoring ai system") OR a different anchor
+# in the same question ("ai system" / "high-risk").
+#
+# The anchor token here is lowercased + hyphen-normalised to match the
+# downstream pipeline; the disqualifier pattern matches against the
+# RAW (un-normalised) question text so domain phrasing survives.
+_ANCHOR_DISQUALIFIERS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    # "intended purpose of my visit / vacation / trip" — travel context.
+    # "intended purpose paint / of this paint / glue / fabric" — retail.
+    # "intended purpose meal kits" — food / retail.
+    (
+        "intended purpose",
+        re.compile(
+            r"intended\s+purpose\s+"
+            r"(?:"
+            # Travel / personal-life framings
+            r"of\s+(?:my|the|your|our|this|that)\s+"
+            r"(?:visit|trip|vacation|holiday|stay|journey|visa|"
+            r"appointment|meeting|life|wall|walls|paint|garment|"
+            r"meal|dinner|lunch|breakfast)"
+            # Retail / household product framings (bare noun after phrase)
+            r"|paint|glue|fabric|cleaner|shampoo|cream|"
+            r"meal\s+kits?|food|drink|beverage|wine|beer|"
+            r"furniture|garment|shoes|clothing"
+            r")",
+            re.IGNORECASE,
+        ),
+    ),
+    # "affected person rights in tort / civil / criminal law" — legal
+    # frameworks outside the EU AI Act. The bare phrase is a generic
+    # legal term; only the AI Act / Art. 86 use is in-scope.
+    (
+        "affected person",
+        re.compile(
+            r"affected\s+person\s+(?:[^.!?]{0,40}?)\b"
+            r"(?:tort\s+law|civil\s+law|criminal\s+law|personal\s+injury|"
+            r"contract\s+law|negligence|tort|lawsuit|malpractice|"
+            r"insurance\s+claim|insurance\s+policy|car\s+accident)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    # "household exemption on my tax return / VAT / IRS / refund" — tax
+    # / accounting context, not the AI Act personal-use carve-out. The
+    # tax token can appear BEFORE the anchor ("council tax household
+    # exemption application") OR after ("household exemption on my tax
+    # return") — the disqualifier is symmetric.
+    (
+        "household exemption",
+        re.compile(
+            r"(?:"
+            # Tax-token AFTER the anchor (within ~40 chars).
+            r"household\s+exemption\s+(?:[^.!?]{0,40}?)\b"
+            r"(?:tax\s+return|tax\s+refund|tax\s+filing|tax\s+credit|"
+            r"vat|hmrc|irs|deduction|allowance|"
+            r"council\s+tax|property\s+tax|income\s+tax|sales\s+tax)\b"
+            r"|"
+            # Tax-token BEFORE the anchor (within ~30 chars).
+            r"\b(?:tax\s+return|tax\s+refund|tax\s+filing|tax\s+credit|"
+            r"vat|hmrc|irs|deduction|allowance|"
+            r"council\s+tax|property\s+tax|income\s+tax|sales\s+tax)\b"
+            r"(?:[^.!?]{0,30}?)household\s+exemption"
+            r")",
+            re.IGNORECASE,
+        ),
+    ),
+    # "credit scoring report / check / number" — consumer credit-report
+    # context, not the Annex III high-risk creditworthiness scoring.
+    # "my credit scoring" / "personal credit scoring" similar.
+    (
+        "credit scoring",
+        re.compile(
+            r"(?:my|your|our|personal|consumer|FICO|equifax|experian)\s+"
+            r"credit\s+scoring|"
+            r"credit\s+scoring\s+(?:report|score|number|range|history|"
+            r"file|inquiry|check\s+for\s+(?:me|my)|app|application\s+for\s+"
+            r"(?:a\s+)?(?:loan|mortgage|card))",
+            re.IGNORECASE,
+        ),
+    ),
+    # "predictive policing in movies / film / TV / book / series" —
+    # media / fiction context, not the Art. 5(1)(d) prohibition.
+    (
+        "predictive policing",
+        re.compile(
+            r"predictive\s+policing\s+(?:[^.!?]{0,40}?)\b"
+            r"(?:movies?|films?|tv\s+(?:shows?|series|episodes?)|series|"
+            r"book|novel|fiction|screenplay|"
+            r"plot|character|protagonist|video\s+games?|game|"
+            r"minority\s+report)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    # "fraud detection on Netflix / my bank app / my email / Gmail" —
+    # consumer-product anti-fraud features, not the Annex III
+    # creditworthiness / financial-services high-risk lane.
+    (
+        "fraud detection",
+        re.compile(
+            r"fraud\s+detection\s+(?:[^.!?]{0,40}?)\b"
+            r"(?:netflix|spotify|amazon|paypal|venmo|cash\s+app|"
+            r"gmail|outlook|yahoo|email|facebook|instagram|tiktok|"
+            r"my\s+(?:bank\s+app|phone|account|subscription))\b",
+            re.IGNORECASE,
+        ),
+    ),
+)
+
+
+def _anchor_is_disqualified(anchor_token: str, raw_text: str) -> bool:
+    """Return True when ``anchor_token`` is suppressed by a co-occurring
+    consumer-domain pattern in ``raw_text``.
+
+    Looks ``anchor_token`` up in :data:`_ANCHOR_DISQUALIFIERS` and runs
+    the paired regex against the raw (un-normalised) question. When the
+    pattern matches the anchor is treated as absent — the caller falls
+    through to the next gate (other-regulation / conversational /
+    nonsense) instead of flipping in-scope on a noise match.
+
+    Unknown anchors (not in the disqualifier table) return False — most
+    anchors don't carry consumer-context ambiguity and stay routed
+    in-scope on first match.
+    """
+    for token, pattern in _ANCHOR_DISQUALIFIERS:
+        if token == anchor_token and pattern.search(raw_text):
+            return True
+    return False
+
+
+def _any_disqualifier_matches(raw_text: str) -> set[str]:
+    """Return every anchor token disqualified by the question's domain.
+
+    Single-pass helper for callers that want to know which suspects
+    fire — used by ``derive_anchor_articles_from_keywords`` to drop the
+    matching `KEYWORD_TO_ARTICLE` entries before they surface as
+    defensive citations.
+    """
+    fired: set[str] = set()
+    for token, pattern in _ANCHOR_DISQUALIFIERS:
+        if token in fired:
+            continue
+        if pattern.search(raw_text):
+            fired.add(token)
+    return fired
 
 
 # Pre-compiled alternation over the combined anchor + dimension vocab.
@@ -1465,9 +1694,43 @@ def _has_ai_act_anchor(text: str) -> bool:
     helper only handles the keyword path. We normalize hyphens to
     spaces on both sides so "high-risk ai" and "high risk ai" match
     the same anchor — users freely vary between the two forms.
+
+    R43 consumer-domain disqualifier: when the ONLY anchor matches
+    came from a token listed in :data:`_ANCHOR_DISQUALIFIERS` AND the
+    paired consumer-domain pattern fires on the raw text, the anchor
+    is suppressed. This stops "intended purpose of my visit" /
+    "household exemption on my tax return" / "credit scoring report"
+    / "predictive policing in movies" / "fraud detection on Netflix"
+    from flipping noise queries in-scope on a substring match. When
+    any non-suspect anchor co-occurs the question stays in-scope on
+    that anchor — the disqualifier is per-token, not per-question.
     """
     low = text.lower().replace("-", " ")
-    return _ANCHOR_RE.search(low) is not None
+    matches = list(_ANCHOR_RE.finditer(low))
+    if not matches:
+        return False
+    # Fast path — no suspect anchor in the match list means no
+    # disqualifier need fire. ``_ANCHOR_DISQUALIFIERS`` covers a
+    # handful of tokens; the bulk of anchors take the cheap path.
+    suspect_tokens = {token for token, _ in _ANCHOR_DISQUALIFIERS}
+    matched_tokens = {m.group(0) for m in matches}
+    if not (matched_tokens & suspect_tokens):
+        return True
+    # Suspect path — count anchors that AREN'T suppressed by the
+    # consumer-domain regex. The disqualifier runs against the RAW
+    # (un-normalised) text so hyphenation / casing in the question
+    # carries through, e.g. "Tort law" matches the affected-person
+    # disqualifier independent of normalisation.
+    fired_disqualifiers = _any_disqualifier_matches(text)
+    for token in matched_tokens:
+        if token in suspect_tokens and token in fired_disqualifiers:
+            continue
+        return True
+    # Every anchor that matched was a disqualified suspect — fall
+    # through. The route then runs the keyword-derivation pass; that
+    # branch ALSO consults the disqualifier so the question doesn't
+    # squeeze through on a `KEYWORD_TO_ARTICLE` entry.
+    return False
 
 
 def _has_other_regulation_mention(text: str) -> bool:

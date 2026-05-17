@@ -1887,20 +1887,26 @@ def regenold_eu_ai_act_ask(
     if answer_text and retrieval_path != "no_match":
         try:
             from app.engines.compliance_verdict import (  # noqa: PLC0415
+                _has_verdict_stamp,
+                live_question_from,
                 predict_verdict,
                 verdict_sentence,
             )
-            _cv = predict_verdict(question)
+            # R43 / S1 — ``question`` is the FLATTENED multi-turn payload
+            # which includes prior assistant-role content. Strip back to
+            # the live user turn before classification so a planted
+            # third-person scenario in a prior assistant turn cannot
+            # exfiltrate a regulator-voice verdict on an unrelated live
+            # question.
+            _cv = predict_verdict(live_question_from(question))
             if _cv is not None:
                 # Prepend; existing 3-sentence + 600-char soft-cap will
-                # absorb. Skip if the answer already contains a verdict
-                # marker so we don't double-stamp.
-                _lower = (answer_text or "").lower()
-                _already_stamped = any(m in _lower for m in (
-                    "compliant", "non-compliant", "non compliant",
-                    "context-dependent", "context dependent",
-                ))
-                if not _already_stamped:
+                # absorb. Skip if the answer already carries a
+                # verdict-SHAPE sentence so we don't double-stamp.
+                # R43 / C.1 — anchored regex replaces the original
+                # substring scan which false-matched prose like
+                # "The system must remain compliant with Article 9".
+                if not _has_verdict_stamp(answer_text):
                     # Pass the engine's top reference so the verdict
                     # sentence is cite-anchored — otherwise the soft-cap
                     # in ``normalise_answer_for_regenold`` drops it as

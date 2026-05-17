@@ -346,8 +346,115 @@ def verdict_sentence(verdict: Verdict, primary_cite: str | None = None) -> str:
     return f"{body}."
 
 
+# ── R43 / C.1 — Anchored verdict-stamp detector ──────────────────────────
+#
+# Replaces the original R42 ``_already_stamped`` substring check which
+# false-matched on ordinary engine prose like
+# ``"The system must remain compliant with Article 9"`` or
+# ``"...non-compliant systems face fines per Article 99..."`` and
+# silently skipped the verdict prepend.
+#
+# The regex is anchored to the verdict-sentence SHAPE — a subject phrase
+# ("this system" / "this ai" / "the system") followed by a copula
+# ("is" / "appears" / "seems") followed by the compliance label, OR the
+# explicit "compliance is context-dependent / unclear" opener used by
+# the ``_UNCLEAR_PREFIX``. Ordinary prose that merely contains the word
+# "compliant" or "non-compliant" cannot match.
+_VERDICT_STAMP_RE = re.compile(
+    r"\b(?:this\s+system|this\s+ai|the\s+system)\s+"
+    r"(?:appears|is|seems)\s+"
+    r"(?:non[-\s]?compliant|compliant)\b"
+    r"|"
+    r"\bcompliance\s+is\s+(?:context[-\s]?dependent|unclear)\b",
+    re.IGNORECASE,
+)
+
+
+def _has_verdict_stamp(text: str) -> bool:
+    """True iff the answer already carries a verdict-shape sentence.
+
+    Used by the route's verdict-prepend hook to avoid double-stamping
+    when the engine prose has already emitted a regulator-voice verdict
+    sentence (e.g. via ``scenario_classifier``'s verdict opener). The
+    check is SHAPE-anchored, not substring-based, so engine prose that
+    merely uses the word "compliant" in a different grammatical role
+    (e.g. "The system must remain compliant with Article 9") does not
+    suppress the prepend.
+    """
+    return bool(_VERDICT_STAMP_RE.search(text or ""))
+
+
+# ── R43 / C.2 — Live-turn extraction from flattened history ──────────────
+#
+# ``app.routes.regenold._build_question_from_history`` flattens up to 4
+# prior turns INCLUDING assistant-role content into the engine input as:
+#
+#     Conversation so far:
+#     User: ...
+#     Assistant: <attacker-controlled scenario>
+#     User: <prior user turn>
+#
+#     Latest question:
+#     <live user turn>
+#
+# Without this helper, ``predict_verdict`` would scan the whole flattened
+# string and could be tricked into emitting a verdict sentence on a
+# benign live turn because the planted assistant-role scenario hits the
+# third-person opener + compliance-domain noun gates.
+#
+# This is the same class of vulnerability as the R34 P1 history-injection
+# fix in ``scope.classify_conversation`` (anchor extraction restricted
+# to prior USER turns there; here we strip the entire prior-turn block).
+
+# The exact separator written by ``_build_question_from_history`` — a
+# blank line followed by the literal ``Latest question:\n`` marker. We
+# match the marker only (not the blank line) so minor formatting drift
+# in the future doesn't silently break the helper into a passthrough.
+_LIVE_TURN_MARKER = "Latest question:\n"
+
+
+def live_question_from(flattened: str) -> str:
+    """Return only the LIVE user turn from a flattened multi-turn question.
+
+    R43 / S1 fix — ``app.routes.regenold._build_question_from_history``
+    flattens prior turns INCLUDING assistant-role content. Classification
+    helpers (``predict_verdict``, the carve-out detector in
+    ``scenario_classifier``, etc.) must NOT read prior-turn content
+    because an anonymous external can plant a fake third-person
+    compliance scenario in a prior assistant-role turn and exfiltrate a
+    regulator-voice verdict on a benign live turn that said nothing of
+    the sort.
+
+    The flattened format is::
+
+        Conversation so far:
+        <role>: <content>
+        ...
+
+        Latest question:
+        <live user content>
+
+    This helper finds the LAST occurrence of the ``Latest question:``
+    marker and returns everything after it (stripped). When the input
+    carries no marker (single-turn case where the route emitted the raw
+    user content), the input is returned unchanged so callers don't have
+    to special-case both shapes.
+    """
+    if not flattened:
+        return flattened
+    # ``rfind`` so a chat where someone literally typed "Latest question:"
+    # in a prior turn doesn't shadow the route-emitted marker.
+    idx = flattened.rfind(_LIVE_TURN_MARKER)
+    if idx < 0:
+        return flattened
+    tail = flattened[idx + len(_LIVE_TURN_MARKER):]
+    return tail.strip()
+
+
 __all__ = [
     "Verdict",
     "predict_verdict",
     "verdict_sentence",
+    "_has_verdict_stamp",
+    "live_question_from",
 ]

@@ -242,3 +242,84 @@ class TestExtractSubpointsMixedTails:
         # all-or-nothing policy — the trailing valid letter doesn't
         # rescue a chain that contains a malformed earlier segment.
         assert _extract_subpoints("(1-2)(a)") == []
+
+
+# ─── R43 Fix A.1 — letter-suffix articles survive wire emission ───────────
+
+
+class TestLetterSuffixArticles:
+    """R41 / Digital Omnibus introduces letter-suffix articles
+    (``Art. 4a`` bias-data legal basis, ``Art. 60a`` Section B
+    real-world testing, ``Art. 75a``-``75e`` AI Office investigatory
+    powers). Pre-R43 the wire-output regex ``_ARTICLE_OUTPUT_RE``
+    hard-coded ``\\d+`` so ``Article 75e`` failed validation and
+    silently dropped from every Regenold response — making the
+    entire R41 KB addition unreachable through the live query path.
+
+    These tests pin the round-trip for every letter-suffix article in
+    the catalog AND a representative subpoint shape (``Article 4a.2``,
+    ``Article 75e.1``). The pure-numeric path is exercised by the
+    sibling tests above and ``test_kb_consistency.py``.
+    """
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("Art. 4a", "Article 4a"),
+            ("Art. 60a", "Article 60a"),
+            ("Art. 75a", "Article 75a"),
+            ("Art. 75b", "Article 75b"),
+            ("Art. 75c", "Article 75c"),
+            ("Art. 75d", "Article 75d"),
+            ("Art. 75e", "Article 75e"),
+            # ``Article`` shape on input (engine sometimes uses the
+            # user-facing form internally — round-trip stays stable).
+            ("Article 75e", "Article 75e"),
+            ("Article 4a", "Article 4a"),
+            # Subpoint chain — letter suffix carries through.
+            ("Art. 4a(2)", "Article 4a.2"),
+            ("Art. 75e(1)", "Article 75e.1"),
+            ("Art. 75c(2)(a)", "Article 75c.2.a"),
+            # Uppercase suffix on input normalises to lowercase output
+            # (the catalog form is lowercase).
+            ("Art. 75E", "Article 75e"),
+        ],
+    )
+    def test_letter_suffix_round_trip(self, raw: str, expected: str) -> None:
+        assert reference_from_article_ref(raw) == expected
+
+    def test_wire_regex_accepts_letter_suffix(self) -> None:
+        """The strict per-Regenold-spec output regex must accept
+        ``Article 75e`` / ``Article 4a.2`` shapes — without this the
+        route's defensive ``_validate_output_shape`` gate would drop
+        every letter-suffix citation on emission.
+        """
+        from app.integrations.regenold.models import (
+            _ARTICLE_OUTPUT_RE,
+            _validate_output_shape,
+        )
+
+        for s in (
+            "Article 75e",
+            "Article 4a",
+            "Article 4a.2",
+            "Article 75e.1",
+            "Article 75c.2.a",
+            "Article 113",
+        ):
+            assert _ARTICLE_OUTPUT_RE.match(s), f"wire regex rejected {s!r}"
+            assert _validate_output_shape(s), (
+                f"_validate_output_shape rejected {s!r}"
+            )
+
+        # Negative — still rejects malformed shapes.
+        for bad in (
+            "Article 75-e",       # hyphen not allowed
+            "Article 75ee",       # double-suffix
+            "Article III",        # Roman numeral for Article
+            "Article 1000",       # 4-digit number
+            "Art. 75e",           # internal-form (only output form allowed)
+        ):
+            assert not _ARTICLE_OUTPUT_RE.match(bad), (
+                f"wire regex wrongly accepted {bad!r}"
+            )

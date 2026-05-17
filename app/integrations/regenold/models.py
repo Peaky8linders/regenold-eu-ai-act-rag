@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.data.article_existence import ARTICLE_EXISTENCE
+from app.data.article_existence import ARTICLE_EXISTENCE, ARTICLE_NUMBER_RE_BODY
 
 
 class RegenoldChatMessage(BaseModel):
@@ -244,8 +244,14 @@ _MAX_ANSWER_CHARS_SOFT = 600
 _QUESTION_HASH_SALT = "regenold_question_hash_v1"
 
 # ── Input parsing regexes (accept both `Art.` and `Article` forms) ────────
+#
+# R41 / Digital Omnibus introduces letter-suffix articles (``Art. 4a``,
+# ``Art. 60a``, ``Art. 75a``-``75e``). The number-token body comes from
+# the canonical ``ARTICLE_NUMBER_RE_BODY`` constant so a future amendment
+# only has to update one place — every consumer importing this regex
+# automatically picks up the new shape.
 _ART_RE = re.compile(
-    r"^(Art\.|Article)\s*(?P<num>\d+)\s*(?P<tail>.*)$",
+    r"^(Art\.|Article)\s*(?P<num>" + ARTICLE_NUMBER_RE_BODY + r")\s*(?P<tail>.*)$",
     re.IGNORECASE,
 )
 _ANNEX_RE = re.compile(
@@ -257,9 +263,12 @@ _ANNEX_RE = re.compile(
 # Spec: "Annex" + Roman numeral, dot-separated sub-points (numeric or
 # alphanumeric). NOT "Annex 3", "Annex 3(2)", "Annex III . 2", "Annex III-2".
 _ANNEX_OUTPUT_RE = re.compile(r"^Annex [IVXLC]+(?:\.[A-Za-z0-9]+)*$")
-# Spec: "Article" + Arabic numeral, dot-separated sub-points. NOT
-# "Article III", "Article III.2", "Article 3/2".
-_ARTICLE_OUTPUT_RE = re.compile(r"^Article \d+(?:\.[A-Za-z0-9]+)*$")
+# Spec: "Article" + Arabic numeral (with optional R41 letter suffix —
+# Art. 4a / 60a / 75a-e), dot-separated sub-points. NOT "Article III",
+# "Article III.2", "Article 3/2", "Article 75-e".
+_ARTICLE_OUTPUT_RE = re.compile(
+    r"^Article " + ARTICLE_NUMBER_RE_BODY + r"(?:\.[A-Za-z0-9]+)*$"
+)
 
 
 def question_hash(question: str) -> str:
@@ -281,21 +290,37 @@ def question_hash(question: str) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+_ART_LETTER_SUFFIX_NORMALISE_RE = re.compile(
+    r"^(Art\.\s*)(\d{1,3})([A-Za-z])(\b|\(|\.|$)"
+)
+
+
 def _normalise_to_catalog_form(raw: str) -> str:
     """Normalise input to the catalog's `Art. N(...)` form for existence check.
 
     The catalog (`app/data/article_existence.py`) stores entries as
-    ``Art. 13`` / ``Annex IV``. The engine sometimes emits ``Article 13``
-    instead of ``Art. 13`` — same regulation, different prefix. Normalise
-    so the existence check doesn't drop legitimate refs on a stylistic
-    mismatch.
+    ``Art. 13`` / ``Annex IV`` / ``Art. 75e``. The engine sometimes
+    emits ``Article 13`` instead of ``Art. 13`` — same regulation,
+    different prefix. Normalise so the existence check doesn't drop
+    legitimate refs on a stylistic mismatch.
+
+    R41 letter-suffix awareness: the catalog stores ``Art. 75e``
+    (lowercase). Inputs like ``Art. 75E`` / ``Article 75E`` get the
+    suffix lower-cased so the existence check matches the canonical
+    form. A two-step rewrite: (a) ``Article`` → ``Art.``, (b) letter
+    suffix → lowercase.
     """
     s = raw.strip()
     if not s:
         return s
     # `Article 13(1)` → `Art. 13(1)`; preserve everything after the prefix.
     if s.lower().startswith("article "):
-        return "Art. " + s[len("article ") :].lstrip()
+        s = "Art. " + s[len("article ") :].lstrip()
+    # Lower-case the letter suffix only when present; pure-numeric refs
+    # (``Art. 13``) take the no-op branch.
+    m = _ART_LETTER_SUFFIX_NORMALISE_RE.match(s)
+    if m:
+        s = f"{m.group(1)}{m.group(2)}{m.group(3).lower()}{s[m.end(3):]}"
     return s
 
 
@@ -478,6 +503,12 @@ def reference_from_article_ref(article_ref: str) -> str | None:
         return None
 
     art_num = art_m.group("num")
+    # R41 letter-suffix (``75e`` → ``75e``, ``13`` → ``13``). ``int(...)``
+    # would explode on the suffixed shape; normalise to lowercase and emit
+    # the digits + suffix verbatim so ``Article 75e`` survives the round
+    # trip. The downstream ``_validate_output_shape`` pinning enforces the
+    # same letter-suffix shape.
+    art_num_normalised = art_num.lower()
     tail = art_m.group("tail") or ""
     tokens = _extract_subpoints(tail)
     if not tokens:
@@ -491,12 +522,12 @@ def reference_from_article_ref(article_ref: str) -> str | None:
         # made it up)". Reject so the caller drops the citation.
         if tail.strip():
             return None
-        formatted = f"Article {int(art_num)}"
+        formatted = f"Article {art_num_normalised}"
     else:
         # Regenold wants a single dot-separated subpoint chain.
         # - "(2)" -> ".2"
         # - "(1)(a)" -> ".1.a"
-        formatted = f"Article {int(art_num)}." + ".".join(tokens)
+        formatted = f"Article {art_num_normalised}." + ".".join(tokens)
     return formatted if _validate_output_shape(formatted) else None
 
 
@@ -591,7 +622,8 @@ _META_OPENER_RE = re.compile(
 #     "Annex IV:"                → drop
 #     "Annex III.2:"             → drop
 _KB_STUB_LABEL_RE = re.compile(
-    r"^(?:Art\.|Article)\s+\d+(?:[.\(][^:]*)?\s*:\s*"
+    r"^(?:Art\.|Article)\s+" + ARTICLE_NUMBER_RE_BODY +
+    r"(?:[.\(][^:]*)?\s*:\s*"
     r"|^Annex\s+[IVXLC]+(?:\.[A-Za-z0-9]+)*\s*:\s*",
     re.IGNORECASE,
 )

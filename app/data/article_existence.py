@@ -18,6 +18,17 @@ degrade the engines that consume it for actual requirement content.
 """
 from __future__ import annotations
 
+#: Canonical regex body for the article number token used across the
+#: codebase. R41 / Digital Omnibus inserts new articles with a single
+#: lowercase letter suffix (``4a``, ``60a``, ``75a``-``75e``), so every
+#: consumer that previously hard-coded ``\\d{1,3}`` has to accept an
+#: optional ``[a-z]`` after the digits. Importing this constant from one
+#: place prevents the next regulation amendment from missing a consumer.
+#:
+#: Body only (no anchors, no word-boundary, no capture group). Callers
+#: wrap it in their own capture group / boundary as they need.
+ARTICLE_NUMBER_RE_BODY: str = r"\d{1,3}[a-z]?"
+
 # EU Regulation 2024/1689 has 113 numbered articles. R41 / Digital Omnibus
 # (COREPER compromise text 9247/26, 13 May 2026) inserts six new articles
 # with letter-suffix numbering — they live in the regulation surface

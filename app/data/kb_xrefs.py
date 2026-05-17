@@ -43,7 +43,7 @@ from __future__ import annotations
 import re
 from functools import lru_cache
 
-from app.data.article_existence import ARTICLE_EXISTENCE
+from app.data.article_existence import ARTICLE_EXISTENCE, ARTICLE_NUMBER_RE_BODY
 from app.data.kb import EC_CHECKER_OBLIGATION_MAP
 
 
@@ -52,7 +52,16 @@ from app.data.kb import EC_CHECKER_OBLIGATION_MAP
 # Roman-numeral Annex form. Sub-paragraph chains like ``(1)(a)`` are
 # stripped — we record the bare article number / annex roman as the
 # cross-reference target.
-_ART_RE = re.compile(r"\bArt\.?\s*(\d{1,3})\b", re.IGNORECASE)
+#
+# R41 / Digital Omnibus introduces letter-suffix articles (``4a``,
+# ``60a``, ``75a``-``75e``). The number-token body is sourced from the
+# canonical ``ARTICLE_NUMBER_RE_BODY`` constant so the regex tracks the
+# regulation surface automatically as future amendments add new
+# letter-suffix articles.
+_ART_RE = re.compile(
+    r"\bArt\.?\s*(" + ARTICLE_NUMBER_RE_BODY + r")\b",
+    re.IGNORECASE,
+)
 _ANNEX_RE = re.compile(r"\bAnnex\s+([IVXLC]+)\b", re.IGNORECASE)
 
 
@@ -339,7 +348,10 @@ def _build_regex_xref_graph() -> dict[str, tuple[str, ...]]:
         seen: set[str] = {source_ref}
 
         for match in _ART_RE.finditer(summary):
-            num = match.group(1)
+            # R41 letter-suffix tokens (``75a``, ``4a``) should normalise
+            # to lowercase so the catalog form ``Art. 75a`` matches even
+            # when prose typed ``Art. 75A``. Pure-digit forms unaffected.
+            num = match.group(1).lower()
             target = f"Art. {num}"
             # Validate existence so we don't surface a hallucinated
             # cross-ref (e.g. a typo in the summary like Art. 200).

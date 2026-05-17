@@ -163,9 +163,22 @@ _HIGH_RISK_MARKERS = (
     # Annex III (2) critical infrastructure
     "critical infrastructure",
     "safety component",
+    "safety critical",
+    "safety-critical",
     "autonomous surgical",
+    # Annex I product safety — medical devices (MDR / IVDR) +
+    # related diagnostic and imaging products. The carve-out gate
+    # must defer when these fire, otherwise systems like a
+    # "medical-diagnosis tool used for clinician convenience"
+    # silently bypass the HRAIS route.
     "medical device",
     "medical-device",
+    "medical diagnosis",
+    "medical-diagnosis",
+    "medical imaging",
+    "medical-imaging",
+    "clinical decision support",
+    "diagnostic ai",
     "patient vital",
     # Annex III (3) education
     "education access",
@@ -400,6 +413,27 @@ def _normalise(text: str) -> str:
     return text.translate(_NORMALISE_MAP)
 
 
+def _normalise_for_marker_match(text: str) -> str:
+    """Lowercase + collapse hyphens to spaces so 'predictive-policing'
+    matches the 'predictive policing' marker.
+
+    R43 fix B — the davidath / Regenold scenarios use hyphenated forms
+    (``predictive-policing``, ``credit-scoring``, ``medical-diagnosis``,
+    ``fraud-detection``) where the curated marker sets above use the
+    space-form (``predictive policing``, ``credit scoring``). Without
+    this normalisation, the Art. 6(1a) carve-out gates would silently
+    fail to detect Art. 5 prohibited practices and Annex III high-risk
+    categories, returning ``non_hrais`` for regulatorily prohibited
+    systems — a P0 correctness defect.
+
+    The marker constants themselves are LEFT UNCHANGED so other
+    consumers (audit-chain replay, downstream classifiers) keep
+    working; this normalisation is applied only at the comparison call
+    site, ahead of every ``in`` substring check.
+    """
+    return _normalise(text).lower().replace("-", " ")
+
+
 def _detect_risk_level(text: str) -> str | None:
     """Classify the risk pyramid using the pyramid order.
 
@@ -446,24 +480,31 @@ def _check_safety_component_carve_out(
         return None
     norm = _normalise(question)
     low = norm.lower()
+    # R43 fix B — hyphen-tolerant view of the question for marker scans
+    # so ``predictive-policing`` matches the ``predictive policing``
+    # marker, ``credit-scoring`` matches ``credit scoring``, etc.
+    low_marker = _normalise_for_marker_match(question)
 
-    # Gate 1 — at least one carve-out term present.
-    carve_hits = [p for p in _SAFETY_COMPONENT_CARVE_OUT_PATTERNS if p in low]
+    # Gate 1 — at least one carve-out term present (also hyphen-tolerant
+    # so ``user-assistance`` matches ``user assistance``).
+    carve_hits = [
+        p for p in _SAFETY_COMPONENT_CARVE_OUT_PATTERNS if p in low_marker
+    ]
     if not carve_hits:
         return None
 
     # Gate 2 — Art. 6(1b) override must NOT fire.
-    if _any_in(low, _FAILURE_ENDANGERS_PATTERNS):
+    if _any_in(low_marker, _FAILURE_ENDANGERS_PATTERNS):
         return None
 
     # Gate 3 — Annex III category must NOT fire (otherwise the system
     # is HRAIS via a different limb; carve-out doesn't apply).
-    if _any_in(low, _HIGH_RISK_MARKERS):
+    if _any_in(low_marker, _HIGH_RISK_MARKERS):
         return None
 
     # Gate 3b — also defer when a prohibited practice marker fires;
     # prohibited beats carve-out.
-    if _any_in(low, _PROHIBITED_MARKERS):
+    if _any_in(low_marker, _PROHIBITED_MARKERS):
         return None
 
     # Gate 4 — precision: require either a role marker, an intended-use
@@ -525,17 +566,20 @@ def _check_art6_3_exception(
         return None
     norm = _normalise(question)
     low = norm.lower()
+    # R43 fix B — hyphen-tolerant view so hyphenated forms of the
+    # exception / profiling / prohibition markers still gate correctly.
+    low_marker = _normalise_for_marker_match(question)
 
-    if not _any_in(low, _ART6_3_EXCEPTION_PATTERNS):
+    if not _any_in(low_marker, _ART6_3_EXCEPTION_PATTERNS):
         return None
 
     # Profiling override per Recital 53 — when present, the exception
     # does NOT apply and the system stays in HRAIS territory.
-    if _any_in(low, _PROFILING_OVERRIDE_PATTERNS):
+    if _any_in(low_marker, _PROFILING_OVERRIDE_PATTERNS):
         return None
 
     # Defer to the prohibited path if a stronger marker fires.
-    if _any_in(low, _PROHIBITED_MARKERS):
+    if _any_in(low_marker, _PROHIBITED_MARKERS):
         return None
 
     role_for_verdict = role or "deployer"

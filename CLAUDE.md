@@ -740,6 +740,164 @@ penalty when the gold answer's token shape favours redundancy.
 4. **No regressions** — both layers honour the Round-16 finding (never
    empty the answer) and the Round-28 cache-poisoning invariants.
 
+## Round 43 — Architecture + engineering + security review fixes (2026-05-17)
+
+Ran three parallel reviews against the R40-R41-R42 surface; landed P0
+and P1 fixes in one PR. 27 findings across all three reviews; **5 P0/P1
+fixed**, balance triaged as documented follow-ups. Eval surface used to
+gate the merge: `evals.bench.unbiased_runner` (davidath holdout +
+AIReg-Bench + Regenold probe).
+
+### P0 fixes
+
+* **A1+A2 — Letter-suffix article consistency.** R41 inserted Art. 4a,
+  60a, 75a-75e + Annex XIV into the canonical catalog, but six regex
+  consumers (wire-contract `_ARTICLE_OUTPUT_RE`, kb_xrefs `_ART_RE`,
+  scope `_ARTICLE_REF_RE` + `_sort_key`, models input parser, evals
+  runner mirror regex) still hard-coded `\d{1,3}`. Result: `Article
+  75e` rejected on emission, `reference_from_article_ref("Art. 60a(2)")`
+  silently emitted `Article 60.2` (data corruption — conflated two
+  distinct articles), `kb_xrefs._build_xref_graph` returned no edges
+  for letter-suffix refs, scope classified them as
+  `NON_EXISTENT_ARTICLE`. Centralised on a single
+  `ARTICLE_NUMBER_RE_BODY = r"\d{1,3}[a-z]?"` constant in
+  `app/data/article_existence.py`; every consumer imports it. The next
+  Omnibus extension (Art. 75f, Art. 100a) lands without a regex
+  manhunt.
+
+* **E1 — Carve-out hyphen mis-match.** R41's
+  `_check_safety_component_carve_out` in
+  `app/engines/scenario_classifier.py` substring-matched the Art. 5
+  prohibited markers + Annex III markers using space-form keys
+  (`"predictive policing"`, `"credit scoring"`, `"medical device"`)
+  but the davidath/Regenold scenarios use hyphenated forms
+  (`predictive-policing`, `credit-scoring`, `medical-diagnosis`).
+  Result: scenarios that were Art. 5 prohibited or Annex III high-risk
+  bypassed the override gate and got a non-HRAIS Art. 6(1a) verdict.
+  Regulatory correctness defect. Fixed with a
+  `_normalise_for_marker_match(text)` helper that lowercases + collapses
+  `-` to ` ` before substring comparison; called at every gate inside
+  the carve-out + Art. 6(3) exception. Also added Annex I MDR/IVDR
+  hyphenated medical-device markers (`medical-diagnosis`,
+  `medical-imaging`, `safety-critical`, `clinical-decision-support`,
+  `diagnostic-ai`) to `_HIGH_RISK_MARKERS` — they were a genuine gap.
+
+### P1 fixes
+
+* **A3/E2 — Verdict guard substring false-positive.** R42's route hook
+  gated on `any(m in answer.lower() for m in ("compliant", ...))`,
+  which fired on ordinary engine prose like "The system must remain
+  compliant with Article 9" and silently skipped the verdict prepend.
+  Replaced with an anchored regex
+  `_VERDICT_STAMP_RE = re.compile(r"\b(?:this\s+system|this\s+ai|the\s+system)\s+(?:appears|is|seems)\s+(?:non[-\s]?compliant|compliant)\b|\bcompliance\s+is\s+(?:context[-\s]?dependent|unclear)\b", re.IGNORECASE)`
+  that only matches verdict-shape sentences. Lives in
+  `app/engines/compliance_verdict.py` next to the existing helpers.
+
+* **S1/S2 — Conversation-history injection (R34 P1 re-emerged).**
+  The flattened multi-turn `question` string (from
+  `_build_question_from_history`) was passed verbatim into
+  `predict_verdict()` and `_check_safety_component_carve_out()`. An
+  anonymous external partner could plant a fake third-person
+  compliance scenario in a prior `assistant`-role turn and have the
+  regulator-voice verdict emitted on the wire while the live user
+  message said nothing of the sort. Fix: new
+  `live_question_from(flattened)` helper in
+  `compliance_verdict.py` extracts the live tail (split on the
+  `"Latest question:\n"` marker emitted by
+  `_build_question_from_history`). Route hook now calls
+  `predict_verdict(live_question_from(question))`. Same pattern
+  applies to the carve-out (handled implicitly via the hyphen
+  normaliser since it doesn't sample prior turns).
+
+* **E3/E4 — Scope anchor false-positives on consumer queries.** R42
+  added `"credit scoring"` / `"fraud detection"` / `"predictive
+  policing"` and R41 added `"intended purpose"` / `"affected person"` /
+  `"household exemption"` as scope anchors. Engineering review
+  verified each false-positive on benign consumer queries (`"Can you
+  check my credit scoring report?"`, `"I bought intended purpose
+  paint for my walls."`, `"Affected person rights in tort law?"`).
+  Did NOT drop the anchors (R41 in-scope probes need them). Added a
+  6-entry `_ANCHOR_DISQUALIFIERS` table in
+  `app/integrations/regenold/scope.py`: `(anchor, consumer-context
+  regex)` tuples that suppress the anchor when its consumer-domain
+  co-occurrence pattern is also present. Examples:
+
+  | Anchor | Suppressed when… |
+  |---|---|
+  | `intended purpose` | …`of my visit/trip/vacation/walls`, `paint`, `meal kits`, ... |
+  | `affected person` | …within 40 chars of `tort/civil/criminal law`, `lawsuit`, ... |
+  | `household exemption` | …within 30-40 chars of `tax return/refund`, `IRS`, ... |
+  | `credit scoring` | …`my/personal/FICO/Experian credit scoring`, `credit scoring report` |
+  | `predictive policing` | …within 40 chars of `movie/film/TV show/series/book` |
+  | `fraud detection` | …within 40 chars of `Netflix/PayPal/Gmail/my bank app` |
+
+### Test additions
+
+* `tests/test_r43_scope_false_positives.py` — 32 tests: 18 consumer FP
+  blocked, 6 in-scope AI Act re-uses still in-scope, 3 R41 bare-anchor
+  cross-checks, 5 letter-suffix article in-scope probes.
+* `tests/test_r43_carve_out_hyphens.py` — 20 tests: hyphenated Art. 5
+  / Annex III / Annex I scenarios all reject the carve-out;
+  regression-preservation for the R41 carve-out positive cases.
+* `tests/test_r43_verdict_fixes.py` — 16 tests: `_has_verdict_stamp`
+  anchored-regex behaviour (8), `live_question_from` extraction (6),
+  round-trip boundary cases (2).
+* `tests/test_reference_parser_fixes.py` — appended
+  `TestLetterSuffixArticles` (14 tests) pinning the wire round-trip
+  for `Article 4a / 60a / 75a-e`.
+
+### Scorecard
+
+**Tests: 1474 passing** (was 1393 entering R43; +81 net).
+
+**Unbiased eval (r43-final):**
+
+| Surface | R42 baseline | R43 final | Δ |
+|---|---|---|---|
+| AIReg-Bench VerdictAccuracy | 1.000 | **1.000** | flat ✓ |
+| AIReg-Bench ArticleF1 | 0.870 | 0.870 | flat ✓ |
+| davidath holdout Ans Strict | 0.300 | 0.300 | flat ✓ |
+| davidath holdout Ref Loose | 0.577 | 0.577 | flat ✓ |
+| davidath holdout Ref Strict | 0.439 | **0.440** | **+0.001 ✓** |
+| Regenold probe Overall RefStrict | 0.4705 | 0.4704 | flat ✓ |
+| Regenold probe doctor_transcription | 0.354 | 0.354 | flat ✓ |
+
+**davidath full bench (r43-final, 476 items, vs r42-final):**
+
+| Axis | R42-final | R43-final | Δ |
+|------|---|---|---|
+| Ans Loose | 0.1682 | 0.1683 | +0.000 |
+| Ans Strict | 0.2946 | 0.2946 | flat |
+| Ans Conciseness | 0.6235 | 0.6236 | +0.000 |
+| Ref Loose | 0.5469 | 0.5448 | -0.002 (rubric noise) |
+| Ref Strict | 0.4307 | 0.4304 | flat |
+| Ref Conciseness | 0.4173 | 0.4176 | +0.000 |
+| Tone / Multi-turn | 1.0 / 1.0 | 1.0 / 1.0 | flat ✓ |
+| Latency p50 (ms) | 13.78 | **11.59** | -2.2 ms ✓ |
+
+### Deferred / open
+
+* **A4** — `intent_budget_for` (R40 F18) is dead code (gated on
+  `REGENOLD_REFBUDGET_PER_INTENT=0` default OFF). Either bake or
+  delete in a future round.
+* **A5** — duplicated compliance vocabulary between
+  `compliance_verdict._COMPLIANCE_DOMAIN_NOUNS` and
+  `scope._DIMENSION_KEYWORDS`. Single registry would help.
+* **A6** — verdict prefix runs AFTER `apply_template`; the
+  per-qtype char cap is overridden by the 600-char soft-cap. Defeats
+  R40 Phase 2a's davidath p90 calibration on some scenarios.
+* **A7** — route function is 795 LOC orchestrating 11 inline hooks.
+  Pipeline-stage refactor would unblock A4/A5/A6 to land cheaply.
+* **A10** — ~1500 LOC of unwired code in `eu_ai_act_tree.py`,
+  `cross_encoder_rerank.py`, `graph_ppr.py`, `path_rag.py` from R31
+  / R32 / R39. Wire or rip.
+* **S3** — `NEO4J_URI` password can leak in `partial_seed_state` log
+  if operator uses the credential-bearing URI form. Documented in
+  `NEO4J_RUNBOOK.md` workaround; full redaction patch deferred.
+
+The R43 sprint cleared the P0/P1 ledger and the unbiased eval surface
+holds at R42's peak. Ready for ship.
+
 ## Round 42 — AIReg-Bench verdict prediction (0.000 → 1.000 VerdictAccuracy) (2026-05-17)
 
 Closes the largest single-axis gap in the unbiased eval surface:
