@@ -31,15 +31,21 @@ def is_ppr_available() -> bool:
 _ART_NUM_RE = re.compile(r"Art(?:icle|\.)\s+(\d+)", re.I)
 
 
-def _seed_nums(seed_articles: list[str]) -> list[int]:
-    nums: list[int] = []
+def _seed_nums(seed_articles: list[str]) -> list[str]:
+    """Extract article numbers as STRINGS.
+
+    R39 eng-review F1: the Neo4j seeder stores ``Article.number`` as a
+    string (``"6"``, ``"50"``). Cypher comparison ``"6" IN [6, 7]`` is
+    FALSE — the previous int-typed return silently returned zero
+    candidates from every PPR query.
+    """
+    nums: list[str] = []
     for s in seed_articles or []:
         m = _ART_NUM_RE.search(s)
         if m:
-            try:
-                nums.append(int(m.group(1)))
-            except ValueError:
-                continue
+            num_str = m.group(1)
+            if num_str and num_str not in nums:
+                nums.append(num_str)
     return nums
 
 

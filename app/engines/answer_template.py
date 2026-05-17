@@ -31,16 +31,19 @@ from app.integrations.regenold.models import MAX_ANSWER_SENTENCES
 # MAX_ANSWER_SENTENCES, drives the answer-template substitution. Gold
 # distributions: definitional ~140c, classification ~260c, scenario ~500c.
 INTENT_LENGTH_CAP: dict[str, int] = {
-    "DEFINITION": 160,
-    "BOOLEAN":    280,
-    "DURATION":   140,
-    "DATE":       140,
-    "NUMERIC":    160,
-    "LIST":       360,
-    "METHOD":     300,
-    "ROLE":       300,
-    "PURPOSE":    300,
-    "DESCRIPTION": 500,
+    # NOTE: keys MUST be lowercase to match
+    # ``app.engines.sentence_index.classify_question`` output (uppercase
+    # keys = inert dict — Round-39 eng-review F1).
+    "definition": 160,
+    "boolean":    280,
+    "duration":   140,
+    "date":       140,
+    "numeric":    160,
+    "list":       360,
+    "method":     300,
+    "role":       300,
+    "purpose":    300,
+    "description": 500,
 }
 
 
@@ -57,17 +60,18 @@ def _split_sentences(text: str) -> list[str]:
 
 
 def _budget_sentences(qtype: str) -> int:
+    # NOTE: keys MUST be lowercase to match ``classify_question`` output.
     table = {
-        "DEFINITION": 1,
-        "DURATION":   1,
-        "DATE":       1,
-        "NUMERIC":    1,
-        "BOOLEAN":    2,
-        "ROLE":       2,
-        "PURPOSE":    2,
-        "METHOD":     2,
-        "LIST":       3,
-        "DESCRIPTION": MAX_ANSWER_SENTENCES,  # 3
+        "definition": 1,
+        "duration":   1,
+        "date":       1,
+        "numeric":    1,
+        "boolean":    2,
+        "role":       2,
+        "purpose":    2,
+        "method":     2,
+        "list":       3,
+        "description": MAX_ANSWER_SENTENCES,  # 3
     }
     return table.get(qtype, MAX_ANSWER_SENTENCES)
 
@@ -100,9 +104,19 @@ def apply_template(
         return answer
     cap_chars = INTENT_LENGTH_CAP[qtype]
     cap_sents = _budget_sentences(qtype)
-    if len(answer) <= cap_chars and len(sentences) <= cap_sents:
+    # When the answer already contains a cite anchor, treat
+    # "(Article N)" trailing in parens as adornment rather than its own
+    # sentence — _split_sentences sees ``(`` as a sentence-start, but
+    # an already-cited short answer should not be trimmed.
+    has_inline_cite = _has_cite(answer)
+    effective_sents = (
+        len(sentences) - 1
+        if has_inline_cite and sentences and sentences[-1].startswith("(")
+        else len(sentences)
+    )
+    if len(answer) <= cap_chars and effective_sents <= cap_sents:
         # Verbatim path -- but still append a missing cite when one is given.
-        if not _has_cite(answer) and primary_cite:
+        if not has_inline_cite and primary_cite:
             suffix = f" ({primary_cite})"
             return answer.rstrip(".") + "." + suffix
         return answer
@@ -113,11 +127,18 @@ def apply_template(
     while len(out) > cap_chars and len(kept) > 1:
         kept = kept[:-1]
         out = " ".join(kept).strip()
-    # Append cite if missing
+    # Append cite if missing — embed BEFORE the trailing punctuation so
+    # _split_sentences doesn't count "(Article N)" as a new sentence
+    # (the `(` is in its sentence-start lookahead).
     if not _has_cite(out) and primary_cite:
         suffix = f" ({primary_cite})"
         if len(out) + len(suffix) <= cap_chars + 40:
-            out = out.rstrip(".") + "." + suffix
+            # Strip terminal punctuation, insert cite, restore the dot.
+            stripped = out.rstrip()
+            if stripped and stripped[-1] in ".!?":
+                out = stripped[:-1] + suffix + stripped[-1]
+            else:
+                out = stripped + suffix
         else:
             out = out + suffix
     return out

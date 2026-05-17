@@ -193,7 +193,10 @@ def _auto_seed_disabled_by_env() -> bool:
     raw = os.getenv("NEO4J_AUTO_SEED")
     if raw is None:
         return False
-    return raw.strip().lower() in {"0", "false", "no", "off", ""}
+    # R39 eng-review F4: empty string is NOT a disable signal —
+    # Railway / Docker `--env-file` overrides sometimes pass a blank
+    # value and the user expects the default (ON) to kick in.
+    return raw.strip().lower() in {"0", "false", "no", "off"}
 
 
 def _acquire_postgres_advisory_lock() -> object | None:

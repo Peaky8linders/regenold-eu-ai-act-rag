@@ -223,9 +223,17 @@ def _is_real_ref(internal_ref: str) -> bool:
 # path length so the caller can split.
 #
 # Bound vars only — never string-format user input into Cypher.
+# R39 eng-review F6: previously matched only ``(a:Article)``, so Annex
+# seeds (Roman-numeral ``number`` like ``"III"``) were silently
+# dropped — even when an Annex was the top BM25 winner. Now matches
+# any seed node (Article or Annex) by number, and returns any
+# neighbour by number too. Annex III scenarios get their 2-hop
+# expansion back.
 _CYPHER_2HOP = """
-MATCH (a:Article)-[:CROSS_REFERENCES*1..2]-(b:Article)
-WHERE a.number IN $seed_nums AND a.number <> b.number
+MATCH (a)-[:CROSS_REFERENCES*1..2]-(b)
+WHERE a.number IN $seed_nums AND b.number IS NOT NULL
+  AND a.number <> b.number
+  AND (a:Article OR a:Annex) AND (b:Article OR b:Annex)
 RETURN DISTINCT b.number AS num,
        length(shortestPath((a)-[:CROSS_REFERENCES*]-(b))) AS hops
 ORDER BY hops, num

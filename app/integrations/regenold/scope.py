@@ -874,6 +874,28 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "fundamental rights": "Art. 27",
     "annex iv documentation": "Annex IV",
     "technical file": "Annex IV",
+    # ── R39 eng-review F3: clinical / medical transcription gap. The
+    # Regenold rules-PDF probe asks about doctor-patient transcription
+    # AI; pre-fix the engine never surfaced Annex III (essential public
+    # services — healthcare) for paraphrases like "physician-patient
+    # dialogue". Adding these keyword anchors lets the subpoint_emitter
+    # upgrade to Annex III.5 + Article 6.1 leaves on those questions.
+    "medical transcription": "Annex III",
+    "doctor-patient": "Annex III",
+    "doctor patient": "Annex III",
+    "physician-patient": "Annex III",
+    "physician patient": "Annex III",
+    "clinical conversation": "Annex III",
+    "clinical-conversation": "Annex III",
+    "medical conversation": "Annex III",
+    "patient consultation": "Annex III",
+    "medical consultation": "Annex III",
+    "ai scribe": "Annex III",
+    "medical record": "Annex III",
+    "patient record": "Annex III",
+    "health record": "Annex III",
+    "clinical dialogue": "Annex III",
+    "physician dialogue": "Annex III",
     # ── Round-2 anchor surfacing (Regenold competition gap-closers) ──
     # Each phrase below was a real eval failure — the question passed
     # scope but didn't surface a defensive citation because no keyword

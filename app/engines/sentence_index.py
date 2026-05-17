@@ -408,8 +408,15 @@ _QTYPE_PATTERNS: tuple[tuple[str, re.Pattern[str], re.Pattern[str]], ...] = (
 )
 
 
+@lru_cache(maxsize=2048)
 def classify_question(question: str) -> str:
-    """Return the question type tag, or ``"description"`` as fallback."""
+    """Return the question type tag, or ``"description"`` as fallback.
+
+    R39 eng-review F4: cached because the route calls this 3-4 times per
+    request (extractive QA path, ref-budget block, answer-template
+    block, sometimes inside ``select_answer_sentence``). Output is pure
+    function of input.
+    """
     q = (question or "").strip().lower()
     for name, q_pattern, _ in _QTYPE_PATTERNS:
         if q_pattern.search(q):

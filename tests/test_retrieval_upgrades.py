@@ -283,8 +283,14 @@ class TestRoleObligationWireContract:
         )
         assert r.status_code == 200
         refs = r.json().get("references", [])
-        assert "Article 53" in refs
-        assert "Article 55" in refs
+        # R39 eng-review F2 + R38 A1: parent re-collapse drops
+        # ``Article 53`` when a leaf like ``Article 53.1`` is also
+        # present (the leaf is more specific per spec rule for "minimal
+        # set"). Accept either form for both Art. 53 and Art. 55.
+        assert any(r == "Article 53" or r.startswith("Article 53.") for r in refs), \
+            f"Article 53 (or leaf) missing; got {refs}"
+        assert any(r == "Article 55" or r.startswith("Article 55.") for r in refs), \
+            f"Article 55 (or leaf) missing; got {refs}"
 
 
 class TestBM25FallbackWireContract:
