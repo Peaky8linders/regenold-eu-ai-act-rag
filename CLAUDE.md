@@ -740,6 +740,190 @@ penalty when the gold answer's token shape favours redundancy.
 4. **No regressions** — both layers honour the Round-16 finding (never
    empty the answer) and the Round-28 cache-poisoning invariants.
 
+## Round 45 — Autonomous /plan-eng-review across 4 angles; 5 P0 + 4 P1 release-readiness fixes (2026-05-18)
+
+Four parallel comprehensive reviewers ran end-to-end against the
+R40-R44 surface (production-deploy / dead-code-drift / coverage-data-
+integrity / performance). 35+ findings; **5 P0 release-blockers + 4
+P1 hardening** landed in one round. Review docs at
+[`docs/reviews/R45_*_REVIEW.md`](docs/reviews/).
+
+### P0 production-deploy hardening
+
+* **A1 — Route was using `require_regenold_api_key` (strict auth).** The
+  route docstring + `.env.example` + rate-limit infra all assume
+  anonymous-friendly, but the strict dep returned 503 on every
+  unauthenticated request. The competition evaluator hitting the
+  public URL would have gotten nothing. Swapped to
+  `optional_regenold_api_key`; updated 3 existing integration tests
+  (missing-key now expects 200, unconfigured deploy 200,
+  unauthenticated 200 + writes to `anonymous:regenold` tenant).
+* **A2 — slowapi `memory://` + workers=2 doubled effective rate limit.**
+  Dropped `railway.toml` to workers=1 (competition traffic is low —
+  scaling vector is Redis-shared rate limits, not worker count) and
+  added a boot-time warning that fires if multi-worker is detected
+  alongside `memory://` storage.
+
+### P0 security — conversation-history injection across 11 more call sites
+
+R43 patched the conversation-history injection vulnerability in
+`predict_verdict` via `live_question_from()`. R45 Review C verified
+the SAME flaw persists in 11 OTHER classification call sites reading
+the flattened multi-turn `question`. Plant a fake prior USER turn
+declaring "We are deploying an AI for real-time remote biometric
+identification …" + live USER turn "preferred type of cheese?" →
+wire emitted Article 5.1.h prohibition verdict.
+
+**Fix**: Strategy from R43 retained — keep the security boundary at the
+ROUTE call site, not inside the classifiers. Compute
+`live_question = live_question_from(question)` once at the top of the
+post-engine pipeline and thread it to all 11 classification call sites
+(`classify_scenario_query`, `_check_safety_component_carve_out`,
+`scan_for_prohibitions`, `build_verdict_prefix`, `_clara_analyse`,
+`should_expand_for_question`, `expand_citations`, `classify_question`,
+`upgrade_references`, `_try_extractive_answer`,
+`_detect_classification_topic`). Also filter CLARA's `_clara_history`
+to `role == "user"` (defence-in-depth against the CLARA flattener).
+`live_question_from` itself hardened with a regex fallback
+(case/whitespace-tolerant `(?:^|\n)latest\s+question\s*:\s*`).
+
+### P0 performance — startup pre-warm eliminates cold-start outliers
+
+R45 Review D root-caused the recurring **480-700 ms max-latency
+outliers** that have appeared in every davidath bench since R31:
+three lazy index builds fire on the first 3-5 requests after a
+worker boot:
+
+* `_all_sentence_indexes` (~457 ms cold)
+* `build_definition_index` (~605 ms cold) — R44 new
+* `embeddings_index.warm_up` (~115 ms cold)
+
+**Fix**: Synchronous pre-warm at `app/main.py` boot — three helpers
+called in sequence, each fail-soft on asset absence. The original
+plan was a daemon-thread but measurements showed a daemon worsened
+max latency (GIL contention with the first request); synchronous
+~1.2 s boot is well inside Railway's 30 s healthcheck window and the
+first paying request lands on a warm engine. Opt-in async mode via
+`REGENOLD_PREWARM_MODE=async`. Idempotent — `_PREWARM_STARTED` latch
+prevents double-firing.
+
+**davidath bench `max` latency: 619 ms → 71 ms (-88%)**. p50 essentially
+flat, every correctness axis byte-for-byte unchanged.
+
+### P0 data integrity — Annex XIV reachable end-to-end
+
+R41 added `Annex XIV` (notified-body codes, incl. AIH 0401 "Agentic
+AI") to `app/data/article_existence.py::_ANNEXES`, but R45 Review C
+verified that 5 downstream consumers still assumed Annex I-XIII:
+
+1. `app/integrations/regenold/scope.py` — Roman-numeral catalog hard-
+   coded to xiii; rejected Annex XIV as `NON_EXISTENT_ARTICLE`.
+2. Refusal copy in `scope.py` + `models.py` — said "13 annexes
+   (Annex I-XIII)".
+3. `app/data/graph_rag_prompts.py` — same hard-code.
+4. `app/data/eu_ai_act_corpus.py` — no prose entry for Annex XIV.
+5. `app/data/agentic_taxonomy.py::compound_risks_for_article("Annex
+   XIV")` returned `[]`. The R41 agentic surface was unreachable.
+
+**Fix**: All 5 consumers updated; the R41 verbatim Council compromise
+text for Annex XIV ported into `ARTICLE_FULL_TEXT` (1110 chars naming
+the AIP/AIB/AIH code families incl. AIH 0401 "Agentic AI"). Extended
+`is_agentic_ai_designation` to ALSO match natural-language forms
+(`"agentic ai"`, `"agentic-ai"`, etc) so a question about agentic AI
+without naming the AIH code still resolves. Wire round-trip now
+returns HTTP 200 with `references=["Annex XIV"]` on the question
+"What does Annex XIV say about AIH 0401 Agentic AI?".
+
+### P1 operational hardening
+
+* **A5 (R43-S3 deferred): NEO4J_URI password redaction.** New
+  `_redact_neo4j_uri(uri)` helper in `app/graph/client.py` strips
+  userinfo from `bolt(+s|+ssc)?://user:password@host` → `bolt://
+  [redacted]@host`. Applied at the driver-init log site + the
+  partial-seed-state log in `scripts/seed_neo4j_kb.py`.
+* **A6: Audit log severity.** R45 review found audit-chain failures
+  logged at DEBUG. With `LOG_LEVEL=INFO` default, operators saw
+  zero signal when Postgres audit writes failed — silently breaking
+  EU AI Act Art. 12 record-keeping. Promoted to `logger.warning`
+  with the exception class + truncated repr.
+* **A3 / A4: Boot path Neo4j observability.** Wrapped `KBMetadata`
+  pre-check + `_log_llm_provider_status` Neo4j probes in a wall-clock
+  timeout (default 3 s) via a bare daemon-thread + `threading.Event`.
+  On timeout, route to seed thread + log `metadata_precheck_timeout`.
+  Also distinguished Postgres connection failure from "another worker
+  has the lock" — now emits `auto_seed_blocked_postgres_unreachable`
+  instead of falsely reporting "skip-non-leader".
+* **A7: Audit tier derivation.** `tier="partner"` was hardcoded in
+  audit payloads. With Fix 1.1 swapping to optional auth, anonymous
+  requests were going to be mis-tagged as partner. New
+  `_resolve_audit_tier(api_key)` helper.
+
+### Bonus shipping
+
+* **A8: `app/logging.py` with `configure_logging()`** for JSON
+  structlog. Shipped the helper module.
+* **B5: Doc-drift cleanup.** `NEO4J_RUNBOOK.md`, `.env.example`,
+  `CLAUDE.md` R35/R32 sections — removed instructions to set
+  R40-baked env flags (`REGENOLD_GRAPH_2HOP` etc); replaced with
+  notes pointing to the R40 bake-in. `README.md` test count
+  pinned to "1500+ as of R45".
+* **B7: Stopword-vocabulary parity test.** R44's
+  `citation_faithfulness` copied stopwords from `kb_search.py`;
+  no test pinned the parity. Added `tests/test_r45_stopword_parity.py`
+  asserting set equality.
+
+### New tests (66 net)
+
+* `tests/test_r45_production_hardening.py` (13)
+* `tests/test_r45_history_injection.py` (9)
+* `tests/test_r45_prewarm.py` (13)
+* `tests/test_r45_neo4j_boot_timeout.py` (11)
+* `tests/test_r45_annex_xiv.py` (18)
+* `tests/test_r45_stopword_parity.py` (2)
+
+Total: 1527 baseline → **1591** (+66).
+
+### Final scorecard
+
+**Unbiased eval (r45-final):**
+
+| Surface | R44-final | R45-final | Δ |
+|---|---|---|---|
+| AIReg-Bench VerdictAccuracy | 1.000 | 1.000 | flat ✓ |
+| AIReg-Bench ArticleF1 | 0.870 | 0.870 | flat ✓ |
+| davidath holdout Ans Strict | 0.300 | 0.300 | flat ✓ |
+| davidath holdout Ref Strict | 0.4397 | 0.4397 | flat ✓ |
+| Regenold probe Overall RefStrict | 0.4704 | 0.4704 | flat ✓ |
+| Citation Faithfulness F1 | 0.959 | 0.959 | flat ✓ |
+| Refusal Correctness | 1.000 | 1.000 | flat ✓ |
+
+**davidath full bench (r45-final, 476 items):**
+
+| Axis | R44-final | R45-final | Δ |
+|------|---|---|---|
+| Ans / Ref / Tone / Multi-turn | flat | flat | byte-for-byte ✓ |
+| Latency p50 | 13.78 ms | 11.77 ms | -2.0 ms ✓ |
+| **Latency max** | **619.54 ms** | **70.99 ms** | **-88% ✓✓✓** |
+
+The R45 sprint closed **5 P0 release blockers + 4 P1 operational
+hardening items** and eliminated the recurring max-latency outlier
+that's appeared in every bench since R31. **The competition deploy
+is now reachable by anonymous evaluators**, the history-injection
+vector is closed across all 11 classification call sites, and the
+R41 Annex XIV / Agentic AI surface is queryable end-to-end.
+
+### Deferred to R46
+
+* B6 — duplicated compliance vocabulary across `compliance_verdict`,
+  `scope`, `ontology` (12-entry overlap measured).
+* B8 — Article-ref conversion inlined at 7 distinct call sites.
+* A10 (extended) — 5 dead modules / ~2,570 LOC (`task_router.py`,
+  `graph_aware_retrieval.py`, `cross_encoder_rerank.py`,
+  `eu_ai_act_tree.py`) recommended for conservative deletion.
+* C3 (extended) — 6 KB stubs reference sub-paragraphs absent from
+  corpus.
+* D2-D10 — micro-optimisations (regex compile in hot path, etc).
+
 ## Round 44 — Graph-RAG landscape survey + definition-graph expansion + citation-faithfulness / refusal-correctness eval surfaces (2026-05-18)
 
 Three parallel research agents surveyed: HuggingFace datasets for
@@ -1487,11 +1671,15 @@ fallback always serves requests regardless of seed outcome.
 Added `[deploy.envs]`:
 
 ```toml
-REGENOLD_GRAPH_2HOP = "1"   # graph expand on by default (R31.1 wins)
 NEO4J_AUTO_SEED     = "1"   # auto-seed on boot when NEO4J_URI is set
 ```
 
-Override either with `railway variables --set <KEY>=<value>`.
+Override with `railway variables --set <KEY>=<value>`.
+
+> R40 note: R36 originally also exported `REGENOLD_GRAPH_2HOP = "1"`
+> here. R40 baked the 2-hop expand into the deterministic code path,
+> so the flag is no longer read at runtime — kept out of the live
+> `railway.toml` snippet to avoid signalling drift.
 
 ## Round 35 — Neo4j graph integration (seeder + 2-hop expand + healthz) (2026-05-16)
 
@@ -1510,11 +1698,12 @@ Pushes the in-process KB into Neo4j via `MERGE` for idempotency:
 - 29 tests, all green.
 
 ### `app/engines/graph_expand_2hop.py` — 2-hop graph expansion (480 LOC)
-Env-gated `REGENOLD_GRAPH_2HOP=1`. When disabled (default), all functions
-short-circuit in 1 µs — zero bench impact confirmed. When enabled AND
+R35 originally shipped this env-gated behind `REGENOLD_GRAPH_2HOP=1`;
+**R40 baked it on** — the env-flag is no longer read at runtime. When
 Neo4j is reachable AND the seed has run, a 2-hop CROSS_REFERENCES
 traversal surfaces non-obvious connections that BM25 + 1-hop in-memory
-expansion miss. Cypher:
+expansion miss. When the graph is unreachable the path no-ops (the
+deterministic fallback always serves). Cypher:
 ```cypher
 MATCH (a:Article)-[:CROSS_REFERENCES*1..2]-(b:Article)
 WHERE a.number IN $seed_nums AND a.number <> b.number
@@ -1553,11 +1742,13 @@ write path).
 
 ### Honest expectations: where Neo4j helps vs doesn't
 
-**No competition-bench lift expected.** Verified: bench with
-`REGENOLD_GRAPH_2HOP=0` (default) is byte-for-byte identical to R34
-(Ans Strict 0.3062, Ref Loose 0.5509, Ref Strict 0.4372, latency p50
-6.76 ms). The davidath corpus is BM25-saturated; multi-hop expansion
-can't add precision-positive recall here.
+**No competition-bench lift expected.** Verified at R35: bench with
+the 2-hop expand disabled was byte-for-byte identical to R34 (Ans
+Strict 0.3062, Ref Loose 0.5509, Ref Strict 0.4372, latency p50 6.76
+ms). The davidath corpus is BM25-saturated; multi-hop expansion can't
+add precision-positive recall here. R40 baked the expand on
+unconditionally — the davidath result still reproduces because the
+path no-ops without a reachable Neo4j.
 
 **Where Neo4j moves the needle in production**:
 1. **Audit forensics** — `app/graph/reasoning.py` already has the
@@ -1589,10 +1780,12 @@ NEO4J_PASSWORD=<password> python -m scripts.seed_neo4j_kb
 
 # 3. Verify
 curl https://<app>.up.railway.app/healthz/graph
-
-# 4. Enable 2-hop expansion (after measuring impact)
-railway variables --set "REGENOLD_GRAPH_2HOP=1"
 ```
+
+> R40 note: the 2-hop expand is **baked on**. Earlier revisions of
+> this section instructed `railway variables --set
+> "REGENOLD_GRAPH_2HOP=1"` as step 4 — that env-flag is no longer
+> read at runtime. See the *Round 40 — bake-in* section below.
 
 ### Round 35 tests
 
@@ -1901,7 +2094,8 @@ behaviour identical to Round 31.2 on the davidath benchmark.
   AND the gatekeeper didn't fire, CLARA's `primary_articles[:2]` are
   prepended to the candidate citation list (deduplicated against
   existing candidates). Strictly additive — never displaces a winner.
-  Env-gated `REGENOLD_CLARA_VERDICT` (default `1`).
+  R32 shipped this env-gated behind `REGENOLD_CLARA_VERDICT=1`; **R40
+  baked it on** (the env-flag is no longer read at runtime).
 
 ### Live EUR-Lex scraper + pinned corpus
 
@@ -1936,8 +2130,10 @@ behaviour identical to Round 31.2 on the davidath benchmark.
   the embeddings module as a **second additive-dense path** (after
   the existing turboquant path). Sentence hits aggregate to
   article-level candidates, max sim per article, then `additive_dense_fill`
-  appends novel refs that BM25 didn't surface. Env-gated
-  `REGENOLD_EMBEDDINGS_INDEX` (default `1` when assets present).
+  appends novel refs that BM25 didn't surface. R32 shipped this
+  env-gated behind `REGENOLD_EMBEDDINGS_INDEX=1`; **R40 baked it on**
+  (the env-flag is no longer read at runtime — the embeddings module
+  no-ops automatically when assets are absent).
 * **Extractive-QA opt-in path**: a second integration in
   `_try_extractive_answer` would replace the engine's full-article prose
   with the top-similarity sentence. Round-32 bench measured this at
@@ -1992,12 +2188,17 @@ rerank can't add measurable recall. Round 32's wins land on:
 
 ### Production deploy guidance for Round 32
 
-* Set `REGENOLD_EMBEDDINGS_INDEX=1` (default) so the dense additive
-  path fires on production paraphrased queries. The assets ship in
+> R40 update: `REGENOLD_EMBEDDINGS_INDEX` and `REGENOLD_CLARA_VERDICT`
+> are no longer live env-flags — R40 baked both paths on
+> unconditionally. The guidance below is preserved for historical
+> context only; setting either env-var has no effect at runtime.
+
+* Historic: setting `REGENOLD_EMBEDDINGS_INDEX=1` enabled the dense
+  additive path; now always on. The assets ship in
   `app/engines/_assets/` and are ~1.8 MB total.
-* Set `REGENOLD_CLARA_VERDICT=1` (default) so the deterministic verdict
-  matrix fires on high-risk / GPAI cases the prohibited gatekeeper
-  doesn't cover.
+* Historic: setting `REGENOLD_CLARA_VERDICT=1` enabled the
+  deterministic verdict matrix; now always on. It fires on high-risk
+  / GPAI cases the prohibited gatekeeper doesn't cover.
 * Keep `REGENOLD_EXTRACT_EMBEDDINGS=0` (default) until benchmark
   evidence proves the conciseness-for-accuracy trade is favourable in
   your scoring rubric.

@@ -61,27 +61,65 @@ ANNEX_XIV_DESCRIPTION = (
 )
 
 
-def is_agentic_ai_designation(annex_xiv_code: str) -> bool:
-    """Return True iff ``annex_xiv_code`` is the canonical Agentic-AI code.
+#: Natural-language synonyms a partner or end-user can reasonably type to
+#: refer to the AIH 0401 designation without naming the literal code.
+#: R45 finding C4 — without these aliases, ``is_agentic_ai_designation``
+#: returned False for the very phrasings the wire would receive ("agentic
+#: ai", "agentic-ai system", "annex xiv agentic ai" etc.). All entries
+#: are stored as lower-case, whitespace-collapsed tokens so they compare
+#: cleanly against the normalised input.
+_AGENTIC_AI_NATURAL_FORMS: frozenset[str] = frozenset(
+    {
+        "aih 0401",
+        "aih0401",
+        "agentic ai",
+        "agentic-ai",
+        "agentic ai system",
+        "agentic-ai system",
+        "agentic ai systems",
+        "agentic-ai systems",
+        "agentic artificial intelligence",
+    }
+)
 
-    Matches ``"AIH 0401"`` (the post-Omnibus Annex XIV designation for
-    'Other emerging AI technologies including Agentic AI'). Case- and
-    whitespace-insensitive: ``"aih 0401"`` and ``" AIH  0401 "`` both
-    match. Returns False for the empty string, ``None``-like inputs,
-    and every other Annex XIV code (AIP / AIB rows + the AIH non-0401
-    rows).
+
+def is_agentic_ai_designation(annex_xiv_code: str) -> bool:
+    """Return True iff ``annex_xiv_code`` resolves to the Agentic-AI row.
+
+    Matches three flavours of the Annex XIV designation:
+
+    * The literal code ``"AIH 0401"`` (case- and whitespace-insensitive,
+      so ``"aih 0401"`` / ``" AIH  0401 "`` / ``"aih0401"`` all match).
+    * The natural-language label drawn from the Annex XIV description —
+      ``"agentic ai"``, ``"agentic-ai"``, ``"agentic ai system(s)"``,
+      ``"agentic artificial intelligence"``.
+
+    Returns False for the empty string, ``None``-like inputs, and every
+    other Annex XIV code (AIP / AIB rows + AIH non-0401 rows). R45
+    finding C4 widened this from "literal code only" so the wire scope
+    gate can detect Agentic-AI questions phrased without the code.
 
     Example:
         >>> is_agentic_ai_designation("AIH 0401")
         True
         >>> is_agentic_ai_designation("aih 0401")
         True
+        >>> is_agentic_ai_designation("agentic AI")
+        True
+        >>> is_agentic_ai_designation("Agentic-AI systems")
+        True
         >>> is_agentic_ai_designation("AIH 0301")  # generative AI / GPAI
         False
     """
     if not annex_xiv_code:
         return False
-    return " ".join(annex_xiv_code.split()).upper() == ANNEX_XIV_CODE
+    # Whitespace-collapse + upper for the literal-code comparison.
+    collapsed_upper = " ".join(annex_xiv_code.split()).upper()
+    if collapsed_upper == ANNEX_XIV_CODE:
+        return True
+    # Whitespace-collapse + lower for the natural-language alias check.
+    collapsed_lower = " ".join(annex_xiv_code.split()).lower()
+    return collapsed_lower in _AGENTIC_AI_NATURAL_FORMS
 
 
 class CompoundRiskType(str, Enum):
@@ -608,7 +646,26 @@ def compound_risks_for_article(article_ref: str) -> list[CompoundRiskEntry]:
     """Return all compound-risk entries that ground to ``article_ref``.
 
     Matches on prefix so ``Art. 9`` matches both ``Art. 9`` and ``Art. 9(2)(a)``.
+
+    Special-case for Annex XIV (R41 / Digital Omnibus, R45 finding C3):
+    the Annex XIV "AIH 0401 — Other emerging AI technologies including
+    Agentic AI" code is the regulatory hook for THIS taxonomy. None of
+    the four axes' ``article_refs`` list ``Annex XIV`` literally — that
+    would be circular — but every consumer that asks "what compound
+    risks does Annex XIV ground?" expects the full four-axis surface.
+    Returning ``[]`` (which is what the prefix match yields) made the
+    Annex XIV ↔ taxonomy link unusable from downstream call-sites; we
+    now route any Annex XIV (or AIH 0401, or natural-language
+    "Agentic AI") reference to all four risk entries.
     """
+    # R45 — Annex XIV / AIH 0401 / "Agentic AI" → return all four axes.
+    # ``is_agentic_ai_designation`` matches both the literal code and
+    # the natural-language label; we also accept the bare annex ref.
+    normalised = (article_ref or "").strip()
+    if normalised:
+        bare_annex = normalised.split("(")[0].split(".")[0].strip()
+        if bare_annex.lower() == "annex xiv" or is_agentic_ai_designation(normalised):
+            return list(COMPOUND_RISK_TYPES)
     return [
         entry
         for entry in COMPOUND_RISK_TYPES

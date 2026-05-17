@@ -1,5 +1,23 @@
 [deploy]
-startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2"
+# R45 Fix 1.2 — single worker by default.
+#
+# slowapi's default ``storage_uri="memory://"`` stores rate-limit counters
+# in process-local memory. With ``--workers N`` each fork has its OWN
+# counter dict, so the effective per-IP limit is multiplied by N. For the
+# Regenold competition deploy, anonymous traffic is bucketed at 30/min
+# per IP — running 2 workers would silently allow 60/min, defeating the
+# DoS guard.
+#
+# Two paths to multi-worker:
+#  1. Set ``P2P_RATELIMIT_STORAGE_URI=redis://...`` in Railway env, then
+#     raise workers here. The slowapi shared-state path balances counters
+#     across forks.
+#  2. Accept the doubled effective limit (low-traffic competition deploy,
+#     not a public-internet API).
+#
+# Competition traffic is low (evaluator submits batched queries, not a
+# crowd of partners), so one worker is the safest default.
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1"
 healthcheckPath = "/healthz"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"

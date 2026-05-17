@@ -36,7 +36,7 @@ Grounded EU AI Act Q&A — a FastAPI service that answers regulatory questions w
             │ │ additive recall              ││  • sub-ms warm queries
             │ └──────────────────────────────┘│
             │ ┌──────────────────────────────┐│  app/engines/graph_*.py
-            │ │ Neo4j: 2-hop xref expand     ││  • 113 articles + 13 annexes
+            │ │ Neo4j: 2-hop xref expand     ││  • 113 articles + 14 annexes
             │ │ + Personalized PageRank      ││    + 180 recitals + 68 defs
             │ │ + PathRAG (Jaccard prune)    ││    + 351 typed edges
             │ └──────────────────────────────┘│
@@ -115,7 +115,8 @@ py -3.12 -m venv .venv
 # Run (deterministic mode — no LLM required)
 .venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8002
 
-# Run the full pytest suite (~1300 tests)
+# Run the full pytest suite (1500+ tests as of R45 — see CHANGELOG for the
+# date-pinned count; the floor only ever grows, new rounds add coverage).
 .venv\Scripts\python.exe -m pytest -q
 
 # Run the canonical competition benchmark (476 items)
@@ -137,7 +138,7 @@ py -3.12 -m venv .venv
 | Neo4j PPR + PathRAG | [`app/engines/graph_ppr.py`](app/engines/graph_ppr.py), [`app/engines/path_rag.py`](app/engines/path_rag.py) |
 | Sub-point emitter | [`app/data/subpoint_emitter.py`](app/data/subpoint_emitter.py) |
 | Answer template + tone guard | [`app/engines/answer_template.py`](app/engines/answer_template.py), [`app/integrations/regenold/tone_guard.py`](app/integrations/regenold/tone_guard.py) |
-| KB (113 articles + 13 annexes) | [`app/data/kb.py`](app/data/kb.py), [`app/data/article_existence.py`](app/data/article_existence.py) |
+| KB (113 articles + 14 annexes) | [`app/data/kb.py`](app/data/kb.py), [`app/data/article_existence.py`](app/data/article_existence.py) |
 | Audit chain | [`app/evidence/store.py`](app/evidence/store.py) |
 | Evals | [`evals/bench/`](evals/bench/), [`evals/regenold/`](evals/regenold/) |
 | Partner docs | [`docs/partners/regenold/`](docs/partners/regenold/) |

@@ -15,16 +15,21 @@ def _messages(content: str) -> list[dict[str, str]]:
     return [{"role": "user", "content": content}]
 
 
-def test_regenold_endpoint_missing_key_returns_401() -> None:
-    """Auth is required — a request with no X-Regenold-Api-Key header must return 401."""
+def test_regenold_endpoint_missing_key_returns_200() -> None:
+    """R45 Fix 1.1 — auth is OPTIONAL.
+
+    The Regenold competition deploy must accept anonymous traffic (the
+    evaluator submits without a partner key). A request with no header
+    must NOT be rejected; it returns 200 and lands in the anonymous
+    rate-limit bucket.
+    """
     settings.regenold.api_key = SecretStr("regenold-test-key")
     c = _client()
     r = c.post(
         "/api/v1/regenold/eu-ai-act/ask",
         json=_messages("What does EU AI Act Art. 13(1)(a) require?"),
     )
-    assert r.status_code == 401, r.json()
-    assert r.json()["detail"]["code"] == "regenold_api_key_missing"
+    assert r.status_code == 200, r.json()
 
 
 def test_regenold_endpoint_rejects_invalid_key() -> None:
@@ -43,11 +48,13 @@ def test_regenold_endpoint_rejects_invalid_key() -> None:
     assert r.status_code == 403
 
 
-def test_regenold_endpoint_unconfigured_deploy_returns_503() -> None:
-    """Deployment with no configured key → 503 (integration not provisioned).
+def test_regenold_endpoint_unconfigured_deploy_returns_200() -> None:
+    """R45 Fix 1.1 — unconfigured deploy serves anonymous traffic.
 
-    The strict dep raises 503 when ``_configured_key()`` is None so the
-    operator is alerted that the partner key has not been set.
+    With the optional-auth swap, a deploy without ``P2P_REGENOLD_API_KEY``
+    must still respond 200 to anonymous traffic. The previous 503 path
+    blocked the competition evaluator entirely until the partner key was
+    provisioned — undesirable for a public competition deliverable.
     """
     settings.regenold.api_key = None  # Unconfigured deploy
     try:
@@ -57,8 +64,8 @@ def test_regenold_endpoint_unconfigured_deploy_returns_503() -> None:
             headers={"X-Regenold-Api-Key": "anything-since-no-config"},
             json=_messages("Summarise EU AI Act Art. 13."),
         )
-        assert r.status_code == 503, r.json()
-        assert r.json()["detail"]["code"] == "regenold_not_configured"
+        # Anonymous-allowed: header is ignored when no key is configured.
+        assert r.status_code == 200, r.json()
     finally:
         # Reset for the rest of the suite which expects a configured key.
         settings.regenold.api_key = SecretStr("regenold-test-key")
@@ -566,24 +573,34 @@ def test_dynamic_limit_resolves_60_for_authed_30_for_anon() -> None:
     assert _regenold_dynamic_limit("unknown-prefix:zzz") == "30/minute"
 
 
-def test_unauthenticated_request_returns_401_and_writes_no_chain_entry() -> None:
-    """Auth is required — a no-header request is rejected before touching the chain."""
+def test_unauthenticated_request_returns_200_and_writes_anonymous_chain_entry() -> None:
+    """R45 Fix 1.1 + Fix 1.5 — anonymous request returns 200; audit
+    chain entry lands under ``anonymous:regenold`` tenant (NOT partner).
+    """
     from app.evidence.store import get_evidence_store
 
     settings.regenold.api_key = SecretStr("regenold-test-key")
     store = get_evidence_store()
     before_partner = len(list(store.get_chain(tenant_id="partner:regenold", limit=1000)))
+    before_anon = len(list(store.get_chain(tenant_id="anonymous:regenold", limit=1000)))
 
     c = _client()
     r = c.post(
         "/api/v1/regenold/eu-ai-act/ask",
         json=_messages("Summarise EU AI Act Art. 26."),
     )
-    assert r.status_code == 401, r.json()
+    assert r.status_code == 200, r.json()
 
-    # Dep rejects before the handler runs, so no chain entry should be written.
+    # The partner tenant_id must NOT receive this row (Fix 1.5 contract:
+    # anonymous traffic no longer mis-tagged as partner).
     after_partner = len(list(store.get_chain(tenant_id="partner:regenold", limit=1000)))
-    assert after_partner == before_partner, "chain entry written despite 401 rejection"
+    assert after_partner == before_partner, (
+        "anonymous request wrote into partner:regenold tenant — tier mis-tag"
+    )
+
+    # The anonymous tenant_id must have a new row.
+    after_anon = len(list(store.get_chain(tenant_id="anonymous:regenold", limit=1000)))
+    assert after_anon > before_anon, "no anonymous:regenold chain entry written"
 
 
 def test_authenticated_request_writes_partner_tenant_chain_entry() -> None:

@@ -14,7 +14,7 @@ Five refusal classes are surfaced (with distinct copy):
   / ISO 27001 questions with no AI Act anchor.
 * ``non_existent_article``— ``Art. 200``, ``Annex XX``, ``Annex 99``
   references the regulation doesn't have. Refusal copy includes the
-  real upper bound (113 articles, 13 annexes) + closest valid
+  real upper bound (113 articles, 14 annexes) + closest valid
   neighbours so the partner sees an actionable signal.
 * ``conversational``      — small talk, greetings, generic-knowledge
   questions ("what's the weather", "capital of France"). Refusal
@@ -28,7 +28,7 @@ Five refusal classes are surfaced (with distinct copy):
 
 Scope IS-IN-SCOPE rules:
 
-* Mentions an Article number 1-113 OR Annex I-XIII (case-insensitive,
+* Mentions an Article number 1-113 OR Annex I-XIV (case-insensitive,
   via :func:`extract_referenced_articles`).
 * Mentions any AI Act anchor keyword (deployer / provider / GPAI /
   high-risk / FRIA / Annex III / etc — see :data:`_AI_ACT_ANCHORS`).
@@ -122,7 +122,8 @@ _ARTICLE_REF_RE = re.compile(
 _ARTICLE_TAIL_NUM_RE = re.compile(r"-?\d{1,3}[a-z]?", re.IGNORECASE)
 # Match `Annex IV`, `Annex 99`, `annex iii`, etc. Captures group 1 =
 # raw number/Roman text after `Annex `. The validator below interprets
-# Roman numerals 1-13 OR Arabic numerals (rejected).
+# Roman numerals 1-14 OR Arabic numerals (rejected). R41 / Omnibus
+# adds Annex XIV (notified-body designation codes).
 _ANNEX_REF_RE = re.compile(
     r"\bAnnex\s+([IVXLCDMivxlcdm]+|\d{1,3})\b",
     re.IGNORECASE,
@@ -133,6 +134,10 @@ _ROMAN_NUMERAL_VALUES = {
     "i": 1, "ii": 2, "iii": 3, "iv": 4, "v": 5,
     "vi": 6, "vii": 7, "viii": 8, "ix": 9, "x": 10,
     "xi": 11, "xii": 12, "xiii": 13,
+    # R41 / Omnibus — Annex XIV (notified-body designation codes
+    # incl. AIH 0401 "Agentic AI"). The regulation surface now has
+    # 14 annexes; consumers iterating Annex I..XIII must include XIV.
+    "xiv": 14,
 }
 
 
@@ -140,8 +145,9 @@ def _roman_to_int(s: str) -> int | None:
     """Tiny Roman-numeral validator covering the ranges in the EU AI Act.
 
     Returns ``None`` when ``s`` is malformed (case-insensitive). Only
-    handles values 1-13 — the regulation has 13 annexes; we don't need
-    a generic Roman parser.
+    handles values 1-14 — the regulation has 14 annexes post-R41
+    (Annex I..XIII baseline + Annex XIV notified-body codes); we don't
+    need a generic Roman parser.
     """
     return _ROMAN_NUMERAL_VALUES.get(s.lower())
 
@@ -347,7 +353,7 @@ def extract_referenced_articles(text: str) -> tuple[tuple[str, ...], tuple[str, 
             continue
         roman_int = _roman_to_int(raw)
         if roman_int is None:
-            # Not a valid Roman numeral in the 1-13 range — definitely unknown.
+            # Not a valid Roman numeral in the 1-14 range — definitely unknown.
             ref = f"Annex {raw.upper()}"
             if ref not in unknown:
                 unknown.append(ref)
@@ -778,6 +784,9 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "annex xi": "Annex XI",
     "annex xii": "Annex XII",
     "annex xiii": "Annex XIII",
+    # R41 / Omnibus — notified-body designation codes (AIP / AIB / AIH
+    # incl. AIH 0401 "Agentic AI").
+    "annex xiv": "Annex XIV",
     "post-market monitoring": "Art. 72",
     "pmmp": "Art. 72",
     "post-market monitoring plan": "Art. 72",
@@ -1972,13 +1981,14 @@ def _format_neighbour_articles(unknown: tuple[str, ...]) -> str:
 
     For an unknown ``Art. NNN``, surface the closest valid article
     numbers — this turns a generic "doesn't exist" into an actionable
-    "did you mean Art. 99 / 113?". Annex unknowns get a static "I-XIII"
-    hint because there are only 13 valid annexes.
+    "did you mean Art. 99 / 113?". Annex unknowns get a static "I-XIV"
+    hint because there are only 14 valid annexes (Annex XIV added by
+    R41 / Omnibus for notified-body designation codes).
     """
     suggestions: list[str] = []
     for ref in unknown:
         if ref.startswith("Annex "):
-            suggestions.append("Annex I through Annex XIII")
+            suggestions.append("Annex I through Annex XIV")
             break  # No need to repeat for multiple annex misses
     art_misses = [r for r in unknown if r.startswith("Art. ")]
     for ref in art_misses:
@@ -2012,11 +2022,12 @@ def refusal_copy_for(verdict: ScopeVerdict) -> str:
     """
     if verdict.reason == ScopeReason.NON_EXISTENT_ARTICLE:
         bad = ", ".join(verdict.unknown_articles)
-        # The regulation has 113 numbered articles + 13 Annexes (I-XIII).
+        # The regulation has 113 numbered articles + 14 Annexes (I-XIV)
+        # post-R41 / Omnibus (Annex XIV adds notified-body codes).
         suggestion = _format_neighbour_articles(verdict.unknown_articles)
         return (
             f"{bad} does not appear in the EU AI Act (Regulation 2024/1689). "
-            f"The regulation has 113 numbered articles and 13 annexes (Annex I-XIII).{suggestion}"
+            f"The regulation has 113 numbered articles and 14 annexes (Annex I-XIV).{suggestion}"
         ).strip()
 
     if verdict.reason == ScopeReason.OTHER_REGULATION:

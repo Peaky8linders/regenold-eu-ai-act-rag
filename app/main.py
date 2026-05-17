@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any
+import threading as _threading
+import time
+from typing import Any, Callable, TypeVar
 
 from fastapi import FastAPI
 from slowapi.errors import RateLimitExceeded
@@ -20,6 +22,76 @@ from app.rate_limit import limiter, rate_limit_handler
 from app.routes.regenold import regenold_router
 
 logger = logging.getLogger(__name__)
+
+# Wall-clock cap for any blocking call that hits Neo4j on the BOOT path.
+# Railway's healthcheck window is 30 s; the neo4j driver's default
+# connection timeout is 30 s. A 3 s budget per probe means even if
+# every boot-time probe fans out (LLM log, auto-seed metadata, GDS
+# probes) we stay well inside the healthcheck budget. The seed thread
+# itself is unbounded (it's a daemon that runs in the background) —
+# only the synchronous boot calls need the cap.
+_BOOT_NEO4J_TIMEOUT_S = 3.0
+
+T = TypeVar("T")
+
+
+def _run_with_timeout(
+    fn: Callable[[], T],
+    *,
+    timeout_s: float | None = None,
+    label: str = "neo4j_boot_probe",
+) -> tuple[bool, T | None, str]:
+    """Run ``fn`` in a worker thread with a wall-clock cap.
+
+    Returns ``(ok, value_or_none, status)`` where ``status`` is one of:
+
+    * ``"ok"`` — function returned within budget; ``value`` is its return.
+    * ``"timeout"`` — wall-clock cap hit; ``value`` is ``None``.
+    * ``"error"`` — function raised; ``value`` is ``None`` and the
+      exception message is logged at DEBUG.
+
+    When ``timeout_s`` is ``None`` (the default) we resolve the module-
+    level :data:`_BOOT_NEO4J_TIMEOUT_S` at call time so test harnesses
+    that monkeypatch the constant actually take effect on every probe.
+
+    Uses a bare daemon :class:`threading.Thread` rather than
+    :class:`concurrent.futures.ThreadPoolExecutor` because the latter's
+    ``shutdown(wait=False)`` still waits for in-progress workers in
+    Python 3.9+ — fatal here since the whole point is to abandon a
+    hung Neo4j call. With a bare daemon thread, when the parent
+    returns the orphan thread keeps running in the background (the
+    driver's own I/O timeout will reap it) but the parent's boot
+    path is not blocked.
+    """
+    # Resolve the budget at CALL time, not at function-definition
+    # time — a test that monkeypatches ``_BOOT_NEO4J_TIMEOUT_S`` to
+    # 0.3 s must take effect on every call.
+    budget = timeout_s if timeout_s is not None else _BOOT_NEO4J_TIMEOUT_S
+
+    result: dict[str, Any] = {"value": None, "exc": None}
+    done = _threading.Event()
+
+    def _runner() -> None:
+        try:
+            result["value"] = fn()
+        except BaseException as exc:  # noqa: BLE001 — must catch SystemExit too
+            result["exc"] = exc
+        finally:
+            done.set()
+
+    worker = _threading.Thread(
+        target=_runner, name=label, daemon=True
+    )
+    worker.start()
+    if not done.wait(timeout=budget):
+        # The worker is still running; abandon it. It's a daemon so
+        # process exit won't wait, and the underlying Neo4j driver
+        # has its own connect_timeout that will eventually reap it.
+        return False, None, "timeout"
+    if result["exc"] is not None:
+        logger.debug("%s raised: %s", label, result["exc"])
+        return False, None, "error"
+    return True, result["value"], "ok"
 
 # Fail-loud at module-import on a typo in P2P_GRAPH_RAG_PROVIDER. Without
 # this, a typo like "anthropc" silently degrades every request to the
@@ -116,63 +188,249 @@ def _log_llm_provider_status() -> None:
     # Mirror the LLM startup log. Operators who set ``NEO4J_URI`` want a
     # single boot-log line confirming the graph is reachable AND seeded,
     # without having to curl ``/healthz/graph`` from inside the cluster.
-    # We deliberately keep the failure path quiet (one warning, no traceback)
-    # so a misconfigured Neo4j never blocks startup — the engine just falls
-    # back to its deterministic KB path.
+    #
+    # Every Neo4j call below is wrapped in ``_run_with_timeout`` so an
+    # unreachable graph (driver default connection_timeout is 30 s)
+    # cannot stall uvicorn boot past Railway's 30 s healthcheck budget.
+    # On timeout we emit a single warning and move on — the deterministic
+    # KB path keeps serving requests regardless.
     if os.getenv("NEO4J_URI"):
-        try:
-            from app.graph.client import get_graph_client
-            _gc = get_graph_client()
-            if _gc.enabled:
-                _hc = _gc.health_check()
-                if _hc.get("status") == "healthy":
-                    try:
-                        _stats = _gc.get_stats()
-                        # Probe + cache GDS status once at boot so the
-                        # log line, the healthz handler, and downstream
-                        # PPR / PathRAG consumers all agree.
-                        try:
-                            _gds_ok, _proj_ok = _resolve_gds_status(_gc)
-                        except Exception as _ge:  # noqa: BLE001
-                            logger.debug(
-                                "regenold.startup gds probe failed: %s", _ge
-                            )
-                            _gds_ok, _proj_ok = False, False
-                        logger.info(
-                            "regenold.startup graph_enabled=True "
-                            "seed_version=%s node_count=%d edge_count=%d "
-                            "gds_available=%s gds_projection_exists=%s",
-                            _stats.seed_version or "<unset>",
-                            _stats.total_nodes,
-                            _stats.total_edges,
-                            _gds_ok,
-                            _proj_ok,
-                        )
-                    except Exception as _se:  # noqa: BLE001
-                        logger.warning(
-                            "regenold.startup graph_enabled=True "
-                            "stats_unavailable=%s",
-                            _se,
-                        )
-                else:
+        ok, _gc, status = _run_with_timeout(
+            lambda: __import__(
+                "app.graph.client", fromlist=["get_graph_client"]
+            ).get_graph_client(),
+            label="neo4j_boot_get_client",
+        )
+        if not ok or _gc is None:
+            logger.warning(
+                "regenold.startup graph probe %s within %.1fs — engine will "
+                "use deterministic fallback",
+                "timed out" if status == "timeout" else "failed",
+                _BOOT_NEO4J_TIMEOUT_S,
+            )
+        elif _gc.enabled:
+            ok_hc, _hc, status_hc = _run_with_timeout(
+                lambda c=_gc: c.health_check(),
+                label="neo4j_boot_health_check",
+            )
+            if not ok_hc or _hc is None:
+                logger.warning(
+                    "regenold.startup graph health_check %s within %.1fs "
+                    "— engine will use deterministic fallback",
+                    "timed out" if status_hc == "timeout" else "failed",
+                    _BOOT_NEO4J_TIMEOUT_S,
+                )
+            elif _hc.get("status") == "healthy":
+                ok_st, _stats, _ = _run_with_timeout(
+                    lambda c=_gc: c.get_stats(),
+                    label="neo4j_boot_get_stats",
+                )
+                if not ok_st or _stats is None:
                     logger.warning(
-                        "regenold.startup graph_enabled=True but health_check "
-                        "returned status=%s — engine will use deterministic "
-                        "fallback. Hit /healthz/graph for details.",
-                        _hc.get("status"),
+                        "regenold.startup graph_enabled=True stats probe "
+                        "timed out or failed within %.1fs",
+                        _BOOT_NEO4J_TIMEOUT_S,
+                    )
+                else:
+                    ok_gds, gds_pair, _ = _run_with_timeout(
+                        lambda c=_gc: _resolve_gds_status(c),
+                        label="neo4j_boot_gds_probe",
+                    )
+                    if ok_gds and gds_pair is not None:
+                        _gds_ok, _proj_ok = gds_pair
+                    else:
+                        _gds_ok, _proj_ok = False, False
+                    logger.info(
+                        "regenold.startup graph_enabled=True "
+                        "seed_version=%s node_count=%d edge_count=%d "
+                        "gds_available=%s gds_projection_exists=%s",
+                        _stats.seed_version or "<unset>",
+                        _stats.total_nodes,
+                        _stats.total_edges,
+                        _gds_ok,
+                        _proj_ok,
                     )
             else:
                 logger.warning(
-                    "regenold.startup NEO4J_URI is set but the graph client "
-                    "did not activate (driver missing or connect failed). "
-                    "Engine will use deterministic fallback."
+                    "regenold.startup graph_enabled=True but health_check "
+                    "returned status=%s — engine will use deterministic "
+                    "fallback. Hit /healthz/graph for details.",
+                    _hc.get("status"),
                 )
-        except Exception as _exc:  # noqa: BLE001 — boot log must never block startup
+        else:
             logger.warning(
-                "regenold.startup graph probe failed: %s — engine will use "
-                "deterministic fallback",
-                _exc,
+                "regenold.startup NEO4J_URI is set but the graph client "
+                "did not activate (driver missing or connect failed). "
+                "Engine will use deterministic fallback."
             )
+
+
+# ─── Cold-start pre-warm (R45 Fix 3.1) ───────────────────────────────────
+#
+# Three lazy index builds fire on the FIRST 3-5 requests after a worker
+# boot, costing ~1.2 s of latency that hits paying users:
+#
+#   * ``_all_sentence_indexes`` in app/engines/sentence_index.py (~457 ms)
+#   * ``build_definition_index`` in app/engines/definition_expand.py (~605 ms)
+#   * ``embeddings_index.warm_up`` in app/engines/embeddings_index.py (~115 ms)
+#
+# The pre-warm hook fires all three in a BACKGROUND daemon thread so
+# they complete before the first paying request lands. Uvicorn boot is
+# never blocked — the thread is fire-and-forget. Critically, every
+# helper is wrapped in try/except: an asset-missing path (Windows dev
+# without embeddings assets, Linux without the corpus) must log but
+# never crash the thread, because the deterministic engine still works
+# without these indexes pre-built.
+
+_PREWARM_LOCK = _threading.Lock()
+_PREWARM_STARTED = False
+
+
+def _prewarm_sentence_index() -> None:
+    """Force ``_all_sentence_indexes()`` to build by issuing a tiny query.
+
+    Lazy-imports the module so the import cost itself runs inside the
+    background thread (the import touches ARTICLE_FULL_TEXT which
+    materialises the EUR-Lex prose dict).
+    """
+    from app.engines.sentence_index import select_answer_sentence
+    # A tiny but well-formed query — picks Article 13's sentence index
+    # if present, returning None on empty corpus (still triggers the
+    # build pass for every article). The return value is discarded.
+    select_answer_sentence("Art. 13", "warm")
+
+
+def _prewarm_definition_index() -> None:
+    """Force ``build_definition_index()`` to materialise."""
+    from app.engines.definition_expand import build_definition_index
+    build_definition_index()
+
+
+def _prewarm_embeddings_index() -> None:
+    """Eagerly load the embeddings assets when available.
+
+    Honours ``is_available()`` — operators without the bundled assets
+    (Windows dev, minimal Docker images) get a no-op rather than a
+    failed asset-load log line. This is the SHORTEST of the three
+    pre-warms (~115 ms cold) so the perf gain is modest, but it keeps
+    the first paying query's tail latency from spiking.
+    """
+    from app.engines.embeddings_index import is_available, warm_up
+    if is_available():
+        warm_up()
+
+
+def _run_prewarm_pass() -> dict[str, float | str]:
+    """Run all three pre-warm helpers, returning a results dict.
+
+    Each helper is wrapped in try/except so an asset-missing path
+    (Windows dev without embeddings assets, Linux without the corpus)
+    logs at DEBUG and gets a ``"err: <ExcType>"`` token in the result
+    dict rather than crashing the caller.
+    """
+    results: dict[str, float | str] = {}
+    for name, fn in (
+        ("sentence_index", _prewarm_sentence_index),
+        ("definition_index", _prewarm_definition_index),
+        ("embeddings_index", _prewarm_embeddings_index),
+    ):
+        t0 = time.perf_counter()
+        try:
+            fn()
+            results[name] = round((time.perf_counter() - t0) * 1000, 1)
+        except Exception as exc:  # noqa: BLE001 — must not crash caller
+            results[name] = f"err: {type(exc).__name__}"
+            logger.debug(
+                "regenold.prewarm helper=%s failed: %s", name, exc
+            )
+    return results
+
+
+def _maybe_prewarm_indexes() -> None:
+    """Pre-warm the three lazy index builds before the first request.
+
+    Idempotent — second invocation no-ops via ``_PREWARM_STARTED``.
+    Skips entirely under ``REGENOLD_SKIP_STARTUP_LOG=1`` (same kill
+    switch the LLM + auto-seed hooks honour, used by tests).
+
+    Mode is controlled by ``REGENOLD_PREWARM_MODE``:
+
+    * ``"sync"`` (default) — blocks startup until all three pre-warms
+      complete. Total cost ~1.2 s. Railway / uvicorn boot stays well
+      inside the 30 s healthcheck budget AND the very first paying
+      request lands on warm indexes. This is the right shape for
+      production: the cold-build cost is paid once at boot, not on
+      a paying user's request.
+
+    * ``"async"`` — spawns a daemon thread and returns immediately.
+      Useful when boot latency matters more than first-request
+      latency (e.g. health-check-only deploys). With ``async``,
+      requests that land during the ~1.2 s warm-up still pay
+      cold-build cost AND fight the warm-up thread for CPU — measured
+      to make max-latency WORSE than not pre-warming at all, so
+      ``async`` should only be used when you know your traffic
+      pattern can absorb the slow first few requests.
+
+    Either way, the structured-event telemetry line
+    ``regenold.prewarm_completed`` is emitted at INFO once the work
+    finishes, with a per-helper elapsed-ms breakdown.
+    """
+    global _PREWARM_STARTED
+
+    if os.getenv("REGENOLD_SKIP_STARTUP_LOG") == "1":
+        return
+
+    with _PREWARM_LOCK:
+        if _PREWARM_STARTED:
+            return
+        _PREWARM_STARTED = True
+
+    mode = os.getenv("REGENOLD_PREWARM_MODE", "sync").strip().lower()
+
+    if mode == "async":
+        def _worker() -> None:
+            thread_started = time.perf_counter()
+            results = _run_prewarm_pass()
+            total_ms = round(
+                (time.perf_counter() - thread_started) * 1000, 1
+            )
+            logger.info(
+                "regenold.prewarm_completed mode=async total_ms=%s "
+                "breakdown=%s",
+                total_ms,
+                results,
+            )
+
+        _threading.Thread(
+            target=_worker,
+            name="regenold-prewarm",
+            daemon=True,
+        ).start()
+        return
+
+    # Sync mode (default) — block the startup hook until the
+    # pre-warms complete. ~1.2 s extra boot time; first request
+    # lands on a warm engine.
+    sync_started = time.perf_counter()
+    results = _run_prewarm_pass()
+    total_ms = round((time.perf_counter() - sync_started) * 1000, 1)
+    logger.info(
+        "regenold.prewarm_completed mode=sync total_ms=%s breakdown=%s",
+        total_ms,
+        results,
+    )
+
+
+@app.on_event("startup")
+def _startup_prewarm() -> None:
+    """FastAPI startup hook — fire the pre-warm thread.
+
+    Runs AFTER ``_log_llm_provider_status`` (registration order) but
+    BEFORE ``_maybe_auto_seed_neo4j``. The daemon thread is
+    fire-and-forget so the relative order doesn't matter for
+    correctness — only for log readability.
+    """
+    _maybe_prewarm_indexes()
 
 
 # ─── Auto-seed on startup ────────────────────────────────────────────────
@@ -185,8 +443,6 @@ def _log_llm_provider_status() -> None:
 # handled by a process-local lock plus an opt-in Postgres advisory lock
 # (when ``DATABASE_URL`` is set, only ONE worker actually performs the
 # write; the others observe the seeded graph on their next health probe).
-
-import threading as _threading
 
 # Module-level guard so even within a single process two startup hooks
 # can't both fire the seeder. ``daemon=True`` is critical — uvicorn
@@ -212,36 +468,45 @@ def _auto_seed_disabled_by_env() -> bool:
     return raw.strip().lower() in {"0", "false", "no", "off"}
 
 
-def _acquire_postgres_advisory_lock() -> object | None:
-    """Best-effort Postgres advisory lock — returns a context handle or None.
+# Outcome codes for ``_acquire_postgres_advisory_lock``.
+# R45 Fix 3.2: distinguish Postgres-down (operator MUST investigate)
+# from lock-held (benign — another worker is seeding).
+_PG_LOCK_NOT_APPLICABLE = "not_applicable"  # DATABASE_URL unset / non-pg
+_PG_LOCK_DRIVER_MISSING = "driver_missing"  # psycopg not importable
+_PG_LOCK_UNREACHABLE = "unreachable"        # connect failed (was silently None)
+_PG_LOCK_HELD = "lock_held"                 # benign — another worker
+_PG_LOCK_ACQUIRE_ERROR = "acquire_error"    # rare: SQL-side failure
+
+
+def _acquire_postgres_advisory_lock() -> tuple[object | None, str, str]:
+    """Best-effort Postgres advisory lock — returns ``(handle, status, detail)``.
+
+    ``handle`` is non-None only when the lock was acquired (and must be
+    released by the caller). ``status`` is one of the ``_PG_LOCK_*``
+    constants above so the caller can distinguish the benign "another
+    worker is seeding" case from the operationally-significant
+    "Postgres is unreachable" case. ``detail`` carries a truncated
+    error message (or empty string).
 
     When ``DATABASE_URL`` points at a real Postgres, we grab a
     session-scoped advisory lock so only ONE uvicorn worker actually
-    runs the seed. The lock is released when the returned handle's
-    ``release()`` is called (or when the connection closes).
+    runs the seed. ``MERGE``-based seeding is idempotent, so even when
+    this returns ``not_applicable`` / ``driver_missing`` / ``unreachable``
+    the caller may safely fall through to the process-local lock — at
+    worst two workers race and burn an extra Cypher round-trip each.
 
-    Returns ``None`` when:
-
-    * ``DATABASE_URL`` is unset / non-Postgres (sqlite://, in-memory).
-    * The ``psycopg`` driver is not importable.
-    * The lock could not be acquired (another worker holds it — that's
-      the GOOD path; the caller should skip seeding).
-    * Any other error — we fall back to the process-local
-      ``_AUTO_SEED_LOCK``, which is enough because ``MERGE``-based
-      seeding is idempotent.
-
-    The advisory lock key is a fixed 64-bit constant derived from
-    ``"regenold_neo4j_auto_seed"`` — picked once and never collides
-    with other Postgres advisory-lock users in the database.
+    The advisory lock key is a fixed 64-bit constant — picked once and
+    never collides with other Postgres advisory-lock users in the
+    database.
     """
     dsn = os.getenv("DATABASE_URL", "").strip()
     if not dsn or not dsn.startswith("postgres"):
-        return None
+        return None, _PG_LOCK_NOT_APPLICABLE, ""
 
     try:
         import psycopg  # type: ignore[import-not-found]
     except ImportError:
-        return None
+        return None, _PG_LOCK_DRIVER_MISSING, "psycopg not installed"
 
     try:
         # The seeder needs maybe 5-10 s total; a 30 s lock timeout is
@@ -249,10 +514,31 @@ def _acquire_postgres_advisory_lock() -> object | None:
         conn_dsn = dsn
         if conn_dsn.startswith("postgresql+psycopg://"):
             conn_dsn = "postgresql://" + conn_dsn[len("postgresql+psycopg://"):]
-        conn = psycopg.connect(conn_dsn, connect_timeout=10)
+        # R45 Fix 3.2: tighten connect_timeout from 10 s to 5 s so the
+        # boot path doesn't stall on a Postgres outage. The seeder
+        # itself is async (daemon thread) so we don't need a long
+        # connect window.
+        conn = psycopg.connect(conn_dsn, connect_timeout=5)
+    except psycopg.OperationalError as exc:
+        # Operationally-significant: Postgres is up-but-rejecting or
+        # entirely unreachable. Operator needs to see this — logging
+        # at DEBUG isn't enough because they'll be chasing an empty
+        # Neo4j and a "skip-non-leader" log line that turns out to be
+        # a lie.
+        return (
+            None,
+            _PG_LOCK_UNREACHABLE,
+            f"{type(exc).__name__}: {exc!s}"[:200],
+        )
     except Exception as exc:  # noqa: BLE001
-        logger.debug("auto-seed advisory-lock connect failed: %s", exc)
-        return None
+        # Other connect failures (timeout, refused, bad DSN) get the
+        # same treatment — they're not a "lock is held by another
+        # worker" signal, so report them as unreachable.
+        return (
+            None,
+            _PG_LOCK_UNREACHABLE,
+            f"{type(exc).__name__}: {exc!s}"[:200],
+        )
 
     # Fixed 64-bit advisory lock key. Hand-picked so it's deterministic
     # and stable across deploys; pg_try_advisory_lock returns False
@@ -265,14 +551,18 @@ def _acquire_postgres_advisory_lock() -> object | None:
             acquired = bool(row and row[0])
         if not acquired:
             conn.close()
-            return None
+            return None, _PG_LOCK_HELD, ""
     except Exception as exc:  # noqa: BLE001
         logger.debug("auto-seed advisory-lock acquire failed: %s", exc)
         try:
             conn.close()
         except Exception:  # noqa: BLE001
             pass
-        return None
+        return (
+            None,
+            _PG_LOCK_ACQUIRE_ERROR,
+            f"{type(exc).__name__}: {exc!s}"[:200],
+        )
 
     class _AdvisoryLockHandle:
         """Releases the lock + closes the connection."""
@@ -296,7 +586,7 @@ def _acquire_postgres_advisory_lock() -> object | None:
             except Exception:  # noqa: BLE001
                 pass
 
-    return _AdvisoryLockHandle(conn, LOCK_KEY)
+    return _AdvisoryLockHandle(conn, LOCK_KEY), "acquired", ""
 
 
 def _run_auto_seed_in_thread(reason: str) -> None:
@@ -306,30 +596,44 @@ def _run_auto_seed_in_thread(reason: str) -> None:
     schema drift, etc.) never escapes the thread and never affects
     request serving.
     """
-    import time as _time
-
-    started = _time.perf_counter()
-    lock_handle = _acquire_postgres_advisory_lock()
-    # If DATABASE_URL was set + we couldn't acquire the lock, another
-    # worker is seeding. Skip + log. If DATABASE_URL was unset or the
-    # driver is missing, ``lock_handle`` is None and we fall back to the
-    # process-local lock — that's fine because MERGE is idempotent so
-    # two workers racing is benign (just wasteful).
-    if (
-        lock_handle is None
-        and os.getenv("DATABASE_URL", "").strip().startswith("postgres")
-    ):
+    started = time.perf_counter()
+    lock_handle, lock_status, lock_detail = _acquire_postgres_advisory_lock()
+    # R45 Fix 3.2: distinguish the benign "lock_held" case (another
+    # worker is seeding — skip silently) from the operationally-
+    # significant "unreachable" case (Postgres is down — operator
+    # MUST see this so they can investigate why Neo4j is still empty
+    # after a deploy). Driver-missing / not-applicable fall through to
+    # the process-local lock since MERGE-based seeding is idempotent.
+    if lock_status == _PG_LOCK_HELD:
         logger.info(
             "regenold.startup auto_seed_skipped reason=advisory_lock_held "
             "(another worker is seeding)"
         )
         return
+    if lock_status == _PG_LOCK_UNREACHABLE:
+        # Don't silently skip — log a warning AND continue with seeding
+        # (the process-local lock is still in effect so we don't race
+        # ourselves). Operator gets a single clear signal: "Postgres
+        # advisory-lock coordination is unavailable; the seed may
+        # run more than once across workers, but it WILL run."
+        logger.warning(
+            "regenold.startup auto_seed_blocked_postgres_unreachable "
+            "error=%s — proceeding with process-local lock only "
+            "(MERGE is idempotent so duplicate seeds are safe)",
+            lock_detail,
+        )
+    elif lock_status == _PG_LOCK_ACQUIRE_ERROR:
+        logger.warning(
+            "regenold.startup auto_seed_advisory_lock_acquire_error "
+            "error=%s — proceeding with process-local lock only",
+            lock_detail,
+        )
 
     try:
         from scripts.seed_neo4j_kb import run_seed
 
         result = run_seed(dry_run=False, clear=False, verbose=False)
-        elapsed = _time.perf_counter() - started
+        elapsed = time.perf_counter() - started
         if result.get("status") == "ok":
             logger.info(
                 "regenold.startup auto_seed_completed reason=%s nodes=%d "
@@ -427,6 +731,10 @@ def _maybe_auto_seed_neo4j() -> None:
             return
 
     # ── Decide: seed or skip based on KBMetadata ────────────────────────
+    # R45 Fix 3.3: the metadata pre-check runs on the boot path BEFORE
+    # the daemon seed thread spawns. On an unreachable Neo4j the driver
+    # blocks for ~30 s by default, blowing past Railway's healthcheck
+    # window. Wall-clock cap at 3 s + assume seed is needed on timeout.
     try:
         from app.data.kb import KB_VERSION
         from app.graph.client import get_graph_client
@@ -440,25 +748,43 @@ def _maybe_auto_seed_neo4j() -> None:
             )
             return
 
-        meta_rows = client.execute_read(
-            "MATCH (m:KBMetadata) "
-            "RETURN m.seed_version AS v, m.kb_version AS kv LIMIT 1"
+        ok_meta, meta_rows, status_meta = _run_with_timeout(
+            lambda: client.execute_read(
+                "MATCH (m:KBMetadata) "
+                "RETURN m.seed_version AS v, m.kb_version AS kv LIMIT 1"
+            ),
+            label="neo4j_boot_metadata_precheck",
         )
-        current_seed = (meta_rows[0].get("v") if meta_rows else "") or ""
-        current_kb = (meta_rows[0].get("kv") if meta_rows else "") or ""
-
-        if (
-            current_seed == SEED_VERSION
-            and current_kb == KB_VERSION
-        ):
-            logger.info(
-                "regenold.startup neo4j_seed_current "
-                "auto_seed_check action=skip-current seed_version=%s "
-                "kb_version=%s",
-                current_seed,
-                current_kb,
+        if not ok_meta:
+            # On TIMEOUT, fall through to spawning the seed thread —
+            # the seed itself is async so a slow Neo4j won't keep
+            # blocking. The thread carries its own error handling.
+            logger.warning(
+                "regenold.startup auto_seed_check "
+                "action=auto-seed-timeout-on-metadata-precheck "
+                "status=%s timeout_s=%.1f — proceeding with seed thread; "
+                "operator should investigate Neo4j reachability",
+                status_meta,
+                _BOOT_NEO4J_TIMEOUT_S,
             )
-            return
+            current_seed = ""
+            current_kb = ""
+        else:
+            current_seed = (meta_rows[0].get("v") if meta_rows else "") or ""
+            current_kb = (meta_rows[0].get("kv") if meta_rows else "") or ""
+
+            if (
+                current_seed == SEED_VERSION
+                and current_kb == KB_VERSION
+            ):
+                logger.info(
+                    "regenold.startup neo4j_seed_current "
+                    "auto_seed_check action=skip-current seed_version=%s "
+                    "kb_version=%s",
+                    current_seed,
+                    current_kb,
+                )
+                return
 
         # Mark started under the process-local lock so two competing
         # startup hooks (rare — testharness reloads, dev reloads) don't
@@ -472,7 +798,15 @@ def _maybe_auto_seed_neo4j() -> None:
                 return
             _AUTO_SEED_STARTED = True
 
-        if not current_seed:
+        if not ok_meta:
+            # R45 Fix 3.3: precheck timed out — assume seed is needed
+            # (a no-op idempotent re-seed is cheaper than skipping when
+            # the graph is actually empty).
+            reason = (
+                f"metadata_precheck_timeout status={status_meta} "
+                f"timeout_s={_BOOT_NEO4J_TIMEOUT_S}"
+            )
+        elif not current_seed:
             reason = "graph_empty"
         else:
             reason = (

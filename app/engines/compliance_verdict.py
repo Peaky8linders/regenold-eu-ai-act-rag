@@ -412,6 +412,27 @@ def _has_verdict_stamp(text: str) -> bool:
 # in the future doesn't silently break the helper into a passthrough.
 _LIVE_TURN_MARKER = "Latest question:\n"
 
+# R45 / Fix 2 — defence-in-depth tolerance for the marker. The literal
+# above is the canonical form emitted today, but a future refactor of
+# ``_build_question_from_history`` could drift to "Latest question: "
+# (single space) or capitalise differently. The regex matches any of
+# those variants so the strip stays sound across minor reformats. Only
+# triggered when the literal lookup misses — preserves the fast path
+# for the common case.
+_LIVE_TURN_MARKER_RE = re.compile(
+    r"(?:^|\n)latest\s+question\s*:\s*",
+    re.IGNORECASE,
+)
+
+# R45 / Fix 2 — secondary marker emitted by the route's
+# ``_build_scope_refusal_response`` audit hook + by older prompt formats.
+# Kept here so we centralise every known marker format in one place.
+_LEGACY_TURN_MARKERS: tuple[str, ...] = (
+    "Latest question:\n",
+    "Latest user message:\n",
+    "Latest user turn:\n",
+)
+
 
 def live_question_from(flattened: str) -> str:
     """Return only the LIVE user turn from a flattened multi-turn question.
@@ -439,16 +460,40 @@ def live_question_from(flattened: str) -> str:
     carries no marker (single-turn case where the route emitted the raw
     user content), the input is returned unchanged so callers don't have
     to special-case both shapes.
+
+    R45 / Fix 2 hardening — fall back to a regex sweep covering any
+    known marker variant (legacy ``Latest user message:`` / ``Latest
+    user turn:`` plus a permissive ``latest\\s+question\\s*:`` pattern)
+    when the literal lookup misses. The fast path (literal ``rfind``)
+    still dominates for production traffic; the regex is a defence-in-
+    depth net for future marker drift.
     """
     if not flattened:
         return flattened
+    # Fast path — literal marker emitted by the route today.
     # ``rfind`` so a chat where someone literally typed "Latest question:"
     # in a prior turn doesn't shadow the route-emitted marker.
     idx = flattened.rfind(_LIVE_TURN_MARKER)
-    if idx < 0:
-        return flattened
-    tail = flattened[idx + len(_LIVE_TURN_MARKER):]
-    return tail.strip()
+    if idx >= 0:
+        tail = flattened[idx + len(_LIVE_TURN_MARKER):]
+        return tail.strip()
+    # Defence-in-depth — sweep for any legacy / drift variant.
+    for legacy in _LEGACY_TURN_MARKERS:
+        if legacy == _LIVE_TURN_MARKER:
+            continue  # already covered by the literal fast path above
+        legacy_idx = flattened.rfind(legacy)
+        if legacy_idx >= 0:
+            return flattened[legacy_idx + len(legacy):].strip()
+    # Final fallback — regex sweep covering whitespace + case variants.
+    # ``finditer`` so we take the LAST occurrence (matches ``rfind``
+    # semantics in the fast path — route emits the marker last).
+    last_match = None
+    for m in _LIVE_TURN_MARKER_RE.finditer(flattened):
+        last_match = m
+    if last_match is not None:
+        return flattened[last_match.end():].strip()
+    # No marker at all — assume single-turn shape and pass through.
+    return flattened
 
 
 __all__ = [

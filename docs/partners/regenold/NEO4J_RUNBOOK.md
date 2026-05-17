@@ -33,12 +33,14 @@ export NEO4J_USERNAME="neo4j"          # bundle reads NEO4J_USERNAME or NEO4J_US
 export NEO4J_PASSWORD="..."
 export NEO4J_DATABASE="neo4j"          # default; override if multi-db
 
-# 3. (Optional) Enable 2-hop expansion at request time
-export REGENOLD_GRAPH_2HOP=1
-
-# 4. Seed the knowledge base
+# 3. Seed the knowledge base
 python -m scripts.seed_neo4j_kb
 ```
+
+> **Note (R40)** — earlier revisions of this runbook documented
+> `REGENOLD_GRAPH_2HOP=1` as an optional step 3. R40 baked the 2-hop
+> expand path into the deterministic code path; the env-flag is no
+> longer read at runtime. See *CLAUDE.md → Round 40 — bake-in*.
 
 The seed writes 113 `Article` + 13 `Annex` + 180 `Recital` + 31
 `Definition` + 113 `Obligation` nodes plus a `KBMetadata` row carrying

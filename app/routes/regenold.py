@@ -60,6 +60,7 @@ from app.engines.graph_rag import (
     _detect_classification_topic,
     ask_compliance_question,
 )
+from app.engines.compliance_verdict import live_question_from
 from app.engines.graphrag_expand import (
     expand_citations,
     should_expand_for_question,
@@ -80,7 +81,8 @@ from app.engines.sentence_index import (
 from app.evidence.models import EvidenceEntryType
 from app.evidence.store import get_evidence_store
 from app.integrations.regenold.auth import (
-    require_regenold_api_key,
+    optional_regenold_api_key,
+    require_regenold_api_key,  # noqa: F401 — kept for back-compat / future routes
     validate_regenold_api_key,
 )
 from app.integrations.regenold.citation_guard import maybe_apply_guard
@@ -346,6 +348,25 @@ def _regenold_dynamic_limit(key: str) -> str:
     if key.startswith(_RATE_KEY_PREFIX_AUTHED):
         return "60/minute"
     return "30/minute"
+
+
+def _resolve_audit_tier(api_key: str | None) -> str:
+    """R45 Fix 1.5 — Derive the audit-chain ``tier`` from the resolved key.
+
+    With Fix 1.1 the route accepts both anonymous and partner traffic.
+    Hardcoding ``tier="partner"`` in audit payloads would mis-tag every
+    anonymous request as partner — defeating the auditor's ability to
+    distinguish competition evaluator traffic from real partners.
+
+    Contract mirrors :func:`optional_regenold_api_key`:
+      * ``api_key is None`` → ``"anonymous"`` (no header, or unconfigured deploy)
+      * ``api_key`` set + ``validate_regenold_api_key`` passes → ``"partner"``
+      * Anything else → ``"anonymous"`` (defensive — the dep should already
+        have raised 403 in this case, so we should never hit this branch)
+    """
+    if api_key is not None and validate_regenold_api_key(api_key):
+        return "partner"
+    return "anonymous"
 
 
 def _reference_rank(
@@ -958,7 +979,12 @@ def _build_scope_refusal_response(
             reasoning="",
         )
 
-    chain_tenant_id = "partner:regenold"
+    # R45 Fix 1.5 — derive the audit tier from the resolved key. Anonymous
+    # traffic lands under the ``anonymous:regenold`` tenant; partner traffic
+    # under ``partner:regenold``. Auditor downstream queries by tenant_id
+    # still work for partner-only filtering.
+    _tier = _resolve_audit_tier(api_key)
+    chain_tenant_id = "partner:regenold" if _tier == "partner" else "anonymous:regenold"
     ip_hash: str | None = None
 
     try:
@@ -988,7 +1014,7 @@ def _build_scope_refusal_response(
             "confidence": confidence,
             "retrieval_path": retrieval_path,
             "kb_version": KB_VERSION,
-            "tier": "partner",
+            "tier": _tier,
             "include_telemetry_requested": bool(include_telemetry),
             # Refusal-class telemetry — auditor can filter "every
             # non-existent-article refusal" or "every off-topic refusal"
@@ -1009,7 +1035,16 @@ def _build_scope_refusal_response(
             tenant_id=chain_tenant_id,
         )
     except Exception as exc:  # noqa: BLE001 - best-effort evidence
-        logger.debug("regenold_question_evidence_failed", error=str(exc))
+        # R45 Fix 1.4 — audit-chain failures are an EU AI Act Art. 12
+        # record-keeping signal. With LOG_LEVEL=INFO default, debug
+        # writes are invisible; an operator only learns Postgres is
+        # down when the audit chain is needed in court. Promote to
+        # WARNING + carry the exception class + truncated repr.
+        logger.warning(
+            "regenold_question_evidence_failed exc_type=%s error=%s",
+            type(exc).__name__,
+            repr(exc)[:500],
+        )
 
     return out
 
@@ -1219,9 +1254,7 @@ def _build_question_from_history(messages: list[Any]) -> tuple[str, str | None]:
     response_model=RegenoldAskResponse,
     response_model_exclude_none=True,
     responses={
-        401: {"description": "Missing X-Regenold-Api-Key header"},
-        403: {"description": "Invalid API key"},
-        503: {"description": "Regenold integration not configured on this deployment"},
+        403: {"description": "Invalid API key (header present + non-matching)"},
     },
 )
 @limiter.limit(_regenold_dynamic_limit, key_func=_regenold_rate_key)
@@ -1229,12 +1262,17 @@ def regenold_eu_ai_act_ask(
     request: Request,
     body: Any = Body(...),  # noqa: B008 — FastAPI-idiomatic Body(...) at default position
     include_telemetry: bool = False,
-    api_key: str = Depends(require_regenold_api_key),
+    api_key: str | None = Depends(optional_regenold_api_key),
 ) -> RegenoldAskResponse:
     """Regenold partner endpoint: grounded EU AI Act Q&A with citations.
 
-    Auth is REQUIRED. Callers must send a valid ``X-Regenold-Api-Key``
-    header. Missing key → 401, wrong key → 403, unconfigured deploy → 503.
+    R45 Fix 1.1 — Auth is OPTIONAL. The Regenold competition deploy must
+    be reachable WITHOUT a partner key (the evaluator submits anonymous
+    traffic). With a valid ``X-Regenold-Api-Key`` header callers get the
+    privileged 60/min rate-limit bucket; without one they get the
+    30/min anonymous-per-IP bucket. A header that's present but
+    non-matching still returns 403 so partner-side typos / stale keys
+    fail loudly.
 
     Backed by the existing Graph RAG engine (Neo4j KG + KB fallback).
     Response is reshaped into Regenold's expected wire shape:
@@ -1380,6 +1418,20 @@ def regenold_eu_ai_act_ask(
         if not (rag_res.graph_stats or {}).get("stage2_call_failed"):
             _ENGINE_CACHE.put(cache_key, rag_res)
 
+    # R45 / Fix 2 — history-injection hardening. ``question`` is the
+    # FLATTENED multi-turn payload built by ``_build_question_from_history``
+    # — it carries ``Conversation so far:\n…\n\nLatest question:\n<live>``.
+    # Every downstream classifier that branches on the question MUST read
+    # only the LIVE user turn; otherwise an attacker can plant a fake
+    # third-person scenario in a prior assistant-role turn and exfiltrate
+    # the wrong routing decision on a benign live turn (R45 Review C / C1).
+    # Build the live-turn-only string ONCE here and pass it to every
+    # downstream classifier so the security boundary lives at this single
+    # auditable call site. The R43 helper ``live_question_from`` strips
+    # the ``Latest question:`` marker block; single-turn inputs pass
+    # through unchanged.
+    live_question = live_question_from(question)
+
     # Round-36 issue #49 — classification short-circuit detection.
     # When ``_detect_classification_topic`` matches, the engine returns a
     # curated 1-4 sentence verdict verbatim (Stage-2 polish is skipped
@@ -1391,7 +1443,10 @@ def regenold_eu_ai_act_ask(
     # mutations can skip when the engine's curated text should be
     # shipped verbatim. Detector is pure-function + deterministic; the
     # cost is one regex sweep over the question (sub-µs).
-    _is_classification_topic = _detect_classification_topic(question) is not None
+    # ``_detect_classification_topic`` already strips its own ``Latest
+    # question:`` marker internally, but we pass the live tail anyway for
+    # belt-and-braces — defence-in-depth against future refactors.
+    _is_classification_topic = _detect_classification_topic(live_question) is not None
 
     # Normalise answer first so we can use it to filter orphan references.
     # Fixes UnboundLocalError in _drop_orphan_refs pass (P1 #4).
@@ -1420,8 +1475,11 @@ def regenold_eu_ai_act_ask(
     #     prose would over-shoot the gold answer length
     #   * skip on multi-turn follow-ups (rag_res.answer already
     #     incorporates the prior turn context)
-    _is_scenario = classify_scenario_query(question) is not None
-    _is_scenario_shape = _looks_like_scenario_shape(question)
+    # R45 / Fix 2 — pass the live tail so an injected prior-turn scenario
+    # ("We are deploying real-time biometric ID") cannot flip a benign
+    # live turn into the scenario fast-path.
+    _is_scenario = classify_scenario_query(live_question) is not None
+    _is_scenario_shape = _looks_like_scenario_shape(live_question)
     _is_multiturn = sum(1 for m in req.messages if m.role == "user") > 1
     # Round-36 issue #49: classification verdicts are pre-curated by the
     # engine — both the extractive-QA pass and the QA-trim would reshape
@@ -1434,8 +1492,11 @@ def regenold_eu_ai_act_ask(
         and not _is_multiturn
         and not _is_classification_topic
     ):
+        # R45 / Fix 2 — use the live-tail to drive sentence picks so a
+        # planted prior-turn topic ("doctor-patient transcription") cannot
+        # bias the per-article BM25 ranking for an unrelated live turn.
         extracted = _try_extractive_answer(
-            question=question,
+            question=live_question,
             engine_citations=rag_res.citations or (),
         )
         if extracted:
@@ -1465,7 +1526,10 @@ def regenold_eu_ai_act_ask(
                         _tok_re = re.compile(r"[a-z0-9]+")
                         def _toks(s: str) -> set[str]:
                             return set(_tok_re.findall(s.lower()))
-                        q_tok = _toks(question)
+                        # R45 / Fix 2 — overlap tokens from the LIVE turn
+                        # only; otherwise planted prior-turn tokens bias
+                        # the sentence pick on a benign live turn.
+                        q_tok = _toks(live_question)
                         if q_tok:
                             scored = [
                                 (i, len(_toks(s) & q_tok), s)
@@ -1570,7 +1634,11 @@ def regenold_eu_ai_act_ask(
     # removed (was proven +0.171 Regenold probe RefStrict R37→R39).
     # R40 / F16 — ``upgrade_references`` now hoisted to module-level.
     try:
-        candidates = upgrade_references(question=question, base_refs=candidates)
+        # R45 / Fix 2 — sub-point topic detection MUST read only the live
+        # turn; otherwise a planted prior-turn topic (e.g. "real-time
+        # biometric ID") can upgrade refs that the live question never
+        # asked about.
+        candidates = upgrade_references(question=live_question, base_refs=candidates)
     except Exception:  # noqa: BLE001 — fail-soft
         pass
 
@@ -1597,7 +1665,11 @@ def regenold_eu_ai_act_ask(
     # fires — architecturally consistent with the spec's "immediate
     # alert that skips lower-tier testing loops".
     # R40 / F16 — gatekeeper helpers now hoisted to module-level.
-    _prohibition_matches = scan_for_prohibitions(question)
+    # R45 / Fix 2 — scan only the live turn so a planted prior-turn
+    # phrase ("subliminal manipulation", "real-time remote biometric
+    # identification") cannot force an Art. 5 prohibition citation onto
+    # a benign live question.
+    _prohibition_matches = scan_for_prohibitions(live_question)
     if _prohibition_matches:
         candidates = force_prohibited_citations(candidates, _prohibition_matches)
 
@@ -1610,7 +1682,9 @@ def regenold_eu_ai_act_ask(
         # (more gold tokens present). The verdict is intentionally
         # tight (1 sentence, ≤200 chars) so the existing 3-sentence
         # + 600-char cap absorbs it without dropping engine content.
-        _verdict_prefix = build_verdict_prefix(question)
+        # R45 / Fix 2 — verdict prefix derives from the same scan; pass
+        # the live tail so the prepended clause matches the live turn.
+        _verdict_prefix = build_verdict_prefix(live_question)
         if (
             _verdict_prefix
             and "Article 5" not in (answer_text or "")
@@ -1653,11 +1727,26 @@ def regenold_eu_ai_act_ask(
     ):
         try:
             from app.engines.clara_logic import analyse as _clara_analyse  # noqa: PLC0415
+            # R45 / Fix 2 — history-injection hardening for CLARA.
+            #
+            # CLARA's ``_flatten_history`` concatenates every turn's
+            # ``content`` regardless of role (assistant turns included)
+            # and folds it into the deterministic tag-extraction haystack.
+            # An anonymous external could plant an Annex III scenario in
+            # an assistant-role turn and exfiltrate a high-risk verdict
+            # on a benign live turn. Restrict ``_clara_history`` to PRIOR
+            # USER turns ONLY — same security-boundary rule the R34 P1 fix
+            # applied to ``scope.classify_conversation``.
+            #
+            # We also pass the live tail (not the full flattened question)
+            # so the live-turn pass through CLARA's own regex sweep is
+            # never polluted by the ``Conversation so far:`` preamble.
             _clara_history = [
                 {"role": m.role, "content": m.content}
                 for m in req.messages
+                if m.role == "user"
             ]
-            _, _clara_verdict = _clara_analyse(question, _clara_history)
+            _, _clara_verdict = _clara_analyse(live_question, _clara_history)
         except Exception:  # noqa: BLE001 — never let CLARA 500 the route
             _clara_verdict = None
         if (
@@ -1704,7 +1793,10 @@ def regenold_eu_ai_act_ask(
     # gold tanks under over-citation in Strict F1).
     # R40 / F16 — ``expand_citations`` + ``should_expand_for_question``
     # now hoisted to module-level.
-    _is_scenario_question = should_expand_for_question(question)
+    # R45 / Fix 2 — pass the live tail so a planted prior-turn role
+    # declaration cannot flip a benign live turn into the scenario-shape
+    # branch (10-ref budget + xref expansion).
+    _is_scenario_question = should_expand_for_question(live_question)
     # Dynamic budget — scenarios get a 10-ref budget (matches gold avg),
     # QA stays at the spec's tight 5 (single-article gold).
     _effective_max_refs = 10 if _is_scenario_question else MAX_REFERENCES
@@ -1723,7 +1815,8 @@ def regenold_eu_ai_act_ask(
     if os.getenv("REGENOLD_REFBUDGET_PER_INTENT", "0") in ("1", "true", "yes", "on"):
         try:
             from app.integrations.regenold.models import intent_budget_for  # noqa: PLC0415
-            _qtype = classify_question(question)
+            # R45 / Fix 2 — qtype derives from the live turn only.
+            _qtype = classify_question(live_question)
             # R40 / F18 — split DESCRIPTION fallback: short for novel-shape
             # QA, scenario for "We are a {role}..." prelude. Helper picks
             # the right variant from the new INTENT_REF_BUDGET keys.
@@ -1737,10 +1830,12 @@ def regenold_eu_ai_act_ask(
         except Exception:  # noqa: BLE001 — fail-soft
             pass
     if _is_scenario_question:
+        # R45 / Fix 2 — graphrag expand consults the question for its
+        # internal scenario-shape gate; pass the live tail.
         candidates = expand_citations(
             candidates,
             budget=_effective_max_refs,
-            question=question,
+            question=live_question,
         )
 
     # R39 eng-review F2 — re-collapse parents AFTER subpoint emit +
@@ -1865,7 +1960,9 @@ def regenold_eu_ai_act_ask(
         # R40 / F16 — ``classify_question`` + ``apply_template`` hoisted
         # to module-level.
         try:
-            _qtype = classify_question(question)
+            # R45 / Fix 2 — per-intent answer-length template picks its
+            # caps from the live-turn intent, not a planted prior-turn.
+            _qtype = classify_question(live_question)
             _primary = references[0] if references else None
             answer_text = apply_template(
                 qtype=_qtype, answer=answer_text, primary_cite=_primary,
@@ -1888,17 +1985,17 @@ def regenold_eu_ai_act_ask(
         try:
             from app.engines.compliance_verdict import (  # noqa: PLC0415
                 _has_verdict_stamp,
-                live_question_from,
                 predict_verdict,
                 verdict_sentence,
             )
-            # R43 / S1 — ``question`` is the FLATTENED multi-turn payload
-            # which includes prior assistant-role content. Strip back to
-            # the live user turn before classification so a planted
-            # third-person scenario in a prior assistant turn cannot
-            # exfiltrate a regulator-voice verdict on an unrelated live
-            # question.
-            _cv = predict_verdict(live_question_from(question))
+            # R43 / S1 + R45 / Fix 2 — ``live_question`` is the live USER
+            # turn extracted at the top of this function via
+            # ``live_question_from(question)``. The flattened ``question``
+            # carries prior assistant-role content; without the strip a
+            # planted third-person scenario in a prior assistant turn
+            # could exfiltrate a regulator-voice verdict on an unrelated
+            # live question.
+            _cv = predict_verdict(live_question)
             if _cv is not None:
                 # Prepend; existing 3-sentence + 600-char soft-cap will
                 # absorb. Skip if the answer already carries a
@@ -1986,6 +2083,14 @@ def regenold_eu_ai_act_ask(
     # it the entry lands in the bounded in-memory chain (lost on
     # restart). When Postgres is wired, every Regenold Q&A round-trip
     # is durably stored and hash-chained for tamper-evidence.
+    #
+    # R45 Fix 1.5 — tier resolved from the validated key. Anonymous
+    # competition traffic lands under ``anonymous:regenold``; partner
+    # under ``partner:regenold``.
+    _tier = _resolve_audit_tier(api_key)
+    _chain_tenant_id = (
+        "partner:regenold" if _tier == "partner" else "anonymous:regenold"
+    )
     try:
         store = get_evidence_store()
         chain_payload = {
@@ -2007,7 +2112,7 @@ def regenold_eu_ai_act_ask(
             "confidence": confidence,
             "retrieval_path": retrieval_path,
             "kb_version": KB_VERSION,
-            "tier": "partner",
+            "tier": _tier,
             "include_telemetry_requested": bool(include_telemetry),
             "scope_reason": scope.reason.value,
             "scope_evidence": scope.verdict.evidence[:200],
@@ -2020,9 +2125,17 @@ def regenold_eu_ai_act_ask(
             payload=chain_payload,
             article_ref="EU AI Act",
             created_by="regenold",
-            tenant_id="partner:regenold",
+            tenant_id=_chain_tenant_id,
         )
     except Exception as exc:  # noqa: BLE001 - best-effort evidence
-        logger.debug("regenold_question_evidence_failed", error=str(exc))
+        # R45 Fix 1.4 — promote to WARNING. Audit-chain writes back EU AI
+        # Act Art. 12 record-keeping; silent debug logging means an
+        # operator only discovers Postgres is down when the chain is
+        # needed in court. WARNING surfaces in default-INFO log configs.
+        logger.warning(
+            "regenold_question_evidence_failed exc_type=%s error=%s",
+            type(exc).__name__,
+            repr(exc)[:500],
+        )
 
     return out

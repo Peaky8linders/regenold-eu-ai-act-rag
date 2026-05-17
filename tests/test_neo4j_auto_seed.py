@@ -446,7 +446,15 @@ class TestErrorHandling:
         monkeypatch: pytest.MonkeyPatch,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """An exception thrown by execute_read must not crash the hook."""
+        """An exception thrown by execute_read must not crash the hook.
+
+        R45 Fix 3.3: the metadata pre-check now runs inside
+        ``_run_with_timeout`` which swallows exceptions and routes to
+        the "proceed with seed thread" path. The hook must still not
+        raise, and the operator-visible signal is the
+        ``auto-seed-timeout-on-metadata-precheck`` warning rather than
+        the older ``auto_seed_check action=error`` line.
+        """
         from app import main as _main
 
         monkeypatch.setenv("NEO4J_URI", "neo4j+s://test:7687")
@@ -454,10 +462,20 @@ class TestErrorHandling:
         monkeypatch.setattr(
             "app.graph.client.get_graph_client", lambda: fake
         )
+        # Stub run_seed so the now-fired seed thread doesn't try to
+        # hit a real Neo4j.
+        monkeypatch.setattr(
+            "scripts.seed_neo4j_kb.run_seed",
+            MagicMock(return_value={"status": "ok", "total_nodes": 0, "total_edges": 0}),
+        )
 
         caplog.set_level(logging.WARNING, logger=_main.__name__)
         _call_hook()  # must not raise
-        assert "auto_seed_check action=error" in caplog.text
+        # New contract: timeout/error in the precheck is treated as
+        # "proceed with seed thread" (since the seed itself is async
+        # and idempotent).
+        assert "auto-seed-timeout-on-metadata-precheck" in caplog.text
+        self._wait_for_thread("regenold-auto-seed")
 
 
 # ─── Latency invariant ──────────────────────────────────────────────────

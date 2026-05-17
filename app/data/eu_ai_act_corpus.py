@@ -13,7 +13,8 @@ Upstream SHAs (pinned at generation time):
 
 Contents:
 
-* :data:`ARTICLE_FULL_TEXT`   — 113 articles + 13 annexes, full EUR-Lex prose.
+* :data:`ARTICLE_FULL_TEXT`   — 113 articles + 14 annexes, full EUR-Lex prose
+  (Annex XIV is a hand-authored R41 / Omnibus stub; everything else generated).
 * :data:`ARTICLE_TITLE`       — per-article title.
 * :data:`ARTICLE_CHAPTER`     — per-article chapter assignment.
 * :data:`ART_3_DEFINITIONS`   — 68 Art. 3 terms (vs our hand-curated 31).
@@ -596,6 +597,30 @@ ARTICLE_FULL_TEXT: dict[str, str] = {
         '1977-0677 (electronic edition) '
         "////////////////////////$(document).ready(function(){generateTOC(true,'', "
         "'Top','false');scrollToCurrentUrlAnchor();});"
+    ),
+    # R41 / Digital Omnibus on AI (COREPER compromise 13 May 2026, document
+    # 9247/26) inserts Annex XIV — the notified-body designation scope codes.
+    # Stub authored by hand from the verbatim Council compromise text (see
+    # docs/partners/regenold/R41_OMNIBUS_CHANGES.md §B10). The generator at
+    # scripts/generate_ansvar_corpus.py pre-dates the Omnibus and so does
+    # not regenerate this entry; treat it as the canonical post-Omnibus
+    # surface until the upstream Ansvar-Systems snapshot is refreshed.
+    'Annex XIV': (
+        'List of notified-body designation scope codes referred to in Article\xa030(2). '
+        'Notifying authorities shall designate notified bodies using the following codes; '
+        'the Commission may amend this Annex by delegated act under Article\xa097. '
+        '(AIP) AI systems subject to Annex\xa0I.A.1 through I.A.12 — codes AIP 0101 to AIP 0112 '
+        '(covering machinery, toys, recreational craft, lifts, ATEX, radio equipment, pressure '
+        'equipment, cableway installations, personal protective equipment, gas appliances, '
+        'medical devices and in-vitro diagnostic medical devices). '
+        '(AIB) Biometric AI systems: AIB 0201 — remote biometric identification systems; '
+        'AIB 0202 — biometric categorisation AI systems; AIB 0203 — emotion recognition AI '
+        'systems. '
+        '(AIH) Horizontal AI categories: AIH 0101 — symbolic AI, expert/knowledge-based, '
+        'search/optimisation; AIH 0201 to AIH 0205 — machine-learning categories (structured '
+        'data, signal and audio, text, image and video, reinforcement learning excluding AIH '
+        '0401); AIH 0301 — generative AI systems including GPAI-built; AIH 0401 — Other '
+        'emerging AI technologies not covered by other codes, including Agentic AI.'
     ),
     'Art. 1': (
         '1.\xa0\xa0\xa0The purpose of this Regulation is to improve the functioning of the internal market'
@@ -4528,6 +4553,11 @@ ARTICLE_TITLE: dict[str, str] = {
         'Criteria for the designation of general-purpose AI models with systemic risk referred to'
         ' in Article\xa051'
     ),
+    # R41 / Digital Omnibus on AI — notified-body designation codes.
+    'Annex XIV': (
+        'Notified-body designation scope codes referred to in Article\xa030(2) — list of AIP '
+        '/ AIB / AIH codes (incl. AIH 0401 "Agentic AI")'
+    ),
     'Art. 1': (
         'Subject matter'
     ),
@@ -4886,6 +4916,8 @@ ARTICLE_CHAPTER: dict[str, str | None] = {
     'Annex XI': None,
     'Annex XII': None,
     'Annex XIII': None,
+    # R41 / Digital Omnibus on AI — notified-body designation codes.
+    'Annex XIV': None,
     'Art. 1': 'I',
     'Art. 10': 'III',
     'Art. 100': 'XII',

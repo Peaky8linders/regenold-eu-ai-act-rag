@@ -773,13 +773,19 @@ def seed_graph(
     except Exception as e:  # noqa: BLE001 — re-raised below; visibility is the goal
         nodes_written = sum(counts.get(lbl, 0) for lbl in _node_labels)
         edges_written = sum(counts.get(lbl, 0) for lbl in _edge_labels)
+        # R45 Fix 1.3 — neo4j driver exceptions can include the full
+        # connection URI (``bolt://user:password@host``). Redact userinfo
+        # from the exception's string form before it lands in stdout.
+        from app.graph.client import _redact_neo4j_uri  # local import keeps top-level cost zero
+
+        safe_err = _redact_neo4j_uri(str(e)) if str(e) else repr(e)
         logger.error(
             "partial_seed_state nodes_written=%d edges_written=%d "
             "completed_labels=%s error=%s",
             nodes_written,
             edges_written,
             sorted(counts.keys()),
-            e,
+            safe_err,
         )
         raise
 

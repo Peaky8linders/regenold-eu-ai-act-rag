@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 import time
 from typing import Any
@@ -32,6 +33,41 @@ from app.graph.config import GraphSettings
 from app.graph.ontology import GraphStats
 
 logger = logging.getLogger(__name__)
+
+
+# R45 Fix 1.3 — Neo4j URI password redaction.
+#
+# Many Neo4j deployments (including Aura) hand operators a credential-bearing
+# URI of the form ``bolt+s://neo4j:secret@host:7687``. Logging that string raw
+# leaks the password into stdout (Railway streams stdout to its dashboard,
+# external log shippers, etc.). We redact userinfo at every log site that
+# emits a NEO4J_URI — the redacted form is safe for ops dashboards while
+# preserving the schema + host + port for diagnosis.
+#
+# Pattern: ``<scheme>://<userinfo>@<host:port>...`` → ``<scheme>://[redacted]@<host:port>...``
+# Schemes supported: bolt, bolt+s, bolt+ssc, neo4j, neo4j+s, neo4j+ssc.
+# Non-anchored on purpose so the helper redacts userinfo embedded in arbitrary
+# log lines (e.g. neo4j driver exception messages that quote the connection
+# URI inside a longer error string).
+_URI_REDACT_RE = re.compile(
+    r"(?P<scheme>bolt(?:\+s|\+ssc)?|neo4j(?:\+s|\+ssc)?)://[^@/\s]+@",
+    re.IGNORECASE,
+)
+
+
+def _redact_neo4j_uri(uri: str | None) -> str:
+    """Strip the userinfo (``user:password@``) segment from a Neo4j URI.
+
+    Pure-string sanitiser used at every log site that includes a NEO4J_URI.
+    Returns the input unchanged when there's no userinfo to strip (e.g.
+    ``bolt+s://host:7687``) or when the input is empty/None.
+
+    Works for both full URI strings AND exception messages that contain a
+    URI as a substring (driver errors love to quote the connection target).
+    """
+    if not uri:
+        return ""
+    return _URI_REDACT_RE.sub(r"\g<scheme>://[redacted]@", uri)
 
 _client: GraphClient | None = None
 _client_lock = threading.Lock()
@@ -100,7 +136,7 @@ class GraphClient:
                 max_connection_pool_size=settings.max_connection_pool_size,
                 connection_timeout=settings.connection_timeout,
             )
-            logger.info("Neo4j driver initialized: %s", settings.uri)
+            logger.info("Neo4j driver initialized: %s", _redact_neo4j_uri(settings.uri))
         except Exception as exc:  # noqa: BLE001
             # Catch-all so a misconfigured driver never breaks request
             # serving. We log and fall back to disabled.
