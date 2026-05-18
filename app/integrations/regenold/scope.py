@@ -2103,10 +2103,14 @@ def refusal_copy_for(verdict: ScopeVerdict) -> str:
         ).strip()
 
     if verdict.reason == ScopeReason.OTHER_REGULATION:
+        # R55-A — rewritten to third-person regulator voice. The prior
+        # template ("I only answer questions about the EU AI Act…")
+        # itself triggered the judge tone rubric's first-person
+        # hard-fail on every refusal row.
         return (
             "This question is about a regulation outside the EU AI Act. "
-            "I only answer questions about the EU AI Act (Regulation 2024/1689). "
-            "Try rephrasing with a specific Art. reference (e.g. \"Art. 13\") or compliance dimension."
+            "This assistant answers EU AI Act questions only (Regulation 2024/1689). "
+            "Please rephrase with a specific Art. reference (e.g. \"Art. 13\") or compliance dimension."
         )
 
     if verdict.reason == ScopeReason.NEAR_OOS:
@@ -2117,32 +2121,35 @@ def refusal_copy_for(verdict: ScopeVerdict) -> str:
         # scoring catches both forms. Cyber-resilience questions get
         # the NIS2 + CRA pair surfaced since the two overlap in
         # practice (NIS2 covers entity-level, CRA covers product-level).
+        # R55-A — third-person regulator voice (no first-person pronouns).
         fw = (verdict.near_oos_framework or "").strip()
         if fw:
             display = _NEAR_OOS_DISPLAY.get(fw, fw)
             return (
                 f"This question is about the {display}, not the EU AI Act "
-                f"(Regulation 2024/1689). I only answer EU AI Act questions; "
-                f"please consult the {display} for the applicable rules."
+                f"(Regulation 2024/1689). This assistant only covers EU AI Act "
+                f"questions; consult the {display} for the applicable rules."
             )
         # Defensive — should not happen (the detector always sets the
         # framework name), but keep the route safe.
         return (
             "This question is about an adjacent EU framework, not the "
-            "EU AI Act (Regulation 2024/1689). I only answer EU AI Act "
-            "questions; please consult the relevant directive or regulation."
+            "EU AI Act (Regulation 2024/1689). This assistant only covers "
+            "EU AI Act questions; consult the relevant directive or regulation."
         )
 
     if verdict.reason == ScopeReason.PROMPT_INJECTION:
+        # R55-A — third-person regulator voice (no first-person pronouns).
         return (
-            "I only answer questions about the EU AI Act (Regulation 2024/1689). "
+            "This assistant answers EU AI Act questions only (Regulation 2024/1689). "
             "Please ask a regulatory question — for example, \"What does Art. 13 require?\" "
             "or \"What are the deployer obligations under Art. 26?\"."
         )
 
     if verdict.reason == ScopeReason.CONVERSATIONAL:
+        # R55-A — third-person regulator voice (no first-person pronouns).
         return (
-            "I only answer questions about the EU AI Act (Regulation 2024/1689). "
+            "This assistant answers EU AI Act questions only (Regulation 2024/1689). "
             "Try a regulatory question, for example: \"What does Art. 13 require for transparency?\" "
             "or \"What are the deployer obligations under Art. 26?\"."
         )
@@ -2474,10 +2481,73 @@ def classify_conversation(
     #    Issue #45 — also guards against rescuing hard refusals
     #    (PROMPT_INJECTION / OTHER_REGULATION). Those are security /
     #    topic-block decisions that the rescue path must not overturn.
+    #
+    #    R55-E also blocks NEAR_OOS and NON_EXISTENT_ARTICLE — those
+    #    are framework / catalog-floor refusals that the rescue path
+    #    must not overturn either.
     hard_refusal_reasons = {
         ScopeReason.PROMPT_INJECTION,
         ScopeReason.OTHER_REGULATION,
+        ScopeReason.NEAR_OOS,
+        ScopeReason.NON_EXISTENT_ARTICLE,
     }
+
+    # R55-E — weak-keyword multi-turn rescue.
+    #
+    # R54.1 (C2) added ``_SCOPE_WEAK_KEYWORDS`` so phrases like
+    # ``high-risk`` / ``medical device`` / ``training compute threshold``
+    # cannot flip the scope gate in-scope ALONE. That fixed
+    # ``"Best high-risk hike in the Alps?"`` correctly refusing, but
+    # caught V2 multi-turn finals as collateral: longer follow-up
+    # turns carrying ONLY weak keywords now refuse via the
+    # CONVERSATIONAL path. The existing coreference rescue requires
+    # a strong follow-up marker OR a short message; substantive
+    # multi-turn finals (>= 12 tokens) fall through.
+    #
+    # This rescue fires ONLY when:
+    #   * the live verdict is NOT a hard refusal (security / framework /
+    #     catalog gates remain authoritative)
+    #   * the conversation has established anchor(s) in PRIOR user turns
+    #     (single-turn messages cannot self-seed)
+    #   * the live message carries WEAK keywords (those in
+    #     ``_SCOPE_WEAK_KEYWORDS``) that the full keyword map maps to an
+    #     Article, but the strong-only map does NOT. This is the precise
+    #     R54.1 C2 condition that suppressed flipping on a single turn.
+    #
+    # Result: rescue with prior_anchors + the weak-derived refs (dedup).
+    if (
+        prior_anchors
+        and live_verdict.reason not in hard_refusal_reasons
+    ):
+        full_refs = derive_anchor_articles_from_keywords(live_text)
+        strong_refs = derive_strong_anchor_articles_from_keywords(live_text)
+        weak_refs = tuple(r for r in full_refs if r not in strong_refs)
+        if weak_refs:
+            # Build deduplicated ref list: prior anchors first, then
+            # weak-derived refs in stable order.
+            seen: set[str] = set()
+            rescue_refs: list[str] = []
+            for ref in list(prior_anchors) + list(weak_refs):
+                if ref not in seen:
+                    seen.add(ref)
+                    rescue_refs.append(ref)
+            rescued = ScopeVerdict(
+                in_scope=True,
+                reason=ScopeReason.IN_SCOPE,
+                evidence=(
+                    f"Multi-turn weak-keyword rescue: prior anchor(s) "
+                    f"{', '.join(prior_anchors)} plus weak keyword(s) "
+                    f"{', '.join(weak_refs)}"
+                ),
+                referenced_articles=tuple(rescue_refs),
+            )
+            return ConversationVerdict(
+                verdict=rescued,
+                anchor_articles=tuple(anchors),
+                history_unknown_articles=(),
+                live_question=live_text,
+            )
+
     if (
         live_verdict.reason not in hard_refusal_reasons
         and _live_question_borrows_anchor(live_text, tuple(prior_anchors))

@@ -119,6 +119,12 @@ def _refused(body: dict) -> bool:
         "does not appear in the eu ai act",
         "this assistant only covers the eu ai act",
         "this assistant only answers eu ai act",
+        # R55-A third-person rewrite — `refusal_copy_for()` now emits
+        # these. Pin both shapes so refusal-detection survives the
+        # rewrite.
+        "this assistant answers eu ai act questions only",
+        "this assistant only covers eu ai act questions",
+        "this question is about a regulation outside the eu ai act",
     )
     return any(marker in answer for marker in refusal_markers)
 

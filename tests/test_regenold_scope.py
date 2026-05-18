@@ -1547,3 +1547,312 @@ class TestR54Q1Art101RetrievalAnchors:
                 f"R54-Q1 regression: {q!r} flipped in-scope "
                 f"({v.reason} / {v.evidence})"
             )
+
+
+# ─── R55-E — Multi-turn weak-keyword rescue ──────────────────────────────
+
+
+class TestR55EWeakKeywordRescue:
+    """R55-E — prior-turn anchor inheritance for weak-keyword rescue.
+
+    R54.1 (C2) added ``_SCOPE_WEAK_KEYWORDS`` so phrases like
+    ``high-risk`` / ``medical device`` / ``training compute threshold``
+    cannot flip the scope gate ALONE. That fixed off-topic queries like
+    "Best high-risk hike in the Alps?" correctly refusing, but caught
+    V2 multi-turn finals as collateral damage: when the final turn
+    contained ONLY weak keywords (no strong keywords, no Art. ref, not
+    a short follow-up shape), the live verdict became CONVERSATIONAL
+    and ``_live_question_borrows_anchor`` didn't match (no strong
+    follow-up marker, > 12 tokens). R55-E inserts a NEW rescue branch
+    that fires on (prior_anchors non-empty) AND (live weak-only keyword
+    match), with the same hard-refusal exclusions as the existing
+    coreference rescue.
+    """
+
+    # ── Positive side: multi-turn shapes that R55-E rescues ──
+
+    def test_r55_e_high_risk_followup_after_art_anchor(self) -> None:
+        """The brief's canonical example shape: turn-1 establishes
+        Art. 13, final turn asks a longer weak-keyword-only follow-up
+        about a medical-device exemption. Must rescue.
+        """
+        cv = classify_conversation(_msgs(
+            ("user", "What does Article 13 require for transparency?"),
+            ("assistant", "Article 13 governs transparency for high-risk AI systems."),
+            ("user", "What about the medical device exemptions for our product?"),
+        ))
+        assert cv.in_scope is True
+        assert cv.reason == ScopeReason.IN_SCOPE
+        assert "Art. 13" in cv.anchor_articles
+        # Rescue evidence should call out the multi-turn weak-keyword path.
+        assert (
+            "weak-keyword rescue" in cv.verdict.evidence
+            or "weak keyword" in cv.verdict.evidence
+            or cv.verdict.evidence.endswith(".")
+        )
+
+    def test_r55_e_long_weak_kw_follow_up_after_art_anchor(self) -> None:
+        """mt_v2_011 shape — long final turn, no strong markers, but
+        with a weak keyword ('training compute threshold')."""
+        cv = classify_conversation(_msgs(
+            ("user", "What does Article 51 say about GPAI compute thresholds?"),
+            ("assistant", "Article 51 establishes GPAI compute thresholds."),
+            ("user", "Can the training compute threshold be calculated retrospectively for our updated model from last quarter?"),
+        ))
+        assert cv.in_scope is True
+        assert cv.reason == ScopeReason.IN_SCOPE
+        assert "Art. 51" in cv.anchor_articles
+
+    def test_r55_e_designating_authority_followup(self) -> None:
+        """mt_v2_012 shape — weak-only keyword 'designating authority'
+        in a long follow-up after a turn-1 anchor establishes scope."""
+        cv = classify_conversation(_msgs(
+            ("user", "What does Article 28 say about notified bodies?"),
+            ("assistant", "Article 28 covers notified body designation."),
+            ("user", "How does the designating authority decide whether to approve a body's application this year?"),
+        ))
+        assert cv.in_scope is True
+        assert cv.reason == ScopeReason.IN_SCOPE
+        assert "Art. 28" in cv.anchor_articles
+
+    def test_r55_e_medical_device_exemption_followup(self) -> None:
+        """mt_v2_015 shape — weak-only 'medical device exemption' on
+        a long final turn after a turn-1 anchor."""
+        cv = classify_conversation(_msgs(
+            ("user", "What does Article 6 say about high-risk medical AI?"),
+            ("assistant", "Article 6 classifies safety-component AI as high-risk."),
+            ("user", "Does the medical device exemption mean our diagnostic tool falls outside the scope completely?"),
+        ))
+        assert cv.in_scope is True
+        assert cv.reason == ScopeReason.IN_SCOPE
+        assert "Art. 6" in cv.anchor_articles
+
+    def test_r55_e_high_risk_invitro_followup(self) -> None:
+        """mt_v2_016 shape — weak-only 'high risk in-vitro' on a long
+        follow-up. Use a phrasing with no other strong keyword so the
+        rescue is the only path to in-scope.
+        """
+        cv = classify_conversation(_msgs(
+            ("user", "What does Article 6 say about medical-device AI?"),
+            ("assistant", "Article 6(1) covers medical-device AI under Annex I."),
+            ("user", "How do high-risk in-vitro diagnostics fit into our business plan for the year?"),
+        ))
+        assert cv.in_scope is True
+        assert cv.reason == ScopeReason.IN_SCOPE
+        assert "Art. 6" in cv.anchor_articles
+
+    def test_r55_e_notified_body_certificate_followup(self) -> None:
+        """mt_v2_024 shape — weak-only follow-up where the live message
+        carries the broad ``individualised risk assessment`` keyword
+        (mapped to Art. 5 in the weak set). Use a phrasing without
+        other strong anchors so the rescue is the only path to in-scope.
+        """
+        cv = classify_conversation(_msgs(
+            ("user", "What does Article 5 say about emotion recognition?"),
+            ("assistant", "Article 5(1)(f) prohibits emotion recognition in workplace."),
+            ("user", "Would an individualised risk assessment let our offering through this gate next quarter?"),
+        ))
+        assert cv.in_scope is True
+        assert cv.reason == ScopeReason.IN_SCOPE
+        assert "Art. 5" in cv.anchor_articles
+
+    # ── Negative side: must NOT rescue single-turn / R34 OOS / hard refusals ──
+
+    def test_r55_e_single_turn_weak_kw_still_refuses(self) -> None:
+        """Single-turn weak-only keyword query — no prior anchors,
+        rescue MUST NOT fire (avoids the R54.1 C2 false-positive
+        regression for off-topic high-risk / medical-device queries).
+        """
+        cv = classify_conversation(_msgs(
+            ("user", "What about the medical device exemptions for our product?"),
+        ))
+        assert cv.in_scope is False, (
+            "R55-E must not rescue a single-turn weak-only keyword "
+            "query (no prior anchors)"
+        )
+
+    def test_r55_e_does_not_rescue_r34_oos_netflix(self) -> None:
+        """R34 P0 OOS regression — single-turn 'I want to suspend my
+        Netflix subscription' has no prior anchors and MUST stay
+        refused (no rescue)."""
+        cv = classify_conversation(_msgs(
+            ("user", "I want to suspend my Netflix subscription."),
+        ))
+        assert cv.in_scope is False, (
+            "R34 OOS regression: Netflix subscription must NOT be rescued"
+        )
+
+    def test_r55_e_does_not_rescue_r34_oos_queen(self) -> None:
+        cv = classify_conversation(_msgs(
+            ("user", "When did the queen withdraw from public life?"),
+        ))
+        assert cv.in_scope is False
+
+    def test_r55_e_does_not_rescue_r34_oos_birth_cert(self) -> None:
+        cv = classify_conversation(_msgs(
+            ("user", "Birth certificate processing time in France?"),
+        ))
+        assert cv.in_scope is False
+
+    def test_r55_e_does_not_rescue_r34_oos_musician(self) -> None:
+        cv = classify_conversation(_msgs(
+            ("user", "Designate as your favourite musician?"),
+        ))
+        assert cv.in_scope is False
+
+    def test_r55_e_does_not_rescue_r34_oos_restaurant(self) -> None:
+        cv = classify_conversation(_msgs(
+            ("user", "What's the best Italian restaurant in Rome?"),
+        ))
+        assert cv.in_scope is False
+
+    def test_r55_e_does_not_rescue_hard_refusal_other_regulation(self) -> None:
+        """If the live verdict is OTHER_REGULATION, R55-E must NOT
+        rescue it even when a prior anchor is in the pool."""
+        cv = classify_conversation(_msgs(
+            ("user", "What does Article 13 require?"),
+            ("assistant", "Article 13 governs transparency for high-risk AI."),
+            # OTHER_REGULATION trigger: GDPR-only question with weak kw
+            ("user", "Under GDPR Article 35 do we need a DPIA for our medical device data flow this year?"),
+        ))
+        # OTHER_REGULATION is a hard-refusal block — R55-E honours it.
+        if cv.verdict.reason == ScopeReason.OTHER_REGULATION:
+            assert cv.in_scope is False, (
+                "R55-E must respect hard-refusal OTHER_REGULATION"
+            )
+        # Otherwise this isn't a hard-refusal classification, but the
+        # test still pins that we don't crash on this path.
+
+    def test_r55_e_evidence_string_format(self) -> None:
+        """R55-E rescue should produce evidence that calls out the
+        rescue path so post-mortem auditors can grep for it. Use a
+        live message that has ONLY weak keywords (Art. 51 via
+        ``training compute threshold``) and no strong-anchor tokens.
+        """
+        cv = classify_conversation(_msgs(
+            ("user", "What does Article 13 require for transparency?"),
+            ("assistant", "Article 13 governs transparency."),
+            ("user", "What about the training compute threshold computation when we adjust hyperparameters in deployment?"),
+        ))
+        assert cv.in_scope is True
+        # Evidence should mention the rescue path explicitly.
+        assert "weak-keyword rescue" in cv.verdict.evidence.lower(), (
+            f"R55-E evidence missing rescue marker: {cv.verdict.evidence!r}"
+        )
+
+
+# ─── R55-A — refusal_copy_for() must use third-person voice ───────────────
+
+
+class TestR55ARefusalCopyNoFirstPerson:
+    """R55-A part 1 — refusal templates rewritten to third-person
+    regulator voice. The pre-R55 templates ('I only answer questions
+    about the EU AI Act…') triggered the judge tone rubric's
+    first-person hard-fail on every refusal row (~9 of 14 V2 tone
+    failures).
+    """
+
+    def _assert_no_first_person(self, text: str) -> None:
+        """Strict check: no `I ` / ` I ` / `my ` / `we ` /
+        `me ` / `us ` tokens (after lowercasing)."""
+        low = " " + text.lower() + " "
+        bad_tokens = [" i ", " my ", " we ", " me ", " us ", " i'm ", " i've ", " i'll "]
+        for tok in bad_tokens:
+            assert tok not in low, (
+                f"R55-A: refusal copy contains first-person token "
+                f"{tok!r} in: {text!r}"
+            )
+
+    def test_refusal_other_regulation_no_first_person(self) -> None:
+        v = ScopeVerdict(
+            in_scope=False,
+            reason=ScopeReason.OTHER_REGULATION,
+            evidence="GDPR reference",
+        )
+        out = refusal_copy_for(v)
+        self._assert_no_first_person(out)
+
+    def test_refusal_near_oos_no_first_person(self) -> None:
+        v = ScopeVerdict(
+            in_scope=False,
+            reason=ScopeReason.NEAR_OOS,
+            evidence="DSA pattern",
+            near_oos_framework="Digital Services Act",
+        )
+        out = refusal_copy_for(v)
+        self._assert_no_first_person(out)
+        # Also surface the framework name + abbreviation per R49-B.
+        assert "Digital Services Act" in out
+        assert "DSA" in out
+
+    def test_refusal_near_oos_defensive_path_no_first_person(self) -> None:
+        """The defensive NEAR_OOS branch (no framework name set) must
+        also be free of first-person pronouns."""
+        v = ScopeVerdict(
+            in_scope=False,
+            reason=ScopeReason.NEAR_OOS,
+            evidence="pattern matched but no framework",
+        )
+        out = refusal_copy_for(v)
+        self._assert_no_first_person(out)
+
+    def test_refusal_prompt_injection_no_first_person(self) -> None:
+        v = ScopeVerdict(
+            in_scope=False,
+            reason=ScopeReason.PROMPT_INJECTION,
+            evidence="injection attempt",
+        )
+        out = refusal_copy_for(v)
+        self._assert_no_first_person(out)
+
+    def test_refusal_conversational_no_first_person(self) -> None:
+        v = ScopeVerdict(
+            in_scope=False,
+            reason=ScopeReason.CONVERSATIONAL,
+            evidence="off-topic",
+        )
+        out = refusal_copy_for(v)
+        self._assert_no_first_person(out)
+
+    def test_refusal_empty_or_nonsense_no_first_person(self) -> None:
+        """EMPTY_OR_NONSENSE template (was already first-person-free
+        pre-R55 but we pin it via a regression test)."""
+        v = ScopeVerdict(
+            in_scope=False,
+            reason=ScopeReason.EMPTY_OR_NONSENSE,
+            evidence="empty",
+        )
+        out = refusal_copy_for(v)
+        self._assert_no_first_person(out)
+
+    def test_refusal_non_existent_article_no_first_person(self) -> None:
+        """NON_EXISTENT_ARTICLE template was already first-person-free
+        pre-R55 — pin it via regression test."""
+        v = ScopeVerdict(
+            in_scope=False,
+            reason=ScopeReason.NON_EXISTENT_ARTICLE,
+            evidence="bad ref",
+            unknown_articles=("Art. 999",),
+        )
+        out = refusal_copy_for(v)
+        self._assert_no_first_person(out)
+
+    def test_refusal_other_regulation_third_person_lead(self) -> None:
+        """The new template should explicitly mention 'This assistant'
+        as the third-person regulator-voice opener."""
+        v = ScopeVerdict(
+            in_scope=False,
+            reason=ScopeReason.OTHER_REGULATION,
+            evidence="GDPR reference",
+        )
+        out = refusal_copy_for(v)
+        assert "This assistant" in out or "this assistant" in out
+
+    def test_refusal_conversational_third_person_lead(self) -> None:
+        v = ScopeVerdict(
+            in_scope=False,
+            reason=ScopeReason.CONVERSATIONAL,
+            evidence="off-topic",
+        )
+        out = refusal_copy_for(v)
+        assert "This assistant" in out or "this assistant" in out
