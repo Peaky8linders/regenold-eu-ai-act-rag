@@ -2133,3 +2133,179 @@ class TestR57AScopeLeakFixes:
             "How does a notified body suspend its certificate for an AI system?"
         )
         assert v.in_scope is True
+
+
+# ─── R58 — multi-turn rescue gap closers (mt_v2_011 + mt_v2_015) ──────────
+
+
+class TestR58FollowupMTRescue:
+    """R58 — close the last two V2 multi-turn refusals.
+
+    Post-R57 the V2 live coherence rate plateaued at 0.44 because two
+    specific multi-turn shapes still refused:
+
+    * **mt_v2_011** — a SaaS-startup narrative spanning 4 turns ends
+      with "Does our priority sandbox access carry over?". Prior turns
+      never named an explicit Art. / Annex anchor (they only carry the
+      narrative around employee headcount + turnover); pre-R58, the
+      final live turn carried no strong AI Act anchor either, so
+      classify_scope refused as CONVERSATIONAL. R58 adds
+      ``"sandbox access"`` / ``"priority sandbox"`` /
+      ``"AI regulatory sandbox"`` to the strong-keyword map (→ Art. 57)
+      so the live turn flips IN_SCOPE directly via the
+      ``derive_strong_anchor_articles_from_keywords`` path.
+
+    * **mt_v2_015** — HR-analytics narrative ending "Now we use it to
+      decide who to lay off in a restructuring." starts with "now we",
+      which IS already an R57-A fact-pattern marker — so the rescue
+      fires *if* the prior user turn ("Our HR analytics scores
+      employee performance using AI.") seeds ``prior_anchors``. R58
+      adds ``"scores employee performance"`` /
+      ``"employee performance using ai"`` (with mandatory AI
+      co-occurrence) → Annex III so the prior turn registers, then
+      the R57-A "now we" branch lights up.
+
+    Every new anchor was verified against the curated 21-scenario OOS
+    probe set (``evals.regenold.scenarios_oos``) — all 21 still refuse.
+    Generic HR / DevOps phrasings ("HR analytics dashboard", "AWS
+    sandbox", "my boss wants a performance evaluation next week",
+    "we did some layoffs last quarter") also still refuse — the AI
+    qualifier is the load-bearing disambiguator.
+    """
+
+    def test_r58_saas_sandbox_multiturn_rescue(self) -> None:
+        """mt_v2_011 shape — 4 prior turns establish SaaS/SME context;
+        final turn ``"Does our priority sandbox access carry over?"``
+        anchors Art. 57 directly via the ``"sandbox access"`` keyword.
+        """
+        msgs = [
+            {"role": "user", "content": "We're a SaaS startup with 40 employees and 8M annual turnover."},
+            {"role": "assistant", "content": "You qualify as an SME under Article 62."},
+            {"role": "user", "content": "We just raised Series B and grew to 250 employees."},
+            {"role": "assistant", "content": "You're now a small mid-cap."},
+            {"role": "user", "content": "Does our priority sandbox access carry over?"},
+        ]
+        v = classify_conversation(msgs)
+        assert v.in_scope is True, (
+            f"Expected in_scope, got reason={v.verdict.reason.name} "
+            f"evidence={v.verdict.evidence!r}"
+        )
+        # The new sandbox keyword anchors Art. 57 on the live turn.
+        assert "Art. 57" in v.anchor_articles, (
+            f"Expected Art. 57 in anchors, got {v.anchor_articles}"
+        )
+
+    def test_r58_hr_analytics_layoff_multiturn_rescue(self) -> None:
+        """mt_v2_015 shape — prior user turn establishes 'HR analytics
+        + AI' context via ``"scores employee performance"`` /
+        ``"employee performance using ai"`` anchors → Annex III; final
+        turn (``"Now we use it to decide who to lay off in a
+        restructuring."``) starts with "now we" which is an R57-A
+        fact-pattern marker, so the rescue fires via the seeded
+        prior_anchors.
+        """
+        msgs = [
+            {"role": "user", "content": "Our HR analytics scores employee performance using AI."},
+            {"role": "assistant", "content": "Annex III(4)(b) makes performance-evaluation AI high-risk."},
+            {"role": "user", "content": "Now we use it to decide who to lay off in a restructuring."},
+        ]
+        v = classify_conversation(msgs)
+        assert v.in_scope is True, (
+            f"Expected in_scope, got reason={v.verdict.reason.name} "
+            f"evidence={v.verdict.evidence!r}"
+        )
+        # The R57-A fact-pattern rescue should surface the Annex III
+        # anchor seeded by the prior user turn's keyword match.
+        assert v.anchor_articles, (
+            "Expected non-empty anchors after R57-A rescue"
+        )
+        assert "Annex III" in v.anchor_articles, (
+            f"Expected Annex III in anchors, got {v.anchor_articles}"
+        )
+
+    # ── Live-turn single-shot variants (mt_v2_011 final flips standalone) ──
+
+    def test_r58_sandbox_access_alone_in_scope(self) -> None:
+        """The R58 sandbox keywords are STRONG anchors — they flip
+        scope on a single-turn query without any prior context.
+        """
+        v = classify_scope("Does our priority sandbox access carry over?")
+        assert v.in_scope is True
+        assert v.reason == ScopeReason.IN_SCOPE
+
+    def test_r58_ai_regulatory_sandbox_alone_in_scope(self) -> None:
+        v = classify_scope("Tell me about the AI regulatory sandbox in Spain.")
+        assert v.in_scope is True
+        assert v.reason == ScopeReason.IN_SCOPE
+
+    def test_r58_employee_performance_using_ai_alone_in_scope(self) -> None:
+        """T0 of mt_v2_015 — the standalone first-user-turn shape that
+        seeds prior_anchors. Must also be classified in_scope so the
+        rescue path has anchors to inherit.
+        """
+        v = classify_scope("Our HR analytics scores employee performance using AI.")
+        assert v.in_scope is True
+        assert v.reason == ScopeReason.IN_SCOPE
+
+    # ── Negative side: must NOT false-positive on adjacent shapes ──
+
+    def test_r58_generic_devops_sandbox_refuses(self) -> None:
+        """Generic engineering "sandbox" without the regulatory
+        qualifier must refuse. ``"Best sandbox for my Linux dev?"``
+        carries no AI Act signal — the R58 strong keywords are tightly
+        scoped to AI-Act-shaped phrases."""
+        v = classify_scope("Best sandbox for my Linux dev?")
+        assert v.in_scope is False, (
+            "Generic DevOps sandbox query must NOT be rescued by R58"
+        )
+
+    def test_r58_aws_sandbox_refuses(self) -> None:
+        v = classify_scope("What is the AWS sandbox?")
+        assert v.in_scope is False
+
+    def test_r58_priority_access_iphone_refuses(self) -> None:
+        """``"priority access"`` alone (no ``sandbox``) must refuse."""
+        v = classify_scope("How do I get priority access to the latest iPhone?")
+        assert v.in_scope is False
+
+    def test_r58_generic_performance_evaluation_refuses(self) -> None:
+        """Generic HR ``"performance evaluation"`` without ``AI`` must
+        refuse. The R58 anchor REQUIRES the ``AI`` qualifier."""
+        v = classify_scope("My boss wants a performance evaluation next week.")
+        assert v.in_scope is False
+
+    def test_r58_annual_employee_performance_review_refuses(self) -> None:
+        v = classify_scope("Annual employee performance reviews are due.")
+        assert v.in_scope is False
+
+    def test_r58_hr_analytics_dashboard_refuses(self) -> None:
+        """Generic HR-tech context without ``AI`` co-occurrence."""
+        v = classify_scope("HR analytics dashboard for my company")
+        assert v.in_scope is False
+
+    def test_r58_generic_layoffs_no_ai_refuses(self) -> None:
+        """Layoffs without ``AI`` qualifier must refuse."""
+        v = classify_scope("We did some layoffs last quarter due to budget cuts.")
+        assert v.in_scope is False
+
+    # ── R34 P0 OOS regression set MUST still refuse after R58 ──
+
+    def test_r58_does_not_regress_r34_netflix(self) -> None:
+        v = classify_scope("I want to suspend my Netflix subscription.")
+        assert v.in_scope is False
+
+    def test_r58_does_not_regress_r34_queen(self) -> None:
+        v = classify_scope("When did the queen withdraw from public life?")
+        assert v.in_scope is False
+
+    def test_r58_does_not_regress_r34_birth_cert(self) -> None:
+        v = classify_scope("Birth certificate processing time in France?")
+        assert v.in_scope is False
+
+    def test_r58_does_not_regress_r34_musician(self) -> None:
+        v = classify_scope("Designate as your favourite musician?")
+        assert v.in_scope is False
+
+    def test_r58_does_not_regress_r34_restaurant(self) -> None:
+        v = classify_scope("What's the best Italian restaurant in Rome?")
+        assert v.in_scope is False

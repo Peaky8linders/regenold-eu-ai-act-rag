@@ -944,6 +944,41 @@ _AI_ACT_ANCHORS: frozenset[str] = frozenset(
         "ai act and dsa",
         "ai act vs dsa",
         "software as a medical device",
+        # ── R58 — multi-turn rescue gap closers ──
+        # Sandbox cluster (mt_v2_011 final turn). Uniquely AI-Act-shaped
+        # — generic DevOps "sandbox access" is rare and the regulatory-
+        # vs-engineering sense is disambiguated by the qualifier ("AI
+        # regulatory" / "priority"). Verified against the R34 P0 OOS
+        # set + the curated 21-scenario probe — none false-positive.
+        "sandbox access",
+        "priority sandbox",
+        "priority sandbox access",
+        "ai regulatory sandbox",
+        "regulatory sandbox access",
+        "regulatory sandbox priority",
+        # HR analytics / performance-evaluation AI cluster (mt_v2_015).
+        # Each phrase requires AI co-occurrence so generic HR-tech
+        # discussions ("our performance evaluation system", "HR
+        # analytics dashboard") cannot trigger scope. The "ai" /
+        # "using ai" / "ai-driven" qualifier is the load-bearing
+        # disambiguator.
+        "performance evaluation ai",
+        "performance-evaluation ai",
+        "performance using ai",
+        "employee performance using ai",
+        "scores employee performance",
+        "score employee performance",
+        "scoring employee performance",
+        "hr analytics ai",
+        "hr analytics scores",
+        "ai-driven layoff",
+        "ai driven layoff",
+        "ai-driven layoffs",
+        "ai driven layoffs",
+        "lay off using ai",
+        "layoff using ai",
+        "lay off with ai",
+        "layoffs using ai",
     )
 )
 
@@ -1539,6 +1574,49 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "software as a medical device": "Art. 6",
     "high-risk in-vitro": "Art. 6",
     "high risk in vitro": "Art. 6",
+    # ── R58 — multi-turn rescue gap closers (mt_v2_011 + mt_v2_015) ──
+    # The R57 V2 live re-measurement showed multi-turn coherence
+    # plateauing at 0.44 because two specific shapes still refused on
+    # the LIVE turn AND the rescue couldn't see prior anchors.
+    #
+    # mt_v2_011 final turn: "Does our priority sandbox access carry
+    # over?" — prior turns never named an Article anchor (they only
+    # establish a SaaS-size narrative). The new "sandbox access" /
+    # "priority sandbox" / "AI regulatory sandbox" keywords anchor the
+    # live turn directly to Art. 57 via the strong-keyword in_scope
+    # path. Each phrase is uniquely AI-Act-shaped — generic DevOps
+    # "sandbox access" is rare and pairs with infrastructure verbs
+    # ("deploy to a sandbox"), not regulatory framing.
+    "sandbox access": "Art. 57",
+    "priority sandbox": "Art. 57",
+    "priority sandbox access": "Art. 57",
+    "ai regulatory sandbox": "Art. 57",
+    "regulatory sandbox access": "Art. 57",
+    "regulatory sandbox priority": "Art. 57",
+    # mt_v2_015 — T0 establishes "Our HR analytics scores employee
+    # performance using AI" but pre-R58 nothing in the keyword map
+    # caught it. The T2 final turn ("Now we use it to decide who to
+    # lay off...") starts with "now we" which IS already an R57-A
+    # fact-pattern marker, so once T0 seeds prior_anchors the R57-A
+    # rescue fires automatically. Each phrase requires AI co-occurrence
+    # so generic HR conversations don't false-positive.
+    "performance evaluation ai": "Annex III",
+    "performance-evaluation ai": "Annex III",
+    "performance using ai": "Annex III",
+    "employee performance using ai": "Annex III",
+    "scores employee performance": "Annex III",
+    "score employee performance": "Annex III",
+    "scoring employee performance": "Annex III",
+    "hr analytics ai": "Annex III",
+    "hr analytics scores": "Annex III",
+    "ai-driven layoff": "Annex III",
+    "ai driven layoff": "Annex III",
+    "ai-driven layoffs": "Annex III",
+    "ai driven layoffs": "Annex III",
+    "lay off using ai": "Annex III",
+    "layoff using ai": "Annex III",
+    "lay off with ai": "Annex III",
+    "layoffs using ai": "Annex III",
 }
 
 
