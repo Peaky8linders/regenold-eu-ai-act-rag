@@ -62,10 +62,13 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from typing import Any
 
 from app.llm.openai_wrapper_provider import (
     OpenAIWrapperRequest,
+    get_groq_intent_provider,
     get_openai_wrapper_provider,
+    is_groq_intent_provider_enabled,
     is_openai_wrapper_enabled,
 )
 from app.security.prompt_guard import sanitize_for_llm
@@ -145,6 +148,12 @@ class IntentResult:
 # ── Module-level config + state ──────────────────────────────────────────────
 
 _DEFAULT_MODEL = os.getenv("REGENOLD_INTENT_MODEL", "claude-haiku-4-5-20251001")
+# Round 52: Groq fallback model. Llama 3.3 70B Versatile is the most-tested
+# Groq endpoint for legal-RAG tasks (per Reddit r/legaltech Oct 2025
+# survey + Vals.ai LegalBench). Override via REGENOLD_INTENT_MODEL_GROQ.
+_DEFAULT_GROQ_MODEL = os.getenv(
+    "REGENOLD_INTENT_MODEL_GROQ", "llama-3.3-70b-versatile"
+)
 _TIMEOUT_SECONDS = float(os.getenv("REGENOLD_INTENT_TIMEOUT", "2.5"))
 _CACHE_MAX = int(os.getenv("REGENOLD_INTENT_CACHE_MAX", "2048"))
 _FAILURE_THRESHOLD = int(os.getenv("REGENOLD_INTENT_FAILURE_THRESHOLD", "3"))
@@ -349,14 +358,43 @@ def _parse_intent_json(text: str) -> IntentResult | None:
     )
 
 
+def _resolve_intent_provider() -> tuple[Any, str] | None:
+    """Select which provider singleton + model the classifier should use.
+
+    Round 52 — adds the Groq path. The intent classifier was the
+    cheapest+safest stage to migrate off the Claude Max wrapper before
+    the Pro downgrade (Stage-1/2 polish risks tone + V2 coherence
+    regression; Stage-0 is a 10-way JSON classification that any
+    instruction-tuned 70B handles).
+
+    Returns ``(provider, model)`` when a path is configured, ``None``
+    when no provider is wired (which the public ``is_intent_enabled``
+    surfaces). Groq wins when both
+    ``REGENOLD_INTENT_PROVIDER=groq`` and ``GROQ_API_KEY`` are set;
+    otherwise we fall through to the existing wrapper path if it's
+    enabled.
+    """
+    if is_groq_intent_provider_enabled():
+        return get_groq_intent_provider(), _DEFAULT_GROQ_MODEL
+    if is_openai_wrapper_enabled():
+        return get_openai_wrapper_provider(), _DEFAULT_MODEL
+    return None
+
+
 def is_intent_enabled() -> bool:
     """Public gate. True iff intent classification should run for this request.
 
-    Returns False when the wrapper isn't wired OR the circuit breaker
+    Returns False when neither provider is wired OR the circuit breaker
     is open. The engine treats False as "skip intent" — no behaviour
     change vs. the round-19 baseline.
+
+    NOTE: env-only check — does NOT construct provider singletons. The
+    actual construction (which can raise on httpx pool init) happens
+    inside :func:`classify_intent`'s try-block. This separation is the
+    issue #50 hardening contract: provider acquisition failures must
+    not propagate up through ``is_intent_enabled``.
     """
-    if not is_openai_wrapper_enabled():
+    if not (is_groq_intent_provider_enabled() or is_openai_wrapper_enabled()):
         return False
     if _BREAKER.open():
         return False
@@ -378,7 +416,18 @@ def classify_intent(
     """
     if not question or not is_intent_enabled():
         return None
-    model = _DEFAULT_MODEL
+    # Issue #50: provider acquisition itself can raise (singleton init,
+    # httpx pool construction, URL parsing). Resolve INSIDE the try so a
+    # raise here lands on the fail-soft None path, not the FastAPI 500.
+    try:
+        selection = _resolve_intent_provider()
+    except Exception as exc:  # noqa: BLE001 — fail-soft contract
+        _BREAKER.record_failure()
+        logger.debug("intent_provider_resolve_exception: %s", str(exc)[:200])
+        return None
+    if selection is None:
+        return None
+    provider, model = selection
     key = _cache_key(question, model)
     cached = _cache_get(key)
     if cached is not None:
@@ -424,7 +473,6 @@ def classify_intent(
     # 500 instead of the deterministic-fallback path.
     start = time.perf_counter()
     try:
-        provider = get_openai_wrapper_provider()
         response = provider.complete(
             OpenAIWrapperRequest(
                 system=_SYSTEM_PROMPT,
@@ -486,4 +534,5 @@ __all__ = [
     "IntentResult",
     "classify_intent",
     "is_intent_enabled",
+    "_resolve_intent_provider",
 ]

@@ -103,14 +103,27 @@ def is_openai_wrapper_enabled() -> bool:
 
 
 class _OpenAIWrapperProvider:
-    """OpenAI Chat Completions client. One pooled httpx.Client per process."""
+    """OpenAI Chat Completions client. One pooled httpx.Client per process.
 
-    def __init__(self) -> None:
+    Constructor accepts explicit ``base_url`` / ``api_key`` / ``timeout``
+    so callers can spin up parallel providers against different endpoints
+    (e.g. Stage-1/2 polish against the Claude Max wrapper, Stage-0 intent
+    against Groq). All three default to env-derived values for the
+    backwards-compatible singleton path.
+    """
+
+    def __init__(
+        self,
+        *,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        timeout: float | None = None,
+    ) -> None:
         self._base_url = (
-            os.getenv("OPENAI_API_BASE", "").strip().rstrip("/")
+            (base_url or os.getenv("OPENAI_API_BASE", "")).strip().rstrip("/")
             or "http://127.0.0.1:8000/v1"
         )
-        self._api_key = os.getenv("OPENAI_API_KEY", "dummy")
+        self._api_key = api_key or os.getenv("OPENAI_API_KEY", "dummy")
         # 60 s default — Claude Sonnet 4.6 Stage-2 polish through the
         # claude-code-openai-wrapper takes 10-20 s for non-trivial
         # questions; the deterministic Stage-1 already landed, so the
@@ -120,7 +133,10 @@ class _OpenAIWrapperProvider:
         # killed every real Sonnet call in production. Per-call shorter
         # budgets (e.g. intent classifier's 2.5 s) come via
         # ``OpenAIWrapperRequest.timeout_seconds``, not by mutating env.
-        self._timeout = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "60"))
+        self._timeout = (
+            timeout if timeout is not None
+            else float(os.getenv("OPENAI_TIMEOUT_SECONDS", "60"))
+        )
         # Pooled long-lived client = one TLS handshake + persistent
         # connection pool. Per-request `httpx.post` opens a fresh TLS
         # handshake AND leaks sockets in TIME_WAIT under concurrent load.
@@ -315,3 +331,75 @@ def get_openai_wrapper_provider() -> _OpenAIWrapperProvider:
             if _SINGLETON is None:
                 _SINGLETON = _OpenAIWrapperProvider()
     return _SINGLETON
+
+
+# ── Groq intent provider (Round 52, Phase-1 Claude Max → Pro migration) ─────
+#
+# A second pooled provider singleton points at Groq's OpenAI-compatible
+# Chat Completions endpoint. Currently used ONLY by the Stage-0 intent
+# classifier when ``REGENOLD_INTENT_PROVIDER=groq``. Stage-1/2 polish
+# stays on the existing wrapper singleton (Claude Max via cloudflared).
+#
+# Why a separate singleton: the existing wrapper singleton is bound to
+# ``OPENAI_API_BASE`` at construction time. We need two endpoints live
+# in the same process to A/B intent classification without touching the
+# Stage-2 polish path the V2 multi-turn coherence axis depends on.
+#
+# Default endpoint is Groq's public OpenAI-spec URL; override via
+# ``GROQ_API_BASE`` if the operator routes through an internal proxy.
+
+_GROQ_DEFAULT_BASE = "https://api.groq.com/openai/v1"
+_GROQ_SINGLETON: _OpenAIWrapperProvider | None = None
+_GROQ_SINGLETON_LOCK = threading.Lock()
+
+
+def is_groq_intent_provider_enabled() -> bool:
+    """True iff Stage-0 intent should route to Groq.
+
+    Requires BOTH ``REGENOLD_INTENT_PROVIDER=groq`` AND a non-empty
+    ``GROQ_API_KEY``. If only one is set, returns False so the intent
+    classifier falls back to the existing wrapper path (no surprise
+    silent disablement).
+    """
+    provider_choice = (
+        os.getenv("REGENOLD_INTENT_PROVIDER", "").strip().lower()
+    )
+    if provider_choice != "groq":
+        return False
+    return bool(os.getenv("GROQ_API_KEY", "").strip())
+
+
+def get_groq_intent_provider() -> _OpenAIWrapperProvider:
+    """Return the process-wide pooled Groq provider.
+
+    Same double-checked-locking shape as the default singleton. Reads
+    ``GROQ_API_BASE`` (default ``https://api.groq.com/openai/v1``) and
+    ``GROQ_API_KEY`` at first construction. The 5 s default timeout
+    matches the intent classifier's fast-fail posture — operators with
+    a different SLA can override via ``GROQ_TIMEOUT_SECONDS``.
+    """
+    global _GROQ_SINGLETON
+    if _GROQ_SINGLETON is None:
+        with _GROQ_SINGLETON_LOCK:
+            if _GROQ_SINGLETON is None:
+                _GROQ_SINGLETON = _OpenAIWrapperProvider(
+                    base_url=(
+                        os.getenv("GROQ_API_BASE", "").strip()
+                        or _GROQ_DEFAULT_BASE
+                    ),
+                    api_key=os.getenv("GROQ_API_KEY", ""),
+                    timeout=float(os.getenv("GROQ_TIMEOUT_SECONDS", "5")),
+                )
+    return _GROQ_SINGLETON
+
+
+def _reset_groq_singleton_for_tests() -> None:
+    """Reset the Groq singleton. Test-only — not part of the public API."""
+    global _GROQ_SINGLETON
+    with _GROQ_SINGLETON_LOCK:
+        if _GROQ_SINGLETON is not None:
+            try:
+                _GROQ_SINGLETON._close()  # noqa: SLF001 — test hook
+            except Exception:  # noqa: BLE001
+                pass
+        _GROQ_SINGLETON = None

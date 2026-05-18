@@ -28,3 +28,28 @@ NEO4J_AUTO_SEED = "1"
 # Lifts Ans Strict + multi-turn coherence on the V2 eval — see
 # ``CLAUDE.md`` round 47-B scorecard.
 REGENOLD_GRAPH_AWARE = "1"
+
+# Round 52 — Stage-0 intent classifier provider selection.
+#
+# Default ("" or "wrapper" semantics): Haiku 4.5 via the Claude Max
+# wrapper (existing behaviour). Set to "groq" to route Stage-0 through
+# Groq's serverless Llama 3.3 70B endpoint instead. Requires
+# ``GROQ_API_KEY`` to be ALSO set; if the key is missing, the classifier
+# falls back to the wrapper (no surprise silent disablement).
+#
+# Why this exists: planning a Claude Max → Claude Pro downgrade. Pro's
+# tighter rate limits would throttle the wrapper, so the cheapest
+# stage to offload (Stage-0 — a 10-way JSON classification, falls back
+# cleanly to deterministic on any failure) goes to Groq first. Cost
+# delta: roughly $200/mo → ~$0.50/mo at this project's volume.
+# Stage-1/2 polish stays on the wrapper for tone + V2 coherence
+# preservation. See CLAUDE.md round-52 for the migration plan.
+#
+# Provision the key via:
+#   railway variables --set GROQ_API_KEY=gsk_...
+#   railway variables --set REGENOLD_INTENT_PROVIDER=groq
+# REGENOLD_INTENT_PROVIDER = "groq"
+# GROQ_API_KEY             = "gsk_..."          # set via railway variables, not toml
+# GROQ_API_BASE            = "https://api.groq.com/openai/v1"    # default
+# REGENOLD_INTENT_MODEL_GROQ = "llama-3.3-70b-versatile"          # default
+# GROQ_TIMEOUT_SECONDS     = "5"                                  # default

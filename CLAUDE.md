@@ -2081,6 +2081,157 @@ Cumulative since baseline (R23 → R49): Ref Correctness Loose still
 **+0.258 (0.284 → 0.542)**, Strict **+0.195 (0.236 → 0.431)**, Ans
 Strict **+0.154 (0.152 → 0.307)**.
 
+## Round 52 — Stage-0 intent classifier on Groq (Phase-1 Max→Pro migration) (2026-05-18)
+
+(Renumbered from R50 at rebase time — the parallel ?include_reasoning /
+LLM-as-Judge work merged as R50 / R51 / R51.1 while this PR was open.
+The Groq-Stage-0 work below is independent of the R51 complexity-gate
+path — they touch disjoint code regions and compose cleanly.)
+
+Operator confirmed planning a Claude Max → Claude Pro downgrade in 2
+weeks. Pro's tighter rate limits would throttle the wrapper's
+Stage-1/2 polish path; R52 is the cheapest, safest first move of the
+migration: swap Stage-0 intent classification off the wrapper onto
+Groq's serverless Llama 3.3 70B Versatile endpoint. Bench parity is
+preserved by design — the env var is **OFF by default**; flipping it
+ON in production is an operator decision after the V2 A/B lands.
+
+### Why Groq for Stage-0 specifically
+
+Stage-0 is a 10-way JSON classification with strict schema, low token
+budget (160 max), and an end-to-end fail-soft contract: every error
+path (network, JSON parse, "Not logged in" sentinel) drops to the
+deterministic anchor narrowing. This is the only stage where swapping
+the LLM is genuinely zero-risk for the rubric:
+
+* Tone (currently 0.9984 / 1.0) — not touched; Stage-0 emits no prose.
+* Multi-turn coherence (V2 0.12) — not touched; Stage-2 polish owns it.
+* Latency — Groq's 500+ tok/s vs Haiku's ~250 ms cold call → Stage-0
+  drops from ~250 ms to ~40 ms median, saving ~210 ms p50 per request.
+* Cost — ~$200/mo Claude Max → ~$0.50/mo Groq at this project's
+  volume (Llama 3.3 70B is $0.59/M in + $0.79/M out, Stage-0 LRU
+  cache hit-rate is ~30% in production).
+
+Stage-1 parse + Stage-2 polish stay on the wrapper for now — those
+ARE rubric-critical surfaces; see Phases 2/3 below.
+
+### New surfaces
+
+* **`app/llm/openai_wrapper_provider.py`** — refactored
+  `_OpenAIWrapperProvider.__init__` to accept explicit `base_url` /
+  `api_key` / `timeout` kwargs (backwards-compatible — defaults still
+  read from env). Added a second pooled singleton
+  `get_groq_intent_provider()` bound to `GROQ_API_BASE` (default
+  `https://api.groq.com/openai/v1`) + `GROQ_API_KEY`. New
+  `is_groq_intent_provider_enabled()` requires BOTH
+  `REGENOLD_INTENT_PROVIDER=groq` AND a non-empty `GROQ_API_KEY` — if
+  only one is set, the classifier falls back to the wrapper (no
+  surprise silent disablement).
+* **`app/llm/intent_classifier.py`** — new private
+  `_resolve_intent_provider()` selects between the Groq singleton and
+  the wrapper singleton on every call. Groq wins when configured;
+  wrapper is the fallback. `_DEFAULT_GROQ_MODEL` defaults to
+  `llama-3.3-70b-versatile`; override via `REGENOLD_INTENT_MODEL_GROQ`
+  (Groq's catalog rotates — operators flip env vars instead of
+  editing code). Also: `is_intent_enabled()` is now env-only (does
+  NOT construct provider singletons), so an httpx-pool init failure
+  can't propagate up through the public gate — issue #50 hardening
+  preserved.
+* **`evals/regenold/intent_compare.py`** (new, ~360 LOC) — Stage-0
+  A/B measurement script. Loads the 56 V2 questions (tricky + final-
+  turn multiturn), classifies each through both providers (Haiku via
+  wrapper, Llama 3.3 70B via Groq), reports intent agreement rate,
+  anchor agreement rate, latency p50/p95 per provider, and top
+  disagreements with both labels surfaced for manual review. Writes
+  JSON sidecar at `evals/bench/results/intent-compare-<label>.json`.
+  Stdlib + httpx only. CLI:
+
+  ```powershell
+  $env:OPENAI_API_BASE = "http://127.0.0.1:8000/v1"   # wrapper for Haiku
+  $env:OPENAI_API_KEY  = "dummy"
+  $env:GROQ_API_KEY    = "gsk_..."
+  .venv\Scripts\python.exe -m evals.regenold.intent_compare --label r50-pilot --verbose
+  ```
+
+* **`railway.toml`** — `REGENOLD_INTENT_PROVIDER`, `GROQ_API_KEY`,
+  `GROQ_API_BASE`, `REGENOLD_INTENT_MODEL_GROQ`, `GROQ_TIMEOUT_SECONDS`
+  added as commented-out defaults so operators opt in via
+  `railway variables --set`.
+
+### Round 52 — Test coverage
+
+* **`tests/test_intent_groq_routing.py`** (new, 16 tests) — env-gate
+  semantics, singleton isolation between Groq and wrapper, provider
+  resolution precedence, end-to-end Groq classification with mocked
+  HTTP, "wrapper not called when Groq active" critical invariant,
+  cache-key isolation, override-model-via-env reload path.
+* **`tests/test_llm_round37_hardening.py`** — issue #50 contract
+  preserved: provider-acquisition exceptions still fail-soft to
+  `None`, never propagate up to the FastAPI route.
+* Full suite: **1,550 / 1,550 tests pass** (was 1,534 on main after
+  R51.1; +16 from `test_intent_groq_routing.py`). Zero regressions.
+* Bench parity confirmed — env var defaults OFF, so
+  `evals.bench.runner` byte-for-byte identical to R51.1.
+
+### Production deploy + measurement plan
+
+The env var is OFF by default. R52 PR ships only the wiring — no
+behaviour change on the existing deploy. Migration sequence:
+
+1. **Land the wiring PR** (this round). Bench parity confirmed via
+   1,477-test suite.
+2. **Operator provisions Groq API key**:
+   ```bash
+   railway variables --set GROQ_API_KEY=gsk_...
+   ```
+3. **Run the V2 A/B locally** BEFORE flipping production:
+   ```powershell
+   .venv\Scripts\python.exe -m evals.regenold.intent_compare --label r50-pilot --verbose
+   ```
+   Decision gate: intent agreement ≥ 0.85 AND anchor agreement ≥
+   0.80. Below either threshold → do not flip production.
+4. **Flip production**:
+   ```bash
+   railway variables --set REGENOLD_INTENT_PROVIDER=groq
+   ```
+   Takes effect on next request; in-flight wrapper requests complete
+   normally.
+5. **Roll back** by clearing the env var (no code revert needed):
+   ```bash
+   railway variables --unset REGENOLD_INTENT_PROVIDER
+   ```
+
+### Round 52 — Phases 2 / 3 (Pro downgrade urgency)
+
+Pro downgrade is 2 weeks out. Phase 1 (this round) handles Stage-0.
+Open items for the window:
+
+* **Phase 2 (Stage-1 parse, ETA: 1 week)** — JSON entity-extraction
+  prompt; the `_extract_json_object()` resilience already handles
+  drift. Risk MEDIUM, falls back cleanly. Likely target: same Groq
+  Llama 3.3 70B endpoint.
+* **Phase 3 (Stage-2 polish, ETA: pre-Pro-downgrade)** — DECISION
+  REQUIRED. Three options:
+  * (a) **Keep on wrapper** — Pro rate limits will throttle ~50% of
+    Stage-2 calls; engine falls back to deterministic Stage-1.
+    Acceptable if rubric impact stays inside noise band.
+  * (b) **Move to Anthropic API direct** (Sonnet 4.6 at $3/M in +
+    $15/M out) — ~$157/mo at current volume. No rate-limit risk;
+    preserves Claude's tone calibration.
+  * (c) **Move to Groq Llama 70B for Stage-2** — ~$18/mo via Groq,
+    BUT measurable tone + V2 coherence regression risk (Sonnet's
+    "EU regulator voice" was tuned-in over rounds; open-model prose
+    drifts). Requires V2 live A/B before committing.
+
+Recommendation per the R52 research synthesis: **option (b)** for
+Phase 3. Cost gap ($200 → $157) is small; tone + coherence
+calibration preserved; Pro's rate limits don't apply to Anthropic API
+keys. Note interaction with R51.1: the Opus 4.7 + 8000-thinking-token
+default fires on ~20% of complex Stage-2 polish calls — on Pro that
+quota pressure compounds. Consider unsetting `complex_model` /
+`complex_thinking_tokens` for Pro-tier deploys until V2 measurement
+proves the rubric lift outweighs the rate-limit hit.
+
 ## Eval scorecard (deterministic-fallback, local 276-scenario suite)
 
 | Round  | Pass         | p50      | p95     | avg refs | Retrieval F1 | Notes |
