@@ -2490,6 +2490,18 @@ _STAGE2_REFUSAL_MARKERS: tuple[str, ...] = (
     "block provided contains no",
     "references block contains no",
     "references block provided contains no",
+    # R50 — five NEW markers caught in the R49 V2 live multi-turn run.
+    # The Sonnet polish emits these on multi-turn finals where the
+    # prompt's REFERENCES block is non-empty but the polish layer
+    # decides the refs "don't contain information on" the specific
+    # final-turn ask. Pre-R50 the R48 guard missed them and shipped
+    # the contradiction; R50 adds them so the guard fires and routes
+    # through R49-A's KB-stitched grounded prose.
+    "based on the provided eu ai act references",
+    "the provided eu ai act references do not contain",
+    "the provided eu ai act references contain no",
+    "no matching provisions were retrieved",
+    "do not contain information on",
 )
 
 

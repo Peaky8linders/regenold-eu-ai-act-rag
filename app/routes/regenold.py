@@ -77,6 +77,22 @@ from app.integrations.regenold.models import (
     question_hash,
     reference_from_article_ref,
 )
+from app.integrations.regenold.reasoning_trace import (
+    activate as _activate_reasoning_trace,
+    current as _current_reasoning_trace,
+    deactivate as _deactivate_reasoning_trace,
+    record_anchors as _trace_anchors,
+    record_cache_hit as _trace_cache_hit,
+    record_compound_roles as _trace_compound_roles,
+    record_confidence as _trace_confidence,
+    record_guard as _trace_guard,
+    record_intent as _trace_intent,
+    record_note as _trace_note,
+    record_retrieval_path as _trace_retrieval_path,
+    record_scope as _trace_scope,
+    record_stage2 as _trace_stage2,
+    record_top_k as _trace_top_k,
+)
 from app.integrations.regenold.scope import (
     ConversationVerdict,
     classify_conversation,
@@ -817,6 +833,25 @@ def _resolve_retrieval_path(graph_stats: dict[str, Any]) -> str:
     return "deterministic"
 
 
+def _maybe_serialize_reasoning(include_reasoning: bool) -> str | None:
+    """Render the active ``ReasoningTrace`` as a JSON string when the
+    caller opted in. Returns ``None`` when reasoning was not requested
+    (the route then falls back to the existing telemetry string /
+    empty-string defaults).
+
+    R50 — this is the single bridge between the trace's recorder API
+    and the wire-level ``reasoning`` field. Keeping it in one place
+    means the route's many response-shape branches each call this
+    once and get a consistent payload.
+    """
+    if not include_reasoning:
+        return None
+    trace = _current_reasoning_trace()
+    if trace is None:
+        return None
+    return trace.to_json_string()
+
+
 def _build_telemetry_reasoning(
     *, confidence: float, kb_version: str, retrieval_path: str, ref_count: int
 ) -> str:
@@ -837,6 +872,7 @@ def _build_scope_refusal_response(
     *,
     scope: ConversationVerdict,
     include_telemetry: bool,
+    include_reasoning: bool = False,
     request: Request,
     api_key: str | None,
     question: str,
@@ -864,16 +900,29 @@ def _build_scope_refusal_response(
     confidence = 0.0
     retrieval_path: Any = "no_match"
 
+    # R50 — when ?include_reasoning=true is set, the trace already
+    # carries the scope verdict from the caller's instrumentation; we
+    # serialise it into the reasoning field below.
+    _reasoning_payload = _maybe_serialize_reasoning(include_reasoning)
+
+    # R50 — reasoning trace JSON wins when ?include_reasoning=true is
+    # set (it's strictly more useful for judging than the legacy
+    # telemetry one-liner). Falls through to the original behaviour
+    # when the caller didn't opt in.
+    _refusal_reasoning = _reasoning_payload if _reasoning_payload else (
+        _build_telemetry_reasoning(
+            confidence=confidence,
+            kb_version=KB_VERSION,
+            retrieval_path=retrieval_path,
+            ref_count=0,
+        )
+        if include_telemetry else ""
+    )
     if include_telemetry:
         out = RegenoldAskResponse(
             answer=answer_text,
             references=[],
-            reasoning=_build_telemetry_reasoning(
-                confidence=confidence,
-                kb_version=KB_VERSION,
-                retrieval_path=retrieval_path,
-                ref_count=0,
-            ),
+            reasoning=_refusal_reasoning,
             confidence=confidence,
             kb_version=KB_VERSION,
             retrieval_path=retrieval_path,
@@ -885,7 +934,7 @@ def _build_scope_refusal_response(
         out = RegenoldAskResponse(
             answer=answer_text,
             references=[],
-            reasoning="",
+            reasoning=_refusal_reasoning,
         )
 
     chain_tenant_id = "partner:regenold"
@@ -1159,6 +1208,7 @@ def regenold_eu_ai_act_ask(
     request: Request,
     body: Any = Body(...),  # noqa: B008 — FastAPI-idiomatic Body(...) at default position
     include_telemetry: bool = False,
+    include_reasoning: bool = False,
     api_key: str = Depends(require_regenold_api_key),
 ) -> RegenoldAskResponse:
     """Regenold partner endpoint: grounded EU AI Act Q&A with citations.
@@ -1188,6 +1238,18 @@ def regenold_eu_ai_act_ask(
     (confidence < 0.5 AND no references) — emits a structured no-match
     response instead of LLM prose grounded in nothing.
     """
+
+    # R50 — activate the per-request reasoning trace when the caller
+    # opted in via ``?include_reasoning=true``. The trace is a
+    # ContextVar-backed scratch pad that the scope / engine / guards
+    # write to; the route serialises it into the spec's ``reasoning``
+    # field at the end. When the caller did NOT opt in, every
+    # recorder call short-circuits to a single ``if trace is None``
+    # check — zero overhead on the deterministic path.
+    if include_reasoning:
+        _activate_reasoning_trace()
+    else:
+        _deactivate_reasoning_trace()
 
     # Input contract:
     # - primary: request body is `[{role, content}, ...]` (OpenAI/LiteLLM style)
@@ -1267,10 +1329,21 @@ def regenold_eu_ai_act_ask(
     # because the prior turn establishes Art. 13 as an anchor — this
     # is the "coreference rescue" branch in classify_conversation.
     scope = classify_conversation(req.messages)
+    # R50 — record scope verdict + anchor articles into the reasoning
+    # trace. The recorder short-circuits when the trace is inactive.
+    _trace_scope(
+        scope.reason.value,
+        scope.verdict.evidence,
+        near_oos_framework=getattr(scope.verdict, "near_oos_framework", "") or "",
+    )
+    if scope.anchor_articles:
+        _trace_anchors(list(scope.anchor_articles))
     if not scope.in_scope:
+        _trace_retrieval_path("scope_refusal")
         return _build_scope_refusal_response(
             scope=scope,
             include_telemetry=include_telemetry,
+            include_reasoning=include_reasoning,
             request=request,
             api_key=api_key,
             question=question,
@@ -1305,10 +1378,16 @@ def regenold_eu_ai_act_ask(
     # outcomes and remain cacheable.
     cache_key = _engine_cache_key(question, system_context)
     rag_res = _ENGINE_CACHE.get(cache_key)
+    _trace_cache_hit(rag_res is not None)
     if rag_res is None:
         rag_res = ask_compliance_question(rag_req)
         if not (rag_res.graph_stats or {}).get("stage2_call_failed"):
             _ENGINE_CACHE.put(cache_key, rag_res)
+    # R50 — surface the engine-side stage-2 outcome into the trace so
+    # the judge can correlate "Sonnet polish landed" with output drift.
+    _trace_stage2(
+        bool((rag_res.graph_stats or {}).get("stage2_landed", False))
+    )
 
     # Round-36 issue #49 — classification short-circuit detection.
     # When ``_detect_classification_topic`` matches, the engine returns a
@@ -1733,6 +1812,8 @@ def regenold_eu_ai_act_ask(
             _intent_label = _intent_res.intent if _intent_res else None
         except Exception:  # noqa: BLE001 — never let intent classifier 500 the route
             _intent_label = None
+        _trace_intent(_intent_label)
+        _trace_guard("r47e_zero_retrieval_fallback")
         # Stage the scope-gate's anchor_articles as explicit anchors so
         # an "Art. 13" mention that missed retrieval ships Art. 13 in
         # the fallback citations.
@@ -2015,6 +2096,8 @@ def regenold_eu_ai_act_ask(
                 if internal_refs:
                     answer_text = stitch_grounded_prose(internal_refs)
                     retrieval_path = "consistency_guard"
+                    _trace_guard("r48_consistency_guard")
+                    _trace_guard("r49a_grounded_prose")
             except Exception:  # noqa: BLE001 — never fail the route
                 pass
 
@@ -2029,6 +2112,23 @@ def regenold_eu_ai_act_ask(
     obligations_found = max(0, int(graph_stats.get("obligations_found", 0) or 0))
     gaps_found = max(0, int(graph_stats.get("gaps_found", 0) or 0))
 
+    # R50 — final pass: record the resolved retrieval_path + confidence
+    # into the trace, then serialise. The trace JSON wins when
+    # ?include_reasoning=true is set; falls back to the legacy
+    # telemetry / empty-string behaviour otherwise.
+    _trace_retrieval_path(str(retrieval_path))
+    _trace_confidence(float(confidence))
+    _reasoning_payload_main = _maybe_serialize_reasoning(include_reasoning)
+    _final_reasoning = _reasoning_payload_main if _reasoning_payload_main else (
+        _build_telemetry_reasoning(
+            confidence=confidence,
+            kb_version=KB_VERSION,
+            retrieval_path=retrieval_path,
+            ref_count=len(references),
+        )
+        if include_telemetry else ""
+    )
+
     # Default response shape = competition spec only. Telemetry block
     # populated only when ?include_telemetry=true (and serialised via
     # response_model_exclude_none on the route, so unset Optional
@@ -2037,12 +2137,7 @@ def regenold_eu_ai_act_ask(
         out = RegenoldAskResponse(
             answer=answer_text,
             references=references,
-            reasoning=_build_telemetry_reasoning(
-                confidence=confidence,
-                kb_version=KB_VERSION,
-                retrieval_path=retrieval_path,
-                ref_count=len(references),
-            ),
+            reasoning=_final_reasoning,
             confidence=confidence,
             kb_version=KB_VERSION,
             retrieval_path=retrieval_path,  # type: ignore[arg-type]
@@ -2056,13 +2151,10 @@ def regenold_eu_ai_act_ask(
             references=references,
             # Spec note: "Can optionally be empty. … will not be
             # considered and might increase latency."
-            # Empty string keeps the key present in the wire response
-            # (the spec example template includes a "reasoning" key)
-            # without burning tokens on actual content. None would be
-            # dropped by ``response_model_exclude_none`` and the
-            # evaluator might accept that, but presence-with-empty is
-            # the safest spec-literal reading.
-            reasoning="",
+            # Default keeps an empty string (spec example template
+            # includes a "reasoning" key). R50 overrides with the
+            # ReasoningTrace JSON when ?include_reasoning=true.
+            reasoning=_final_reasoning,
         )
 
     # Round-24 audit-chain entry: full question + answer persisted.
