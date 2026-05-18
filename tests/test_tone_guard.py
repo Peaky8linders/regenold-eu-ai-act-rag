@@ -217,3 +217,64 @@ def test_pattern_ordering_invariant_we_should_note_that():
         "We should also note that Article 22 applies."
     )
     assert out2 == "Article 9 applies. Article 22 applies."
+
+
+# ── R54.1 deep-code-review fixes ──
+
+
+def test_r54_1_c1_latin_abbreviation_not_corrupted():
+    """R54.1 (deep-code-review C1) — `_SENTENCE_SPLIT` MUST NOT treat
+    `e.g.` / `i.e.` / `etc.` as sentence terminators. Pre-fix the next
+    word got force-capitalised, shipping corrupted prose on every
+    Stage-2 polish output containing these abbreviations."""
+    # e.g. — should preserve lowercase next word
+    out = enforce_tone("Article 13 requires e.g. logs and FRIAs.")
+    assert "e.g. logs" in out, f"e.g. corrupted in: {out!r}"
+    assert "e.g. Logs" not in out
+
+    # i.e.
+    out = enforce_tone("This applies to high-risk AI, i.e. the systems in Annex III.")
+    assert "i.e. the" in out
+    assert "i.e. The" not in out
+
+    # etc.
+    out = enforce_tone("Operators include providers, deployers, etc. that place AI on the market.")
+    assert "etc. that" in out
+    assert "etc. That" not in out
+
+    # Art. N (cite abbreviation)
+    out = enforce_tone("Per Art. 5 the practice is prohibited.")
+    assert "Art. 5 the" in out
+    assert "Art. 5 The" not in out
+
+    # Real sentence boundary still capitalised
+    out = enforce_tone("Article 51 applies. Article 101 follows.")
+    assert "Article 51 applies. Article 101 follows." == out
+
+
+def test_r54_1_i4_empty_sentence_drops_orphan_punctuation():
+    """R54.1 (deep-code-review I4) — when the rewriter empties a
+    sentence entirely (e.g., "In our view." → ""), the rebuilder MUST
+    drop the orphan punctuation+gap pair so the output doesn't carry
+    a leading ". " artefact in front of the next sentence."""
+    # Pre-R54.1 produced ". Article 13 requires logs."
+    out = enforce_tone("In our view. Article 13 requires logs.")
+    assert out == "Article 13 requires logs.", (
+        f"empty-sentence orphan period leaked: {out!r}"
+    )
+
+    # "Our recommendation is that" — fully stripped to ""
+    out = enforce_tone(
+        "Our recommendation is that. Article 22 applies."
+    )
+    assert out == "Article 22 applies.", (
+        f"empty-sentence orphan period leaked: {out!r}"
+    )
+
+    # "Let me address that" — fully stripped to ""
+    out = enforce_tone(
+        "Let me address that. Article 9 also applies."
+    )
+    assert out == "Article 9 also applies.", (
+        f"empty-sentence orphan period leaked: {out!r}"
+    )

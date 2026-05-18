@@ -1199,6 +1199,105 @@ class TestR531CJudgeDrivenWidening:
         )
 
 
+class TestR541C2WeakScopeKeywordsDoNotFlipGate:
+    """R54.1 (deep-code-review C2) — the R53.1-C / R54-Q1 broad
+    keywords (``individualised risk assessment``, ``designating
+    authority``, ``medical devices exemption``, ``training compute
+    threshold``, ``high-risk`` bare, etc.) MUST NOT flip the scope
+    gate in-scope on plainly off-topic queries. They still surface
+    via KEYWORD_TO_ARTICLE for RETRIEVAL when scope is in-scope via
+    another anchor.
+    """
+
+    def test_high_risk_hike_refused(self) -> None:
+        v = classify_scope("Best high-risk hike in the Alps?")
+        assert not v.in_scope, (
+            f"R54.1 C2 regression: 'Best high-risk hike' flipped "
+            f"in-scope ({v.reason} / {v.evidence})"
+        )
+
+    def test_high_risk_skiing_refused(self) -> None:
+        v = classify_scope("Tell me about high-risk skiing routes")
+        assert not v.in_scope
+
+    def test_individualised_risk_mortgage_refused(self) -> None:
+        v = classify_scope("individualised risk assessment for my mortgage")
+        assert not v.in_scope
+
+    def test_designating_authority_kids_refused(self) -> None:
+        v = classify_scope("designating authority over the kids")
+        assert not v.in_scope
+
+    def test_medical_devices_homemade_refused(self) -> None:
+        v = classify_scope(
+            "medical devices exemption for my homemade cough syrup"
+        )
+        assert not v.in_scope
+
+    def test_training_compute_gpu_refused(self) -> None:
+        v = classify_scope("training compute threshold for our GPU cluster")
+        assert not v.in_scope
+
+
+class TestR541C2LegitInScopePreserved:
+    """R54.1 (deep-code-review C2) — the C2 anchor narrowing must NOT
+    regress legit in-scope queries. Each test below pairs the broad
+    keyword with a stronger anchor (Art./Annex ref, "AI", "AI Act",
+    "emotion recognition", etc.) — they should ALL still flip in-scope
+    via the stronger anchor.
+    """
+
+    def test_high_risk_ai_obligations_still_in_scope(self) -> None:
+        v = classify_scope("What obligations apply to high-risk AI?")
+        assert v.in_scope
+
+    def test_hiring_ai_high_risk_still_in_scope(self) -> None:
+        v = classify_scope("Is hiring AI a high-risk system?")
+        assert v.in_scope
+
+    def test_annex_iii_high_risk_categories_still_in_scope(self) -> None:
+        v = classify_scope("Annex III defines high-risk categories")
+        assert v.in_scope
+
+    def test_individualised_with_article_ref_still_in_scope(self) -> None:
+        v = classify_scope(
+            "Article 5(1)(d) individualised risk assessment exception"
+        )
+        assert v.in_scope
+
+    def test_designating_authority_with_article_ref_still_in_scope(self) -> None:
+        v = classify_scope(
+            "What is the designating authority under Article 28?"
+        )
+        assert v.in_scope
+
+    def test_medical_device_emotion_recognition_still_in_scope(self) -> None:
+        v = classify_scope(
+            "What is the medical devices exemption for emotion recognition?"
+        )
+        assert v.in_scope
+
+    def test_gpai_10_23_flops_still_in_scope(self) -> None:
+        v = classify_scope("What is the GPAI 10^23 FLOPs threshold?")
+        assert v.in_scope
+
+    def test_ai_act_samd_still_in_scope(self) -> None:
+        v = classify_scope(
+            "How does the AI Act handle software as a medical device?"
+        )
+        assert v.in_scope
+
+    def test_ai_office_gpai_fine_still_in_scope(self) -> None:
+        v = classify_scope(
+            "What is the AI Office direct fine on a GPAI provider?"
+        )
+        assert v.in_scope
+
+    def test_digital_omnibus_still_in_scope(self) -> None:
+        v = classify_scope("Digital Omnibus political agreement")
+        assert v.in_scope
+
+
 class TestR531COosRegressionStillRefused:
     """R53.1-C — negative side: the R34 P0 OOS regression set must NOT
     leak through any of the new multi-word anchors."""

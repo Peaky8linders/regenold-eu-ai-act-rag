@@ -635,5 +635,122 @@ class TestR54BMixedArticleCompoundRoles:
         assert v.compound_role_strength == "strong"
 
 
+# ── R54.1 deep-code-review fixes ──
+
+
+class TestR541I1DeployerFirstStrongMirror:
+    """R54.1 (deep-code-review I1) — `_COMPOUND_PROVIDER_AND_DEPLOYER_RE`
+    matches deployer-first variants ("both a deployer and a provider"
+    etc.) but the strength helper's literal phrase list was missing
+    these. Result: regex flags compound_roles=(provider, deployer)
+    but helper flags weak → 8-ref budget instead of 12.
+    """
+
+    def test_both_a_deployer_and_a_provider_is_strong(self):
+        v = classify_scenario_query(
+            "We are both a deployer and a provider of a high-risk "
+            "recruitment AI."
+        )
+        assert v is not None
+        assert v.compound_roles
+        assert v.compound_role_strength == "strong"
+
+    def test_both_the_deployer_and_the_provider_is_strong(self):
+        v = classify_scenario_query(
+            "Our company is both the deployer and the provider of "
+            "an in-house CV-screening AI."
+        )
+        assert v is not None
+        assert v.compound_roles
+        assert v.compound_role_strength == "strong"
+
+    def test_both_a_distributor_and_an_importer_is_strong(self):
+        v = classify_scenario_query(
+            "We act as both a distributor and an importer of an AI "
+            "system on the EU market."
+        )
+        assert v is not None
+        assert v.compound_roles
+        assert v.compound_role_strength == "strong"
+
+
+class TestR541I7WhitespaceNoisyStrongDetection:
+    """R54.1 (deep-code-review I7) — `_detect_compound_role_strength`
+    MUST collapse whitespace runs before literal substring scan so
+    copy-pasted partner questions with double spaces / tabs / NBSP
+    still match the strong-signal literals.
+    """
+
+    def test_double_spaces_still_strong(self):
+        v = classify_scenario_query(
+            "We are both  a  provider  and  a  deployer of a high-risk "
+            "hiring AI."
+        )
+        assert v is not None
+        assert v.compound_roles
+        assert v.compound_role_strength == "strong"
+
+    def test_tab_separated_still_strong(self):
+        v = classify_scenario_query(
+            "We are both\ta\tprovider\tand\ta\tdeployer of a "
+            "high-risk hiring AI."
+        )
+        assert v is not None
+        assert v.compound_roles
+        assert v.compound_role_strength == "strong"
+
+
+class TestR541C4ReDoSBounded:
+    """R54.1 (deep-code-review C4) — the widened
+    `_COMPOUND_PROVIDER_AND_DEPLOYER_RE` was a ReDoS vector
+    (590ms at N=8000). Fix removed the `(?:a|an|the)?\\s*` adjacent
+    optional alternations. This test pins the latency floor so a
+    future regex widening can't silently re-introduce the backtrack.
+    """
+
+    def test_adversarial_whitespace_input_fast(self):
+        import time
+        from app.engines.scenario_classifier import (
+            _COMPOUND_PROVIDER_AND_DEPLOYER_RE,
+        )
+        # Adversarial: "both" + 8000 spaces + "XXX". Pre-fix this took
+        # ~590ms; post-fix should be <100ms (typically ~2-5ms).
+        s = "both" + " " * 8000 + "XXX"
+        t0 = time.perf_counter()
+        _COMPOUND_PROVIDER_AND_DEPLOYER_RE.search(s)
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        assert elapsed_ms < 100, (
+            f"R54.1 C4 ReDoS regression: regex took {elapsed_ms:.1f}ms "
+            f"on N=8000 whitespace input (pre-fix was 590ms; cap is "
+            f"100ms; the widening was supposed to drop the optional "
+            f"article alternations)"
+        )
+
+
+class TestR541I2DefinitionalGateCatchesContractions:
+    """R54.1 (deep-code-review I2) — the definitional gate now matches
+    apostrophe-s contractions and comparative-definitional shapes so
+    "What's the difference between a provider and a deployer?"
+    doesn't fire compound-role detection (which would over-cite on
+    a definitional QA question).
+    """
+
+    def test_whats_the_difference_does_not_fire_compound(self):
+        from app.engines.scenario_classifier import _detect_compound_roles
+        roles = _detect_compound_roles(
+            "what's the difference between a provider and a deployer?"
+        )
+        assert roles == [], (
+            f"definitional QA shouldn't fire compound-role; got {roles!r}"
+        )
+
+    def test_how_do_provider_and_deployer_differ_does_not_fire(self):
+        from app.engines.scenario_classifier import _detect_compound_roles
+        roles = _detect_compound_roles(
+            "how do provider and deployer differ in obligations?"
+        )
+        assert roles == []
+
+
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__, "-v"])

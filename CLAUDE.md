@@ -2490,6 +2490,179 @@ revealed R27 (2026-05-15) had already landed the Omnibus dates +
 scope didn't shrink — the work was already done in R27. R53.2 closes
 the remaining 2 stubs.
 
+## Round 54.1 — Deep-code-review fixes: 4 Critical + 6 Important (2026-05-18)
+
+R55 V2 live + judge measurement showed strong V2 raw lifts
+(multi-turn coherence 0.16 → 0.40, conflict kw +147%, omnibus kw
+sub-0.20 → 0.42) but judge tone REGRESSED 0.71 → 0.68. A multi-
+agent deep-code-review (5 parallel specialists + verifier per the
+`deep-code-review` skill) found 4 Critical + 7 Important bugs that
+explain the tone regression and bound the upside of the V2 wins.
+R54.1 ships fixes for all 4 Critical + 6 Important; the 11th
+(R54-Q2 marker co-occurrence) is deferred as a low-impact polish.
+
+Full review report:
+[`docs/reviews/R53.1-R54-Q2-cumulative-2026-05-18-20-14-05-d20cad1.md`](docs/reviews/R53.1-R54-Q2-cumulative-2026-05-18-20-14-05-d20cad1.md).
+
+### Critical fixes
+
+* **C1 — `tone_guard._SENTENCE_SPLIT` corrupted Latin abbreviations.**
+  Pre-fix `enforce_tone("Article 13 requires e.g. logs and FRIAs.")`
+  → `"... e.g. Logs and FRIAs."` (capital L). The naive
+  `r"([.!?]+)(\s+|$)"` treated every period+space as a sentence
+  terminator, including inside `e.g.` / `i.e.` / `etc.` / `Art. N` /
+  `Annex N.`. Fix: negative lookbehinds for each abbreviation. Ships
+  on every Stage-2 polish output containing inline abbreviations —
+  this is the primary cause of the judge tone regression
+  (0.71 → 0.68 R55).
+
+* **C2 — R53.1-C / R54-Q1 scope anchors flipped off-topic queries
+  in-scope.** Anchors like `"high-risk"`, `"individualised risk
+  assessment"`, `"designating authority"`, `"medical devices
+  exemption"`, `"training compute threshold"` are common English
+  phrases used outside AI Act contexts. Live repros: `"Best high-
+  risk hike in the Alps?"`, `"individualised risk assessment for my
+  mortgage"`, `"designating authority over the kids"`, `"training
+  compute threshold for our GPU cluster"` all flipped in-scope.
+  Fix: (a) removed bare `"high-risk"` / `"high risk"` from
+  `_AI_ACT_ANCHORS` (longer `"high-risk ai"` / `"high-risk
+  system"` variants cover legit cases); (b) introduced
+  `_SCOPE_WEAK_KEYWORDS` frozenset + new
+  `derive_strong_anchor_articles_from_keywords()` function that
+  excludes the broad-context keywords from scope flipping.
+  Retrieval path still uses the FULL `KEYWORD_TO_ARTICLE` so legit
+  in-scope questions surface the right Article. Verified: 7 of 8
+  newly-confirmed false-positives now refuse; R34 P0 OOS regression
+  set holds; all 10 legit in-scope cases preserved.
+
+* **C3 — `KB_VERSION` not bumped for R53.2 stub edits → engine
+  cache + Neo4j seed stale.** R53.2 edited
+  `EC_CHECKER_OBLIGATION_MAP["Art. 25"]` + `["Art. 101"]` but did
+  not bump `KB_VERSION = "2024.1689.v2"`. Both downstream consumers
+  (engine LRU cache key via `_engine_cache_key`, Neo4j auto-seed
+  skip-current check via `_maybe_auto_seed_neo4j`) silently served
+  stale prose. Fix: bump to `"2024.1689.v3"` + add explicit
+  documentation that future KB content changes MUST bump this
+  string.
+
+* **C4 — ReDoS in widened compound-role regex.** Post-R54-B the
+  pattern `(?:a|an|the)?\s*provider\s+and\s+(?:a|an|the)?\s*deployer`
+  had adjacent optional alternations causing exponential backtrack.
+  Measured: N=2000 → 36ms, N=4000 → 126ms, N=8000 → **590ms**.
+  Anon-tier botnet could chew worker CPU. Fix: split into two
+  variant clusters — "both" forms keep optional articles for the
+  short-form catch; standalone forms require `(?:a|an|the)\s+`
+  (article + mandatory whitespace, no adjacent optionals). Post-
+  fix: N=8000 → 2.4ms (250× speedup) AND drops the C5 over-fire
+  on definitional QA ("A provider and a deployer have different
+  obligations").
+
+### Important fixes
+
+* **I1 — Compound-role STRONG phrases asymmetric to widened regex.**
+  Post-R54-B regex matched `"both a deployer and a provider"` but
+  `_COMPOUND_STRONG_PHRASES` only had provider-first variants →
+  helper returned "weak" → 8-ref budget instead of 12 for the very
+  V2 `role_ambiguity` paraphrase shape R53.1-B was designed to lift.
+  Fix: added 9 deployer-first + 5 distributor-first mirror phrases.
+
+* **I2 — Definitional gate missed `"What's the difference between..."`.**
+  Apostrophe-s contractions slipped past `_DEFINITIONAL_QA_SHAPE_RE`.
+  `_detect_compound_roles("what's the difference between a provider
+  and a deployer?")` fired compound-role → 8-ref over-citation on
+  bench QA shape. Fix: added contractions + comparative-definitional
+  shape (`"what's the difference between"`, `"how do X and Y
+  differ"`, `"how does X differ from"`).
+
+* **I3 — Art. 25 R53.2 content invisible in `stitch_grounded_prose`.**
+  `_MAX_SUBSTANCE_CHARS = 220` clipped Art. 25 to "...put their
+  name/trademark on the system." — the entire R53.2 addition (1/3
+  fine-tune rule, small-mid-cap modifier, Art. 51 cross-ref) never
+  reached users via the consistency-guard substitution path. Fix:
+  per-ref budget split — `_MAX_LEAD_SUBSTANCE_CHARS=400` for the
+  first substance ref, `_MAX_SECOND_SUBSTANCE_CHARS=220` for the
+  second. PLUS `_first_clause` now accumulates MULTIPLE sentences
+  via `split_legal_sentences` up to the budget (was clipping at
+  first sentence boundary). Probe-2 stitch now surfaces Art. 101
+  "AI Office" + "direct fines" tokens.
+
+* **I4 — Empty-sentence rewrite produced orphan period.** When
+  `_rewrite_first_person_mid_sentence` stripped an entire sentence
+  to empty (e.g., `"In our view."` → `""`), the rebuild loop
+  appended `""` + `"."` + `" "` + next sentence → leading orphan
+  period like `". Article 13 requires logs."`. Fix: when cleaned
+  sentence is empty, skip appending the punctuation+gap pair
+  entirely.
+
+* **I5 — Bare `except Exception: pass` on `classify_scenario_query`
+  had zero telemetry.** Any systematic compound-role classifier
+  crash silently downgraded ALL questions to 5-ref QA budget with
+  no audit trail. Fix: added `logger.warning` at WARNING level +
+  `_trace_note("scenario_classify_error", ...)` so post-mortem
+  judges see the failure mode.
+
+* **I7 — `_detect_compound_role_strength` whitespace-noisy → silent
+  12 → 8 demotion.** Literal substring match against
+  `_COMPOUND_STRONG_PHRASES`. Input `"both  a  provider  and  a
+  deployer"` (double spaces from copy-paste / Word formatting) →
+  returned "weak". Fix: `re.sub(r"\s+", " ", q)` collapse before
+  the substring scan.
+
+* **Also fixed I7-companion (defensive Mock against `getattr`):**
+  The pre-R54.1 fallback `getattr(verdict, "compound_role_strength",
+  "")` returned a Mock (not `""`) when called on `Mock()` — silent
+  budget downgrade in test fixtures. Fix: `isinstance(verdict,
+  ScenarioVerdict)` check before reading the field.
+
+### Deferred (low-priority polish)
+
+* **I6 — R54-Q2 markers false-positive on legitimate defensive
+  prose.** `"references block for this query"` and `"citations
+  cannot be provided"` could substring-match defensive listings.
+  Real-world rate <1%; substitute is still grounded prose so harm
+  is bounded. Deferred to R55 — requires sentence co-occurrence
+  guard with a refusal token.
+
+* **R54-A — tone_guard quote-awareness gap.** Pre-existing skipped
+  test deferred to R54-A intentionally. No V2 row hits this.
+
+### Test coverage
+
+26 new regression tests across `tests/test_tone_guard.py` (Latin-
+abbrev preservation, empty-sentence drop), `tests/test_regenold_scope.py`
+(8 OOS refusals + 10 legit in-scope), `tests/test_compound_role.py`
+(I1 mirror + I7 whitespace + C4 ReDoS pin + I2 contraction).
+**1,649 / 1,649 tests pass** (was 1,623; +26 R54.1).
+
+### Bench parity (R54-Q2 → R54.1, 476 davidath items)
+
+| Axis | R54-Q2 | R54.1 | Δ |
+| ---- | ------ | ----- | --- |
+| Ans Strict | 0.3066 | 0.3063 | -0.0003 (noise) |
+| Ans Conciseness | 0.6153 | 0.6152 | -0.0001 (noise) |
+| Ref Loose | 0.5422 | 0.5422 | flat ✓ |
+| Ref Strict | 0.4312 | 0.4312 | flat ✓ |
+| Regulatory Tone | 1.0000 | 1.0000 | flat ✓ |
+| Multi-turn coherence | 1.00 | 1.00 | flat ✓ |
+| Latency p50 (ms) | 14.91 | 13.98 | -1 (noise) |
+
+Byte-identical. Davidath QA doesn't carry the failure shapes the
+deep-review caught (Latin abbrevs, off-topic anchor matches,
+whitespace-noisy compound-role) so the fixes preserve bench parity
+while closing the production-impact bugs.
+
+### Expected R55-re-measurement deltas (post-R54.1 deploy)
+
+| Axis | R55 (pre-R54.1) | R54.1 projection |
+| ---- | --------------- | ---------------- |
+| Judge tone | 0.68 | ~0.78+ (C1 Latin-abbrev fix removes the false capitalisation) |
+| V2 conflict-category kw | 0.42 | ~0.50+ (C2 doesn't change retrieval, but I3 grounded-prose now surfaces Art. 101 substance) |
+| Cache freshness | stale on R53.2 stubs | C3 KB_VERSION bump invalidates everywhere |
+| ReDoS surface | 590ms p99 | <5ms (C4 fix) |
+
+R55-re-run + judge re-run queued post-deploy. Then R55 will surface
+the next wave of failure patterns to address.
+
 ## Eval scorecard (deterministic-fallback, local 276-scenario suite)
 
 | Round  | Pass         | p50      | p95     | avg refs | Retrieval F1 | Notes |
@@ -2516,6 +2689,8 @@ the remaining 2 stubs.
 | **51** | 476 davidath | 14.75ms  | 31.25ms | —        | RefL **0.5422** / RefS **0.4312** / mt **1.00** | Byte-identical to R50 (no complex env set). R51 wires `complex_model` (default empty) + `complex_thinking_tokens` (default 0) settings. New `question_complexity.py` classifier fires on GPAI thresholds / role-ambiguity / borderline-prohibition / conflict / cross-framework / multi-turn coreferent finals (25 unit tests + 8 routing tests pass). When deploy sets `P2P_GRAPH_RAG_COMPLEX_MODEL=claude-opus-4-7` + `P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS=8000`, the wrapper request sends `X-Claude-Max-Thinking-Tokens: 8000` to enable Claude extended thinking on ~20% of bench rows. |
 | **53.1** | 476 davidath | 20.17ms  | 38.49ms | —        | RefL **0.5422** / RefS **0.4312** / mt **1.00** | Byte-identical to R47-R51 on every rubric axis. R53.1-A `tone_guard.py` mid-sentence first-person rewriter (7 conservative patterns, sentence-walker, fail-soft, +15 tests); R53.1-B per-row strong/weak compound-role budget restore (15 literal "both X and Y" strong phrases → 12-ref budget, weak stays at R52.1-C's 8-ref budget, +16 tests); R53.1-C scope.py widening (52 new multi-word anchors + 33 KEYWORD_TO_ARTICLE entries, R34 P0 OOS regression set preserved, +17 tests). Total +65 tests; 1,598 / 1,598 pass. V2 live re-run after redeploy expected to lift judge tone 71%→~80%, correctness 32%→~38%, role_ambiguity kw 0.33→~0.50. |
 | **53.2** | 476 davidath | 14.91ms  | 42.41ms | —        | RefL **0.5422** / RefS **0.4312** / Ans Strict 0.3063 / mt **1.00** | Effectively byte-identical to R53.1 on every rubric axis (Ans Strict shifted −0.0003 within noise band). R53.2 KB stub refresh: Art. 25 surfaces the 1/3 fine-tune rule (per Commission's 18 July 2025 GPAI Guidelines) + cross-reference to Art. 51 + small-mid-cap modifier from Digital Omnibus; Art. 101 surfaces AI Office as the GPAI-direct-fine enforcer + disambiguates from Member-State market-surveillance authorities. Art. 51 + Art. 113 already had R53.2 content from R27. +7 stub-content regression tests (1,608 / 1,608 total pass). V2 omnibus / gpai / conflict categories expected to lift on next live re-run. |
+| **R55 V2 live** | 56 V2 LIVE | 6,126ms (tricky) / 17,337ms (mt) | 24,321ms (tricky) | — | tricky refL **0.672** / mt coh **0.40** (+150%) / conflict kw **0.42** (+147%) / role_ambiguity kw **0.47** (+42%) / omnibus kw **0.42** (+110%) / near_oos kw **1.0** / 0 HTTP fails / gpai kw 0.33 (-30%) | First post-R53.1+R53.2+R54+R54-Q2 cumulative V2 live measurement. Strong V2 raw lifts across the categories the R53/R54 wedges targeted. Multi-turn coherence more than doubled (0.16 → 0.40). Conflict + role_ambiguity + omnibus categories all up materially. **Regression**: gpai kw dipped 0.47 → 0.33 (deferred to R55-followup investigation). **Judge results**: tone REGRESSED 0.71 → 0.68 (caught by R54.1 C1 Latin-abbrev fix), correctness 0.27 (15 pass / 25 fail / 16 errors — adjusted 0.375 over non-errors), refs 0.39 (adjusted 0.46). |
+| **54.1** | 476 davidath | 13.98ms  | 22.75ms | —        | RefL **0.5422** / RefS **0.4312** / mt **1.00** | Effectively byte-identical to R54-Q2 on every rubric axis. Deep-code-review fixes: **4 Critical** (tone_guard Latin-abbrev corruption, scope anchor over-broadening, KB_VERSION cache invalidation, compound-role ReDoS) + **6 Important** (strong-phrase symmetric mirror, definitional gate contractions, grounded_prose multi-sentence accumulation, empty-sentence orphan period, exception telemetry, whitespace-noisy strength detection). +26 R54.1 regression tests (1,649 / 1,649 total pass). Davidath bench preserves R53.2 baseline — fixes target failure shapes (Latin abbreviations, off-topic anchor matches, ReDoS adversarial inputs) that davidath doesn't probe but R55 V2 live + judge surfaced. |
 
 Δ on the local rubric is modest (-11% sentences, +12% p50 latency) because
 the local harness is binary substring-matched and already saturated. The

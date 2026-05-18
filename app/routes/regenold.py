@@ -57,7 +57,10 @@ from app.engines.graph_rag import (
     _detect_classification_topic,
     ask_compliance_question,
 )
-from app.engines.scenario_classifier import classify_scenario_query
+from app.engines.scenario_classifier import (
+    ScenarioVerdict,
+    classify_scenario_query,
+)
 from app.engines.sentence_index import (
     classify_question as classify_question_type,
     select_answer_sentence,
@@ -1745,16 +1748,32 @@ def regenold_eu_ai_act_ask(
             and _scenario_verdict_for_budget.compound_roles
         ):
             _has_compound_roles = True
-    except Exception:  # noqa: BLE001 — never fail the route on budget calc
-        pass
-    if _has_compound_roles:
-        # Defensive getattr — if any test mocks ScenarioVerdict without
-        # the new field, fall back to "weak" (R52.1-C tightened 8).
-        _compound_strength = getattr(
-            _scenario_verdict_for_budget,
-            "compound_role_strength",
-            "",
+    except Exception as _budget_exc:  # noqa: BLE001 — never fail the route on budget calc
+        # R54.1 (deep-code-review I5) — pre-fix the bare ``except: pass``
+        # silently dropped systematic compound-role classifier crashes,
+        # downgrading ALL questions to the QA 5-ref budget with no audit
+        # trail. Now logged at WARNING + recorded into the reasoning
+        # trace (when active) so post-mortem judges see the failure mode.
+        logger.warning(
+            "scenario_budget_calc_failed",
+            exc_info=True,
+            extra={"exc_type": type(_budget_exc).__name__},
         )
+        try:
+            _trace_note("scenario_classify_error", str(_budget_exc))
+        except Exception:  # noqa: BLE001 — fail-soft on trace
+            pass
+    if _has_compound_roles:
+        # R54.1 (deep-code-review I7 / Important) — assert ScenarioVerdict
+        # instance so unspec'd Mock objects don't silently demote.
+        # ``getattr`` returns a Mock (truthy, not "") for Mock; isinstance
+        # check forces an explicit ScenarioVerdict before reading the
+        # strength field. Pre-R54.1 the route silently fell to 8-ref
+        # budget when fixtures used Mock without spec.
+        if isinstance(_scenario_verdict_for_budget, ScenarioVerdict):
+            _compound_strength = _scenario_verdict_for_budget.compound_role_strength
+        else:
+            _compound_strength = ""
         _effective_max_refs = 12 if _compound_strength == "strong" else 8
     elif _is_scenario_question:
         _effective_max_refs = 10

@@ -76,7 +76,18 @@ _DEFINITIONAL_QA_SHAPE_RE = re.compile(
     # Pure definitional shapes that should NOT fire compound-role —
     # they're asking the engine to define a term, not classify a
     # specific entity's compound role.
-    r"^\s*(?:what\s+(?:is|does|counts?\s+as|defines?|means?)|"
+    #
+    # R54.1 (deep-code-review I2) — added the apostrophe-s
+    # contractions (``what's``, ``what're``) AND the comparative-
+    # definitional shape (``what's the difference between``,
+    # ``how do X and Y differ``) so the route's compound-role gate
+    # doesn't over-fire on bare definitional QA like "What's the
+    # difference between a provider and a deployer?".
+    r"^\s*(?:what(?:\s+|'?s\s+|'?re\s+)(?:is|does|counts?\s+as|"
+    r"defines?|means?|the\s+difference\s+between|"
+    r"differences?\s+between)|"
+    r"how\s+do\s+\w+\s+(?:and|vs|versus)\s+\w+\s+differ|"
+    r"how\s+does\s+\w+\s+differ\s+from|"
     r"define\s+|definition\s+of|how\s+is\s+\w+\s+defined|"
     r"who\s+is\s+(?:considered|defined\s+as))\b",
     re.IGNORECASE,
@@ -211,13 +222,23 @@ _COMPOUND_DISTRIBUTE_AND_IMPORT_RE = re.compile(
 
 _COMPOUND_PROVIDER_AND_DEPLOYER_RE = re.compile(
     r"\b(?:"
-    # R54-B — accept all article forms (a/an/the/none) on EITHER side
-    # of "and", so mixed-article variants like "both a provider and
-    # the deployer" or "both the provider and a deployer" fire.
-    r"both\s+(?:a|an|the)?\s*provider\s+and\s+(?:a|an|the)?\s*deployer|"
-    r"both\s+(?:a|an|the)?\s*deployer\s+and\s+(?:a|an|the)?\s*provider|"
-    r"(?:a|an|the)?\s*provider\s+and\s+(?:a|an|the)?\s*deployer|"
-    r"(?:a|an|the)?\s*deployer\s+and\s+(?:a|an|the)?\s*provider|"
+    # R54-B — accept all article forms (a/an/the) on either side of "and".
+    # R54.1 (deep-code-review C4 ReDoS + C5 over-fire) — tightened
+    # vs the R54-B first cut: (a) articles are NON-OPTIONAL in the
+    # standalone branches so the pattern needs `\s+(a|an|the)\s+`
+    # not `(?:a|an|the)?\s*` adjacent optionals (the latter causes
+    # exponential backtracking on padded inputs and matches bare
+    # "provider and deployer" in definitional prose); (b) the "both"
+    # variants keep optional articles since "both provider and
+    # deployer" is a known short form.
+    #
+    # "both" variants (article optional, short-form allowed):
+    r"both\s+(?:a\s+|an\s+|the\s+)?provider\s+and\s+(?:a\s+|an\s+|the\s+)?deployer|"
+    r"both\s+(?:a\s+|an\s+|the\s+)?deployer\s+and\s+(?:a\s+|an\s+|the\s+)?provider|"
+    # Article-required variants (no bare "provider and deployer"):
+    r"(?:a|an|the)\s+provider\s+and\s+(?:a|an|the)\s+deployer|"
+    r"(?:a|an|the)\s+deployer\s+and\s+(?:a|an|the)\s+provider|"
+    # Disjunction shortcut form ("provider as well as / or just deployer"):
     r"provider\s+(?:as\s+well\s+as|or\s+just)\s+(?:a\s+)?deployer"
     r")\b",
     re.IGNORECASE,
@@ -275,12 +296,33 @@ _COMPOUND_STRONG_PHRASES: tuple[str, ...] = (
     "acting as both provider and deployer",
     "both the provider and the deployer",
     "both a provider and deployer",
+    # R54.1 (deep-code-review I1) — deployer-first mirror of the
+    # provider-first cluster. The widened
+    # _COMPOUND_PROVIDER_AND_DEPLOYER_RE accepts
+    # "both a deployer and a provider" etc. but the literal
+    # strength helper was missing these — silently demoted strong-
+    # signal V2 role_ambiguity paraphrases to weak (8-ref) budget.
+    "both a deployer and a provider",
+    "both deployer and provider",
+    "both the deployer and the provider",
+    "as both a deployer and a provider",
+    "as both deployer and provider",
+    "act as both deployer and provider",
+    "acts as both deployer and provider",
+    "acting as both deployer and provider",
+    "both a deployer and provider",
     # importer + distributor — symmetric strong-signal cluster
     "both an importer and a distributor",
     "both importer and distributor",
     "both the importer and the distributor",
     "as both an importer and a distributor",
     "as both importer and distributor",
+    # R54.1 — distributor-first mirror of importer-first cluster
+    "both a distributor and an importer",
+    "both distributor and importer",
+    "both the distributor and the importer",
+    "as both a distributor and an importer",
+    "as both distributor and importer",
     # ── R54-B (post-R53.1-eng-review P2 #6 closer) ──
     # Mixed-article forms: "both A and THE B" / "both THE A and B"
     # were classified as WEAK pre-R54 because no literal matched. V2
@@ -318,11 +360,21 @@ def _detect_compound_role_strength(question_lower: str) -> str:
     Returns ``"weak"`` even on empty input — the route's budget
     calculation only reads this when ``compound_roles`` is non-empty,
     so the caller acts as the gate.
+
+    R54.1 (deep-code-review I7) — whitespace runs (double spaces,
+    tabs, NBSP-between-words from copy-pasted partner questions)
+    are collapsed before the substring scan so literal
+    ``"both  a  provider  and  a  deployer"`` (double spaces) still
+    matches the ``"both a provider and a deployer"`` strong phrase.
     """
     if not question_lower:
         return "weak"
+    # R54.1 — collapse all whitespace runs to a single space so
+    # phrase literals match even when the source has stray double-
+    # spaces, tabs, or NBSP-between-words.
+    normalised = re.sub(r"\s+", " ", question_lower)
     for phrase in _COMPOUND_STRONG_PHRASES:
-        if phrase in question_lower:
+        if phrase in normalised:
             return "strong"
     return "weak"
 

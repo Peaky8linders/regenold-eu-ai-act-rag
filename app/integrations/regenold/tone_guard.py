@@ -70,12 +70,22 @@ _FIRST_PERSON_REWRITES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\b(?:my|our)\s+(?:recommendation|suggestion|assessment)\s+(?:would\s+be|is)\s+(?:that\s+)?", re.I), ""),
 )
 
-# Splits on sentence-ending punctuation (`.`, `!`, `?`) followed by
-# whitespace, KEEPING the delimiter via a capture group so we can
-# re-join without losing punctuation. Tolerant of multiple trailing
-# punctuation marks (e.g. `?!`) and preserves the post-punctuation
-# whitespace gap.
-_SENTENCE_SPLIT = re.compile(r"([.!?]+)(\s+|$)")
+# R54.1 — abbreviation-aware sentence boundary. The naive `[.!?]+\s+`
+# was capitalising the word after every `e.g.` / `i.e.` / `etc.` /
+# `Art. N` / `Annex N.`. Now we use a negative lookbehind to skip
+# the common Latin abbreviations + numbered-list short forms
+# (`Art.` / `Arts.` / `Annex N.`). Re-join semantics are preserved
+# (capture groups still carry the punctuation + gap).
+#
+# Pattern explanation:
+#   (?<!\be\.g) (?<!\bi\.e) (?<!\betc) — Latin abbrev lookbehinds
+#   (?<!\bArt) (?<!\bArts) (?<!\bAnnex) — regulation cite lookbehinds
+#   ([.!?]+)(\s+|$) — capture the actual terminator + gap
+_SENTENCE_SPLIT = re.compile(
+    r"(?<!\be\.g)(?<!\bi\.e)(?<!\betc)"
+    r"(?<!\bArt)(?<!\bArts)(?<!\bAnnex)"
+    r"([.!?]+)(\s+|$)"
+)
 
 
 def _capitalise_first_letter(s: str) -> str:
@@ -95,6 +105,12 @@ def _rewrite_first_person_mid_sentence(s: str) -> str:
     pattern in one sentence slip through — e.g. "we should X and we
     should Y" only stripped the first). Restores capitalisation,
     collapses double spaces, and re-joins.
+
+    R54.1 (deep-code-review I4) — when a rewrite empties the entire
+    sentence (e.g., "In our view." → ""), DROP the sentence
+    entirely (don't append the orphan punctuation and gap), so the
+    output doesn't carry a leading ". " artefact in front of the
+    next sentence.
 
     Fail-soft: on any exception, returns the input unchanged.
     """
@@ -119,6 +135,15 @@ def _rewrite_first_person_mid_sentence(s: str) -> str:
             # Collapse internal whitespace runs from clause drops.
             cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
             cleaned = _capitalise_first_letter(cleaned)
+            # R54.1 (I4) — if the rewrite emptied the sentence AND
+            # there's a following sentence, skip the orphan
+            # punctuation+gap pair entirely. Last fragment with no
+            # following parts is also dropped silently.
+            if cleaned == "":
+                # Advance past this empty sentence + its punct+gap
+                # (if any) without appending anything.
+                i += 3
+                continue
             rebuilt.append(cleaned)
             # Append punctuation + gap (if present) verbatim.
             if i + 1 < len(parts):

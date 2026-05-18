@@ -61,7 +61,26 @@ _MAX_SUBSTANCE_REFS: int = 2
 # Per-substance-sentence cap. The lead sentence is ~80-100 chars, and
 # we want room for 1-2 substance sentences within the 580-char budget.
 # 220 each keeps three-sentence outputs under cap with breathing room.
-_MAX_SUBSTANCE_CHARS: int = 220
+# R54.1 (deep-code-review I3) — split into per-ref budgets.
+# Pre-R54.1 used a flat 220 char cap that clipped Art. 25's R53.2
+# refresh (one-third fine-tune rule, small-mid-cap modifier, Art. 51
+# cross-ref) before the load-bearing tokens. Split:
+#   - _MAX_LEAD_SUBSTANCE_CHARS: budget for the 1st substance ref
+#     (allows Art. 25-style longer stubs to surface their full
+#     R53.2 content when called alone, OR ~half the budget when
+#     stitched with a 2nd ref).
+#   - _MAX_SECOND_SUBSTANCE_CHARS: budget for the 2nd substance ref
+#     (preserved at 220 so 2-ref multi-substance stitches still fit
+#     both refs under MAX_GROUNDED_CHARS=580).
+# Behaviour:
+#   - 1 ref:  lead (~75c) + ~400c substance = ~480c (well within cap)
+#   - 2 refs: lead (~75c) + ~280c substance #1 + ~220c substance #2
+#             = ~580c (right at cap, sentence-count loop preserves
+#             both via _MAX_SUBSTANCE_REFS gate)
+_MAX_SUBSTANCE_CHARS: int = 220  # legacy alias; readers use the
+                                  # split constants below
+_MAX_LEAD_SUBSTANCE_CHARS: int = 400
+_MAX_SECOND_SUBSTANCE_CHARS: int = 220
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────
@@ -110,14 +129,24 @@ _LEADING_LABEL_RE = re.compile(
 
 
 def _first_clause(summary: str, *, max_chars: int) -> str:
-    """Return the leading substantive clause from ``summary``, trimmed
-    to ``max_chars`` and ending on a clean boundary.
+    """Return the leading substantive clause(s) from ``summary``,
+    trimmed to ``max_chars`` and ending on a clean boundary.
 
-    Boundary preference order: sentence terminator (``.``), then
-    semicolon (``;``), then comma (``,``). When no boundary lands
-    inside ``max_chars`` we hard-cut and add an ellipsis-equivalent
-    period so the soft-cap pass downstream still counts it as one
-    well-formed sentence.
+    R54.1 (deep-code-review I3) — now accumulates MULTIPLE sentences
+    up to ``max_chars`` so longer KB stubs (e.g. Art. 25's R53.2
+    refresh — "value chain... For GPAI models, the one-third fine-
+    tune rule...") surface their full load-bearing content within
+    the per-ref budget. Pre-R54.1 the clipper stopped at the FIRST
+    sentence boundary, losing R53.2 content on multi-sentence stubs.
+
+    Boundary preference order:
+      1. Accumulate WHOLE sentences via the legal-aware splitter
+         (handles ``Art. N`` / ``Annex N.`` / ``e.g.`` / ``i.e.``
+         correctly).
+      2. If the first whole sentence already exceeds ``max_chars``,
+         fall back to within-sentence clipping at the latest ``. ``
+         / ``; `` / ``, `` boundary inside the window.
+      3. No clean boundary → hard-cut + period.
     """
     cleaned = _LEADING_LABEL_RE.sub("", summary).strip()
     if not cleaned:
@@ -127,7 +156,41 @@ def _first_clause(summary: str, *, max_chars: int) -> str:
         if cleaned[-1] not in ".!?":
             cleaned = cleaned.rstrip(",;: ") + "."
         return cleaned
-    # Walk boundary preferences within the cap window.
+
+    # R54.1 — accumulate whole sentences via the legal-aware splitter.
+    # Lazy import to avoid circular-import risk at module load.
+    try:
+        from app.engines.sentence_index import (  # noqa: PLC0415
+            split_legal_sentences,
+        )
+        sentences = split_legal_sentences(cleaned)
+    except Exception:  # noqa: BLE001 — fall back to old behaviour
+        sentences = []
+
+    if sentences:
+        acc: list[str] = []
+        acc_len = 0
+        for sent in sentences:
+            sent_stripped = sent.strip()
+            if not sent_stripped:
+                continue
+            # +1 for joining space between sentences (only when acc non-empty).
+            next_len = acc_len + len(sent_stripped) + (1 if acc else 0)
+            if next_len > max_chars:
+                # Would exceed cap on this addition. If we have at
+                # least one sentence already, return what we have.
+                if acc:
+                    return " ".join(acc)
+                # First sentence alone exceeds — fall through to
+                # within-sentence clipping below.
+                break
+            acc.append(sent_stripped)
+            acc_len = next_len
+        if acc:
+            return " ".join(acc)
+
+    # Fallback (first sentence > max_chars, OR splitter failed): walk
+    # boundary preferences within the cap window.
     window = cleaned[:max_chars]
     for terminator in (". ", "; ", ", "):
         idx = window.rfind(terminator)
@@ -205,12 +268,21 @@ def stitch_grounded_prose(internal_refs: Iterable[str]) -> str:
     )
 
     # ── Substantive sentences: top-2 refs that have a KB stub. ─────
+    # R54.1 (deep-code-review I3) — per-ref budget. The 1st substance
+    # ref gets the lead budget (~400c) so longer KB stubs like Art. 25
+    # (R53.2 fine-tune / small-mid-cap / Commission Guidelines) surface
+    # their load-bearing tokens. The 2nd ref shares the remaining
+    # budget (~220c) so a 2-ref stitch still fits under
+    # MAX_GROUNDED_CHARS=580.
     substance_sentences: list[str] = []
-    for r in refs[:_MAX_SUBSTANCE_REFS]:
+    for idx, r in enumerate(refs[:_MAX_SUBSTANCE_REFS]):
         summary = _kb_summary(r)
         if not summary:
             continue
-        clause = _first_clause(summary, max_chars=_MAX_SUBSTANCE_CHARS)
+        per_ref_cap = (
+            _MAX_LEAD_SUBSTANCE_CHARS if idx == 0 else _MAX_SECOND_SUBSTANCE_CHARS
+        )
+        clause = _first_clause(summary, max_chars=per_ref_cap)
         if not clause:
             continue
         # Prefix with the user-facing citation so the sentence remains

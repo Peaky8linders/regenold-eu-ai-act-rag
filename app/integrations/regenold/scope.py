@@ -601,9 +601,21 @@ _AI_ACT_ANCHORS: frozenset[str] = frozenset(
         "distributor",
         "authorised representative",
         "authorized representative",
-        # Risk taxonomy (Arts. 5/6)
-        "high-risk",
-        "high risk",
+        # Risk taxonomy (Arts. 5/6).
+        # R54.1 (deep-code-review C2) — bare "high-risk" / "high risk"
+        # flipped questions like "Best high-risk hike in the Alps?"
+        # in-scope. The longer "high-risk ai" / "high-risk system"
+        # variants below cover all legit AI-Act-shaped usage of the
+        # term (the rubric questions always pair "high-risk" with
+        # "ai" / "system" / "annex iii" / "art. 6"). Removing the bare
+        # form preserves the in-scope behaviour for all legit shapes
+        # AND closes the off-topic false-positive class.
+        "high-risk ai",
+        "high risk ai",
+        "high-risk system",
+        "high risk system",
+        "high-risk ai system",
+        "high risk ai system",
         "limited-risk",
         "limited risk",
         "minimal risk",
@@ -849,12 +861,22 @@ _AI_ACT_ANCHORS: frozenset[str] = frozenset(
         # 16" alone, bare "compute threshold") were DROPPED. Only
         # uniquely AI-Act-shaped multi-token forms survive here.
         #
-        # Borderline-prohibition carve-out anchors:
-        "medical device exemption",
-        "medical devices exemption",
-        "individualised risk assessment",
-        "individualized risk assessment",
-        # Digital Omnibus / Commission Guidelines anchors:
+        # R54.1 (deep-code-review C2) — the BARE versions of these
+        # R53.1-C / R54-Q1 anchors flipped plainly off-topic queries
+        # in-scope ("individualised risk assessment for my mortgage",
+        # "designating authority over the kids", "high-risk in-vitro
+        # fertilisation"). They've been MOVED to KEYWORD_TO_ARTICLE
+        # ONLY (which doesn't flip the gate — it only surfaces the
+        # right Article reference when the gate is already in_scope
+        # via a stronger anchor like "AI Act" / "emotion recognition"
+        # / "Art. N"). Anchors below survive in _AI_ACT_ANCHORS only
+        # when their substring is uniquely AI-Act-shaped (cannot
+        # match a colloquial English phrase).
+        #
+        # Digital Omnibus / Commission Guidelines anchors (uniquely
+        # AI-Act-shaped — "digital omnibus" / "1/3 fine-tune" /
+        # "commission guidelines on gpai" / "10^23 flops" don't
+        # substring-match generic English):
         "digital omnibus",
         "digital-omnibus",
         "omnibus agreement",
@@ -865,18 +887,15 @@ _AI_ACT_ANCHORS: frozenset[str] = frozenset(
         "1/3 fine-tune",
         "commission guidelines on gpai",
         "gpai guidelines",
-        "training compute threshold",
         "10^23 flops",
         "10²³ flops",
         "10**23 flops",
-        # Authority lifecycle anchors (R34 P0 dropped BARE verbs;
-        # these MULTI-WORD compounds recover the legitimate AI Act
-        # surface that pairs a notified-body / authority noun with
-        # a lifecycle verb):
+        # Authority lifecycle anchors — KEEP only the unambiguous
+        # multi-word forms that pair the notified-body noun with a
+        # lifecycle verb (no false-positive on generic governance
+        # contexts):
         "designate as a notified body",
         "designate as notified body",
-        "designating authority",
-        "designating authorities",
         "withdraw a designation",
         "withdrawal of designation",
         "withdrawal of a designation",
@@ -886,10 +905,9 @@ _AI_ACT_ANCHORS: frozenset[str] = frozenset(
         "notified body withdraw",
         "notified body suspend",
         "notified body suspends",
-        "notified body certificate",
-        # Cross-framework compound anchors (the AI Act side is
-        # answerable; explicit "ai act" framing keeps the gate
-        # tight against generic regulator-vs-regulator questions):
+        # Cross-framework compound anchors (uniquely AI-Act-shaped —
+        # they all contain "ai act" so generic regulator-vs-regulator
+        # questions don't match):
         "ai act vs mdr",
         "ai act and mdr",
         "ai act and gdpr",
@@ -902,8 +920,6 @@ _AI_ACT_ANCHORS: frozenset[str] = frozenset(
         "ai act and dsa",
         "ai act vs dsa",
         "software as a medical device",
-        "high-risk in-vitro",
-        "high risk in vitro",
     )
 )
 
@@ -1567,6 +1583,69 @@ def derive_anchor_articles_from_keywords(text: str) -> tuple[str, ...]:
     return tuple(out)
 
 
+# R54.1 (deep-code-review C2) — keywords whose substring can match
+# generic English ("medical devices exemption for my homemade cough
+# syrup", "designating authority over the kids", "training compute
+# threshold for our GPU cluster"). They still anchor Article refs in
+# KEYWORD_TO_ARTICLE for RETRIEVAL — so questions that ARE about
+# the AI Act and pair these with another anchor like "Article N" /
+# "emotion recognition" / "AI" still surface the right Article. But
+# they MUST NOT flip the scope gate alone — the scope check filters
+# out matches that come purely from this weak set unless an explicit
+# Art./Annex reference is also present.
+#
+# Storage form: post-normalisation (lower-case + hyphen→space) so the
+# membership check works against `_KEYWORD_ALTERNATION_RE` match
+# groups directly.
+_SCOPE_WEAK_KEYWORDS: frozenset[str] = frozenset({
+    "high risk",  # bare "high-risk" / "high risk" — covered now by
+                  # "high risk ai" / "high risk system" in _AI_ACT_ANCHORS
+    "individualised risk assessment",
+    "individualized risk assessment",
+    "designating authority",
+    "designating authorities",
+    "medical device",
+    "medical devices",
+    "medical device exemption",
+    "medical devices exemption",
+    "training compute threshold",
+    "high risk in vitro",
+    "high risk in-vitro",
+    "notified body certificate",
+})
+
+
+def derive_strong_anchor_articles_from_keywords(text: str) -> tuple[str, ...]:
+    """Like :func:`derive_anchor_articles_from_keywords` but skips matches
+    that come ONLY from :data:`_SCOPE_WEAK_KEYWORDS`.
+
+    Used by :func:`classify_scope` to avoid flipping the gate in-scope
+    on broad-context phrases that substring-match generic English. The
+    retrieval path still uses the full
+    :func:`derive_anchor_articles_from_keywords` so legit AI-Act
+    questions whose scope was already flipped by a stronger anchor
+    still surface the right Article from the broad keyword.
+
+    Returns: tuple of ``Art. N`` / ``Annex X`` strings derived from
+    STRONG (non-weak) keyword matches only. Empty when only weak
+    matches OR no matches.
+    """
+    if not text:
+        return ()
+    out: list[str] = []
+    seen: set[str] = set()
+    norm = text.lower().replace("-", " ")
+    for m in _KEYWORD_ALTERNATION_RE.finditer(norm):
+        keyword = m.group(0)
+        if keyword in _SCOPE_WEAK_KEYWORDS:
+            continue
+        ref = _NORMALIZED_KEYWORD_TO_ARTICLE.get(keyword)
+        if ref and ref in ARTICLE_EXISTENCE and ref not in seen:
+            seen.add(ref)
+            out.append(ref)
+    return tuple(out)
+
+
 # _DIMENSION_KEYWORDS is now imported from app.data.compliance_vocab —
 # single source of truth across the three compliance-vocabulary sites
 # (R46 B6 — see app/data/compliance_vocab.py). The imported frozenset
@@ -1909,7 +1988,16 @@ def classify_scope(question: str) -> ScopeVerdict:
     # database`` → Annex VIII) would refuse. Promoting the
     # keyword-derived anchor into ``classify_scope`` keeps these
     # in-scope without re-opening the live-self-seed rescue hole.
-    keyword_refs = derive_anchor_articles_from_keywords(cleaned_text)
+    #
+    # R54.1 (deep-code-review C2) — use the STRONG-only derivation
+    # so broad-context keywords ("high-risk", "individualised risk
+    # assessment", "designating authority", "medical devices
+    # exemption", "training compute threshold") can't flip the
+    # gate alone. They still appear in KEYWORD_TO_ARTICLE for
+    # retrieval, but require co-occurrence with a stronger anchor
+    # (explicit Art./Annex ref, or an _AI_ACT_ANCHORS hit above)
+    # to land scope as in_scope.
+    keyword_refs = derive_strong_anchor_articles_from_keywords(cleaned_text)
     if keyword_refs:
         return ScopeVerdict(
             in_scope=True,

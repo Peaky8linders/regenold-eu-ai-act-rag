@@ -13,7 +13,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 # Version pin surfaced on every Regenold response (telemetry mode).
-KB_VERSION = "2024.1689.v2"
+# IMPORTANT: bump this string whenever EC_CHECKER_OBLIGATION_MAP / the
+# canonical stub set changes. The engine LRU cache key
+# (`app/routes/regenold.py::_engine_cache_key`) folds KB_VERSION into
+# its sha256, AND the Neo4j auto-seed
+# (`app/main.py::_maybe_auto_seed_neo4j`) skips re-seeding when the
+# stored seed_version matches. R53.2 edited Art. 25 + Art. 101 stubs
+# without bumping the string — the deep-code-review (R54.1) caught
+# this as a cache+seed staleness bug. R54.1 fixes that by bumping v2
+# → v3 to invalidate both surfaces.
+KB_VERSION = "2024.1689.v3"
 
 
 @dataclass(frozen=True)
