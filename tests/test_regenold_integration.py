@@ -1112,11 +1112,14 @@ def test_route_strong_compound_role_gets_12_ref_budget() -> None:
     assert r.status_code == 200, r.json()
     body = r.json()
     # STRONG-signal compound role lifts the budget above the
-    # R52.1-C weak ceiling of 8.
-    assert len(body["references"]) > 8, (
-        f"strong compound-role question should ship > 8 refs (12-budget "
-        f"restored); got {len(body['references'])} refs: "
-        f"{body['references']!r}"
+    # R52.1-C weak ceiling of 8. Tightened to ``>= 11`` per the eng-
+    # review (P2 #4): the original ``> 8`` floor would silently pass
+    # at 9 refs if a future change accidentally demoted the strong
+    # path back to weak.
+    assert len(body["references"]) >= 11, (
+        f"strong compound-role question should ship >= 11 refs (12-budget "
+        f"restored, minus 1 for floor-cap edge cases); got "
+        f"{len(body['references'])} refs: {body['references']!r}"
     )
     # And of course bounded by the 12-ref cap.
     assert len(body["references"]) <= 12, (

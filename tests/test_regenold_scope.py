@@ -1183,6 +1183,21 @@ class TestR531CJudgeDrivenWidening:
             f"{v.reason} / {v.evidence}"
         )
 
+    def test_r53_ai_act_and_gdpr_in_scope(self) -> None:
+        """Eng-review P2 #3: explicit cross-framework happy-path for the
+        ``ai act and gdpr`` anchor. Confirms GDPR cross-framework
+        compounds flip in-scope (the AI Act side is answerable). The
+        ``_OTHER_REGULATION_BEFORE_ARTICLE_RE`` precedence still
+        strips any GDPR-claimed Article span downstream so the engine
+        won't surface a GDPR-anchored citation."""
+        v = classify_scope(
+            "How do the AI Act and GDPR apply for HR data processing?"
+        )
+        assert v.in_scope, (
+            f"AI Act + GDPR cross-framework question refused: "
+            f"{v.reason} / {v.evidence}"
+        )
+
 
 class TestR531COosRegressionStillRefused:
     """R53.1-C — negative side: the R34 P0 OOS regression set must NOT

@@ -90,9 +90,11 @@ def _rewrite_first_person_mid_sentence(s: str) -> str:
     """Walk each sentence; apply mid-sentence first-person rewrites.
 
     Splits on sentence-terminal punctuation, applies each pattern in
-    `_FIRST_PERSON_REWRITES` once per sentence (so we don't recurse on
-    already-cleaned text), restores capitalisation, collapses double
-    spaces, and re-joins.
+    `_FIRST_PERSON_REWRITES` to ALL occurrences within the sentence
+    (R53.1-A bug: count=1 let the second occurrence of the same
+    pattern in one sentence slip through — e.g. "we should X and we
+    should Y" only stripped the first). Restores capitalisation,
+    collapses double spaces, and re-joins.
 
     Fail-soft: on any exception, returns the input unchanged.
     """
@@ -109,7 +111,11 @@ def _rewrite_first_person_mid_sentence(s: str) -> str:
             text = parts[i]
             cleaned = text
             for pattern, replacement in _FIRST_PERSON_REWRITES:
-                cleaned = pattern.sub(replacement, cleaned, count=1)
+                # count=0 → replace all occurrences in the sentence.
+                # Pattern ordering invariant (longest/specific first)
+                # ensures e.g. "we should note that X" is handled by
+                # pattern #1 before pattern #2 can claim "we should".
+                cleaned = pattern.sub(replacement, cleaned)
             # Collapse internal whitespace runs from clause drops.
             cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
             cleaned = _capitalise_first_letter(cleaned)

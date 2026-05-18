@@ -185,3 +185,35 @@ def test_capitalisation_restored_after_clause_drop():
     assert out == (
         "Article 5 prohibits this. Biometric categorisation is included."
     )
+
+
+# ── R53.1-A post-eng-review regression coverage ──
+
+
+def test_two_same_pattern_first_person_phrases_in_one_sentence():
+    """R53.1-A regression: count=1 let the second occurrence of the same
+    pattern slip through. Eng-review P1 demonstrated this live with
+    'We should document and we should verify.' yielding the bug output
+    'Document and we should verify.'. Fix: count=0 replaces all
+    occurrences per pattern. This test pins the fix."""
+    assert enforce_tone("We should document and we should verify.") == (
+        "Document and verify."
+    )
+    assert enforce_tone("We should document and we should also verify.") == (
+        "Document and verify."
+    )
+
+
+def test_pattern_ordering_invariant_we_should_note_that():
+    """R53.1-A pattern-ordering invariant: pattern #1 ("we should note
+    that") MUST fire before pattern #2 ("we should"), otherwise pattern
+    #2 strips "we should" and leaves a stranded "note that". This test
+    would fail loudly if a future maintainer reorders the alternation."""
+    out = enforce_tone("We should note that Article 9 applies.")
+    assert out == "Article 9 applies."
+    # Three-pattern stack: opener + mid-sentence + a second mid-sentence
+    out2 = enforce_tone(
+        "Based on my reading, we should note that Article 9 applies. "
+        "We should also note that Article 22 applies."
+    )
+    assert out2 == "Article 9 applies. Article 22 applies."
