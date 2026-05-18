@@ -1961,6 +1961,58 @@ def regenold_eu_ai_act_ask(
         except Exception:  # noqa: BLE001 — fail-soft
             pass
 
+    # R48 — Response-consistency guard.
+    #
+    # Final defence against the silent-refusal contradiction the R47 V2
+    # eval surfaced: 9/56 rows shipped non-empty `references` while the
+    # answer prose said "no matching obligation found" / "no EU AI Act
+    # references were returned" / "cannot cite specific articles". Three
+    # upstream sources can cause this:
+    #
+    #   1. `_deterministic_answer`'s fallback template (graph_rag line
+    #      2104) fires when its `parts` list is empty, but the route's
+    #      anchor-surface pass later populates `references` from the
+    #      scope-gate / xref graph.
+    #   2. Stage-2 Sonnet polish occasionally emits "no references
+    #      returned" even when the prompt's REFERENCES block is non-
+    #      empty (caught by the graph_rag-side
+    #      _polished_prose_self_contradicts_refs guard, but the kg_answer
+    #      it falls back to may still be the deterministic template).
+    #   3. Per-intent answer-template polishing wraps the contradictory
+    #      prose in headers without removing the contradiction.
+    #
+    # The guard runs LAST so it catches all three. When answer text
+    # contains a refusal marker AND `references` is non-empty, we
+    # replace the prose with `zero_retrieval_fallback._build_prose`
+    # rendered against the actual references list — which always
+    # produces grounded regulator-voice prose like "This question is
+    # covered by the EU AI Act under Article 51 and Article 53."
+    if references and answer_text:
+        from app.engines.zero_retrieval_fallback import (  # noqa: PLC0415
+            _build_prose,
+        )
+        from app.engines.graph_rag import (  # noqa: PLC0415
+            _STAGE2_REFUSAL_MARKERS,
+        )
+        low_answer = answer_text.lower()
+        if any(m in low_answer for m in _STAGE2_REFUSAL_MARKERS):
+            try:
+                # `references` are user-facing form ("Article 13") — convert
+                # to internal ("Art. 13") for the prose builder, which
+                # internally renders back to user-facing.
+                internal_refs: list[str] = []
+                for r in references[:3]:
+                    s = str(r).strip()
+                    if s.startswith("Article "):
+                        internal_refs.append("Art. " + s[len("Article "):].split(".")[0].split("(")[0].strip())
+                    elif s.startswith("Annex "):
+                        internal_refs.append("Annex " + s[len("Annex "):].split(".")[0].split("(")[0].strip().upper())
+                if internal_refs:
+                    answer_text = _build_prose(internal_refs)
+                    retrieval_path = "consistency_guard"
+            except Exception:  # noqa: BLE001 — never fail the route
+                pass
+
     # Surface the engine's graph_stats so a downstream verifier (when
     # telemetry is requested) can judge retrieval breadth without
     # re-asking. The closed-world refusal branch above kept graph_stats

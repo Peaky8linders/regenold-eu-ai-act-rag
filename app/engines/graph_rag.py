@@ -2465,6 +2465,72 @@ _PROSE_ARTICLE_RE = re.compile(
 _PROSE_ANNEX_RE = re.compile(r"\bAnnex\s+([IVXLCDM]+)\b", re.IGNORECASE)
 
 
+# R48 — Stage-2 self-contradiction refusal markers.
+#
+# Sonnet 4.6 (temperature 0) occasionally emits prose claiming "no
+# references were returned" / "no matching obligation" / "cannot cite
+# specific articles" even when the prompt's EU AI ACT REFERENCES block
+# is non-empty. Observed in 9/56 V2 rows post-R47 (~16% of non-error
+# rows). The polish output literally contradicts the references it
+# was given. Rather than fix the prompt (the system prompt is already
+# explicit), we detect the contradiction and drop the polish — the
+# Stage-1 KG answer always cites the supplied references coherently.
+_STAGE2_REFUSAL_MARKERS: tuple[str, ...] = (
+    "no matching obligation",
+    "no eu ai act references",
+    "retrieved context contains no",
+    "no specific articles or annexes can be cited",
+    "cannot cite specific articles",
+    "cannot cite a specific article",
+    "cannot provide a grounded",
+    "try rephrasing",
+    "no references were retrieved",
+    "no references were returned",
+    "block returned no matches",
+    "block provided contains no",
+    "references block contains no",
+    "references block provided contains no",
+)
+
+
+def _polished_prose_self_contradicts_refs(
+    prose: str, context: "GraphContext | None"
+) -> tuple[bool, str | None]:
+    """Detect Stage-2 self-contradiction: refusal template + non-empty refs.
+
+    Returns ``(contradicts, matched_marker)``. ``contradicts=True`` when:
+
+    * The prose contains any phrase in :data:`_STAGE2_REFUSAL_MARKERS`
+      (case-insensitive), AND
+    * The request-specific ``context`` carries at least one grounded
+      reference — i.e. the route IS going to ship a non-empty
+      ``references`` list, so a "no references returned" prose is a
+      direct contradiction.
+
+    The caller drops the polish and falls back to the deterministic
+    Stage-1 answer, which always grounds in the supplied references.
+
+    Defensive: if ``context`` is None or has no grounded refs, this
+    returns ``(False, None)`` — when the refs list is genuinely empty,
+    the route's :mod:`app.engines.zero_retrieval_fallback` already
+    replaced the refusal template with a floor citation set, so any
+    refusal language at this stage is either spurious-but-harmless
+    or already handled upstream.
+    """
+    if not prose:
+        return False, None
+    if context is None:
+        return False, None
+    grounded = _extract_context_grounded_refs(context)
+    if not grounded:
+        return False, None
+    low = prose.lower()
+    for marker in _STAGE2_REFUSAL_MARKERS:
+        if marker in low:
+            return True, marker
+    return False, None
+
+
 def _extract_context_grounded_refs(context: "GraphContext") -> set[str]:
     """Return the set of Art./Annex references present in ``context``.
 
@@ -2729,6 +2795,21 @@ def _two_stage_generate(
             "stage2_drift_detected: prose cites %s (not in catalog) — "
             "falling back to kg_answer",
             bad_ref,
+        )
+        return kg_answer, False
+
+    # R48 — Stage-2 self-contradiction guard. Sonnet occasionally emits
+    # "no references returned" prose even when the prompt's references
+    # block is non-empty. Drop the contradictory polish and ship the
+    # Stage-1 KG answer (which always grounds in the supplied refs).
+    contradicts, marker = _polished_prose_self_contradicts_refs(
+        enhanced, context
+    )
+    if contradicts:
+        logger.warning(
+            "stage2_self_contradiction: prose contains %r despite "
+            "non-empty references — falling back to kg_answer",
+            marker,
         )
         return kg_answer, False
 

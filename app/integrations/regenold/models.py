@@ -130,6 +130,7 @@ class RegenoldAskResponse(BaseModel):
         "deterministic",
         "no_match",
         "zero_retrieval_fallback",
+        "consistency_guard",
         None,
     ] | None = Field(
         default=None,
@@ -141,7 +142,10 @@ class RegenoldAskResponse(BaseModel):
             "zero_retrieval_fallback (R47-E deterministic floor — "
             "scope=in_scope but engine returned 0 candidates; intent-"
             "based seed articles shipped to avoid the silent "
-            "'try rephrasing' template)."
+            "'try rephrasing' template), "
+            "consistency_guard (R48 — the answer prose contradicted "
+            "the non-empty references list, so the route replaced the "
+            "prose with a grounded summary built from the references)."
         ),
     )
     nodes_traversed: int | None = Field(
