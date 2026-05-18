@@ -187,9 +187,14 @@ def _run_judge(
                         f"{axis[:4]}={(judged['verdicts'].get(axis) or {}).get('verdict', '?')}"
                         for axis in AXES
                     )
+                    # Defensive: multi-turn rows don't carry a ``category``
+                    # field, so ``.get('category')`` returns None and the
+                    # format string blows up. Coerce to a "-" string.
+                    row_id = str(judged.get('id') or '?')
+                    cat_str = str(judged.get('category') or 'multiturn')
                     print(
-                        f"[judge] {completed}/{len(rows)} {judged.get('id', '?'):<14} "
-                        f"cat={judged.get('category', '-'):<22} {summary}",
+                        f"[judge] {completed}/{len(rows)} {row_id:<14} "
+                        f"cat={cat_str:<22} {summary}",
                         flush=True,
                     )
     return [r for r in out if r is not None]

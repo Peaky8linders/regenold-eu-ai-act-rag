@@ -33,13 +33,19 @@ class GraphRAGSettings(BaseSettings):
     # 4.6 per million tokens, but it only fires on ~20% of bench rows
     # (the tagged-complex ones), and extended thinking adds ~5-15s p50
     # latency only on those rows.
-    complex_model: str = ""
-    """Model name for the complex-question path. Empty = use ``model``."""
+    complex_model: str = "claude-opus-4-7"
+    """Model name for the complex-question path. Default ``claude-opus-4-7``
+    (R51 production setting). Set empty to disable the swap and keep
+    every Stage-2 call on the base ``model``. The wrapper falls back
+    to deterministic if Opus is unreachable, so worst case is a soft
+    miss, not a 500."""
 
-    complex_thinking_tokens: int = 0
+    complex_thinking_tokens: int = 8000
     """``max_thinking_tokens`` for extended-thinking Stage-2 polish on
-    complex questions. 0 disables (default). Range 1024-16000 typical;
-    the wrapper caps at 50000."""
+    complex questions. Default 8000 (R51 production setting).
+    Clamped at the engine to [1024, 16000]. 0 disables thinking.
+    Tip: the wrapper enforces a hard 50000 ceiling — we stay well
+    below that for cost + latency reasons."""
 
 
 class RegenoldSettings(BaseSettings):

@@ -39,32 +39,30 @@ def _mock_wrapper():
 
 
 class TestDefaultRouting:
-    """With complex_model unset (default), the wrapper request must
-    use the base model + carry no extra headers — preserving R50
-    byte-identical behaviour."""
+    """Default config (R51 production): complex_model=claude-opus-4-7,
+    complex_thinking_tokens=8000. Simple questions MUST still use base
+    model + no thinking header; only complex questions get the swap."""
 
     def test_simple_question_uses_base_model(self, _mock_wrapper) -> None:
-        original_complex = settings.graph_rag.complex_model
-        settings.graph_rag.complex_model = ""
-        try:
-            _openai_wrapper_complete_for_graph_rag(
-                system="you are an EU AI Act expert",
-                user="What does Article 13 require?",
-                max_tokens=400,
-                temperature=0.0,
-                complex_question=False,
-            )
-        finally:
-            settings.graph_rag.complex_model = original_complex
+        """Simple questions stay on the base model even when
+        complex_model is set (R51 cost guard)."""
+        _openai_wrapper_complete_for_graph_rag(
+            system="you are an EU AI Act expert",
+            user="What does Article 13 require?",
+            max_tokens=400,
+            temperature=0.0,
+            complex_question=False,
+        )
         req: OpenAIWrapperRequest = _mock_wrapper.complete.call_args.args[0]
         assert req.model == settings.graph_rag.model
         assert req.extra_headers == {}
 
-    def test_complex_question_without_complex_model_uses_base(
+    def test_complex_question_when_complex_model_unset_uses_base(
         self, _mock_wrapper
     ) -> None:
-        """Even when the gate fires, if the deploy hasn't wired
-        complex_model the call stays on base. Cost-safe default."""
+        """Operator override path: setting complex_model="" disables
+        the swap even when the gate fires. Verifies the fallback path
+        for operators who don't want the Opus + thinking spend."""
         original_complex = settings.graph_rag.complex_model
         original_tokens = settings.graph_rag.complex_thinking_tokens
         settings.graph_rag.complex_model = ""
@@ -80,6 +78,19 @@ class TestDefaultRouting:
         req: OpenAIWrapperRequest = _mock_wrapper.complete.call_args.args[0]
         assert req.model == settings.graph_rag.model
         assert req.extra_headers == {}
+
+    def test_complex_question_uses_default_opus_path(
+        self, _mock_wrapper
+    ) -> None:
+        """R51 default: complex_model=claude-opus-4-7 + thinking=8000
+        fire WITHOUT any env override. This is the production behaviour."""
+        _openai_wrapper_complete_for_graph_rag(
+            system="x", user="y", max_tokens=400, temperature=0.0,
+            complex_question=True,
+        )
+        req: OpenAIWrapperRequest = _mock_wrapper.complete.call_args.args[0]
+        assert req.model == "claude-opus-4-7"
+        assert req.extra_headers.get("X-Claude-Max-Thinking-Tokens") == "8000"
 
 
 class TestComplexRouting:

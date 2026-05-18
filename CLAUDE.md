@@ -1732,15 +1732,24 @@ NOT fire — otherwise we burn Opus + thinking budget on everything).
   rarely fire (single-anchor QA shapes), so davidath cost stays at
   R50 baseline.
 
-### Production deploy config
+### Production deploy config — DEFAULTS (R51.1)
 
-```bash
-railway variables --set "P2P_GRAPH_RAG_COMPLEX_MODEL=claude-opus-4-7"
-railway variables --set "P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS=8000"
+As of R51.1, the production defaults are baked in:
+
+```python
+GraphRAGSettings:
+    complex_model = "claude-opus-4-7"       # default
+    complex_thinking_tokens = 8000          # default
 ```
 
-Both unset = R50 byte-identical fallback. Either / both set adds the
-complex path without disrupting the simple path.
+No env vars needed. Every deploy of R51.1+ activates the complex path
+out of the box. To DISABLE the swap (operator wants to stay on Sonnet
+for cost reasons), set the env explicitly:
+
+```bash
+railway variables --set "P2P_GRAPH_RAG_COMPLEX_MODEL="
+railway variables --set "P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS=0"
+```
 
 ### R51 — Bench parity check (476 davidath, all 1,533 tests pass)
 
