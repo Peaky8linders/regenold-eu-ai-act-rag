@@ -498,6 +498,9 @@ def _nis2_fact_pattern(text: str) -> str | None:
 
     Triggers on:
 
+    * Bare ``NIS2`` / ``NIS 2`` / ``NIS-2`` (R57-A — unique acronym,
+      near-zero false-positive risk; the previous build required
+      multi-token markers that off-topic NIS2 questions don't carry).
     * ``essential[- ]services entity/entities`` (NIS2 Annex I/II terminology).
     * ``essential entity`` / ``essential entities`` (NIS2 short form).
     * ``Cyber Resilience Act`` / ``CRA`` (uniquely CRA terms).
@@ -508,6 +511,27 @@ def _nis2_fact_pattern(text: str) -> str | None:
     NOT triggered by ``cybersecurity`` alone — that anchors AI Act
     Art. 15.
     """
+    # R57-A — bare NIS2 acronym fires (unique acronym; never substring-
+    # matches generic English). Word-boundary regex so arbitrary
+    # ``...NIS`` prefixes don't match. Covers ``NIS2`` / ``NIS 2`` /
+    # ``NIS-2`` spellings.
+    #
+    # Guard against cross-framework V2 rows that LEGITIMATELY anchor
+    # on the EU AI Act but mention NIS2 in passing ("Our high-risk AI
+    # already reports incidents under NIS2. Do AI Act obligations
+    # still apply?"). When an explicit ``ai act`` reference is in the
+    # same text, the question stays anchored on the AI Act side and
+    # this NEAR_OOS branch yields to the AI-Act anchor check that
+    # runs immediately after near-oos detection in ``classify_scope``.
+    if re.search(r"\bnis[- ]?2\b", text):
+        has_ai_act_phrase = (
+            "ai act" in text
+            or "ai-act" in text
+            or "regulation 2024/1689" in text
+            or "regulation (eu) 2024/1689" in text
+        )
+        if not has_ai_act_phrase:
+            return "NIS2 Directive"
     if (
         "essential-services entity" in text
         or "essential services entity" in text
@@ -1697,6 +1721,59 @@ _GENERIC_KNOWLEDGE_PATTERNS: tuple[re.Pattern, ...] = (
                re.IGNORECASE),
 )
 
+
+# R57-A — creative-content-about-X imperatives that explicitly carry an
+# AI Act anchor in the same sentence ("tell me a joke about Article 13").
+# Without this dedicated pre-filter the explicit Art. ref wins at the
+# known-Art branch of ``classify_scope`` and the joke framing is
+# silently dropped. The pattern fires BEFORE the known-Art check so the
+# refusal lands on the creative-content shape regardless of which
+# article was mentioned. Scope is intentionally narrow — imperative
+# verbs + creative-output noun. Framing words like ``explain`` /
+# ``summarise`` stay OUT so legitimate AI Act helper asks aren't
+# clobbered.
+_CREATIVE_CONTENT_IMPERATIVE_RE = re.compile(
+    r"^\s*(?:please\s+)?"
+    r"(?:tell|write|generate|compose|give|sing|recite|make|create)\s+"
+    r"(?:me\s+)?"
+    r"(?:a\s+|an\s+|the\s+)?"
+    r"(?:joke|poem|song|haiku|story|recipe|essay|limerick|riddle|rhyme|ballad|sonnet|rap|verse)\b",
+    re.IGNORECASE,
+)
+
+
+# R57-A — "non-AI" qualifier detector. When the question explicitly
+# scopes its subject to NON-AI (medical certification, machinery,
+# product), the AI Act doesn't apply — but the surrounding governance
+# nouns (``notified body``, ``certificate``, ``designate``) would
+# otherwise flip scope in-scope via ``_AI_ACT_ANCHORS``. The pattern
+# uses word boundaries on both sides so generic English ("Lebanon",
+# "anion") doesn't substring-match.
+_NON_AI_QUALIFIER_RE = re.compile(
+    r"\bnon[\s-]?ai\b|\bnot\s+(?:an?\s+)?ai\b|\bnot\s+ai[- ]related\b",
+    re.IGNORECASE,
+)
+
+
+# R57-A — Estate / wills / inheritance context detector. The R53.1-C
+# multi-word ``withdraw a designation`` anchor was meant to catch the
+# AI Act notified-body lifecycle but substring-matches the wholly
+# unrelated wills/estate domain (``How to withdraw a designation from
+# my will?``). When the question carries an estate marker
+# (``from my will``, ``in my estate``, etc.), refuse via the
+# CONVERSATIONAL gate regardless of any AI-Act-adjacent governance
+# noun. Each marker is multi-token with natural boundaries — generic
+# AI Act questions never carry "from my will" / "in my estate"
+# phrasing.
+_ESTATE_CONTEXT_RE = re.compile(
+    r"\bfrom\s+(?:my|a|the)\s+will\b"
+    r"|\bin\s+(?:my|a|the)\s+(?:will|estate|inheritance|trust)\b"
+    r"|\bof\s+(?:my|a|the)\s+will\b"
+    r"|\b(?:my|our|the)\s+(?:last\s+)?(?:will\s+and\s+testament|inheritance|estate\s+plan)\b",
+    re.IGNORECASE,
+)
+
+
 # Prompt-injection patterns the input_validator middleware doesn't catch
 # (lower severity / broader phrasing). The validator's high-severity
 # tier blocks the heavy artillery; this layer is the last-mile mop-up.
@@ -1925,6 +2002,21 @@ def classify_scope(question: str) -> ScopeVerdict:
             evidence=f"Prompt-injection pattern matched: {m.group(0)[:60]!r}" if m else "Injection",
         )
 
+    # R57-A — creative-content imperative pre-filter. Refuse "Tell me
+    # a joke about Article 13" BEFORE the known-Art branch wins (the
+    # explicit Article 13 ref would otherwise flip the gate in_scope).
+    # Pattern is narrow — imperative verbs + creative-output noun.
+    if _CREATIVE_CONTENT_IMPERATIVE_RE.search(text):
+        return ScopeVerdict(
+            in_scope=False,
+            reason=ScopeReason.CONVERSATIONAL,
+            evidence=(
+                "Creative-content request (joke / poem / recipe / story) — "
+                "even when an Article reference is named, this is not an "
+                "EU AI Act compliance question."
+            ),
+        )
+
     known, unknown = extract_referenced_articles(text)
 
     # 3. Non-existent article — even if in-scope keywords are present.
@@ -1937,6 +2029,37 @@ def classify_scope(question: str) -> ScopeVerdict:
             evidence=f"Reference(s) outside the EU AI Act: {', '.join(unknown)}",
             referenced_articles=known,
             unknown_articles=unknown,
+        )
+
+    # R57-A — scope-negation pre-filter (1) "non-AI" qualifier.
+    # When the question explicitly says "non-AI" / "not an AI" / "not
+    # AI-related", the AI Act doesn't apply even if the surrounding
+    # governance nouns (``notified body``, ``certificate``) would
+    # otherwise anchor the gate in-scope. Refuse via CONVERSATIONAL.
+    if _NON_AI_QUALIFIER_RE.search(text):
+        return ScopeVerdict(
+            in_scope=False,
+            reason=ScopeReason.CONVERSATIONAL,
+            evidence=(
+                "Question explicitly scopes its subject to non-AI; the "
+                "EU AI Act does not apply."
+            ),
+        )
+
+    # R57-A — scope-negation pre-filter (2) Estate / wills / inheritance.
+    # The R53.1-C ``withdraw a designation`` anchor was meant for the
+    # AI Act notified-body lifecycle but the same phrase appears in
+    # wills/estate contexts. When the question carries an estate
+    # marker (``from my will``, ``in my estate``, etc.), refuse via
+    # CONVERSATIONAL regardless of any AI-Act-adjacent governance noun.
+    if _ESTATE_CONTEXT_RE.search(text):
+        return ScopeVerdict(
+            in_scope=False,
+            reason=ScopeReason.CONVERSATIONAL,
+            evidence=(
+                "Question is about a wills / estate / inheritance "
+                "topic; the EU AI Act does not apply."
+            ),
         )
 
     # Issue #47 — the anchor / keyword passes below must NOT see text
@@ -2280,6 +2403,39 @@ def _live_question_borrows_anchor(live_text: str, anchors: tuple[str, ...]) -> b
     # always inherit the prior regulatory topic: "So it's only for end
     # users, right?", "So if our vendor logs everything we don't need to?"
     if low.startswith("so ") and "?" in live_text:
+        return True
+
+    # R57-A — first-person fact-pattern rescue (length-agnostic).
+    #
+    # V2 multi-turn finals frequently take the shape of a NARRATIVE
+    # update ("We also train it on 2×10²⁵ FLOPs.", "Now we use it to
+    # decide who to lay off.", "A customer wants to know why their
+    # loan was rejected.") rather than a question. The existing R55-E
+    # weak-keyword rescue requires weak keywords in the live turn;
+    # these bare statements carry none. The existing question-shape
+    # rescue below requires "?" / wh-word / aux-verb start; these
+    # narrative updates start with "we" / "now" / "a customer" and
+    # have no question shape at all.
+    #
+    # When PRIOR anchors are present AND the live text starts with a
+    # first-person-narrative marker, we treat the turn as inheriting
+    # the prior topic. The pure-conversational / generic-knowledge /
+    # hard-refusal filters above already screened out off-topic
+    # narrative shapes (single-turn "We sell artisanal cheese in
+    # Tuscany" has no prior anchors so it never reaches this branch).
+    fact_pattern_starts = (
+        "we ", "we'", "we\u2019",  # straight + smart apostrophe
+        "our ",
+        "my ",
+        "i ", "i'", "i\u2019",
+        "now ", "now we ", "now our ",
+        "in our case ", "in our situation ",
+        "for us ",
+        "a customer ", "the customer ",
+        "a user ", "the user ",
+        "a client ", "the client ",
+    )
+    if any(low.startswith(m) for m in fact_pattern_starts):
         return True
 
     if not _is_short_followup(live_text):

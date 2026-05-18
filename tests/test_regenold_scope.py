@@ -1856,3 +1856,280 @@ class TestR55ARefusalCopyNoFirstPerson:
         )
         out = refusal_copy_for(v)
         assert "This assistant" in out or "this assistant" in out
+
+
+
+# ─── R57-A — multi-turn fact-pattern rescue + 4 OOS leak fixes ────────────
+
+
+def _scenario(*pairs: tuple[str, str]) -> list[dict[str, str]]:
+    """Helper — build a multi-turn fixture from (role, content) pairs."""
+    return [{"role": role, "content": content} for role, content in pairs]
+
+
+class TestR57AFactPatternMultiTurnRescue:
+    """R57-A part 1 — first-person fact-pattern rescue.
+
+    The V2 multi-turn re-measurement after R55-E showed coherence
+    plateauing at 0.28 because the rescue REQUIRED weak keywords in
+    the live turn. The actual failing rows carried NARRATIVE
+    STATEMENTS like "We also train it on 2×10²⁵ FLOPs." with no AI
+    Act anchor of their own. R57-A widens
+    ``_live_question_borrows_anchor`` so first-person fact-pattern
+    starts (``we`` / ``our`` / ``now`` / ``a customer`` / ...) fire
+    the rescue when PRIOR USER turns established at least one anchor.
+
+    Fixtures mirror the actual ``evals.regenold.scenarios_multiturn_v2``
+    rows that this rescue is designed to lift. We don't import the V2
+    module directly so the test stays independent of dataset edits.
+    """
+
+    def test_r57_a_mt_v2_009_flops_fact_pattern_rescues(self) -> None:
+        """mt_v2_009 — bare statement "We also train it on 2×10²⁵ FLOPs"
+        after prior GPAI Article anchor. The pre-R57-A build refused
+        this as CONVERSATIONAL because there is no question shape and
+        no weak keyword."""
+        cv = classify_conversation(_scenario(
+            ("user", "Our GPAI is open-weights, released on HuggingFace under Apache 2.0."),
+            ("assistant", "Article 53(2) carves out most documentation obligations for non-systemic open-weights GPAI."),
+            ("user", "We also train it on 2x10^25 FLOPs."),
+        ))
+        assert cv.in_scope is True
+        assert cv.reason == ScopeReason.IN_SCOPE
+        assert cv.anchor_articles, "rescue must surface at least one prior anchor"
+
+    def test_r57_a_mt_v2_012_call_centres_fact_pattern_rescues(self) -> None:
+        """mt_v2_012 — "We sell it to call centres for monitoring agent
+        stress levels." — bare statement after Art. 5 anchor."""
+        cv = classify_conversation(_scenario(
+            ("user", "Is our emotion-recognition tool prohibited?"),
+            ("assistant", "Emotion recognition is not categorically prohibited; Article 5(1)(f) only bans it in workplace and education contexts (with a medical/safety carve-out)."),
+            ("user", "We sell it to call centres for monitoring agent stress levels."),
+        ))
+        assert cv.in_scope is True
+        assert cv.reason == ScopeReason.IN_SCOPE
+        assert "Art. 5" in cv.anchor_articles
+
+    def test_r57_a_mt_v2_016_sandbox_fact_pattern_rescues(self) -> None:
+        """mt_v2_016 — "We want to deploy it to a real client during
+        the sandbox phase." — bare statement after Art. 6 / Art. 57
+        anchors."""
+        cv = classify_conversation(_scenario(
+            ("user", "We are testing a high-risk hiring AI in the Spanish regulatory sandbox."),
+            ("assistant", "Article 57 permits high-risk AI testing in an approved sandbox under supervision."),
+            ("user", "We want to deploy it to a real client during the sandbox phase."),
+        ))
+        assert cv.in_scope is True
+        assert cv.reason == ScopeReason.IN_SCOPE
+        assert cv.anchor_articles
+
+    def test_r57_a_mt_v2_024_customer_fact_pattern_rescues(self) -> None:
+        """mt_v2_024 — "A customer wants to know why their loan was
+        rejected by our AI." — third-person fact-pattern about own
+        users, after Art. 26 anchor."""
+        cv = classify_conversation(_scenario(
+            ("user", "We deploy a high-risk AI that makes loan denials."),
+            ("assistant", "Loan denial is Annex III(5)(b) high-risk."),
+            ("user", "A customer wants to know why their loan was rejected by our AI."),
+        ))
+        assert cv.in_scope is True
+        assert cv.reason == ScopeReason.IN_SCOPE
+        assert "Art. 26" in cv.anchor_articles
+
+    def test_r57_a_now_we_marker_rescues_after_prior_anchor(self) -> None:
+        """The "now we ..." marker is one of the R57-A starts; it must
+        fire when prior anchors are present."""
+        cv = classify_conversation(_scenario(
+            ("user", "What does Article 13 require for transparency?"),
+            ("assistant", "Article 13 governs transparency for high-risk AI systems."),
+            ("user", "Now we use the same system across our European subsidiaries."),
+        ))
+        assert cv.in_scope is True
+        assert cv.reason == ScopeReason.IN_SCOPE
+        assert "Art. 13" in cv.anchor_articles
+
+    def test_r57_a_our_marker_rescues_after_prior_anchor(self) -> None:
+        """The "our ..." marker should rescue narrative continuations."""
+        cv = classify_conversation(_scenario(
+            ("user", "What does Article 6 say about high-risk medical AI?"),
+            ("assistant", "Article 6 classifies safety-component AI as high-risk under Annex I."),
+            ("user", "Our diagnostic tool is sold across the EU."),
+        ))
+        assert cv.in_scope is True
+        assert cv.reason == ScopeReason.IN_SCOPE
+        assert "Art. 6" in cv.anchor_articles
+
+    # ── Negative side: must NOT rescue off-topic / no-prior-anchor / hard-refusal ──
+
+    def test_r57_a_we_cold_turn_without_prior_anchor_refuses(self) -> None:
+        """Off-topic "We" statement with NO prior anchors must stay
+        refused — the rescue requires prior_anchors non-empty."""
+        cv = classify_conversation(_scenario(
+            ("user", "We sell artisanal cheese in Tuscany."),
+        ))
+        assert cv.in_scope is False, (
+            "Cold single-turn 'We sell artisanal cheese' must refuse "
+            "(no prior anchors to borrow)"
+        )
+
+    def test_r57_a_we_off_topic_after_unrelated_first_turn_refuses(self) -> None:
+        """Even with a non-AI-Act first turn, the rescue must not fire."""
+        cv = classify_conversation(_scenario(
+            ("user", "Tell me about your favourite music."),
+            ("assistant", "I focus on EU AI Act questions."),
+            ("user", "We sell artisanal cheese in Tuscany."),
+        ))
+        assert cv.in_scope is False, (
+            "No prior anchors → no rescue allowed"
+        )
+
+    def test_r57_a_weather_followup_after_prior_anchor_refuses(self) -> None:
+        """Generic-knowledge filter must beat the fact-pattern rescue.
+        ``"What's the weather in Brussels?"`` is a question (so it
+        DOES start with a wh-word) but its live verdict is CONVERSATIONAL
+        via the generic-knowledge pattern, so the rescue doesn't apply.
+        """
+        cv = classify_conversation(_scenario(
+            ("user", "What does Article 13 require for transparency?"),
+            ("assistant", "Article 13 governs transparency for high-risk AI."),
+            ("user", "What's the weather in Brussels today?"),
+        ))
+        # The fact-pattern rescue itself screens out generic-knowledge
+        # via the existing _question_is_generic_knowledge guard at the
+        # top of _live_question_borrows_anchor.
+        # The live verdict comes back CONVERSATIONAL.
+        assert cv.in_scope is False
+
+    def test_r57_a_other_regulation_hard_refusal_still_refuses(self) -> None:
+        """OTHER_REGULATION is a hard refusal — the rescue must not
+        overturn it even with prior anchors AND a first-person start.
+        """
+        cv = classify_conversation(_scenario(
+            ("user", "What does Article 13 require?"),
+            ("assistant", "Article 13 governs transparency for high-risk AI."),
+            ("user", "We need a DPIA under GDPR Article 35 for our data flow."),
+        ))
+        # The live verdict is OTHER_REGULATION; R57-A's rescue is
+        # gated on the same hard_refusal_reasons set R55-E uses.
+        if cv.verdict.reason == ScopeReason.OTHER_REGULATION:
+            assert cv.in_scope is False
+
+
+class TestR57AScopeLeakFixes:
+    """R57-A part 2 — close 4 OOS scope-leak baselines identified by
+    the R56-B `--probe-oos` mode against R54.1 baseline.
+    """
+
+    def test_r57_a_joke_about_article_refuses(self) -> None:
+        """oos_r47_e_01 — joke imperative with embedded Art. anchor.
+        Pre-R57-A: the explicit Art. 13 ref won the in-scope branch.
+        """
+        v = classify_scope("Tell me a joke about Article 13.")
+        assert v.in_scope is False
+        assert v.reason == ScopeReason.CONVERSATIONAL
+
+    def test_r57_a_poem_about_article_refuses(self) -> None:
+        """Companion shape — poem imperative with Art. anchor."""
+        v = classify_scope("Write a poem about Article 5.")
+        assert v.in_scope is False
+        assert v.reason == ScopeReason.CONVERSATIONAL
+
+    def test_r57_a_recipe_about_anchor_refuses(self) -> None:
+        """Generic recipe imperative — even with AI Act keyword."""
+        v = classify_scope("Give me a recipe for high-risk AI compliance.")
+        assert v.in_scope is False
+        assert v.reason == ScopeReason.CONVERSATIONAL
+
+    def test_r57_a_non_ai_qualifier_refuses(self) -> None:
+        """oos_r54_1_c2_06 — `non-AI medical certification` must refuse.
+        """
+        v = classify_scope(
+            "Can you help me suspend a Notified Body for non-AI medical certification?"
+        )
+        assert v.in_scope is False
+        assert v.reason == ScopeReason.CONVERSATIONAL
+
+    def test_r57_a_not_ai_qualifier_refuses(self) -> None:
+        """Alternative spelling — `not AI`."""
+        v = classify_scope("My machinery is not AI; do I need a Notified Body?")
+        assert v.in_scope is False
+        assert v.reason == ScopeReason.CONVERSATIONAL
+
+    def test_r57_a_estate_will_context_refuses(self) -> None:
+        """oos_r54_1_c2_08 — `withdraw a designation from my will`.
+        """
+        v = classify_scope("How to withdraw a designation from my will?")
+        assert v.in_scope is False
+        assert v.reason == ScopeReason.CONVERSATIONAL
+
+    def test_r57_a_estate_inheritance_context_refuses(self) -> None:
+        """Companion shape — `in my inheritance`."""
+        v = classify_scope(
+            "How to withdraw a designation in my inheritance plan?"
+        )
+        assert v.in_scope is False
+        assert v.reason == ScopeReason.CONVERSATIONAL
+
+    def test_r57_a_bare_nis2_refuses_as_near_oos(self) -> None:
+        """oos_other_reg_03 — bare `NIS2` must hit NEAR_OOS.
+        Pre-R57-A: the multi-token NIS2 detector required `essential-
+        services entity` or similar phrasing.
+        """
+        v = classify_scope("What about NIS2 cybersecurity obligations?")
+        assert v.in_scope is False
+        assert v.reason == ScopeReason.NEAR_OOS
+        assert "NIS2" in v.near_oos_framework or "NIS" in v.near_oos_framework
+
+    def test_r57_a_nis_dash_2_spelling_refuses(self) -> None:
+        """Alternative NIS spellings — `NIS-2`, `NIS 2`."""
+        for q in ("Tell me about NIS-2 reporting?", "What does NIS 2 require?"):
+            v = classify_scope(q)
+            assert v.reason == ScopeReason.NEAR_OOS, q
+
+    # ── R34 P0 OOS regression set MUST still refuse ──
+
+    def test_r34_p0_queen_still_refuses(self) -> None:
+        v = classify_scope("When did the queen withdraw from public life?")
+        assert v.in_scope is False
+
+    def test_r34_p0_netflix_still_refuses(self) -> None:
+        v = classify_scope("I want to suspend my Netflix subscription.")
+        assert v.in_scope is False
+
+    def test_r34_p0_birth_cert_still_refuses(self) -> None:
+        v = classify_scope("Birth certificate processing time in France?")
+        assert v.in_scope is False
+
+    def test_r34_p0_musician_still_refuses(self) -> None:
+        v = classify_scope("Designate as your favourite musician?")
+        assert v.in_scope is False
+
+    def test_r34_p0_restaurant_still_refuses(self) -> None:
+        v = classify_scope("What's the best Italian restaurant in Rome?")
+        assert v.in_scope is False
+
+    # ── Legit in-scope shapes must STILL pass (sanity ──
+
+    def test_r57_a_legit_article_question_still_in_scope(self) -> None:
+        v = classify_scope("What does Article 13 require?")
+        assert v.in_scope is True
+        assert v.reason == ScopeReason.IN_SCOPE
+
+    def test_r57_a_legit_summarise_anchor_still_in_scope(self) -> None:
+        """``summarise`` is NOT in the creative-content imperative
+        list — it's a legitimate AI Act helper verb."""
+        v = classify_scope("Summarise Article 50 transparency obligations.")
+        assert v.in_scope is True
+
+    def test_r57_a_legit_explain_anchor_still_in_scope(self) -> None:
+        """``explain`` is NOT in the creative-content imperative list."""
+        v = classify_scope("Explain Article 5 prohibitions.")
+        assert v.in_scope is True
+
+    def test_r57_a_legit_notified_body_question_still_in_scope(self) -> None:
+        """A genuine AI-Act notified body question (no `non-AI` /
+        estate qualifier) must stay in_scope."""
+        v = classify_scope(
+            "How does a notified body suspend its certificate for an AI system?"
+        )
+        assert v.in_scope is True
