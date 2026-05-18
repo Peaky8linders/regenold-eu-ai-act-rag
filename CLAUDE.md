@@ -1319,16 +1319,206 @@ rerank can't add measurable recall. Round 32's wins land on:
 cross-encoder route integration are deferred to Round 33 once
 bench-side gate tuning confirms the rubric direction.
 
+## Round 46 — Dead-code purge + dedup registries + V2 eval against live Railway (2026-05-18)
+
+Five parallel-agent workstreams + a live-endpoint eval pass. Net code
+delta is −1,231 LOC, the live production endpoint gets its first
+externally-audited scorecard against a 56-item harder probe set, and
+two long-standing duplication risks (vocab + ref-form) are closed.
+
+### `app/data/compliance_vocab.py` (new, R46-B6) — single compliance vocabulary
+
+The compliance-domain noun list lived in three places (`scope.py::_DIMENSION_KEYWORDS`,
+`ontology.py::PRACTICE_REGISTRY.keywords`, plus the
+`compliance_verdict.py::_COMPLIANCE_DOMAIN_NOUNS` set deleted in R45)
+with measurable overlap. A future edit to one site would silently de-tune
+the other two. The new module exports a canonical `COMPLIANCE_DOMAIN_NOUNS:
+frozenset[str]` plus narrower derived constants (`DIMENSION_KEYWORDS`,
+`PRACTICE_KEYWORDS`, `VERDICT_DOMAIN_NOUNS`). Module-level only, validated
+at import. `scope.py` and `ontology.py` now import from the single source;
+`compliance_verdict.py`'s 49-entry historical vocabulary is pinned via
+`VERDICT_DOMAIN_NOUNS` so the planned R47+ re-introduction reads from one
+place. 13 regression tests at `tests/test_compliance_vocab.py`.
+
+### `app/integrations/regenold/refs.py` (new, R46-B8) — centralised ref-form converter
+
+Seven sites carried their own EU-AI-Act citation conversion between
+internal canonical (`Art. 13(2)(a)`), user-facing (`Article 13.2.a`),
+and sub-point forms. R43's letter-suffix fix had to touch 6 separate
+regexes. The new module exposes `parse / to_user_facing / to_internal
+/ as_sub_point / normalise` with a typed `RefSpec`. Pure stdlib,
+module-level compiled regexes, idempotent normalise.
+
+Two highest-leverage sites migrated this round:
+[`app/engines/graphrag_expand.py`](app/engines/graphrag_expand.py) (dropped 4
+regexes + 2 inline conversion funcs) and
+[`app/engines/graph_expand_2hop.py`](app/engines/graph_expand_2hop.py) (dropped 4 regexes).
+5 remaining sites get `# TODO(R47): migrate to refs.py` comments —
+deferred to keep R46 atomic. 58 regression tests at
+`tests/test_refs_converter.py`. Roman-numeral article-IDs (`Article III`)
+now hard-reject at the parser boundary per the CLAUDE.md hard rule.
+
+### `app/engines/task_router.py` + `app/engines/cross_encoder_rerank.py` — deleted
+
+Parallel-agent audit at
+[`docs/superpowers/specs/2026-05-18-r46-a10-ext-audit.md`](docs/superpowers/specs/2026-05-18-r46-a10-ext-audit.md)
+grep-verified that both modules + their tests had zero production
+importers. Self-descriptions confirmed both were R31/R32 whitepaper-
+compliance scaffolding that never landed at the wire:
+
+* `task_router.py` (218 LOC) — informational four-task labels; the
+  granular `intent_classifier` 15-way label that IS wired covers the
+  same surface, plus more.
+* `cross_encoder_rerank.py` (917 LOC) — Strategy-A measured bench-negative
+  in R32, Strategy-B's BGE ONNX never bundled. The competing wired
+  solution is `embeddings_index.py` (R32).
+
+Net deletion: 1,745 LOC (modules + tests). All 1306 tests still pass.
+The audit also flagged `graph_aware_retrieval.py` (689 LOC) and
+`eu_ai_act_tree.py` (856 LOC) as **WIRE** candidates — deferred to R47.
+
+### `evals/regenold/scenarios_multiturn_v2.py` + `scenarios_tricky_v2.py` (new) — V2 eval surface
+
+The davidath benchmark is BM25-saturated per R31. Round 46 ships a
+harder probe set that targets known weak surfaces:
+
+* **25 multi-turn scenarios** (3–5 turns each) probing coreference,
+  scope shifts, cross-framework anchoring (AI Act + MDR / GDPR / NIS2 /
+  DSA), role flips (provider ↔ deployer via Art. 25), Digital Omnibus
+  date carry-over.
+* **31 tricky single-turn Q&As** distributed across 7 categories:
+  `omnibus` (6, Digital-Omnibus-current), `role_ambiguity` (5),
+  `conflict` (4, two-article clashes), `borderline_prohibition` (5,
+  Art. 5 carve-outs / Recital 16 boundaries), `gpai` (5, fine-tune
+  thresholds + open-weights edges), `cross_framework` (3), `near_oos`
+  (3, looks-like-AI-Act-but-is-DSA/NIS2/PLD).
+
+All 56 scenarios' expected references validated against the canonical
+113-article + 13-annex catalog.
+
+### `evals/regenold/runner_v2.py` (new) — stdlib live runner
+
+Stdlib HTTP runner (mirror of `evals/bench/prod_runner.py` design) that
+loads the V2 schemas, scores against the rubric, and reports
+per-category breakdown. Multi-turn coherence axis: final-turn answer
+must cite ≥1 expected ref AND surface ≥50% of expected keywords AND
+not refuse. Writes JSON sidecar at `evals/bench/results/v2-<label>.json`.
+
+### Round 46 — Live Railway V2 scorecard (56 items, 2026-05-18)
+
+**Endpoint**: `https://regenold-eu-ai-act-rag-production.up.railway.app/api/v1/regenold/eu-ai-act/ask`
+(`provider=openai_wrapper`, `model=claude-sonnet-4-6`, `graph_enabled=true`).
+
+#### Tricky subset (n=31)
+
+| Axis             | Value     | Notes                                              |
+| ---------------- | --------- | -------------------------------------------------- |
+| Ref Loose        | **0.5645**| Decent for harder probe set                        |
+| Ref Strict       | **0.4634**| F1, includes precision penalty                     |
+| Ref Conciseness  | 0.5053    | Over/under-citation in length-ratio terms          |
+| Keyword Recall   | **0.1398**| **WEAK** — engine picks right articles but rarely surfaces the gold-specific keywords (Omnibus dates, FLOPs thresholds, Recital 16 carve-out names) |
+| Regulatory Tone  | 0.9984    | Effectively perfect                                |
+| Latency p50      | 9,578 ms  | Production Sonnet 4.6 + 2-hop graph + audit chain  |
+| Latency p95      | 19,769 ms | Stage-2 polish is the long pole                    |
+
+**By category**:
+
+| Category               | n | refL  | refS  | kw    | Reading                                    |
+| ---------------------- | - | ----- | ----- | ----- | ------------------------------------------ |
+| `conflict`             | 4 | 1.000 | 0.950 | 0.167 | Best — cites both clashing articles when asked to reconcile |
+| `cross_framework`      | 3 | 0.833 | 0.611 | 0.333 | Strong — MDR / GDPR / NIS2 anchors land    |
+| `borderline_prohibition` | 5 | 0.600 | 0.480 | 0.133 | OK; misses Recital 16 carve-out keyword surface |
+| `gpai`                 | 5 | 0.600 | 0.440 | 0.000 | Right articles, zero gold-keyword surfacing (no "10²³ FLOPs", no "one-third") |
+| `omnibus`              | 6 | 0.500 | 0.411 | 0.000 | Same shape — articles right, dates absent  |
+| `near_oos`             | 3 | 0.333 | 0.333 | 0.111 | Weak — borderline-DSA / NIS2 / PLD questions get partially-relevant AI Act cites |
+| `role_ambiguity`       | 5 | 0.200 | 0.133 | 0.333 | **Weakest tricky category** — engine collapses dual-role scenarios to single role |
+
+#### Multi-turn V2 subset (n=25, 3–5 turns each)
+
+| Axis             | Value      | Notes                                                  |
+| ---------------- | ---------- | ------------------------------------------------------ |
+| Coherence Rate   | **0.12**   | **WAY** below the davidath multi-turn probe (0.90 — different shape, much easier). 3/25 scenarios fully coherent. |
+| Ref Loose        | 0.2174     | The engine forgets / drops earlier-turn anchors on multi-turn finals |
+| Ref Strict       | 0.1942     |                                                        |
+| Keyword Recall   | 0.2536     | Better than tricky — multi-turn answers tend to be longer, surface more tokens |
+| Regulatory Tone  | 1.0000     |                                                        |
+| Latency p50      | 14,583 ms  | Each multi-turn does Stage-2 polish on the full chain  |
+| HTTP failures    | 2 / 25     | (timeout / 429) — full bench would need higher concurrency budget |
+
+#### Baseline (davidath, 50 items, same endpoint, 2026-05-18)
+
+| Axis            | Value    | Notes                                |
+| --------------- | -------- | ------------------------------------ |
+| QA Ref Loose    | 0.4400   | n=25                                 |
+| QA Ref Strict   | 0.4267   |                                      |
+| Sc Ref Loose    | 0.5986   | n=25                                 |
+| Sc Ref Strict   | 0.5029   |                                      |
+| Multi-turn      | 0.9000   | n=10 (much-easier 2-turn probe)      |
+| Tone            | 1.0000   |                                      |
+| Latency p50     | 5,874 ms | overall n=50                         |
+
+### Why R46's bench shape changed from earlier rounds
+
+* Prior rounds bench'd against `TestClient` (in-process, no LLM, no
+  network) — sub-10 ms p50, 47-axis numbers reproducible byte-for-byte.
+* R46 measures the **same code paths the Regenold judge will hit** —
+  live HTTPS, real Sonnet 4.6 through the wrapper, Neo4j graph hop,
+  audit chain writes, partner-tier rate limit. p50 jumps from ~7 ms to
+  ~5–15 s because the LLM Stage-2 polish runs on most requests now
+  (not gated to fall back to deterministic).
+* The V2 probe set is **deliberately harder than davidath**. The
+  delta on multi-turn coherence (0.90 → 0.12) isn't a regression; it
+  measures a new dimension davidath doesn't probe (coreference across
+  3-5 turns with framework / role / threshold context).
+
+### Round 46 — Where the headroom is for R47
+
+Top three lifts identifiable from the V2 scorecard:
+
+1. **Multi-turn coreference (refL 0.22)** — the engine flattens the
+   last 4 turns into one question but loses earlier-turn binding when
+   the final user message uses pronouns (`"we"` for a role established
+   in turn 1, `"the regulator"` referring to a framework set in turn
+   3). Wiring `graph_aware_retrieval.lookup_definition_by_term` (A10
+   audit verdict #2) is the highest-leverage move.
+2. **Keyword surfacing (kw 0.14 on tricky)** — the engine cites
+   correctly but drops the specific gold-keywords (Omnibus dates,
+   `10²³`, `one-third`, `Recital 16`). Layer A's `eu_ai_act_tree`
+   (A10 verdict #4, 1,426 nodes) gives paragraph-level addressing
+   that could carry these tokens through to the answer.
+3. **role_ambiguity (refL 0.20)** — when a system is both provider
+   AND deployer, the engine picks one role and runs with it. A
+   compound-role gate in `scenario_classifier.py` would surface both
+   chains.
+
+### Round 46 — Tests + code delta
+
+* **1,306 tests pass** (was 1,293 before R46 — +71 new tests for
+  `compliance_vocab.py` + `refs_converter.py` + V2 scenarios, −58 tests
+  from the two deleted modules' suites).
+* Code delta: **−1,231 LOC** net (deletions 1,745 LOC, additions ~514
+  LOC across compliance_vocab + refs + runner_v2 + scenarios).
+* No bench regressions on the existing `evals.bench.runner` smoke (B6
+  + B8 smoke runs confirmed parity).
+
 ## Eval scorecard (deterministic-fallback, local 276-scenario suite)
 
-| Round  | Pass     | p50    | p95    | avg refs | avg sentences | Retrieval F1 | Notes |
-| ------ | -------- | ------ | ------ | -------- | ------------- | ------------ | ----- |
-| 15     | 276/276  | 3.04ms | 4.41ms | 2.12     | 2.29          | —            | Baseline. |
-| 17     | 276/276  | 4.31ms | 7.30ms | 2.12     | 2.04          | —            | Structural upgrades. |
-| 18     | 276/276  | 6.29ms | 9.08ms | 2.12     | 2.04          | 0.64         | Paper-aligned metrics. |
-| 18.1   | 276/276  | 6.61ms | 10.07ms| 2.12     | 2.04          | 0.64         | Fixes: Art. 113 protect, BM25 tokenizer. |
-| 19     | 276/276  | 6.8ms  | 10.5ms | 2.10     | 2.04          | **0.71**     | Explicit-anchor pruning (+0.067 F1). |
-| 21     | 276/276  | 7.2ms  | 11.4ms | 2.10     | 2.04          | 0.71         | Full CodexAI KB ports — articles 1–113 covered. |
+| Round  | Pass         | p50      | p95     | avg refs | Retrieval F1 | Notes |
+| ------ | ------------ | -------- | ------- | -------- | ------------ | ----- |
+| 15     | 276/276      | 3.04ms   | 4.41ms  | 2.12     | —            | Baseline. |
+| 17     | 276/276      | 4.31ms   | 7.30ms  | 2.12     | —            | Structural upgrades. |
+| 18     | 276/276      | 6.29ms   | 9.08ms  | 2.12     | 0.64         | Paper-aligned metrics. |
+| 18.1   | 276/276      | 6.61ms   | 10.07ms | 2.12     | 0.64         | Fixes: Art. 113 protect, BM25 tokenizer. |
+| 19     | 276/276      | 6.8ms    | 10.5ms  | 2.10     | **0.71**     | Explicit-anchor pruning (+0.067 F1). |
+| 21     | 276/276      | 7.2ms    | 11.4ms  | 2.10     | 0.71         | Full CodexAI KB ports — articles 1–113 covered. |
+| 24     | 476 davidath | 4.36ms   | 5.67ms  | —        | RefL 0.3471  | Reproducible competition bench wired. |
+| 25     | 476 davidath | 4.76ms   | 6.11ms  | —        | RefL 0.3619  | Ansvar-Systems corpus + source-weighted BM25. |
+| 26     | 476 davidath | 5.74ms   | —       | —        | RefL 0.3619  | Sentence-level BM25 (DEFINITION + DURATION + DATE routing). |
+| 28     | 476 davidath | 5.43ms   | 8.08ms  | —        | RefL 0.3602  | Confidence boost + LRU cache (13,115× warm-hit speedup). |
+| 31.1   | 476 davidath | 6.95ms   | —       | —        | RefL 0.4467  | Prohibited gatekeeper + GraphRAG expand (+24% RefL relative). |
+| 33     | 476 davidath | 7.74ms   | —       | —        | RefL 0.5425  | Scenario classifier default-risk fallback (+21% RefL relative). |
+| 34     | 476 davidath | 6.83ms   | —       | —        | RefL 0.5509  | Sentence-picker length-gate + scope.py false-positive fix. |
+| **46** | 56 V2 LIVE   | 9,578ms  | 19,769ms| —        | tricky **0.56** / mt **0.22** | First live-Railway run (Sonnet 4.6 + Neo4j). New harder probe; davidath baseline same day: RefL 0.52 / mt 0.90. |
 
 Δ on the local rubric is modest (-11% sentences, +12% p50 latency) because
 the local harness is binary substring-matched and already saturated. The

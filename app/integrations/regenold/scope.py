@@ -50,6 +50,7 @@ from enum import Enum
 from typing import Any
 
 from app.data.article_existence import ARTICLE_EXISTENCE
+from app.data.compliance_vocab import DIMENSION_KEYWORDS as _DIMENSION_KEYWORDS
 
 # ── Refusal classes ──────────────────────────────────────────────────────
 
@@ -1198,28 +1199,11 @@ def derive_anchor_articles_from_keywords(text: str) -> tuple[str, ...]:
     return tuple(out)
 
 
-_DIMENSION_KEYWORDS: frozenset[str] = frozenset(
-    s.lower().replace("-", " ") for s in (
-        "transparency",
-        "transparent",
-        "explainability",
-        "explainable",
-        "interpretability",
-        "data quality",
-        "training data",
-        "test data",
-        "validation data",
-        "bias",
-        "fairness",
-        "discrimination",
-        "accuracy",
-        "robustness",
-        "adversarial",
-        "human oversight",
-        "human-in-the-loop",
-        "audit trail",
-    )
-)
+# _DIMENSION_KEYWORDS is now imported from app.data.compliance_vocab —
+# single source of truth across the three compliance-vocabulary sites
+# (R46 B6 — see app/data/compliance_vocab.py). The imported frozenset
+# is post-normalisation (lower-case + hyphen→space) so behaviour is
+# byte-identical to the prior in-module literal.
 
 
 # Pre-compiled alternation over the combined anchor + dimension vocab.

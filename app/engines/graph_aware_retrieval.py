@@ -152,6 +152,8 @@ def _get_executor() -> "ThreadPoolExecutor":
 # The graph stores ``number`` as a bare string (``"6"`` / ``"III"``).
 # Callers and the wire deal in "Article 6" / "Annex III" form. These
 # helpers bridge the two without raising.
+#
+# TODO(R47): migrate to app.integrations.regenold.refs (centralised converter).
 
 _USER_ARTICLE_RE = re.compile(r"^Article\s+(\d+(?:\.[\w.]+)?)$")
 _INTERNAL_ARTICLE_RE = re.compile(r"^Art\.\s+(\d+(?:\.[\w.]+)?)$")

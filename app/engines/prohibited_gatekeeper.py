@@ -163,6 +163,8 @@ def force_prohibited_citations(
 # but tightened for the limited input shape we emit here. The wire
 # contract validator runs on the final ref set so any malformed string
 # would be dropped at the boundary anyway; we just normalise the form.
+#
+# TODO(R47): migrate to app.integrations.regenold.refs (centralised converter).
 _INT_ART_RE = re.compile(r"^Art\.\s+(\d+(?:\.[\w.]+)?)$")
 _INT_ANNEX_RE = re.compile(r"^Annex\s+([IVXLCDM]+(?:\.[\w.]+)?)$")
 

@@ -221,6 +221,9 @@ _ANNEX_RE = re.compile(
 # ── Output validation regexes (strict per Regenold spec) ──────────────────
 # Spec: "Annex" + Roman numeral, dot-separated sub-points (numeric or
 # alphanumeric). NOT "Annex 3", "Annex 3(2)", "Annex III . 2", "Annex III-2".
+# TODO(R47): migrate reference_from_article_ref to app.integrations.regenold.refs
+# (centralised converter). These two regexes are now duplicated as
+# refs.USER_FACING_ARTICLE_RE / USER_FACING_ANNEX_RE in the canonical module.
 _ANNEX_OUTPUT_RE = re.compile(r"^Annex [IVXLC]+(?:\.[A-Za-z0-9]+)*$")
 # Spec: "Article" + Arabic numeral, dot-separated sub-points. NOT
 # "Article III", "Article III.2", "Article 3/2".

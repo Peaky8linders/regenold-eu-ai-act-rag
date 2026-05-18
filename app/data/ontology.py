@@ -442,6 +442,34 @@ PRACTICE_REGISTRY: dict[str, Practice] = {
 }
 
 
+# R46 B6 — single compliance-vocabulary source of truth. Every keyword
+# in the per-Practice tuples above must also appear in the canonical
+# union exported by :mod:`app.data.compliance_vocab`. The check fires
+# once at module import (free at request time) and fails loudly if a
+# per-Practice edit drifts from the canonical surface. The canonical
+# surface in turn carries the same keywords for compliance_vocab's
+# :data:`PRACTICE_KEYWORDS` derived set, so the three consumers
+# (compliance_verdict, scope, ontology) can never silently diverge.
+def _validate_practice_keywords_against_canonical() -> None:
+    from app.data.compliance_vocab import PRACTICE_KEYWORDS as _CANONICAL
+
+    actual = frozenset(
+        kw
+        for practice in PRACTICE_REGISTRY.values()
+        for kw in practice.keywords
+    )
+    missing_from_canonical = actual - _CANONICAL
+    if missing_from_canonical:
+        raise AssertionError(
+            "PRACTICE_REGISTRY keywords drifted from "
+            "app.data.compliance_vocab.PRACTICE_KEYWORDS — add "
+            f"{sorted(missing_from_canonical)!r} to _PRACTICE_NOUNS"
+        )
+
+
+_validate_practice_keywords_against_canonical()
+
+
 # ── Annex III categories (the 8 high-risk use cases) ─────────────────────
 
 

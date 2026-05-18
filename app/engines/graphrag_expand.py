@@ -169,46 +169,51 @@ _HRAIS_CHAINS: dict[str, tuple[str, ...]] = {
 }
 
 
-# Regex for translating between user-facing ``Article N(.M)*`` and the
-# internal ``Art. N`` / ``Annex X`` form the xref graph uses.
-_USER_TO_INT_ARTICLE = re.compile(r"^Article\s+(\d+)(?:\.[\w.]+)?$")
-_USER_TO_INT_ANNEX = re.compile(r"^Annex\s+([IVXLCDM]+)(?:\.[\w.]+)?$")
-_INT_TO_USER_ARTICLE = re.compile(r"^Art\.\s+(\d+(?:\.[\w.]+)?)$")
-_INT_TO_USER_ANNEX = re.compile(r"^Annex\s+([IVXLCDM]+(?:\.[\w.]+)?)$")
+# R46 B8 — converter logic migrated to ``app.integrations.regenold.refs``.
+# The xref graph keys collapse sub-points to the parent article (``Art. N`` /
+# ``Annex X``), so the helpers below parse via the centralised module and
+# then drop the sub-point chain before lookup. ``_to_user_facing`` preserves
+# whatever sub-points the neighbour carries, matching the previous behaviour.
+from app.integrations.regenold.refs import (  # noqa: E402
+    InvalidRefError as _RefsInvalidRefError,
+)
+from app.integrations.regenold.refs import (  # noqa: E402
+    parse as _refs_parse,
+)
 
 
 def _to_internal(user_ref: str) -> str | None:
     """Convert ``Article 13.2`` → ``Art. 13`` for xref lookup.
 
-    Returns ``None`` when the ref doesn't match either pattern (e.g.
-    already internal or malformed). The xref graph keys collapse
-    sub-points to the parent article, so we strip them.
+    Returns ``None`` when the ref doesn't parse. Sub-points are stripped
+    because the xref graph keys collapse to the parent article.
     """
-    ref = (user_ref or "").strip()
-    m = _USER_TO_INT_ARTICLE.match(ref)
-    if m:
-        return f"Art. {m.group(1)}"
-    m = _USER_TO_INT_ANNEX.match(ref)
-    if m:
-        return f"Annex {m.group(1).upper()}"
-    return None
+    try:
+        spec = _refs_parse(user_ref)
+    except _RefsInvalidRefError:
+        return None
+    if spec.is_annex:
+        return f"Annex {spec.annex_roman}"
+    return f"Art. {spec.article_number}"
 
 
 def _to_user_facing(internal_ref: str) -> str | None:
     """Convert ``Art. 13`` → ``Article 13`` for wire output.
 
-    Returns ``None`` when the ref doesn't match the expected internal
-    shape. Used after the xref graph yields a target ref; the route
-    only emits user-facing form.
+    Preserves any sub-points (the neighbour may already carry a chain
+    like ``Art. 50(3)``). Returns ``None`` when the ref doesn't parse.
     """
-    ref = (internal_ref or "").strip()
-    m = _INT_TO_USER_ARTICLE.match(ref)
-    if m:
-        return f"Article {m.group(1)}"
-    m = _INT_TO_USER_ANNEX.match(ref)
-    if m:
-        return f"Annex {m.group(1)}"
-    return None
+    try:
+        spec = _refs_parse(internal_ref)
+    except _RefsInvalidRefError:
+        return None
+    if spec.is_annex:
+        head = f"Annex {spec.annex_roman}"
+    else:
+        head = f"Article {spec.article_number}"
+    if spec.subpoints:
+        head += "." + ".".join(spec.subpoints)
+    return head
 
 
 # Heuristic: a question with a scenario shape ("We are a provider of …")

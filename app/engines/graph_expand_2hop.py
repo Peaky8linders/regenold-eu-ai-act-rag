@@ -156,10 +156,15 @@ def _get_executor() -> "ThreadPoolExecutor":
 # rather than the full ``"Art. 6"`` / ``"Annex III"`` so the Cypher
 # query is editor-agnostic across seed schemas.
 
-_INTERNAL_ARTICLE_RE = re.compile(r"^Art\.\s+(\d+(?:\.[\w.]+)?)$")
-_INTERNAL_ANNEX_RE = re.compile(r"^Annex\s+([IVXLCDM]+(?:\.[\w.]+)?)$")
-_USER_ARTICLE_RE = re.compile(r"^Article\s+(\d+(?:\.[\w.]+)?)$")
-_USER_ANNEX_RE = re.compile(r"^Annex\s+([IVXLCDM]+(?:\.[\w.]+)?)$")
+# R46 B8 — converter logic migrated to ``app.integrations.regenold.refs``.
+# The Neo4j ``number`` property is the bare numeric / Roman tag of the
+# parent (e.g. ``"6"`` / ``"III"``), so sub-points are stripped post-parse.
+from app.integrations.regenold.refs import (  # noqa: E402
+    InvalidRefError as _RefsInvalidRefError,
+)
+from app.integrations.regenold.refs import (  # noqa: E402
+    parse as _refs_parse,
+)
 
 
 def _seed_to_num(seed: str) -> str | None:
@@ -172,17 +177,13 @@ def _seed_to_num(seed: str) -> str | None:
     """
     if not seed:
         return None
-    ref = seed.strip()
-    for pat in (_INTERNAL_ARTICLE_RE, _USER_ARTICLE_RE):
-        m = pat.match(ref)
-        if m:
-            # Strip sub-point: "13.2" → "13"
-            return m.group(1).split(".", 1)[0]
-    for pat in (_INTERNAL_ANNEX_RE, _USER_ANNEX_RE):
-        m = pat.match(ref)
-        if m:
-            return m.group(1).split(".", 1)[0].upper()
-    return None
+    try:
+        spec = _refs_parse(seed)
+    except _RefsInvalidRefError:
+        return None
+    if spec.is_annex:
+        return spec.annex_roman
+    return str(spec.article_number)
 
 
 def _num_to_internal(num: str) -> str | None:

@@ -70,6 +70,8 @@ def is_enabled() -> bool:
 # ``app/integrations/regenold/models.py::_ARTICLE_OUTPUT_RE`` permits
 # ``Article 5.2.a.iii`` and equivalents, so the citation guard must
 # collapse those to the parent article number too.
+#
+# TODO(R47): migrate to app.integrations.regenold.refs (centralised converter).
 _USER_FACING_ARTICLE_RE = re.compile(r"^Article\s+(\d+)(?:\.[\w.]+)?$")
 _USER_FACING_ANNEX_RE = re.compile(r"^Annex\s+([IVXLCDM]+)(?:\.[\w.]+)?$")
 

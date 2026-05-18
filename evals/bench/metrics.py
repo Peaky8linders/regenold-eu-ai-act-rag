@@ -60,6 +60,7 @@ def _tokens(text: str) -> set[str]:
 # ── Citation helpers ─────────────────────────────────────────────────────
 
 
+# TODO(R47): migrate to app.integrations.regenold.refs (centralised converter).
 _ARTICLE_HEAD_RE = re.compile(r"^Article\s+(\d+)(?:\..*)?$")
 _ANNEX_HEAD_RE = re.compile(r"^Annex\s+([IVXLC]+)(?:\..*)?$")
 

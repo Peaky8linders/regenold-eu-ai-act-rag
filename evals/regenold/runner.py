@@ -71,6 +71,7 @@ from evals.regenold.scenarios import (
 # in the JSON report even when every binary check still passes.
 
 # Strict per-spec output regexes (mirror app/integrations/regenold/models.py).
+# TODO(R47): migrate to app.integrations.regenold.refs (centralised converter).
 _REGENOLD_ANNEX_RE = re.compile(r"^Annex [IVXLC]+(?:\.[A-Za-z0-9]+)*$")
 _REGENOLD_ARTICLE_RE = re.compile(r"^Article \d+(?:\.[A-Za-z0-9]+)*$")
 # Internal-form sniffers — references should NEVER ship in these shapes.

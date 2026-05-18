@@ -30,8 +30,7 @@ Implements the architecture spec's decouple of *semantic appraisal* from
 * The route can pick either path (or run both and reconcile). This
   module is purely additive — no existing file is modified.
 * Boolean tags are a richer fingerprint than a single risk-level
-  string. Downstream consumers (audit chain, future cross-encoder
-  rerank) can use them as features.
+  string. Downstream consumers (audit chain) can use them as features.
 
 ## Hard guarantees
 
