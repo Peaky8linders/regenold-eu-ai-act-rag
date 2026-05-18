@@ -148,6 +148,103 @@ MANUAL_XREFS: tuple[tuple[str, str, str], ...] = (
     ("Art. 53", "Annex XI", "Reverse"),
     ("Art. 53", "Annex XII", "Reverse"),
     ("Art. 51", "Annex XIII", "Reverse"),
+    # ── R57-C — Operator-obligation interconnects (graph audit P0) ───────
+    #
+    # The R57 graph audit (docs/reviews/R57-GRAPH-RETRIEVAL-AUDIT.md)
+    # found 8 of 11 V2-weak-axis articles had zero outgoing edges in the
+    # CORE graph that the route reads for 1-hop scenario expand + BM25
+    # confidence boost. These 14 edges are the audit's P0 list — each
+    # grounded in a specific EUR-Lex paragraph or sub-point, NOT
+    # speculative. They land here (vs `_BACKFILL_XREFS`) so the route +
+    # BM25 boost both pick them up, not just Neo4j 2-hop in production.
+    # Clusters: role_ambiguity (5), gpai (5), conflict (4).
+    #
+    # role_ambiguity — hub-and-spoke between Art. 16/22/25/26
+    (
+        "Art. 16",
+        "Art. 25",
+        "R57-C — Art. 16 provider obligations transfer under Art. 25's "
+        "value-chain rule (rebrand / substantial modification)",
+    ),
+    (
+        "Art. 26",
+        "Art. 16",
+        "R57-C — Art. 26(1) deployer obligation depends on provider's Art. 16 "
+        "chain — deployers execute against the provider's outputs",
+    ),
+    (
+        "Art. 26",
+        "Art. 25",
+        "R57-C — Art. 26 deployer becomes new provider per Art. 25(1)(c) on "
+        "substantial modification",
+    ),
+    (
+        "Art. 22",
+        "Art. 16",
+        "R57-C — Art. 22(2) requires the authrep to verify Art. 16 provider "
+        "obligations on behalf of the non-EU provider",
+    ),
+    (
+        "Art. 22",
+        "Art. 25",
+        "R57-C — Art. 22 authrep sits inside the Art. 25 value-chain frame "
+        "for non-EU providers",
+    ),
+    # gpai — Art. 51 / 53 / 55 / 56 / 101 enforcement chain
+    (
+        "Art. 53",
+        "Art. 56",
+        "R57-C — Art. 53(4) explicitly lets GPAI providers rely on Art. 56 "
+        "codes of practice to demonstrate compliance",
+    ),
+    (
+        "Art. 53",
+        "Art. 101",
+        "R57-C — Art. 101 fines enforce Chapter V (which includes Art. 53) — "
+        "citing one without the other elides enforcement",
+    ),
+    (
+        "Art. 51",
+        "Art. 53",
+        "R57-C — Art. 51 designation triggers the Art. 53 obligation chain",
+    ),
+    (
+        "Art. 55",
+        "Art. 53",
+        "R57-C — Art. 55 systemic-risk obligations are additional to Art. 53 "
+        "baseline — both apply",
+    ),
+    (
+        "Art. 25",
+        "Art. 53",
+        "R57-C — Art. 25(4) one-third fine-tune rule routes downstream "
+        "modifier into Art. 53 as new provider",
+    ),
+    # conflict — Art. 73 ↔ Art. 79 enforcement pipeline + Art. 6 ↔ Art. 5 risk pyramid
+    (
+        "Art. 73",
+        "Art. 79",
+        "R57-C — Art. 73(2) serious-incident reports trigger Art. 79 "
+        "risk-procedure evaluation",
+    ),
+    (
+        "Art. 79",
+        "Art. 73",
+        "R57-C — Reverse: Art. 79 procedure references the Art. 73 report "
+        "as upstream signal",
+    ),
+    (
+        "Art. 79",
+        "Art. 26",
+        "R57-C — Art. 79(1)(c) routes deployer-caused risk through Art. 26 "
+        "obligations",
+    ),
+    (
+        "Art. 6",
+        "Art. 5",
+        "R57-C — Risk-pyramid reconciliation: a system is either prohibited "
+        "(Art. 5) or high-risk (Art. 6) — never both — edge surfaces the alternative",
+    ),
 )
 
 

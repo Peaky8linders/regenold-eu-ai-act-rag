@@ -677,30 +677,41 @@ def _xref_in_degree() -> dict[str, int]:
     "a fact supported by many sources is more reliable than one
     supported by few"). The in-degree is computed once per process
     from :mod:`app.data.kb_xrefs`.
+
+    R57-C: switched from CORE to FULL graph. The R57 graph audit
+    found 8 of 11 V2-weak-axis articles (Art. 13/14/26/56/72/73/101)
+    had core_in_degree=0 → flat 1.0 boost, despite being central in
+    the FULL graph (R47-A backfill). Reading the FULL graph lifts
+    these articles into the boost tier; the cap is simultaneously
+    lowered 1.15 → 1.10 in :func:`_confidence_boost` to prevent the
+    larger graph from over-compressing the hub tier vs the R28
+    calibration.
     """
     # Lazy import — keeps the build-time dependency graph clean.
-    # R47 reconciliation: use the CORE graph (regex + manual, no R47-A
-    # backfill) so the confidence boost's in-degree tiers stay anchored
-    # to the R28-tuned baseline. R47-A's 108 prose-mined edges still
-    # flow through retrieval / 2-hop expand via _build_xref_graph().
-    from app.data.kb_xrefs import _build_xref_graph_core  # noqa: PLC0415
+    from app.data.kb_xrefs import _build_xref_graph  # noqa: PLC0415
 
     counts: dict[str, int] = {}
-    for _source, targets in _build_xref_graph_core().items():
+    for _source, targets in _build_xref_graph().items():
         for t in targets:
             counts[t] = counts.get(t, 0) + 1
     return counts
 
 
 def _confidence_boost(article_ref: str) -> float:
-    """Map in-degree to a score multiplier in [1.0, 1.15].
+    """Map in-degree to a score multiplier in [1.0, 1.10].
 
     Articles never referenced elsewhere get 1.0 (no boost). Articles
-    with 1-2 in-edges get 1.05 (mild boost). High-hub articles (the
-    central Art. 5, Art. 6, Art. 13 et al.) get up to 1.15. The cap is
-    deliberately small so confidence weighting cannot promote an
+    with 1-2 in-edges get a mild boost. High-hub articles (the
+    central Art. 5, Art. 6, Art. 13 et al.) saturate at 1.10. The cap
+    is deliberately small so confidence weighting cannot promote an
     irrelevant article over a relevant one — it only tie-breaks among
     close competitors.
+
+    R57-C: cap lowered 1.15 → 1.10. Together with the
+    :func:`_xref_in_degree` switch to the FULL graph, the smaller cap
+    compensates for the larger graph (R47-A backfill contributes
+    extra in-edges to operator-obligation articles) so the hub tier
+    doesn't over-compress vs the R28 calibration.
 
     Pure function of ``article_ref``; no per-query state. The boost
     table is memoised via :func:`_xref_in_degree`.
@@ -708,11 +719,11 @@ def _confidence_boost(article_ref: str) -> float:
     deg = _xref_in_degree().get(article_ref, 0)
     if deg <= 0:
         return 1.0
-    # Logarithmic curve so the boost saturates: deg=1 → 1.05,
-    # deg=3 → 1.08, deg=10 → 1.12, deg=50+ → 1.15.
+    # Logarithmic curve so the boost saturates: with the 1.10 cap and
+    # 0.04 coefficient, deg=1 → ~1.04, deg=3 → ~1.06, deg=10 → ~1.10.
     import math  # noqa: PLC0415 — local; the module already imports math
 
-    return min(1.0 + 0.05 * math.log2(1 + deg) / 2.0, 1.15)
+    return min(1.0 + 0.04 * math.log2(1 + deg) / 2.0, 1.10)
 
 
 def relevance_score(question: str, article_ref: str) -> float:
