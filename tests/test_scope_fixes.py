@@ -244,11 +244,20 @@ class TestIssue47RomanAnnexBypass:
         assert v.reason == ScopeReason.OTHER_REGULATION
 
     def test_dsa_annex_iii_other_regulation(self) -> None:
+        """``DSA Annex III ... very large online platforms`` is out-of-
+        scope. Pre-R49-B this was ``OTHER_REGULATION``; post-R49-B the
+        more specific ``NEAR_OOS`` reason fires first because the
+        question carries a unique DSA fact-pattern (VLOP). Either
+        classification keeps the response refusal-shaped, which is the
+        invariant this test guards."""
         v = classify_scope("DSA Annex III lists very large online platforms.")
         assert not v.in_scope, (
             f"'DSA Annex III' bypassed scope gate: {v.reason} / {v.evidence}"
         )
-        assert v.reason == ScopeReason.OTHER_REGULATION
+        assert v.reason in (
+            ScopeReason.OTHER_REGULATION,
+            ScopeReason.NEAR_OOS,
+        )
 
     def test_dma_annex_iv_extract_no_known(self) -> None:
         """``DMA Annex IV`` must NOT add ``Annex IV`` to the known refs."""

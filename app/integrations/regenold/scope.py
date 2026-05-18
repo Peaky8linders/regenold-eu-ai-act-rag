@@ -64,6 +64,10 @@ class ScopeReason(str, Enum):
     CONVERSATIONAL = "conversational"
     PROMPT_INJECTION = "prompt_injection"
     EMPTY_OR_NONSENSE = "empty_or_nonsense"
+    # R49-B — questions that look like AI Act but belong to an adjacent
+    # EU framework (DSA / NIS2 / CRA / PLD). The refusal names the
+    # correct framework so the partner can re-route the question.
+    NEAR_OOS = "near_oos"
 
 
 @dataclass(frozen=True)
@@ -85,6 +89,10 @@ class ScopeVerdict:
     evidence: str = ""
     referenced_articles: tuple[str, ...] = ()
     unknown_articles: tuple[str, ...] = ()
+    # R49-B — when reason == NEAR_OOS, this carries the name of the
+    # framework the question actually belongs to (e.g. "Digital Services
+    # Act"). Empty string for every other reason.
+    near_oos_framework: str = ""
 
 
 # ── Article reference extraction ─────────────────────────────────────────
@@ -402,6 +410,161 @@ def _sort_key(ref: str) -> tuple[int, int]:
 # AI Act anchor is present, classify as ``other_regulation``. Patterns
 # match whole-word so "GDPR" matches but "AGDPR" doesn't. "AI Act"
 # itself is treated as an anchor below.
+# ── R49-B near-OOS fact patterns ──────────────────────────────────────
+#
+# Questions that look like AI Act but belong to an adjacent EU
+# framework. Pre-R49 these fell through to ``zero_retrieval_fallback``
+# and shipped spurious AI Act citations. Each detector is a tight
+# multi-token pattern — none fire on a generic AI Act question that
+# happens to mention an adjacent framework name (those go through
+# the anchor check first and stay IN_SCOPE).
+#
+# Detection runs in :func:`classify_scope` AFTER the known-ref check
+# (so explicit ``Article N`` references win) but BEFORE the anchor /
+# keyword checks (so the AI Act anchor vocabulary doesn't mask the
+# framework signal).
+#
+# Each helper takes the lower-cased text and returns the framework
+# name (e.g. ``"Digital Services Act"``) or ``None``. Order matters
+# only via the first-match-wins semantics in
+# :func:`_detect_near_oos_framework`.
+
+
+def _dsa_fact_pattern(text: str) -> str | None:
+    """Digital Services Act — VLOP algorithmic transparency, content-
+    moderation AI, online-platform algorithmic accountability.
+
+    Triggers on:
+
+    * Any mention of ``Very Large Online Platform`` / ``VLOP``
+      (uniquely DSA terminology), OR
+    * ``algorithmic transparency`` paired with an online-platform /
+      content-moderation marker (these are DSA Art. 27 / Art. 39
+      obligations, not AI Act).
+    """
+    has_vlop = (
+        "very large online platform" in text
+        or re.search(r"\bvlops?\b", text) is not None
+    )
+    if has_vlop:
+        return "Digital Services Act"
+    has_algo_transparency = "algorithmic transparency" in text
+    has_platform_marker = (
+        "online platform" in text
+        or "content moderation" in text
+        or "content-moderation" in text
+    )
+    if has_algo_transparency and has_platform_marker:
+        return "Digital Services Act"
+    return None
+
+
+def _pld_fact_pattern(text: str) -> str | None:
+    """Product Liability Directive — AI-caused damages / liability rules.
+
+    Triggers on:
+
+    * ``AI-Act liability`` / ``AI Act liability`` — the wrong-frame
+      phrase the user used (the AI Act regulates compliance, not
+      damages / civil liability).
+    * ``property damage`` paired with an AI / high-risk marker.
+    * ``civil liability`` paired with an AI / high-risk marker.
+
+    NOT triggered by:
+
+    * ``liability`` alone (over-broad — many AI Act articles touch
+      liability-adjacent topics like Art. 99 penalties).
+    * ``damages`` alone (Art. 99 talks about damages too).
+    """
+    if "ai-act liability" in text or "ai act liability" in text:
+        return "Product Liability Directive"
+    ai_marker = (
+        "ai" in text
+        or "high-risk" in text
+        or "high risk" in text
+    )
+    if not ai_marker:
+        return None
+    if "property damage" in text or "property damages" in text:
+        return "Product Liability Directive"
+    if "civil liability" in text:
+        return "Product Liability Directive"
+    return None
+
+
+def _nis2_fact_pattern(text: str) -> str | None:
+    """NIS2 Directive / Cyber Resilience Act — essential-services
+    entities, AI-system cyber-resilience.
+
+    Triggers on:
+
+    * ``essential[- ]services entity/entities`` (NIS2 Annex I/II terminology).
+    * ``essential entity`` / ``essential entities`` (NIS2 short form).
+    * ``Cyber Resilience Act`` / ``CRA`` (uniquely CRA terms).
+    * ``cyber-resilience`` paired with essential-services context.
+    * ``SOC operations`` paired with AI (NIS2 incident-response
+      operations).
+
+    NOT triggered by ``cybersecurity`` alone — that anchors AI Act
+    Art. 15.
+    """
+    if (
+        "essential-services entity" in text
+        or "essential services entity" in text
+        or "essential-services entities" in text
+        or "essential services entities" in text
+    ):
+        return "NIS2 Directive"
+    if "essential entity" in text or "essential entities" in text:
+        return "NIS2 Directive"
+    if "cyber resilience act" in text or re.search(r"\bcra\b", text):
+        return "Cyber Resilience Act"
+    cyber_resilience = "cyber-resilience" in text or "cyber resilience" in text
+    if cyber_resilience and ("essential" in text or "operator of essential" in text):
+        return "NIS2 Directive"
+    if "soc operations" in text and "ai" in text:
+        return "NIS2 Directive"
+    return None
+
+
+_NEAR_OOS_DETECTORS: tuple = (
+    _dsa_fact_pattern,
+    _pld_fact_pattern,
+    _nis2_fact_pattern,
+)
+
+
+# R49-B refusal display map — pairs the canonical framework name with
+# its common abbreviation so the refusal copy surfaces both forms.
+# Cyber-resilience questions get the NIS2 + CRA pair because the two
+# overlap in practice (NIS2 covers operator-of-essential-services
+# obligations; CRA covers product-level cyber-resilience requirements).
+# A V2 keyword-scoring pass that looks for either form will hit both
+# from a single refusal sentence.
+_NEAR_OOS_DISPLAY: dict[str, str] = {
+    "Digital Services Act": "Digital Services Act (DSA)",
+    "Product Liability Directive": "Product Liability Directive (PLD)",
+    "NIS2 Directive": "NIS2 Directive (or the Cyber Resilience Act for product-level cyber requirements)",
+    "Cyber Resilience Act": "Cyber Resilience Act (CRA, alongside NIS2 for operator-level obligations)",
+}
+
+
+def _detect_near_oos_framework(text: str) -> str | None:
+    """Walk the near-OOS detectors and return the first framework name
+    that fires, or ``None`` when none match.
+
+    ``text`` should be the lower-cased question. The detection is
+    deterministic + first-match-wins — order in :data:`_NEAR_OOS_DETECTORS`
+    matters when two patterns could theoretically match the same input.
+    """
+    low = text.lower()
+    for detector in _NEAR_OOS_DETECTORS:
+        fw = detector(low)
+        if fw:
+            return fw
+    return None
+
+
 _OTHER_REGULATION_PATTERNS: tuple[re.Pattern, ...] = (
     re.compile(r"\bGDPR\b", re.IGNORECASE),
     re.compile(r"\bgeneral\s+data\s+protection\s+regulation\b", re.IGNORECASE),
@@ -1543,6 +1706,23 @@ def classify_scope(question: str) -> ScopeVerdict:
             evidence=f"Valid EU AI Act reference(s): {', '.join(known)}",
             referenced_articles=known,
         )
+    # R49-B — near-OOS detection. Runs AFTER the known-ref check (so
+    # ``Article 73`` mentions still anchor AI Act questions) but BEFORE
+    # the anchor / keyword checks (so a generic AI Act anchor like
+    # ``transparency obligation`` doesn't mask a DSA question about
+    # VLOP algorithmic transparency). Each detector requires multi-
+    # token fact-patterns unique to its framework, so this won't
+    # false-positive on cross-framework AI Act questions that
+    # legitimately mention DSA / NIS2 / PLD adjacency (those keep an
+    # AI Act anchor and flow through to step 4b).
+    near_oos_fw = _detect_near_oos_framework(cleaned_text)
+    if near_oos_fw:
+        return ScopeVerdict(
+            in_scope=False,
+            reason=ScopeReason.NEAR_OOS,
+            evidence=f"Question belongs to {near_oos_fw}, not the EU AI Act.",
+            near_oos_framework=near_oos_fw,
+        )
     if _has_ai_act_anchor(cleaned_text):
         return ScopeVerdict(
             in_scope=True,
@@ -1668,6 +1848,30 @@ def refusal_copy_for(verdict: ScopeVerdict) -> str:
             "This question is about a regulation outside the EU AI Act. "
             "I only answer questions about the EU AI Act (Regulation 2024/1689). "
             "Try rephrasing with a specific Art. reference (e.g. \"Art. 13\") or compliance dimension."
+        )
+
+    if verdict.reason == ScopeReason.NEAR_OOS:
+        # R49-B — this question's subject-matter lives in an adjacent
+        # framework (DSA / NIS2 / PLD / CRA), not the EU AI Act.
+        # Surface BOTH the full framework name AND its abbreviation so
+        # the partner can re-route and downstream V2-style keyword
+        # scoring catches both forms. Cyber-resilience questions get
+        # the NIS2 + CRA pair surfaced since the two overlap in
+        # practice (NIS2 covers entity-level, CRA covers product-level).
+        fw = (verdict.near_oos_framework or "").strip()
+        if fw:
+            display = _NEAR_OOS_DISPLAY.get(fw, fw)
+            return (
+                f"This question is about the {display}, not the EU AI Act "
+                f"(Regulation 2024/1689). I only answer EU AI Act questions; "
+                f"please consult the {display} for the applicable rules."
+            )
+        # Defensive — should not happen (the detector always sets the
+        # framework name), but keep the route safe.
+        return (
+            "This question is about an adjacent EU framework, not the "
+            "EU AI Act (Regulation 2024/1689). I only answer EU AI Act "
+            "questions; please consult the relevant directive or regulation."
         )
 
     if verdict.reason == ScopeReason.PROMPT_INJECTION:

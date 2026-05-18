@@ -1961,7 +1961,7 @@ def regenold_eu_ai_act_ask(
         except Exception:  # noqa: BLE001 — fail-soft
             pass
 
-    # R48 — Response-consistency guard.
+    # R48 + R49-A — Response-consistency guard.
     #
     # Final defence against the silent-refusal contradiction the R47 V2
     # eval surfaced: 9/56 rows shipped non-empty `references` while the
@@ -1983,13 +1983,18 @@ def regenold_eu_ai_act_ask(
     #
     # The guard runs LAST so it catches all three. When answer text
     # contains a refusal marker AND `references` is non-empty, we
-    # replace the prose with `zero_retrieval_fallback._build_prose`
-    # rendered against the actual references list — which always
-    # produces grounded regulator-voice prose like "This question is
-    # covered by the EU AI Act under Article 51 and Article 53."
+    # replace the prose with a KB-grounded 1-3 sentence answer stitched
+    # from each ref's EC_CHECKER_OBLIGATION_MAP summary. R49-A
+    # supersedes R48's single-sentence generic template: that template
+    # carried no domain-substantive tokens, which dropped V2 multi-turn
+    # coherence 0.28 → 0.08 and tricky keyword recall 0.26 → 0.20. The
+    # new prose surfaces real regulatory substance (e.g. Art. 51 →
+    # "10^25 FLOPs", Art. 27 → "Fundamental Rights Impact Assessment")
+    # while honouring the 3-sentence + 600-char soft cap and the
+    # consistency invariant.
     if references and answer_text:
-        from app.engines.zero_retrieval_fallback import (  # noqa: PLC0415
-            _build_prose,
+        from app.integrations.regenold.grounded_prose import (  # noqa: PLC0415
+            stitch_grounded_prose,
         )
         from app.engines.graph_rag import (  # noqa: PLC0415
             _STAGE2_REFUSAL_MARKERS,
@@ -1998,8 +2003,8 @@ def regenold_eu_ai_act_ask(
         if any(m in low_answer for m in _STAGE2_REFUSAL_MARKERS):
             try:
                 # `references` are user-facing form ("Article 13") — convert
-                # to internal ("Art. 13") for the prose builder, which
-                # internally renders back to user-facing.
+                # to internal ("Art. 13") for the stitcher, which renders
+                # back to user-facing in its output.
                 internal_refs: list[str] = []
                 for r in references[:3]:
                     s = str(r).strip()
@@ -2008,7 +2013,7 @@ def regenold_eu_ai_act_ask(
                     elif s.startswith("Annex "):
                         internal_refs.append("Annex " + s[len("Annex "):].split(".")[0].split("(")[0].strip().upper())
                 if internal_refs:
-                    answer_text = _build_prose(internal_refs)
+                    answer_text = stitch_grounded_prose(internal_refs)
                     retrieval_path = "consistency_guard"
             except Exception:  # noqa: BLE001 — never fail the route
                 pass

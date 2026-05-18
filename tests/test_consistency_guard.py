@@ -221,3 +221,68 @@ class TestRouteConsistencyGuard:
         assert not body.get("references"), (
             "Out-of-scope must keep refs empty so the guard doesn't fire"
         )
+
+
+# ── R49-A integration: guard substitutes KB-grounded prose ──────────────
+
+
+class TestR49ASubstantiveGuardProse:
+    """R49-A replaces the R48 generic 1-sentence template with a
+    KB-grounded 1-3 sentence answer that carries substantive tokens
+    from each ref's ``EC_CHECKER_OBLIGATION_MAP`` summary.
+
+    The guard call-site itself is exercised by
+    ``TestRouteConsistencyGuard`` above (which proves no refusal
+    markers leak through). This class adds direct unit-level
+    coverage of the substitute prose to lock in the regression fix:
+    the new prose MUST carry domain content, not just a citation
+    list.
+    """
+
+    def test_guard_substitute_carries_substantive_kb_content(self) -> None:
+        """When the guard fires, the substitute prose must surface
+        tokens from the cited refs' KB summaries — not just the
+        article numbers."""
+        from app.integrations.regenold.grounded_prose import (
+            stitch_grounded_prose,
+        )
+
+        # Mirror what the route does post-R49-A: convert user-facing
+        # refs to internal form, then stitch.
+        wire_refs = ["Article 51", "Article 53"]
+        internal: list[str] = []
+        for r in wire_refs:
+            s = r.strip()
+            if s.startswith("Article "):
+                internal.append("Art. " + s[len("Article "):])
+        substitute = stitch_grounded_prose(internal)
+
+        # Lead sentence has the citation list.
+        assert "Article 51" in substitute and "Article 53" in substitute
+        # Substantive content from at least one stub. Art. 51 carries
+        # 'FLOPs' / 'systemic'; Art. 53 carries 'training' / 'documentation'.
+        low = substitute.lower()
+        assert any(t in low for t in ("flops", "systemic", "training", "documentation")), (
+            f"R49-A substitute lacks domain tokens: {substitute!r}"
+        )
+
+    def test_guard_substitute_no_refusal_markers(self) -> None:
+        """The whole point of the guard is removing refusal markers;
+        the R49-A substitute must not re-introduce them."""
+        from app.integrations.regenold.grounded_prose import (
+            stitch_grounded_prose,
+        )
+        for refs in (
+            ["Art. 13"],
+            ["Art. 13", "Art. 14"],
+            ["Art. 51", "Art. 53", "Art. 55"],
+            ["Art. 27"],
+            ["Art. 5"],
+        ):
+            substitute = stitch_grounded_prose(refs)
+            low = substitute.lower()
+            offending = [m for m in _STAGE2_REFUSAL_MARKERS if m in low]
+            assert not offending, (
+                f"R49-A substitute for {refs} contains refusal markers "
+                f"{offending}: {substitute!r}"
+            )
