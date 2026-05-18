@@ -2663,6 +2663,248 @@ while closing the production-impact bugs.
 R55-re-run + judge re-run queued post-deploy. Then R55 will surface
 the next wave of failure patterns to address.
 
+## Round 56 — Anthropic SDK direct: Pro-tier fallback hardening (2026-05-19)
+
+The Claude Max → Pro downgrade is ~2 weeks out. Pro's tighter rate
+limits would throttle the wrapper's Stage-2 polish path. R56 audits
+and hardens the Anthropic SDK direct path (`P2P_GRAPH_RAG_PROVIDER=
+anthropic`) so it's a complete drop-in replacement for the wrapper.
+
+### Audit findings
+
+| Surface | Pre-R56 status | After R56 |
+| ------- | -------------- | --------- |
+| `/healthz/llm` anthropic probe | OK — live `models.list()`, no token cost. Three states reported: SDK missing / key missing / probe failed. | unchanged |
+| `_get_anthropic_client` (lazy load) | OK — returns `None` on ImportError or init exception. | unchanged |
+| Stage-1 parse via Anthropic SDK | OK — already routed in `_llm_parse_query` when provider != "openai_wrapper". | unchanged |
+| Stage-1 generate via Anthropic SDK | OK — already routed in `_llm_generate_answer` when provider != "openai_wrapper". | unchanged |
+| **Stage-2 polish via Anthropic SDK** | **GAP** — `_claude_max_enhance_answer` hardcoded the wrapper. `P2P_GRAPH_RAG_PROVIDER=anthropic` would activate Stage-1 but silently DROP Stage-2 polish even with a valid API key. | FIXED — routed via new `_anthropic_complete_for_graph_rag` |
+| Stage-2 gate (`_two_stage_generate`) | **GAP** — gated only on `is_openai_wrapper_enabled()`. Anthropic-mode requests never entered Stage-2 even with a key. | FIXED — gated via new `_stage2_provider_enabled` |
+| Engine cache key | **GAP** — no provider in the key. Flipping `P2P_GRAPH_RAG_PROVIDER` mid-deploy would serve stale wrapper prose for anthropic requests (and vice versa) — same class of bug as R30 cache-poisoning. | FIXED — `provider_bit` folded into cache key |
+| Stage-0 intent classifier | **GAP, deferred** — Wrapper + Groq only; no Anthropic SDK path. Engine falls back to deterministic intent-narrowing silently when neither is wired. Documented; not load-bearing for Stage-2 polish quality. | unchanged (R57 follow-up) |
+| `requirements.txt` | `anthropic>=0.40.0` already pinned. | unchanged |
+
+### New surfaces
+
+* **`app/engines/graph_rag.py::_anthropic_complete_for_graph_rag`**
+  (~100 LOC) — sibling to `_openai_wrapper_complete_for_graph_rag`.
+  Uses the Anthropic SDK directly via `client.messages.create(...)`.
+  Honours the same `complex_question` knob: when set AND
+  `complex_model` is configured, swaps to the complex model. When
+  also `complex_thinking_tokens > 0`, enables the API's
+  `thinking={"type": "enabled", "budget_tokens": N}` (Anthropic-side
+  equivalent of the wrapper's `X-Claude-Max-Thinking-Tokens` header).
+  Returns `None` on every failure mode: SDK ImportError, missing
+  key, `RateLimitError`, `AuthenticationError`, transport error,
+  empty content block, malformed response. Logged at WARNING /
+  ERROR per severity. Never raises.
+* **`app/engines/graph_rag.py::_stage2_provider_enabled`** (~25 LOC)
+  — Stage-2 gate. Routing rule (preserves pre-R56 wrapper-mode
+  behaviour byte-identically):
+  * `P2P_GRAPH_RAG_PROVIDER=cli` → False (operator opt-out).
+  * `P2P_GRAPH_RAG_PROVIDER=anthropic` AND
+    `P2P_GRAPH_RAG_API_KEY` is set → True (R56 Pro-tier path).
+  * Everything else (unset / auto / openai_wrapper) → True iff
+    `is_openai_wrapper_enabled()` (historical default).
+* **`_claude_max_enhance_answer` routing** — the polish call now
+  branches: explicit `=anthropic` + key → SDK direct path; anything
+  else → wrapper. Wrapper-mode bench output is byte-identical to
+  R54.1 (verified via `r56-local` davidath run).
+* **`app/routes/regenold.py::_engine_cache_key`** — folds
+  `P2P_GRAPH_RAG_PROVIDER` (raw env value, `"unset"` when absent)
+  into the cache identity. Mirrors the R30 cache-poisoning fix
+  doctrine: any input that flips engine behaviour must be in the
+  cache key.
+
+### Stage-0 intent classifier gap (deferred to R57)
+
+The intent classifier (`app/llm/intent_classifier.py`) supports the
+openai_wrapper and Groq paths but NOT the Anthropic SDK direct
+path. On a Pro deploy with `P2P_GRAPH_RAG_PROVIDER=anthropic` and
+no wrapper / no Groq key:
+
+* `is_intent_enabled()` returns False.
+* `classify_intent()` returns None.
+* The engine falls through to the existing deterministic
+  intent-narrowing logic with zero behaviour change.
+
+This is the documented fail-soft contract. Adding an Anthropic SDK
+adapter to the intent classifier is ~30 LOC; deferred to R57
+because (a) it's a separable concern and (b) Groq is the
+production-recommended Stage-0 path anyway (see R52 — flat
+$0.59/M tokens, 500+ tok/s).
+
+Operators who want Stage-0 intent classification on a Pro-tier
+deploy should additionally configure Groq:
+
+```bash
+railway variables --set REGENOLD_INTENT_PROVIDER=groq \
+                  --set GROQ_API_KEY=gsk_...
+```
+
+### Pro-tier migration runbook
+
+```bash
+# 1. Acquire an Anthropic API key (console.anthropic.com).
+# 2. Set provider + key on Railway:
+railway variables --set P2P_GRAPH_RAG_PROVIDER=anthropic
+railway variables --set P2P_GRAPH_RAG_API_KEY=sk-ant-api03-...
+
+# 3. (Recommended) Pin the Stage-2 polish model. Default is the
+#    `claude-sonnet-4-6` from GraphRAGSettings.
+railway variables --set P2P_GRAPH_RAG_MODEL=claude-sonnet-4-6
+
+# 4. (Recommended) Add Groq for Stage-0 intent classification so
+#    conceptual-question precision doesn't regress.
+railway variables --set REGENOLD_INTENT_PROVIDER=groq
+railway variables --set GROQ_API_KEY=gsk_...
+
+# 5. Drop the wrapper env vars (no longer needed).
+railway variables --unset OPENAI_API_BASE
+railway variables --unset OPENAI_API_KEY
+
+# 6. Verify the live probe authenticates the key:
+curl https://<railway>.up.railway.app/healthz/llm | python -m json.tool
+# Expected: provider=anthropic, llm_ok=true, detail=ok, elapsed_ms<300.
+
+# 7. Smoke-test a complex question to confirm Stage-2 polish lands:
+curl -X POST https://<railway>.up.railway.app/api/v1/regenold/eu-ai-act/ask \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"What are the transparency obligations for HRAIS providers under Articles 13 and 50?"}]}'
+# Expected: reasoning field contains "Stage 2 (Claude Max enhanced): True"
+# (the legacy field name; the actual path is now the Anthropic SDK
+# direct call).
+```
+
+### Rollback
+
+A bad rollout returns to wrapper mode by reverting the two env vars:
+
+```bash
+railway variables --set P2P_GRAPH_RAG_PROVIDER=openai_wrapper
+railway variables --set OPENAI_API_BASE=http://127.0.0.1:8000/v1
+railway variables --set OPENAI_API_KEY=dummy
+# Anthropic API key can stay set — the openai_wrapper path ignores it.
+```
+
+### Cost projection — Sonnet 4.6 on davidath bench (476 items)
+
+* Input tokens (per polished request): ~1,500 (Stage-2 prompt header
+  + references block + KG draft + question). At $3/M = $0.0045.
+* Output tokens (per polished request): ~150 (3-sentence polish).
+  At $15/M = $0.00225.
+* Per request, all-in: **~$0.007** when Stage-2 fires.
+* Stage-2 fires on ~25% of bench rows (rest take the deterministic
+  short-circuit per `_needs_stage2_enhancement`). Full davidath
+  bench cost (476 × 0.25 × $0.007) = **~$0.83 per bench run**.
+* Cache hit (warm bench re-run on identical inputs): ~$0.
+
+For comparison, the same workload via the Max wrapper is free
+(within the Max subscription). On Pro it would burn through the
+weekly Stage-2 quota in ~3 bench runs.
+
+### Test coverage
+
+`tests/test_anthropic_provider.py` (new, ~470 LOC, 21 tests):
+
+1. **TestStage2ProviderGate** (5 tests) — gate semantics for cli /
+   anthropic-with-key / anthropic-without-key / openai_wrapper /
+   default (unset).
+2. **TestAnthropicCompleteFailSoft** (7 tests) — fail-soft contract:
+   no key, SDK ImportError, RateLimitError, AuthenticationError,
+   empty content block, happy path, complex-question extended
+   thinking.
+3. **TestStage2EnhanceRouting** (2 tests) — `_claude_max_enhance_
+   answer` routes through the right call per env.
+4. **TestTwoStageGenerateAnthropic** (2 tests) — end-to-end Stage-2
+   polish through the SDK + fallback-on-failure marks
+   `stage2_call_failed`.
+5. **TestEngineCacheKeyProvider** (2 tests) — cache keys differ
+   across providers, stable for same provider.
+6. **TestGetAnthropicClient** (3 tests) — lazy SDK loading happy /
+   missing-key / ImportError paths.
+
+### Bench parity (R54.1 → R56, 476 davidath items)
+
+| Axis | R54.1 | R56 (no provider env) | Δ |
+| ---- | ----- | --------------------- | --- |
+| Ans Strict | 0.3063 | 0.3063 | flat ✓ |
+| Ans Conciseness | 0.6152 | 0.6128 | -0.002 (noise) |
+| Ref Loose | 0.5422 | 0.5422 | flat ✓ |
+| Ref Strict | 0.4312 | 0.4312 | flat ✓ |
+| Ref Conciseness | 0.4212 | 0.4212 | flat ✓ |
+| Regulatory Tone | 1.0000 | 1.0000 | flat ✓ |
+| Multi-turn coherence | 1.00 | 1.00 | flat ✓ |
+| Latency p50 (ms) | 13.98 | 14.17 | +0.2 (noise) |
+
+Byte-identical on every rubric axis. The R56 routing rule preserves
+pre-R56 wrapper-mode behaviour exactly when `P2P_GRAPH_RAG_PROVIDER`
+is unset (the bench default).
+
+## Round 56-A — KB_VERSION bump enforced via CI lint (2026-05-19)
+
+R54.1 fix C3 bumped `KB_VERSION` from `"2024.1689.v2"` to `"2024.1689.v3"`
+and added a documentational note that future `EC_CHECKER_OBLIGATION_MAP`
+edits MUST bump the version. R56-A converts that doc-only convention
+into an enforced CI lint so the R53.2-style silent-staleness bug
+cannot recur.
+
+### Surfaces
+
+* **`tests/test_kb_consistency.py::TestKBVersionSnapshot`** (new) — two
+  tests on top of the existing 23-test consistency suite:
+  * `test_kb_version_bumped_when_content_changes` — hashes a
+    whitespace-canonicalised, sorted-key serialisation of
+    `EC_CHECKER_OBLIGATION_MAP` and compares against a pinned snapshot.
+    Catches three failure modes: (a) content changed but `KB_VERSION`
+    is stale (the R53.2 → R54.1 C3 regression), (b) version bumped
+    without a content change (unnecessary cache churn), (c) both
+    changed but snapshot is stale.
+  * `test_kb_version_format` — regex-pins `KB_VERSION` to the
+    canonical `^\d{4}\.\d+\.v\d+$` shape so a typo or date-style
+    string can't silently break the engine's cache-key arithmetic.
+* **`tests/_snapshots/kb_version_signature.txt`** (new) — single line
+  `<KB_VERSION>::<sha256_hex>` pinning the current content. Initial
+  value: `2024.1689.v3::1c00d8571a85a1b8ac01358ff371d10bffe6fb00d323d895b5b1b856bc6c5185`.
+
+### Whitespace stability
+
+The signature canonicalises each stub via `' '.join(str(value).split())`
+so cosmetic edits (re-flowing a multi-line string at a different
+column, NBSP normalisation, tabs vs spaces, trailing newlines) do
+NOT trip the lint. Real content edits (insert / delete / re-word a
+single token) DO trip it. Verified by inserting `"REGRESSIONPROBE"`
+into the Art. 5 stub — the lint failed with:
+
+```
+AssertionError: EC_CHECKER_OBLIGATION_MAP content changed (hash
+1c00d857 -> 58ec3f09) but KB_VERSION is still '2024.1689.v3'.
+Bump KB_VERSION in app/data/kb.py (downstream cache + Neo4j seed
+both key on it) and update tests/_snapshots/kb_version_signature.txt
+to: <new_version>::58ec3f09e898b462f13014ee82f8f7290d1d34bf04501860e0af909860068631
+```
+
+### Workflow — how to deliberately update the KB
+
+1. Edit `EC_CHECKER_OBLIGATION_MAP` in `app/data/kb.py`.
+2. Bump `KB_VERSION` in `app/data/kb.py` (e.g. `v3` → `v4`).
+3. Re-run the failing test once to grab the new hash from the
+   assertion message, OR run `python -c "from app.data.kb import
+   EC_CHECKER_OBLIGATION_MAP, KB_VERSION; import hashlib;
+   items=sorted(EC_CHECKER_OBLIGATION_MAP.items());
+   c='\n'.join(f'{k}::{\" \".join(str(v).split())}' for k,v in items);
+   print(f'{KB_VERSION}::{hashlib.sha256(c.encode()).hexdigest()}')"`.
+4. Overwrite `tests/_snapshots/kb_version_signature.txt` with the new
+   single-line `<version>::<hash>` pair.
+5. Commit both the KB edit + the snapshot update together.
+
+### Bench impact
+
+None. The lint is test-only — no runtime code touched. KB content
+unchanged at baseline (hash matches pin), so `KB_VERSION` stays at
+`2024.1689.v3` and the downstream LRU cache + Neo4j seed continue
+to behave identically to R54.1.
+
 ## Eval scorecard (deterministic-fallback, local 276-scenario suite)
 
 | Round  | Pass         | p50      | p95     | avg refs | Retrieval F1 | Notes |

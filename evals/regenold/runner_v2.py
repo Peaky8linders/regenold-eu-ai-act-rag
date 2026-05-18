@@ -33,6 +33,7 @@ from typing import Any
 from evals.bench import metrics as bench_metrics
 from evals.bench._http_retry import post_json_with_retry
 from evals.regenold.scenarios_multiturn_v2 import SCENARIOS as MULTITURN_V2
+from evals.regenold.scenarios_oos import OOS_CATEGORIES, OOS_SCENARIOS, OOSScenario
 from evals.regenold.scenarios_tricky_v2 import SCENARIOS as TRICKY_V2
 
 
@@ -42,6 +43,36 @@ _REFUSAL_MARKERS = (
     "not part of the eu ai act",
     "i only answer",
     "this assistant only",
+    # R56-B — every refusal copy in scope.py::refusal_copy_for() opens
+    # with "This question is" or "This assistant" (post-R55-A
+    # third-person regulator rewrite). These markers are the
+    # discriminator the --probe-oos verdict aggregator uses to tell a
+    # refusal apart from a substantive in-scope answer.
+    "this question is about",
+    "this assistant answers eu ai act questions only",
+    "does not appear in the eu ai act",
+    "no matching obligation found",
+)
+
+# R56-B — references that are acceptable on a refusal response. The
+# scope-gate may legitimately surface a first-floor anchor (Art. 1 /
+# 2 / 3 — purpose / scope / definitions) on a near_oos or zero-
+# retrieval refusal without that counting as a scope leak. Anything
+# else in the references list on a refusal is a leak.
+_REFUSAL_ALLOWED_REFS: frozenset[str] = frozenset({
+    "Article 1", "Article 2", "Article 3",
+})
+
+# R56-B — verdict taxonomy for the --probe-oos mode:
+#   PASS              — refused AND expected_reason matches (or None)
+#   FAIL_SCOPE_LEAK   — substantive answer (no refusal marker) OR refs
+#                       outside the first-floor allow-list. HARD FAIL.
+#   FAIL_WRONG_REASON — refused with a different ScopeReason than expected
+#                       (soft fail; only fires when expected_reason set).
+#   ERROR             — HTTP / network failure (soft; treated as not-pass
+#                       but doesn't gate deploys).
+_OOS_VERDICTS = (
+    "PASS", "FAIL_SCOPE_LEAK", "FAIL_WRONG_REASON", "ERROR",
 )
 
 
@@ -70,6 +101,75 @@ def _post(
         endpoint, history, api_key, timeout,
         user_agent=_USER_AGENT,
     )
+
+
+# ── Local TestClient transport (R56-B --local flag) ──────────────────────
+
+
+def _local_endpoint_url(query_string: str = "include_reasoning=true") -> str:
+    """Synthetic URL marker for the TestClient transport.
+
+    The runner only reads ``endpoint`` to (a) classify mode (live vs
+    local) for the JSON sidecar's ``mode`` field, and (b) carry the
+    ``?include_reasoning=true`` query string. TestClient receives the
+    path segment separately.
+    """
+    return f"local://app.main:app/api/v1/regenold/eu-ai-act/ask?{query_string}"
+
+
+def _post_local(
+    endpoint: str,
+    api_key: str | None,
+    history: list[dict[str, str]],
+    timeout: float,
+) -> tuple[dict[str, Any], float, int, str | None, int, list[str]]:
+    """In-process POST via FastAPI's ``TestClient``.
+
+    Mirrors the return shape of :func:`_post` so the runner code path is
+    transport-agnostic. Imports are lazy because the live-HTTP CLI mode
+    must NOT pull FastAPI / the full app graph into the runner's import
+    surface.
+    """
+    # Lazy imports — heavy graph; only loaded when --local fires.
+    import time as _time
+
+    from fastapi.testclient import TestClient
+
+    from app.main import app as _app
+
+    empty: dict[str, Any] = {"answer": "", "references": [], "reasoning": None}
+
+    # The endpoint string carries the query suffix (e.g. ``?include_reasoning=true``).
+    # Strip the synthetic scheme + host and POST against TestClient.
+    qs = "include_reasoning=true"
+    if "?" in endpoint:
+        qs = endpoint.split("?", 1)[1]
+    path = f"/api/v1/regenold/eu-ai-act/ask?{qs}"
+
+    headers = {"User-Agent": _USER_AGENT}
+    if api_key:
+        headers["X-Regenold-Api-Key"] = api_key
+
+    start = _time.perf_counter()
+    try:
+        with TestClient(_app) as client:
+            resp = client.post(path, json=history, headers=headers, timeout=timeout)
+        elapsed_ms = (_time.perf_counter() - start) * 1000.0
+        status = resp.status_code
+        try:
+            body = resp.json()
+        except Exception:  # noqa: BLE001
+            return empty, elapsed_ms, status, "json_decode", 1, []
+        if not isinstance(body, dict):
+            return empty, elapsed_ms, status, "non_dict_body", 1, []
+        body.setdefault("answer", "")
+        body.setdefault("references", [])
+        body.setdefault("reasoning", None)
+        err = None if 200 <= status < 300 else f"http_{status}"
+        return body, elapsed_ms, status, err, 1, []
+    except Exception as exc:  # noqa: BLE001
+        elapsed_ms = (_time.perf_counter() - start) * 1000.0
+        return empty, elapsed_ms, 0, f"local_error: {exc}"[:200], 1, []
 
 
 # ── Scoring helpers ──────────────────────────────────────────────────────
@@ -379,6 +479,329 @@ def _retry_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+# ── OOS probe (R56-B) ────────────────────────────────────────────────────
+
+
+def _parse_reasoning_scope_reason(reasoning: str | None) -> str | None:
+    """Pull the ScopeReason verdict out of a ``?include_reasoning=true``
+    payload. Returns ``None`` when the trace isn't a parseable JSON
+    object or doesn't carry the scope verdict.
+    """
+    if not reasoning:
+        return None
+    try:
+        parsed = json.loads(reasoning)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    scope = parsed.get("scope")
+    if not isinstance(scope, dict):
+        return None
+    verdict = scope.get("verdict")
+    if not isinstance(verdict, str):
+        return None
+    return verdict
+
+
+def _looks_like_refusal(answer: str) -> bool:
+    """Heuristic — does the answer prose look like a scope-gate refusal?
+
+    Matches against the markers from :data:`_REFUSAL_MARKERS`, which
+    cover every refusal copy template in
+    ``scope.refusal_copy_for()``. Used by the --probe-oos verdict
+    aggregator to discriminate refusal-shape responses from substantive
+    in-scope answers.
+    """
+    if not answer:
+        return False
+    low = answer.lower()
+    return any(m in low for m in _REFUSAL_MARKERS)
+
+
+def _refs_within_floor(refs: list[str]) -> bool:
+    """Are the surfaced references within the acceptable refusal floor?
+
+    A scope-gate refusal may legitimately surface Art. 1 / 2 / 3 (the
+    purpose / scope / definitions first-floor anchors) when the
+    near_oos / zero-retrieval-fallback pathway fires. Anything else is
+    a scope leak.
+    """
+    if not refs:
+        return True
+    return all(r in _REFUSAL_ALLOWED_REFS for r in refs)
+
+
+def _classify_oos_row(
+    scn: OOSScenario,
+    body: dict[str, Any],
+    err: str | None,
+) -> tuple[str, str]:
+    """Return ``(verdict, detail)`` for one OOS probe row.
+
+    Detail is a short human-readable explanation surfaced in the
+    per-row sidecar so an operator scanning a FAIL row can see WHY
+    it failed without re-running the probe.
+    """
+    if err is not None:
+        return "ERROR", err
+
+    answer = body.get("answer") or ""
+    refs = list(body.get("references") or [])
+    reasoning = body.get("reasoning")
+
+    refused_by_prose = _looks_like_refusal(answer)
+    refs_ok = _refs_within_floor(refs)
+
+    # Scope LEAK — substantive answer OR references outside the
+    # first-floor allow-list. Either is a hard fail because the OOS
+    # query slipped past the scope gate.
+    if not refused_by_prose or not refs_ok:
+        why = []
+        if not refused_by_prose:
+            why.append("answer_lacks_refusal_marker")
+        if not refs_ok:
+            why.append(f"refs_outside_floor={refs}")
+        return "FAIL_SCOPE_LEAK", "; ".join(why)
+
+    # We have a refusal-shape response. Check the reason if expected.
+    actual_reason = _parse_reasoning_scope_reason(reasoning)
+    if scn.expected_reason is None:
+        # Any non-IN_SCOPE reason is acceptable. If the trace says
+        # in_scope we have a contradiction — answer looks like a
+        # refusal but the trace says we routed in-scope. Treat as
+        # soft PASS (the shipped answer is what counts) but tag it.
+        if actual_reason == "in_scope":
+            return "PASS", "refusal_prose_but_trace_says_in_scope"
+        return "PASS", f"refused reason={actual_reason or 'unknown'}"
+
+    if actual_reason is None:
+        # Trace didn't carry a parseable scope verdict — soft PASS
+        # because the prose is a refusal; the operator should still
+        # see this in the sidecar.
+        return "PASS", "refused but reasoning trace missing scope verdict"
+
+    if actual_reason == scn.expected_reason:
+        return "PASS", f"reason={actual_reason}"
+
+    return "FAIL_WRONG_REASON", (
+        f"expected={scn.expected_reason} actual={actual_reason}"
+    )
+
+
+def _score_oos_row(
+    scn: OOSScenario,
+    body: dict[str, Any],
+    latency_ms: float,
+    err: str | None,
+    attempts: int = 1,
+    retried_errors: list[str] | None = None,
+) -> dict[str, Any]:
+    verdict, detail = _classify_oos_row(scn, body, err)
+    answer = body.get("answer") or ""
+    refs = list(body.get("references") or [])
+    reasoning_scope = _parse_reasoning_scope_reason(body.get("reasoning"))
+    return {
+        "id": scn.id,
+        "category": scn.category,
+        "question": scn.question[:200],
+        "expected_reason": scn.expected_reason,
+        "actual_reason": reasoning_scope,
+        "verdict": verdict,
+        "detail": detail,
+        "pred_refs": refs,
+        "answer_preview": answer[:300],
+        "predicted_answer": answer,
+        "looks_like_refusal": _looks_like_refusal(answer),
+        "refs_within_floor": _refs_within_floor(refs),
+        "latency_ms": latency_ms,
+        "error": err,
+        "attempts": attempts,
+        "retried_errors": list(retried_errors or []),
+    }
+
+
+def run_probe_oos(
+    endpoint: str,
+    api_key: str | None,
+    timeout: float,
+    concurrency: int,
+    limit: int | None,
+    verbose: bool,
+    use_local: bool = False,
+) -> list[dict[str, Any]]:
+    """Run every OOS scenario against ``endpoint`` (or local TestClient).
+
+    Concurrency mirrors :func:`run_tricky` so the probe is fast on the
+    live wire without overwhelming the partner rate-limit. Local mode
+    serialises because TestClient already runs the FastAPI app
+    in-process; concurrency there buys nothing.
+    """
+    items = OOS_SCENARIOS[:limit] if limit else OOS_SCENARIOS
+    results: list[dict[str, Any]] = [None] * len(items)  # type: ignore[list-item]
+    completed = 0
+    lock = threading.Lock()
+    transport = _post_local if use_local else _post
+
+    def _worker(idx: int, scn: OOSScenario) -> tuple[int, dict]:
+        history = [{"role": "user", "content": scn.question}]
+        body, lat, status, err, attempts, retried = transport(
+            endpoint, api_key, history, timeout,
+        )
+        if err is None and not (200 <= status < 300):
+            err = f"http_{status}"
+        return idx, _score_oos_row(scn, body, lat, err, attempts, retried)
+
+    workers = 1 if use_local else max(1, concurrency)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_worker, i, s) for i, s in enumerate(items)]
+        for fut in as_completed(futures):
+            idx, row = fut.result()
+            results[idx] = row
+            with lock:
+                completed += 1
+                if verbose:
+                    print(
+                        f"[oos] {completed}/{len(items)} {row['id']} "
+                        f"cat={row['category']:<18} "
+                        f"verdict={row['verdict']:<18} "
+                        f"reason={(row['actual_reason'] or '-'):<22} "
+                        f"lat={row['latency_ms']:.0f}ms"
+                    )
+    return results  # type: ignore[return-value]
+
+
+def _aggregate_oos(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Roll up OOS verdict counts + per-category breakdown."""
+    counts: dict[str, int] = {v: 0 for v in _OOS_VERDICTS}
+    by_cat: dict[str, dict[str, int]] = defaultdict(
+        lambda: {v: 0 for v in _OOS_VERDICTS}
+    )
+    for r in rows:
+        v = r.get("verdict") or "ERROR"
+        counts[v] = counts.get(v, 0) + 1
+        by_cat[r.get("category") or "unknown"][v] += 1
+    n = len(rows)
+    scope_leaks = counts.get("FAIL_SCOPE_LEAK", 0)
+    return {
+        "n": n,
+        "pass": counts.get("PASS", 0),
+        "fail_scope_leak": scope_leaks,
+        "fail_wrong_reason": counts.get("FAIL_WRONG_REASON", 0),
+        "errors": counts.get("ERROR", 0),
+        "pass_rate": round(counts.get("PASS", 0) / n, 4) if n else 0.0,
+        "scope_leak_rate": round(scope_leaks / n, 4) if n else 0.0,
+        "hard_fail": scope_leaks > 0,
+        "by_category": {cat: dict(v) for cat, v in by_cat.items()},
+    }
+
+
+def run_probe_oos_only(
+    *,
+    endpoint: str,
+    api_key: str | None,
+    label: str,
+    timeout: float = 60.0,
+    concurrency: int = 2,
+    limit: int | None = None,
+    verbose: bool = False,
+    out_dir: Path | None = None,
+    use_local: bool = False,
+) -> dict[str, Any]:
+    """Top-level runner for the ``--probe-oos`` mode.
+
+    Sister to :func:`run` — skips tricky + multiturn entirely and runs
+    only the curated OOS regression set. Writes its sidecar to
+    ``probe-oos-<label>.json`` (separate filename so it doesn't collide
+    with a same-day v2 run).
+    """
+    started_at = _now_iso()
+    rows = run_probe_oos(
+        endpoint, api_key, timeout, concurrency, limit, verbose,
+        use_local=use_local,
+    )
+    finished_at = _now_iso()
+
+    summary = _aggregate_oos(rows)
+
+    payload = {
+        "label": label,
+        "mode": "probe-oos-local" if use_local else (
+            "probe-oos-live" if endpoint.startswith("http") else "probe-oos"
+        ),
+        "endpoint": endpoint,
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "probe_oos": {
+            "rows": rows,
+            "summary": summary,
+            "retry_stats": _retry_stats(rows),
+        },
+    }
+    if out_dir is None:
+        out_dir = Path("evals/bench/results")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    sidecar = out_dir / f"probe-oos-{label}.json"
+    sidecar.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    payload["sidecar_path"] = str(sidecar)
+    return payload
+
+
+def _format_probe_oos(payload: dict[str, Any]) -> str:
+    out: list[str] = []
+    out.append("=" * 78)
+    out.append(f"V2 --probe-oos runner — label={payload['label']!r}")
+    out.append(f"endpoint: {payload['endpoint']}")
+    out.append(f"mode: {payload['mode']}")
+    out.append("=" * 78)
+    summary = payload["probe_oos"]["summary"]
+    out.append("")
+    out.append(
+        f"[OOS] n={summary['n']} pass={summary['pass']} "
+        f"fail_scope_leak={summary['fail_scope_leak']} "
+        f"fail_wrong_reason={summary['fail_wrong_reason']} "
+        f"errors={summary['errors']}"
+    )
+    out.append(f"  Pass rate         : {summary['pass_rate']}")
+    out.append(f"  Scope-leak rate   : {summary['scope_leak_rate']}")
+    out.append(f"  Hard-fail         : {summary['hard_fail']}")
+    out.append("")
+    out.append("  By category:")
+    for cat, counts in summary["by_category"].items():
+        out.append(
+            f"    {cat:<18} "
+            f"pass={counts.get('PASS', 0):>2} "
+            f"leak={counts.get('FAIL_SCOPE_LEAK', 0):>2} "
+            f"wrong={counts.get('FAIL_WRONG_REASON', 0):>2} "
+            f"err={counts.get('ERROR', 0):>2}"
+        )
+
+    leaks = [r for r in payload["probe_oos"]["rows"]
+             if r.get("verdict") == "FAIL_SCOPE_LEAK"]
+    if leaks:
+        out.append("")
+        out.append("  Scope leaks (HARD FAIL):")
+        for r in leaks:
+            out.append(
+                f"    [{r['id']:<22}] {r['question'][:80]}"
+            )
+            out.append(f"        detail: {r.get('detail', '')}")
+            out.append(f"        refs:   {r.get('pred_refs')}")
+    wrong = [r for r in payload["probe_oos"]["rows"]
+             if r.get("verdict") == "FAIL_WRONG_REASON"]
+    if wrong:
+        out.append("")
+        out.append("  Wrong reason (soft fail):")
+        for r in wrong:
+            out.append(
+                f"    [{r['id']:<22}] {r['question'][:80]}"
+            )
+            out.append(f"        {r.get('detail', '')}")
+    out.append("")
+    out.append(f"sidecar: {payload.get('sidecar_path', '-')}")
+    return "\n".join(out)
+
+
 # ── Top-level ────────────────────────────────────────────────────────────
 
 
@@ -500,7 +923,11 @@ def main(argv: list[str] | None = None) -> int:
             except Exception:  # noqa: BLE001
                 pass
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--endpoint", required=True)
+    # R56-B — ``--endpoint`` is not required when ``--local`` is set
+    # (TestClient handles routing internally). Default to ``None`` and
+    # validate after argparse so the error message is clearer than
+    # argparse's default.
+    parser.add_argument("--endpoint", default=None)
     parser.add_argument("--api-key", default=None)
     parser.add_argument("--label", required=True)
     parser.add_argument("--timeout", type=float, default=60.0)
@@ -508,9 +935,62 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tricky-limit", type=int, default=None)
     parser.add_argument("--multiturn-limit", type=int, default=None)
     parser.add_argument("--verbose", action="store_true")
+    # R56-B — OOS regression-test mode. Skips tricky + multiturn
+    # entirely; runs only the curated OOS regression set from
+    # ``evals.regenold.scenarios_oos``. Hard-fails the exit code when
+    # any scenario hits FAIL_SCOPE_LEAK.
+    parser.add_argument(
+        "--probe-oos",
+        action="store_true",
+        help=(
+            "Run only the OOS regression set; skip tricky+multiturn. "
+            "Exit code is non-zero when any scenario leaks scope."
+        ),
+    )
+    # R56-B — CI-friendly transport. Skips live HTTPS entirely and
+    # runs against ``app.main:app`` via FastAPI's TestClient.
+    parser.add_argument(
+        "--local",
+        action="store_true",
+        help=(
+            "Use FastAPI TestClient against app.main:app instead of "
+            "live HTTPS. --endpoint may be omitted. Useful for CI."
+        ),
+    )
+    parser.add_argument(
+        "--oos-limit", type=int, default=None,
+        help="Cap the number of OOS scenarios run (debug aid).",
+    )
     args = parser.parse_args(argv)
+
+    # Resolve endpoint for both modes. Local mode injects a synthetic
+    # URL that the TestClient transport short-circuits on.
+    if args.local:
+        endpoint = _local_endpoint_url("include_reasoning=true")
+    elif args.endpoint:
+        endpoint = args.endpoint
+    else:
+        parser.error("--endpoint is required unless --local is set")
+        return 2  # unreachable — argparse.error exits
+
+    # ── --probe-oos branch (R56-B) ─────────────────────────────────────
+    if args.probe_oos:
+        payload = run_probe_oos_only(
+            endpoint=endpoint,
+            api_key=args.api_key,
+            label=args.label,
+            timeout=args.timeout,
+            concurrency=args.concurrency,
+            limit=args.oos_limit,
+            verbose=args.verbose,
+            use_local=args.local,
+        )
+        print(_format_probe_oos(payload))
+        return 1 if payload["probe_oos"]["summary"]["hard_fail"] else 0
+
+    # ── Default branch — tricky + multiturn ────────────────────────────
     payload = run(
-        endpoint=args.endpoint,
+        endpoint=endpoint,
         api_key=args.api_key,
         label=args.label,
         timeout=args.timeout,

@@ -194,8 +194,24 @@ def _engine_cache_key(question: str, system_context: str | None) -> str:
         is_enabled as _guard_enabled,
     )
     flag_bits = f"{int(_dense_enabled())}{int(_guard_enabled())}"
+    # R56 — fold the resolved LLM provider into the cache key. Stage-2
+    # polish produces provider-specific prose; without this bit, a
+    # mid-deploy ``P2P_GRAPH_RAG_PROVIDER`` flip would silently serve
+    # ``openai_wrapper`` prose for ``anthropic`` requests (or vice
+    # versa). The deterministic-Stage-1 path is provider-invariant, but
+    # the cache stores the FINAL polished prose, so the provider must
+    # be part of the cache identity. Pattern matches the Round-30
+    # cache-poisoning fix doctrine.
+    #
+    # Use the raw env value here (NOT resolve_provider's auto-default)
+    # so the cache key tracks the operator's intent. ``=anthropic`` and
+    # unset both route through different Stage-2 paths in the engine
+    # (see ``_claude_max_enhance_answer`` routing rule), so they must
+    # have distinct cache identities.
+    provider_bit = (os.getenv("P2P_GRAPH_RAG_PROVIDER") or "").strip().lower() or "unset"
     blob = (
-        f"{KB_VERSION}\n{question}\n{system_context or ''}\nflags:{flag_bits}"
+        f"{KB_VERSION}\n{question}\n{system_context or ''}\n"
+        f"flags:{flag_bits}\nprovider:{provider_bit}"
     ).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()
 

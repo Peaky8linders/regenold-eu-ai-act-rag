@@ -282,6 +282,136 @@ def _openai_wrapper_complete_for_graph_rag(
     return response.text
 
 
+def _anthropic_complete_for_graph_rag(
+    *, system: str, user: str, max_tokens: int, temperature: float,
+    complex_question: bool = False,
+) -> str | None:
+    """One Anthropic-SDK-direct chat completion. Sibling to the openai_wrapper path.
+
+    R56 — full Stage-1/2 parity with the openai_wrapper path so the
+    Pro-tier downgrade can route Stage-2 polish (and the rest of the
+    LLM pipeline) through the Anthropic API direct path without the
+    rate-limit pressure of Max-on-Pro.
+
+    Returns ``None`` on ANY failure (SDK ImportError, missing key,
+    RateLimitError, transport error, empty content block) so callers
+    fall back to deterministic. Never raises.
+
+    Honours the same ``complex_question`` routing knob as the wrapper
+    path: when set AND ``GraphRAGSettings.complex_model`` is non-empty
+    (e.g. ``claude-opus-4-7``), swaps the model. When the deploy also
+    set ``complex_thinking_tokens > 0``, enables the Anthropic API's
+    extended-thinking parameter (``thinking={"type": "enabled",
+    "budget_tokens": N}``) — mirrors the wrapper's
+    ``X-Claude-Max-Thinking-Tokens`` header semantics.
+    """
+    client = _get_anthropic_client()
+    if client is None:
+        return None
+
+    try:
+        from app.config import settings
+        configured = settings.graph_rag.model
+        complex_model = getattr(settings.graph_rag, "complex_model", "") or ""
+        thinking_budget = int(
+            getattr(settings.graph_rag, "complex_thinking_tokens", 0) or 0
+        )
+    except Exception:  # noqa: BLE001
+        configured = ""
+        complex_model = ""
+        thinking_budget = 0
+    base_model = configured or "claude-sonnet-4-6"
+    model = complex_model if (complex_question and complex_model) else base_model
+
+    extra: dict[str, object] = {}
+    if complex_question and thinking_budget > 0:
+        capped = max(1024, min(thinking_budget, 16000))
+        extra["thinking"] = {"type": "enabled", "budget_tokens": capped}
+        logger.info(
+            "graph_rag.stage2_extended_thinking_anthropic model=%s budget=%d",
+            model, capped,
+        )
+
+    try:
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+            **extra,
+        )
+    except Exception as exc:  # noqa: BLE001 — fail-soft contract
+        # Anthropic SDK raises typed exceptions (RateLimitError,
+        # APIConnectionError, AuthenticationError, BadRequestError,
+        # APIStatusError, ...). We don't depend on the class hierarchy
+        # here so this branch works against any SDK version >=0.40.0.
+        exc_name = type(exc).__name__
+        if "RateLimit" in exc_name:
+            logger.warning(
+                "graph_rag.anthropic_rate_limited: %s — falling back to deterministic",
+                str(exc)[:200],
+            )
+        elif "Authentication" in exc_name or "Permission" in exc_name:
+            logger.error(
+                "graph_rag.anthropic_auth_failed: %s — check P2P_GRAPH_RAG_API_KEY. "
+                "Falling back to deterministic for this call.",
+                str(exc)[:200],
+            )
+        else:
+            logger.warning(
+                "graph_rag.anthropic_call_failed: %s: %s",
+                exc_name, str(exc)[:200],
+            )
+        return None
+
+    try:
+        if not getattr(response, "content", None):
+            logger.warning("graph_rag.anthropic_empty_content_block")
+            return None
+        block = response.content[0]
+        text = getattr(block, "text", "") or ""
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("graph_rag.anthropic_response_parse_failed: %s", str(exc)[:200])
+        return None
+    return text
+
+
+def _stage2_provider_enabled() -> bool:
+    """R56 — Stage-2 polish gate: True when EITHER openai_wrapper OR
+    anthropic-SDK-direct is configured for the current request.
+
+    Read on every call so a Railway env-var rebind takes effect on the
+    next request.
+
+    Routing semantics — preserves byte-for-byte behaviour for the
+    historical "wrapper-enabled" deploys (no env var change required
+    when upgrading to R56):
+
+    * ``P2P_GRAPH_RAG_PROVIDER=cli`` → never enables Stage-2 (caller is
+      explicitly asking for the deterministic-only path).
+    * ``P2P_GRAPH_RAG_PROVIDER=anthropic`` AND
+      ``P2P_GRAPH_RAG_API_KEY`` is set → enables Stage-2 via the SDK
+      direct path. This is the R56 Pro-tier fallback.
+    * Anything else (unset / =auto / =openai_wrapper) → enables
+      Stage-2 when ``is_openai_wrapper_enabled()`` is True. Matches
+      the pre-R56 gate exactly.
+    """
+    from app.llm.openai_wrapper_provider import is_openai_wrapper_enabled
+
+    env_value = os.getenv("P2P_GRAPH_RAG_PROVIDER", "").strip().lower()
+    if env_value == "cli":
+        return False
+    if env_value == "anthropic":
+        try:
+            from app.config import settings
+            return settings.graph_rag.api_key is not None
+        except Exception:  # noqa: BLE001
+            return False
+    # auto / openai_wrapper / unset — historical default, gate via wrapper.
+    return is_openai_wrapper_enabled()
+
+
 # ─── Internal data structures ────────────────────────────────────────────────
 
 @dataclass
@@ -2766,13 +2896,44 @@ def _claude_max_enhance_answer(
         except Exception:  # noqa: BLE001
             complex_q = False
 
-        text_raw = _openai_wrapper_complete_for_graph_rag(
-            system=PROMPT_HARDENING_PREFIX + ANSWER_GENERATE_SYSTEM,
-            user=user_message,
-            max_tokens=max_tokens,
-            temperature=0.0,
-            complex_question=complex_q,
-        )
+        # R56 — Stage-2 provider routing. The historical
+        # ``_claude_max_enhance_answer`` name is preserved for back-compat;
+        # the actual call now goes via openai_wrapper OR anthropic SDK
+        # direct.
+        #
+        # Routing rule (preserves R51 + earlier behaviour byte-identically
+        # when ``P2P_GRAPH_RAG_PROVIDER`` is unset):
+        #   * EXPLICIT ``=anthropic`` AND an API key is configured →
+        #     route through the Anthropic SDK direct path.
+        #   * Anything else (unset / =auto / =openai_wrapper / =cli) →
+        #     route through the openai_wrapper (the historical default).
+        # The Stage-2 gate (:func:`_stage2_provider_enabled`) handles the
+        # final on/off decision; this branch just picks WHICH call shape
+        # to use when Stage-2 is on.
+        _env_provider = os.getenv("P2P_GRAPH_RAG_PROVIDER", "").strip().lower()
+        _use_anthropic_sdk = False
+        if _env_provider == "anthropic":
+            try:
+                from app.config import settings as _s  # noqa: PLC0415
+                _use_anthropic_sdk = _s.graph_rag.api_key is not None
+            except Exception:  # noqa: BLE001
+                _use_anthropic_sdk = False
+        if _use_anthropic_sdk:
+            text_raw = _anthropic_complete_for_graph_rag(
+                system=PROMPT_HARDENING_PREFIX + ANSWER_GENERATE_SYSTEM,
+                user=user_message,
+                max_tokens=max_tokens,
+                temperature=0.0,
+                complex_question=complex_q,
+            )
+        else:
+            text_raw = _openai_wrapper_complete_for_graph_rag(
+                system=PROMPT_HARDENING_PREFIX + ANSWER_GENERATE_SYSTEM,
+                user=user_message,
+                max_tokens=max_tokens,
+                temperature=0.0,
+                complex_question=complex_q,
+            )
         if text_raw is None:
             return None
         validated = validate_llm_output(text_raw.strip())
@@ -2807,7 +2968,8 @@ def _two_stage_generate(
     zero LLM cost.  Returns (answer, False) when Stage 2 is skipped.
 
     Stage 2 fires when ALL of these hold:
-    - The Claude Max proxy is wired (``is_openai_wrapper_enabled()``).
+    - A Stage-2 provider is wired (:func:`_stage2_provider_enabled` —
+      either the Claude Max wrapper OR the Anthropic SDK direct path).
     - The question is complex enough to benefit from LLM polish per
       :func:`_needs_stage2_enhancement` — multi-turn conversation history,
       gap-analysis / cross-framework intent, multiple article entities,
@@ -2816,8 +2978,6 @@ def _two_stage_generate(
     Returns (enhanced, True) on success or (kg_answer, False) on fallback /
     skip.
     """
-    from app.llm.openai_wrapper_provider import is_openai_wrapper_enabled
-
     kg_answer = _deterministic_answer(question, context)
 
     # Classification-verdict short-circuit fired inside _deterministic_answer.
@@ -2828,7 +2988,10 @@ def _two_stage_generate(
     if _detect_classification_topic(question) is not None:
         return kg_answer, False
 
-    if not is_openai_wrapper_enabled():
+    # R56 — accept EITHER the Max wrapper OR the Anthropic SDK direct
+    # path. The Pro-tier downgrade needs the latter to keep Stage-2
+    # polish working when the wrapper's quota tightens.
+    if not _stage2_provider_enabled():
         return kg_answer, False
 
     if not _needs_stage2_enhancement(question, context, query):

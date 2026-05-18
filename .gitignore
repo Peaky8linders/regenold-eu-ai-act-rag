@@ -26,6 +26,9 @@ evals/regenold_results_no_orphan.json
 *.pdf
 *.zip
 *.txt
+# R56-A — KB_VERSION lint snapshot. The *.txt rule above would otherwise
+# exclude the snapshot file the lint reads on every test run.
+!tests/_snapshots/*.txt
 
 # Round 24 reproducible-benchmark artefacts. The dataset itself
 # (evals/bench/data/) is committed for reproducibility; the per-run

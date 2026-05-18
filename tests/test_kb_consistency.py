@@ -16,8 +16,12 @@ ontology entries must pass these checks before they can land.
 """
 from __future__ import annotations
 
+import hashlib
+import re
+from pathlib import Path
+
 from app.data.article_existence import ARTICLE_EXISTENCE
-from app.data.kb import EC_CHECKER_OBLIGATION_MAP
+from app.data.kb import EC_CHECKER_OBLIGATION_MAP, KB_VERSION
 from app.data.ontology import (
     ANNEX_III_REGISTRY,
     PHASE_REGISTRY,
@@ -340,3 +344,132 @@ class TestManualXRefLinter:
         )
         # The reason must be the curated one, not the fallback.
         assert "technical documentation" in target_to_reason["Art. 11"].lower()
+
+
+# ── KB_VERSION bump lint (R56-A) ──────────────────────────────────────
+#
+# R54.1 deep-code-review fix C3 found that R53.2's edits to Art. 25 +
+# Art. 101 stubs silently bypassed the ``KB_VERSION`` bump rule because
+# the convention was doc-only. Two downstream consumers key on
+# ``KB_VERSION``:
+#
+#   1. The engine LRU cache (``app/routes/regenold.py::_engine_cache_key``)
+#      folds it into the sha256, so a stale version → stale answers.
+#   2. The Neo4j auto-seed (``app/main.py::_maybe_auto_seed_neo4j``)
+#      skips re-seeding when ``KBMetadata.seed_version`` matches the
+#      stored value, so a stale version → stale graph.
+#
+# R56-A converts the doc-only rule into an enforced CI lint by pinning
+# a hash signature of ``EC_CHECKER_OBLIGATION_MAP`` together with the
+# current ``KB_VERSION`` in a snapshot file. The hash canonicalises
+# whitespace so cosmetic re-flows don't trip the lint, but any content
+# edit (insert / delete / re-word) will.
+
+
+_KB_SNAPSHOT_PATH = (
+    Path(__file__).parent / "_snapshots" / "kb_version_signature.txt"
+)
+
+
+def _compute_kb_signature() -> str:
+    """Stable hash over ``EC_CHECKER_OBLIGATION_MAP`` content.
+
+    Sorted keys + whitespace-canonicalised values, so cosmetic edits
+    (re-flowing a multi-line stub at a different column, normalising
+    NBSP, adding a trailing newline) do NOT trip the lint, but real
+    content changes (insert / delete / re-word) do.
+    """
+    items = sorted(EC_CHECKER_OBLIGATION_MAP.items(), key=lambda kv: kv[0])
+    canonical = "\n".join(
+        f"{key}::{' '.join(str(value).split())}"
+        for key, value in items
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+class TestKBVersionSnapshot:
+    """R56-A — enforce the C3 ``KB_VERSION`` bump rule via CI lint.
+
+    The snapshot at ``tests/_snapshots/kb_version_signature.txt`` is
+    a single line ``<KB_VERSION>::<sha256_hex>`` pinning the current
+    KB content against its declared version.
+
+    To deliberately update the KB content:
+
+    1. Edit ``EC_CHECKER_OBLIGATION_MAP`` in ``app/data/kb.py``.
+    2. Bump ``KB_VERSION`` in ``app/data/kb.py`` (e.g. ``v3`` → ``v4``).
+    3. Update ``tests/_snapshots/kb_version_signature.txt`` to the new
+       ``<version>::<hash>`` pair (re-run this test; the failure message
+       prints the new hash).
+    4. Commit the test snapshot alongside the KB edit.
+
+    The lint catches two failure modes:
+
+    * Content changed but ``KB_VERSION`` not bumped (the R53.2 → R54.1
+      C3 regression) → engine cache + Neo4j seed both serve stale data.
+    * ``KB_VERSION`` bumped without a content change (drift / typo) →
+      forces an unnecessary cache invalidation.
+    """
+
+    def test_kb_version_bumped_when_content_changes(self) -> None:
+        """If ``EC_CHECKER_OBLIGATION_MAP`` content changes,
+        ``KB_VERSION`` MUST bump (and the snapshot MUST be updated)."""
+        actual_hash = _compute_kb_signature()
+
+        if not _KB_SNAPSHOT_PATH.exists():
+            # First run: contributor must create the snapshot. Print
+            # the exact line to write so it's a one-shot fix.
+            raise AssertionError(
+                f"KB version snapshot missing at {_KB_SNAPSHOT_PATH}. "
+                f"Create the file with this single line:\n"
+                f"  {KB_VERSION}::{actual_hash}\n"
+                f"and commit it alongside the KB edit."
+            )
+
+        expected = _KB_SNAPSHOT_PATH.read_text(encoding="utf-8").strip()
+        expected_version, sep, expected_hash = expected.partition("::")
+        assert sep == "::", (
+            f"KB snapshot {_KB_SNAPSHOT_PATH} is malformed; expected "
+            f"`<version>::<hash>` on a single line, got {expected!r}"
+        )
+
+        if actual_hash == expected_hash:
+            # Content unchanged — version MUST match too. Otherwise
+            # someone bumped the version unnecessarily (cache churn).
+            assert KB_VERSION == expected_version, (
+                f"KB content unchanged but KB_VERSION drifted "
+                f"{expected_version!r} -> {KB_VERSION!r}. Either revert "
+                f"the version bump in app/data/kb.py, or — if the bump "
+                f"is intentional — update the snapshot at "
+                f"{_KB_SNAPSHOT_PATH} to:\n  {KB_VERSION}::{actual_hash}"
+            )
+            return
+
+        # Content changed — version MUST bump.
+        assert KB_VERSION != expected_version, (
+            f"EC_CHECKER_OBLIGATION_MAP content changed (hash "
+            f"{expected_hash[:8]} -> {actual_hash[:8]}) but KB_VERSION "
+            f"is still {KB_VERSION!r}. Bump KB_VERSION in app/data/kb.py "
+            f"(downstream cache + Neo4j seed both key on it) and update "
+            f"{_KB_SNAPSHOT_PATH} to:\n  <new_version>::{actual_hash}"
+        )
+
+        # Version DID bump but the snapshot is stale (it still records
+        # the old version + old hash). Tell the contributor to update.
+        raise AssertionError(
+            f"KB content + KB_VERSION both changed but snapshot is "
+            f"stale. Update {_KB_SNAPSHOT_PATH} to:\n"
+            f"  {KB_VERSION}::{actual_hash}"
+        )
+
+    def test_kb_version_format(self) -> None:
+        """``KB_VERSION`` must look like ``<year>.<regulation_id>.v<build>``.
+
+        Pinning the format prevents accidental drift (e.g. someone
+        writing ``"v4"`` or ``"2026-05-19"`` and silently breaking the
+        downstream cache-key arithmetic).
+        """
+        assert re.match(r"^\d{4}\.\d+\.v\d+$", KB_VERSION), (
+            f"KB_VERSION must match `<YYYY>.<reg_id>.v<build>` "
+            f"(e.g. `2024.1689.v3`); got {KB_VERSION!r}"
+        )
