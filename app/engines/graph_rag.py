@@ -2530,6 +2530,19 @@ _STAGE2_REFUSAL_MARKERS: tuple[str, ...] = (
     "the provided eu ai act references contain no",
     "no matching provisions were retrieved",
     "do not contain information on",
+    # R54-Q2 — four NEW markers caught in the post-R54 live Probe-2
+    # verification. Sonnet emitted "No EU AI Act articles were
+    # returned in the references block for this query, so citations
+    # cannot be provided per the instructions. However, based on the
+    # EU AI Act text..." DESPITE the prompt carrying Art. 51 / 101 /
+    # 64 / 74. The pre-R54-Q2 marker set didn't catch the "articles
+    # were returned" / "references block for this query" / "citations
+    # cannot be provided" shapes. These additions ensure the guard
+    # fires and routes through R49-A's KB-stitched grounded prose.
+    "no eu ai act articles were returned",
+    "no articles were returned in the references",
+    "references block for this query",
+    "citations cannot be provided",
 )
 
 

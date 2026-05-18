@@ -237,13 +237,18 @@ def stitch_grounded_prose(internal_refs: Iterable[str]) -> str:
         substance_sentences.pop()
         out = " ".join([lead] + substance_sentences).strip()
 
-    # Sentence-count cap — count terminator punctuation outside parens.
-    # Most stubs are single sentences post-_first_clause; this is a
-    # belt-and-braces check for stubs that escape with embedded periods.
-    sentence_count = sum(1 for c in out if c in ".!?")
+    # Sentence-count cap — use the legal-aware splitter so abbreviations
+    # like ``Art.`` / ``Annex N.`` / ``e.g.`` / ``i.e.`` don't get
+    # miscounted as sentence terminators. Pre-R54-Q2 this used a naive
+    # ``sum(c in ".!?")`` which counted ``Art. 64`` inside a stub as an
+    # extra sentence — over-clipping useful Art. 101 substance from the
+    # Probe-2 grounded-prose substitution (verified live 2026-05-18).
+    from app.engines.sentence_index import split_legal_sentences  # noqa: PLC0415
+
+    sentence_count = len(split_legal_sentences(out))
     while sentence_count > MAX_GROUNDED_SENTENCES and substance_sentences:
         substance_sentences.pop()
         out = " ".join([lead] + substance_sentences).strip()
-        sentence_count = sum(1 for c in out if c in ".!?")
+        sentence_count = len(split_legal_sentences(out))
 
     return out
