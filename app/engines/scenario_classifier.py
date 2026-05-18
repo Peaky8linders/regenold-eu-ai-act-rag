@@ -211,9 +211,13 @@ _COMPOUND_DISTRIBUTE_AND_IMPORT_RE = re.compile(
 
 _COMPOUND_PROVIDER_AND_DEPLOYER_RE = re.compile(
     r"\b(?:"
-    r"both\s+(?:a\s+)?provider\s+and\s+(?:a\s+)?deployer|"
-    r"provider\s+and\s+(?:a\s+)?deployer|"
-    r"deployer\s+and\s+(?:a\s+)?provider|"
+    # R54-B — accept all article forms (a/an/the/none) on EITHER side
+    # of "and", so mixed-article variants like "both a provider and
+    # the deployer" or "both the provider and a deployer" fire.
+    r"both\s+(?:a|an|the)?\s*provider\s+and\s+(?:a|an|the)?\s*deployer|"
+    r"both\s+(?:a|an|the)?\s*deployer\s+and\s+(?:a|an|the)?\s*provider|"
+    r"(?:a|an|the)?\s*provider\s+and\s+(?:a|an|the)?\s*deployer|"
+    r"(?:a|an|the)?\s*deployer\s+and\s+(?:a|an|the)?\s*provider|"
     r"provider\s+(?:as\s+well\s+as|or\s+just)\s+(?:a\s+)?deployer"
     r")\b",
     re.IGNORECASE,
@@ -277,6 +281,24 @@ _COMPOUND_STRONG_PHRASES: tuple[str, ...] = (
     "both the importer and the distributor",
     "as both an importer and a distributor",
     "as both importer and distributor",
+    # ── R54-B (post-R53.1-eng-review P2 #6 closer) ──
+    # Mixed-article forms: "both A and THE B" / "both THE A and B"
+    # were classified as WEAK pre-R54 because no literal matched. V2
+    # role_ambiguity uses singular framing in both formal and informal
+    # registers, and mixed-article is a natural English variant the
+    # judge surfaces. Pure additions; weak-class budget unchanged.
+    "both a provider and the deployer",
+    "both the provider and a deployer",
+    "both an importer and the distributor",
+    "both the importer and a distributor",
+    "both as a provider and the deployer",
+    "both as the provider and a deployer",
+    # Acting/serving plus mixed-article variants
+    "acting as both a provider and the deployer",
+    "acting as both the provider and a deployer",
+    "serve as both a provider and a deployer",
+    "serves as both a provider and a deployer",
+    "serving as both a provider and a deployer",
 )
 
 

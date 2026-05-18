@@ -1333,6 +1333,43 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "penalty on gpai": "Art. 101",
     "commission impose on a gpai": "Art. 101",
     "commission impose on gpai": "Art. 101",
+    # ── R54-Q1 (post-R53.2 retrieval-gap closer) ──
+    # R53.2 added the AI Office direct-fine framing to the Art. 101 KB
+    # stub but live Probe-2 ("Who can impose direct fines on GPAI model
+    # providers — Commission, AI Office, or Member State market-
+    # surveillance authorities?") surfaced Art. 99 (general penalties)
+    # instead of Art. 101 because the existing keywords above don't
+    # cover the natural question shape. These additions anchor the
+    # full retrieval surface for the Art. 101 prose contract.
+    "direct fine on gpai": "Art. 101",
+    "direct fine on a gpai": "Art. 101",
+    "direct fines on gpai": "Art. 101",
+    "direct fine for gpai": "Art. 101",
+    "direct fines for gpai": "Art. 101",
+    "fine on a gpai provider": "Art. 101",
+    "fines on gpai providers": "Art. 101",
+    "fines on a gpai provider": "Art. 101",
+    "fines on gpai model": "Art. 101",
+    "gpai provider penalty": "Art. 101",
+    "gpai provider fine": "Art. 101",
+    "ai office fine": "Art. 101",
+    "ai office penalty": "Art. 101",
+    "ai office can impose": "Art. 101",
+    "ai office impose": "Art. 101",
+    "ai office may impose": "Art. 101",
+    "ai office direct fine": "Art. 101",
+    "ai office enforcement of gpai": "Art. 101",
+    "ai office enforcement on gpai": "Art. 101",
+    "ai office enforces gpai": "Art. 101",
+    "ai office enforces a gpai": "Art. 101",
+    "chapter v breach": "Art. 101",
+    "chapter v breaches": "Art. 101",
+    "breach of chapter v": "Art. 101",
+    "who can fine a gpai": "Art. 101",
+    "who fines gpai": "Art. 101",
+    "who can fine gpai": "Art. 101",
+    "fine gpai providers": "Art. 101",
+    "fining gpai providers": "Art. 101",
     # Transition + review (Arts. 111, 112)
     "transitional provision": "Art. 111",
     "pre-existing high-risk": "Art. 111",

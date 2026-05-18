@@ -573,5 +573,67 @@ class TestCompoundRoleStrengthVerdictThreading:
         assert v.compound_role_strength == "weak"
 
 
+# ─── R54-B — mixed-article compound-role strong phrases ────────────────────
+
+
+class TestR54BMixedArticleCompoundRoles:
+    """R54-B (post-R53.1-eng-review P2 #6 closer).
+
+    Mixed-article forms ("both A and THE B" / "both THE A and B") were
+    classified as WEAK pre-R54 because no literal in
+    ``_COMPOUND_STRONG_PHRASES`` matched the mixed cross-article shape.
+    These are natural English compound-role framings (the judge data
+    surfaces both formal and informal registers) and the gold answer
+    needs the full provider+deployer chain — so they belong in the
+    STRONG class. Adding 11 literal variants is precision-safe (still
+    requires the "both" + "and" anchors to fire).
+    """
+
+    def test_mixed_article_provider_deployer_strong_a_and_the(self):
+        v = classify_scenario_query(
+            "We are both a provider and the deployer of an internal-use "
+            "HR AI in our organisation. What rules apply?"
+        )
+        assert v is not None
+        assert v.compound_roles
+        assert v.compound_role_strength == "strong"
+
+    def test_mixed_article_provider_deployer_strong_the_and_a(self):
+        v = classify_scenario_query(
+            "Our company is both the provider and a deployer of a "
+            "high-risk recruitment AI. What do we owe?"
+        )
+        assert v is not None
+        assert v.compound_roles
+        assert v.compound_role_strength == "strong"
+
+    def test_mixed_article_importer_distributor_strong_an_and_the(self):
+        v = classify_scenario_query(
+            "We act as both an importer and the distributor of a "
+            "non-EU AI system on the EU market."
+        )
+        assert v is not None
+        assert v.compound_roles
+        assert v.compound_role_strength == "strong"
+
+    def test_serves_as_both_provider_deployer_strong(self):
+        v = classify_scenario_query(
+            "Our company serves as both a provider and a deployer of "
+            "an in-house worker-monitoring AI."
+        )
+        assert v is not None
+        assert v.compound_roles
+        assert v.compound_role_strength == "strong"
+
+    def test_acting_as_mixed_article_strong(self):
+        v = classify_scenario_query(
+            "Acting as both a provider and the deployer of an AI "
+            "system, what compliance posture do we adopt?"
+        )
+        assert v is not None
+        assert v.compound_roles
+        assert v.compound_role_strength == "strong"
+
+
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__, "-v"])

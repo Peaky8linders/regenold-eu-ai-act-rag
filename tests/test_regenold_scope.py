@@ -1321,3 +1321,130 @@ class TestR531CArticleExistenceForNewKeywords:
                 f"R53.1-C key {key!r} maps to {target!r} which is not in "
                 f"ARTICLE_EXISTENCE and is not a valid Annex form"
             )
+
+
+class TestR54Q1Art101RetrievalAnchors:
+    """R54-Q1 — post-R53.2 retrieval-gap closer for Art. 101.
+
+    R53.2 refreshed the Art. 101 KB stub with AI Office direct-fine
+    framing + Member-State market-surveillance disambiguation. Live
+    Probe-2 against the natural question shape ("Who can impose
+    direct fines on GPAI model providers?") surfaced Art. 99 + 64 +
+    74 + 53 + 51 — NOT Art. 101 — because the existing keyword
+    anchors didn't cover the question's tokens.
+
+    These tests pin the new anchors so they:
+    1) Fire on the natural question shape (Probe-2 verbatim).
+    2) Resolve in ARTICLE_EXISTENCE (typo-guard).
+    3) Don't break the R34 P0 OOS regression set (negative side).
+    """
+
+    def test_r54_probe2_question_surfaces_art_101(self) -> None:
+        """The exact Probe-2 question that motivated R54-Q1 must now
+        derive Art. 101 from keywords."""
+        from app.integrations.regenold.scope import (
+            derive_anchor_articles_from_keywords,
+        )
+
+        q = (
+            "Who can impose direct fines on GPAI model providers? "
+            "Is it the Commission, the AI Office, or Member State "
+            "market-surveillance authorities?"
+        )
+        anchors = derive_anchor_articles_from_keywords(q)
+        assert "Art. 101" in anchors, (
+            f"R54-Q1: Probe-2 question must derive Art. 101 from "
+            f"keywords (was the verified R53.2 retrieval gap). Got: "
+            f"{anchors!r}"
+        )
+
+    def test_r54_direct_fine_on_gpai_anchors_art_101(self) -> None:
+        from app.integrations.regenold.scope import (
+            derive_anchor_articles_from_keywords,
+        )
+
+        v = derive_anchor_articles_from_keywords(
+            "Can the AI Office impose a direct fine on a GPAI provider?"
+        )
+        assert "Art. 101" in v
+
+    def test_r54_ai_office_penalty_anchors_art_101(self) -> None:
+        from app.integrations.regenold.scope import (
+            derive_anchor_articles_from_keywords,
+        )
+
+        v = derive_anchor_articles_from_keywords(
+            "What is the AI Office penalty for breach of Chapter V?"
+        )
+        assert "Art. 101" in v
+
+    def test_r54_new_art_101_keyword_targets_all_resolve(self) -> None:
+        """Every new R54-Q1 keyword must map to a real article."""
+        import re
+
+        from app.data.article_existence import ARTICLE_EXISTENCE
+        from app.integrations.regenold.scope import KEYWORD_TO_ARTICLE
+
+        r54_q1_keys = [
+            "direct fine on gpai",
+            "direct fine on a gpai",
+            "direct fines on gpai",
+            "direct fine for gpai",
+            "direct fines for gpai",
+            "fine on a gpai provider",
+            "fines on gpai providers",
+            "fines on a gpai provider",
+            "fines on gpai model",
+            "gpai provider penalty",
+            "gpai provider fine",
+            "ai office fine",
+            "ai office penalty",
+            "ai office can impose",
+            "ai office impose",
+            "ai office may impose",
+            "ai office direct fine",
+            "ai office enforcement of gpai",
+            "ai office enforcement on gpai",
+            "ai office enforces gpai",
+            "ai office enforces a gpai",
+            "chapter v breach",
+            "chapter v breaches",
+            "breach of chapter v",
+            "who can fine a gpai",
+            "who fines gpai",
+            "who can fine gpai",
+            "fine gpai providers",
+            "fining gpai providers",
+        ]
+        annex_re = re.compile(r"^Annex\s+[IVX]+$")
+        for key in r54_q1_keys:
+            assert key in KEYWORD_TO_ARTICLE, (
+                f"R54-Q1 key {key!r} missing from KEYWORD_TO_ARTICLE"
+            )
+            target = KEYWORD_TO_ARTICLE[key]
+            assert target == "Art. 101", (
+                f"R54-Q1 key {key!r} should map to Art. 101; got {target!r}"
+            )
+            ok = target in ARTICLE_EXISTENCE or bool(annex_re.match(target))
+            assert ok, (
+                f"R54-Q1 key {key!r} target {target!r} not in "
+                f"ARTICLE_EXISTENCE"
+            )
+
+    def test_r54_oos_regression_set_still_refused(self) -> None:
+        """Critical: R54-Q1's new anchors must NOT leak the R34 OOS
+        regression set into in-scope. Specifically, "AI Office" is a
+        common-enough English phrase that we want to guarantee bare
+        non-AI-Act contexts still refuse."""
+        oos_queries = [
+            "When did the queen withdraw from public life?",
+            "Birth certificate processing time in France?",
+            "I want to suspend my Netflix subscription.",
+            "What's the best Italian restaurant in Rome?",
+        ]
+        for q in oos_queries:
+            v = classify_scope(q)
+            assert not v.in_scope, (
+                f"R54-Q1 regression: {q!r} flipped in-scope "
+                f"({v.reason} / {v.evidence})"
+            )
