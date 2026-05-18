@@ -84,3 +84,93 @@ class TestNewlyFilledStubs:
             f"{ref!r} is not in ARTICLE_EXISTENCE — "
             "either it is a typo or article_existence.py needs updating."
         )
+
+
+# ── R53.2 — Omnibus + GPAI Commission-Guidelines stub refresh ──
+
+
+class TestR532OmnibusStubContent:
+    """R53.2 — Art. 25 and Art. 101 stub refresh for the V2 judge categories
+    (omnibus / gpai). Art. 51 + Art. 113 already carry the Omnibus + 10^23
+    FLOPs threshold from R27 (verified by separate R27 fixtures); this class
+    pins the Art. 25 / Art. 101 content the R53.2 brief added.
+    """
+
+    def test_art_25_mentions_one_third_fine_tune_rule(self) -> None:
+        """Art. 25 stub must surface the 1/3 fine-tune rule (Commission's
+        18 July 2025 GPAI Guidelines) for downstream-provider classification.
+        """
+        summary = EC_CHECKER_OBLIGATION_MAP["Art. 25"]["summary"]
+        assert "one-third fine-tune" in summary or "1/3" in summary, (
+            f"Art. 25 stub missing the one-third fine-tune rule for "
+            f"GPAI downstream-provider classification. Summary: {summary!r}"
+        )
+
+    def test_art_25_mentions_small_mid_cap_modifier(self) -> None:
+        """Art. 25 stub must surface the small-mid-cap modifier extension
+        from the Digital Omnibus 7 May 2026 political agreement (Art. 62/63
+        SME-tier privileges now apply to small mid-cap entities)."""
+        summary_lower = EC_CHECKER_OBLIGATION_MAP["Art. 25"]["summary"].lower()
+        assert "small mid-cap" in summary_lower or "small mid cap" in summary_lower, (
+            f"Art. 25 stub missing the small-mid-cap modifier from "
+            f"Digital Omnibus. Summary: "
+            f"{EC_CHECKER_OBLIGATION_MAP['Art. 25']['summary']!r}"
+        )
+
+    def test_art_25_anchors_one_third_rule_to_art_51(self) -> None:
+        """The Art. 25 one-third rule depends on Art. 51's threshold
+        definitions — the stub should cross-reference Art. 51 so the
+        retrieval engine surfaces both anchors together for GPAI
+        downstream-provider questions."""
+        summary = EC_CHECKER_OBLIGATION_MAP["Art. 25"]["summary"]
+        assert "Art. 51" in summary, (
+            f"Art. 25 stub should cross-reference Art. 51 for GPAI "
+            f"threshold context. Summary: {summary!r}"
+        )
+
+    def test_art_101_mentions_ai_office(self) -> None:
+        """Art. 101 stub must surface 'AI Office' as the GPAI-enforcement
+        body. Pre-R53.2 the stub said 'Commission' without naming the AI
+        Office — the V2 judge failure pattern was answers that said
+        'Commission' when the gold required 'AI Office'.
+        """
+        summary = EC_CHECKER_OBLIGATION_MAP["Art. 101"]["summary"]
+        assert "AI Office" in summary, (
+            f"Art. 101 stub missing 'AI Office' as the enforcement body. "
+            f"Summary: {summary!r}"
+        )
+
+    def test_art_101_disambiguates_ai_office_vs_member_state(self) -> None:
+        """Art. 101 stub must call out that Member State market-surveillance
+        authorities do NOT have direct fining power over GPAI providers (a
+        recurrent V2 conflict-category confusion)."""
+        summary = EC_CHECKER_OBLIGATION_MAP["Art. 101"]["summary"]
+        assert "market-surveillance" in summary or "market surveillance" in summary, (
+            f"Art. 101 stub should disambiguate AI Office vs Member State "
+            f"market-surveillance authorities. Summary: {summary!r}"
+        )
+
+    def test_art_51_still_has_10_23_flops_threshold(self) -> None:
+        """Pre-existing R27 invariant: Art. 51 carries the 10^23 FLOPs
+        threshold from the Commission's 18 July 2025 GPAI Guidelines.
+        Pinned here so a future Art. 51 edit doesn't silently drop it."""
+        summary = EC_CHECKER_OBLIGATION_MAP["Art. 51"]["summary"]
+        assert "10^23" in summary or "10²³" in summary, (
+            f"Art. 51 stub lost the 10^23 FLOPs Commission-Guidelines "
+            f"threshold. Summary: {summary!r}"
+        )
+
+    def test_art_113_still_has_omnibus_dates(self) -> None:
+        """Pre-existing R27 invariant: Art. 113 carries the Digital Omnibus
+        7 May 2026 dates (Annex III high-risk → 2 December 2027; Annex I
+        embedded-product → 2 August 2028). Pinned here against silent drop.
+        """
+        summary = EC_CHECKER_OBLIGATION_MAP["Art. 113"]["summary"]
+        assert "2 December 2027" in summary, (
+            f"Art. 113 stub lost the Annex III high-risk Omnibus date. "
+            f"Summary: {summary!r}"
+        )
+        assert "2 August 2028" in summary, (
+            f"Art. 113 stub lost the Annex I embedded-product Omnibus date. "
+            f"Summary: {summary!r}"
+        )
