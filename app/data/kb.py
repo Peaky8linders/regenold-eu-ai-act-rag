@@ -21,8 +21,14 @@ from dataclasses import dataclass, field
 # stored seed_version matches. R53.2 edited Art. 25 + Art. 101 stubs
 # without bumping the string — the deep-code-review (R54.1) caught
 # this as a cache+seed staleness bug. R54.1 fixes that by bumping v2
-# → v3 to invalidate both surfaces.
-KB_VERSION = "2024.1689.v3"
+# → v3 to invalidate both surfaces. R57-B bumps v3 → v4 for the R57
+# KB coverage audit additions (Art. 5 sub-point carve-outs, Art. 6
+# Omnibus deferral, Art. 13 Art. 26(11) carry-over, Art. 14 two-
+# person rule scope, Art. 22 mandate tasks, Art. 26 carve-outs,
+# Art. 52(4) open-source designation, Art. 53(2) FOSS carve-out,
+# Art. 55 four systemic-risk obligations, Art. 79 market-surveillance
+# procedure).
+KB_VERSION = "2024.1689.v4"
 
 
 @dataclass(frozen=True)
@@ -441,6 +447,54 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
                 "Maximum fine €35 M or 7 % of global turnover under "
                 "Art. 99."
             ),
+            (
+                "Art. 5(1)(c) carve-out: the social-scoring prohibition "
+                "does not affect lawful evaluation practices of natural "
+                "persons that are carried out for a specific purpose in "
+                "accordance with Union and national law (Recital 31 final "
+                "sentence). The prohibited conduct is scoring across "
+                "unrelated social contexts producing unjustified detrimental "
+                "treatment; targeted lawful evaluation for a specific "
+                "purpose under Union or national law remains permitted."
+            ),
+            (
+                "Art. 5(1)(f) carve-out: emotion-recognition systems "
+                "placed on the market strictly for medical or safety "
+                "reasons — including systems intended for therapeutical "
+                "use, fatigue detection in pilots/drivers for accident "
+                "prevention, and pain/fatigue physical-state monitoring "
+                "(which Recital 18 expressly excludes from the 'emotion' "
+                "definition itself) — are NOT prohibited (Recital 44 "
+                "final sentence). The carve-out is narrow: the system's "
+                "primary purpose at market-placement must be medical or "
+                "safety, not retrofittable post-hoc."
+            ),
+            (
+                "Art. 5(1)(g) carve-out: the biometric-categorisation "
+                "prohibition does not cover lawful labelling, filtering "
+                "or categorisation of biometric datasets acquired in line "
+                "with Union or national law — including sorting by hair "
+                "colour or eye colour, which is permitted in law-"
+                "enforcement contexts (Recital 30)."
+            ),
+            (
+                "Art. 5(1)(h) carve-out catalogue: real-time remote "
+                "biometric identification in publicly accessible spaces "
+                "by law enforcement is permitted only for three exhaustive "
+                "law-enforcement objectives — (i) targeted search for "
+                "victims of abduction, trafficking and sexual exploitation, "
+                "and missing persons; (ii) prevention of a specific, "
+                "substantial and imminent threat to life or physical "
+                "safety, or a genuine and foreseeable terrorist attack; "
+                "(iii) localisation or identification of suspects of "
+                "Annex II offences punishable by at least 4 years' "
+                "custody. Use requires prior FRIA (Art. 27), Art. 49 "
+                "EU-database registration, prior judicial or independent-"
+                "administrative authorisation (urgency exception: "
+                "authorisation within 24h, else immediate stop), and "
+                "notification of the relevant market-surveillance "
+                "authority and national data-protection authority."
+            ),
         ),
     ),
     "Art. 6": {
@@ -448,7 +502,12 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
         "summary": (
             "Classifies an AI system as high-risk when it is intended as a safety "
             "component of a product covered by Annex I, or falls into one of the "
-            "eight Annex III use cases."
+            "eight Annex III use cases. Per the Digital Omnibus political "
+            "agreement (7 May 2026), Annex III high-risk applicability is "
+            "deferred to 2 December 2027 (originally 2 August 2026), and Annex I "
+            "embedded-product high-risk applicability is deferred to 2 August "
+            "2028, to allow harmonised standards and AI Office guidelines to "
+            "land first."
         ),
     },
     "Art. 9": {
@@ -491,7 +550,11 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "Requires high-risk AI systems to be designed for sufficient operational "
             "transparency to deployers, accompanied by instructions for use covering "
             "provider identity, intended purpose, capabilities + limitations, "
-            "expected lifetime, human-oversight measures, and required maintenance."
+            "expected lifetime, human-oversight measures, and required maintenance. "
+            "Where the high-risk system is an Annex-III biometric-identification, "
+            "emotion-recognition, or biometric-categorisation system, Art. 26(11) "
+            "preserves the Art. 50 transparency-to-end-user obligations on top of "
+            "the Art. 13 transparency-to-deployer chain."
         ),
     },
     "Art. 14": {
@@ -500,7 +563,15 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "Requires effective human oversight by natural persons during system use "
             "— capability + limitation awareness, automation-bias safeguards, ability "
             "to interpret output, disregard / override / intervene, and (for biometric "
-            "identification) a two-person verification rule."
+            "identification) a two-person verification rule. Under Art. 14(5), no "
+            "action or decision may be taken by the deployer on the basis of "
+            "identification resulting from an Annex-III point-1(a) remote biometric "
+            "identification system unless that identification has been separately "
+            "verified and confirmed by at least two natural persons with the "
+            "necessary competence, training and authority. The two-person rule does "
+            "not apply where Union or national law considers its application "
+            "disproportionate for law-enforcement, migration, asylum or border-"
+            "control authorities (Art. 14(5) second subparagraph)."
         ),
     },
     "Art. 15": {
@@ -527,7 +598,16 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "Deployer obligations: use the system per the instructions, assign "
             "human oversight to competent + trained natural persons, monitor "
             "operation, retain automatically generated logs, inform affected workers "
-            "(for workplace use), and cooperate with market-surveillance authorities."
+            "(for workplace use), and cooperate with market-surveillance authorities. "
+            "Art. 26 carve-outs: deployers that are financial institutions subject "
+            "to Union financial-services internal-governance requirements fulfil "
+            "the Art. 26(5) monitoring obligation and the Art. 26(6) log-retention "
+            "obligation by complying with the governance arrangements under that "
+            "financial-services law (Art. 26(5) second subparagraph; Art. 26(6) "
+            "second subparagraph). Workplace deployers who are employers must "
+            "inform workers' representatives and the affected workers BEFORE "
+            "putting the high-risk system into service (Art. 26(7)); applicable "
+            "Union and national worker-information rules continue to apply."
         ),
     },
     "Art. 27": {
@@ -576,14 +656,42 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
                 "GPAI models placed on the market before 2 August 2025 are "
                 "grandfathered until 2 August 2027."
             ),
+            (
+                "Art. 53(2) free / open-source carve-out: the Annex XI "
+                "technical-documentation obligation and the Annex XII "
+                "downstream-provider information obligation under "
+                "Art. 53(1)(a)-(b) do NOT apply to GPAI models released "
+                "under a free and open-source licence permitting access, "
+                "use, modification and distribution, with publicly "
+                "available parameters (weights, architecture and usage "
+                "information). The carve-out does NOT apply to GPAI models "
+                "designated as systemic-risk under Art. 51 — once "
+                "systemic-risk designation lands, the open-source carve-"
+                "out is gone and the full Art. 53 obligations plus the "
+                "Art. 55 systemic-risk obligations apply regardless of "
+                "licence. The Art. 53(1)(c) copyright policy and the "
+                "Art. 53(1)(d) public training-data summary apply to ALL "
+                "GPAI providers including open-source releases."
+            ),
         ),
     ),
     "Art. 55": {
         "dimension": "risk_mgmt",
         "summary": (
-            "GPAI systemic-risk provider obligations: model evaluation including "
-            "adversarial testing, systemic-risk assessment + mitigation, serious-"
-            "incident reporting to the AI Office, and adequate cybersecurity."
+            "Art. 55 adds four obligations on top of Art. 53 for GPAI providers "
+            "with systemic risk: (a) model evaluation in accordance with "
+            "standardised protocols and tools reflecting the state of the art, "
+            "including conducting and documenting adversarial testing to identify "
+            "and mitigate systemic risks; (b) assess and mitigate possible "
+            "systemic risks at Union level — including their sources — that may "
+            "stem from development, market-placement, or use of the model; (c) "
+            "keep track of, document, and report without undue delay to the AI "
+            "Office (and national competent authorities where appropriate) "
+            "information about serious incidents and possible corrective "
+            "measures; (d) ensure an adequate level of cybersecurity protection "
+            "for both the model AND its physical infrastructure. Providers may "
+            "rely on Art. 56 codes of practice to demonstrate compliance until "
+            "a harmonised standard is published."
         ),
     },
     "Art. 72": {
@@ -730,7 +838,20 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
         "summary": (
             "Requires providers established outside the EU to appoint, by "
             "written mandate, an authorised representative established in the "
-            "Union before placing a high-risk AI system on the market."
+            "Union before placing a high-risk AI system on the market. The "
+            "Art. 22(3) mandate must empower the authorised representative to "
+            "(a) verify that the provider's Art. 47 EU declaration of "
+            "conformity and Art. 11 technical documentation were drawn up; "
+            "(b) keep the declaration of conformity, technical documentation, "
+            "certificates and contact details available for national competent "
+            "authorities for 10 years after the system is placed on the market; "
+            "(c) supply that documentation to national authorities on reasoned "
+            "request and register on their behalf with national authorities; "
+            "(d) cooperate with market-surveillance authorities. Under "
+            "Art. 22(4), the authorised representative must terminate the "
+            "mandate and inform the AI Office and the relevant market-"
+            "surveillance authority where it has reason to believe the "
+            "provider is acting contrary to its obligations."
         ),
     },
     "Art. 23": {
@@ -832,7 +953,17 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "Procedure for GPAI-with-systemic-risk classification: providers "
             "must notify the Commission within 2 weeks of meeting / expecting to "
             "meet the threshold; provider may submit arguments against "
-            "designation; Commission lists designated models publicly."
+            "designation; Commission lists designated models publicly. Under "
+            "Art. 52(4), the Commission may designate a GPAI model as "
+            "systemic-risk ex officio (or following an Art. 90 scientific-"
+            "panel qualified alert) on the Annex XIII criteria, independent "
+            "of the Art. 51(1)(a) compute threshold. Reassessment requests "
+            "are permitted at the earliest 6 months after designation. The "
+            "2-week pre-training notification obligation is especially "
+            "important for open-source models per Recital 112 — once weights "
+            "are released publicly, downstream compliance measures become "
+            "harder to implement, so providers planning open-source releases "
+            "must engage with the AI Office before training completes."
         ),
     },
     "Art. 54": {
@@ -962,10 +1093,20 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     "Art. 79": {
         "dimension": "post_market",
         "summary": (
-            "Procedure for handling AI systems presenting a risk: market-"
-            "surveillance authority evaluates, requires corrective action, "
-            "informs Commission + other authorities; Commission may extend the "
-            "measures across the Union or propose a Union safeguard procedure."
+            "Art. 79 procedure for AI systems presenting a risk: market-"
+            "surveillance authorities that have sufficient reasons to consider "
+            "that an AI system presents a risk to health, safety or fundamental "
+            "rights (per the Art. 3(19) definition as amended by Art. 79(1)) "
+            "carry out an evaluation of the system. Where non-compliance is "
+            "found, the authority requires the relevant operator to take "
+            "corrective action — withdrawal of the system from the EU market, "
+            "recall from the distribution chain, or restriction of its "
+            "availability — within a set period proportionate to the risk, "
+            "applying Article 18 of Reg. (EU) 2019/1020 mutatis mutandis. The "
+            "authority informs the Commission and the other Member States of "
+            "the measures taken; if no objection is raised within 3 months, "
+            "the national measure is considered justified and applies Union-"
+            "wide under Art. 81."
         ),
     },
     # ─── Title XII / final provisions (Art. 113 — applicability dates) ───────

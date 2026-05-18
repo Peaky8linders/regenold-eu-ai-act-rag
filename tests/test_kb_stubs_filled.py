@@ -174,3 +174,212 @@ class TestR532OmnibusStubContent:
             f"Art. 113 stub lost the Annex I embedded-product Omnibus date. "
             f"Summary: {summary!r}"
         )
+
+
+
+# ── R57-B — KB coverage audit additions ──
+
+
+def _art_5_blob() -> str:
+    """Join all Art. 5 stubs into a single lowercased blob for substring scan.
+
+    Art. 5 is a multi-stub ``_KBEntry``; the R57-B carve-outs landed as
+    additional stubs (stub-2 / stub-3 / stub-4 / stub-5), so a sub-point
+    keyword check has to scan the joined blob, not a single stub.
+    """
+    entry = EC_CHECKER_OBLIGATION_MAP["Art. 5"]
+    return " ".join(entry).lower()
+
+
+class TestR57BCoverageAuditStubs:
+    """R57-B — KB coverage audit P0 + P1 additions.
+
+    Pins the V2-gold token surface added per the R57 coverage audit
+    (``docs/reviews/R57-KB-COVERAGE-AUDIT.md``). Each additional class
+    targets ONE article's audit-recommended additions so a regression
+    surfaces the specific gap that was filled.
+    """
+
+    def test_art_5_carveouts_surface_sub_points(self) -> None:
+        """Art. 5 stubs must surface the four sub-point carve-outs."""
+        blob = _art_5_blob()
+        assert "lawful evaluation" in blob, (
+            "Art. 5 stubs missing the Art. 5(1)(c) lawful-evaluation "
+            "carve-out language (Recital 31)."
+        )
+        assert "recital 31" in blob, (
+            "Art. 5 stubs should anchor the social-scoring carve-out "
+            "to Recital 31."
+        )
+        assert "medical" in blob and "safety" in blob, (
+            "Art. 5 stubs missing 'medical' / 'safety' carve-out tokens "
+            "for Art. 5(1)(f) emotion-recognition."
+        )
+        assert "recital 44" in blob, (
+            "Art. 5 stubs should anchor the emotion-recognition carve-"
+            "out to Recital 44."
+        )
+        assert "recital 30" in blob, (
+            "Art. 5 stubs should anchor the biometric-categorisation "
+            "carve-out to Recital 30."
+        )
+        assert "law enforcement" in blob or "law-enforcement" in blob, (
+            "Art. 5 stubs missing the law-enforcement carve-out scope "
+            "for Art. 5(1)(h)."
+        )
+
+    def test_art_5_real_time_rbi_three_objectives(self) -> None:
+        """Art. 5(1)(h) carve-out must name three exhaustive LE objectives."""
+        blob = _art_5_blob()
+        assert "victims" in blob, (
+            "Art. 5(1)(h) carve-out missing victim-search objective."
+        )
+        assert "imminent" in blob, (
+            "Art. 5(1)(h) carve-out missing imminent-threat objective."
+        )
+        assert "suspects" in blob or "annex ii" in blob, (
+            "Art. 5(1)(h) carve-out missing Annex-II offences suspect "
+            "objective."
+        )
+        assert "fria" in blob or "art. 27" in blob, (
+            "Art. 5(1)(h) procedural guards missing FRIA / Art. 27 "
+            "anchor."
+        )
+        assert "24h" in blob or "24 h" in blob or "within 24" in blob, (
+            "Art. 5(1)(h) procedural guards missing 24-hour rule."
+        )
+
+    def test_art_55_names_four_systemic_obligations(self) -> None:
+        """Art. 55 stub must name 4 systemic-risk obligations."""
+        summary = EC_CHECKER_OBLIGATION_MAP["Art. 55"]["summary"]
+        lower = summary.lower()
+        assert "state of the art" in lower or "state-of-the-art" in lower, (
+            f"Art. 55 stub missing 'state of the art'. Summary: {summary!r}"
+        )
+        assert "union level" in lower or "union-level" in lower, (
+            f"Art. 55 stub missing Union-level scope. Summary: {summary!r}"
+        )
+        assert "undue delay" in lower, (
+            f"Art. 55 stub missing 'undue delay'. Summary: {summary!r}"
+        )
+        assert "AI Office" in summary, (
+            f"Art. 55 stub missing 'AI Office'. Summary: {summary!r}"
+        )
+        assert "cybersecurity" in lower, (
+            f"Art. 55 stub missing 'cybersecurity'. Summary: {summary!r}"
+        )
+
+    def test_art_22_lists_mandate_tasks(self) -> None:
+        """Art. 22 must list AR mandate tasks."""
+        summary = EC_CHECKER_OBLIGATION_MAP["Art. 22"]["summary"]
+        lower = summary.lower()
+        assert "verify" in lower, (
+            f"Art. 22 missing 'verify'. Summary: {summary!r}"
+        )
+        assert "10 years" in lower, (
+            f"Art. 22 missing 10-year retention. Summary: {summary!r}"
+        )
+        assert "register" in lower, (
+            f"Art. 22 missing 'register'. Summary: {summary!r}"
+        )
+        assert "terminate" in lower, (
+            f"Art. 22 missing 'terminate'. Summary: {summary!r}"
+        )
+
+    def test_art_79_market_surveillance_corrective_action(self) -> None:
+        """Art. 79 must cover market-surveillance corrective action."""
+        summary = EC_CHECKER_OBLIGATION_MAP["Art. 79"]["summary"]
+        lower = summary.lower()
+        assert "corrective action" in lower, (
+            f"Art. 79 missing 'corrective action'. Summary: {summary!r}"
+        )
+        assert "withdrawal" in lower or "withdraw" in lower, (
+            f"Art. 79 missing withdrawal. Summary: {summary!r}"
+        )
+        assert "2019/1020" in summary, (
+            f"Art. 79 missing Reg. 2019/1020. Summary: {summary!r}"
+        )
+        assert len(summary) > 400, (
+            f"Art. 79 too thin ({len(summary)} chars). Summary: {summary!r}"
+        )
+
+    def test_art_6_omnibus_deferral_context(self) -> None:
+        """Art. 6 must surface Digital Omnibus dates."""
+        summary = EC_CHECKER_OBLIGATION_MAP["Art. 6"]["summary"]
+        lower = summary.lower()
+        assert "2 December 2027" in summary or "2 december 2027" in lower, (
+            f"Art. 6 missing 2 December 2027. Summary: {summary!r}"
+        )
+        assert "2 August 2028" in summary or "2 august 2028" in lower, (
+            f"Art. 6 missing 2 August 2028. Summary: {summary!r}"
+        )
+        assert "omnibus" in lower, (
+            f"Art. 6 missing 'Digital Omnibus'. Summary: {summary!r}"
+        )
+
+    def test_art_53_open_weights_carve_out_full(self) -> None:
+        """Art. 53 must surface Art. 53(2) FOSS carve-out."""
+        entry = EC_CHECKER_OBLIGATION_MAP["Art. 53"]
+        blob = " ".join(entry)
+        lower = blob.lower()
+        assert "open-source" in lower or "open source" in lower, (
+            f"Art. 53 missing 'open-source'. Blob: {blob!r}"
+        )
+        assert "Art. 53(2)" in blob, (
+            f"Art. 53 missing Art. 53(2) anchor. Blob: {blob!r}"
+        )
+        assert "systemic-risk" in lower or "systemic risk" in lower, (
+            f"Art. 53 missing systemic-risk no-carve-out. Blob: {blob!r}"
+        )
+        assert "Art. 51" in blob or "Art. 55" in blob, (
+            f"Art. 53 missing Art. 51/55 cross-ref. Blob: {blob!r}"
+        )
+
+    def test_art_13_art_26_11_carry_over(self) -> None:
+        """Art. 13 must surface Art. 26(11) Art. 50 carry-over."""
+        summary = EC_CHECKER_OBLIGATION_MAP["Art. 13"]["summary"]
+        assert "Art. 26(11)" in summary, (
+            f"Art. 13 missing Art. 26(11). Summary: {summary!r}"
+        )
+        assert "Art. 50" in summary, (
+            f"Art. 13 missing Art. 50 cross-ref. Summary: {summary!r}"
+        )
+
+    def test_art_14_two_person_rule_scope(self) -> None:
+        """Art. 14 must qualify the two-person rule."""
+        summary = EC_CHECKER_OBLIGATION_MAP["Art. 14"]["summary"]
+        lower = summary.lower()
+        assert "Art. 14(5)" in summary, (
+            f"Art. 14 missing Art. 14(5). Summary: {summary!r}"
+        )
+        assert "two natural persons" in lower, (
+            f"Art. 14 missing 'two natural persons'. Summary: {summary!r}"
+        )
+
+    def test_art_26_carve_outs_present(self) -> None:
+        """Art. 26 must surface financial + workers' carve-outs."""
+        summary = EC_CHECKER_OBLIGATION_MAP["Art. 26"]["summary"]
+        lower = summary.lower()
+        assert "financial" in lower, (
+            f"Art. 26 missing financial. Summary: {summary!r}"
+        )
+        assert "workers' representatives" in lower or "workers representatives" in lower, (
+            f"Art. 26 missing workers' reps. Summary: {summary!r}"
+        )
+        assert "before" in lower, (
+            f"Art. 26 missing 'before'. Summary: {summary!r}"
+        )
+
+    def test_art_52_open_source_designation_context(self) -> None:
+        """Art. 52 must surface Art. 52(4) + Recital 112."""
+        summary = EC_CHECKER_OBLIGATION_MAP["Art. 52"]["summary"]
+        lower = summary.lower()
+        assert "Art. 52(4)" in summary, (
+            f"Art. 52 missing Art. 52(4). Summary: {summary!r}"
+        )
+        assert "open-source" in lower or "open source" in lower, (
+            f"Art. 52 missing 'open-source'. Summary: {summary!r}"
+        )
+        assert "AI Office" in summary, (
+            f"Art. 52 missing 'AI Office'. Summary: {summary!r}"
+        )
