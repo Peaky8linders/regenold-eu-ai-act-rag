@@ -1648,6 +1648,129 @@ Top three lifts identifiable from the V2 scorecard:
 * No bench regressions on the existing `evals.bench.runner` smoke (B6
   + B8 smoke runs confirmed parity).
 
+## Round 51 — Complex-question routing: Opus 4.7 + extended thinking (2026-05-18)
+
+R50's V2 live scorecard surfaced four weak rubric axes where Sonnet
+4.6 polish plateaus: **role_ambiguity** (kw 0.40), **gpai** (kw 0.47),
+**borderline_prohibition** (kw 0.20), and **conflict** (kw 0.17). The
+hypothesis: these need extra reasoning time the temperature-0 Sonnet
+path doesn't provide. R51 wires an opt-in "complex-question" path
+that swaps Stage-2 polish to **Claude Opus 4.7** with **extended
+thinking** (8000 token budget) — but ONLY on the ~20% of questions
+the complexity gate flags. The other 80% stay on Sonnet 4.6 (cost +
+latency parity with R50).
+
+### R51-A — `app/engines/question_complexity.py` (new, ~150 LOC)
+
+Pure-stdlib classifier `is_complex_question(question, history_turn_count)`
+fires on:
+
+* **GPAI threshold / fine-tune / value-chain** (`10^23`, `10^25`,
+  `fine-tune`, `1/3`, `one-third`, `compute threshold`, `systemic
+  risk`, `value chain`, `training data summary`, `open-weight`)
+* **Role-ambiguity** (`both provider and deployer`, `rebrand*`,
+  `substantial modification`, `authorised representative`,
+  `internal-only`, `never released externally`, `customer configures`)
+* **Borderline-prohibition** (`always prohibit`, `carve-out`,
+  `Recital 16`, `emotion recognition + medical/workplace/education`,
+  `biometric + age/race/religion/political`, `real-time + terrorist/
+  emergency/imminent`, `social scoring`)
+* **Conflict** (`or Article N`, `vs Article`, `instead of Article`,
+  `can we skip`, `does our X satisfy Y`, `cumulative`)
+* **Cross-framework** (GDPR/MDR/NIS2/CRA/DSA/PLD mentioned WITH
+  `AI Act` or `Article N` in the same sentence)
+* **Multi-turn coreferent** (3+ prior turns AND ≤12-word final
+  starting with `what about` / `and if` / `in that case` etc.)
+
+25 unit tests lock in both the trigger surface AND the precision
+floor (simple definitional questions + tone-anchor sample text must
+NOT fire — otherwise we burn Opus + thinking budget on everything).
+
+### R51-B — Settings + wrapper plumbing
+
+* **`app/config.py::GraphRAGSettings`** — two new env-controlled
+  knobs:
+  * `complex_model` (env `P2P_GRAPH_RAG_COMPLEX_MODEL`, default
+    empty): model name for the complex-question path. Recommended
+    `claude-opus-4-7`. Empty preserves R50 byte-identical behaviour.
+  * `complex_thinking_tokens` (env
+    `P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS`, default 0): extended-
+    thinking budget. Clamped to [1024, 16000] at the engine. 0
+    disables thinking.
+* **`app/llm/openai_wrapper_provider.py`** —
+  `OpenAIWrapperRequest.extra_headers: dict[str, str]`. The provider
+  merges these onto the auth + content-type headers for ALL outgoing
+  calls (initial + retry). The wrapper at
+  `claude-code-openai-wrapper/parameter_validator.py` recognises
+  `X-Claude-Max-Thinking-Tokens` and maps it to the Claude Code SDK's
+  `max_thinking_tokens` option, which translates to extended thinking
+  on the Anthropic API call.
+
+### R51-C — Engine threading
+
+* **`app/models.py::GraphRAGRequest`** — new `history_turn_count`
+  field (default 1).
+* **`app/routes/regenold.py`** — counts user+assistant turns from the
+  flattened conversation and passes through.
+* **`app/engines/graph_rag.py`** —
+  `_two_stage_generate` → `_claude_max_enhance_answer` →
+  `_openai_wrapper_complete_for_graph_rag` chain threads
+  `complex_question` (computed via `is_complex_question`) so the
+  wrapper request swaps model + adds the thinking header ONLY on the
+  complex path.
+
+### Cost + latency trade
+
+* **Opus 4.7 pricing** (May 2026): $5/M input + $25/M output
+  (~5× Sonnet 4.6's $3/M + $15/M)
+* **Extended thinking** uses output tokens (counted toward the output
+  bill). 8000-token budget ≈ $0.20 worst-case per complex question.
+* **Latency**: extended thinking adds 5-15 s p50 on complex rows.
+  Acceptable because the rubric scores answer quality at higher
+  weight than latency for complex categories (per regenold rules).
+* **Hit rate**: ~20% of V2 rows fire the gate. davidath bench rows
+  rarely fire (single-anchor QA shapes), so davidath cost stays at
+  R50 baseline.
+
+### Production deploy config
+
+```bash
+railway variables --set "P2P_GRAPH_RAG_COMPLEX_MODEL=claude-opus-4-7"
+railway variables --set "P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS=8000"
+```
+
+Both unset = R50 byte-identical fallback. Either / both set adds the
+complex path without disrupting the simple path.
+
+### R51 — Bench parity check (476 davidath, all 1,533 tests pass)
+
+| Axis | R50 | R51 (no complex env) | Δ |
+| ---- | --- | -------------------- | --- |
+| Ans Strict | 0.3066 | 0.3066 | flat ✓ |
+| Ref Loose | 0.5422 | 0.5422 | flat ✓ |
+| Ref Strict | 0.4312 | 0.4312 | flat ✓ |
+| Multi-turn | 1.00 | 1.00 | flat ✓ |
+| Tone | 1.0000 | 1.0000 | flat ✓ |
+| Latency p50 (ms) | 15.01 | 14.75 | -0.3 (noise) |
+
+Default-off behaviour is byte-identical. The expected V2 live lift is
+queued for the next live measurement post-deploy.
+
+### Expected V2 live deltas (post-deploy with complex env set)
+
+Categories the complexity gate fires on, targeting the R50 weak axes:
+
+| Category | R50 kw | R51 expected | Reasoning |
+| -------- | ------ | ------------ | --------- |
+| role_ambiguity | 0.40 | ~0.55+ | Opus + thinking traces the compound-role chain (provider + deployer) more reliably than Sonnet at T=0 |
+| gpai | 0.47 | ~0.65+ | Thinking budget lets the model walk the Omnibus threshold reasoning (10²³ vs 10²⁵ + 1/3 fine-tune rule) before committing |
+| borderline_prohibition | 0.20 | ~0.40+ | Carve-out reasoning (Recital 16 + Art. 5(1)(f) medical exception) benefits most from explicit deliberation |
+| conflict | 0.17 | ~0.35+ | Two-article reconciliation ("X vs Y", "can we skip") needs explicit reasoning |
+| Multi-turn coh | 0.16 | ~0.25+ | 3+ turn coreferent finals trace prior anchors via extended thinking |
+
+These are projections; actual measurements will land in the next
+"R51-live" scorecard row.
+
 ## Round 50 — `?include_reasoning=true` + LLM-as-Judge (2026-05-18)
 
 The Regenold competition rules PDF (page 4) carves out the `reasoning`
@@ -1971,6 +2094,8 @@ Strict **+0.154 (0.152 → 0.307)**.
 | **49** | 476 davidath | 13.45ms  | 21.36ms | —        | RefL **0.5422** / RefS **0.4312** / mt **1.00** | Byte-identical to R47 on every rubric axis. R49-A grounded-prose substitute swaps R48's 1-sentence template for KB-stitched 1-3 sentences (Art. 51 → "10^25 FLOPs" etc.); R49-B `near_oos` detection in `scope.py` ships DSA/PLD/NIS2-CRA refusal-with-pointer copy (V2 TestClient smoke: 3/3 keywords per near_oos row). V2 live re-run after redeploy expected to lift multi-turn coherence 0.08 → ~0.28+ and tricky `near_oos` refL 0.00 → 1.0. |
 | **49-live** | 56 V2 LIVE | 9,578→3,244ms | — | — | tricky refL 0.56→**0.67** (+19%), kw 0.14→**0.42** (+204%), near_oos **0→1.00**, role_ambiguity 0.20→**0.57** (+183%), 0 HTTP fails | First post-R49 live measurement: near_oos achieves 3/3 keywords/row, p50 dropped 66% (more fast deterministic paths), R47-D retry zeroed HTTP failures (was 6/56). Multi-turn coherence held at 0.12 — three R50 wedges identified (extended refusal markers, scope-rescue, KB Omnibus refresh). |
 | **50** | 476 davidath | 15.01ms  | 24.91ms | —        | RefL **0.5422** / RefS **0.4312** / mt **1.00** | Byte-identical to R49 on every rubric axis. R50-A adds `?include_reasoning=true` query param + `ReasoningTrace` ContextVar pipeline (zero overhead when off). R50-B ships `evals/judge/` LLM-as-Judge (4 axes, Sonnet 4.6 via wrapper, ~$28/full bench run). R50-C extends `_STAGE2_REFUSAL_MARKERS` with 5 phrases R49 V2 multi-turn run surfaced. Live V2 re-run expected to route 5/25 multi-turn rows through R49-A's grounded prose. |
+| **50-live** | 56 V2 LIVE | 3,401ms  | 28,510ms | —        | tricky refL 0.67, kw **0.39**, mt coh **0.16** (+33%), mt kw **0.33** (+48%) | R50-C extended markers worked: 3 multi-turn rows (mt_v2_005/006/013) flipped non-coherent → coherent via R49-A grounded prose. Tricky kw dipped -0.03 from R49 within noise band. Near_oos held at 1.0; role_ambiguity refL held at 0.57. |
+| **51** | 476 davidath | 14.75ms  | 31.25ms | —        | RefL **0.5422** / RefS **0.4312** / mt **1.00** | Byte-identical to R50 (no complex env set). R51 wires `complex_model` (default empty) + `complex_thinking_tokens` (default 0) settings. New `question_complexity.py` classifier fires on GPAI thresholds / role-ambiguity / borderline-prohibition / conflict / cross-framework / multi-turn coreferent finals (25 unit tests + 8 routing tests pass). When deploy sets `P2P_GRAPH_RAG_COMPLEX_MODEL=claude-opus-4-7` + `P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS=8000`, the wrapper request sends `X-Claude-Max-Thinking-Tokens: 8000` to enable Claude extended thinking on ~20% of bench rows. |
 
 Δ on the local rubric is modest (-11% sentences, +12% p50 latency) because
 the local harness is binary substring-matched and already saturated. The

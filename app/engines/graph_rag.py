@@ -205,13 +205,22 @@ def _graph_rag_provider() -> str:
 
 
 def _openai_wrapper_complete_for_graph_rag(
-    *, system: str, user: str, max_tokens: int, temperature: float
+    *, system: str, user: str, max_tokens: int, temperature: float,
+    complex_question: bool = False,
 ) -> str | None:
     """One OpenAI-compatible call (Claude Max via wrapper, etc.).
 
     Returns ``None`` on any error so callers fall back to deterministic.
     The model picks up the deploy's ``graph_rag.model`` knob; defaults
     to ``claude-sonnet-4-6`` when unset.
+
+    R51 — when ``complex_question=True`` AND the deploy has set
+    ``GraphRAGSettings.complex_model`` (e.g. ``claude-opus-4-7``), the
+    call swaps to that model. When ``complex_thinking_tokens > 0`` is
+    ALSO set, the wrapper enables Claude's extended-thinking mode via
+    the ``X-Claude-Max-Thinking-Tokens`` HTTP header. Both knobs are
+    additive — either or both can be set independently. Defaults
+    preserve R50 behaviour byte-identically.
     """
     from app.llm.openai_wrapper_provider import (
         OpenAIWrapperRequest,
@@ -221,9 +230,27 @@ def _openai_wrapper_complete_for_graph_rag(
     try:
         from app.config import settings
         configured = settings.graph_rag.model
+        complex_model = getattr(settings.graph_rag, "complex_model", "") or ""
+        thinking_budget = int(
+            getattr(settings.graph_rag, "complex_thinking_tokens", 0) or 0
+        )
     except Exception:  # noqa: BLE001
         configured = ""
-    model = configured or "claude-sonnet-4-6"
+        complex_model = ""
+        thinking_budget = 0
+    base_model = configured or "claude-sonnet-4-6"
+    # R51 — complex-question routing.
+    model = complex_model if (complex_question and complex_model) else base_model
+    extra_headers: dict[str, str] = {}
+    if complex_question and thinking_budget > 0:
+        # Cap at wrapper's recommended ceiling. The wrapper itself
+        # enforces 0-50000; we stay well inside that range.
+        capped = max(1024, min(thinking_budget, 16000))
+        extra_headers["X-Claude-Max-Thinking-Tokens"] = str(capped)
+        logger.info(
+            "graph_rag.stage2_extended_thinking model=%s budget=%d",
+            model, capped,
+        )
 
     response = get_openai_wrapper_provider().complete(
         OpenAIWrapperRequest(
@@ -232,6 +259,7 @@ def _openai_wrapper_complete_for_graph_rag(
             model=model,
             max_tokens=max_tokens,
             temperature=temperature,
+            extra_headers=extra_headers,
         )
     )
     if response.error:
@@ -2665,6 +2693,7 @@ def _claude_max_enhance_answer(
     kg_answer: str,
     context: GraphContext | None = None,
     system_description: str | None = None,
+    history_turn_count: int = 1,
 ) -> str | None:
     """Stage-2: polish the KG-grounded answer via the Claude Max proxy.
 
@@ -2711,11 +2740,25 @@ def _claude_max_enhance_answer(
         except Exception:  # noqa: BLE001
             max_tokens = 512
 
+        # R51 — complex-question routing. The complexity gate runs on
+        # the live question + history depth. When it fires AND the
+        # deploy has wired ``GraphRAGSettings.complex_model`` (e.g.
+        # ``claude-opus-4-7``) or ``complex_thinking_tokens``, the
+        # wrapper call uses those for THIS polish call only.
+        try:
+            from app.engines.question_complexity import (  # noqa: PLC0415
+                is_complex_question,
+            )
+            complex_q = is_complex_question(question, history_turn_count)
+        except Exception:  # noqa: BLE001
+            complex_q = False
+
         text_raw = _openai_wrapper_complete_for_graph_rag(
             system=PROMPT_HARDENING_PREFIX + ANSWER_GENERATE_SYSTEM,
             user=user_message,
             max_tokens=max_tokens,
             temperature=0.0,
+            complex_question=complex_q,
         )
         if text_raw is None:
             return None
@@ -2743,6 +2786,7 @@ def _two_stage_generate(
     context: GraphContext,
     query: "GraphQuery | None" = None,
     system_description: str | None = None,
+    history_turn_count: int = 1,
 ) -> tuple[str, bool]:
     """Two-stage answer generation.
 
@@ -2782,6 +2826,7 @@ def _two_stage_generate(
         kg_answer=kg_answer,
         context=context,
         system_description=system_description,
+        history_turn_count=history_turn_count,
     )
     if enhanced is None:
         # Wrapper call failed (network error, timeout, 429, wrapper auth
@@ -2858,6 +2903,7 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
     # Stage 1 + 2 — Generate
     answer_text, stage2_used = _two_stage_generate(
         request.question, context, query, request.system_description,
+        history_turn_count=getattr(request, "history_turn_count", 1) or 1,
     )
 
     reasoning_trace = [

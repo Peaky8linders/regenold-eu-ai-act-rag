@@ -1351,12 +1351,20 @@ def regenold_eu_ai_act_ask(
             history_turns=req.messages,
         )
 
+    # R51 — count prior user+assistant turns so the engine's complex-
+    # question gate can fire on multi-turn finals (3+ turns + short
+    # coreferent question shape).
+    _history_turn_count = max(
+        0,
+        sum(1 for m in req.messages if m.role in ("user", "assistant")) - 1,
+    )
     rag_req = GraphRAGRequest(
         question=question,
         # Regenold's use case is "about the regulation"; do not force a tenant-specific
         # risk_level or answers payload here. Optional system-context is passed through
         # to let the engine condition the answer.
         system_description=system_context,
+        history_turn_count=_history_turn_count,
     )
 
     # Round 28 — response memoisation (LLM Wiki v2 gist pattern). The

@@ -45,6 +45,12 @@ class GraphRAGRequest(BaseModel):
     risk_level: RiskLevel | None = None
     system_description: str | None = Field(default=None, max_length=1_000)
     answers: dict[str, AssessmentAnswer] = Field(default_factory=dict)
+    history_turn_count: int = Field(default=1, ge=0)
+    """R51 — number of user+assistant turns BEFORE the live question.
+    Threaded from the route's ``_build_question_from_history`` so the
+    complex-question gate can fire on multi-turn finals (3+ turns +
+    short coreferent). Default 1 keeps single-turn callers unaffected.
+    """
 
 
 class GraphRAGResponse(BaseModel):

@@ -21,6 +21,26 @@ class GraphRAGSettings(BaseSettings):
     max_tokens: int = 1024
     temperature: float = 0.0
 
+    # R51 — complex-question routing. When a question is classified as
+    # ``complex`` (role-ambiguity, GPAI threshold, borderline-prohibition,
+    # conflict, or compound multi-turn) AND ``complex_model`` is set, the
+    # Stage-2 polish call swaps to that model with optional
+    # extended-thinking budget. Defaults keep R50 behaviour byte-identical
+    # (no model swap, no thinking).
+    #
+    # Recommended production setting: complex_model=claude-opus-4-7,
+    # complex_thinking_tokens=8000. Cost trade: Opus 4.7 is ~5x Sonnet
+    # 4.6 per million tokens, but it only fires on ~20% of bench rows
+    # (the tagged-complex ones), and extended thinking adds ~5-15s p50
+    # latency only on those rows.
+    complex_model: str = ""
+    """Model name for the complex-question path. Empty = use ``model``."""
+
+    complex_thinking_tokens: int = 0
+    """``max_thinking_tokens`` for extended-thinking Stage-2 polish on
+    complex questions. 0 disables (default). Range 1024-16000 typical;
+    the wrapper caps at 50000."""
+
 
 class RegenoldSettings(BaseSettings):
     """Regenold partner-tier auth + rate-limit settings."""

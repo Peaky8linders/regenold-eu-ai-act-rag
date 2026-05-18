@@ -43,6 +43,20 @@ class OpenAIWrapperRequest(BaseModel):
     Stage-1/2 Sonnet calls that take 10-20 s.
     """
 
+    extra_headers: dict[str, str] = Field(default_factory=dict)
+    """R51 — per-request header overrides sent to the wrapper. Used to
+    enable Claude's extended-thinking mode via the
+    ``X-Claude-Max-Thinking-Tokens`` header on complex Stage-2 polish
+    calls. The wrapper's ``parameter_validator.py`` maps the header to
+    the SDK's ``max_thinking_tokens`` option, which translates to the
+    Anthropic API's ``thinking={"type": "enabled", "budget_tokens": N}``.
+
+    Empty dict (default) sends no extra headers — extended thinking
+    stays off. Adding ``X-Claude-Max-Thinking-Tokens: "8000"`` enables
+    8000 thinking-token budget for THIS call only — no global state
+    change.
+    """
+
 
 class OpenAIWrapperResponse(BaseModel):
     text: str = ""
@@ -167,10 +181,19 @@ class _OpenAIWrapperProvider:
 
         start = time.perf_counter()
         deadline = start + budget_seconds
+        # R51 — merge per-request extra_headers (e.g.
+        # ``X-Claude-Max-Thinking-Tokens``) onto the default Auth +
+        # Content-Type headers. The wrapper's parameter_validator
+        # interprets ``X-Claude-Max-Thinking-Tokens`` as the SDK's
+        # ``max_thinking_tokens`` option — which translates to extended
+        # thinking on the underlying Anthropic API call.
+        merged_headers = self._headers()
+        if req.extra_headers:
+            merged_headers.update(req.extra_headers)
         try:
             response = self._client.post(
                 "/chat/completions",
-                headers=self._headers(),
+                headers=merged_headers,
                 json=body,
                 timeout=request_timeout,
             )
@@ -222,7 +245,7 @@ class _OpenAIWrapperProvider:
                     try:
                         response = self._client.post(
                             "/chat/completions",
-                            headers=self._headers(),
+                            headers=merged_headers,
                             json=body,
                             timeout=retry_timeout,
                         )
