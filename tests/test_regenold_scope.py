@@ -789,19 +789,23 @@ class TestRegenoldEvalGate:
 
         R38 introduced per-intent budgets (definitional=2 … scenario=8)
         and R31.1 boosted scenarios to a hard ceiling of 10 to match
-        the davidath gold avg (9.8). The spec phrasing "minimal set" is
-        preserved by the smallest-cover pass + per-intent budget — not
-        by a single global cap. This test catches the regression where
-        a response ships > 10 refs (any combination of intent + scenario
-        budget should bound at 10).
+        the davidath gold avg (9.8). R47-C extended the scenario budget
+        to 12 for compound-role questions (provider+deployer, etc.) so
+        the union obligation chain ships intact. The spec phrasing
+        "minimal set" is preserved by the smallest-cover pass + per-
+        intent budget — not by a single global cap. This test catches
+        the regression where a response ships > 12 refs (any
+        combination of intent + scenario + compound-role budget should
+        bound at 12).
         """
         from evals.regenold.runner import run_all
 
         results = run_all()
         # Per-intent budget ceiling — scenario fast-path is 10; per-
-        # intent table tops out at 8 (description). Either way, 10 is
-        # the hard upper bound across both code paths.
-        hard_ceiling = 10
+        # intent table tops out at 8 (description); R47-C compound-role
+        # path stretches the scenario budget to 12 so the union of two
+        # role obligation matrices fits.
+        hard_ceiling = 12
         over_ceiling = [
             (r.category, r.scenario_id, r.refs_count)
             for r in results

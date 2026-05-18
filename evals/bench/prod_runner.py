@@ -50,6 +50,7 @@ from typing import Any
 from evals.bench import dataset as bench_dataset
 from evals.bench import metrics
 from evals.bench import storage
+from evals.bench._http_retry import post_json_with_retry
 
 
 # ── Configuration ───────────────────────────────────────────────────────
@@ -112,58 +113,26 @@ def _http_post_json(
     payload: list[dict[str, str]],
     api_key: str | None,
     timeout: float,
-) -> tuple[dict[str, Any], float, int, str | None]:
-    """POST + parse JSON.
+) -> tuple[dict[str, Any], float, int, str | None, int, list[str]]:
+    """POST + parse JSON with one-shot retry on transient connection failures.
 
-    Returns ``(body, latency_ms, http_status, error)``.
+    Returns ``(body, latency_ms, http_status, error, attempts, retried_errors)``.
+
+    R47-D — delegates to :func:`evals.bench._http_retry.post_json_with_retry`
+    which retries on ``RemoteDisconnected`` / ``BadStatusLine`` /
+    ``ConnectionResetError`` / WinError 10060 / 5xx, but NOT on 4xx /
+    JSON parse / ``non_dict_body``. Max 3 HTTP calls; ~1.5 s worst-case
+    backoff. Every request to the ``/ask`` endpoint is idempotent so
+    retry is safe.
 
     On failure the body is an empty shell (``answer=""``, ``references=[]``),
     ``http_status`` is the best-known status (0 if pre-HTTP error like
     DNS / TLS / connection refused), and ``error`` carries a short tag.
     """
-    req = _build_request(url, payload, api_key)
-    start = time.perf_counter()
-    empty = {"answer": "", "references": [], "reasoning": None}
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            elapsed = (time.perf_counter() - start) * 1000.0
-            raw = resp.read()
-            status = resp.getcode() or 200
-            try:
-                body = json.loads(raw.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                return empty, elapsed, status, f"json_decode: {exc.__class__.__name__}"
-            if not isinstance(body, dict):
-                return empty, elapsed, status, "non_dict_body"
-            # Normalise — keep missing keys filled with sensible defaults
-            # so downstream scorers don't need to special-case.
-            body.setdefault("answer", "")
-            body.setdefault("references", [])
-            body.setdefault("reasoning", None)
-            return body, elapsed, status, None
-    except urllib.error.HTTPError as exc:
-        elapsed = (time.perf_counter() - start) * 1000.0
-        # 4xx / 5xx — still try to read the body for diagnostics but the
-        # row counts as a failure.
-        try:
-            payload_bytes = exc.read()
-            err_body = json.loads(payload_bytes.decode("utf-8"))
-            detail = err_body.get("detail") if isinstance(err_body, dict) else None
-        except Exception:  # noqa: BLE001
-            detail = None
-        msg = f"http_{exc.code}"
-        if detail:
-            msg = f"{msg}: {str(detail)[:120]}"
-        return empty, elapsed, exc.code, msg
-    except urllib.error.URLError as exc:
-        elapsed = (time.perf_counter() - start) * 1000.0
-        return empty, elapsed, 0, f"url_error: {exc.reason}"
-    except TimeoutError:
-        elapsed = (time.perf_counter() - start) * 1000.0
-        return empty, elapsed, 0, "timeout"
-    except Exception as exc:  # noqa: BLE001
-        elapsed = (time.perf_counter() - start) * 1000.0
-        return empty, elapsed, 0, f"unexpected: {exc.__class__.__name__}: {exc}"
+    return post_json_with_retry(
+        url, payload, api_key, timeout,
+        user_agent=_USER_AGENT,
+    )
 
 
 def _http_get_json(
@@ -230,8 +199,11 @@ def _ask_one(
     api_key: str | None,
     timeout: float,
     question: str,
-) -> tuple[dict[str, Any], float, int, str | None]:
-    """One-shot QA / scenario call."""
+) -> tuple[dict[str, Any], float, int, str | None, int, list[str]]:
+    """One-shot QA / scenario call.
+
+    Returns ``(body, latency_ms, http_status, error, attempts, retried_errors)``.
+    """
     payload = [{"role": "user", "content": question}]
     return _http_post_json(endpoint, payload, api_key, timeout)
 
@@ -241,8 +213,11 @@ def _ask_multiturn(
     api_key: str | None,
     timeout: float,
     history: list[dict[str, str]],
-) -> tuple[dict[str, Any], float, int, str | None]:
-    """Multi-turn call — sends the full OpenAI-style history."""
+) -> tuple[dict[str, Any], float, int, str | None, int, list[str]]:
+    """Multi-turn call — sends the full OpenAI-style history.
+
+    Returns ``(body, latency_ms, http_status, error, attempts, retried_errors)``.
+    """
     return _http_post_json(endpoint, history, api_key, timeout)
 
 
@@ -255,7 +230,12 @@ def _batch_dispatch(
     concurrency: int,
     verbose: bool,
     progress_label: str,
-) -> list[tuple[str, dict[str, Any], dict[str, Any], float, int, str | None]]:
+) -> list[
+    tuple[
+        str, dict[str, Any], dict[str, Any], float, int, str | None,
+        int, list[str],
+    ]
+]:
     """Run ``work_items`` through the live endpoint.
 
     Each work item is ``(item_id, item_dict, question)`` — the
@@ -263,7 +243,8 @@ def _batch_dispatch(
     gold fields back from it when scoring.
 
     Returns a list of
-    ``(item_id, item_dict, body, latency_ms, http_status, error)``
+    ``(item_id, item_dict, body, latency_ms, http_status, error,
+       attempts, retried_errors)``
     in the **same order** as the input list, so downstream code can
     enumerate without re-aligning by id.
     """
@@ -273,16 +254,22 @@ def _batch_dispatch(
     concurrency = max(1, concurrency)
 
     results: list[
-        tuple[str, dict[str, Any], dict[str, Any], float, int, str | None]
+        tuple[
+            str, dict[str, Any], dict[str, Any], float, int, str | None,
+            int, list[str],
+        ]
     ] = [None] * n  # type: ignore[list-item]
 
     def _worker(
         idx: int, item_id: str, item: dict[str, Any], question: str
-    ) -> tuple[int, str, dict[str, Any], dict[str, Any], float, int, str | None]:
-        body, elapsed, status, err = _ask_one(
+    ) -> tuple[
+        int, str, dict[str, Any], dict[str, Any], float, int, str | None,
+        int, list[str],
+    ]:
+        body, elapsed, status, err, attempts, retried = _ask_one(
             endpoint, api_key, timeout, question
         )
-        return idx, item_id, item, body, elapsed, status, err
+        return idx, item_id, item, body, elapsed, status, err, attempts, retried
 
     completed = 0
     completed_lock = threading.Lock()
@@ -304,16 +291,22 @@ def _batch_dispatch(
                 time.sleep(_RATE_LIMIT_BATCH_SLEEP_S)
 
         for fut in as_completed(futures):
-            idx, item_id, item, body, elapsed, status, err = fut.result()
-            results[idx] = (item_id, item, body, elapsed, status, err)
+            (
+                idx, item_id, item, body, elapsed, status, err,
+                attempts, retried,
+            ) = fut.result()
+            results[idx] = (
+                item_id, item, body, elapsed, status, err, attempts, retried,
+            )
             with completed_lock:
                 completed += 1
                 if verbose:
                     mark = "ok" if err is None else f"err({err[:32]})"
+                    retry_tag = f" attempts={attempts}" if attempts > 1 else ""
                     print(
                         f"[{progress_label}] {completed}/{n} "
                         f"{item_id} status={status} {mark} "
-                        f"latency={elapsed:.1f}ms"
+                        f"latency={elapsed:.1f}ms{retry_tag}"
                     )
     return results  # type: ignore[return-value]
 
@@ -348,7 +341,7 @@ def _run_qa_http(
     )
 
     rows: list[dict[str, Any]] = []
-    for item_id, item, body, latency, status, err in raw:
+    for item_id, item, body, latency, status, err, attempts, retried in raw:
         gold_answer = item.get("answer") or ""
         gold_article = item.get("relevant_article")
         pred_answer = body.get("answer") or ""
@@ -371,6 +364,8 @@ def _run_qa_http(
                 "http_status": status,
                 "passed": err is None and 200 <= status < 300,
                 "error": err,
+                "attempts": attempts,
+                "retried_errors": retried,
                 "scores": score.to_dict(),
                 "_row_score": score,
             }
@@ -405,7 +400,7 @@ def _run_scenarios_http(
     )
 
     rows: list[dict[str, Any]] = []
-    for item_id, item, body, latency, status, err in raw:
+    for item_id, item, body, latency, status, err, attempts, retried in raw:
         obligations = item.get("obligations") or []
         gold_answer = (
             f"This system is classified as {item.get('risk_level','')}. "
@@ -434,6 +429,8 @@ def _run_scenarios_http(
                 "http_status": status,
                 "passed": err is None and 200 <= status < 300,
                 "error": err,
+                "attempts": attempts,
+                "retried_errors": retried,
                 "scores": score.to_dict(),
                 "_row_score": score,
             }
@@ -460,14 +457,16 @@ def _multiturn_coherence_probe_http(
     rows: list[dict[str, Any]] = []
     for idx, s in enumerate(items):
         q1 = _scenario_to_question(s)
-        body1, lat1, _, err1 = _ask_one(endpoint, api_key, timeout, q1)
+        body1, lat1, _, err1, att1, ret1 = _ask_one(
+            endpoint, api_key, timeout, q1
+        )
         answer1 = body1.get("answer") or ""
         history = [
             {"role": "user", "content": q1},
             {"role": "assistant", "content": answer1},
             {"role": "user", "content": _MULTITURN_FOLLOWUP},
         ]
-        body2, lat2, _, err2 = _ask_multiturn(
+        body2, lat2, _, err2, att2, ret2 = _ask_multiturn(
             endpoint, api_key, timeout, history
         )
         answer2 = body2.get("answer") or ""
@@ -495,6 +494,10 @@ def _multiturn_coherence_probe_http(
                 "latency_q1_ms": round(lat1, 2),
                 "latency_q2_ms": round(lat2, 2),
                 "error": err1 or err2,
+                "attempts_q1": att1,
+                "attempts_q2": att2,
+                "retried_errors_q1": ret1,
+                "retried_errors_q2": ret2,
             }
         )
     return {
@@ -650,6 +653,22 @@ def run(
     sc_scores = [r["_row_score"] for r in scenario_rows]
 
     n_failures = sum(1 for r in qa_rows + scenario_rows if not r.get("passed"))
+
+    # R47-D — retry telemetry. ``retried`` counts rows that needed at
+    # least one retry (attempts > 1). ``recovered`` is the subset that
+    # ultimately succeeded (no error after retries). The recovery rate
+    # tells us how well the retry helper is paying for itself.
+    retry_rows = qa_rows + scenario_rows
+    retried = sum(1 for r in retry_rows if (r.get("attempts") or 1) > 1)
+    recovered = sum(
+        1 for r in retry_rows
+        if (r.get("attempts") or 1) > 1 and r.get("error") is None
+    )
+    total_retries = sum(max(0, (r.get("attempts") or 1) - 1) for r in retry_rows)
+    # Multi-turn rows hold per-turn attempts; fold them in too.
+    for mt_row in multiturn.get("rows") or []:
+        for key in ("attempts_q1", "attempts_q2"):
+            total_retries += max(0, (mt_row.get(key) or 1) - 1)
     summary = {
         "qa": metrics.aggregate(qa_scores),
         "scenarios": metrics.aggregate(sc_scores),
@@ -661,6 +680,12 @@ def run(
         "overall": metrics.aggregate(qa_scores + sc_scores),
         "http_failures": n_failures,
         "http_total": len(qa_rows) + len(scenario_rows),
+        "total_retries": total_retries,
+        "rows_retried": retried,
+        "rows_retry_recovered": recovered,
+        "retry_recovery_rate": (
+            round(recovered / retried, 4) if retried else 0.0
+        ),
     }
 
     payload: dict[str, Any] = {
@@ -711,6 +736,13 @@ def _format_human_summary(payload: dict[str, Any]) -> str:
     lines.append(
         f"http_failures: {s.get('http_failures',0)}/{s.get('http_total',0)}"
     )
+    if s.get("total_retries") or s.get("rows_retried"):
+        lines.append(
+            f"retries: total={s.get('total_retries',0)} "
+            f"rows={s.get('rows_retried',0)} "
+            f"recovered={s.get('rows_retry_recovered',0)} "
+            f"recovery_rate={s.get('retry_recovery_rate',0.0)}"
+        )
     for source in ("qa", "scenarios", "overall"):
         block = s.get(source) or {}
         if not block:

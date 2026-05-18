@@ -98,13 +98,20 @@ def _sparse_response(answer: str = "") -> GraphRAGResponse:
 class TestRefusalGateAtBoundary:
     """Empty references → refusal, regardless of confidence."""
 
-    def test_empty_refs_at_confidence_floor_triggers_refusal(self) -> None:
-        """confidence == 0.5 + empty refs → ``_NO_MATCH_ANSWER`` ships.
+    def test_empty_refs_at_confidence_floor_triggers_fallback(self) -> None:
+        """R47-E — confidence == 0.5 + empty refs + in_scope → zero-
+        retrieval fallback ships canonical floor citations + regulator-
+        voice prose.
 
-        Use an in-scope question that mentions a compliance-dimension
-        keyword but no specific Article — otherwise the route's anchor-
-        surfacing pass would inject the named article as a citation and
-        bypass the empty-refs branch.
+        Pre-R47-E this branch returned ``_NO_MATCH_ANSWER`` + empty
+        refs (the closed-world refusal). R47-E flips the contract: when
+        the scope-gate has already verdicted IN_SCOPE, an empty-refs
+        engine result indicates a retrieval miss (BM25 / ontology /
+        xref all returned 0 candidates on a well-formed AI Act
+        question), so we ship the intent-seeded floor instead of the
+        useless "try rephrasing" template. Out-of-scope queries are
+        STILL refused by the scope-gate upstream — that path is
+        unaffected.
         """
         from app.routes.regenold import _NO_MATCH_ANSWER  # noqa: PLC0415
 
@@ -123,15 +130,24 @@ class TestRefusalGateAtBoundary:
             )
         assert r.status_code == 200, r.json()
         body = r.json()
-        assert body["answer"] == _NO_MATCH_ANSWER, (
-            f"Expected no-match refusal at conf=0.5 + empty refs; got: {body['answer']!r}"
+        # Pre-R47-E: assert body["answer"] == _NO_MATCH_ANSWER + refs==[]
+        # Post-R47-E: fallback supplies the floor.
+        assert body["answer"] != _NO_MATCH_ANSWER, (
+            f"R47-E: in-scope empty-refs should NOT return the "
+            f"_NO_MATCH_ANSWER template; got {body['answer']!r}"
         )
-        assert body["references"] == []
-        assert body.get("retrieval_path") == "no_match"
+        assert body["references"], (
+            "R47-E: zero-retrieval fallback must ship at least one floor citation"
+        )
+        assert body.get("retrieval_path") == "zero_retrieval_fallback", (
+            f"telemetry path must label the fallback explicitly; got "
+            f"{body.get('retrieval_path')!r}"
+        )
 
-    def test_empty_refs_below_floor_still_triggers_refusal(self) -> None:
-        """Sanity: confidence < 0.5 + empty refs also refuses (regression
-        floor — the pre-fix behaviour on this exact axis)."""
+    def test_empty_refs_below_floor_still_triggers_fallback(self) -> None:
+        """R47-E — confidence < 0.5 + empty refs + in_scope also routes
+        through the fallback (the gate is empty-refs alone, not
+        confidence)."""
         from app.routes.regenold import _NO_MATCH_ANSWER  # noqa: PLC0415
 
         sparse = GraphRAGResponse(
@@ -154,7 +170,8 @@ class TestRefusalGateAtBoundary:
             )
         assert r.status_code == 200
         body = r.json()
-        assert body["answer"] == _NO_MATCH_ANSWER
+        assert body["answer"] != _NO_MATCH_ANSWER
+        assert body["references"]
 
     def test_non_empty_refs_skips_refusal_even_at_low_confidence(self) -> None:
         """A non-empty citation list is healthy grounding — keep the prose.
@@ -206,8 +223,22 @@ class TestClaraDoesNotBypassRefusal:
     otherwise CLARA invents grounding and the refusal is skipped."""
 
     def test_clara_skipped_when_no_upstream_candidates(self) -> None:
+        """CLARA must NOT inject onto an empty GraphRAG candidate set.
+
+        Pre-R36 behaviour bug: CLARA's "high-risk medical device" verdict
+        injected ``Art. 6`` + ``Art. 16`` even when GraphRAG returned 0
+        candidates, smuggling around the closed-world refusal. R36 fix:
+        CLARA injection is gated on at least one upstream candidate.
+
+        Post-R47-E: the no-match refusal is replaced by the deterministic
+        zero-retrieval fallback (intent-seeded floor citations + neutral
+        prose). The R36 invariant still holds — CLARA is still gated on
+        the same upstream-candidate predicate, so CLARA's specific
+        injection (``Art. 6`` / ``Art. 16``) MUST NOT appear in the wire
+        refs. The fallback's floor citations come from the intent-
+        seeded map, not from CLARA's invented grounding.
+        """
         from app.engines.clara_logic import Verdict  # noqa: PLC0415
-        from app.routes.regenold import _NO_MATCH_ANSWER  # noqa: PLC0415
 
         sparse = _sparse_response()
 
@@ -224,8 +255,7 @@ class TestClaraDoesNotBypassRefusal:
         # Use an in-scope question with no article-keyword anchor (so the
         # route's ``_surface_anchor_citations`` pass doesn't inject one
         # from the scope verdict) and let CLARA invent grounding via the
-        # mocked verdict. Pre-fix the wire response would surface
-        # ``Article 6`` + ``Article 16`` and the refusal would be skipped.
+        # mocked verdict.
         question = "What are the deployer compliance dimensions?"
         with patch(
             "app.routes.regenold.ask_compliance_question",
@@ -243,12 +273,27 @@ class TestClaraDoesNotBypassRefusal:
                 )
         assert r.status_code == 200
         body = r.json()
-        assert body["references"] == [], (
-            f"Expected empty refs (CLARA must not inject when GraphRAG "
-            f"has no candidates); got {body['references']!r}"
+        # CLARA must NOT have injected the medical-device verdict
+        # citations. The fallback's floor (role_obligations or other
+        # intent-seeded refs) is fine — but CLARA's specific Art. 6 +
+        # Art. 16 medical-device pair MUST NOT be the source.
+        # Combined-check: neither full set of CLARA injections is
+        # present. (Art. 6 alone could legitimately come from
+        # risk-classification intent floor; but the pair would only
+        # arise from CLARA.)
+        clara_refs = {"Article 6", "Article 16"}
+        ref_set = set(body["references"])
+        assert not clara_refs.issubset(ref_set), (
+            f"CLARA injection of {clara_refs} leaked through despite "
+            f"empty upstream candidates: {body['references']!r}"
         )
-        assert body["answer"] == _NO_MATCH_ANSWER
-        assert body.get("retrieval_path") == "no_match"
+        # Telemetry path must NOT label this as a CLARA / engine path.
+        # Either ``zero_retrieval_fallback`` (R47-E path) or ``no_match``
+        # (the defensive branch if the fallback returned nothing) is
+        # acceptable; CLARA must not appear in the ref list.
+        assert body.get("retrieval_path") in (
+            "zero_retrieval_fallback", "no_match",
+        ), body.get("retrieval_path")
 
 
 # ─── Issue #49 — classification short-circuit must NOT be re-mutated ───────

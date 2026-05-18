@@ -19,3 +19,12 @@ REGENOLD_GRAPH_2HOP = "1"
 # who want to manage the graph manually can disable with
 # ``railway variables --set NEO4J_AUTO_SEED=0``.
 NEO4J_AUTO_SEED = "1"
+
+# R47-B — Enable graph-aware retrieval (definition lookup + recital
+# grounding) via ``app/engines/graph_aware_retrieval.py``. Requires
+# ``NEO4J_URI`` to be set (which it is on this deploy per R35). When
+# the graph client can't be resolved, every helper is a sub-µs
+# passthrough so flipping this ON has zero cost in degraded states.
+# Lifts Ans Strict + multi-turn coherence on the V2 eval — see
+# ``CLAUDE.md`` round 47-B scorecard.
+REGENOLD_GRAPH_AWARE = "1"

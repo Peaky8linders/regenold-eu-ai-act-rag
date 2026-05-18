@@ -679,10 +679,14 @@ def _xref_in_degree() -> dict[str, int]:
     from :mod:`app.data.kb_xrefs`.
     """
     # Lazy import — keeps the build-time dependency graph clean.
-    from app.data.kb_xrefs import _build_xref_graph  # noqa: PLC0415
+    # R47 reconciliation: use the CORE graph (regex + manual, no R47-A
+    # backfill) so the confidence boost's in-degree tiers stay anchored
+    # to the R28-tuned baseline. R47-A's 108 prose-mined edges still
+    # flow through retrieval / 2-hop expand via _build_xref_graph().
+    from app.data.kb_xrefs import _build_xref_graph_core  # noqa: PLC0415
 
     counts: dict[str, int] = {}
-    for _source, targets in _build_xref_graph().items():
+    for _source, targets in _build_xref_graph_core().items():
         for t in targets:
             counts[t] = counts.get(t, 0) + 1
     return counts

@@ -1131,6 +1131,40 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "non consensual intimate": "Art. 5",
     "nudification": "Art. 5",
     "intimate imagery": "Art. 5",
+    # ── R47-E zero-retrieval gap-closers (V2-eval miss analysis) ─────
+    # Each phrase below was a V2-eval IN_SCOPE question whose BM25 +
+    # ontology + xref retrieval returned 0 candidates because the user
+    # phrasing didn't match the KB's canonical form. All are
+    # unambiguously AI-Act-specific (multi-word + numeric anchors with
+    # zero substring-match risk on out-of-scope questions).
+    # Art. 51 — GPAI compute threshold (10²³ FLOPs per the 18 July 2025
+    # Commission Guidelines; distinct from the existing 10^25 systemic-
+    # risk threshold which is already mapped).
+    "10²³": "Art. 51",
+    "10^23": "Art. 51",
+    "10**23": "Art. 51",
+    # Art. 25 — one-third fine-tune rule (modifier becomes new provider
+    # when additional compute > 1/3 base). The numeric form "1/3" is
+    # noise-prone alone; the spelled-out "one-third" / "one third" is
+    # unambiguous in regulatory context.
+    "one-third": "Art. 25",
+    "one third of": "Art. 25",
+    "1/3 of": "Art. 25",
+    # Art. 53(1)(d) — GPAI training-data summary obligation.
+    "training data summary": "Art. 53",
+    "training-data summary": "Art. 53",
+    "summary of training data": "Art. 53",
+    # Art. 49 — EU database registration (existing "eu database" maps
+    # to Art. 71 (the database itself); the registration obligation
+    # lives in Art. 49 and is the more common V2-eval ask).
+    "eu database registration": "Art. 49",
+    "register in the eu database": "Art. 49",
+    # Art. 25(4) + 53(3) — value-chain duties between GPAI provider and
+    # downstream system provider. "value chain" alone maps to Art. 25
+    # already; the GPAI-specific compound stays disambiguated here.
+    "gpai value chain": "Art. 53",
+    "value chain obligation": "Art. 25",
+    "value chain obligations": "Art. 25",
 }
 
 

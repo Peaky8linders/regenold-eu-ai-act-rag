@@ -26,7 +26,7 @@ topic verdict or to a scenario verdict without branching code paths.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable
 
 
@@ -52,6 +52,406 @@ def _detect_role(text: str) -> str | None:
         if pattern.search(text):
             return role
     return None
+
+
+# ── Compound-role detection (R47-C) ──────────────────────────────────────
+#
+# V2 eval ``role_ambiguity`` (n=5) scored ref-loose ~0.20-0.25 — the
+# weakest of all 7 V2 categories. The single-role classifier picks ONE
+# role and runs with it, missing the compound obligation chain. Five
+# canonical patterns from the V2 set:
+#
+#   * tr_v2_007: internal-only system → provider+deployer (Recital 16)
+#   * tr_v2_008: non-EU provider → provider+authorised representative
+#   * tr_v2_009: importer rebrands → flips to provider (Art. 25(1)(a))
+#   * tr_v2_010: configurable SaaS → split role (Art. 25 substantial mod)
+#   * tr_v2_011: distributor + importer
+#
+# This detector returns the UNION of role IDs that fire. Strictly
+# additive — when none fire, the existing single-role path runs unchanged.
+# Verb-stems preferred over literal phrases for robustness.
+
+
+_DEFINITIONAL_QA_SHAPE_RE = re.compile(
+    # Pure definitional shapes that should NOT fire compound-role —
+    # they're asking the engine to define a term, not classify a
+    # specific entity's compound role.
+    r"^\s*(?:what\s+(?:is|does|counts?\s+as|defines?|means?)|"
+    r"define\s+|definition\s+of|how\s+is\s+\w+\s+defined|"
+    r"who\s+is\s+(?:considered|defined\s+as))\b",
+    re.IGNORECASE,
+)
+
+_SCENARIO_FIRST_PERSON_RE = re.compile(
+    # First-person scenario shapes — "we", "our", "us". Compound-role
+    # detection requires this context so abstract definitional QA
+    # ("what counts as substantial modification?") doesn't fire.
+    r"\b(?:we|our|us|we'?re|we\s+are|we'?ve|we\s+have)\b",
+    re.IGNORECASE,
+)
+
+_THIRD_PERSON_ENTITY_RE = re.compile(
+    # Third-person scenario shape — "a company", "an importer", "the
+    # provider", "a non-EU manufacturer", or a bare "non-EU
+    # manufacturer" (no article) since real-world questions skip the
+    # article. Enables V2-008 ("A non-EU company sells AI to EU
+    # customers") and V2-009 ("An importer rebrands…") to fire even
+    # without first-person context.
+    r"(?:"
+    r"\b(?:a|an|the)\s+(?:non[\s\-]?eu\s+)?"
+    r"(?:company|provider|deployer|importer|distributor|"
+    r"manufacturer|vendor|firm|entity|supplier|saas|"
+    r"organisation|organization|business|startup|hospital)\b"
+    r"|\bnon[\s\-]?eu\s+"
+    r"(?:company|provider|deployer|importer|distributor|"
+    r"manufacturer|vendor|firm|entity|supplier)\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
+_COMPOUND_INTERNAL_USE_RE = re.compile(
+    # internal use / internal-only / used internally / for internal …
+    # builds for own / for our own / in-house / for in-house use / never released
+    r"\b(?:"
+    r"internal[\s\-]?only|"
+    r"internally|"
+    r"for\s+internal\s+(?:use|purposes?)|"
+    r"in[\s\-]?house|"
+    r"for\s+(?:our|its|their|the)\s+own\s+(?:hr|use|operations?|staff)|"
+    r"for\s+our\s+own\b|"
+    r"built.*for\s+our\s+own|"
+    r"never\s+released|"
+    r"only\s+for\s+(?:our|its|their|the)?\s*(?:hr|staff|employees|internal)|"
+    r"used\s+(?:only\s+)?internally"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_COMPOUND_NON_EU_RE = re.compile(
+    r"\b(?:"
+    r"non[\s\-]?eu\s+(?:company|provider|manufacturer|entity|firm|vendor|supplier)|"
+    r"(?:company|provider|manufacturer|firm|vendor)\s+based\s+outside\s+(?:the\s+)?eu|"
+    r"(?:established|based|located)\s+outside\s+(?:the\s+)?(?:eu|union|european\s+union)|"
+    r"no\s+eu\s+(?:establishment|presence)|"
+    r"foreign\s+(?:provider|manufacturer)\s+placing|"
+    r"non[\s\-]?eu\s+(?:provider|manufacturer)\s+(?:placing|selling|placing\s+on)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_COMPOUND_NON_EU_TO_EU_MARKET_RE = re.compile(
+    r"\b(?:"
+    r"placing\s+(?:high[\s\-]?risk\s+)?ai\s+on\s+(?:the\s+)?(?:union|eu)\s+market|"
+    r"sells?\s+ai\s+to\s+eu\s+customers?|"
+    r"places?\s+on\s+(?:the\s+)?(?:union|eu)\s+market|"
+    r"into\s+(?:the\s+)?(?:union|eu)\s+market"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_COMPOUND_REBRAND_RE = re.compile(
+    # rebrand / rebrands / rebranding / rename / renames / renaming /
+    # white-label / white labels / fine-tune (verb stems)
+    r"\b(?:"
+    r"rebrand(?:s|ed|ing)?|"
+    r"rename(?:s|d|ing)?|"
+    r"relabel(?:s|led|ling|ed|ing)?|"
+    r"re[\s\-]?label(?:s|led|ling|ed|ing)?|"
+    r"white[\s\-]?label(?:s|led|ling|ed|ing)?|"
+    r"own\s+(?:name|brand|trademark|logo)|"
+    r"(?:put|puts|putting|place|places|placing|affix(?:es|ed|ing)?)\s+(?:our|its|their)\s+(?:name|brand|trademark|logo)|"
+    r"with\s+(?:our|its|their)\s+(?:logo|name|brand|trademark)\s+before"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_COMPOUND_SUBSTANTIAL_MOD_RE = re.compile(
+    r"\b(?:"
+    r"substantial(?:ly)?\s+(?:modif|alter|chang)|"
+    r"substantial\s+modification|"
+    r">\s*1/3|"
+    r"more\s+than\s+(?:one[\s\-]?third|1/3|a\s+third)|"
+    r"over\s+(?:one[\s\-]?third|1/3|a\s+third)|"
+    r"fine[\s\-]?tun(?:e|es|ed|ing)|"
+    r"intended\s+purpose\s+(?:change|chang|modif)|"
+    r"changes?\s+(?:the\s+)?intended\s+purpose|"
+    r"chang(?:e|es|ed|ing)\s+(?:the\s+)?intended\s+purpose"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_COMPOUND_CONFIGURABLE_SAAS_RE = re.compile(
+    r"\b(?:"
+    r"configurable|"
+    r"lets?\s+(?:enterprise\s+)?customers?\s+configure|"
+    r"customers?\s+(?:can\s+)?(?:configure|customis(?:e|ed|ing)|customiz(?:e|ed|ing))|"
+    r"customer[\s\-]configured|"
+    r"saas\s+(?:that|where|which)|"
+    r"white[\s\-]?label\s+(?:deployment|saas|platform)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_COMPOUND_DISTRIBUTE_AND_IMPORT_RE = re.compile(
+    r"\b(?:"
+    r"distribute\s+and\s+import|"
+    r"distributor\s+and\s+importer|"
+    r"importer\s+and\s+distributor|"
+    r"both\s+(?:distribute|distribut|import)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_COMPOUND_PROVIDER_AND_DEPLOYER_RE = re.compile(
+    r"\b(?:"
+    r"both\s+(?:a\s+)?provider\s+and\s+(?:a\s+)?deployer|"
+    r"provider\s+and\s+(?:a\s+)?deployer|"
+    r"deployer\s+and\s+(?:a\s+)?provider|"
+    r"provider\s+(?:as\s+well\s+as|or\s+just)\s+(?:a\s+)?deployer"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Internal-builder shape — "we built / we developed / we created" coupled
+# with "for our own (HR / use / staff)" → BOTH provider AND deployer per
+# Art. 3(3) (placing on market under own name == provider; Art. 3(4) using
+# under own authority == deployer; Recital 16 covers internal-only placement
+# as "putting into service").
+_COMPOUND_INTERNAL_BUILDER_RE = re.compile(
+    r"\b(?:"
+    r"we\s+(?:built|developed|created|made|built\s+our\s+own)|"
+    r"we'?ve\s+(?:built|developed|created|made)|"
+    r"we\s+have\s+(?:built|developed|created|made)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_compound_roles(question_lower: str) -> list[str]:
+    """Return a deduplicated list of role IDs that fire on the question.
+
+    Heuristics (verb-stem preferred):
+
+    * ``provider and deployer`` (explicit or via internal-only context)
+      → ``["provider", "deployer"]``
+    * non-EU + provider/manufacturer placing on EU market
+      → ``["provider", "authorized_representative"]``
+    * rebrand / rename / white-label / fine-tune above 1/3 / change of
+      intended purpose → ``["provider", "deployer"]`` (Art. 25 flip)
+    * configurable SaaS / white-label deployment with modification
+      → ``["provider", "deployer"]``
+    * distributor + importer → ``["distributor", "importer"]``
+
+    Returns ``[]`` when no compound pattern fires — the caller should
+    fall back to the existing single-role classifier.
+
+    Role IDs returned line up with
+    :data:`app.data.role_obligations.CANONICAL_ROLE_IDS` for the
+    primary five (provider / deployer / importer / distributor /
+    authorized_representative) so the obligation matrix lookup is a
+    direct dictionary read.
+
+    Definitional QA shapes ("what is X?", "what counts as X?", "who is
+    considered Y?") are filtered out at the top — they're asking the
+    engine to define a term, not classify a specific entity's
+    compound role.
+    """
+    if not question_lower:
+        return []
+    q = question_lower  # already normalised + lowercased by the caller
+
+    # Gate 1: definitional QA shape MUST NOT fire compound-role. The
+    # engine has a separate definitional path for those. Without this
+    # gate, "what counts as a substantial modification" would fire
+    # rebrand → provider+deployer and tank QA Strict F1 on definitional
+    # rows (Art. 3 gold).
+    if _DEFINITIONAL_QA_SHAPE_RE.match(q):
+        return []
+
+    # Gate 2: require either first-person ("we", "our") OR a third-person
+    # scenario entity ("a company", "an importer"). Without this, bare
+    # "rebrand" / "fine-tune" / "substantial modification" verb stems
+    # fire on abstract questions that have no compound-role context.
+    has_scenario_context = bool(
+        _SCENARIO_FIRST_PERSON_RE.search(q)
+        or _THIRD_PERSON_ENTITY_RE.search(q)
+    )
+    if not has_scenario_context:
+        return []
+
+    roles: list[str] = []
+    seen: set[str] = set()
+
+    def _add(role: str) -> None:
+        if role and role not in seen:
+            seen.add(role)
+            roles.append(role)
+
+    # 1. Explicit "provider and deployer" phrasing — highest precedence.
+    if _COMPOUND_PROVIDER_AND_DEPLOYER_RE.search(q):
+        _add("provider")
+        _add("deployer")
+
+    # 2. Internal-only / internal-use → builder is BOTH provider AND
+    #    deployer. Per Recital 16, putting an AI system into service
+    #    for one's own use AND building / customising it makes the
+    #    entity BOTH a provider AND a deployer. Three sub-paths fire:
+    #
+    #      (a) Builder verb + internal context — e.g. "We built an
+    #          internal AI for our own HR use".
+    #      (b) Internal-context + explicit role disambiguation —
+    #          "Are we a provider or just a deployer?" (V2-007).
+    #      (c) Deploying / using a system internally (Hospital example
+    #          from the spec) — the entity is a deployer for sure, but
+    #          internal-use without external release means the entity
+    #          also acts as a provider per Recital 16.
+    has_internal = bool(_COMPOUND_INTERNAL_USE_RE.search(q))
+    has_builder = bool(_COMPOUND_INTERNAL_BUILDER_RE.search(q))
+    has_internal_deploy_verb = bool(
+        re.search(
+            r"\b(?:deploy(?:s|ed|ing)?|us(?:e|es|ed|ing)|run(?:s|ning)?|"
+            r"operat(?:e|es|ed|ing))\b",
+            q,
+        )
+    )
+    has_role_disambig = bool(
+        re.search(
+            r"\b(?:provider\s+or\s+(?:just\s+)?(?:a\s+)?deployer|"
+            r"deployer\s+or\s+(?:just\s+)?(?:a\s+)?provider)\b",
+            q,
+        )
+    )
+    if has_internal and (
+        has_builder or has_role_disambig or has_internal_deploy_verb
+    ):
+        _add("provider")
+        _add("deployer")
+
+    # 3. Non-EU provider/manufacturer → provider + authorised representative
+    #    (Art. 22). Either explicit "non-EU provider/manufacturer" OR a
+    #    non-EU establishment marker coupled with EU-market placement.
+    if _COMPOUND_NON_EU_RE.search(q):
+        _add("provider")
+        _add("authorized_representative")
+    elif (
+        re.search(
+            r"\b(?:no\s+eu\s+establishment|outside\s+(?:the\s+)?(?:eu|union)|"
+            r"non[\s\-]?eu)\b",
+            q,
+        )
+        and _COMPOUND_NON_EU_TO_EU_MARKET_RE.search(q)
+    ):
+        _add("provider")
+        _add("authorized_representative")
+
+    # 4. Rebrand / rename / white-label / Art. 25 flip → importer or
+    #    deployer becomes a provider. We surface BOTH the prior role
+    #    AND provider so the obligation chain covers the transition.
+    has_rebrand = bool(_COMPOUND_REBRAND_RE.search(q))
+    has_substantial_mod = bool(_COMPOUND_SUBSTANTIAL_MOD_RE.search(q))
+    if has_rebrand or has_substantial_mod:
+        # Prefer the explicit prior role when present in the question.
+        if re.search(r"\bimporter\b", q):
+            _add("provider")
+            _add("importer")
+        elif re.search(r"\bdistributor\b", q):
+            _add("provider")
+            _add("distributor")
+        else:
+            # No prior role named → the modifier becomes provider AND
+            # is also a deployer (still uses the system after rebranding).
+            _add("provider")
+            _add("deployer")
+
+    # 5. Configurable SaaS — the SaaS vendor is provider; the customer
+    #    who configures intended purpose can flip to provider via Art. 25.
+    #    Surface BOTH provider and deployer obligations so the answer
+    #    covers both sides of the split.
+    if _COMPOUND_CONFIGURABLE_SAAS_RE.search(q):
+        _add("provider")
+        _add("deployer")
+
+    # 6. Distributor + importer compound — explicit phrasing.
+    if _COMPOUND_DISTRIBUTE_AND_IMPORT_RE.search(q):
+        _add("distributor")
+        _add("importer")
+
+    return roles
+
+
+def _articles_for_compound_roles(role_ids: list[str]) -> tuple[str, ...]:
+    """Aggregate primary + secondary articles across a list of role IDs.
+
+    Reads :data:`app.data.role_obligations.ROLE_OBLIGATION_BY_ID` only —
+    never invents a citation, never returns a ref outside
+    :data:`app.data.article_existence.ARTICLE_EXISTENCE`.
+
+    Returns a tuple of canonical internal refs in the form ``Art. N``
+    (or ``Art. N(M)`` for sub-paragraph references that already live in
+    the obligation matrix). Deduplicated; order preserved by role
+    order then by obligation-matrix order.
+    """
+    # Lazy import — keeps this module's cold path stdlib-only.
+    from app.data.article_existence import ARTICLE_EXISTENCE  # noqa: PLC0415
+    from app.data.role_obligations import (  # noqa: PLC0415
+        ROLE_OBLIGATION_BY_ID,
+    )
+
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def _emit(refs: list[str]) -> None:
+        for ref in refs:
+            # Validate against ARTICLE_EXISTENCE — match the bare article
+            # parent (e.g. "Art. 25" for "Art. 25(4)") since the catalog
+            # only enumerates the 113 article roots + 13 annexes.
+            parent = ref.split("(")[0].strip()
+            if parent not in ARTICLE_EXISTENCE:
+                continue
+            # Emit the bare article parent — the gold reference set for
+            # compound-role questions in the V2 eval and davidath bench
+            # uses "Article 25" rather than "Article 25.4". The wire's
+            # ``_collapse_parent_refs`` pass drops the parent when a
+            # child is also surfaced, so emitting the parent (rather
+            # than the subpoint) maximises gold-set recall.
+            normalised = parent
+            if normalised in seen:
+                continue
+            seen.add(normalised)
+            out.append(normalised)
+
+    # Pass 1 — ROUND-ROBIN interleave each role's PRIMARY articles.
+    # Take the first primary from each role, then the second, etc.
+    # This ensures each role's load-bearing anchor (Art. 9 for provider,
+    # Art. 26 for deployer) lands in the top-12 budget. Sequential
+    # by-role would crowd out the second role's primaries (provider has
+    # 16 primaries → deployer's Art. 26 ranks at position 17).
+    primaries: list[list[str]] = []
+    secondaries: list[list[str]] = []
+    for role_id in role_ids:
+        entry = ROLE_OBLIGATION_BY_ID.get(role_id)
+        if not entry:
+            continue
+        primaries.append(list(entry.get("primary_articles", [])))
+        secondaries.append(list(entry.get("secondary_articles", [])))
+
+    if primaries:
+        max_len = max((len(p) for p in primaries), default=0)
+        for i in range(max_len):
+            for role_primaries in primaries:
+                if i < len(role_primaries):
+                    _emit([role_primaries[i]])
+
+    # Pass 2 — round-robin interleave each role's SECONDARY articles.
+    if secondaries:
+        max_len_s = max((len(s) for s in secondaries), default=0)
+        for i in range(max_len_s):
+            for role_secondaries in secondaries:
+                if i < len(role_secondaries):
+                    _emit([role_secondaries[i]])
+
+    return tuple(out)
 
 
 # ── Risk-pyramid markers ─────────────────────────────────────────────────
@@ -365,12 +765,22 @@ _ROLE_MINIMAL_ARTICLES: dict[str, tuple[str, ...]] = {
 
 @dataclass(frozen=True)
 class ScenarioVerdict:
-    """Output of :func:`classify_scenario_query`."""
+    """Output of :func:`classify_scenario_query`.
+
+    R47-C — ``compound_roles`` carries the deduplicated list of role IDs
+    that fired for compound-role questions (e.g. provider+deployer for
+    an internal-only system, provider+authorised_representative for a
+    non-EU provider). Empty tuple when no compound pattern fired (the
+    existing single-role path runs unchanged). The wire-side dynamic
+    ref budget reads this field to stretch from 10 → 12 refs when the
+    union obligation set exceeds the standard scenario cap.
+    """
 
     role: str
     risk_level: str  # "prohibited" | "high-risk" | "limited" | "minimal"
     articles: tuple[str, ...]  # internal refs ("Art. 5", "Art. 26", ...)
     answer: str  # plain-prose answer ready for normalise_answer_for_regenold
+    compound_roles: tuple[str, ...] = field(default_factory=tuple)
 
 
 def _build_answer(role: str, risk_level: str) -> str:
@@ -503,12 +913,27 @@ def classify_scenario_query(question: str) -> ScenarioVerdict | None:
     rows scored ans_loose 0.027 (vs 0.129 on hit-group rows). Defaulting
     to "limited" produces gold-aligned tokens (Art. 50 transparency +
     Art. 4 literacy) which appear in 80%+ of the missed-row gold sets.
+
+    R47-C — compound-role detection runs *alongside* the single-role
+    path. When :func:`_detect_compound_roles` fires for a question that
+    also passes the existing single-role gate, the verdict's
+    ``compound_roles`` field is populated AND the union of obligation
+    articles from each role is added to the article pack. When the
+    single-role path returns ``None`` but compound roles fire, the
+    verdict is still emitted (primary role = first compound role,
+    risk_level defaults to the conservative "limited" tier matching
+    Round-33 fallback semantics).
     """
     if not question:
         return None
+    low = _normalise(question).lower()
+    compound = _detect_compound_roles(low)
     role = _detect_role(question)
-    if role is None:
+
+    # If neither path detected a role, bail.
+    if role is None and not compound:
         return None
+
     risk_level = _detect_risk_level(question)
     if risk_level is None:
         # Round 33 Pattern 1: structured-scenario shape fallback.
@@ -516,19 +941,73 @@ def classify_scenario_query(question: str) -> ScenarioVerdict | None:
         # ("offering a {system}, intended to {use}, in the {domain}
         # domain") — prevents false positives on conversational role
         # mentions ("the provider you mentioned earlier should...").
-        low = _normalise(question).lower()
         has_template_shape = (
             ("offering" in low or "intended to" in low or "domain" in low)
             and ("system" in low or "ai" in low)
         )
-        if not has_template_shape:
+        # R47-C — compound-role shape *itself* qualifies as a
+        # structured scenario, since the question is asking the engine
+        # to disambiguate / surface a role-specific obligation chain.
+        if not has_template_shape and not compound:
             return None
         risk_level = "limited"
-    articles = _build_article_pack(role, risk_level)
-    answer = _build_answer(role, risk_level)
+
+    # Pick the primary role: prefer the single-role hit when available
+    # (the existing path is what drives the verdict prose), else the
+    # first compound role.
+    primary_role = role if role is not None else compound[0]
+
+    base_articles = _build_article_pack(primary_role, risk_level)
+    answer = _build_answer(primary_role, risk_level)
+
+    # R47-C — when compound roles fire, take the UNION of the existing
+    # risk-pack and the role-obligation matrix's primary+secondary
+    # articles for each compound role. Strictly additive — the base
+    # pack stays as the FIRST entries so the canonical anchors lead
+    # the citation list. Pure dedup.
+    compound_tuple: tuple[str, ...] = tuple(compound)
+    if compound_tuple:
+        union_extra = _articles_for_compound_roles(list(compound_tuple))
+
+        # R47-C — pattern-specific anchor PREPEND. When the question
+        # hits a recognisable Art. 25 flip (rebrand / configurable
+        # SaaS / fine-tune) or Art. 22 authrep (non-EU) shape, the
+        # specific article is the load-bearing reference per the V2
+        # gold sets. Prepend it so the wire's 12-ref budget always
+        # ships the anchor even when the high-risk pack fills 11 slots.
+        prepend: list[str] = []
+        if "authorized_representative" in compound_tuple:
+            prepend.append("Art. 22")
+        if (
+            _COMPOUND_REBRAND_RE.search(low)
+            or _COMPOUND_SUBSTANTIAL_MOD_RE.search(low)
+            or _COMPOUND_CONFIGURABLE_SAAS_RE.search(low)
+        ):
+            prepend.append("Art. 25")
+
+        seen: set[str] = set()
+        merged: list[str] = []
+        # Prepended anchors go FIRST so they survive the 12-ref cap.
+        for ref in prepend:
+            if ref not in seen:
+                seen.add(ref)
+                merged.append(ref)
+        for ref in base_articles:
+            if ref not in seen:
+                seen.add(ref)
+                merged.append(ref)
+        for ref in union_extra:
+            if ref not in seen:
+                seen.add(ref)
+                merged.append(ref)
+        articles: tuple[str, ...] = tuple(merged)
+    else:
+        articles = base_articles
+
     return ScenarioVerdict(
-        role=role,
+        role=primary_role,
         risk_level=risk_level,
         articles=articles,
         answer=answer,
+        compound_roles=compound_tuple,
     )

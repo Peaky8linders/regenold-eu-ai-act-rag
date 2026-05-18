@@ -29,7 +29,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from evals.bench import prod_runner
+from evals.bench import _http_retry, prod_runner
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────
@@ -68,10 +68,24 @@ def _make_canned_body(answer: str, refs: list[str]) -> dict:
 
 @contextmanager
 def _patch_urlopen(side_effect):
-    """Patch ``urllib.request.urlopen`` everywhere prod_runner reaches for it."""
+    """Patch ``urllib.request.urlopen`` for both the prod_runner and the
+    R47-D retry helper.
+
+    After the R47-D migration ``prod_runner._http_post_json`` delegates
+    to ``_http_retry.post_json_with_retry``, so the POST path calls
+    ``urlopen`` from the ``_http_retry`` module's namespace. Health
+    probes (``_http_get_json``) still use the prod_runner namespace —
+    we patch both so every test continues to exercise the right wire.
+
+    Also patches ``_http_retry.time.sleep`` to a no-op so retry backoff
+    doesn't slow the test suite by 1.5 s on every permanent-failure
+    fixture.
+    """
     with patch.object(
+        _http_retry.urllib.request, "urlopen", side_effect=side_effect
+    ) as m, patch.object(
         prod_runner.urllib.request, "urlopen", side_effect=side_effect
-    ) as m:
+    ), patch.object(_http_retry.time, "sleep", lambda _s: None):
         yield m
 
 
@@ -88,17 +102,22 @@ class TestHttpPostJson:
             return _FakeResponse(canned, status=200)
 
         with _patch_urlopen(_fake):
-            body, latency, status, err = prod_runner._http_post_json(
-                "https://example.test/ask",
-                [{"role": "user", "content": "q"}],
-                api_key=None,
-                timeout=5.0,
+            body, latency, status, err, attempts, retried = (
+                prod_runner._http_post_json(
+                    "https://example.test/ask",
+                    [{"role": "user", "content": "q"}],
+                    api_key=None,
+                    timeout=5.0,
+                )
             )
         assert err is None
         assert status == 200
         assert body["answer"] == "Article 5 prohibits subliminal AI."
         assert body["references"] == ["Article 5"]
         assert latency > 0  # some real elapsed time
+        # R47-D — first-try success = 1 attempt, no retried errors.
+        assert attempts == 1
+        assert retried == []
 
     def test_http_500_returns_error_tag(self):
         def _fake(req, timeout):
@@ -111,22 +130,30 @@ class TestHttpPostJson:
             )
 
         with _patch_urlopen(_fake):
-            body, _, status, err = prod_runner._http_post_json(
-                "https://example.test/ask",
-                [{"role": "user", "content": "q"}],
-                api_key=None,
-                timeout=5.0,
+            body, _, status, err, attempts, retried = (
+                prod_runner._http_post_json(
+                    "https://example.test/ask",
+                    [{"role": "user", "content": "q"}],
+                    api_key=None,
+                    timeout=5.0,
+                )
             )
         assert status == 500
         assert err is not None and err.startswith("http_500")
         assert body == {"answer": "", "references": [], "reasoning": None}
+        # R47-D — 500 retries the default 2x. With urlopen.side_effect
+        # raising the same HTTPError every time, all 3 attempts fail
+        # and the final error is surfaced. retried has 3 entries (the
+        # final attempt is captured too when retries are exhausted).
+        assert attempts == 3
+        assert len(retried) == 3
 
     def test_timeout_returns_timeout_tag(self):
         def _fake(req, timeout):
             raise TimeoutError("read timeout")
 
         with _patch_urlopen(_fake):
-            _, _, status, err = prod_runner._http_post_json(
+            _, _, status, err, attempts, _ = prod_runner._http_post_json(
                 "https://example.test/ask",
                 [{"role": "user", "content": "q"}],
                 api_key=None,
@@ -134,13 +161,15 @@ class TestHttpPostJson:
             )
         assert status == 0
         assert err == "timeout"
+        # R47-D — timeout is retried; permanent timeout exhausts the budget.
+        assert attempts == 3
 
     def test_urlerror_returns_error_tag(self):
         def _fake(req, timeout):
             raise urllib.error.URLError("Connection refused")
 
         with _patch_urlopen(_fake):
-            _, _, status, err = prod_runner._http_post_json(
+            _, _, status, err, attempts, _ = prod_runner._http_post_json(
                 "https://example.test/ask",
                 [{"role": "user", "content": "q"}],
                 api_key=None,
@@ -148,13 +177,17 @@ class TestHttpPostJson:
             )
         assert status == 0
         assert err is not None and err.startswith("url_error")
+        # R47-D — generic URLError ("Connection refused" as a string)
+        # is NOT classified as retryable (it's not a wrapped
+        # RemoteDisconnected / WinError 10060). One attempt only.
+        assert attempts == 1
 
     def test_invalid_json_returns_decode_tag(self):
         def _fake(req, timeout):
             return _FakeResponse(b"<html>not json</html>", status=200)
 
         with _patch_urlopen(_fake):
-            body, _, status, err = prod_runner._http_post_json(
+            body, _, status, err, attempts, _ = prod_runner._http_post_json(
                 "https://example.test/ask",
                 [{"role": "user", "content": "q"}],
                 api_key=None,
@@ -163,13 +196,15 @@ class TestHttpPostJson:
         assert status == 200
         assert err is not None and err.startswith("json_decode")
         assert body == {"answer": "", "references": [], "reasoning": None}
+        # R47-D — JSON decode failures are deterministic; never retried.
+        assert attempts == 1
 
     def test_non_dict_body_handled(self):
         def _fake(req, timeout):
             return _FakeResponse(b"[1, 2, 3]", status=200)
 
         with _patch_urlopen(_fake):
-            body, _, status, err = prod_runner._http_post_json(
+            body, _, status, err, attempts, _ = prod_runner._http_post_json(
                 "https://example.test/ask",
                 [{"role": "user", "content": "q"}],
                 api_key=None,
@@ -178,6 +213,8 @@ class TestHttpPostJson:
         assert status == 200
         assert err == "non_dict_body"
         assert body["answer"] == ""
+        # R47-D — contract violations are deterministic; never retried.
+        assert attempts == 1
 
     def test_missing_keys_get_defaults(self):
         def _fake(req, timeout):
@@ -185,7 +222,7 @@ class TestHttpPostJson:
             return _FakeResponse({"answer": "ok"}, status=200)
 
         with _patch_urlopen(_fake):
-            body, _, _, err = prod_runner._http_post_json(
+            body, _, _, err, _, _ = prod_runner._http_post_json(
                 "https://example.test/ask",
                 [{"role": "user", "content": "q"}],
                 api_key=None,

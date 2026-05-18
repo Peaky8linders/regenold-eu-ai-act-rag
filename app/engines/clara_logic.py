@@ -867,6 +867,157 @@ def _verdict(
     )
 
 
+# ── R47-C — Compound-role aware augmentation ─────────────────────────────
+
+
+_HIGH_TIER_TIERS: frozenset[str] = frozenset(
+    {"high_risk", "gpai", "gpai_systemic"}
+)
+
+
+def _compound_role_tags(tags: BooleanTags) -> list[str]:
+    """Map :class:`BooleanTags` role flags to role-obligation matrix IDs.
+
+    Returns the list of role IDs whose flag fires. Order matches the
+    role-obligation matrix priority (provider → deployer → importer →
+    distributor → authorized_representative). The mapping for
+    ``is_authorised_representative`` (British spelling on the
+    BooleanTags field) is the role-obligation matrix's canonical id
+    ``authorized_representative`` (American spelling — matches
+    ROLE_AUTHORIZED_REPRESENTATIVE in role_obligations.py).
+    """
+    out: list[str] = []
+    if tags.is_provider:
+        out.append("provider")
+    if tags.is_deployer:
+        out.append("deployer")
+    if tags.is_importer:
+        out.append("importer")
+    if tags.is_distributor:
+        out.append("distributor")
+    if tags.is_authorised_representative:
+        out.append("authorized_representative")
+    return out
+
+
+def _augment_with_compound_roles(
+    verdict: Verdict, tags: BooleanTags
+) -> Verdict:
+    """Surface union role-obligation articles when 2+ role flags fire.
+
+    Strictly additive. Gated on:
+
+    * ``len(role_ids) >= 2`` — single-role verdicts are unchanged.
+    * ``verdict.risk_tier`` in :data:`_HIGH_TIER_TIERS` — only high-risk
+      / GPAI / GPAI-systemic verdicts get the compound boost; for
+      limited / minimal / prohibited the existing single-article
+      verdict already covers the case.
+
+    Articles are appended to ``supporting_articles`` (never overwrite
+    ``primary_articles``) and deduped against the existing entries.
+    The rationale tuple gains a single sentence explaining the
+    compound-role context.
+    """
+    if verdict.risk_tier not in _HIGH_TIER_TIERS:
+        return verdict
+    role_ids = _compound_role_tags(tags)
+    if len(role_ids) < 2:
+        return verdict
+    # Lazy-import to keep the cold path stdlib-only.
+    try:
+        from app.data.article_existence import ARTICLE_EXISTENCE  # noqa: PLC0415
+        from app.data.role_obligations import (  # noqa: PLC0415
+            ROLE_OBLIGATION_BY_ID,
+        )
+    except Exception:  # noqa: BLE001
+        return verdict
+
+    # Aggregate primary + secondary article refs from each role, dedup
+    # against existing primary + supporting, validate existence.
+    existing: set[str] = set(verdict.primary_articles) | set(
+        verdict.supporting_articles
+    )
+    # CLARA uses publication form ("Article N") while role_obligations.py
+    # uses internal form ("Art. N"). Build a publication-form view for
+    # dedup compatibility, then emit publication form for new entries.
+    existing_norm: set[str] = set()
+    for ref in existing:
+        existing_norm.add(_normalise_clara_ref(ref))
+
+    additions: list[str] = []
+    for role_id in role_ids:
+        entry = ROLE_OBLIGATION_BY_ID.get(role_id)
+        if not entry:
+            continue
+        for ref in list(entry.get("primary_articles", [])) + list(
+            entry.get("secondary_articles", [])
+        ):
+            parent = ref.split("(")[0].strip()
+            # ``parent`` is in internal form ``Art. N``; convert to
+            # ``Art. N`` membership check against ARTICLE_EXISTENCE.
+            if parent not in ARTICLE_EXISTENCE:
+                continue
+            # Convert ref to publication form ("Article N") that the
+            # rest of CLARA emits.
+            pub_form = _to_publication_form(ref)
+            if not pub_form:
+                continue
+            if _normalise_clara_ref(pub_form) in existing_norm:
+                continue
+            existing_norm.add(_normalise_clara_ref(pub_form))
+            additions.append(pub_form)
+    if not additions:
+        return verdict
+    new_supporting = tuple(list(verdict.supporting_articles) + additions)
+    role_labels = ", ".join(role_ids)
+    new_rationale = tuple(
+        list(verdict.rationale)
+        + [
+            (
+                "Multiple operator-role flags fired ("
+                f"{role_labels}); the obligation chains under each role "
+                "are aggregated per the role-obligation matrix."
+            )
+        ]
+    )
+    return Verdict(
+        risk_tier=verdict.risk_tier,
+        primary_articles=verdict.primary_articles,
+        supporting_articles=new_supporting,
+        rationale=new_rationale,
+        confidence=verdict.confidence,
+    )
+
+
+_ART_INTERNAL_RE = re.compile(r"^Art\.\s*(\d+)(.*)$")
+
+
+def _to_publication_form(ref: str) -> str | None:
+    """Convert ``Art. 9`` / ``Art. 25(4)`` → ``Article 9`` / ``Article 25.4``.
+
+    Returns ``None`` on any malformed input. Mirrors the form CLARA's
+    existing rationale uses (the verdict matrix emits ``"Article 5.1.c"``
+    rather than ``"Art. 5(1)(c)"``).
+    """
+    if not ref:
+        return None
+    m = _ART_INTERNAL_RE.match(ref.strip())
+    if not m:
+        return None
+    num = m.group(1)
+    rest = m.group(2)
+    # Convert "(4)" → ".4", "(1)(a)" → ".1.a".
+    rest_pub = re.sub(r"\((\w+)\)", r".\1", rest).strip()
+    return f"Article {num}{rest_pub}"
+
+
+def _normalise_clara_ref(ref: str) -> str:
+    """Lowercase + strip-internal-spaces normalisation for dedup keys."""
+    if not ref:
+        return ""
+    return re.sub(r"\s+", " ", ref.strip().lower())
+
+
 def compute_verdict(tags: BooleanTags) -> Verdict:
     """Deterministic logic matrix — pure function, never raises.
 
@@ -1206,6 +1357,27 @@ def compute_verdict(tags: BooleanTags) -> Verdict:
         ),
         confidence=0.4,
     )
+
+
+# Public wrapper: applies the compound-role augmentation after the
+# deterministic verdict matrix runs. Kept as a thin shim around
+# :func:`compute_verdict` so the matrix itself stays a pure function
+# of ``BooleanTags`` only.
+_compute_verdict_inner = compute_verdict
+
+
+def compute_verdict(tags: BooleanTags) -> Verdict:  # type: ignore[no-redef]  # noqa: F811
+    """R47-C wrapper around the verdict matrix.
+
+    Runs the deterministic matrix first, then augments the result
+    with compound-role obligation articles when 2+ role flags fire
+    AND the verdict is high-risk / GPAI / GPAI-systemic. Strictly
+    additive — primary articles are never overwritten.
+    """
+    verdict = _compute_verdict_inner(tags)
+    if not isinstance(tags, BooleanTags):
+        return verdict
+    return _augment_with_compound_roles(verdict, tags)
 
 
 # ── Composition helper ──────────────────────────────────────────────────

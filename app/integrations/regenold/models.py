@@ -125,14 +125,23 @@ class RegenoldAskResponse(BaseModel):
         description="[Telemetry] KB_VERSION pin — see app/data/kb.py.",
     )
     retrieval_path: Literal[
-        "neo4j", "kb_fallback", "deterministic", "no_match", None
+        "neo4j",
+        "kb_fallback",
+        "deterministic",
+        "no_match",
+        "zero_retrieval_fallback",
+        None,
     ] | None = Field(
         default=None,
         description=(
             "[Telemetry] Which retrieval layer answered: neo4j (live "
             "graph), kb_fallback (KB derivation when graph cold), "
             "deterministic (rule-based answer when LLM unavailable), "
-            "no_match (closed-world refusal)."
+            "no_match (closed-world refusal), "
+            "zero_retrieval_fallback (R47-E deterministic floor — "
+            "scope=in_scope but engine returned 0 candidates; intent-"
+            "based seed articles shipped to avoid the silent "
+            "'try rephrasing' template)."
         ),
     )
     nodes_traversed: int | None = Field(

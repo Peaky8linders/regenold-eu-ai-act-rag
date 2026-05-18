@@ -23,9 +23,6 @@ import argparse
 import json
 import sys
 import threading
-import time
-import urllib.error
-import urllib.request
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -34,6 +31,7 @@ from statistics import mean, median
 from typing import Any
 
 from evals.bench import metrics as bench_metrics
+from evals.bench._http_retry import post_json_with_retry
 from evals.regenold.scenarios_multiturn_v2 import SCENARIOS as MULTITURN_V2
 from evals.regenold.scenarios_tricky_v2 import SCENARIOS as TRICKY_V2
 
@@ -59,48 +57,19 @@ def _post(
     api_key: str | None,
     history: list[dict[str, str]],
     timeout: float,
-) -> tuple[dict[str, Any], float, int, str | None]:
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "User-Agent": _USER_AGENT,
-    }
-    if api_key:
-        headers["X-Regenold-Api-Key"] = api_key
-    req = urllib.request.Request(
-        endpoint,
-        data=json.dumps(history).encode("utf-8"),
-        headers=headers,
-        method="POST",
+) -> tuple[dict[str, Any], float, int, str | None, int, list[str]]:
+    """POST with one-shot retry on transient connection failures.
+
+    R47-D — delegates to :func:`evals.bench._http_retry.post_json_with_retry`
+    so the R46 V2 ``RemoteDisconnected`` / WinError-10060 failures
+    recover on a single retry instead of polluting the scorecard.
+
+    Returns ``(body, latency_ms, http_status, error, attempts, retried_errors)``.
+    """
+    return post_json_with_retry(
+        endpoint, history, api_key, timeout,
+        user_agent=_USER_AGENT,
     )
-    empty = {"answer": "", "references": [], "reasoning": None}
-    start = time.perf_counter()
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            elapsed = (time.perf_counter() - start) * 1000.0
-            status = resp.getcode() or 200
-            raw = resp.read()
-            try:
-                body = json.loads(raw.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                return empty, elapsed, status, "json_decode"
-            if not isinstance(body, dict):
-                return empty, elapsed, status, "non_dict_body"
-            body.setdefault("answer", "")
-            body.setdefault("references", [])
-            return body, elapsed, status, None
-    except urllib.error.HTTPError as exc:
-        elapsed = (time.perf_counter() - start) * 1000.0
-        return empty, elapsed, exc.code, f"http_{exc.code}"
-    except urllib.error.URLError as exc:
-        elapsed = (time.perf_counter() - start) * 1000.0
-        return empty, elapsed, 0, f"url_error: {exc.reason}"
-    except TimeoutError:
-        elapsed = (time.perf_counter() - start) * 1000.0
-        return empty, elapsed, 0, "timeout"
-    except Exception as exc:  # noqa: BLE001
-        elapsed = (time.perf_counter() - start) * 1000.0
-        return empty, elapsed, 0, f"unexpected: {exc.__class__.__name__}"
 
 
 # ── Scoring helpers ──────────────────────────────────────────────────────
@@ -174,7 +143,12 @@ def _ref_metrics(pred_refs: list[str], expected_refs: list[str]) -> dict[str, fl
 
 
 def _score_tricky_row(
-    scenario: dict[str, Any], body: dict[str, Any], latency_ms: float, err: str | None
+    scenario: dict[str, Any],
+    body: dict[str, Any],
+    latency_ms: float,
+    err: str | None,
+    attempts: int = 1,
+    retried_errors: list[str] | None = None,
 ) -> dict[str, Any]:
     answer = body.get("answer") or ""
     refs = body.get("references") or []
@@ -198,6 +172,8 @@ def _score_tricky_row(
         "latency_ms": latency_ms,
         "is_refusal": is_refusal,
         "error": err,
+        "attempts": attempts,
+        "retried_errors": list(retried_errors or []),
     }
 
 
@@ -216,10 +192,12 @@ def run_tricky(
 
     def _worker(idx: int, scn: dict) -> tuple[int, dict]:
         history = [{"role": "user", "content": scn["question"]}]
-        body, lat, status, err = _post(endpoint, api_key, history, timeout)
+        body, lat, status, err, attempts, retried = _post(
+            endpoint, api_key, history, timeout
+        )
         if err is None and not (200 <= status < 300):
             err = f"http_{status}"
-        return idx, _score_tricky_row(scn, body, lat, err)
+        return idx, _score_tricky_row(scn, body, lat, err, attempts, retried)
 
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
         futures = [pool.submit(_worker, i, s) for i, s in enumerate(items)]
@@ -229,11 +207,15 @@ def run_tricky(
             with lock:
                 completed += 1
                 if verbose:
+                    retry_tag = (
+                        f" attempts={row['attempts']}"
+                        if row.get("attempts", 1) > 1 else ""
+                    )
                     print(
                         f"[tricky] {completed}/{len(items)} {row['id']} "
                         f"cat={row['category']:<22} "
                         f"refL={row['ref_loose']:.2f} kw={row['keyword_recall']:.2f} "
-                        f"lat={row['latency_ms']:.0f}ms"
+                        f"lat={row['latency_ms']:.0f}ms{retry_tag}"
                     )
     return results  # type: ignore[return-value]
 
@@ -246,6 +228,8 @@ def _score_multiturn_row(
     final_body: dict[str, Any],
     final_latency_ms: float,
     err: str | None,
+    attempts: int = 1,
+    retried_errors: list[str] | None = None,
 ) -> dict[str, Any]:
     answer = final_body.get("answer") or ""
     refs = final_body.get("references") or []
@@ -279,6 +263,8 @@ def _score_multiturn_row(
         "is_refusal": is_refusal,
         "is_coherent": is_coherent,
         "error": err,
+        "attempts": attempts,
+        "retried_errors": list(retried_errors or []),
     }
 
 
@@ -297,17 +283,23 @@ def run_multiturn(
         # FINAL user message's answer, not what the assistant said for the
         # canned mid-turns. The route flattens history → question internally.
         history = scn.get("turns", [])
-        body, lat, status, err = _post(endpoint, api_key, history, timeout)
+        body, lat, status, err, attempts, retried = _post(
+            endpoint, api_key, history, timeout
+        )
         if err is None and not (200 <= status < 300):
             err = f"http_{status}"
-        row = _score_multiturn_row(scn, body, lat, err)
+        row = _score_multiturn_row(scn, body, lat, err, attempts, retried)
         out.append(row)
         if verbose:
+            retry_tag = (
+                f" attempts={row['attempts']}"
+                if row.get("attempts", 1) > 1 else ""
+            )
             print(
                 f"[mt] {idx + 1}/{len(items)} {row['id']} "
                 f"turns={row['n_turns']} refL={row['ref_loose']:.2f} "
                 f"kw={row['keyword_recall']:.2f} coh={row['is_coherent']} "
-                f"lat={row['latency_ms']:.0f}ms"
+                f"lat={row['latency_ms']:.0f}ms{retry_tag}"
             )
     return out
 
@@ -351,6 +343,33 @@ def _coherence_rate(rows: list[dict[str, Any]]) -> float:
     return round(sum(1 for r in rows if r.get("is_coherent")) / len(rows), 4)
 
 
+def _retry_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Roll up per-row retry telemetry for the JSON sidecar.
+
+    Returns ``{total_retries, rows_retried, rows_retry_recovered,
+    retry_recovery_rate}``. ``recovery_rate`` is the fraction of rows
+    that needed at least one retry AND ultimately succeeded.
+    """
+    total_retries = 0
+    rows_retried = 0
+    recovered = 0
+    for r in rows:
+        n = int(r.get("attempts") or 1)
+        total_retries += max(0, n - 1)
+        if n > 1:
+            rows_retried += 1
+            if r.get("error") is None:
+                recovered += 1
+    return {
+        "total_retries": total_retries,
+        "rows_retried": rows_retried,
+        "rows_retry_recovered": recovered,
+        "retry_recovery_rate": (
+            round(recovered / rows_retried, 4) if rows_retried else 0.0
+        ),
+    }
+
+
 # ── Top-level ────────────────────────────────────────────────────────────
 
 
@@ -383,12 +402,15 @@ def run(
             "rows": tricky_rows,
             "summary": _aggregate(tricky_rows),
             "by_category": _aggregate_by_category(tricky_rows),
+            "retry_stats": _retry_stats(tricky_rows),
         },
         "multiturn": {
             "rows": mt_rows,
             "summary": _aggregate(mt_rows),
             "coherence_rate": _coherence_rate(mt_rows),
+            "retry_stats": _retry_stats(mt_rows),
         },
+        "retry_stats": _retry_stats(tricky_rows + mt_rows),
     }
     if out_dir is None:
         out_dir = Path("evals/bench/results")
@@ -447,6 +469,15 @@ def _format(payload: dict[str, Any]) -> str:
         f"p95={mt.get('latency_p95_ms', '-')}ms  "
         f"max={mt.get('latency_max_ms', '-')}ms"
     )
+    rs = payload.get("retry_stats") or {}
+    if rs.get("total_retries") or rs.get("rows_retried"):
+        out.append("")
+        out.append(
+            f"[RETRIES] total={rs.get('total_retries', 0)} "
+            f"rows={rs.get('rows_retried', 0)} "
+            f"recovered={rs.get('rows_retry_recovered', 0)} "
+            f"recovery_rate={rs.get('retry_recovery_rate', 0.0)}"
+        )
     out.append("")
     out.append(f"sidecar: {payload.get('sidecar_path', '-')}")
     return "\n".join(out)
