@@ -819,6 +819,91 @@ _AI_ACT_ANCHORS: frozenset[str] = frozenset(
         "retrain",
         "re-training",
         "retraining",
+        # ── Round-53.1-C (judge-driven scope widening) ────────────────
+        # The R52.1 LLM-as-Judge V2 live run flagged 5 V2 rows as
+        # CORRECTNESS FAILS because scope.py refused valid EU AI Act
+        # questions whose topic anchors weren't covered. The five
+        # failing shapes:
+        #   1. Borderline-prohibition carve-outs (Recital 16, Art.
+        #      5(1)(f) medical-device emotion-recognition carve-out,
+        #      Art. 5(1)(d) "individualised risk assessment" exception)
+        #   2. Digital Omnibus topic anchors (Omnibus, May 7 agreement)
+        #   3. GPAI Commission Guidelines (10²³ FLOPs, one-third
+        #      fine-tune rule)
+        #   4. Authority lifecycle nouns (multi-word forms missed by
+        #      the R34 P0 bare-verb cleanup — "designating authority",
+        #      "withdraw a designation", "designate as a notified body")
+        #   5. Cross-framework compound queries (AI Act + MDR for SaMD)
+        #
+        # Every addition below is MULTI-WORD with natural boundaries
+        # AND verified against the R34 OOS regression set + an extended
+        # off-topic stress set ("Netflix subscription", "birth
+        # certificate processing", "queen withdraw", "designate
+        # favourite musician", "Italian restaurant", "samdani is a
+        # name", "recital 16 of the opera", "withdraw a certificate of
+        # insurance", "facts and circumstances suggest fraud",
+        # "compute threshold for our GPU cluster"). Anchors that
+        # substring-matched generic English idioms ("facts and
+        # circumstances", "issue a certificate", "specific risk
+        # assessment") or short single-token forms ("samd", "recital
+        # 16" alone, bare "compute threshold") were DROPPED. Only
+        # uniquely AI-Act-shaped multi-token forms survive here.
+        #
+        # Borderline-prohibition carve-out anchors:
+        "medical device exemption",
+        "medical devices exemption",
+        "individualised risk assessment",
+        "individualized risk assessment",
+        # Digital Omnibus / Commission Guidelines anchors:
+        "digital omnibus",
+        "digital-omnibus",
+        "omnibus agreement",
+        "omnibus political agreement",
+        "one-third fine-tune",
+        "one third fine-tune",
+        "one-third fine tune",
+        "1/3 fine-tune",
+        "commission guidelines on gpai",
+        "gpai guidelines",
+        "training compute threshold",
+        "10^23 flops",
+        "10²³ flops",
+        "10**23 flops",
+        # Authority lifecycle anchors (R34 P0 dropped BARE verbs;
+        # these MULTI-WORD compounds recover the legitimate AI Act
+        # surface that pairs a notified-body / authority noun with
+        # a lifecycle verb):
+        "designate as a notified body",
+        "designate as notified body",
+        "designating authority",
+        "designating authorities",
+        "withdraw a designation",
+        "withdrawal of designation",
+        "withdrawal of a designation",
+        "suspend a designation",
+        "suspension of designation",
+        "suspension of a designation",
+        "notified body withdraw",
+        "notified body suspend",
+        "notified body suspends",
+        "notified body certificate",
+        # Cross-framework compound anchors (the AI Act side is
+        # answerable; explicit "ai act" framing keeps the gate
+        # tight against generic regulator-vs-regulator questions):
+        "ai act vs mdr",
+        "ai act and mdr",
+        "ai act and gdpr",
+        "ai act vs gdpr",
+        "ai act alongside nis2",
+        "ai act and nis2",
+        "ai act vs nis2",
+        "ai act and cra",
+        "ai act vs cra",
+        "ai act and dsa",
+        "ai act vs dsa",
+        "software as a medical device",
+        "high-risk in-vitro",
+        "high risk in vitro",
     )
 )
 
@@ -1328,6 +1413,55 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "gpai value chain": "Art. 53",
     "value chain obligation": "Art. 25",
     "value chain obligations": "Art. 25",
+    # ── Round-53.1-C (judge-driven scope widening) ────────────────────
+    # See the matching block in _AI_ACT_ANCHORS for the failure
+    # analysis. Each mapping below targets the UNAMBIGUOUS primary
+    # article for the phrase. Conservative — generic English idioms
+    # ("facts and circumstances", "issue a certificate") were dropped
+    # from the anchor list and therefore have no mapping here either.
+    #
+    # Borderline-prohibition carve-outs → Art. 5
+    "medical device exemption": "Art. 5",
+    "medical devices exemption": "Art. 5",
+    "individualised risk assessment": "Art. 5",
+    "individualized risk assessment": "Art. 5",
+    # Digital Omnibus / Commission Guidelines → Art. 51 / Art. 25 /
+    # Art. 113. "digital omnibus" already maps to Art. 113 (R9 era);
+    # the other Omnibus / GPAI-threshold compounds are added here.
+    "omnibus agreement": "Art. 113",
+    "omnibus political agreement": "Art. 113",
+    "one-third fine-tune": "Art. 25",
+    "one third fine-tune": "Art. 25",
+    "one-third fine tune": "Art. 25",
+    "1/3 fine-tune": "Art. 25",
+    "commission guidelines on gpai": "Art. 51",
+    "gpai guidelines": "Art. 51",
+    "training compute threshold": "Art. 51",
+    "10^23 flops": "Art. 51",
+    "10²³ flops": "Art. 51",
+    "10**23 flops": "Art. 51",
+    # Authority lifecycle anchors → Art. 28 (designating authorities) /
+    # Art. 31 (designation procedure) / Art. 36 (suspension /
+    # withdrawal of designation) / Art. 44 (certificate lifecycle).
+    "designate as a notified body": "Art. 31",
+    "designate as notified body": "Art. 31",
+    "designating authority": "Art. 28",
+    "designating authorities": "Art. 28",
+    "withdraw a designation": "Art. 36",
+    "withdrawal of designation": "Art. 36",
+    "withdrawal of a designation": "Art. 36",
+    "suspend a designation": "Art. 36",
+    "suspension of designation": "Art. 36",
+    "suspension of a designation": "Art. 36",
+    "notified body withdraw": "Art. 44",
+    "notified body suspend": "Art. 44",
+    "notified body suspends": "Art. 44",
+    "notified body certificate": "Art. 44",
+    # Cross-framework compound anchors → Art. 6 (high-risk
+    # classification — the AI Act side of MDR / IVDR / SaMD overlap)
+    "software as a medical device": "Art. 6",
+    "high-risk in-vitro": "Art. 6",
+    "high risk in vitro": "Art. 6",
 }
 
 

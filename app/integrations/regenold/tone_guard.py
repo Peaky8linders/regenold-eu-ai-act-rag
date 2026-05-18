@@ -35,11 +35,47 @@ _HEDGE_PATTERNS: tuple[re.Pattern[str], ...] = (
 )
 
 
-# Note: mid-sentence rewrites are not done here — the regex coverage
-# needed to keep the output grammatical is brittle. The opener-strip
-# patterns above peel ~80% of the R50 judge tone-failures cleanly,
-# and the route's existing closed-world refusal handles cases where
-# stripping leaves an empty sentence.
+# ── R53.1-A — mid-sentence first-person rewrites ──
+#
+# R52.1-B's opener strip caught ~80% of judge tone failures. The remaining
+# 6 V2 rows showed Sonnet drifting into first-person AFTER the opener —
+# "we should also note that…", "let me address…", "I would note that…".
+# Single-sentence opener-strip can't reach these because the cite anchor
+# legitimately leads (e.g. "Article 26 requires X. We should also note Y.").
+#
+# This R53.1-A rewriter is INTENTIONALLY CONSERVATIVE. Only the 7
+# highest-confidence patterns from judge data ship below; each was
+# traced against the planned test cases to verify grammatical output.
+# Quote-awareness (e.g. preserving `the 'we' in Article 3` style
+# definitional callouts) is deferred to R54 — none of the current
+# patterns will match a bare quoted pronoun because each requires a
+# following verb / modal.
+_FIRST_PERSON_REWRITES: tuple[tuple[re.Pattern[str], str], ...] = (
+    # "we should (also) note that ..." — drop the whole clause lead-in.
+    # Must come BEFORE the bare "we should" pattern (leftmost alternation
+    # would otherwise strip just "we should" and leave a stranded "note that").
+    (re.compile(r"\bwe\s+should\s+(?:also\s+)?note\s+that\s+", re.I), ""),
+    # "we should (also) <verb>" — drop the modal stack, keep the verb as imperative.
+    (re.compile(r"\bwe\s+should\s+(?:also\s+)?", re.I), ""),
+    # "we would/will recommend/suggest/advise/note (that) ..." — drop.
+    (re.compile(r"\bwe\s+(?:would|will)\s+(?:recommend|suggest|advise|note)\s+(?:that\s+)?", re.I), ""),
+    # "let me/us address/clarify/explain/note (that) ..." — drop the lead-in.
+    (re.compile(r"\blet\s+(?:me|us)\s+(?:address|clarify|explain|note)\s+(?:that\s+)?", re.I), ""),
+    # "I would note that / I would <verb> ..." — drop. The "note that"
+    # alternative must come first so the trailing "that" gets consumed.
+    (re.compile(r"\bi\s+would\s+(?:note\s+that|note|argue|recommend|suggest|advise)\s+", re.I), ""),
+    # "in our view/opinion/assessment, ..." — drop the preamble.
+    (re.compile(r"\bin\s+our\s+(?:view|opinion|assessment)[,]?\s*", re.I), ""),
+    # "(my|our) recommendation/suggestion/assessment (would be|is) (that) ..."
+    (re.compile(r"\b(?:my|our)\s+(?:recommendation|suggestion|assessment)\s+(?:would\s+be|is)\s+(?:that\s+)?", re.I), ""),
+)
+
+# Splits on sentence-ending punctuation (`.`, `!`, `?`) followed by
+# whitespace, KEEPING the delimiter via a capture group so we can
+# re-join without losing punctuation. Tolerant of multiple trailing
+# punctuation marks (e.g. `?!`) and preserves the post-punctuation
+# whitespace gap.
+_SENTENCE_SPLIT = re.compile(r"([.!?]+)(\s+|$)")
 
 
 def _capitalise_first_letter(s: str) -> str:
@@ -48,6 +84,45 @@ def _capitalise_first_letter(s: str) -> str:
     if s[0].islower():
         return s[0].upper() + s[1:]
     return s
+
+
+def _rewrite_first_person_mid_sentence(s: str) -> str:
+    """Walk each sentence; apply mid-sentence first-person rewrites.
+
+    Splits on sentence-terminal punctuation, applies each pattern in
+    `_FIRST_PERSON_REWRITES` once per sentence (so we don't recurse on
+    already-cleaned text), restores capitalisation, collapses double
+    spaces, and re-joins.
+
+    Fail-soft: on any exception, returns the input unchanged.
+    """
+    if not s:
+        return s
+    try:
+        # Tokenize into [sentence, punctuation, gap, sentence, punctuation, gap, ...]
+        # Final fragment (no terminal punct) lands as the last element.
+        parts = _SENTENCE_SPLIT.split(s)
+        rebuilt: list[str] = []
+        # parts layout: text, punct, gap, text, punct, gap, ..., text
+        i = 0
+        while i < len(parts):
+            text = parts[i]
+            cleaned = text
+            for pattern, replacement in _FIRST_PERSON_REWRITES:
+                cleaned = pattern.sub(replacement, cleaned, count=1)
+            # Collapse internal whitespace runs from clause drops.
+            cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
+            cleaned = _capitalise_first_letter(cleaned)
+            rebuilt.append(cleaned)
+            # Append punctuation + gap (if present) verbatim.
+            if i + 1 < len(parts):
+                rebuilt.append(parts[i + 1])  # punctuation
+            if i + 2 < len(parts):
+                rebuilt.append(parts[i + 2])  # whitespace gap
+            i += 3
+        return "".join(rebuilt)
+    except Exception:  # noqa: BLE001 — fail-soft per module contract
+        return s
 
 
 def enforce_tone(answer: str | None) -> str:
@@ -70,6 +145,8 @@ def enforce_tone(answer: str | None) -> str:
             if out == before:
                 break
         out = out.strip()
+        # R53.1-A — per-sentence first-person rewrite after opener strip.
+        out = _rewrite_first_person_mid_sentence(out)
         out = _capitalise_first_letter(out)
         return out
     except Exception:  # noqa: BLE001 — fail-soft

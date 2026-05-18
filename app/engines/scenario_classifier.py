@@ -198,6 +198,12 @@ _COMPOUND_DISTRIBUTE_AND_IMPORT_RE = re.compile(
     r"distribute\s+and\s+import|"
     r"distributor\s+and\s+importer|"
     r"importer\s+and\s+distributor|"
+    # R53.1-B — explicit "both X and Y" strong-signal forms with
+    # optional articles. Examples: "both an importer and a distributor",
+    # "both the importer and the distributor". The bare form
+    # ("both distributor and importer") was already matched below.
+    r"both\s+(?:a|an|the)\s+(?:importer|distributor)\s+and\s+(?:a|an|the)\s+(?:importer|distributor)|"
+    r"both\s+(?:importer|distributor)\s+and\s+(?:importer|distributor)|"
     r"both\s+(?:distribute|distribut|import)"
     r")\b",
     re.IGNORECASE,
@@ -226,6 +232,77 @@ _COMPOUND_INTERNAL_BUILDER_RE = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+
+
+# R53.1-B — strong-vs-weak compound-role signal split.
+#
+# R52.1-C cut the compound-role ref budget 12 → 8 to fix a judge-flagged
+# "citation padding" failure (prose described 1-2 articles but cited 12).
+# The tightening cost -0.17 absolute on V2 ``role_ambiguity`` keyword
+# recall because 2 rows where the gold needed the FULL provider+deployer
+# chain ("missing 'both' keyword" failure mode) silently dropped
+# critical articles like Art. 22 (authrep) or Art. 25(4).
+#
+# Split the detection into two classes:
+#
+# * **Strong** signal — the question EXPLICITLY names both roles via a
+#   literal "both X and Y" phrase. Restore the 12-ref budget because the
+#   gold answer carries the union of both role chains.
+# * **Weak** signal — any other path through ``_detect_compound_roles``
+#   (rebrand / fine-tune / authrep / configurable-SaaS / internal-builder).
+#   Keep the R52.1-C-tightened 8-ref budget because prose typically
+#   describes only 1-2 articles for these shapes.
+#
+# Literal substring match — these phrases are explicit enough that no
+# regex word-boundary handling is needed. Plural forms ("both providers
+# and deployers") are deliberately omitted: the V2 ``role_ambiguity``
+# class uses singular framing exclusively, and the plural form is more
+# often definitional ("what do both providers and deployers owe?")
+# which should NOT widen the budget.
+_COMPOUND_STRONG_PHRASES: tuple[str, ...] = (
+    # provider + deployer — primary strong-signal cluster
+    "both a provider and a deployer",
+    "both provider and deployer",
+    "both as provider and deployer",
+    "as both a provider and a deployer",
+    "as both provider and deployer",
+    "act as both provider and deployer",
+    "acts as both provider and deployer",
+    "acting as both provider and deployer",
+    "both the provider and the deployer",
+    "both a provider and deployer",
+    # importer + distributor — symmetric strong-signal cluster
+    "both an importer and a distributor",
+    "both importer and distributor",
+    "both the importer and the distributor",
+    "as both an importer and a distributor",
+    "as both importer and distributor",
+)
+
+
+def _detect_compound_role_strength(question_lower: str) -> str:
+    """Return ``"strong"`` if the question explicitly names both roles, ``"weak"`` otherwise.
+
+    Strong-signal phrases (literal substring match against
+    :data:`_COMPOUND_STRONG_PHRASES`) deserve the full 12-ref budget
+    because the gold answer carries the union of both role chains.
+    Weak signals (rebrand / fine-tune / authrep / configurable-SaaS
+    framing) get the R52.1-C-tightened 8-ref budget because the prose
+    typically describes only 1-2 articles for those shapes.
+
+    Caller MUST pass an already-lowercased + Unicode-normalised string
+    (per :func:`_normalise`) so the literal match holds.
+
+    Returns ``"weak"`` even on empty input — the route's budget
+    calculation only reads this when ``compound_roles`` is non-empty,
+    so the caller acts as the gate.
+    """
+    if not question_lower:
+        return "weak"
+    for phrase in _COMPOUND_STRONG_PHRASES:
+        if phrase in question_lower:
+            return "strong"
+    return "weak"
 
 
 def _detect_compound_roles(question_lower: str) -> list[str]:
@@ -774,6 +851,16 @@ class ScenarioVerdict:
     existing single-role path runs unchanged). The wire-side dynamic
     ref budget reads this field to stretch from 10 → 12 refs when the
     union obligation set exceeds the standard scenario cap.
+
+    R53.1-B — ``compound_role_strength`` is ``""`` when ``compound_roles``
+    is empty, ``"strong"`` when the question explicitly names both
+    roles via a literal ``both X and Y`` phrase (see
+    :data:`_COMPOUND_STRONG_PHRASES`), and ``"weak"`` otherwise. The
+    route's ref-budget calculation reads this to restore the 12-ref
+    budget for the strong class while keeping the R52.1-C-tightened
+    8-ref budget for the weak class. Defaults to empty string so
+    existing callers and test fixtures that construct ``ScenarioVerdict``
+    directly without the new field don't break.
     """
 
     role: str
@@ -781,6 +868,7 @@ class ScenarioVerdict:
     articles: tuple[str, ...]  # internal refs ("Art. 5", "Art. 26", ...)
     answer: str  # plain-prose answer ready for normalise_answer_for_regenold
     compound_roles: tuple[str, ...] = field(default_factory=tuple)
+    compound_role_strength: str = ""  # "" | "strong" | "weak"
 
 
 def _build_answer(role: str, risk_level: str) -> str:
@@ -1004,10 +1092,21 @@ def classify_scenario_query(question: str) -> ScenarioVerdict | None:
     else:
         articles = base_articles
 
+    # R53.1-B — strength signal for the route's per-row budget.
+    # Empty when no compound pattern fired; "strong" when the question
+    # explicitly names both roles via a literal "both X and Y" phrase;
+    # "weak" otherwise. The route reads this to restore the 12-ref
+    # budget only for the strong class (R52.1-C keeps weak at 8).
+    if compound_tuple:
+        compound_role_strength = _detect_compound_role_strength(low)
+    else:
+        compound_role_strength = ""
+
     return ScenarioVerdict(
         role=primary_role,
         risk_level=risk_level,
         articles=articles,
         answer=answer,
         compound_roles=compound_tuple,
+        compound_role_strength=compound_role_strength,
     )

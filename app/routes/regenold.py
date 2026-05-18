@@ -1727,7 +1727,17 @@ def regenold_eu_ai_act_ask(
     # over-shoots: prose only describes 1-2 articles but cites 12.
     # The trade is small Ref Loose drop on a few scenarios for big
     # citation-faithfulness lift across the bench.
+    #
+    # R53.1-B — per-row strong/weak split. R52.1-C's tightening cost
+    # -0.17 absolute on V2 ``role_ambiguity`` keyword recall on 2 rows
+    # where the gold answer genuinely needs the FULL provider+deployer
+    # chain. STRONG signal (question explicitly says "we are both a
+    # provider and a deployer" via literal phrase match) restores the
+    # 12-ref budget. WEAK signal (rebrand / fine-tune / authrep /
+    # configurable-SaaS / internal-builder framing) stays at 8 because
+    # prose still only describes 1-2 articles for those shapes.
     _has_compound_roles = False
+    _scenario_verdict_for_budget = None
     try:
         _scenario_verdict_for_budget = classify_scenario_query(question)
         if (
@@ -1738,7 +1748,14 @@ def regenold_eu_ai_act_ask(
     except Exception:  # noqa: BLE001 — never fail the route on budget calc
         pass
     if _has_compound_roles:
-        _effective_max_refs = 8
+        # Defensive getattr — if any test mocks ScenarioVerdict without
+        # the new field, fall back to "weak" (R52.1-C tightened 8).
+        _compound_strength = getattr(
+            _scenario_verdict_for_budget,
+            "compound_role_strength",
+            "",
+        )
+        _effective_max_refs = 12 if _compound_strength == "strong" else 8
     elif _is_scenario_question:
         _effective_max_refs = 10
     else:

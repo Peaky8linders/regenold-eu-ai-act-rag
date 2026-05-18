@@ -1080,6 +1080,80 @@ def test_route_falls_back_to_no_match_when_normalise_drops_all() -> None:
     )
 
 
+# ─── R53.1-B — compound-role per-row budget split ───────────────────────
+
+
+def test_route_strong_compound_role_gets_12_ref_budget() -> None:
+    """STRONG signal ("both X and Y" literal phrase) → 12-ref budget restored.
+
+    R52.1-C cut compound-role budget 12 → 8 after a judge "citation
+    padding" failure. R53.1-B restores 12 ONLY when the question
+    explicitly names both roles via a literal "both X and Y" phrase
+    (the V2 ``role_ambiguity`` failure mode where the gold answer
+    carries the full provider+deployer chain).
+
+    The route ships at most ``_effective_max_refs`` references; for a
+    strong compound-role question the cap is 12. We assert the
+    response carries MORE than 8 refs (the R52.1-C weak ceiling) which
+    proves the strong path restored a wider budget. Strict ``≥ 9``
+    floor protects the test from minor floor-cap edge cases.
+    """
+    settings.regenold.api_key = SecretStr("regenold-test-key")
+    c = _client()
+    r = c.post(
+        "/api/v1/regenold/eu-ai-act/ask",
+        headers={"X-Regenold-Api-Key": "regenold-test-key"},
+        json=_messages(
+            "We are both a provider and a deployer of a high-risk "
+            "CV-screening AI in our internal hiring pipeline. What "
+            "obligations apply to us across the full lifecycle?"
+        ),
+    )
+    assert r.status_code == 200, r.json()
+    body = r.json()
+    # STRONG-signal compound role lifts the budget above the
+    # R52.1-C weak ceiling of 8.
+    assert len(body["references"]) > 8, (
+        f"strong compound-role question should ship > 8 refs (12-budget "
+        f"restored); got {len(body['references'])} refs: "
+        f"{body['references']!r}"
+    )
+    # And of course bounded by the 12-ref cap.
+    assert len(body["references"]) <= 12, (
+        f"strong compound-role budget is 12; got "
+        f"{len(body['references'])} refs"
+    )
+
+
+def test_route_weak_compound_role_gets_8_ref_budget() -> None:
+    """WEAK signal (rebrand / fine-tune / authrep / configurable-SaaS) → stays at 8.
+
+    R52.1-C tightened weak compound-role budget 12 → 8 to fix the
+    "citation padding" failure mode. R53.1-B keeps that floor for the
+    weak class (prose still only describes 1-2 articles for these
+    shapes).
+    """
+    settings.regenold.api_key = SecretStr("regenold-test-key")
+    c = _client()
+    r = c.post(
+        "/api/v1/regenold/eu-ai-act/ask",
+        headers={"X-Regenold-Api-Key": "regenold-test-key"},
+        json=_messages(
+            "We rebrand a third-party CV-screening AI under our own "
+            "brand before shipping to enterprise customers. What "
+            "obligations apply to us?"
+        ),
+    )
+    assert r.status_code == 200, r.json()
+    body = r.json()
+    # WEAK compound role → tightened R52.1-C 8-ref ceiling holds.
+    assert len(body["references"]) <= 8, (
+        f"weak compound-role question should stay at the R52.1-C "
+        f"tightened 8-ref budget; got {len(body['references'])} refs: "
+        f"{body['references']!r}"
+    )
+
+
 def test_engine_prompt_no_longer_mentions_graph_context() -> None:
     """The engine system prompt should not instruct the LLM to talk about
     'graph context' / 'knowledge graph' — that wording cascades into the

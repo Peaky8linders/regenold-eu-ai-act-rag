@@ -27,6 +27,7 @@ from app.data.role_obligations import ROLE_OBLIGATION_BY_ID
 from app.engines.clara_logic import BooleanTags, compute_verdict
 from app.engines.scenario_classifier import (
     _articles_for_compound_roles,
+    _detect_compound_role_strength,
     _detect_compound_roles,
     _normalise,
     classify_scenario_query,
@@ -391,6 +392,185 @@ class TestQuestionShapeGate:
         # compound_roles tuple is empty.
         if v is not None:
             assert v.compound_roles == ()
+
+
+# ─── R53.1-B — compound_role_strength signal split ─────────────────────
+
+
+class TestCompoundRoleStrength:
+    """R53.1-B — per-row strong-vs-weak split feeding the route's budget.
+
+    STRONG signal: question explicitly names both roles via a literal
+    ``both X and Y`` phrase. Restores the 12-ref budget (R47-C).
+
+    WEAK signal: any other compound-role path (rebrand / fine-tune /
+    authrep / configurable-SaaS / internal-builder). Stays at the
+    R52.1-C-tightened 8-ref budget.
+    """
+
+    def test_compound_role_strength_strong_both_provider_deployer(self):
+        q = _lower(
+            "We are both a provider and a deployer of a high-risk "
+            "hiring AI."
+        )
+        v = classify_scenario_query(
+            "We are both a provider and a deployer of a high-risk "
+            "hiring AI."
+        )
+        assert v is not None
+        assert v.compound_roles, "strong-signal must still fire compound roles"
+        assert v.compound_role_strength == "strong"
+        # The literal helper sees the strong phrase directly.
+        assert _detect_compound_role_strength(q) == "strong"
+
+    def test_compound_role_strength_strong_both_importer_distributor(self):
+        # NOTE: this exercises BOTH the strength signal AND the existing
+        # distributor+importer compound detection path.
+        q_raw = (
+            "We act as both an importer and a distributor of an AI "
+            "system on the EU market."
+        )
+        v = classify_scenario_query(q_raw)
+        assert v is not None
+        assert v.compound_roles
+        assert v.compound_role_strength == "strong"
+        assert _detect_compound_role_strength(_lower(q_raw)) == "strong"
+
+    def test_compound_role_strength_weak_rebrand(self):
+        q_raw = (
+            "We rebrand a third-party CV-screening AI under our own "
+            "brand before shipping to enterprise customers."
+        )
+        v = classify_scenario_query(q_raw)
+        assert v is not None
+        assert v.compound_roles, "rebrand must still fire compound roles"
+        assert v.compound_role_strength == "weak"
+
+    def test_compound_role_strength_weak_fine_tune(self):
+        q_raw = (
+            "We fine-tune a pretrained CV-screening model and deploy "
+            "it for our own hiring decisions."
+        )
+        v = classify_scenario_query(q_raw)
+        assert v is not None
+        assert v.compound_roles
+        assert v.compound_role_strength == "weak"
+
+    def test_compound_role_strength_weak_internal_builder(self):
+        # R47-C V2-007 canonical — internal builder → weak (no explicit
+        # "both" phrase).
+        q_raw = (
+            "We built an internal AI for our own HR use — never "
+            "released externally. Are we a provider or just a deployer?"
+        )
+        v = classify_scenario_query(q_raw)
+        assert v is not None
+        assert v.compound_roles
+        assert v.compound_role_strength == "weak"
+
+    def test_compound_role_strength_weak_non_eu_authrep(self):
+        # V2-008 — non-EU provider implicitly compound with authrep.
+        # No literal "both" phrase → weak.
+        q_raw = (
+            "A non-EU company sells AI to EU customers but has no EU "
+            "establishment. Who is liable on the EU side?"
+        )
+        v = classify_scenario_query(q_raw)
+        assert v is not None
+        assert v.compound_roles
+        assert v.compound_role_strength == "weak"
+
+    def test_compound_role_strength_empty_for_non_compound(self):
+        # Single-role scenario — compound_roles == () so the field is
+        # empty string (the route uses this as a gate).
+        v = classify_scenario_query(
+            "We are a deployer using an AI for worker monitoring."
+        )
+        assert v is not None
+        assert v.compound_roles == ()
+        assert v.compound_role_strength == ""
+
+    def test_compound_role_strength_empty_for_definitional(self):
+        # No scenario verdict at all for a pure definitional question.
+        v = classify_scenario_query("What does Article 13 require?")
+        assert v is None
+
+    def test_compound_role_strength_strong_as_both(self):
+        q_raw = (
+            "As both a provider and a deployer of a recruitment AI, "
+            "what obligations apply to us?"
+        )
+        v = classify_scenario_query(q_raw)
+        assert v is not None
+        assert v.compound_roles
+        assert v.compound_role_strength == "strong"
+
+    def test_compound_role_strength_strong_acts_as(self):
+        # Variant — "acts as both X and Y" should match.
+        q_raw = (
+            "Our company acts as both provider and deployer of an "
+            "internal-use chatbot for HR triage."
+        )
+        v = classify_scenario_query(q_raw)
+        assert v is not None
+        assert v.compound_roles
+        assert v.compound_role_strength == "strong"
+
+    def test_compound_role_strength_helper_handles_empty(self):
+        # Helper-level safety: empty / whitespace → "weak" (no crash).
+        assert _detect_compound_role_strength("") == "weak"
+        assert _detect_compound_role_strength("   ") == "weak"
+
+    def test_compound_role_strength_helper_case_insensitive_via_caller(self):
+        # Caller normalises + lowercases — helper relies on that
+        # contract. Verify the canonical phrases match in lowercased
+        # form.
+        for phrase in (
+            "both a provider and a deployer",
+            "both provider and deployer",
+            "both the provider and the deployer",
+        ):
+            assert _detect_compound_role_strength(
+                f"prefix text {phrase} suffix text"
+            ) == "strong"
+
+
+# ─── R53.1-B — Route-level integration via classify_scenario_query ────────
+
+
+class TestCompoundRoleStrengthVerdictThreading:
+    """ScenarioVerdict's new ``compound_role_strength`` field must
+    survive the verdict construction path so the route can read it.
+    """
+
+    def test_verdict_default_is_empty_string(self):
+        # Direct construction — backwards-compat for any test fixture
+        # building a ScenarioVerdict without the new field.
+        from app.engines.scenario_classifier import ScenarioVerdict
+
+        v = ScenarioVerdict(
+            role="provider",
+            risk_level="high-risk",
+            articles=("Art. 6",),
+            answer="dummy",
+        )
+        assert v.compound_role_strength == ""
+
+    def test_verdict_carries_strong_for_explicit_phrase(self):
+        v = classify_scenario_query(
+            "We are both a provider and a deployer of a high-risk "
+            "hiring AI."
+        )
+        assert v is not None
+        assert v.compound_role_strength == "strong"
+
+    def test_verdict_carries_weak_for_implicit_compound(self):
+        v = classify_scenario_query(
+            "We rebrand a third-party AI as our own product before "
+            "shipping to customers."
+        )
+        assert v is not None
+        assert v.compound_role_strength == "weak"
 
 
 if __name__ == "__main__":  # pragma: no cover

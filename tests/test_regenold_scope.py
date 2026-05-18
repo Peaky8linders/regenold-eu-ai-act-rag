@@ -1081,3 +1081,228 @@ class TestRound3EngReviewRegressionGuards:
             "controls are emitted under the codexai: prefix; declaring an "
             "unused namespace pollutes the ontology header."
         )
+
+
+# ── R53.1-C judge-driven widening ────────────────────────────────────────
+#
+# The R52.1 LLM-as-Judge V2 live run flagged 5 V2 rows as correctness
+# failures because scope.py refused valid EU AI Act questions whose topic
+# anchors weren't covered. These tests pin BOTH the positive direction
+# (the failing-correctness shapes now flip in_scope) AND the negative
+# direction (the R34 P0 false-positive regression set still refuses).
+#
+# CRITICAL invariant: every new multi-word anchor must NOT substring-match
+# a colloquial off-topic question. The bare verbs ("suspend", "withdraw",
+# "certificate", "designate") that R34 P0 dropped MUST stay dropped.
+
+
+class TestR531CJudgeDrivenWidening:
+    """R53.1-C — positive side: judge-flagged correctness fails now in-scope."""
+
+    def test_r53_recital_16_carve_out_in_scope(self) -> None:
+        v = classify_scope(
+            "What's the Recital 16 carve-out for predictive policing?"
+        )
+        assert v.in_scope, (
+            f"Recital 16 carve-out question refused: "
+            f"{v.reason} / {v.evidence}"
+        )
+
+    def test_r53_medical_device_emotion_carve_out_in_scope(self) -> None:
+        v = classify_scope(
+            "Does the medical device exemption apply to emotion recognition?"
+        )
+        assert v.in_scope, (
+            f"Medical device exemption question refused: "
+            f"{v.reason} / {v.evidence}"
+        )
+
+    def test_r53_digital_omnibus_in_scope(self) -> None:
+        v = classify_scope(
+            "What does the Digital Omnibus political agreement change "
+            "for Annex III?"
+        )
+        assert v.in_scope, (
+            f"Digital Omnibus question refused: "
+            f"{v.reason} / {v.evidence}"
+        )
+
+    def test_r53_one_third_fine_tune_rule_in_scope(self) -> None:
+        v = classify_scope(
+            "When does the one-third fine-tune rule make a modifier "
+            "a new provider?"
+        )
+        assert v.in_scope, (
+            f"One-third fine-tune rule question refused: "
+            f"{v.reason} / {v.evidence}"
+        )
+
+    def test_r53_10_23_flops_threshold_in_scope(self) -> None:
+        v = classify_scope(
+            "What's the 10^23 FLOPs threshold from the Commission Guidelines?"
+        )
+        assert v.in_scope, (
+            f"10^23 FLOPs threshold question refused: "
+            f"{v.reason} / {v.evidence}"
+        )
+
+    def test_r53_designate_notified_body_in_scope(self) -> None:
+        v = classify_scope(
+            "How does a Member State designate as a notified body?"
+        )
+        assert v.in_scope, (
+            f"Designate as notified body question refused: "
+            f"{v.reason} / {v.evidence}"
+        )
+
+    def test_r53_withdraw_a_certificate_in_scope(self) -> None:
+        v = classify_scope(
+            "When can a notified body withdraw a certificate from a provider?"
+        )
+        assert v.in_scope, (
+            f"Notified body withdraw a certificate question refused: "
+            f"{v.reason} / {v.evidence}"
+        )
+
+    def test_r53_ai_act_vs_mdr_for_samd_in_scope(self) -> None:
+        v = classify_scope(
+            "How do the AI Act and MDR overlap for SaMD?"
+        )
+        assert v.in_scope, (
+            f"AI Act + MDR + SaMD compound question refused: "
+            f"{v.reason} / {v.evidence}"
+        )
+
+    def test_r53_software_as_medical_device_in_scope(self) -> None:
+        v = classify_scope(
+            "Is software as a medical device covered by the AI Act "
+            "high-risk regime?"
+        )
+        assert v.in_scope, (
+            f"Software as a medical device question refused: "
+            f"{v.reason} / {v.evidence}"
+        )
+
+
+class TestR531COosRegressionStillRefused:
+    """R53.1-C — negative side: the R34 P0 OOS regression set must NOT
+    leak through any of the new multi-word anchors."""
+
+    def test_r53_queen_withdraw_still_refused(self) -> None:
+        v = classify_scope("When did the queen withdraw from public life?")
+        assert not v.in_scope, (
+            f"R34 OOS regression: queen-withdraw question flipped in-scope "
+            f"({v.reason} / {v.evidence})"
+        )
+
+    def test_r53_birth_certificate_still_refused(self) -> None:
+        v = classify_scope("Birth certificate processing time in France?")
+        assert not v.in_scope, (
+            f"R34 OOS regression: birth-certificate question flipped in-scope "
+            f"({v.reason} / {v.evidence})"
+        )
+
+    def test_r53_netflix_subscription_still_refused(self) -> None:
+        v = classify_scope("I want to suspend my Netflix subscription.")
+        assert not v.in_scope, (
+            f"R34 OOS regression: Netflix-subscription question flipped in-scope "
+            f"({v.reason} / {v.evidence})"
+        )
+
+    def test_r53_favourite_musician_still_refused(self) -> None:
+        v = classify_scope("Designate as your favourite musician?")
+        assert not v.in_scope, (
+            f"R34 OOS regression: favourite-musician question flipped in-scope "
+            f"({v.reason} / {v.evidence})"
+        )
+
+    def test_r53_italian_restaurant_still_refused(self) -> None:
+        v = classify_scope("What's the best Italian restaurant in Rome?")
+        assert not v.in_scope, (
+            f"R34 OOS regression: Italian-restaurant question flipped in-scope "
+            f"({v.reason} / {v.evidence})"
+        )
+
+    def test_r53_birth_certificate_long_form_still_refused(self) -> None:
+        """The R47-E zero-retrieval-fallback companion test (Netflix /
+        birth certificate phrased differently)."""
+        v = classify_scope(
+            "How long does birth certificate processing take in France?"
+        )
+        assert not v.in_scope, (
+            f"R47-E OOS regression: birth-certificate long-form question "
+            f"flipped in-scope ({v.reason} / {v.evidence})"
+        )
+
+    def test_r53_cancel_netflix_still_refused(self) -> None:
+        v = classify_scope("How do I cancel my Netflix subscription?")
+        assert not v.in_scope, (
+            f"R47-E OOS regression: Netflix-cancel question flipped in-scope "
+            f"({v.reason} / {v.evidence})"
+        )
+
+
+class TestR531CArticleExistenceForNewKeywords:
+    """R53.1-C — every NEW KEYWORD_TO_ARTICLE entry must resolve to an
+    article (or Annex) that exists in ARTICLE_EXISTENCE. Typos in a
+    keyword target would silently ship an unknown-article reference."""
+
+    def test_r53_new_keyword_targets_all_resolve(self) -> None:
+        import re
+
+        from app.data.article_existence import ARTICLE_EXISTENCE
+        from app.integrations.regenold.scope import KEYWORD_TO_ARTICLE
+
+        # The full set of R53.1-C-added keyword targets. Hard-coded so a
+        # future edit that drops or renames one of these is caught here
+        # (not silently swallowed by iterating the dict's current state).
+        r53_keys = [
+            # Borderline-prohibition carve-outs
+            "medical device exemption",
+            "medical devices exemption",
+            "individualised risk assessment",
+            "individualized risk assessment",
+            # Digital Omnibus / Commission Guidelines
+            "omnibus agreement",
+            "omnibus political agreement",
+            "one-third fine-tune",
+            "one third fine-tune",
+            "one-third fine tune",
+            "1/3 fine-tune",
+            "commission guidelines on gpai",
+            "gpai guidelines",
+            "training compute threshold",
+            "10^23 flops",
+            "10²³ flops",
+            "10**23 flops",
+            # Authority lifecycle
+            "designate as a notified body",
+            "designate as notified body",
+            "designating authority",
+            "designating authorities",
+            "withdraw a designation",
+            "withdrawal of designation",
+            "withdrawal of a designation",
+            "suspend a designation",
+            "suspension of designation",
+            "suspension of a designation",
+            "notified body withdraw",
+            "notified body suspend",
+            "notified body suspends",
+            "notified body certificate",
+            # Cross-framework
+            "software as a medical device",
+            "high-risk in-vitro",
+            "high risk in vitro",
+        ]
+        annex_re = re.compile(r"^Annex\s+[IVX]+$")
+        for key in r53_keys:
+            assert key in KEYWORD_TO_ARTICLE, (
+                f"R53.1-C key {key!r} missing from KEYWORD_TO_ARTICLE"
+            )
+            target = KEYWORD_TO_ARTICLE[key]
+            ok = target in ARTICLE_EXISTENCE or bool(annex_re.match(target))
+            assert ok, (
+                f"R53.1-C key {key!r} maps to {target!r} which is not in "
+                f"ARTICLE_EXISTENCE and is not a valid Annex form"
+            )
