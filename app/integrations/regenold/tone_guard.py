@@ -24,7 +24,22 @@ _HEDGE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^\s*in\s+my\s+(?:opinion|view|understanding)[,\.\s]+", re.I),
     re.compile(r"^\s*to\s+(?:the\s+best\s+of\s+my|my)\s+(?:knowledge|understanding)[,\.\s]+", re.I),
     re.compile(r"^\s*from\s+what\s+i\s+(?:can\s+tell|understand|see)[,\.\s]+", re.I),
+    # R52.1-B — first-person advisory openers surfaced by R50 judge
+    # (4 rows hit "first-person casual framing"). Sonnet drifts into
+    # "I would recommend…" / "we recommend…" style on advisory shapes;
+    # the regulator-voice rubric hard-fails on first-person.
+    re.compile(r"^\s*i\s+would\s+(?:recommend|suggest|advise|note|argue)[,\.\s]+", re.I),
+    re.compile(r"^\s*we\s+(?:would\s+)?(?:recommend|suggest|advise|note)(?:\s+that)?[,\.\s]+", re.I),
+    re.compile(r"^\s*(?:let\s+me|let\s+us)\s+(?:explain|clarify|note|address)(?:\s+that)?[,\.\s]+", re.I),
+    re.compile(r"^\s*(?:my|our)\s+(?:recommendation|suggestion|advice)\s+(?:would\s+be|is)(?:\s+that)?[,\.\s]+", re.I),
 )
+
+
+# Note: mid-sentence rewrites are not done here — the regex coverage
+# needed to keep the output grammatical is brittle. The opener-strip
+# patterns above peel ~80% of the R50 judge tone-failures cleanly,
+# and the route's existing closed-world refusal handles cases where
+# stripping leaves an empty sentence.
 
 
 def _capitalise_first_letter(s: str) -> str:

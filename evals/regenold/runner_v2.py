@@ -163,7 +163,14 @@ def _score_tricky_row(
         "expected_refs": scenario.get("expected_refs", []),
         "pred_refs": refs,
         "expected_keywords": scenario.get("expected_keywords", []),
-        "answer_preview": answer[:240],
+        # R52.1 — `answer_preview` is for human eyeballing the JSON
+        # sidecar; the LLM-as-Judge reads `predicted_answer` so it sees
+        # the FULL prose (not the 600-char preview). Pre-R52.1 the
+        # judge was using `answer_preview` and hard-failing 7 rows for
+        # "truncated mid-sentence" — a sidecar artefact, not a wire
+        # bug.
+        "answer_preview": answer[:600],
+        "predicted_answer": answer,
         "ref_loose": ref["loose"],
         "ref_strict": ref["strict"],
         "ref_conciseness": ref["conciseness"],
@@ -253,7 +260,9 @@ def _score_multiturn_row(
         "expected_final_refs": expected_refs,
         "pred_refs": refs,
         "expected_keywords": expected_kw,
-        "answer_preview": answer[:240],
+        # R52.1 — see _score_tricky_row note for rationale.
+        "answer_preview": answer[:600],
+        "predicted_answer": answer,
         "ref_loose": ref["loose"],
         "ref_strict": ref["strict"],
         "ref_conciseness": ref["conciseness"],

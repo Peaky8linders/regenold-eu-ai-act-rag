@@ -32,13 +32,18 @@ def render_axis_correctness(row: dict[str, Any]) -> str:
     Points (one assertion each), tag each correct/incorrect/irrelevant
     against the gold keywords + refs, verdict pass when ≥70% correct
     AND no incorrect on a gold-keyword topic."""
+    # R52.1 — prefer `predicted_answer` (full prose) over
+    # `answer_preview` (sidecar-truncated). The pre-R52.1 V2 sidecar
+    # only carried answer_preview at 240 chars; the judge saw mid-
+    # sentence cuts and false-failed on conciseness. R52.1 V2 runner
+    # writes both fields; this dispatch picks the full version first.
     return (
         "You are an EU AI Act legal expert grading a Q&A system.\n"
         "\n"
         "QUESTION: " + (row.get("question") or "")[:600] + "\n"
         "GOLD ANSWER KEYWORDS: " + str(row.get("expected_keywords") or []) + "\n"
         "GOLD REFERENCES: " + str(row.get("expected_refs") or []) + "\n"
-        "PREDICTED ANSWER: " + (row.get("answer_preview") or row.get("predicted_answer") or "")[:1200] + "\n"
+        "PREDICTED ANSWER: " + (row.get("predicted_answer") or row.get("answer_preview") or "")[:1200] + "\n"
         "PREDICTED REFERENCES: " + str(row.get("pred_refs") or row.get("predicted_refs") or []) + "\n"
         "\n"
         "Decompose the predicted answer into Legal Data Points (one assertion each).\n"
@@ -72,7 +77,7 @@ def render_axis_refs(row: dict[str, Any], article_summaries: dict[str, str]) -> 
         "\n"
         "QUESTION: " + (row.get("question") or "")[:500] + "\n"
         "GOLD REFERENCES: " + str(expected) + "\n"
-        "PREDICTED ANSWER: " + (row.get("answer_preview") or row.get("predicted_answer") or "")[:1000] + "\n"
+        "PREDICTED ANSWER: " + (row.get("predicted_answer") or row.get("answer_preview") or "")[:1000] + "\n"
         "PREDICTED REFERENCES: " + str(pred_refs) + "\n"
         "PREDICTED REFERENCES — KB SUMMARIES:\n"
         f"{refs_block}\n"
@@ -96,7 +101,7 @@ def render_axis_refs(row: dict[str, Any], article_summaries: dict[str, str]) -> 
 def render_axis_conciseness(row: dict[str, Any]) -> str:
     """Conciseness vs gold + boilerplate detection (1-4 sentences per
     spec; hedging phrases like 'It is important to note that…' fail)."""
-    pred = (row.get("answer_preview") or row.get("predicted_answer") or "")
+    pred = (row.get("predicted_answer") or row.get("answer_preview") or "")
     gold_kw = row.get("expected_keywords") or []
     return (
         "You are auditing the conciseness of a regulatory Q&A answer.\n"
@@ -134,7 +139,7 @@ _TONE_ANCHORS = (
 def render_axis_tone(row: dict[str, Any]) -> str:
     """Anchor-example based tone judging. Hard-fail on hedging, first-
     person, marketing voice, casual tone, speculation."""
-    pred = (row.get("answer_preview") or row.get("predicted_answer") or "")
+    pred = (row.get("predicted_answer") or row.get("answer_preview") or "")
     anchor_block = "\n".join(f"  [{chr(65+i)}] {a}" for i, a in enumerate(_TONE_ANCHORS))
     return (
         "You are auditing the REGULATORY TONE of an EU AI Act Q&A answer.\n"

@@ -1718,8 +1718,15 @@ def regenold_eu_ai_act_ask(
     # R47-C — when a compound-role pattern fires (provider+deployer,
     # provider+authrep, distributor+importer, etc.) the union of the
     # role-obligation matrix routinely surfaces 11-15 refs. Stretch
-    # the scenario budget to 12 so the wire ships the full chain
-    # without dropping authrep / Art. 22 / Art. 25(4) etc.
+    # the scenario budget so the wire ships the full chain without
+    # dropping authrep / Art. 22 / Art. 25(4) etc.
+    #
+    # R52.1-C — tightened compound-role budget 12 → 8 after R50 judge
+    # flagged "citation padding — prose describes only Art. 25; Arts.
+    # 4, 9, 10, 11, 12, 13, 14… also cited". The compound-role union
+    # over-shoots: prose only describes 1-2 articles but cites 12.
+    # The trade is small Ref Loose drop on a few scenarios for big
+    # citation-faithfulness lift across the bench.
     _has_compound_roles = False
     try:
         _scenario_verdict_for_budget = classify_scenario_query(question)
@@ -1731,7 +1738,7 @@ def regenold_eu_ai_act_ask(
     except Exception:  # noqa: BLE001 — never fail the route on budget calc
         pass
     if _has_compound_roles:
-        _effective_max_refs = 12
+        _effective_max_refs = 8
     elif _is_scenario_question:
         _effective_max_refs = 10
     else:
