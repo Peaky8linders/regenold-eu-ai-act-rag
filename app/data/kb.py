@@ -751,7 +751,15 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "importer, deployer, or third party becomes a provider (and assumes "
             "all provider obligations) if they put their name/trademark on the "
             "system, make a substantial modification, or modify the intended "
-            "purpose making it high-risk."
+            "purpose making it high-risk. For general-purpose AI models, the "
+            "one-third fine-tune rule (per the Commission's 18 July 2025 GPAI "
+            "Guidelines, anchored on Art. 51) makes the downstream modifier a "
+            "new provider when additional training compute exceeds 1/3 of the "
+            "base model's compute, or 1/3 of the 10^25 FLOPs systemic threshold "
+            "(~3.3×10^24 FLOPs) when base compute is unknown. Small mid-cap "
+            "entities (per the Digital Omnibus 7 May 2026 political agreement) "
+            "now qualify for the Art. 62/63 SME-tier compliance simplifications "
+            "when they take on a new-provider role under this Article."
         ),
     },
     # ─── Title III: Conformity, CE marking, registration (Arts. 43, 47-49) ───
@@ -1271,12 +1279,16 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     "Art. 101": {
         "dimension": "gpai_specific",
         "summary": (
-            "GPAI penalties: the Commission may impose fines on GPAI model "
-            "providers of up to EUR 15 000 000 or 3 % of worldwide annual "
-            "turnover (whichever is higher) for breaches of Chapter V "
-            "obligations, supplying incorrect / incomplete / misleading "
-            "information, or failing to comply with a Commission request "
-            "for measures. Applies from 2 August 2026. Provider has right "
+            "GPAI penalties: the Commission, acting through the AI Office "
+            "(per Art. 64), may impose direct fines on GPAI model providers "
+            "of up to EUR 15 000 000 or 3 % of worldwide annual turnover "
+            "(whichever is higher) for breaches of Chapter V obligations, "
+            "supplying incorrect / incomplete / misleading information, or "
+            "failing to comply with a Commission request for measures. The "
+            "AI Office is the sole EU-level enforcement body for GPAI "
+            "providers — Member State market-surveillance authorities do "
+            "NOT have direct fining power over GPAI model providers under "
+            "this Article. Applies from 2 August 2026. Provider has right "
             "to be heard; CJEU judicial review."
         ),
     },

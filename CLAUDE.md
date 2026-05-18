@@ -2406,6 +2406,90 @@ targets the 5-row correctness floor.
   vs Sonnet/Opus untested on this rubric. Land as env-gated opt-in,
   A/B before defaulting.
 
+## Round 53.2 — KB Omnibus + GPAI Commission Guidelines stub refresh (2026-05-18)
+
+R53.1 closed the scope-gate over-refusal for Omnibus + GPAI topics
+but the answer prose still missed the gold tokens because the
+underlying KB stubs hadn't been refreshed since R27 (Art. 25 and
+Art. 101 specifically). R53.2 surgical-edits two stubs to surface the
+1/3 fine-tune rule + small-mid-cap modifier (Art. 25) and the AI
+Office direct-fining authority (Art. 101). Recon confirmed Art. 51 +
+Art. 113 already carry their R53.2 content (R27 landed it) — the
+brief over-stated the scope.
+
+### Surgical edits
+
+* **`app/data/kb.py` Art. 25 stub** — added: "For general-purpose AI
+  models, the one-third fine-tune rule (per the Commission's 18 July
+  2025 GPAI Guidelines, anchored on Art. 51) makes the downstream
+  modifier a new provider when additional training compute exceeds
+  1/3 of the base model's compute, or 1/3 of the 10^25 FLOPs systemic
+  threshold (~3.3×10^24 FLOPs) when base compute is unknown. Small
+  mid-cap entities (per the Digital Omnibus 7 May 2026 political
+  agreement) now qualify for the Art. 62/63 SME-tier compliance
+  simplifications when they take on a new-provider role under this
+  Article." Cross-references Art. 51 so retrieval surfaces both
+  anchors together for GPAI downstream-provider questions.
+
+* **`app/data/kb.py` Art. 101 stub** — added: "the Commission, acting
+  through the AI Office (per Art. 64), may impose direct fines …"
+  and disambiguation: "The AI Office is the sole EU-level enforcement
+  body for GPAI providers — Member State market-surveillance
+  authorities do NOT have direct fining power over GPAI model
+  providers under this Article." Pre-R53.2 the stub said "Commission"
+  without naming the AI Office — V2 conflict-category answers
+  consistently confused this.
+
+### Test coverage
+
+* **`tests/test_kb_stubs_filled.py::TestR532OmnibusStubContent`** —
+  7 new tests covering:
+  - Art. 25 carries `one-third fine-tune` OR `1/3` substring
+  - Art. 25 carries `small mid-cap` (case-insensitive)
+  - Art. 25 cross-references Art. 51 (anchor co-surfacing)
+  - Art. 101 carries `AI Office`
+  - Art. 101 disambiguates AI Office vs Member State market-
+    surveillance authorities
+  - Art. 51 still has `10^23 FLOPs` (R27 regression guard)
+  - Art. 113 still has `2 December 2027` + `2 August 2028` (R27
+    regression guard)
+
+### Bench parity (R53.1 → R53.2, 476 davidath items)
+
+| Axis | R53.1 | R53.2 | Δ |
+| ---- | ----- | ----- | --- |
+| Ans Strict | 0.3066 | 0.3063 | −0.0003 (noise) |
+| Ans Conciseness | 0.6153 | 0.6152 | −0.0001 (noise) |
+| Ref Loose | 0.5422 | 0.5422 | flat ✓ |
+| Ref Strict | 0.4312 | 0.4312 | flat ✓ |
+| Ref Conciseness | 0.4212 | 0.4212 | flat ✓ |
+| Regulatory Tone | 1.0000 | 1.0000 | flat ✓ |
+| Multi-turn coherence | 1.00 | 1.00 | flat ✓ |
+| Latency p50 (ms) | 13.88 | 14.91 | +1 (noise) |
+
+Effectively byte-identical. The Art. 25/101 stub edits land on V2
+omnibus + gpai categories which davidath doesn't probe. Total test
+count: 1,608 / 1,608 pass (+7 from R53.2 stub content checks; 1
+skipped R54 quote-awareness deferral).
+
+### Expected V2 live deltas
+
+| Category | R52.1-live | R53.2 projection | Wedge |
+| -------- | ---------- | ---------------- | ----- |
+| Judge correctness (omnibus rows) | partial fail | resolved | R53.2 Art. 25 + R27 Art. 113 stubs surface gold tokens |
+| Judge correctness (gpai rows) | partial fail | resolved | R53.2 Art. 25 + R27 Art. 51 stubs surface gold tokens |
+| V2 conflict-category kw | 0.17 | ~0.30+ | R53.2 Art. 101 AI-Office disambiguation removes the recurrent Commission/Member-State confusion |
+| V2 omnibus kw | sub-0.20 | ~0.35+ | R53.2 Art. 25 fine-tune rule + small-mid-cap surfaces gold tokens |
+| V2 gpai kw | 0.47 | ~0.55+ | R53.2 Art. 25 cross-reference to Art. 51 pulls both anchors together |
+
+### Why R53.2 is small (~30 LOC of stub text)
+
+The R52.1 roadmap brief projected ~200 LOC across 4 stubs. Recon
+revealed R27 (2026-05-15) had already landed the Omnibus dates +
+10²³ FLOPs threshold; only Art. 25 + Art. 101 needed surgery. The
+scope didn't shrink — the work was already done in R27. R53.2 closes
+the remaining 2 stubs.
+
 ## Eval scorecard (deterministic-fallback, local 276-scenario suite)
 
 | Round  | Pass         | p50      | p95     | avg refs | Retrieval F1 | Notes |
@@ -2431,6 +2515,7 @@ targets the 5-row correctness floor.
 | **50-live** | 56 V2 LIVE | 3,401ms  | 28,510ms | —        | tricky refL 0.67, kw **0.39**, mt coh **0.16** (+33%), mt kw **0.33** (+48%) | R50-C extended markers worked: 3 multi-turn rows (mt_v2_005/006/013) flipped non-coherent → coherent via R49-A grounded prose. Tricky kw dipped -0.03 from R49 within noise band. Near_oos held at 1.0; role_ambiguity refL held at 0.57. |
 | **51** | 476 davidath | 14.75ms  | 31.25ms | —        | RefL **0.5422** / RefS **0.4312** / mt **1.00** | Byte-identical to R50 (no complex env set). R51 wires `complex_model` (default empty) + `complex_thinking_tokens` (default 0) settings. New `question_complexity.py` classifier fires on GPAI thresholds / role-ambiguity / borderline-prohibition / conflict / cross-framework / multi-turn coreferent finals (25 unit tests + 8 routing tests pass). When deploy sets `P2P_GRAPH_RAG_COMPLEX_MODEL=claude-opus-4-7` + `P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS=8000`, the wrapper request sends `X-Claude-Max-Thinking-Tokens: 8000` to enable Claude extended thinking on ~20% of bench rows. |
 | **53.1** | 476 davidath | 20.17ms  | 38.49ms | —        | RefL **0.5422** / RefS **0.4312** / mt **1.00** | Byte-identical to R47-R51 on every rubric axis. R53.1-A `tone_guard.py` mid-sentence first-person rewriter (7 conservative patterns, sentence-walker, fail-soft, +15 tests); R53.1-B per-row strong/weak compound-role budget restore (15 literal "both X and Y" strong phrases → 12-ref budget, weak stays at R52.1-C's 8-ref budget, +16 tests); R53.1-C scope.py widening (52 new multi-word anchors + 33 KEYWORD_TO_ARTICLE entries, R34 P0 OOS regression set preserved, +17 tests). Total +65 tests; 1,598 / 1,598 pass. V2 live re-run after redeploy expected to lift judge tone 71%→~80%, correctness 32%→~38%, role_ambiguity kw 0.33→~0.50. |
+| **53.2** | 476 davidath | 14.91ms  | 42.41ms | —        | RefL **0.5422** / RefS **0.4312** / Ans Strict 0.3063 / mt **1.00** | Effectively byte-identical to R53.1 on every rubric axis (Ans Strict shifted −0.0003 within noise band). R53.2 KB stub refresh: Art. 25 surfaces the 1/3 fine-tune rule (per Commission's 18 July 2025 GPAI Guidelines) + cross-reference to Art. 51 + small-mid-cap modifier from Digital Omnibus; Art. 101 surfaces AI Office as the GPAI-direct-fine enforcer + disambiguates from Member-State market-surveillance authorities. Art. 51 + Art. 113 already had R53.2 content from R27. +7 stub-content regression tests (1,608 / 1,608 total pass). V2 omnibus / gpai / conflict categories expected to lift on next live re-run. |
 
 Δ on the local rubric is modest (-11% sentences, +12% p50 latency) because
 the local harness is binary substring-matched and already saturated. The
