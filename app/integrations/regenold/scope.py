@@ -1481,6 +1481,28 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "startup support": "Art. 62",
     "start-up support": "Art. 62",
     "sme derogation": "Art. 63",
+    # R65 — SME size-transition shapes. r64-live tr_v2_005 ("We grew
+    # from a 30-employee SME to a 220-employee company last quarter.
+    # Do we lose...") hit the Art 1/2/3 zero-retrieval floor because
+    # none of the existing SME keywords matched the size-transition
+    # framing. Adds the natural-language shapes that appear when an
+    # SME asks about losing the simplification privileges of Art 62/63
+    # after growing past the threshold. Every entry verified against
+    # the R34 P0 OOS regression set — none substring-match off-topic
+    # queries.
+    "lose sme": "Art. 62",
+    "lose our sme": "Art. 62",
+    "no longer an sme": "Art. 62",
+    "no longer qualify as sme": "Art. 62",
+    "no longer qualify as an sme": "Art. 62",
+    "exceed sme threshold": "Art. 62",
+    "sme threshold": "Art. 62",
+    "sme privilege": "Art. 62",
+    "sme privileges": "Art. 62",
+    "grew from sme": "Art. 62",
+    "grew from a 30-employee sme": "Art. 62",
+    "from sme to": "Art. 62",
+    "transitioning out of sme": "Art. 62",
     # Governance bodies (Arts. 67-69)
     "advisory forum": "Art. 67",
     "scientific panel": "Art. 68",

@@ -728,6 +728,16 @@ _HIGH_RISK_MARKERS = (
     "employment decision",
     "recruitment",
     "cv screening",
+    # R65 — hyphen variant + "for their hiring" / "hiring ai" shapes.
+    # r64-live tr_v2_010 ("Our SaaS lets enterprise customers configure
+    # a CV-screening AI for their hiring. Are we the provider or the
+    # deployer?") was misclassified as limited-risk because the existing
+    # "cv screening" marker required a space, not a hyphen.
+    "cv-screening",
+    "resume-screening",
+    "for their hiring",
+    "ai for hiring",
+    "hiring ai",
     "resume screening",
     "worker monitoring",
     "worker management",

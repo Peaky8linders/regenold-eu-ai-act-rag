@@ -2773,6 +2773,22 @@ _STAGE2_REFUSAL_MARKERS: tuple[str, ...] = (
     "please re-run the query",
     "no specific eu ai act references were matched",
     "cannot cite additional articles",
+    # R65 — four NEW markers caught in the r64-live judge correctness
+    # failures (3 V2 rows: tr_v2_001 / mt_v2_023 / mt_v2_024). Sonnet
+    # 4.6 drifted into chatbot meta-commentary ("What I can note from
+    # the framing: The references block is empty...", "The EU AI ACT
+    # REFERENCES block returned no matching provisions for this
+    # query...", "The provided EU AI Act reference block contains no
+    # matching citations for this query...") on questions where the
+    # engine actually returned non-empty refs. The existing
+    # "references block contains no" (plural) didn't catch the
+    # singular "reference block contains no" form; the "block is
+    # empty" / "returned no matching provisions" / "from the framing"
+    # shapes weren't in the marker set.
+    "references block is empty",
+    "reference block contains no",
+    "block returned no matching provisions",
+    "what i can note from the framing",
 )
 
 
