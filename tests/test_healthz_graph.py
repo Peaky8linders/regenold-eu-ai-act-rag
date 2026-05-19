@@ -140,6 +140,9 @@ class _FakeGraphClient:
         self._health_exc = health_exc
         self._read_responses = read_responses or {}
         self._read_exc = read_exc
+        # R63-F — record every Cypher passed through so tests can assert
+        # that missing-label queries never fired.
+        self.read_queries: list[str] = []
 
     @property
     def enabled(self) -> bool:
@@ -153,17 +156,31 @@ class _FakeGraphClient:
     def execute_read(
         self, query: str, parameters: dict | None = None
     ) -> list[dict[str, Any]]:
+        self.read_queries.append(query)
         if self._read_exc is not None:
             raise self._read_exc
         # Match on a discriminating fragment of each Cypher we expect.
-        if "KBMetadata" in query:
-            return self._read_responses.get("metadata", [])
+        # R63-F — ``CALL db.labels()`` probe (added so the route only
+        # counts labels that actually exist in the graph). Tests can pin
+        # a specific label set via ``read_responses["db_labels"]``;
+        # otherwise the fake reflects every label that has count data
+        # so existing tests stay green.
+        if "db.labels()" in query:
+            if "db_labels" in self._read_responses:
+                return self._read_responses["db_labels"]
+            labels = self._read_responses.get("labels", {})
+            return [{"label": label_name} for label_name in labels]
         if "RETURN type(r)" in query:
             return self._read_responses.get("edges", [])
-        # Per-label count: ``MATCH (n:<Label>) RETURN count(n) AS cnt``
+        # Per-label count check FIRST — ``MATCH (n:<Label>) RETURN
+        # count(n) AS cnt`` shares the ``KBMetadata`` substring with the
+        # metadata-row query below, so the ``(n:LABEL)`` pattern must win
+        # to avoid the count query being shadowed by the metadata branch.
         for label, rows in self._read_responses.get("labels", {}).items():
             if f"(n:{label})" in query:
                 return rows
+        if "KBMetadata" in query:
+            return self._read_responses.get("metadata", [])
         return []
 
 
@@ -444,3 +461,193 @@ def test_http_200_in_all_paths(
     r = client.get("/healthz/graph")
     assert r.status_code == 200
     assert r.json()["graph_ok"] is True
+
+
+# ─── R63-F: only-count-existing-labels (eliminates Neo4j UNRECOGNIZED noise) ──
+
+
+class TestR63FOnlyCountExistingLabels:
+    """The route must only run ``MATCH (n:LABEL) RETURN count(n)`` queries
+    for labels that actually exist in ``db.labels()``.
+
+    Pre-R63-F the route looped over the full ``_STATS_LABELS`` allowlist
+    and fired a count query per entry — for labels the Regenold seeder
+    doesn't populate (``Dimension`` / ``Question`` / ``RoadmapTask`` /
+    ``NISTSubcategory`` / ``ISOClause``), Neo4j 5.x returned a
+    ``GqlStatusObject(gql_status='01N50', classification=UNRECOGNIZED)``
+    warning per query, which the Python driver bubbles up to the
+    application logger as ``[error]``. Pure log noise, but ugly enough
+    to mask real driver errors in operator dashboards.
+    """
+
+    def test_only_existing_labels_get_counted(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``db.labels()`` reports a subset of the allowlist → only that
+        subset gets ``MATCH (n:LABEL)`` queries."""
+        monkeypatch.setenv("NEO4J_URI", "bolt://nope:7687")
+        # The graph carries only Article + Obligation + KBMetadata.
+        fake = _FakeGraphClient(
+            enabled=True,
+            health={"status": "healthy", "ping": 1},
+            read_responses={
+                "db_labels": [
+                    {"label": "Article"},
+                    {"label": "Obligation"},
+                    {"label": "KBMetadata"},
+                ],
+                "metadata": [{"seed_version": "r63f", "kb_version": "v5"}],
+                "labels": {
+                    "Article": [{"cnt": 113}],
+                    "Obligation": [{"cnt": 113}],
+                    "KBMetadata": [{"cnt": 1}],
+                    # These have count data in the fake but should NOT be
+                    # queried — they're not in db.labels().
+                    "Question": [{"cnt": 999}],
+                    "RoadmapTask": [{"cnt": 999}],
+                    "ISOClause": [{"cnt": 999}],
+                },
+                "edges": [{"rel_type": "HAS_OBLIGATION", "cnt": 113}],
+            },
+        )
+        _patch_client(monkeypatch, fake)
+
+        r = client.get("/healthz/graph")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["graph_ok"] is True
+        # Only the live labels surfaced.
+        assert set(body["node_counts"].keys()) == {
+            "Article", "Obligation", "KBMetadata",
+        }
+        # Critical: no count query fired for missing labels.
+        for missing in ("Question", "RoadmapTask", "ISOClause",
+                        "Dimension", "NISTSubcategory"):
+            for q in fake.read_queries:
+                assert f"(n:{missing})" not in q, (
+                    f"R63-F regression: route queried missing label "
+                    f"{missing!r} via {q!r}"
+                )
+
+    def test_db_labels_probe_runs_exactly_once(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The ``CALL db.labels()`` probe is the cheap discriminator;
+        firing it more than once per request would defeat the savings."""
+        monkeypatch.setenv("NEO4J_URI", "bolt://nope:7687")
+        fake = _FakeGraphClient(
+            enabled=True,
+            health={"status": "healthy", "ping": 1},
+            read_responses={
+                "db_labels": [{"label": "Article"}],
+                "metadata": [{"seed_version": "r63f", "kb_version": "v5"}],
+                "labels": {"Article": [{"cnt": 113}]},
+                "edges": [],
+            },
+        )
+        _patch_client(monkeypatch, fake)
+
+        client.get("/healthz/graph")
+        probes = [q for q in fake.read_queries if "db.labels()" in q]
+        assert len(probes) == 1, (
+            f"expected exactly 1 db.labels() probe, got {len(probes)}: "
+            f"{probes}"
+        )
+
+    def test_fallback_when_db_labels_raises(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """If ``CALL db.labels()`` fails (e.g. on a Neo4j edition that
+        doesn't expose it), the route MUST fall back to the full
+        allowlist so the response stays operationally meaningful."""
+        monkeypatch.setenv("NEO4J_URI", "bolt://nope:7687")
+        # Fake that throws on the db.labels() probe only.
+        class _LabelsProbeRaiser(_FakeGraphClient):
+            def execute_read(
+                self, query: str, parameters: dict | None = None
+            ):
+                self.read_queries.append(query)
+                if "db.labels()" in query:
+                    raise RuntimeError("simulated procedure-unavailable")
+                # Re-dispatch via super for everything else.
+                if "KBMetadata" in query:
+                    return self._read_responses.get("metadata", [])
+                if "RETURN type(r)" in query:
+                    return self._read_responses.get("edges", [])
+                for label, rows in self._read_responses.get("labels", {}).items():
+                    if f"(n:{label})" in query:
+                        return rows
+                return []
+
+        fake = _LabelsProbeRaiser(
+            enabled=True,
+            health={"status": "healthy", "ping": 1},
+            read_responses={
+                "metadata": [{"seed_version": "r63f", "kb_version": "v5"}],
+                "labels": {
+                    "Article": [{"cnt": 113}],
+                    "Obligation": [{"cnt": 113}],
+                },
+                "edges": [],
+            },
+        )
+        _patch_client(monkeypatch, fake)
+
+        r = client.get("/healthz/graph")
+        # Response still useful — fallback queries all allowlist entries.
+        body = r.json()
+        assert body["graph_ok"] is True
+        assert body["node_counts"]["Article"] == 113
+        assert body["node_counts"]["Obligation"] == 113
+        # Every allowlist label was attempted on the fallback path.
+        from app.graph.client import _STATS_LABELS
+        for label in _STATS_LABELS:
+            assert any(f"(n:{label})" in q for q in fake.read_queries), (
+                f"fallback path skipped allowlist label {label!r}"
+            )
+
+    def test_get_stats_filters_missing_labels(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``GraphClient.get_stats()`` (called on boot) has the same fix."""
+        from app.graph.client import GraphClient, _STATS_LABELS
+        from app.graph.config import GraphSettings
+
+        # Build a client without going through __init__ (which would try
+        # to spin up a real driver). The method we test only reads from
+        # execute_read, which we stub below.
+        gc = GraphClient.__new__(GraphClient)
+        gc._settings = GraphSettings()
+        gc._driver = object()  # truthy → enabled=True
+
+        seen: list[str] = []
+
+        def fake_execute_read(query, parameters=None):
+            seen.append(query)
+            if "db.labels()" in query:
+                return [{"label": "Article"}, {"label": "KBMetadata"}]
+            if "RETURN type(r)" in query:
+                return []
+            # Per-label count check BEFORE the metadata branch — both
+            # share the ``KBMetadata`` substring.
+            if "(n:Article)" in query:
+                return [{"cnt": 113}]
+            if "(n:KBMetadata)" in query:
+                return [{"cnt": 1}]
+            if "KBMetadata" in query:
+                return [{"v": "r63f-seed"}]
+            return []
+
+        monkeypatch.setattr(gc, "execute_read", fake_execute_read)
+        stats = gc.get_stats()
+
+        assert stats.healthy is True
+        assert stats.nodes_by_type.get("Article") == 113
+        assert stats.nodes_by_type.get("KBMetadata") == 1
+        # Missing labels NOT counted.
+        for missing in (_STATS_LABELS - {"Article", "KBMetadata"}):
+            assert missing not in stats.nodes_by_type
+            for q in seen:
+                assert f"(n:{missing})" not in q, (
+                    f"R63-F regression in get_stats: queried {missing!r}"
+                )

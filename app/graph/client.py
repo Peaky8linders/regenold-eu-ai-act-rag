@@ -230,10 +230,30 @@ class GraphClient:
         # ``db.stats.retrieve`` procedure isn't available on every Neo4j
         # edition, so we go straight to the per-label path which works
         # on Community as well as Enterprise).
+        #
+        # R63-F — probe ``db.labels()`` first and intersect with the
+        # allowlist. ``_STATS_LABELS`` carries 5 parent-CodexAI schema
+        # labels (Dimension / Question / RoadmapTask / NISTSubcategory /
+        # ISOClause) that the Regenold seeder doesn't populate; querying
+        # them produces Neo4j ``UNRECOGNIZED`` notification warnings on
+        # every ``/healthz/graph`` request. ``db.labels()`` returns only
+        # labels that currently exist in the database, so the intersection
+        # never queries a non-existent label.
+        existing_labels: set[str] = set()
+        try:
+            rows = self.execute_read("CALL db.labels() YIELD label RETURN label")
+            existing_labels = {r["label"] for r in rows if r.get("label")}
+        except Exception as exc:  # noqa: BLE001 — fall back to full allowlist
+            # On any failure we still want a stats payload; the warnings
+            # are cosmetic, not load-bearing.
+            logger.debug("graph_stats_db_labels_failed error=%s", exc)
+            existing_labels = set(_STATS_LABELS)
+
         nodes_by_type: dict[str, int] = {}
-        for label in _STATS_LABELS:
+        for label in sorted(_STATS_LABELS & existing_labels):
             try:
-                # Labels are from a hardcoded allowlist, not user input.
+                # Labels are from a hardcoded allowlist ∩ live db.labels()
+                # — never from user input.
                 result = self.execute_read(
                     f"MATCH (n:{label}) RETURN count(n) AS cnt"
                 )

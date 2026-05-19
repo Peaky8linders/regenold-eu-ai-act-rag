@@ -736,8 +736,27 @@ def healthz_graph() -> dict[str, object]:
     except Exception as exc:  # noqa: BLE001
         logger.debug("healthz_graph seed_version probe failed: %s", exc)
 
+    # R63-F — probe ``db.labels()`` first and intersect with the
+    # allowlist. ``_STATS_LABELS`` carries 5 parent-CodexAI schema labels
+    # (Dimension / Question / RoadmapTask / NISTSubcategory / ISOClause)
+    # that the Regenold seeder doesn't populate; querying them produces
+    # Neo4j ``UNRECOGNIZED`` notification warnings on every probe.
+    # ``CALL db.labels()`` returns only labels that exist in the graph
+    # right now, so the intersection never queries a missing label.
+    # On any failure we fall back to the full allowlist — the warnings
+    # are cosmetic, not load-bearing.
+    existing_labels: set[str] = set()
+    try:
+        label_rows = client.execute_read(
+            "CALL db.labels() YIELD label RETURN label"
+        )
+        existing_labels = {r["label"] for r in label_rows if r.get("label")}
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("healthz_graph db.labels() probe failed: %s", exc)
+        existing_labels = set(_STATS_LABELS)
+
     node_counts: dict[str, int] = {}
-    for label in _STATS_LABELS:
+    for label in sorted(_STATS_LABELS & existing_labels):
         try:
             rows = client.execute_read(
                 f"MATCH (n:{label}) RETURN count(n) AS cnt"
