@@ -2616,3 +2616,117 @@ class TestR62ZeroRetrievalTopicExtensions:
             assert target in ARTICLE_EXISTENCE, (
                 f"R62 extension {p!r} → {target!r} not in catalog"
             )
+
+
+class TestR63ALivePortionAnchorInheritance:
+    """R63-A — prior-turn anchor inheritance in retrieval.
+
+    Pre-R63-A, ``_deterministic_parse`` scanned the FULL flattened
+    question (history + live) for entity extraction, so multi-turn
+    finals where the live topic SHIFTS away from the prior-turn
+    context got prior-turn entities (Art. 6, Annex I) instead of the
+    live-question topic (Art. 49, Art. 70). mt_v2_001 was the canonical
+    failure mode: refL=0 with pred_refs=[Art. 6, Annex I, Annex III, ...]
+    when gold was [Art. 49, Art. 26, Art. 70].
+
+    Fix: when the flatten marker is present, also scan the live-portion
+    for TOPIC_KEYWORD_EXTENSIONS matches and PREPEND them to the entity
+    list. Live-portion topic gets retrieval priority over prior-turn
+    bleed.
+    """
+
+    def test_live_topic_extension_prepends_when_marker_present(self) -> None:
+        """mt_v2_001 reproduction: prior turns establish hospital +
+        Art. 6(1) high-risk; live final asks about registration. The
+        live-portion topic should land Art. 49 + Art. 70 at the front
+        of the entity list, ahead of the prior-turn bleed."""
+        from app.engines.graph_rag import _deterministic_parse
+        flattened = (
+            "Conversation so far:\n"
+            "user: We are a hospital deploying an AI-based medical-imaging "
+            "triage system from a CE-marked vendor.\n"
+            "assistant: Understood — that system is regulated as a medical "
+            "device under the MDR and, since it is safety-related AI listed "
+            "in Annex I, is also high-risk under Article 6(1) of the AI Act.\n"
+            "user: Which regulator do we register with under the AI Act side?\n"
+            "\n"
+            "Latest question:\n"
+            "Which regulator do we register with under the AI Act side?"
+        )
+        q = _deterministic_parse(flattened)
+        # Art. 49 and Art. 70 must appear BEFORE the prior-turn Art. 6.
+        # We check the FIRST FEW entities for both refs.
+        first_few = q.entities[:5]
+        assert "Art. 49" in first_few, (
+            f"R63-A: Art. 49 (registration) missing from front of "
+            f"entity list. Got: {q.entities[:10]}"
+        )
+        assert "Art. 70" in first_few, (
+            f"R63-A: Art. 70 (competent authority) missing from front of "
+            f"entity list. Got: {q.entities[:10]}"
+        )
+        # Sanity — Art. 49 / Art. 70 must lead Art. 6 (prior-turn bleed
+        # comes last).
+        if "Art. 6" in q.entities:
+            assert q.entities.index("Art. 49") < q.entities.index("Art. 6"), (
+                f"R63-A: Art. 49 should precede prior-turn Art. 6. "
+                f"Got: {q.entities[:10]}"
+            )
+
+    def test_single_turn_byte_identical_no_marker(self) -> None:
+        """Single-turn callers (no ``"Latest question:\\n"`` marker) must
+        get the pre-R63-A behaviour byte-identically — no spurious topic
+        extensions inserted."""
+        from app.engines.graph_rag import _deterministic_parse
+        q = _deterministic_parse("What does Article 13 require?")
+        assert q.entities == ["Art. 13"], (
+            f"R63-A: single-turn entity extraction regressed. "
+            f"Got: {q.entities}"
+        )
+
+    def test_live_portion_no_topic_match_no_prepend(self) -> None:
+        """When the live portion has no topic-extension match, the entity
+        list is unchanged (only prior-turn / regex entities)."""
+        from app.engines.graph_rag import _deterministic_parse
+        flattened = (
+            "Conversation so far:\n"
+            "user: We are deploying an AI system under Article 13.\n"
+            "\n"
+            "Latest question:\n"
+            "Tell me more about the obligations."
+        )
+        q = _deterministic_parse(flattened)
+        # Art. 13 from prior-turn regex; no topic-keyword matches in live.
+        assert "Art. 13" in q.entities
+
+    def test_r63a_new_register_variants_present(self) -> None:
+        """R63-A added 3 register-variant phrasings (do we register /
+        where do we register / where to register) to handle mt_v2_001's
+        word order. Verify they're in the map."""
+        from app.engines.zero_retrieval_fallback import _TOPIC_KEYWORD_EXTENSIONS
+        kvs = dict(_TOPIC_KEYWORD_EXTENSIONS)
+        for phrase in ("do we register", "where do we register", "where to register"):
+            assert kvs.get(phrase) == "Art. 49", (
+                f"R63-A variant {phrase!r} missing or wrong target"
+            )
+
+    def test_r63a_rfind_uses_last_marker(self) -> None:
+        """If the prior assistant turn happens to quote the marker text,
+        rfind should anchor on the FINAL occurrence (defends against
+        injection-style edge cases)."""
+        from app.engines.graph_rag import _deterministic_parse
+        flattened = (
+            "Conversation so far:\n"
+            "user: I asked 'Latest question:\\nWhat about Article 13?' earlier.\n"
+            "assistant: I answered with the transparency definition.\n"
+            "\n"
+            "Latest question:\n"
+            "Which regulator do we register with?"
+        )
+        q = _deterministic_parse(flattened)
+        # The FINAL "Latest question:" segment is the registration one,
+        # so Art. 49 + Art. 70 should fire.
+        first_few = q.entities[:5]
+        assert "Art. 49" in first_few or "Art. 70" in first_few, (
+            f"R63-A rfind precedence broken. Got: {q.entities[:10]}"
+        )

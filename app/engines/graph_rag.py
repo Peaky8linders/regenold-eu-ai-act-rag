@@ -1266,6 +1266,58 @@ def _deterministic_parse(question: str) -> GraphQuery:
         if kw in q_lower and art_ref not in entities:
             entities.append(art_ref)
 
+    # R63-A — prior-turn anchor inheritance fix.
+    #
+    # When the route flattens multi-turn history into the canonical
+    # ``"Conversation so far:\n...\n\nLatest question:\n<live>"`` shape,
+    # the entity-extraction regexes + KEYWORD_ENTITY_MAP scan above match
+    # tokens from BOTH the prior turns AND the live question. For shapes
+    # where the live final-turn topic SHIFTS away from the prior-turn
+    # context — e.g. mt_v2_001's prior turns establish "hospital +
+    # CE-marked medical-imaging AI + high-risk + Art. 6(1)" and the
+    # final turn asks "Which regulator do we register with under the AI
+    # Act side?" — the prior-turn entities (Art. 6, Annex I, Annex III)
+    # win retrieval and the live-question topic (registration, regulator)
+    # is invisible.
+    #
+    # Fix: when the flatten marker is present, ALSO scan the live-portion
+    # against the zero-retrieval fallback's TOPIC_KEYWORD_EXTENSIONS map
+    # — which encodes exactly the "topic-shift" semantics we need (register
+    # / regulator / FLOPs / FRIA / serious-incident / etc.) — and PREPEND
+    # any matches to the entity list. Live-portion matches get retrieval
+    # priority over prior-turn bleed.
+    #
+    # Non-multi-turn callers: the marker is absent → no-op. Existing
+    # extraction behaviour is byte-identical.
+    live_question_section: str | None = None
+    if "Latest question:\n" in question:
+        # ``rfind`` matches R60.1's flatten-marker handling — if the prior
+        # assistant turn happened to quote the marker text, the live
+        # portion is still anchored on the FINAL occurrence.
+        idx = question.rfind("Latest question:\n")
+        live_question_section = question[idx + len("Latest question:\n"):]
+        live_lower = live_question_section.lower()
+        try:
+            from app.engines.zero_retrieval_fallback import (  # noqa: PLC0415
+                _TOPIC_KEYWORD_EXTENSIONS,
+            )
+            live_prepends: list[str] = []
+            for kw, art_ref in _TOPIC_KEYWORD_EXTENSIONS:
+                if kw in live_lower and art_ref not in entities:
+                    live_prepends.append(art_ref)
+            if live_prepends:
+                # Prepend so the live-question topic dominates the
+                # ranking budget (5 for QA, 10/12 for scenarios).
+                # Dedup against existing entities defensively.
+                seen_existing = set(entities)
+                merged = [
+                    e for e in live_prepends if e not in seen_existing
+                ]
+                merged.extend(entities)
+                entities = merged
+        except Exception as exc:  # noqa: BLE001 — fail-soft on import error
+            logger.debug("r63a_live_topic_extensions_failed: %s", exc)
+
     # BM25 fallback over the obligation-row corpus. Fires ONLY when the
     # curated keyword + regex paths produced zero entities — at that
     # point, the question has no direct anchor and we'd otherwise return

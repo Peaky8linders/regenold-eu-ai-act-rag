@@ -157,6 +157,14 @@ _TOPIC_KEYWORD_EXTENSIONS: tuple[tuple[str, str], ...] = (
     ("register the system", "Art. 49"),
     ("register the ai system", "Art. 49"),
     ("register the model", "Art. 49"),
+    # R63-A — variant phrasings that mt_v2_001 used ("regulator do
+    # we register" / "where do we register") that didn't substring-
+    # match the existing R62 entries. Each phrase requires "register"
+    # + a contextually narrow modifier so generic "do we register
+    # the company for VAT" doesn't false-positive.
+    ("do we register", "Art. 49"),
+    ("where do we register", "Art. 49"),
+    ("where to register", "Art. 49"),
     ("which regulator", "Art. 70"),
     ("competent authority", "Art. 70"),
 )
