@@ -2437,6 +2437,7 @@ def _retrieve_from_kb(
     from app.data.kb import (
         EC_CHECKER_OBLIGATION_MAP,
         MATURITY_DIMENSIONS,
+        _KBEntry,
         get_dimensions_for_risk_level,
     )
 
@@ -2463,12 +2464,24 @@ def _retrieve_from_kb(
     # transcription) hit this: entities = [Annex III, Art. 5] both
     # produced id ``kb-risk_mgmt`` and only Annex III survived to the
     # wire references.
+    #
+    # R63-C — multi-stub _KBEntry (Art. 5, Art. 50, Art. 53, Art. 56)
+    # gets specificity-aware stub selection: if the question carries a
+    # marker (e.g. "carve-out", "open-weights", "watermark", "training-
+    # data summary"), the engine surfaces ONLY the matching stub
+    # instead of the full joined prose (which downstream prose
+    # stitchers clip to ~400 chars, losing later stubs). Plain dict
+    # entries are unaffected.
     for entity in query.entities:
         mapping = EC_CHECKER_OBLIGATION_MAP.get(entity)
         if mapping:
+            if isinstance(mapping, _KBEntry):
+                stub_text = mapping.select_best_stub(query.raw_question or "")
+            else:
+                stub_text = mapping["summary"]
             context.obligations.append({
                 "id": f"kb-{mapping['dimension']}-{entity}",
-                "text": mapping["summary"],
+                "text": stub_text,
                 "article": entity,
             })
 

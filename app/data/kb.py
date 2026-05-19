@@ -400,6 +400,16 @@ class _KBEntry(dict):
 
     Used only by the 4 R38-touched entries (Art. 5, 50, 53, 56). All
     other 100+ entries stay as plain ``dict[str, str]`` literals.
+
+    R63-C — specificity-aware stub selection. When a caller passes a
+    question via ``select_best_stub(question)``, the entry scores each
+    stub on (a) token overlap with the question and (b) presence of
+    specificity markers ("carve-out", "open-weights", "watermark",
+    "training-data summary", "sub-threshold", etc.). A stub clearly
+    wins when overlap margin ≥ 2 over runner-up OR a specificity
+    marker matches. When no stub wins, ``select_best_stub`` returns
+    the joined ``summary`` string (the legacy default) — so callers
+    that don't pass a question see byte-identical behaviour.
     """
 
     __slots__ = ("_stubs",)
@@ -413,6 +423,183 @@ class _KBEntry(dict):
 
     def __iter__(self):  # type: ignore[override]
         return iter(self._stubs)
+
+    @property
+    def stubs(self) -> tuple[str, ...]:
+        """The original tuple of per-stub strings."""
+        return self._stubs
+
+    def select_best_stub(self, question: str) -> str:
+        """Return the best-matching stub for ``question``, or the
+        joined ``summary`` when no stub clearly wins.
+
+        R63-C — specificity-aware selection for multi-stub entries
+        (Art. 5 has 6 stubs, Art. 50 has 2, Art. 53 has 3, Art. 56
+        has 2). Downstream prose stitchers (``grounded_prose``) clip
+        the joined summary to ~400 chars and only ever surface stub
+        #0 even when the question explicitly asks about a later
+        stub (e.g. Art. 53(2) open-weights carve-out vs general
+        Art. 53 GPAI obligations).
+
+        Algorithm:
+
+        1. Single-stub entry → return its prose (no selection
+           ambiguity possible).
+        2. Empty / whitespace question → return joined summary
+           (backward-compat default).
+        3. Tokenize question (drop stopwords + article-id tokens
+           like ``art``, ``article``, ``annex``).
+        4. For each stub:
+           - score = count of question tokens that appear in the
+             stub's tokenized form;
+           - +5 boost per specificity marker (``_SPECIFICITY_MARKERS``)
+             that appears in BOTH the question and the stub.
+        5. If best score > runner-up by ≥ 2 OR any specificity-marker
+           boost fired on the winner → return only the winning stub.
+        6. Otherwise → return the joined summary (broad question,
+           no clear specialization signal).
+        """
+        if len(self._stubs) <= 1:
+            return self._stubs[0] if self._stubs else ""
+
+        joined = self["summary"]
+        q = (question or "").strip().lower()
+        if not q:
+            return joined
+
+        # Tokenize the question. Drop article-id noise + common
+        # stopwords so they don't anchor every stub equally.
+        q_tokens = _tokenize_for_stub_selection(q)
+        if not q_tokens:
+            return joined
+
+        # Score each stub.
+        scores: list[int] = []
+        marker_hits: list[int] = []
+        for stub in self._stubs:
+            stub_low = stub.lower()
+            stub_tokens = _tokenize_for_stub_selection(stub_low)
+            overlap = sum(1 for tok in q_tokens if tok in stub_tokens)
+            # Specificity marker boost — both question AND stub must
+            # mention the marker to avoid false-promotion (otherwise
+            # a generic question would pick whichever stub happens to
+            # carry the marker in passing).
+            mhits = sum(
+                1
+                for marker in _SPECIFICITY_MARKERS
+                if marker in q and marker in stub_low
+            )
+            scores.append(overlap + 5 * mhits)
+            marker_hits.append(mhits)
+
+        # Find the winner.
+        best_idx = max(range(len(scores)), key=lambda i: scores[i])
+        best_score = scores[best_idx]
+        # Runner-up = highest score among non-winners; 0 if only one stub.
+        runner_up = max(
+            (scores[i] for i in range(len(scores)) if i != best_idx),
+            default=0,
+        )
+
+        # Winning conditions (R63-C):
+        # - margin ≥ 2 over the runner-up (clear token-overlap winner),
+        # - OR a specificity marker fired (intent signal strong enough
+        #   to override broad-question default).
+        marker_fired_on_winner = marker_hits[best_idx] > 0
+        margin_clear = (best_score - runner_up) >= 2
+
+        if best_score > 0 and (marker_fired_on_winner or margin_clear):
+            return self._stubs[best_idx]
+
+        # No clear winner — preserve legacy joined behaviour.
+        return joined
+
+
+# ── R63-C stub-selection helpers ─────────────────────────────────────────
+#
+# Stopword list intentionally narrow — we want to keep load-bearing
+# regulatory tokens (provider, deployer, systemic, carve-out, etc.) in
+# the question token set so they can match the right stub. The article
+# ID noise tokens (``art``, ``article``, ``annex``) and pure function
+# words are dropped.
+
+_STUB_SELECTION_STOPWORDS: frozenset[str] = frozenset({
+    # Article-id noise — these match every stub equally.
+    "art", "article", "annex", "ec", "eu", "the", "of", "and", "or",
+    "a", "an", "is", "are", "was", "were", "be", "been", "being",
+    "to", "for", "in", "on", "at", "by", "with", "from", "as", "that",
+    "this", "these", "those", "it", "its", "we", "our", "you", "your",
+    "do", "does", "did", "have", "has", "had", "can", "could", "may",
+    "might", "must", "should", "would", "will", "shall", "what",
+    "when", "where", "which", "who", "whom", "why", "how",
+    "if", "but", "not", "no", "yes", "any", "all", "some",
+})
+
+# Multi-word specificity markers that signal a specific sub-stub
+# intent (carve-outs, watermarking, training-data template, FOSS, etc.).
+# When BOTH the question and a stub carry the same marker, that stub
+# wins (5× boost in the scoring above). Markers are substring-matched
+# against lowercased text (so "carve-out" and "carve out" both fire
+# via two entries below).
+_SPECIFICITY_MARKERS: tuple[str, ...] = (
+    # Carve-outs / exceptions
+    "carve-out", "carve out", "carveout",
+    "exemption", "exempt",
+    "does not apply", "not apply", "do not apply",
+    "exception", "exclusion",
+    # Open-source / open-weights (Art. 53(2) FOSS carve-out)
+    "open-weights", "open weights",
+    "open-source", "open source",
+    "free and open-source", "free and open source", "foss",
+    # Training-data + GPAI specifics (Art. 53(1)(d))
+    "training-data summary", "training data summary",
+    "training-data template", "training data template",
+    "template",
+    "grandfathered", "grandfather",
+    # Watermark / generative output marking (Art. 50(2))
+    "watermark", "watermarking",
+    "generative output", "ai-generated content",
+    "labelled", "labelling", "labeling", "marking",
+    "deepfake",
+    # Sub-threshold / threshold (GPAI thresholds, etc.)
+    "sub-threshold", "below threshold", "below-threshold",
+    "threshold",
+    # Systemic risk (Art. 51 / Art. 53(2) interaction)
+    "systemic", "systemic-risk",
+    # Real-time biometric carve-out (Art. 5(1)(h))
+    "real-time biometric", "real time biometric",
+    "law enforcement", "law-enforcement",
+    # Emotion recognition carve-out (Art. 5(1)(f))
+    "emotion recognition", "emotion-recognition",
+    "medical", "safety",
+    # Social-scoring carve-out (Art. 5(1)(c))
+    "social scoring", "social-scoring",
+    # Codes of practice (Art. 56)
+    "code of practice", "codes of practice",
+    "signatory", "signatories",
+    # Nudification / CSAM (Art. 5 Digital Omnibus addition)
+    "nudification", "csam", "non-consensual",
+)
+
+
+def _tokenize_for_stub_selection(text: str) -> set[str]:
+    """Lowercased, stop-word-filtered token set for stub scoring.
+
+    Splits on non-word characters, drops tokens ≤ 2 chars (to avoid
+    matching every "a"/"is"/"to") and members of
+    :data:`_STUB_SELECTION_STOPWORDS`. Returns a set so duplicate
+    tokens in a long stub don't bias the overlap score.
+    """
+    import re as _re
+    raw = _re.findall(r"[a-z0-9]+", text.lower())
+    out: set[str] = set()
+    for tok in raw:
+        if len(tok) <= 2:
+            continue
+        if tok in _STUB_SELECTION_STOPWORDS:
+            continue
+        out.add(tok)
+    return out
 
 
 EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {

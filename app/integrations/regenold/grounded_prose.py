@@ -99,19 +99,32 @@ def _user_facing(internal_ref: str) -> str:
     return s
 
 
-def _kb_summary(internal_ref: str) -> str | None:
+def _kb_summary(internal_ref: str, question: str = "") -> str | None:
     """Return the KB stub summary for ``internal_ref``, or ``None``
     when no stub is registered.
 
     Both legacy dict-shape entries and ``_KBEntry`` instances expose a
     ``summary`` attribute / key — we treat them uniformly.
+
+    R63-C — when ``question`` is non-empty AND the entry is a
+    ``_KBEntry`` with multiple stubs, the specificity-aware selector
+    on ``_KBEntry.select_best_stub`` picks the best-matching stub
+    (e.g. Art. 53(2) FOSS carve-out vs Art. 53 general GPAI prose).
+    When ``question`` is empty, behaviour is byte-identical to the
+    pre-R63-C path (returns the joined ``summary``).
     """
     entry = EC_CHECKER_OBLIGATION_MAP.get(internal_ref)
     if entry is None:
         return None
-    if isinstance(entry, dict):
+    # R63-C — specificity-aware selection on _KBEntry only when a
+    # question is supplied. Lazy import to avoid touching the
+    # plain-dict fast path.
+    from app.data.kb import _KBEntry  # noqa: PLC0415
+    if question and isinstance(entry, _KBEntry):
+        s = entry.select_best_stub(question)
+    elif isinstance(entry, dict):
         s = entry.get("summary")
-    else:  # _KBEntry or another dataclass with .summary
+    else:  # dataclass with .summary
         s = getattr(entry, "summary", None)
     if not s or not isinstance(s, str):
         return None
@@ -214,7 +227,10 @@ def _format_lead_citation_list(user_facing_refs: list[str]) -> str:
 # ── Public API ──────────────────────────────────────────────────────────
 
 
-def stitch_grounded_prose(internal_refs: Iterable[str]) -> str:
+def stitch_grounded_prose(
+    internal_refs: Iterable[str],
+    question: str = "",
+) -> str:
     """Build a grounded 1-3 sentence answer from ``internal_refs``.
 
     :param internal_refs: ordered iterable of internal-form citations
@@ -222,6 +238,12 @@ def stitch_grounded_prose(internal_refs: Iterable[str]) -> str:
         preserving the first-occurrence order. The first 3 refs lead
         the citation list; the first 2 contribute substantive
         sentences from their KB stub.
+    :param question: the original user question. When non-empty AND
+        an internal ref resolves to a multi-stub ``_KBEntry`` (Art. 5,
+        Art. 50, Art. 53, Art. 56), the specificity-aware stub
+        selector (R63-C) picks the best-matching stub (e.g. Art. 53(2)
+        FOSS carve-out vs Art. 53 general GPAI prose). When empty,
+        behaviour is byte-identical to the pre-R63-C path.
 
     :returns: a non-empty regulator-voice answer that
 
@@ -276,7 +298,13 @@ def stitch_grounded_prose(internal_refs: Iterable[str]) -> str:
     # MAX_GROUNDED_CHARS=580.
     substance_sentences: list[str] = []
     for idx, r in enumerate(refs[:_MAX_SUBSTANCE_REFS]):
-        summary = _kb_summary(r)
+        # R63-C — pass the question through so multi-stub _KBEntry
+        # (Art. 5, Art. 50, Art. 53, Art. 56) surfaces the matching
+        # stub (e.g. "Article 53(2) carve-out" question → Art. 53(2)
+        # FOSS stub instead of the general Art. 53 stub that wins
+        # by default order when the joined summary gets clipped at
+        # ~400 chars).
+        summary = _kb_summary(r, question=question)
         if not summary:
             continue
         per_ref_cap = (

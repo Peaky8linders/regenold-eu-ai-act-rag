@@ -2260,7 +2260,12 @@ def regenold_eu_ai_act_ask(
                     elif s.startswith("Annex "):
                         internal_refs.append("Annex " + s[len("Annex "):].split(".")[0].split("(")[0].strip().upper())
                 if internal_refs:
-                    answer_text = stitch_grounded_prose(internal_refs)
+                    # R63-C — pass the question so multi-stub _KBEntry
+                    # (Art. 5/50/53/56) surfaces the specificity-matched
+                    # stub instead of the joined-summary first-clause.
+                    answer_text = stitch_grounded_prose(
+                        internal_refs, question=question,
+                    )
                     retrieval_path = "consistency_guard"
                     _trace_guard("r48_consistency_guard")
                     _trace_guard("r49a_grounded_prose")
