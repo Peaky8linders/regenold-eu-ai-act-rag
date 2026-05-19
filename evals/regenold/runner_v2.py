@@ -291,22 +291,28 @@ def run_tricky(
     concurrency: int,
     limit: int | None,
     verbose: bool,
+    use_local: bool = False,
 ) -> list[dict[str, Any]]:
     items = TRICKY_V2[:limit] if limit else TRICKY_V2
     results: list[dict[str, Any]] = [None] * len(items)  # type: ignore[list-item]
     completed = 0
     lock = threading.Lock()
+    transport = _post_local if use_local else _post
 
     def _worker(idx: int, scn: dict) -> tuple[int, dict]:
         history = [{"role": "user", "content": scn["question"]}]
-        body, lat, status, err, attempts, retried = _post(
+        body, lat, status, err, attempts, retried = transport(
             endpoint, api_key, history, timeout
         )
         if err is None and not (200 <= status < 300):
             err = f"http_{status}"
         return idx, _score_tricky_row(scn, body, lat, err, attempts, retried)
 
-    with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
+    # Local mode short-circuits to TestClient — concurrency adds no value
+    # there and the FastAPI app singleton isn't thread-safe across
+    # parallel TestClient submissions on Windows. Serialise.
+    workers = 1 if use_local else max(1, concurrency)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = [pool.submit(_worker, i, s) for i, s in enumerate(items)]
         for fut in as_completed(futures):
             idx, row = fut.result()
@@ -383,16 +389,18 @@ def run_multiturn(
     timeout: float,
     limit: int | None,
     verbose: bool,
+    use_local: bool = False,
 ) -> list[dict[str, Any]]:
     items = MULTITURN_V2[:limit] if limit else MULTITURN_V2
     out: list[dict[str, Any]] = []
+    transport = _post_local if use_local else _post
     for idx, scn in enumerate(items):
         # Send the whole pre-recorded conversation as a single history.
         # We could replay turn-by-turn but the runner cares about the
         # FINAL user message's answer, not what the assistant said for the
         # canned mid-turns. The route flattens history → question internally.
         history = scn.get("turns", [])
-        body, lat, status, err, attempts, retried = _post(
+        body, lat, status, err, attempts, retried = transport(
             endpoint, api_key, history, timeout
         )
         if err is None and not (200 <= status < 300):
@@ -816,12 +824,17 @@ def run(
     multiturn_limit: int | None = None,
     verbose: bool = False,
     out_dir: Path | None = None,
+    use_local: bool = False,
 ) -> dict[str, Any]:
     started_at = _now_iso()
     tricky_rows = run_tricky(
-        endpoint, api_key, timeout, concurrency, tricky_limit, verbose
+        endpoint, api_key, timeout, concurrency, tricky_limit, verbose,
+        use_local=use_local,
     )
-    mt_rows = run_multiturn(endpoint, api_key, timeout, multiturn_limit, verbose)
+    mt_rows = run_multiturn(
+        endpoint, api_key, timeout, multiturn_limit, verbose,
+        use_local=use_local,
+    )
     finished_at = _now_iso()
 
     payload = {
@@ -998,6 +1011,7 @@ def main(argv: list[str] | None = None) -> int:
         tricky_limit=args.tricky_limit,
         multiturn_limit=args.multiturn_limit,
         verbose=args.verbose,
+        use_local=args.local,
     )
     print(_format(payload))
     return 0

@@ -2673,6 +2673,21 @@ _STAGE2_REFUSAL_MARKERS: tuple[str, ...] = (
     "no articles were returned in the references",
     "references block for this query",
     "citations cannot be provided",
+    # R62 — three NEW markers from the r60-live judge run. mt_v2_003
+    # final answer started with "An EU AI Act reference in the provided
+    # block to cite the specific reporting window... To give you a
+    # grounded answer, please re-run the query with a different..." —
+    # this hedge-shape escaped the R54-Q2 markers (no "no matching" /
+    # "contains no" / "returned"). mt_v2_017 emitted "No specific EU
+    # AI Act references were matched for this query, so I cannot cite
+    # additional articles..." — also escaped. Both rows had non-empty
+    # `references` lists in the response, so the consistency guard
+    # SHOULD have fired the R49-A grounded prose substitute.
+    "an eu ai act reference in the provided block",
+    "to give you a grounded answer",
+    "please re-run the query",
+    "no specific eu ai act references were matched",
+    "cannot cite additional articles",
 )
 
 

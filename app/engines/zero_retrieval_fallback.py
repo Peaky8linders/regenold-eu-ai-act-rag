@@ -139,6 +139,26 @@ _TOPIC_KEYWORD_EXTENSIONS: tuple[tuple[str, str], ...] = (
     ("fundamental rights impact", "Art. 27"),
     # Serious incident reporting — already in scope keywords; reinforce
     ("serious incident", "Art. 73"),
+    # R62 — registration / competent-authority semantics. mt_v2_001 fell
+    # through to the _DEFAULT_FLOOR (Art. 1/2/3) when the final turn
+    # asked "Which regulator do we register with under the AI Act side?"
+    # after prior turns established a hospital + high-risk medical-
+    # device-AI deployer context. Retrieval returned 0 because "register"
+    # / "regulator" weren't keyed and bare-verb "register" can't be added
+    # to the scope-anchor map without false-positives (matches "register
+    # for the gym", "register your domain"). The fallback's topic-keyword
+    # extension is exactly the right surface for this: only fires when
+    # retrieval has already returned 0 AND scope said in_scope, so a
+    # tax-shape OOS query never reaches here. Routes to Art. 49 (EU
+    # database registration) + Art. 70 (competent authorities) +
+    # Art. 26 (deployer obligations) per the mt_v2_001 gold set.
+    ("register with the regulator", "Art. 49"),
+    ("register with the competent", "Art. 49"),
+    ("register the system", "Art. 49"),
+    ("register the ai system", "Art. 49"),
+    ("register the model", "Art. 49"),
+    ("which regulator", "Art. 70"),
+    ("competent authority", "Art. 70"),
 )
 
 

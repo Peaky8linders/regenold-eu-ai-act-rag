@@ -1,6 +1,7 @@
 """Unit + integration tests for the Regenold scope filter."""
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
@@ -2367,3 +2368,251 @@ class TestR59PLDCivilLiabilityTightened:
         assert result == "Product Liability Directive", (
             "'ai act liability' phrase should still trigger PLD pattern"
         )
+
+
+class TestR62RefusalRateToZero:
+    """R62 — drive V2 false-refusal rate to 0.
+
+    The r60-live V2 run had 3 false-refusals on legitimate AI Act questions
+    (tr_v2_008 territorial, tr_v2_018 RBI terrorist exception, tr_v2_019
+    facial-image scraping). Each one used colloquial / abbreviation / verb
+    forms of textbook AI Act terms (non-EU company, real-time RBI,
+    scrape facial images) that the pre-R62 anchor map didn't cover.
+
+    Each test ALSO verifies the R34 P0 OOS regression set stays refused.
+    """
+
+    @pytest.fixture
+    def _classify(self):  # noqa: ANN202
+        from app.integrations.regenold.scope import classify_conversation
+
+        def go(question: str):
+            return classify_conversation(
+                messages=[{"role": "user", "content": question}],
+            )
+
+        return go
+
+    # ── tr_v2_008 — territorial scope (Art. 2(1)(c)) ──
+
+    def test_non_eu_company_sells_ai_to_eu_customers_in_scope(self, _classify) -> None:
+        v = _classify(
+            "A non-EU company sells AI to EU customers but has no EU "
+            "establishment. Who is liable on the EU side?",
+        )
+        assert v.verdict.in_scope, (
+            f"tr_v2_008 territorial-scope question must be in_scope. "
+            f"Got: {v.verdict.reason.value}"
+        )
+
+    def test_placed_on_the_union_market_in_scope(self, _classify) -> None:
+        v = _classify(
+            "Our AI system is placed on the union market. What obligations "
+            "apply?",
+        )
+        assert v.verdict.in_scope
+
+    def test_no_eu_establishment_in_scope(self, _classify) -> None:
+        v = _classify(
+            "We have no EU establishment but want to deploy our AI in "
+            "Germany. What do we need?",
+        )
+        assert v.verdict.in_scope
+
+    # ── tr_v2_018 — real-time RBI (Art. 5(1)(h)) ──
+
+    def test_real_time_rbi_terrorist_exception_in_scope(self, _classify) -> None:
+        v = _classify(
+            "Is real-time RBI in public spaces prohibited for police "
+            "investigating ongoing terrorist attacks?",
+        )
+        assert v.verdict.in_scope, (
+            f"tr_v2_018 RBI question must be in_scope. "
+            f"Got: {v.verdict.reason.value}"
+        )
+
+    def test_publicly_accessible_space_in_scope(self, _classify) -> None:
+        v = _classify(
+            "What rules apply to biometric ID in publicly accessible "
+            "spaces?",
+        )
+        assert v.verdict.in_scope
+
+    def test_remote_biometric_identification_in_scope(self, _classify) -> None:
+        v = _classify(
+            "Is remote biometric identification by law enforcement allowed?",
+        )
+        assert v.verdict.in_scope
+
+    # ── tr_v2_019 — facial-image scraping (Art. 5(1)(e)) ──
+
+    def test_scrape_facial_images_in_scope(self, _classify) -> None:
+        v = _classify(
+            "We scrape facial images from publicly available CCTV footage "
+            "to build a recognition database. Is that prohibited?",
+        )
+        assert v.verdict.in_scope, (
+            f"tr_v2_019 facial-scraping question must be in_scope. "
+            f"Got: {v.verdict.reason.value}"
+        )
+
+    def test_untargeted_scraping_in_scope(self, _classify) -> None:
+        v = _classify(
+            "Is untargeted scraping for AI training datasets allowed?",
+        )
+        assert v.verdict.in_scope
+
+    # ── CRITICAL — R34 P0 OOS set MUST still refuse ──
+
+    @pytest.mark.parametrize(
+        "off_topic",
+        [
+            # R34 P0 OOS set (must not flip in-scope)
+            "When did the queen withdraw from public life?",
+            "Birth certificate processing time in France?",
+            "I want to suspend my Netflix subscription.",
+            "Designate as your favourite musician?",
+            "What's the best Italian restaurant in Rome?",
+            # R62-specific stress cases against the new anchors:
+            "Is my company established outside the EU for tax purposes?",
+            "My company is established outside the union — what VAT applies?",
+            "I want to place my product on the EU market — what conformity "
+            "steps?",  # generic product, not AI
+            "Public spaces in Greek cities — what is famous?",
+            "How do I scrape data from a website for my research project?",
+        ],
+    )
+    def test_oos_set_still_refuses(self, _classify, off_topic: str) -> None:
+        v = _classify(off_topic)
+        assert not v.verdict.in_scope, (
+            f"R62 anchor must not flip this OOS question in-scope: "
+            f"{off_topic!r}. Got reason={v.verdict.reason.value}"
+        )
+
+    # ── KEYWORD_TO_ARTICLE retrieval routing ──
+
+    @pytest.mark.parametrize(
+        "phrase,expected_article",
+        [
+            ("scrape facial", "Art. 5"),
+            ("scrape facial images", "Art. 5"),
+            ("real-time rbi", "Art. 5"),
+            ("real-time remote biometric", "Art. 5"),
+            ("publicly accessible space", "Art. 5"),
+            ("untargeted scraping", "Art. 5"),
+            ("non-eu provider", "Art. 2"),
+            ("placed on the union market", "Art. 2"),
+            ("placed on the eu market", "Art. 2"),
+            ("no eu establishment", "Art. 22"),
+            ("provider established outside the eu", "Art. 22"),
+        ],
+    )
+    def test_keyword_to_article_routes_correctly(
+        self, phrase: str, expected_article: str,
+    ) -> None:
+        from app.integrations.regenold.scope import KEYWORD_TO_ARTICLE
+        assert KEYWORD_TO_ARTICLE.get(phrase) == expected_article, (
+            f"R62 KEYWORD_TO_ARTICLE missing {phrase!r} → {expected_article}"
+        )
+
+    # ── Article-existence guard (typo protection) ──
+
+    def test_r62_keyword_targets_resolve_in_catalog(self) -> None:
+        """Every R62 KEYWORD_TO_ARTICLE target must resolve in the
+        ARTICLE_EXISTENCE catalog so a typo can't ship a phantom ref."""
+        from app.data.article_existence import ARTICLE_EXISTENCE
+        from app.integrations.regenold.scope import KEYWORD_TO_ARTICLE
+
+        r62_keys = (
+            "scrape facial", "scrape facial image", "scrape facial images",
+            "untargeted scraping", "facial-image scraping",
+            "facial image scraping",
+            "real-time biometric", "real time biometric",
+            "real-time rbi", "real time rbi",
+            "real-time remote biometric", "real time remote biometric",
+            "remote biometric identification",
+            "publicly accessible space", "publicly accessible spaces",
+            "non-eu provider", "non eu provider",
+            "non-eu company sells ai", "non eu company sells ai",
+            "ai provider established outside",
+            "provider established outside the eu",
+            "provider established outside the union",
+            "no eu establishment",
+            "placed on the union market", "placed on the eu market",
+            "placing on the union market", "placing on the eu market",
+            "place on the eu market", "place on the union market",
+        )
+        for k in r62_keys:
+            target = KEYWORD_TO_ARTICLE.get(k)
+            assert target is not None, f"R62 key {k!r} missing from map"
+            assert target in ARTICLE_EXISTENCE, (
+                f"R62 key {k!r} → {target} but {target!r} not in "
+                f"ARTICLE_EXISTENCE catalog"
+            )
+
+
+class TestR62Stage2RefusalMarkers:
+    """R62 — extend `_STAGE2_REFUSAL_MARKERS` so the consistency guard
+    fires on the new Stage-2 hedge shapes mt_v2_003 + mt_v2_017 emitted.
+    """
+
+    @pytest.mark.parametrize(
+        "marker",
+        [
+            "an eu ai act reference in the provided block",
+            "to give you a grounded answer",
+            "please re-run the query",
+            "no specific eu ai act references were matched",
+            "cannot cite additional articles",
+        ],
+    )
+    def test_r62_marker_in_set(self, marker: str) -> None:
+        from app.engines.graph_rag import _STAGE2_REFUSAL_MARKERS
+        assert marker in _STAGE2_REFUSAL_MARKERS, (
+            f"R62 _STAGE2_REFUSAL_MARKERS missing: {marker!r}"
+        )
+
+
+class TestR62ZeroRetrievalTopicExtensions:
+    """R62 — extend the zero-retrieval fallback's `_TOPIC_KEYWORD_EXTENSIONS`
+    so mt_v2_001-shaped follow-ups ("Which regulator do we register with?")
+    seed Art. 49 / 70 instead of dropping to the Art. 1/2/3 default floor.
+    """
+
+    @pytest.mark.parametrize(
+        "phrase,expected_ref",
+        [
+            ("register with the regulator", "Art. 49"),
+            ("register with the competent", "Art. 49"),
+            ("register the system", "Art. 49"),
+            ("register the ai system", "Art. 49"),
+            ("register the model", "Art. 49"),
+            ("which regulator", "Art. 70"),
+            ("competent authority", "Art. 70"),
+        ],
+    )
+    def test_r62_topic_extension_present(
+        self, phrase: str, expected_ref: str,
+    ) -> None:
+        from app.engines.zero_retrieval_fallback import _TOPIC_KEYWORD_EXTENSIONS
+        kvs = dict(_TOPIC_KEYWORD_EXTENSIONS)
+        assert kvs.get(phrase) == expected_ref, (
+            f"R62 _TOPIC_KEYWORD_EXTENSIONS missing {phrase!r} → "
+            f"{expected_ref}. Got: {kvs.get(phrase)!r}"
+        )
+
+    def test_r62_topic_extensions_resolve_in_catalog(self) -> None:
+        from app.data.article_existence import ARTICLE_EXISTENCE
+        from app.engines.zero_retrieval_fallback import _TOPIC_KEYWORD_EXTENSIONS
+        r62_phrases = (
+            "register with the regulator", "register with the competent",
+            "register the system", "register the ai system",
+            "register the model", "which regulator", "competent authority",
+        )
+        kvs = dict(_TOPIC_KEYWORD_EXTENSIONS)
+        for p in r62_phrases:
+            target = kvs.get(p)
+            assert target is not None, f"R62 extension {p!r} missing"
+            assert target in ARTICLE_EXISTENCE, (
+                f"R62 extension {p!r} → {target!r} not in catalog"
+            )

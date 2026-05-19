@@ -991,6 +991,72 @@ _AI_ACT_ANCHORS: frozenset[str] = frozenset(
         "layoff using ai",
         "lay off with ai",
         "layoffs using ai",
+        # ── R62 — drive V2 false-refusal rate to 0 ────────────────────
+        # The r60-live V2 run had 3 false-refusals on legitimate AI Act
+        # questions because the scope-gate anchor map lacked the colloquial
+        # / abbreviation forms users actually type:
+        #
+        #   - tr_v2_008: "non-EU company sells AI to EU customers" —
+        #     Art. 2(1)(c) territorial scope. Current anchor set has only
+        #     "extraterritorial" / "extraterritoriality" (textbook noun).
+        #
+        #   - tr_v2_018: "real-time RBI in public spaces ... terrorist
+        #     attacks" — Art. 5(1)(h). Anchor list had "remote biometric"
+        #     but neither "real-time" forms nor "publicly accessible
+        #     space" / "RBI" abbreviation.
+        #
+        #   - tr_v2_019: "We scrape facial images from publicly available
+        #     CCTV footage to build a recognition database" — Art. 5(1)(e).
+        #     Anchor list had "scraping facial" (gerund) but not the verb
+        #     form "scrape facial".
+        #
+        # Each addition is uniquely AI-Act-shaped. Verified against the
+        # R34 P0 OOS regression set ("queen withdraw", "Netflix
+        # subscription", "birth certificate", "designate favourite
+        # musician", "Italian restaurant in Rome") + the 21-scenario
+        # OOS probe — none false-positive (see TestR62RefusalRateToZero).
+        #
+        # Territorial scope (Art. 2(1)(c)) — colloquial forms.
+        # NOTE on tightening: bare "established outside the eu" /
+        # "established outside the union" anchors were initially added
+        # but flipped a tax-shape OOS query ("Is my company established
+        # outside the EU for tax purposes?") in-scope. Replaced with
+        # provider-qualified forms that cannot match a tax / corporate-
+        # structure question.
+        "non-eu provider",
+        "non eu provider",
+        "non-eu company sells ai",
+        "non eu company sells ai",
+        "ai provider established outside",
+        "provider established outside the eu",
+        "provider established outside the union",
+        "no eu establishment",
+        "placed on the union market",
+        "placed on the eu market",
+        "placing on the union market",
+        "placing on the eu market",
+        "place on the eu market",
+        "place on the union market",
+        # Art. 5(1)(h) real-time remote biometric identification —
+        # textbook forms + the RBI abbreviation:
+        "real-time biometric",
+        "real time biometric",
+        "real-time rbi",
+        "real time rbi",
+        "real-time remote biometric",
+        "real time remote biometric",
+        "remote biometric identification",
+        "publicly accessible space",
+        "publicly accessible spaces",
+        # Art. 5(1)(e) untargeted facial-image scraping — verb forms:
+        "scrape facial",
+        "scrape facial image",
+        "scrape facial images",
+        "scraping facial image",
+        "scraping facial images",
+        "untargeted scraping",
+        "facial-image scraping",
+        "facial image scraping",
     )
 )
 
@@ -1077,6 +1143,40 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "facial recognition database": "Art. 5",
     "scraping facial": "Art. 5",
     "scraping of facial": "Art. 5",
+    # R62 — verb forms + abbreviations missing from R10 anchor surfacing.
+    # Each phrase routes the question to its primary Art. 5 sub-paragraph.
+    "scrape facial": "Art. 5",
+    "scrape facial image": "Art. 5",
+    "scrape facial images": "Art. 5",
+    "untargeted scraping": "Art. 5",
+    "facial-image scraping": "Art. 5",
+    "facial image scraping": "Art. 5",
+    "real-time biometric": "Art. 5",
+    "real time biometric": "Art. 5",
+    "real-time rbi": "Art. 5",
+    "real time rbi": "Art. 5",
+    "real-time remote biometric": "Art. 5",
+    "real time remote biometric": "Art. 5",
+    "remote biometric identification": "Art. 5",
+    "publicly accessible space": "Art. 5",
+    "publicly accessible spaces": "Art. 5",
+    # Territorial scope (Art. 2(1)(c)) — surfaces Art. 2 + Art. 22 for the
+    # provider-outside-EU shape. Anchor flips scope in_scope via the
+    # _AI_ACT_ANCHORS additions; this map surfaces the article.
+    "non-eu provider": "Art. 2",
+    "non eu provider": "Art. 2",
+    "non-eu company sells ai": "Art. 2",
+    "non eu company sells ai": "Art. 2",
+    "ai provider established outside": "Art. 22",
+    "provider established outside the eu": "Art. 22",
+    "provider established outside the union": "Art. 22",
+    "no eu establishment": "Art. 22",
+    "placed on the union market": "Art. 2",
+    "placed on the eu market": "Art. 2",
+    "placing on the union market": "Art. 2",
+    "placing on the eu market": "Art. 2",
+    "place on the eu market": "Art. 2",
+    "place on the union market": "Art. 2",
     "subliminal technique": "Art. 5",
     "subliminal manipulation": "Art. 5",
     "manipulative technique": "Art. 5",
