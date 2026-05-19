@@ -2730,3 +2730,147 @@ class TestR63ALivePortionAnchorInheritance:
         assert "Art. 49" in first_few or "Art. 70" in first_few, (
             f"R63-A rfind precedence broken. Got: {q.entities[:10]}"
         )
+
+
+class TestR63BGPAIGate:
+    """R63-B — GPAI gate in the scenario-classifier Round-33 fallback.
+
+    Pre-R63-B, ``classify_scenario_query`` defaulted to
+    ``risk_level="limited"`` when ``_detect_risk_level`` returned None
+    and either a compound-role or template-shape signal fired. For
+    GPAI fine-tune / compute / threshold scenarios (tr_v2_022 was the
+    canonical example — "We fine-tune a third-party GPAI with 30% of
+    the base compute. Are we now the provider?") this produced an
+    Art. 50 limited-risk transparency answer instead of the Art. 25 +
+    Art. 51 GPAI value-chain answer the gold required.
+
+    Fix: when GPAI markers fire (a strong GPAI noun + a modifier like
+    fine-tune / compute / threshold / value-chain / open-weights /
+    systemic-risk), set ``risk_level="gpai"`` instead of limited.
+    """
+
+    def test_gpai_signal_strong_and_modifier_fires(self) -> None:
+        from app.engines.scenario_classifier import _detect_gpai_signal
+        assert _detect_gpai_signal(
+            "We fine-tune a third-party GPAI with 30% of the base compute. "
+            "Are we now the provider?",
+        )
+        assert _detect_gpai_signal(
+            "Our general-purpose AI model trained at 10^25 FLOPs. Do "
+            "the systemic-risk obligations apply?",
+        )
+
+    def test_gpai_signal_strong_alone_does_not_fire(self) -> None:
+        """A bare GPAI mention without a modifier should NOT fire the
+        signal — covers cases like a routine definitional Q that
+        upstream gates already drop, plus defensive scope on
+        downstream callers."""
+        from app.engines.scenario_classifier import _detect_gpai_signal
+        assert not _detect_gpai_signal("What is GPAI?")
+        assert not _detect_gpai_signal("Define general-purpose AI.")
+
+    def test_gpai_signal_modifier_alone_does_not_fire(self) -> None:
+        """A modifier without a GPAI noun should NOT fire — covers
+        HRAIS fine-tune cases where Art. 50 transparency / Art. 16
+        provider obligations are still correct."""
+        from app.engines.scenario_classifier import _detect_gpai_signal
+        assert not _detect_gpai_signal(
+            "Our HR analytics system was fine-tuned on internal data.",
+        )
+        assert not _detect_gpai_signal(
+            "Does compute consumption affect the conformity assessment?",
+        )
+
+    def test_tr_v2_022_routes_to_gpai_verdict(self) -> None:
+        """The canonical failure mode — verdict must be ``gpai`` (not
+        ``limited``) and articles must lead with Art. 25 + Art. 51."""
+        from app.engines.scenario_classifier import classify_scenario_query
+        v = classify_scenario_query(
+            "We fine-tune a third-party GPAI with 30% of the base compute. "
+            "Are we now the provider?",
+        )
+        assert v is not None
+        assert v.risk_level == "gpai", (
+            f"tr_v2_022 should be classified gpai (was {v.risk_level})"
+        )
+        assert v.articles[:2] == ("Art. 25", "Art. 51"), (
+            f"GPAI verdict should lead with Art. 25 + Art. 51. Got: "
+            f"{v.articles[:4]}"
+        )
+
+    def test_gpai_verdict_answer_carries_gold_keywords(self) -> None:
+        """tr_v2_022 expected_kw was ['one-third', 'below', 'not'].
+        Verify the GPAI answer prose surfaces ALL three."""
+        from app.engines.scenario_classifier import classify_scenario_query
+        v = classify_scenario_query(
+            "We fine-tune a third-party GPAI with 30% of the base compute. "
+            "Are we now the provider?",
+        )
+        assert v is not None
+        ans_lower = v.answer.lower()
+        for kw in ("one-third", "below", "not"):
+            assert kw in ans_lower, (
+                f"GPAI verdict answer missing gold keyword {kw!r}. "
+                f"Answer: {v.answer!r}"
+            )
+
+    def test_gpai_verdict_answer_carries_value_chain_cooperation(self) -> None:
+        """The GPAI verdict prose surfaces Art. 25(4) value-chain
+        cooperation directly (independent of which question shape
+        triggers the verdict). Probe via the prose builder."""
+        from app.engines.scenario_classifier import _build_answer
+        ans = _build_answer("provider", "gpai").lower()
+        assert "value chain" in ans, (
+            f"GPAI verdict missing 'value chain'. Answer: {ans!r}"
+        )
+        assert "cooperat" in ans, (
+            f"GPAI verdict missing 'cooperation'. Answer: {ans!r}"
+        )
+
+    def test_non_gpai_scenario_still_routes_to_limited(self) -> None:
+        """An HRAIS fine-tune scenario without GPAI markers should
+        still hit the Round-33 limited-risk fallback (no regression)."""
+        from app.engines.scenario_classifier import classify_scenario_query
+        v = classify_scenario_query(
+            "We are a provider offering a rule-based scheduler intended "
+            "to recommend meeting times in the workplace domain.",
+        )
+        assert v is not None
+        assert v.risk_level == "limited", (
+            f"Non-GPAI template scenario should default to limited "
+            f"(R33 fallback). Got: {v.risk_level}"
+        )
+
+    def test_definitional_gpai_still_returns_none(self) -> None:
+        """Definitional GPAI questions don't establish a role, so
+        classify_scenario_query should return None upstream (the
+        scenario flow is only for fact-pattern scenarios with a role)."""
+        from app.engines.scenario_classifier import classify_scenario_query
+        v = classify_scenario_query("What does GPAI mean in the EU AI Act?")
+        assert v is None
+
+    def test_gpai_risk_pack_uses_canonical_articles(self) -> None:
+        """The _RISK_ARTICLES['gpai'] tuple must lead with Art. 25 +
+        Art. 51 (the load-bearing anchors for the V2 gold sets)."""
+        from app.engines.scenario_classifier import _RISK_ARTICLES
+        gpai_pack = _RISK_ARTICLES.get("gpai")
+        assert gpai_pack is not None, "_RISK_ARTICLES missing 'gpai' tier"
+        assert gpai_pack[:2] == ("Art. 25", "Art. 51"), (
+            f"GPAI pack should lead with Art. 25 + Art. 51. Got: {gpai_pack}"
+        )
+
+    def test_r63b_articles_resolve_in_catalog(self) -> None:
+        """Every article in the new GPAI tier must resolve in the
+        ARTICLE_EXISTENCE catalog (typo guard)."""
+        from app.data.article_existence import ARTICLE_EXISTENCE
+        from app.engines.scenario_classifier import (
+            _RISK_ARTICLES,
+            _ROLE_GPAI_ARTICLES,
+        )
+        for ref in _RISK_ARTICLES["gpai"]:
+            assert ref in ARTICLE_EXISTENCE, f"GPAI pack ref {ref!r} not in catalog"
+        for role_refs in _ROLE_GPAI_ARTICLES.values():
+            for ref in role_refs:
+                assert ref in ARTICLE_EXISTENCE, (
+                    f"GPAI role-bolt ref {ref!r} not in catalog"
+                )
