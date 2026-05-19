@@ -244,11 +244,43 @@ _RATE_KEY_PREFIX_ANON = "regenold-anon:"
 
 # How many trailing turns of conversation history we thread into the
 # question prompt when the request carries a multi-turn conversation.
-# 2 = the immediately-preceding ``assistant`` + ``user`` pair plus the
-# current question. Empirically enough to disambiguate "What about
-# deployers?"-style follow-ups without dwarfing the question itself in
-# the engine's 2K-char question budget.
-_HISTORY_TURNS_TO_INCLUDE = 4
+# 8 covers a full 4-turn scenario (4 user + 4 assistant) without
+# dwarfing the question itself in the engine's 2K-char question budget.
+# The truncation logic at _build_question_from_history drops the oldest
+# turns first when the budget overflows, so bumping this is safe.
+_HISTORY_TURNS_TO_INCLUDE = 8
+
+# ---------------------------------------------------------------------------
+# Cross-turn anchor extraction helpers (multi-turn coherence)
+# ---------------------------------------------------------------------------
+
+_ANCHOR_ARTICLE_RE = re.compile(
+    r"\bArt(?:icle)?\.?\s*(\d+(?:\.\d+)*)\b"
+    r"|\bAnnex\s+([IVXLCDM]+|\d+)\b",
+    re.IGNORECASE,
+)
+_ANCHOR_ROLE_WORDS: frozenset[str] = frozenset([
+    "provider",
+    "deployer",
+    "importer",
+    "distributor",
+    "authorized representative",
+    "authorised representative",
+    "operator",
+    "manufacturer",
+])
+_ANCHOR_RISK_WORDS: frozenset[str] = frozenset([
+    "high-risk",
+    "high risk",
+    "prohibited",
+    "limited risk",
+    "minimal risk",
+    "unacceptable risk",
+    "general-purpose",
+    "gpai",
+    "annex iii",
+    "annex i",
+])
 
 
 def _hash16(value: str) -> str:
@@ -1117,6 +1149,59 @@ def _surface_anchor_citations(
     return enriched
 
 
+def _extract_conversation_anchors(turns: list[Any]) -> str:
+    """Extract article refs, roles, and risk-tier from ALL prior turns.
+
+    Scans the full list of prior dialogue turns (not just the sliding
+    history window) to build a compact "[Context anchors — ...]" line
+    that is prepended to the question prompt.  This lets the retrieval
+    and scope layers resolve coreferences ("we" / "our" / "that system")
+    to entities established in earlier turns even when those turns fall
+    outside the ``_HISTORY_TURNS_TO_INCLUDE`` window.
+
+    Returns an empty string when no anchors are found (single-turn or
+    turns with no recognisable regulatory content).
+    """
+    refs_seen: list[str] = []
+    roles_seen: list[str] = []
+    risk_seen: list[str] = []
+
+    for turn in turns:
+        full_text: str = turn.content if turn.content else ""
+        text_lower = full_text.lower()
+
+        # Article / Annex references — preserve original capitalisation
+        # then normalise to "Art. N" form so deduplication is reliable.
+        for m in _ANCHOR_ARTICLE_RE.finditer(full_text):
+            raw = m.group(0).strip()
+            norm = re.sub(r"Article\s+", "Art. ", raw, flags=re.IGNORECASE)
+            norm = re.sub(r"Art\s+", "Art. ", norm, flags=re.IGNORECASE)
+            if norm not in refs_seen:
+                refs_seen.append(norm)
+
+        # Role words
+        for role in _ANCHOR_ROLE_WORDS:
+            if role in text_lower and role not in roles_seen:
+                roles_seen.append(role)
+
+        # Risk-tier markers
+        for risk in _ANCHOR_RISK_WORDS:
+            if risk in text_lower and risk not in risk_seen:
+                risk_seen.append(risk)
+
+    parts: list[str] = []
+    if refs_seen:
+        parts.append("articles: " + ", ".join(refs_seen[:6]))  # cap at 6
+    if roles_seen:
+        parts.append("roles: " + ", ".join(roles_seen[:3]))
+    if risk_seen:
+        parts.append("risk tier: " + ", ".join(risk_seen[:2]))
+
+    if not parts:
+        return ""
+    return "[Context anchors — " + "; ".join(parts) + "]"
+
+
 def _build_question_from_history(messages: list[Any]) -> tuple[str, str | None]:
     """Build (question, system_context) from the full conversation history.
 
@@ -1160,17 +1245,31 @@ def _build_question_from_history(messages: list[Any]) -> tuple[str, str | None]:
         # message regardless of role — better than blank.
         live_question = dialogue[-1].content.strip() if dialogue else ""
         history_turns: list[Any] = []
+        all_prior_turns: list[Any] = []
     else:
         live_question = dialogue[last_user_idx].content.strip()
         # History = the last N turns BEFORE the live user message.
         history_start = max(0, last_user_idx - _HISTORY_TURNS_TO_INCLUDE)
         history_turns = dialogue[history_start:last_user_idx]
+        # ALL prior turns — used for anchor extraction even beyond the
+        # sliding history window so entities from turn 1 still resolve
+        # in turn 5+ of a long conversation.
+        all_prior_turns = dialogue[:last_user_idx]
+
+    # Extract cross-turn anchors from ALL prior turns (not just the
+    # history window) and inject before the history block.  The anchor
+    # line is also visible to scope.py's `_live_question_borrows_anchor`
+    # which scans the full question string — so any article ref in the
+    # anchor line will carry forward as a scope anchor too.
+    anchor_line = _extract_conversation_anchors(all_prior_turns) if all_prior_turns else ""
 
     if history_turns:
         history_block = "\n".join(
             f"{m.role.capitalize()}: {m.content.strip()}" for m in history_turns
         )
+        anchor_prefix = (anchor_line + "\n\n") if anchor_line else ""
         question = (
+            f"{anchor_prefix}"
             "Conversation so far:\n"
             f"{history_block}\n"
             "\n"
