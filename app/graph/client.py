@@ -212,6 +212,56 @@ class GraphClient:
             logger.warning("Neo4j health check failed", exc_info=True)
             return {"status": "unhealthy", "error": "Graph database unavailable"}
 
+    def existing_labels(self, allowlist: frozenset[str] | set[str]) -> set[str]:
+        """Return the subset of ``allowlist`` that actually exists in the graph.
+
+        Probes ``CALL db.labels()`` once and intersects with the allowlist.
+        On probe failure (procedure unavailable, network blip, etc.) falls
+        back to a SAFE subset known to always be populated by the seeder —
+        so the f-string ``MATCH (n:LABEL)`` queries that follow never hit a
+        label that doesn't exist, even in the degraded path.
+
+        R64 — fix for [I5+I6] (R63-F partial regression on fallback path).
+        Pre-R64 both ``get_stats`` and ``/healthz/graph`` had inline,
+        duplicated probe-and-intersect blocks that fell back to the FULL
+        ``_STATS_LABELS`` allowlist on probe failure — which re-introduced
+        the R63-F warning storm for the 5 orphan labels (Dimension /
+        Question / RoadmapTask / NISTSubcategory / ISOClause) the
+        Regenold seeder doesn't populate. The shared helper here uses a
+        SAFE fallback subset of labels that ``scripts/seed_neo4j_kb.py``
+        guarantees on every successful seed run.
+        """
+        # Labels the seeder ALWAYS writes (verified against
+        # ``scripts/seed_neo4j_kb.py`` ``MERGE`` node statements:
+        # Article, Annex, Recital, Definition, Obligation,
+        # AnnexIIICategory, RiskLevel, OperatorRole, KBMetadata).
+        # We intersect with ``_STATS_LABELS`` below, so labels not in
+        # the allowlist (Annex / Recital / Definition / OperatorRole)
+        # drop out naturally — the operationally-meaningful fallback is
+        # ``Article``, ``Obligation``, ``KBMetadata``, ``RiskLevel``,
+        # ``AnnexIIICategory``, all in ``_STATS_LABELS``.
+        safe_fallback = {
+            "Article",
+            "Obligation",
+            "KBMetadata",
+            "RiskLevel",
+            "AnnexIIICategory",
+        }
+        if not self.enabled:
+            return set()
+        try:
+            rows = self.execute_read("CALL db.labels() YIELD label RETURN label")
+            existing = {r["label"] for r in rows if r.get("label")}
+            return set(allowlist) & existing
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("graph_existing_labels_probe_failed error=%s", exc)
+            # R64 — safe fallback. Pre-R64 we fell back to the FULL
+            # ``_STATS_LABELS`` allowlist, which re-introduced the R63-F
+            # warning storm (the 5 parent-CodexAI orphan labels the
+            # Regenold seeder doesn't populate). Intersect the allowlist
+            # with only labels the seeder ALWAYS writes.
+            return set(allowlist) & safe_fallback
+
     def get_stats(self) -> GraphStats:
         """Return graph summary statistics.
 
@@ -231,26 +281,16 @@ class GraphClient:
         # edition, so we go straight to the per-label path which works
         # on Community as well as Enterprise).
         #
-        # R63-F — probe ``db.labels()`` first and intersect with the
-        # allowlist. ``_STATS_LABELS`` carries 5 parent-CodexAI schema
-        # labels (Dimension / Question / RoadmapTask / NISTSubcategory /
-        # ISOClause) that the Regenold seeder doesn't populate; querying
-        # them produces Neo4j ``UNRECOGNIZED`` notification warnings on
-        # every ``/healthz/graph`` request. ``db.labels()`` returns only
-        # labels that currently exist in the database, so the intersection
-        # never queries a non-existent label.
-        existing_labels: set[str] = set()
-        try:
-            rows = self.execute_read("CALL db.labels() YIELD label RETURN label")
-            existing_labels = {r["label"] for r in rows if r.get("label")}
-        except Exception as exc:  # noqa: BLE001 — fall back to full allowlist
-            # On any failure we still want a stats payload; the warnings
-            # are cosmetic, not load-bearing.
-            logger.debug("graph_stats_db_labels_failed error=%s", exc)
-            existing_labels = set(_STATS_LABELS)
+        # R63-F / R64 — only count labels that actually exist in the
+        # graph. ``existing_labels`` probes ``db.labels()`` once and
+        # intersects with the allowlist; on probe failure it falls back
+        # to a SAFE subset (Article / Obligation / KBMetadata /
+        # RiskLevel / AnnexIIICategory) so the f-string ``MATCH (n:LABEL)``
+        # queries that follow never hit a missing label.
+        existing = self.existing_labels(_STATS_LABELS)
 
         nodes_by_type: dict[str, int] = {}
-        for label in sorted(_STATS_LABELS & existing_labels):
+        for label in sorted(existing):
             try:
                 # Labels are from a hardcoded allowlist ∩ live db.labels()
                 # — never from user input.

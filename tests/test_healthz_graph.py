@@ -153,6 +153,36 @@ class _FakeGraphClient:
             raise self._health_exc
         return self._health
 
+    def existing_labels(
+        self, allowlist: frozenset[str] | set[str]
+    ) -> set[str]:
+        """R64 — mirror of ``GraphClient.existing_labels`` so the route
+        + ``get_stats`` paths share a fake surface.
+
+        Delegates to ``execute_read("CALL db.labels()...")`` so existing
+        tests that pin ``read_responses["db_labels"]`` (or seed the
+        ``labels`` dict) keep working. On any exception, falls back to
+        the safe-fallback subset intersected with the allowlist — same
+        contract as the real helper.
+        """
+        if not self._enabled:
+            return set()
+        try:
+            rows = self.execute_read(
+                "CALL db.labels() YIELD label RETURN label"
+            )
+            existing = {r["label"] for r in rows if r.get("label")}
+            return set(allowlist) & existing
+        except Exception:
+            safe_fallback = {
+                "Article",
+                "Obligation",
+                "KBMetadata",
+                "RiskLevel",
+                "AnnexIIICategory",
+            }
+            return set(allowlist) & safe_fallback
+
     def execute_read(
         self, query: str, parameters: dict | None = None
     ) -> list[dict[str, Any]]:
@@ -558,8 +588,16 @@ class TestR63FOnlyCountExistingLabels:
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """If ``CALL db.labels()`` fails (e.g. on a Neo4j edition that
-        doesn't expose it), the route MUST fall back to the full
-        allowlist so the response stays operationally meaningful."""
+        doesn't expose it), the route MUST fall back to a SAFE subset of
+        the allowlist so the response stays operationally meaningful
+        AND the R63-F warning storm doesn't re-appear.
+
+        R64 — pre-R64 the fallback queried the FULL allowlist, which
+        re-introduced ``UNRECOGNIZED`` warnings for the 5 orphan
+        parent-CodexAI labels (Dimension / Question / RoadmapTask /
+        NISTSubcategory / ISOClause). Post-R64 the fallback queries
+        only labels the seeder guarantees.
+        """
         monkeypatch.setenv("NEO4J_URI", "bolt://nope:7687")
         # Fake that throws on the db.labels() probe only.
         class _LabelsProbeRaiser(_FakeGraphClient):
@@ -594,16 +632,34 @@ class TestR63FOnlyCountExistingLabels:
         _patch_client(monkeypatch, fake)
 
         r = client.get("/healthz/graph")
-        # Response still useful — fallback queries all allowlist entries.
+        # Response still useful — fallback queries safe-subset entries.
         body = r.json()
         assert body["graph_ok"] is True
         assert body["node_counts"]["Article"] == 113
         assert body["node_counts"]["Obligation"] == 113
-        # Every allowlist label was attempted on the fallback path.
+        # R64 — orphan labels MUST NOT be queried on the fallback path.
+        # If they were, Neo4j 5.x would log the R63-F UNRECOGNIZED
+        # warnings the helper exists to prevent.
+        _ORPHAN_LABELS = {
+            "Dimension", "Question", "RoadmapTask",
+            "NISTSubcategory", "ISOClause",
+        }
+        for orphan in _ORPHAN_LABELS:
+            for q in fake.read_queries:
+                assert f"(n:{orphan})" not in q, (
+                    f"R64 regression: fallback queried orphan label "
+                    f"{orphan!r} via {q!r}"
+                )
+        # Conversely, every safe-fallback label that's in the allowlist
+        # MUST be attempted on the fallback path.
         from app.graph.client import _STATS_LABELS
-        for label in _STATS_LABELS:
+        _SAFE_FALLBACK = {
+            "Article", "Obligation", "KBMetadata",
+            "RiskLevel", "AnnexIIICategory",
+        }
+        for label in _SAFE_FALLBACK & _STATS_LABELS:
             assert any(f"(n:{label})" in q for q in fake.read_queries), (
-                f"fallback path skipped allowlist label {label!r}"
+                f"fallback path skipped safe-fallback label {label!r}"
             )
 
     def test_get_stats_filters_missing_labels(
@@ -651,3 +707,190 @@ class TestR63FOnlyCountExistingLabels:
                 assert f"(n:{missing})" not in q, (
                     f"R63-F regression in get_stats: queried {missing!r}"
                 )
+
+
+# ─── R64 — extracted ``existing_labels`` helper (I5 + I6 fixes) ───────────────
+
+
+class TestR64ExistingLabelsHelper:
+    """``GraphClient.existing_labels`` is the shared probe-and-intersect
+    that ``get_stats`` AND ``/healthz/graph`` both delegate to.
+
+    R64 closes two findings from the deep-code-review of R63-F:
+
+    * **I5** — both call-sites had duplicated inline probe-and-intersect
+      blocks with divergent logger keys. The new helper centralises this.
+    * **I6** — the pre-R64 fallback path returned the FULL allowlist on
+      ``db.labels()`` failure, which re-introduced the R63-F warning
+      storm for the 5 orphan parent-CodexAI labels the Regenold seeder
+      doesn't populate. The R64 helper uses a SAFE fallback subset of
+      labels that ``scripts/seed_neo4j_kb.py`` guarantees on every run.
+    """
+
+    # The 5 parent-CodexAI orphan labels the seeder does NOT write —
+    # querying these triggers Neo4j ``UNRECOGNIZED`` warnings.
+    _ORPHAN_LABELS = frozenset({
+        "Dimension", "Question", "RoadmapTask",
+        "NISTSubcategory", "ISOClause",
+    })
+
+    # The 5 labels we know the seeder writes that intersect with the
+    # allowlist. (Annex / Recital / Definition / OperatorRole are also
+    # seeded but not in ``_STATS_LABELS``.)
+    _SAFE_FALLBACK = frozenset({
+        "Article", "Obligation", "KBMetadata",
+        "RiskLevel", "AnnexIIICategory",
+    })
+
+    def _build_disabled_client(self):
+        """A GraphClient with ``enabled=False`` (no driver)."""
+        from app.graph.client import GraphClient
+        from app.graph.config import GraphSettings
+        gc = GraphClient.__new__(GraphClient)
+        gc._settings = GraphSettings()
+        gc._driver = None  # ``enabled`` reports False
+        return gc
+
+    def _build_enabled_client(self):
+        """A GraphClient with a truthy ``_driver`` so ``enabled`` is True."""
+        from app.graph.client import GraphClient
+        from app.graph.config import GraphSettings
+        gc = GraphClient.__new__(GraphClient)
+        gc._settings = GraphSettings()
+        gc._driver = object()  # truthy → enabled=True
+        return gc
+
+    def test_helper_exists_on_graph_client(self) -> None:
+        """I5 — the public helper signature must be present so call-sites
+        can delegate instead of duplicating the probe-and-intersect."""
+        from app.graph.client import GraphClient
+        assert hasattr(GraphClient, "existing_labels")
+        assert callable(GraphClient.existing_labels)
+
+    def test_existing_labels_happy_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When ``db.labels()`` returns a list of labels, the helper
+        intersects them with the allowlist and returns only the overlap.
+
+        I5 — the happy-path returns labels filtered through the allowlist
+        so a label that exists in the graph but isn't in the allowlist
+        (e.g. an unrelated experimental label) is not surfaced.
+        """
+        from app.graph.client import _STATS_LABELS
+
+        gc = self._build_enabled_client()
+
+        seen: list[str] = []
+
+        def fake_execute_read(query, parameters=None):
+            seen.append(query)
+            # Reflect a mix: one allowlist label + one non-allowlist
+            # label. Only the allowlist label should be returned.
+            return [
+                {"label": "Article"},
+                {"label": "Question"},  # In allowlist + db
+                {"label": "RandomExperiment"},  # Not in allowlist
+            ]
+
+        monkeypatch.setattr(gc, "execute_read", fake_execute_read)
+        out = gc.existing_labels(_STATS_LABELS)
+
+        # ``Article`` and ``Question`` both in allowlist and in db.labels.
+        assert out == {"Article", "Question"}
+        # The single probe ran exactly once.
+        probes = [q for q in seen if "db.labels()" in q]
+        assert len(probes) == 1
+
+    def test_existing_labels_fallback_uses_safe_subset(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """I6 — when ``db.labels()`` raises, the fallback subset MUST be
+        disjoint from the 5 orphan parent-CodexAI labels. Otherwise the
+        ``MATCH (n:LABEL)`` queries that follow re-introduce R63-F's
+        ``UNRECOGNIZED`` warning storm in operator dashboards.
+        """
+        from app.graph.client import _STATS_LABELS
+
+        gc = self._build_enabled_client()
+
+        def fake_execute_read(query, parameters=None):
+            if "db.labels()" in query:
+                raise RuntimeError("simulated procedure-unavailable")
+            return []
+
+        monkeypatch.setattr(gc, "execute_read", fake_execute_read)
+        out = gc.existing_labels(_STATS_LABELS)
+
+        # Must NOT include any orphan label.
+        assert out.isdisjoint(self._ORPHAN_LABELS), (
+            f"R64 [I6] regression: fallback subset {out!r} overlaps "
+            f"orphan labels {self._ORPHAN_LABELS!r} — querying these "
+            f"triggers Neo4j UNRECOGNIZED warnings."
+        )
+        # Fallback should include the safe set (intersected with allowlist).
+        assert out == self._SAFE_FALLBACK & _STATS_LABELS
+
+    def test_existing_labels_disabled_client_returns_empty(self) -> None:
+        """A disabled client has no driver — no probe should fire, and
+        the helper returns an empty set so callers' for-loops are no-ops.
+        """
+        from app.graph.client import _STATS_LABELS
+
+        gc = self._build_disabled_client()
+        out = gc.existing_labels(_STATS_LABELS)
+        assert out == set()
+
+    def test_existing_labels_safe_fallback_provably_seeded(self) -> None:
+        """The safe-fallback subset MUST be a subset of labels that
+        ``scripts/seed_neo4j_kb.py`` writes — otherwise the fallback
+        path would still query missing labels.
+
+        Reads the seeder source and extracts every ``MERGE (x:Label)``
+        node label. Asserts the safe-fallback is contained in that set.
+        """
+        import pathlib
+        import re
+
+        seeder_src = (
+            pathlib.Path(__file__).resolve().parents[1]
+            / "scripts" / "seed_neo4j_kb.py"
+        ).read_text(encoding="utf-8")
+        seeded_labels = set(
+            re.findall(r"MERGE\s*\(\s*\w+\s*:\s*(\w+)", seeder_src)
+        )
+
+        assert self._SAFE_FALLBACK.issubset(seeded_labels), (
+            f"R64 [I6] safe-fallback set {self._SAFE_FALLBACK!r} contains "
+            f"labels the seeder does NOT write. Seeded labels: "
+            f"{sorted(seeded_labels)!r}. Adjust safe_fallback in "
+            f"GraphClient.existing_labels to match."
+        )
+
+    def test_route_delegates_to_helper(self) -> None:
+        """I5 — neither the route nor ``get_stats`` should still carry
+        an inline ``CALL db.labels()`` block. The helper is the only
+        place that string should appear at the call-sites.
+
+        Greps the live source. Pre-R64 both files had inline probe blocks
+        with divergent logger keys; post-R64 the only references should
+        be in the helper itself + comments.
+        """
+        import pathlib
+
+        main_src = (
+            pathlib.Path(__file__).resolve().parents[1]
+            / "app" / "main.py"
+        ).read_text(encoding="utf-8")
+
+        # The route MUST call the helper.
+        assert "client.existing_labels(" in main_src, (
+            "R64 [I5] regression: /healthz/graph no longer delegates to "
+            "GraphClient.existing_labels()."
+        )
+        # The route MUST NOT re-introduce the inline probe.
+        assert "CALL db.labels()" not in main_src, (
+            "R64 [I5] regression: /healthz/graph still carries an inline "
+            "CALL db.labels() probe — it should delegate to "
+            "GraphClient.existing_labels() instead."
+        )
