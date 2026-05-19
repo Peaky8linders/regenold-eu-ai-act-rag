@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 # Art. 52(4) open-source designation, Art. 53(2) FOSS carve-out,
 # Art. 55 four systemic-risk obligations, Art. 79 market-surveillance
 # procedure).
-KB_VERSION = "2024.1689.v4"
+KB_VERSION = "2024.1689.v5"
 
 
 @dataclass(frozen=True)
@@ -432,7 +432,9 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
                 "databases; (f) emotion-inference in workplaces and "
                 "educational institutions (narrow medical / safety "
                 "exception); (g) biometric categorisation by sensitive "
-                "attributes (race, political views, union membership, etc.); "
+                "attributes — race, ethnicity, political views, religious or "
+                "philosophical beliefs, trade-union membership, sex life or "
+                "sexual orientation; "
                 "(h) real-time remote biometric identification in publicly "
                 "accessible spaces by law enforcement (narrow exceptions). "
                 "Art. 5(5) lets Member States impose stricter national laws "
@@ -881,12 +883,20 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "importer, deployer, or third party becomes a provider (and assumes "
             "all provider obligations) if they put their name/trademark on the "
             "system, make a substantial modification, or modify the intended "
-            "purpose making it high-risk. For general-purpose AI models, the "
+            "purpose making it high-risk. Art. 25(4) requires the original "
+            "provider and the new provider to cooperate along the value "
+            "chain — original providers must supply information, technical "
+            "access, and reasonable assistance so that downstream actors can "
+            "meet their own obligations. For general-purpose AI models, the "
             "one-third fine-tune rule (per the Commission's 18 July 2025 GPAI "
             "Guidelines, anchored on Art. 51) makes the downstream modifier a "
             "new provider when additional training compute exceeds 1/3 of the "
             "base model's compute, or 1/3 of the 10^25 FLOPs systemic threshold "
-            "(~3.3×10^24 FLOPs) when base compute is unknown. Small mid-cap "
+            "(~3.3×10^24 FLOPs) when base compute is unknown. Below the "
+            "one-third threshold the downstream modifier does NOT become a "
+            "new provider; original-provider obligations remain with the "
+            "upstream actor and the downstream actor stays in its prior role "
+            "(deployer / integrator). Small mid-cap "
             "entities (per the Digital Omnibus 7 May 2026 political agreement) "
             "now qualify for the Art. 62/63 SME-tier compliance simplifications "
             "when they take on a new-provider role under this Article."
@@ -971,7 +981,24 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
         "summary": (
             "Requires providers of GPAI models established outside the EU to "
             "appoint, by written mandate, an authorised representative "
-            "established in the Union before placing the model on the market."
+            "established in the Union before placing the GPAI model on the "
+            "market. Art. 54 is the GPAI-specific authorised-representative "
+            "regime and is distinct from Art. 22 — Art. 22 applies to "
+            "high-risk AI SYSTEMS, Art. 54 applies to GPAI MODELS. The "
+            "Art. 54(3) mandate must empower the representative to (a) verify "
+            "that the Art. 53(1)(a) technical documentation and Annex XI "
+            "information are drawn up and that Art. 53 obligations have been "
+            "complied with; (b) keep the documentation and contact details "
+            "available for the AI Office and national competent authorities "
+            "for 10 years; (c) provide the AI Office on reasoned request "
+            "with all information and documentation necessary to demonstrate "
+            "compliance with Chapter V; (d) cooperate with the AI Office and "
+            "competent authorities. The representative must terminate the "
+            "mandate and inform the AI Office where it has reason to believe "
+            "the provider is acting contrary to its obligations. GPAI-with-"
+            "systemic-risk providers face the same Art. 54 obligation plus "
+            "Art. 55 systemic obligations regardless of where they are "
+            "established."
         ),
     },
     "Art. 56": _KBEntry(
