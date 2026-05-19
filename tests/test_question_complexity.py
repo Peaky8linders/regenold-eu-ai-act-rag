@@ -126,3 +126,63 @@ class TestEdgeCases:
             "We made a substantial modification to a CE-marked AI. "
             "Are we now the provider?",
         )
+
+
+class TestFlattenMarkerStripping:
+    """R60 fix — the route flattens multi-turn history as
+    ``"Conversation so far:\\n...\\n\\nLatest question:\\n<live>"``. The
+    gate must scan only the live-question section, else the ``^``
+    anchor in :data:`_SHORT_COREFERENT_RE` can never match the live
+    text (it would be preceded by the history prose)."""
+
+    _FLATTEN_PREFIX = (
+        "Conversation so far:\n"
+        "user: We are a hospital deploying a CE-marked medical-imaging AI.\n"
+        "assistant: That system is high-risk under Article 6(1) "
+        "since it is safety-related AI listed in Annex I.\n"
+        "user: Which regulator do we register with?\n"
+        "\n"
+        "Latest question:\n"
+    )
+
+    def test_short_coreferent_fires_after_flatten_prefix(self) -> None:
+        """Short coref final inside the flatten format should fire when
+        history depth ≥ 3. Pre-fix this returned False because the
+        ``^`` anchor matched only the leading ``"Conversation so far:"``."""
+        flattened = self._FLATTEN_PREFIX + "What about deployers?"
+        assert is_complex_question(flattened, history_turn_count=4)
+
+    def test_role_ambiguity_still_fires_after_flatten_prefix(self) -> None:
+        """Position-independent patterns (``\\b...\\b``) already fired
+        before the fix; verify the fix preserves that behaviour."""
+        flattened = self._FLATTEN_PREFIX + (
+            "Are we a provider or just a deployer if the customer "
+            "configures the model?"
+        )
+        assert is_complex_question(flattened, history_turn_count=4)
+
+    def test_simple_followup_does_not_fire_after_flatten_prefix(self) -> None:
+        """A simple final ("What does the article say?") inside the
+        flatten format should NOT fire — burns Opus budget for nothing."""
+        flattened = self._FLATTEN_PREFIX + "What does the article say?"
+        assert not is_complex_question(flattened, history_turn_count=4)
+
+    def test_rfind_uses_last_marker_occurrence(self) -> None:
+        """A scenario where the prior assistant turn happens to quote
+        the marker text. ``rfind`` should anchor on the FINAL occurrence
+        so the live question is scanned, not the quoted text."""
+        flattened = (
+            "Conversation so far:\n"
+            "user: I asked 'Latest question:\\nWhat is Art. 6?' earlier.\n"
+            "assistant: I answered with the high-risk definition.\n"
+            "\n"
+            "Latest question:\n"
+            "What about deployers?"
+        )
+        assert is_complex_question(flattened, history_turn_count=4)
+
+    def test_empty_live_section_after_marker_returns_false(self) -> None:
+        """Marker present but no actual live text → False (don't
+        accidentally fire complexity on a malformed prompt)."""
+        flattened = self._FLATTEN_PREFIX + "   \n"
+        assert not is_complex_question(flattened, history_turn_count=4)

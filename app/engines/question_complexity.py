@@ -154,23 +154,39 @@ def is_complex_question(question: str, history_turn_count: int = 1) -> bool:
        (under 12 words, starts with "what about" / "and if" etc.).
 
     The function is pure-stdlib + idempotent. False on empty input.
+
+    When the route flattens multi-turn history via the canonical
+    ``"Conversation so far:\n...\n\nLatest question:\n<live>"`` prefix,
+    the leading prose pushes the live question past any ``^``-anchored
+    pattern (notably :data:`_SHORT_COREFERENT_RE`). To keep the gate
+    firing correctly on multi-turn finals, scan only the live-question
+    section when the marker is present; fall back to the full string
+    otherwise (single-turn callers).
     """
     if not question or not question.strip():
         return False
-    if _GPAI_COMPLEX_RE.search(question):
+    # Scan only the live-question section when the route's flatten
+    # marker is present — otherwise the ``^`` anchor in
+    # :data:`_SHORT_COREFERENT_RE` can never match.
+    marker = "Latest question:\n"
+    idx = question.rfind(marker)
+    scan_text = question[idx + len(marker):] if idx >= 0 else question
+    if not scan_text.strip():
+        return False
+    if _GPAI_COMPLEX_RE.search(scan_text):
         return True
-    if _ROLE_AMBIGUITY_RE.search(question):
+    if _ROLE_AMBIGUITY_RE.search(scan_text):
         return True
-    if _BORDERLINE_PROHIBITION_RE.search(question):
+    if _BORDERLINE_PROHIBITION_RE.search(scan_text):
         return True
-    if _CONFLICT_RE.search(question):
+    if _CONFLICT_RE.search(scan_text):
         return True
-    if _CROSS_FRAMEWORK_RE.search(question):
+    if _CROSS_FRAMEWORK_RE.search(scan_text):
         return True
     # Multi-turn short coreferent — only fires when both signals are
     # present (history depth + short coref shape).
     if history_turn_count >= 3:
-        token_count = len(re.findall(r"\b\w+\b", question))
-        if token_count <= 12 and _SHORT_COREFERENT_RE.search(question):
+        token_count = len(re.findall(r"\b\w+\b", scan_text))
+        if token_count <= 12 and _SHORT_COREFERENT_RE.search(scan_text):
             return True
     return False
