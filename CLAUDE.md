@@ -586,8 +586,8 @@ Closes 3 of 7 layers from
   BM25 winner. First-cut RRF (symmetric fusion) traded ~0.004 Strict
   Ref for ~0.004 Strict Ans on the davidath benchmark (wash); the
   additive-only fill is precision-safe.
-* **Env-gated** (default OFF) — the deterministic baseline scorecard
-  reproduces byte-for-byte with the flag off.
+* **Env-gated** (default ON) — set `REGENOLD_TURBOQUANT_DENSE=0` to disable
+  and reproduce the BM25-only deterministic baseline scorecard.
 
 ### Layer B — Explicit Four-Task Router (Davvetas 4-task taxonomy)
 
@@ -717,7 +717,7 @@ penalty when the gold answer's token shape favours redundancy.
 
 ### Production deploy guidance for Round 31
 
-* **Recommended**: deploy with `REGENOLD_TURBOQUANT_DENSE=1`,
+* **Recommended**: deploy with `REGENOLD_TURBOQUANT_DENSE` unset (default ON),
   `REGENOLD_CITATION_GUARD` UNSET. The dense path is rubric-neutral on
   the davidath bench but +recall on real-world paraphrased queries.
 * **Do NOT** enable `REGENOLD_CITATION_GUARD=1` without first re-tuning

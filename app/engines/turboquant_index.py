@@ -30,9 +30,9 @@ caller sees the same `dense_top_k(question, k)` surface.
 * :func:`dense_top_k` is the public retrieval call. The route + engine fuse
   its output with BM25 ranks via Reciprocal Rank Fusion in
   :func:`app.data.kb_search.top_articles_by_relevance_hybrid`.
-* :func:`is_enabled` is the cheap env-gate. ``REGENOLD_TURBOQUANT_DENSE=1``
-  turns it on; default OFF so the deterministic baseline benchmark numbers
-  in `CLAUDE.md` remain reproducible.
+* :func:`is_enabled` is the cheap env-gate. Default ON; set
+  ``REGENOLD_TURBOQUANT_DENSE=0`` to disable (e.g. to reproduce a
+  deterministic BM25-only benchmark run).
 
 ## Why not Voyage-3-Large / Jina-Embeddings-V3 (per the whitepaper)?
 
@@ -74,9 +74,9 @@ _INDEX_SEED = 20260515
 
 
 def is_enabled() -> bool:
-    """True iff the env-gate is set. Cheap to call (no import cost)."""
-    val = os.getenv(_ENV_FLAG, "").strip().lower()
-    return val in ("1", "true", "yes", "on")
+    """True unless the env-gate is explicitly disabled. Cheap to call (no import cost)."""
+    val = os.getenv(_ENV_FLAG, "1").strip().lower()
+    return val not in ("0", "false", "no", "off")
 
 
 def is_compressed_available() -> bool:
@@ -393,7 +393,7 @@ def dense_top_k(question: str, *, k: int = 10) -> list[tuple[str, float]]:
     keyed by article ref, keeping the maximum score per ref. Returns
     the empty list when:
 
-    * env-gate is off (``REGENOLD_TURBOQUANT_DENSE != "1"``)
+    * env-gate is explicitly off (``REGENOLD_TURBOQUANT_DENSE=0``)
     * the query has no in-vocab tokens
     * the index failed to build (corpus empty, numpy missing, etc.)
 

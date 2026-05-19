@@ -46,12 +46,12 @@ def _dense_singleton_reset(monkeypatch):
 # ── Layer 1: env-gate behaviour ──────────────────────────────────────────
 
 
-def test_is_enabled_off_by_default(monkeypatch):
-    """The env-gate is OFF unless ``REGENOLD_TURBOQUANT_DENSE`` is set."""
+def test_is_enabled_on_by_default(monkeypatch):
+    """The env-gate is ON unless ``REGENOLD_TURBOQUANT_DENSE`` is explicitly disabled."""
     monkeypatch.delenv("REGENOLD_TURBOQUANT_DENSE", raising=False)
     from app.engines.turboquant_index import is_enabled
 
-    assert is_enabled() is False
+    assert is_enabled() is True
 
 
 def test_is_enabled_truthy_values(monkeypatch):
@@ -64,17 +64,17 @@ def test_is_enabled_truthy_values(monkeypatch):
 
 
 def test_is_enabled_falsy_values(monkeypatch):
-    """``"0"``, ``""``, ``"off"``, garbage all keep the gate OFF."""
+    """Only ``"0"``, ``"false"``, ``"no"``, ``"off"`` disable the gate."""
     from app.engines.turboquant_index import is_enabled
 
-    for falsy in ("", "0", "off", "no", "false", "asdf"):
+    for falsy in ("0", "false", "FALSE", "no", "off"):
         monkeypatch.setenv("REGENOLD_TURBOQUANT_DENSE", falsy)
-        assert is_enabled() is False, f"value {falsy!r} should NOT enable the gate"
+        assert is_enabled() is False, f"value {falsy!r} should disable the gate"
 
 
 def test_dense_top_k_short_circuits_when_disabled(monkeypatch):
-    """When the gate is off, ``dense_top_k`` returns ``[]`` without building."""
-    monkeypatch.delenv("REGENOLD_TURBOQUANT_DENSE", raising=False)
+    """When the gate is explicitly off, ``dense_top_k`` returns ``[]`` without building."""
+    monkeypatch.setenv("REGENOLD_TURBOQUANT_DENSE", "0")
     from app.engines.turboquant_index import dense_top_k
 
     assert dense_top_k("definition of provider", k=5) == []
@@ -84,13 +84,13 @@ def test_dense_top_k_short_circuits_when_disabled(monkeypatch):
 
 
 def test_index_diagnostics_when_disabled(monkeypatch):
-    """``index_diagnostics`` reports env state even with gate off.
+    """``index_diagnostics`` reports env state even with gate explicitly off.
 
     The diagnostic still triggers the lazy build because operators can
     pre-warm the index before flipping the gate in production. What
     changes is the ``env_enabled`` field.
     """
-    monkeypatch.delenv("REGENOLD_TURBOQUANT_DENSE", raising=False)
+    monkeypatch.setenv("REGENOLD_TURBOQUANT_DENSE", "0")
     from app.engines.turboquant_index import index_diagnostics
 
     diag = index_diagnostics()
@@ -260,7 +260,7 @@ def test_reciprocal_rank_fusion_caps_at_k():
 
 def test_top_articles_by_relevance_unchanged_when_dense_off(monkeypatch):
     """The dense-off path is byte-for-byte the pre-Round-31 ranking."""
-    monkeypatch.delenv("REGENOLD_TURBOQUANT_DENSE", raising=False)
+    monkeypatch.setenv("REGENOLD_TURBOQUANT_DENSE", "0")
     from app.data.kb_search import top_articles_by_relevance
 
     q = "what documents must be kept by deployers"
@@ -283,7 +283,7 @@ def test_top_articles_by_relevance_changes_when_dense_on(monkeypatch):
 
     q = "subliminal manipulation"
 
-    monkeypatch.delenv("REGENOLD_TURBOQUANT_DENSE", raising=False)
+    monkeypatch.setenv("REGENOLD_TURBOQUANT_DENSE", "0")
     bm25_only = set(top_articles_by_relevance(q, k=5))
 
     monkeypatch.setenv("REGENOLD_TURBOQUANT_DENSE", "1")
@@ -316,7 +316,8 @@ def test_engine_cache_key_includes_dense_env_flag(monkeypatch):
     from app.routes.regenold import _engine_cache_key
 
     q = "What documents must be kept by deployers?"
-    monkeypatch.delenv("REGENOLD_TURBOQUANT_DENSE", raising=False)
+    # Explicitly disable dense to get a stable "OFF" baseline.
+    monkeypatch.setenv("REGENOLD_TURBOQUANT_DENSE", "0")
     monkeypatch.delenv("REGENOLD_CITATION_GUARD", raising=False)
     key_off = _engine_cache_key(q, None)
 
@@ -333,7 +334,7 @@ def test_engine_cache_key_includes_dense_env_flag(monkeypatch):
     assert key_both_on != key_dense_on
 
     # Repeatable: same env state → same key.
-    monkeypatch.delenv("REGENOLD_TURBOQUANT_DENSE", raising=False)
+    monkeypatch.setenv("REGENOLD_TURBOQUANT_DENSE", "0")
     monkeypatch.delenv("REGENOLD_CITATION_GUARD", raising=False)
     key_off2 = _engine_cache_key(q, None)
     assert key_off2 == key_off, "deterministic key for identical env"
