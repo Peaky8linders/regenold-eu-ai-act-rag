@@ -2502,9 +2502,23 @@ def _retrieve_from_kb(
                 xref_mapping = EC_CHECKER_OBLIGATION_MAP.get(xref)
                 if not xref_mapping:
                     continue
+                # R64 I1 — apply the same specificity-aware stub
+                # selection on xref-pulled multi-stub _KBEntry rows.
+                # Pre-R64 every xref row dumped the joined summary,
+                # which downstream prose stitchers clip to ~400 chars
+                # — losing later stubs even when the question carries
+                # a clear specificity marker (e.g. an open-weights
+                # GPAI question pulling Art. 51 as an xref still
+                # surfaced the lead general stub).
+                if isinstance(xref_mapping, _KBEntry):
+                    xref_text = xref_mapping.select_best_stub(
+                        query.raw_question or ""
+                    )
+                else:
+                    xref_text = xref_mapping["summary"]
                 context.obligations.append({
                     "id": f"kb-xref-{xref_mapping['dimension']}-{xref}",
-                    "text": xref_mapping["summary"],
+                    "text": xref_text,
                     "article": xref,
                 })
                 seen_articles.add(xref)
@@ -2749,7 +2763,13 @@ _STAGE2_REFUSAL_MARKERS: tuple[str, ...] = (
     # `references` lists in the response, so the consistency guard
     # SHOULD have fired the R49-A grounded prose substitute.
     "an eu ai act reference in the provided block",
-    "to give you a grounded answer",
+    # R64 [Important] I3 — Tighten "to give you a grounded answer" to
+    # the full R62 refusal-shape phrase. The bare 7-word substring
+    # false-positives on legitimate Sonnet intros like "To give you a
+    # grounded answer, I'll cite Article 13 first..." while still
+    # catching the R62 mt_v2_003 pattern ("To give you a grounded
+    # answer, please re-run the query with...") via the longer phrase.
+    "to give you a grounded answer, please re-run",
     "please re-run the query",
     "no specific eu ai act references were matched",
     "cannot cite additional articles",

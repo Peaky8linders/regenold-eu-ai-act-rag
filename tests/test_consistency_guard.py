@@ -431,3 +431,73 @@ class TestR54Q2GroundedProseSentenceCount:
         assert any(k in low for k in keywords), (
             f"Multi-ref stitch dropped all substance: {substitute!r}"
         )
+
+
+# ── R64 [Important] I3 — narrow "to give you a grounded answer" marker ──
+
+
+class TestR64I3GroundedAnswerMarkerNarrowing:
+    """R64 [Important] I3 — the bare "to give you a grounded answer"
+    substring matched legitimate Sonnet intros like "To give you a
+    grounded answer, I'll cite Article 13 first..." as a false-positive
+    on perfectly valid in-scope answers.
+
+    R64 replaces the bare phrase with the longer R62 refusal-shape
+    "to give you a grounded answer, please re-run" so the guard fires
+    on the actual refusal pattern (mt_v2_003) without tripping on
+    legitimate prose that happens to start with the same 7 words.
+    """
+
+    def test_legitimate_intro_does_not_fire_refusal_guard(self) -> None:
+        """A perfectly valid answer that starts with "To give you a
+        grounded answer, I'll cite Article 13..." MUST NOT be flagged
+        as a self-contradiction."""
+        ctx = _FakeContext(obligations=[{"article": "Art. 13"}])
+        prose = (
+            "To give you a grounded answer, I'll cite Article 13 first. "
+            "The provider must ensure transparent instructions for use."
+        )
+        contradicts, _ = _polished_prose_self_contradicts_refs(prose, ctx)
+        assert contradicts is False
+
+    def test_r62_refusal_pattern_still_fires(self) -> None:
+        """The true R62 mt_v2_003 refusal pattern ("To give you a
+        grounded answer, please re-run the query...") MUST still trip
+        the guard so the route substitutes R49-A grounded prose."""
+        ctx = _FakeContext(obligations=[{"article": "Art. 13"}])
+        prose = (
+            "To give you a grounded answer, please re-run the query "
+            "with a different reporting window."
+        )
+        contradicts, marker = _polished_prose_self_contradicts_refs(prose, ctx)
+        assert contradicts is True
+        # The narrowed marker is what triggered.
+        assert marker == "to give you a grounded answer, please re-run"
+
+    def test_bare_marker_removed_from_marker_set(self) -> None:
+        """Regression pin: the bare over-broad marker must NOT be in
+        _STAGE2_REFUSAL_MARKERS — only the narrowed full-phrase form."""
+        assert "to give you a grounded answer" not in _STAGE2_REFUSAL_MARKERS
+        assert (
+            "to give you a grounded answer, please re-run"
+            in _STAGE2_REFUSAL_MARKERS
+        )
+
+    def test_other_legitimate_intros_with_grounded_phrase(self) -> None:
+        """A handful of other phrasings that historically false-positived
+        on the bare marker should now pass through clean."""
+        ctx = _FakeContext(obligations=[{"article": "Art. 13"}])
+        legitimate_intros = [
+            "To give you a grounded answer, the EU AI Act Article 13 requires...",
+            "To give you a grounded answer based on the references: Article 13 mandates...",
+            # The marker pattern that *would* still fire (please re-run) is
+            # absent here — these are all substantive content intros.
+            "To give you a grounded answer rooted in Article 13, providers must...",
+        ]
+        for prose in legitimate_intros:
+            contradicts, marker = _polished_prose_self_contradicts_refs(
+                prose, ctx
+            )
+            assert contradicts is False, (
+                f"Legitimate intro false-positived (marker={marker!r}): {prose!r}"
+            )

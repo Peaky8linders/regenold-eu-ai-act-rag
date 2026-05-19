@@ -463,7 +463,24 @@ class _KBEntry(dict):
             return self._stubs[0] if self._stubs else ""
 
         joined = self["summary"]
-        q = (question or "").strip().lower()
+        # R64 C1 — strip the route's multi-turn flatten preamble so
+        # prior-turn tokens / specificity markers don't contaminate
+        # stub selection for the live turn. Both callers
+        # (graph_rag._retrieve_from_kb + grounded_prose._kb_summary)
+        # pass the route's flattened shape:
+        #
+        #   "Conversation so far:\n...\n\nLatest question:\n<live>"
+        #
+        # Mirrors the R60.1 pattern in
+        # app/engines/question_complexity.py::is_complex_question.
+        # When the marker is absent (single-turn callers), behaviour is
+        # unchanged.
+        raw_q = question or ""
+        _FLATTEN_MARKER = "Latest question:\n"
+        idx = raw_q.rfind(_FLATTEN_MARKER)
+        if idx >= 0:
+            raw_q = raw_q[idx + len(_FLATTEN_MARKER):]
+        q = raw_q.strip().lower()
         if not q:
             return joined
 
@@ -543,35 +560,61 @@ _STUB_SELECTION_STOPWORDS: frozenset[str] = frozenset({
 # via two entries below).
 _SPECIFICITY_MARKERS: tuple[str, ...] = (
     # Carve-outs / exceptions
+    # R64 I2 — bare ``exempt`` / ``exception`` dropped (generic English);
+    # keep only the multi-word + regulator-vocab forms.
     "carve-out", "carve out", "carveout",
-    "exemption", "exempt",
+    "exemption",
+    "exempt from", "exempt under",
     "does not apply", "not apply", "do not apply",
-    "exception", "exclusion",
+    "narrow exception", "narrow exceptions",
+    "falls under the exception",
+    "exclusion",
     # Open-source / open-weights (Art. 53(2) FOSS carve-out)
     "open-weights", "open weights",
     "open-source", "open source",
     "free and open-source", "free and open source", "foss",
     # Training-data + GPAI specifics (Art. 53(1)(d))
+    # R64 I2 — bare ``template`` deliberately kept: the symmetric-
+    # co-occurrence rule (marker must be in BOTH question AND stub)
+    # provides natural narrowing. ``select_best_stub`` only runs
+    # after scope-gate accepts the question as in-scope AND the
+    # engine picks a multi-stub _KBEntry (Art. 5 / 50 / 53 / 56).
+    # In that context "template" reliably signals the Art. 53(1)(d)
+    # disclosure-template intent.
     "training-data summary", "training data summary",
     "training-data template", "training data template",
+    "data summary template",
     "template",
     "grandfathered", "grandfather",
     # Watermark / generative output marking (Art. 50(2))
+    # R64 I2 — bare ``labelled`` / ``labelling`` / ``labeling`` /
+    # ``marking`` dropped (generic English); replaced with the
+    # AI-Act-shaped multi-word forms.
     "watermark", "watermarking",
     "generative output", "ai-generated content",
-    "labelled", "labelling", "labeling", "marking",
+    "labelled as ai-generated", "labelling as ai-generated",
+    "labeling as ai-generated", "marking as ai-generated",
     "deepfake",
     # Sub-threshold / threshold (GPAI thresholds, etc.)
+    # R64 I2 — bare ``threshold`` dropped (matches generic
+    # engineering / finance contexts); kept the AI-Act-shaped
+    # ``compute threshold`` form.
     "sub-threshold", "below threshold", "below-threshold",
-    "threshold",
+    "compute threshold",
     # Systemic risk (Art. 51 / Art. 53(2) interaction)
     "systemic", "systemic-risk",
     # Real-time biometric carve-out (Art. 5(1)(h))
     "real-time biometric", "real time biometric",
     "law enforcement", "law-enforcement",
     # Emotion recognition carve-out (Art. 5(1)(f))
+    # R64 I2 — bare ``medical`` / ``safety`` dropped (common English);
+    # the Art. 5(1)(f) selection still wins reliably via the
+    # ``emotion-recognition`` + ``carve-out`` markers plus token
+    # overlap on ``medical`` / ``safety`` / ``fatigue`` etc.
     "emotion recognition", "emotion-recognition",
-    "medical", "safety",
+    "medical exemption", "medical device exemption",
+    "medical or safety", "medical/safety",
+    "safety component",
     # Social-scoring carve-out (Art. 5(1)(c))
     "social scoring", "social-scoring",
     # Codes of practice (Art. 56)

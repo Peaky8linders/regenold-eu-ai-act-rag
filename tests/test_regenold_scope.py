@@ -2560,7 +2560,12 @@ class TestR62Stage2RefusalMarkers:
         "marker",
         [
             "an eu ai act reference in the provided block",
-            "to give you a grounded answer",
+            # R64 [Important] I3 — the bare "to give you a grounded answer"
+            # was tightened to the full refusal-shape phrase because the
+            # 7-word substring false-positived on legitimate Sonnet intros
+            # ("To give you a grounded answer, I'll cite Article 13..."). The
+            # R62 mt_v2_003 refusal pattern still fires via the longer form.
+            "to give you a grounded answer, please re-run",
             "please re-run the query",
             "no specific eu ai act references were matched",
             "cannot cite additional articles",
