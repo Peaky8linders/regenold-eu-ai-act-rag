@@ -1157,6 +1157,35 @@ def test_route_weak_compound_role_gets_8_ref_budget() -> None:
     )
 
 
+def test_route_weak_compound_question_gets_tight_budget() -> None:
+    """R69 round-2 — a WEAK compound-role QUESTION (short, not a full
+    "We are a {role} offering…" scenario) gets a tight 5-ref budget.
+
+    The r69-live V2 run shipped 8 refs on tricky ``role_ambiguity`` rows
+    where the gold is 1-3 articles; the LLM-judge refs axis failed them
+    ("bulk citation dump … never described in prose", refS 0.18-0.30).
+    A weak compound signal on a non-scenario question now caps at 5.
+    Strong compound (explicit "both X and Y") still gets 12.
+    """
+    settings.regenold.api_key = SecretStr("regenold-test-key")
+    c = _client()
+    r = c.post(
+        "/api/v1/regenold/eu-ai-act/ask",
+        headers={"X-Regenold-Api-Key": "regenold-test-key"},
+        json=_messages(
+            "We built an internal AI for our own HR use - never "
+            "released externally. Are we a provider or just a deployer?"
+        ),
+    )
+    assert r.status_code == 200, r.json()
+    body = r.json()
+    assert len(body["references"]) <= 5, (
+        f"weak compound-role QUESTION should ship <= 5 refs (R69 round-2 "
+        f"tight budget); got {len(body['references'])} refs: "
+        f"{body['references']!r}"
+    )
+
+
 def test_engine_prompt_no_longer_mentions_graph_context() -> None:
     """The engine system prompt should not instruct the LLM to talk about
     'graph context' / 'knowledge graph' — that wording cascades into the

@@ -40,12 +40,20 @@ class GraphRAGSettings(BaseSettings):
     to deterministic if Opus is unreachable, so worst case is a soft
     miss, not a 500."""
 
-    complex_thinking_tokens: int = 8000
+    complex_thinking_tokens: int = 2500
     """``max_thinking_tokens`` for extended-thinking Stage-2 polish on
-    complex questions. Default 8000 (R51 production setting).
-    Clamped at the engine to [1024, 16000]. 0 disables thinking.
-    Tip: the wrapper enforces a hard 50000 ceiling — we stay well
-    below that for cost + latency reasons."""
+    complex questions.
+
+    R69 round-2 — reduced 8000 → 2500. The r69-live V2 run measured a
+    103s worst-case latency (tr_v2_007) and p95 35s, driven by the
+    8000-token Opus extended-thinking budget. Latency is a scored
+    competition axis; 100s answers score ~0. 2500 tokens still gives
+    Opus real room to walk a role chain / threshold-logic question
+    while cutting worst-case thinking time roughly 3×. The quality win
+    of the complex path is preserved (r69-live conflict refS 0.95,
+    borderline refL 1.0 — both strong). Clamped at the engine to
+    [1024, 16000]. 0 disables thinking. Override per-deploy via
+    ``P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS``."""
 
 
 class RegenoldSettings(BaseSettings):

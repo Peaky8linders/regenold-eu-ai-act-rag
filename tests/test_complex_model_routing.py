@@ -82,15 +82,23 @@ class TestDefaultRouting:
     def test_complex_question_uses_default_opus_path(
         self, _mock_wrapper
     ) -> None:
-        """R51 default: complex_model=claude-opus-4-7 + thinking=8000
-        fire WITHOUT any env override. This is the production behaviour."""
+        """R51 default: complex_model=claude-opus-4-7 + extended thinking
+        fire WITHOUT any env override. This is the production behaviour.
+
+        R69 round-2: the thinking budget was cut 8000 -> 2500 (the
+        r69-live 103s latency outlier). The header value tracks the
+        configured ``complex_thinking_tokens`` setting rather than a
+        hard-coded literal."""
         _openai_wrapper_complete_for_graph_rag(
             system="x", user="y", max_tokens=400, temperature=0.0,
             complex_question=True,
         )
         req: OpenAIWrapperRequest = _mock_wrapper.complete.call_args.args[0]
         assert req.model == "claude-opus-4-7"
-        assert req.extra_headers.get("X-Claude-Max-Thinking-Tokens") == "8000"
+        assert req.extra_headers.get("X-Claude-Max-Thinking-Tokens") == str(
+            settings.graph_rag.complex_thinking_tokens
+        )
+        assert settings.graph_rag.complex_thinking_tokens == 2500
 
 
 class TestComplexRouting:

@@ -2121,7 +2121,26 @@ def regenold_eu_ai_act_ask(
             _compound_strength = _scenario_verdict_for_budget.compound_role_strength
         else:
             _compound_strength = ""
-        _effective_max_refs = 12 if _compound_strength == "strong" else 8
+        if _is_scenario_question:
+            # Full "We are a {role} offering {X}…" scenario — the gold
+            # is the multi-article role×risk matrix (davidath avg 9.8).
+            _effective_max_refs = 12 if _compound_strength == "strong" else 8
+        else:
+            # R69 round-2 — a compound-role QUESTION ("Are we a provider
+            # or just a deployer?"), not a full scenario description.
+            # A WEAK compound signal ("provider or just a deployer")
+            # has tight gold — the role-defining article plus the key
+            # obligation per role (~3-5). The 8-ref weak-scenario budget
+            # bulk-dumps both roles' obligation chains, and the r69-live
+            # LLM-judge refs axis failed those rows ("bulk citation
+            # dump … never described in prose", refS 0.18-0.30) — so
+            # weak compound questions get a tight 5-ref budget. A STRONG
+            # signal (explicit "both a provider AND a deployer") keeps
+            # 12: R53.1-B has V2 evidence those rows need the full
+            # provider+deployer chain. Davidath has no compound-role
+            # *questions* (its compound rows are all full-scenario
+            # shape), so this branch is davidath-neutral.
+            _effective_max_refs = 12 if _compound_strength == "strong" else 5
     elif _is_scenario_question:
         _effective_max_refs = 10
     else:
