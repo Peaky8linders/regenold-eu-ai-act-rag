@@ -1047,58 +1047,68 @@ def _build_answer(role: str, risk_level: str) -> str:
     full verdict intact (the cap drops the longest non-cite sentence
     first; cite-anchored sentences are preserved).
     """
+    # R69 round-1 — third-person subject nouns. The pre-R69 verdicts
+    # opened "As a {role}, you must …" — the second person ("you")
+    # failed the LLM-judge tone axis ("conversational second-person
+    # framing instead of neutral declarative register") AND tripped the
+    # tone_guard line-97 "you must" -> "must" strip, producing the
+    # ungrammatical "As a provider, must provide …". A third-person
+    # subject ("The provider must …") is regulator voice, grammatical,
+    # and gives tone_guard nothing to strip.
     role_phrase = {
-        "provider": "As a provider",
-        "deployer": "As a deployer",
-        "importer": "As an importer",
-        "distributor": "As a distributor",
-    }.get(role, "Under the EU AI Act")
+        "provider": "The provider",
+        "deployer": "The deployer",
+        "importer": "The importer",
+        "distributor": "The distributor",
+    }.get(role, "The operator")
     if risk_level == "prohibited":
         return (
             "This system is classified as a prohibited AI practice under "
             "Article 5 and may not be placed on the market or put into "
-            f"service. {role_phrase}, you must immediately cease deployment, "
+            f"service. {role_phrase} must immediately cease deployment, "
             "conduct a risk assessment covering identification, evaluation "
             "and mitigation of risks to fundamental rights, and document "
-            "the rationale for decommissioning (Article 5). Verify that no "
-            "other AI activities exhibit prohibited practices and retain "
-            "the assessment for market-surveillance review under Article 10."
+            "the rationale for decommissioning (Article 5). The provider "
+            "must verify that no other AI activities exhibit prohibited "
+            "practices and retain the assessment for market-surveillance "
+            "review under Article 10."
         )
     if risk_level == "high-risk":
         return (
             "This system is classified as high-risk under Article 6 and "
             "the Annex III use-case list. "
-            f"{role_phrase}, you must classify the system as high-risk and "
+            f"{role_phrase} must classify the system as high-risk and "
             "document the classification rationale, then register the "
-            "system in the EU AI database (Articles 6, 49). Establish and "
-            "maintain a risk-management system covering identification, "
-            "estimation, evaluation and mitigation of risks to fundamental "
-            "rights, including data governance, technical documentation, "
-            "human oversight and post-market monitoring (Articles 9 to 15)."
+            "system in the EU AI database (Articles 6, 49). The provider "
+            "must establish and maintain a risk-management system covering "
+            "identification, estimation, evaluation and mitigation of risks "
+            "to fundamental rights, including data governance, technical "
+            "documentation, human oversight and post-market monitoring "
+            "(Articles 9 to 15)."
         )
     if risk_level == "limited":
         return (
             "This system is classified as limited-risk under the Article 50 "
-            f"transparency obligations. {role_phrase}, you must provide "
+            f"transparency obligations. {role_phrase} must provide "
             "AI literacy training to all staff involved in development, "
             "deployment and operation of the system, and document a "
             "classification assessment confirming the system is not "
-            "high-risk under Article 6 (Article 4). Display a clear notice "
-            "to users at the first interaction informing them they are "
-            "interacting with an AI system and clearly label AI-generated "
-            "content as such (Article 50)."
+            "high-risk under Article 6 (Article 4). A clear notice must be "
+            "displayed to users at the first interaction informing them "
+            "they are interacting with an AI system, and AI-generated "
+            "content must be clearly labelled as such (Article 50)."
         )
     if risk_level == "minimal":
         return (
             "This system is classified as minimal-risk outside the "
             "prohibited and high-risk categories. "
-            f"{role_phrase}, you must verify whether the system meets the "
+            f"{role_phrase} must verify whether the system meets the "
             "high-risk classification criteria under Article 6, document "
             "the assessment rationale, and retain it for market-surveillance "
-            "review (Article 6). Provide AI literacy training to all staff "
-            "involved in development, deployment and operation, and display "
-            "a clear notice to users at the first interaction where the AI "
-            "nature is not obvious (Articles 4, 50)."
+            "review (Article 6). The provider must provide AI literacy "
+            "training to all staff involved in development, deployment and "
+            "operation, and display a clear notice to users at the first "
+            "interaction where the AI nature is not obvious (Articles 4, 50)."
         )
     if risk_level == "gpai":
         # R63-B — GPAI fine-tune / compute / threshold verdict prose.
@@ -1107,26 +1117,26 @@ def _build_answer(role: str, risk_level: str) -> str:
         # "cooperation", "systemic", "training data summary".
         return (
             "This is a general-purpose AI model question under Article 51. "
-            f"{role_phrase}, the one-third fine-tune rule (per the "
+            "The one-third fine-tune rule (per the "
             "Commission's 18 July 2025 GPAI Guidelines anchored on "
-            "Article 51) determines whether you become a new provider "
-            "under Article 25: additional training compute exceeding "
-            "1/3 of the base model's compute (or ~3.3×10^24 FLOPs absolute "
-            "fallback when base compute is unknown) makes you the new "
-            "provider; below the one-third threshold you do NOT become a "
-            "new provider and the upstream provider retains "
-            "responsibility. Article 25(4) requires cooperation along the "
-            "value chain — the original provider must supply information "
-            "and technical access so downstream actors meet their own "
-            "obligations. Where the model has systemic-risk capabilities "
-            "(presumed at 10^25 FLOPs cumulative training compute), the "
-            "full Article 55 systemic-risk obligations apply on top of "
-            "the Article 53 provider obligations (technical documentation, "
-            "training data summary, copyright policy)."
+            "Article 51) determines whether a downstream modifier becomes "
+            "a new provider under Article 25: additional training compute "
+            "exceeding 1/3 of the base model's compute (or ~3.3×10^24 FLOPs "
+            "absolute fallback when base compute is unknown) makes the "
+            "modifier the new provider; below the one-third threshold the "
+            "modifier does NOT become a new provider and the upstream "
+            "provider retains responsibility. Article 25(4) requires "
+            "cooperation along the value chain — the original provider must "
+            "supply information and technical access so downstream actors "
+            "meet their own obligations. Where the model has systemic-risk "
+            "capabilities (presumed at 10^25 FLOPs cumulative training "
+            "compute), the full Article 55 systemic-risk obligations apply "
+            "on top of the Article 53 provider obligations (technical "
+            "documentation, training data summary, copyright policy)."
         )
     # Fallback — neutral classification.
     return (
-        f"{role_phrase}, this system requires a risk classification "
+        "This system requires a risk classification "
         "assessment under Article 6 and Annex III before specific "
         "obligations on providers and deployers can be enumerated."
     )

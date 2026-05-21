@@ -2812,6 +2812,25 @@ _STAGE2_REFUSAL_MARKERS: tuple[str, ...] = (
     "reference block contains no",
     "block returned no matching provisions",
     "what i can note from the framing",
+    # R69-live — six NEW markers caught in the r69-live V2 multi-turn
+    # run. Sonnet 4.6 narrated the retrieval process on thin-retrieval
+    # multi-turn final turns: mt_v2_010 "the retrieved references ...
+    # returned no matching results"; mt_v2_016 "No EU AI Act provision
+    # was retrieved for this specific query"; mt_v2_017 "the EU AI ACT
+    # REFERENCES block returned no results for this query"; mt_v2_019
+    # "the available knowledge base returns no matching references";
+    # mt_v2_022 "No specific penalty provisions were retrieved for this
+    # query"; mt_v2_024 "the EU AI ACT REFERENCES block returned no
+    # matching entries". All six rows shipped non-empty `references`
+    # lists, so the consistency guard SHOULD substitute R49-A grounded
+    # prose. Each marker is retrieval-process meta-commentary a
+    # regulator-voice answer never legitimately emits.
+    "returned no matching results",
+    "returned no results for this query",
+    "returned no matching entries",
+    "no matching references",
+    "was retrieved for this specific query",
+    "were retrieved for this query",
 )
 
 
