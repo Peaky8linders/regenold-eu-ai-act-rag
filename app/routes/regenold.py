@@ -586,6 +586,31 @@ def _try_extractive_answer(
                 )
                 if hit_internal in cite_refs or hit_ref in cite_refs:
                     return hit.text
+        # R69 — Layer-A paragraph-level extraction for broad QA shapes.
+        # The engine emits ~480-char full-article prose where davidath QA
+        # gold is ~140 chars. Single-sentence extraction (Round 26) drops
+        # gold tokens on broad shapes (boolean/role/method/list/
+        # description), so those shapes currently defer to the engine
+        # prose + QA-trim. The structure-aware document tree's *paragraph*
+        # node is the middle granularity — multi-clause-complete but
+        # tighter than the full article. Env-gated REGENOLD_TREE_EXTRACT
+        # (A/B-gated, see app/engines/semantic_layer.py). Returns None on
+        # any ambiguous row, so the engine prose still lands there.
+        try:
+            from app.engines.semantic_layer import (  # noqa: PLC0415
+                is_tree_extract_enabled as _tree_extract_on,
+                paragraph_extract as _tree_paragraph,
+            )
+            if _tree_extract_on() and engine_citations:
+                for c in engine_citations[:2]:
+                    ref = getattr(c, "article_ref", "") or ""
+                    if not ref:
+                        continue
+                    para = _tree_paragraph(question, ref)
+                    if para:
+                        return para
+        except Exception:  # noqa: BLE001 — never let tree extract 500 the route
+            pass
         return None
 
     # Try the first 3 citations in order — the engine ranks them by

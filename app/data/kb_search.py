@@ -412,6 +412,57 @@ def _score(index: _BM25Index, doc_idx: int, query_tokens: list[str]) -> float:
     return score
 
 
+def _rrf_fusion_enabled() -> bool:
+    """R69 — ``REGENOLD_RRF_FUSION`` env gate.
+
+    The proposed Hybrid-RAG architecture's retrieval centrepiece is
+    Reciprocal Rank Fusion across the BM25, dense and graph routes.
+    Round 31 measured symmetric RRF on the davidath benchmark as a wash
+    (±0.004 — BM25 already saturates that corpus) and shipped additive
+    fill instead. R69 wires RRF as a real, A/B-able knob: when this flag
+    is ON, :func:`top_articles_by_relevance` fuses the BM25 and dense
+    rankings via weighted RRF (BM25-dominant, dense as a close-tie
+    reshaper) rather than additive fill.
+
+    Default OFF — preserves the R31 default, so the deterministic
+    davidath path is byte-identical when the flag is unset.
+    """
+    return os.getenv("REGENOLD_RRF_FUSION", "0").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _fuse_dense(
+    bm25_refs: list[str],
+    dense_refs: list[tuple[str, float]],
+    k: int,
+) -> list[str]:
+    """R69 — dispatch the dense-route fusion strategy.
+
+    When ``REGENOLD_RRF_FUSION`` is ON: weighted RRF (``bm25_weight=2.0,
+    dense_weight=1.0`` — BM25 stays the ground-truth ranking, dense
+    only reshapes close-score ties; ``rrf_k=60`` per Cormack 2009).
+    When OFF (default): the Round-31 additive fill — purely recall-
+    positive, never displaces a BM25 winner.
+    """
+    from app.engines.turboquant_index import (  # noqa: PLC0415
+        additive_dense_fill,
+    )
+    if _rrf_fusion_enabled():
+        from app.engines.turboquant_index import (  # noqa: PLC0415
+            reciprocal_rank_fusion,
+        )
+        return reciprocal_rank_fusion(
+            bm25_refs,
+            dense_refs,
+            rrf_k=60,
+            k=k,
+            bm25_weight=2.0,
+            dense_weight=1.0,
+        )
+    return additive_dense_fill(bm25_refs, dense_refs, k=k)
+
+
 def top_articles_by_relevance(
     question: str, *, k: int = 3, min_score: float = 1.5,
 ) -> list[str]:
@@ -542,7 +593,6 @@ def top_articles_by_relevance(
     # Windows-friendly). Env-gated REGENOLD_TURBOQUANT_DENSE=1.
     try:
         from app.engines.turboquant_index import (  # noqa: PLC0415
-            additive_dense_fill,
             dense_top_k,
             is_enabled as _dense_enabled,
         )
@@ -552,7 +602,9 @@ def top_articles_by_relevance(
             except Exception:  # noqa: BLE001 — never 500 the route
                 dense_hits = []
             if dense_hits:
-                fused = additive_dense_fill(fused, dense_hits, k=k)
+                # R69 — RRF when REGENOLD_RRF_FUSION is on, else the
+                # Round-31 additive fill (default, byte-identical).
+                fused = _fuse_dense(fused, dense_hits, k)
     except Exception:  # noqa: BLE001 — numpy missing on a stripped install
         pass
 
@@ -599,7 +651,8 @@ def top_articles_by_relevance(
     emb_refs = sorted(article_max.items(), key=lambda t: t[1], reverse=True)
     if not emb_refs:
         return fused
-    fused = additive_dense_fill(fused, emb_refs, k=k)
+    # R69 — RRF when REGENOLD_RRF_FUSION is on, else additive fill.
+    fused = _fuse_dense(fused, emb_refs, k)
 
     # Round 35 — Neo4j 2-hop graph expansion (env-gated REGENOLD_GRAPH_2HOP).
     # When OFF (default) the call returns empty in 1 µs and ``fused`` is

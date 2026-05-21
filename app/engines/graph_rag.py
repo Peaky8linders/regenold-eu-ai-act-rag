@@ -2685,6 +2685,29 @@ def _build_context_references_block(context: GraphContext) -> str:
     return "\n".join(parts) if parts else "No EU AI Act references match this query."
 
 
+def _context_article_refs(context: "GraphContext | None") -> list[str]:
+    """R69 — collect distinct Article/Annex refs present in a GraphContext.
+
+    Used to seed the cross-reference context pass (the architecture's
+    Fragmentation-Problem fix). Reads the same ``article`` keys
+    :func:`_build_context_references_block` renders.
+    """
+    if context is None:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for bucket in (
+        getattr(context, "obligations", None) or [],
+        getattr(context, "article_info", None) or [],
+    ):
+        for entry in bucket:
+            ref = str((entry or {}).get("article", "") or "").strip()
+            if ref and ref != "N/A" and ref not in seen:
+                seen.add(ref)
+                out.append(ref)
+    return out
+
+
 # Regexes used by the post-Stage-2 hallucination guard. Tight enough to
 # pick up the citation shapes Sonnet emits in prose, loose enough not to
 # false-positive on incidental digits.
@@ -2972,6 +2995,23 @@ def _claude_max_enhance_answer(
 
         sanitized_q = sanitize_for_llm(question, context_type="query")
         user_message = f"QUESTION: {sanitized_q}\n\n"
+
+        # R69 — structured query profile (proposed architecture, Section
+        # 3A). A one-line deterministic intent payload {actor, actor
+        # location, market, application, risk level, concept} that
+        # sharpens cross-border / role-ambiguity answers. Additive
+        # Stage-2 context only — never touches the wire references list.
+        try:
+            from app.engines.query_structure import (  # noqa: PLC0415
+                analyse_query,
+                profile_line,
+            )
+            _profile = profile_line(analyse_query(question))
+            if _profile:
+                user_message += _profile + "\n\n"
+        except Exception:  # noqa: BLE001 — never let the profile 500 Stage-2
+            pass
+
         if system_description:
             sanitized_desc = sanitize_for_llm(
                 system_description, context_type="system_description"
@@ -2987,11 +3027,39 @@ def _claude_max_enhance_answer(
                 f"{_build_context_references_block(context)}\n\n"
             )
 
+            # R69 — cross-reference context (the architecture's
+            # "Fragmentation Problem" fix). Surfaces the text of
+            # provisions the cited articles point at (the proposal's
+            # canonical example — Article 11/16 referencing the
+            # technical-documentation layout of Annex IV) so the
+            # generator sees both halves of a cross-reference. Feeds the
+            # context ONLY — never the wire references list, so it
+            # cannot move the reference-correctness / -conciseness axes.
+            try:
+                from app.engines.semantic_layer import (  # noqa: PLC0415
+                    cross_reference_context,
+                )
+                _xrefs = cross_reference_context(
+                    _context_article_refs(context)
+                )
+                if _xrefs:
+                    user_message += (
+                        "CROSS-REFERENCED PROVISIONS (background only — "
+                        "cite only if directly relevant to the question):\n"
+                        + "\n".join(f"- {x}" for x in _xrefs)
+                        + "\n\n"
+                    )
+            except Exception:  # noqa: BLE001 — never let xref context 500 Stage-2
+                pass
+
         user_message += (
             f"KNOWLEDGE GRAPH ANSWER (draft):\n{kg_answer}\n\n"
-            "Refine the knowledge-graph draft above into a clear, concise compliance "
-            "response. Cite only articles, annexes, and obligations that appear in the "
-            "EU AI ACT REFERENCES block. Lead with a direct answer, 3-4 sentences "
+            "Refine the knowledge-graph draft above into a clear, concise "
+            "compliance response. Cite only articles, annexes and "
+            "obligations that appear in the EU AI ACT REFERENCES block, "
+            "and make sure every article or annex you cite is described "
+            "in the prose — state in a few words what it requires, never "
+            "cite a bare number. Lead with a direct answer, 3-4 sentences "
             "maximum."
         )
         try:
