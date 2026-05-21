@@ -49,9 +49,13 @@ def test_fetch_date_is_iso(official):
     assert iso.match(official.OFFICIAL_FETCH_DATE)
 
 
-def test_source_url_points_to_eur_lex(official):
-    assert "eur-lex.europa.eu" in official.OFFICIAL_SOURCE_URL
-    assert "32024R1689" in official.OFFICIAL_SOURCE_URL
+def test_source_url_points_to_official_eu_source(official):
+    """The fetch source must be an official EU document store: either
+    the EUR-Lex web frontend or the Publications Office Cellar
+    repository (its canonical machine-readable backing store)."""
+    url = official.OFFICIAL_SOURCE_URL
+    assert "eur-lex.europa.eu" in url or "publications.europa.eu" in url
+    assert "32024R1689" in url
 
 
 def test_article_text_has_full_coverage(official):
@@ -245,3 +249,51 @@ def test_consolidation_note_extracted(official):
     fallback note — never an empty string."""
     note = getattr(official, "OFFICIAL_CONSOLIDATION_NOTE", "")
     assert note, "consolidation note should not be empty"
+
+
+# ---------------------------------------------------------------------------
+# fetch_html source-ordering tests (monkeypatched _http_get, no network)
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_html_tries_cellar_first(monkeypatch):
+    """The Publications Office Cellar repository is the canonical store
+    and must be the first source attempted."""
+    import scripts.fetch_official_eu_ai_act as fx
+
+    calls: list[str] = []
+
+    def fake_get(url, extra_headers=None):
+        calls.append(url)
+        return b"<html><div id='art_1'>x</div></html>"
+
+    monkeypatch.setattr(fx, "_http_get", fake_get)
+    _, url, note = fx.fetch_html()
+    assert calls[0] == fx.CELLAR_URL
+    assert url == fx.CELLAR_URL
+    assert note == "cellar xhtml"
+
+
+def test_fetch_html_skips_empty_body(monkeypatch):
+    """An empty body (the EUR-Lex anti-bot WAF's HTTP 202 signature)
+    must not be pinned — the loop falls through to the next source."""
+    import scripts.fetch_official_eu_ai_act as fx
+
+    def fake_get(url, extra_headers=None):
+        if url == fx.CELLAR_URL:
+            return b""  # WAF / 202 empty-body signature
+        return b"<html><div id='art_1'>ok</div></html>"
+
+    monkeypatch.setattr(fx, "_http_get", fake_get)
+    payload, url, _ = fx.fetch_html()
+    assert url == fx.HTML_URL
+    assert payload
+
+
+def test_fetch_html_all_empty_raises(monkeypatch):
+    """Every source returning an empty body is a hard failure."""
+    import scripts.fetch_official_eu_ai_act as fx
+
+    monkeypatch.setattr(fx, "_http_get", lambda url, extra_headers=None: b"")
+    with pytest.raises(RuntimeError):
+        fx.fetch_html()

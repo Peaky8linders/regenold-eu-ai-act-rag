@@ -57,6 +57,18 @@ HTML_URL = f"https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:{CEL
 PDF_URL = f"https://eur-lex.europa.eu/legal-content/EN/TXT/PDF/?uri=CELEX:{CELEX}"
 XML_URL = f"https://eur-lex.europa.eu/legal-content/EN/TXT/XML/?uri=CELEX:{CELEX}"
 
+# The EUR-Lex web frontend sits behind an anti-bot WAF that answers
+# unattended GETs with HTTP 202 + an empty body. The EU Publications
+# Office "Cellar" repository serves the same CONVEX-generated document
+# without that wall — it is the canonical machine-readable store, so it
+# is tried first. Content negotiation requires an explicit Accept type
+# plus a 3-letter language code; the CELEX-keyed URL itself is stable.
+CELLAR_URL = f"http://publications.europa.eu/resource/celex/{CELEX}"
+CELLAR_HEADERS = {
+    "Accept": "application/xhtml+xml",
+    "Accept-Language": "eng",
+}
+
 USER_AGENT = (
     "Regenold-EU-AI-Act-RAG/1.0 (compliance research; contact: bacu.andrei@gmail.com)"
 )
@@ -130,10 +142,18 @@ OFFICIAL_UPDATES: list[dict[str, str]] = [
 # ---------------------------------------------------------------------------
 
 
-def _http_get(url: str) -> bytes:
-    """Fetch ``url`` with our identified User-Agent and 1s throttle."""
+def _http_get(url: str, extra_headers: dict[str, str] | None = None) -> bytes:
+    """Fetch ``url`` with our identified User-Agent and 1s throttle.
+
+    ``extra_headers`` carries the content-negotiation headers the Cellar
+    repository needs (Accept type + language); EUR-Lex web endpoints
+    need none.
+    """
     time.sleep(REQUEST_THROTTLE_S)
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    headers = {"User-Agent": USER_AGENT}
+    if extra_headers:
+        headers.update(extra_headers)
+    req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_S) as resp:
         return resp.read()
 
@@ -499,21 +519,32 @@ def _seed_from_corpus() -> tuple[dict[str, str], dict[int, str], dict[str, str],
 
 
 def fetch_html() -> tuple[bytes, str, str]:
-    """Try HTML → PDF → XML in order. Return ``(payload, url_used, note)``.
+    """Try Cellar → HTML → XML → PDF in order. Return ``(payload, url_used, note)``.
 
-    On total failure raises the last urllib error.
+    The Cellar repository is the canonical EU document store and is not
+    behind the EUR-Lex anti-bot WAF, so it is attempted first. An empty
+    body (the WAF's HTTP 202 signature) is treated as a failure so the
+    loop falls through to the next source instead of pinning nothing.
+
+    On total failure raises a RuntimeError listing every attempt.
     """
     errors: list[str] = []
-    for url in (HTML_URL, XML_URL, PDF_URL):
+    attempts: tuple[tuple[str, dict[str, str] | None, str], ...] = (
+        (CELLAR_URL, CELLAR_HEADERS, "cellar xhtml"),
+        (HTML_URL, None, "primary html"),
+        (XML_URL, None, "xml fallback"),
+        (PDF_URL, None, "pdf fallback"),
+    )
+    for url, headers, note in attempts:
         try:
-            payload = _http_get(url)
-            note = "primary html" if url == HTML_URL else (
-                "xml fallback" if url == XML_URL else "pdf fallback"
-            )
+            payload = _http_get(url, headers)
+            if not payload:
+                errors.append(f"{url}: empty body (anti-bot WAF?)")
+                continue
             return payload, url, note
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             errors.append(f"{url}: {type(e).__name__}: {e}")
-    raise RuntimeError("All EUR-Lex URLs failed: " + " | ".join(errors))
+    raise RuntimeError("All EUR-Lex / Cellar URLs failed: " + " | ".join(errors))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -537,7 +568,7 @@ def main(argv: list[str] | None = None) -> int:
         payload, url_used, note = fetch_html()
         source_url = url_used
         print(f"[fetch] OK ({note}): {len(payload)} bytes from {url_used}")
-        if url_used == HTML_URL:
+        if url_used in (HTML_URL, CELLAR_URL):
             html_text = payload.decode("utf-8", errors="replace")
             consolidation_note = _extract_consolidation_note(html_text)
             parsed = parse_eur_lex_html(html_text)

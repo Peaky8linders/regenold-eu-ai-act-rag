@@ -7,7 +7,7 @@ remains the BM25 default; this one seeds the embeddings surface
 and tracks Digital-Omnibus-era amendments.
 
 Source: Regulation (EU) 2024/1689 (CELEX 32024R1689).
-Fetched: 2026-05-16
+Fetched: 2026-05-21
 Upstream SHA-256: f64a5cb6fe4da65193cc75d3509cc8167e6a7515519a375540d1d0483be3fb4b
 Live fetch blocked: False
 
@@ -28,9 +28,9 @@ Public surface:
 """
 from __future__ import annotations
 
-OFFICIAL_FETCH_DATE: str = '2026-05-16'
+OFFICIAL_FETCH_DATE: str = '2026-05-21'
 OFFICIAL_SHA256: str = 'f64a5cb6fe4da65193cc75d3509cc8167e6a7515519a375540d1d0483be3fb4b'
-OFFICIAL_SOURCE_URL: str = 'https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32024R1689'
+OFFICIAL_SOURCE_URL: str = 'http://publications.europa.eu/resource/celex/32024R1689'
 OFFICIAL_CONSOLIDATION_NOTE: str = 'EUR-Lex CONVEX generated_on 2024-10-17'
 _LIVE_FETCH_BLOCKED: bool = False
 
