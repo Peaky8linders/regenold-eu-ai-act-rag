@@ -213,3 +213,36 @@ def test_subpoint_topic_map_grew_for_doctor_transcription():
             found = True
             break
     assert found, "no entry pairs Annex III.5 with Article 6.1"
+
+
+def test_r71_upgrade_references_live_message_vs_flattened_multiturn():
+    """R71 (mt_v2_017 fix) — `upgrade_references` must be scored against
+    the LIVE user message, not the full flattened multi-turn string.
+
+    The flattened string carries every prior turn; SUBPOINT_TOPIC_MAP
+    would match 'prohibited practice' from turn 0 and inflate Article 5
+    into five leaf subpoints that evict the final turn's real anchor
+    (Article 99) under the route's 5-ref budget.
+    """
+    full_flattened = (
+        "Conversation so far:\n"
+        "User: We knowingly deployed an AI Act prohibited practice for "
+        "6 months in our HR product.\n"
+        "Assistant: That's an Article 5 violation; Article 99 caps the "
+        "fine.\n\n"
+        "Latest question:\n"
+        "We're a 25-employee startup - does the cap actually hit us?"
+    )
+    live_message = "We're a 25-employee startup - does the cap actually hit us?"
+    base = ["Article 5", "Article 99"]
+    # Sanity: the full flattened string DOES inflate Article 5 subpoints.
+    full_out = upgrade_references(question=full_flattened, base_refs=base)
+    assert any(r.startswith("Article 5.1.") for r in full_out), (
+        f"sanity: flattened string should trigger Art. 5 subpoints; got {full_out!r}"
+    )
+    # R71 fix: the live message alone carries no SUBPOINT_TOPIC_MAP
+    # topic — refs pass through unchanged, Article 99 is never evicted.
+    live_out = upgrade_references(question=live_message, base_refs=base)
+    assert live_out == ["Article 5", "Article 99"], (
+        f"live-message scan should pass refs through unchanged; got {live_out!r}"
+    )

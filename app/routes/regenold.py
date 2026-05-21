@@ -1922,7 +1922,18 @@ def regenold_eu_ai_act_ask(
     if os.getenv("REGENOLD_SUBPOINT_EMIT", "1") in ("1", "true", "yes", "on"):
         from app.data.subpoint_emitter import upgrade_references  # noqa: PLC0415
         try:
-            candidates = upgrade_references(question=question, base_refs=candidates)
+            # R71 (mt_v2_017 fix) — score the subpoint emitter against the
+            # LIVE user message, not the full flattened multi-turn string.
+            # `question` carries every prior turn's text; SUBPOINT_TOPIC_MAP
+            # would match "prohibited practice" / "HR" from an earlier turn
+            # and emit five Art. 5 leaf subpoints that evict the final
+            # turn's real anchor (e.g. Art. 99 penalties) under the 5-ref
+            # budget. `live_user_message` is the raw final turn; for
+            # single-turn QA it equals the question, so this is a no-op
+            # there (and davidath-immune).
+            candidates = upgrade_references(
+                question=live_user_message or question, base_refs=candidates
+            )
         except Exception:  # noqa: BLE001 — fail-soft
             pass
 
