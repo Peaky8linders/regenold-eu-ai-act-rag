@@ -473,3 +473,40 @@ class TestKBVersionSnapshot:
             f"KB_VERSION must match `<YYYY>.<reg_id>.v<build>` "
             f"(e.g. `2024.1689.v3`); got {KB_VERSION!r}"
         )
+
+
+# ── R70 — Digital Omnibus Annex III deferral phase ────────────────────
+#
+# The Digital Omnibus political agreement (7 May 2026) defers the
+# Annex III high-risk obligations from 2 Aug 2026 to 2 Dec 2027. The
+# rest of the codebase already tracked this date (kb.py Art. 113,
+# official_eu_ai_act.OFFICIAL_UPDATES), but PHASE_REGISTRY shipped
+# ``phase_2026_08_02`` with ``superseded_by=None`` while its Annex I
+# sibling ``phase_2027_08_02`` was correctly wired to its own deferral.
+# R70 closes the gap so date-shaped queries resolve consistently.
+
+
+class TestR70OmnibusAnnexIIIDeferral:
+    """The Annex III high-risk deferral phase must mirror the Annex I one."""
+
+    def test_omnibus_annex_iii_phase_exists(self) -> None:
+        assert "phase_omnibus_2027_12_02" in PHASE_REGISTRY
+
+    def test_omnibus_annex_iii_phase_effective_date(self) -> None:
+        d = PHASE_REGISTRY["phase_omnibus_2027_12_02"].effective_date
+        assert (d.year, d.month, d.day) == (2027, 12, 2)
+
+    def test_omnibus_annex_iii_phase_covers_annex_iii(self) -> None:
+        phase = PHASE_REGISTRY["phase_omnibus_2027_12_02"]
+        assert "Annex III" in phase.articles
+        assert "Art. 6" in phase.articles
+
+    def test_original_annex_iii_phase_points_at_deferral(self) -> None:
+        """``phase_2026_08_02`` must be superseded by the Omnibus phase —
+        the gap the rest of the codebase already worked around."""
+        original = PHASE_REGISTRY["phase_2026_08_02"]
+        assert original.superseded_by == "phase_omnibus_2027_12_02"
+
+    def test_omnibus_annex_iii_phase_labelled_omnibus(self) -> None:
+        phase = PHASE_REGISTRY["phase_omnibus_2027_12_02"]
+        assert "Omnibus" in phase.label or "Omnibus" in phase.description

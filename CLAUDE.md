@@ -3063,6 +3063,95 @@ within noise of the R68 baseline). 2,256 tests pass + 1 skip. The
 judge-axis lifts (refusal-drift removed, third-person tone, tighter
 ref budget) land at the next live re-run.
 
+## Round 70 — Official-text re-fetch + full-coverage audit + Omnibus phase gap (2026-05-21)
+
+Round 70 re-verified the entire knowledge surface against the official
+EU AI Act text and closed the one coverage gap a parallel-agent audit
+surfaced. Three PRs land under the round-70 umbrella: the Cellar
+re-fetch (#92), the tone-guard second-person rewrite (#93), and this
+PHASE_REGISTRY fix.
+
+### Live re-fetch via the EU Publications Office Cellar (#92)
+
+`scripts/fetch_official_eu_ai_act.py` had gone dead: the EUR-Lex web
+frontend now sits behind an anti-bot WAF that answers unattended GETs
+(HTML / PDF / XML) with HTTP 202 + an empty body. The fetcher treated
+the empty body as success and pinned nothing.
+
+Fix — route the fetcher through the **EU Publications Office Cellar
+repository** (`publications.europa.eu/resource/celex/32024R1689`), the
+canonical machine-readable document store, which is not behind the WAF.
+Content negotiation needs an explicit `Accept: application/xhtml+xml`
+plus a 3-letter `Accept-Language: eng`. The Cellar is now attempted
+first; the EUR-Lex web endpoints stay as fallbacks; an empty body is
+treated as a failure so the loop falls through instead of pinning
+nothing.
+
+The live re-fetch confirmed the official consolidated text (CONVEX
+`generated_on:20241017`, 113 articles + 13 annexes + 180 recitals) is
+**byte-identical** to the existing pin — canonical SHA `f64a5cb6…`
+unchanged. Re-pinned 2026-05-21; the Digital Omnibus amendments are
+still not merged into the EUR-Lex consolidated text.
+
+### Parallel-agent coverage audit — coverage confirmed complete
+
+Four parallel agents audited the full 113-article + 13-annex surface:
+
+* **KB / catalog / corpora** — `EC_CHECKER_OBLIGATION_MAP` 126/126,
+  0 placeholders, faithful prose; `OFFICIAL_ARTICLE_TEXT` 126/126;
+  `ARTICLE_FULL_TEXT` 126/126; `DEFINITION_REGISTRY` 68/68 Art. 3
+  definitions.
+* **Indexes** — BM25 (348 docs), sentence index (949 sentences),
+  embeddings index (919 sentences, **all 4 asset SHAs match the
+  manifest**), turboquant (280 docs) all cover 113/113 + 13/13.
+  Verdict: assets current — no rebuild needed (the official-text SHA
+  is unchanged).
+* **Graph / xrefs / seeder** — Neo4j seeder 505 nodes / 500 edges,
+  `eu_ai_act_tree` 1,412 nodes, all endpoints resolve. The xref graph
+  carries **4 genuine orphans** (`Art. 1, 35, 87, 89` — purpose
+  statements with no internal AI-Act citations), confirmed by the
+  project's own `analyze_xref_coverage.py`. Left as-is: per the R47
+  reconciliation, xref edges are precision-sensitive on davidath and
+  the graph is already at its honest floor.
+* **Ontology / taxonomy** — the `ROLE_OBLIGATIONS` matrix and the
+  four-axis agentic taxonomy verified correct as-is (the matrix is
+  deliberately curated with explicit audit comments). One genuine gap
+  → below.
+
+### PHASE_REGISTRY — Digital Omnibus Annex III deferral (this PR)
+
+`app/data/ontology.py::PHASE_REGISTRY` tracked the Digital Omnibus
+deferral for Annex I (`phase_2027_08_02` → `phase_omnibus_2028_08_02`)
+but **not** for Annex III — `phase_2026_08_02` (Annex III high-risk
+obligations, 2 Aug 2026) shipped with `superseded_by=None`, even though
+the rest of the codebase (kb.py Art. 113,
+`official_eu_ai_act.OFFICIAL_UPDATES`) already records the 2 Dec 2027
+deferral. A date-shaped query resolving through the phase registry
+would return the stale 2 Aug 2026 date.
+
+Fix — add `phase_omnibus_2027_12_02` (Annex III high-risk obligations
+deferred to 2 December 2027, mirroring the Annex I phase) and wire
+`phase_2026_08_02.superseded_by`. +5 regression tests
+(`TestR70OmnibusAnnexIIIDeferral`). `EC_CHECKER_OBLIGATION_MAP` is
+untouched, so `KB_VERSION` stays `2024.1689.v6`.
+
+### Round 70 — bench parity (476 davidath items, 2,276 tests pass)
+
+| Axis | post-#93 baseline | R70 PHASE_REGISTRY | Δ |
+| ---- | ----------------- | ------------------ | --- |
+| Ans Strict | 0.3028 | 0.3028 | flat ✓ |
+| Ref Loose | 0.5881 | 0.5881 | flat ✓ |
+| Ref Strict | 0.4525 | 0.4525 | flat ✓ |
+| Regulatory Tone | 1.0 | 1.0 | flat ✓ |
+| Multi-turn | 20/20 | 20/20 | flat ✓ |
+
+Byte-identical — the new phase adds ~1 BM25 virtual doc about a 2027
+date that matches no davidath gold pattern. The 276-scenario local
+suite holds at 274/276; the 2 failing rows
+(`multiturn_g_long_art10_4turn`, `multiturn_g_long_art50_5turn`) are
+**pre-existing on `main`** (multi-turn scope-coreference refusals,
+verified independent of this round) — flagged for a follow-up.
+
 ## Eval scorecard (deterministic-fallback, local 276-scenario suite)
 
 | Round  | Pass         | p50      | p95     | avg refs | Retrieval F1 | Notes |

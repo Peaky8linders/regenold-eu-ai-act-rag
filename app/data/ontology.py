@@ -171,6 +171,9 @@ PHASE_REGISTRY: dict[str, Phase] = {
             "systems take effect. Deployer obligations under Art. 26, FRIA "
             "under Art. 27, transparency under Arts. 13/50."
         ),
+        # Digital Omnibus defers the Annex III high-risk obligations to
+        # 2 Dec 2027 — see PHASE_REGISTRY["phase_omnibus_2027_12_02"].
+        superseded_by="phase_omnibus_2027_12_02",
     ),
     "phase_2027_08_02": Phase(
         id="phase_2027_08_02",
@@ -197,6 +200,22 @@ PHASE_REGISTRY: dict[str, Phase] = {
             "and formal adoption: adds a 9th prohibition under Article 5 for "
             "AI systems that generate child sexual abuse material (CSAM) or "
             "non-consensual intimate imagery. Currently in draft."
+        ),
+    ),
+    "phase_omnibus_2027_12_02": Phase(
+        id="phase_omnibus_2027_12_02",
+        label="Digital Omnibus deferred Annex III high-risk obligations",
+        effective_date=date(2027, 12, 2),
+        articles=("Art. 6", "Art. 8", "Art. 9", "Art. 10", "Art. 11", "Art. 13",
+                  "Art. 14", "Art. 15", "Art. 16", "Art. 17", "Art. 26", "Art. 27",
+                  "Annex III"),
+        description=(
+            "Digital Omnibus (political agreement of 7 May 2026) defers the "
+            "Chapter III Section 2 high-risk obligations for Annex III AI "
+            "systems from 2 August 2026 to 2 December 2027, aligning the "
+            "high-risk runway with harmonised-standard availability and "
+            "notified-body capacity. Supersedes phase_2026_08_02. Not yet "
+            "merged into the EUR-Lex consolidated text."
         ),
     ),
     "phase_omnibus_2028_08_02": Phase(
