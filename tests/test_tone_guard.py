@@ -359,21 +359,22 @@ def test_r55_a_second_person_you_lose_dropped():
 def test_r55_a_second_person_possessive_your_rewritten():
     """mt_v2_025 shape — 'Your EU subsidiary can serve as...'.
 
-    'your' → 'the' so the sentence reads in regulator voice. At
-    sentence start, the rewriter restores capitalisation ('The').
+    R70 — 'your' → "the operator's" so the sentence reads in
+    regulator voice. At sentence start, the rewriter restores
+    capitalisation ('The').
     """
     out = enforce_tone(
         "Your EU subsidiary can serve as the authorized representative."
     )
     assert "your" not in out.lower()
-    assert "The EU subsidiary" in out
+    assert "The operator's EU subsidiary" in out
 
 
 def test_r55_a_second_person_your_ai_system_rewritten():
-    """'Your AI system is classified as high-risk.' → 'The AI system...'"""
+    """R70 — 'Your AI system…' → "The operator's AI system…"."""
     out = enforce_tone("Your AI system is classified as high-risk.")
     assert "your" not in out.lower()
-    assert "The AI system" in out
+    assert "The operator's AI system" in out
 
 
 # ── R55-A regression — regulator voice must pass through unchanged ──
@@ -412,9 +413,10 @@ def test_r55_a_combination_first_and_second_person():
         "I cannot confirm whether your system is high-risk."
     )
     # 'I cannot' isn't fully stripped because only 'I cannot provide '
-    # is in the explicit pattern set; but 'your' → 'the' still fires.
+    # is in the explicit pattern set; but 'your' → "the operator's"
+    # (R70) still fires.
     assert "your" not in out.lower()
-    assert "the system" in out.lower()
+    assert "the operator's system" in out.lower()
 
 
 def test_r59_annex_roman_numeral_not_split():
@@ -440,3 +442,87 @@ def test_r59_annex_iii_not_split():
     assert len(annex_match_positions) == 0, (
         f"Spurious split after 'Annex III.': {matches}"
     )
+
+
+# ── R70 — grammatical second-person → third-person rewrites ──
+#
+# R55-A DROPPED the bare "you" before a modal ("you must X" → "must X"),
+# leaving a subject-less imperative the judge tone rubric still reads as
+# conversational. R70 upgrades the second-person surface to full
+# grammatical third-person using "the operator" (the EU AI Act Art. 3
+# umbrella term). These close the residual second-person tone failures
+# the R69-live judge run surfaced after R69 round-2.
+
+
+def test_r70_you_are_rewritten_to_the_operator_is():
+    out = enforce_tone("You are a provider under Article 3.")
+    assert out == "The operator is a provider under Article 3."
+
+
+def test_r70_youre_contraction_rewritten():
+    out = enforce_tone("You're classified as a high-risk deployer.")
+    assert out == "The operator is classified as a high-risk deployer."
+
+
+def test_r70_you_must_rewritten_not_dropped():
+    # R55-A dropped "you" → "Must register…"; R70 rewrites to a subject.
+    out = enforce_tone("You must register the system in the EU database.")
+    assert out == "The operator must register the system in the EU database."
+
+
+def test_r70_youll_contraction_rewritten():
+    out = enforce_tone("You'll need to draw up technical documentation.")
+    assert out == "The operator will need to draw up technical documentation."
+
+
+def test_r70_youve_contraction_rewritten():
+    out = enforce_tone("You've already placed the system on the market.")
+    assert out == "The operator has already placed the system on the market."
+
+
+def test_r70_requires_you_to_rewritten():
+    out = enforce_tone("Article 13 requires you to maintain logs.")
+    assert out == "Article 13 requires the operator to maintain logs."
+
+
+def test_r70_allows_you_to_rewritten():
+    out = enforce_tone("Article 56 allows you to rely on a code of practice.")
+    assert out == "Article 56 allows the operator to rely on a code of practice."
+
+
+def test_r70_your_noun_rewritten_to_the_operators():
+    out = enforce_tone("Your quality management system must be documented.")
+    assert out == "The operator's quality management system must be documented."
+
+
+def test_r70_second_person_mid_sentence_after_cite():
+    # Cite-anchored opener legitimately leads; the second-person
+    # second sentence is rewritten in place.
+    out = enforce_tone(
+        "Article 26 applies. You are also a deployer under Article 3."
+    )
+    assert out == (
+        "Article 26 applies. The operator is also a deployer under Article 3."
+    )
+
+
+def test_r70_regulator_voice_unchanged_no_second_person():
+    # No "you"/"your" — pure regulator voice passes through untouched.
+    src = "The operator must establish a quality management system."
+    assert enforce_tone(src) == src
+    src2 = "Providers shall ensure transparency obligations are met."
+    assert enforce_tone(src2) == src2
+
+
+def test_r70_you_lose_still_dropped():
+    # "you lose/gain/…" stays a drop — a grammatical rewrite needs verb
+    # conjugation (lose → loses), out of R70 scope.
+    out = enforce_tone("You lose the presumption of conformity.")
+    assert out == "Lose the presumption of conformity."
+
+
+def test_r70_combined_first_and_second_person():
+    out = enforce_tone("We should note that you must update your records.")
+    # "we should note that" dropped (R53.1-A); "you must" → "the
+    # operator must"; "your" → "the operator's".
+    assert out == "The operator must update the operator's records."

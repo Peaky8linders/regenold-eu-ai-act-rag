@@ -82,36 +82,50 @@ _FIRST_PERSON_REWRITES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bi(?:\s+am|'m)\s+unable\s+to\s+", re.I), ""),
     (re.compile(r"\bi\s+have\s+no\s+", re.I), ""),
     #
-    # Second-person addressing (mt_v2_021 / mt_v2_025 shapes).
-    # CRITICAL: only strip "must" / "shall" / "need to" / "will need
-    # to" / "lose" / "can" / "should" when DIRECTLY preceded by "you"
-    # / "you'll" / "you've" / "you're". Standalone "Providers must"
-    # / "The Commission shall" stays regulator voice (verified by the
-    # baseline-preservation test below).
+    # ── R70 — grammatical second-person → third-person rewrites ──
     #
-    # "you must <verb>" / "you shall <verb>" → drop the "you" — keep
-    # the modal stack as imperative-like. We DON'T strip the modal
-    # because then the next sentence might read "demonstrate compliance"
-    # without a subject. "you must demonstrate" → "must demonstrate"
-    # is the safer, conservative move.
-    (re.compile(r"\byou\s+(?=must\b|shall\b|should\b|need\s+to\b|will\s+need\s+to\b|can\s+(?:and|—|-)|can\b)", re.I), ""),
-    # "you'll need to <verb>" / "you've already <verb>" / "you're <X>" —
-    # drop the contracted forms similarly. The lookahead matches a verb
-    # context so we don't strip a "you're" inside a definitional callout.
-    (re.compile(r"\byou(?:'ll|'ve|'re)\s+", re.I), ""),
-    # "you lose" / "you gain" / "you receive" — bare second-person
-    # subject. Drop "you" and let the verb carry as imperative-like.
-    # The verb whitelist keeps the pattern conservative (doesn't strip
-    # "you" inside quoted-policy contexts because those rarely lead
-    # with this verb set).
+    # R55-A DROPPED the bare "you" before a modal ("you must X" →
+    # "must X"), leaving a subject-less imperative the judge tone
+    # rubric still reads as conversational — and producing the
+    # "As a provider, must provide …" grammar bug when a verdict
+    # opener legitimately leads. R70 upgrades these to full
+    # grammatical third-person: "the operator" is the EU AI Act
+    # Art. 3 umbrella term covering provider / deployer / importer /
+    # distributor / authorised representative, so it is a safe
+    # regulator-voice subject for any operator role.
+    #
+    # CRITICAL: every pattern requires "you" / "your" in a verb-,
+    # modal-, or object-pronoun context, so standalone regulator
+    # voice ("Providers must", "The Commission shall") is never
+    # touched — verified by the baseline-preservation tests.
+    #
+    # "you are X" / "you're X" → "the operator is X".
+    (re.compile(r"\byou(?:'re|\s+are)\b", re.I), "the operator is"),
+    # "you'll <verb>" / "you've <verb>" → expand the contraction in
+    # third person so the following verb keeps a grammatical subject.
+    (re.compile(r"\byou'll\b", re.I), "the operator will"),
+    (re.compile(r"\byou've\b", re.I), "the operator has"),
+    # "you must/shall/should/need to/will need to/can <verb>" →
+    # rewrite the "you" to "the operator" (R55-A dropped it). The
+    # modal stack is kept verbatim; only the second-person subject
+    # is replaced.
+    (re.compile(r"\byou\s+(?=must\b|shall\b|should\b|need\s+to\b|will\s+need\s+to\b|can\s+(?:and|—|-)|can\b)", re.I), "the operator "),
+    # "<obligation-verb> you to <verb>" → "<obligation-verb> the
+    # operator to <verb>". The verb whitelist mirrors the existing
+    # verb-context lookaheads — "you" as an object pronoun is only
+    # rewritten after an obligation / permission verb, never in a
+    # bare quoted callout.
+    (re.compile(r"\b(requires?|required|requiring|oblige[sd]?|obligates?|permits?|allows?|enables?|expects?)\s+you\s+to\b", re.I), r"\1 the operator to"),
+    # "you lose / gain / receive / forfeit / surrender / retain" —
+    # bare second-person subject before a present-tense verb. Kept as
+    # a DROP (R55-A behaviour): a grammatical rewrite here needs verb
+    # conjugation (lose → loses), which is out of R70's scope.
     (re.compile(r"\byou\s+(?=lose\b|gain\b|receive\b|forfeit\b|surrender\b|retain\b)", re.I), ""),
-    # "your <noun>" — second-person possessive. Replace with "the
-    # <noun>". Limited verb-context lookahead would be ideal but a
-    # naive "your" → "the" works because regulator voice already uses
-    # "the" everywhere ("the provider", "the system"). The only risk
-    # is quoted-definitional callouts ("the word 'your' in Article 3")
-    # — none of those land in our pipeline today.
-    (re.compile(r"\byour\b", re.I), "the"),
+    # "your <noun>" — second-person possessive → "the operator's
+    # <noun>". Regulator voice attributes obligations to a named
+    # operator, so the explicit possessive reads truer than a bare
+    # "the".
+    (re.compile(r"\byour\b", re.I), "the operator's"),
 )
 
 # R54.1 — abbreviation-aware sentence boundary. The naive `[.!?]+\s+`
