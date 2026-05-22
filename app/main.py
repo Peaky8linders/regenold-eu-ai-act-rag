@@ -547,6 +547,20 @@ def healthz_llm() -> dict[str, object]:
             or settings.graph_rag.model
             or "claude-sonnet-4-6"
         )
+        # Probe timeout. The warm wrapper round-trip is ~4 s, but a
+        # cold Railway container's first call after a deploy stacks cold
+        # DNS + TLS + connection-pool warm-up (and possibly a cold
+        # claude.exe spawn on the wrapper) and can exceed 10 s — which
+        # false-negatived llm_ok on every post-deploy canary even though
+        # the wrapper was healthy. 30 s covers cold-start while still
+        # bounding a genuinely hung wrapper; real Stage-2 polish uses the
+        # singleton's 60 s. Override via REGENOLD_HEALTHZ_PROBE_TIMEOUT.
+        try:
+            probe_timeout = float(
+                os.getenv("REGENOLD_HEALTHZ_PROBE_TIMEOUT", "").strip() or "30"
+            )
+        except ValueError:
+            probe_timeout = 30.0
         try:
             prov = get_openai_wrapper_provider()
             response = prov.complete(
@@ -556,10 +570,7 @@ def healthz_llm() -> dict[str, object]:
                     model=probe_model,
                     max_tokens=8,
                     temperature=0.0,
-                    # Cap the probe at 10 s so an uptime monitor doesn't
-                    # block forever on a hung wrapper — the singleton's
-                    # 60 s default is for real Stage-2 calls.
-                    timeout_seconds=10.0,
+                    timeout_seconds=probe_timeout,
                 )
             )
         except Exception as exc:  # noqa: BLE001 — health probe must never raise
