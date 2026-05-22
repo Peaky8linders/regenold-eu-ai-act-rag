@@ -88,6 +88,14 @@ _FAILURE_WINDOW_SECONDS = float(
     os.getenv("REGENOLD_ENTITY_FAILURE_WINDOW", "60")
 )
 _MIN_CONFIDENCE = float(os.getenv("REGENOLD_ENTITY_MIN_CONFIDENCE", "0.6"))
+# Bound on concurrent in-flight LLM calls. The extractor fires a network
+# call on the request path; without a cap, a burst of distinct (cache-miss)
+# questions would pin one worker per request for up to ``_TIMEOUT_SECONDS``
+# each before the circuit breaker can open. Excess requests skip the LLM
+# call and fall through to the deterministic BM25 fallback.
+_MAX_CONCURRENCY = max(
+    1, int(os.getenv("REGENOLD_ENTITY_MAX_CONCURRENCY", "4"))
+)
 # Env gate — ``0`` to disable even when provider is wired.
 _ENABLED_ENV = os.getenv("REGENOLD_ENTITY_EXTRACTOR", "1").strip().lower()
 _ENABLED_BY_ENV = _ENABLED_ENV not in ("0", "false", "no", "off")
@@ -130,6 +138,7 @@ class _BreakerState:
 _BREAKER = _BreakerState()
 _CACHE: "OrderedDict[str, EntityExtractionResult]" = OrderedDict()
 _CACHE_LOCK = threading.Lock()
+_CONCURRENCY = threading.Semaphore(_MAX_CONCURRENCY)
 
 
 def _cache_key(question: str, model: str) -> str:
@@ -348,6 +357,14 @@ def extract_entities(question: str) -> list[str]:
             return list(cached.articles)
         return []
 
+    # Bounded concurrency — the LLM call is a network hop on the request
+    # path. When the in-flight budget is exhausted, skip straight to the
+    # deterministic BM25 fallback rather than queue a worker behind a slow
+    # call. A non-blocking acquire keeps the fail-soft contract: an
+    # overloaded extractor degrades to [], never stalls the route.
+    if not _CONCURRENCY.acquire(blocking=False):
+        logger.debug("entity_extractor_concurrency_full: skipping LLM call")
+        return []
     start = time.perf_counter()
     try:
         response = provider.complete(
@@ -364,6 +381,8 @@ def extract_entities(question: str) -> list[str]:
         _BREAKER.record_failure()
         logger.debug("entity_extractor_call_exception: %s", str(exc)[:200])
         return []
+    finally:
+        _CONCURRENCY.release()
     elapsed_ms = int((time.perf_counter() - start) * 1000)
 
     if response.error:

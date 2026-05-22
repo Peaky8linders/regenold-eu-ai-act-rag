@@ -749,7 +749,7 @@ class TestModelOverride:
 
     def test_default_model_is_haiku(self, monkeypatch) -> None:
         """Without env override, the wrapper model defaults to claude-haiku-4-5-20251001."""
-        assert "haiku" in ee._DEFAULT_MODEL.lower() or ee._DEFAULT_MODEL == "claude-haiku-4-5-20251001"
+        assert ee._DEFAULT_MODEL == "claude-haiku-4-5-20251001"
 
     def test_default_groq_model_is_llama(self, monkeypatch) -> None:
         """Without env override, the Groq model defaults to llama-3.3-70b-versatile."""
@@ -768,6 +768,94 @@ class TestModelOverride:
         finally:
             monkeypatch.delenv("REGENOLD_ENTITY_MODEL", raising=False)
             importlib.reload(ee_module)
+
+
+# ── TestEntityExtractorConcurrency ────────────────────────────────────────────
+
+
+class TestEntityExtractorConcurrency:
+    """Bounded-concurrency semaphore: an exhausted budget skips the LLM call."""
+
+    def test_exhausted_semaphore_skips_llm_call(self, monkeypatch) -> None:
+        """When every concurrency slot is held, extract_entities returns []
+        WITHOUT calling the provider — it degrades to the BM25 fallback."""
+        monkeypatch.setenv("OPENAI_API_BASE", "http://127.0.0.1:8000/v1")
+        monkeypatch.setenv("OPENAI_API_KEY", "test")
+
+        called = {"n": 0}
+
+        class FakeProvider:
+            def complete(self, _req):
+                called["n"] += 1
+                raise AssertionError(
+                    "provider must not be called when the budget is exhausted"
+                )
+
+        # Drain every concurrency slot.
+        acquired = 0
+        while ee._CONCURRENCY.acquire(blocking=False):
+            acquired += 1
+        try:
+            with patch.object(
+                ee, "get_openai_wrapper_provider", return_value=FakeProvider()
+            ):
+                result = ee.extract_entities(
+                    "How long must high-risk AI logs be retained?"
+                )
+            assert result == []
+            assert called["n"] == 0
+        finally:
+            for _ in range(acquired):
+                ee._CONCURRENCY.release()
+
+    def test_semaphore_released_after_call(self, monkeypatch) -> None:
+        """A normal extract_entities call is balanced — the finally-release
+        leaves the full concurrency budget re-acquirable (no slot leak)."""
+        monkeypatch.setenv("OPENAI_API_BASE", "http://127.0.0.1:8000/v1")
+        monkeypatch.setenv("OPENAI_API_KEY", "test")
+
+        class FakeProvider:
+            def complete(self, _req):
+                return OpenAIWrapperResponse(
+                    text='{"articles": ["Art. 5"], "confidence": 0.9}',
+                    model="claude-haiku-4-5",
+                )
+
+        with patch.object(
+            ee, "get_openai_wrapper_provider", return_value=FakeProvider()
+        ):
+            ee.extract_entities("Is social scoring prohibited?")
+
+        # Every slot must be re-acquirable → none leaked by the call.
+        got = 0
+        while ee._CONCURRENCY.acquire(blocking=False):
+            got += 1
+        for _ in range(got):
+            ee._CONCURRENCY.release()
+        assert got == ee._MAX_CONCURRENCY
+
+    def test_semaphore_released_on_provider_exception(self, monkeypatch) -> None:
+        """When provider.complete() raises, the finally-release still returns
+        the slot — a failing call must not permanently leak the budget."""
+        monkeypatch.setenv("OPENAI_API_BASE", "http://127.0.0.1:8000/v1")
+        monkeypatch.setenv("OPENAI_API_KEY", "test")
+
+        class BoomProvider:
+            def complete(self, _req):
+                raise RuntimeError("provider exploded")
+
+        with patch.object(
+            ee, "get_openai_wrapper_provider", return_value=BoomProvider()
+        ):
+            result = ee.extract_entities("Is social scoring prohibited?")
+        assert result == []
+
+        got = 0
+        while ee._CONCURRENCY.acquire(blocking=False):
+            got += 1
+        for _ in range(got):
+            ee._CONCURRENCY.release()
+        assert got == ee._MAX_CONCURRENCY
 
 
 # ── TestArticleExistenceLint ──────────────────────────────────────────────────

@@ -374,10 +374,14 @@ def candidate_chapters_for_query(
             "technical documentation", "post-market monitoring plan",
             "conformity assessment", "ce marking", "ce mark",
             "fundamental rights impact", "fria",
-            # Notified-body certificates (Art. 28-44) sit in Ch III —
-            # a "suspend / withdraw a certificate" question (Art. 44)
-            # otherwise routes on "market surveillance" alone to Ch IX.
-            "certificate", "certificates",
+            # Notified-body certificate lifecycle (Art. 44 — validity,
+            # suspension, withdrawal) sits in Ch III; without these a
+            # "suspend / withdraw a certificate" question routes on
+            # "market surveillance" alone to Ch IX and loses Art. 44.
+            # Multi-word forms only — per the marker-precision rule above.
+            "withdraw a certificate", "suspend a certificate",
+            "withdrawal of a certificate", "suspension of a certificate",
+            "notified body certificate",
         )):
             chapters.add("III")
 
