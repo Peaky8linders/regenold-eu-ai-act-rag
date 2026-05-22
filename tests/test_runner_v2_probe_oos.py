@@ -304,6 +304,43 @@ class TestLocalTransport:
             f"answer should look like a refusal, got: {body['answer']!r}"
         )
 
+    def test_post_local_unconfigured_deploy_authenticates(self) -> None:
+        """R71 regression — ``_post_local`` must provision in-process auth
+        so the route's required-key dependency does NOT raise HTTP 503
+        (``regenold_not_configured``) when the deployment has no key
+        configured AND no ``--api-key`` is passed.
+
+        Pre-R71 every ``--local`` request in this state returned
+        ``http_503`` — the probe reported 0 pass / N error and the
+        documented "OOS 21/21" check was silently non-functional.
+        """
+        prev = settings.regenold.api_key
+        # Simulate an unconfigured deployment (no REGENOLD_API_KEY).
+        settings.regenold.api_key = None
+        try:
+            limiter.reset()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            body, _latency_ms, status, err, _attempts, _retried = (
+                runner_v2._post_local(
+                    runner_v2._local_endpoint_url("include_reasoning=true"),
+                    None,  # no --api-key supplied — the bug repro
+                    [{"role": "user", "content": "What is the weather in Brussels today?"}],
+                    timeout=30.0,
+                )
+            )
+            assert status == 200, (
+                f"expected 200 after R71 auth provisioning, got {status} "
+                f"(err={err}) — body={body!r}"
+            )
+            assert err is None, f"unexpected error: {err}"
+            assert runner_v2._looks_like_refusal(body["answer"]), (
+                f"OOS query should still refuse: {body['answer']!r}"
+            )
+        finally:
+            settings.regenold.api_key = prev
+
     def test_run_probe_oos_only_writes_sidecar(
         self, _configured_key: str, tmp_path: Path
     ) -> None:

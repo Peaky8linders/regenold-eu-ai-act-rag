@@ -117,6 +117,40 @@ def _local_endpoint_url(query_string: str = "include_reasoning=true") -> str:
     return f"local://app.main:app/api/v1/regenold/eu-ai-act/ask?{query_string}"
 
 
+# R71 — local-transport auth key. The public ask route gates on
+# ``require_regenold_api_key`` (strict auth): with no configured key the
+# dependency raises HTTP 503 ``regenold_not_configured``; with a key
+# configured an anonymous request raises HTTP 401. The ``--local``
+# TestClient transport must therefore provision an in-process key AND
+# send the matching header — exactly as ``evals/regenold/runner.py``
+# does for the 276-scenario suite. Without this every ``--local``
+# request returned ``http_503`` and the probe reported 0 pass / N error.
+_LOCAL_EVAL_API_KEY = "regenold-eval-key"
+
+
+def _ensure_local_auth(api_key: str | None = None) -> str:
+    """Provision the in-process Regenold API key for the ``--local`` path.
+
+    Idempotent: sets ``settings.regenold.api_key`` to the resolved key
+    (an explicit ``--api-key`` override, else :data:`_LOCAL_EVAL_API_KEY`)
+    when it is not already that value. Returns the key to send in the
+    ``X-Regenold-Api-Key`` header so the route's required-key dependency
+    authenticates instead of 503-ing.
+
+    Imports are local so the live-HTTP CLI path keeps its lean import
+    surface (this only runs under ``--local``).
+    """
+    from pydantic import SecretStr
+
+    from app.config import settings
+
+    key = api_key or _LOCAL_EVAL_API_KEY
+    current = settings.regenold.api_key
+    if current is None or current.get_secret_value() != key:
+        settings.regenold.api_key = SecretStr(key)
+    return key
+
+
 def _post_local(
     endpoint: str,
     api_key: str | None,
@@ -146,9 +180,10 @@ def _post_local(
         qs = endpoint.split("?", 1)[1]
     path = f"/api/v1/regenold/eu-ai-act/ask?{qs}"
 
-    headers = {"User-Agent": _USER_AGENT}
-    if api_key:
-        headers["X-Regenold-Api-Key"] = api_key
+    # R71 — provision in-process auth so the route's required-key
+    # dependency authenticates instead of raising 503 / 401.
+    local_key = _ensure_local_auth(api_key)
+    headers = {"User-Agent": _USER_AGENT, "X-Regenold-Api-Key": local_key}
 
     start = _time.perf_counter()
     try:
