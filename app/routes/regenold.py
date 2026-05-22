@@ -170,6 +170,21 @@ class _BoundedLRUCache:
 
 _ENGINE_CACHE = _BoundedLRUCache(capacity=512)
 
+# R78 — minimum engine confidence for a result to be cacheable.
+# ``_compute_confidence`` (app/engines/graph_rag.py) never returns below
+# 0.3 for a clean run: 0.85 rich / 0.7 moderate / 0.5 sparse / 0.3 no
+# graph data (the normal ``cli``-mode floor). It returns 0.2 ONLY when
+# the graph backend raised and the KB fallback served the response
+# (issue #55); a zero-retrieval result carries the 0.0 model default.
+# Both sub-0.3 shapes are transient-failure states — a cold worker whose
+# lazy retrieval index has not finished building retrieves nothing — so
+# caching one serves the failure to every later identical question until
+# LRU eviction or a process restart. The issue-#55 ``_compute_confidence``
+# docstring documents exactly this ("caching a low-confidence degraded
+# response would otherwise mask a transient backend outage") but the
+# signal was never consulted at the ``put`` site; R78 wires it in.
+_MIN_CACHEABLE_CONFIDENCE = 0.3
+
 
 def _engine_cache_key(question: str, system_context: str | None) -> str:
     """Sha256-hash of the engine input fingerprint.
@@ -1762,7 +1777,21 @@ def regenold_eu_ai_act_ask(
     _trace_cache_hit(rag_res is not None)
     if rag_res is None:
         rag_res = ask_compliance_question(rag_req)
-        if not (rag_res.graph_stats or {}).get("stage2_call_failed"):
+        # Cache-poisoning guard — skip the ``put`` on any transient-
+        # failure shape so the next ask recomputes instead of serving a
+        # cached failure forever:
+        #   * Stage-2 wrapper call failed (R28) — outage / 429 / network.
+        #   * confidence below ``_MIN_CACHEABLE_CONFIDENCE`` (R78) — a
+        #     degraded backend (0.2) or a zero-retrieval result (0.0),
+        #     e.g. a cold worker whose lazy retrieval index is not yet
+        #     warm. Without this one cold-start window permanently
+        #     poisons every question it touched.
+        _stats = rag_res.graph_stats or {}
+        _cacheable = (
+            not _stats.get("stage2_call_failed")
+            and rag_res.confidence >= _MIN_CACHEABLE_CONFIDENCE
+        )
+        if _cacheable:
             _ENGINE_CACHE.put(cache_key, rag_res)
     # R50 — surface the engine-side stage-2 outcome into the trace so
     # the judge can correlate "Sonnet polish landed" with output drift.

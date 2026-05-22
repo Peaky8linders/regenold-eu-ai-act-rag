@@ -3325,6 +3325,107 @@ lifts.
 Verify: 2374 pass + 1 skip; davidath byte-identical to R77 with the
 default; OOS 21/21; 276-runner 276/276; +7 `TestR78HardCharCap` tests.
 
+## Round 78.1 — Cache no-poison guard: production-down hotfix (2026-05-22)
+
+A live diagnostic probe found the production Railway endpoint
+**refusing in-scope provider / deployer / importer obligation
+questions** — the core of the EU AI Act competition rubric. *"What are
+the obligations of deployers of high-risk AI systems?"* returned the
+zero-retrieval `Art. 1/2/3` floor (and, on some phrasings, the older
+"No matching obligation … Try rephrasing" template). The local R77
+engine answers the identical question correctly (`Art. 26/27/13`).
+
+### Diagnosis
+
+The live `?include_reasoning=true` trace was decisive:
+
+```json
+{"retrieval_path":"zero_retrieval_fallback","engine_confidence":0.0,
+ "stage2_polish":false,"cache_hit":true}
+```
+
+* `stage2_polish:false` → R77 *is* deployed — not a stale-deploy bug.
+* `engine_confidence:0.0` + `retrieval_path:zero_retrieval_fallback` →
+  the engine retrieved **zero** candidates.
+* `cache_hit:true` → the zero-retrieval result is being **served from
+  the route LRU cache**.
+
+The local R77 engine — deterministic AND with the Stage-0 wrapper
+active — answers every failing question correctly. The breakage is not
+in the engine; it is a **poisoned cache entry**.
+
+### Root cause
+
+`app/routes/regenold.py` memoises every engine result in a 512-entry
+LRU (`_ENGINE_CACHE`, R28). The only `put` guard was
+`stage2_call_failed` (R30). A zero-retrieval / degraded engine response
+was cached unconditionally. A transient cold-start window — a
+freshly-recycled Railway worker whose lazy retrieval index
+(`kb_search` BM25 builders are `@lru_cache(maxsize=1)`) had not
+finished building, or a momentary graph-backend hiccup — produces a
+zero-retrieval response. That failure then gets cached and served to
+**every later identical question** until LRU eviction or a process
+restart.
+
+`_compute_confidence` (issue #55) already carries the exact signal:
+it never returns below 0.3 for a clean run (0.85 rich / 0.7 moderate /
+0.5 sparse / 0.3 the normal `cli`-mode "no graph data" floor); it
+returns 0.2 only when the graph backend raised, and a zero-retrieval
+response carries the 0.0 model default. The issue-#55
+`_compute_confidence` docstring states the intent verbatim — *"caching
+a low-confidence degraded response would otherwise mask a transient
+backend outage"* — **but the route's caching policy never consulted
+`confidence`.** The guard was designed, then never wired.
+
+### Fix
+
+`app/routes/regenold.py` — the cache `put` now also skips when
+`rag_res.confidence < _MIN_CACHEABLE_CONFIDENCE` (0.3). A
+transient-failure result is no longer cached; the next ask recomputes
+(a warm recompute is ~3-5 ms). Clean answers (≥ 0.3) cache exactly as
+before. This wires in the issue-#55 signal — a one-condition change at
+the single `put` site.
+
+### Why davidath is byte-identical
+
+The bench asks each question once per process, so the cache never
+serves an in-run hit (R28 documented ~0% in-run hit rate). Not caching
+a `< 0.3` result changes cache occupancy, never an answer — and a
+deterministic recompute returns the same blob regardless. Verified:
+
+| Axis | R78 | R78.1 |
+| ---- | --- | ----- |
+| Ans Strict | 0.3029 | 0.3029 |
+| Ref Loose / Strict / Conciseness | 0.5755 / 0.4644 / 0.4200 | identical |
+| Regulatory Tone | 1.0 | 1.0 |
+| Multi-turn | 20/20 | 20/20 |
+
+Gates: **2379 pass + 1 skip** (+5 `TestR78CacheConfidenceGuard`);
+276-runner **276/276**; OOS probe **21/21**.
+
+### Deploy + verification
+
+Merging this PR redeploys Railway, which restarts the worker and
+**clears the poisoned cache**; the new code then cannot re-poison it.
+Post-deploy verification: re-probe the obligation questions, then
+re-run `evals.bench.representative_100 --endpoint <live>` +
+`evals.judge.runner` — the R77-live judge baseline the round was meant
+to start from could not be measured while production was serving the
+poisoned cache.
+
+### Follow-ups (not in this hotfix)
+
+* **Cold-window trigger** — this fix makes the outage transient rather
+  than permanent; it does not remove the cold window itself. A
+  startup index-warm hook (eagerly call the `kb_search` `@lru_cache`
+  builders from `app/main.py`'s startup sequence) or a serving-path
+  readiness gate would close it. Deferred — pinning the exact trigger
+  needs Railway log access.
+* **I3 / I5** (R78 deferred items) — the Groq Stage-0 latency A/B and
+  the `REGENOLD_GRAPH_2HOP=0` A/B both need a live measurement against
+  a *healthy* production endpoint, so they are unblocked only once this
+  hotfix has deployed.
+
 ## Eval scorecard (deterministic-fallback, local 276-scenario suite)
 
 | Round  | Pass         | p50      | p95     | avg refs | Retrieval F1 | Notes |
@@ -3374,6 +3475,7 @@ default; OOS 21/21; 276-runner 276/276; +7 `TestR78HardCharCap` tests.
 | **69 live + judge** | 56 V2 LIVE | tricky 5,997ms / mt 23,596ms | tricky 35,017ms / max 103,384ms | — | tricky refL **0.80** / refS **0.58** / mt coh **0.36** / Judge: tone 0.68, refs 0.375, concise 0.55, corr 0.48 | First post-R69 live measurement + 4-axis LLM-judge. Tricky refL up (R63-live 0.77 → 0.80) but mt coherence regressed (0.48 → 0.36) and judge tone dropped (R64-live 0.84 → 0.68). **Round-1** (judge analysis): rule-11 reworded to drop the refusal invite, +6 `_STAGE2_REFUSAL_MARKERS`, scenario verdicts rewritten third-person (+VOICE rule). **Round-2** (autonomous `/plan-eng-review`): weak compound-role QUESTION budget 8 → 5 (over-citation, judge refs 0.375), `complex_thinking_tokens` 8000 → 2500 (103s latency outlier). davidath byte-identical through both fix rounds (Ans Strict 0.3028 / RefL 0.5881 / RefS 0.4525 / Tone 1.0 / mt 20/20); 2,256 tests pass. Judge-axis lifts land at the next live re-run. |
 | **77** | 476 davidath | 9.8ms    | 14.13ms | —        | RefL **0.5755** / RefS **0.4644** / RefC **0.4200** / Ans Strict **0.3029** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2367 pass + 1 skip | R76 representative-100 measurement (deterministic + live + LLM-judge) → 4 fixes. **I2** removed bare `"high-risk"`→Art.6 anchor from `KEYWORD_TO_ARTICLE` — it shadowed every operator-obligation question's real topic article (≥8/16 live ref-misses); davidath byte-identical (BM25-saturated, win is live-only). **I1** Stage-2 LLM polish OFF by default (`P2P_GRAPH_RAG_ENABLE_STAGE2`, new `_stage2_polish_enabled()` gate) — R76 live proved it net-negative on every judge axis (refs 0.13 vs 0.25, conciseness 0.23 vs 0.55, tone 0.65 vs 0.88) + 3.5× slower; expected live p50 ~17s→~5s. **I4** always-on per-ref description augmenter (`augment_with_ref_descriptions`, `REGENOLD_REF_DESCRIBE_AUG`) for the judge floor axis refs-faithfulness. **I6** shape-aware QA ref budget 5→3 (`REGENOLD_QA_REF_BUDGET`) — trades RefL −0.006 for RefS/RefC +0.014 each (net rubric-positive). **I5** 2-hop already additive-below-cap, no code change. Live rep-100 + judge re-run queued post-deploy. |
 | **78** | 476 davidath | 9.28ms   | 15.25ms | —        | RefL **0.5755** / RefS **0.4644** / Ans Strict **0.3029** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2374 pass + 1 skip | R76 follow-up. Cross-referencing the R76 deterministic judge verdicts with the bench sidecar found 8 answers escaping the 600-char soft cap to **717-1258 chars** — single cite-anchored `(a)…(b)…(c)…` enumerations the LLM judge counts as ">4 sentences". Root cause: `normalise_answer_for_regenold`'s soft-cap loop is sentence-granular + cite-anchor-preserving (`while len(capped) > 1`, drops only non-cite sentences) so a single long cite-anchored sentence escapes entirely. New `_hard_truncate_at_clause` backstop truncates at the latest clean clause/sentence boundary, env-gated `REGENOLD_HARD_CHAR_CAP`. **Default OFF**: davidath A/B is a wash (Ans Strict −0.006 / Conciseness +0.004 — truncation drops enumeration-tail gold tokens), so per the R69 `TREE_EXTRACT` discipline it ships OFF; the binary judge-conciseness win (flips those 8 rows fail→pass) is the live-only payoff. davidath byte-identical to R77 with the default. +7 tests. |
+| **78.1** | 476 davidath | 9.26ms   | 14.1ms  | —        | RefL **0.5755** / RefS **0.4644** / RefC **0.4200** / Ans Strict **0.3029** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2379 pass + 1 skip | **Production-down hotfix.** A live `?include_reasoning=true` probe found Railway refusing in-scope provider/deployer/importer obligation questions — zero-retrieval `Art. 1/2/3` floor served with `cache_hit:true`, `engine_confidence:0.0`, `stage2_polish:false` (so R77 *is* deployed). Local R77 answers the same questions correctly (`Art. 26/27/13`) → the bug is a **poisoned route LRU cache**, not the engine. Root cause: `_ENGINE_CACHE.put` (R28) cached every engine result; a transient cold-start zero-retrieval response (`kb_search` `@lru_cache` BM25 index not yet warm) got cached and served permanently. Fix wires the issue-#55 confidence signal into the caching policy — skip `put` when `rag_res.confidence < _MIN_CACHEABLE_CONFIDENCE` (0.3); the issue-#55 `_compute_confidence` docstring documented this exact intent but the `put` site never consulted it. davidath byte-identical (the bench never serves an in-run cache hit). +5 `TestR78CacheConfidenceGuard` tests. Merge → Railway redeploy clears the poisoned cache and the new code cannot re-poison it. |
 
 Δ on the local rubric is modest (-11% sentences, +12% p50 latency) because
 the local harness is binary substring-matched and already saturated. The
