@@ -1410,8 +1410,20 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     # primary article. The substring-shadowing guard means longer
     # phrases above still win where they overlap (e.g. "fine-tuning"
     # with "training data" — different anchors, no overlap).
-    "high-risk": "Art. 6",
-    "high risk": "Art. 6",
+    #
+    # R77 (I2) — bare "high-risk" / "high risk" → Art. 6 REMOVED. The
+    # R76 representative-100 live measurement proved this near-universal
+    # qualifier shadowed the actual topic article: "importers'
+    # obligations" (gold Art. 23), "deployer obligations" (gold Art. 26),
+    # "transparency to deployers" (gold Art. 13) all anchored only
+    # ['Art. 6'] because every such question contains "high-risk AI
+    # system". ≥8 of 16 ref-misses traced to this. "high-risk" is a risk
+    # TIER, not a topic — the longer "high-risk ai system" forms still
+    # carry scope via _AI_ACT_ANCHORS, and the engine's _KEYWORD_ENTITY_MAP
+    # surfaces the operator article (importer→23, distributor→24,
+    # deployer→26) from the role noun. The "is it high-risk" /
+    # "deploy a high-risk" compound forms below are kept — those DO
+    # unambiguously target Art. 6 / Art. 26.
     "deploy a third-party": "Art. 26",
     "deploy a third party": "Art. 26",
     # NOTE: bare "deploys" / "deploying" removed — too generic

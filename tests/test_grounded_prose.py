@@ -141,3 +141,111 @@ class TestStitchGroundedProse:
         assert "Article 26" in out
         # Internal form must NOT leak.
         assert "Art. 26" not in out
+
+
+# ── R77 — augment_with_ref_descriptions unit tests ─────────────────────
+
+
+class TestAugmentWithRefDescriptions:
+    """Unit tests for the always-on per-ref description augmenter (R77 I4).
+
+    This function APPENDS description clauses for cited refs that the
+    existing answer prose does not already describe — the counterpart to
+    ``stitch_grounded_prose`` which REPLACES the full answer.
+    """
+
+    from app.integrations.regenold.grounded_prose import (
+        augment_with_ref_descriptions,
+    )
+
+    def _augment(self, answer: str, refs: list[str], question: str = "") -> str:
+        from app.integrations.regenold.grounded_prose import (
+            augment_with_ref_descriptions,
+        )
+        return augment_with_ref_descriptions(answer, refs, question=question)
+
+    def test_empty_answer_returns_unchanged(self) -> None:
+        """With no answer text the function returns the empty string unchanged."""
+        out = self._augment("", ["Article 13"])
+        assert out == ""
+
+    def test_empty_refs_returns_answer_unchanged(self) -> None:
+        """With no references the answer is returned unchanged."""
+        original = "High-risk AI systems must be transparent."
+        out = self._augment(original, [])
+        assert out == original
+
+    def test_covered_ref_not_appended(self) -> None:
+        """When the answer already describes a ref, no clause is appended."""
+        # Art. 13 is about transparency / instructions for use.
+        # Inject enough of the KB summary tokens into the answer.
+        answer = (
+            "Article 13 requires transparency and instructions for use "
+            "covering provider identity, intended purpose, and capabilities."
+        )
+        out = self._augment(answer, ["Article 13"])
+        # Should be unchanged (already covered) or only minimally extended.
+        # We accept ≤ 20 chars of addition (padding/sentence-ending only).
+        assert len(out) - len(answer) <= 20, (
+            f"unexpected augmentation on covered ref: {out!r}"
+        )
+
+    def test_uncovered_ref_gets_description(self) -> None:
+        """A ref not mentioned at all in the answer gets a description clause."""
+        # A minimal answer that does NOT describe Art. 51 (GPAI/FLOPs).
+        answer = "The EU AI Act imposes obligations on providers."
+        out = self._augment(answer, ["Article 51"])
+        assert len(out) > len(answer), "expected augmentation for uncovered Article 51"
+        low = out.lower()
+        # The augmented clause should carry Art. 51 KB substance.
+        assert "article 51" in low
+        assert "flops" in low or "systemic" in low or "gpai" in low or "general-purpose" in low, (
+            f"Art. 51 description missing domain tokens: {out!r}"
+        )
+
+    def test_max_new_clauses_respected(self) -> None:
+        """No more than max_new_clauses clauses are appended."""
+        from app.integrations.regenold.grounded_prose import augment_with_ref_descriptions
+        answer = "The EU AI Act sets out obligations."
+        # Provide 6 refs that are unlikely to be described in the minimal answer.
+        refs = [
+            "Article 9", "Article 11", "Article 13", "Article 14",
+            "Article 51", "Article 55",
+        ]
+        out = augment_with_ref_descriptions(answer, refs, max_new_clauses=2)
+        # Count article mentions added beyond the answer.
+        added_mentions = out[len(answer):].lower().count("article ")
+        assert added_mentions <= 2, (
+            f"more than 2 clauses appended: {out!r}"
+        )
+
+    def test_unknown_ref_skipped_gracefully(self) -> None:
+        """A ref with no KB stub is skipped without crashing."""
+        answer = "The EU AI Act imposes obligations."
+        out = self._augment(answer, ["Article 999"])
+        # Should return original unchanged (no stub to add).
+        assert out == answer
+
+    def test_output_is_augmented_form_of_input(self) -> None:
+        """Augmented output starts with the original answer text."""
+        answer = "The EU AI Act applies."
+        out = self._augment(answer, ["Article 51"])
+        assert out.startswith(answer), (
+            f"augmented output does not start with original answer: {out!r}"
+        )
+
+    def test_no_internal_ref_form_leaks(self) -> None:
+        """The internal 'Art. N' form must not appear in the output."""
+        answer = "The EU AI Act applies."
+        out = self._augment(answer, ["Article 13", "Article 26"])
+        # Internal form must not appear.
+        assert "Art. 13" not in out
+        assert "Art. 26" not in out
+
+    def test_fail_soft_on_bad_ref_shape(self) -> None:
+        """Non-standard ref shapes are skipped without crashing."""
+        answer = "The EU AI Act applies."
+        # Completely invalid shapes should not raise.
+        out = self._augment(answer, ["Not-An-Article", "Random stuff"])
+        # Returns original unchanged or slightly extended (skip / fail-open).
+        assert out  # non-empty

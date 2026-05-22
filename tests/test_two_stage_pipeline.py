@@ -61,6 +61,18 @@ def _empty_ctx() -> GraphContext:
 # ─── Stage 1: parse is always deterministic ──────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def _r77_enable_stage2_polish(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R77 — Stage-2 polish now defaults OFF (``P2P_GRAPH_RAG_ENABLE_STAGE2``).
+
+    These tests predate that default and exercise the Stage-2 path with a
+    mocked provider. Force the master switch ON so they keep testing
+    Stage-2 behaviour; the provider + needs-enhancement gates still apply,
+    so the "Stage-2 skipped" tests in this module still skip correctly.
+    """
+    monkeypatch.setenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "1")
+
+
 class TestStage1AlwaysDeterministic:
     """The pipeline must never call _llm_parse_query — Stage 1 parse is always
     ontology/KB-based so there is no LLM cost or latency on the parse path."""

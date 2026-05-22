@@ -412,6 +412,33 @@ def _stage2_provider_enabled() -> bool:
     return is_openai_wrapper_enabled()
 
 
+def _stage2_polish_enabled() -> bool:
+    """R77 — master on/off gate for the Stage-2 LLM polish pass.
+
+    Default **OFF**. The R76 representative-100 live measurement found
+    the Claude-Max Stage-2 polish net-negative on every LLM-judge axis
+    — refs-faithfulness 0.13 vs 0.25, conciseness 0.23 vs 0.55, tone
+    0.65 vs 0.88 — flat on correctness, and 3.5x slower (p50 19.6 s vs
+    5.6 s) than the deterministic Stage-1 answer it replaces. The
+    deterministic wire beat the polished wire on all four judge axes
+    AND on davidath token-overlap. Judge failure modes on polished
+    rows: >4 sentences, pure boilerplate, truncated mid-thought,
+    speculation beyond the regulation text, provider/operator
+    conflation.
+
+    Re-enable with ``P2P_GRAPH_RAG_ENABLE_STAGE2=1`` (e.g. to A/B a
+    future Stage-2 prompt revision). Read fresh per call so a Railway
+    env-var rebind takes effect on the next request — same contract as
+    :func:`_stage2_provider_enabled`.
+    """
+    return os.getenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 # ─── Internal data structures ────────────────────────────────────────────────
 
 @dataclass
@@ -3300,6 +3327,12 @@ def _two_stage_generate(
     # against. Detect the same signal here and skip Stage-2 unconditionally —
     # the curated verdict prose is already 1-4 sentences of plain language.
     if _detect_classification_topic(question) is not None:
+        return kg_answer, False
+
+    # R77 — Stage-2 polish is OFF by default. The deterministic Stage-1
+    # answer measured strictly better on every LLM-judge axis + latency
+    # in the R76 live representative-100 run. See _stage2_polish_enabled.
+    if not _stage2_polish_enabled():
         return kg_answer, False
 
     # R56 — accept EITHER the Max wrapper OR the Anthropic SDK direct

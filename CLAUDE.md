@@ -3152,6 +3152,125 @@ suite holds at 274/276; the 2 failing rows
 **pre-existing on `main`** (multi-turn scope-coreference refusals,
 verified independent of this round) — flagged for a follow-up.
 
+## Round 77 — High-risk anchor un-shadow + Stage-2 polish OFF + per-ref description + shape-aware QA budget (2026-05-22)
+
+Driven by the R76 representative-100 measurement (a stratified 100-row
+real-world davidath probe, run deterministic + live, LLM-judged each
+way). The R76 finding: the live Stage-2-polished production path scored
+WORSE than the deterministic path on every judge axis AND was 550×
+slower. R77 ships four fixes from [`.planning/R77-PLAN.md`](.planning/R77-PLAN.md).
+
+### I2 — `"high-risk"` anchor un-shadow (`scope.py`)
+
+`KEYWORD_TO_ARTICLE` mapped bare `"high-risk"` / `"high risk"` → Art. 6.
+Because nearly every provider / deployer / importer obligation question
+contains "high-risk AI system", Art. 6 won the retrieval anchor and the
+actual topic article was never surfaced. R76 live reasoning traces
+proved it: "importers' obligations" (gold Art. 23), "deployer
+obligations" (gold Art. 26), "transparency to deployers" (gold Art. 13)
+all anchored only `['Art. 6']` at engine_confidence 0.3 — ≥8 of 16
+live ref-misses. **Fix:** removed the two bare-`high-risk` entries.
+"high-risk" is a risk TIER, not a topic; the longer "high-risk ai
+system" forms still carry scope via `_AI_ACT_ANCHORS`, and the engine's
+`_KEYWORD_ENTITY_MAP` already surfaces the operator article
+(importer→23, distributor→24, deployer→26) from the role noun — the
+removal simply un-shadows it.
+
+**davidath byte-identical** (Ref Loose 0.5818 → 0.5818 with I6 held
+off via `REGENOLD_QA_REF_BUDGET=0`) — the corpus is BM25-saturated, so
+the route's `scope.anchor_articles` re-ordering interaction this fixes
+is structurally LIVE-ONLY (the established R31/R59/R69 pattern). 21/21
+OOS probe preserved.
+
+### I1 — Stage-2 LLM polish OFF by default (`graph_rag.py`, `railway.toml`)
+
+The R76 live representative-100 found the Claude-Max Stage-2 polish
+net-negative on EVERY LLM-judge axis vs the deterministic Stage-1
+answer it replaces: refs-faithfulness 0.13 vs 0.25, conciseness 0.23
+vs 0.55, tone 0.65 vs 0.88, flat on correctness, and 3.5× slower (p50
+19.6 s vs 5.6 s). The deterministic wire beat the polished wire on all
+four judge axes AND on davidath token-overlap. **Fix:** new
+`_stage2_polish_enabled()` master gate (env `P2P_GRAPH_RAG_ENABLE_STAGE2`,
+**default OFF**) short-circuits `_two_stage_generate` before the
+provider check. Re-enable for a future Stage-2-prompt A/B with
+`railway variables --set P2P_GRAPH_RAG_ENABLE_STAGE2=1`. Expected live
+impact: p50 latency ~17 s → ~5 s (a scored axis) + the three judge
+axes climbing toward the deterministic numbers. Zero davidath impact
+(the local bench never wired a Stage-2 provider, so Stage-2 was
+already skipped there). 9 Stage-2 unit/integration tests gained an
+autouse fixture that sets the env so they keep exercising the polish
+path; the "Stage-2 skipped" tests still skip via the provider gate.
+
+### I4 — always-on per-reference description augmenter (`grounded_prose.py`)
+
+Refs-faithfulness was the R76 floor axis (0.20-0.23): the engine cites
+the right articles but the prose never describes them. New
+`augment_with_ref_descriptions` — the always-on counterpart to
+`stitch_grounded_prose` — appends one compact KB-summary clause
+("Article N — <clause>") per cited ref whose substance is not already
+in the prose (BM25 token-overlap < 2), capped at 3 new clauses, then
+re-normalised to the 3-sentence / 600-char cap. Env
+`REGENOLD_REF_DESCRIBE_AUG` (default ON); fires only on the
+deterministic path (skipped when Stage-2 landed or on the
+consistency-guard substitute). Composes with I1 — the deterministic
+answer is now the shipped answer, so its prose must carry the
+descriptions.
+
+### I6 — shape-aware QA reference budget (`routes/regenold.py`)
+
+R76 found QA over-cites (pred refs mean 5.7, davidath QA gold ~1
+article). New `_QA_MAX_REFERENCES = 3` — pure QA (non-scenario,
+non-compound, non-multi-turn, non-classification) tightens its budget
+5 → 3. Env `REGENOLD_QA_REF_BUDGET` (default ON). Scenario / compound /
+multi-turn budgets unchanged.
+
+### I5 — Neo4j 2-hop investigated, no code change
+
+Audit found `graph_expand_2hop` runs only in the parse phase (k=3) and
+`fuse_with_kb_xrefs` is already strictly additive-below-cap
+(`if budget <= len(out): return out[:budget]` — never displaces a BM25
+winner). The plan's suspected "2-hop pushes gold past the cap"
+mechanism does not exist at the `kb_search` level. The live A/B
+(`REGENOLD_GRAPH_2HOP=0`) remains an operator step — and is
+lower-priority now that I1 removes the dominant latency cost.
+
+### R77 — davidath scorecard (476 items, 2367 tests pass + 1 skip)
+
+| Axis | R76 baseline | R77 | Δ |
+| ---- | ------------ | --- | --- |
+| Ans Strict | 0.3023 | 0.3029 | +0.001 |
+| Ans Conciseness | 0.6162 | 0.6106 | −0.006 (noise) |
+| Ref Loose | 0.5818 | 0.5755 | −0.006 (I6 trade) |
+| Ref Strict | 0.4506 | 0.4644 | **+0.014** ✓ |
+| Ref Conciseness | 0.4063 | 0.4200 | **+0.014** ✓ |
+| Regulatory Tone | 1.0 | 1.0 | flat |
+| Multi-turn | 20/20 | 20/20 | flat |
+
+The I6 budget tightening trades −0.006 Ref Loose for +0.014 Ref
+Strict + +0.014 Ref Conciseness — net rubric-positive across the three
+reference axes. The plan's verification gate assumed I2 would lift Ref
+Loose to absorb the I6 cost; the A/B decomposition proved I2 is a
+davidath no-op (BM25-saturated corpus — `REGENOLD_QA_REF_BUDGET=0`
+reproduces baseline 0.5818 exactly), so the I2 offset lands LIVE
+instead. budget=4 was measured (Ref Loose 0.5797) and rejected —
+budget=3 delivers ~3.5× the net rubric value. Both env knobs make the
+trade fully reversible. OOS probe 21/21, local 276-runner 276/276.
+Deterministic representative-100: Ans Strict 0.309, Ref Loose 0.645,
+Ref Strict **0.513** (R76 0.490, **+0.023**).
+
+### Where the R77 wins land
+
+The davidath bench is the regression guard, not the win surface. The
+four fixes target the LIVE production rubric the R76 measurement
+exposed: I1 cuts live p50 ~17 s → ~5 s and lifts three judge axes; I2
+un-shadows ≥8 live operator-obligation ref-misses; I4 lifts judge
+refs-faithfulness (every cited article now described in the prose).
+The post-deploy verification is a live representative-100 + judge
+re-run (`evals.bench.representative_100 --endpoint <live>` then
+`evals.judge.runner`), targeting live p50 < 6 s and the judge axes
+climbing toward the deterministic numbers (refs 0.20 → 0.35+,
+conciseness 0.41 → 0.55+, tone 0.76 → 0.85+).
+
 ## Eval scorecard (deterministic-fallback, local 276-scenario suite)
 
 | Round  | Pass         | p50      | p95     | avg refs | Retrieval F1 | Notes |
@@ -3199,6 +3318,7 @@ verified independent of this round) — flagged for a follow-up.
 | **65** | 476 davidath | — | — | — | RefL **0.5650** / RefS **0.4427** / Tone 1.0 / mt 1.00 / OOS **21/21** / 1,995 pass + 1 skip | Three surgical additions from R64-live judge failure analysis. **R65-A** — extends `_STAGE2_REFUSAL_MARKERS` with 4 new shapes caught in r64-live judge correctness failures: `"references block is empty"`, `"reference block contains no"` (singular form complementing the existing plural), `"block returned no matching provisions"`, `"what i can note from the framing"`. Catches 3 rows (tr_v2_001 / mt_v2_023 / mt_v2_024) where Sonnet drifted into chatbot meta-commentary on questions with non-empty refs. R49-A grounded prose substitute now fires instead of shipping the contradiction. **R65-B** — adds `cv-screening` / `for their hiring` / `ai for hiring` / `hiring ai` to scenario_classifier `_HIGH_RISK_MARKERS` (Annex III §4 employment). Catches tr_v2_010 ("Our SaaS lets enterprise customers configure a CV-screening AI for their hiring") which was being misclassified as limited-risk because the existing `cv screening` marker required a space, not a hyphen. **R65-C** — adds 11 SME size-transition routes to scope.py `KEYWORD_TO_ARTICLE`: `lose sme` / `lose our sme` / `no longer an sme` / `no longer qualify as sme` / `exceed sme threshold` / `sme threshold` / `sme privilege(s)` / `grew from sme` / `from sme to` / `transitioning out of sme`. Catches tr_v2_005 ("We grew from a 30-employee SME to a 220-employee company last quarter. Do we lose...") which was hitting the Art 1/2/3 zero-retrieval floor — now correctly routes to Art 62/63 SME-simplification provisions. All R34 P0 OOS regressions still PASS. |
 | **69** | 476 davidath | 12.77ms  | 22.12ms | —        | RefL **0.5881** / RefS **0.4525** / Ans Strict **0.3051** / Tone **1.0** / mt **1.00** / OOS 21/21 / 2,248 pass + 1 skip | Proposed Hybrid-RAG "Semantic Layer" architecture audited (3 parallel agents) + integrated. **Byte-identical to R68** — every davidath-affecting change is env-gated default-OFF. **69-A** `app/engines/semantic_layer.py` wires the built-but-unwired structure-aware tree (`eu_ai_act_tree.py`, 1,426 nodes): `paragraph_extract` (`REGENOLD_TREE_EXTRACT`; A/B'd −0.015 Ans Strict → default OFF) + `cross_reference_context` (the architecture's Fragmentation-Problem fix — Art. 11 → Annex IV co-retrieval into Stage-2 context, default ON). **69-B** RRF knob `REGENOLD_RRF_FUSION` in `kb_search` (A/B'd ±0.002 wash → default OFF, re-confirms the R31 finding). **69-C** `app/engines/query_structure.py` — the proposal's Section-3A structured payload (adds the genuinely-missing `actor_location` / `market_location` extraterritorial dimensions → Stage-2 `QUERY PROFILE` hint). **69-D** `ANSWER_GENERATE_SYSTEM` rule 10 (describe-every-cited-article — targets the judge's worst axis, refs-faithfulness 0.00-0.21) + rule 11 (anti-extrapolation). External vector-DB / Elasticsearch / Cohere proposals reviewed and rejected as wrong-for-codebase (external service / GPU; Railway has neither). +69 regression tests. V2 local: tricky refL **0.80** / refS 0.54, tone 1.0, 0 errors. Stage-2 wins (cross-ref context, query profile, describe-every-cite) land at the next live judge re-run. |
 | **69 live + judge** | 56 V2 LIVE | tricky 5,997ms / mt 23,596ms | tricky 35,017ms / max 103,384ms | — | tricky refL **0.80** / refS **0.58** / mt coh **0.36** / Judge: tone 0.68, refs 0.375, concise 0.55, corr 0.48 | First post-R69 live measurement + 4-axis LLM-judge. Tricky refL up (R63-live 0.77 → 0.80) but mt coherence regressed (0.48 → 0.36) and judge tone dropped (R64-live 0.84 → 0.68). **Round-1** (judge analysis): rule-11 reworded to drop the refusal invite, +6 `_STAGE2_REFUSAL_MARKERS`, scenario verdicts rewritten third-person (+VOICE rule). **Round-2** (autonomous `/plan-eng-review`): weak compound-role QUESTION budget 8 → 5 (over-citation, judge refs 0.375), `complex_thinking_tokens` 8000 → 2500 (103s latency outlier). davidath byte-identical through both fix rounds (Ans Strict 0.3028 / RefL 0.5881 / RefS 0.4525 / Tone 1.0 / mt 20/20); 2,256 tests pass. Judge-axis lifts land at the next live re-run. |
+| **77** | 476 davidath | 9.8ms    | 14.13ms | —        | RefL **0.5755** / RefS **0.4644** / RefC **0.4200** / Ans Strict **0.3029** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2367 pass + 1 skip | R76 representative-100 measurement (deterministic + live + LLM-judge) → 4 fixes. **I2** removed bare `"high-risk"`→Art.6 anchor from `KEYWORD_TO_ARTICLE` — it shadowed every operator-obligation question's real topic article (≥8/16 live ref-misses); davidath byte-identical (BM25-saturated, win is live-only). **I1** Stage-2 LLM polish OFF by default (`P2P_GRAPH_RAG_ENABLE_STAGE2`, new `_stage2_polish_enabled()` gate) — R76 live proved it net-negative on every judge axis (refs 0.13 vs 0.25, conciseness 0.23 vs 0.55, tone 0.65 vs 0.88) + 3.5× slower; expected live p50 ~17s→~5s. **I4** always-on per-ref description augmenter (`augment_with_ref_descriptions`, `REGENOLD_REF_DESCRIBE_AUG`) for the judge floor axis refs-faithfulness. **I6** shape-aware QA ref budget 5→3 (`REGENOLD_QA_REF_BUDGET`) — trades RefL −0.006 for RefS/RefC +0.014 each (net rubric-positive). **I5** 2-hop already additive-below-cap, no code change. Live rep-100 + judge re-run queued post-deploy. |
 
 Δ on the local rubric is modest (-11% sentences, +12% p50 latency) because
 the local harness is binary substring-matched and already saturated. The

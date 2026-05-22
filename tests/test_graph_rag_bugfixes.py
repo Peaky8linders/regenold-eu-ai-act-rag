@@ -58,6 +58,18 @@ _MULTI_TURN_Q = (
 # ─── Issue #41 — Pre-slice dedup ─────────────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def _r77_enable_stage2_polish(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R77 — Stage-2 polish now defaults OFF (``P2P_GRAPH_RAG_ENABLE_STAGE2``).
+
+    These tests predate that default and exercise the Stage-2 path with a
+    mocked provider. Force the master switch ON so they keep testing
+    Stage-2 behaviour; the provider + needs-enhancement gates still apply,
+    so the "Stage-2 skipped" tests in this module still skip correctly.
+    """
+    monkeypatch.setenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "1")
+
+
 class TestPreSliceDedup:
     """The citation builder must dedupe BEFORE applying the [:K] slice."""
 

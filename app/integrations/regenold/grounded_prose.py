@@ -21,6 +21,14 @@ R49-A replaces ``_build_prose`` at the guard call-site with
 :data:`app.data.kb.EC_CHECKER_OBLIGATION_MAP` and stitches a 2-3
 sentence answer that carries actual regulatory substance.
 
+R77 — :func:`augment_with_ref_descriptions` is the always-on
+counterpart. Instead of replacing the answer (like ``stitch_grounded_prose``
+does in the consistency-guard path), it APPENDS one KB-description
+clause per cited reference that the existing prose does not already
+describe. This targets the LLM-as-judge "Article N cited but not
+described" failure mode (refs-faithfulness 0.20-0.23 in R76) on
+scenario answers where Stage-2 polish never fired.
+
 ## Hard rules
 
 * Pure-stdlib + same-package imports only.
@@ -352,3 +360,134 @@ def stitch_grounded_prose(
         sentence_count = len(split_legal_sentences(out))
 
     return out
+
+
+# ── R77 — always-on per-ref description augmenter ───────────────────────
+
+
+# Per-clause budget for the augment path. We add AT MOST one description
+# clause per uncovered ref. Each clause is prefixed with "Article N — "
+# (~12 chars), so the substantive content budget is ~75 chars.
+_AUGMENT_CLAUSE_CHARS: int = 90
+
+# How many refs the augmenter will add clauses for. Beyond this the
+# 600-char answer cap is binding and the route's normalise pass will
+# trim anyway; capping here avoids wasted work.
+_AUGMENT_MAX_NEW_CLAUSES: int = 3
+
+# Minimum token overlap required before we consider a ref "already
+# described" in the prose. 2 is consistent with cite_describe_guard's
+# default threshold. 1 would accept any shared stopword.
+_AUGMENT_COVERAGE_THRESHOLD: int = 2
+
+
+def _answer_covers_ref(answer_tokens: frozenset[str], internal_ref: str) -> bool:
+    """Return True when the answer prose already describes ``internal_ref``.
+
+    Uses BM25 token-pool overlap (≥ ``_AUGMENT_COVERAGE_THRESHOLD``),
+    consistent with the R66-B cite_describe_guard pass. Returns True on
+    any failure (fail-open — don't add a clause when we can't measure).
+    """
+    try:
+        from app.data.kb_search import _tokenize  # noqa: PLC0415
+
+        summary = _kb_summary(internal_ref)
+        if not summary:
+            # No KB stub → can't measure → treat as covered.
+            return True
+        summary_tokens = frozenset(_tokenize(summary))
+        overlap = len(answer_tokens & summary_tokens)
+        return overlap >= _AUGMENT_COVERAGE_THRESHOLD
+    except Exception:  # noqa: BLE001 — fail-open
+        return True
+
+
+def augment_with_ref_descriptions(
+    answer: str,
+    user_facing_refs: list[str],
+    *,
+    question: str = "",
+    max_new_clauses: int = _AUGMENT_MAX_NEW_CLAUSES,
+    clause_chars: int = _AUGMENT_CLAUSE_CHARS,
+) -> str:
+    """Append one short KB-description clause per uncovered cited ref.
+
+    R77 — always-on counterpart to :func:`stitch_grounded_prose`.  Where
+    ``stitch_grounded_prose`` REPLACES a refusal-template answer with
+    grounded prose, this function AUGMENTS an existing answer by appending
+    a compact description for each cited article whose KB substance is NOT
+    already reflected in the prose.
+
+    :param answer: the final answer text produced by the engine + tone
+        guard.  May already describe some of the cited refs.
+    :param user_facing_refs: user-facing references the route will ship
+        (``"Article N"`` / ``"Annex X"`` form).
+    :param question: the original user question (passed through to the
+        multi-stub ``_KBEntry`` specificity selector).
+    :param max_new_clauses: hard cap on how many description clauses we
+        append. Default :data:`_AUGMENT_MAX_NEW_CLAUSES`.
+    :param clause_chars: per-clause character budget.  Default
+        :data:`_AUGMENT_CLAUSE_CHARS`.
+
+    :returns: the (potentially augmented) answer string.  When every
+        cited ref is already described, or no KB stubs are available, the
+        input ``answer`` is returned unchanged.
+
+    Design invariants:
+    * Never raises — any failure returns ``answer`` unchanged.
+    * Never introduces refusal markers.
+    * Downstream ``normalise_answer_for_regenold`` will trim the result
+      to the 3-sentence + 600-char cap, so we allow ourselves to go
+      slightly over here.
+    """
+    if not answer or not user_facing_refs:
+        return answer
+
+    try:
+        from app.data.kb_search import _tokenize  # noqa: PLC0415
+
+        answer_tokens = frozenset(_tokenize(answer))
+
+        clauses_added = 0
+        extra_parts: list[str] = []
+
+        for user_ref in user_facing_refs:
+            if clauses_added >= max_new_clauses:
+                break
+            # Convert user-facing → internal form for KB lookup.
+            s = user_ref.strip()
+            if s.startswith("Article "):
+                internal = "Art. " + s[len("Article "):].split(".")[0].split("(")[0].strip()
+            elif s.startswith("Annex "):
+                internal = "Annex " + s[len("Annex "):].split(".")[0].split("(")[0].strip().upper()
+            else:
+                continue  # unexpected shape — skip
+
+            if _answer_covers_ref(answer_tokens, internal):
+                continue  # already described — no need to add
+
+            summary = _kb_summary(internal, question=question)
+            if not summary:
+                continue  # no KB stub — skip rather than add generic filler
+
+            clause = _first_clause(summary, max_chars=clause_chars)
+            if not clause:
+                continue
+
+            # Format: "Article N — <clause>."
+            user_label = _user_facing(internal)
+            prefixed = f"{user_label} — {clause}"
+            extra_parts.append(prefixed)
+            clauses_added += 1
+
+        if not extra_parts:
+            return answer
+
+        # Append the new clauses to the existing answer.  Use a single
+        # space separator so the downstream normalise pass can re-split
+        # cleanly into sentences.
+        augmented = answer.rstrip() + " " + " ".join(extra_parts)
+        return augmented
+
+    except Exception:  # noqa: BLE001 — fail-soft, never break the route
+        return answer

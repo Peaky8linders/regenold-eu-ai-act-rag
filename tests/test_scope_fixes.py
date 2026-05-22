@@ -151,9 +151,20 @@ class TestIssue44SubstringKeywordFalsePositives:
 
     # ── Regressions — legitimate matches MUST still fire ──────────────
 
-    def test_high_risk_still_anchors(self) -> None:
+    def test_high_risk_no_longer_anchors_art6_r77(self) -> None:
+        # R77 (I2) — bare "high-risk" / "high risk" was REMOVED from
+        # KEYWORD_TO_ARTICLE. It is a risk-TIER qualifier, not a topic:
+        # it appears in nearly every provider / deployer / importer
+        # obligation question and shadowed the real topic article (the
+        # R76 representative-100 live traces proved "importer
+        # obligations" / "deployer obligations" anchored only Art. 6).
+        # The longer "high-risk ai system" forms still carry scope via
+        # _AI_ACT_ANCHORS; the topic article comes from the role / topic
+        # noun. This test pins the intentional R77 removal.
         anchors = derive_anchor_articles_from_keywords("our high-risk system")
-        assert "Art. 6" in anchors, f"'high-risk' anchor regressed: {anchors}"
+        assert "Art. 6" not in anchors, (
+            f"R77 I2: bare 'high-risk' must no longer anchor Art. 6: {anchors}"
+        )
 
     def test_ai_literacy_still_anchors(self) -> None:
         anchors = derive_anchor_articles_from_keywords(

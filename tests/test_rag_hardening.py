@@ -44,6 +44,18 @@ from app.engines.graph_rag import (
 # ─── Fix 1 — _deterministic_parse handles long-form + Annex ──────────────────
 
 
+@pytest.fixture(autouse=True)
+def _r77_enable_stage2_polish(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R77 — Stage-2 polish now defaults OFF (``P2P_GRAPH_RAG_ENABLE_STAGE2``).
+
+    These tests predate that default and exercise the Stage-2 path with a
+    mocked provider. Force the master switch ON so they keep testing
+    Stage-2 behaviour; the provider + needs-enhancement gates still apply,
+    so the "Stage-2 skipped" tests in this module still skip correctly.
+    """
+    monkeypatch.setenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "1")
+
+
 class TestDeterministicParseEntities:
     """Multi-turn correctness: the parse must capture every article + annex
     reference shape the route can possibly thread into the question."""

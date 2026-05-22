@@ -55,6 +55,20 @@ def reset_anthropic_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings.graph_rag, "api_key", None, raising=True)
 
 
+@pytest.fixture(autouse=True)
+def _r77_enable_stage2_polish(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R77 — Stage-2 polish now defaults OFF (``P2P_GRAPH_RAG_ENABLE_STAGE2``).
+
+    These tests predate that default and exercise the Stage-2 path with a
+    mocked provider. Force the master switch ON so they keep testing
+    Stage-2 behaviour. This env var gates :func:`_stage2_polish_enabled`,
+    which is distinct from :func:`_stage2_provider_enabled` (tested by
+    ``TestStage2ProviderGate``), so the provider-gate tests are unaffected.
+    ``reset_anthropic_env`` does not clear this var, so it survives there.
+    """
+    monkeypatch.setenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "1")
+
+
 # ─── 1. Stage-2 gate accepts both providers ──────────────────────────────────
 
 

@@ -45,6 +45,22 @@ REGENOLD_GRAPH_AWARE = "1"
 #   railway variables --set REGENOLD_CITE_DESCRIBE_GUARD=0
 REGENOLD_CITE_DESCRIBE_GUARD = "1"
 
+# Round 77 — Stage-2 LLM polish master switch. DEFAULT OFF.
+#
+# The R76 representative-100 live measurement (production Railway +
+# Claude Max) found the Stage-2 polish pass net-negative on every
+# LLM-as-judge axis vs the deterministic Stage-1 answer it replaces:
+# refs-faithfulness 0.13 vs 0.25, conciseness 0.23 vs 0.55, tone
+# 0.65 vs 0.88, flat on correctness, and 3.5x slower (p50 19.6 s vs
+# 5.6 s). Disabling it drops live p50 latency ~17 s -> ~5 s (a scored
+# competition axis) and lifts three judge axes at once.
+#
+# The code default is OFF, so this deploy ships with Stage-2 disabled
+# without needing this line. To A/B a future Stage-2 prompt revision,
+# re-enable with:
+#   railway variables --set P2P_GRAPH_RAG_ENABLE_STAGE2=1
+# P2P_GRAPH_RAG_ENABLE_STAGE2 = "0"
+
 # Round 52 — Stage-0 intent classifier provider selection.
 #
 # Default ("" or "wrapper" semantics): Haiku 4.5 via the Claude Max
