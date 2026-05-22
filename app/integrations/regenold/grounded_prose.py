@@ -483,10 +483,15 @@ def augment_with_ref_descriptions(
         if not extra_parts:
             return answer
 
-        # Append the new clauses to the existing answer.  Use a single
-        # space separator so the downstream normalise pass can re-split
-        # cleanly into sentences.
-        augmented = answer.rstrip() + " " + " ".join(extra_parts)
+        # Append the new clauses to the existing answer.  R79 — ensure
+        # the base answer ends with terminal punctuation BEFORE the
+        # append, otherwise the first appended "Article N — …" clause
+        # fuses onto the last base word and the downstream
+        # `_split_sentences` pass reads them as one run-on sentence.
+        base = answer.rstrip()
+        if base and base[-1] not in ".!?":
+            base += "."
+        augmented = base + " " + " ".join(extra_parts)
         return augmented
 
     except Exception:  # noqa: BLE001 — fail-soft, never break the route

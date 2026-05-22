@@ -1259,7 +1259,17 @@ _KEYWORD_ENTITY_MAP: tuple[tuple[str, str], ...] = (
 
 def _deterministic_parse(question: str) -> GraphQuery:
     """Parse question using keyword matching when LLM is unavailable."""
-    q_lower = question.lower()
+    # R79 — normalise Unicode dashes / non-breaking spaces before the
+    # keyword scan. The davidath dataset uses U+2011 non-breaking
+    # hyphens; without this, the ASCII-hyphen keys in
+    # ``_KEYWORD_ENTITY_MAP`` ("deep-fake", "post-market monitoring",
+    # …) silently miss. Mirrors ``scenario_classifier._normalise``
+    # (lazy import — avoids a module-load circular dependency).
+    try:
+        from app.engines.scenario_classifier import _normalise  # noqa: PLC0415
+        q_lower = _normalise(question).lower()
+    except Exception:  # noqa: BLE001 — fail-soft to the raw lower()
+        q_lower = question.lower()
 
     # Detect intent
     intent = "general_compliance"
@@ -1391,8 +1401,19 @@ def _deterministic_parse(question: str) -> GraphQuery:
                 _TOPIC_KEYWORD_EXTENSIONS,
             )
             live_prepends: list[str] = []
+            # R79 — dedup against `live_prepends` itself, not just the
+            # existing `entities`. Multiple keywords in
+            # `_TOPIC_KEYWORD_EXTENSIONS` can map to the same article
+            # (e.g. "register with national authority" + "eu ai
+            # database" both → Art. 49); without this guard the article
+            # is appended twice and `_retrieve_from_kb` emits a
+            # duplicate obligation that wastes a citation-budget slot.
             for kw, art_ref in _TOPIC_KEYWORD_EXTENSIONS:
-                if kw in live_lower and art_ref not in entities:
+                if (
+                    kw in live_lower
+                    and art_ref not in entities
+                    and art_ref not in live_prepends
+                ):
                     live_prepends.append(art_ref)
             if live_prepends:
                 # Prepend so the live-question topic dominates the

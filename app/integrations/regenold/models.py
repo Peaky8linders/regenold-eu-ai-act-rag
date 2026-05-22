@@ -881,8 +881,13 @@ def _hard_truncate_at_clause(text: str, limit: int) -> str:
     candidates += [m.end() for m in re.finditer(r"[.!?](?=\s)", window)]
     # Enumerated-clause ends.
     candidates += [m.end() for m in re.finditer(r";(?=\s)", window)]
-    # Enumerated-item starts " (a) " … " (z) " — cut just before the space.
-    candidates += [m.start() for m in re.finditer(r"\s\([a-z]\)", window)]
+    # Enumerated-item starts " (a) " / " (A) " / " (ii) " — cut just
+    # before the space. R79 — widened from lowercase-only to also catch
+    # uppercase and roman-numeral enumerators used in some Annex points.
+    candidates += [
+        m.start()
+        for m in re.finditer(r"\s\((?:[a-zA-Z]|[ivxl]{2,4})\)", window)
+    ]
     cut = max(candidates) if candidates else -1
     if cut < limit // 2:
         # No clean boundary in the back half — fall back to a word break
