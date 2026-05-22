@@ -2883,6 +2883,16 @@ def classify_conversation(
     #     coreference rescue's input. Live messages cannot self-seed it.
     anchors: list[str] = []
     prior_anchors: list[str] = []
+    # R71 — explicit Art./Annex refs from PRIOR ASSISTANT turns. This is
+    # a FALLBACK rescue pool, consulted by the coreference / weak-keyword
+    # rescues ONLY when no prior USER turn established an anchor — the
+    # long topical-conversation shape where the user speaks in natural
+    # language and the assistant supplies the article citations (e.g.
+    # "We work with sensitive personal data for training." → assistant
+    # cites Art. 10 → "Are these checks continuous?"). It is NEVER folded
+    # into ``anchors`` / ``prior_anchors`` directly; see the rescue block
+    # below for the security rationale.
+    prior_assistant_anchors: list[str] = []
     unknowns: list[str] = []
     for idx, m in enumerate(messages):
         role = _get(m, "role")
@@ -2898,8 +2908,14 @@ def classify_conversation(
         for ref in u:
             if ref not in unknowns:
                 unknowns.append(ref)
-        # Anchors only from USER turns. Assistant turns are advisory.
+        # Anchors only from USER turns. Assistant turns are advisory —
+        # their EXPLICIT Art./Annex refs feed the fallback rescue pool
+        # only (R71); their keyword-derived / unknown refs are ignored.
         if role != "user":
+            if role == "assistant" and is_prior_for_rescue:
+                for ref in k:
+                    if ref not in prior_assistant_anchors:
+                        prior_assistant_anchors.append(ref)
             continue
         for ref in k:
             if ref not in anchors:
@@ -2973,6 +2989,24 @@ def classify_conversation(
         ScopeReason.NON_EXISTENT_ARTICLE,
     }
 
+    # R71 — coreference-rescue anchor pool. Prefer anchors established by
+    # prior USER turns; fall back to explicit refs from prior ASSISTANT
+    # turns when the user never named an article (the long topical
+    # conversation shape — see ``prior_assistant_anchors`` above). The
+    # fallback fires ONLY when the user pool is empty, so every
+    # conversation that already rescued via ``prior_anchors`` stays
+    # byte-identical.
+    #
+    # Security: an attacker who wants to fabricate an anchor can already
+    # spoof a prior USER turn that names an article — the messages array
+    # is fully client-controlled in a stateless API — so consulting
+    # assistant-turn refs here does not widen the attack surface. Both
+    # the user-anchor and assistant-anchor rescue paths remain gated on
+    # ``_live_question_borrows_anchor`` (genuine follow-up shape) and the
+    # ``hard_refusal_reasons`` set below (security / framework refusals
+    # are never overturned).
+    rescue_anchors: list[str] = prior_anchors or prior_assistant_anchors
+
     # R55-E — weak-keyword multi-turn rescue.
     #
     # R54.1 (C2) added ``_SCOPE_WEAK_KEYWORDS`` so phrases like
@@ -2997,18 +3031,18 @@ def classify_conversation(
     #
     # Result: rescue with prior_anchors + the weak-derived refs (dedup).
     if (
-        prior_anchors
+        rescue_anchors
         and live_verdict.reason not in hard_refusal_reasons
     ):
         full_refs = derive_anchor_articles_from_keywords(live_text)
         strong_refs = derive_strong_anchor_articles_from_keywords(live_text)
         weak_refs = tuple(r for r in full_refs if r not in strong_refs)
         if weak_refs:
-            # Build deduplicated ref list: prior anchors first, then
+            # Build deduplicated ref list: rescue anchors first, then
             # weak-derived refs in stable order.
             seen: set[str] = set()
             rescue_refs: list[str] = []
-            for ref in list(prior_anchors) + list(weak_refs):
+            for ref in list(rescue_anchors) + list(weak_refs):
                 if ref not in seen:
                     seen.add(ref)
                     rescue_refs.append(ref)
@@ -3017,33 +3051,33 @@ def classify_conversation(
                 reason=ScopeReason.IN_SCOPE,
                 evidence=(
                     f"Multi-turn weak-keyword rescue: prior anchor(s) "
-                    f"{', '.join(prior_anchors)} plus weak keyword(s) "
+                    f"{', '.join(rescue_anchors)} plus weak keyword(s) "
                     f"{', '.join(weak_refs)}"
                 ),
                 referenced_articles=tuple(rescue_refs),
             )
             return ConversationVerdict(
                 verdict=rescued,
-                anchor_articles=tuple(anchors),
+                anchor_articles=tuple(dict.fromkeys([*anchors, *rescue_anchors])),
                 history_unknown_articles=(),
                 live_question=live_text,
             )
 
     if (
         live_verdict.reason not in hard_refusal_reasons
-        and _live_question_borrows_anchor(live_text, tuple(prior_anchors))
+        and _live_question_borrows_anchor(live_text, tuple(rescue_anchors))
     ):
         rescued = ScopeVerdict(
             in_scope=True,
             reason=ScopeReason.IN_SCOPE,
             evidence=(
-                f"Coreference rescue: anchor(s) {', '.join(prior_anchors)} from prior turn(s)."
+                f"Coreference rescue: anchor(s) {', '.join(rescue_anchors)} from prior turn(s)."
             ),
-            referenced_articles=tuple(prior_anchors),
+            referenced_articles=tuple(rescue_anchors),
         )
         return ConversationVerdict(
             verdict=rescued,
-            anchor_articles=tuple(anchors),
+            anchor_articles=tuple(dict.fromkeys([*anchors, *rescue_anchors])),
             history_unknown_articles=(),
             live_question=live_text,
         )
