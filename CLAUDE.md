@@ -3118,6 +3118,31 @@ Four parallel agents audited the full 113-article + 13-annex surface:
   deliberately curated with explicit audit comments). One genuine gap
   → below.
 
+### Tone guard — grammatical second-person to third-person rewrites (#93)
+
+R55-A dropped the bare "you" before a modal ("you must X" → "must X"),
+which left a subject-less imperative the judge tone rubric still read as
+conversational — and produced the "As a provider, must provide …"
+grammar bug when a verdict opener legitimately leads.
+[`app/integrations/regenold/tone_guard.py`](app/integrations/regenold/tone_guard.py)
+now upgrades the second-person surface to full grammatical third-person
+using **"the operator"** (the EU AI Act Art. 3 umbrella term):
+
+| Second-person input               | Third-person rewrite             |
+| ---------------------------------- | -------------------------------- |
+| `you are X` / `you're X`           | `the operator is X`              |
+| `you'll / you've <verb>`           | `the operator will / has <verb>` |
+| `you must/shall/should <verb>`     | `the operator must/… <verb>`     |
+| `<obligation-verb> you to <verb>`  | `<verb> the operator to <verb>`  |
+| `your <noun>`                      | `the operator's <noun>`          |
+
+`you lose/gain/…` stays a drop (a clean rewrite needs verb
+conjugation — out of scope). Every pattern requires a verb / modal /
+object-pronoun context, so standalone regulator voice ("Providers
+must …") is untouched. davidath byte-identical (tone_guard is a no-op
+on regulator-voice deterministic answers); +12 tests, 3 R55-A tests
+updated for the "the operator's" possessive.
+
 ### PHASE_REGISTRY — Digital Omnibus Annex III deferral (this PR)
 
 `app/data/ontology.py::PHASE_REGISTRY` tracked the Digital Omnibus
@@ -3151,6 +3176,117 @@ suite holds at 274/276; the 2 failing rows
 (`multiturn_g_long_art10_4turn`, `multiturn_g_long_art50_5turn`) are
 **pre-existing on `main`** (multi-turn scope-coreference refusals,
 verified independent of this round) — flagged for a follow-up.
+
+## Round 71 — mt_v2_017 multi-turn anchor-bleed fix (2026-05-22)
+
+The R38 subpoint emitter `upgrade_references` was scored against the
+full **flattened multi-turn `question`** string, which carries every
+prior turn. `SUBPOINT_TOPIC_MAP` would match topic keywords from an
+EARLIER turn ("prohibited practice" / "HR") and inflate Article 5 into
+five leaf subpoints that evicted the final turn's real anchor
+(Article 99) under the route's 5-ref budget.
+
+Fix — [`app/routes/regenold.py`](app/routes/regenold.py) scores
+`upgrade_references` against `live_user_message` (the raw final user
+turn, already resolved upstream) instead of the flattened history.
+No-op for single-turn QA (`live_user_message == question` there) so
+davidath stays byte-identical; V2-local `mt_v2_017` ref-loose
+**0 → 1.0** (Article 99 surfaces, no Art. 5 subpoint inflation).
++1 regression test.
+
+davidath byte-identical (Ans Strict 0.3028 / RefL 0.5881 / RefS 0.4525
+/ Tone 1.0 / mt 20/20); 2,272 pass + 1 skip.
+
+## Round 72 — Reference reconciliation: drop cited-but-undescribed refs (2026-05-22)
+
+The LLM-as-judge's **refs axis** (its weakest, ~0.43) penalises any
+cited Article/Annex whose content the answer prose never describes. The
+route's anchor / subpoint / compound passes layer references in beyond
+what the focused 3-sentence answer covers — so a Stage-2-polished
+answer that legitimately describes 2-3 provisions still ships a
+4-5-ref wire list, and the extras each fail faithfulness (28/56 V2
+refs-fails, near-all "cited but never described in prose").
+
+Fix — after the answer is final,
+[`_reconcile_references_to_prose`](app/routes/regenold.py) drops wire
+references the polished prose never names (number-anchored
+Article/Art./Annex matching; subpoint refs count via their base
+article). **Floor-protected** (≥2 refs, never emptied; tops up with
+the highest-ranked undescribed refs for recall insurance). On the real
+`tr_v2_006` case the 5-ref wire list reconciles to exactly
+`[Article 25, Article 51]` — the gold.
+
+**Gated on `stage2_landed`**: the deterministic davidath bench runs
+with no wrapper → `stage2_landed` False → strict no-op → davidath
+byte-identical *by construction*. Skipped for scenario-shape questions
+(large multi-article gold a 3-sentence verdict cannot name). Env
+off-switch `REGENOLD_REFS_RECONCILE=0`.
+
+davidath byte-identical (Ans Strict 0.3028 / RefL 0.5881 / RefS 0.4525
+/ Tone 1.0 / mt 20/20); +15 unit tests; 2,292 pass + 1 skip.
+
+## Round 72.1 — Export `stage2_landed`: activate the R72 reconciliation gate (2026-05-22)
+
+Round 72's reconciliation gates on `graph_stats.get("stage2_landed")` —
+but **that key was never set**. The engine computes `stage2_used` (the
+real Stage-2-landed bool from `_two_stage_generate`) but the
+`graph_stats` dict only exported `stage2_call_failed`. So the gate read
+`None` on every request → the **R72 reconciliation pass was completely
+inert**. The symptom: a post-R72 live V2 run came back with
+refL / refS byte-identical to R71 (the lift R72 was built for never
+appeared).
+
+The same absent key was read by the R50 `_trace_stage2` reasoning
+recorder — so the `?include_reasoning=true` trace had also been
+silently recording `stage2_polish: False` since R50; R72.1 corrects
+that latent bug too.
+
+Fix — [`app/engines/graph_rag.py`](app/engines/graph_rag.py) adds
+`"stage2_landed": bool(stage2_used)` to the `graph_stats` dict. davidath
+bench runs with no wrapper → `stage2_used` always False → R72
+reconciliation still a no-op → davidath byte-identical (Ans Strict
+0.3028 / RefL 0.5881 / RefS 0.4525 / Tone 1.0 / mt 20/20); +3 tests;
+2,295 pass + 1 skip.
+
+**Measurement note**: any r72-live V2 + judge run taken *before* R72.1
+deployed measures an inert R72 — its judge refs axis reflects the
+pre-R72 baseline, not R72's effect. A fresh post-R72.1 live run is
+required to actually measure the reconciliation lift.
+
+## Round 73 — Multi-turn scope rescue via assistant-turn anchors (2026-05-22)
+
+Closes the two stale `multiturn_g_long_art10_4turn` /
+`multiturn_g_long_art50_5turn` failures the 276-scenario local runner
+carried since the R69 series (flagged in the Round 70 bench-parity
+note above) — **276-runner 274 → 276/276**.
+
+Root cause — `classify_conversation`
+([`app/integrations/regenold/scope.py`](app/integrations/regenold/scope.py))
+built its coreference-rescue anchor pool (`prior_anchors`) from prior
+USER turns only, per the R34 P1 hardening. In long topical
+conversations where the user speaks in natural language ("We work with
+sensitive personal data for training.") and the ASSISTANT supplies the
+article citations, that pool was empty — so the scope gate refused the
+coreferent final turn ("Are these checks continuous?").
+
+Fix — a `prior_assistant_anchors` fallback pool: explicit Art./Annex
+refs from prior assistant turns, consulted **only when no prior user
+turn established an anchor**. Every conversation that already rescued
+via `prior_anchors` stays byte-identical. The fallback is gated
+identically on `_live_question_borrows_anchor` + the hard-refusal
+blocks, and the equivalent prior-USER-turn spoof already exists, so the
+attack surface is not widened.
+
+R73 also fixes the `runner_v2 --probe-oos --local` transport: the
+`--local` TestClient sent no `X-Regenold-Api-Key` header, so the
+strict-auth route returned HTTP 503/401 and the OOS probe reported
+0 pass / 21 error — the documented "OOS 21/21" check was silently
+non-functional. A new `_ensure_local_auth` helper provisions an
+in-process key + header (mirroring the 276-suite runner). OOS probe
+0/21 → 21/21.
+
+davidath byte-identical; OOS regression set 21/21 refuses; +9 scope
+tests + 1 probe-oos auth test. Merged as PR #97.
 
 ## Eval scorecard (deterministic-fallback, local 276-scenario suite)
 
@@ -3199,6 +3335,12 @@ verified independent of this round) — flagged for a follow-up.
 | **65** | 476 davidath | — | — | — | RefL **0.5650** / RefS **0.4427** / Tone 1.0 / mt 1.00 / OOS **21/21** / 1,995 pass + 1 skip | Three surgical additions from R64-live judge failure analysis. **R65-A** — extends `_STAGE2_REFUSAL_MARKERS` with 4 new shapes caught in r64-live judge correctness failures: `"references block is empty"`, `"reference block contains no"` (singular form complementing the existing plural), `"block returned no matching provisions"`, `"what i can note from the framing"`. Catches 3 rows (tr_v2_001 / mt_v2_023 / mt_v2_024) where Sonnet drifted into chatbot meta-commentary on questions with non-empty refs. R49-A grounded prose substitute now fires instead of shipping the contradiction. **R65-B** — adds `cv-screening` / `for their hiring` / `ai for hiring` / `hiring ai` to scenario_classifier `_HIGH_RISK_MARKERS` (Annex III §4 employment). Catches tr_v2_010 ("Our SaaS lets enterprise customers configure a CV-screening AI for their hiring") which was being misclassified as limited-risk because the existing `cv screening` marker required a space, not a hyphen. **R65-C** — adds 11 SME size-transition routes to scope.py `KEYWORD_TO_ARTICLE`: `lose sme` / `lose our sme` / `no longer an sme` / `no longer qualify as sme` / `exceed sme threshold` / `sme threshold` / `sme privilege(s)` / `grew from sme` / `from sme to` / `transitioning out of sme`. Catches tr_v2_005 ("We grew from a 30-employee SME to a 220-employee company last quarter. Do we lose...") which was hitting the Art 1/2/3 zero-retrieval floor — now correctly routes to Art 62/63 SME-simplification provisions. All R34 P0 OOS regressions still PASS. |
 | **69** | 476 davidath | 12.77ms  | 22.12ms | —        | RefL **0.5881** / RefS **0.4525** / Ans Strict **0.3051** / Tone **1.0** / mt **1.00** / OOS 21/21 / 2,248 pass + 1 skip | Proposed Hybrid-RAG "Semantic Layer" architecture audited (3 parallel agents) + integrated. **Byte-identical to R68** — every davidath-affecting change is env-gated default-OFF. **69-A** `app/engines/semantic_layer.py` wires the built-but-unwired structure-aware tree (`eu_ai_act_tree.py`, 1,426 nodes): `paragraph_extract` (`REGENOLD_TREE_EXTRACT`; A/B'd −0.015 Ans Strict → default OFF) + `cross_reference_context` (the architecture's Fragmentation-Problem fix — Art. 11 → Annex IV co-retrieval into Stage-2 context, default ON). **69-B** RRF knob `REGENOLD_RRF_FUSION` in `kb_search` (A/B'd ±0.002 wash → default OFF, re-confirms the R31 finding). **69-C** `app/engines/query_structure.py` — the proposal's Section-3A structured payload (adds the genuinely-missing `actor_location` / `market_location` extraterritorial dimensions → Stage-2 `QUERY PROFILE` hint). **69-D** `ANSWER_GENERATE_SYSTEM` rule 10 (describe-every-cited-article — targets the judge's worst axis, refs-faithfulness 0.00-0.21) + rule 11 (anti-extrapolation). External vector-DB / Elasticsearch / Cohere proposals reviewed and rejected as wrong-for-codebase (external service / GPU; Railway has neither). +69 regression tests. V2 local: tricky refL **0.80** / refS 0.54, tone 1.0, 0 errors. Stage-2 wins (cross-ref context, query profile, describe-every-cite) land at the next live judge re-run. |
 | **69 live + judge** | 56 V2 LIVE | tricky 5,997ms / mt 23,596ms | tricky 35,017ms / max 103,384ms | — | tricky refL **0.80** / refS **0.58** / mt coh **0.36** / Judge: tone 0.68, refs 0.375, concise 0.55, corr 0.48 | First post-R69 live measurement + 4-axis LLM-judge. Tricky refL up (R63-live 0.77 → 0.80) but mt coherence regressed (0.48 → 0.36) and judge tone dropped (R64-live 0.84 → 0.68). **Round-1** (judge analysis): rule-11 reworded to drop the refusal invite, +6 `_STAGE2_REFUSAL_MARKERS`, scenario verdicts rewritten third-person (+VOICE rule). **Round-2** (autonomous `/plan-eng-review`): weak compound-role QUESTION budget 8 → 5 (over-citation, judge refs 0.375), `complex_thinking_tokens` 8000 → 2500 (103s latency outlier). davidath byte-identical through both fix rounds (Ans Strict 0.3028 / RefL 0.5881 / RefS 0.4525 / Tone 1.0 / mt 20/20); 2,256 tests pass. Judge-axis lifts land at the next live re-run. |
+| **70** | 476 davidath | — | — | — | RefL **0.5881** / RefS **0.4525** / Tone **1.0** / mt **20/20** / 2,276 pass | Official-text re-fetch via the EU Publications Office Cellar (#92 — the EUR-Lex web frontend now WAF-blocks unattended GETs; pinned consolidated text byte-identical, SHA `f64a5cb6…`); tone-guard grammatical 2nd→3rd-person rewrites via "the operator" (#93); PHASE_REGISTRY Digital Omnibus Annex III deferral to 2 Dec 2027 (#94). Parallel-agent full-coverage audit — KB / indexes / graph / ontology verified complete. davidath byte-identical. |
+| **71** | 476 davidath · 276-local 274/276 | — | — | — | RefL **0.5881** / RefS **0.4525** / mt **20/20** / 2,272 pass | mt_v2_017 anchor-bleed fix (#95) — `upgrade_references` scored against the raw final user turn, not the flattened multi-turn question, so earlier-turn topic keywords no longer inflate Art. 5 subpoints and evict the real anchor. davidath byte-identical; V2-local mt_v2_017 refL 0 → 1.0. |
+| **72** | 476 davidath · 276-local 274/276 | — | — | — | RefL **0.5881** / RefS **0.4525** / mt **20/20** / 2,292 pass | Reference reconciliation (#96) — `_reconcile_references_to_prose` drops cited-but-undescribed wire refs (targets the judge refs axis, ~0.43). `stage2_landed`-gated → davidath byte-identical; floor ≥2; env off-switch `REGENOLD_REFS_RECONCILE=0`. **Inert until R72.1** (see below). +15 tests. |
+| **72 V2 live + judge** | 56 V2 LIVE | tricky ~7.2s / mt ~29s | tricky ~41s / mt ~99s | — | tricky refL **0.80** / refS **0.61** · mt coherence **~0.16–0.32** (high run-to-run variance) · Judge over-non-error: refs ALL **0.46** / mt 0.52 / tricky 0.36¹ · tone **0.79** · correctness 0.52 · conciseness 0.66 | Post-R72 live V2 + 4-axis LLM-judge — but the run was taken **before PR #98 deployed**, so R72's reconciliation was **inert** (the `stage2_landed` gate key was unset — see R72.1). Judge refs sits in the 0.43–0.46 pre-R72 baseline; the "cited-but-undescribed ref" failure mode R72 targets is still the top judge-refs failure → confirms R72 did not run. ¹tricky-refs had 17/31 wrapper-error rows — unreliable; the clean signal is multiturn refs 0.52 (0 errors). A fresh **post-R72.1** live run is required to measure R72's actual lift. |
+| **72.1** | 476 davidath | — | — | — | RefL **0.5881** / RefS **0.4525** / Tone **1.0** / mt **20/20** / 2,295 pass | Export `stage2_landed` in `graph_stats` (#98) — the R72 gate key was never set, so the R72 reconciliation pass had been **completely inert** (a post-R72 live run came back byte-identical to R71). Also corrects the latent R50 `_trace_stage2` recorder bug. davidath byte-identical. |
+| **73** | 476 davidath · 276-local **276/276** | — | — | — | RefL **0.5881** / RefS **0.4525** / Tone **1.0** / mt **20/20** · OOS 21/21 | Multi-turn scope rescue via assistant-turn anchors (#97) — `prior_assistant_anchors` fallback pool consulted only when no prior user turn established an anchor; closes the 2 stale 276-runner multi-turn failures (274 → **276**). Also fixes `runner_v2 --probe-oos --local` auth (OOS probe 0/21 → 21/21). davidath byte-identical; +9 scope tests +1 auth test. |
 
 Δ on the local rubric is modest (-11% sentences, +12% p50 latency) because
 the local harness is binary substring-matched and already saturated. The
