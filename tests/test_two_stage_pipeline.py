@@ -389,3 +389,31 @@ class TestClaudeMaxEnhanceAnswerUnit:
             )
 
         assert "HR screening" in captured[0]
+
+
+# ─── R72.1 — graph_stats carries the stage2_landed signal ────────────────────
+
+
+class TestR721Stage2LandedSignal:
+    """R72.1 — `graph_stats` must export `stage2_landed`. Before R72.1 the
+    key was never set, so the route's `_trace_stage2` reasoning record AND
+    the R72 reference-reconciliation gate both silently read False."""
+
+    def test_stage2_landed_key_always_present(self) -> None:
+        result = ask_compliance_question(GraphRAGRequest(question=_SIMPLE_Q))
+        assert "stage2_landed" in (result.graph_stats or {})
+
+    def test_stage2_landed_false_on_deterministic_path(self) -> None:
+        # No wrapper wired → Stage-2 never lands → False (not absent).
+        result = ask_compliance_question(GraphRAGRequest(question=_SIMPLE_Q))
+        assert result.graph_stats["stage2_landed"] is False
+
+    def test_stage2_landed_true_when_stage2_enhances(self) -> None:
+        # When `_two_stage_generate` reports an enhanced answer the signal
+        # must surface True so the route's R72 reconciliation gate fires.
+        with patch(
+            "app.engines.graph_rag._two_stage_generate",
+            return_value=("Polished Stage-2 answer.", True),
+        ):
+            result = ask_compliance_question(GraphRAGRequest(question=_SIMPLE_Q))
+        assert result.graph_stats["stage2_landed"] is True

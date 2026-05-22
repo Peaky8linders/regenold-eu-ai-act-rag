@@ -3361,6 +3361,12 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
             # uses this to skip caching so a single bad call doesn't
             # poison the cache for the question's lifetime.
             "stage2_call_failed": context.stage2_call_failed,
+            # R72.1 — True when Stage-2 polish actually produced the
+            # answer (`_two_stage_generate` returned enhanced=True).
+            # The route reads this for the `_trace_stage2` reasoning
+            # record AND the R72 reference-reconciliation gate; before
+            # R72.1 the key was never set, so both silently saw False.
+            "stage2_landed": bool(stage2_used),
         },
     )
 
