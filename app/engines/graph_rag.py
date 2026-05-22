@@ -1334,52 +1334,95 @@ def _deterministic_parse(question: str) -> GraphQuery:
     # keyword path is the high-precision primary; BM25 is the
     # zero-precision fallback.
     if not entities:
+        # Stage-0.5: LLM entity extraction for novel phrasings.
+        #
+        # When the keyword map and regex extraction both return zero
+        # entities, try Claude Haiku 4.5 (or Groq) to extract article
+        # references from the question's semantics rather than its literal
+        # tokens. Examples: "How long must records be kept?" → Art. 12/19;
+        # "Can AI screen job applicants?" → Annex III + Art. 6 + Art. 26.
+        # The extractor fires BEFORE chapter-scoped BM25 so a confident
+        # LLM extraction pre-empts the noisier BM25 recall path.
+        #
+        # Fail-soft: any exception or disabled state → falls through to
+        # the existing chapter-scoped BM25 + full-corpus fallback chain.
         try:
-            from app.data.chapter_summaries import candidate_chapters_for_query  # noqa: PLC0415
-            from app.data.kb_search import (  # noqa: PLC0415
-                top_articles_by_relevance,
-                top_articles_by_relevance_in_chapters,
+            from app.llm.entity_extractor import (  # noqa: PLC0415
+                extract_entities as _extract_entities,
             )
-            # PageIndex-style hierarchical pre-filter: scope BM25 to the
-            # 1-2 most likely chapters before searching the full 135-doc
-            # corpus. When the query has a clear chapter signal (e.g.
-            # "How long must records be kept?" → Chapter III / IX), this
-            # removes inter-chapter noise and lifts top-1 precision.
-            # Falls back to full-corpus search when routing is uncertain
-            # (returns [] from candidate_chapters_for_query).
-            #
-            # Scoped path uses k=5 (vs full-corpus k=3) because the
-            # candidate pool is smaller — higher k does not add noise
-            # when the scope is already narrowed to 1 chapter's docs.
-            candidate_chapters = candidate_chapters_for_query(
-                question, intent_label=intent
-            )
-            if candidate_chapters:
-                bm25_hits = top_articles_by_relevance_in_chapters(
-                    question, candidate_chapters, k=5, min_score=1.0
-                )
+            _stage05_hits = _extract_entities(question)
+            if _stage05_hits:
+                for _ref in _stage05_hits:
+                    if _ref not in entities:
+                        entities.append(_ref)
                 logger.debug(
-                    "chapter_scoped_bm25: chapters=%s hits=%s",
-                    candidate_chapters, bm25_hits,
+                    "stage0_5_entity_extractor: entities=%s", _stage05_hits
                 )
-                # If the scoped search yields nothing, fall through to
-                # full-corpus BM25 as a safety net.
-                if not bm25_hits:
-                    bm25_hits = top_articles_by_relevance(
-                        question, k=3, min_score=1.0
+        except Exception as _exc:  # noqa: BLE001 — stage-0.5 must never block parse
+            logger.debug("stage0_5_entity_extractor_failed: %s", _exc)
+
+        # BM25 fallback over the obligation-row corpus. Fires ONLY when the
+        # curated keyword + regex paths produced zero entities — at that
+        # point, the question has no direct anchor and we'd otherwise return
+        # the default "no matching obligation" dump. BM25 over ~110 rows ×
+        # ~50 tokens ranks below 1ms and closes the novel-phrasing recall
+        # gap (e.g. "How long must records be kept?" → Art. 19 + Art. 18).
+        # See :mod:`app.data.kb_search` for the algorithm + tuning rationale.
+        #
+        # The strict ``== 0`` gate is load-bearing: questions like
+        # "Summarise EU AI Act Art. 13" already have ``Art. 13`` extracted
+        # but the literal tokens "eu", "ai", "act" score against many
+        # unrelated rows in BM25 — surfacing them would pollute the
+        # citation set and inflate the answer to 7+ sentences. The
+        # keyword path is the high-precision primary; BM25 is the
+        # zero-precision fallback.
+        if not entities:
+            try:
+                from app.data.chapter_summaries import candidate_chapters_for_query  # noqa: PLC0415
+                from app.data.kb_search import (  # noqa: PLC0415
+                    top_articles_by_relevance,
+                    top_articles_by_relevance_in_chapters,
+                )
+                # PageIndex-style hierarchical pre-filter: scope BM25 to the
+                # 1-2 most likely chapters before searching the full 135-doc
+                # corpus. When the query has a clear chapter signal (e.g.
+                # "How long must records be kept?" → Chapter III / IX), this
+                # removes inter-chapter noise and lifts top-1 precision.
+                # Falls back to full-corpus search when routing is uncertain
+                # (returns [] from candidate_chapters_for_query).
+                #
+                # Scoped path uses k=5 (vs full-corpus k=3) because the
+                # candidate pool is smaller — higher k does not add noise
+                # when the scope is already narrowed to 1 chapter's docs.
+                candidate_chapters = candidate_chapters_for_query(
+                    question, intent_label=intent
+                )
+                if candidate_chapters:
+                    bm25_hits = top_articles_by_relevance_in_chapters(
+                        question, candidate_chapters, k=5, min_score=1.0
                     )
-            else:
-                # Issue #54 — drop the absolute floor to 1.0. The
-                # ``top_articles_by_relevance`` helper honours a
-                # relative-to-best cutoff too, so a 1-2 token query
-                # whose top raw score sits below 2.5 still surfaces a
-                # clear winner instead of returning empty.
-                bm25_hits = top_articles_by_relevance(question, k=3, min_score=1.0)
-            for ref in bm25_hits:
-                if ref not in entities:
-                    entities.append(ref)
-        except Exception as exc:  # noqa: BLE001 — BM25 must never block parse
-            logger.debug("bm25_fallback_failed: %s", exc)
+                    logger.debug(
+                        "chapter_scoped_bm25: chapters=%s hits=%s",
+                        candidate_chapters, bm25_hits,
+                    )
+                    # If the scoped search yields nothing, fall through to
+                    # full-corpus BM25 as a safety net.
+                    if not bm25_hits:
+                        bm25_hits = top_articles_by_relevance(
+                            question, k=3, min_score=1.0
+                        )
+                else:
+                    # Issue #54 — drop the absolute floor to 1.0. The
+                    # ``top_articles_by_relevance`` helper honours a
+                    # relative-to-best cutoff too, so a 1-2 token query
+                    # whose top raw score sits below 2.5 still surfaces a
+                    # clear winner instead of returning empty.
+                    bm25_hits = top_articles_by_relevance(question, k=3, min_score=1.0)
+                for ref in bm25_hits:
+                    if ref not in entities:
+                        entities.append(ref)
+            except Exception as exc:  # noqa: BLE001 — BM25 must never block parse
+                logger.debug("bm25_fallback_failed: %s", exc)
 
     return GraphQuery(
         intent=intent,
