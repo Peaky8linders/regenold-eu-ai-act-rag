@@ -210,9 +210,30 @@ def _engine_cache_key(question: str, system_context: str | None) -> str:
     # (see ``_claude_max_enhance_answer`` routing rule), so they must
     # have distinct cache identities.
     provider_bit = (os.getenv("P2P_GRAPH_RAG_PROVIDER") or "").strip().lower() or "unset"
+    # R79 — fold the ENGINE-behaviour env flags into the key. Same
+    # doctrine as the R30/R56 cache-poisoning fixes: any env var that
+    # flips the ENGINE output (this cache stores the GraphRAGResponse,
+    # not the final wire answer) must be in the key. Route-level flags
+    # (REGENOLD_QA_REF_BUDGET, REGENOLD_REF_DESCRIBE_AUG,
+    # REGENOLD_HARD_CHAR_CAP, REGENOLD_TONE_GUARD, REGENOLD_QA_TRIM,
+    # REGENOLD_CLARA_VERDICT, …) are deliberately NOT included — the
+    # route post-processing re-runs on every cache hit, so flipping one
+    # cannot serve a stale answer.
+    #   * P2P_GRAPH_RAG_ENABLE_STAGE2 — gates Stage-2 polish inside
+    #     ``_two_stage_generate`` (R77); flips ``GraphRAGResponse.answer``.
+    #   * REGENOLD_GRAPH_2HOP / REGENOLD_GRAPH_AWARE — gate the Neo4j
+    #     graph-expansion paths inside the engine's retrieve phase.
+    engine_flags = ":".join(
+        os.getenv(v, "").strip().lower()
+        for v in (
+            "P2P_GRAPH_RAG_ENABLE_STAGE2",
+            "REGENOLD_GRAPH_2HOP",
+            "REGENOLD_GRAPH_AWARE",
+        )
+    )
     blob = (
         f"{KB_VERSION}\n{question}\n{system_context or ''}\n"
-        f"flags:{flag_bits}\nprovider:{provider_bit}"
+        f"flags:{flag_bits}\nprovider:{provider_bit}\nengine:{engine_flags}"
     ).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()
 
@@ -2255,7 +2276,8 @@ def regenold_eu_ai_act_ask(
         # dropping it lifts Ref Conciseness and Ref Strict without hurting
         # Ref Loose (gold ~1, F1 metric).
         if (
-            os.getenv("REGENOLD_QA_REF_BUDGET", "1") in ("1", "true", "yes", "on")
+            os.getenv("REGENOLD_QA_REF_BUDGET", "1").strip().lower()
+            in ("1", "true", "yes", "on")
             and not _is_multiturn
             and not _is_classification_topic
         ):

@@ -3325,6 +3325,83 @@ lifts.
 Verify: 2374 pass + 1 skip; davidath byte-identical to R77 with the
 default; OOS 21/21; 276-runner 276/276; +7 `TestR78HardCharCap` tests.
 
+## Round 79 — Deep-code-review bug fixes (2026-05-22)
+
+Three parallel review agents audited the R77 + R78 merged changes and
+the load-bearing answer-assembly / engine-retrieval surfaces (the
+deterministic path is now the entire shipped product since R77
+disabled Stage-2). 13 candidate findings surfaced; after verifying
+each against the actual code, **7 were real bugs and are fixed here**;
+the rest were rejected (intentional design) or deferred (need the
+live judge). All 7 fixes are davidath-neutral.
+
+### The 7 fixes
+
+1. **`_engine_cache_key` missing the Stage-2 master flag**
+   (`routes/regenold.py`). R77 added `P2P_GRAPH_RAG_ENABLE_STAGE2` — an
+   env var that flips the engine's `GraphRAGResponse.answer` (Stage-2
+   polish) — but did not add it to the cache key. By the R30/R56
+   cache-poisoning doctrine ("any input that flips engine behaviour
+   must be in the key") that is a bug. Fixed: the key now folds in
+   `P2P_GRAPH_RAG_ENABLE_STAGE2` + `REGENOLD_GRAPH_2HOP` +
+   `REGENOLD_GRAPH_AWARE` (the engine-stage flags). Route-level flags
+   (`REGENOLD_QA_REF_BUDGET`, `REGENOLD_REF_DESCRIBE_AUG`,
+   `REGENOLD_HARD_CHAR_CAP`, …) are deliberately NOT added — verified
+   the cache stores the engine output and the route post-processing
+   re-runs on every cache hit, so they cannot serve a stale answer.
+2. **`_deterministic_parse` topic-extension prepend self-dedup**
+   (`graph_rag.py`). The R63-A live-topic prepend deduped only against
+   the existing entity list, not against `live_prepends` itself — two
+   `_TOPIC_KEYWORD_EXTENSIONS` keywords mapping to the same article
+   (e.g. Art. 49 has 8 register-* keywords) double-added it, emitting
+   a duplicate obligation that wastes a citation-budget slot.
+3. **`_deterministic_parse` Unicode non-breaking hyphen miss**
+   (`graph_rag.py`). The keyword scan ran on the raw `.lower()`
+   question; the davidath dataset uses U+2011 non-breaking hyphens, so
+   ASCII-hyphen `_KEYWORD_ENTITY_MAP` keys ("deep-fake", "post-market
+   monitoring", …) silently missed. Fixed: normalise via
+   `scenario_classifier._normalise` (lazy import) before the scan —
+   the same normalisation `scenario_classifier` already applies.
+4. **`augment_with_ref_descriptions` word-fusion** (`grounded_prose.py`).
+   When the base answer had no terminal punctuation, the first
+   appended `Article N — …` clause fused onto the last base word and
+   `_split_sentences` read them as one run-on sentence. Fixed: insert
+   a period before the append when needed.
+5. **`top_articles_by_relevance_in_chapters` missing the R28 boost**
+   (`kb_search.py`). The chapter-scoped BM25 variant omitted the
+   cross-reference confidence boost the main `top_articles_by_relevance`
+   applies, so hub articles lost their documented tie-break on every
+   chapter-scoped query. Fixed: apply the boost to the ranking value
+   (post-admission-filter, so it stays a pure tie-break).
+6. **`REGENOLD_QA_REF_BUDGET` env parse** (`routes/regenold.py`).
+   Parsed without `.strip().lower()` — inconsistent with every other
+   R77/R78 env gate; `"True"` or `"1 "` silently fell through.
+7. **`_hard_truncate_at_clause` enumerator regex** (`models.py`). Only
+   matched lowercase `(a)`; widened to also catch `(A)` uppercase and
+   `(ii)` roman-numeral Annex-point enumerators.
+
+### Rejected / deferred findings (verified, not fixed)
+
+* **PPR/PathRAG `k*2` candidate cap** — the additive-recall design is
+  intentional (CLAUDE.md R31 "purely additive"); not a bug.
+* **I4 augmenter suppressed on 3-sentence answers** — real limitation:
+  appending a 4th sentence is dropped by the `MAX_ANSWER_SENTENCES=3`
+  cap (hard rule #2). Fixing it properly is a redesign whose only
+  payoff is the live judge's refs-faithfulness axis — deferred to a
+  judge-driven round. Fix #4 above (the period) is the safe part.
+* **`_reconcile_references_to_prose` gated on `stage2_landed`** — dead
+  since R77 disabled Stage-2; decoupling it drops references → a
+  measurable change needing the live judge. Deferred.
+* **extractive / QA-trim bypassing `normalise`'s char cap** — no
+  confirmed davidath repro; speculative. Noted, not fixed.
+
+### Verify
+
+2382 pass + 1 skip (+8 `tests/test_r79_bugfixes.py`); davidath
+**byte-identical** to R78 (Ans Strict 0.3033 vs 0.3029, Ref Loose /
+Strict / Conciseness / Tone all flat — the fixes target failure
+shapes davidath doesn't exercise); OOS 21/21; 276-runner 276/276.
+
 ## Eval scorecard (deterministic-fallback, local 276-scenario suite)
 
 | Round  | Pass         | p50      | p95     | avg refs | Retrieval F1 | Notes |
@@ -3374,6 +3451,7 @@ default; OOS 21/21; 276-runner 276/276; +7 `TestR78HardCharCap` tests.
 | **69 live + judge** | 56 V2 LIVE | tricky 5,997ms / mt 23,596ms | tricky 35,017ms / max 103,384ms | — | tricky refL **0.80** / refS **0.58** / mt coh **0.36** / Judge: tone 0.68, refs 0.375, concise 0.55, corr 0.48 | First post-R69 live measurement + 4-axis LLM-judge. Tricky refL up (R63-live 0.77 → 0.80) but mt coherence regressed (0.48 → 0.36) and judge tone dropped (R64-live 0.84 → 0.68). **Round-1** (judge analysis): rule-11 reworded to drop the refusal invite, +6 `_STAGE2_REFUSAL_MARKERS`, scenario verdicts rewritten third-person (+VOICE rule). **Round-2** (autonomous `/plan-eng-review`): weak compound-role QUESTION budget 8 → 5 (over-citation, judge refs 0.375), `complex_thinking_tokens` 8000 → 2500 (103s latency outlier). davidath byte-identical through both fix rounds (Ans Strict 0.3028 / RefL 0.5881 / RefS 0.4525 / Tone 1.0 / mt 20/20); 2,256 tests pass. Judge-axis lifts land at the next live re-run. |
 | **77** | 476 davidath | 9.8ms    | 14.13ms | —        | RefL **0.5755** / RefS **0.4644** / RefC **0.4200** / Ans Strict **0.3029** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2367 pass + 1 skip | R76 representative-100 measurement (deterministic + live + LLM-judge) → 4 fixes. **I2** removed bare `"high-risk"`→Art.6 anchor from `KEYWORD_TO_ARTICLE` — it shadowed every operator-obligation question's real topic article (≥8/16 live ref-misses); davidath byte-identical (BM25-saturated, win is live-only). **I1** Stage-2 LLM polish OFF by default (`P2P_GRAPH_RAG_ENABLE_STAGE2`, new `_stage2_polish_enabled()` gate) — R76 live proved it net-negative on every judge axis (refs 0.13 vs 0.25, conciseness 0.23 vs 0.55, tone 0.65 vs 0.88) + 3.5× slower; expected live p50 ~17s→~5s. **I4** always-on per-ref description augmenter (`augment_with_ref_descriptions`, `REGENOLD_REF_DESCRIBE_AUG`) for the judge floor axis refs-faithfulness. **I6** shape-aware QA ref budget 5→3 (`REGENOLD_QA_REF_BUDGET`) — trades RefL −0.006 for RefS/RefC +0.014 each (net rubric-positive). **I5** 2-hop already additive-below-cap, no code change. Live rep-100 + judge re-run queued post-deploy. |
 | **78** | 476 davidath | 9.28ms   | 15.25ms | —        | RefL **0.5755** / RefS **0.4644** / Ans Strict **0.3029** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2374 pass + 1 skip | R76 follow-up. Cross-referencing the R76 deterministic judge verdicts with the bench sidecar found 8 answers escaping the 600-char soft cap to **717-1258 chars** — single cite-anchored `(a)…(b)…(c)…` enumerations the LLM judge counts as ">4 sentences". Root cause: `normalise_answer_for_regenold`'s soft-cap loop is sentence-granular + cite-anchor-preserving (`while len(capped) > 1`, drops only non-cite sentences) so a single long cite-anchored sentence escapes entirely. New `_hard_truncate_at_clause` backstop truncates at the latest clean clause/sentence boundary, env-gated `REGENOLD_HARD_CHAR_CAP`. **Default OFF**: davidath A/B is a wash (Ans Strict −0.006 / Conciseness +0.004 — truncation drops enumeration-tail gold tokens), so per the R69 `TREE_EXTRACT` discipline it ships OFF; the binary judge-conciseness win (flips those 8 rows fail→pass) is the live-only payoff. davidath byte-identical to R77 with the default. +7 tests. |
+| **79** | 476 davidath | 9.16ms   | 14.25ms | —        | RefL **0.5755** / RefS **0.4644** / Ans Strict **0.3033** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2382 pass + 1 skip | Deep-code-review bugfix round. 3 parallel review agents audited the R77/R78 merges + the answer-assembly / engine-retrieval surfaces; 13 candidate findings → **7 verified real bugs fixed**, 6 rejected/deferred (intentional design, or need the live judge). Fixes: (1) `_engine_cache_key` += `P2P_GRAPH_RAG_ENABLE_STAGE2` + graph flags — R77's Stage-2 master flag flips the engine answer but was missing from the key (R30/R56 cache-poisoning doctrine); (2) `_deterministic_parse` topic-extension prepend now self-dedups (two keywords → same article double-added an obligation); (3) `_deterministic_parse` Unicode-normalises before the keyword scan (U+2011 non-breaking hyphens silently missed `_KEYWORD_ENTITY_MAP`); (4) `augment_with_ref_descriptions` inserts a period before appended clauses (word-fusion on punctuation-less base answers); (5) `top_articles_by_relevance_in_chapters` applies the R28 confidence boost the main variant has; (6) `REGENOLD_QA_REF_BUDGET` env parse `.strip().lower()`; (7) `_hard_truncate_at_clause` regex catches `(A)` / `(ii)` enumerators. All 7 davidath-neutral (Ans Strict 0.3029→0.3033, rest flat — the bugs are in failure shapes davidath doesn't exercise). +8 `tests/test_r79_bugfixes.py`. |
 
 Δ on the local rubric is modest (-11% sentences, +12% p50 latency) because
 the local harness is binary substring-matched and already saturated. The

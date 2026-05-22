@@ -911,8 +911,18 @@ def top_articles_by_relevance_in_chapters(
         w = _SOURCE_WEIGHT.get(index.sources[doc_idx], 1.0)
         weighted = raw * w
         if weighted >= min_score or raw >= relative_floor:
-            if article_ref not in best or weighted > best[article_ref]:
-                best[article_ref] = weighted
+            # R79 — apply the R28 cross-reference confidence boost to the
+            # RANKING value only (not the admission filter above),
+            # mirroring `top_articles_by_relevance`. The chapter-scoped
+            # variant was silently omitting it, so hub articles
+            # (Art. 5/6/9/13/26) lost their documented tie-break on every
+            # chapter-scoped query. Boost ∈ [1.0, 1.10] — a pure
+            # tie-break that cannot promote an irrelevant article over a
+            # relevant one, and (applied post-filter) cannot change which
+            # articles are admitted.
+            ranked = weighted * _confidence_boost(article_ref)
+            if article_ref not in best or ranked > best[article_ref]:
+                best[article_ref] = ranked
 
     sorted_refs = sorted(best, key=lambda r: best[r], reverse=True)
     return sorted_refs[:k]
