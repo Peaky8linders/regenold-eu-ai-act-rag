@@ -293,9 +293,11 @@ def zero_retrieval_fallback(
       :data:`ARTICLE_EXISTENCE`.
     * ``prose`` is non-empty.
     """
-    # Stage 1 — intent seed.
+    # Stage 1 — intent seed. Distinguish "label matched" vs "no label
+    # match" so we can suppress _DEFAULT_FLOOR padding when other,
+    # narrower signals (topic / explicit anchors) are available.
     label = (intent_label or "").strip().lower()
-    seed = _INTENT_SEED_MAP.get(label) or _DEFAULT_FLOOR
+    intent_seed = _INTENT_SEED_MAP.get(label)  # None when label unknown
 
     # Stage 2 — topic-keyword extensions (substring match on the question).
     topic = _topic_keyword_seeds(question)
@@ -306,9 +308,26 @@ def zero_retrieval_fallback(
         if isinstance(a, str) and a in ARTICLE_EXISTENCE:
             anchors_normalised.append(a)
 
-    # Compose in priority order: explicit anchors → topic-keyword hits →
-    # intent seed. Validate + dedupe + cap.
-    combined = _validate_refs(list(anchors_normalised) + topic + list(seed))
+    # R80-F composition (see CLAUDE.md Round 80):
+    #   * Intent matched in _INTENT_SEED_MAP → use anchors + topic + intent_seed
+    #     (current behaviour — the curated intent seed is article-specific).
+    #   * Intent NOT matched AND we have specifics (topic or anchors) →
+    #     use those only, SKIP _DEFAULT_FLOOR. The r80-live judge run
+    #     showed 9 in-scope rows hitting this fallback with a real anchor
+    #     present (e.g. qa_003 had Art. 3 in explicit_anchors) but the
+    #     Art. 1/2 floor pad polluting ref precision. Suppressing the
+    #     floor when we already have specifics fixes the precision leak
+    #     without removing the floor for genuinely under-determined
+    #     questions (third branch below).
+    #   * No intent, no topic, no anchors → default floor (only signal).
+    if intent_seed is not None:
+        combined = _validate_refs(
+            list(anchors_normalised) + topic + list(intent_seed)
+        )
+    elif topic or anchors_normalised:
+        combined = _validate_refs(list(anchors_normalised) + topic)
+    else:
+        combined = _validate_refs(list(_DEFAULT_FLOOR))
     refs = combined[:_MAX_FALLBACK_REFS]
 
     # Final safety net: a future edit to the seed map shouldn't be able

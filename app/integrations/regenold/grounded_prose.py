@@ -376,19 +376,50 @@ _AUGMENT_CLAUSE_CHARS: int = 90
 _AUGMENT_MAX_NEW_CLAUSES: int = 3
 
 # Minimum token overlap required before we consider a ref "already
-# described" in the prose. 2 is consistent with cite_describe_guard's
-# default threshold. 1 would accept any shared stopword.
-_AUGMENT_COVERAGE_THRESHOLD: int = 2
+# described" in the prose. R80-D — raised 2 → 4 after the r80-live judge
+# run showed the BM25-overlap signal over-firing on common tokens
+# (provider/must/document/system/risk) that appear in nearly every KB
+# stub. With threshold=2, the augmenter considered Article N "already
+# described" whenever the prose shared any two stopword-class tokens
+# with its stub — suppressing clause appends on rows the LLM judge then
+# flagged as "Article N cited but not described in prose". Threshold=4
+# requires substantive content overlap. Combined with the literal-cite
+# check below, false-covered drops sharply.
+_AUGMENT_COVERAGE_THRESHOLD: int = 4
 
 
-def _answer_covers_ref(answer_tokens: frozenset[str], internal_ref: str) -> bool:
+def _answer_covers_ref(answer_tokens: frozenset[str], internal_ref: str, *, answer_text: str = "") -> bool:
     """Return True when the answer prose already describes ``internal_ref``.
 
-    Uses BM25 token-pool overlap (≥ ``_AUGMENT_COVERAGE_THRESHOLD``),
-    consistent with the R66-B cite_describe_guard pass. Returns True on
-    any failure (fail-open — don't add a clause when we can't measure).
+    R80-D — two-signal coverage:
+      1. *Literal cite check*: the prose contains the user-facing form
+         (``"Article 13"`` / ``"Annex IV"``). This is the strongest
+         "described" signal — the engine has named the article AND
+         (presumably) said something about it. Numeric-only variants
+         (``"Art. 13"``) also count.
+      2. *BM25 token overlap*: the answer tokens share at least
+         :data:`_AUGMENT_COVERAGE_THRESHOLD` tokens with the ref's KB
+         summary. Backstop for engine outputs that paraphrase without
+         naming the article literally.
+
+    Either signal returning True ⇒ covered. Returns True on any
+    failure (fail-open — don't add a clause when we can't measure).
     """
     try:
+        # Literal cite check.
+        if answer_text and internal_ref:
+            stripped = internal_ref.replace("Art. ", "").replace("Annex ", "")
+            if internal_ref.startswith("Art. "):
+                # Match "Article N" (user-facing) AND "Art. N" (internal).
+                if (
+                    f"Article {stripped}" in answer_text
+                    or internal_ref in answer_text
+                ):
+                    return True
+            elif internal_ref.startswith("Annex "):
+                if internal_ref in answer_text:  # "Annex IV"
+                    return True
+
         from app.data.kb_search import _tokenize  # noqa: PLC0415
 
         summary = _kb_summary(internal_ref)
@@ -463,7 +494,7 @@ def augment_with_ref_descriptions(
             else:
                 continue  # unexpected shape — skip
 
-            if _answer_covers_ref(answer_tokens, internal):
+            if _answer_covers_ref(answer_tokens, internal, answer_text=answer):
                 continue  # already described — no need to add
 
             summary = _kb_summary(internal, question=question)

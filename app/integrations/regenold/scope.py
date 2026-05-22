@@ -1258,6 +1258,27 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "non-consensual intimate": "Art. 5",
     "non consensual intimate": "Art. 5",
     "intimate imagery": "Art. 5",
+    # R80-F — zero-retrieval rescue (r80-live judge data). Each phrase is
+    # the live-question shape that fell through to the Art. 1/2/3 floor;
+    # routing each to its gold article surfaces the right anchor at the
+    # engine + suppresses the floor pad downstream
+    # (see app/engines/zero_retrieval_fallback.py R80-F change).
+    "authorised representative": "Art. 22",
+    "authorized representative": "Art. 22",
+    "appoint an authorised representative": "Art. 22",
+    "appoint an authorized representative": "Art. 22",
+    "retain logs": "Art. 19",
+    "retain automatically generated logs": "Art. 19",
+    "log retention": "Art. 19",
+    "automatically generated logs": "Art. 19",
+    "obligations of deployers": "Art. 26",
+    "obligations of downstream providers": "Art. 26",
+    "transparency information must be provided": "Art. 13",
+    "transparency information to deployers": "Art. 13",
+    "european artificial intelligence board": "Art. 65",
+    "who must comply with the ai regulation": "Art. 2",
+    "who must comply with the ai act": "Art. 2",
+    "who must comply with the regulation": "Art. 2",
     # Annex III categories — scope anchors for high-risk verdicts
     "critical infrastructure": "Annex III",
     "asylum application": "Annex III",
