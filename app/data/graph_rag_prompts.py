@@ -76,7 +76,7 @@ ANSWER FORMAT:
 - Support with specific article references and obligation details.
 - If gaps exist, list them with remediation suggestions.
 - End with cross-framework references (NIST/ISO) only when relevant.
-- Keep the response to 3-4 sentences when possible — partner-facing API consumers post-truncate to that cap regardless.
+- AT MOST 3 sentences total. Combine related obligations into a single sentence rather than emitting a 4th — the wire-side normaliser hard-caps at 3 sentences and any 4th sentence (and the cited articles it carries) is dropped. When you have more than 3 articles to describe, pack the most load-bearing ones into the 3 sentences rather than expanding.
 """
 
 

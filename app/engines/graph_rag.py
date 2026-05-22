@@ -3237,8 +3237,10 @@ def _claude_max_enhance_answer(
             "obligations that appear in the EU AI ACT REFERENCES block, "
             "and make sure every article or annex you cite is described "
             "in the prose — state in a few words what it requires, never "
-            "cite a bare number. Lead with a direct answer, 3-4 sentences "
-            "maximum."
+            "cite a bare number. Lead with a direct answer, AT MOST 3 "
+            "sentences. Combine related obligations into one sentence rather "
+            "than emitting a 4th — the wire normaliser hard-caps at 3 and "
+            "any 4th sentence (and its cited articles) is dropped."
         )
         try:
             max_tokens = settings.graph_rag.max_tokens
