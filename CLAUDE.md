@@ -3271,6 +3271,60 @@ re-run (`evals.bench.representative_100 --endpoint <live>` then
 climbing toward the deterministic numbers (refs 0.20 → 0.35+,
 conciseness 0.41 → 0.55+, tone 0.76 → 0.85+).
 
+## Round 78 — Hard char-cap backstop for enumerated answers (2026-05-22)
+
+R76 representative-100 follow-up. Cross-referencing the R76
+deterministic LLM-judge verdicts with the bench sidecar: 8 answers
+the judge failed on conciseness ("sentence count exceeds maximum of
+4") are **717-1258 chars** — far over the documented 600-char soft
+cap — yet only 1-3 sentences by the production `_split_sentences`
+counter. They are single cite-anchored sentences carrying a long
+`(a) … (b) … (c) …` enumeration; the LLM judge counts each
+enumerated clause as a sentence.
+
+### Root cause
+
+`normalise_answer_for_regenold`'s soft-cap loop is sentence-granular
+and cite-anchor-preserving: it runs only `while len(capped) > 1` and
+only drops whole NON-cite sentences. A single long cite-anchored
+enumerated sentence — or an answer whose every sentence cites an
+article — escapes the 600-char cap entirely. With Stage-2 polish now
+OFF (R77 I1), these escaped deterministic answers are the shipped
+answers.
+
+### Fix — `_hard_truncate_at_clause` backstop
+
+New `_hard_truncate_at_clause(text, limit)` in `models.py` truncates
+at the latest clean boundary that fits: a sentence end, a `;` clause
+end, or an `(x)` enumerated-item start; word-boundary fallback when
+no clean boundary lands in the back half (so a boundary-free
+mega-clause is not chopped to a stub). Never empties the string;
+appends a terminal period. Wired into `normalise_answer_for_regenold`
+after the soft-cap loop, env-gated `REGENOLD_HARD_CHAR_CAP`.
+
+### **Default OFF** — davidath A/B
+
+| Axis | cap OFF (= R77) | cap ON | Δ |
+| ---- | --------------- | ------ | --- |
+| Ans Strict | 0.3029 | 0.2972 | −0.006 |
+| Ans Conciseness | 0.6106 | 0.6148 | +0.004 |
+| Ref Loose / Strict / Conciseness | 0.5755 / 0.4644 / 0.4200 | identical | flat |
+
+The davidath A/B is a wash with a slight negative lean — truncation
+drops gold tokens in the enumeration tail, and the davidath
+conciseness metric is a quadratic length-ratio barely rewarded by a
+1000→600 cut. Per the R69 discipline (`REGENOLD_TREE_EXTRACT` benched
+OFF at a similar Strict-for-Conciseness trade), R78 ships **default
+OFF**. The real payoff is the binary LLM-judge conciseness axis — the
+R76 judge flagged exactly these 8 rows, and a ≤600-char answer flips
+them fail→pass — which the local davidath bench structurally cannot
+measure. Operator A/B: set `REGENOLD_HARD_CHAR_CAP=1` for a live
+representative-100 + judge run and default it ON if judge conciseness
+lifts.
+
+Verify: 2374 pass + 1 skip; davidath byte-identical to R77 with the
+default; OOS 21/21; 276-runner 276/276; +7 `TestR78HardCharCap` tests.
+
 ## Eval scorecard (deterministic-fallback, local 276-scenario suite)
 
 | Round  | Pass         | p50      | p95     | avg refs | Retrieval F1 | Notes |
@@ -3319,6 +3373,7 @@ conciseness 0.41 → 0.55+, tone 0.76 → 0.85+).
 | **69** | 476 davidath | 12.77ms  | 22.12ms | —        | RefL **0.5881** / RefS **0.4525** / Ans Strict **0.3051** / Tone **1.0** / mt **1.00** / OOS 21/21 / 2,248 pass + 1 skip | Proposed Hybrid-RAG "Semantic Layer" architecture audited (3 parallel agents) + integrated. **Byte-identical to R68** — every davidath-affecting change is env-gated default-OFF. **69-A** `app/engines/semantic_layer.py` wires the built-but-unwired structure-aware tree (`eu_ai_act_tree.py`, 1,426 nodes): `paragraph_extract` (`REGENOLD_TREE_EXTRACT`; A/B'd −0.015 Ans Strict → default OFF) + `cross_reference_context` (the architecture's Fragmentation-Problem fix — Art. 11 → Annex IV co-retrieval into Stage-2 context, default ON). **69-B** RRF knob `REGENOLD_RRF_FUSION` in `kb_search` (A/B'd ±0.002 wash → default OFF, re-confirms the R31 finding). **69-C** `app/engines/query_structure.py` — the proposal's Section-3A structured payload (adds the genuinely-missing `actor_location` / `market_location` extraterritorial dimensions → Stage-2 `QUERY PROFILE` hint). **69-D** `ANSWER_GENERATE_SYSTEM` rule 10 (describe-every-cited-article — targets the judge's worst axis, refs-faithfulness 0.00-0.21) + rule 11 (anti-extrapolation). External vector-DB / Elasticsearch / Cohere proposals reviewed and rejected as wrong-for-codebase (external service / GPU; Railway has neither). +69 regression tests. V2 local: tricky refL **0.80** / refS 0.54, tone 1.0, 0 errors. Stage-2 wins (cross-ref context, query profile, describe-every-cite) land at the next live judge re-run. |
 | **69 live + judge** | 56 V2 LIVE | tricky 5,997ms / mt 23,596ms | tricky 35,017ms / max 103,384ms | — | tricky refL **0.80** / refS **0.58** / mt coh **0.36** / Judge: tone 0.68, refs 0.375, concise 0.55, corr 0.48 | First post-R69 live measurement + 4-axis LLM-judge. Tricky refL up (R63-live 0.77 → 0.80) but mt coherence regressed (0.48 → 0.36) and judge tone dropped (R64-live 0.84 → 0.68). **Round-1** (judge analysis): rule-11 reworded to drop the refusal invite, +6 `_STAGE2_REFUSAL_MARKERS`, scenario verdicts rewritten third-person (+VOICE rule). **Round-2** (autonomous `/plan-eng-review`): weak compound-role QUESTION budget 8 → 5 (over-citation, judge refs 0.375), `complex_thinking_tokens` 8000 → 2500 (103s latency outlier). davidath byte-identical through both fix rounds (Ans Strict 0.3028 / RefL 0.5881 / RefS 0.4525 / Tone 1.0 / mt 20/20); 2,256 tests pass. Judge-axis lifts land at the next live re-run. |
 | **77** | 476 davidath | 9.8ms    | 14.13ms | —        | RefL **0.5755** / RefS **0.4644** / RefC **0.4200** / Ans Strict **0.3029** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2367 pass + 1 skip | R76 representative-100 measurement (deterministic + live + LLM-judge) → 4 fixes. **I2** removed bare `"high-risk"`→Art.6 anchor from `KEYWORD_TO_ARTICLE` — it shadowed every operator-obligation question's real topic article (≥8/16 live ref-misses); davidath byte-identical (BM25-saturated, win is live-only). **I1** Stage-2 LLM polish OFF by default (`P2P_GRAPH_RAG_ENABLE_STAGE2`, new `_stage2_polish_enabled()` gate) — R76 live proved it net-negative on every judge axis (refs 0.13 vs 0.25, conciseness 0.23 vs 0.55, tone 0.65 vs 0.88) + 3.5× slower; expected live p50 ~17s→~5s. **I4** always-on per-ref description augmenter (`augment_with_ref_descriptions`, `REGENOLD_REF_DESCRIBE_AUG`) for the judge floor axis refs-faithfulness. **I6** shape-aware QA ref budget 5→3 (`REGENOLD_QA_REF_BUDGET`) — trades RefL −0.006 for RefS/RefC +0.014 each (net rubric-positive). **I5** 2-hop already additive-below-cap, no code change. Live rep-100 + judge re-run queued post-deploy. |
+| **78** | 476 davidath | 9.28ms   | 15.25ms | —        | RefL **0.5755** / RefS **0.4644** / Ans Strict **0.3029** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2374 pass + 1 skip | R76 follow-up. Cross-referencing the R76 deterministic judge verdicts with the bench sidecar found 8 answers escaping the 600-char soft cap to **717-1258 chars** — single cite-anchored `(a)…(b)…(c)…` enumerations the LLM judge counts as ">4 sentences". Root cause: `normalise_answer_for_regenold`'s soft-cap loop is sentence-granular + cite-anchor-preserving (`while len(capped) > 1`, drops only non-cite sentences) so a single long cite-anchored sentence escapes entirely. New `_hard_truncate_at_clause` backstop truncates at the latest clean clause/sentence boundary, env-gated `REGENOLD_HARD_CHAR_CAP`. **Default OFF**: davidath A/B is a wash (Ans Strict −0.006 / Conciseness +0.004 — truncation drops enumeration-tail gold tokens), so per the R69 `TREE_EXTRACT` discipline it ships OFF; the binary judge-conciseness win (flips those 8 rows fail→pass) is the live-only payoff. davidath byte-identical to R77 with the default. +7 tests. |
 
 Δ on the local rubric is modest (-11% sentences, +12% p50 latency) because
 the local harness is binary substring-matched and already saturated. The

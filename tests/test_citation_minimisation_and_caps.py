@@ -13,6 +13,7 @@ from __future__ import annotations
 from app.integrations.regenold.models import (
     MAX_ANSWER_SENTENCES,
     _MAX_ANSWER_CHARS_SOFT,
+    _hard_truncate_at_clause,
     normalise_answer_for_regenold,
 )
 from app.routes.regenold import _collapse_parent_refs
@@ -136,6 +137,87 @@ def test_sentence_cap_enforced_when_input_exceeds() -> None:
     )
     out = normalise_answer_for_regenold(answer)
     assert len(_split_sentences(out)) <= MAX_ANSWER_SENTENCES
+
+
+# ──────────────────────── R78 hard char-cap backstop ───────────────────────
+
+
+class TestR78HardCharCap:
+    """R78 — ``_hard_truncate_at_clause`` backstop for the soft char cap.
+
+    The sentence-granular soft-cap loop cannot trim a single long
+    cite-anchored enumerated sentence; the R76 representative-100 run
+    found 8 answers escaping the 600-char cap to 717-1258 chars. The
+    backstop truncates at a clean clause / sentence boundary. It is
+    env-gated ``REGENOLD_HARD_CHAR_CAP``, default OFF (the davidath A/B
+    measured Ans Strict −0.006 / Conciseness +0.004 — a wash; the
+    judge-conciseness win is the live-only payoff).
+    """
+
+    @staticmethod
+    def _long_enumerated_answer() -> str:
+        clauses = "; ".join(
+            f"({c}) requirement {c} described in adequate regulatory "
+            f"detail for the downstream provider here"
+            for c in "abcdefgh"
+        )
+        return f"Article 53 lists the information GPAI providers must supply: {clauses} (Article 53)."
+
+    # — _hard_truncate_at_clause unit —
+
+    def test_truncate_noop_when_under_limit(self) -> None:
+        text = "Article 13 requires transparency for high-risk providers."
+        assert _hard_truncate_at_clause(text, 600) == text
+
+    def test_truncate_cuts_enumeration_at_clean_boundary(self) -> None:
+        text = self._long_enumerated_answer()
+        assert len(text) > 600
+        out = _hard_truncate_at_clause(text, 600)
+        assert len(out) <= 600
+        assert out[-1] in ".!?"
+        # No dangling open-paren enumeration marker.
+        assert not out.rstrip().rstrip(".").endswith("(")
+
+    def test_truncate_never_empty_on_boundaryless_megaclause(self) -> None:
+        text = "word " * 300  # 1500 chars, no sentence / clause boundary
+        out = _hard_truncate_at_clause(text, 600)
+        assert 0 < len(out) <= 600
+        assert out[-1] in ".!?"
+
+    def test_truncate_prefers_sentence_end(self) -> None:
+        first = "Article 13 requires transparency for high-risk providers. "
+        out = _hard_truncate_at_clause(first + "Additional context. " * 60, 600)
+        assert len(out) <= 600
+        assert out.startswith("Article 13 requires transparency")
+        assert out[-1] in ".!?"
+
+    # — normalise_answer_for_regenold integration —
+
+    def test_default_off_long_enumerated_answer_escapes_cap(self, monkeypatch) -> None:
+        """Default OFF — a single cite-anchored enumerated sentence still
+        escapes the soft cap (the documented pre-R78 behaviour)."""
+        monkeypatch.delenv("REGENOLD_HARD_CHAR_CAP", raising=False)
+        answer = self._long_enumerated_answer()
+        assert len(answer) > _MAX_ANSWER_CHARS_SOFT
+        out = normalise_answer_for_regenold(answer)
+        assert len(out) > _MAX_ANSWER_CHARS_SOFT
+
+    def test_hard_cap_on_truncates_long_enumerated_answer(self, monkeypatch) -> None:
+        monkeypatch.setenv("REGENOLD_HARD_CHAR_CAP", "1")
+        answer = self._long_enumerated_answer()
+        assert len(answer) > _MAX_ANSWER_CHARS_SOFT
+        out = normalise_answer_for_regenold(answer)
+        assert len(out) <= _MAX_ANSWER_CHARS_SOFT
+        assert "Article 53" in out  # lead clause preserved
+        assert out[-1] in ".!?"
+
+    def test_hard_cap_on_leaves_short_answer_intact(self, monkeypatch) -> None:
+        monkeypatch.setenv("REGENOLD_HARD_CHAR_CAP", "1")
+        short = "Article 13 mandates transparency. Annex IV lists the documentation."
+        out = normalise_answer_for_regenold(short)
+        assert len(out) <= _MAX_ANSWER_CHARS_SOFT
+        assert "Article 13" in out
+        assert "Annex IV" in out
 
 
 # ──────────────────────── R77 I6 shape-aware QA budget ──────────────────────
