@@ -556,6 +556,26 @@ def top_articles_by_relevance(
         else float("inf")
     )
 
+    # R81-N — typed-entity NER priority boost.
+    # Closes the 15–24% retrieval-fail bucket observed across 4 live
+    # rep-100 rounds: questions like "What are the importers'
+    # obligations?" (gold Art. 23) lose to "high-risk AI system"
+    # → Art. 6 in BM25 because the topic phrase carries more matching
+    # tokens than the single role-noun. The extractor returns a
+    # ``{ref: boost}`` map; the boost is multiplied onto the existing
+    # source weight + confidence boost so the priority signal stays in
+    # the same order of magnitude as BM25 (cannot promote an
+    # irrelevant Article — only tip a close-score tie). Env-gated
+    # ``REGENOLD_ENTITY_BOOST`` (default ON).
+    #
+    # Lazy import — keeps the kb_search module-level import surface
+    # minimal and avoids a build-time circular dependency risk.
+    try:
+        from app.engines.entity_extractor import boosted_articles  # noqa: PLC0415
+        entity_boosts = boosted_articles(question)
+    except Exception:  # noqa: BLE001 — never fail BM25 on the boost
+        entity_boosts = {}
+
     best: dict[str, float] = {}
     for doc_idx, article_ref, raw in raw_scores:
         # Keep candidates that clear EITHER the absolute floor OR the
@@ -568,7 +588,12 @@ def top_articles_by_relevance(
             continue
         weight = _SOURCE_WEIGHT.get(index.sources[doc_idx], 1.0)
         boost = _confidence_boost(article_ref)
-        s = raw * weight * boost
+        # R81-N entity boost. Default 1.0 (no change) when no entity
+        # match. Multiplicative on the BM25 score *after* the
+        # admission filter, so it cannot change which articles are
+        # admitted — only their ranking.
+        entity_b = entity_boosts.get(article_ref, 1.0)
+        s = raw * weight * boost * entity_b
         prev = best.get(article_ref)
         if prev is None or s > prev:
             best[article_ref] = s
@@ -906,6 +931,14 @@ def top_articles_by_relevance_in_chapters(
         else float("inf")
     )
 
+    # R81-N — same typed-entity boost as the main variant. See the
+    # primary :func:`top_articles_by_relevance` for the rationale.
+    try:
+        from app.engines.entity_extractor import boosted_articles  # noqa: PLC0415
+        entity_boosts = boosted_articles(question)
+    except Exception:  # noqa: BLE001
+        entity_boosts = {}
+
     best: dict[str, float] = {}
     for doc_idx, article_ref, raw in raw_scores:
         w = _SOURCE_WEIGHT.get(index.sources[doc_idx], 1.0)
@@ -920,7 +953,9 @@ def top_articles_by_relevance_in_chapters(
             # tie-break that cannot promote an irrelevant article over a
             # relevant one, and (applied post-filter) cannot change which
             # articles are admitted.
-            ranked = weighted * _confidence_boost(article_ref)
+            # R81-N — entity boost multiplies on top, same semantics.
+            entity_b = entity_boosts.get(article_ref, 1.0)
+            ranked = weighted * _confidence_boost(article_ref) * entity_b
             if article_ref not in best or ranked > best[article_ref]:
                 best[article_ref] = ranked
 

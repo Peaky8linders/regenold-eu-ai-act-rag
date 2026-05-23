@@ -1378,6 +1378,27 @@ def _deterministic_parse(question: str) -> GraphQuery:
         if kw in q_lower and art_ref not in entities:
             entities.append(art_ref)
 
+    # R81-N — typed-entity NER. Closes the 15–24% retrieval-fail
+    # bucket where role/concept signals lose the BM25 race to the
+    # generic ``"high-risk AI system"`` → Art. 6 topic anchor (live
+    # rep-100 measurements `r80-live`, `r80.2-live`, `r81-a1-live`).
+    #
+    # IMPORTANT DESIGN NOTE: the boost is applied INSIDE
+    # :func:`kb_search.top_articles_by_relevance`, NOT here in
+    # `_deterministic_parse`. Appending role/concept entities to the
+    # engine's entity list directly was tested at the davidath level
+    # and produced a SCENARIO-side Ref Loose regression (-0.006)
+    # because every scenario question contains 'provider' /
+    # 'deployer' and would forcibly add Art. 16 / Art. 26 to every
+    # scenario's pred_refs, diluting the gold-matching scenario
+    # anchors. The multiplicative-boost design inside kb_search is
+    # safer — it only tips close-score ties without forcibly adding
+    # anchors that BM25 didn't already surface.
+    #
+    # Env-gated ``REGENOLD_ENTITY_BOOST`` (default ON) applies inside
+    # kb_search; this comment is the marker that the wire-through has
+    # been INTENTIONALLY restricted to the BM25 boost path only.
+
     # R63-A — prior-turn anchor inheritance fix.
     #
     # When the route flattens multi-turn history into the canonical
