@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 from app.data.article_existence import ARTICLE_EXISTENCE
+from app.integrations.regenold.answer_normaliser import strip_preamble_templates
 
 
 class RegenoldChatMessage(BaseModel):
@@ -976,6 +977,32 @@ def normalise_answer_for_regenold(
     capped = [_strip_kb_stub_label(s) for s in capped]
     capped = [s for s in capped if s.strip()]
     result = " ".join(capped).rstrip()
+
+    # R81-H — preamble + Article-prefix strip. Post-processes the
+    # final answer to drop a small set of known template preambles
+    # ("This question is covered by the EU AI Act under Article X.",
+    # "No specific EU AI Act articles were returned for this
+    # query...", "The matched references do not specify...") AND the
+    # typographic ``Article N — `` prefix that grounded_prose / Sonnet
+    # injects in front of each substantive sentence. The cite is
+    # already in the `references` field; the prefix only adds non-
+    # gold tokens to the Loose Jaccard denominator. Live r81-a1 had
+    # 25/100 rows with the opener + 22/100 with the prefix. Real-data
+    # simulation against the r81-a1-live sidecar: Ans Loose +0.005,
+    # Ans Strict −0.001 (noise), Ans Conciseness +0.033. Fail-soft;
+    # never-empty; idempotent.
+    #
+    # Env-gated REGENOLD_STRIP_PREAMBLE, **default ON**: the davidath
+    # bench uses TestClient (no Stage-2 polish, no preamble), so this
+    # is byte-identical there; the win lands on the LIVE rep-100
+    # post-redeploy. Set REGENOLD_STRIP_PREAMBLE=0 to disable.
+    if os.getenv("REGENOLD_STRIP_PREAMBLE", "1").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        result = strip_preamble_templates(result)
 
     # R78 — hard char-cap backstop. The soft-cap loop above is
     # sentence-granular and cite-anchor-preserving: it cannot trim a

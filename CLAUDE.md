@@ -3890,6 +3890,124 @@ This is the FIRST of the R81 round per `.planning/R81-PLAN.md`. Step 0
 (re-judge of r80.2-live) is blocked on the Anthropic API credit top-up
 documented in the plan. R81-B / R81-C / R81-D land as separate PRs.
 
+## Round 81-H — Answer-correctness preamble strip (default ON) (2026-05-23)
+
+The R81-A1 live measurement (`representative-100-r81-a1-live.json`,
+100/100 clean rows, deployed Railway, Stage-2 polish ON via Claude
+Max wrapper) showed the two weakest rubric axes are answer-side:
+**Ans Loose 0.124 / Ans Strict 0.253**. Per `evals/bench/metrics.py`
+Strict = recall (gold tokens recovered), Loose = Jaccard (recall +
+precision against pred). The inversion `Strict > Loose` is a
+formal proof that pred carries tokens NOT in gold — i.e. we are
+verbose.
+
+Quantitative pattern audit of the live sidecar (matches the plan):
+
+* **25/100** rows ship a `"This question is covered by the EU AI Act
+  under Article X."` opener (the R49-A grounded-prose lead sentence
+  / R55+ tone-guard floor).
+* **22/100** rows ship a typographic `"Article N — "` / `"Annex N — "`
+  prefix on each substantive sentence (grounded_prose injects these
+  for readability; Sonnet polish often replicates the pattern). The
+  cite is already in the `references` field, so the prefix only
+  inflates the pred token denominator without contributing gold
+  overlap.
+* **3-5/100** rows ship a `"No specific EU AI Act articles were
+  returned for this query, so no article citations can be made..."`
+  refusal preamble FOLLOWED by substantive content. The substance
+  is real answer prose; the preamble is non-gold noise.
+
+### R81-H — `app/integrations/regenold/answer_normaliser.py` (new)
+
+`strip_preamble_templates(text) -> str` — pure-stdlib post-processor
+wired into `normalise_answer_for_regenold` AFTER the existing soft-cap
+sentence loop and BEFORE the R78 hard-char-cap backstop. Strips:
+
+* **6 LEAD templates** — each anchored at start-of-string, terminated
+  by sentence boundary, applied at most once per call. Patterns cover
+  the 6 documented preamble shapes (`This question is covered by...`,
+  `No specific EU AI Act articles were returned...`, `The matched EU
+  AI Act references do not specify...`, `The EU AI Act references
+  block is empty / contains no...`, plus two near-misses).
+* **`Article N — ` / `Annex N — ` typographic prefixes** anywhere in
+  the text — iterated until none remain.
+
+### Safety rules (CRITICAL — pinned by tests)
+
+1. **Sentence-floor guard** — each LEAD pattern only strips if the
+   remainder has ≥ 80 chars of substance. Without this, `qa_059`-
+   style rows where the preamble IS effectively the whole answer
+   would lose substance (the over-greedy first draft dropped Strict
+   by −0.75 on a single row).
+2. **Never-empty guard** — if any transform produces empty /
+   whitespace output, return the ORIGINAL input. The whole transform
+   is wrapped in `try / except` returning original on any exception.
+3. **Article-prefix strip** — only fires when a substantive token
+   (≥ 1 alphabetic word) follows AND the post-strip remainder
+   has ≥ 80 chars.
+4. **Re-capitalisation** — substance often starts lowercase after a
+   strip (e.g. `"providers must..."` → `"Providers must..."`).
+5. **No connector-opener pattern** — `"Based on the Act..."` /
+   `"Under the AI Act..."` are legitimate prose openers, NOT
+   preambles. The plan's `qa_059` regression case proves over-greedy
+   patterns kill Strict; this module deliberately does NOT match
+   them.
+6. **Idempotence** — `strip(strip(x)) == strip(x)` pinned by test.
+
+### Real-data simulation against r81-a1-live (100 clean rows)
+
+| Axis | r81-a1 (now) | r81-h (sim) | Δ |
+| ---- | ------------ | ----------- | --- |
+| Ans Loose | 0.1240 | 0.1287 | **+0.0046** ✓ |
+| Ans Strict | 0.2531 | 0.2524 | −0.0007 (noise) |
+| Ans Conciseness | 0.4457 | 0.4786 | **+0.0329** ✓ |
+
+22/100 rows positive, 1 minor regression captured by the safety
+guards. Real lift on the actual sidecar — not projection.
+
+### Verification (all 4 gates green)
+
+| Gate | Target | Actual |
+| ---- | ------ | ------ |
+| `pytest -q` | ≥ 2,434 + 1 skip | **2,458 + 1 skip** (+24) |
+| `evals.bench.runner` Ref Loose | ≥ 0.575 | **0.5776** |
+| `evals.bench.runner` Ref Strict | ≥ 0.464 | **0.4654** |
+| `evals.bench.runner` Ans Strict | ≥ 0.300 | **0.3018** |
+| `evals.bench.runner` Tone | 1.0 | **1.0** |
+| `evals.bench.runner` multi-turn | 20/20 | **20/20** |
+| `evals.regenold.runner` | 276/276 | **276/276** |
+| `evals.regenold.runner_v2 --local --probe-oos` | 21/21, 0 leaks | **21/21, 0 leaks** |
+
+**davidath byte-identical to R81-A1** — the bench uses TestClient
+(no Stage-2 polish, no preamble template, no `Article N — ` prefix),
+so the strip is a no-op on every davidath row. The win lands on
+the LIVE rep-100 post-redeploy (the established R31/R32/R35/R49/R56
+pattern: bench is the regression guard, wins land live).
+
+### Operator override
+
+```bash
+railway variables --set REGENOLD_STRIP_PREAMBLE=0   # disable strip
+```
+
+### Trade-off honesty
+
+R81-H is a **safe, narrow lift**. Bigger Strict wins (the plan's
+ranked fixes I/J/K) require larger surgery:
+
+* **R81-I** — fix `stitch_grounded_prose` to ALWAYS emit the stub's
+  leading clause inline so we never ship the pure-template
+  `"Consult the cited provisions"` fallback. 5/100 rows currently at
+  0.000/0.000 Loose/Strict → estimated +0.010 Loose / +0.020 Strict.
+* **R81-J** — Stage-2 prompt rewrite forbidding the
+  `"This question is covered by..."` opener at the SOURCE.
+  Estimated +0.02 Loose / +0.03 Strict if Sonnet complies; needs
+  live A/B + judge gate before flipping.
+* **R81-K** — Annex III §5 marker extension (pension / welfare /
+  healthcare eligibility shapes).
+
+Each composes with R81-H and lands as a separate atomic PR.
+
 ## Eval scorecard (deterministic-fallback, local 276-scenario suite)
 
 | Round  | Pass         | p50      | p95     | avg refs | Retrieval F1 | Notes |
@@ -3944,6 +4062,7 @@ documented in the plan. R81-B / R81-C / R81-D land as separate PRs.
 | **80.1 (Stage-2 ON)** | rep-100 LIVE | 14,162ms | 42,318ms | — | **Judge no-err: correctness 0.659 / refs 0.305 / tone 0.897 (hits 0.85+ target!) / conciseness 0.448** vs r80-live (Stage-2 OFF): correctness 0.595 / refs 0.260 / tone 0.841 / conciseness 0.506. Three of four axes lift; tone target hit for the first time. Conciseness dip and 14 s p50 latency mitigated in railway.toml (Stage-2 ON + max_tokens 1024→512 + complex thinking 2500→1024) + Stage-2 prompt tightened from "3-4 sentences when possible" → "AT MOST 3 sentences" (with explicit "the wire hard-caps at 3 — pack descriptions, don't expand" framing). R80.1 also pins which lever does the work: r80-determ-local (R80 code + NO wrapper) measures refs **0.211** vs r80-live's **0.260** — the wrapper's LLM-driven Stage-0/1 is the dominant quality lever, not R80 code alone. Re-measure post-deploy. |
 | **80** | 476 davidath | 9.88ms   | 13.99ms | —        | RefL **0.5776** (+0.0021 vs R79) / RefS **0.4654** / Ans Strict **0.3018** (-0.0015) / Tone 1.0 / mt 20/20 / OOS 21/21 / 2433 pass + 1 skip | **Step-0 hard gate executed**: live representative-100 + judge against deployed Railway (post-#106 cache no-poison hotfix). **R77 Stage-2 OFF bet confirmed**: live p50 17 s → 0.3 s (55× faster). Judge refs floor (0.20 raw / 0.26 over-non-error) → **R80-D narrow ships**: raise `_answer_covers_ref` BM25 threshold 2→4 + add literal cite-presence check (the 2-token overlap was over-firing on common KB-stub tokens like provider/must/system, falsely considering Articles "already described" on 42/60 neo4j-path rows). **R80-F ships**: floor suppression in `zero_retrieval_fallback` when intent unknown + topic-keyword/explicit-anchor specifics present (the 9 r80-live zero-retrieval rows shipped real anchors PLUS Art. 1/2/3 pad), plus 14 new `KEYWORD_TO_ARTICLE` entries (authrep / log retention / downstream-providers / transparency information / who-must-comply / AI Board). **R80-A closed as moot** (0/100 answers > 600 chars). R80-B/C/E deferred (latency p50 0.3 s already 20× under target; Railway CLI unauthorised; E better measured post-D). R80-D aggressive replace-sentence redesign deferred to R81. +46 tests. Wins land at the next live judge re-run. |
 | **79** | 476 davidath | 9.16ms   | 14.25ms | —        | RefL **0.5755** / RefS **0.4644** / Ans Strict **0.3033** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2382 pass + 1 skip | Deep-code-review bugfix round. 3 parallel review agents audited the R77/R78 merges + the answer-assembly / engine-retrieval surfaces; 13 candidate findings → **7 verified real bugs fixed**, 6 rejected/deferred (intentional design, or need the live judge). Fixes: (1) `_engine_cache_key` += `P2P_GRAPH_RAG_ENABLE_STAGE2` + graph flags — R77's Stage-2 master flag flips the engine answer but was missing from the key (R30/R56 cache-poisoning doctrine); (2) `_deterministic_parse` topic-extension prepend now self-dedups (two keywords → same article double-added an obligation); (3) `_deterministic_parse` Unicode-normalises before the keyword scan (U+2011 non-breaking hyphens silently missed `_KEYWORD_ENTITY_MAP`); (4) `augment_with_ref_descriptions` inserts a period before appended clauses (word-fusion on punctuation-less base answers); (5) `top_articles_by_relevance_in_chapters` applies the R28 confidence boost the main variant has; (6) `REGENOLD_QA_REF_BUDGET` env parse `.strip().lower()`; (7) `_hard_truncate_at_clause` regex catches `(A)` / `(ii)` enumerators. All 7 davidath-neutral (Ans Strict 0.3029→0.3033, rest flat — the bugs are in failure shapes davidath doesn't exercise). +8 `tests/test_r79_bugfixes.py`. |
+| **81-H** | 476 davidath | 9.99ms   | 14.74ms | —        | RefL **0.5776** / RefS **0.4654** / Ans Strict **0.3018** / Ans Conciseness **0.6097** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2458 pass + 1 skip | **Preamble-strip answer normaliser (default ON).** R81-A1 live measurement (`representative-100-r81-a1-live.json`) showed Ans Loose 0.124 / Ans Strict 0.253 — the inversion `Strict > Loose` proves we're verbose (Jaccard penalty from non-gold tokens). Pattern audit: 25/100 ship the `"This question is covered by..."` opener, 22/100 ship `"Article N — "` typographic prefix on each sentence, 3-5/100 ship `"No specific EU AI Act articles were returned..."` refusal preamble. New `app/integrations/regenold/answer_normaliser.py::strip_preamble_templates` — pure-stdlib post-processor wired into `normalise_answer_for_regenold` AFTER soft-cap, BEFORE R78 hard-char-cap. Strips 6 LEAD templates + `Article N — ` / `Annex N — ` typographic prefixes. **CRITICAL safety rules**: (a) sentence-floor guard (each LEAD only strips if remainder ≥ 80 chars of substance — `qa_059` regression case), (b) never-empty (fail-soft try/except returns original), (c) no `"Based on the Act"` / `"Under the AI Act"` pattern (legitimate prose openers, NOT preambles), (d) re-capitalisation, (e) idempotence. Real-data simulation against r81-a1-live sidecar: **Loose +0.005, Strict −0.001 (noise), Conciseness +0.033** — 22 positive / 1 minor regression. davidath byte-identical to R81-A1 (TestClient has no Stage-2 polish, no preamble template, so the strip is a no-op locally); win lands on LIVE rep-100 post-redeploy. Env-gated `REGENOLD_STRIP_PREAMBLE` (default ON; set `=0` to disable). +24 R81-H tests. R81-I (template-only answer fix) and R81-J (Stage-2 prompt rewrite) queued for the bigger Strict wins. |
 | **81-A1** | 476 davidath | 11.84ms  | 20.22ms | —        | RefL **0.5776** / RefS **0.4654** / Ans Strict **0.3018** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2434 pass + 1 skip | **Disable Opus complex path as code default.** R80.2 baked Stage-2 polish ON by default and the latency knobs; live r80.2-live measurement (n=100) confirmed bench-level wins on every reference + conciseness axis (Ref Strict +0.070, Ref Conciseness +0.066, Ans Conciseness +0.038) but live p50 went 307 ms → **15,962 ms** with a 51 s max-latency outlier on the Opus 4.7 + extended-thinking path firing on ~20% of complex rows. Far above the < 6 s R77-R79 target. **R81-A1 fix**: `GraphRAGSettings.complex_model` default `"claude-opus-4-7"` → `""` (one line in `app/config.py`). The Stage-2 polish stays on a single Sonnet 4.6 round-trip — expected live p50 16 s → ~5-8 s. **Trade**: loses R51's structured-reasoning quality win on the ~20% of complex rows (r69-live conflict refS 0.95, borderline refL 1.0 — both above-target); the R81 plan flagged this as acceptable since latency is also a scored axis. Operators restore the swap per-deploy with `P2P_GRAPH_RAG_COMPLEX_MODEL=claude-opus-4-7`. davidath byte-identical to R80.2 (no wrapper provider wired in TestClient → Stage-2 doesn't fire on local bench regardless). Two tests adjusted: `test_complex_question_uses_default_opus_path` renamed → `test_complex_question_swap_path_when_opus_configured` (with explicit `settings.graph_rag.complex_model = "claude-opus-4-7"` setup/teardown) preserving the original swap-path behavioural assertion; new `test_complex_question_uses_base_model_by_default` pins the new R81-A1 default behaviour so a future revert is loud. Wins land at the next live representative-100 + judge re-run. **First** of the R81 round per `.planning/R81-PLAN.md` (Step-0 re-judge blocked on Anthropic credit top-up). |
 
 Δ on the local rubric is modest (-11% sentences, +12% p50 latency) because
