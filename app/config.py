@@ -32,20 +32,38 @@ class GraphRAGSettings(BaseSettings):
     # ``complex`` (role-ambiguity, GPAI threshold, borderline-prohibition,
     # conflict, or compound multi-turn) AND ``complex_model`` is set, the
     # Stage-2 polish call swaps to that model with optional
-    # extended-thinking budget. Defaults keep R50 behaviour byte-identical
-    # (no model swap, no thinking).
+    # extended-thinking budget.
     #
-    # Recommended production setting: complex_model=claude-opus-4-7,
-    # complex_thinking_tokens=8000. Cost trade: Opus 4.7 is ~5x Sonnet
-    # 4.6 per million tokens, but it only fires on ~20% of bench rows
-    # (the tagged-complex ones), and extended thinking adds ~5-15s p50
-    # latency only on those rows.
-    complex_model: str = "claude-opus-4-7"
-    """Model name for the complex-question path. Default ``claude-opus-4-7``
-    (R51 production setting). Set empty to disable the swap and keep
-    every Stage-2 call on the base ``model``. The wrapper falls back
-    to deterministic if Opus is unreachable, so worst case is a soft
-    miss, not a 500."""
+    # **R81-A1 reversal (2026-05-23): default flipped to empty.** R51
+    # originally set ``claude-opus-4-7`` as the default to win on the
+    # structured-reasoning categories (r69-live conflict refS 0.95,
+    # borderline refL 1.0 — both above-target). R80.2 trimmed the
+    # extended-thinking budget 2500 → 1024 (the engine clamp floor),
+    # but the r80.2-live measurement still showed a 51 s max-latency
+    # outlier on the Opus complex path with live p50 = 15,962 ms
+    # (~16 s, well above the < 6 s R77-R79 target). Disabling the
+    # swap as the CODE default keeps every Stage-2 polish call on a
+    # single Sonnet 4.6 round-trip — expected live p50 ~5-8 s.
+    #
+    # Trade: loses the structured-reasoning quality win on the ~20%
+    # of rows the complexity gate fires on. The R81 plan flagged
+    # this risk as acceptable because latency is also a scored axis
+    # and the deterministic + Sonnet polish path is rubric-positive
+    # in aggregate.
+    #
+    # Operator override (per-deploy): set
+    # ``P2P_GRAPH_RAG_COMPLEX_MODEL=claude-opus-4-7`` to restore the
+    # R51 production setting; pair with
+    # ``P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS=8000`` for the original
+    # R51 thinking budget if desired.
+    complex_model: str = ""
+    """Model name for the complex-question path. **R81-A1 default**:
+    empty (no swap; every Stage-2 polish call uses the base ``model``).
+    Set to ``claude-opus-4-7`` (the pre-R81-A1 default) to restore
+    the structured-reasoning path on complex rows; trades latency
+    for category-specific quality. The wrapper falls back to
+    deterministic if the configured complex model is unreachable, so
+    worst case is a soft miss, not a 500."""
 
     complex_thinking_tokens: int = 1024
     """``max_thinking_tokens`` for extended-thinking Stage-2 polish on

@@ -39,13 +39,13 @@ def _mock_wrapper():
 
 
 class TestDefaultRouting:
-    """Default config (R51 production): complex_model=claude-opus-4-7,
-    complex_thinking_tokens=8000. Simple questions MUST still use base
-    model + no thinking header; only complex questions get the swap."""
+    """**R81-A1 default**: ``complex_model=""`` (empty). Every Stage-2
+    polish call — simple or complex — uses the base ``model``. The R51
+    swap path is operator-opt-in via ``P2P_GRAPH_RAG_COMPLEX_MODEL``."""
 
     def test_simple_question_uses_base_model(self, _mock_wrapper) -> None:
-        """Simple questions stay on the base model even when
-        complex_model is set (R51 cost guard)."""
+        """Simple questions stay on the base model regardless of
+        ``complex_model`` setting (R51 cost guard preserved)."""
         _openai_wrapper_complete_for_graph_rag(
             system="you are an EU AI Act expert",
             user="What does Article 13 require?",
@@ -79,20 +79,56 @@ class TestDefaultRouting:
         assert req.model == settings.graph_rag.model
         assert req.extra_headers == {}
 
-    def test_complex_question_uses_default_opus_path(
+    def test_complex_question_uses_base_model_by_default(
         self, _mock_wrapper
     ) -> None:
-        """R51 default: complex_model=claude-opus-4-7 + extended thinking
-        fire WITHOUT any env override. This is the production behaviour.
+        """**R81-A1 default behaviour**: with no env override, a
+        ``complex_question=True`` call still uses ``settings.graph_rag.model``
+        — no Opus swap. Pre-R81-A1 the code default was
+        ``claude-opus-4-7``; R81-A1 disabled the swap to cut the live
+        p50 latency outlier (16 s → ~5-8 s expected). Operators can
+        restore the swap by setting
+        ``P2P_GRAPH_RAG_COMPLEX_MODEL=claude-opus-4-7``.
 
-        R69 round-2: the thinking budget was cut 8000 -> 2500 (the
-        r69-live 103s latency outlier). The header value tracks the
-        configured ``complex_thinking_tokens`` setting rather than a
-        hard-coded literal."""
+        Note on the ``X-Claude-Max-Thinking-Tokens`` header: with the
+        R81-A1 default, the engine still emits the header because
+        ``complex_thinking_tokens`` remains at 1024 and the header logic
+        in ``_openai_wrapper_complete_for_graph_rag`` keys on
+        ``complex_question and thinking_budget > 0`` independently of
+        ``complex_model``. The model on the wire is Sonnet (base), so
+        the header is effectively inert for the polish call — but it IS
+        still sent. A future round may decouple the header from the
+        Sonnet path; that's out of scope for R81-A1 (which only touches
+        ``config.py``)."""
         _openai_wrapper_complete_for_graph_rag(
             system="x", user="y", max_tokens=400, temperature=0.0,
             complex_question=True,
         )
+        req: OpenAIWrapperRequest = _mock_wrapper.complete.call_args.args[0]
+        # The load-bearing assertion: no model swap on the default path.
+        assert req.model == settings.graph_rag.model
+        # Pin the new default so a future revert is loud, not silent.
+        assert settings.graph_rag.complex_model == ""
+
+    def test_complex_question_swap_path_when_opus_configured(
+        self, _mock_wrapper
+    ) -> None:
+        """R51 operator-override path: when ``complex_model`` is set to
+        ``claude-opus-4-7`` (pre-R81-A1 default; now requires an explicit
+        ``P2P_GRAPH_RAG_COMPLEX_MODEL=claude-opus-4-7`` env or settings
+        override), the wrapper request swaps the model AND adds the
+        ``X-Claude-Max-Thinking-Tokens`` header whose value tracks
+        ``complex_thinking_tokens`` (R69-round-2 cut 8000 → 2500; R80.2
+        cut 2500 → 1024)."""
+        original_complex = settings.graph_rag.complex_model
+        settings.graph_rag.complex_model = "claude-opus-4-7"
+        try:
+            _openai_wrapper_complete_for_graph_rag(
+                system="x", user="y", max_tokens=400, temperature=0.0,
+                complex_question=True,
+            )
+        finally:
+            settings.graph_rag.complex_model = original_complex
         req: OpenAIWrapperRequest = _mock_wrapper.complete.call_args.args[0]
         assert req.model == "claude-opus-4-7"
         assert req.extra_headers.get("X-Claude-Max-Thinking-Tokens") == str(

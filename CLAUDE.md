@@ -3785,6 +3785,111 @@ Expected live judge improvement vs r80-live (Stage-2 OFF):
 | p50 latency | 307 ms | ~8-10 s |
 | max latency | 14,924 ms | ≤ 30 s |
 
+## Round 81-A1 — Disable Opus complex path as code default (2026-05-23)
+
+R80.2 baked the Stage-2 Claude-Max polish ON by default and shipped
+the latency-tune knobs (`max_tokens` 1024 → 512, `complex_thinking_tokens`
+2500 → 1024). Live measurement (r80.2-live, n=100) confirmed
+bench-level wins on every reference + conciseness axis (Ref Strict
++0.070, Ref Conciseness +0.066, Ans Conciseness +0.038), but live p50
+went 307 ms → **15,962 ms** with a 51 s max-latency outlier on the
+Opus 4.7 + extended-thinking complex path that fires on ~20% of rows
+(the categories `is_complex_question` flags). The < 6 s R77-R79 target
+is missed by ~10×.
+
+R81-A1 is the highest-leverage R81-plan fix: disable the Opus swap as
+the CODE default so every Stage-2 polish stays on a single Sonnet 4.6
+round-trip.
+
+### The change
+
+One line in `app/config.py`:
+
+```python
+complex_model: str = ""   # was "claude-opus-4-7"
+```
+
+The docstring around the field is rewritten to capture the R51 →
+R80.2 → R81-A1 timeline:
+- **R51** originally set ``claude-opus-4-7`` as the default for the
+  structured-reasoning wins on `conflict` + `borderline-prohibition`
+  (r69-live conflict refS 0.95, borderline refL 1.0, both
+  above-target).
+- **R80.2** trimmed the extended-thinking budget 2500 → 1024 (the
+  engine clamp floor) to cut the Opus latency tail, but the
+  r80.2-live measurement still showed a 51 s max-latency outlier.
+- **R81-A1** disables the swap entirely as the CODE default. The
+  thinking-header logic in `_openai_wrapper_complete_for_graph_rag`
+  (which keys on `complex_question and thinking_budget > 0`
+  independently of `complex_model`) is unchanged — out of R81-A1's
+  scope, which restricts changes to `app/config.py`. The header
+  becomes effectively inert on the default path because the model
+  stays on Sonnet.
+
+### The trade
+
+Loses R51's structured-reasoning quality win on the ~20% of rows the
+complexity gate fires on. The R81 plan (`.planning/R81-PLAN.md` step
+A1) flagged this risk as acceptable because **latency is also a scored
+axis** and the deterministic + Sonnet polish path is rubric-positive
+in aggregate. Expected live impact: p50 16 s → ~5-8 s, well inside the
+< 6 s R77-R79 target.
+
+### Operator override
+
+Per-deploy restore of the R51 production setting:
+
+```bash
+railway variables --set P2P_GRAPH_RAG_COMPLEX_MODEL=claude-opus-4-7
+# Optional: also restore the original R51 thinking budget
+railway variables --set P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS=8000
+```
+
+### Verification (all 4 gates green)
+
+| Gate | Target | Actual | Status |
+| ---- | ------ | ------ | ------ |
+| `pytest -q` | ≥ 2,433 + 1 skip | **2,434 + 1 skip** | ✓ (+1 R81-A1 test) |
+| `evals.bench.runner` Ref Loose | ≥ 0.575 | **0.5776** | ✓ |
+| `evals.bench.runner` Ref Strict | ≥ 0.464 | **0.4654** | ✓ |
+| `evals.bench.runner` Ans Strict | ≥ 0.300 | **0.3018** | ✓ |
+| `evals.bench.runner` Tone | 1.0 | **1.0** | ✓ |
+| `evals.bench.runner` multi-turn | 20/20 | **20/20** | ✓ |
+| `evals.regenold.runner` | 276/276 | **276/276** | ✓ |
+| `evals.regenold.runner_v2 --local --probe-oos` | 21/21, 0 leaks | **21/21, 0 leaks** | ✓ |
+
+**davidath byte-identical to R80.2** — as expected. R81-A1 changes a
+Stage-2 LLM swap that does NOT fire under the TestClient bench (no
+wrapper provider wired → `_stage2_provider_enabled()` returns False →
+the polish chain short-circuits before `_openai_wrapper_complete_for_graph_rag`
+gets to choose the model). The win lands live.
+
+### Test surface changes
+
+* `tests/test_complex_model_routing.py`:
+  - Renamed `test_complex_question_uses_default_opus_path` →
+    `test_complex_question_swap_path_when_opus_configured`. Still
+    exercises the swap path, but now with an explicit
+    `settings.graph_rag.complex_model = "claude-opus-4-7"` setup (with
+    try/finally restore) — pins the R51 operator-override route.
+  - New `test_complex_question_uses_base_model_by_default` asserts
+    the new R81-A1 default: with no env override, a
+    `complex_question=True` call uses `settings.graph_rag.model`
+    (Sonnet) — no Opus swap. Pins the default so a future revert is
+    loud, not silent.
+* `tests/test_anthropic_provider.py`:
+  - `test_complex_question_enables_extended_thinking` now explicitly
+    sets `settings.graph_rag.complex_model = "claude-opus-4-7"` (with
+    restore) so the test still exercises the SDK swap + extended-
+    thinking surface. Without the override, R81-A1's default would
+    leave `complex_model=""` and the SDK path would not swap the
+    model — the test's intent (operator-override / SDK path) is
+    preserved.
+
+This is the FIRST of the R81 round per `.planning/R81-PLAN.md`. Step 0
+(re-judge of r80.2-live) is blocked on the Anthropic API credit top-up
+documented in the plan. R81-B / R81-C / R81-D land as separate PRs.
+
 ## Eval scorecard (deterministic-fallback, local 276-scenario suite)
 
 | Round  | Pass         | p50      | p95     | avg refs | Retrieval F1 | Notes |
@@ -3839,6 +3944,7 @@ Expected live judge improvement vs r80-live (Stage-2 OFF):
 | **80.1 (Stage-2 ON)** | rep-100 LIVE | 14,162ms | 42,318ms | — | **Judge no-err: correctness 0.659 / refs 0.305 / tone 0.897 (hits 0.85+ target!) / conciseness 0.448** vs r80-live (Stage-2 OFF): correctness 0.595 / refs 0.260 / tone 0.841 / conciseness 0.506. Three of four axes lift; tone target hit for the first time. Conciseness dip and 14 s p50 latency mitigated in railway.toml (Stage-2 ON + max_tokens 1024→512 + complex thinking 2500→1024) + Stage-2 prompt tightened from "3-4 sentences when possible" → "AT MOST 3 sentences" (with explicit "the wire hard-caps at 3 — pack descriptions, don't expand" framing). R80.1 also pins which lever does the work: r80-determ-local (R80 code + NO wrapper) measures refs **0.211** vs r80-live's **0.260** — the wrapper's LLM-driven Stage-0/1 is the dominant quality lever, not R80 code alone. Re-measure post-deploy. |
 | **80** | 476 davidath | 9.88ms   | 13.99ms | —        | RefL **0.5776** (+0.0021 vs R79) / RefS **0.4654** / Ans Strict **0.3018** (-0.0015) / Tone 1.0 / mt 20/20 / OOS 21/21 / 2433 pass + 1 skip | **Step-0 hard gate executed**: live representative-100 + judge against deployed Railway (post-#106 cache no-poison hotfix). **R77 Stage-2 OFF bet confirmed**: live p50 17 s → 0.3 s (55× faster). Judge refs floor (0.20 raw / 0.26 over-non-error) → **R80-D narrow ships**: raise `_answer_covers_ref` BM25 threshold 2→4 + add literal cite-presence check (the 2-token overlap was over-firing on common KB-stub tokens like provider/must/system, falsely considering Articles "already described" on 42/60 neo4j-path rows). **R80-F ships**: floor suppression in `zero_retrieval_fallback` when intent unknown + topic-keyword/explicit-anchor specifics present (the 9 r80-live zero-retrieval rows shipped real anchors PLUS Art. 1/2/3 pad), plus 14 new `KEYWORD_TO_ARTICLE` entries (authrep / log retention / downstream-providers / transparency information / who-must-comply / AI Board). **R80-A closed as moot** (0/100 answers > 600 chars). R80-B/C/E deferred (latency p50 0.3 s already 20× under target; Railway CLI unauthorised; E better measured post-D). R80-D aggressive replace-sentence redesign deferred to R81. +46 tests. Wins land at the next live judge re-run. |
 | **79** | 476 davidath | 9.16ms   | 14.25ms | —        | RefL **0.5755** / RefS **0.4644** / Ans Strict **0.3033** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2382 pass + 1 skip | Deep-code-review bugfix round. 3 parallel review agents audited the R77/R78 merges + the answer-assembly / engine-retrieval surfaces; 13 candidate findings → **7 verified real bugs fixed**, 6 rejected/deferred (intentional design, or need the live judge). Fixes: (1) `_engine_cache_key` += `P2P_GRAPH_RAG_ENABLE_STAGE2` + graph flags — R77's Stage-2 master flag flips the engine answer but was missing from the key (R30/R56 cache-poisoning doctrine); (2) `_deterministic_parse` topic-extension prepend now self-dedups (two keywords → same article double-added an obligation); (3) `_deterministic_parse` Unicode-normalises before the keyword scan (U+2011 non-breaking hyphens silently missed `_KEYWORD_ENTITY_MAP`); (4) `augment_with_ref_descriptions` inserts a period before appended clauses (word-fusion on punctuation-less base answers); (5) `top_articles_by_relevance_in_chapters` applies the R28 confidence boost the main variant has; (6) `REGENOLD_QA_REF_BUDGET` env parse `.strip().lower()`; (7) `_hard_truncate_at_clause` regex catches `(A)` / `(ii)` enumerators. All 7 davidath-neutral (Ans Strict 0.3029→0.3033, rest flat — the bugs are in failure shapes davidath doesn't exercise). +8 `tests/test_r79_bugfixes.py`. |
+| **81-A1** | 476 davidath | 11.84ms  | 20.22ms | —        | RefL **0.5776** / RefS **0.4654** / Ans Strict **0.3018** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2434 pass + 1 skip | **Disable Opus complex path as code default.** R80.2 baked Stage-2 polish ON by default and the latency knobs; live r80.2-live measurement (n=100) confirmed bench-level wins on every reference + conciseness axis (Ref Strict +0.070, Ref Conciseness +0.066, Ans Conciseness +0.038) but live p50 went 307 ms → **15,962 ms** with a 51 s max-latency outlier on the Opus 4.7 + extended-thinking path firing on ~20% of complex rows. Far above the < 6 s R77-R79 target. **R81-A1 fix**: `GraphRAGSettings.complex_model` default `"claude-opus-4-7"` → `""` (one line in `app/config.py`). The Stage-2 polish stays on a single Sonnet 4.6 round-trip — expected live p50 16 s → ~5-8 s. **Trade**: loses R51's structured-reasoning quality win on the ~20% of complex rows (r69-live conflict refS 0.95, borderline refL 1.0 — both above-target); the R81 plan flagged this as acceptable since latency is also a scored axis. Operators restore the swap per-deploy with `P2P_GRAPH_RAG_COMPLEX_MODEL=claude-opus-4-7`. davidath byte-identical to R80.2 (no wrapper provider wired in TestClient → Stage-2 doesn't fire on local bench regardless). Two tests adjusted: `test_complex_question_uses_default_opus_path` renamed → `test_complex_question_swap_path_when_opus_configured` (with explicit `settings.graph_rag.complex_model = "claude-opus-4-7"` setup/teardown) preserving the original swap-path behavioural assertion; new `test_complex_question_uses_base_model_by_default` pins the new R81-A1 default behaviour so a future revert is loud. Wins land at the next live representative-100 + judge re-run. **First** of the R81 round per `.planning/R81-PLAN.md` (Step-0 re-judge blocked on Anthropic credit top-up). |
 
 Δ on the local rubric is modest (-11% sentences, +12% p50 latency) because
 the local harness is binary substring-matched and already saturated. The

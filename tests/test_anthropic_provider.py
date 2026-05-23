@@ -307,15 +307,26 @@ class TestAnthropicCompleteFailSoft:
     def test_complex_question_enables_extended_thinking(
         self, reset_anthropic_env, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """R51 thinking-token routing also fires through the anthropic SDK
-        when ``complex_question=True`` AND ``complex_thinking_tokens > 0``."""
+        """R51 thinking-token routing fires through the Anthropic SDK
+        when ``complex_question=True`` AND ``complex_thinking_tokens > 0``
+        AND ``complex_model`` is configured.
+
+        **R81-A1**: ``complex_model`` is now empty by default — this
+        test pins the operator-override path (set
+        ``P2P_GRAPH_RAG_COMPLEX_MODEL=claude-opus-4-7`` to restore
+        the pre-R81-A1 behaviour) so it still exercises the swap +
+        extended-thinking surface."""
         pytest.importorskip("anthropic")
         monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "anthropic")
         from app.config import settings
         monkeypatch.setattr(
             settings.graph_rag, "api_key", _SS("sk-ant-fake"), raising=True
         )
-        # complex_thinking_tokens default is 8000 per GraphRAGSettings.
+        # R81-A1: complex_model defaults to ""; restore the R51 production
+        # setting on this test only so the swap path under test still
+        # fires. complex_thinking_tokens still defaults to 1024 (R80.2).
+        original_complex = settings.graph_rag.complex_model
+        settings.graph_rag.complex_model = "claude-opus-4-7"
 
         class _Block:
             text = "Polished prose."
@@ -340,13 +351,17 @@ class TestAnthropicCompleteFailSoft:
         monkeypatch.setattr(_ant, "Anthropic", _Anthropic)
 
         from app.engines.graph_rag import _anthropic_complete_for_graph_rag
-        result = _anthropic_complete_for_graph_rag(
-            system="s", user="u", max_tokens=512, temperature=0.0,
-            complex_question=True,
-        )
+        try:
+            result = _anthropic_complete_for_graph_rag(
+                system="s", user="u", max_tokens=512, temperature=0.0,
+                complex_question=True,
+            )
+        finally:
+            settings.graph_rag.complex_model = original_complex
         assert result == "Polished prose."
-        # complex_model swaps to claude-opus-4-7 per the default settings.
-        assert captured["model"] == settings.graph_rag.complex_model
+        # complex_model now swaps to claude-opus-4-7 because we set it
+        # explicitly above (mirroring an operator override).
+        assert captured["model"] == "claude-opus-4-7"
         # Thinking kwarg present, budget clamped to [1024, 16000].
         thinking = captured["thinking"]
         assert thinking["type"] == "enabled"
