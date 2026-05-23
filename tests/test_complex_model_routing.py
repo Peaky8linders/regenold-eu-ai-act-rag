@@ -98,7 +98,10 @@ class TestDefaultRouting:
         assert req.extra_headers.get("X-Claude-Max-Thinking-Tokens") == str(
             settings.graph_rag.complex_thinking_tokens
         )
-        assert settings.graph_rag.complex_thinking_tokens == 2500
+        # R80.2 lowered the default 2500 → 1024 (the engine clamp floor)
+        # to cut the Opus extended-thinking latency tail (87 s max in the
+        # r80-stage2-tunnel run). See CLAUDE.md round 80.2.
+        assert settings.graph_rag.complex_thinking_tokens == 1024
 
 
 class TestComplexRouting:

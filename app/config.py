@@ -18,7 +18,14 @@ class GraphRAGSettings(BaseSettings):
 
     api_key: SecretStr | None = None
     model: str = "claude-sonnet-4-6"
-    max_tokens: int = 1024
+    max_tokens: int = 512
+    """Stage-1/2 polish output token cap. R80.2 default 512 (was 1024).
+    A wire-normalised 3-sentence answer is ~150-200 tokens typical, 400
+    worst-case. Trimming the ceiling cuts the worst-case Sonnet
+    generation tail in the r80-stage2-tunnel run (p95 42s, max 87s)
+    without affecting typical answers. Operators wanting larger answers
+    can override with ``P2P_GRAPH_RAG_MAX_TOKENS=1024``."""
+
     temperature: float = 0.0
 
     # R51 — complex-question routing. When a question is classified as
@@ -40,20 +47,27 @@ class GraphRAGSettings(BaseSettings):
     to deterministic if Opus is unreachable, so worst case is a soft
     miss, not a 500."""
 
-    complex_thinking_tokens: int = 2500
+    complex_thinking_tokens: int = 1024
     """``max_thinking_tokens`` for extended-thinking Stage-2 polish on
     complex questions.
 
-    R69 round-2 — reduced 8000 → 2500. The r69-live V2 run measured a
-    103s worst-case latency (tr_v2_007) and p95 35s, driven by the
-    8000-token Opus extended-thinking budget. Latency is a scored
-    competition axis; 100s answers score ~0. 2500 tokens still gives
-    Opus real room to walk a role chain / threshold-logic question
-    while cutting worst-case thinking time roughly 3×. The quality win
-    of the complex path is preserved (r69-live conflict refS 0.95,
-    borderline refL 1.0 — both strong). Clamped at the engine to
-    [1024, 16000]. 0 disables thinking. Override per-deploy via
-    ``P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS``."""
+    R80.2 — reduced 2500 → 1024 (the engine clamp floor). The
+    r80-stage2-tunnel run still showed an 87 s max-latency outlier
+    driven by the Opus complex extended-thinking path. Trimming to
+    the floor preserves the structured-reasoning win on conflict /
+    borderline-prohibition rows (r69-live conflict refS 0.95,
+    borderline refL 1.0) while cutting worst-case thinking time
+    further (~2.5× since R69's 2500). Clamped at the engine to
+    [1024, 16000]; 0 disables thinking. Override per-deploy via
+    ``P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS``.
+
+    Prior values:
+      * R51 original: 8000 (Anthropic's then-default extended-think
+        budget). Measured a 103 s worst-case tr_v2_007 outlier on
+        r69-live + p95 35 s.
+      * R69 round-2: reduced 8000 → 2500.
+      * R80.2: reduced 2500 → 1024 (current).
+    """
 
 
 class RegenoldSettings(BaseSettings):

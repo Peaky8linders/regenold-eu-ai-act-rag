@@ -45,41 +45,28 @@ REGENOLD_GRAPH_AWARE = "1"
 #   railway variables --set REGENOLD_CITE_DESCRIBE_GUARD=0
 REGENOLD_CITE_DESCRIBE_GUARD = "1"
 
-# Round 80.1 — Stage-2 LLM polish master switch. DEFAULT ON (this deploy).
+# Round 80.2 — Stage-2 LLM polish + latency knobs are now CODE
+# DEFAULTS, not railway.toml overrides. The R80.1 round added them
+# to [deploy.envs] but Railway dashboard service variables (when
+# pinned) override railway.toml, which silently blocked production
+# from picking up the change. Baking the values into the code
+# defaults sidesteps that override path entirely — a fresh Railway
+# deploy with NO dashboard env override gets the best config.
 #
-# Background: R77 disabled Stage-2 based on R76 measurements that
-# showed the polish pass net-negative on every judge axis. The R80
-# rerun via the tunnel (post-R69 prompt rule 10 + R80-D augmenter
-# coverage tightening + R80-F floor suppression) overturned that
-# conclusion. r80-stage2-tunnel JUDGE no-error pass rates vs r80-live
-# baseline (Stage-2 OFF):
-#   * correctness    0.595 → 0.659   (+0.064)
-#   * refs           0.260 → 0.305   (+0.045)
-#   * conciseness    0.506 → 0.448   (-0.058)
-#   * tone           0.841 → 0.897   (+0.056 — hits 0.85+ target)
-# Three of four axes improve; tone hits the R77-R79 target for the
-# first time. Cost: p50 latency 0.3 s → ~14 s (covered by the
-# max_tokens + complex_thinking_tokens trims below).
-P2P_GRAPH_RAG_ENABLE_STAGE2 = "1"
-
-# Round 80.1 — Stage-2 output max-tokens trim. Default 1024 in code;
-# r80-stage2-tunnel measured Sonnet polish at 5-20 s p50 driven mostly
-# by output generation. 512 still gives generous headroom for the
-# 3-sentence cap (a 3-sentence answer is ~150-200 output tokens
-# typical, 400 worst-case). Operators who want larger answers can
-# override with:
+# Current defaults (in app/engines/graph_rag.py + app/config.py):
+#   * P2P_GRAPH_RAG_ENABLE_STAGE2 default ON
+#     (was OFF since R77; R80 measurements overturned that)
+#   * P2P_GRAPH_RAG_MAX_TOKENS default 512
+#     (was 1024; cuts the Sonnet-output latency tail)
+#   * P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS default 1024
+#     (was 2500 since R69; cuts the Opus extended-think outlier)
+#
+# Operators can DISABLE Stage-2 (e.g. emergency latency rollback)
+# via dashboard:
+#   railway variables --set P2P_GRAPH_RAG_ENABLE_STAGE2=0
+# Or raise max_tokens / thinking budget similarly:
 #   railway variables --set P2P_GRAPH_RAG_MAX_TOKENS=1024
-P2P_GRAPH_RAG_MAX_TOKENS = "512"
-
-# Round 80.1 — Opus complex-path thinking budget trim. Default 2500
-# (R69 round-2 reduction from 8000). The r80-stage2-tunnel run still
-# showed an 87 s max-latency outlier driven by the Opus extended
-# thinking path. Trimming to 1024 (the engine floor) preserves the
-# structured reasoning win on conflict / borderline-prohibition rows
-# while cutting worst-case thinking time ~2.5×. Operators who want
-# more reasoning room can override with:
 #   railway variables --set P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS=2500
-P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS = "1024"
 
 # Round 52 — Stage-0 intent classifier provider selection.
 #

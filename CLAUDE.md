@@ -3720,6 +3720,71 @@ If conciseness still drops or latency stays at 14+ s, the next
 round can either tighten further (disable Opus complex path
 entirely) or selectively narrow `_needs_stage2_enhancement`.
 
+## Round 80.2 — Best-config baked as code defaults (2026-05-23)
+
+R80.1 wired the Stage-2 + latency knobs into `railway.toml`'s
+``[deploy.envs]`` block. On the post-merge live probe, Stage-2 stayed
+OFF — Railway's dashboard service variables override railway.toml
+``[deploy.envs]`` entries, so when an operator (or an earlier
+session) pinned ``P2P_GRAPH_RAG_ENABLE_STAGE2`` in the dashboard,
+the railway.toml addition was silently ignored.
+
+R80.2 sidesteps the override path entirely: **bake the best config
+as CODE defaults**, so a fresh Railway deploy picks them up without
+any dashboard intervention.
+
+### Changed defaults
+
+| Setting | R80.1 default | R80.2 default | Effect |
+| ------- | ------------- | ------------- | ------ |
+| `_stage2_polish_enabled()` env default | `"0"` (OFF) | `"1"` (ON) | Stage-2 polish fires when wrapper provider is wired |
+| `GraphRAGSettings.max_tokens` | 1024 | **512** | Cuts Sonnet output generation tail |
+| `GraphRAGSettings.complex_thinking_tokens` | 2500 (R69) | **1024** (clamp floor) | Cuts the Opus extended-thinking 87 s outlier |
+
+### Why it's safe to flip the gate's code default
+
+* `_stage2_polish_enabled()` reads its env value fresh per call. The
+  R80.2 default flips the FALLBACK when the env is unset. Operators
+  who want OFF can still explicitly set
+  ``P2P_GRAPH_RAG_ENABLE_STAGE2=0`` via the dashboard.
+* Stage-2 polish ALSO requires `_stage2_provider_enabled()` to return
+  True (wrapper or Anthropic SDK direct). On TestClient bench runs
+  (no wrapper, no Anthropic key), the provider gate is False → Stage-2
+  doesn't fire → davidath is byte-identical.
+* The wrapper-side cache key already includes
+  ``P2P_GRAPH_RAG_ENABLE_STAGE2`` (R79 fix #1), so a future operator
+  flip won't serve stale entries.
+
+### Verification
+
+* `pytest -q` — **2,433 pass + 1 skip** (one test fix:
+  `test_complex_question_uses_default_opus_path` updated to assert
+  the new 1024 default).
+* `evals.bench.runner` davidath — **byte-identical to R80**: Ref
+  Loose 0.5776, Ref Strict 0.4654, Ans Strict 0.3018, Tone 1.0,
+  MT 20/20. The default flip is invisible to TestClient because the
+  provider gate suppresses Stage-2 regardless.
+
+### What this changes on production
+
+Once #R80.2 PR is merged and Railway auto-redeploys, the engine
+defaults take effect:
+
+* Stage-2 polish: ON by default (without any dashboard variable)
+* `max_tokens`: 512 (limits the Sonnet output tail)
+* `complex_thinking_tokens`: 1024 (limits the Opus thinking tail)
+
+Expected live judge improvement vs r80-live (Stage-2 OFF):
+
+| Axis | r80-live | R80.2 target |
+| ---- | -------- | ------------ |
+| correctness no-err | 0.595 | 0.66+ |
+| refs no-err | 0.260 | 0.30+ |
+| tone no-err | 0.841 | 0.89+ (above 0.85 target) |
+| conciseness no-err | 0.506 | bounce back toward 0.50+ |
+| p50 latency | 307 ms | ~8-10 s |
+| max latency | 14,924 ms | ≤ 30 s |
+
 ## Eval scorecard (deterministic-fallback, local 276-scenario suite)
 
 | Round  | Pass         | p50      | p95     | avg refs | Retrieval F1 | Notes |
@@ -3770,6 +3835,7 @@ entirely) or selectively narrow `_needs_stage2_enhancement`.
 | **77** | 476 davidath | 9.8ms    | 14.13ms | —        | RefL **0.5755** / RefS **0.4644** / RefC **0.4200** / Ans Strict **0.3029** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2367 pass + 1 skip | R76 representative-100 measurement (deterministic + live + LLM-judge) → 4 fixes. **I2** removed bare `"high-risk"`→Art.6 anchor from `KEYWORD_TO_ARTICLE` — it shadowed every operator-obligation question's real topic article (≥8/16 live ref-misses); davidath byte-identical (BM25-saturated, win is live-only). **I1** Stage-2 LLM polish OFF by default (`P2P_GRAPH_RAG_ENABLE_STAGE2`, new `_stage2_polish_enabled()` gate) — R76 live proved it net-negative on every judge axis (refs 0.13 vs 0.25, conciseness 0.23 vs 0.55, tone 0.65 vs 0.88) + 3.5× slower; expected live p50 ~17s→~5s. **I4** always-on per-ref description augmenter (`augment_with_ref_descriptions`, `REGENOLD_REF_DESCRIBE_AUG`) for the judge floor axis refs-faithfulness. **I6** shape-aware QA ref budget 5→3 (`REGENOLD_QA_REF_BUDGET`) — trades RefL −0.006 for RefS/RefC +0.014 each (net rubric-positive). **I5** 2-hop already additive-below-cap, no code change. Live rep-100 + judge re-run queued post-deploy. |
 | **78** | 476 davidath | 9.28ms   | 15.25ms | —        | RefL **0.5755** / RefS **0.4644** / Ans Strict **0.3029** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2374 pass + 1 skip | R76 follow-up. Cross-referencing the R76 deterministic judge verdicts with the bench sidecar found 8 answers escaping the 600-char soft cap to **717-1258 chars** — single cite-anchored `(a)…(b)…(c)…` enumerations the LLM judge counts as ">4 sentences". Root cause: `normalise_answer_for_regenold`'s soft-cap loop is sentence-granular + cite-anchor-preserving (`while len(capped) > 1`, drops only non-cite sentences) so a single long cite-anchored sentence escapes entirely. New `_hard_truncate_at_clause` backstop truncates at the latest clean clause/sentence boundary, env-gated `REGENOLD_HARD_CHAR_CAP`. **Default OFF**: davidath A/B is a wash (Ans Strict −0.006 / Conciseness +0.004 — truncation drops enumeration-tail gold tokens), so per the R69 `TREE_EXTRACT` discipline it ships OFF; the binary judge-conciseness win (flips those 8 rows fail→pass) is the live-only payoff. davidath byte-identical to R77 with the default. +7 tests. |
 | **78.1** | 476 davidath | 9.26ms   | 14.1ms  | —        | RefL **0.5755** / RefS **0.4644** / RefC **0.4200** / Ans Strict **0.3029** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2379 pass + 1 skip | **Production-down hotfix.** A live `?include_reasoning=true` probe found Railway refusing in-scope provider/deployer/importer obligation questions — zero-retrieval `Art. 1/2/3` floor served with `cache_hit:true`, `engine_confidence:0.0`, `stage2_polish:false` (so R77 *is* deployed). Local R77 answers the same questions correctly (`Art. 26/27/13`) → the bug is a **poisoned route LRU cache**, not the engine. Root cause: `_ENGINE_CACHE.put` (R28) cached every engine result; a transient cold-start zero-retrieval response (`kb_search` `@lru_cache` BM25 index not yet warm) got cached and served permanently. Fix wires the issue-#55 confidence signal into the caching policy — skip `put` when `rag_res.confidence < _MIN_CACHEABLE_CONFIDENCE` (0.3); the issue-#55 `_compute_confidence` docstring documented this exact intent but the `put` site never consulted it. davidath byte-identical (the bench never serves an in-run cache hit). +5 `TestR78CacheConfidenceGuard` tests. Merge → Railway redeploy clears the poisoned cache and the new code cannot re-poison it. |
+| **80.2** | 476 davidath | 9.98ms | 14.87ms | — | RefL **0.5776** / RefS **0.4654** / Ans Strict **0.3018** / Tone 1.0 / mt 20/20 / 2433 pass + 1 skip | **Best-config baked as code defaults.** R80.1 wired the Stage-2 + latency knobs into `railway.toml [deploy.envs]`, but Railway dashboard service variables override that block — so a pinned override silently blocked production from picking up the change. R80.2 flips the CODE defaults instead: `_stage2_polish_enabled()` env-default `"0"` → `"1"` (Stage-2 polish ON when wrapper is wired), `max_tokens` 1024 → 512 (Sonnet output cap), `complex_thinking_tokens` 2500 → 1024 (Opus thinking cap). davidath byte-identical because TestClient's `_stage2_provider_enabled()` gate is False (no wrapper) so Stage-2 doesn't fire on the local bench regardless. Operators can still disable Stage-2 with `railway variables --set P2P_GRAPH_RAG_ENABLE_STAGE2=0`. One test fix: `test_complex_question_uses_default_opus_path` asserts the new 1024 default. Expected post-deploy live: correctness 0.66+, refs 0.30+, tone 0.89+ (above 0.85 target), p50 8-10 s. |
 | **80.1 (Stage-2 ON)** | rep-100 LIVE | 14,162ms | 42,318ms | — | **Judge no-err: correctness 0.659 / refs 0.305 / tone 0.897 (hits 0.85+ target!) / conciseness 0.448** vs r80-live (Stage-2 OFF): correctness 0.595 / refs 0.260 / tone 0.841 / conciseness 0.506. Three of four axes lift; tone target hit for the first time. Conciseness dip and 14 s p50 latency mitigated in railway.toml (Stage-2 ON + max_tokens 1024→512 + complex thinking 2500→1024) + Stage-2 prompt tightened from "3-4 sentences when possible" → "AT MOST 3 sentences" (with explicit "the wire hard-caps at 3 — pack descriptions, don't expand" framing). R80.1 also pins which lever does the work: r80-determ-local (R80 code + NO wrapper) measures refs **0.211** vs r80-live's **0.260** — the wrapper's LLM-driven Stage-0/1 is the dominant quality lever, not R80 code alone. Re-measure post-deploy. |
 | **80** | 476 davidath | 9.88ms   | 13.99ms | —        | RefL **0.5776** (+0.0021 vs R79) / RefS **0.4654** / Ans Strict **0.3018** (-0.0015) / Tone 1.0 / mt 20/20 / OOS 21/21 / 2433 pass + 1 skip | **Step-0 hard gate executed**: live representative-100 + judge against deployed Railway (post-#106 cache no-poison hotfix). **R77 Stage-2 OFF bet confirmed**: live p50 17 s → 0.3 s (55× faster). Judge refs floor (0.20 raw / 0.26 over-non-error) → **R80-D narrow ships**: raise `_answer_covers_ref` BM25 threshold 2→4 + add literal cite-presence check (the 2-token overlap was over-firing on common KB-stub tokens like provider/must/system, falsely considering Articles "already described" on 42/60 neo4j-path rows). **R80-F ships**: floor suppression in `zero_retrieval_fallback` when intent unknown + topic-keyword/explicit-anchor specifics present (the 9 r80-live zero-retrieval rows shipped real anchors PLUS Art. 1/2/3 pad), plus 14 new `KEYWORD_TO_ARTICLE` entries (authrep / log retention / downstream-providers / transparency information / who-must-comply / AI Board). **R80-A closed as moot** (0/100 answers > 600 chars). R80-B/C/E deferred (latency p50 0.3 s already 20× under target; Railway CLI unauthorised; E better measured post-D). R80-D aggressive replace-sentence redesign deferred to R81. +46 tests. Wins land at the next live judge re-run. |
 | **79** | 476 davidath | 9.16ms   | 14.25ms | —        | RefL **0.5755** / RefS **0.4644** / Ans Strict **0.3033** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2382 pass + 1 skip | Deep-code-review bugfix round. 3 parallel review agents audited the R77/R78 merges + the answer-assembly / engine-retrieval surfaces; 13 candidate findings → **7 verified real bugs fixed**, 6 rejected/deferred (intentional design, or need the live judge). Fixes: (1) `_engine_cache_key` += `P2P_GRAPH_RAG_ENABLE_STAGE2` + graph flags — R77's Stage-2 master flag flips the engine answer but was missing from the key (R30/R56 cache-poisoning doctrine); (2) `_deterministic_parse` topic-extension prepend now self-dedups (two keywords → same article double-added an obligation); (3) `_deterministic_parse` Unicode-normalises before the keyword scan (U+2011 non-breaking hyphens silently missed `_KEYWORD_ENTITY_MAP`); (4) `augment_with_ref_descriptions` inserts a period before appended clauses (word-fusion on punctuation-less base answers); (5) `top_articles_by_relevance_in_chapters` applies the R28 confidence boost the main variant has; (6) `REGENOLD_QA_REF_BUDGET` env parse `.strip().lower()`; (7) `_hard_truncate_at_clause` regex catches `(A)` / `(ii)` enumerators. All 7 davidath-neutral (Ans Strict 0.3029→0.3033, rest flat — the bugs are in failure shapes davidath doesn't exercise). +8 `tests/test_r79_bugfixes.py`. |

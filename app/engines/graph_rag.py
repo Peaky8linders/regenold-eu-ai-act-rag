@@ -413,25 +413,38 @@ def _stage2_provider_enabled() -> bool:
 
 
 def _stage2_polish_enabled() -> bool:
-    """R77 — master on/off gate for the Stage-2 LLM polish pass.
+    """R80.2 — master on/off gate for the Stage-2 LLM polish pass.
 
-    Default **OFF**. The R76 representative-100 live measurement found
-    the Claude-Max Stage-2 polish net-negative on every LLM-judge axis
-    — refs-faithfulness 0.13 vs 0.25, conciseness 0.23 vs 0.55, tone
-    0.65 vs 0.88 — flat on correctness, and 3.5x slower (p50 19.6 s vs
-    5.6 s) than the deterministic Stage-1 answer it replaces. The
-    deterministic wire beat the polished wire on all four judge axes
-    AND on davidath token-overlap. Judge failure modes on polished
-    rows: >4 sentences, pure boilerplate, truncated mid-thought,
-    speculation beyond the regulation text, provider/operator
-    conflation.
+    Default **ON**. The R77 decision to default OFF was based on the
+    R76 measurement; the R80 rerun via tunnel (post-R69 rule-10 prompt
+    + R80-D augmenter coverage tightening + R80-F floor suppression)
+    overturned that conclusion. r80-stage2-tunnel JUDGE no-error pass
+    rates vs r80-live (Stage-2 OFF) baseline:
+      * correctness    0.595 → 0.659   (+0.064)
+      * refs           0.260 → 0.305   (+0.045)
+      * conciseness    0.506 → 0.448   (-0.058)
+      * tone           0.841 → 0.897   (+0.056 — hits 0.85+ target)
+    Three of four axes lift; tone hits the long-running R77-R79
+    target for the first time. The conciseness dip is addressed in
+    R80.1 by tightening the Stage-2 prompt from "3-4 sentences when
+    possible" to "AT MOST 3 sentences". Latency cost is real
+    (p50 0.3s → ~14s) and partially mitigated by the R80.2 default
+    trims to ``max_tokens`` (1024→512) and ``complex_thinking_tokens``
+    (2500→1024). See CLAUDE.md round 80.1/80.2 for the full data.
 
-    Re-enable with ``P2P_GRAPH_RAG_ENABLE_STAGE2=1`` (e.g. to A/B a
-    future Stage-2 prompt revision). Read fresh per call so a Railway
-    env-var rebind takes effect on the next request — same contract as
+    Disable with ``P2P_GRAPH_RAG_ENABLE_STAGE2=0`` (e.g. to A/B a
+    future Stage-2 prompt revision or cut latency on a degraded
+    Stage-2 provider). Read fresh per call so a Railway env-var
+    rebind takes effect on the next request — same contract as
     :func:`_stage2_provider_enabled`.
+
+    Historical R76/R77 failure modes (>4 sentences, pure boilerplate,
+    truncated mid-thought, speculation, provider/operator conflation)
+    are addressed by R69's rule 10 (describe every cited Article),
+    R49-A's grounded-prose substitute in the consistency guard, and
+    the multiple R49/R50/R54-Q2/R62/R65 refusal-marker extensions.
     """
-    return os.getenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "0").strip().lower() in (
+    return os.getenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "1").strip().lower() in (
         "1",
         "true",
         "yes",
