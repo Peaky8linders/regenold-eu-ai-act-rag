@@ -176,3 +176,91 @@ class TestAnswerKeywordRecall:
 
     def test_empty_pred_zero(self) -> None:
         assert answer_keyword_recall("", ["a", "b"]) == 0.0
+
+
+# ── Aggregate-level wiring ──────────────────────────────────────────────
+
+from evals.bench.metrics import RowScore, aggregate, score_row
+
+
+class TestScoreRowEmitsBothAxes:
+    def test_score_row_carries_legacy_fields(self) -> None:
+        s = score_row(
+            pred_answer="high-risk providers must document",
+            pred_refs=["Article 9"],
+            gold_answer="high‑risk providers must document",
+            gold_articles=9,
+            latency_ms=42.0,
+        )
+        d = s.to_dict()
+        # New corrected axes present
+        assert "ans_correctness_loose" in d
+        assert "ans_correctness_strict" in d
+        # Legacy axes present
+        assert "ans_correctness_loose_legacy" in d
+        assert "ans_correctness_strict_legacy" in d
+        # NBH-vs-ASCII pair: corrected Loose strictly higher than legacy
+        assert d["ans_correctness_loose"] > d["ans_correctness_loose_legacy"]
+
+    def test_score_row_accepts_expected_keywords(self) -> None:
+        s = score_row(
+            pred_answer="providers must document risk",
+            pred_refs=["Article 9"],
+            gold_answer="anything",
+            gold_articles=9,
+            latency_ms=10.0,
+            expected_keywords=["document", "risk", "providers"],
+        )
+        d = s.to_dict()
+        # Note: 'providers' stems to 'provid' (8 chars > 4 → 's' strips)
+        # Pred has 'providers' → stems to 'provid'. Keyword 'providers'
+        # → also stems to 'provid'. They match. 'document' and 'risk'
+        # also match. 3/3 = 1.0.
+        assert d["ans_keyword_recall"] == 1.0
+
+    def test_score_row_without_keywords_emits_none(self) -> None:
+        s = score_row(
+            pred_answer="anything",
+            pred_refs=["Article 9"],
+            gold_answer="anything",
+            gold_articles=9,
+            latency_ms=10.0,
+        )
+        d = s.to_dict()
+        assert d["ans_keyword_recall"] is None
+
+
+class TestAggregateSkipsNoneKeywordRecall:
+    def test_aggregate_excludes_none(self) -> None:
+        rows = [
+            score_row("hello world", ["Article 1"], "hello world", 1, 1.0,
+                      expected_keywords=["hello"]),
+            score_row("hello world", ["Article 1"], "hello world", 1, 1.0,
+                      expected_keywords=None),
+        ]
+        agg = aggregate(rows)
+        # 1 row had None → averaged over 1, not 2
+        assert "ans_keyword_recall" in agg
+        assert agg["ans_keyword_recall"] == 1.0
+        # n_keyword_recall surfaces the denominator
+        assert agg["n_keyword_recall"] == 1
+
+    def test_aggregate_emits_legacy_axes(self) -> None:
+        rows = [
+            score_row("hello world", ["Article 1"], "hello world", 1, 1.0)
+        ]
+        agg = aggregate(rows)
+        assert "ans_correctness_loose" in agg
+        assert "ans_correctness_loose_legacy" in agg
+        assert "ans_correctness_strict_legacy" in agg
+
+    def test_aggregate_no_keyword_rows_emits_none(self) -> None:
+        # When NO row carries expected_keywords, agg should report
+        # ans_keyword_recall=None + n_keyword_recall=0 (no false mean).
+        rows = [
+            score_row("a", ["Article 1"], "a", 1, 1.0)
+            for _ in range(3)
+        ]
+        agg = aggregate(rows)
+        assert agg["n_keyword_recall"] == 0
+        assert agg["ans_keyword_recall"] is None

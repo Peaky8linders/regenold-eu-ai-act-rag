@@ -401,7 +401,15 @@ def percentile(values: list[float], pct: float) -> float:
 
 @dataclass
 class RowScore:
-    """Eight-axis score for a single QA / scenario row."""
+    """Per-row score across every R82-A axis.
+
+    R82-A extension: carries both the corrected axes
+    (``answer_correctness_*``) AND the pre-R82 legacy axes
+    (``answer_correctness_*_legacy``) so historical sidecars can be
+    rescored without losing the reproducible baseline. Also adds
+    ``answer_keyword_recall`` (None when the row has no curated
+    ``expected_keywords``).
+    """
 
     answer_correctness_loose: float
     answer_correctness_strict: float
@@ -411,9 +419,13 @@ class RowScore:
     reference_conciseness: float
     latency_ms: float
     regulatory_tone: float
+    # R82-A additions
+    answer_correctness_loose_legacy: float
+    answer_correctness_strict_legacy: float
+    answer_keyword_recall: float | None
 
-    def to_dict(self) -> dict[str, float]:
-        return {
+    def to_dict(self) -> dict[str, float | None]:
+        out: dict[str, float | None] = {
             "ans_correctness_loose": round(self.answer_correctness_loose, 4),
             "ans_correctness_strict": round(self.answer_correctness_strict, 4),
             "ans_conciseness": round(self.answer_conciseness, 4),
@@ -422,7 +434,18 @@ class RowScore:
             "ref_conciseness": round(self.reference_conciseness, 4),
             "latency_ms": round(self.latency_ms, 2),
             "regulatory_tone": round(self.regulatory_tone, 4),
+            "ans_correctness_loose_legacy": round(
+                self.answer_correctness_loose_legacy, 4
+            ),
+            "ans_correctness_strict_legacy": round(
+                self.answer_correctness_strict_legacy, 4
+            ),
         }
+        if self.answer_keyword_recall is None:
+            out["ans_keyword_recall"] = None
+        else:
+            out["ans_keyword_recall"] = round(self.answer_keyword_recall, 4)
+        return out
 
 
 def score_row(
@@ -431,8 +454,14 @@ def score_row(
     gold_answer: str,
     gold_articles: int | list[int] | None,
     latency_ms: float,
+    expected_keywords: list[str] | None = None,
 ) -> RowScore:
-    """Compute every metric for one row in one call."""
+    """Compute every metric for one row in one call.
+
+    R82-A: ``expected_keywords`` is optional. Sidecars from the
+    representative-100 / V2 runners carry it; the in-process davidath
+    bench runner does not (gold answers come from the corpus only).
+    """
     return RowScore(
         answer_correctness_loose=answer_correctness_loose(pred_answer, gold_answer),
         answer_correctness_strict=answer_correctness_strict(pred_answer, gold_answer),
@@ -446,6 +475,13 @@ def score_row(
         reference_conciseness=reference_conciseness(pred_refs, gold_articles),
         latency_ms=latency_ms,
         regulatory_tone=regulatory_tone(pred_answer),
+        answer_correctness_loose_legacy=answer_correctness_loose_legacy(
+            pred_answer, gold_answer
+        ),
+        answer_correctness_strict_legacy=answer_correctness_strict_legacy(
+            pred_answer, gold_answer
+        ),
+        answer_keyword_recall=answer_keyword_recall(pred_answer, expected_keywords),
     )
 
 
@@ -473,14 +509,23 @@ def refusal_correctness(refused_flags: list[bool]) -> float:
 # ── Batch-level aggregation ──────────────────────────────────────────────
 
 
-def aggregate(rows: list[RowScore]) -> dict[str, float]:
-    """Mean per axis + latency percentiles."""
+def aggregate(rows: list[RowScore]) -> dict[str, float | int | None]:
+    """Mean per axis + latency percentiles.
+
+    R82-A: extends the axis list with the corrected ``ans_correctness_*``
+    AND the preserved ``ans_correctness_*_legacy``. Adds
+    ``ans_keyword_recall`` averaged over rows where it is not None
+    (denominator surfaced as ``n_keyword_recall``).
+    """
     if not rows:
         return {}
     n = len(rows)
     s = lambda key: sum(getattr(r, key) for r in rows)
     latencies = [r.latency_ms for r in rows]
-    return {
+    kw_values = [
+        r.answer_keyword_recall for r in rows if r.answer_keyword_recall is not None
+    ]
+    agg: dict[str, float | int | None] = {
         "n": n,
         "ans_correctness_loose": round(s("answer_correctness_loose") / n, 4),
         "ans_correctness_strict": round(s("answer_correctness_strict") / n, 4),
@@ -493,4 +538,16 @@ def aggregate(rows: list[RowScore]) -> dict[str, float]:
         "latency_p95_ms": round(percentile(latencies, 95), 2),
         "latency_max_ms": round(max(latencies) if latencies else 0.0, 2),
         "latency_mean_ms": round(sum(latencies) / n, 2),
+        "ans_correctness_loose_legacy": round(
+            s("answer_correctness_loose_legacy") / n, 4
+        ),
+        "ans_correctness_strict_legacy": round(
+            s("answer_correctness_strict_legacy") / n, 4
+        ),
+        "n_keyword_recall": len(kw_values),
     }
+    if kw_values:
+        agg["ans_keyword_recall"] = round(sum(kw_values) / len(kw_values), 4)
+    else:
+        agg["ans_keyword_recall"] = None
+    return agg
