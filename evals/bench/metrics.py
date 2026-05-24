@@ -167,6 +167,29 @@ def answer_correctness_strict(pred: str, gold: str) -> float:
     return len(pt & gt) / len(gt)
 
 
+# ── 1+2 (legacy): pre-R82 correctness, for back-compat / history rescore ─
+
+
+def answer_correctness_loose_legacy(pred: str, gold: str) -> float:
+    """Pre-R82 token-Jaccard. Preserved for back-compat / history rescore."""
+    pt = _tokens_legacy(pred)
+    gt = _tokens_legacy(gold)
+    if not gt or not pt:
+        return 0.0
+    overlap = len(pt & gt)
+    union = len(pt | gt)
+    return overlap / union if union else 0.0
+
+
+def answer_correctness_strict_legacy(pred: str, gold: str) -> float:
+    """Pre-R82 gold-recall. Preserved for back-compat / history rescore."""
+    pt = _tokens_legacy(pred)
+    gt = _tokens_legacy(gold)
+    if not gt:
+        return 0.0
+    return len(pt & gt) / len(gt)
+
+
 # ── 3: Answer conciseness ────────────────────────────────────────────────
 
 
