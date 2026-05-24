@@ -106,20 +106,50 @@ class TestIdempotence:
 
 
 class TestStemmer:
-    # Targeted suffix-strip — only the 4 frequent suffixes that create
-    # false morphological misses on regulatory verbs/nouns.
+    """Greedy strip of 5 frequent suffixes until no further suffix fires.
 
-    def test_ing_strips(self) -> None:
-        assert stem_token("analysing") == "analys"
+    Updated for R82-A.1: the stemmer is now greedy (loops to fixed
+    point), so all four morphological variants of a verb collapse to
+    the SAME final stem. Pre-R82-A.1 single-pass left ``analysing`` at
+    ``analys`` and ``analyse`` at ``analys`` but ``stem(stem(analyse))``
+    yielded ``analy`` — non-idempotent. Greedy converges in one call.
+    """
 
-    def test_es_strips(self) -> None:
-        assert stem_token("analyses") == "analys"
+    def test_ing_collapses_to_analy(self) -> None:
+        # R82-A.1: greedy loops 'analysing' -> 'analys' -> 'analy'
+        assert stem_token("analysing") == "analy"
 
-    def test_ed_strips(self) -> None:
-        assert stem_token("analysed") == "analys"
+    def test_es_collapses_to_analy(self) -> None:
+        # 'analyses' -> strip 'es' -> 'analys' -> strip 's' -> 'analy'
+        assert stem_token("analyses") == "analy"
 
-    def test_s_strips(self) -> None:
+    def test_ed_collapses_to_analy(self) -> None:
+        # 'analysed' -> strip 'ed' -> 'analys' -> strip 's' -> 'analy'
+        assert stem_token("analysed") == "analy"
+
+    def test_e_strip_also_collapses(self) -> None:
+        # Base form 'analyse' (7 chars) -> strip 'e' -> 'analys' ->
+        # strip 's' -> 'analy'. Greedy ensures the base form collapses
+        # to the same stem as the -ing/-es/-ed variants.
+        assert stem_token("analyse") == "analy"
+
+    def test_morphological_variants_collapse_to_same_stem(self) -> None:
+        """The whole POINT of greedy stemming: 4 variants → 1 stem."""
+        a = stem_token("analyse")
+        b = stem_token("analysing")
+        c = stem_token("analyses")
+        d = stem_token("analysed")
+        assert a == b == c == d == "analy"
+
+    def test_s_strips_on_long_token(self) -> None:
+        # 'systems' (7 chars) -> strip 's' -> 'system' (6 chars).
+        # 'system' has no terminal suffix in the set -> stable.
         assert stem_token("systems") == "system"
+
+    def test_documents_collapses_with_documented(self) -> None:
+        # 'documents' -> strip 's' -> 'document' (8 chars, no suffix)
+        # 'documented' -> strip 'ed' -> 'document' (8 chars, no suffix)
+        assert stem_token("documents") == stem_token("documented") == "document"
 
     def test_short_tokens_pass_through(self) -> None:
         # 'cats' would stem to 'cat' (length 4) — but 'ai', 'eu' must
@@ -133,9 +163,31 @@ class TestStemmer:
         # `birds` is 5 chars > 4 → 's' strips
         assert stem_token("birds") == "bird"
 
-    def test_idempotent(self) -> None:
-        # Once stemmed, applying it again is idempotent or yields stable stem
-        assert stem_token(stem_token("analys")) == "analy"
+    def test_truly_idempotent(self) -> None:
+        """R82-A.1 invariant: stem(stem(x)) == stem(x) for all x.
+
+        Pre-R82-A.1 single-pass failed this on tokens whose stem still
+        ended in a suffix (e.g. stem('analyse') = 'analys' but
+        stem('analys') = 'analy', so stem(stem('analyse')) = 'analy' !=
+        stem('analyse') = 'analys'). Greedy fixes it by converging
+        within the first call.
+        """
+        for sample in [
+            "analyse", "analysing", "analyses", "analysed",
+            "document", "documents", "documented", "documenting",
+            "system", "systems", "service", "services",
+        ]:
+            once = stem_token(sample)
+            twice = stem_token(once)
+            assert once == twice, f"stem({sample!r}) = {once!r} but stem({once!r}) = {twice!r}"
+
+    def test_compliance_not_collapsed_with_compliant(self) -> None:
+        """Known non-collapse: -e strip on 'compliance' yields 'complianc',
+        not 'compliant'. We accept this — collapsing them would require
+        Porter's full rules (y -> i, -ies -> -y, etc.) which over-fires
+        on regulatory text. Pinning the limitation so it doesn't drift."""
+        assert stem_token("compliance") == "complianc"
+        assert stem_token("compliant") == "compliant"
 
     def test_no_alpha_passes_through(self) -> None:
         assert stem_token("15") == "15"
