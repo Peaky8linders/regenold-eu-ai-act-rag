@@ -6,6 +6,7 @@ from evals.bench.metrics import (
     _tokens_legacy,
     answer_correctness_loose,
     answer_correctness_strict,
+    answer_keyword_recall,
 )
 
 
@@ -136,3 +137,42 @@ class TestCorrectnessFormulasUseNewTokenizer:
         gold = "High‑risk AI must conduct assessment"
         pred = "high-risk ai must conduct assessment"
         assert answer_correctness_strict(pred, gold) == 1.0
+
+
+class TestAnswerKeywordRecall:
+    """Curated keyword recall — closer to what an LLM judge will see."""
+
+    def test_all_keywords_present(self) -> None:
+        pred = "Providers must document and maintain a risk management system."
+        keywords = ["document", "maintain", "risk", "management"]
+        assert answer_keyword_recall(pred, keywords) == 1.0
+
+    def test_half_keywords_present(self) -> None:
+        pred = "Providers must document the system."
+        keywords = ["document", "maintain", "risk", "management"]
+        # only 'document' matches → 1/4 = 0.25
+        assert answer_keyword_recall(pred, keywords) == 0.25
+
+    def test_normalisation_applies(self) -> None:
+        # Gold keyword carries NBH; pred has ASCII hyphen
+        pred = "high-risk classification"
+        keywords = ["high‑risk", "classification"]
+        assert answer_keyword_recall(pred, keywords) == 1.0
+
+    def test_stem_helps(self) -> None:
+        # 'analysing' (pred) stems to 'analy'; keyword 'analysed'
+        # stems to 'analy' — they should match through the stemmer.
+        pred = "analysing the system documented the risks"
+        keywords = ["analysed", "documented", "risks"]
+        assert answer_keyword_recall(pred, keywords) == 1.0
+
+    def test_empty_keywords_returns_none_sentinel(self) -> None:
+        # Caller convention: empty keyword list → axis not applicable
+        # → return None (so aggregate can skip the row).
+        assert answer_keyword_recall("anything", []) is None
+
+    def test_none_keywords_returns_none(self) -> None:
+        assert answer_keyword_recall("anything", None) is None
+
+    def test_empty_pred_zero(self) -> None:
+        assert answer_keyword_recall("", ["a", "b"]) == 0.0

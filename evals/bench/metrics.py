@@ -190,6 +190,39 @@ def answer_correctness_strict_legacy(pred: str, gold: str) -> float:
     return len(pt & gt) / len(gt)
 
 
+# ── 1b (R82-A): curated-keyword recall — closer to LLM-judge surface ─────
+
+
+def answer_keyword_recall(
+    pred: str, expected_keywords: list[str] | None
+) -> float | None:
+    """Fraction of curated keywords (normalised + stemmed) present in pred.
+
+    Designed for sidecars that carry an ``expected_keywords`` field
+    (V2 / representative-100). Mirrors what an LLM judge looks for: are
+    the load-bearing domain tokens for this question surfaced in the
+    answer? Robust to pred verbosity (recall, not Jaccard) and uses a
+    curated subset rather than the full gold answer's incidental tokens.
+
+    Returns ``None`` when ``expected_keywords`` is None or empty —
+    caller convention: the axis is not applicable for this row, skip
+    from aggregation. Returns ``0.0`` when pred is empty.
+    """
+    if not expected_keywords:
+        return None
+    pred_tokens = _tokens(pred)
+    if not pred_tokens:
+        return 0.0
+    # Each keyword goes through the SAME normalise + tokenise pipeline
+    # the pred side did — collect all keyword stems.
+    keyword_stems: set[str] = set()
+    for kw in expected_keywords:
+        keyword_stems |= _tokens(kw)
+    if not keyword_stems:
+        return None
+    return len(pred_tokens & keyword_stems) / len(keyword_stems)
+
+
 # ── 3: Answer conciseness ────────────────────────────────────────────────
 
 
