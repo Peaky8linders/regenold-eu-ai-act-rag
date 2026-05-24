@@ -681,6 +681,9 @@ def score_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
             gold_answer=row.get("gold_answer") or "",
             gold_articles=gold_articles,
             latency_ms=float(row.get("latency_ms") or 0.0),
+            # R82-A: rep-100 rows carry a curated `expected_keywords`
+            # field; passing it through enables the keyword-recall axis.
+            expected_keywords=row.get("expected_keywords"),
         )
 
     all_scores = [_score(r) for r in rows]
