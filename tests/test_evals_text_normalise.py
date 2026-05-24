@@ -9,7 +9,7 @@ and length-preserving): this one is scoring-time and lossy by design.
 """
 from __future__ import annotations
 
-from evals.bench.text_normalise import normalise_for_scoring
+from evals.bench.text_normalise import normalise_for_scoring, stem_token
 
 
 class TestUnicodeDashFolding:
@@ -103,3 +103,65 @@ class TestIdempotence:
         once = normalise_for_scoring(sample)
         twice = normalise_for_scoring(once)
         assert once == twice
+
+
+class TestStemmer:
+    """Greedy strip of 4 frequent suffixes until no suffix matches.
+
+    Greedy loop ensures ``analysing`` / ``analyses`` / ``analysed`` all
+    collapse to the same stem (``analy``), so morphological variation
+    doesn't fragment the token space.
+    """
+
+    def test_ing_collapses_to_analy(self) -> None:
+        # 'analysing' → 'analys' → 'analy' (greedy loop)
+        assert stem_token("analysing") == "analy"
+
+    def test_es_collapses_to_analy(self) -> None:
+        # 'analyses' → 'analys' → 'analy' (longest suffix first)
+        assert stem_token("analyses") == "analy"
+
+    def test_ed_collapses_to_analy(self) -> None:
+        # 'analysed' → 'analys' → 'analy'
+        assert stem_token("analysed") == "analy"
+
+    def test_morphological_variants_collapse_to_same_stem(self) -> None:
+        # The whole POINT of stemming — three variants → one token.
+        assert stem_token("analysing") == stem_token("analyses") == stem_token("analysed")
+
+    def test_s_strips_on_long_token(self) -> None:
+        # 'systems' is 7 chars > 4; 's' strips → 'system'. No further suffix.
+        assert stem_token("systems") == "system"
+
+    def test_documented_collapses(self) -> None:
+        # 'documented' → strip 'ed' → 'document' (8 chars, no further suffix)
+        assert stem_token("documented") == "document"
+
+    def test_two_char_tokens_pass_through(self) -> None:
+        # Critical: short load-bearing tokens like AI / EU never stem.
+        assert stem_token("ai") == "ai"
+        assert stem_token("eu") == "eu"
+
+    def test_three_char_passes_through(self) -> None:
+        # 'cat' is 3 chars; 's' needs > 4 → no strip
+        assert stem_token("cat") == "cat"
+
+    def test_four_char_passes_through(self) -> None:
+        # 'cats' is 4 chars; 's' needs > 4 → no strip
+        assert stem_token("cats") == "cats"
+
+    def test_five_char_s_strips(self) -> None:
+        # 'birds' is 5 chars > 4 → 's' strips → 'bird' (4 chars, stable)
+        assert stem_token("birds") == "bird"
+
+    def test_idempotent(self) -> None:
+        # Greedy loop converges in one call; second call is a no-op.
+        once = stem_token("analysing")
+        twice = stem_token(once)
+        assert once == twice == "analy"
+
+    def test_no_alpha_passes_through(self) -> None:
+        assert stem_token("15") == "15"
+
+    def test_empty(self) -> None:
+        assert stem_token("") == ""

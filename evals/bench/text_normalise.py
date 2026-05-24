@@ -83,4 +83,48 @@ def normalise_for_scoring(text: str | None) -> str:
     return t.lower()
 
 
-__all__ = ["normalise_for_scoring"]
+# Targeted suffix-strip — only the 4 frequent suffixes that create
+# false morphological misses on regulatory text. Order matters: longest
+# first so "analyses" strips "es" not "s".
+_STEM_SUFFIXES: tuple[str, ...] = ("ing", "es", "ed", "s")
+
+
+def stem_token(token: str) -> str:
+    """Greedy strip of 4 frequent suffixes until no further suffix fires.
+
+    Greedy (loops to fixed point) so that:
+
+      * ``analysing`` (strip ``ing``) → ``analys`` (strip ``s``) → ``analy``
+      * ``analyses``  (strip ``es``)  → ``analys`` (strip ``s``) → ``analy``
+      * ``analysed``  (strip ``ed``)  → ``analys`` (strip ``s``) → ``analy``
+
+    so the three morphological variants collapse to a single stem.
+    Without the loop, ``analysing`` / ``analysed`` collapse to
+    ``analys`` but ``analyses`` collapses to ``analys`` too — fine — but
+    single-pass is NOT idempotent (``stem(analys)`` strips the final ``s``).
+    Greedy is.
+
+    Conservative on the 4-suffix set: no ``y`` → ``i``, no ``-ies`` → ``-y``,
+    no ``-e`` strip (would mis-collapse ``compliance`` ≠ ``compliant``).
+
+    Length guard: a suffix only strips when the remaining stem would be
+    ≥ 3 characters. So ``cat``/``cats`` (3-4 chars) never strip;
+    ``birds`` (5 chars) strips to ``bird``; ``ai``/``eu`` stay intact.
+
+    Pure, idempotent. Returns input unchanged for empty / non-alphabetic
+    leading char / too-short tokens.
+    """
+    if not token or not token[0].isalpha():
+        return token
+    changed = True
+    while changed:
+        changed = False
+        for suf in _STEM_SUFFIXES:
+            if len(token) > len(suf) + 3 and token.endswith(suf):
+                token = token[: -len(suf)]
+                changed = True
+                break
+    return token
+
+
+__all__ = ["normalise_for_scoring", "stem_token"]
