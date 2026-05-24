@@ -261,8 +261,16 @@ def test_reciprocal_rank_fusion_caps_at_k():
 
 
 def test_top_articles_by_relevance_unchanged_when_dense_off(monkeypatch):
-    """The dense-off path is byte-for-byte the pre-Round-31 ranking."""
+    """The dense-off path is byte-for-byte the pre-Round-31 ranking.
+
+    R81-N.1 — also disable the entity boost so this test isolates the
+    Round-28 BM25 path. With the boost ON (default since R81-N), the
+    stronger 3.0× role multiplier on "deployers" → Art. 26 changes the
+    top winner; that's measured in the dedicated entity_extractor
+    tests.
+    """
     monkeypatch.setenv("REGENOLD_TURBOQUANT_DENSE", "0")
+    monkeypatch.setenv("REGENOLD_ENTITY_BOOST", "0")
     from app.data.kb_search import top_articles_by_relevance
 
     q = "what documents must be kept by deployers"

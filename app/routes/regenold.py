@@ -238,12 +238,27 @@ def _engine_cache_key(question: str, system_context: str | None) -> str:
     #     ``_two_stage_generate`` (R77); flips ``GraphRAGResponse.answer``.
     #   * REGENOLD_GRAPH_2HOP / REGENOLD_GRAPH_AWARE — gate the Neo4j
     #     graph-expansion paths inside the engine's retrieve phase.
+    #
+    # R81-N.1 — additionally fold in REGENOLD_ENTITY_BOOST and the two
+    # boost-factor overrides. The entity boost re-ranks BM25 candidates
+    # inside ``kb_search.top_articles_by_relevance``, which is called
+    # from the engine's retrieval phase — its outputs feed
+    # ``GraphRAGResponse.references``. A mid-deploy flip of any of
+    # these three env vars would otherwise serve cached pre-flip refs.
+    # Importantly, production cache entries from the pre-R81-N deploy
+    # are invalidated by this addition: the new ``engine_flags`` blob
+    # has a non-empty trailing ``"::"`` segment for ``ENTITY_BOOST`` /
+    # the factor overrides, producing distinct cache keys from any
+    # entry hashed before this change.
     engine_flags = ":".join(
         os.getenv(v, "").strip().lower()
         for v in (
             "P2P_GRAPH_RAG_ENABLE_STAGE2",
             "REGENOLD_GRAPH_2HOP",
             "REGENOLD_GRAPH_AWARE",
+            "REGENOLD_ENTITY_BOOST",
+            "REGENOLD_ENTITY_BOOST_FACTOR_ROLE",
+            "REGENOLD_ENTITY_BOOST_FACTOR_CONCEPT",
         )
     )
     blob = (

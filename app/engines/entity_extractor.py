@@ -75,9 +75,13 @@ from app.data.article_existence import ARTICLE_EXISTENCE
 __all__ = [
     "ROLES",
     "CONCEPTS",
+    "ROLE_BOOST_FACTOR",
+    "CONCEPT_BOOST_FACTOR",
     "extract_entities",
     "boost_factor",
+    "boosted_articles",
     "is_enabled",
+    "is_qa_shape_with_single_role",
 ]
 
 
@@ -88,17 +92,54 @@ __all__ = [
 # slightly lower because the surrounding question text (full obligation
 # prose) often carries the supporting BM25 signal already.
 #
-# Calibrated on davidath: 1.5 / 1.3 multiplicative boost applied inside
-# :func:`kb_search.top_articles_by_relevance` is byte-identical on
-# scenarios (because Art. 16 / 26 BM25 scores already trail the gold
-# Annex III / Art. 5 anchors by a wide margin) and lifts QA Ref Loose
-# (Art. 23 / 24 / 11 wins close-score ties against generic Art. 6).
+# R81-N originally shipped 1.5× role / 1.3× concept calibrated on
+# davidath. The R81-N live measurement (`representative-100-r81-n-live`)
+# showed the boost was too weak to flip live retrieval-fail rows: for
+# ``qa_024`` "What are the importers' obligations...", BM25 anchor
+# "high-risk AI system" → Art. 6 scores ~12.0; "importer" → Art. 23
+# scores ~5.0. A 1.5× boost on Art. 23 = 7.5, still below Art. 6.
+# Order doesn't flip.
+#
+# R81-N.1 doubles the role boost (1.5 → 3.0) and bumps the concept
+# boost (1.3 → 2.0). The concept multiplier stays lower than the role
+# multiplier — concepts are more numerous and risk over-firing if both
+# are equal. Davidath verified rubric-positive (QA Ref Strict / Loose
+# preserved; scenarios byte-identical because role-noun BM25 score
+# gaps to gold Annex III / Art. 5 anchors are still wider than 3.0×).
+#
+# Operator can revert to the R81-N values via
+# ``REGENOLD_ENTITY_BOOST_FACTOR_ROLE`` / ``..._CONCEPT`` env vars
+# without a code change.
+#
 # An earlier attempt to ALSO append entities to the engine's
 # entity list in `_deterministic_parse` produced a SCENARIO-side
 # regression and was removed — see the comment in
 # `graph_rag._deterministic_parse` for the design rationale.
-_BOOST_ROLE = 1.5
-_BOOST_CONCEPT = 1.3
+ROLE_BOOST_FACTOR = 3.0
+CONCEPT_BOOST_FACTOR = 2.0
+
+# Back-compat aliases — older code reads the underscore-prefixed names.
+_BOOST_ROLE = ROLE_BOOST_FACTOR
+_BOOST_CONCEPT = CONCEPT_BOOST_FACTOR
+
+
+def _resolve_boost(env_var: str, code_default: float) -> float:
+    """Resolve a boost factor from env override, with safety clamps.
+
+    Reads ``env_var`` first; on a parse failure or out-of-bound value
+    (< 1.0 or > 10.0), falls back to ``code_default``. Pure stdlib —
+    no logging dep at module top level.
+    """
+    raw = os.getenv(env_var, "").strip()
+    if not raw:
+        return code_default
+    try:
+        v = float(raw)
+    except ValueError:
+        return code_default
+    if v < 1.0 or v > 10.0:
+        return code_default
+    return v
 
 
 # Role entities — 8 single-token + multi-token forms.
@@ -465,14 +506,101 @@ def extract_entities(question: str | None) -> dict[str, list[tuple[str, int]]]:
 def boost_factor(entity_type: str) -> float:
     """Return the multiplicative BM25 boost for an entity type.
 
-    ``"role"`` → 1.5; ``"concept"`` → 1.3; anything else → 1.0
-    (no boost; defensive default).
+    ``"role"`` → 3.0 (R81-N.1 default); ``"concept"`` → 2.0
+    (R81-N.1 default); anything else → 1.0 (no boost).
+
+    Operators can revert to the R81-N values (1.5 / 1.3) per-deploy via:
+
+    .. code-block:: bash
+
+        railway variables --set REGENOLD_ENTITY_BOOST_FACTOR_ROLE=1.5
+        railway variables --set REGENOLD_ENTITY_BOOST_FACTOR_CONCEPT=1.3
+
+    Out-of-bound or non-numeric env values are ignored — code defaults
+    win. The fully disable knob is ``REGENOLD_ENTITY_BOOST=0`` (the
+    boost is multiplicative, so ``=1.0`` would NOT disable it).
     """
     if entity_type == "role":
-        return _BOOST_ROLE
+        return _resolve_boost("REGENOLD_ENTITY_BOOST_FACTOR_ROLE", ROLE_BOOST_FACTOR)
     if entity_type == "concept":
-        return _BOOST_CONCEPT
+        return _resolve_boost("REGENOLD_ENTITY_BOOST_FACTOR_CONCEPT", CONCEPT_BOOST_FACTOR)
     return 1.0
+
+
+# R81-N.1 — QA-shape gate constants. Used by
+# :func:`kb_search.top_articles_by_relevance` to decide whether a
+# single-role question warrants INJECTING the role's Article as a
+# synthetic BM25 candidate (in case BM25 didn't surface it at all).
+# The gate is conservative: ALL three conditions must hold.
+
+# Wh-words that mark a definitional / informational QA shape.
+_QA_WH_WORDS: tuple[str, ...] = (
+    "what",
+    "how",
+    "when",
+    "who",
+    "whom",
+    "whose",
+    "why",
+    "which",
+    "where",
+)
+
+# Scenario-shape openers — these phrases mean the user is describing
+# their own situation ("We are a provider that..."), not asking a
+# definitional question. Role-Article injection on these would dilute
+# the gold-matching anchors (the R81-N first-cut scenario regression).
+_QA_SCENARIO_OPENERS: tuple[str, ...] = (
+    "we are a ",
+    "we are an ",
+    "our company ",
+    "i am a ",
+    "i am an ",
+    "i'm a ",
+    "i'm an ",
+    "we're a ",
+    "we're an ",
+)
+
+
+def is_qa_shape_with_single_role(
+    question: str | None,
+    entities: dict[str, list[tuple[str, int]]] | None = None,
+) -> bool:
+    """Return True iff the question is a definitional QA shape with
+    EXACTLY one role entity fired.
+
+    Three conditions (all required):
+
+    1. Shape: starts with a Wh-word OR ends with ``"?"``.
+    2. NOT a scenario opener (``"We are a"`` / ``"Our company"`` / ...).
+    3. ``entities["role"]`` has exactly ONE entry.
+
+    Fail-soft: on any exception or empty input returns ``False``.
+    """
+    if not question:
+        return False
+    try:
+        if entities is None:
+            entities = extract_entities(question)
+        roles = entities.get("role") or []
+        # Condition 3 — exactly one role.
+        if len(roles) != 1:
+            return False
+        q_lower = question.lower().lstrip()
+        # Condition 2 — no scenario shape.
+        for opener in _QA_SCENARIO_OPENERS:
+            if q_lower.startswith(opener):
+                return False
+        # Condition 1 — Wh-word start OR "?" terminator.
+        if question.rstrip().endswith("?"):
+            return True
+        first_word = q_lower.split()[0] if q_lower.split() else ""
+        if first_word in _QA_WH_WORDS:
+            return True
+        return False
+    except Exception:  # noqa: BLE001 — fail-soft, never raise
+        return False
 
 
 def boosted_articles(question: str | None) -> dict[str, float]:

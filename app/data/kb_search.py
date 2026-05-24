@@ -568,13 +568,27 @@ def top_articles_by_relevance(
     # irrelevant Article — only tip a close-score tie). Env-gated
     # ``REGENOLD_ENTITY_BOOST`` (default ON).
     #
+    # R81-N.1 — stronger boost factors (1.5→3.0 role, 1.3→2.0 concept)
+    # + a QA-shape role-Article INJECTION path (below). The R81-N
+    # live measurement showed the 1.5× boost was too weak to flip
+    # close-score live failures.
+    #
     # Lazy import — keeps the kb_search module-level import surface
     # minimal and avoids a build-time circular dependency risk.
     try:
-        from app.engines.entity_extractor import boosted_articles  # noqa: PLC0415
+        from app.engines.entity_extractor import (  # noqa: PLC0415
+            boosted_articles,
+            extract_entities,
+            is_enabled as _entity_enabled,
+            is_qa_shape_with_single_role,
+        )
         entity_boosts = boosted_articles(question)
+        # Cache the extracted entities for the injection step below —
+        # avoids a second extraction pass.
+        _ents_for_injection = extract_entities(question) if _entity_enabled() else None
     except Exception:  # noqa: BLE001 — never fail BM25 on the boost
         entity_boosts = {}
+        _ents_for_injection = None
 
     best: dict[str, float] = {}
     for doc_idx, article_ref, raw in raw_scores:
@@ -597,6 +611,51 @@ def top_articles_by_relevance(
         prev = best.get(article_ref)
         if prev is None or s > prev:
             best[article_ref] = s
+
+    # R81-N.1 — QA-shape role-Article INJECTION (conservative gate).
+    # When the question is a definitional QA shape (Wh-start or ?-end,
+    # NOT a scenario opener) AND exactly ONE role entity fired AND that
+    # role's Article isn't already in ``best``, inject it as a synthetic
+    # mid-pack candidate. The 3.0× role boost (R81-N.1) then lifts it
+    # to top-tier ranking — without this injection the role's Article
+    # is invisible when BM25 returns it with score 0.
+    #
+    # Safety invariants (per the R81-N.1 brief):
+    # 1. NO scenario regression: the QA-shape gate explicitly rejects
+    #    scenario openers ("We are a..." / "Our company...").
+    # 2. NO OOS leak: the injection requires an entity match in the
+    #    first place; OOS questions don't fire entities.
+    # 3. NO duplicate: skip if the role's Article is already in best.
+    # 4. Boost still multiplicative: the injected score (max(best) × 0.5
+    #    × source_weight × confidence_boost × role_boost) competes with
+    #    natural BM25 winners; a high-BM25-score winner still wins.
+    if _ents_for_injection and best and is_qa_shape_with_single_role(
+        question, _ents_for_injection,
+    ):
+        try:
+            from app.engines.entity_extractor import (  # noqa: PLC0415
+                boost_factor as _bf,
+            )
+            single_role = _ents_for_injection["role"][0]  # (eid, art_num)
+            role_art_ref = f"Art. {single_role[1]}"
+            if role_art_ref not in best:
+                # Synthetic candidate: half of the current max BM25 score
+                # × the role boost. With role boost = 3.0, the injected
+                # ranking becomes 1.5× the max — top territory but not
+                # auto-winning. The source weight + confidence boost
+                # apply for parity with the natural-candidate scoring
+                # path. Use the KB source weight (1.0) as a defensive
+                # default — the role's Article may be in the corpus but
+                # not in ``best`` if BM25 returned score 0.
+                max_score = max(best.values())
+                synthetic_base = max_score * 0.5
+                # Apply same multipliers as a real candidate. The role
+                # boost is the dominant lift signal.
+                cb = _confidence_boost(role_art_ref)
+                rb = _bf("role")
+                best[role_art_ref] = synthetic_base * cb * rb
+        except Exception:  # noqa: BLE001 — never fail BM25 on injection
+            pass
 
     scored = sorted(best.items(), key=lambda t: t[1], reverse=True)
     bm25_top = [ref for ref, _ in scored[:k]]
