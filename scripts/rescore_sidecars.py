@@ -37,9 +37,21 @@ _RESULTS_DIR = Path(__file__).parent.parent / "evals" / "bench" / "results"
 
 
 def iter_sidecars(directory: Path, pattern: str = "*.json") -> Iterable[Path]:
-    """Yield every sidecar (not already-rescored, not malformed)."""
+    """Yield every sidecar that is a SCORABLE eval output.
+
+    Skips:
+      * ``*.rescored.json`` siblings produced by this script.
+      * ``judge-*.json`` LLM-as-judge OUTPUT sidecars — these are
+        verdict files, not rows with gold + pred to re-score.
+      * ``probe-oos-*.json`` OOS-probe sidecars — these score
+        refusal-correctness, not answer-correctness.
+    """
     for p in sorted(directory.glob(pattern)):
         if p.name.endswith(".rescored.json"):
+            continue
+        if p.name.startswith("judge-"):
+            continue
+        if p.name.startswith("probe-oos-"):
             continue
         yield p
 
@@ -55,16 +67,38 @@ def _row_inputs(row: dict[str, Any]) -> dict[str, Any]:
     """Extract the canonical scoring inputs from one of several row shapes.
 
     Different sidecar generations carry the same data under slightly
-    different keys (``predicted_answer`` vs ``answer``, ``gold_articles``
-    vs ``relevant_article``, etc.). This helper centralises the lookup.
+    different keys:
+      * rep-100   → ``predicted_answer`` / ``pred_refs`` / ``gold_answer``
+      * davidath  → ``pred_answer`` / ``pred_refs`` / ``gold_answer``
+      * V2        → ``predicted_answer`` / ``pred_refs`` (no gold_answer)
+      * multi-turn (davidath) → ``answer2`` / ``refs2`` (final-turn fields)
+    Latency field also varies: ``latency_ms`` / ``latency_q1_ms``.
     """
+    pred_answer = (
+        row.get("predicted_answer")
+        or row.get("pred_answer")          # davidath bench rows
+        or row.get("answer2")              # davidath multiturn final-turn
+        or row.get("answer")
+        or ""
+    )
+    pred_refs = (
+        row.get("pred_refs")
+        or row.get("refs2")                # davidath multiturn final-turn
+        or row.get("references")
+        or []
+    )
+    latency = (
+        row.get("latency_ms")
+        or row.get("latency_q1_ms")        # davidath multiturn
+        or 0.0
+    )
     return {
-        "pred_answer": row.get("predicted_answer") or row.get("answer") or "",
-        "pred_refs": list(row.get("pred_refs") or row.get("references") or []),
+        "pred_answer": pred_answer,
+        "pred_refs": list(pred_refs),
         "gold_answer": row.get("gold_answer") or row.get("answer_gold") or "",
         "gold_articles": row.get("gold_articles") or row.get("relevant_article"),
-        "latency_ms": float(row.get("latency_ms") or 0.0),
-        "expected_keywords": row.get("expected_keywords"),  # may be None
+        "latency_ms": float(latency),
+        "expected_keywords": row.get("expected_keywords"),
     }
 
 
@@ -79,6 +113,39 @@ def rescore_row(row: dict[str, Any]) -> dict[str, float | None]:
     return score.to_dict()
 
 
+def _collect_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract row list from any known sidecar shape.
+
+    Most sidecars use ``payload["rows"]``. V2 sidecars
+    (``v2-*.json``) split rows into ``tricky`` + ``multiturn`` buckets.
+    Davidath bench sidecars split into ``qa`` + ``scenarios`` +
+    ``multiturn`` — each carries scored rows we can re-derive inputs
+    from. Return a flat list across whichever shape is present.
+
+    Rows from buckets get a synthetic ``_bucket`` key so the rescored
+    output can still reconstruct where each row came from if needed.
+    """
+    if payload.get("rows"):
+        return list(payload["rows"])
+    flat: list[dict[str, Any]] = []
+    for bucket in ("tricky", "multiturn", "qa", "scenarios"):
+        block = payload.get(bucket)
+        if isinstance(block, list):
+            for row in block:
+                if isinstance(row, dict):
+                    new_row = dict(row)
+                    new_row["_bucket"] = bucket
+                    flat.append(new_row)
+        elif isinstance(block, dict) and isinstance(block.get("rows"), list):
+            # e.g. davidath bench shape: qa: {n: X, rows: [...]}
+            for row in block["rows"]:
+                if isinstance(row, dict):
+                    new_row = dict(row)
+                    new_row["_bucket"] = bucket
+                    flat.append(new_row)
+    return flat
+
+
 def rescore_sidecar(path: Path, *, force: bool = False) -> Path:
     """Rescore one sidecar; write its sibling ``.rescored.json``.
 
@@ -88,7 +155,7 @@ def rescore_sidecar(path: Path, *, force: bool = False) -> Path:
     payload = _read_payload(path)
     if payload is None:
         raise RuntimeError(f"Could not load sidecar {path}")
-    rows = payload.get("rows") or []
+    rows = _collect_rows(payload)
     sibling = path.with_suffix(".rescored.json")
     if sibling.exists() and not force:
         existing = _read_payload(sibling)
