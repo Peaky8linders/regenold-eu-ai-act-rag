@@ -29,11 +29,14 @@ import re
 from dataclasses import dataclass
 from typing import Iterable
 
+from evals.bench.text_normalise import normalise_for_scoring, stem_token
+
 
 # ── Tokenisation ─────────────────────────────────────────────────────────
 
 
-_STOPWORDS = frozenset(
+# Pre-R82 stopword set — kept for `_tokens_legacy` only.
+_STOPWORDS_LEGACY = frozenset(
     {
         "a", "an", "the", "and", "or", "but", "if", "of", "to", "in",
         "on", "for", "with", "as", "by", "is", "are", "was", "were", "be",
@@ -46,15 +49,56 @@ _STOPWORDS = frozenset(
     }
 )
 
-_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9'\-]+")
+# R82-A: drop regulatory modal verbs from stopwords. The whole
+# regulation is "must / shall / should" — discarding them under-counts
+# rubric-relevant tokens.
+_STOPWORDS_V2 = _STOPWORDS_LEGACY - {
+    "must", "shall", "should", "would", "may", "can",
+}
+
+# Pre-R82 token regex — must start with letter, accepts ASCII '-' only.
+_TOKEN_RE_LEGACY = re.compile(r"[A-Za-z][A-Za-z0-9'\-]+")
+
+# R82-A: accept digit-led tokens so '15' / '10' / '2024' survive when
+# they carry meaning (penalty amounts, FLOPs scales, year markers).
+_TOKEN_RE_V2 = re.compile(r"[A-Za-z0-9][A-Za-z0-9'\-]+")
+
+
+# Back-compat aliases — older code paths may have imported these names.
+_STOPWORDS = _STOPWORDS_LEGACY
+_TOKEN_RE = _TOKEN_RE_LEGACY
+
+
+def _tokens_legacy(text: str) -> set[str]:
+    """Pre-R82 tokenizer — reproduces shipped behaviour byte-identically.
+
+    Preserved so ``*_legacy`` axes in the rescored history remain
+    reproducible across the R23-R81 round trajectory. Do NOT modify.
+    """
+    if not text:
+        return set()
+    raw = _TOKEN_RE_LEGACY.findall(text.lower())
+    return {t for t in raw if len(t) >= 3 and t not in _STOPWORDS_LEGACY}
 
 
 def _tokens(text: str) -> set[str]:
-    """Lowercase, dedup, drop stopwords + sub-3-char fragments."""
+    """R82-A corrected tokenizer — SQuAD-F1 / ROUGE precedent.
+
+    Pipeline:
+      1. ``normalise_for_scoring`` (NFKC + dash fold + Art. → Article +
+         diacritic strip + lowercase).
+      2. Token regex ``[A-Za-z0-9][A-Za-z0-9'\\-]+`` (digit-led OK).
+      3. Filter: ``len >= 2`` AND not in ``_STOPWORDS_V2``.
+      4. Greedy stem each survivor.
+
+    Returns a set (deduped). See :mod:`evals.bench.text_normalise` for
+    per-rule rationale grounded in measured davidath biases.
+    """
     if not text:
         return set()
-    raw = _TOKEN_RE.findall(text.lower())
-    return {t for t in raw if len(t) >= 3 and t not in _STOPWORDS}
+    norm = normalise_for_scoring(text)
+    raw = _TOKEN_RE_V2.findall(norm)
+    return {stem_token(t) for t in raw if len(t) >= 2 and t not in _STOPWORDS_V2}
 
 
 # ── Citation helpers ─────────────────────────────────────────────────────
