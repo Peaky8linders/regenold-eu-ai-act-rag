@@ -251,6 +251,34 @@ _BROAD_KEYWORD_CHAPTER_MAP: tuple[tuple[str, str], ...] = (
 )
 
 
+# ── Hyphen normalisation ─────────────────────────────────────────────────
+#
+# The davidath benchmark ships 90 U+2011 non-breaking hyphens, and AI Act
+# terms appear both hyphenated ("deep-fake", "market-surveillance",
+# "conformity-assessment") and spaced ("deep fake", "market surveillance")
+# across the corpus. The chapter router's content markers are authored in
+# one form only, so a hyphen/space mismatch silently drops the route and
+# the query falls back to the coarse intent label. Folding every
+# hyphen-family char to a space on BOTH the question and the marker lets a
+# single marker form match every spelling.
+#
+# Salvaged from #101 commit 37670c2 / ac8bef2 — the rest of #101 (the
+# LLM entity extractor) was superseded by R79 hyphen-normalise +
+# R81-N typed-entity NER + R87-D role-duty seed + R88-A/B/D direct
+# seeds. R79's fix lives in _deterministic_parse / text_normalize.py
+# but doesn't reach this module's _BROAD_KEYWORD_CHAPTER_MAP scan,
+# so the documented chapter-router U+2011 davidath mis-routes
+# (qa_030 / qa_042 / qa_064 / qa_068 / qa_080) persisted in main.
+_HYPHEN_TABLE = {
+    ord(c): " " for c in "-‐‑‒–—−"
+}
+
+
+def _fold_hyphens(text: str) -> str:
+    """Lowercase, fold every hyphen-family char to a space, collapse runs."""
+    return " ".join(text.lower().translate(_HYPHEN_TABLE).split())
+
+
 # ── Public API ───────────────────────────────────────────────────────────
 
 
@@ -283,9 +311,9 @@ def chapter_for_query(
     miss.
     """
     if question:
-        low = question.lower()
+        low = _fold_hyphens(question)
         for keyword, chapter in _BROAD_KEYWORD_CHAPTER_MAP:
-            if keyword in low:
+            if _fold_hyphens(keyword) in low:
                 return chapter
     if intent_label and intent_label in _INTENT_CHAPTER_MAP:
         return _INTENT_CHAPTER_MAP[intent_label]
@@ -324,94 +352,108 @@ def candidate_chapters_for_query(
     4. Scope guard — returns ``[]`` when ≥ 4 chapters identified.
     """
     chapters: set[str] = set()
-    low = question.lower() if question else ""
+    low = _fold_hyphens(question) if question else ""
+
+    def _hit(markers: tuple[str, ...]) -> bool:
+        """True when any marker — hyphen-folded — is a substring of ``low``."""
+        return any(_fold_hyphens(m) in low for m in markers)
 
     # 1. High-precision broad-keyword scan (first hit wins, then continue
     #    marker scan for multi-chapter queries like "prohibited high-risk AI")
     if low:
         for keyword, chapter in _BROAD_KEYWORD_CHAPTER_MAP:
-            if keyword in low:
+            if _fold_hyphens(keyword) in low:
                 chapters.add(chapter)
                 break  # one high-precision anchor is enough
 
     # 2. Risk/domain marker scan (additive — multiple can fire)
     if low:
-        if any(m in low for m in (
+        if _hit((
             "prohibited", "banned", "forbidden", "subliminal", "manipulat",
             "social scoring", "biometric identification", "biometric id",
             "real-time remote biometric",
         )):
             chapters.add("II")
 
-        if any(m in low for m in (
+        if _hit((
             "high-risk", "high risk", "annex iii", "annex 3",
             "safety component", "hrais", "risk management",
             "technical documentation", "post-market monitoring plan",
             "conformity assessment", "ce marking", "ce mark",
             "fundamental rights impact", "fria",
+            # Notified-body certificate lifecycle (Art. 44 — validity,
+            # suspension, withdrawal) sits in Ch III; without these a
+            # "suspend / withdraw a certificate" question routes on
+            # "market surveillance" alone to Ch IX and loses Art. 44.
+            # Multi-word forms only — per the broad-marker precision
+            # rule (bare ``certificate`` is too broad in EU policy
+            # English).
+            "withdraw a certificate", "suspend a certificate",
+            "withdrawal of a certificate", "suspension of a certificate",
+            "notified body certificate",
         )):
             chapters.add("III")
 
-        if any(m in low for m in (
+        if _hit((
             "general-purpose ai", "general purpose ai", "gpai",
             "foundation model", "systemic risk model",
             "training data summary", "copyright", "code of practice",
         )):
             chapters.add("V")
 
-        if any(m in low for m in (
+        if _hit((
             "transparency obligation", "deepfake", "deep fake",
             "synthetic media", "emotion recognition",
             "biometric categorisation", "chatbot disclosure",
         )):
             chapters.add("IV")
 
-        if any(m in low for m in (
+        if _hit((
             "administrative fine", "maximum fine", "sanction",
             "penalty", "penalties", "fined",
         )):
             chapters.add("XII")
 
-        if any(m in low for m in (
+        if _hit((
             "post-market monitoring", "post market monitoring",
             "serious incident", "market surveillance",
             "market withdrawal", "enforcement action",
         )):
             chapters.add("IX")
 
-        if any(m in low for m in (
+        if _hit((
             "regulatory sandbox", "real-world testing",
             "sme", "small medium enterprise", "start-up", "startup",
             "innovation measure",
         )):
             chapters.add("VI")
 
-        if any(m in low for m in (
+        if _hit((
             "ai office", "ai board", "european artificial intelligence board",
             "national competent authority", "notifying authority",
             "governance",
         )):
             chapters.add("VII")
 
-        if any(m in low for m in (
+        if _hit((
             "eu database", "eudb", "register high-risk", "registration",
         )):
             chapters.add("VIII")
 
-        if any(m in low for m in (
+        if _hit((
             "entry into force", "entry-into-force", "applicability date",
             "transitional", "digital omnibus", "phased timeline",
             "staged applicability",
         )):
             chapters.add("XIII")
 
-        if any(m in low for m in (
+        if _hit((
             "delegated act", "comitology", "implementing act",
             "committee procedure",
         )):
             chapters.add("XI")
 
-        if any(m in low for m in (
+        if _hit((
             "code of conduct", "voluntary application",
             "commission guidelines",
         )):
@@ -419,7 +461,7 @@ def candidate_chapters_for_query(
 
         # Definitions / scope / general questions — Chapter I +
         # Chapter III (Art. 3 carries key HR-AI definitions)
-        if any(m in low for m in (
+        if _hit((
             "definition of ai", "definition of an ai",
             "what is an ai system", "what counts as",
             "scope of the", "subject matter",
