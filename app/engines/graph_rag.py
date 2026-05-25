@@ -493,6 +493,7 @@ class GraphContext:
     # disclaimer if it wants. Distinct from "no results found" (which
     # is a healthy zero-hit response).
     degraded: bool = False
+    xrefs: list[str] = field(default_factory=list)
 
 
 # ─── LLM Integration ────────────────────────────────────────────────────────
@@ -3195,6 +3196,19 @@ def _extract_context_grounded_refs(context: "GraphContext") -> set[str]:
                     grounded.add(f"Annex {m_annex.group(1).upper()}")
                     continue
                 grounded.add(ref)
+                
+        # R69 cross-references: include injected cross-reference articles as grounded
+        for xref_str in getattr(context, "xrefs", []) or []:
+            parts = xref_str.split(":", 1)
+            if parts:
+                label = parts[0].strip()
+                m_art = re.match(r"^Art(?:icle)?\.?\s+(\d{1,3})\b", label, re.IGNORECASE)
+                if m_art:
+                    grounded.add(f"Art. {int(m_art.group(1))}")
+                else:
+                    m_annex = re.match(r"^Annex\s+([IVXLCDM]+)\b", label, re.IGNORECASE)
+                    if m_annex:
+                        grounded.add(f"Annex {m_annex.group(1).upper()}")
     except Exception:  # noqa: BLE001 — guard must never raise on malformed context
         return set()
     return grounded
@@ -3330,6 +3344,7 @@ def _claude_max_enhance_answer(
                     _context_article_refs(context)
                 )
                 if _xrefs:
+                    context.xrefs = _xrefs
                     user_message += (
                         "CROSS-REFERENCED PROVISIONS (background only — "
                         "cite only if directly relevant to the question):\n"

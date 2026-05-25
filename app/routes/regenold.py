@@ -235,6 +235,103 @@ _ENGINE_CACHE = _BoundedLRUCache(capacity=512)
 _MIN_CACHEABLE_CONFIDENCE = 0.3
 
 
+# ---------------------------------------------------------------------------
+# R86-D — Deployer 1-hop expansion (module-level helper for testability)
+# ---------------------------------------------------------------------------
+# Deployer-obligation queries (live rep-100 Ref Loose 0.466 vs overall
+# 0.615) often depend on provider-side context that BM25 doesn't surface
+# because the deployer Article's own prose doesn't share keywords with
+# the provider Article it relies on. The map encodes 4 hand-curated
+# deployer→provider edges from the AI Act's internal cross-reference
+# graph:
+#   Art. 26 (deployer obligations) → Art. 13 / 14 / 9
+#   Art. 27 (FRIA) → Art. 6 / Annex III
+#   Art. 50 (transparency for deployers) → Art. 52
+# Static map instead of Neo4j 1-hop because (a) davidath is
+# BM25-saturated per R31/R59/R69 — opening the whole graph adds
+# latency for no rubric lift, (b) precision-first hand-curation
+# guarantees no R47-A-style orphan-pull pathology. Strictly additive,
+# appended AFTER the BM25 winners — never displaces a winner.
+_DEPLOYER_HOP_MAP: dict[str, list[str]] = {
+    "Article 26":   ["Article 13", "Article 14", "Article 9"],
+    "Article 27":   ["Article 6", "Annex III"],
+    "Article 50":   ["Article 52"],
+    "Article 26.5": ["Article 13", "Article 14", "Article 9"],
+}
+_DEPLOYER_HOP_MAX_INJECT = 3
+
+
+def _apply_deployer_hop(
+    candidates: list[str],
+    intent_label: str,
+    question: str,
+) -> list[str]:
+    """Append deployer→provider hop targets when the query is deployer-shaped.
+
+    Returns a NEW list — never mutates ``candidates``. Triggering rules
+    (calibrated by R86 davidath A/B; the first cut also fired on the
+    literal substring ``deployer`` which over-cited 339 scenario rows
+    whose gold cites only Art. 26 — Ref Loose regressed −0.008):
+
+    1. Intent classifier label contains ``deployer``, OR
+    2. ``intent_label == "role_obligations"``, OR
+    3. The question is a DEFINITIONAL deployer-obligations question —
+       a Wh-shape ("what are the obligations of deployers", "how do
+       deployers comply") that is NOT a scenario opener
+       ("We are a deployer of …" → scenario shape, single-anchor gold).
+
+    On the davidath bench TestClient has no LLM provider, so the intent
+    classifier returns ``None`` and only rule 3 can fire — and rule 3
+    excludes the scenario shape. On the live deployment Groq/wrapper
+    feed the intent classifier with real labels and rules 1+2 carry the
+    full deployer detection.
+
+    Capped at ``_DEPLOYER_HOP_MAX_INJECT`` (3) hop targets to bound
+    over-citation. Env-gated ``REGENOLD_DEPLOYER_HOP`` — set ``=0`` to
+    disable.
+    """
+    if os.environ.get("REGENOLD_DEPLOYER_HOP", "1") == "0":
+        return list(candidates)
+
+    label_low = (intent_label or "").lower()
+    is_deployer_intent = ("deployer" in label_low) or label_low == "role_obligations"
+
+    # Rule 3 — definitional Wh-shape, NOT a scenario opener. Scenarios
+    # like "We are a deployer of a high-risk CV-screening AI." have
+    # single-anchor gold (typically Art. 26 alone); injecting Art. 9/
+    # 13/14 pollutes precision. Definitional questions like "What are
+    # the obligations of deployers?" benefit from the hop because gold
+    # legitimately spans the provider-side dependencies.
+    is_definitional_deployer = False
+    q_low = (question or "").lower().lstrip()
+    if "deployer" in q_low:
+        scenario_starts = (
+            "we are", "we're", "our company", "our firm", "our organisation",
+            "our organization", "i am a", "i'm a", "as a deployer",
+        )
+        if not q_low.startswith(scenario_starts):
+            # Wh-shape OR ends with '?' (definitional pattern)
+            wh_starts = ("what", "how", "when", "who", "why", "which", "where")
+            if q_low.startswith(wh_starts) or q_low.rstrip().endswith("?"):
+                is_definitional_deployer = True
+
+    if not (is_deployer_intent or is_definitional_deployer):
+        return list(candidates)
+
+    injected: list[str] = []
+    seen = set(candidates)
+    for cand in candidates:
+        for hop_target in _DEPLOYER_HOP_MAP.get(cand, []):
+            if hop_target in seen or hop_target in injected:
+                continue
+            injected.append(hop_target)
+            if len(injected) >= _DEPLOYER_HOP_MAX_INJECT:
+                break
+        if len(injected) >= _DEPLOYER_HOP_MAX_INJECT:
+            break
+    return list(candidates) + injected
+
+
 def _engine_cache_key(question: str, system_context: str | None) -> str:
     """Sha256-hash of the engine input fingerprint.
 
@@ -308,6 +405,16 @@ def _engine_cache_key(question: str, system_context: str | None) -> str:
             "REGENOLD_ENTITY_BOOST",
             "REGENOLD_ENTITY_BOOST_FACTOR_ROLE",
             "REGENOLD_ENTITY_BOOST_FACTOR_CONCEPT",
+            "REGENOLD_SCORE_FUSION",
+            "REGENOLD_SCORE_FUSION_ALPHA",
+            "REGENOLD_TURBOQUANT_OUTLIER_CHANNELS",
+            "REGENOLD_TURBOQUANT_OUTLIER_BIT_WIDTH",
+            "REGENOLD_EXTERNAL_EMBEDDING_MODEL",
+            # R86 — Phase 2 benchmark optimisation env gates
+            "REGENOLD_QUERY_DENOISER",
+            "REGENOLD_DENOISER_MODEL",
+            "REGENOLD_DENOISER_MODEL_GROQ",
+            "REGENOLD_DEPLOYER_HOP",
         )
     )
     blob = (
@@ -1543,7 +1650,149 @@ def _extract_conversation_anchors(turns: list[Any]) -> str:
     return "[Context anchors — " + "; ".join(parts) + "]"
 
 
+# ---------------------------------------------------------------------------
+# Query De-Noiser — LLM-powered multi-turn query rewriter (R86)
+# ---------------------------------------------------------------------------
+# The ``representative-100`` benchmark exposed a critical bottleneck:
+# multi_turn ``ref_loose`` collapsed to 39.5% (vs 78.5% for single-turn)
+# because ``_build_question_from_history`` indiscriminately prepends
+# verbose assistant answers into the search query.  BM25 and the Dense
+# index are highly sensitive to term frequency — flooding the query with
+# the assistant's prior lengthy regulatory prose massively dilutes the
+# signal-to-noise ratio.
+#
+# Fix: inject an ultra-fast LLM call that rewrites the user's follow-up
+# into a **standalone, context-independent search query** before it
+# reaches the retrieval layer.  Only the essential keywords survive.
+#
+# Fail-safe: any LLM failure returns ``None`` → the caller falls back
+# to the existing concatenation approach.  Zero-risk on the happy path.
+
+_QUERY_DENOISER_ENV = "REGENOLD_QUERY_DENOISER"
+
+
+def _is_query_denoiser_enabled() -> bool:
+    """Default ON — set ``REGENOLD_QUERY_DENOISER=0`` to disable."""
+    return os.environ.get(_QUERY_DENOISER_ENV, "1") != "0"
+
+
+_QUERY_DENOISER_SYSTEM = (
+    "You rewrite multi-turn follow-up questions into standalone search queries "
+    "for an EU AI Act regulatory knowledge base.\n\n"
+    "RULES:\n"
+    "1. Output ONLY the rewritten query — no explanation, no preamble.\n"
+    "2. Preserve all article references (Art. 13, Annex IV, etc.).\n"
+    "3. Preserve role words (provider, deployer, operator).\n"
+    "4. Preserve risk-tier terms (high-risk, prohibited, limited risk).\n"
+    "5. Strip conversational filler and assistant verbosity.\n"
+    "6. The rewritten query must be self-contained — a reader with no "
+    "conversation context must understand what is being asked.\n"
+    "7. Maximum 200 characters."
+)
+
+
+def _rewrite_multiturn_query(
+    live_question: str,
+    history_turns: list,
+) -> str | None:
+    """Rewrite a multi-turn follow-up into a standalone search query.
+
+    Uses the Groq singleton (Llama 3.3 70B, ~200ms) when available,
+    else falls back to the default OpenAI wrapper (Haiku, ~500ms).
+    Timeout: 2.0s.  Any failure → ``None`` (caller keeps concatenation).
+    """
+    if not _is_query_denoiser_enabled():
+        return None
+    if not history_turns:
+        return None  # single-turn — nothing to rewrite
+
+    # Build a compact context block from the last 4 turns max
+    context_turns = history_turns[-4:]
+    context_block = "\n".join(
+        f"{getattr(m, 'role', 'user').capitalize()}: "
+        f"{getattr(m, 'content', str(m)).strip()[:300]}"
+        for m in context_turns
+    )
+    user_prompt = (
+        f"Conversation context:\n{context_block}\n\n"
+        f"Follow-up question: {live_question}\n\n"
+        "Rewritten standalone query:"
+    )
+
+    try:
+        from app.llm.openai_wrapper_provider import (  # noqa: PLC0415
+            OpenAIWrapperRequest,
+            get_groq_intent_provider,
+            get_openai_wrapper_provider,
+            is_groq_intent_provider_enabled,
+            is_openai_wrapper_enabled,
+        )
+    except ImportError:
+        logger.debug("query_denoiser: wrapper import failed")
+        return None
+
+    # Provider preference: Groq Llama 3.3 70B (sub-300 ms typical) when
+    # the operator wired the GROQ_API_KEY + REGENOLD_INTENT_PROVIDER=groq
+    # combo per R52; else the OpenAI-wrapper singleton (Haiku-fast).
+    # If neither is configured we bail — the caller falls back to the
+    # existing concatenation path.
+    provider = None
+    model = ""
+    try:
+        if is_groq_intent_provider_enabled():
+            provider = get_groq_intent_provider()
+            # Groq's Llama 3.3 70B Versatile is the same Stage-0 model
+            # R52 uses; matches the de-noiser's "fast rewrite" budget.
+            model = os.environ.get(
+                "REGENOLD_DENOISER_MODEL_GROQ",
+                "llama-3.3-70b-versatile",
+            )
+        elif is_openai_wrapper_enabled():
+            provider = get_openai_wrapper_provider()
+            # Haiku — much faster than Sonnet for a 100-token rewrite.
+            model = os.environ.get(
+                "REGENOLD_DENOISER_MODEL",
+                "claude-haiku-4-5-20251001",
+            )
+    except Exception:  # noqa: BLE001 — singleton init must not crash route
+        logger.debug("query_denoiser: provider acquisition failed", exc_info=True)
+        return None
+
+    if provider is None:
+        return None
+
+    try:
+        req = OpenAIWrapperRequest(
+            system=_QUERY_DENOISER_SYSTEM,
+            user=user_prompt[:1500],  # cap input size
+            model=model,
+            max_tokens=100,
+            temperature=0.0,
+            # 1.0 s fail-fast: the multi-turn p50 is 28.6 s so a 200 ms
+            # Groq RTT is rounding error, but a hung wrapper call must
+            # not add a multi-second tail to the critical path.
+            timeout_seconds=1.0,
+        )
+        resp = provider.complete(req)
+        if resp.error or not resp.text.strip():
+            logger.debug("query_denoiser: LLM returned error=%s", resp.error)
+            return None
+        rewritten = resp.text.strip().strip('"').strip("'")
+        # Sanity: if the rewrite is too short or suspiciously long, bail
+        if len(rewritten) < 10 or len(rewritten) > 500:
+            logger.debug(
+                "query_denoiser: rewrite length %d out of bounds",
+                len(rewritten),
+            )
+            return None
+        return rewritten
+    except Exception:  # noqa: BLE001
+        logger.debug("query_denoiser: LLM call failed", exc_info=True)
+        return None
+
+
 def _build_question_from_history(messages: list[Any]) -> tuple[str, str | None]:
+
     """Build (question, system_context) from the full conversation history.
 
     Spec input is an OpenAI-style multi-turn conversation. A naive
@@ -1605,18 +1854,30 @@ def _build_question_from_history(messages: list[Any]) -> tuple[str, str | None]:
     anchor_line = _extract_conversation_anchors(all_prior_turns) if all_prior_turns else ""
 
     if history_turns:
-        history_block = "\n".join(
-            f"{m.role.capitalize()}: {m.content.strip()}" for m in history_turns
-        )
-        anchor_prefix = (anchor_line + "\n\n") if anchor_line else ""
-        question = (
-            f"{anchor_prefix}"
-            "Conversation so far:\n"
-            f"{history_block}\n"
-            "\n"
-            "Latest question:\n"
-            f"{live_question}"
-        )
+        # R86 — Query De-Noiser: attempt an LLM rewrite of the follow-up
+        # into a standalone search query BEFORE flooding the retrieval
+        # indexes with verbose assistant history.  On success the clean
+        # rewrite replaces the concatenated history; on failure we fall
+        # through to the existing concatenation path — zero-risk.
+        denoised = _rewrite_multiturn_query(live_question, history_turns)
+        if denoised is not None:
+            anchor_prefix = (anchor_line + "\n") if anchor_line else ""
+            question = f"{anchor_prefix}{denoised}"
+        else:
+            # Fallback: existing concatenation path
+            history_block = "\n".join(
+                f"{m.role.capitalize()}: {m.content.strip()}"
+                for m in history_turns
+            )
+            anchor_prefix = (anchor_line + "\n\n") if anchor_line else ""
+            question = (
+                f"{anchor_prefix}"
+                "Conversation so far:\n"
+                f"{history_block}\n"
+                "\n"
+                "Latest question:\n"
+                f"{live_question}"
+            )
     else:
         question = live_question
 
@@ -2081,6 +2342,19 @@ def regenold_eu_ai_act_ask(
     try:
         candidates = boost_for_intent(candidates, _boost_intent_res)
     except Exception:  # noqa: BLE001 — defensive
+        pass
+
+    # R86-D — Deployer 1-hop expansion. See ``_apply_deployer_hop``
+    # docstring for the rationale + edge curation.
+    try:
+        _intent_label_for_hop = (
+            getattr(_boost_intent_res, "intent", "") or ""
+            if _boost_intent_res is not None else ""
+        )
+        candidates = _apply_deployer_hop(
+            candidates, _intent_label_for_hop, question
+        )
+    except Exception:  # noqa: BLE001 — fail-soft, must not 500 the route
         pass
 
     # Surface conversation anchors (e.g. ``Art. 5`` / ``Annex IV``

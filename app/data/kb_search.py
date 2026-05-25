@@ -412,6 +412,18 @@ def _score(index: _BM25Index, doc_idx: int, query_tokens: list[str]) -> float:
     return score
 
 
+def _score_fusion_enabled() -> bool:
+    """True if score-based hybrid fusion is explicitly enabled.
+
+    REGENOLD_SCORE_FUSION=1 normalises BM25 raw scores and blends them with
+    dense cosine similarities. This prevents rank inversions by preserving
+    the exact score magnitudes of matches.
+    """
+    return os.getenv("REGENOLD_SCORE_FUSION", "0").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
 def _rrf_fusion_enabled() -> bool:
     """R69 — ``REGENOLD_RRF_FUSION`` env gate.
 
@@ -436,18 +448,43 @@ def _fuse_dense(
     bm25_refs: list[str],
     dense_refs: list[tuple[str, float]],
     k: int,
+    bm25_scores: dict[str, float] | None = None,
 ) -> list[str]:
     """R69 — dispatch the dense-route fusion strategy.
 
-    When ``REGENOLD_RRF_FUSION`` is ON: weighted RRF (``bm25_weight=2.0,
-    dense_weight=1.0`` — BM25 stays the ground-truth ranking, dense
-    only reshapes close-score ties; ``rrf_k=60`` per Cormack 2009).
-    When OFF (default): the Round-31 additive fill — purely recall-
-    positive, never displaces a BM25 winner.
+    Strategies:
+    1. Score Fusion: When REGENOLD_SCORE_FUSION is enabled, normalise and blend
+       raw BM25 scores and dense cosine similarities.
+    2. RRF Fusion: When REGENOLD_RRF_FUSION is enabled, weighted rank reciprocal fusion.
+    3. Additive Fill (Default): Keep BM25 order exactly, append dense-only candidates.
     """
     from app.engines.turboquant_index import (  # noqa: PLC0415
         additive_dense_fill,
     )
+
+    if _score_fusion_enabled() and bm25_scores:
+        try:
+            alpha = float(os.getenv("REGENOLD_SCORE_FUSION_ALPHA", "0.3"))
+        except Exception:  # noqa: BLE001
+            alpha = 0.3
+
+        max_bm25 = max(bm25_scores.values()) if bm25_scores else 0.0
+
+        fused_scores: dict[str, float] = {}
+        # Incorporate BM25 candidates
+        for ref, raw_score in bm25_scores.items():
+            norm_bm25 = raw_score / max_bm25 if max_bm25 > 0.0 else 0.0
+            fused_scores[ref] = (1 - alpha) * norm_bm25
+
+        # Incorporate Dense candidates
+        for ref, cosine_sim in dense_refs:
+            norm_dense = max(0.0, cosine_sim)
+            # Combine or add to existing
+            fused_scores[ref] = fused_scores.get(ref, 0.0) + alpha * norm_dense
+
+        fused = sorted(fused_scores.items(), key=lambda t: t[1], reverse=True)
+        return [ref for ref, _ in fused[:k]]
+
     if _rrf_fusion_enabled():
         from app.engines.turboquant_index import (  # noqa: PLC0415
             reciprocal_rank_fusion,
@@ -688,7 +725,7 @@ def top_articles_by_relevance(
             if dense_hits:
                 # R69 — RRF when REGENOLD_RRF_FUSION is on, else the
                 # Round-31 additive fill (default, byte-identical).
-                fused = _fuse_dense(fused, dense_hits, k)
+                fused = _fuse_dense(fused, dense_hits, k, bm25_scores=best)
     except Exception:  # noqa: BLE001 — numpy missing on a stripped install
         pass
 
@@ -736,7 +773,7 @@ def top_articles_by_relevance(
     if not emb_refs:
         return fused
     # R69 — RRF when REGENOLD_RRF_FUSION is on, else additive fill.
-    fused = _fuse_dense(fused, emb_refs, k)
+    fused = _fuse_dense(fused, emb_refs, k, bm25_scores=best)
 
     # Round 35 — Neo4j 2-hop graph expansion (env-gated REGENOLD_GRAPH_2HOP).
     # When OFF (default) the call returns empty in 1 µs and ``fused`` is

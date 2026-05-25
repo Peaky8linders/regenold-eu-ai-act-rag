@@ -147,6 +147,7 @@ class _DenseIndex:
         self._quantizer: object | None = None  # turboquant TurboQuant
         self._num_docs: int = 0
         self._compression_active: bool = False
+        self._use_external: bool = False
         # Map filtered dense index → original BM25 doc index (for the
         # article_ref join). Populated after _setup().
         self._bm25_idx_map: list[int] = []
@@ -176,126 +177,190 @@ class _DenseIndex:
 
     def _build(self) -> None:
         # Heavy imports stay inside _build so module import is free.
+        import json  # noqa: PLC0415
+        from pathlib import Path  # noqa: PLC0415
         import numpy as np  # noqa: PLC0415
 
-        from app.data.kb_search import _build_index  # noqa: PLC0415
+        self._use_external = False
+        loaded_external = False
 
-        bm25 = _build_index()
-        n_total = len(bm25.docs)
-        if n_total == 0:
-            raise RuntimeError("BM25 corpus is empty")
+        # 1. Prioritize external high-dimensional embeddings (Cohere/OpenAI) if keys are present
+        try:
+            from app.engines import external_embeddings  # noqa: PLC0415
+            if external_embeddings.is_available():
+                from app.data.kb_search import _build_index  # noqa: PLC0415
+                bm25 = _build_index()
+                n_total = len(bm25.docs)
+                if n_total == 0:
+                    raise RuntimeError("BM25 corpus is empty")
 
-        # Exclude the per-definition virtual docs (~68 rows keyed by
-        # ``Art. 3``). They have their own deterministic path
-        # (:func:`app.engines.sentence_index.select_definition_sentence`)
-        # and they pollute dense ranks because they're short, term-dense,
-        # and almost every term in the AI Act appears in at least one
-        # definition. Including them collapsed every query to Art. 3 in
-        # smoke testing. The dense index is for retrieval-rerank of
-        # *substantive* obligation / scope clauses — definitions can
-        # stay deterministic.
-        keep_doc_idx: list[int] = [
-            i for i in range(n_total) if bm25.sources[i] != "definition"
-        ]
-        n_docs = len(keep_doc_idx)
-        if n_docs == 0:
-            raise RuntimeError("dense corpus is empty after filter")
-        # Map filtered index → original index (so search() can return
-        # the original BM25 doc_idx for the article-ref join).
-        self._bm25_idx_map: list[int] = list(keep_doc_idx)
+                keep_doc_idx = [i for i in range(n_total) if bm25.sources[i] != "definition"]
+                self._bm25_idx_map = list(keep_doc_idx)
+                raw_texts = [" ".join(bm25.docs[orig_i]) for orig_i in self._bm25_idx_map]
+                
+                logger.info("turboquant_index: requesting external embeddings for n=%d documents...", len(raw_texts))
+                ext_vecs = external_embeddings.get_embedding(raw_texts, is_query=False)
+                if ext_vecs is not None:
+                    # Normalise to unit vectors
+                    norms = np.linalg.norm(ext_vecs, axis=1, keepdims=True)
+                    norms = np.where(norms < 1e-9, 1.0, norms)
+                    self._doc_vecs_dense = (ext_vecs / norms).astype(np.float32)
+                    self._use_external = True
+                    self._num_docs = len(self._bm25_idx_map)
+                    loaded_external = True
+                    logger.info(
+                        "turboquant_index: successfully loaded external embeddings dim=%d",
+                        self._doc_vecs_dense.shape[1],
+                    )
+                else:
+                    logger.warning("turboquant_index: external embeddings returned None, falling back to SVD path")
+        except Exception as exc:  # noqa: BLE001 — fallback to SVD
+            logger.warning("turboquant_index: external embeddings build failed, falling back. reason=%s", exc)
 
-        # Build vocabulary from tokens that appear in ≥ 2 documents
-        # (drops typo-only tokens that don't generalise). The hapax-cut
-        # filters about 30% of the vocabulary surface and tightens SVD
-        # signal density.
-        df_count: dict[str, int] = {}
-        for i in keep_doc_idx:
-            for term in set(bm25.docs[i]):
-                df_count[term] = df_count.get(term, 0) + 1
-        vocab_terms = sorted([t for t, c in df_count.items() if c >= 2])
-        if not vocab_terms:
-            raise RuntimeError("no shared vocabulary")
-        vocab = {t: i for i, t in enumerate(vocab_terms)}
-        V = len(vocab)
+        loaded_precomputed = False
 
-        # Build sparse-on-paper, dense-in-numpy doc-term TF matrix.
-        # n_docs ≤ ~300, |V| ≤ ~2500 → ~750k float32 cells ≈ 3 MB. Fine.
-        tf = np.zeros((n_docs, V), dtype=np.float32)
-        for new_i, orig_i in enumerate(keep_doc_idx):
-            for term in bm25.docs[orig_i]:
-                j = vocab.get(term)
-                if j is not None:
-                    tf[new_i, j] += 1.0
+        # 2. Try to load pre-computed SVD assets from disk if external is not active/failed
+        if not loaded_external:
+            assets_path = Path(__file__).resolve().parent / "_assets" / "turboquant_precomputed.npz"
+            if assets_path.exists():
+                try:
+                    data = np.load(assets_path)
+                    self._vocab = json.loads(str(data["vocab_json"]))
+                    self._idf = data["idf"].astype(np.float32)
+                    self._mean_doc_vec = None
+                    self._v_t = data["v_t"].astype(np.float32)
+                    self._bm25_idx_map = list(data["bm25_idx_map"].astype(int))
+                    doc_vecs = data["doc_vecs_dense"].astype(np.float32)
+                    self._doc_vecs_dense = doc_vecs
+                    self._num_docs = len(self._bm25_idx_map)
+                    loaded_precomputed = True
+                    logger.info("turboquant_index: successfully loaded precomputed SVD assets from disk")
+                except Exception as exc:  # noqa: BLE001 — fallback to on-the-fly build
+                    logger.warning("turboquant_index: failed to load precomputed SVD assets from disk, falling back. reason=%s", exc)
 
-        # Standard IDF: log((N + 1) / (df + 1)) + 1 (smoothed sklearn-style).
-        df = np.zeros(V, dtype=np.float32)
-        for j, term in enumerate(vocab_terms):
-            df[j] = df_count.get(term, 0)
-        idf = np.log((n_docs + 1.0) / (df + 1.0)) + 1.0
+        # 3. Calculate SVD on-the-fly as final fail-safe fallback
+        if not loaded_external and not loaded_precomputed:
+            from app.data.kb_search import _build_index  # noqa: PLC0415
 
-        # TF-IDF = (1 + log(tf)) * idf with log-TF damping. Pure log
-        # would NaN on tf=0; the np.where keeps zeros.
-        with np.errstate(divide="ignore"):
-            log_tf = np.where(tf > 0, 1.0 + np.log(tf), 0.0)
-        tfidf = log_tf * idf  # (n_docs, V)
+            bm25 = _build_index()
+            n_total = len(bm25.docs)
+            if n_total == 0:
+                raise RuntimeError("BM25 corpus is empty")
 
-        # **Row-normalise to unit length BEFORE SVD.** The Round-31 first
-        # cut mean-centered the matrix (classic LSA), but that collapsed
-        # short term-dense docs (Art. 3 definitions, ontology rows) to
-        # the centroid — every query then routed to whichever short doc
-        # had the highest IDF density. Row-norm + raw SVD gives cosine-
-        # aligned doc vectors where length variation doesn't dominate.
-        row_norms = np.linalg.norm(tfidf, axis=1, keepdims=True)
-        row_norms = np.where(row_norms < 1e-9, 1.0, row_norms)
-        tfidf_unit = tfidf / row_norms
+            # Exclude the per-definition virtual docs (~68 rows keyed by
+            # ``Art. 3``). They have their own deterministic path
+            # (:func:`app.engines.sentence_index.select_definition_sentence`)
+            # and they pollute dense ranks because they're short, term-dense,
+            # and almost every term in the AI Act appears in at least one
+            # definition. Including them collapsed every query to Art. 3 in
+            # smoke testing. The dense index is for retrieval-rerank of
+            # *substantive* obligation / scope clauses — definitions can
+            # stay deterministic.
+            keep_doc_idx: list[int] = [
+                i for i in range(n_total) if bm25.sources[i] != "definition"
+            ]
+            n_docs = len(keep_doc_idx)
+            if n_docs == 0:
+                raise RuntimeError("dense corpus is empty after filter")
+            # Map filtered index → original index (so search() can return
+            # the original BM25 doc_idx for the article-ref join).
+            self._bm25_idx_map = list(keep_doc_idx)
 
-        # Truncated SVD: U Σ V^T = X. We take the top _PROJECTION_DIM
-        # right singular vectors as the projection basis. NumPy ≥ 2.0
-        # ``np.linalg.svd`` is deterministic when input is fixed.
-        # full_matrices=False yields the thin SVD in ~50 ms here.
-        u, s, vt = np.linalg.svd(tfidf_unit, full_matrices=False)
-        k = min(_PROJECTION_DIM, vt.shape[0])
-        # Doc embeddings: U[:, :k] * Σ[:k] gives the projection of each
-        # original row onto the top-k right singular vectors.
-        doc_vecs = (u[:, :k] * s[:k][np.newaxis, :]).astype(np.float32)
-        # Normalise rows to unit length so dot product == cosine.
-        norms = np.linalg.norm(doc_vecs, axis=1, keepdims=True)
-        # Guard the very rare zero-norm doc — shouldn't happen given
-        # the df ≥ 2 filter but defensive nonetheless.
-        norms = np.where(norms < 1e-9, 1.0, norms)
-        doc_vecs = doc_vecs / norms
+            # Build vocabulary from tokens that appear in ≥ 2 documents
+            # (drops typo-only tokens that don't generalise). The hapax-cut
+            # filters about 30% of the vocabulary surface and tightens SVD
+            # signal density.
+            df_count: dict[str, int] = {}
+            for i in keep_doc_idx:
+                for term in set(bm25.docs[i]):
+                    df_count[term] = df_count.get(term, 0) + 1
+            vocab_terms = sorted([t for t, c in df_count.items() if c >= 2])
+            if not vocab_terms:
+                raise RuntimeError("no shared vocabulary")
+            vocab = {t: i for i, t in enumerate(vocab_terms)}
+            V = len(vocab)
 
-        # Cache the projection basis + IDF + vocab for query-time use.
-        # Note: NO mean to subtract — we kept tfidf_unit raw.
-        self._vocab = vocab
-        self._idf = idf.astype(np.float32)
-        self._mean_doc_vec = None
-        self._v_t = vt[:k].astype(np.float32)  # (k, V)
-        self._num_docs = n_docs
+            # Build sparse-on-paper, dense-in-numpy doc-term TF matrix.
+            # n_docs ≤ ~300, |V| ≤ ~2500 → ~750k float32 cells ≈ 3 MB. Fine.
+            tf = np.zeros((n_docs, V), dtype=np.float32)
+            for new_i, orig_i in enumerate(keep_doc_idx):
+                for term in bm25.docs[orig_i]:
+                    j = vocab.get(term)
+                    if j is not None:
+                        tf[new_i, j] += 1.0
 
-        # Try to compress via TurboQuant. Pad to a multiple-of-4 width
-        # (the codec needs even dims for the 4-bit packing on some
-        # versions). If the package is missing OR fails for any reason,
-        # fall back to plain float32 doc vectors with identical API.
-        self._doc_vecs_dense = doc_vecs.astype(np.float32)
+            # Standard IDF: log((N + 1) / (df + 1)) + 1 (smoothed sklearn-style).
+            df = np.zeros(V, dtype=np.float32)
+            for j, term in enumerate(vocab_terms):
+                df[j] = df_count.get(term, 0)
+            idf = np.log((n_docs + 1.0) / (df + 1.0)) + 1.0
+
+            # TF-IDF = (1 + log(tf)) * idf with log-TF damping. Pure log
+            # would NaN on tf=0; the np.where keeps zeros.
+            with np.errstate(divide="ignore"):
+                log_tf = np.where(tf > 0, 1.0 + np.log(tf), 0.0)
+            tfidf = log_tf * idf  # (n_docs, V)
+
+            # **Row-normalise to unit length BEFORE SVD.** Row-norm + raw SVD gives cosine-
+            # aligned doc vectors where length variation doesn't dominate.
+            row_norms = np.linalg.norm(tfidf, axis=1, keepdims=True)
+            row_norms = np.where(row_norms < 1e-9, 1.0, row_norms)
+            tfidf_unit = tfidf / row_norms
+
+            # Truncated SVD: U Σ V^T = X. We take the top _PROJECTION_DIM
+            # right singular vectors as the projection basis. NumPy ≥ 2.0
+            # ``np.linalg.svd`` is deterministic when input is fixed.
+            # full_matrices=False yields the thin SVD in ~50 ms here.
+            u, s, vt = np.linalg.svd(tfidf_unit, full_matrices=False)
+            k = min(_PROJECTION_DIM, vt.shape[0])
+            # Doc embeddings: U[:, :k] * Σ[:k] gives the projection of each
+            # original row onto the top-k right singular vectors.
+            doc_vecs = (u[:, :k] * s[:k][np.newaxis, :]).astype(np.float32)
+            # Normalise rows to unit length so dot product == cosine.
+            norms = np.linalg.norm(doc_vecs, axis=1, keepdims=True)
+            # Guard the very rare zero-norm doc — shouldn't happen given
+            # the df ≥ 2 filter but defensive nonetheless.
+            norms = np.where(norms < 1e-9, 1.0, norms)
+            doc_vecs = doc_vecs / norms
+
+            # Cache the projection basis + IDF + vocab for query-time use.
+            # Note: NO mean to subtract — we kept tfidf_unit raw.
+            self._vocab = vocab
+            self._idf = idf.astype(np.float32)
+            self._mean_doc_vec = None
+            self._v_t = vt[:k].astype(np.float32)  # (k, V)
+            self._num_docs = n_docs
+            self._doc_vecs_dense = doc_vecs.astype(np.float32)
+
+        k = self._doc_vecs_dense.shape[1]
+        n_docs = self._num_docs
+
         try:
             import turboquant  # noqa: PLC0415
+
+            # Outlier-Aware Mixed Precision (Zandieh et al., ICLR 2026 / Layer D of CLARA whitepaper)
+            # Targets high channel variance by quantizing outlier channels at higher precision.
+            # Expose as environment variables to allow production tuning.
+            outlier_channels = int(os.getenv("REGENOLD_TURBOQUANT_OUTLIER_CHANNELS", "13"))
+            outlier_bw = int(os.getenv("REGENOLD_TURBOQUANT_OUTLIER_BIT_WIDTH", "4")) if outlier_channels > 0 else None
 
             quantizer = turboquant.TurboQuant(
                 dim=k,
                 bit_width=_QUANT_BIT_WIDTH,
                 mode="inner_product",
                 seed=_INDEX_SEED,
+                outlier_channels=outlier_channels,
+                outlier_bit_width=outlier_bw,
             )
             # turboquant's quantize() expects float64.
-            compressed = quantizer.quantize(doc_vecs.astype(np.float64))
+            compressed = quantizer.quantize(self._doc_vecs_dense.astype(np.float64))
             self._quantizer = quantizer
             self._compressed = compressed
             self._compression_active = True
             logger.info(
                 "turboquant_index: built dense index n=%d k=%d "
-                "compressed=True bits=%d",
-                n_docs, k, _QUANT_BIT_WIDTH,
+                "compressed=True bits=%d outliers=%d outlier_bw=%s",
+                n_docs, k, _QUANT_BIT_WIDTH, outlier_channels, outlier_bw,
             )
         except Exception as exc:  # noqa: BLE001 — degrade silently
             self._compression_active = False
@@ -311,6 +376,19 @@ class _DenseIndex:
         if not self._setup():
             return None
         import numpy as np  # noqa: PLC0415
+
+        if self._use_external:
+            try:
+                from app.engines import external_embeddings  # noqa: PLC0415
+                q_emb = external_embeddings.get_embedding(question, is_query=True)
+                if q_emb is not None:
+                    q_norm = np.linalg.norm(q_emb)
+                    if q_norm > 1e-9:
+                        return (q_emb / q_norm).astype(np.float32)
+                return None
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("turboquant_index: external query embedding failed. reason=%s", exc)
+                return None
 
         from app.data.kb_search import _tokenize  # noqa: PLC0415
 
@@ -518,6 +596,14 @@ def index_diagnostics() -> dict[str, object]:
     """
     if not _INDEX._setup():  # noqa: SLF001 — module-internal singleton
         return {"loaded": False, "reason": "build_failed"}
+
+    # Safely probe outlier metadata if compression is active
+    outlier_channels = 0
+    outlier_bw = None
+    if _INDEX._compression_active and _INDEX._quantizer is not None:
+        outlier_channels = getattr(_INDEX._quantizer, "_outlier_channels", 0)
+        outlier_bw = getattr(_INDEX._quantizer, "_outlier_bit_width", None)
+
     return {
         "loaded": True,
         "num_docs": _INDEX._num_docs,  # noqa: SLF001
@@ -525,6 +611,8 @@ def index_diagnostics() -> dict[str, object]:
         "projection_dim": _PROJECTION_DIM,
         "compression_active": _INDEX._compression_active,  # noqa: SLF001
         "bit_width": _QUANT_BIT_WIDTH if _INDEX._compression_active else None,  # noqa: SLF001
+        "outlier_channels": outlier_channels,
+        "outlier_bit_width": outlier_bw,
         "env_enabled": is_enabled(),
         "turboquant_available": is_compressed_available(),
     }
