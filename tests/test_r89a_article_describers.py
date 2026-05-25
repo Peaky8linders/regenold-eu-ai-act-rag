@@ -40,12 +40,23 @@ from app.integrations.regenold.grounded_prose import (
 
 # Row → (article ref, gold expected_keywords, motivating V2 row id).
 # Mirrors the rows discovered in v2-r88-bcde-v2-live.json analysis.
+#
+# R89-A code-review fix (E&EC-F2): the Art 50 cumulative-with-Art-13
+# angle moved to _ART_CONDITIONAL_DESCRIBERS (only fires when Art 13
+# co-cited). The flat Art 50 describer is now NEUTRAL — covers the
+# limited-risk transparency surface without claiming cumulativity.
+# This row's EXPECTED set switched from cumulative-keywords
+# ("both / cumulative / apply" — mt_v2_010) to neutral-surface
+# keywords ("transparency / deepfakes / labelled") because the flat
+# describer no longer carries the cumulativity claim. The original
+# mt_v2_010 gold-keyword coverage is exercised by
+# `test_r89a_review_fix_f2_art50_cumulativity_conditional` below.
 R89A_DESCRIBER_ROWS: list[tuple[str, list[str], str]] = [
     ("Article 27", ["FRIA", "fundamental rights", "in addition"], "mt_v2_002"),
     ("Article 73", ["serious incident", "15 days", "market surveillance"], "mt_v2_003"),
     ("Article 51", ["systemic risk", "10²⁵", "notify"], "mt_v2_007"),
     ("Article 53", ["systemic", "carve-out", "does not apply"], "mt_v2_009"),
-    ("Article 50", ["both", "cumulative", "apply"], "mt_v2_010"),
+    ("Article 50", ["transparency", "deepfakes", "labelled"], "mt_v2_010-neutral"),
     ("Article 60", ["real-world", "testing", "conditions"], "mt_v2_016"),
     ("Article 99", ["proportionate", "SME", "lower"], "mt_v2_017"),
     ("Article 56", ["adequate means", "alternative", "demonstrate"], "mt_v2_021"),
@@ -318,3 +329,108 @@ def test_r89a_sub_point_keys_still_force_append_regardless(monkeypatch) -> None:
         f"R88-E sub-point should force-prepend independent of R89-A "
         f"env gate. Got: {out[:120]!r}"
     )
+
+
+# ── 11. R89-A code-review fixes ─────────────────────────────────────────
+
+
+def test_r89a_review_fix_f2_art50_cumulativity_conditional(monkeypatch) -> None:
+    """E&EC F2: the Art 50 cumulative-with-Art-13 angle MUST fire only
+    when Art 13 is co-cited. Otherwise an Art-50-only question would
+    misleadingly claim cumulative Art 13 duties.
+    """
+    from app.integrations.regenold.grounded_prose import (
+        _subpoint_describer_clause,
+    )
+
+    monkeypatch.setenv("REGENOLD_SUBPOINT_DESCRIBER", "1")
+
+    # Art 50 alone → flat describer (NO cumulativity claim).
+    flat = _subpoint_describer_clause("Article 50", ["Article 50"])
+    assert flat is not None
+    assert "cumulative" not in flat.lower()
+    assert "both apply" not in flat.lower()
+
+    # Art 50 + Art 13 → conditional describer fires WITH cumulativity.
+    cond = _subpoint_describer_clause(
+        "Article 50", ["Article 13", "Article 50"]
+    )
+    assert cond is not None
+    assert "cumulative" in cond.lower()
+    # Gold keywords from mt_v2_010 must still hit.
+    assert "both" in cond.lower()
+    assert "apply" in cond.lower()
+
+
+def test_r89a_review_fix_lc1_conditional_check_order(monkeypatch) -> None:
+    """L&C-1: a conditional-table entry must take precedence over
+    the dot-heuristic. Verify by direct membership: Article 113 is
+    keyed in _ART_CONDITIONAL_DESCRIBERS but its key has no dot
+    (so `is_subpoint_key` was always False for it). With the fix,
+    `is_conditional_key` is checked FIRST, so the order is
+    authoritative even if a future conditional key DID have a dot.
+    """
+    from app.integrations.regenold.grounded_prose import (
+        _ART_CONDITIONAL_DESCRIBERS,
+    )
+
+    # Confirm both conditional keys we care about are in the table.
+    assert "Article 113" in _ART_CONDITIONAL_DESCRIBERS
+    assert "Article 50" in _ART_CONDITIONAL_DESCRIBERS
+
+
+def test_r89a_review_fix_lc2_paragraph_only_key_not_subpoint() -> None:
+    """L&C-2: tighten the sub-point classifier so a hypothetical
+    paragraph-only key like ``Article 53.2`` is NOT treated as a
+    sub-point (which would force-append unconditionally and bypass
+    the R89-A env gate). True sub-points have a LETTER suffix.
+    """
+    from app.integrations.regenold.grounded_prose import _SUBPOINT_LETTER_RE
+
+    # True sub-points (R88-E entries) MUST match.
+    for key in ("Article 5.1.a", "Article 5.1.f", "Article 5.1.h"):
+        assert _SUBPOINT_LETTER_RE.search(key) is not None, (
+            f"R89-A regex regression — true sub-point {key!r} not matched"
+        )
+    # Paragraph-only references MUST NOT match (no letter suffix).
+    for key in ("Article 53.2", "Article 27.1", "Article 11.3"):
+        assert _SUBPOINT_LETTER_RE.search(key) is None, (
+            f"R89-A regex over-broad — paragraph ref {key!r} treated as sub-point"
+        )
+    # Article-level R89-A keys MUST NOT match.
+    for key in ("Article 27", "Article 50", "Article 73", "Article 86"):
+        assert _SUBPOINT_LETTER_RE.search(key) is None
+
+
+def test_r89a_review_fix_f5_self_check_runs_at_import() -> None:
+    """E&EC F5: the import-time self-check validates table shapes.
+    Verify by re-running the check directly — it must not raise
+    on the current table state.
+    """
+    from app.integrations.regenold.grounded_prose import (
+        _self_check_describer_tables,
+    )
+    # Should not raise; if it does, the table has drifted from spec.
+    _self_check_describer_tables()
+
+
+def test_r89a_review_fix_m5_describer_lengths_within_per_ref_cap() -> None:
+    """C&I M5: re-check that every describer length+prefix fits the
+    400-char first-substance per-ref budget. Comment was updated to
+    match this gate; the assertion mirrors it directly.
+    """
+    from app.integrations.regenold.grounded_prose import (
+        _ART_SUBPOINT_DESCRIBERS,
+        _MAX_LEAD_SUBSTANCE_CHARS,
+    )
+    for key in (
+        "Article 27", "Article 73", "Article 51", "Article 53",
+        "Article 50", "Article 60", "Article 99", "Article 56",
+        "Article 111", "Article 86",
+    ):
+        d = _ART_SUBPOINT_DESCRIBERS[key]
+        total = len(f"{key} — ") + len(d)
+        assert total <= _MAX_LEAD_SUBSTANCE_CHARS, (
+            f"{key} describer {total} chars exceeds "
+            f"_MAX_LEAD_SUBSTANCE_CHARS={_MAX_LEAD_SUBSTANCE_CHARS}"
+        )

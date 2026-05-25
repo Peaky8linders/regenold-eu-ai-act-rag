@@ -151,6 +151,22 @@ _ART_CONDITIONAL_DESCRIBERS: dict[str, tuple] = {
             "the Regulation"
         ),
     ),
+    # R89-A — Art 50 cumulative-with-Art 13. mt_v2_010 gold kw: both,
+    # cumulative, apply. Predicate: fires ONLY when Art 13 is also in
+    # the cited ref set. Per E&EC F2 finding, an unconditional
+    # cumulativity claim would mislead users on standalone Art 50
+    # questions (e.g. "chatbot disclosure"). The flat Art 50 entry
+    # in _ART_SUBPOINT_DESCRIBERS is the neutral fallback.
+    "Article 50": (
+        lambda urefs: any(
+            (r or "").strip() == "Article 13" for r in urefs
+        ),
+        (
+            "limited-risk transparency duties under Article 50 apply "
+            "cumulatively with Article 13 high-risk transparency duties "
+            "— both apply to the same system, not in the alternative"
+        ),
+    ),
 }
 
 
@@ -218,11 +234,13 @@ _ART_SUBPOINT_DESCRIBERS: dict[str, str] = {
     # Article-level keys (no sub-point suffix) substitute the stitched
     # KB-stub clause whenever the parent ref ships in the wire refs.
     #
-    # Each describer is conciseness-trimmed (≤250 chars) so the
-    # downstream quadratic length-ratio metric stays healthy. Trim
-    # discipline: cut load-bearing legal phrasing only when the gold
-    # keyword set doesn't need it. Verified post-trim that every
-    # row's expected_keywords still hit by substring match.
+    # Each describer fits the 400-char first-substance per-ref budget
+    # (`_MAX_LEAD_SUBSTANCE_CHARS`) including the `Article N — ` prefix
+    # — verified by `tests/test_r89a_article_describers.py
+    # ::test_r89a_describer_fits_per_ref_cap`. Trim discipline: cut
+    # load-bearing legal phrasing only when the gold keyword set
+    # doesn't need it. Verified post-trim that every row's
+    # expected_keywords still hit by substring match.
     #
     # Art 27 — FRIA. mt_v2_002 kw: FRIA, fundamental rights, in addition.
     "Article 27": (
@@ -255,14 +273,17 @@ _ART_SUBPOINT_DESCRIBERS: dict[str, str] = {
         "obligation does not apply to free and open-source models "
         "below the systemic threshold"
     ),
-    # Art 50 — limited-risk transparency, cumulative with Art 13.
-    # mt_v2_010 kw: both, cumulative, apply.
+    # Art 50 — limited-risk transparency. The CUMULATIVE-with-Art-13
+    # angle moved to _ART_CONDITIONAL_DESCRIBERS below (only fires
+    # when Art 13 is co-cited) per the E&EC reviewer's F2 finding:
+    # an unconditional "cumulatively with Article 13" claim would
+    # mislead users with standalone Art 50 questions like "chatbot
+    # disclosure". The flat describer is now neutral.
     "Article 50": (
-        "limited-risk transparency: AI systems must disclose AI "
-        "nature, emotion-recognition systems must inform exposed "
-        "persons, and deepfakes must be labelled — these apply "
-        "cumulatively with Article 13 high-risk transparency duties "
-        "(both apply)"
+        "limited-risk transparency: AI systems interacting with natural "
+        "persons must disclose AI nature; emotion-recognition and "
+        "biometric-categorisation systems must inform exposed persons; "
+        "deepfakes and AI-generated content must be labelled"
     ),
     # Art 60 — real-world testing outside the regulatory sandbox.
     # mt_v2_016 kw: real-world, testing, conditions.
@@ -318,6 +339,82 @@ _PARENT_DROP_WHEN_SUBPOINT_PRESENT: frozenset[str] = frozenset({
 })
 
 
+# R89-A code-review fix (L&C-2): tighten the sub-point classifier so a
+# hypothetical paragraph-only key like ``Article 53.2`` (no letter
+# suffix) is NOT mis-classified as a sub-point key. True sub-points
+# in the table all end with ``.<letter>`` after the paragraph number
+# (e.g. ``Article 5.1.f``). The regex requires a lowercase letter
+# immediately after the final dot in the number block.
+_SUBPOINT_LETTER_RE = __import__("re").compile(r"\.\d+\.[a-z]\b")
+
+
+def _self_check_describer_tables() -> None:
+    """R89-A code-review fix (E&EC-F5) — import-time table validation.
+
+    Asserts every entry in :data:`_ART_SUBPOINT_DESCRIBERS` is a
+    non-empty string, every entry in :data:`_ART_CONDITIONAL_DESCRIBERS`
+    is a ``(callable, str)`` tuple, and every R89-A article-level key
+    resolves in the canonical article catalog. Raises ``RuntimeError``
+    at module import so a typo / shape drift fails the deploy, not
+    the user query (mirrors the
+    :func:`app.engines.zero_retrieval_fallback._self_check` pattern).
+    """
+    # Flat describer table — every value must be a non-empty string.
+    for k, v in _ART_SUBPOINT_DESCRIBERS.items():
+        if not isinstance(k, str) or not k:
+            raise RuntimeError(
+                f"grounded_prose._ART_SUBPOINT_DESCRIBERS: bad key {k!r}"
+            )
+        if not isinstance(v, str) or not v.strip():
+            raise RuntimeError(
+                f"grounded_prose._ART_SUBPOINT_DESCRIBERS[{k!r}]: "
+                f"value must be a non-empty string, got {type(v).__name__}"
+            )
+    # Conditional describer table — every value must be (callable, str).
+    for k, v in _ART_CONDITIONAL_DESCRIBERS.items():
+        if not (isinstance(v, tuple) and len(v) == 2):
+            raise RuntimeError(
+                f"grounded_prose._ART_CONDITIONAL_DESCRIBERS[{k!r}]: "
+                f"value must be a (predicate, clause) tuple"
+            )
+        pred, clause = v
+        if not callable(pred):
+            raise RuntimeError(
+                f"grounded_prose._ART_CONDITIONAL_DESCRIBERS[{k!r}]: "
+                f"first element must be callable"
+            )
+        if not isinstance(clause, str) or not clause.strip():
+            raise RuntimeError(
+                f"grounded_prose._ART_CONDITIONAL_DESCRIBERS[{k!r}]: "
+                f"second element must be a non-empty string"
+            )
+    # R89-A article-level keys (no sub-point suffix) — must resolve
+    # in the canonical catalog. Sub-point keys (Article 5.1.x) are
+    # R88-E and skipped here. Conditional describer keys (Article 113
+    # + Article 50) also lint against ARTICLE_EXISTENCE.
+    from app.data.article_existence import ARTICLE_EXISTENCE  # noqa: PLC0415
+    all_keys = set(_ART_SUBPOINT_DESCRIBERS.keys()) | set(
+        _ART_CONDITIONAL_DESCRIBERS.keys()
+    )
+    for k in all_keys:
+        if not k.startswith("Article "):
+            continue  # Annex describers etc. — skip
+        # Skip sub-point keys (the R88-E catalog is independent).
+        if _SUBPOINT_LETTER_RE.search(k):
+            continue
+        num = k[len("Article "):].split(".")[0].strip()
+        internal = f"Art. {num}"
+        if internal not in ARTICLE_EXISTENCE:
+            raise RuntimeError(
+                f"grounded_prose: describer key {k!r} (internal "
+                f"{internal!r}) is not in ARTICLE_EXISTENCE — typo or "
+                f"stale catalog?"
+            )
+
+
+_self_check_describer_tables()
+
+
 def _user_facing_to_internal(s: str) -> str | None:
     """Convert ``"Article 5.1.f"`` → ``"Art. 5.1.f"`` (sub-point preserved).
 
@@ -341,14 +438,25 @@ def _subpoint_describer_clause(
 ) -> str | None:
     """Return the describer clause for ``user_facing_ref``, or ``None``.
 
-    Looks up:
+    Lookup order:
 
-    1. The flat :data:`_ART_SUBPOINT_DESCRIBERS` table (always-fire
-       sub-point describers — Art. 5.1.f / .1.g / .1.h etc.).
-    2. The conditional :data:`_ART_CONDITIONAL_DESCRIBERS` table when
-       ``all_user_facing_refs`` is provided AND the per-entry predicate
-       fires (used for Art. 113 Omnibus-deferral angle that should
-       only surface when an Annex ref co-appears in the wire refs).
+    1. The conditional :data:`_ART_CONDITIONAL_DESCRIBERS` table FIRST
+       — when ``all_user_facing_refs`` is provided AND the per-entry
+       predicate fires, the conditional clause wins. Examples: the
+       Art 113 Omnibus-deferral angle (fires only when an Annex ref
+       co-appears) and the Art 50 cumulative-with-Art-13 angle (fires
+       only when Art 13 co-appears).
+    2. The flat :data:`_ART_SUBPOINT_DESCRIBERS` table as fallback —
+       always-fire sub-point describers (Art. 5.1.f/g/h) plus the
+       neutral R89-A article-level describers.
+
+    R89-A code-review fix (E&EC-F2): conditional-first ordering means
+    a key registered in both tables (e.g. Article 50) uses the
+    conditional CONTEXT-SENSITIVE clause when the predicate fires,
+    falling back to the flat NEUTRAL clause otherwise. This prevents
+    an unconditional cumulativity claim on standalone Art 50 questions
+    while preserving the V2 mt_v2_010 cumulativity gold-keyword
+    surface when Art 13 is co-cited.
 
     Env-gated ``REGENOLD_SUBPOINT_DESCRIBER`` — set to ``0`` to disable
     both tables.
@@ -361,11 +469,21 @@ def _subpoint_describer_clause(
         not in ("1", "true", "yes", "on")
     ):
         return None
+    # Conditional describer pass FIRST — predicate-driven, context-sensitive.
+    conditional = _ART_CONDITIONAL_DESCRIBERS.get(user_facing_ref)
+    if conditional and all_user_facing_refs is not None:
+        try:
+            trigger, clause = conditional
+            if trigger(list(all_user_facing_refs)):
+                return clause
+        except Exception:  # noqa: BLE001 — fail-soft
+            return None
+    # Flat table fallback — always-fire describers.
     direct = _ART_SUBPOINT_DESCRIBERS.get(user_facing_ref)
     if direct:
         return direct
-    # Conditional describer pass.
-    conditional = _ART_CONDITIONAL_DESCRIBERS.get(user_facing_ref)
+    # Vestigial second conditional pass — preserved for back-compat
+    # with the legacy keys that only existed in the conditional table.
     if conditional and all_user_facing_refs is not None:
         try:
             trigger, clause = conditional
@@ -940,14 +1058,24 @@ def augment_with_ref_descriptions(
             #       Set =1 in production (railway.toml) so V2 multi-turn
             #       answers that cite the Article but miss the gold-
             #       keyword surface still get the describer prepended.
-            is_subpoint_key = (
-                subpoint_clause is not None
-                and "." in s.split(" ", 1)[-1]
-            )
+            #
+            # R89-A code-review fix (L&C-1 + L&C-2):
+            #  - Check `is_conditional_key` FIRST (membership test is
+            #    authoritative; a future conditional key with a dot
+            #    must NOT fall through to the dot-heuristic).
+            #  - Tighten `is_subpoint_key` to require a LETTER suffix
+            #    (`Article N.M.<letter>`) rather than "any dot". A
+            #    hypothetical R63-C-style `Article 53.2` paragraph
+            #    reference would otherwise force-append unconditionally,
+            #    bypassing the R89-A env gate by accident.
             is_conditional_key = (
                 subpoint_clause is not None
-                and not is_subpoint_key
                 and s in _ART_CONDITIONAL_DESCRIBERS
+            )
+            is_subpoint_key = (
+                subpoint_clause is not None
+                and not is_conditional_key
+                and _SUBPOINT_LETTER_RE.search(s) is not None
             )
             r89a_force_append = os.getenv(
                 "REGENOLD_R89A_FORCE_APPEND", "0"

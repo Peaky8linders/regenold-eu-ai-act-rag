@@ -132,3 +132,24 @@ def _reset_request_intent_cache():
         except Exception:  # noqa: BLE001 — never block a test on cleanup
             pass
     yield
+
+
+# R89-A code-review fix (E&EC-F4) — clear REGENOLD_R89A_FORCE_APPEND
+# before every test so a developer running the full suite with the
+# production env var set (matches railway.toml) sees CI / local parity.
+# Tests that want to exercise the force-append path explicitly opt in
+# via ``monkeypatch.setenv("REGENOLD_R89A_FORCE_APPEND", "1")``. Mirrors
+# the per-test env-clearing pattern documented in the R84 fixture above.
+@pytest.fixture(autouse=True)
+def _reset_r89a_force_append_env(monkeypatch):
+    """Default the R89-A force-append env to OFF for every test.
+
+    Without this, a developer who runs the full suite with the
+    production env (``REGENOLD_R89A_FORCE_APPEND=1`` from railway.toml)
+    in their shell would see different augmenter behavior than CI —
+    the legacy R79 / R80 / R81-N appender-path guards would fail in a
+    way that's hard to debug. Forcing OFF here keeps every test
+    deterministic regardless of the developer's shell state.
+    """
+    monkeypatch.delenv("REGENOLD_R89A_FORCE_APPEND", raising=False)
+    yield
