@@ -92,6 +92,7 @@ class ReasoningTrace:
     stage2_polish: bool | None = None
     engine_confidence: float | None = None
     cache_hit: bool | None = None
+    query_denoiser: dict[str, Any] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
 
     def to_json_dict(self) -> dict[str, Any]:
@@ -124,6 +125,8 @@ class ReasoningTrace:
             out["engine_confidence"] = self.engine_confidence
         if self.cache_hit is not None:
             out["cache_hit"] = self.cache_hit
+        if self.query_denoiser:
+            out["query_denoiser"] = dict(self.query_denoiser)
         if self.notes:
             out["notes"] = list(self.notes)
         return out
@@ -293,6 +296,50 @@ def record_note(text: str) -> None:
         return
     if len(trace.notes) < 12:  # cap at 12 to keep the payload bounded
         trace.notes.append(text[:200])
+
+
+def record_query_denoiser(
+    *,
+    fired: bool,
+    latency_ms: int = 0,
+    rewritten_chars: int = 0,
+    fallback_reason: str | None = None,
+    model: str | None = None,
+    provider: str | None = None,
+) -> None:
+    """Record R86 Query De-Noiser outcome (R87-A observability).
+
+    Captures whether the multi-turn rewrite landed or fell back to the
+    history-concatenation path. ``fallback_reason`` is one of:
+
+    * ``"disabled"`` — env gate off
+    * ``"single_turn"`` — no history to rewrite
+    * ``"no_provider"`` — neither Groq nor wrapper configured
+    * ``"provider_error"`` — wrapper / Groq returned ``error``
+    * ``"empty_text"`` — provider returned blank text
+    * ``"length_out_of_bounds"`` — rewrite < 10 or > 500 chars
+    * ``"exception"`` — uncaught error in the rewrite path
+
+    ``fired=True`` means the rewrite replaced the concatenated history;
+    ``fired=False`` means the caller used the existing fallback path.
+    Either way the route lands an answer — this just lets the judge
+    attribute multi-turn retrieval drift to de-noiser non-firing.
+    """
+    trace = current()
+    if trace is None:
+        return
+    payload: dict[str, Any] = {"fired": bool(fired)}
+    if latency_ms > 0:
+        payload["latency_ms"] = int(latency_ms)
+    if rewritten_chars > 0:
+        payload["rewritten_chars"] = int(rewritten_chars)
+    if fallback_reason:
+        payload["fallback_reason"] = str(fallback_reason)[:64]
+    if model:
+        payload["model"] = str(model)[:64]
+    if provider:
+        payload["provider"] = str(provider)[:32]
+    trace.query_denoiser = payload
 
 
 def record_cite_describe_guard(

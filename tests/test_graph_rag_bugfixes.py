@@ -48,6 +48,15 @@ from app.engines.graph_rag import (
 from app.models import GraphRAGRequest
 
 
+@pytest.fixture(autouse=True)
+def _disable_r87e_stage2_gate(monkeypatch):
+    """R87-E confidence gate would skip Stage-2 on the empty mock
+    contexts these tests construct. Pre-R87-E tests; disable the gate
+    so the original Stage-2-behaviour assertions still hold. R87-E has
+    its own coverage in ``test_r87cde_subpoint_roleduty_stage2gate.py``."""
+    monkeypatch.setenv("REGENOLD_STAGE2_MIN_CONFIDENCE", "0")
+
+
 # A multi-turn question that reliably triggers Stage-2.
 _MULTI_TURN_Q = (
     "Conversation so far:\nUser: foo\nAssistant: bar\n\n"

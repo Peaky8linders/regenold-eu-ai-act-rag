@@ -36,6 +36,17 @@ from pydantic import SecretStr as _SS
 # ─── Fixtures ────────────────────────────────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def _disable_r87e_stage2_gate(monkeypatch):
+    """R87-E confidence-gated Stage-2 skip uses ``_compute_confidence``
+    which returns 0.3 for the empty mock contexts these tests construct.
+    These pre-R87-E tests assert Stage-2 polish lands through the
+    Anthropic SDK direct path; we disable the new gate so the original
+    assertions still hold. The R87-E gate has its own coverage in
+    ``tests/test_r87cde_subpoint_roleduty_stage2gate.py``."""
+    monkeypatch.setenv("REGENOLD_STAGE2_MIN_CONFIDENCE", "0")
+
+
 @pytest.fixture()
 def reset_anthropic_env(monkeypatch: pytest.MonkeyPatch):
     """Wipe all LLM-provider env vars so each test sets exactly what it needs."""

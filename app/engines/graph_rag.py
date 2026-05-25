@@ -3491,6 +3491,42 @@ def _two_stage_generate(
     if not _needs_stage2_enhancement(question, context, query):
         return kg_answer, False
 
+    # R87-E — confidence-gated Stage-2 skip.
+    #
+    # r86-live-postship measured 30 of 100 rows hitting the consistency
+    # guard (Stage-2 prose contradicted the refs → R49-A grounded prose
+    # substitute fired). The pattern correlates with low engine_confidence:
+    # 38/100 at 0.3 (sparse), 2/100 at 0.0 (zero retrieval) — that's 40%
+    # of rows where Stage-2 polish risks more contradiction than lift.
+    #
+    # Skip Stage-2 when confidence ≤ threshold. Saves ~5-15 s of latency
+    # on those rows (deterministic Stage-1 already landed) and removes a
+    # contradiction source. Tone holds at 1.0 on the deterministic path,
+    # so the tone axis is unaffected.
+    #
+    # Env-gated REGENOLD_STAGE2_MIN_CONFIDENCE (default 0.5). Set to 0.0
+    # to disable the gate entirely (R86 behaviour: polish on every row
+    # that passes the prior gates).
+    try:
+        _stage2_min_conf = float(
+            os.getenv("REGENOLD_STAGE2_MIN_CONFIDENCE", "0.5")
+        )
+    except ValueError:
+        _stage2_min_conf = 0.5
+    if _stage2_min_conf > 0.0:
+        _ctx_conf = _compute_confidence(context)
+        if _ctx_conf < _stage2_min_conf:
+            try:
+                from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                    record_note,
+                )
+                record_note(
+                    f"stage2_skipped_low_confidence={_ctx_conf:.2f}"
+                )
+            except Exception:  # noqa: BLE001 — fail-soft on trace
+                pass
+            return kg_answer, False
+
     enhanced = _claude_max_enhance_answer(
         question=question,
         kg_answer=kg_answer,

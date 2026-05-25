@@ -32,6 +32,17 @@ from app.engines.graph_rag import (
 from app.models import GraphRAGRequest
 
 
+@pytest.fixture(autouse=True)
+def _disable_r87e_stage2_gate(monkeypatch):
+    """R87-E confidence-gated Stage-2 skip uses ``_compute_confidence``
+    which returns 0.3 for ``nodes_traversed=0`` mock contexts. These
+    pre-R87-E tests assert Stage-2 fires on the wrapper path; we
+    disable the new gate so the original assertions still hold.
+    The R87-E gate has its own coverage in
+    ``tests/test_r87cde_subpoint_roleduty_stage2gate.py``."""
+    monkeypatch.setenv("REGENOLD_STAGE2_MIN_CONFIDENCE", "0")
+
+
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 # A question that is always complex enough to trigger Stage 2 — multi-turn
