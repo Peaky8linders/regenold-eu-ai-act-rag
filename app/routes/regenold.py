@@ -557,6 +557,278 @@ def _extract_assistant_anchors(assistant_text: str) -> list[str]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# R88-B — Fines-authority seed (Art. 101 for GPAI direct-fining questions)
+# ---------------------------------------------------------------------------
+# r87-v2-live mt_v2_022:
+#   T0 user:      "The AI Office contacted us about our GPAI."
+#   T1 assistant: "The AI Office sits within the Commission and oversees
+#                  GPAI providers under Article 88+."
+#   T2 user:      "Can they fine us directly?"
+# Gold: Art. 101 (GPAI direct fines by the Commission/AI Office). Pred
+# was Arts. 51/64/53 — assistant-anchor inheritance correctly inherited
+# Art. 88 but Art. 88 (AI Office institutional mandate) is not the
+# direct-fining authority article. The KEYWORD_TO_ARTICLE map carries
+# "ai office fine"/"who can fine gpai" style entries (R54-Q1) but none
+# match the LIVE turn alone — the AI-Office / GPAI tokens live in the
+# prior conversation. This seed bridges that:
+#
+#   * Live turn carries a fining-shape signal (fine / penalty / fining /
+#     "can they … directly")
+#   * Conversation context (current turn OR prior assistant) names the
+#     direct-fining authority: AI Office / Commission / GPAI provider
+#   ⇒ inject Art. 101 at HEAD of candidates
+#
+# Strictly additive — capped at 1 seed per call. Env-gated
+# REGENOLD_FINES_AUTHORITY_SEED (default ON).
+
+# Fining-action verbs / nouns in the live turn.
+_FINES_LIVE_TOKEN_RE = re.compile(
+    r"\b(?:fine|fines|fining|fined|penalty|penalties|"
+    r"penalise|penalize|penalised|penalized|sanction|sanctions)\b",
+    re.IGNORECASE,
+)
+
+# Direct-fining qualifiers — pair with the fines-token to distinguish
+# the authority question ("can THEY fine us DIRECTLY") from a general
+# "what are the penalties" definitional shape (which Art. 99 / 100
+# already cover via KEYWORD_TO_ARTICLE).
+_FINES_DIRECT_QUALIFIER_RE = re.compile(
+    r"\b(?:directly|directly\s+fine|impose\s+directly|enforce\s+directly|"
+    r"have\s+(?:the\s+)?power|are\s+empowered|can\s+(?:they|the\s+commission|"
+    r"the\s+ai\s+office)|may\s+(?:they|the\s+commission|the\s+ai\s+office)|"
+    r"who\s+(?:can\s+)?fine|who\s+(?:can\s+)?impose|empowered\s+to\s+fine|"
+    r"empowered\s+to\s+impose)\b",
+    re.IGNORECASE,
+)
+
+# Direct-fining authority markers — must appear in either the live turn
+# or the immediate-prior assistant turn for the seed to fire. These are
+# the entities that under Art. 101 may impose direct fines on GPAI
+# providers (Commission acting through the AI Office, on Chapter-V
+# breaches by GPAI providers).
+_FINES_AUTHORITY_CONTEXT_RE = re.compile(
+    r"\b(?:ai\s+office|commission|gpai|general[-\s]purpose\s+ai)\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_fines_authority_seed(
+    history_turns: list[Any],
+    live_question: str,
+) -> str | None:
+    """Detect 'who can fine us' authority follow-ups under GPAI/AI-Office context.
+
+    Returns ``"Article 101"`` when the live turn carries a fining-shape
+    signal AND the conversation context (live + immediate-prior assistant
+    turn) mentions a GPAI direct-fining authority (AI Office, Commission,
+    GPAI provider). Returns ``None`` otherwise.
+
+    Conservative — both gates must fire. A bare "are there penalties?"
+    without authority context will return ``None`` and let Art. 99 /
+    Art. 100 win on their own KEYWORD_TO_ARTICLE entries.
+    """
+    if not live_question:
+        return None
+
+    # Gate 1 — fining-action token in the LIVE turn.
+    if not _FINES_LIVE_TOKEN_RE.search(live_question):
+        return None
+
+    # Gate 2 — direct-authority qualifier in the LIVE turn (suppresses
+    # the broad "what penalties apply?" definitional shape where
+    # Art. 99/100 are the right anchors).
+    if not _FINES_DIRECT_QUALIFIER_RE.search(live_question):
+        return None
+
+    # Gate 3 — authority context in live turn OR immediate-prior
+    # assistant turn. We scan only the LAST assistant turn (the
+    # immediate context the user is referring to) so a long-ago AI
+    # Office mention doesn't drag every later penalty question to
+    # Art. 101.
+    context_text = live_question
+    for turn in reversed(history_turns or []):
+        if getattr(turn, "role", "") == "assistant":
+            context_text = context_text + "\n" + (getattr(turn, "content", "") or "")
+            break
+
+    if not _FINES_AUTHORITY_CONTEXT_RE.search(context_text):
+        return None
+
+    return "Article 101"
+
+
+def _apply_fines_authority_seed(
+    candidates: list[str],
+    history_turns: list[Any],
+    live_question: str,
+) -> list[str]:
+    """Seed Art. 101 when fining-authority + AI-Office/GPAI context fires.
+
+    Returns a NEW list — never mutates ``candidates``. Adds the seed at
+    HEAD so it survives top-K truncation. Strictly additive — when
+    Art. 101 (or any 101.* sub-point) is already a candidate, returns
+    the list unchanged. Env-gated ``REGENOLD_FINES_AUTHORITY_SEED``.
+
+    Solves V2 mt_v2_022 (live r87-v2-live).
+    """
+    if (
+        os.environ.get("REGENOLD_FINES_AUTHORITY_SEED", "1")
+        .strip()
+        .lower()
+        not in ("1", "true", "yes", "on")
+    ):
+        return list(candidates)
+    seed = _detect_fines_authority_seed(history_turns, live_question)
+    if not seed:
+        return list(candidates)
+    # Dedupe: skip if Article 101 OR any 101 sub-point is already present.
+    for cand in candidates:
+        if cand == seed or cand.startswith("Article 101."):
+            return list(candidates)
+    out = [seed, *candidates]
+    try:
+        from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+            record_note,
+        )
+        record_note(f"fines_authority_seed={seed}")
+    except Exception:  # noqa: BLE001 — fail-soft on trace
+        pass
+    return out
+
+
+# ---------------------------------------------------------------------------
+# R88-D — Annex-applicability seed (Art. 113 for "when does Annex X apply")
+# ---------------------------------------------------------------------------
+# r87-v2-live mt_v2_019:
+#   T0 user:      "When do high-risk Annex III obligations apply?"
+#   T1 assistant: "Per the May 2026 Digital Omnibus political agreement,
+#                  Annex III high-risk obligations apply from 2 December 2027."
+#   T2 user:      "And for Annex I (medical devices etc.) embedded systems?"
+# Gold: Art. 113 (entry into application + phased application dates).
+# Pred: Annex I — retrieval correctly surfaced Annex I as a topic but
+# missed the applicability anchor (Art. 113) because the live turn drops
+# the "obligations apply" frame and reads as an Annex-I content question.
+#
+# Pattern: live turn references an Annex (I/II/III/IV/V) AND the prior
+# assistant turn established an applicability/date frame (apply from,
+# applicability date, entry into application, dated 2 December / 2 August
+# 202X). When both fire, inject Art. 113 at HEAD.
+#
+# Strictly additive. Capped at 1. Env-gated REGENOLD_ANNEX_APPLICABILITY_SEED.
+
+# Live-turn signal — must reference an Annex (any roman numeral).
+_ANNEX_REF_RE = re.compile(
+    r"\bAnnex\s+(?:I{1,3}V?|IV|V|VI{0,3})\b",
+    re.IGNORECASE,
+)
+
+# Live-turn applicability cue — for the single-turn case (no prior
+# assistant frame, e.g. "When do Annex I obligations apply?").
+_APPLICABILITY_CUE_RE = re.compile(
+    r"\b(?:apply(?:\s+from)?|applicable|applicability|"
+    r"enters?\s+into\s+(?:force|application)|entry\s+into\s+(?:force|application)|"
+    r"effective\s+(?:date|from)|"
+    r"transitional|phased\s+application|grace\s+period|"
+    r"compliance\s+(?:date|deadline)|"
+    r"start\s+(?:applying|to\s+apply)|begins?\s+applying|"
+    r"when\s+(?:do|does|must|will))\b",
+    re.IGNORECASE,
+)
+
+# Prior-assistant applicability frame — applicability words OR specific
+# dated phrases (Digital Omnibus deferral dates: 2 December 2027 /
+# 2 August 2028 / 2 August 2026 / 2 December 2026).
+_APPLICABILITY_FRAME_RE = re.compile(
+    r"\b(?:apply\s+from|applicable\s+from|applicability\s+date|"
+    r"entry\s+into\s+application|enters?\s+into\s+application|"
+    r"obligations?\s+apply|compliance\s+(?:date|deadline)|"
+    r"transitional\s+period|phased\s+application|"
+    r"(?:from|by|on)\s+\d{1,2}\s+(?:january|february|march|april|may|june|"
+    r"july|august|september|october|november|december)\s+20\d{2})\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_annex_applicability_seed(
+    history_turns: list[Any],
+    live_question: str,
+) -> str | None:
+    """Detect Annex-applicability follow-ups deserving Art. 113.
+
+    Returns ``"Article 113"`` when:
+      * Live turn references an Annex (I/II/III/IV/V), AND
+      * EITHER the live turn carries an applicability cue
+        ("when do X apply" / "applicable from" / ...),
+      * OR the immediate prior assistant turn established an
+        applicability/dated frame ("apply from 2 December 2027").
+
+    Returns ``None`` otherwise. Bare "What is Annex III?" content
+    questions do NOT fire — they should resolve to the Annex itself.
+    """
+    if not live_question:
+        return None
+
+    # Gate 1 — Annex ref in live turn.
+    if not _ANNEX_REF_RE.search(live_question):
+        return None
+
+    # Gate 2a — applicability cue in LIVE turn (single-turn case).
+    if _APPLICABILITY_CUE_RE.search(live_question):
+        return "Article 113"
+
+    # Gate 2b — applicability frame in immediate-prior assistant turn.
+    # The user dropped the explicit cue but is drilling down on the
+    # prior applicability discussion.
+    for turn in reversed(history_turns or []):
+        if getattr(turn, "role", "") == "assistant":
+            prev = getattr(turn, "content", "") or ""
+            if _APPLICABILITY_FRAME_RE.search(prev):
+                return "Article 113"
+            # Only consider the IMMEDIATE prior assistant — break on
+            # the first one encountered.
+            break
+
+    return None
+
+
+def _apply_annex_applicability_seed(
+    candidates: list[str],
+    history_turns: list[Any],
+    live_question: str,
+) -> list[str]:
+    """Seed Art. 113 when Annex-applicability shape fires.
+
+    Strictly additive. Capped at 1. Env-gated
+    ``REGENOLD_ANNEX_APPLICABILITY_SEED``.
+
+    Solves V2 mt_v2_019 (live r87-v2-live).
+    """
+    if (
+        os.environ.get("REGENOLD_ANNEX_APPLICABILITY_SEED", "1")
+        .strip()
+        .lower()
+        not in ("1", "true", "yes", "on")
+    ):
+        return list(candidates)
+    seed = _detect_annex_applicability_seed(history_turns, live_question)
+    if not seed:
+        return list(candidates)
+    # Dedupe parent + sub-points.
+    for cand in candidates:
+        if cand == seed or cand.startswith("Article 113."):
+            return list(candidates)
+    out = [seed, *candidates]
+    try:
+        from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+            record_note,
+        )
+        record_note(f"annex_applicability_seed={seed}")
+    except Exception:  # noqa: BLE001 — fail-soft on trace
+        pass
+    return out
+
+
 def _apply_assistant_anchor_inheritance(
     candidates: list[str],
     history_turns: list[Any],
@@ -741,6 +1013,11 @@ def _engine_cache_key(question: str, system_context: str | None) -> str:
             "REGENOLD_ROLE_DUTY_SEED",
             # R88 — multi-turn coherence: assistant-turn anchor inheritance
             "REGENOLD_ASSISTANT_ANCHOR_INHERIT",
+            # R88-B / R88-D — multi-turn authority + applicability seeds
+            "REGENOLD_FINES_AUTHORITY_SEED",
+            "REGENOLD_ANNEX_APPLICABILITY_SEED",
+            # R88-E — Art. 5 sub-point describer in stitch / augment paths
+            "REGENOLD_SUBPOINT_DESCRIBER",
         )
     )
     blob = (
@@ -1540,7 +1817,11 @@ def _reconcile_references_to_prose(
         return references
 
 
-def _prune_non_anchor_refs(refs: list[str], live_question: str) -> list[str]:
+def _prune_non_anchor_refs(
+    refs: list[str],
+    live_question: str,
+    protected_seeds: tuple[str, ...] | None = None,
+) -> list[str]:
     """Suppress broad anchors when the live question names specific articles.
 
     Precision-pruning pass (the round-19 lever, extended in round-20
@@ -1611,8 +1892,20 @@ def _prune_non_anchor_refs(refs: list[str], live_question: str) -> list[str]:
         explicit_annex_romans = intent_annexes
         intent_source = f"intent:{intent_label}"
 
+    # R88 — protected seed refs. R88-B (fines-authority) / R88-D
+    # (annex-applicability) inject specific Articles into the candidate
+    # set based on MULTI-TURN coreferent context. The pruner shouldn't
+    # drop these even when the live turn carries an explicit Annex / Art.
+    # anchor of its OWN (the seed represents the authority article the
+    # user is asking ABOUT, not the topic anchor they are drilling INTO).
+    protected_set: set[str] = set(protected_seeds or ())
+
     kept: list[str] = []
     for ref in refs:
+        if ref in protected_set:
+            # R88 — seeded by an R88-B/D helper. Survive the pruner.
+            kept.append(ref)
+            continue
         m = _REF_PARSE_RE.match(ref)
         if not m:
             # Unparseable shape — keep (we only prune the well-formed
@@ -2844,6 +3137,43 @@ def regenold_eu_ai_act_ask(
     except Exception:  # noqa: BLE001 — fail-soft, must not 500 the route
         pass
 
+    # R88-B / R88-D — protected-seed registry. Multi-turn seeds inject
+    # candidates based on conversational context; the downstream
+    # ``_prune_non_anchor_refs`` pass MUST NOT drop them even when the
+    # live turn explicitly names a different anchor (drill-down case).
+    _r88_protected_seeds: list[str] = []
+
+    # R88-B — fines-authority seed. mt_v2_022 ("Can they fine us
+    # directly?" after AI Office + GPAI context). R88-A inherited Art.
+    # 88 (AI Office institutional mandate) but Art. 101 (GPAI direct
+    # fines) is the authority article. Strictly additive; see
+    # ``_apply_fines_authority_seed`` for the trigger gates.
+    try:
+        _r88b_seed = _detect_fines_authority_seed(_r88a_history, _r88a_live_q)
+        if _r88b_seed:
+            _r88_protected_seeds.append(_r88b_seed)
+        candidates = _apply_fines_authority_seed(
+            candidates, _r88a_history, _r88a_live_q
+        )
+    except Exception:  # noqa: BLE001 — fail-soft, must not 500 the route
+        pass
+
+    # R88-D — Annex-applicability seed. mt_v2_019 ("And for Annex I
+    # (medical devices etc.) embedded systems?" after the assistant
+    # established "Annex III high-risk obligations apply from 2 December
+    # 2027"). Live turn references an Annex without an explicit
+    # applicability cue; the prior assistant turn carries the cue.
+    # Strictly additive; see ``_apply_annex_applicability_seed``.
+    try:
+        _r88d_seed = _detect_annex_applicability_seed(_r88a_history, _r88a_live_q)
+        if _r88d_seed:
+            _r88_protected_seeds.append(_r88d_seed)
+        candidates = _apply_annex_applicability_seed(
+            candidates, _r88a_history, _r88a_live_q
+        )
+    except Exception:  # noqa: BLE001 — fail-soft, must not 500 the route
+        pass
+
     # Surface conversation anchors (e.g. ``Art. 5`` / ``Annex IV``
     # explicitly mentioned in the live question or a prior turn) when
     # the engine missed them — the deterministic-fallback path emits
@@ -2900,7 +3230,20 @@ def regenold_eu_ai_act_ask(
     # aren't among them. See :func:`_prune_non_anchor_refs` for the full
     # rule + recall-preservation argument. Conceptual questions with no
     # explicit anchor are a no-op (broad anchors stay as primary signal).
-    candidates = _prune_non_anchor_refs(candidates, live_user_message)
+    #
+    # R88-B/D — protect refs seeded by multi-turn coreferent helpers
+    # (``_apply_fines_authority_seed`` / ``_apply_annex_applicability_seed``).
+    # mt_v2_019: live turn explicitly names "Annex I" → without this
+    # protection the pruner would drop Article 113 (the multi-turn
+    # applicability authority) on a drill-down question. R88-B is
+    # naturally safe because its trigger live question never carries an
+    # explicit Article anchor; the protection is symmetric so it works
+    # for both.
+    candidates = _prune_non_anchor_refs(
+        candidates,
+        live_user_message,
+        protected_seeds=tuple(_r88_protected_seeds),
+    )
 
     # Round 31 (architecture-PDF re-audit) — TAI Scan Prohibited
     # Gatekeeper. Spec quote: "high-priority, strict sub-string and
@@ -3725,8 +4068,14 @@ def regenold_eu_ai_act_ask(
                     # R63-C — pass the question so multi-stub _KBEntry
                     # (Art. 5/50/53/56) surfaces the specificity-matched
                     # stub instead of the joined-summary first-clause.
+                    # R88-E — also pass the user-facing refs (with sub-
+                    # points preserved) so the stitcher can substitute
+                    # Article 5.1.f/g/h describer prose for the parent
+                    # 8-category list when pred carries the sub-point.
                     answer_text = stitch_grounded_prose(
-                        internal_refs, question=question,
+                        internal_refs,
+                        question=question,
+                        user_facing_refs=[str(r) for r in references[:6]],
                     )
                     retrieval_path = "consistency_guard"
                     _trace_guard("r48_consistency_guard")

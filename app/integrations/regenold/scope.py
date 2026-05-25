@@ -1670,6 +1670,54 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "explanation of the decision": "Art. 86",
     "ai-driven decision": "Art. 86",
     "ai driven decision": "Art. 86",
+    # R88-C — right-to-explanation natural-language phrasings.
+    # r87-v2-live mt_v2_024: prior turn establishes "loan denial is Annex
+    # III(5)(b) — high-risk", live turn is "A customer wants to know why
+    # their loan was rejected by our AI." Gold Art. 86 (right to
+    # explanation of individual decision-making). The existing
+    # "right to explanation" / "ai-driven decision" entries don't fire
+    # because the live turn never names "explanation" or "decision" — it
+    # uses the customer-asking-why pattern.
+    #
+    # CRITICAL design constraint: every entry below requires an AI-Act-
+    # specific token co-occurrence ("rejected/denied/declined BY OUR AI",
+    # "an ai decision", "the ai decision"). Bare "wants to know why" /
+    # "want to know why" are deliberately NOT added because they match
+    # generic English ("my child wants to know why the sky is blue").
+    # The mt_v2_024 live turn carries "rejected by our AI" which fires
+    # the multi-word entry below; the conversation context (deployer +
+    # loan-denial + high-risk) is also re-validated by the scope gate's
+    # multi-turn rescue rules.
+    "rejected by our ai": "Art. 86",
+    "rejected by the ai": "Art. 86",
+    "rejected by our ai system": "Art. 86",
+    "rejected by the ai system": "Art. 86",
+    "rejected by an ai": "Art. 86",
+    "rejected by ai": "Art. 86",
+    "denied by our ai": "Art. 86",
+    "denied by the ai": "Art. 86",
+    "denied by an ai": "Art. 86",
+    "denied by our ai system": "Art. 86",
+    "denied by the ai system": "Art. 86",
+    "declined by our ai": "Art. 86",
+    "declined by the ai": "Art. 86",
+    "declined by an ai": "Art. 86",
+    "declined by our ai system": "Art. 86",
+    "declined by the ai system": "Art. 86",
+    # Affected-person + AI-decision pattern (multi-word, AI-specific).
+    "individual affected by an ai": "Art. 86",
+    "person affected by an ai": "Art. 86",
+    "people affected by an ai": "Art. 86",
+    "individual affected by the ai": "Art. 86",
+    "explanation of an ai decision": "Art. 86",
+    "explanation of the ai decision": "Art. 86",
+    "explain the ai decision": "Art. 86",
+    "explain how the ai decided": "Art. 86",
+    "explain how our ai decided": "Art. 86",
+    "request an explanation of": "Art. 86",
+    "request explanation from the ai": "Art. 86",
+    "right to obtain an explanation": "Art. 86",
+    "obtain an explanation of": "Art. 86",
     "whistleblower": "Art. 87",
     "whistleblowing": "Art. 87",
     "downstream-provider complaint": "Art. 89",
