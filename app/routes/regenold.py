@@ -482,6 +482,175 @@ def _apply_role_duty_seed(
     return out
 
 
+# ---------------------------------------------------------------------------
+# R88-A — Assistant-turn anchor inheritance
+# ---------------------------------------------------------------------------
+# r87-v2-live multi-turn coherence regressed 0.56 → 0.28. Deep-dive
+# (R88-PLAN.md) showed 3 of the 6 zero-refL rows shared one pattern:
+#
+#   * The prior ASSISTANT turn names a specific Article (e.g.
+#     "Article 99(3) caps fines at €35M") that's the actual answer
+#     to the user's coreferent follow-up.
+#   * `_extract_conversation_anchors` already pulls that anchor into
+#     the `[Context anchors — ...]` prefix line.
+#   * But BM25 sees the anchor only ONCE in the prefix vs many keyword
+#     matches in the user's follow-up — the prefix loses the rank race.
+#   * Engine retrieves the user-keyword topic instead of the assistant's
+#     named Article. Coherence fails.
+#
+# Fix mirrors R87-D's role-duty seed: when the immediately-prior
+# assistant turn names specific Articles AND the user's final turn is
+# coreferent (no new explicit Article ref of its own), INJECT the
+# assistant's articles at the HEAD of candidates — bypass BM25 ranking
+# for the inheritance case.
+#
+# Strictly additive. Capped at 2 anchors per call (over-citation guard
+# matching R86 Deployer Hop). Env-gated REGENOLD_ASSISTANT_ANCHOR_INHERIT.
+_ASSISTANT_ANCHOR_INHERIT_MAX = 2
+
+
+# Regex for finding Article / Annex refs inside arbitrary assistant
+# prose. Matches both ``Article 99`` / ``Art. 99`` and the parenthesized
+# subpoint forms (``Article 99(3)``) — the catch is to PARSE the parent
+# article number and ignore the subpoint suffix for the seed (the
+# downstream expander walks the parent).
+_ASSISTANT_ARTICLE_RE = re.compile(
+    r"\b(?:Article|Art\.)\s+(\d{1,3})\b",
+    re.IGNORECASE,
+)
+_ASSISTANT_ANNEX_RE = re.compile(
+    r"\bAnnex\s+([IVXLCDM]+)\b",
+    re.IGNORECASE,
+)
+# A user follow-up is "coreferent" iff it does NOT itself name a
+# specific Article ref. If the user said "What does Article 13 require?"
+# we don't need to inherit — they're explicit. If they said "And for
+# embedded systems?" we DO need to inherit the prior context.
+_USER_NEW_ARTICLE_RE = re.compile(
+    r"\b(?:Article|Art\.)\s+\d{1,3}\b|\bAnnex\s+[IVXLCDM]+\b",
+    re.IGNORECASE,
+)
+
+
+def _extract_assistant_anchors(assistant_text: str) -> list[str]:
+    """Pull every Article / Annex top-level ref from one assistant turn.
+
+    Returns user-facing form (``Article 99``, ``Annex VI``). Dedups
+    in source order. Subpoints are collapsed to the parent (``Article
+    99(3)`` → ``Article 99``) — the downstream expander handles
+    sub-points from the parent.
+    """
+    if not assistant_text:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for m in _ASSISTANT_ARTICLE_RE.finditer(assistant_text):
+        ref = f"Article {int(m.group(1))}"
+        if ref not in seen:
+            out.append(ref)
+            seen.add(ref)
+    for m in _ASSISTANT_ANNEX_RE.finditer(assistant_text):
+        ref = f"Annex {m.group(1).upper()}"
+        if ref not in seen:
+            out.append(ref)
+            seen.add(ref)
+    return out
+
+
+def _apply_assistant_anchor_inheritance(
+    candidates: list[str],
+    history_turns: list[Any],
+    live_question: str,
+) -> list[str]:
+    """Inject the prior assistant turn's named Articles at HEAD position.
+
+    Triggering rules (all required):
+
+    1. ``REGENOLD_ASSISTANT_ANCHOR_INHERIT`` env gate ON (default ON).
+    2. At least one prior assistant turn exists in ``history_turns``.
+    3. The IMMEDIATELY PRECEDING assistant turn (the last one before
+       the live user message) names ≥ 1 specific Article / Annex.
+    4. The user's live question does NOT itself name a new specific
+       Article — we only inherit on coreferent follow-ups; explicit
+       user refs win on their own.
+
+    Returns a NEW list — never mutates ``candidates``. Capped at
+    ``_ASSISTANT_ANCHOR_INHERIT_MAX`` injections to bound over-citation.
+    Dedups against existing candidates AND against parent / sub-point
+    chains (``Article 27.1`` already present → skip ``Article 27``).
+    """
+    if (
+        os.environ.get("REGENOLD_ASSISTANT_ANCHOR_INHERIT", "1")
+        .strip()
+        .lower()
+        not in ("1", "true", "yes", "on")
+    ):
+        return list(candidates)
+    if not history_turns:
+        return list(candidates)
+    # Find the last assistant turn (most recent context to inherit).
+    last_assistant_text: str | None = None
+    for turn in reversed(history_turns):
+        if getattr(turn, "role", "") == "assistant":
+            last_assistant_text = getattr(turn, "content", "") or ""
+            break
+    if not last_assistant_text:
+        return list(candidates)
+    anchors = _extract_assistant_anchors(last_assistant_text)
+    if not anchors:
+        return list(candidates)
+    # Rule 4 — block inheritance only on a true topic SWITCH. If the
+    # user names article refs that are NOT among the assistant's
+    # anchors, they've changed topic and we shouldn't carry the prior
+    # context. If the user's refs OVERLAP with the assistant's anchors
+    # (drill-down: "Annex III(4) — which route?" after assistant said
+    # "Article 43 routes most HRAIS to Annex VI"), inheritance still
+    # fires because the user is asking a follow-up about that topic.
+    user_anchors = _extract_assistant_anchors(live_question or "")
+    if user_anchors:
+        assistant_set = set(anchors)
+        # Drill-down iff every user-named ref appears in the assistant's
+        # anchor set (parent-level comparison — sub-points already
+        # collapsed by ``_extract_assistant_anchors``).
+        if not all(ua in assistant_set for ua in user_anchors):
+            # User named at least one NEW ref not in the prior assistant
+            # turn — true topic switch, suppress inheritance.
+            return list(candidates)
+
+    # Dedupe against candidates (treat sub-points as covering the parent
+    # so we don't double-inject when the engine already pulled a child).
+    out = list(candidates)
+    injected: list[str] = []
+    cand_parents: set[str] = set()
+    for c in candidates:
+        # `Article 27` or `Article 27.1.a` → parent `Article 27`
+        for prefix in ("Article ", "Annex "):
+            if c.startswith(prefix):
+                body = c[len(prefix):]
+                parent = prefix + body.split(".")[0]
+                cand_parents.add(parent)
+                break
+    for anchor in anchors:
+        if anchor in cand_parents or anchor in injected:
+            continue
+        injected.append(anchor)
+        cand_parents.add(anchor)
+        if len(injected) >= _ASSISTANT_ANCHOR_INHERIT_MAX:
+            break
+    if not injected:
+        return list(candidates)
+    try:
+        from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+            record_note,
+        )
+        record_note(
+            "assistant_anchor_inherit=" + ",".join(injected)
+        )
+    except Exception:  # noqa: BLE001 — fail-soft on trace
+        pass
+    return injected + out
+
+
 def _engine_cache_key(question: str, system_context: str | None) -> str:
     """Sha256-hash of the engine input fingerprint.
 
@@ -570,6 +739,8 @@ def _engine_cache_key(question: str, system_context: str | None) -> str:
             "REGENOLD_HRAIS_EXPAND",
             "REGENOLD_SUBPOINT_KEEP_PARENT",
             "REGENOLD_ROLE_DUTY_SEED",
+            # R88 — multi-turn coherence: assistant-turn anchor inheritance
+            "REGENOLD_ASSISTANT_ANCHOR_INHERIT",
         )
     )
     blob = (
@@ -2640,6 +2811,35 @@ def regenold_eu_ai_act_ask(
         )
         candidates = _apply_deployer_hop(
             candidates, _intent_label_for_hop, question
+        )
+    except Exception:  # noqa: BLE001 — fail-soft, must not 500 the route
+        pass
+
+    # R88-A — assistant-turn anchor inheritance. r87-v2-live multi-turn
+    # coherence regressed because BM25 didn't elevate the [Context
+    # anchors — ...] prefix's article tokens. Direct candidate seed
+    # bypasses the BM25 race. See ``_apply_assistant_anchor_inheritance``
+    # for the trigger gates (coreferent follow-up + immediate-prior
+    # assistant turn names ≥ 1 Article). Strictly additive.
+    try:
+        _r88a_dialogue = [
+            m for m in req.messages if m.role in ("user", "assistant")
+        ]
+        _r88a_last_user_idx = -1
+        for _i in range(len(_r88a_dialogue) - 1, -1, -1):
+            if _r88a_dialogue[_i].role == "user":
+                _r88a_last_user_idx = _i
+                break
+        _r88a_history = (
+            _r88a_dialogue[:_r88a_last_user_idx]
+            if _r88a_last_user_idx > 0 else []
+        )
+        _r88a_live_q = (
+            _r88a_dialogue[_r88a_last_user_idx].content
+            if _r88a_last_user_idx >= 0 else ""
+        )
+        candidates = _apply_assistant_anchor_inheritance(
+            candidates, _r88a_history, _r88a_live_q
         )
     except Exception:  # noqa: BLE001 — fail-soft, must not 500 the route
         pass
