@@ -98,6 +98,23 @@ _JUDGE_SYSTEM = (
     "no explanation outside the JSON."
 )
 
+# Default judge model — overridable via the CLI ``--model`` flag.
+# ``claude-sonnet-4-6`` is the historical default the R66-C pipeline
+# was tuned against; operators wanting a stronger (and more expensive)
+# judge can pass ``--model claude-opus-4-7`` for runs where the
+# additional reasoning quality is worth the extra latency + spend.
+_DEFAULT_JUDGE_MODEL = "claude-sonnet-4-6"
+_JUDGE_MODEL: str = _DEFAULT_JUDGE_MODEL
+
+
+def set_judge_model(model: str) -> None:
+    """Module-level override for the judge model. Called by ``main`` from
+    the CLI ``--model`` flag before any judge call fires. Goes through a
+    helper rather than direct global assignment so future tests can
+    monkey-patch the same surface."""
+    global _JUDGE_MODEL
+    _JUDGE_MODEL = (model or _DEFAULT_JUDGE_MODEL).strip()
+
 
 # Retryable failure SHAPES (judge_error string fragments). Mirrors the
 # pattern from ``evals/bench/_http_retry.py::is_retryable_error``: only
@@ -189,7 +206,7 @@ def _call_judge_sonnet(prompt: str, timeout_s: float = 30.0) -> dict[str, Any]:
     req = OpenAIWrapperRequest(
         system=_JUDGE_SYSTEM,
         user=prompt,
-        model="claude-sonnet-4-6",
+        model=_JUDGE_MODEL,
         max_tokens=400,
         temperature=0.0,
         timeout_seconds=timeout_s,
@@ -247,7 +264,7 @@ def _call_judge_anthropic(prompt: str, timeout_s: float = 30.0) -> dict[str, Any
 
     try:
         response = client.messages.create(
-            model="claude-sonnet-4-6",
+            model=_JUDGE_MODEL,
             system=_JUDGE_SYSTEM,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=400,
@@ -680,8 +697,19 @@ def main(argv: list[str] | None = None) -> int:
             "P2P_GRAPH_RAG_API_KEY or ANTHROPIC_API_KEY)."
         ),
     )
+    parser.add_argument(
+        "--model", default=_DEFAULT_JUDGE_MODEL,
+        help=(
+            f"Judge model id (default {_DEFAULT_JUDGE_MODEL}). Pass "
+            "'claude-opus-4-7' for higher-quality reasoning runs at extra "
+            "latency / cost. The model id is forwarded verbatim to the "
+            "selected provider — operators are responsible for matching "
+            "what the provider accepts."
+        ),
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
+    set_judge_model(args.model)
     summary = run(
         bench_sidecar=args.bench_sidecar,
         label=args.label,
