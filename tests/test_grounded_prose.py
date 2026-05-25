@@ -228,9 +228,13 @@ class TestAugmentWithRefDescriptions:
         assert out == answer
 
     def test_output_is_augmented_form_of_input(self) -> None:
-        """Augmented output starts with the original answer text."""
+        """Augmented output starts with the original answer text for
+        non-describer refs (append path). R89-A introduced article-
+        level describer keys that PREPEND — Article 51 is one such key
+        now, so we use Article 22 (authrep) which has a KB stub but
+        no R89-A describer override."""
         answer = "The EU AI Act applies."
-        out = self._augment(answer, ["Article 51"])
+        out = self._augment(answer, ["Article 22"])
         assert out.startswith(answer), (
             f"augmented output does not start with original answer: {out!r}"
         )

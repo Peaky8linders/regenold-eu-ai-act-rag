@@ -31,11 +31,16 @@ from app.routes.regenold import _engine_cache_key
 
 
 class TestR79AugmenterPeriod:
+    # R89-A note: Article 51 became a describer key (prepend path), so
+    # the original test ref no longer exercises the APPEND path this
+    # guard protects. Switched to Article 22 (authrep) — has a KB stub,
+    # is NOT in the R89-A describer table, so it still goes through
+    # the legacy append flow.
     def test_period_inserted_before_appended_clause(self) -> None:
         """A base answer without terminal punctuation must not fuse into
         the first appended ``Article N — …`` clause."""
         base = "Operators bear no further categorical duties beyond registration"
-        out = augment_with_ref_descriptions(base, ["Article 51"])
+        out = augment_with_ref_descriptions(base, ["Article 22"])
         if out == base:
             # Augmenter did not fire (ref considered covered / no stub) —
             # the period guard is untested but not violated. Skip rather
@@ -49,7 +54,7 @@ class TestR79AugmenterPeriod:
     def test_base_with_period_unchanged_join(self) -> None:
         """A base answer already ending in a period is not double-punctuated."""
         base = "Operators bear no further categorical duties here."
-        out = augment_with_ref_descriptions(base, ["Article 51"])
+        out = augment_with_ref_descriptions(base, ["Article 22"])
         assert ".. Article" not in out
 
 

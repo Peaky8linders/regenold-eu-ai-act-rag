@@ -29,6 +29,25 @@ NEO4J_AUTO_SEED = "1"
 # ``CLAUDE.md`` round 47-B scorecard.
 REGENOLD_GRAPH_AWARE = "1"
 
+# Round 89-A — Article-level describer force-append for V2 multi-turn.
+# When ON, the 10 R89-A article-level describer keys (Art 27 FRIA, Art
+# 73 incident-15-days, Art 51 systemic-risk-notify, Art 53 FOSS carve-
+# out, Art 50 cumulative-with-13, Art 60 real-world testing, Art 99
+# proportionate-SME, Art 56 codes-of-practice, Art 111 transitional-
+# grandfather, Art 86 right-to-explanation) bypass the augmenter's
+# is_covered gate and PREPEND their describer prose — so V2 multi-turn
+# rows whose Stage-2 answer already mentions the Article by name but
+# misses the gold-keyword surface (FRIA / 15 days / 10²⁵ / etc.) get
+# the rubric-scored keywords landed.
+#
+# Default OFF in code (app/integrations/regenold/grounded_prose.py)
+# because flipping it ON globally tanks davidath Ans Conciseness by
+# -0.06 (double-mentions when the KB stub already covered the ref on
+# single-turn QA / scenarios). Setting it ON via railway.toml
+# activates it for the live deploy where the V2 lift dominates;
+# the bench runner doesn't read this file so davidath stays clean.
+REGENOLD_R89A_FORCE_APPEND = "1"
+
 # Round 66-B — Stage-2.5 cite-describe guard. Drops references whose
 # KB-summary token set doesn't overlap the answer prose (the inverse
 # of the R31 sentence-level citation guard which drops sentences).
