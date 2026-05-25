@@ -2,7 +2,7 @@
 
 Grounded EU AI Act Q&A — a FastAPI service that answers regulatory questions with verifiable Article / Annex references against EUR-Lex 2024/1689 and the May 2026 Digital Omnibus political agreement.
 
-## Architecture (end-to-end)
+## Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -18,18 +18,26 @@ Grounded EU AI Act Q&A — a FastAPI service that answers regulatory questions w
                   └──────────┬──────────┘
                              │
                   ┌──────────▼──────────┐
+                  │ Multi-turn query    │  app/routes/regenold.py
+                  │ de-noiser           │  • Standalone-query LLM rewrite
+                  │                     │  • 1.0s fail-fast, falls back to
+                  │                     │    history-concat on any error
+                  └──────────┬──────────┘
+                             │
+                  ┌──────────▼──────────┐
                   │ Intent + qtype      │  app/llm/intent_classifier.py
                   │ classifier          │  app/engines/sentence_index.py
-                  │ • Haiku 4.5         │  • 8-way deterministic shape
-                  │ • Davvetas 4-task   │    (DEFINITION / BOOLEAN / …)
-                  │ • Fail-soft         │  • drives templates + budgets
+                  │ • Davvetas 4-task   │  • 8-way deterministic shape
+                  │ • Fail-soft         │    (DEFINITION / BOOLEAN / …)
+                  │ • Request-cached    │  • drives templates + budgets
                   └──────────┬──────────┘
                              │
             ┌────────────────▼────────────────┐
             │ Retrieval pipeline (additive)   │
             │ ┌──────────────────────────────┐│  app/data/kb_search.py
             │ │ BM25 over 348-doc corpus     ││  • EUR-Lex full prose
-            │ │  (KB + ontology + definitions)│   • source-weighted scoring
+            │ │ + typed-entity priority      ││  • source-weighted scoring
+            │ │   boost (role/concept NER)   ││  • 8 roles × 24 concepts
             │ └──────────────────────────────┘│
             │ ┌──────────────────────────────┐│  app/engines/embeddings_index.py
             │ │ NumPy TF-IDF + SVD-128       ││  • 919 sentence index
@@ -40,6 +48,10 @@ Grounded EU AI Act Q&A — a FastAPI service that answers regulatory questions w
             │ │ + Personalized PageRank      ││    + 180 recitals + 68 defs
             │ │ + PathRAG (Jaccard prune)    ││    + 351 typed edges
             │ └──────────────────────────────┘│
+            │ ┌──────────────────────────────┐│  app/routes/regenold.py
+            │ │ Deployer 1-hop expansion     ││  • deterministic 4-edge map
+            │ │ (definitional + intent-gated)│  • Art. 26 → 13/14/9 etc.
+            │ └──────────────────────────────┘│
             └────────────────┬────────────────┘
                              │
             ┌────────────────▼────────────────┐
@@ -47,19 +59,21 @@ Grounded EU AI Act Q&A — a FastAPI service that answers regulatory questions w
             │ • Stage-1 deterministic parse   │  always lands an answer
             │ • CLARA neuro-symbolic verdict  │  37 boolean tags → tier
             │ • Prohibited Gatekeeper (Art. 5)│  TAI Scan Layer C
-            │ • Stage-2 Sonnet 4.6 polish     │  via openai_wrapper or
-            │   (optional, fail-soft)         │  Anthropic SDK direct
+            │ • Stage-2 Sonnet 4.6 polish     │  BLUF contrastive prompt
+            │   (optional, fail-soft)         │  cross-ref grounding
             └────────────────┬────────────────┘
                              │
             ┌────────────────▼────────────────┐
             │ Post-engine pipeline            │  app/routes/regenold.py
             │ • Smallest-cover ref dedup      │  drops parents when child cited
-            │ • Sub-point emission (R38)      │  Art. 5 → Art. 5.1.f
-            │ • Per-intent ref-budget         │  definitional=2 … scenario=8
+            │ • Sub-point emission            │  Art. 5 → Art. 5.1.f
+            │ • Per-intent ref budget         │  definitional=2 … scenario=8
             │ • Closed-world refusal gate     │  empty refs ⇒ no-match
             │ • Per-intent answer template    │  length cap by question shape
-            │ • Tone guard                    │  strip hedges, force imperative
+            │ • Per-ref description augmenter │  every cited article described
+            │ • Tone guard + preamble strip   │  imperative regulator voice
             │ • Citation guard (optional)     │  sentence-level token overlap
+            │ • Confidence-gated LRU cache    │  no-poison contract (R78.1)
             └────────────────┬────────────────┘
                              │
             ┌────────────────▼────────────────┐
@@ -75,20 +89,12 @@ Grounded EU AI Act Q&A — a FastAPI service that answers regulatory questions w
                   └─────────────────────┘
 ```
 
-**LLM provider:** picked via `P2P_GRAPH_RAG_PROVIDER` env (resolved on every call).
-
-| Value | Behaviour | Setup |
-|---|---|---|
-| `cli` (default) | Pure deterministic. Sub-10 ms p50. | nothing |
-| `anthropic` | Stage-2 polish via Anthropic SDK direct. | `P2P_GRAPH_RAG_API_KEY=sk-ant-…` |
-| `openai_wrapper` | Stage-2 polish via local `claude-code-openai-wrapper` (Claude Max). | wrapper on `127.0.0.1:8000`; see [`SONNET_WRAPPER.md`](docs/partners/regenold/SONNET_WRAPPER.md) |
-
-The deterministic path always lands an answer — the LLM polish is opportunistic. The route never 500s on a downed LLM.
+The deterministic path always lands an answer; the LLM polish is opportunistic. The route never 500s on a downed LLM, a degraded Neo4j connection, or a missing graph asset — every external dependency is fail-soft with a deterministic substitute.
 
 ## Wire contract
 
 ```bash
-curl -X POST http://127.0.0.1:8002/api/v1/regenold/eu-ai-act/ask \
+curl -X POST https://<host>/api/v1/regenold/eu-ai-act/ask \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","content":"What does Art. 13 require?"}]}'
 ```
@@ -103,7 +109,34 @@ curl -X POST http://127.0.0.1:8002/api/v1/regenold/eu-ai-act/ask \
 
 References are strict: `Article N(.subpoint)*` (Arabic) or `Annex X(.subpoint)*` (Roman). Validated by `_ARTICLE_OUTPUT_RE` / `_ANNEX_OUTPUT_RE` in [`app/integrations/regenold/models.py`](app/integrations/regenold/models.py).
 
-Telemetry block (confidence, retrieval path, KB version, graph stats) appears when `?include_telemetry=true`.
+Append `?include_reasoning=true` to surface a structured reasoning trace (scope verdict, anchors used, retrieval path, Stage-2 polish state, engine confidence, cache hit) — useful for audit, debugging, and the LLM-as-judge harness.
+
+## Engine modes
+
+| Mode | Behaviour | Use case |
+|---|---|---|
+| Deterministic | Pure rule-based, sub-10 ms p50 | Default; always available; never fails |
+| Anthropic SDK direct | Stage-1 + Stage-2 polish via the Anthropic API | Pro-tier production deploys |
+| Claude Max wrapper | Stage-2 polish via local `claude-code-openai-wrapper` | Development; Max-subscription production |
+| Groq Stage-0 / De-noiser | Llama 3.3 70B for intent + multi-turn query rewrite | Cost-optimised always-on |
+
+The active mode is resolved per request — the route falls back to the next-best mode on any provider error.
+
+## Performance posture
+
+| Surface | Coverage |
+|---|---|
+| EU AI Act articles | 113 / 113 (EUR-Lex full prose) |
+| Annexes | 13 / 13 |
+| Recitals | 180 |
+| Art. 3 definitions | 68 |
+| KB obligation stubs | 126 / 126 (no placeholders) |
+| Typed cross-reference edges | 351 (Neo4j) |
+| Test suite | 2700+ unit tests + 1 skip |
+| Davidath benchmark | 476 items (137 QA + 339 scenarios) |
+| Out-of-scope regression set | 21 / 21 hard refusals preserved |
+
+The system has been measured against four benchmarks: the davidath EU AI Act benchmark, the AIReg-Bench HRAIS subset, the Stanford CRFM AIR-Bench `eu_mandatory` subset, and an internal V2 probe of tricky / multi-turn / out-of-scope shapes. The deterministic pipeline saturates BM25 recall on the davidath corpus; quality lifts on paraphrased and multi-turn queries come from the LLM-driven Stage-0 (intent + query rewrite) and Stage-2 (polish) paths.
 
 ## Quick start
 
@@ -115,14 +148,17 @@ py -3.12 -m venv .venv
 # Run (deterministic mode — no LLM required)
 .venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8002
 
-# Run the full pytest suite (~1300 tests)
+# Full test suite
 .venv\Scripts\python.exe -m pytest -q
 
-# Run the canonical competition benchmark (476 items)
+# Reproducible competition benchmark (476 items)
 .venv\Scripts\python.exe -m evals.bench.runner --label baseline
 
-# Run the unbiased eval (holdout + AIReg-Bench + Regenold probe)
-.venv\Scripts\python.exe -m evals.bench.unbiased_runner --label baseline
+# Out-of-scope regression probe (21 hardened refusal shapes)
+.venv\Scripts\python.exe -m evals.regenold.runner_v2 --local --probe-oos --label oos
+
+# Local scenario suite (276 categorised scenarios)
+.venv\Scripts\python.exe -m evals.regenold.runner
 ```
 
 ## Where to look
@@ -133,31 +169,18 @@ py -3.12 -m venv .venv
 | Route + post-engine pipeline | [`app/routes/regenold.py`](app/routes/regenold.py) |
 | Scope gate | [`app/integrations/regenold/scope.py`](app/integrations/regenold/scope.py) |
 | Engine + Stage-1/2 | [`app/engines/graph_rag.py`](app/engines/graph_rag.py) |
-| BM25 + embeddings retrieval | [`app/data/kb_search.py`](app/data/kb_search.py), [`app/engines/embeddings_index.py`](app/engines/embeddings_index.py) |
+| BM25 + entity-aware retrieval | [`app/data/kb_search.py`](app/data/kb_search.py), [`app/engines/entity_extractor.py`](app/engines/entity_extractor.py) |
+| Dense embeddings + reranking | [`app/engines/embeddings_index.py`](app/engines/embeddings_index.py), [`app/engines/turboquant_index.py`](app/engines/turboquant_index.py) |
 | Neo4j PPR + PathRAG | [`app/engines/graph_ppr.py`](app/engines/graph_ppr.py), [`app/engines/path_rag.py`](app/engines/path_rag.py) |
+| CLARA neuro-symbolic verdict | [`app/engines/clara_logic.py`](app/engines/clara_logic.py) |
+| Scenario classifier | [`app/engines/scenario_classifier.py`](app/engines/scenario_classifier.py) |
 | Sub-point emitter | [`app/data/subpoint_emitter.py`](app/data/subpoint_emitter.py) |
-| Answer template + tone guard | [`app/engines/answer_template.py`](app/engines/answer_template.py), [`app/integrations/regenold/tone_guard.py`](app/integrations/regenold/tone_guard.py) |
+| Tone guard + preamble strip | [`app/integrations/regenold/tone_guard.py`](app/integrations/regenold/tone_guard.py), [`app/integrations/regenold/answer_normaliser.py`](app/integrations/regenold/answer_normaliser.py) |
 | KB (113 articles + 13 annexes) | [`app/data/kb.py`](app/data/kb.py), [`app/data/article_existence.py`](app/data/article_existence.py) |
 | Audit chain | [`app/evidence/store.py`](app/evidence/store.py) |
-| Evals | [`evals/bench/`](evals/bench/), [`evals/regenold/`](evals/regenold/) |
-| Partner docs | [`docs/partners/regenold/`](docs/partners/regenold/) |
-| Detailed change history | [`CLAUDE.md`](CLAUDE.md), [`CHANGELOG.md`](CHANGELOG.md) |
-
-## Feature flags
-
-All default-ON in `railway.toml`. Flip OFF to A/B against earlier rounds.
-
-| Flag | Effect |
-|---|---|
-| `REGENOLD_SUBPOINT_EMIT` | Upgrade base refs to leaf sub-points |
-| `REGENOLD_ANSWER_TEMPLATE` | Per-intent length cap |
-| `REGENOLD_REFBUDGET_PER_INTENT` | 10-way ref-count budget |
-| `REGENOLD_TONE_GUARD` | Strip hedge openers |
-| `REGENOLD_GRAPH_2HOP` | Neo4j 2-hop cross-ref expansion |
-| `REGENOLD_GRAPH_PPR` | Neo4j Personalized PageRank (needs GDS plugin) |
-| `REGENOLD_PATH_RAG` | Relational-path retrieval with Jaccard prune |
-| `REGENOLD_CLARA_VERDICT` | Neuro-symbolic verdict (37-tag matrix) |
-| `REGENOLD_EMBEDDINGS_INDEX` | NumPy TF-IDF + SVD-128 sentence index |
+| Evaluation harnesses | [`evals/bench/`](evals/bench/), [`evals/regenold/`](evals/regenold/), [`evals/judge/`](evals/judge/) |
+| Partner-facing docs | [`docs/partners/regenold/`](docs/partners/regenold/) |
+| Change history | [`CHANGELOG.md`](CHANGELOG.md), [`CLAUDE.md`](CLAUDE.md) |
 
 ## License
 
