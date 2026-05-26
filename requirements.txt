@@ -2,7 +2,11 @@
 # For LLM providers requiring SDK clients (anthropic, neo4j), install via
 # `pip install -e ".[anthropic]"` or `"[neo4j]"` (the OpenAI wrapper is
 # httpx-only and bundled here).
-fastapi>=0.115.0
+# fastapi 0.136.3 (MAL-2026-4750) silently added a typosquat-shaped
+# `fastar>=0.9.0` to its [standard] optional extras — supply-chain
+# attack via dependency confusion. Cap below until a confirmed fixed
+# release lands and the typosquat is purged from upstream extras.
+fastapi>=0.115.0,<0.136.3
 uvicorn[standard]>=0.30.0
 pydantic>=2.9.0,<3
 pydantic-settings>=2.4.0
