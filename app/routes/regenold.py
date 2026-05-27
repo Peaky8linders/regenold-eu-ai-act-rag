@@ -3872,48 +3872,6 @@ def regenold_eu_ai_act_ask(
             # as separate entries. Cheap idempotent pass otherwise.
             answer_text = normalise_answer_for_regenold(answer_text, question=question)
 
-    # Round 66-B — Stage-2.5 cite-describe guard. The **inverse** of
-    # the R31 ``citation_guard`` above: that pass drops SENTENCES whose
-    # tokens don't overlap the cited refs' KB pool; this one drops
-    # REFS whose KB-summary tokens don't overlap the answer prose.
-    # Targets the LLM-as-Judge ``refs`` axis (where the judge fails a
-    # row whose prose never substantively describes a cited Article).
-    # Pure-stdlib, never empties the references list (min_floor=1),
-    # exception-swallowed end-to-end so the route never raises.
-    # Env-gated via ``REGENOLD_CITE_DESCRIBE_GUARD=1``; default OFF
-    # until V2 + judge A/B confirms the rubric direction.
-    if (
-        retrieval_path != "no_match"
-        and references
-        and answer_text
-    ):
-        try:
-            from app.integrations.regenold.cite_describe_guard import (  # noqa: PLC0415
-                is_enabled as _cd_guard_enabled,
-                maybe_apply_guard as _cd_maybe_apply_guard,
-            )
-            if _cd_guard_enabled():
-                _pre_refs = list(references)
-                _pruned, _drop_reasons = _cd_maybe_apply_guard(
-                    answer_text,
-                    _pre_refs,
-                    min_floor=1,
-                    min_overlap_tokens=2,
-                )
-                _dropped = [r for r in _pre_refs if r not in set(_pruned)]
-                if _dropped:
-                    references = _pruned
-                    # Audit hook — surfaces in ?include_reasoning=true.
-                    try:
-                        from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
-                            record_cite_describe_guard,
-                        )
-                        record_cite_describe_guard(_dropped, _drop_reasons)
-                    except Exception:  # noqa: BLE001
-                        pass
-        except Exception:  # noqa: BLE001 — cite-describe guard never breaks the route
-            logger.warning("cite_describe_guard_failure", exc_info=True)
-
     # R47-B — graph-aware recital grounding. When
     # ``REGENOLD_GRAPH_AWARE=1`` AND Neo4j is reachable, look up recitals
     # anchored to the top-2 referenced articles via
@@ -4166,6 +4124,50 @@ def regenold_eu_ai_act_ask(
                 answer_text = normalise_answer_for_regenold(_augmented, question=question)
         except Exception:  # noqa: BLE001 — fail-soft, never break the route
             pass
+
+    # Round 66-B — Stage-2.5 cite-describe guard. The **inverse** of
+    # the R31 ``citation_guard`` above: that pass drops SENTENCES whose
+    # tokens don't overlap the cited refs' KB pool; this one drops
+    # REFS whose KB-summary tokens don't overlap the answer prose.
+    # Runs AFTER ``augment_with_ref_descriptions`` so description clauses
+    # can satisfy the overlap check before refs are pruned.
+    # Targets the LLM-as-Judge ``refs`` axis (where the judge fails a
+    # row whose prose never substantively describes a cited Article).
+    # Pure-stdlib, never empties the references list (min_floor=1),
+    # exception-swallowed end-to-end so the route never raises.
+    # Env-gated via ``REGENOLD_CITE_DESCRIBE_GUARD=1``; default OFF
+    # until V2 + judge A/B confirms the rubric direction.
+    if (
+        retrieval_path != "no_match"
+        and references
+        and answer_text
+    ):
+        try:
+            from app.integrations.regenold.cite_describe_guard import (  # noqa: PLC0415
+                is_enabled as _cd_guard_enabled,
+                maybe_apply_guard as _cd_maybe_apply_guard,
+            )
+            if _cd_guard_enabled():
+                _pre_refs = list(references)
+                _pruned, _drop_reasons = _cd_maybe_apply_guard(
+                    answer_text,
+                    _pre_refs,
+                    min_floor=1,
+                    min_overlap_tokens=2,
+                )
+                _dropped = [r for r in _pre_refs if r not in set(_pruned)]
+                if _dropped:
+                    references = _pruned
+                    # Audit hook — surfaces in ?include_reasoning=true.
+                    try:
+                        from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                            record_cite_describe_guard,
+                        )
+                        record_cite_describe_guard(_dropped, _drop_reasons)
+                    except Exception:  # noqa: BLE001
+                        pass
+        except Exception:  # noqa: BLE001 — cite-describe guard never breaks the route
+            logger.warning("cite_describe_guard_failure", exc_info=True)
 
     # Surface the engine's graph_stats so a downstream verifier (when
     # telemetry is requested) can judge retrieval breadth without

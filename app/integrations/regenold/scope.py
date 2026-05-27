@@ -607,12 +607,12 @@ _OTHER_REGULATION_PATTERNS: tuple[re.Pattern, ...] = (
     re.compile(r"\bCPRA\b", re.IGNORECASE),
     re.compile(r"\bDigital\s+Markets?\s+Act\b", re.IGNORECASE),
     re.compile(r"\bDigital\s+Services?\s+Act\b", re.IGNORECASE),
-    re.compile(r"\bDMA\b"),
-    re.compile(r"\bDSA\b"),
-    re.compile(r"\bSOX\b"),
+    re.compile(r"\bDMA\b", re.IGNORECASE),
+    re.compile(r"\bDSA\b", re.IGNORECASE),
+    re.compile(r"\bSOX\b", re.IGNORECASE),
     re.compile(r"\bSarbanes[- ]Oxley\b", re.IGNORECASE),
-    re.compile(r"\bGLBA\b"),
-    re.compile(r"\bFERPA\b"),
+    re.compile(r"\bGLBA\b", re.IGNORECASE),
+    re.compile(r"\bFERPA\b", re.IGNORECASE),
 )
 
 

@@ -459,6 +459,17 @@ def lookup_definition_by_term(
     if not slug:
         return None
 
+    # --- RushDB Dual Routing Path ---
+    try:
+        from app.graph import rushdb_client
+        if rushdb_client.is_enabled():
+            text = rushdb_client.lookup_definition_by_term(term, timeout_ms=timeout_ms)
+            if text:
+                return text
+    except Exception:
+        logger.debug("rushdb_client failed in lookup_definition_by_term, falling back to neo4j", exc_info=True)
+    # --------------------------------
+
     def _call() -> list[dict]:
         try:
             return client.execute_read(
@@ -532,6 +543,32 @@ def recitals_for_article(
 
     user_ref = _internal_to_user(internal)
     cap = max(max_recitals, 1)
+
+    # --- RushDB Dual Routing Path ---
+    try:
+        from app.graph import rushdb_client
+        if rushdb_client.is_enabled():
+            results = rushdb_client.recitals_for_article(article_ref, max_recitals=cap, timeout_ms=timeout_ms)
+            if results:
+                rushdb_out = []
+                for res in results:
+                    try:
+                        rn = int(str(res.get("recital_number", "")).strip())
+                        if 1 <= rn <= 300:
+                            rushdb_out.append(
+                                RecitalGrounding(
+                                    article_ref=user_ref,
+                                    recital_number=rn,
+                                    recital_text=res.get("text", ""),
+                                )
+                            )
+                    except (TypeError, ValueError):
+                        continue
+                if rushdb_out:
+                    return rushdb_out
+    except Exception:
+        logger.debug("rushdb_client failed in recitals_for_article, falling back to neo4j", exc_info=True)
+    # --------------------------------
 
     def _call() -> list[dict]:
         try:

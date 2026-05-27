@@ -60,4 +60,4 @@ neo4j>=5.0
 # ``turboquant``. The Apache-2.0 fork from msilverblatt is the
 # pure-NumPy reference implementation.
 turboquant-py>=0.1.0,<1.0
-
+rushdb>=2.0.0

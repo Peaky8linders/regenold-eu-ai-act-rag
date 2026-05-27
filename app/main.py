@@ -487,6 +487,49 @@ def _maybe_auto_seed_neo4j() -> None:
             exc,
         )
 
+def _run_rushdb_auto_seed_in_thread(reason: str) -> None:
+    import time as _time
+    started = _time.perf_counter()
+    try:
+        from scripts.seed_rushdb_kb import run_seed
+        result = run_seed(dry_run=False)
+        elapsed = _time.perf_counter() - started
+        if result.get("status") in ("ok", "skip"):
+            logger.info("regenold.startup rushdb_seed_completed reason=%s status=%s elapsed_s=%.2f", reason, result.get("status"), elapsed)
+        else:
+            logger.warning("regenold.startup rushdb_seed_failed reason=%s status=%s elapsed_s=%.2f", reason, result.get("status"), elapsed)
+    except Exception as exc:
+        logger.warning("regenold.startup rushdb_seed_exception reason=%s err=%s", reason, exc)
+
+@app.on_event("startup")
+def _maybe_auto_seed_rushdb() -> None:
+    if os.getenv("REGENOLD_SKIP_STARTUP_LOG") == "1":
+        return
+    import threading as _threading
+    try:
+        from app.graph.rushdb_client import is_enabled, get_metadata
+        if not is_enabled():
+            return
+        meta = get_metadata() or {}
+        from scripts.seed_rushdb_kb import SEED_VERSION
+        from app.data.kb import KB_VERSION
+        
+        if meta.get("seed_version") == SEED_VERSION and meta.get("kb_version") == KB_VERSION:
+            logger.info("regenold.startup rushdb_seed_current")
+            return
+            
+        logger.info("regenold.startup rushdb_seed_started")
+        thread = _threading.Thread(
+            target=_run_rushdb_auto_seed_in_thread,
+            args=("drift",),
+            name="regenold-auto-seed-rushdb",
+            daemon=True,
+        )
+        thread.start()
+    except Exception as exc:
+        logger.warning("regenold.startup rushdb_auto_seed error: %s", exc)
+
+
 
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
@@ -683,9 +726,27 @@ def healthz_graph() -> dict[str, object]:
         "edge_counts": {},
     }
 
+    # ─── RushDB Path ──────────────────────────────────────────────────────
+    try:
+        from app.graph.rushdb_client import is_enabled as is_rushdb_enabled, get_stats as get_rushdb_stats
+        if is_rushdb_enabled():
+            stats = get_rushdb_stats()
+            base["graph_enabled"] = True
+            base["graph_ok"] = stats.get("graph_ok", False)
+            base["detail"] = "ok (rushdb)" if base["graph_ok"] else "rushdb unreachable"
+            base["seed_version"] = stats.get("seed_version", "")
+            base["kb_version"] = stats.get("kb_version", KB_VERSION)
+            base["node_counts"] = stats.get("node_counts", {})
+            base["edge_counts"] = {"cross_refs_inferred": stats.get("total_edges", 0)}
+            base["elapsed_ms"] = int((_time.perf_counter() - start) * 1000)
+            return base
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).debug("healthz_graph rushdb probe failed: %s", exc)
+
     # ─── Disabled path ────────────────────────────────────────────────────
     if not os.environ.get("NEO4J_URI"):
-        base["detail"] = "NEO4J_URI not set"
+        base["detail"] = "NEO4J_URI (or RUSHDB_AUTH_TOKEN) not set"
         return base
 
     start = _time.perf_counter()

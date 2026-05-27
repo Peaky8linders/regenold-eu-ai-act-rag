@@ -3006,6 +3006,18 @@ _PROSE_ARTICLE_RE = re.compile(
     re.IGNORECASE,
 )
 _PROSE_ANNEX_RE = re.compile(r"\bAnnex\s+([IVXLCDM]+)\b", re.IGNORECASE)
+# Plural list shapes Sonnet emits ("Articles 9 and 250", "Annexes IV and V").
+# The singular regexes above only capture the first token; these pick up
+# comma/and-separated siblings in the same enumeration.
+_PROSE_ARTICLES_ENUM_RE = re.compile(
+    r"\bArticles\s+(\d{1,3}(?:\s*(?:,|and)\s+\d{1,3})+)",
+    re.IGNORECASE,
+)
+_PROSE_ANNEXES_ENUM_RE = re.compile(
+    r"\bAnnexes\s+([IVXLCDM]+(?:\s*(?:,|and)\s+[IVXLCDM]+)+)",
+    re.IGNORECASE,
+)
+_PROSE_ENUM_SPLIT_RE = re.compile(r"\s*(?:,|and)\s*", re.IGNORECASE)
 
 
 # R48 — Stage-2 self-contradiction refusal markers.
@@ -3262,7 +3274,7 @@ def _polished_prose_has_unknown_citations(
         _extract_context_grounded_refs(context) if context is not None else set()
     )
 
-    for raw_num in _PROSE_ARTICLE_RE.findall(prose):
+    def _article_ref_drift(raw_num: str) -> tuple[bool, str | None]:
         # Issue #52 — int-normalise leading-zero captures so
         # "Art. 013" maps to "Art. 13" (real catalog entry) before the
         # membership check. Pre-fix this was wrongly flagged as drift.
@@ -3275,12 +3287,40 @@ def _polished_prose_has_unknown_citations(
             return True, ref
         if grounded_refs and ref not in grounded_refs:
             return True, ref
-    for roman in _PROSE_ANNEX_RE.findall(prose):
+        return False, None
+
+    def _annex_ref_drift(roman: str) -> tuple[bool, str | None]:
         ref = f"Annex {roman.upper()}"
         if ref not in ARTICLE_EXISTENCE:
             return True, ref
         if grounded_refs and ref not in grounded_refs:
             return True, ref
+        return False, None
+
+    for raw_num in _PROSE_ARTICLE_RE.findall(prose):
+        drifted, bad = _article_ref_drift(raw_num)
+        if drifted:
+            return True, bad
+    for enum_match in _PROSE_ARTICLES_ENUM_RE.finditer(prose):
+        for raw_num in _PROSE_ENUM_SPLIT_RE.split(enum_match.group(1)):
+            raw_num = raw_num.strip()
+            if not raw_num.isdigit():
+                continue
+            drifted, bad = _article_ref_drift(raw_num)
+            if drifted:
+                return True, bad
+    for roman in _PROSE_ANNEX_RE.findall(prose):
+        drifted, bad = _annex_ref_drift(roman)
+        if drifted:
+            return True, bad
+    for enum_match in _PROSE_ANNEXES_ENUM_RE.finditer(prose):
+        for roman in _PROSE_ENUM_SPLIT_RE.split(enum_match.group(1)):
+            roman = roman.strip()
+            if not roman:
+                continue
+            drifted, bad = _annex_ref_drift(roman)
+            if drifted:
+                return True, bad
     return False, None
 
 

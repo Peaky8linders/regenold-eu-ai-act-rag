@@ -334,6 +334,42 @@ class TestDriftRegexWidened:
         assert drifted is True
         assert bad == "Annex M"
 
+    def test_articles_plural_real_plus_fake_second(self) -> None:
+        """``Articles 9 and 250`` — first real, second bogus; must flag."""
+        drifted, bad = _polished_prose_has_unknown_citations(
+            "Articles 9 and 250 apply here."
+        )
+        assert drifted is True
+        assert bad == "Art. 250"
+
+    def test_articles_plural_grounded_context_catches_unlisted(self) -> None:
+        """Real articles in prose but not in grounded context → drift."""
+        ctx = GraphContext()
+        ctx.obligations = [
+            {"id": "o1", "text": "Risk classification.", "article": "Art. 6"},
+        ]
+        drifted, bad = _polished_prose_has_unknown_citations(
+            "Articles 9 and 10 apply here.",
+            context=ctx,
+        )
+        assert drifted is True
+        assert bad in {"Art. 9", "Art. 10"}
+
+    def test_annexes_plural_fake_member(self) -> None:
+        """``Annexes IV and M`` — plural list must validate every annex."""
+        drifted, bad = _polished_prose_has_unknown_citations(
+            "Annexes IV and M apply here."
+        )
+        assert drifted is True
+        assert bad == "Annex M"
+
+    def test_annexes_plural_real_passes(self) -> None:
+        """``Annexes IV and V`` — both real catalog entries, must NOT flag."""
+        drifted, _ = _polished_prose_has_unknown_citations(
+            "Annexes IV and V apply here."
+        )
+        assert drifted is False
+
 
 # ─── Issue #54 — BM25 short-query recall ─────────────────────────────────────
 
