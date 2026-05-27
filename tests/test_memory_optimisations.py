@@ -240,3 +240,105 @@ class TestRouteCachePoisoningGuard:
                 assert r.status_code == 200
         # Cache hit on 2nd + 3rd identical request.
         assert engine.call_count == 1
+
+
+# ─── R78 — cache no-poison guard on low engine confidence ───────────────────
+
+
+class TestR78CacheConfidenceGuard:
+    """A transient cold-start failure — a lazy retrieval index not warm
+    yet, or a degraded graph backend — returns a zero-retrieval /
+    degraded response whose confidence is below the clean-run floor. The
+    route must NOT cache it: otherwise that single cold-window failure is
+    served to every later identical question until LRU eviction or a
+    process restart. Live production exhibited exactly this — in-scope
+    provider/deployer obligation questions stuck on the Art. 1/2/3
+    zero-retrieval floor with ``cache_hit: true`` in the reasoning trace.
+
+    ``_compute_confidence`` never returns below 0.3 for a clean run, so
+    confidence < 0.3 is an unambiguous transient-failure signal.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _reset_cache(self):
+        _ENGINE_CACHE._data.clear()
+        _ENGINE_CACHE.hits = 0
+        _ENGINE_CACHE.misses = 0
+        settings.regenold.api_key = SecretStr("regenold-test-key")
+        yield
+        _ENGINE_CACHE._data.clear()
+
+    def _resp(self, confidence: float) -> GraphRAGResponse:
+        return GraphRAGResponse(
+            answer="Article 13 requires transparency.",
+            citations=[
+                CitationNode(
+                    node_type="Obligation",
+                    node_id="art13",
+                    text="transparency",
+                    article_ref="Art. 13",
+                )
+            ],
+            confidence=confidence,
+            graph_stats={"nodes_traversed": 3, "stage2_call_failed": False},
+        )
+
+    def _ask_n(self, question: str, n: int) -> None:
+        from app.main import app
+
+        c = TestClient(app)
+        for _ in range(n):
+            r = c.post(
+                "/api/v1/regenold/eu-ai-act/ask",
+                headers={"X-Regenold-Api-Key": "regenold-test-key"},
+                json=[{"role": "user", "content": question}],
+            )
+            assert r.status_code == 200
+
+    def test_zero_retrieval_response_is_NOT_cached(self) -> None:
+        # confidence 0.0 — the engine retrieved nothing (model default,
+        # ``_compute_confidence`` never reached). This is the exact live
+        # production failure shape.
+        with patch(
+            "app.routes.regenold.ask_compliance_question",
+            return_value=self._resp(0.0),
+        ) as engine:
+            self._ask_n("What does Article 13 require of high-risk AI providers?", 3)
+        assert engine.call_count == 3
+
+    def test_degraded_backend_response_is_NOT_cached(self) -> None:
+        # confidence 0.2 — the issue-#55 degraded cap (graph backend
+        # raised, KB fallback served). Transient; must not be cached.
+        with patch(
+            "app.routes.regenold.ask_compliance_question",
+            return_value=self._resp(0.2),
+        ) as engine:
+            self._ask_n("What does Article 14 require for human oversight of AI?", 3)
+        assert engine.call_count == 3
+
+    def test_clean_floor_confidence_response_IS_cached(self) -> None:
+        # confidence 0.3 — the normal ``cli``-mode "no graph data" floor.
+        # A healthy answer; it MUST remain cacheable or the guard would
+        # disable caching for the entire default (graph-less) deployment.
+        with patch(
+            "app.routes.regenold.ask_compliance_question",
+            return_value=self._resp(0.3),
+        ) as engine:
+            self._ask_n("What does Article 15 require on accuracy and robustness?", 3)
+        assert engine.call_count == 1
+
+    def test_rich_confidence_response_IS_cached(self) -> None:
+        with patch(
+            "app.routes.regenold.ask_compliance_question",
+            return_value=self._resp(0.85),
+        ) as engine:
+            self._ask_n("What does Article 16 require of providers of AI systems?", 3)
+        assert engine.call_count == 1
+
+    def test_min_cacheable_confidence_is_clean_run_floor(self) -> None:
+        # The threshold must sit exactly at the clean-run floor: strictly
+        # above the issue-#55 degraded cap (0.2), at the cli-mode "no
+        # graph data" floor (0.3).
+        from app.routes.regenold import _MIN_CACHEABLE_CONFIDENCE
+
+        assert _MIN_CACHEABLE_CONFIDENCE == 0.3

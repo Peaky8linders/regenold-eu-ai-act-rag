@@ -328,3 +328,76 @@ class TestNoOOSLeak:
             f"OOS question {q!r} routed to chapter {result!r}; the "
             "chapter heuristic must not flip off-topic queries in-scope."
         )
+
+
+# ── candidate_chapters_for_query (PageIndex pre-router) ───────────────────
+
+
+class TestCandidateChaptersForQuery:
+    """Validate the pre-retrieval chapter router added for the PageIndex
+    hierarchical-filter optimisation.
+    """
+
+    def test_high_risk_query_routes_to_chapter_iii(self) -> None:
+        from app.data.chapter_summaries import candidate_chapters_for_query
+        result = candidate_chapters_for_query(
+            "What are the requirements for high-risk AI providers?"
+        )
+        assert "III" in result, f"Expected III; got {result}"
+
+    def test_prohibition_query_routes_to_chapter_ii(self) -> None:
+        from app.data.chapter_summaries import candidate_chapters_for_query
+        result = candidate_chapters_for_query(
+            "What AI practices are prohibited under the regulation?"
+        )
+        assert "II" in result, f"Expected II; got {result}"
+
+    def test_gpai_query_routes_to_chapter_v(self) -> None:
+        from app.data.chapter_summaries import candidate_chapters_for_query
+        result = candidate_chapters_for_query(
+            "What obligations apply to general-purpose AI model providers?"
+        )
+        assert "V" in result, f"Expected V; got {result}"
+
+    def test_penalty_query_routes_to_chapter_xii(self) -> None:
+        from app.data.chapter_summaries import candidate_chapters_for_query
+        result = candidate_chapters_for_query("What are the maximum administrative fines?")
+        assert "XII" in result, f"Expected XII; got {result}"
+
+    def test_intent_label_extends_routing(self) -> None:
+        from app.data.chapter_summaries import candidate_chapters_for_query
+        result = candidate_chapters_for_query(
+            "Is this system in scope?", intent_label="risk_assessment"
+        )
+        assert "III" in result, f"Expected III from intent; got {result}"
+
+    def test_broad_query_returns_empty(self) -> None:
+        """A broad, multi-chapter question must return [] so full BM25 runs."""
+        from app.data.chapter_summaries import candidate_chapters_for_query
+        # Fires ≥ 4 distinct chapter markers: prohibited (II), high-risk (III),
+        # general-purpose AI (V), penalties (XII), post-market monitoring (IX),
+        # regulatory sandbox (VI) → scope guard (≥ 4) fires → [].
+        result = candidate_chapters_for_query(
+            "What are the prohibited AI practices, high-risk obligations, "
+            "general-purpose AI model duties, penalties, post-market monitoring "
+            "requirements, and regulatory sandbox rules under the AI Act?"
+        )
+        assert result == [], (
+            f"Broad multi-chapter query should return []; got {result}"
+        )
+
+    def test_empty_query_returns_empty(self) -> None:
+        from app.data.chapter_summaries import candidate_chapters_for_query
+        assert candidate_chapters_for_query("") == []
+
+    def test_oos_query_returns_empty(self) -> None:
+        from app.data.chapter_summaries import candidate_chapters_for_query
+        result = candidate_chapters_for_query("How do I bake a chocolate cake?")
+        assert result == [], f"OOS query should return []; got {result}"
+
+    def test_returns_sorted_list(self) -> None:
+        from app.data.chapter_summaries import candidate_chapters_for_query
+        result = candidate_chapters_for_query(
+            "What are prohibited practices for general-purpose AI?"
+        )
+        assert result == sorted(result), "Output must be sorted"

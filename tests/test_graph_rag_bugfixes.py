@@ -48,6 +48,15 @@ from app.engines.graph_rag import (
 from app.models import GraphRAGRequest
 
 
+@pytest.fixture(autouse=True)
+def _disable_r87e_stage2_gate(monkeypatch):
+    """R87-E confidence gate would skip Stage-2 on the empty mock
+    contexts these tests construct. Pre-R87-E tests; disable the gate
+    so the original Stage-2-behaviour assertions still hold. R87-E has
+    its own coverage in ``test_r87cde_subpoint_roleduty_stage2gate.py``."""
+    monkeypatch.setenv("REGENOLD_STAGE2_MIN_CONFIDENCE", "0")
+
+
 # A multi-turn question that reliably triggers Stage-2.
 _MULTI_TURN_Q = (
     "Conversation so far:\nUser: foo\nAssistant: bar\n\n"
@@ -56,6 +65,18 @@ _MULTI_TURN_Q = (
 
 
 # ─── Issue #41 — Pre-slice dedup ─────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _r77_enable_stage2_polish(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R77 — Stage-2 polish now defaults OFF (``P2P_GRAPH_RAG_ENABLE_STAGE2``).
+
+    These tests predate that default and exercise the Stage-2 path with a
+    mocked provider. Force the master switch ON so they keep testing
+    Stage-2 behaviour; the provider + needs-enhancement gates still apply,
+    so the "Stage-2 skipped" tests in this module still skip correctly.
+    """
+    monkeypatch.setenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "1")
 
 
 class TestPreSliceDedup:
@@ -312,6 +333,42 @@ class TestDriftRegexWidened:
         drifted, bad = _polished_prose_has_unknown_citations("Annex M says X.")
         assert drifted is True
         assert bad == "Annex M"
+
+    def test_articles_plural_real_plus_fake_second(self) -> None:
+        """``Articles 9 and 250`` — first real, second bogus; must flag."""
+        drifted, bad = _polished_prose_has_unknown_citations(
+            "Articles 9 and 250 apply here."
+        )
+        assert drifted is True
+        assert bad == "Art. 250"
+
+    def test_articles_plural_grounded_context_catches_unlisted(self) -> None:
+        """Real articles in prose but not in grounded context → drift."""
+        ctx = GraphContext()
+        ctx.obligations = [
+            {"id": "o1", "text": "Risk classification.", "article": "Art. 6"},
+        ]
+        drifted, bad = _polished_prose_has_unknown_citations(
+            "Articles 9 and 10 apply here.",
+            context=ctx,
+        )
+        assert drifted is True
+        assert bad in {"Art. 9", "Art. 10"}
+
+    def test_annexes_plural_fake_member(self) -> None:
+        """``Annexes IV and M`` — plural list must validate every annex."""
+        drifted, bad = _polished_prose_has_unknown_citations(
+            "Annexes IV and M apply here."
+        )
+        assert drifted is True
+        assert bad == "Annex M"
+
+    def test_annexes_plural_real_passes(self) -> None:
+        """``Annexes IV and V`` — both real catalog entries, must NOT flag."""
+        drifted, _ = _polished_prose_has_unknown_citations(
+            "Annexes IV and V apply here."
+        )
+        assert drifted is False
 
 
 # ─── Issue #54 — BM25 short-query recall ─────────────────────────────────────

@@ -352,6 +352,7 @@ def _run_qa_http(
             gold_answer=gold_answer,
             gold_articles=gold_article,
             latency_ms=latency,
+            expected_keywords=item.get("expected_keywords"),
         )
         rows.append(
             {
@@ -415,6 +416,7 @@ def _run_scenarios_http(
             gold_answer=gold_answer,
             gold_articles=gold_articles,
             latency_ms=latency,
+            expected_keywords=item.get("expected_keywords"),
         )
         rows.append(
             {

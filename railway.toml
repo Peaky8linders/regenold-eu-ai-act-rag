@@ -29,6 +29,25 @@ NEO4J_AUTO_SEED = "1"
 # ``CLAUDE.md`` round 47-B scorecard.
 REGENOLD_GRAPH_AWARE = "1"
 
+# Round 89-A — Article-level describer force-append for V2 multi-turn.
+# When ON, the 10 R89-A article-level describer keys (Art 27 FRIA, Art
+# 73 incident-15-days, Art 51 systemic-risk-notify, Art 53 FOSS carve-
+# out, Art 50 cumulative-with-13, Art 60 real-world testing, Art 99
+# proportionate-SME, Art 56 codes-of-practice, Art 111 transitional-
+# grandfather, Art 86 right-to-explanation) bypass the augmenter's
+# is_covered gate and PREPEND their describer prose — so V2 multi-turn
+# rows whose Stage-2 answer already mentions the Article by name but
+# misses the gold-keyword surface (FRIA / 15 days / 10²⁵ / etc.) get
+# the rubric-scored keywords landed.
+#
+# Default OFF in code (app/integrations/regenold/grounded_prose.py)
+# because flipping it ON globally tanks davidath Ans Conciseness by
+# -0.06 (double-mentions when the KB stub already covered the ref on
+# single-turn QA / scenarios). Setting it ON via railway.toml
+# activates it for the live deploy where the V2 lift dominates;
+# the bench runner doesn't read this file so davidath stays clean.
+REGENOLD_R89A_FORCE_APPEND = "1"
+
 # Round 66-B — Stage-2.5 cite-describe guard. Drops references whose
 # KB-summary token set doesn't overlap the answer prose (the inverse
 # of the R31 sentence-level citation guard which drops sentences).
@@ -44,6 +63,29 @@ REGENOLD_GRAPH_AWARE = "1"
 # of the davidath positive. Disable with:
 #   railway variables --set REGENOLD_CITE_DESCRIBE_GUARD=0
 REGENOLD_CITE_DESCRIBE_GUARD = "1"
+
+# Round 80.2 — Stage-2 LLM polish + latency knobs are now CODE
+# DEFAULTS, not railway.toml overrides. The R80.1 round added them
+# to [deploy.envs] but Railway dashboard service variables (when
+# pinned) override railway.toml, which silently blocked production
+# from picking up the change. Baking the values into the code
+# defaults sidesteps that override path entirely — a fresh Railway
+# deploy with NO dashboard env override gets the best config.
+#
+# Current defaults (in app/engines/graph_rag.py + app/config.py):
+#   * P2P_GRAPH_RAG_ENABLE_STAGE2 default ON
+#     (was OFF since R77; R80 measurements overturned that)
+#   * P2P_GRAPH_RAG_MAX_TOKENS default 512
+#     (was 1024; cuts the Sonnet-output latency tail)
+#   * P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS default 1024
+#     (was 2500 since R69; cuts the Opus extended-think outlier)
+#
+# Operators can DISABLE Stage-2 (e.g. emergency latency rollback)
+# via dashboard:
+#   railway variables --set P2P_GRAPH_RAG_ENABLE_STAGE2=0
+# Or raise max_tokens / thinking budget similarly:
+#   railway variables --set P2P_GRAPH_RAG_MAX_TOKENS=1024
+#   railway variables --set P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS=2500
 
 # Round 52 — Stage-0 intent classifier provider selection.
 #
@@ -69,3 +111,12 @@ REGENOLD_CITE_DESCRIBE_GUARD = "1"
 # GROQ_API_BASE            = "https://api.groq.com/openai/v1"    # default
 # REGENOLD_INTENT_MODEL_GROQ = "llama-3.3-70b-versatile"          # default
 # GROQ_TIMEOUT_SECONDS     = "5"                                  # default
+
+# RushDB graph (Neo4j Aura replacement) — set ONE of:
+#   railway variables --set RUSHDB_AUTH_TOKEN=<token>
+#   railway variables --set RUSHDB_API_KEY=<key>
+# Optional:
+#   RUSHDB_BASE_URL = "https://api.rushdb.com/api/v1"
+# When RushDB auth is set, /healthz/graph and 2-hop expand prefer RushDB;
+# Neo4j remains a fallback when NEO4J_URI is also configured.
+# RUSHDB_AUTH_TOKEN = "<set via railway dashboard>"

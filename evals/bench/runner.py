@@ -79,32 +79,11 @@ def _ask_multiturn(
     return body, elapsed, resp.status_code
 
 
-def _scenario_to_question(s: dict[str, Any]) -> str:
-    """Synthesize a Regenold-style question from a benchmark scenario.
-
-    Scenarios are structured records (role + intended_use + system_type +
-    domain + risk_level) rather than questions. We turn each into the
-    classification-style question a partner would actually ask: "We are a
-    {role} deploying {system_type} for {intended_use}. Under the EU AI
-    Act, what is the risk level and what are our key obligations?"
-    """
-    role = (s.get("role") or "Provider").strip()
-    intended_use = (s.get("intended_use") or "").strip()
-    system_type = (s.get("system_type") or "").strip()
-    domain = (s.get("domain") or "").strip()
-    parts = [f"We are a {role.lower()}"]
-    if system_type:
-        parts.append(f"offering a {system_type.lower()}")
-    if intended_use:
-        parts.append(f"intended to {intended_use.lower()}")
-    if domain:
-        parts.append(f"in the {domain.lower()} domain")
-    prelude = ", ".join(parts) + "."
-    question = (
-        f"{prelude} Under the EU AI Act, what is the risk classification of "
-        f"this system and what are the key obligations on us as {role.lower()}?"
-    )
-    return question
+# The scenario->question conversion is the canonical
+# ``evals.bench.dataset.scenario_to_question`` — shared with
+# ``evals.bench.representative_100`` so the synthesized question shape
+# can never silently diverge between the two harnesses.
+_scenario_to_question = bench_dataset.scenario_to_question
 
 
 def _run_qa(
@@ -126,6 +105,7 @@ def _run_qa(
             gold_answer=gold_answer,
             gold_articles=gold_article,
             latency_ms=latency,
+            expected_keywords=item.get("expected_keywords"),
         )
         rows.append(
             {
@@ -175,6 +155,7 @@ def _run_scenarios(
             gold_answer=gold_answer,
             gold_articles=gold_articles,
             latency_ms=latency,
+            expected_keywords=item.get("expected_keywords"),
         )
         rows.append(
             {

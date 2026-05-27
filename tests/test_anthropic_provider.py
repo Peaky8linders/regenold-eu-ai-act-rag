@@ -36,6 +36,17 @@ from pydantic import SecretStr as _SS
 # ─── Fixtures ────────────────────────────────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def _disable_r87e_stage2_gate(monkeypatch):
+    """R87-E confidence-gated Stage-2 skip uses ``_compute_confidence``
+    which returns 0.3 for the empty mock contexts these tests construct.
+    These pre-R87-E tests assert Stage-2 polish lands through the
+    Anthropic SDK direct path; we disable the new gate so the original
+    assertions still hold. The R87-E gate has its own coverage in
+    ``tests/test_r87cde_subpoint_roleduty_stage2gate.py``."""
+    monkeypatch.setenv("REGENOLD_STAGE2_MIN_CONFIDENCE", "0")
+
+
 @pytest.fixture()
 def reset_anthropic_env(monkeypatch: pytest.MonkeyPatch):
     """Wipe all LLM-provider env vars so each test sets exactly what it needs."""
@@ -53,6 +64,20 @@ def reset_anthropic_env(monkeypatch: pytest.MonkeyPatch):
     # Reset cached settings.graph_rag.api_key to None for a clean slate.
     from app.config import settings
     monkeypatch.setattr(settings.graph_rag, "api_key", None, raising=True)
+
+
+@pytest.fixture(autouse=True)
+def _r77_enable_stage2_polish(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R77 — Stage-2 polish now defaults OFF (``P2P_GRAPH_RAG_ENABLE_STAGE2``).
+
+    These tests predate that default and exercise the Stage-2 path with a
+    mocked provider. Force the master switch ON so they keep testing
+    Stage-2 behaviour. This env var gates :func:`_stage2_polish_enabled`,
+    which is distinct from :func:`_stage2_provider_enabled` (tested by
+    ``TestStage2ProviderGate``), so the provider-gate tests are unaffected.
+    ``reset_anthropic_env`` does not clear this var, so it survives there.
+    """
+    monkeypatch.setenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "1")
 
 
 # ─── 1. Stage-2 gate accepts both providers ──────────────────────────────────
@@ -293,15 +318,26 @@ class TestAnthropicCompleteFailSoft:
     def test_complex_question_enables_extended_thinking(
         self, reset_anthropic_env, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """R51 thinking-token routing also fires through the anthropic SDK
-        when ``complex_question=True`` AND ``complex_thinking_tokens > 0``."""
+        """R51 thinking-token routing fires through the Anthropic SDK
+        when ``complex_question=True`` AND ``complex_thinking_tokens > 0``
+        AND ``complex_model`` is configured.
+
+        **R81-A1**: ``complex_model`` is now empty by default — this
+        test pins the operator-override path (set
+        ``P2P_GRAPH_RAG_COMPLEX_MODEL=claude-opus-4-7`` to restore
+        the pre-R81-A1 behaviour) so it still exercises the swap +
+        extended-thinking surface."""
         pytest.importorskip("anthropic")
         monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "anthropic")
         from app.config import settings
         monkeypatch.setattr(
             settings.graph_rag, "api_key", _SS("sk-ant-fake"), raising=True
         )
-        # complex_thinking_tokens default is 8000 per GraphRAGSettings.
+        # R81-A1: complex_model defaults to ""; restore the R51 production
+        # setting on this test only so the swap path under test still
+        # fires. complex_thinking_tokens still defaults to 1024 (R80.2).
+        original_complex = settings.graph_rag.complex_model
+        settings.graph_rag.complex_model = "claude-opus-4-7"
 
         class _Block:
             text = "Polished prose."
@@ -326,13 +362,17 @@ class TestAnthropicCompleteFailSoft:
         monkeypatch.setattr(_ant, "Anthropic", _Anthropic)
 
         from app.engines.graph_rag import _anthropic_complete_for_graph_rag
-        result = _anthropic_complete_for_graph_rag(
-            system="s", user="u", max_tokens=512, temperature=0.0,
-            complex_question=True,
-        )
+        try:
+            result = _anthropic_complete_for_graph_rag(
+                system="s", user="u", max_tokens=512, temperature=0.0,
+                complex_question=True,
+            )
+        finally:
+            settings.graph_rag.complex_model = original_complex
         assert result == "Polished prose."
-        # complex_model swaps to claude-opus-4-7 per the default settings.
-        assert captured["model"] == settings.graph_rag.complex_model
+        # complex_model now swaps to claude-opus-4-7 because we set it
+        # explicitly above (mirroring an operator override).
+        assert captured["model"] == "claude-opus-4-7"
         # Thinking kwarg present, budget clamped to [1024, 16000].
         thinking = captured["thinking"]
         assert thinking["type"] == "enabled"

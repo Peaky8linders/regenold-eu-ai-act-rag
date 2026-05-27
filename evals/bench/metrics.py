@@ -33,7 +33,10 @@ from typing import Iterable
 # ── Tokenisation ─────────────────────────────────────────────────────────
 
 
-_STOPWORDS = frozenset(
+from evals.bench.text_normalise import normalise_for_scoring, stem_token
+
+# Pre-R82 stopword set — kept for `_tokens_legacy` only.
+_STOPWORDS_LEGACY = frozenset(
     {
         "a", "an", "the", "and", "or", "but", "if", "of", "to", "in",
         "on", "for", "with", "as", "by", "is", "are", "was", "were", "be",
@@ -46,15 +49,51 @@ _STOPWORDS = frozenset(
     }
 )
 
-_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9'\-]+")
+# R82-A: drop regulatory modal verbs from stopwords. The whole
+# regulation is "must / shall / should" — discarding them under-counts
+# rubric-relevant tokens.
+_STOPWORDS_V2 = _STOPWORDS_LEGACY - {
+    "must", "shall", "should", "would", "may", "can",
+}
+
+# Pre-R82 token regex — must start with letter, accepts ASCII '-'.
+_TOKEN_RE_LEGACY = re.compile(r"[A-Za-z][A-Za-z0-9'\-]+")
+
+# R82-A: accept digit-led tokens so `15` / `10` / `2024` survive when
+# they carry meaning (penalty amounts, FLOPs scales, year markers).
+_TOKEN_RE_V2 = re.compile(r"[A-Za-z0-9][A-Za-z0-9'\-]+")
+
+
+def _tokens_legacy(text: str) -> set[str]:
+    """Pre-R82 tokenizer — reproduces shipped behaviour byte-identically.
+
+    Preserved so `*_legacy` axes in the rescored history remain
+    reproducible across the R23-R81 round trajectory. Do NOT modify.
+    """
+    if not text:
+        return set()
+    raw = _TOKEN_RE_LEGACY.findall(text.lower())
+    return {t for t in raw if len(t) >= 3 and t not in _STOPWORDS_LEGACY}
 
 
 def _tokens(text: str) -> set[str]:
-    """Lowercase, dedup, drop stopwords + sub-3-char fragments."""
+    """R82-A corrected tokenizer.
+
+    Pipeline:
+      1. `normalise_for_scoring` (NFKC + dash fold + Art. → Article +
+         diacritic strip + lowercase).
+      2. Token regex `[A-Za-z0-9][A-Za-z0-9'\\-]+` (digit-led OK).
+      3. Filter: len ≥ 2 AND not in `_STOPWORDS_V2`.
+      4. Stem each survivor.
+
+    Returns a set (deduped). See `evals/bench/text_normalise.py` for the
+    per-rule rationale grounded in measured davidath biases.
+    """
     if not text:
         return set()
-    raw = _TOKEN_RE.findall(text.lower())
-    return {t for t in raw if len(t) >= 3 and t not in _STOPWORDS}
+    norm = normalise_for_scoring(text)
+    raw = _TOKEN_RE_V2.findall(norm)
+    return {stem_token(t) for t in raw if len(t) >= 2 and t not in _STOPWORDS_V2}
 
 
 # ── Citation helpers ─────────────────────────────────────────────────────
@@ -96,6 +135,16 @@ def answer_correctness_loose(pred: str, gold: str) -> float:
 
     Returns 0.0–1.0. Robust to phrasing differences as long as the
     substantive vocabulary overlaps. Empty predicted answer → 0.0.
+
+    NOTE — "Loose" naming is historical; Jaccard penalises BOTH
+    missing-gold tokens AND extra-pred tokens, so it is actually
+    *stricter* than ``answer_correctness_strict`` (= recall) on any
+    row where |pred| > |gold|. The two-axis decomposition is:
+    ``answer_correctness_precision`` (verbose-direction signal) +
+    ``answer_correctness_strict`` (recall). The competition rubric
+    pins both Loose=Jaccard and Strict=Recall as canonical axes;
+    don't change the formulas — use the new precision / F1 fields
+    (R85-A) to decompose where the gap comes from.
     """
     pt = _tokens(pred)
     gt = _tokens(gold)
@@ -111,15 +160,133 @@ def answer_correctness_loose(pred: str, gold: str) -> float:
 def answer_correctness_strict(pred: str, gold: str) -> float:
     """Fraction of gold-answer tokens present in the prediction.
 
-    Strict because *every* gold token has to appear — but it's per-token
-    fraction rather than binary, so a near-complete answer still scores
-    high. A confidently wrong answer with new tokens that don't match
-    scores low even if it's eloquent.
+    This is **token-recall** — one-sided, doesn't penalise extra
+    pred tokens. Pair with :func:`answer_correctness_precision`
+    (R85-A) for the full 2-D picture.
+
+    A near-complete answer still scores high; a confidently wrong
+    answer with mostly-new tokens scores low.
     """
     pt = _tokens(pred)
     gt = _tokens(gold)
     if not gt:
         return 0.0
+    return len(pt & gt) / len(gt)
+
+
+def answer_correctness_precision(pred: str, gold: str) -> float:
+    """Fraction of predicted-answer tokens present in the gold answer.
+
+    Counterpart to :func:`answer_correctness_strict` (which is recall —
+    gold tokens recovered). Precision answers the *other* side of the
+    verbosity coin: "of the tokens we shipped, how many were on-topic?".
+
+    R85-A — added because the existing Loose / Strict pair leaves a
+    one-dimensional view of the gap. Loose = Jaccard penalises BOTH
+    missing-gold AND extra-pred without telling you which direction
+    dominates; Strict only measures recall. Precision plus recall give
+    the full 2-D picture and reproduce Loose / F1 via standard
+    identities.
+
+    Empty prediction → 0.0; empty gold → 0.0 (cannot grade).
+    """
+    pt = _tokens(pred)
+    gt = _tokens(gold)
+    if not gt:
+        return 0.0
+    if not pt:
+        return 0.0
+    return len(pt & gt) / len(pt)
+
+
+def answer_correctness_f1(pred: str, gold: str) -> float:
+    """Symmetric F1 of predicted vs gold answer tokens.
+
+    Standard NLP metric — ``2·P·R / (P+R)`` where P =
+    :func:`answer_correctness_precision`, R =
+    :func:`answer_correctness_strict`. Equivalent to but less
+    length-sensitive than Jaccard (``answer_correctness_loose``); on
+    the same row Jaccard ≤ F1 with equality iff |pred|=|gold|.
+
+    R85-A — added for cross-paper comparability (SQuAD / TriviaQA /
+    legal-domain leaderboards report F1). NOT a competition rubric
+    axis; purely diagnostic.
+
+    Empty prediction or gold → 0.0.
+    """
+    pt = _tokens(pred)
+    gt = _tokens(gold)
+    if not gt or not pt:
+        return 0.0
+    overlap = len(pt & gt)
+    if overlap == 0:
+        return 0.0
+    p = overlap / len(pt)
+    r = overlap / len(gt)
+    return 2 * p * r / (p + r)
+
+
+def pred_gold_token_ratio(pred: str, gold: str) -> float:
+    """|pred| / |gold| token-count ratio.
+
+    Quick per-row diagnostic: ratios > ~1.5 signal verbose answers
+    (which mathematically force Loose < Strict). The aggregate sidecar
+    mean ratio mirrors the existing conciseness axis at a more raw
+    granularity (no quadratic length-ratio penalty applied).
+
+    R85-A. Empty gold → 0.0 (undefined; mirror the other functions'
+    behaviour rather than raise).
+    """
+    pt = _tokens(pred)
+    gt = _tokens(gold)
+    if not gt:
+        return 0.0
+    return len(pt) / len(gt)
+
+
+def answer_correctness_loose_legacy(pred: str, gold: str) -> float:
+    """Pre-R82 token-Jaccard. Preserved for back-compat / history rescore."""
+    pt = _tokens_legacy(pred)
+    gt = _tokens_legacy(gold)
+    if not gt or not pt:
+        return 0.0
+    overlap = len(pt & gt)
+    union = len(pt | gt)
+    return overlap / union if union else 0.0
+
+
+def answer_correctness_strict_legacy(pred: str, gold: str) -> float:
+    """Pre-R82 gold-recall. Preserved for back-compat / history rescore."""
+    pt = _tokens_legacy(pred)
+    gt = _tokens_legacy(gold)
+    if not gt:
+        return 0.0
+    return len(pt & gt) / len(gt)
+
+
+def answer_keyword_recall(
+    pred: str, expected_keywords: list[str] | None
+) -> float | None:
+    """Fraction of curated keywords (normalised + stemmed) present in pred.
+
+    Designed for sidecars that carry an `expected_keywords` field (V2 /
+    representative-100). Mirrors what an LLM judge looks for: "are the
+    load-bearing domain tokens for this question surfaced in the
+    answer?". Robust to pred verbosity (recall, not Jaccard) and uses a
+    curated subset rather than the full gold answer's incidental
+    tokens.
+    """
+    if expected_keywords is None or len(expected_keywords) == 0:
+        return None
+    pt = _tokens(pred)
+    if not pt:
+        return 0.0
+    # Normalise and stem the expected keywords using the same V2 pipeline
+    gt = set()
+    for kw in expected_keywords:
+        gt.update(_tokens(kw))
+    if not gt:
+        return None
     return len(pt & gt) / len(gt)
 
 
@@ -311,8 +478,14 @@ class RowScore:
     reference_conciseness: float
     latency_ms: float
     regulatory_tone: float
+    answer_correctness_loose_legacy: float
+    answer_correctness_strict_legacy: float
+    answer_correctness_precision: float = 0.0
+    answer_correctness_f1: float = 0.0
+    pred_gold_token_ratio: float = 0.0
+    ans_keyword_recall: float | None = None
 
-    def to_dict(self) -> dict[str, float]:
+    def to_dict(self) -> dict[str, float | None]:
         return {
             "ans_correctness_loose": round(self.answer_correctness_loose, 4),
             "ans_correctness_strict": round(self.answer_correctness_strict, 4),
@@ -322,6 +495,12 @@ class RowScore:
             "ref_conciseness": round(self.reference_conciseness, 4),
             "latency_ms": round(self.latency_ms, 2),
             "regulatory_tone": round(self.regulatory_tone, 4),
+            "ans_correctness_loose_legacy": round(self.answer_correctness_loose_legacy, 4),
+            "ans_correctness_strict_legacy": round(self.answer_correctness_strict_legacy, 4),
+            "ans_correctness_precision": round(self.answer_correctness_precision, 4),
+            "ans_correctness_f1": round(self.answer_correctness_f1, 4),
+            "pred_gold_token_ratio": round(self.pred_gold_token_ratio, 4),
+            "ans_keyword_recall": round(self.ans_keyword_recall, 4) if self.ans_keyword_recall is not None else None,
         }
 
 
@@ -331,6 +510,7 @@ def score_row(
     gold_answer: str,
     gold_articles: int | list[int] | None,
     latency_ms: float,
+    expected_keywords: list[str] | None = None,
 ) -> RowScore:
     """Compute every metric for one row in one call."""
     return RowScore(
@@ -346,6 +526,12 @@ def score_row(
         reference_conciseness=reference_conciseness(pred_refs, gold_articles),
         latency_ms=latency_ms,
         regulatory_tone=regulatory_tone(pred_answer),
+        answer_correctness_loose_legacy=answer_correctness_loose_legacy(pred_answer, gold_answer),
+        answer_correctness_strict_legacy=answer_correctness_strict_legacy(pred_answer, gold_answer),
+        answer_correctness_precision=answer_correctness_precision(pred_answer, gold_answer),
+        answer_correctness_f1=answer_correctness_f1(pred_answer, gold_answer),
+        pred_gold_token_ratio=pred_gold_token_ratio(pred_answer, gold_answer),
+        ans_keyword_recall=answer_keyword_recall(pred_answer, expected_keywords),
     )
 
 
@@ -380,7 +566,9 @@ def aggregate(rows: list[RowScore]) -> dict[str, float]:
     n = len(rows)
     s = lambda key: sum(getattr(r, key) for r in rows)
     latencies = [r.latency_ms for r in rows]
-    return {
+    kr_rows = [r.ans_keyword_recall for r in rows if r.ans_keyword_recall is not None]
+    kr_avg = sum(kr_rows) / len(kr_rows) if kr_rows else 0.0
+    res = {
         "n": n,
         "ans_correctness_loose": round(s("answer_correctness_loose") / n, 4),
         "ans_correctness_strict": round(s("answer_correctness_strict") / n, 4),
@@ -389,8 +577,16 @@ def aggregate(rows: list[RowScore]) -> dict[str, float]:
         "ref_correctness_strict": round(s("reference_correctness_strict") / n, 4),
         "ref_conciseness": round(s("reference_conciseness") / n, 4),
         "regulatory_tone": round(s("regulatory_tone") / n, 4),
+        "ans_correctness_loose_legacy": round(s("answer_correctness_loose_legacy") / n, 4),
+        "ans_correctness_strict_legacy": round(s("answer_correctness_strict_legacy") / n, 4),
+        "ans_correctness_precision": round(s("answer_correctness_precision") / n, 4),
+        "ans_correctness_f1": round(s("answer_correctness_f1") / n, 4),
+        "pred_gold_token_ratio": round(s("pred_gold_token_ratio") / n, 4),
         "latency_p50_ms": round(percentile(latencies, 50), 2),
         "latency_p95_ms": round(percentile(latencies, 95), 2),
         "latency_max_ms": round(max(latencies) if latencies else 0.0, 2),
         "latency_mean_ms": round(sum(latencies) / n, 2),
     }
+    if kr_rows:
+        res["ans_keyword_recall"] = round(kr_avg, 4)
+    return res

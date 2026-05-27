@@ -98,6 +98,23 @@ _JUDGE_SYSTEM = (
     "no explanation outside the JSON."
 )
 
+# Default judge model — overridable via the CLI ``--model`` flag.
+# ``claude-sonnet-4-6`` is the historical default the R66-C pipeline
+# was tuned against; operators wanting a stronger (and more expensive)
+# judge can pass ``--model claude-opus-4-7`` for runs where the
+# additional reasoning quality is worth the extra latency + spend.
+_DEFAULT_JUDGE_MODEL = "claude-sonnet-4-6"
+_JUDGE_MODEL: str = _DEFAULT_JUDGE_MODEL
+
+
+def set_judge_model(model: str) -> None:
+    """Module-level override for the judge model. Called by ``main`` from
+    the CLI ``--model`` flag before any judge call fires. Goes through a
+    helper rather than direct global assignment so future tests can
+    monkey-patch the same surface."""
+    global _JUDGE_MODEL
+    _JUDGE_MODEL = (model or _DEFAULT_JUDGE_MODEL).strip()
+
 
 # Retryable failure SHAPES (judge_error string fragments). Mirrors the
 # pattern from ``evals/bench/_http_retry.py::is_retryable_error``: only
@@ -189,7 +206,7 @@ def _call_judge_sonnet(prompt: str, timeout_s: float = 30.0) -> dict[str, Any]:
     req = OpenAIWrapperRequest(
         system=_JUDGE_SYSTEM,
         user=prompt,
-        model="claude-sonnet-4-6",
+        model=_JUDGE_MODEL,
         max_tokens=400,
         temperature=0.0,
         timeout_seconds=timeout_s,
@@ -202,6 +219,79 @@ def _call_judge_sonnet(prompt: str, timeout_s: float = 30.0) -> dict[str, Any]:
         return {"judge_error": "wrapper_returned_none"}
     if resp.error:
         return {"judge_error": f"wrapper_error: {resp.error[:160]}"}
+    return _parse_judge_json(resp.text or "")
+
+
+_groq_lock = threading.Lock()
+_groq_last_call_time = 0.0
+
+# Groq free-tier limits (as of 2024-Q4):
+#   llama-3.3-70b-versatile  →  6,000 TPM / 30 RPM
+#   llama-3.1-8b-instant     → 20,000 TPM / 30 RPM   ← default for judge
+# Each judge axis call uses ~300 tokens (system + prompt + completion).
+# 4 axes × 300 ≈ 1,200 tokens/row, so the 70B model is exhausted in ~5 rows.
+# The 8B instant model gives 20k TPM → ~16 rows before a 1-min window resets.
+# With a 4-second inter-call sleep: 15 calls/min × 300 tok = 4,500 TPM < 20k. ✓
+_GROQ_DEFAULT_MODEL = "llama-3.1-8b-instant"
+_GROQ_INTER_REQUEST_SLEEP = 4.0  # seconds — 15 RPM × 300 tok ≈ 4,500 TPM
+
+def _rate_limit_groq() -> None:
+    global _groq_last_call_time
+    with _groq_lock:
+        now = time.monotonic()
+        elapsed = now - _groq_last_call_time
+        delay = _GROQ_INTER_REQUEST_SLEEP - elapsed
+        if delay > 0:
+            time.sleep(delay)
+        _groq_last_call_time = time.monotonic()
+
+
+def _call_judge_groq(prompt: str, timeout_s: float = 30.0) -> dict[str, Any]:
+    """Send the judge prompt through the Groq provider.
+    
+    Tuned to run Llama 3.3 70B for fast, highly robust, and cost-effective grading.
+    """
+    try:
+        from app.llm.openai_wrapper_provider import (  # noqa: PLC0415
+            OpenAIWrapperRequest,
+            _OpenAIWrapperProvider,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {"judge_error": f"wrapper_unavailable: {exc}"}
+        
+    groq_api_key = os.getenv("GROQ_API_KEY", "").strip()
+    if not groq_api_key:
+        return {"judge_error": "no_api_key: GROQ_API_KEY environment variable is not set."}
+        
+    # Enforce thread-safe rate limiting of 30 RPM (2.1s interval) for Groq free tier
+    _rate_limit_groq()
+        
+    try:
+        provider = _OpenAIWrapperProvider(
+            base_url="https://api.groq.com/openai/v1",
+            api_key=groq_api_key,
+            timeout=timeout_s,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {"judge_error": f"groq_init_failed: {exc}"}
+        
+    model = os.environ.get("REGENOLD_DENOISER_MODEL_GROQ", _GROQ_DEFAULT_MODEL)
+    req = OpenAIWrapperRequest(
+        system=_JUDGE_SYSTEM,
+        user=prompt,
+        model=model,
+        max_tokens=400,
+        temperature=0.0,
+        timeout_seconds=timeout_s,
+    )
+    try:
+        resp = provider.complete(req)
+    except Exception as exc:  # noqa: BLE001
+        return {"judge_error": f"call_failed: {exc}"}
+    if resp is None:
+        return {"judge_error": "groq_returned_none"}
+    if resp.error:
+        return {"judge_error": f"groq_error: {resp.error[:160]}"}
     return _parse_judge_json(resp.text or "")
 
 
@@ -247,7 +337,7 @@ def _call_judge_anthropic(prompt: str, timeout_s: float = 30.0) -> dict[str, Any
 
     try:
         response = client.messages.create(
-            model="claude-sonnet-4-6",
+            model=_JUDGE_MODEL,
             system=_JUDGE_SYSTEM,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=400,
@@ -325,7 +415,7 @@ def _call_judge_with_retry(
     prompt: str,
     *,
     max_retries: int = 1,
-    backoff_s: float = 1.0,
+    backoff_s: float = 4.0,
 ) -> tuple[dict[str, Any], int, list[str]]:
     """Invoke ``caller(prompt)`` and retry once on retryable failures.
 
@@ -386,6 +476,8 @@ def _resolve_caller(provider: str) -> Callable[[str], dict[str, Any]]:
     flag. Defaults to the wrapper path for backwards-compat."""
     if provider == "anthropic":
         return _call_judge_anthropic
+    if provider == "groq":
+        return _call_judge_groq
     # "wrapper" or anything else falls back to the wrapper (historical
     # default) — runner_v2 / bench-runner sidecars produced pre-R66-C
     # all assume the wrapper path is active.
@@ -557,6 +649,16 @@ def run(
     provider: str = "wrapper",
     out_dir: Path | None = None,
 ) -> dict[str, Any]:
+    # Groq free-tier TPM constraints require sequential evaluation.
+    # Overriding concurrency to 1 prevents parallel bursts that burn the
+    # token budget faster than the 1-minute window can reset.
+    if provider == "groq" and concurrency > 1:
+        print(
+            f"[judge] groq provider: overriding concurrency {concurrency} → 1 "
+            "(free-tier TPM constraints require sequential calls)",
+            flush=True,
+        )
+        concurrency = 1
     started_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     payload = json.loads(bench_sidecar.read_text(encoding="utf-8"))
 
@@ -665,23 +767,38 @@ def main(argv: list[str] | None = None) -> int:
     # cloud rate limits are higher and more stable.
     parser.add_argument(
         "--concurrency", type=int, default=2,
-        help="Number of worker threads (default 2 — tuned for the wrapper's slowapi gate).",
+        help=(
+            "Number of worker threads (default 2 — tuned for the wrapper's slowapi gate). "
+            "Automatically overridden to 1 for --provider groq due to free-tier TPM limits."
+        ),
     )
     # R66-C — Anthropic SDK direct path. Routes each axis call through
     # ``anthropic.Anthropic().messages.create(...)`` instead of the
     # local openai_wrapper bridge. Requires ``P2P_GRAPH_RAG_API_KEY``
     # or ``ANTHROPIC_API_KEY`` to be set.
     parser.add_argument(
-        "--provider", choices=("wrapper", "anthropic"), default="wrapper",
+        "--provider", choices=("wrapper", "anthropic", "groq"), default="wrapper",
         help=(
             "Provider for the judge LLM. "
             "'wrapper' (default) routes through the local openai_wrapper bridge. "
             "'anthropic' uses the Anthropic SDK directly (requires "
-            "P2P_GRAPH_RAG_API_KEY or ANTHROPIC_API_KEY)."
+            "P2P_GRAPH_RAG_API_KEY or ANTHROPIC_API_KEY). "
+            "'groq' routes through the Groq provider (requires GROQ_API_KEY)."
+        ),
+    )
+    parser.add_argument(
+        "--model", default=_DEFAULT_JUDGE_MODEL,
+        help=(
+            f"Judge model id (default {_DEFAULT_JUDGE_MODEL}). Pass "
+            "'claude-opus-4-7' for higher-quality reasoning runs at extra "
+            "latency / cost. The model id is forwarded verbatim to the "
+            "selected provider — operators are responsible for matching "
+            "what the provider accepts."
         ),
     )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
+    set_judge_model(args.model)
     summary = run(
         bench_sidecar=args.bench_sidecar,
         label=args.label,

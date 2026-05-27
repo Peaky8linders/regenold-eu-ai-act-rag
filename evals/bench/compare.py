@@ -47,9 +47,11 @@ def _emit_text(a: dict, b: dict, *, label_a: str, label_b: str) -> str:
         f"Comparison: {label_a!r}  →  {label_b!r}"
     )
     lines.append("=" * 92)
+    summary_a = a.get("summary") or a.get("scores") or {}
+    summary_b = b.get("summary") or b.get("scores") or {}
     for source in ("qa", "scenarios", "overall"):
-        sa = a.get("summary", {}).get(source, {})
-        sb = b.get("summary", {}).get(source, {})
+        sa = summary_a.get(source, {})
+        sb = summary_b.get(source, {})
         if not sa or not sb:
             continue
         lines.append("")
@@ -76,8 +78,8 @@ def _emit_text(a: dict, b: dict, *, label_a: str, label_b: str) -> str:
                 f"  {label:<26}  {va:>8}  →  {vb:>8}   {arrow} {delta:+.4f} {marker}"
             )
     # Multi-turn coherence
-    ma = a.get("summary", {}).get("multiturn_coherence") or {}
-    mb = b.get("summary", {}).get("multiturn_coherence") or {}
+    ma = summary_a.get("multiturn_coherence") or {}
+    mb = summary_b.get("multiturn_coherence") or {}
     if ma or mb:
         lines.append("")
         lines.append(
@@ -109,9 +111,11 @@ def main(argv: list[str] | None = None) -> int:
     b = _load(args.label_b)
     if args.json:
         out: dict[str, dict[str, float]] = {}
+        summary_a = a.get("summary") or a.get("scores") or {}
+        summary_b = b.get("summary") or b.get("scores") or {}
         for source in ("qa", "scenarios", "overall"):
-            sa = a.get("summary", {}).get(source, {})
-            sb = b.get("summary", {}).get(source, {})
+            sa = summary_a.get(source, {})
+            sb = summary_b.get(source, {})
             section: dict[str, float] = {}
             for key, _ in _AXES:
                 va = sa.get(key)

@@ -241,6 +241,102 @@ class TestHealthzLLMOpenAIWrapper:
         assert body["llm_ok"] is False
         assert "OPENAI_API_BASE" in body["detail"]
 
+    def test_wrapper_probe_timeout_default_30s(
+        self,
+        client: TestClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The openai_wrapper probe defaults to a 30 s timeout.
+
+        The pre-fix hardcoded 10 s false-negatived ``llm_ok`` on a cold
+        Railway container's first post-deploy call — the warm round-trip
+        is ~4 s but cold-start stacks DNS + TLS + connection-pool
+        warm-up past 10 s. 30 s covers cold-start; real Stage-2 polish
+        keeps the singleton's 60 s.
+        """
+        monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "openai_wrapper")
+        monkeypatch.setenv("OPENAI_API_BASE", "https://api.test.invalid")
+        monkeypatch.setenv("OPENAI_API_KEY", "dummy")
+        monkeypatch.delenv("REGENOLD_HEALTHZ_PROBE_TIMEOUT", raising=False)
+
+        from app.llm import openai_wrapper_provider
+
+        captured: dict[str, object] = {}
+
+        def _handler(req: httpx.Request) -> httpx.Response:
+            captured["timeout"] = req.extensions.get("timeout")
+            return httpx.Response(
+                200,
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "choices": [{"message": {"content": "OK"}}],
+                    "usage": {"prompt_tokens": 3, "completion_tokens": 1},
+                },
+            )
+
+        openai_wrapper_provider._SINGLETON = None
+        prov = openai_wrapper_provider.get_openai_wrapper_provider()
+        prov._client = httpx.Client(
+            transport=httpx.MockTransport(_handler),
+            base_url="https://api.test.invalid",
+        )
+        try:
+            r = client.get("/healthz/llm")
+        finally:
+            openai_wrapper_provider._SINGLETON = None
+
+        assert r.status_code == 200
+        assert r.json()["llm_ok"] is True
+        timeout = captured["timeout"]
+        assert isinstance(timeout, dict), f"expected httpx timeout dict, got {timeout!r}"
+        assert timeout.get("read") == 30.0, (
+            f"probe should use the 30 s default, got {timeout!r}"
+        )
+
+    def test_wrapper_probe_timeout_env_override(
+        self,
+        client: TestClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``REGENOLD_HEALTHZ_PROBE_TIMEOUT`` overrides the probe budget."""
+        monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "openai_wrapper")
+        monkeypatch.setenv("OPENAI_API_BASE", "https://api.test.invalid")
+        monkeypatch.setenv("OPENAI_API_KEY", "dummy")
+        monkeypatch.setenv("REGENOLD_HEALTHZ_PROBE_TIMEOUT", "45")
+
+        from app.llm import openai_wrapper_provider
+
+        captured: dict[str, object] = {}
+
+        def _handler(req: httpx.Request) -> httpx.Response:
+            captured["timeout"] = req.extensions.get("timeout")
+            return httpx.Response(
+                200,
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "choices": [{"message": {"content": "OK"}}],
+                    "usage": {"prompt_tokens": 3, "completion_tokens": 1},
+                },
+            )
+
+        openai_wrapper_provider._SINGLETON = None
+        prov = openai_wrapper_provider.get_openai_wrapper_provider()
+        prov._client = httpx.Client(
+            transport=httpx.MockTransport(_handler),
+            base_url="https://api.test.invalid",
+        )
+        try:
+            r = client.get("/healthz/llm")
+        finally:
+            openai_wrapper_provider._SINGLETON = None
+
+        assert r.status_code == 200
+        timeout = captured["timeout"]
+        assert isinstance(timeout, dict), f"expected httpx timeout dict, got {timeout!r}"
+        assert timeout.get("read") == 45.0, (
+            f"env override REGENOLD_HEALTHZ_PROBE_TIMEOUT=45 not honoured: {timeout!r}"
+        )
+
 
 class TestHealthzLLMAnthropicProvider:
     def test_anthropic_no_key(

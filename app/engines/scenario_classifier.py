@@ -1142,6 +1142,33 @@ def _build_answer(role: str, risk_level: str) -> str:
     )
 
 
+def _build_compound_authrep_answer() -> str:
+    """Answer prose for the non-EU-provider authorised-representative shape.
+
+    R75 — when :func:`_detect_compound_roles` surfaces the
+    ``authorized_representative`` role (a provider established outside
+    the Union placing a system on the EU market), the generic
+    risk-tier :func:`_build_answer` template describes the wrong
+    obligation entirely — it talks about Article 50 transparency or
+    Article 9 risk management when the live question is "who is the
+    authorised representative?". This builder returns the Article 22
+    substance directly so the answer prose carries the operative
+    tokens ("authorised representative", "written mandate",
+    "established"). Three cite-anchored sentences keep the full
+    verdict inside the 600-char soft cap.
+    """
+    return (
+        "A provider established in a third country must, by written "
+        "mandate, appoint an authorised representative established in "
+        "the Union before placing a high-risk AI system on the EU "
+        "market (Article 22). The authorised representative keeps the "
+        "conformity documentation available and acts as the contact "
+        "point for market-surveillance authorities (Article 22). The "
+        "EU subsidiary that distributes the system remains separately "
+        "bound by the Article 24 distributor verification obligations."
+    )
+
+
 def _build_article_pack(role: str, risk_level: str) -> tuple[str, ...]:
     """Combine the risk-level pack + role-specific bolt-ons."""
     base = _RISK_ARTICLES.get(risk_level, ())
@@ -1245,6 +1272,17 @@ def classify_scenario_query(question: str) -> ScenarioVerdict | None:
     base_articles = _build_article_pack(primary_role, risk_level)
     answer = _build_answer(primary_role, risk_level)
 
+    # R75 — non-EU-provider authorised-representative compound. The
+    # generic risk-tier verdict from _build_answer describes the wrong
+    # obligation (Article 50 transparency / Article 9 risk management)
+    # when the live question is "who is the authorised representative?".
+    # Swap in the Article 22 authrep substance so the answer prose
+    # carries the operative tokens. Gated on the authrep compound role,
+    # which the davidath "We are a {role}, offering …" template does
+    # not produce.
+    if "authorized_representative" in compound:
+        answer = _build_compound_authrep_answer()
+
     # R47-C — when compound roles fire, take the UNION of the existing
     # risk-pack and the role-obligation matrix's primary+secondary
     # articles for each compound role. Strictly additive — the base
@@ -1263,6 +1301,11 @@ def classify_scenario_query(question: str) -> ScenarioVerdict | None:
         prepend: list[str] = []
         if "authorized_representative" in compound_tuple:
             prepend.append("Art. 22")
+            # R75 — surface Art. 24 too: the EU subsidiary in the
+            # authrep shape is itself a distributor (gold ref pair is
+            # Art. 22 + Art. 24). Prepended second so Art. 22 still
+            # leads the citation list.
+            prepend.append("Art. 24")
         if (
             _COMPOUND_REBRAND_RE.search(low)
             or _COMPOUND_SUBSTANTIAL_MOD_RE.search(low)

@@ -497,8 +497,6 @@ def classify_intent(
     if not sanitised:
         return None
     trimmed = sanitised
-    if len(trimmed) > 1500:
-        trimmed = trimmed[-1500:]
 
     # Pass our short 2.5 s budget per-request — DON'T mutate the env.
     # The provider is a process-wide singleton and an env mutation here

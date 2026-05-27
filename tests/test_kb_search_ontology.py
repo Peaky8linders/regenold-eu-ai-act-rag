@@ -233,3 +233,82 @@ class TestArticleKeyExistenceLint:
                 assert _is_known_or_prefix_known(ref), (
                     f"Query {q!r} returned hallucinated ref {ref!r}"
                 )
+
+
+# ── PageIndex chapter-scoped BM25 ─────────────────────────────────────────
+
+
+class TestChapterScopedBM25:
+    """Validate ``top_articles_by_relevance_in_chapters`` — the
+    PageIndex-style pre-filter that restricts BM25 to a chapter subset.
+    """
+
+    def test_chapter_iii_scoped_finds_high_risk_article(self) -> None:
+        from app.data.kb_search import top_articles_by_relevance_in_chapters
+        hits = top_articles_by_relevance_in_chapters(
+            "What are the requirements for high-risk AI systems?",
+            ["III"], k=5, min_score=0.5,
+        )
+        assert hits, "Chapter-III scoped search should return results"
+        assert any(h.startswith("Art. ") or h.startswith("Annex") for h in hits)
+
+    def test_chapter_ii_scoped_finds_prohibition_article(self) -> None:
+        from app.data.kb_search import top_articles_by_relevance_in_chapters
+        hits = top_articles_by_relevance_in_chapters(
+            "subliminal manipulation prohibited AI practices",
+            ["II"], k=3, min_score=0.5,
+        )
+        assert "Art. 5" in hits, f"Expected Art. 5 for prohibition query; got {hits}"
+
+    def test_scoped_returns_only_chapter_articles(self) -> None:
+        """All returned refs must belong to the requested chapter(s)."""
+        from app.data.eu_ai_act_corpus import ARTICLE_CHAPTER
+        from app.data.kb_search import top_articles_by_relevance_in_chapters
+        hits = top_articles_by_relevance_in_chapters(
+            "administrative fines penalties sanctions",
+            ["XII"], k=5, min_score=0.5,
+        )
+        for ref in hits:
+            if ref.startswith("Annex"):
+                continue  # Annexes allowed as safety-net inclusions
+            ch = ARTICLE_CHAPTER.get(ref)
+            assert ch == "XII", (
+                f"Ref {ref!r} chapter={ch!r} not in requested chapter XII"
+            )
+
+    def test_empty_chapters_falls_back_to_full_corpus(self) -> None:
+        from app.data.kb_search import top_articles_by_relevance_in_chapters
+        hits_scoped = top_articles_by_relevance_in_chapters(
+            "How long must records be kept?", [], k=3,
+        )
+        from app.data.kb_search import top_articles_by_relevance
+        hits_full = top_articles_by_relevance(
+            "How long must records be kept?", k=3,
+        )
+        assert hits_scoped == hits_full, (
+            "Empty chapters list must fall back to full-corpus results"
+        )
+
+    def test_unknown_chapter_falls_back_gracefully(self) -> None:
+        """A chapter string not in ARTICLE_CHAPTER (e.g. 'ZZ') should
+        not raise; it falls back to full-corpus BM25."""
+        from app.data.kb_search import top_articles_by_relevance_in_chapters
+        hits = top_articles_by_relevance_in_chapters(
+            "entry into force timeline", ["ZZ"], k=3,
+        )
+        assert isinstance(hits, list)
+
+    def test_emitted_refs_resolve_in_article_existence(self) -> None:
+        from app.data.article_existence import ARTICLE_EXISTENCE
+        from app.data.kb_search import top_articles_by_relevance_in_chapters
+        queries = [
+            ("high-risk AI documentation requirements", ["III"]),
+            ("GPAI systemic risk obligations", ["V"]),
+            ("post-market incident reporting", ["IX"]),
+        ]
+        for q, chapters in queries:
+            hits = top_articles_by_relevance_in_chapters(q, chapters, k=5, min_score=0.5)
+            for ref in hits:
+                assert _is_known_or_prefix_known(ref), (
+                    f"Scoped search returned hallucinated ref {ref!r}"
+                )

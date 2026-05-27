@@ -607,12 +607,12 @@ _OTHER_REGULATION_PATTERNS: tuple[re.Pattern, ...] = (
     re.compile(r"\bCPRA\b", re.IGNORECASE),
     re.compile(r"\bDigital\s+Markets?\s+Act\b", re.IGNORECASE),
     re.compile(r"\bDigital\s+Services?\s+Act\b", re.IGNORECASE),
-    re.compile(r"\bDMA\b"),
-    re.compile(r"\bDSA\b"),
-    re.compile(r"\bSOX\b"),
+    re.compile(r"\bDMA\b", re.IGNORECASE),
+    re.compile(r"\bDSA\b", re.IGNORECASE),
+    re.compile(r"\bSOX\b", re.IGNORECASE),
     re.compile(r"\bSarbanes[- ]Oxley\b", re.IGNORECASE),
-    re.compile(r"\bGLBA\b"),
-    re.compile(r"\bFERPA\b"),
+    re.compile(r"\bGLBA\b", re.IGNORECASE),
+    re.compile(r"\bFERPA\b", re.IGNORECASE),
 )
 
 
@@ -1258,6 +1258,27 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "non-consensual intimate": "Art. 5",
     "non consensual intimate": "Art. 5",
     "intimate imagery": "Art. 5",
+    # R80-F — zero-retrieval rescue (r80-live judge data). Each phrase is
+    # the live-question shape that fell through to the Art. 1/2/3 floor;
+    # routing each to its gold article surfaces the right anchor at the
+    # engine + suppresses the floor pad downstream
+    # (see app/engines/zero_retrieval_fallback.py R80-F change).
+    "authorised representative": "Art. 22",
+    "authorized representative": "Art. 22",
+    "appoint an authorised representative": "Art. 22",
+    "appoint an authorized representative": "Art. 22",
+    "retain logs": "Art. 19",
+    "retain automatically generated logs": "Art. 19",
+    "log retention": "Art. 19",
+    "automatically generated logs": "Art. 19",
+    "obligations of deployers": "Art. 26",
+    "obligations of downstream providers": "Art. 26",
+    "transparency information must be provided": "Art. 13",
+    "transparency information to deployers": "Art. 13",
+    "european artificial intelligence board": "Art. 65",
+    "who must comply with the ai regulation": "Art. 2",
+    "who must comply with the ai act": "Art. 2",
+    "who must comply with the regulation": "Art. 2",
     # Annex III categories — scope anchors for high-risk verdicts
     "critical infrastructure": "Annex III",
     "asylum application": "Annex III",
@@ -1361,6 +1382,11 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "european ai board": "Art. 65",
     "national competent authority": "Art. 70",
     "market surveillance": "Art. 74",
+    # R76 — Art. 78 is "Confidentiality"; davidath qa_080 asks about
+    # confidentiality obligations and surfaced market-surveillance
+    # neighbours instead. Listed in _SCOPE_WEAK_KEYWORDS below so a bare
+    # "confidentiality" cannot flip an off-topic question in-scope.
+    "confidentiality": "Art. 78",
     "withdrawal": "Art. 79",
     "fines": "Art. 99",
     "penalties": "Art. 99",
@@ -1405,8 +1431,20 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     # primary article. The substring-shadowing guard means longer
     # phrases above still win where they overlap (e.g. "fine-tuning"
     # with "training data" — different anchors, no overlap).
-    "high-risk": "Art. 6",
-    "high risk": "Art. 6",
+    #
+    # R77 (I2) — bare "high-risk" / "high risk" → Art. 6 REMOVED. The
+    # R76 representative-100 live measurement proved this near-universal
+    # qualifier shadowed the actual topic article: "importers'
+    # obligations" (gold Art. 23), "deployer obligations" (gold Art. 26),
+    # "transparency to deployers" (gold Art. 13) all anchored only
+    # ['Art. 6'] because every such question contains "high-risk AI
+    # system". ≥8 of 16 ref-misses traced to this. "high-risk" is a risk
+    # TIER, not a topic — the longer "high-risk ai system" forms still
+    # carry scope via _AI_ACT_ANCHORS, and the engine's _KEYWORD_ENTITY_MAP
+    # surfaces the operator article (importer→23, distributor→24,
+    # deployer→26) from the role noun. The "is it high-risk" /
+    # "deploy a high-risk" compound forms below are kept — those DO
+    # unambiguously target Art. 6 / Art. 26.
     "deploy a third-party": "Art. 26",
     "deploy a third party": "Art. 26",
     # NOTE: bare "deploys" / "deploying" removed — too generic
@@ -1632,6 +1670,54 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "explanation of the decision": "Art. 86",
     "ai-driven decision": "Art. 86",
     "ai driven decision": "Art. 86",
+    # R88-C — right-to-explanation natural-language phrasings.
+    # r87-v2-live mt_v2_024: prior turn establishes "loan denial is Annex
+    # III(5)(b) — high-risk", live turn is "A customer wants to know why
+    # their loan was rejected by our AI." Gold Art. 86 (right to
+    # explanation of individual decision-making). The existing
+    # "right to explanation" / "ai-driven decision" entries don't fire
+    # because the live turn never names "explanation" or "decision" — it
+    # uses the customer-asking-why pattern.
+    #
+    # CRITICAL design constraint: every entry below requires an AI-Act-
+    # specific token co-occurrence ("rejected/denied/declined BY OUR AI",
+    # "an ai decision", "the ai decision"). Bare "wants to know why" /
+    # "want to know why" are deliberately NOT added because they match
+    # generic English ("my child wants to know why the sky is blue").
+    # The mt_v2_024 live turn carries "rejected by our AI" which fires
+    # the multi-word entry below; the conversation context (deployer +
+    # loan-denial + high-risk) is also re-validated by the scope gate's
+    # multi-turn rescue rules.
+    "rejected by our ai": "Art. 86",
+    "rejected by the ai": "Art. 86",
+    "rejected by our ai system": "Art. 86",
+    "rejected by the ai system": "Art. 86",
+    "rejected by an ai": "Art. 86",
+    "rejected by ai": "Art. 86",
+    "denied by our ai": "Art. 86",
+    "denied by the ai": "Art. 86",
+    "denied by an ai": "Art. 86",
+    "denied by our ai system": "Art. 86",
+    "denied by the ai system": "Art. 86",
+    "declined by our ai": "Art. 86",
+    "declined by the ai": "Art. 86",
+    "declined by an ai": "Art. 86",
+    "declined by our ai system": "Art. 86",
+    "declined by the ai system": "Art. 86",
+    # Affected-person + AI-decision pattern (multi-word, AI-specific).
+    "individual affected by an ai": "Art. 86",
+    "person affected by an ai": "Art. 86",
+    "people affected by an ai": "Art. 86",
+    "individual affected by the ai": "Art. 86",
+    "explanation of an ai decision": "Art. 86",
+    "explanation of the ai decision": "Art. 86",
+    "explain the ai decision": "Art. 86",
+    "explain how the ai decided": "Art. 86",
+    "explain how our ai decided": "Art. 86",
+    "request an explanation of": "Art. 86",
+    "request explanation from the ai": "Art. 86",
+    "right to obtain an explanation": "Art. 86",
+    "obtain an explanation of": "Art. 86",
     "whistleblower": "Art. 87",
     "whistleblowing": "Art. 87",
     "downstream-provider complaint": "Art. 89",
@@ -1961,6 +2047,11 @@ _SCOPE_WEAK_KEYWORDS: frozenset[str] = frozenset({
     "high risk in vitro",
     "high risk in-vitro",
     "notified body certificate",
+    # R76 — "confidentiality" anchors Art. 78 for RETRIEVAL but is a
+    # common English noun; it must not flip the scope gate in-scope on
+    # its own (an in-scope AI Act confidentiality question always pairs
+    # it with "ai" / "provider" / "market surveillance" / "Article N").
+    "confidentiality",
 })
 
 
@@ -2075,7 +2166,11 @@ _CREATIVE_CONTENT_IMPERATIVE_RE = re.compile(
 # uses word boundaries on both sides so generic English ("Lebanon",
 # "anion") doesn't substring-match.
 _NON_AI_QUALIFIER_RE = re.compile(
-    r"\bnon[\s-]?ai\b|\bnot\s+(?:an?\s+)?ai\b|\bnot\s+ai[- ]related\b",
+    r"\bnon[\s-]?ai\b"
+    r"|\bnot\s+(?:an?\s+)?ai\b"
+    r"|\bnot\s+ai[- ]related\b"
+    r"|\b(?:do|does|did)\s+not\s+use\s+ai\b"
+    r"|\b(?:don'?t|doesn'?t|didn'?t)\s+use\s+ai\b",
     re.IGNORECASE,
 )
 
@@ -2791,6 +2886,28 @@ def _live_question_borrows_anchor(live_text: str, anchors: tuple[str, ...]) -> b
     return False
 
 
+def _is_explicit_scope_negation_refusal(
+    live_text: str,
+    live_verdict: ScopeVerdict,
+) -> bool:
+    """Whether a conversational refusal came from an explicit R57-A block.
+
+    Most ``CONVERSATIONAL`` refusals are eligible for multi-turn rescue
+    ("What about deployers?"). R57-A added a narrower class of explicit
+    refusal prefilters — creative-output asks, non-AI qualifiers, and
+    estate/will contexts — that must remain final even when prior turns
+    established AI Act anchors.
+    """
+    if live_verdict.reason != ScopeReason.CONVERSATIONAL:
+        return False
+    text = _normalise(live_text or "")
+    return bool(
+        _CREATIVE_CONTENT_IMPERATIVE_RE.search(text)
+        or _NON_AI_QUALIFIER_RE.search(text)
+        or _ESTATE_CONTEXT_RE.search(text)
+    )
+
+
 def classify_conversation(
     messages: list[dict] | list[Any],
 ) -> ConversationVerdict:
@@ -2901,6 +3018,21 @@ def classify_conversation(
         content = _get(m, "content")
         if not content:
             continue
+            
+        # Prompt injection check over conversation history
+        text_for_inj = _normalise(content)
+        if _has_injection_pattern(text_for_inj):
+            match = _matches_any(text_for_inj, _INJECTION_PATTERNS)
+            return ConversationVerdict(
+                verdict=ScopeVerdict(
+                    in_scope=False,
+                    reason=ScopeReason.PROMPT_INJECTION,
+                    evidence=f"Prompt-injection pattern matched: {match.group(0)[:60]!r}" if match else "Injection",
+                ),
+                anchor_articles=(),
+                history_unknown_articles=(),
+                live_question=live_text,
+            )
         is_prior_for_rescue = (live_index is None) or (idx < live_index)
         k, u = extract_referenced_articles(content)
         # Unknown refs ALWAYS block (precedence guard) regardless of role
@@ -3033,6 +3165,7 @@ def classify_conversation(
     if (
         rescue_anchors
         and live_verdict.reason not in hard_refusal_reasons
+        and not _is_explicit_scope_negation_refusal(live_text, live_verdict)
     ):
         full_refs = derive_anchor_articles_from_keywords(live_text)
         strong_refs = derive_strong_anchor_articles_from_keywords(live_text)
@@ -3065,6 +3198,7 @@ def classify_conversation(
 
     if (
         live_verdict.reason not in hard_refusal_reasons
+        and not _is_explicit_scope_negation_refusal(live_text, live_verdict)
         and _live_question_borrows_anchor(live_text, tuple(rescue_anchors))
     ):
         rescued = ScopeVerdict(

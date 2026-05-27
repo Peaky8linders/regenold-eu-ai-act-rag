@@ -121,6 +121,7 @@ def _run_holdout(
             gold_answer=gold_answer,
             gold_articles=gold_article,
             latency_ms=latency,
+            expected_keywords=item.get("expected_keywords"),
         )
         qa_scores.append(score)
 
@@ -139,6 +140,7 @@ def _run_holdout(
             gold_answer=gold_answer,
             gold_articles=gold_articles,
             latency_ms=latency,
+            expected_keywords=item.get("expected_keywords"),
         )
         sc_scores.append(score)
 

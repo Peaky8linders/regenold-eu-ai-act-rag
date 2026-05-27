@@ -46,6 +46,7 @@ from app.data.kb import EC_CHECKER_OBLIGATION_MAP, KB_VERSION
 from app.data.kb_xrefs import MANUAL_XREFS, _build_xref_graph
 from app.data.ontology import ANNEX_III_REGISTRY
 from app.data.role_obligations import ROLE_OBLIGATIONS
+from app.integrations.regenold.refs import to_user_facing as _ref_to_user_facing
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,7 @@ logger = logging.getLogger(__name__)
 #: new edge type, removed source, etc.). Surfaces in the ``KBMetadata``
 #: node so consumers can detect a graph that's stale relative to the
 #: currently-running code.
-SEED_VERSION = "2026-05-16-r35"
+SEED_VERSION = "2026-05-24-r84c"
 
 #: Cap on per-transaction batch size to stay well clear of the Neo4j
 #: 4194304-byte default transaction limit. The shape of our payloads
@@ -270,6 +271,12 @@ def build_payload() -> SeedPayload:
     ``--dry-run`` accounting pass.
     """
     # ── Articles (113) ────────────────────────────────────────────────
+    # R84-C: every Article node carries ``legal_type="Article"`` + the
+    # ``strict_citation`` shape ``"Article N"`` per the CLAUDE.md hard
+    # rule #1. Derived from the canonical internal form via the single-
+    # source-of-truth converter at ``refs.to_user_facing``. Sub-point
+    # nodes (``Art. 13(2)(a)``) are NOT seeded today — base nodes only,
+    # so ``strict_citation`` is always the bare ``"Article N"`` form.
     article_nodes: list[dict] = []
     for ref in sorted(
         (r for r in ARTICLE_EXISTENCE if r.startswith("Art. ")),
@@ -284,10 +291,15 @@ def build_payload() -> SeedPayload:
                 "description": ARTICLE_FULL_TEXT.get(ref, "")[:2000],
                 "chapter": "",
                 "vector_chunk_ids": [],
+                "legal_type": "Article",
+                "strict_citation": _ref_to_user_facing(f"Art. {num}"),
             }
         )
 
     # ── Annexes (13) ──────────────────────────────────────────────────
+    # R84-C: every Annex node carries ``legal_type="Annex"`` + the
+    # ``strict_citation`` shape ``"Annex X"`` (Roman uppercased) per the
+    # CLAUDE.md hard rule #1.
     annex_nodes: list[dict] = []
     for ref in sorted(r for r in ARTICLE_EXISTENCE if r.startswith("Annex ")):
         roman = _article_number(ref)
@@ -297,6 +309,8 @@ def build_payload() -> SeedPayload:
                 "number": roman,
                 "title": _short_title(ref),
                 "description": ARTICLE_FULL_TEXT.get(ref, "")[:2000],
+                "legal_type": "Annex",
+                "strict_citation": _ref_to_user_facing(f"Annex {roman}"),
             }
         )
 
@@ -524,14 +538,18 @@ SET a.number = $number,
     a.title = $title,
     a.description = $description,
     a.chapter = $chapter,
-    a.vector_chunk_ids = $vector_chunk_ids
+    a.vector_chunk_ids = $vector_chunk_ids,
+    a.legal_type = $legal_type,
+    a.strict_citation = $strict_citation
 """
 
 _CYPHER_ANNEX = """
 MERGE (a:Annex {id: $id})
 SET a.number = $number,
     a.title = $title,
-    a.description = $description
+    a.description = $description,
+    a.legal_type = $legal_type,
+    a.strict_citation = $strict_citation
 """
 
 _CYPHER_RECITAL = """

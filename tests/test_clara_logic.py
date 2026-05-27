@@ -573,6 +573,42 @@ def test_extract_tags_llm_parses_valid_json(monkeypatch) -> None:
     assert tags.used_in_workplace
 
 
+def test_extract_tags_llm_returns_none_on_empty_or_unknown_only_json(monkeypatch) -> None:
+    """Empty JSON or JSON with only unknown keys must return None."""
+    monkeypatch.setenv("OPENAI_API_BASE", "http://127.0.0.1:8000/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+
+    class FakeProviderEmpty:
+        def complete(self, _req):
+            return OpenAIWrapperResponse(
+                text='{}',
+                model="claude-haiku-4-5",
+                elapsed_ms=50,
+            )
+
+    class FakeProviderUnknownOnly:
+        def complete(self, _req):
+            return OpenAIWrapperResponse(
+                text='{"some_fake_key": true, "another_fake_key": false}',
+                model="claude-haiku-4-5",
+                elapsed_ms=50,
+            )
+
+    import app.llm.openai_wrapper_provider as ow
+    with patch.object(ow, "get_openai_wrapper_provider", return_value=FakeProviderEmpty()):
+        tags_empty = extract_tags_llm("Empty response test")
+        # Ensure it falls back to deterministic on empty LLM response
+        tags_analyse, verdict = analyse("We use emotion recognition in the workplace.")
+        
+    with patch.object(ow, "get_openai_wrapper_provider", return_value=FakeProviderUnknownOnly()):
+        tags_unknown = extract_tags_llm("Unknown keys test")
+        
+    assert tags_empty is None
+    assert tags_unknown is None
+    assert verdict.risk_tier == "prohibited"
+    assert verdict.primary_articles == ("Article 5.1.f",)
+
+
 def test_extract_tags_llm_lru_cache_avoids_second_call(monkeypatch) -> None:
     """Same question → cached result (no second provider invocation)."""
     monkeypatch.setenv("OPENAI_API_BASE", "http://127.0.0.1:8000/v1")

@@ -109,3 +109,32 @@ def dataset_fingerprint() -> dict[str, str]:
         "qa_pairs_expected": QA_SHA256,
         "scenarios_expected": SCENARIOS_SHA256,
     }
+
+
+def scenario_to_question(s: dict[str, Any]) -> str:
+    """Synthesize a Regenold-style question from a benchmark scenario.
+
+    Scenarios are structured records (role + intended_use + system_type +
+    domain + risk_level) rather than questions. We turn each into the
+    classification-style question a partner would actually ask.
+
+    Canonical home for this conversion — ``evals.bench.runner`` and
+    ``evals.bench.representative_100`` both import it so the question
+    shape can never silently diverge across the eval harnesses.
+    """
+    role = (s.get("role") or "Provider").strip()
+    intended_use = (s.get("intended_use") or "").strip()
+    system_type = (s.get("system_type") or "").strip()
+    domain = (s.get("domain") or "").strip()
+    parts = [f"We are a {role.lower()}"]
+    if system_type:
+        parts.append(f"offering a {system_type.lower()}")
+    if intended_use:
+        parts.append(f"intended to {intended_use.lower()}")
+    if domain:
+        parts.append(f"in the {domain.lower()} domain")
+    prelude = ", ".join(parts) + "."
+    return (
+        f"{prelude} Under the EU AI Act, what is the risk classification of "
+        f"this system and what are the key obligations on us as {role.lower()}?"
+    )

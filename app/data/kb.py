@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 # Art. 52(4) open-source designation, Art. 53(2) FOSS carve-out,
 # Art. 55 four systemic-risk obligations, Art. 79 market-surveillance
 # procedure).
-KB_VERSION = "2024.1689.v6"
+KB_VERSION = "2024.1689.v9"
 
 
 @dataclass(frozen=True)
@@ -765,8 +765,10 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
         "dimension": "risk_mgmt",
         "summary": (
             "Requires a documented, iterative risk-management system across the AI "
-            "system's lifecycle covering known + foreseeable risks, residual-risk "
-            "acceptability, and targeted testing for risk-control verification."
+            "system's lifecycle. Providers must: (a) identify and analyse known and "
+            "foreseeable risks to health, safety, or fundamental rights; (b) estimate "
+            "and evaluate risks emerging during misuse; (c) evaluate post-market monitoring "
+            "data; and (d) adopt targeted mitigation and risk-control measures."
         ),
     },
     "Art. 10": {
@@ -960,7 +962,11 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "Penalty regime: up to EUR 35M or 7% of worldwide annual turnover for "
             "Article 5 prohibited-practice violations; up to EUR 15M / 3% for other "
             "obligations breaches; up to EUR 7.5M / 1% for incorrect or misleading "
-            "information to authorities."
+            "information to authorities. "
+            "Fines shall be proportionate to the gravity and nature of the infringement "
+            "and individual circumstances. Under Article 99(6), for SMEs and start-ups, "
+            "competent authorities shall apply lower fines where lower amounts are "
+            "effective and proportionate."
         ),
     },
     "Annex IV": {
@@ -976,7 +982,9 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
         "dimension": "risk_mgmt",
         "summary": (
             "Eight high-risk use-case categories: biometrics, critical infrastructure, "
-            "education + vocational training, employment + worker management, "
+            "education + vocational training, employment + worker management "
+            "(recruitment, task allocation, promotion and termination decisions, and "
+            "performance evaluation affecting workers' fundamental rights), "
             "essential private + public services, law enforcement, migration + asylum "
             "+ border control, and administration of justice + democratic processes."
         ),

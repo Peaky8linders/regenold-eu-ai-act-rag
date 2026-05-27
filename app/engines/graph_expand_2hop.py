@@ -351,6 +351,39 @@ def expand_2hop(
 
     cap = max(max_hop2 * 2, 4)
 
+    # --- RushDB Dual Routing Path ---
+    try:
+        from app.graph import rushdb_client
+        if rushdb_client.is_enabled():
+            started = time.perf_counter()
+            results = rushdb_client.expand_2hop(seed_nums, cap=cap, timeout_ms=timeout_ms)
+            elapsed_ms = int((time.perf_counter() - started) * 1000)
+            
+            hop1: list[str] = []
+            hop2: list[str] = []
+            seen_internal: set[str] = set()
+            
+            for row in results:
+                internal = _num_to_internal(str(row.get("num")))
+                if not internal or internal in seen_internal or not _is_real_ref(internal):
+                    continue
+                seen_internal.add(internal)
+                
+                if row.get("hops") == 1:
+                    hop1.append(internal)
+                elif len(hop2) < max_hop2:
+                    hop2.append(internal)
+                    
+            return GraphExpansion(
+                seed_articles=tuple(seed_echo),
+                hop1_articles=tuple(hop1),
+                hop2_articles=tuple(hop2),
+                elapsed_ms=elapsed_ms,
+            )
+    except Exception:
+        logger.debug("rushdb_client failed in expand_2hop, falling back to neo4j", exc_info=True)
+    # --------------------------------
+
     started = time.perf_counter()
 
     # Run the Cypher inside the executor so we can enforce the

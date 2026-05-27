@@ -32,6 +32,17 @@ from app.engines.graph_rag import (
 from app.models import GraphRAGRequest
 
 
+@pytest.fixture(autouse=True)
+def _disable_r87e_stage2_gate(monkeypatch):
+    """R87-E confidence-gated Stage-2 skip uses ``_compute_confidence``
+    which returns 0.3 for ``nodes_traversed=0`` mock contexts. These
+    pre-R87-E tests assert Stage-2 fires on the wrapper path; we
+    disable the new gate so the original assertions still hold.
+    The R87-E gate has its own coverage in
+    ``tests/test_r87cde_subpoint_roleduty_stage2gate.py``."""
+    monkeypatch.setenv("REGENOLD_STAGE2_MIN_CONFIDENCE", "0")
+
+
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 # A question that is always complex enough to trigger Stage 2 — multi-turn
@@ -59,6 +70,18 @@ def _empty_ctx() -> GraphContext:
 
 
 # ─── Stage 1: parse is always deterministic ──────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _r77_enable_stage2_polish(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R77 — Stage-2 polish now defaults OFF (``P2P_GRAPH_RAG_ENABLE_STAGE2``).
+
+    These tests predate that default and exercise the Stage-2 path with a
+    mocked provider. Force the master switch ON so they keep testing
+    Stage-2 behaviour; the provider + needs-enhancement gates still apply,
+    so the "Stage-2 skipped" tests in this module still skip correctly.
+    """
+    monkeypatch.setenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "1")
 
 
 class TestStage1AlwaysDeterministic:
@@ -116,15 +139,24 @@ class TestNeedsStage2Heuristic:
             _SIMPLE_Q, _empty_ctx(), _query(intent="cross_framework")
         ) is True
 
-    def test_two_or_more_entities_triggers(self) -> None:
+    def test_three_or_more_entities_triggers(self) -> None:
+        # R84: threshold raised 2 → 3 (bare 2-entity questions, e.g.
+        # ``"What does Article 13 say about Article 14?"``, are fine on
+        # the deterministic path). Pinned in tests/test_r84_latency_gate.py.
         assert _needs_stage2_enhancement(
             _SIMPLE_Q,
             _empty_ctx(),
-            _query(entities=["Art. 9", "Art. 10"]),
+            _query(entities=["Art. 9", "Art. 10", "Art. 11"]),
         ) is True
 
     def test_long_live_question_triggers(self) -> None:
-        long_q = "What are the exact obligations " + "a " * 100 + "deployer faces?"
+        # R84: threshold raised 200 → 350. Medium-length obligation
+        # questions (200-350 chars) deterministic-handle fine; only
+        # genuinely long synthesis questions need polish. Build > 350.
+        long_q = "What are the exact obligations " + "a " * 200 + "deployer faces?"
+        assert len(long_q) > 350, (
+            f"test setup: live_q must exceed the R84 350-char threshold, got {len(long_q)}"
+        )
         assert _needs_stage2_enhancement(long_q, _empty_ctx()) is True
 
     @pytest.mark.parametrize("keyword", [
@@ -132,7 +164,12 @@ class TestNeedsStage2Heuristic:
         "what is the difference between Art. 9 and Art. 10",
         "vs. the GDPR approach",
         "how should we prioritise the remediation work",
-        "please explain why this obligation exists",
+        # R84 dropped 6 overly-broad keywords from this trigger set
+        # (``"explain why"`` / ``"why do"`` / ``"why does"`` / ``"why is"``
+        # / ``"what are the implications"`` / ``"impact of"``) — the
+        # R81-A1 live decomposition showed they fired Stage-2 on routine
+        # obligation questions that handle fine deterministically. The
+        # genuine comparison / remediation markers below survive.
     ])
     def test_complex_keywords_trigger(self, keyword: str) -> None:
         assert _needs_stage2_enhancement(keyword, _empty_ctx()) is True

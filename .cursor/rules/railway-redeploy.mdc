@@ -1,0 +1,42 @@
+﻿---
+description: After shipping to main, always trigger Railway production redeploy
+alwaysApply: true
+---
+
+# Railway — always redeploy after main
+
+Production: `https://regenold-eu-ai-act-rag-production.up.railway.app`
+
+## Policy
+
+Whenever code that affects production is **merged or pushed to `main`**, ensure Railway deploys the latest commit. Do not assume a silent auto-deploy happened.
+
+## Preferred path (CI)
+
+- Push to `main` runs `.github/workflows/railway-redeploy.yml` (`railway redeploy --yes --from-source`).
+- Requires GitHub repo secrets: `RAILWAY_TOKEN` (required), optional `RAILWAY_SERVICE_ID`, `RAILWAY_ENVIRONMENT`, `RAILWAY_PROJECT_ID`.
+- Setup: `docs/partners/regenold/RAILWAY_DEPLOY.md`.
+
+## Manual / local path
+
+From repo root (Windows):
+
+```powershell
+$env:RAILWAY_TOKEN = "<token from railway.com account tokens>"
+.\scripts\redeploy-railway.ps1
+```
+
+Or: `npx @railway/cli redeploy --yes --from-source` after `railway link` or with `-p` / `-s` / `-e` flags.
+
+## Verify after deploy
+
+```powershell
+curl https://regenold-eu-ai-act-rag-production.up.railway.app/healthz
+curl https://regenold-eu-ai-act-rag-production.up.railway.app/healthz/llm
+```
+
+## Agent checklist (end of ship PR)
+
+1. Merge/push to `main`.
+2. Confirm GitHub Actions **Redeploy Railway production** succeeded (or run `scripts/redeploy-railway.ps1`).
+3. Probe `/healthz` and spot-check `/api/v1/regenold/eu-ai-act/ask` if behaviour changed.

@@ -97,3 +97,59 @@ def _reset_audit_store():
     # handles cleanup. Keeping this one-sided also means a failing
     # test's audit-chain state is still inspectable in a post-mortem
     # pytest --pdb session.
+
+
+# R84 (2026-05-24) — `app.routes.regenold._classify_intent_cached` memoises
+# `classify_intent(question)` per request via a `ContextVar[dict | None]`.
+# Inside the route the ContextVar is `.set({})` at the top of the handler
+# (per-request scope). Tests that exercise `_classify_intent_cached` /
+# `_intent_anchor_set` directly skip that reset, so the lazy-init dict
+# from one test persists into the next and serves cached results across
+# distinct `patch("classify_intent", ...)` setups. Symptom: two tests
+# patching the SAME question key to different mocked IntentResult values
+# see the FIRST test's value in BOTH (e.g.
+# `test_unknown_article_anchor_is_dropped` caches an empty result for
+# `"What's the max fine?"` and the subsequent `test_known_article_anchor_is_kept`
+# reads the empty cache hit instead of the patched `Art. 99` result).
+# Mirrors the R63-E EvidenceStore isolation pattern above.
+try:
+    from app.routes import regenold as _regenold_module
+except ImportError:  # pragma: no cover — tested env always has this
+    _regenold_module = None
+
+
+@pytest.fixture(autouse=True)
+def _reset_request_intent_cache():
+    """Clear the per-request intent cache ContextVar between tests.
+
+    R84 isolation — see comment above. Setting the ContextVar to ``None``
+    re-arms the lazy-init path so each test starts with no in-flight
+    cache state.
+    """
+    if _regenold_module is not None:
+        try:
+            _regenold_module._request_intent_cache.set(None)
+        except Exception:  # noqa: BLE001 — never block a test on cleanup
+            pass
+    yield
+
+
+# R89-A code-review fix (E&EC-F4) — clear REGENOLD_R89A_FORCE_APPEND
+# before every test so a developer running the full suite with the
+# production env var set (matches railway.toml) sees CI / local parity.
+# Tests that want to exercise the force-append path explicitly opt in
+# via ``monkeypatch.setenv("REGENOLD_R89A_FORCE_APPEND", "1")``. Mirrors
+# the per-test env-clearing pattern documented in the R84 fixture above.
+@pytest.fixture(autouse=True)
+def _reset_r89a_force_append_env(monkeypatch):
+    """Default the R89-A force-append env to OFF for every test.
+
+    Without this, a developer who runs the full suite with the
+    production env (``REGENOLD_R89A_FORCE_APPEND=1`` from railway.toml)
+    in their shell would see different augmenter behavior than CI —
+    the legacy R79 / R80 / R81-N appender-path guards would fail in a
+    way that's hard to debug. Forcing OFF here keeps every test
+    deterministic regardless of the developer's shell state.
+    """
+    monkeypatch.delenv("REGENOLD_R89A_FORCE_APPEND", raising=False)
+    yield

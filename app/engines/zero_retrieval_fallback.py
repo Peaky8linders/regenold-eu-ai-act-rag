@@ -215,7 +215,7 @@ def _topic_keyword_seeds(question: str) -> list[str]:
     return out
 
 
-def _build_prose(refs: list[str]) -> str:
+def _build_prose(refs: list[str], question: str = "") -> str:
     """Build the regulator-voice neutral fallback prose.
 
     Crafted to:
@@ -239,6 +239,12 @@ def _build_prose(refs: list[str]) -> str:
             "this kind of question."
         )
 
+    try:
+        from app.integrations.regenold.grounded_prose import stitch_grounded_prose
+        return stitch_grounded_prose(refs, question=question)
+    except Exception:
+        pass
+
     # Render the top-3 anchors as "Article 1, Article 2 and Article 3"
     # using user-facing form. Internal "Art. 1" → user-facing "Article 1".
     primary = refs[: min(3, len(refs))]
@@ -255,10 +261,13 @@ def _build_prose(refs: list[str]) -> str:
     else:
         joined = ", ".join(user_facing[:-1]) + " and " + user_facing[-1]
 
+    # R90 — counsel-voice defensive fallback. Pre-R90 used the robotic
+    # "This question is covered by the EU AI Act under ..." opener; the
+    # rewrite frames the operative provisions in legal-counsel prose
+    # without the database-readout feel.
     return (
-        f"This question is covered by the EU AI Act under {joined}. "
-        f"Consult the cited provisions for the operative obligations and "
-        f"definitions that apply to this topic."
+        f"{joined} are the operative provisions of the EU AI Act for this "
+        f"question — consult them for the applicable obligations and definitions."
     )
 
 
@@ -293,9 +302,11 @@ def zero_retrieval_fallback(
       :data:`ARTICLE_EXISTENCE`.
     * ``prose`` is non-empty.
     """
-    # Stage 1 — intent seed.
+    # Stage 1 — intent seed. Distinguish "label matched" vs "no label
+    # match" so we can suppress _DEFAULT_FLOOR padding when other,
+    # narrower signals (topic / explicit anchors) are available.
     label = (intent_label or "").strip().lower()
-    seed = _INTENT_SEED_MAP.get(label) or _DEFAULT_FLOOR
+    intent_seed = _INTENT_SEED_MAP.get(label)  # None when label unknown
 
     # Stage 2 — topic-keyword extensions (substring match on the question).
     topic = _topic_keyword_seeds(question)
@@ -306,9 +317,26 @@ def zero_retrieval_fallback(
         if isinstance(a, str) and a in ARTICLE_EXISTENCE:
             anchors_normalised.append(a)
 
-    # Compose in priority order: explicit anchors → topic-keyword hits →
-    # intent seed. Validate + dedupe + cap.
-    combined = _validate_refs(list(anchors_normalised) + topic + list(seed))
+    # R80-F composition (see CLAUDE.md Round 80):
+    #   * Intent matched in _INTENT_SEED_MAP → use anchors + topic + intent_seed
+    #     (current behaviour — the curated intent seed is article-specific).
+    #   * Intent NOT matched AND we have specifics (topic or anchors) →
+    #     use those only, SKIP _DEFAULT_FLOOR. The r80-live judge run
+    #     showed 9 in-scope rows hitting this fallback with a real anchor
+    #     present (e.g. qa_003 had Art. 3 in explicit_anchors) but the
+    #     Art. 1/2 floor pad polluting ref precision. Suppressing the
+    #     floor when we already have specifics fixes the precision leak
+    #     without removing the floor for genuinely under-determined
+    #     questions (third branch below).
+    #   * No intent, no topic, no anchors → default floor (only signal).
+    if intent_seed is not None:
+        combined = _validate_refs(
+            list(anchors_normalised) + topic + list(intent_seed)
+        )
+    elif topic or anchors_normalised:
+        combined = _validate_refs(list(anchors_normalised) + topic)
+    else:
+        combined = _validate_refs(list(_DEFAULT_FLOOR))
     refs = combined[:_MAX_FALLBACK_REFS]
 
     # Final safety net: a future edit to the seed map shouldn't be able
@@ -317,7 +345,7 @@ def zero_retrieval_fallback(
     if not refs:
         refs = list(_DEFAULT_FLOOR)
 
-    prose = _build_prose(refs)
+    prose = _build_prose(refs, question=question)
     return refs, prose
 
 

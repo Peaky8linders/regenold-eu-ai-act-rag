@@ -46,3 +46,6 @@ app/data/vectors/_bge_tok_export/
 .aireg-bench-cache/
 _aireg_*.json
 _aireg_*.parquet
+
+# Git worktrees
+.worktrees/

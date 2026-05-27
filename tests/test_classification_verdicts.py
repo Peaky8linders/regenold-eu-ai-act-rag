@@ -402,3 +402,36 @@ class TestWrongKeywordMappingsRemoved:
         assert any(e.startswith("Art.") for e in q.entities), (
             f"Expected at least one Art. anchor; got entities={q.entities}"
         )
+
+
+class TestArticle63Routing:
+    """Test case for Article 6(3) deterministic routing."""
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "What are the self-assessment requirements under Article 6(3)?",
+            "Is our system exempt under Article 6(3) if it performs only preparatory tasks?",
+            "What does the Article 6(3) exception require?",
+            "How do we self-assess as not high-risk under Article 6(3)?",
+            "What is the preparatory task exception under Article 6(3)?",
+        ]
+    )
+    def test_article_6_3_inquiry_detection(self, question: str) -> None:
+        from app.engines.graph_rag import _detect_article_6_3_inquiry
+        assert _detect_article_6_3_inquiry(question), f"Expected Article 6(3) inquiry detection on: {question!r}"
+
+    def test_article_6_3_deterministic_answer(self) -> None:
+        from app.engines.graph_rag import _deterministic_answer, GraphContext
+        context = GraphContext()
+        ans = _deterministic_answer("What are the requirements for Article 6(3) exception?", context)
+        
+        # Verify the answer text is the expected Article 6(3) structured verdict
+        assert "preparatory tasks" in ans
+        assert "not high-risk" in ans
+        assert "document their assessment" in ans
+        assert "supervisory authority" in ans
+        
+        # Verify references seeded
+        articles = [o.get("article") for o in context.obligations]
+        assert "Art. 6" in articles

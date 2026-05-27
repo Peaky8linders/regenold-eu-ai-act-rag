@@ -814,6 +814,10 @@ def _parse_llm_json(text: str) -> BooleanTags | None:
             continue
         if isinstance(value, bool):
             clean[key] = value
+    
+    if not clean:
+        return None
+        
     try:
         return BooleanTags(**clean)
     except TypeError:

@@ -180,6 +180,7 @@ def _score_row(
     gold_articles: list[int],
     intended_use: str,
     latency_ms: float,
+    expected_keywords: list[str] | None = None,
 ) -> metrics.RowScore:
     """Reuse the davidath 7-axis scorer.
 
@@ -200,6 +201,7 @@ def _score_row(
         gold_answer=gold_answer,
         gold_articles=gold_articles,
         latency_ms=latency_ms,
+        expected_keywords=expected_keywords,
     )
 
 
@@ -234,6 +236,7 @@ def _run_items(
             gold_articles=gold_articles,
             intended_use=item.get("intended_use", ""),
             latency_ms=latency,
+            expected_keywords=item.get("expected_keywords"),
         )
         pred_verdict = aireg_metrics.extract_predicted_verdict(pred_answer)
         gold_verdict = item.get("gold_verdict", aireg_dataset.VERDICT_UNKNOWN)

@@ -30,6 +30,18 @@ from unittest.mock import patch
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def _disable_r87e_stage2_gate(monkeypatch):
+    """R87-E confidence gate would skip Stage-2 on the empty mock
+    contexts these tests construct (nodes_traversed=0 → conf 0.3).
+    These tests pre-date R87-E and assert Stage-2 polish behaviour
+    directly; disable the gate so the assertions still hold. R87-E
+    has its own coverage in ``test_r87cde_subpoint_roleduty_stage2gate.py``."""
+    monkeypatch.setenv("REGENOLD_STAGE2_MIN_CONFIDENCE", "0")
+
+import pytest
+
 from app.engines.graph_rag import (
     GraphContext,
     GraphQuery,
@@ -42,6 +54,18 @@ from app.engines.graph_rag import (
 
 
 # ─── Fix 1 — _deterministic_parse handles long-form + Annex ──────────────────
+
+
+@pytest.fixture(autouse=True)
+def _r77_enable_stage2_polish(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R77 — Stage-2 polish now defaults OFF (``P2P_GRAPH_RAG_ENABLE_STAGE2``).
+
+    These tests predate that default and exercise the Stage-2 path with a
+    mocked provider. Force the master switch ON so they keep testing
+    Stage-2 behaviour; the provider + needs-enhancement gates still apply,
+    so the "Stage-2 skipped" tests in this module still skip correctly.
+    """
+    monkeypatch.setenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "1")
 
 
 class TestDeterministicParseEntities:

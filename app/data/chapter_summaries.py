@@ -47,6 +47,7 @@ does Chapter X cover?" rather than asking about a specific provision.
 """
 from __future__ import annotations
 
+import os
 from typing import Optional
 
 from app.data.article_existence import ARTICLE_EXISTENCE
@@ -251,6 +252,159 @@ _BROAD_KEYWORD_CHAPTER_MAP: tuple[tuple[str, str], ...] = (
 )
 
 
+# R89-A — section-scoped routing. These markers are deliberately narrower
+# than the chapter markers: the section router fires only after chapter
+# routing has already selected Chapter III or V, then picks the most
+# specific local subdivision for BM25 pre-filtering.
+_SECTION_KEYWORD_MAP: tuple[tuple[str, str, int], ...] = (
+    # Chapter III, section 1 — classification of high-risk systems
+    ("annex iii", "III.1", 2),
+    ("annex 3", "III.1", 2),
+    ("high-risk classification", "III.1", 2),
+    ("high risk classification", "III.1", 2),
+    ("safety component", "III.1", 2),
+    ("high-risk ai system", "III.1", 1),
+    ("high risk ai system", "III.1", 1),
+    # Chapter III, section 2 — technical requirements
+    ("risk management", "III.2", 2),
+    ("data governance", "III.2", 2),
+    ("technical documentation", "III.2", 2),
+    ("record keeping", "III.2", 2),
+    ("logs", "III.2", 2),
+    ("transparency information", "III.2", 2),
+    ("instructions for use", "III.2", 2),
+    ("human oversight", "III.2", 2),
+    ("accuracy robustness", "III.2", 2),
+    ("cybersecurity", "III.2", 2),
+    # Chapter III, section 3 — operator obligations
+    ("provider obligations", "III.3", 2),
+    ("deployer obligations", "III.3", 2),
+    ("importer obligations", "III.3", 2),
+    ("distributor obligations", "III.3", 2),
+    ("authorised representative", "III.3", 2),
+    ("authorized representative", "III.3", 2),
+    ("fundamental rights impact", "III.3", 2),
+    ("fria", "III.3", 2),
+    ("corrective action", "III.3", 2),
+    ("substantial modification", "III.3", 2),
+    ("value chain", "III.3", 2),
+    ("deployers", "III.3", 1),
+    ("deployer", "III.3", 1),
+    ("importers", "III.3", 1),
+    ("importer", "III.3", 1),
+    ("distributors", "III.3", 1),
+    ("distributor", "III.3", 1),
+    # Chapter III, section 4 — notifying authorities / notified bodies
+    ("notifying authority", "III.4", 2),
+    ("notified body", "III.4", 2),
+    ("designating authority", "III.4", 2),
+    ("conformity assessment body", "III.4", 2),
+    # Chapter III, section 5 — standards / conformity / registration
+    ("harmonised standard", "III.5", 2),
+    ("harmonized standard", "III.5", 2),
+    ("conformity assessment", "III.5", 2),
+    ("ce marking", "III.5", 2),
+    ("ce mark", "III.5", 2),
+    ("eu declaration", "III.5", 2),
+    ("certificate", "III.5", 1),
+    ("registration", "III.5", 1),
+    # Chapter V, section 1 — GPAI classification + general obligations
+    ("general-purpose ai model", "V.1", 2),
+    ("general purpose ai model", "V.1", 2),
+    ("training data summary", "V.1", 2),
+    ("copyright", "V.1", 2),
+    ("open-weight", "V.1", 2),
+    ("open weight", "V.1", 2),
+    # Chapter V, section 2 — systemic-risk GPAI duties
+    ("systemic risk", "V.2", 2),
+    ("10^25", "V.2", 2),
+    ("10²⁵", "V.2", 2),
+    ("high-impact capabilities", "V.2", 2),
+    ("model evaluation", "V.2", 2),
+    # Chapter V, section 3 — codes of practice
+    ("code of practice", "V.3", 2),
+    ("codes of practice", "V.3", 2),
+)
+
+
+# ── Hyphen normalisation ─────────────────────────────────────────────────
+#
+# The davidath benchmark ships 90 U+2011 non-breaking hyphens, and AI Act
+# terms appear both hyphenated ("deep-fake", "market-surveillance",
+# "conformity-assessment") and spaced ("deep fake", "market surveillance")
+# across the corpus. The chapter router's content markers are authored in
+# one form only, so a hyphen/space mismatch silently drops the route and
+# the query falls back to the coarse intent label. Folding every
+# hyphen-family char to a space on BOTH the question and the marker lets a
+# single marker form match every spelling.
+#
+# Salvaged from #101 commit 37670c2 / ac8bef2 — the rest of #101 (the
+# LLM entity extractor) was superseded by R79 hyphen-normalise +
+# R81-N typed-entity NER + R87-D role-duty seed + R88-A/B/D direct
+# seeds. R79's fix lives in _deterministic_parse / text_normalize.py
+# but doesn't reach this module's _BROAD_KEYWORD_CHAPTER_MAP scan,
+# so the documented chapter-router U+2011 davidath mis-routes
+# (qa_030 / qa_042 / qa_064 / qa_068 / qa_080) persisted in main.
+_HYPHEN_TABLE = {
+    ord(c): " " for c in "-‐‑‒–—−"
+}
+
+
+def _fold_hyphens(text: str) -> str:
+    """Lowercase, fold every hyphen-family char to a space, collapse runs."""
+    return " ".join(text.lower().translate(_HYPHEN_TABLE).split())
+
+
+def _enabled(name: str) -> bool:
+    return os.getenv(name, "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _intent_chapter_priors(intent_label: str | None) -> tuple[str, ...]:
+    if not intent_label:
+        return ()
+
+    if _enabled("REGENOLD_CHAPTER_ROUTING_V2"):
+        local_v2: dict[str, tuple[str, ...]] = {
+            "article_lookup": ("I",),
+            "definition": ("I",),
+            "definitional": ("I",),
+            "risk_assessment": ("II", "III"),
+            "risk_classification": ("II", "III"),
+            "obligation_check": ("III",),
+            "role_obligations": ("III",),
+            "compliance_checklist": ("III",),
+            "transparency": ("IV",),
+            "transparency_obligation": ("IV",),
+            "gpai_systemic": ("V",),
+            "sandbox": ("VI",),
+            "incident_reporting": ("IX",),
+            "penalty_inquiry": ("XII",),
+            "timeline_question": ("XIII",),
+            "fria": ("III",),
+            "general_compliance": (),
+            "gap_analysis": (),
+            "cross_framework": (),
+            "comparative": (),
+            "out_of_scope": (),
+            "other": (),
+        }
+        return local_v2.get(intent_label, ())
+
+    local_legacy: dict[str, str] = {
+        "article_lookup":       "I",
+        "risk_assessment":      "III",
+        "obligation_check":     "III",
+        "general_compliance":   "",   # too broad — no chapter signal
+        "gap_analysis":         "",   # too broad — no chapter signal
+        "cross_framework":      "",   # too broad — no chapter signal
+    }
+    local_chapter = local_legacy.get(intent_label, "MISSING")
+    if local_chapter == "MISSING":
+        mapped = _INTENT_CHAPTER_MAP.get(intent_label)
+        return (mapped,) if mapped else ()
+    return (local_chapter,) if local_chapter else ()
+
+
 # ── Public API ───────────────────────────────────────────────────────────
 
 
@@ -283,9 +437,9 @@ def chapter_for_query(
     miss.
     """
     if question:
-        low = question.lower()
+        low = _fold_hyphens(question)
         for keyword, chapter in _BROAD_KEYWORD_CHAPTER_MAP:
-            if keyword in low:
+            if _fold_hyphens(keyword) in low:
                 return chapter
     if intent_label and intent_label in _INTENT_CHAPTER_MAP:
         return _INTENT_CHAPTER_MAP[intent_label]
@@ -295,6 +449,202 @@ def chapter_for_query(
 def summary_for_chapter(chapter: str) -> Optional[str]:
     """Return the regulator-voice summary for ``chapter``, or ``None``."""
     return CHAPTER_SUMMARY.get(chapter)
+
+
+def candidate_chapters_for_query(
+    question: str,
+    intent_label: str | None = None,
+) -> list[str]:
+    """Pre-retrieval chapter router — returns 1-3 candidate chapters.
+
+    Unlike :func:`chapter_for_query` (a last-resort fallback that returns
+    a single chapter when retrieval already failed), this function is
+    designed to run BEFORE BM25 to scope the search to the most likely
+    chapter(s). Called by the PageIndex-style hierarchical filter in
+    :func:`~app.engines.graph_rag._deterministic_parse`.
+
+    Returns a sorted list of Roman numeral chapter IDs when the query has
+    a clear chapter signal. Returns ``[]`` when the query is too broad or
+    cross-chapter (full-corpus BM25 is then used unchanged).
+
+    Scope guard: if ≥ 4 chapters are identified, returns ``[]`` — the
+    routing is uncertain and scoping would risk cutting relevant articles.
+
+    Resolution order:
+    1. Broad-keyword scan (high-precision phrases from
+       :data:`_BROAD_KEYWORD_CHAPTER_MAP`) — first hit adds one chapter.
+    2. Risk/domain marker scan — adds chapters for recognised patterns.
+    3. Intent label via :data:`_INTENT_CHAPTER_MAP` and local extension.
+    4. Scope guard — returns ``[]`` when ≥ 4 chapters identified.
+    """
+    chapters: set[str] = set()
+    low = _fold_hyphens(question) if question else ""
+
+    def _hit(markers: tuple[str, ...]) -> bool:
+        """True when any marker — hyphen-folded — is a substring of ``low``."""
+        return any(_fold_hyphens(m) in low for m in markers)
+
+    # 1. High-precision broad-keyword scan (first hit wins, then continue
+    #    marker scan for multi-chapter queries like "prohibited high-risk AI")
+    if low:
+        for keyword, chapter in _BROAD_KEYWORD_CHAPTER_MAP:
+            if _fold_hyphens(keyword) in low:
+                chapters.add(chapter)
+                break  # one high-precision anchor is enough
+
+    # 2. Risk/domain marker scan (additive — multiple can fire)
+    if low:
+        if _hit((
+            "prohibited", "banned", "forbidden", "subliminal", "manipulat",
+            "social scoring", "biometric identification", "biometric id",
+            "real-time remote biometric",
+        )):
+            chapters.add("II")
+
+        if _hit((
+            "high-risk", "high risk", "annex iii", "annex 3",
+            "safety component", "hrais", "risk management",
+            "technical documentation", "post-market monitoring plan",
+            "conformity assessment", "ce marking", "ce mark",
+            "fundamental rights impact", "fria",
+            # Notified-body certificate lifecycle (Art. 44 — validity,
+            # suspension, withdrawal) sits in Ch III; without these a
+            # "suspend / withdraw a certificate" question routes on
+            # "market surveillance" alone to Ch IX and loses Art. 44.
+            # Multi-word forms only — per the broad-marker precision
+            # rule (bare ``certificate`` is too broad in EU policy
+            # English).
+            "withdraw a certificate", "suspend a certificate",
+            "withdrawal of a certificate", "suspension of a certificate",
+            "notified body certificate",
+        )):
+            chapters.add("III")
+
+        if _hit((
+            "general-purpose ai", "general purpose ai", "gpai",
+            "foundation model", "systemic risk model",
+            "training data summary", "copyright", "code of practice",
+        )):
+            chapters.add("V")
+
+        if _hit((
+            "transparency obligation", "deepfake", "deep fake",
+            "synthetic media", "emotion recognition",
+            "biometric categorisation", "chatbot disclosure",
+        )):
+            chapters.add("IV")
+
+        if _hit((
+            "administrative fine", "maximum fine", "sanction",
+            "penalty", "penalties", "fined",
+        )):
+            chapters.add("XII")
+
+        if _hit((
+            "post-market monitoring", "post market monitoring",
+            "serious incident", "market surveillance",
+            "market withdrawal", "enforcement action",
+        )):
+            chapters.add("IX")
+
+        if _hit((
+            "regulatory sandbox", "real-world testing",
+            "sme", "small medium enterprise", "start-up", "startup",
+            "innovation measure",
+        )):
+            chapters.add("VI")
+
+        if _hit((
+            "ai office", "ai board", "european artificial intelligence board",
+            "national competent authority", "notifying authority",
+            "governance",
+        )):
+            chapters.add("VII")
+
+        if _hit((
+            "eu database", "eudb", "register high-risk", "registration",
+        )):
+            chapters.add("VIII")
+
+        if _hit((
+            "entry into force", "entry-into-force", "applicability date",
+            "transitional", "digital omnibus", "phased timeline",
+            "staged applicability",
+        )):
+            chapters.add("XIII")
+
+        if _hit((
+            "delegated act", "comitology", "implementing act",
+            "committee procedure",
+        )):
+            chapters.add("XI")
+
+        if _hit((
+            "code of conduct", "voluntary application",
+            "commission guidelines",
+        )):
+            chapters.add("X")
+
+        # Definitions / scope / general questions — Chapter I +
+        # Chapter III (Art. 3 carries key HR-AI definitions)
+        if _hit((
+            "definition of ai", "definition of an ai",
+            "what is an ai system", "what counts as",
+            "scope of the", "subject matter",
+            "ai literacy",
+        )):
+            chapters.add("I")
+
+    # 3. Intent-label routing (catches intents the marker scan misses)
+    chapters.update(_intent_chapter_priors(intent_label))
+
+    # 4. Scope guard — too many chapters = uncertain routing
+    if len(chapters) >= 4:
+        return []
+
+    # Discard the empty sentinel (used to signal "no chapter")
+    chapters.discard("")
+    return sorted(chapters)
+
+
+def candidate_sections_for_query(
+    question: str,
+    *,
+    chapters: list[str] | tuple[str, ...],
+    intent_label: str | None = None,
+) -> list[str]:
+    """Return candidate logical sections within already-selected chapters.
+
+    The section router is intentionally second-stage: callers first choose a
+    chapter with :func:`candidate_chapters_for_query`, then ask this helper for
+    a finer Chapter III / V subdivision. When no precise section signal exists
+    the function returns ``[]`` so callers can keep chapter-scoped BM25.
+    """
+    del intent_label  # reserved for future priors; keyword precision comes first
+    low = _fold_hyphens(question) if question else ""
+    if not low or not chapters:
+        return []
+
+    allowed_chapters = {chapter.split(".", 1)[0] for chapter in chapters}
+    scores: dict[str, int] = {}
+    for keyword, section, weight in _SECTION_KEYWORD_MAP:
+        if section.split(".", 1)[0] not in allowed_chapters:
+            continue
+        if _fold_hyphens(keyword) in low:
+            scores[section] = scores.get(section, 0) + weight
+
+    if not scores:
+        return []
+    best_score = max(scores.values())
+    winners = sorted(
+        section for section, score in scores.items()
+        if score == best_score
+    )
+    # If the same broad query ties three or more sections, scoping is no
+    # longer precise. Let the existing chapter/full BM25 fallback handle it.
+    if len(winners) >= 3:
+        return []
+    return winners
 
 
 def primary_anchors_for_chapter(chapter: str) -> tuple[str, ...]:
@@ -353,6 +703,14 @@ def _self_check() -> None:
             f"_BROAD_KEYWORD_CHAPTER_MAP entry {keyword!r} -> unknown "
             f"chapter {ch!r}"
         )
+    expected_sections = {"III.1", "III.2", "III.3", "III.4", "III.5",
+                         "V.1", "V.2", "V.3"}
+    for keyword, section, weight in _SECTION_KEYWORD_MAP:
+        assert section in expected_sections, (
+            f"_SECTION_KEYWORD_MAP entry {keyword!r} -> unknown section "
+            f"{section!r}"
+        )
+        assert weight > 0, f"_SECTION_KEYWORD_MAP[{keyword!r}] has bad weight"
 
 
 _self_check()
@@ -361,6 +719,8 @@ _self_check()
 __all__ = [
     "CHAPTER_SUMMARY",
     "CHAPTER_PRIMARY_ANCHORS",
+    "candidate_chapters_for_query",
+    "candidate_sections_for_query",
     "chapter_for_query",
     "summary_for_chapter",
     "primary_anchors_for_chapter",

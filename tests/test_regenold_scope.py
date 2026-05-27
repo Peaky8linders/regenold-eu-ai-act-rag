@@ -157,6 +157,36 @@ class TestClassifyScopeSingleMessage:
         assert v.in_scope is False
         assert v.reason == ScopeReason.OTHER_REGULATION
 
+    def test_off_topic_lowercase_dsa_acronym(self) -> None:
+        v = classify_scope("what about dsa?")
+        assert v.in_scope is False
+        assert v.reason == ScopeReason.OTHER_REGULATION
+
+    def test_off_topic_lowercase_dma_acronym(self) -> None:
+        v = classify_scope("what about dma?")
+        assert v.in_scope is False
+        assert v.reason == ScopeReason.OTHER_REGULATION
+
+    def test_off_topic_uppercase_dsa_acronym(self) -> None:
+        v = classify_scope("What about DSA?")
+        assert v.in_scope is False
+        assert v.reason == ScopeReason.OTHER_REGULATION
+
+    def test_off_topic_uppercase_dma_acronym(self) -> None:
+        v = classify_scope("What about DMA?")
+        assert v.in_scope is False
+        assert v.reason == ScopeReason.OTHER_REGULATION
+
+    def test_multiturn_dsa_other_regulation_not_rescued(self) -> None:
+        """Prior AI Act context must not rescue a lowercase DSA follow-up."""
+        cv = classify_conversation([
+            {"role": "user", "content": "What does Article 13 require for transparency?"},
+            {"role": "assistant", "content": "Article 13 governs transparency for high-risk AI."},
+            {"role": "user", "content": "what about dsa?"},
+        ])
+        assert cv.in_scope is False
+        assert cv.verdict.reason == ScopeReason.OTHER_REGULATION
+
     def test_non_existent_article(self) -> None:
         v = classify_scope("What does Art. 200 say?")
         assert v.in_scope is False
@@ -2014,6 +2044,26 @@ class TestR57AFactPatternMultiTurnRescue:
         # gated on the same hard_refusal_reasons set R55-E uses.
         if cv.verdict.reason == ScopeReason.OTHER_REGULATION:
             assert cv.in_scope is False
+
+    def test_r57_a_non_ai_negation_after_prior_anchor_stays_refused(self) -> None:
+        """Explicit non-AI live turns must not borrow prior AI Act anchors."""
+        cv = classify_conversation(_scenario(
+            ("user", "What does Article 13 require for transparency?"),
+            ("assistant", "Article 13 governs transparency for high-risk AI."),
+            ("user", "We do not use AI at all."),
+        ))
+        assert cv.in_scope is False
+        assert cv.reason == ScopeReason.CONVERSATIONAL
+
+    def test_r57_a_estate_negation_after_prior_anchor_stays_refused(self) -> None:
+        """Estate / will contexts must not borrow prior AI Act anchors."""
+        cv = classify_conversation(_scenario(
+            ("user", "What does Article 13 require for transparency?"),
+            ("assistant", "Article 13 governs transparency for high-risk AI."),
+            ("user", "How to withdraw a designation from my will?"),
+        ))
+        assert cv.in_scope is False
+        assert cv.reason == ScopeReason.CONVERSATIONAL
 
 
 class TestR57AScopeLeakFixes:

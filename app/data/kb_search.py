@@ -95,6 +95,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Literal
 
+from app.data.article_sections import articles_for_sections
 from app.data.kb import EC_CHECKER_OBLIGATION_MAP
 from app.data.ontology import (
     ANNEX_III_REGISTRY,
@@ -109,9 +110,11 @@ from app.data.ontology import (
 # Articles where our hand-curated summary was sparse (Arts. 1, 2, 18,
 # 26, 43-49, 56-60, 70-90 — top miss zones on the davidath benchmark).
 from app.data.eu_ai_act_corpus import (
+    ARTICLE_CHAPTER,
     ARTICLE_FULL_TEXT as _UPSTREAM_FULL_TEXT,
     ART_3_DEFINITIONS as _UPSTREAM_DEFINITIONS,
 )
+from app.engines.entity_extractor import boosted_articles
 
 
 DocSource = Literal["kb", "ontology", "corpus", "definition"]
@@ -165,7 +168,7 @@ def _tokenize(text: str) -> list[str]:
             continue
         if len(raw) <= 1:
             continue
-        if raw.isdigit() and len(raw) > 4:
+        if raw.isdigit() and len(raw) != 4:
             continue
         tokens.append(raw)
     return tokens
@@ -412,6 +415,18 @@ def _score(index: _BM25Index, doc_idx: int, query_tokens: list[str]) -> float:
     return score
 
 
+def _score_fusion_enabled() -> bool:
+    """True if score-based hybrid fusion is explicitly enabled.
+
+    REGENOLD_SCORE_FUSION=1 normalises BM25 raw scores and blends them with
+    dense cosine similarities. This prevents rank inversions by preserving
+    the exact score magnitudes of matches.
+    """
+    return os.getenv("REGENOLD_SCORE_FUSION", "0").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
 def _rrf_fusion_enabled() -> bool:
     """R69 — ``REGENOLD_RRF_FUSION`` env gate.
 
@@ -436,18 +451,43 @@ def _fuse_dense(
     bm25_refs: list[str],
     dense_refs: list[tuple[str, float]],
     k: int,
+    bm25_scores: dict[str, float] | None = None,
 ) -> list[str]:
     """R69 — dispatch the dense-route fusion strategy.
 
-    When ``REGENOLD_RRF_FUSION`` is ON: weighted RRF (``bm25_weight=2.0,
-    dense_weight=1.0`` — BM25 stays the ground-truth ranking, dense
-    only reshapes close-score ties; ``rrf_k=60`` per Cormack 2009).
-    When OFF (default): the Round-31 additive fill — purely recall-
-    positive, never displaces a BM25 winner.
+    Strategies:
+    1. Score Fusion: When REGENOLD_SCORE_FUSION is enabled, normalise and blend
+       raw BM25 scores and dense cosine similarities.
+    2. RRF Fusion: When REGENOLD_RRF_FUSION is enabled, weighted rank reciprocal fusion.
+    3. Additive Fill (Default): Keep BM25 order exactly, append dense-only candidates.
     """
     from app.engines.turboquant_index import (  # noqa: PLC0415
         additive_dense_fill,
     )
+
+    if _score_fusion_enabled() and bm25_scores:
+        try:
+            alpha = float(os.getenv("REGENOLD_SCORE_FUSION_ALPHA", "0.3"))
+        except Exception:  # noqa: BLE001
+            alpha = 0.3
+
+        max_bm25 = max(bm25_scores.values()) if bm25_scores else 0.0
+
+        fused_scores: dict[str, float] = {}
+        # Incorporate BM25 candidates
+        for ref, raw_score in bm25_scores.items():
+            norm_bm25 = raw_score / max_bm25 if max_bm25 > 0.0 else 0.0
+            fused_scores[ref] = (1 - alpha) * norm_bm25
+
+        # Incorporate Dense candidates
+        for ref, cosine_sim in dense_refs:
+            norm_dense = max(0.0, cosine_sim)
+            # Combine or add to existing
+            fused_scores[ref] = fused_scores.get(ref, 0.0) + alpha * norm_dense
+
+        fused = sorted(fused_scores.items(), key=lambda t: t[1], reverse=True)
+        return [ref for ref, _ in fused[:k]]
+
     if _rrf_fusion_enabled():
         from app.engines.turboquant_index import (  # noqa: PLC0415
             reciprocal_rank_fusion,
@@ -556,6 +596,40 @@ def top_articles_by_relevance(
         else float("inf")
     )
 
+    # R81-N — typed-entity NER priority boost.
+    # Closes the 15–24% retrieval-fail bucket observed across 4 live
+    # rep-100 rounds: questions like "What are the importers'
+    # obligations?" (gold Art. 23) lose to "high-risk AI system"
+    # → Art. 6 in BM25 because the topic phrase carries more matching
+    # tokens than the single role-noun. The extractor returns a
+    # ``{ref: boost}`` map; the boost is multiplied onto the existing
+    # source weight + confidence boost so the priority signal stays in
+    # the same order of magnitude as BM25 (cannot promote an
+    # irrelevant Article — only tip a close-score tie). Env-gated
+    # ``REGENOLD_ENTITY_BOOST`` (default ON).
+    #
+    # R81-N.1 — stronger boost factors (1.5→3.0 role, 1.3→2.0 concept)
+    # + a QA-shape role-Article INJECTION path (below). The R81-N
+    # live measurement showed the 1.5× boost was too weak to flip
+    # close-score live failures.
+    #
+    # Lazy import — keeps the kb_search module-level import surface
+    # minimal and avoids a build-time circular dependency risk.
+    try:
+        from app.engines.entity_extractor import (  # noqa: PLC0415
+            boosted_articles,
+            extract_entities,
+            is_enabled as _entity_enabled,
+            is_qa_shape_with_single_role,
+        )
+        entity_boosts = boosted_articles(question)
+        # Cache the extracted entities for the injection step below —
+        # avoids a second extraction pass.
+        _ents_for_injection = extract_entities(question) if _entity_enabled() else None
+    except Exception:  # noqa: BLE001 — never fail BM25 on the boost
+        entity_boosts = {}
+        _ents_for_injection = None
+
     best: dict[str, float] = {}
     for doc_idx, article_ref, raw in raw_scores:
         # Keep candidates that clear EITHER the absolute floor OR the
@@ -568,10 +642,60 @@ def top_articles_by_relevance(
             continue
         weight = _SOURCE_WEIGHT.get(index.sources[doc_idx], 1.0)
         boost = _confidence_boost(article_ref)
-        s = raw * weight * boost
+        # R81-N entity boost. Default 1.0 (no change) when no entity
+        # match. Multiplicative on the BM25 score *after* the
+        # admission filter, so it cannot change which articles are
+        # admitted — only their ranking.
+        entity_b = entity_boosts.get(article_ref, 1.0)
+        s = raw * weight * boost * entity_b
         prev = best.get(article_ref)
         if prev is None or s > prev:
             best[article_ref] = s
+
+    # R81-N.1 — QA-shape role-Article INJECTION (conservative gate).
+    # When the question is a definitional QA shape (Wh-start or ?-end,
+    # NOT a scenario opener) AND exactly ONE role entity fired AND that
+    # role's Article isn't already in ``best``, inject it as a synthetic
+    # mid-pack candidate. The 3.0× role boost (R81-N.1) then lifts it
+    # to top-tier ranking — without this injection the role's Article
+    # is invisible when BM25 returns it with score 0.
+    #
+    # Safety invariants (per the R81-N.1 brief):
+    # 1. NO scenario regression: the QA-shape gate explicitly rejects
+    #    scenario openers ("We are a..." / "Our company...").
+    # 2. NO OOS leak: the injection requires an entity match in the
+    #    first place; OOS questions don't fire entities.
+    # 3. NO duplicate: skip if the role's Article is already in best.
+    # 4. Boost still multiplicative: the injected score (max(best) × 0.5
+    #    × source_weight × confidence_boost × role_boost) competes with
+    #    natural BM25 winners; a high-BM25-score winner still wins.
+    if _ents_for_injection and best and is_qa_shape_with_single_role(
+        question, _ents_for_injection,
+    ):
+        try:
+            from app.engines.entity_extractor import (  # noqa: PLC0415
+                boost_factor as _bf,
+            )
+            single_role = _ents_for_injection["role"][0]  # (eid, art_num)
+            role_art_ref = f"Art. {single_role[1]}"
+            if role_art_ref not in best:
+                # Synthetic candidate: half of the current max BM25 score
+                # × the role boost. With role boost = 3.0, the injected
+                # ranking becomes 1.5× the max — top territory but not
+                # auto-winning. The source weight + confidence boost
+                # apply for parity with the natural-candidate scoring
+                # path. Use the KB source weight (1.0) as a defensive
+                # default — the role's Article may be in the corpus but
+                # not in ``best`` if BM25 returned score 0.
+                max_score = max(best.values())
+                synthetic_base = max_score * 0.5
+                # Apply same multipliers as a real candidate. The role
+                # boost is the dominant lift signal.
+                cb = _confidence_boost(role_art_ref)
+                rb = _bf("role")
+                best[role_art_ref] = synthetic_base * cb * rb
+        except Exception:  # noqa: BLE001 — never fail BM25 on injection
+            pass
 
     scored = sorted(best.items(), key=lambda t: t[1], reverse=True)
     bm25_top = [ref for ref, _ in scored[:k]]
@@ -604,7 +728,7 @@ def top_articles_by_relevance(
             if dense_hits:
                 # R69 — RRF when REGENOLD_RRF_FUSION is on, else the
                 # Round-31 additive fill (default, byte-identical).
-                fused = _fuse_dense(fused, dense_hits, k)
+                fused = _fuse_dense(fused, dense_hits, k, bm25_scores=best)
     except Exception:  # noqa: BLE001 — numpy missing on a stripped install
         pass
 
@@ -652,7 +776,24 @@ def top_articles_by_relevance(
     if not emb_refs:
         return fused
     # R69 — RRF when REGENOLD_RRF_FUSION is on, else additive fill.
-    fused = _fuse_dense(fused, emb_refs, k)
+    fused = _fuse_dense(fused, emb_refs, k, bm25_scores=best)
+
+    # RushDB hybrid retrieval (Hybrid_RAG_Guide.md): intent + semantic +
+    # metadata parallel search on Article/Annex ``content`` fields.
+    # Env-gated REGENOLD_RUSHDB_HYBRID=1 (default OFF). Purely additive —
+    # never displaces BM25 winners; davidath parity preserved.
+    try:
+        from app.engines.rushdb_hybrid_retrieval import (  # noqa: PLC0415
+            is_hybrid_enabled as _rush_hybrid_on,
+            retrieve_article_refs as _rush_hybrid_refs,
+        )
+        if _rush_hybrid_on():
+            rush_refs = _rush_hybrid_refs(question, limit=k)
+            for extra_ref in rush_refs:
+                if extra_ref not in fused and len(fused) < k * 2:
+                    fused.append(extra_ref)
+    except Exception:  # noqa: BLE001 — fail-soft
+        pass
 
     # Round 35 — Neo4j 2-hop graph expansion (env-gated REGENOLD_GRAPH_2HOP).
     # When OFF (default) the call returns empty in 1 µs and ``fused`` is
@@ -814,5 +955,208 @@ def _index_stats() -> dict[str, int]:
     return {"total": len(index.docs), "kb": kb, "ontology": ontology}
 
 
+def top_articles_by_relevance_in_chapters(
+    question: str,
+    chapters: list[str],
+    *,
+    k: int = 5,
+    min_score: float = 1.0,
+) -> list[str]:
+    """Chapter-scoped BM25 — like :func:`top_articles_by_relevance` but
+    restricts scoring to documents whose article key belongs to one of
+    ``chapters`` (Roman numeral strings, e.g. ``["II", "III"]``).
+
+    Annexes whose chapter mapping is ``None`` in
+    :data:`~app.data.eu_ai_act_corpus.ARTICLE_CHAPTER` are included when
+    ``"III"`` is in the requested chapters (Annex I, II, III — the
+    high-risk classification annexes) or always when the query could
+    touch any annex (annex_fallback).
+
+    Falls back transparently to the full-corpus
+    :func:`top_articles_by_relevance` when the filtered candidate set is
+    empty or ``chapters`` is empty.
+
+    PageIndex rationale: pre-scoping BM25 to the relevant chapter(s)
+    removes inter-chapter noise (e.g. Art. 11 technical-docs proxy-matching
+    a query about Art. 50 transparency) and lifts top-1 precision without
+    changing the algorithm — same BM25 math, smaller candidate pool.
+    """
+    if not chapters or not question:
+        return top_articles_by_relevance(question, k=k, min_score=min_score)
+
+    chapter_set = set(chapters)
+
+    # Build the allowed article set from ARTICLE_CHAPTER.
+    # Annexes map to None — include them when Chapter III is requested
+    # (Annex I safety-component list, Annex II harmonisation legislation,
+    # Annex III high-risk use-case list are structurally part of Chapter III)
+    # or when a query keyword hints at an annex directly.
+    annex_keys = {k for k, v in ARTICLE_CHAPTER.items() if v is None and k.startswith("Annex")}
+    chapter_annex_inclusion: set[str] = set()
+    if "III" in chapter_set:
+        chapter_annex_inclusion.update({"Annex I", "Annex II", "Annex III", "Annex IV"})
+    if "V" in chapter_set:
+        chapter_annex_inclusion.update({"Annex IX", "Annex X", "Annex XI", "Annex XII"})
+
+    allowed_articles: set[str] = {
+        art_key
+        for art_key, ch in ARTICLE_CHAPTER.items()
+        if ch in chapter_set
+    } | chapter_annex_inclusion
+
+    if not allowed_articles:
+        return top_articles_by_relevance(question, k=k, min_score=min_score)
+
+    query_tokens = _tokenize(question)
+    if not query_tokens:
+        return []
+
+    index = _build_index()
+    if not index.docs:
+        return []
+
+    _SOURCE_WEIGHT = {
+        "kb": 1.0,
+        "ontology": 1.0,
+        "corpus": 0.6,
+        "definition": 0.8,
+    }
+    _MIN_SCORE_FACTOR = 0.4
+    _MIN_ABSOLUTE_RESCUE = 0.5
+
+    # Score only docs within the allowed article set.
+    raw_scores: list[tuple[int, str, float]] = []
+    best_raw = 0.0
+    for doc_idx, article_ref in enumerate(index.article_refs):
+        if article_ref not in allowed_articles:
+            continue
+        raw = _score(index, doc_idx, query_tokens)
+        if raw > best_raw:
+            best_raw = raw
+        raw_scores.append((doc_idx, article_ref, raw))
+
+    # Fall back to full corpus if no docs matched the chapter filter.
+    if not raw_scores:
+        return top_articles_by_relevance(question, k=k, min_score=min_score)
+
+    relative_floor = (
+        best_raw * _MIN_SCORE_FACTOR
+        if best_raw >= _MIN_ABSOLUTE_RESCUE
+        else float("inf")
+    )
+
+    # R81-N — same typed-entity boost as the main variant. See the
+    # primary :func:`top_articles_by_relevance` for the rationale.
+    try:
+        entity_boosts = boosted_articles(question)
+    except Exception:  # noqa: BLE001
+        entity_boosts = {}
+
+    best: dict[str, float] = {}
+    for doc_idx, article_ref, raw in raw_scores:
+        w = _SOURCE_WEIGHT.get(index.sources[doc_idx], 1.0)
+        weighted = raw * w
+        if weighted >= min_score or raw >= relative_floor:
+            # R79 — apply the R28 cross-reference confidence boost to the
+            # RANKING value only (not the admission filter above),
+            # mirroring `top_articles_by_relevance`. The chapter-scoped
+            # variant was silently omitting it, so hub articles
+            # (Art. 5/6/9/13/26) lost their documented tie-break on every
+            # chapter-scoped query. Boost ∈ [1.0, 1.10] — a pure
+            # tie-break that cannot promote an irrelevant article over a
+            # relevant one, and (applied post-filter) cannot change which
+            # articles are admitted.
+            # R81-N — entity boost multiplies on top, same semantics.
+            entity_b = entity_boosts.get(article_ref, 1.0)
+            ranked = weighted * _confidence_boost(article_ref) * entity_b
+            if article_ref not in best or ranked > best[article_ref]:
+                best[article_ref] = ranked
+
+    sorted_refs = sorted(best, key=lambda r: best[r], reverse=True)
+    return sorted_refs[:k]
+
+
+def top_articles_by_relevance_in_sections(
+    question: str,
+    sections: list[str] | tuple[str, ...],
+    *,
+    k: int = 5,
+    min_score: float = 1.0,
+) -> list[str]:
+    """Section-scoped BM25 for the R89-A structural retrieval layer.
+
+    This mirrors :func:`top_articles_by_relevance_in_chapters` but filters
+    candidates by the logical section IDs in
+    :mod:`app.data.article_sections` (for example ``"III.2"`` for
+    high-risk technical requirements). If the filter is empty it falls back
+    to the full-corpus BM25 path, preserving existing behaviour.
+    """
+    if not sections or not question:
+        return top_articles_by_relevance(question, k=k, min_score=min_score)
+
+    allowed_articles = articles_for_sections(tuple(sections))
+    if not allowed_articles:
+        return top_articles_by_relevance(question, k=k, min_score=min_score)
+
+    query_tokens = _tokenize(question)
+    if not query_tokens:
+        return []
+
+    index = _build_index()
+    if not index.docs:
+        return []
+
+    _SOURCE_WEIGHT = {
+        "kb": 1.0,
+        "ontology": 1.0,
+        "corpus": 0.6,
+        "definition": 0.8,
+    }
+    _MIN_SCORE_FACTOR = 0.4
+    _MIN_ABSOLUTE_RESCUE = 0.5
+
+    raw_scores: list[tuple[int, str, float]] = []
+    best_raw = 0.0
+    for doc_idx, article_ref in enumerate(index.article_refs):
+        if article_ref not in allowed_articles:
+            continue
+        raw = _score(index, doc_idx, query_tokens)
+        if raw > best_raw:
+            best_raw = raw
+        raw_scores.append((doc_idx, article_ref, raw))
+
+    if not raw_scores:
+        return top_articles_by_relevance(question, k=k, min_score=min_score)
+
+    relative_floor = (
+        best_raw * _MIN_SCORE_FACTOR
+        if best_raw >= _MIN_ABSOLUTE_RESCUE
+        else float("inf")
+    )
+
+    try:
+        entity_boosts = boosted_articles(question)
+    except Exception:  # noqa: BLE001
+        entity_boosts = {}
+
+    best: dict[str, float] = {}
+    for doc_idx, article_ref, raw in raw_scores:
+        w = _SOURCE_WEIGHT.get(index.sources[doc_idx], 1.0)
+        weighted = raw * w
+        if weighted >= min_score or raw >= relative_floor:
+            entity_b = entity_boosts.get(article_ref, 1.0)
+            ranked = weighted * _confidence_boost(article_ref) * entity_b
+            if article_ref not in best or ranked > best[article_ref]:
+                best[article_ref] = ranked
+
+    sorted_refs = sorted(best, key=lambda r: best[r], reverse=True)
+    return sorted_refs[:k]
+
+
 # Public API
-__all__ = ["top_articles_by_relevance", "relevance_score"]
+__all__ = [
+    "top_articles_by_relevance",
+    "top_articles_by_relevance_in_chapters",
+    "top_articles_by_relevance_in_sections",
+    "relevance_score",
+]
