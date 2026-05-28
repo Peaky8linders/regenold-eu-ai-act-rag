@@ -175,6 +175,32 @@ previously-refused prohibited-practice questions now recall their gold
   CHAR_CAP` knob exists; left default-OFF pending a judge-conciseness
   A/B.
 
+### Fresh-200 LLM-as-judge (40-row sample, merged fixes, Stage-2 ON)
+
+| axis | pass | over-non-error |
+| ---- | ---- | -------------- |
+| conciseness | 0.975 | 0.975 |
+| tone | 0.85 | 0.85 |
+| correctness | 0.60 (10 wrapper-timeout errors) | 0.80 |
+| refs-faithfulness | 0.425 | 0.486 |
+
+At/above the historical judge baselines (refs had floored 0.20-0.43;
+tone hits the long-standing 0.85 target). The scope fix means
+previously-refused questions are now answered, which EXPOSES (does not
+create) three pre-existing engine bugs the judge flagged — queued for
+the next round:
+
+* **Spurious `Article 52` citations** (GPAI systemic-risk notification)
+  on prohibited-practice / predictive-policing questions — over-cite /
+  wrong-domain retrieval. Dominant refs-failure mode (5/18).
+* **Art. 5 mischaracterised as a Member-State opt-in/opt-out on
+  real-time remote biometric ID** (3 rows) — answer overstates the
+  Art. 5(5) MS-authorisation carve-out as a general opt-in. KB / answer
+  content accuracy.
+* **Truncated / incomplete sentences** (6 tone fails) — answers cut
+  mid-statement; ties to the >600-char Stage-2 answers + the
+  default-OFF R78 hard-clause-cap.
+
 ## 6b. Additional fix shipped — role-obligation NOUN seed
 
 The R87-D role-duty seed fired only on action-verb shapes; the fresh-200
