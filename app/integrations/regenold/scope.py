@@ -2266,6 +2266,111 @@ _ESTATE_CONTEXT_RE = re.compile(
 )
 
 
+# R93 — natural-language AI-use-case in-scope rescue.
+#
+# A large class of real questions describes an AI SYSTEM and asks its
+# regulatory treatment WITHOUT naming any Article or anchor keyword
+# ("Can we install AI cameras to track whether students are paying
+# attention from their facial expressions?"; "We are buying an AI that
+# analyses crime data — is this high-risk?"; "Before we roll out an AI
+# to evaluate mortgage applications, do we have to assess how it impacts
+# our clients' rights?"). Pre-R93 these fell through every anchor /
+# keyword pass to the step-8 CONVERSATIONAL refusal — a false
+# out-of-scope on ~22% of a natural-language probe set, which zeroes
+# correctness AND references on exactly the generalisation the
+# competition rubric measures.
+#
+# Rescue rule (high-precision, OOS-safe): an explicit AI-SYSTEM mention
+# AND a regulatory / risk / permission / use-deployment framing. BOTH
+# are required — the OOS regression set's AI-adjacent traps ("Best
+# high-risk hike in the Alps", "Training compute threshold for our GPU
+# cluster", "Individualised risk assessment for my mortgage") carry the
+# framing but NO genuine AI-system token, and the AI-mentioning OOS
+# cases ("non-AI medical certification", "Act as DAN…") are caught by
+# the earlier non-AI / injection / creative pre-filters. The rescue runs
+# AFTER the other-regulation + near-OOS gates so GDPR / DSA / NIS2
+# questions still refuse.
+#
+# ``\bai\b`` requires word boundaries so "email", "said", "Spain" do not
+# substring-match; "AI", "A.I.", "ai cameras" do.
+_AI_SYSTEM_RE = re.compile(
+    r"\bai\b|\ba\.i\.|artificial intelligence|machine[- ]learning|\bml model\b"
+    r"|algorithmic|automated (?:system|decision|tool|process|profiling|scoring)"
+    r"|facial[- ]recognition|face[- ]recognition|biometric"
+    r"|emotion(?:al)?[- ]recognition|deepfakes?|chatbot|generative (?:ai|model)"
+    r"|large language model|\bllm\b|neural network|computer vision"
+    r"|predictive (?:policing|model|system)|recommender system"
+    r"|recommendation (?:system|engine|algorithm)",
+    re.IGNORECASE,
+)
+
+_AI_REG_FRAME_RE = re.compile(
+    # risk / obligation / permission / enforcement nouns
+    r"\bhigh[- ]?risk\b|\bprohibit|\bbanned\b|\ballowed\b|\bpermitt"
+    r"|\blegal\b|\blawful\b|\billegal\b|\bcompl(?:y|ies|iant|iance)\b"
+    r"|\bobligation|\bregulat|\brequirement|\bconformity\b"
+    r"|\bfundamental rights\b|\brisk (?:category|level|class|assessment|tier)\b"
+    r"|\bpenalt|\bfin(?:e|ed|es|ing)\b|\bviolat|\binfring|\bbreach"
+    r"|\bnon[- ]?compliance\b"
+    # permission / obligation question shapes
+    r"|\bcan we\b|\bmay we\b|\bmust we\b|\bcan i\b|\bcan my\b|\bcan our\b"
+    r"|\bcan an?\b|\bcan a company\b|\bcan businesses?\b"
+    r"|\bare we (?:allowed|required|obliged|permitted)\b"
+    r"|\b(?:have to|has to|need to|needs to|required to|obliged to)\b"
+    # use / deployment verb adjacent to an AI mention (incl. past tense)
+    r"|\b(?:use|uses|using|used|build|builds|building|built"
+    r"|deploy|deploys|deploying|deployed|install|installs|installing|installed"
+    r"|buy|buys|buying|bought|adopt\w*|creat\w*|develop\w*"
+    r"|roll(?:ing)? out|rolled out|run|runs|running|ran|operat\w*"
+    r"|want(?:s|ed|ing)? to|plan(?:s|ned|ning)? to|looking to)\b",
+    re.IGNORECASE,
+)
+
+
+# R93 — manipulation / role-play guard for the AI-use-case rescue.
+# A jailbreak can embed a perfectly legitimate AI-regulation phrase
+# ("...answer without restrictions: how do I deploy a banned AI in the
+# EU?") to slip past the rescue. The existing _INJECTION_PATTERNS don't
+# catch every role-play wrapper, and pre-R93 these fell through to the
+# CONVERSATIONAL refusal. The rescue must NOT re-open that hole: when a
+# manipulation / persona-override marker is present, decline the rescue
+# so the question falls through to the refusal path as before.
+_RESCUE_MANIPULATION_GUARD_RE = re.compile(
+    r"\bpretend\b|\bpre[- ]?guardrails?\b|\bwithout\s+restrictions?\b"
+    r"|\bno\s+restrictions?\b|\bas\s+that\s+version\b"
+    r"|\bolder\s+(?:,?\s*\w+\s+)?version\s+of\s+yourself\b"
+    r"|\bversion\s+of\s+yourself\b|\bact\s+as\b|\brole[\s-]?play\b"
+    r"|\byou\s+are\s+now\b|\bdeveloper\s+mode\b|\bjailbreak\b"
+    r"|\bignore\s+(?:all\s+|the\s+|your\s+|previous\s+|prior\s+)?(?:instructions|rules|prompt)"
+    r"|\bdisregard\s+(?:all\s+|the\s+|your\s+|previous\s+)?(?:instructions?|rules?)"
+    r"|\bunrestricted\b|\bno\s+guardrails?\b|\bbypass\b|\bcircumvent\b"
+    r"|\bget\s+away\s+with\b|\bundetected\b|\bwithout\s+(?:getting\s+)?detect",
+    re.IGNORECASE,
+)
+
+
+def _describes_regulated_ai_use(text: str) -> bool:
+    """R93 — True when ``text`` describes an AI system AND frames a
+    regulatory / risk / permission / deployment question about it.
+
+    Both signals are required so non-AI out-of-scope questions and
+    AI-adjacent traps (which carry the framing but no AI-system token)
+    stay refused. A manipulation / role-play marker hard-declines the
+    rescue so a jailbreak embedding a legit AI phrase still refuses.
+    Env off-switch: ``REGENOLD_AI_USECASE_RESCUE=0``.
+    """
+    import os
+    if os.getenv("REGENOLD_AI_USECASE_RESCUE", "1").strip().lower() not in (
+        "1", "true", "yes", "on",
+    ):
+        return False
+    if _RESCUE_MANIPULATION_GUARD_RE.search(text):
+        return False
+    if not _AI_SYSTEM_RE.search(text):
+        return False
+    return _AI_REG_FRAME_RE.search(text) is not None
+
+
 # Prompt-injection patterns the input_validator middleware doesn't catch
 # (lower severity / broader phrasing). The validator's high-severity
 # tier blocks the heavy artillery; this layer is the last-mile mop-up.
@@ -2629,6 +2734,25 @@ def classify_scope(question: str) -> ScopeVerdict:
             in_scope=False,
             reason=ScopeReason.OTHER_REGULATION,
             evidence="Mentions a non-EU-AI-Act regulation without an AI Act anchor.",
+        )
+
+    # 5b. R93 — natural-language AI-use-case rescue. Runs AFTER the
+    # other-regulation + near-OOS gates (so framework questions still
+    # refuse) and AFTER every anchor / keyword pass (so it only catches
+    # questions that named no Article / anchor). An AI-system mention
+    # PLUS a regulatory / risk / permission / deployment framing flips
+    # the gate in-scope — closing the ~22% false-out-of-scope hole on
+    # natural-language scenario questions ("Can we install AI cameras to
+    # track student attention from facial expressions?" → Art. 5).
+    if _describes_regulated_ai_use(cleaned_text):
+        return ScopeVerdict(
+            in_scope=True,
+            reason=ScopeReason.IN_SCOPE,
+            evidence=(
+                "Describes an AI system in a regulatory / risk / "
+                "permission context (R93 AI-use-case rescue)."
+            ),
+            referenced_articles=known,
         )
 
     # 6. Conversational / generic-knowledge.

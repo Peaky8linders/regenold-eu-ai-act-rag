@@ -979,10 +979,112 @@ _AUGMENT_MAX_NEW_CLAUSES: int = 3
 _AUGMENT_COVERAGE_THRESHOLD: int = 4
 
 
-def _answer_covers_ref(answer_tokens: frozenset[str], internal_ref: str, *, answer_text: str = "") -> bool:
+# ── R93 — paraphrase-robust SEMANTIC coverage signal ────────────────────
+#
+# R90 disabled the Stage-2 cite-describe / augment path because its
+# coverage predicate (BM25 token overlap between the answer prose and the
+# KB *summary*) systematically under-detects coverage once Claude
+# Sonnet's Stage-2 polish rewrites the deterministic KG prose into natural
+# language: the polished sentence describes the same article but shares
+# few literal tokens with the hand-authored KB stub, so the lexical check
+# reads it as "undescribed". On the prune path that produced a measured
+# -0.21 ref_loose regression (CLAUDE.md R90); on the augment path it
+# produces redundant appended clauses that hurt tone + conciseness.
+#
+# The 2025 citation-faithfulness SOTA (CiteFix, ACL 2025; FRONT;
+# ReClaim) converges on a keyword+SEMANTIC blend rather than a fixed
+# lexical threshold. We add the missing semantic signal using the
+# already-shipped, CPU-only, sub-ms TF-IDF->SVD-128 sentence index
+# (``app.engines.embeddings_index`` -- R32). When the answer prose is
+# semantically near a cited article's EUR-Lex content, that article
+# counts as described even under heavy paraphrase -- the exact signal
+# BM25 lacks.
+#
+# Threshold calibration: the source paper (Aggio et al. 2025) uses
+# cosine 0.5 for KeyElement matching and 0.6 for AtomicFact matching on
+# transformer embeddings. Our index is TF-IDF->SVD (different scale), so
+# the default is env-tunable via REGENOLD_REF_SEM_THRESHOLD. Used ONLY as
+# a *coverage* (skip-append) signal: a higher value means "only a very
+# strong semantic match counts as already-described", i.e. more
+# conservative about declaring coverage, i.e. more willing to append a
+# describing clause.
+_SEM_COVERAGE_DEFAULT_THRESHOLD: float = 0.45
+_SEM_COVERAGE_TOP_K: int = 40
+
+
+def _sem_coverage_threshold() -> float:
+    """Resolve the semantic coverage threshold (env override, clamped)."""
+    import os
+    raw = os.getenv("REGENOLD_REF_SEM_THRESHOLD", "").strip()
+    if not raw:
+        return _SEM_COVERAGE_DEFAULT_THRESHOLD
+    try:
+        v = float(raw)
+    except ValueError:
+        return _SEM_COVERAGE_DEFAULT_THRESHOLD
+    if v < 0.0 or v > 1.0:
+        return _SEM_COVERAGE_DEFAULT_THRESHOLD
+    return v
+
+
+def semantic_coverage_map(
+    answer_text: str, *, top_k: int = _SEM_COVERAGE_TOP_K
+) -> dict[str, float]:
+    """Map internal article/annex ref -> max cosine sim with ``answer_text``.
+
+    Queries the deterministic NumPy-SVD sentence index once with the full
+    answer prose and aggregates sentence-level hits to the article level,
+    taking the max cosine per article. Keys are internal-form refs
+    (``"Art. 13"`` / ``"Annex IV"``) so a caller can look up coverage for
+    a cited internal ref directly.
+
+    Pure-stdlib + NumPy, CPU-only, sub-millisecond. Returns ``{}`` when
+    the embeddings assets are absent or on ANY failure -- callers treat
+    it as best-effort enrichment that degrades to the prior lexical-only
+    behaviour.
+    """
+    if not answer_text:
+        return {}
+    try:
+        from app.engines.embeddings_index import (  # noqa: PLC0415
+            is_available as _emb_available,
+            query as _emb_query,
+        )
+    except Exception:  # noqa: BLE001 — module import guard
+        return {}
+    try:
+        if not _emb_available():
+            return {}
+        hits = _emb_query(answer_text, top_k=top_k, threshold=0.0)
+    except Exception:  # noqa: BLE001 — fail-soft
+        return {}
+    out: dict[str, float] = {}
+    for hit in hits:
+        ref = getattr(hit, "article_ref", "") or ""
+        if not ref:
+            continue
+        if ref.startswith("Article "):
+            internal = "Art. " + ref[len("Article "):].strip()
+        elif ref.startswith("Annex "):
+            internal = ref  # already internal form
+        else:
+            internal = ref
+        sim = float(getattr(hit, "similarity", 0.0) or 0.0)
+        if sim > out.get(internal, -1.0):
+            out[internal] = sim
+    return out
+
+
+def _answer_covers_ref(
+    answer_tokens: frozenset[str],
+    internal_ref: str,
+    *,
+    answer_text: str = "",
+    semantic_covered: dict[str, float] | None = None,
+) -> bool:
     """Return True when the answer prose already describes ``internal_ref``.
 
-    R80-D — two-signal coverage:
+    R80-D / R93 — three-signal coverage (any signal True ⇒ covered):
       1. *Literal cite check*: the prose contains the user-facing form
          (``"Article 13"`` / ``"Annex IV"``). This is the strongest
          "described" signal — the engine has named the article AND
@@ -992,11 +1094,27 @@ def _answer_covers_ref(answer_tokens: frozenset[str], internal_ref: str, *, answ
          :data:`_AUGMENT_COVERAGE_THRESHOLD` tokens with the ref's KB
          summary. Backstop for engine outputs that paraphrase without
          naming the article literally.
+      3. *Semantic cosine* (R93): when ``semantic_covered`` is supplied
+         (the Stage-2-polished path), the answer prose's cosine with the
+         ref's EUR-Lex content meets :func:`_sem_coverage_threshold`.
+         This is the paraphrase-robust signal BM25 lacks — it stops the
+         augmenter from re-describing an article Sonnet already covered
+         in different words (the R90 over-fire / tone-cost root cause).
+         When ``semantic_covered`` is ``None`` the behaviour is
+         byte-identical to the pre-R93 two-signal predicate, so the
+         deterministic davidath path is unchanged.
 
     Either signal returning True ⇒ covered. Returns True on any
     failure (fail-open — don't add a clause when we can't measure).
     """
     try:
+        # R93 — semantic coverage signal (Stage-2 path only; the
+        # deterministic path passes ``semantic_covered=None`` → skipped →
+        # byte-identical to pre-R93).
+        if semantic_covered and internal_ref:
+            sim = semantic_covered.get(internal_ref)
+            if sim is not None and sim >= _sem_coverage_threshold():
+                return True
         # Literal cite check.
         if answer_text and internal_ref:
             stripped = internal_ref.replace("Art. ", "").replace("Annex ", "")
@@ -1031,6 +1149,7 @@ def augment_with_ref_descriptions(
     question: str = "",
     max_new_clauses: int = _AUGMENT_MAX_NEW_CLAUSES,
     clause_chars: int = _AUGMENT_CLAUSE_CHARS,
+    semantic_covered: dict[str, float] | None = None,
 ) -> str:
     """Append one short KB-description clause per uncovered cited ref.
 
@@ -1050,6 +1169,14 @@ def augment_with_ref_descriptions(
         append. Default :data:`_AUGMENT_MAX_NEW_CLAUSES`.
     :param clause_chars: per-clause character budget.  Default
         :data:`_AUGMENT_CLAUSE_CHARS`.
+    :param semantic_covered: optional ``{internal_ref: max_cosine}`` map
+        (R93, from :func:`semantic_coverage_map`). When supplied — the
+        Stage-2-polished path — a cited article counts as already
+        described when its cosine with the answer prose clears
+        :func:`_sem_coverage_threshold`, so the augmenter does not append
+        a redundant clause for content Sonnet already paraphrased. When
+        ``None`` (deterministic path) behaviour is byte-identical to
+        pre-R93.
 
     :returns: the (potentially augmented) answer string.  When every
         cited ref is already described, or no KB stubs are available, the
@@ -1101,7 +1228,12 @@ def augment_with_ref_descriptions(
                 s, list(user_facing_refs)
             )
 
-            is_covered = _answer_covers_ref(answer_tokens, internal, answer_text=answer)
+            is_covered = _answer_covers_ref(
+                answer_tokens,
+                internal,
+                answer_text=answer,
+                semantic_covered=semantic_covered,
+            )
             # R88-E — a describer hit ALWAYS deserves a prepend (and
             # bypasses the "is_covered" guard) because:
             #   * sub-points: parent prose covers the parent ref but

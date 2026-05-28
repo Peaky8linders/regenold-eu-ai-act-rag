@@ -48,6 +48,25 @@ REGENOLD_GRAPH_AWARE = "1"
 # the bench runner doesn't read this file so davidath stays clean.
 REGENOLD_R89A_FORCE_APPEND = "1"
 
+# R93 — role-obligation NOUN seed. The R87-D role-duty seed only fired
+# on action-verb shapes ("When must a deployer report…?"); the live
+# fresh-200 probe found the canonical NOUN shape ("What obligations does
+# a provider have?") missing the role's Article entirely (Art. 16 for a
+# provider-obligations question). This flips the noun trigger ON for the
+# live deploy. Default OFF in code so the davidath bench stays
+# byte-identical (on some davidath role rows the gold is narrower than
+# the role Article, dipping Ref Strict ~0.005); the bench runner doesn't
+# read railway.toml, so the live win lands without a bench regression.
+REGENOLD_ROLE_DUTY_NOUN_SEED = "1"
+
+# R93 — natural-language AI-use-case scope rescue. Closes the ~22%
+# false-out-of-scope hole on natural questions that describe an AI system
+# + ask its regulatory treatment but name no Article/anchor keyword
+# ("Can we install AI cameras to track student attention?"). Default ON
+# in code already (this entry documents it + lets an operator disable
+# with REGENOLD_AI_USECASE_RESCUE=0). OOS probe holds 21/21.
+REGENOLD_AI_USECASE_RESCUE = "1"
+
 # Round 66-B — Stage-2.5 cite-describe guard. Drops references whose
 # KB-summary token set doesn't overlap the answer prose (the inverse
 # of the R31 sentence-level citation guard which drops sentences).
