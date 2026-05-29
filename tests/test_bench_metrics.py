@@ -96,6 +96,20 @@ class TestRegulatoryTone:
         clean = "The provider must consider Article 11."
         assert metrics.regulatory_tone(bad) < metrics.regulatory_tone(clean)
 
+    def test_regulatory_as_an_ai_system_not_penalised(self):
+        # R93 — "as an AI system" is a verbatim EUR-Lex phrase (Art. 2(12),
+        # Art. 25 etc.), NOT the "As an AI assistant, I ..." preamble the
+        # demerit targets. It must not trip the 0.40 assistant-preamble
+        # demerit (coverage200/davidath qa_100 open-source carve-out).
+        text = (
+            "This Regulation does not apply unless placed on the market as "
+            "an AI system that falls under Article 5 or 50."
+        )
+        assert metrics.regulatory_tone(text) >= 0.9
+        # The genuine assistant preamble still scores below it.
+        preamble = "As an AI assistant, I cannot answer that."
+        assert metrics.regulatory_tone(preamble) < metrics.regulatory_tone(text)
+
 
 class TestAggregation:
     def test_empty_returns_empty(self):

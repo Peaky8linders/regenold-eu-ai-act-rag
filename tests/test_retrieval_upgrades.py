@@ -246,10 +246,16 @@ class TestRoleObligationWireContract:
 
     def test_importer_annex_iii_surfaces_art_23_in_answer(self, client) -> None:
         """User names "Annex III" — the citations list ships Annex III
-        (the explicit anchor). Per the round-19 precision pruning, the
-        importer cross-reference (Art. 23) appears in the ANSWER PROSE
-        as the narrated obligation rather than in the citations list.
-        See :func:`app.routes.regenold._prune_non_anchor_refs`.
+        (the explicit anchor, round-19 precision pruning;
+        :func:`app.routes.regenold._prune_non_anchor_refs`).
+
+        R93 — this is a LIST-shape question ("What are the obligations
+        of...?"), so the extractive-QA pass now surfaces the importer-
+        obligation text from Art. 23 directly as the answer prose (a
+        precise EUR-Lex obligation sentence) rather than the engine's
+        narrated cross-reference. The invariant protected here: the
+        explicit Annex III anchor survives in refs, and the answer
+        narrates the importer's obligation (not the risk-tier verdict).
         """
         r = client.post(
             "/api/v1/regenold/eu-ai-act/ask",
@@ -264,10 +270,10 @@ class TestRoleObligationWireContract:
         answer = body.get("answer", "")
         # Explicit anchor survives pruning.
         assert "Annex III" in refs, f"Missing Annex III; got {refs}"
-        # The importer-obligations cross-reference (Art. 23) is
-        # narrated in the answer prose.
-        assert "Article 23" in answer or "Art. 23" in answer, (
-            f"Art. 23 cross-ref missing from answer prose; got: {answer[:200]!r}"
+        # The importer obligation is narrated in the answer prose (R93:
+        # surfaced as an extracted Art. 23 obligation sentence).
+        assert "importer" in answer.lower(), (
+            f"Importer obligation missing from answer prose; got: {answer[:200]!r}"
         )
 
     def test_provider_gpai_systemic_gives_art_53_55(self, client) -> None:

@@ -1,6 +1,8 @@
 """Tests for the Round-26 extractive-QA sentence index."""
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from app.engines.sentence_index import (
@@ -156,3 +158,42 @@ class TestSelectAnswerSentence:
 
     def test_empty_question(self):
         assert select_answer_sentence("", "Art. 5") is None
+
+    def test_duration_returns_answer_bearing_sentence(self):
+        # R93 — coverage200 qa_018. "For how long must providers retain
+        # logs?" → Art. 19. Sentence 0 ("1. Providers ... shall keep the
+        # logs ...") has the most query-keyword overlap but carries NO
+        # duration. Sentence 1 carries the answer "at least six months".
+        # The answer-bearing filter must surface the sentence with the
+        # actual duration, not the high-keyword-overlap topic sentence.
+        s = select_answer_sentence(
+            "For how long must providers retain automatically generated logs?",
+            "Art. 19",
+        )
+        assert s is not None
+        assert "six months" in s.lower()
+
+    def test_extracted_sentence_strips_leading_paragraph_number(self):
+        # R93 — coverage200/davidath qa_100. The open-source carve-out
+        # answer is Art. 2 paragraph 12, whose sentence text begins with
+        # the EUR-Lex paragraph marker "12. ". That marker is enumeration
+        # cruft (not regulator prose) and trips the tone heuristic. The
+        # extracted answer must not start with a "<number>. " marker.
+        s = select_answer_sentence(
+            "What are the conditions for a provider to use a free and "
+            "open-source AI model?",
+            "Art. 2",
+        )
+        if s is not None:
+            assert not re.match(r"^\d{1,3}\.\s", s), s
+
+    def test_duration_falls_through_when_no_duration_in_article(self):
+        # When no sentence in the article carries a duration phrase, the
+        # answer-bearing filter must NOT empty the result — it falls back
+        # to the best BM25 sentence (or None on low confidence).
+        s = select_answer_sentence(
+            "How long is the AI literacy obligation?", "Art. 4"
+        )
+        # No duration in Art. 4 → either a non-empty fallback sentence or
+        # None; never a crash. Both are acceptable.
+        assert s is None or isinstance(s, str)

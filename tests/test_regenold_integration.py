@@ -173,6 +173,32 @@ def test_p0_question_at_4k_boundary_accepted() -> None:
     assert r.status_code == 200, r.json()
 
 
+def test_r93_duration_answer_survives_augmenter() -> None:
+    """R93 — a precise extractive answer must not be replaced by the
+    ref-description augmenter.
+
+    coverage200 qa_018: "For how long must providers retain logs?" → the
+    extractive path correctly surfaces Art. 19's "... at least six months"
+    sentence. Pre-R93 the ``augment_with_ref_descriptions`` replace-mode
+    pass deemed that sentence "uncovered" (it shares few tokens with the
+    Art. 19/26/16 KB stubs and names no article literally) and replaced it
+    with generic stub prose ("Under Article 16, Provider obligations ..."),
+    dropping the actual answer. The extractive answer must survive.
+    """
+    settings.regenold.api_key = SecretStr("regenold-test-key")
+    c = _client()
+    r = c.post(
+        "/api/v1/regenold/eu-ai-act/ask",
+        headers={"X-Regenold-Api-Key": "regenold-test-key"},
+        json=_messages(
+            "For how long must providers retain automatically generated logs?"
+        ),
+    )
+    assert r.status_code == 200, r.json()
+    answer = (r.json().get("answer") or "").lower()
+    assert "six months" in answer, answer
+
+
 def test_p0_reference_validation_filters_hallucinated_articles() -> None:
     """P0 #2 — the formatter rejects references not in ARTICLE_EXISTENCE.
 

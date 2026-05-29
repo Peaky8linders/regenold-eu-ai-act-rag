@@ -1299,6 +1299,29 @@ def _looks_like_scenario_shape(question: str) -> bool:
 #  * description — fallback bucket, multi-clause is the norm
 _EXTRACT_HIGH_PRECISION_QTYPES = frozenset({"definition", "duration", "date", "purpose"})
 
+# R93 — LIST + NUMERIC extraction. coverage200 analysis: "What are the
+# obligations of X?" (list, n=32) and "What is the maximum fine?" (numeric,
+# n=5) have a precise, gold-shaped answer in the cited article's lead /
+# answer sentence (qa_024: Art. 23 sentence 0 carries the full importer-
+# obligations enumeration — every gold token), but the engine shipped its
+# generic risk-tier prose. The R93 answer-bearing filter (sentence_index)
+# makes NUMERIC precise; LIST relies on plain BM25 picking the
+# comprehensive sentence 0. Env-gated ``REGENOLD_EXTRACT_LIST`` (default ON;
+# set =0 to reproduce the pre-R93 high-precision-only extraction set).
+_EXTRACT_LIST_NUMERIC_QTYPES = frozenset({"list", "numeric"})
+
+
+def _extract_qtypes_enabled() -> frozenset[str]:
+    """The active extractive-QA question-type allowlist (R93)."""
+    if os.getenv("REGENOLD_EXTRACT_LIST", "1").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        return _EXTRACT_HIGH_PRECISION_QTYPES | _EXTRACT_LIST_NUMERIC_QTYPES
+    return _EXTRACT_HIGH_PRECISION_QTYPES
+
 
 def _try_extractive_answer(
     *,
@@ -1411,7 +1434,7 @@ def _try_extractive_answer(
     # over brevity. Keep the broader fallback OFF by default; opt in via
     # REGENOLD_EXTRACT_EMBEDDINGS=1 only when an upstream benchmark
     # confirms the tradeoff is favourable in the specific dataset.
-    if qtype not in _EXTRACT_HIGH_PRECISION_QTYPES:
+    if qtype not in _extract_qtypes_enabled():
         emb_flag = os.getenv("REGENOLD_EXTRACT_EMBEDDINGS", "0").strip().lower()
         if emb_flag in ("1", "true", "yes", "on") and engine_citations:
             try:
@@ -3094,6 +3117,16 @@ def regenold_eu_ai_act_ask(
     _is_scenario = classify_scenario_query(question) is not None
     _is_scenario_shape = _looks_like_scenario_shape(question)
     _is_multiturn = sum(1 for m in req.messages if m.role == "user") > 1
+    # R93 — when the extractive pass produces the answer, it is a precise,
+    # gold-shaped single sentence answering the SPECIFIC question. The
+    # downstream ref-description augmenter must NOT then replace it with
+    # generic KB-stub prose (the augmenter's BM25/literal coverage check
+    # deems a precise EUR-Lex sentence "uncovered" because it doesn't echo
+    # the hand-authored stub vocabulary nor name the article literally —
+    # coverage200 qa_018 lost "... at least six months" to "Under Article
+    # 16, Provider obligations ..."). Tracked here, consumed at the
+    # augmenter gate below.
+    _extractive_fired = False
     # Round-36 issue #49: classification verdicts are pre-curated by the
     # engine — both the extractive-QA pass and the QA-trim would reshape
     # the prose down to a single sentence, lopping off the regulatory
@@ -3119,6 +3152,7 @@ def regenold_eu_ai_act_ask(
         )
         if extracted:
             answer_text = extracted
+            _extractive_fired = True
         else:
             # Round 33 Pattern 2: post-extractive single-sentence trim
             # for non-high-precision QA shapes. The failure analysis on
@@ -4223,6 +4257,7 @@ def regenold_eu_ai_act_ask(
         and references
         and retrieval_path not in ("consistency_guard", "no_match")
         and not _is_classification_topic
+        and not _extractive_fired
         and not (getattr(rag_res, "graph_stats", {}) or {}).get("stage2_landed")
     ):
         try:

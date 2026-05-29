@@ -93,6 +93,7 @@ def _run_qa(
     items = qa_items[:limit] if limit else qa_items
     rows: list[dict[str, Any]] = []
     for idx, item in enumerate(items):
+        time.sleep(1.0)  # [BYPASSED FOR BENCHMARK] rate limit to avoid 429s
         q = item.get("question") or ""
         gold_answer = item.get("answer") or ""
         gold_article = item.get("relevant_article")
@@ -139,6 +140,7 @@ def _run_scenarios(
     items = scenarios[:limit] if limit else scenarios
     rows: list[dict[str, Any]] = []
     for idx, item in enumerate(items):
+        time.sleep(1.0)  # [BYPASSED FOR BENCHMARK] rate limit to avoid 429s
         q = _scenario_to_question(item)
         risk_level = (item.get("risk_level") or "").replace("-", "_")
         obligations = item.get("obligations") or []
@@ -266,10 +268,11 @@ def run(
     skip_multiturn: bool = False,
     limit: int | None = None,
     multiturn_limit: int = 20,
+    qa_dataset_path: Any = None,
 ) -> dict[str, Any]:
     """Run the full benchmark and return the persisted payload."""
     bench_dataset.ensure_dataset()
-    qa_items = bench_dataset.load_qa_pairs()
+    qa_items = bench_dataset.load_qa_pairs(qa_dataset_path)
     scenarios = bench_dataset.load_scenarios()
 
     started_at = _now_iso()
@@ -392,6 +395,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--qa-only", action="store_true")
     parser.add_argument("--scenarios-only", action="store_true")
     parser.add_argument("--skip-multiturn", action="store_true")
+    parser.add_argument("--qa-dataset", default=None, help="Path to custom qa pairs JSON dataset.")
     parser.add_argument(
         "--limit",
         type=int,
@@ -406,6 +410,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    from pathlib import Path
+    qa_dataset_path = Path(args.qa_dataset) if args.qa_dataset else None
+
     payload = run(
         label=args.label,
         qa_only=args.qa_only,
@@ -413,6 +420,7 @@ def main(argv: list[str] | None = None) -> int:
         skip_multiturn=args.skip_multiturn,
         limit=args.limit,
         multiturn_limit=args.multiturn_limit,
+        qa_dataset_path=qa_dataset_path
     )
     print(_format_human_summary(payload))
     return 0

@@ -405,8 +405,12 @@ def reference_conciseness(
 
 
 _TONE_DEMERIT_PATTERNS: tuple[tuple[re.Pattern[str], float], ...] = (
-    # AI-assistant preamble — biggest violator.
-    (re.compile(r"\b(?:as an ai|i am an ai|i'm an ai|as an ai assistant)\b", re.I), 0.40),
+    # AI-assistant preamble — biggest violator. The bare "as an ai" arm
+    # carries a negative lookahead for "system(s)": "as an AI system" is a
+    # verbatim EUR-Lex phrase (Art. 2(12), Art. 25) — regulator prose, NOT
+    # the "As an AI assistant, I ..." self-reference the demerit targets
+    # (R93: it was false-firing on the open-source carve-out answer).
+    (re.compile(r"\b(?:as an ai(?!\s+systems?\b)|i am an ai|i'm an ai|as an ai assistant)\b", re.I), 0.40),
     (re.compile(r"\b(?:as a language model|i am a language model)\b", re.I), 0.40),
     # First-person / hedging.
     (re.compile(r"\b(?:i think|i believe|in my opinion|i would say)\b", re.I), 0.25),

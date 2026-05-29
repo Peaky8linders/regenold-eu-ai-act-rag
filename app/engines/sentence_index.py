@@ -408,6 +408,15 @@ _QTYPE_PATTERNS: tuple[tuple[str, re.Pattern[str], re.Pattern[str]], ...] = (
 )
 
 
+# R93 — question types whose answer is definitionally a token pattern
+# (a duration, a date, a number/fine/percentage). For these, the correct
+# answer sentence MUST carry that pattern; a topic sentence that merely
+# shares query keywords is the wrong answer even when it out-scores on
+# BM25. ``select_answer_sentence`` restricts ranking to affinity-matching
+# sentences for these types (see the answer-bearing filter there).
+_ANSWER_BEARING_QTYPES = frozenset({"duration", "date", "numeric"})
+
+
 @lru_cache(maxsize=2048)
 def classify_question(question: str) -> str:
     """Return the question type tag, or ``"description"`` as fallback.
@@ -489,15 +498,27 @@ def select_answer_sentence(
     # up to 3000 chars long that don't shorten the answer below gold's
     # ~140-char median. Skipping them lets the second-best (typically
     # tighter) sentence win.
-    candidates: list[tuple[float, int]] = []
+    answer_bearing_q = qtype in _ANSWER_BEARING_QTYPES and apply_affinity
+    candidates: list[tuple[float, int, bool]] = []
     for i, sent in enumerate(idx.sentences):
         if len(sent) > max_sentence_chars:
             continue
         raw = _score(idx, i, query_tokens)
-        if raw < min_score:
+        matched_affinity = bool(apply_affinity and affinity_re.search(sent))
+        # R93 — answer-bearing relaxation. For DURATION/DATE/NUMERIC the
+        # answer sentence often shares only ONE query token (e.g. Art. 19
+        # "... the logs shall be kept ... of at least six months" overlaps
+        # the question only on "logs") and falls under ``min_score``,
+        # while the topic sentence ("1. Providers ... shall keep the
+        # logs") clears it. Admit a sub-threshold sentence as a candidate
+        # when it carries the answer pattern AND has ANY query overlap, so
+        # the affinity filter below can choose it.
+        if raw < min_score and not (
+            answer_bearing_q and matched_affinity and raw > 0.0
+        ):
             continue
         score = raw
-        if apply_affinity and affinity_re.search(sent):
+        if matched_affinity:
             score *= affinity_boost
         # Round 34 P0 — leading-paragraph boost. Sentence 0 of an EUR-Lex
         # article is overwhelmingly the topic / purpose statement. When
@@ -508,11 +529,48 @@ def select_answer_sentence(
         # controller" beats the actual EU-database purpose paragraph).
         if i == 0 and len(sent) >= 200 and qtype in ("purpose", "description"):
             score *= leading_paragraph_boost
-        candidates.append((score, i))
+        candidates.append((score, i, matched_affinity))
     if not candidates:
         return None
+    # R93 — answer-bearing filter. For DURATION / DATE / NUMERIC questions
+    # the answer is definitionally a token pattern (a duration, a date, a
+    # number). BM25 over-rewards the topic sentence (most query-keyword
+    # overlap), and the ×1.5 affinity multiplier is too weak to overcome
+    # it — coverage200 qa_018 returned "1. Providers ... shall keep the
+    # logs" over the answer-bearing "... at least six months". When ANY
+    # candidate carries the affinity pattern, restrict the ranking to
+    # those. Guarded on a non-empty hit set, so an article with no
+    # duration/date/number sentence falls through to plain BM25 (never
+    # empties the result).
+    if answer_bearing_q:
+        affinity_hits = [c for c in candidates if c[2]]
+        if affinity_hits:
+            candidates = affinity_hits
     candidates.sort(reverse=True)
-    return idx.sentences[candidates[0][1]]
+    return _strip_leading_enumerator(idx.sentences[candidates[0][1]])
+
+
+# R93 — EUR-Lex paragraph marker at the head of an extracted sentence
+# ("12. This Regulation does not apply...", "1. Providers shall..."). The
+# splitter keeps the marker glued to the paragraph (it's not a sentence
+# boundary), but a standalone answer should not lead with it: it is
+# enumeration cruft, costs a non-gold token on the correctness axes, and
+# trips the regulator-voice tone heuristic (coverage200/davidath qa_100).
+_LEADING_ENUMERATOR_RE = re.compile(r"^\s*\d{1,3}\.\s+")
+
+
+def _strip_leading_enumerator(sentence: str | None) -> str | None:
+    """Drop a leading ``<N>. `` paragraph marker from an extracted sentence.
+
+    Only strips the EUR-Lex numbered-paragraph marker; never touches answer
+    content (``"10 years"`` is ``\\d+\\s+word``, not ``\\d+\\.\\s``). Returns
+    the input unchanged when no marker is present or when stripping would
+    empty the string.
+    """
+    if not sentence:
+        return sentence
+    stripped = _LEADING_ENUMERATOR_RE.sub("", sentence, count=1).lstrip()
+    return stripped if stripped else sentence
 
 
 # Definition-question term extractors. Each regex tries to pull the

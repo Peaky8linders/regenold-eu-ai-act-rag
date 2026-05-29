@@ -77,23 +77,29 @@ def ensure_dataset(*, verify: bool = True) -> None:
                 )
 
 
-def load_qa_pairs() -> list[dict[str, Any]]:
+def load_qa_pairs(custom_path: Path | None = None) -> list[dict[str, Any]]:
     """Return the 137 QA pairs from qa_pairs.json.
 
     Schema: ``{question: str, answer: str, relevant_article: int}``.
     """
+    if custom_path:
+        payload = json.loads(custom_path.read_text(encoding="utf-8"))
+        return list(payload.get("data") or [])
     ensure_dataset()
     payload = json.loads(QA_PATH.read_text(encoding="utf-8"))
     return list(payload.get("data") or [])
 
 
-def load_scenarios() -> list[dict[str, Any]]:
+def load_scenarios(custom_path: Path | None = None) -> list[dict[str, Any]]:
     """Return the 339 scenarios from scenarios.json.
 
     Schema: ``{role, intended_use, system_type, input_data, domain,
                related_articles: list[int], obligations: list[str],
                risk_level: "prohibited"|"high-risk"|"limited"|"minimal"}``.
     """
+    if custom_path:
+        payload = json.loads(custom_path.read_text(encoding="utf-8"))
+        return list(payload.get("data") or [])
     ensure_dataset()
     payload = json.loads(SCENARIOS_PATH.read_text(encoding="utf-8"))
     return list(payload.get("data") or [])
