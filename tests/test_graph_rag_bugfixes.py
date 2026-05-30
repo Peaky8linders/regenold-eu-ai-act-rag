@@ -508,3 +508,108 @@ class TestGraphRetrievalDegraded:
         # NOT degraded.
         confidence = _compute_confidence(ctx)
         assert confidence == 0.85
+
+
+# ─── R99 — Graph empty-result fallback (production zero-retrieval bug) ────────
+
+
+class TestGraphEmptyResultFallback:
+    """When the graph is ENABLED but returns EMPTY for every read (no
+    exception), ``_retrieve_from_graph`` must still fall back to KB
+    retrieval so the engine doesn't serve the zero-retrieval Art. 1/2 floor.
+
+    Root cause (R99): the seeded Neo4j graph's ``obligations_for_article``
+    Cypher matches a ``REQUIRES`` edge the seeder never creates (it creates
+    ``HAS_OBLIGATION``), and ``obligations_for_risk_level`` mismatches several
+    risk-level ids (e.g. ``unacceptable``) — both queries succeed but return
+    ``[]``. Pre-fix, the KB fallback only ran inside the ``except`` block, so
+    an empty-but-successful graph read produced an empty context →
+    ``zero_retrieval_fallback`` on production while the identical query
+    retrieved correctly on the in-memory KB path (local / bench)."""
+
+    def test_graph_empty_results_falls_back_to_kb(self) -> None:
+        """Enabled client that returns ``[]`` for every read must trigger the
+        KB fallback (non-empty obligations for a known article)."""
+        class _EmptyClient:
+            enabled = True
+
+            def execute_read(self, *args, **kwargs):  # noqa: ARG002
+                return []  # graph succeeds but matches nothing
+
+        query = GraphQuery(
+            intent="article_lookup",
+            entities=["Art. 5"],
+            raw_question="What practices are prohibited by the AI Act?",
+        )
+
+        with patch(
+            "app.graph.client.get_graph_client",
+            return_value=_EmptyClient(),
+        ):
+            ctx = _retrieve_from_graph(query)
+
+        assert ctx.obligations, (
+            "When the graph returns empty (no exception), _retrieve_from_graph "
+            "must fall back to KB so the engine doesn't serve the "
+            "zero-retrieval Art. 1/2 floor"
+        )
+
+    def test_graph_empty_fallback_not_marked_degraded(self) -> None:
+        """The empty-success KB fallback is a CLEAN result (not a sick
+        backend) — confidence should reflect KB richness, so it must NOT be
+        flagged ``degraded`` (which would force low confidence + non-cache)."""
+        class _EmptyClient:
+            enabled = True
+
+            def execute_read(self, *args, **kwargs):  # noqa: ARG002
+                return []
+
+        query = GraphQuery(
+            intent="article_lookup",
+            entities=["Art. 13"],
+            raw_question="What does Article 13 require?",
+        )
+
+        with patch(
+            "app.graph.client.get_graph_client",
+            return_value=_EmptyClient(),
+        ):
+            ctx = _retrieve_from_graph(query)
+
+        assert ctx.obligations, "KB fallback must populate obligations"
+        assert getattr(ctx, "degraded", False) is False, (
+            "An empty-but-successful graph read that KB can answer is a clean "
+            "result, not a degraded backend — must not set degraded=True"
+        )
+
+    def test_graph_nonempty_result_is_kept(self) -> None:
+        """Regression guard: when the graph DOES return obligations, the
+        fallback must NOT fire (graph result is kept, KB does not override)."""
+        sentinel = [{"id": "graph_obl_1", "text": "from graph", "article": "Art. 9"}]
+
+        class _RichClient:
+            enabled = True
+
+            def execute_read(self, query, params=None):  # noqa: ARG002
+                # Only the risk-level query returns rows; per-article empty.
+                if "RiskLevel" in query:
+                    return list(sentinel)
+                return []
+
+        query = GraphQuery(
+            intent="general_compliance",
+            entities=[],
+            raw_question="What obligations apply to high-risk AI?",
+            risk_context="high",
+        )
+
+        with patch(
+            "app.graph.client.get_graph_client",
+            return_value=_RichClient(),
+        ):
+            ctx = _retrieve_from_graph(query)
+
+        assert any(o.get("id") == "graph_obl_1" for o in ctx.obligations), (
+            "A non-empty graph result must be preserved (fallback must not "
+            "override a populated graph context)"
+        )

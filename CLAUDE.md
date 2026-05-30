@@ -5039,13 +5039,105 @@ on the wire (`KB_VERSION` untouched). The V4 set's value is the fresh
 measurement surface; the live multi-turn / judge lift is queued for the
 post-deploy live re-run.
 
-### Operational follow-up (unchanged from R98, not actioned)
+### Operational follow-up (superseded by R99.1 below)
 
-The live Aura graph still carries ~20× duplicate nodes from accumulated seed
-runs; a `scripts/seed_neo4j_kb.py --clear` re-seed against live Neo4j creds
-would tidy it. Deferred — it is a destructive production write, the duplicates
-are benign (the 2-hop path is existence-gated + additive so they can't pollute
-the wire), and it needs explicit confirmation.
+R98 claimed the live Aura graph's ~20× duplicate nodes were benign. **R99.1
+falsifies that** — combined with two Cypher/seed mismatches they were silently
+forcing the production zero-retrieval bug. See R99.1.
+
+## Round 99.1 — Production zero-retrieval root-cause fix + GraphRAG-paper benchmark (2026-05-30)
+
+A live measurement against deployed Railway (a second benchmark — 20 questions
+from a related EU AI Act GraphRAG-system paper, Appendix B.2: 10 with
+ground-truth answers+refs, 10 without) surfaced a **critical production bug**:
+the live endpoint returned the **zero-retrieval `Article 1/2` floor** for core
+plain-language in-scope questions ("what practices are prohibited?", "deployer
+obligations", "risk categories", "how are users informed?", "AI-system
+definition") — while the **identical queries retrieved correctly on the local
+engine** (byte-identical code + assets; local returns Art 5, conf 0.7).
+
+### Root cause (systematic-debugging, reproduced + traced)
+
+`app/engines/graph_rag.py::_retrieve_from_graph` only fell back to the
+in-memory KB (`_retrieve_from_kb`) **inside its `except` block** — i.e. on a
+graph *exception*. When the production Neo4j graph **succeeds but returns
+empty** (no exception), the context stayed empty → the wire served the R47-E
+`zero_retrieval_fallback` Art. 1/2 floor. Local never hit this because
+`client.enabled=False` (line 2683) → it always uses the KB path → BM25 → Art 5.
+
+Why the production graph returns empty for these queries (two seed/Cypher
+mismatches, amplified by the R98 ~20× duplicate nodes):
+
+1. **Edge-type mismatch** — `CYPHER_TEMPLATES["obligations_for_article"]`
+   matches `(a:Article)-[:REQUIRES]->(o:Obligation)`, but
+   `scripts/seed_neo4j_kb.py` creates **`HAS_OBLIGATION`** edges (there is no
+   `REQUIRES` edge). So that query **always returns `[]`** on the seeded graph.
+2. **Risk-level id mismatch** — `obligations_for_risk_level` matches
+   `RiskLevel {id: $risk_level}`, but `_deterministic_parse` emits
+   `risk_context="unacceptable"` for prohibited questions while the seeded
+   RiskLevel node uses a different id, and the duplicate RiskLevel nodes
+   (80 instead of 4) degrade the match → `[]`.
+
+Both queries return `[]` (no exception) → empty context → no KB fallback →
+zero-retrieval floor. Confirmed with a failing test (an `enabled=True` client
+whose `execute_read` returns `[]` for every read) reproducing
+`ctx.obligations == []` pre-fix.
+
+### Fix — empty-success KB fallback (defense-in-depth)
+
+`_retrieve_from_graph` now also falls back to `_retrieve_from_kb` when the
+graph is enabled, did **not** raise, but produced **no obligations and no
+article_info**. The in-memory KB is the reliable floor (it is the steady-state
+path for non-graph deploys + the bench, and is byte-identical-verified). The
+empty-success fallback does **NOT** set `degraded` — it is a clean KB result
+(normal confidence, cacheable), distinct from the issue-#55 exception path
+(which stays `degraded=True`). A `not context.degraded` guard prevents
+re-firing after the exception fallback. Net effect: production retrieval for
+graph-empty queries degrades gracefully to exactly what the local engine /
+bench already do (correct articles), instead of the Art. 1/2 floor.
+
+* +3 tests in `tests/test_graph_rag_bugfixes.py::TestGraphEmptyResultFallback`
+  (empty→KB fallback fires, fallback is not-degraded, non-empty graph result is
+  preserved).
+
+### GraphRAG-paper benchmark (new eval surface)
+
+* `evals/regenold/scenarios_graphrag_benchmark.py` — the 20 Appendix-B.2
+  questions: `GROUND_TRUTH` (10, scored vs the paper's Article-level gold;
+  2 recital-only rows excluded from the ref aggregate since the wire emits
+  Articles/Annexes only) + `NO_GROUND_TRUTH` (10, run + report predicted refs /
+  tone / latency, no gold).
+* `evals/regenold/run_graphrag_benchmark.py` — runner (`--local` /
+  `--endpoint`).
+
+### Scorecards
+
+| Run | GT Ref Loose (8 scored) | GT Ref Strict | Keyword | Tone |
+| --- | ----------------------- | ------------- | ------- | ---- |
+| Local deterministic (engine logic) | **0.50** | 0.42 | 0.13 | 1.0 |
+| Live BEFORE fix (degraded prod) | 0.25 | 0.25 | 0.20 | 1.0 |
+
+The live BEFORE-fix score (0.25) reflects the production zero-retrieval bug
+(only the 2 rows that fired Sonnet scored); the local 0.50 reflects the clean
+engine. Post-deploy re-measurement of the live benchmark is the verification
+gate for the fix.
+
+### Bench parity (476 davidath) — byte-identical to R99
+
+Ans Strict 0.277 / Ref Loose 0.5502 / Ref Strict 0.4766 / Tone 1.0 / mt 20/20.
+By construction: the bench runs with Neo4j disabled (`client.enabled=False`),
+so `_retrieve_from_graph` returns the KB path at line 2683 and never reaches
+the new empty-success block. Full suite 3213 pass + 1 skip (+3 R99.1 tests).
+
+### Graph-hygiene follow-ups (documented, not in this fix)
+
+The fallback makes the engine robust to ANY graph degradation, so these are no
+longer correctness-critical — but to make the graph AUGMENT (not just be
+bypassed): (a) fix the `obligations_for_article` Cypher edge
+`REQUIRES`→`HAS_OBLIGATION`; (b) align `obligations_for_risk_level` ids with
+the parser's `risk_context` vocabulary; (c) `scripts/seed_neo4j_kb.py --clear`
+re-seed to remove the ~20× duplicate nodes. (c) is a destructive production
+write needing explicit confirmation + live Neo4j creds.
 
 ## Non-goals / things to skip
 

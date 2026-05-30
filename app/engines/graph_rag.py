@@ -2757,6 +2757,35 @@ def _retrieve_from_graph(
             context = GraphContext()
         context.degraded = True
 
+    # R99 — empty-success graph fallback. A graph backend that is ENABLED
+    # but returns no obligations AND no article_info is NOT an exception, so
+    # the except-block KB fallback above never fired — leaving an empty
+    # context that triggers the zero-retrieval Art. 1/2 floor on the wire.
+    # Production hit this because the seeded graph's `obligations_for_article`
+    # Cypher matches a `REQUIRES` edge the seeder never creates (it creates
+    # `HAS_OBLIGATION`), and `obligations_for_risk_level` mismatches several
+    # risk-level ids (e.g. "unacceptable") — both queries succeed but return
+    # []. The in-memory KB is the reliable floor (the steady-state path for
+    # non-graph deploys + the bench), so fall back to it when the graph
+    # contributed nothing. This is a CLEAN result (the KB answered), not a
+    # sick backend, so we do NOT set degraded — the answer should carry
+    # normal KB confidence and remain cacheable. The `not context.degraded`
+    # guard keeps this from re-firing after the issue-#55 exception path.
+    if (
+        not context.degraded
+        and not context.obligations
+        and not context.article_info
+    ):
+        try:
+            kb_context = _retrieve_from_kb(query, risk_level)
+        except Exception as kb_exc:  # noqa: BLE001 — last-resort guard
+            logger.error(
+                "KB fallback failed after empty graph result: %s", kb_exc,
+            )
+        else:
+            if kb_context.obligations or kb_context.article_info:
+                context = kb_context
+
     return context
 
 
