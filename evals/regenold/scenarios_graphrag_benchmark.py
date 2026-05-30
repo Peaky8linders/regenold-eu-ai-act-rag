@@ -219,3 +219,94 @@ NO_GROUND_TRUTH: list[dict] = [
         "doctrinal_anchor": "Article 10 (+ Article 9 / Article 15)",
     },
 ]
+
+# ── Paper's lawyer-reviewed reference answers (Appendix B.2.1) ─────────────
+# Verbatim from the GraphRAG paper's supplementary material — the gold the
+# paper's BERTScore automatic eval compared against. Kept here for provenance
+# and to enable a reference-answer-grounded correctness judge.
+REFERENCE_ANSWERS: dict[str, str] = {
+    "gt_01": (
+        "The AI Act establishes a risk-based framework, categorising AI systems "
+        "based on their potential for harm. Here are the risk categories: "
+        "Unacceptable Risk, High Risk, Limited Risk and Minimal Risk."
+    ),
+    "gt_02": (
+        "Subliminal techniques beyond a person's consciousness to materially "
+        "distort behaviour in a way that causes harm. Exploiting vulnerabilities "
+        "of specific groups (e.g., age, disability) to materially distort "
+        "behaviour and cause harm. Social scoring systems can lead to detrimental "
+        "treatment in unrelated social contexts or disproportionate treatment. "
+        "Real-time remote biometric identification systems in publicly accessible "
+        "spaces for law enforcement purposes, except for specific exceptions. AI "
+        "systems used by or on behalf of law enforcement to make risk assessments "
+        "for predicting criminal offenses based solely on profiling or personality "
+        "traits."
+    ),
+    "gt_03": (
+        "The AI Act defines 'high risk' in the context of AI systems that pose "
+        "significant risks to the health and safety or the fundamental rights of "
+        "persons. This determination considers both the severity of the possible "
+        "harm and the probability of its occurrence. The Act specifically outlines "
+        "two main categories of high-risk AI systems: AI Systems Integrated into "
+        "Products and Stand-alone High-Risk AI Systems. See Annex III."
+    ),
+    "gt_04": (
+        "An AI system shall be considered high-risk where both of the following "
+        "conditions are fulfilled: (a) the AI system is intended to be used as a "
+        "safety component of a product, or is itself a product, covered by the "
+        "Union harmonisation legislation listed in Annex I; (b) the product is "
+        "required to undergo a third-party conformity assessment before being "
+        "placed on the market or put into service under that Annex I legislation. "
+        "In addition, AI systems referred to in Annex III shall be considered "
+        "high-risk."
+    ),
+    "gt_05": (
+        "When interacting with an AI system, natural persons should be informed "
+        "that they are interacting with an AI system unless it is obvious. "
+        "Deployers of emotion recognition or biometric categorisation systems "
+        "should inform natural persons exposed to the system of its operation. "
+        "Deployers of an AI system that generates or manipulates text published to "
+        "inform the public on matters of public interest shall disclose that the "
+        "text has been artificially generated or manipulated. Information should be "
+        "provided in a clear and distinguishable manner at the latest at the time "
+        "of the first interaction or exposure."
+    ),
+    "gt_06": (
+        "AI systems may be developed for purposes that do not pose significant "
+        "risks to health, safety, or fundamental rights. These include: a system "
+        "that transforms unstructured data into structured data; one that "
+        "classifies incoming documents into categories; one used to detect "
+        "duplicates among many applications; one that improves the language used "
+        "in documents without changing their substance; one that detects "
+        "decision-making patterns or deviations; and one that performs tasks "
+        "preparatory to an assessment."
+    ),
+    "gt_07": (
+        "Protection of fundamental rights, including democracy, the rule of law, "
+        "environmental protection, health, and safety."
+    ),
+    "gt_08": (
+        "A machine-based system that is designed to operate with varying levels of "
+        "autonomy and that may exhibit adaptiveness after deployment, and that, "
+        "for explicit or implicit objectives, infers, from the input it receives, "
+        "how to generate outputs such as predictions, content, recommendations, or "
+        "decisions that can influence physical or virtual environments."
+    ),
+    "gt_09": (
+        "Breaches of provisions concerning high-risk AI systems, including "
+        "transparency obligations for providers and deployers, can result in "
+        "administrative fines of up to 15,000,000 EUR or 3% of the offender's "
+        "total worldwide annual turnover, whichever is higher."
+    ),
+    "gt_10": (
+        "The Provider is a natural or legal person, public authority, agency or "
+        "other body that develops an AI system or a general-purpose AI model (or "
+        "has one developed) and places it on the market or puts it into service "
+        "under its own name or trademark. The Deployer is a natural or legal "
+        "person, public authority, agency or other body using an AI system under "
+        "its authority, except for personal non-professional activity. The "
+        "provider bears primary responsibility for AI Act compliance, especially "
+        "for high-risk systems; the deployer uses the system for its intended "
+        "purpose."
+    ),
+}

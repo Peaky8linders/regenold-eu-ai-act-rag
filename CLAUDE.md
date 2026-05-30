@@ -5139,6 +5139,60 @@ the parser's `risk_context` vocabulary; (c) `scripts/seed_neo4j_kb.py --clear`
 re-seed to remove the ~20× duplicate nodes. (c) is a destructive production
 write needing explicit confirmation + live Neo4j creds.
 
+## Round 99.2 — LLM-as-Judge head-to-head vs the GraphRAG paper (2026-05-31)
+
+The source paper for the R99.1 benchmark — Aggio, De Lazzari & Scantamburlo,
+*"A Graph-Enhanced LLM-Based Question Answering System for the AI Act"* (CEUR
+Workshop Proceedings; GraphReader-inspired, Chunks/AtomicFacts/KeyElements) —
+was read in full. Its evaluation: **automatic = BERTScore F1 + SentenceBERT
+cosine** (answer-vs-lawyer-reference semantic similarity); **human = 3 legal
+experts scoring Accuracy / Relevance / Transparency 1–5**; **Final = 0.3·Auto +
+0.7·Human** (GraphReader_base wins). Published automatic BERTScore F1:
+GraphReader_base **0.515**, GraphReader_af_only 0.548, Clairk 0.647, BM25 0.168.
+Our `GROUND_TRUTH` reference encoding was verified byte-faithful to the paper's
+Appendix B.2.1 (and the 10 lawyer-reviewed reference answers added to
+`scenarios_graphrag_benchmark.py::REFERENCE_ANSWERS` for provenance).
+
+BERTScore needs torch (against the repo's torch-free design); the paper's
+**human** dims (the dominant 70% weight) map better onto the repo's torch-free
+LLM-as-Judge (`evals/judge/`, Sonnet via the Claude Max wrapper). Ran it on the
+20 post-fix live answers (judge-input adapted from
+`graphrag-bench-r99-graphrag-postfix.json`):
+
+| Judge axis | ≈ paper human dim | GT (10) | NG (10) | overall |
+| ---------- | ----------------- | ------- | ------- | ------- |
+| correctness | Accuracy | 0.20 | 0.30 | **0.25** |
+| refs (faithfulness) | Transparency | 0.50 | 0.90 | **0.70** |
+| conciseness | — | 0.60 | 0.60 | **0.60** |
+| tone | — | 1.0 | 1.0 | **1.0** |
+
+(Paper GraphReader_base human, normalised /5: Accuracy 0.72, Relevance 0.77,
+Transparency 0.75.)
+
+**Key finding — the verbatim default suppresses answer-correctness.** Tone (1.0)
+and refs-faithfulness (0.70, NG 0.90) are competitive with the paper's
+Transparency; but correctness is low (0.25) because production's R94/R97
+**verbatim** default returns exact EUR-Lex article text for these simple QA
+questions, not the synthesis the answer-correctness metric expects. Judge
+rationales confirm: `gt_01` ("risk categories?") returned verbatim Article 6
+prose ("addresses high-risk classification criteria instead of the risk-category
+taxonomy"); `gt_02` ("what's prohibited?") returned verbatim Article 5 text
+truncated by the char-cap ("missing social scoring and biometric"). This
+extends the R94 finding (verbatim trades Ans-conciseness for Ref-correctness) to
+a third axis: **verbatim also trades Ans-*correctness* on factual QA judged
+against synthesis-style gold** — which is what this paper's eval AND the
+Regenold answer-correctness axis use.
+
+**Recommended follow-up (not actioned — design decision + live A/B):** re-run
+the GT set in synthesis mode (`REGENOLD_VERBATIM_ANSWER=0` → R97 router sends to
+Sonnet) and re-judge to quantify the correctness lift; OR have verbatim mode
+lead with a synthesized 1-sentence verdict before the verbatim quote (preserves
+citation exactness while surfacing the answer the correctness axis wants).
+Either is a verbatim-policy change that should be A/B'd before defaulting.
+
+No production code changed this round — `REFERENCE_ANSWERS` (eval data) + this
+doc only; davidath unaffected.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a
