@@ -5263,18 +5263,49 @@ isolation by the 4-axis LLM-as-judge.
 
 | Axis | A (verbatim) | B (synthesis) | Δ |
 | ---- | ------------ | ------------- | --- |
-| Ref Loose | 0.500 | **0.5625** | +0.063 ✓ |
-| Ref Strict | 0.4167 | **0.4792** | +0.063 ✓ |
+| Ref Loose (gold) | 0.500 | **0.5625** | +0.063 ✓ |
+| Ref Strict (gold) | 0.4167 | **0.4792** | +0.063 ✓ |
+| Ref Conciseness (gold) | 0.3516 | **0.4688** | +0.117 ✓ |
 | Keyword recall | 0.1333 | **0.1667** | +0.033 ✓ |
-| Regulatory Tone | 1.0 | 1.0 | flat ✓ |
+| **Judge correctness** | 0.100 | **0.2222** | **+0.122** ✓✓ |
+| Judge conciseness | 0.400 | **0.500** | +0.100 ✓ |
+| Judge tone | 0.900 | **1.000** | +0.100 ✓ |
+| Judge refs-faithfulness | **0.556** | 0.300 | **−0.256** ✗ |
 | Latency p50 (ms) | 112 | 15,603 | +15.5 s (Sonnet cost) |
-| **Judge correctness** | _0.25 (R99.2 live baseline)_ | _A/B in-flight at merge_ | — |
 
-The judge-correctness A/B (the headline axis) is re-measured live post-deploy
-(`evals.regenold.graphrag_ab --judge` + `evals.bench.representative_100`); the
-synthesis path is expected to lift correctness from the R99.2 verbatim floor of
-0.25 toward the paper's GraphReader_base ≈0.72, since the synthesised answer
-directly answers the question.
+**Headline: synthesis more than doubles judge answer-correctness (0.10 → 0.222)**
+on the GT rows — the verbatim baseline's 0.10 confirms R99.2's 0.25-floor
+finding (here even lower on the live GT set). Every competition-rubric axis
+moves the right way: correctness ↑, references-vs-gold (loose/strict/concise) ↑,
+conciseness ↑, tone ↑.
+
+**The one trade — judge refs-faithfulness −0.256 (0.556 → 0.300):** verbatim
+*trivially* satisfies the "does the prose describe the cited article" check
+because the prose **is** the article text; a synthesised answer cites the right
+articles (deterministic references-vs-gold went UP) but describes them more
+loosely. This is the project's known-hardest axis (R76 floor 0.20-0.23) and
+n=10 is noisy. It is NOT a direct Regenold rubric axis (the rubric scores
+*references-vs-gold*, which improved). Tracked as **R101**: tune the R69
+describe-every-cite prompt rule + R72 reconcile for synthesis answers.
+
+### Live post-deploy confirmation (Railway, prod wrapper)
+
+The two R99.2 problem cases now synthesise the answer instead of dumping
+verbatim (`stage2_polish=true`, conf 0.7, `retrieval_path=neo4j` — verbatim
+correctly skipped):
+
+* **gt_01** "What risk categories…?" → *"The EU AI Act establishes two primary
+  risk tiers: prohibited practices (Article 5) and high-risk systems (Article 6
+  referencing Annex III), with prohibited AI covering eight banned
+  categories…"* (R99.2 verbatim returned Art. 6 classification prose, missing
+  the taxonomy).
+* **gt_02** "What practices are prohibited?" → *"Article 5 prohibits eight
+  categories outright: (a) subliminal… (b) exploitation of vulnerabilities…"*
+  (R99.2 verbatim was char-cap-truncated, missing social scoring + biometric).
+
+A full live representative-100 + judge re-run is the next measurement
+(`evals.regenold.graphrag_ab --judge` against the live endpoint +
+`evals.bench.representative_100`).
 
 ### Verification gates
 
@@ -5286,6 +5317,16 @@ directly answers the question.
   spurious 429s in late-running tests).
 * davidath bench (476) — see scorecard above; net rubric-positive, gates
   cleared.
+* `evals.regenold.runner` (276-scenario local) — **255/255 (100%)**, up from
+  R98/R99's **246/255**: the 9 long-standing `risk_classification` failures
+  (verdict-word misses) were caused by verbatim **overwriting** the engine's
+  curated risk verdict; under R100 those questions route to SYNTHESIS, verbatim
+  is skipped, and the deterministic verdict prose (with "prohibited" /
+  "high-risk" verdict words) ships → `risk_classification` 17/17.
+  ref_format / sentence_cap / refs_within_max all 255/255.
+* `evals.regenold.runner_v2 --local --probe-oos` — **21/21 PASS, 0 leaks**
+  (R34 P0 + R47-E + R54.1-C2 + injection + other-regulation): synthesis-default
+  did not broaden scope.
 * Multi-turn 20/20; Tone 1.0.
 
 ### Production deploy + rollback
