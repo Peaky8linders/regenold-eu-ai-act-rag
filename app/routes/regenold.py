@@ -3810,7 +3810,21 @@ def regenold_eu_ai_act_ask(
                 or "high-risk" in q_low
                 or "high risk" in q_low
             )
-            if _has_listing_intent and _has_hrais_anchor:
+            # R96 — gate the 22-ref HRAIS-listing lift OFF for multi-turn
+            # finals. The r95-live representative-100 run showed the
+            # listing intent ("which articles set them out") legitimately
+            # fires on the final coreferent turn, but the system is often
+            # limited-risk (a rule-based advisor / usage-prediction tool
+            # whose Turn-1 was classified below high-risk) while Art. 6
+            # leaked into candidates — so the full 22-article high-risk
+            # chain got dumped on small-gold multi-turn rows (mt_042
+            # pred=22 gold=3; mt_041 pred=22 gold=5; mt_038 pred=22
+            # gold=7), tanking the refs precision axis. The 10-ref base
+            # still applies to multi-turn. Single-turn davidath "list
+            # every HRAIS article" scenarios are unaffected — the
+            # davidath ref-scored set has no multi-turn scenario rows, so
+            # this is davidath-neutral.
+            if _has_listing_intent and _has_hrais_anchor and not _is_multiturn:
                 _effective_max_refs = 22
                 try:
                     from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415

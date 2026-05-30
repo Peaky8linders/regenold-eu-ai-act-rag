@@ -76,8 +76,14 @@ def _r77_enable_stage2_polish(monkeypatch: pytest.MonkeyPatch) -> None:
     which is distinct from :func:`_stage2_provider_enabled` (tested by
     ``TestStage2ProviderGate``), so the provider-gate tests are unaffected.
     ``reset_anthropic_env`` does not clear this var, so it survives there.
+
+    R96 — also disable the verbatim surface so ``_stage2_polish_enabled``
+    falls through to ``P2P_GRAPH_RAG_ENABLE_STAGE2`` (the gate now
+    short-circuits OFF under verbatim, since the route discards Stage-2
+    prose there).
     """
     monkeypatch.setenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "1")
+    monkeypatch.setenv("REGENOLD_VERBATIM_ANSWER", "0")
 
 
 # ─── 1. Stage-2 gate accepts both providers ──────────────────────────────────

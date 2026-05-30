@@ -37,8 +37,16 @@ def _disable_r87e_stage2_gate(monkeypatch):
     contexts these tests construct (nodes_traversed=0 → conf 0.3).
     These tests pre-date R87-E and assert Stage-2 polish behaviour
     directly; disable the gate so the assertions still hold. R87-E
-    has its own coverage in ``test_r87cde_subpoint_roleduty_stage2gate.py``."""
+    has its own coverage in ``test_r87cde_subpoint_roleduty_stage2gate.py``.
+
+    R96 — also disable the verbatim surface + force the Stage-2 master
+    switch ON so ``_stage2_polish_enabled`` resolves True (the gate now
+    short-circuits OFF under verbatim, which the route uses to skip the
+    discarded Stage-2 polish). These tests assert Stage-2 drift-fallback
+    behaviour directly."""
     monkeypatch.setenv("REGENOLD_STAGE2_MIN_CONFIDENCE", "0")
+    monkeypatch.setenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "1")
+    monkeypatch.setenv("REGENOLD_VERBATIM_ANSWER", "0")
 
 import pytest
 

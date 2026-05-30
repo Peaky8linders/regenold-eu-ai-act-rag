@@ -501,7 +501,32 @@ def _stage2_polish_enabled() -> bool:
     are addressed by R69's rule 10 (describe every cited Article),
     R49-A's grounded-prose substitute in the consistency guard, and
     the multiple R49/R50/R54-Q2/R62/R65 refusal-marker extensions.
+
+    R96 — verbatim short-circuit. When the verbatim exact-text answer
+    surface is enabled (``REGENOLD_VERBATIM_ANSWER``, default ON since
+    R94), the route REPLACES ``GraphRAGResponse.answer`` with the
+    verbatim EUR-Lex provision text *after* the engine returns — so the
+    Stage-2 polished prose never reaches the wire. The r95-live
+    representative-100 run proved this on every ref-resolving row: the
+    shipped answer is verbatim ("Article N: 1. …") whether or not
+    Stage-2 fired, while the 34 rows that ran Stage-2 paid a 21 s median
+    (44 s max) wrapper round-trip for prose that was discarded, and 40%
+    of rows additionally tripped the consistency guard. References are
+    likewise Stage-2-independent under verbatim (``_reconcile_references
+    _to_prose`` is skipped for scenario/multi-turn, and QA refs come from
+    the verbatim refs-reconcile). So running Stage-2 under verbatim is
+    pure latency + timeout risk for zero answer/ref change. Skip it.
+    Operators who turn verbatim OFF (``REGENOLD_VERBATIM_ANSWER=0``)
+    restore Stage-2 polish automatically; davidath is byte-identical
+    either way (the TestClient bench never lands Stage-2 — no provider).
     """
+    if os.getenv("REGENOLD_VERBATIM_ANSWER", "1").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        return False
     return os.getenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "1").strip().lower() in (
         "1",
         "true",

@@ -156,6 +156,16 @@ class TestEmptyStage2Output:
     """An empty / whitespace-only Stage-2 polish must be treated as a
     failure (return None) and the stage2_call_failed flag set."""
 
+    @pytest.fixture(autouse=True)
+    def _enable_stage2_no_verbatim(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """R96 — ``_stage2_polish_enabled`` short-circuits OFF under the
+        verbatim surface (default ON), which would make these route-level
+        Stage-2-failure assertions skip Stage-2 entirely. Disable verbatim
+        + force the master switch ON so the Stage-2 path runs and the
+        ``stage2_call_failed`` flag is exercised."""
+        monkeypatch.setenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "1")
+        monkeypatch.setenv("REGENOLD_VERBATIM_ANSWER", "0")
+
     @pytest.mark.parametrize("empty_text", ["", "   ", "\n  \n", "\t  \t"])
     def test_empty_text_treated_as_failure(self, empty_text: str) -> None:
         """``_claude_max_enhance_answer`` returns None when the wrapper

@@ -80,8 +80,15 @@ def _r77_enable_stage2_polish(monkeypatch: pytest.MonkeyPatch) -> None:
     mocked provider. Force the master switch ON so they keep testing
     Stage-2 behaviour; the provider + needs-enhancement gates still apply,
     so the "Stage-2 skipped" tests in this module still skip correctly.
+
+    R96 — ``_stage2_polish_enabled`` now also short-circuits OFF when the
+    verbatim exact-text surface is enabled (``REGENOLD_VERBATIM_ANSWER``,
+    default ON), because the route discards Stage-2 prose under verbatim.
+    To keep exercising the Stage-2 path here, disable verbatim so the
+    gate falls through to the ENABLE_STAGE2 switch.
     """
     monkeypatch.setenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "1")
+    monkeypatch.setenv("REGENOLD_VERBATIM_ANSWER", "0")
 
 
 class TestStage1AlwaysDeterministic:
