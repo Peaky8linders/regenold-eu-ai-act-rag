@@ -40,6 +40,10 @@ _EXPLICIT_REF_RE = re.compile(
     re.IGNORECASE,
 )
 
+# A lettered list-item marker (``: (a) `` / ``; (h) ``) — used to split a
+# paragraph chapeau from its enumerated points (R97).
+_LETTER_ITEM_RE = re.compile(r"[:;]\s+\([a-z]{1,4}\)\s")
+
 
 def _label(spec: _refs.RefSpec) -> str:
     """Regulation-style label: ``Article 111(2)(a)`` / ``Annex IV(2)``."""
@@ -64,6 +68,49 @@ def _explicit_refs_in_question(question: str) -> list[str]:
     if not question:
         return []
     return [m.group(0) for m in _EXPLICIT_REF_RE.finditer(question)]
+
+
+def _prohibition_framed(spec: _refs.RefSpec, leaf_text: str) -> str:
+    """Re-attach a paragraph's prohibition chapeau to a lettered sub-point.
+
+    R97 — a lettered leaf of Article 5(1) ("(h) the use of 'real-time'
+    remote biometric identification … unless and in so far as such use is
+    strictly necessary …") read in isolation INVERTS the law: it reads as
+    permitted-with-exceptions, when the operative "The following AI
+    practices shall be prohibited:" is the paragraph-1 chapeau, not the
+    leaf. ``get_provision_text`` resolves the leaf bare, so the verbatim
+    answer described the prohibited practice but never framed it as
+    prohibited (the live-judge "Bug 2" reintroduced under verbatim, since
+    verbatim bypasses the KB stub the R94 citation-faithfulness line fixed).
+
+    When the leaf's parent paragraph carries a 'prohibited' chapeau and the
+    leaf doesn't already, prepend the verbatim chapeau + the leaf's letter
+    marker. Scoped to prohibition chapeaux (Article 5(1) is the Act's only
+    "shall be prohibited:" enumeration) so the davidath blast radius is
+    just Art. 5(1)(x) leaf quotes. Fail-soft: returns ``leaf_text``
+    unchanged on any miss.
+    """
+    subs = spec.subpoints
+    if len(subs) < 2 or subs[0] is None or subs[1].isdigit():
+        return leaf_text  # not a lettered leaf under a numbered paragraph
+    if "prohibit" in leaf_text.lower():
+        return leaf_text  # already carries the framing
+    parent = _refs.RefSpec(
+        article_number=spec.article_number,
+        annex_roman=spec.annex_roman,
+        subpoints=(subs[0],),
+    )
+    try:
+        para = get_provision_text(_refs._format_internal(parent))  # noqa: SLF001
+    except _refs.InvalidRefError:
+        return leaf_text
+    if not para or "prohibit" not in para.lower():
+        return leaf_text
+    m = _LETTER_ITEM_RE.search(para)
+    chapeau = para[: m.start() + 1].strip() if m else ""
+    if "prohibit" not in chapeau.lower():
+        return leaf_text
+    return f"{chapeau} ({subs[1].lower()}) {leaf_text}"
 
 
 def build_verbatim_answer(
@@ -146,6 +193,12 @@ def build_verbatim_answer_with_refs(
                 )
                 parent = _refs._format_internal(spec)  # noqa: SLF001
                 text = select_relevant_paragraphs(parent, question, para_chars)
+            else:
+                # R97 — re-attach the prohibition chapeau to a lettered
+                # prohibition-list leaf (Art. 5(1)(a)-(h)) so the verbatim
+                # answer frames the practice as prohibited, not the
+                # meaning-inverting bare leaf. No-op for any other leaf.
+                text = _prohibition_framed(spec, text)
         else:
             # Article/annex-level ref — quote the question-relevant
             # paragraph(s) verbatim (bounded), not the whole article.

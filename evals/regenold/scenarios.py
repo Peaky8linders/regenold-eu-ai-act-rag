@@ -230,13 +230,22 @@ def _verdict_high_risk(body: dict) -> bool:
 
 
 def _verdict_prohibited(body: dict) -> bool:
-    """Answer claims the system IS prohibited (positive verdict)."""
+    """Answer claims the system IS prohibited (positive verdict).
+
+    R97 — the deployed verbatim answer mode quotes the statute's own
+    verdict phrasing, "The following AI practices **shall be prohibited**:
+    (h) … real-time RBI …", rather than the pre-verbatim engine's
+    paraphrase "X is prohibited under Article 5". Recognise "shall be
+    prohibited" so the faithful exact-text verdict scores as a prohibition
+    (the "not prohibited" negative guard below still wins on a carve-out).
+    """
     answer = (body.get("answer") or "").lower()
     if any(neg in answer for neg in ("not prohibited", "is not prohibited", "are not prohibited")):
         return False
     return any(
         marker in answer
         for marker in (
+            "shall be prohibited",
             "is prohibited",
             "are prohibited",
             "is banned",
