@@ -64,12 +64,16 @@ def _query(intent: str = "article_lookup") -> GraphQuery:
 
 
 class TestSelectAnswerMode:
-    def test_simple_qa_is_verbatim(self) -> None:
+    def test_simple_qa_is_verbatim_when_synthesis_default_off(self, monkeypatch) -> None:
+        # R100 — the R97 "simple QA → verbatim" path is preserved under the
+        # rollback flag REGENOLD_SYNTHESIS_DEFAULT=0.
+        monkeypatch.setenv("REGENOLD_SYNTHESIS_DEFAULT", "0")
         d = select_answer_mode(_SIMPLE_Q, history_turn_count=1)
         assert d.mode is AnswerMode.VERBATIM
         assert d.reason == "simple_qa"
 
-    def test_definitional_is_verbatim(self) -> None:
+    def test_definitional_is_verbatim_when_synthesis_default_off(self, monkeypatch) -> None:
+        monkeypatch.setenv("REGENOLD_SYNTHESIS_DEFAULT", "0")
         assert select_answer_mode("What is an AI system?").mode is AnswerMode.VERBATIM
 
     def test_multi_turn_marker_is_synthesis(self) -> None:
@@ -153,8 +157,12 @@ class TestEngineRoutingUnderVerbatim:
         assert result.answer == _SYNTH
         assert (result.graph_stats or {}).get("stage2_landed") is True
 
-    def test_simple_qa_skips_stage2_under_verbatim(self, _verbatim_on) -> None:
-        """Simple single-turn QA stays on the fast deterministic path."""
+    def test_simple_qa_skips_stage2_when_synthesis_default_off(
+        self, _verbatim_on, monkeypatch
+    ) -> None:
+        """R100 rollback — with REGENOLD_SYNTHESIS_DEFAULT=0 simple single-turn
+        QA stays on the fast deterministic verbatim path (R97 behaviour)."""
+        monkeypatch.setenv("REGENOLD_SYNTHESIS_DEFAULT", "0")
         with (
             patch("app.llm.openai_wrapper_provider.is_openai_wrapper_enabled",
                   return_value=True),
@@ -164,6 +172,20 @@ class TestEngineRoutingUnderVerbatim:
             result = ask_compliance_question(GraphRAGRequest(question=_SIMPLE_Q))
         mock_wrapper.assert_not_called()
         assert (result.graph_stats or {}).get("stage2_landed") is False
+
+    def test_simple_qa_fires_stage2_by_default(self, _verbatim_on) -> None:
+        """R100 default — simple factual QA routes to Sonnet synthesis (the
+        verbatim quote scored 0.25 on answer-correctness in R99.2)."""
+        with (
+            patch("app.llm.openai_wrapper_provider.is_openai_wrapper_enabled",
+                  return_value=True),
+            patch("app.engines.graph_rag._openai_wrapper_complete_for_graph_rag",
+                  return_value=_SYNTH) as mock_wrapper,
+        ):
+            result = ask_compliance_question(GraphRAGRequest(question=_SIMPLE_Q))
+        mock_wrapper.assert_called_once()
+        assert result.answer == _SYNTH
+        assert (result.graph_stats or {}).get("stage2_landed") is True
 
     def test_complex_single_turn_fires_stage2_under_verbatim(self, _verbatim_on) -> None:
         with (
@@ -269,7 +291,12 @@ class TestRouteVerbatimSkipOnSynthesis:
         # Stage-2 landed → verbatim overwrite skipped → NOT the verbatim path.
         assert body.get("retrieval_path") != "verbatim_exact_text", body.get("retrieval_path")
 
-    def test_simple_qa_answer_is_verbatim(self) -> None:
+    def test_simple_qa_answer_is_verbatim_when_synthesis_default_off(
+        self, monkeypatch
+    ) -> None:
+        # R100 rollback — REGENOLD_SYNTHESIS_DEFAULT=0 restores the R97
+        # verbatim provision dump for simple single-turn QA.
+        monkeypatch.setenv("REGENOLD_SYNTHESIS_DEFAULT", "0")
         c = _client()
         r = c.post(
             "/api/v1/regenold/eu-ai-act/ask?include_telemetry=true",
@@ -279,6 +306,19 @@ class TestRouteVerbatimSkipOnSynthesis:
         assert r.status_code == 200, r.json()
         body = r.json()
         # Single-turn QA → router VERBATIM → verbatim provision dump on the wire.
+        assert body.get("retrieval_path") == "verbatim_exact_text", body.get("retrieval_path")
+
+    def test_explicit_quote_request_is_verbatim_by_default(self) -> None:
+        # R100 — an explicit "exact text" request keeps the verbatim quote
+        # even under the synthesis default.
+        c = _client()
+        r = c.post(
+            "/api/v1/regenold/eu-ai-act/ask?include_telemetry=true",
+            headers={"X-Regenold-Api-Key": "regenold-test-key"},
+            json=[{"role": "user", "content": "What is the exact text of Article 13?"}],
+        )
+        assert r.status_code == 200, r.json()
+        body = r.json()
         assert body.get("retrieval_path") == "verbatim_exact_text", body.get("retrieval_path")
 
 

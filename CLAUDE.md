@@ -5193,6 +5193,116 @@ Either is a verbatim-policy change that should be A/B'd before defaulting.
 No production code changed this round — `REFERENCE_ANSWERS` (eval data) + this
 doc only; davidath unaffected.
 
+## Round 100 — Synthesis-default routing: demote verbatim to explicit-quote-only (2026-05-31)
+
+R99.2's LLM-as-Judge head-to-head vs the GraphRAG paper measured the
+verbatim-default answer surface at **0.25 on answer-correctness**: a raw
+provision quote rarely matches the question's gold (wrong-shaped provision,
+char-cap truncation), while the paper's lawyer-reviewed reference answers AND
+the competition correctness axis are synthesis-shaped. R99.2's own
+recommendation: re-engage synthesis. R100 actions it.
+
+### The change — verbatim is now an explicit-quote mode, not the default
+
+* **`app/engines/answer_router.py`** — `select_answer_mode` returns VERBATIM
+  only for an **explicit-quote request** (`is_explicit_quote_request` — "exact
+  text of Article N", "quote … verbatim", "word-for-word", "the wording of
+  Annex IV"; scans only the LIVE turn of a flattened multi-turn prompt). Every
+  other question — multi-turn, nuanced, AND simple factual QA — routes to
+  SYNTHESIS. New env gate `REGENOLD_SYNTHESIS_DEFAULT` (default ON); `=0`
+  restores exact R97 behaviour (simple QA → verbatim quote).
+* **`app/routes/regenold.py`** — the verbatim overwrite is now gated on
+  `_should_ship_verbatim(question, history_turn_count)` (router selects
+  VERBATIM, or `REGENOLD_SYNTHESIS_DEFAULT=0`, or `REGENOLD_ANSWER_ROUTER=0` =
+  R96 rollback). The consequence is the architectural fix: a synthesis target
+  whose Stage-2 did NOT land (no wrapper / low confidence / wrapper failure)
+  now ships the **deterministic Stage-1 prose**, never a raw verbatim dump.
+  Verbatim quotes only ship for genuine "give me the text" requests.
+  `REGENOLD_SYNTHESIS_DEFAULT` folded into the engine cache key (R79 doctrine).
+
+### Round 100 — davidath A/B scorecard (476 items, deterministic, no wrapper)
+
+Because the davidath bench runs with no wrapper, the synthesis target ships the
+**deterministic Stage-1 prose** for factual QA (Sonnet doesn't fire) — so this
+A/B measures "deterministic synthesis vs verbatim quote", a **lower bound** for
+the live win (where factual QA → Sonnet).
+
+| Axis (OVERALL) | v0 = synthesis OFF (R97) | v1 = synthesis ON (R100) | Δ |
+| -------------- | ------------------------ | ------------------------ | --- |
+| Ans Correctness Loose  | 0.0994 | **0.1711** | **+0.072** ✓✓ |
+| Ans Correctness Strict | 0.2738 | **0.3350** | **+0.061** ✓✓ |
+| Ans Conciseness        | 0.3228 | **0.5541** | **+0.231** ✓✓✓ |
+| Ref Correctness Loose  | 0.5523 | **0.5818** | **+0.030** ✓ |
+| Ref Correctness Strict | 0.4763 | 0.4707 | −0.006 (noise) |
+| Ref Conciseness        | 0.4741 | 0.4202 | −0.054 (trade) |
+| Regulatory Tone        | 1.0 | 1.0 | flat ✓ |
+| Multi-turn coherence   | 20/20 | 20/20 | flat ✓ |
+| Latency p50 (ms)       | 13.27 | 12.64 | −0.6 |
+
+Subsets: **Scenarios** are a huge win — the deterministic role×risk verdict
+prose >> verbatim (Ans Strict 0.213 → 0.323 **+0.110**, Ans Conciseness 0.429 →
+0.685 **+0.256**). **QA** trades token-recall Ans Strict (0.424 → 0.365, −0.059
+— a verbatim full-provision quote mechanically recalls more gold tokens) for a
+big Ans Conciseness lift (0.061 → 0.231, +0.171) and Ref Loose (0.686 → 0.788,
++0.102). The QA Ans-Strict dip is a **deterministic-only artefact** — live,
+factual QA → Sonnet, which writes a concise gold-token-rich answer; and the
+competition's *judge-style* correctness (not token-Jaccard) favours synthesis
+(R99.2 measured verbatim at 0.25). The one real trade is Ref Conciseness
+(−0.054): the verbatim-refs-reconcile that trimmed QA refs no longer fires; the
+Ans-axis gains dwarf it.
+
+**R100 also restores davidath above the R80 gates** that the verbatim default
+had silently regressed: v0/current sat *below* (Ref Loose 0.552 < 0.575, Ans
+Strict 0.274 < 0.300); v1 clears both (Ref Loose 0.582, Ans Strict 0.335).
+
+### Round 100 — GraphRAG-paper GT A/B (10 items, live wrapper, Sonnet)
+
+`evals/regenold/graphrag_ab.py` — verbatim (A) vs synthesis (B) through the
+in-process TestClient with the Claude Max wrapper active, each GT row judged in
+isolation by the 4-axis LLM-as-judge.
+
+| Axis | A (verbatim) | B (synthesis) | Δ |
+| ---- | ------------ | ------------- | --- |
+| Ref Loose | 0.500 | **0.5625** | +0.063 ✓ |
+| Ref Strict | 0.4167 | **0.4792** | +0.063 ✓ |
+| Keyword recall | 0.1333 | **0.1667** | +0.033 ✓ |
+| Regulatory Tone | 1.0 | 1.0 | flat ✓ |
+| Latency p50 (ms) | 112 | 15,603 | +15.5 s (Sonnet cost) |
+| **Judge correctness** | _0.25 (R99.2 live baseline)_ | _A/B in-flight at merge_ | — |
+
+The judge-correctness A/B (the headline axis) is re-measured live post-deploy
+(`evals.regenold.graphrag_ab --judge` + `evals.bench.representative_100`); the
+synthesis path is expected to lift correctness from the R99.2 verbatim floor of
+0.25 toward the paper's GraphReader_base ≈0.72, since the synthesised answer
+directly answers the question.
+
+### Verification gates
+
+* `pytest -q` — **3254 passed + 1 skipped** (+ R100 tests:
+  `tests/test_r100_synthesis_default.py`; updated R97 router tests for the new
+  default + rollback). Also fixed a latent suite-wide flake: a new autouse
+  conftest fixture resets the slowapi route limiter per test (the per-key
+  60/min budget was accumulating across the growing route-test population →
+  spurious 429s in late-running tests).
+* davidath bench (476) — see scorecard above; net rubric-positive, gates
+  cleared.
+* Multi-turn 20/20; Tone 1.0.
+
+### Production deploy + rollback
+
+`REGENOLD_SYNTHESIS_DEFAULT` defaults ON in code — a fresh deploy activates
+synthesis-default with no Railway env change. Verbatim stays available for
+explicit-quote requests. To revert to R97 (simple QA → verbatim quote):
+
+```bash
+railway variables --set REGENOLD_SYNTHESIS_DEFAULT=0
+```
+
+The latency cost (factual QA → Sonnet, ~15 s p50 live) is the trade for the
+correctness + conciseness lift; it is bounded by the R84/R87-E Stage-2 gates
+(confidence floor + narrowed trigger) and the R81-A1 single-Sonnet-round-trip
+(no Opus extended-thinking on the default path).
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

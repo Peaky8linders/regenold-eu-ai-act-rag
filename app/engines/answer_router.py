@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import enum
 import os
+import re
 from dataclasses import dataclass
 
 from app.engines.question_complexity import is_complex_question
@@ -45,6 +46,33 @@ _SYNTHESIS_INTENTS = frozenset({"gap_analysis", "cross_framework"})
 # ``routes/regenold.py::_build_question_from_history``). Present only when
 # prior conversation turns exist, so it is the unambiguous multi-turn signal.
 _MULTI_TURN_MARKER = "Conversation so far:"
+
+# The route's live-turn marker inside a flattened multi-turn prompt. When
+# present, explicit-quote detection scans only the LIVE (final) turn — a
+# prior turn that said "verbatim" must not force the final turn to quote.
+# Mirrors the R60.1 question_complexity "scan only post-Latest-question
+# slice" pattern.
+_LIVE_QUESTION_MARKER = "Latest question:\n"
+
+# R100 — explicit "give me the exact provision text" request. Only here is
+# a verbatim Official-Journal quote the answer the user actually asked for
+# ("What is the exact text of Article 13?", "quote Article 5 verbatim",
+# "what does Annex IV say word-for-word"). Everything else wants a
+# synthesised direct answer (the competition correctness axis + the
+# GraphRAG paper's reference answers are synthesis-shaped; R99.2 measured
+# verbatim answer-correctness at 0.25). Deliberately tight so normal
+# definitional / obligational questions ("What does Article 13 require?",
+# "What is the definition of high risk?") do NOT match.
+_EXPLICIT_QUOTE_RE = re.compile(
+    r"\bverbatim\b"
+    r"|\bword[\s-]for[\s-]word\b"
+    r"|\b(?:exact|full|literal|precise|actual|original|complete)\s+"
+    r"(?:text|wording|words|language|provision|quote|citation|paragraph)\b"
+    r"|\bquote\s+(?:me\s+)?(?:the\s+)?(?:exact\s+|full\s+|verbatim\s+)?"
+    r"(?:text|wording|article|provision|annex|paragraph)\b"
+    r"|\b(?:text|wording|language)\s+of\s+(?:article|annex|art\.?)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -80,6 +108,42 @@ def answer_router_enabled() -> bool:
     one-env rollback.
     """
     return _env_on("REGENOLD_ANSWER_ROUTER", "1")
+
+
+def synthesis_default_enabled() -> bool:
+    """``REGENOLD_SYNTHESIS_DEFAULT`` — default ON (R100).
+
+    When ON, simple factual QA routes to SYNTHESIS (a synthesised direct
+    answer — Sonnet when the wrapper is wired, the deterministic Stage-1
+    answer otherwise) instead of a verbatim provision dump. Verbatim is
+    reserved for explicit-quote requests (see :func:`is_explicit_quote_request`).
+
+    Motivation: R99.2's LLM-as-Judge head-to-head vs the GraphRAG paper
+    measured verbatim answer-correctness at **0.25** — a raw provision
+    quote rarely matches the question's gold (wrong-shaped provision,
+    char-cap truncation). The paper's own lawyer-reviewed reference
+    answers, and the competition correctness axis, are synthesis-shaped.
+
+    Set to ``0`` to restore exact R97 behaviour (simple QA → verbatim
+    quote) — the A/B baseline knob and one-env rollback.
+    """
+    return _env_on("REGENOLD_SYNTHESIS_DEFAULT", "1")
+
+
+def is_explicit_quote_request(question: str) -> bool:
+    """True when the user explicitly asked for the verbatim provision text.
+
+    Scans only the LIVE (final) turn of a flattened multi-turn prompt so a
+    prior turn that mentioned "verbatim" can't force the final turn to
+    quote. Fail-soft: ``False`` on empty input.
+    """
+    if not question:
+        return False
+    live = question
+    idx = question.rfind(_LIVE_QUESTION_MARKER)
+    if idx >= 0:
+        live = question[idx + len(_LIVE_QUESTION_MARKER):]
+    return bool(_EXPLICIT_QUOTE_RE.search(live))
 
 
 def is_multi_turn(question: str, history_turn_count: int) -> bool:
@@ -122,6 +186,12 @@ def select_answer_mode(
     try:
         if not question or not question.strip():
             return RouteDecision(AnswerMode.VERBATIM, "empty_question")
+        # R100 — explicit "exact text / verbatim / quote the wording"
+        # requests: the verbatim provision quote IS the answer the user
+        # asked for. Checked FIRST (on the live turn) so it wins even in a
+        # multi-turn conversation.
+        if is_explicit_quote_request(question):
+            return RouteDecision(AnswerMode.VERBATIM, "explicit_quote")
         if is_multi_turn(question, history_turn_count):
             return RouteDecision(AnswerMode.SYNTHESIS, "multi_turn")
         if is_complex_question(question, history_turn_count):
@@ -129,6 +199,12 @@ def select_answer_mode(
         intent = getattr(query, "intent", None)
         if intent in _SYNTHESIS_INTENTS:
             return RouteDecision(AnswerMode.SYNTHESIS, f"intent:{intent}")
+        # R100 — simple factual QA. A synthesised direct answer beats a
+        # verbatim provision dump on the correctness + conciseness axes
+        # (R99.2 judge: verbatim answer-correctness 0.25). Default to
+        # SYNTHESIS; REGENOLD_SYNTHESIS_DEFAULT=0 restores R97 (verbatim).
+        if synthesis_default_enabled():
+            return RouteDecision(AnswerMode.SYNTHESIS, "synthesis_default")
         return RouteDecision(AnswerMode.VERBATIM, "simple_qa")
     except Exception:  # noqa: BLE001 — never break the route; default deterministic
         return RouteDecision(AnswerMode.VERBATIM, "router_error")

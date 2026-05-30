@@ -1070,6 +1070,10 @@ def _engine_cache_key(
             "REGENOLD_ANSWER_ROUTER",
             "REGENOLD_VERBATIM_ANSWER",
             "REGENOLD_STAGE2_MIN_CONFIDENCE_MULTITURN",
+            # R100 — synthesis-default routing flips the router's simple-QA
+            # decision (SYNTHESIS vs VERBATIM) → stage2 + answer, so it is
+            # part of the cache identity.
+            "REGENOLD_SYNTHESIS_DEFAULT",
         )
     )
     import json
@@ -1083,6 +1087,40 @@ def _engine_cache_key(
         f"history:{int(history_turn_count)}",
     ]).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()
+
+
+def _should_ship_verbatim(question: str, history_turn_count: int) -> bool:
+    """R100 — should the wire answer be the verbatim provision quote?
+
+    The verbatim overwrite fires ONLY when the answer router selects
+    VERBATIM — i.e. an explicit "give me the exact text" request, or
+    ``REGENOLD_SYNTHESIS_DEFAULT=0`` simple-QA, or the router is disabled
+    (``REGENOLD_ANSWER_ROUTER=0`` = R96 verbatim-only rollback).
+
+    For every other request (multi-turn, nuanced, or simple factual QA
+    under the R100 synthesis default) the answer is a SYNTHESIS target:
+    when Stage-2 landed the Sonnet answer already shipped; when it did NOT
+    (no wrapper / low confidence / wrapper failure) the deterministic
+    Stage-1 prose ships — never a raw verbatim dump, which the R99.2 judge
+    scored at 0.25 on answer-correctness.
+
+    Fail-soft: any exception returns ``True`` (the historical default —
+    verbatim never breaks the route).
+    """
+    try:
+        from app.engines.answer_router import (  # noqa: PLC0415
+            AnswerMode,
+            answer_router_enabled,
+            select_answer_mode,
+        )
+        if not answer_router_enabled():
+            return True  # R96 rollback: verbatim-only
+        decision = select_answer_mode(
+            question, history_turn_count=history_turn_count
+        )
+        return decision.mode is AnswerMode.VERBATIM
+    except Exception:  # noqa: BLE001 — verbatim is the safe default
+        return True
 
 
 # Closed-world refusal threshold. Below this, an answer with empty
@@ -4638,6 +4676,11 @@ def regenold_eu_ai_act_ask(
         and not _stage2_landed
         and references
         and retrieval_path != "no_match"
+        # R100 — only ship verbatim when the router selects VERBATIM
+        # (explicit-quote request / synthesis-default off / router off).
+        # For synthesis targets where Stage-2 didn't land, the
+        # deterministic Stage-1 prose ships instead of a raw quote.
+        and _should_ship_verbatim(question, _history_turn_count)
     ):
         try:
             from app.engines.verbatim_answer import (  # noqa: PLC0415

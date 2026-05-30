@@ -8,6 +8,10 @@ __pycache__/
 *.log
 .idea/
 .vscode/
+# Session-driven optimization scratch artefacts (eval probes, PDF
+# extracts, ad-hoc verification scripts) — never part of a PR.
+.evalout/
+scratch/
 *.egg-info/
 dist/
 build/

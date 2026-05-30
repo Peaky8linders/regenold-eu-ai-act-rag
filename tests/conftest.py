@@ -118,6 +118,35 @@ except ImportError:  # pragma: no cover — tested env always has this
     _regenold_module = None
 
 
+# R100 (2026-05-31) — reset the slowapi route rate-limiter between tests.
+# The route enforces a per-API-key budget (default 60/min). The full suite
+# shares one key (``regenold-test-key``) across hundreds of route POSTs
+# that all complete inside one ~50s window, so the per-key counter
+# accumulates and tips late-running route tests over the limit → HTTP 429
+# (e.g. test_regenold_integration's compound-role budget assertions read a
+# 429 body and fail on ``len(references)``). Several modules already reset
+# the limiter per-module (test_consistency_guard, test_retrieval_upgrades,
+# test_route_include_reasoning, …); this autouse fixture lifts that to the
+# whole suite so adding route tests in any round can't re-trip the ceiling.
+# Mirrors the R63-E / R84 reset-shared-state pattern above. No test asserts
+# a route 429, so a global reset is safe.
+try:
+    from app.rate_limit import limiter as _route_limiter
+except ImportError:  # pragma: no cover — tested env always has this
+    _route_limiter = None
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Clear the slowapi route limiter before each test (R100)."""
+    if _route_limiter is not None:
+        try:
+            _route_limiter.reset()
+        except Exception:  # noqa: BLE001 — never block a test on cleanup
+            pass
+    yield
+
+
 @pytest.fixture(autouse=True)
 def _reset_request_intent_cache():
     """Clear the per-request intent cache ContextVar between tests.
