@@ -146,6 +146,33 @@ REGENOLD_CITE_DESCRIBE_GUARD = "0"
 #   railway variables --set P2P_GRAPH_RAG_MAX_TOKENS=1024
 #   railway variables --set P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS=2500
 
+# Round 97 — adaptive verbatim-vs-synthesis routing (CODE DEFAULTS).
+#
+# R94/R96 made production effectively deterministic + verbatim: verbatim
+# mode ON (default) + R96's blanket "verbatim disables Stage-2" left the
+# Claude Max wrapper + Sonnet barely used. That is correct for simple
+# single-turn QA (a verbatim provision quote IS the answer) but wrong for
+# multi-turn / nuanced conversations the verbatim dump cannot answer
+# (coreference, role flips, conflict reconciliation, cross-framework).
+#
+# R97 decouples verbatim from Stage-2 and adds an answer-mode router
+# (app/engines/answer_router.py): multi-turn + nuanced questions route to
+# Sonnet synthesis (via the wrapper / Cloudflare tunnel), simple QA stays
+# on the fast deterministic verbatim path. The route keeps the synthesised
+# answer (its verbatim overwrite is gated on stage2_landed).
+#
+# Both knobs default ON in code — no dashboard var needed (the R80.2
+# dashboard-override lesson: code defaults are the reliable activation
+# path). Documented here for operator visibility + rollback:
+#   * REGENOLD_ANSWER_ROUTER (default ON) — set 0 to restore exact R96
+#     behaviour (verbatim never runs Stage-2 = full deterministic).
+#   * REGENOLD_STAGE2_MIN_CONFIDENCE_MULTITURN (default 0.3) — the lower
+#     confidence floor for multi-turn synthesis (single-turn keeps the
+#     R87-E 0.5 floor); coreferent follow-ups retrieve sparsely yet still
+#     benefit from Sonnet synthesis across the prior turns.
+# Roll back the whole round with:
+#   railway variables --set REGENOLD_ANSWER_ROUTER=0
+
 # Round 52 / Round 94 — Stage-0 intent classifier provider selection.
 #
 # R94: Groq Llama 3.3 70B is now the DEFAULT Stage-0 provider whenever

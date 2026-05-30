@@ -1064,6 +1064,12 @@ def _engine_cache_key(
             "REGENOLD_ANNEX_APPLICABILITY_SEED",
             # R88-E — Art. 5 sub-point describer in stitch / augment paths
             "REGENOLD_SUBPOINT_DESCRIBER",
+            # R97 — adaptive verbatim-vs-synthesis routing. These flip the
+            # engine's stage2 decision (and therefore stage2_landed +
+            # answer), so they MUST be in the cache identity (R79 doctrine).
+            "REGENOLD_ANSWER_ROUTER",
+            "REGENOLD_VERBATIM_ANSWER",
+            "REGENOLD_STAGE2_MIN_CONFIDENCE_MULTITURN",
         )
     )
     import json
@@ -3187,9 +3193,13 @@ def regenold_eu_ai_act_ask(
             _ENGINE_CACHE.put(cache_key, rag_res)
     # R50 — surface the engine-side stage-2 outcome into the trace so
     # the judge can correlate "Sonnet polish landed" with output drift.
-    _trace_stage2(
-        bool((rag_res.graph_stats or {}).get("stage2_landed", False))
-    )
+    # R97 — also captured locally: when Stage-2 synthesis landed (a
+    # multi-turn / nuanced question routed to Sonnet), the verbatim
+    # overwrite below is SKIPPED so the synthesised answer reaches the
+    # wire. When Stage-2 was skipped / fell back, verbatim applies as the
+    # safe deterministic fallback.
+    _stage2_landed = bool((rag_res.graph_stats or {}).get("stage2_landed", False))
+    _trace_stage2(_stage2_landed)
 
     # Round-36 issue #49 — classification short-circuit detection.
     # When ``_detect_classification_topic`` matches, the engine returns a
@@ -4614,9 +4624,18 @@ def regenold_eu_ai_act_ask(
     # gold short answers) — the accepted, env-reversible trade per the
     # user's "verbatim quote, drop caps" choice. Off-switch:
     # REGENOLD_VERBATIM_ANSWER=0.
+    #
+    # R97 — skip the verbatim overwrite when Stage-2 synthesis landed. A
+    # multi-turn / nuanced question routed to Sonnet (see
+    # answer_router.select_answer_mode) produced a synthesised answer that
+    # the verbatim provision-dump would otherwise clobber — defeating the
+    # whole point of routing it to the LLM. When Stage-2 was skipped or
+    # fell back (drift / contradiction / wrapper failure), ``_stage2_landed``
+    # is False and verbatim applies as the safe deterministic fallback.
     if (
         os.getenv("REGENOLD_VERBATIM_ANSWER", "1").strip().lower()
         in ("1", "true", "yes", "on")
+        and not _stage2_landed
         and references
         and retrieval_path != "no_match"
     ):

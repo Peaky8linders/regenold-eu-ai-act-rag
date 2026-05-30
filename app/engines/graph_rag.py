@@ -502,31 +502,21 @@ def _stage2_polish_enabled() -> bool:
     R49-A's grounded-prose substitute in the consistency guard, and
     the multiple R49/R50/R54-Q2/R62/R65 refusal-marker extensions.
 
-    R96 — verbatim short-circuit. When the verbatim exact-text answer
-    surface is enabled (``REGENOLD_VERBATIM_ANSWER``, default ON since
-    R94), the route REPLACES ``GraphRAGResponse.answer`` with the
-    verbatim EUR-Lex provision text *after* the engine returns — so the
-    Stage-2 polished prose never reaches the wire. The r95-live
-    representative-100 run proved this on every ref-resolving row: the
-    shipped answer is verbatim ("Article N: 1. …") whether or not
-    Stage-2 fired, while the 34 rows that ran Stage-2 paid a 21 s median
-    (44 s max) wrapper round-trip for prose that was discarded, and 40%
-    of rows additionally tripped the consistency guard. References are
-    likewise Stage-2-independent under verbatim (``_reconcile_references
-    _to_prose`` is skipped for scenario/multi-turn, and QA refs come from
-    the verbatim refs-reconcile). So running Stage-2 under verbatim is
-    pure latency + timeout risk for zero answer/ref change. Skip it.
-    Operators who turn verbatim OFF (``REGENOLD_VERBATIM_ANSWER=0``)
-    restore Stage-2 polish automatically; davidath is byte-identical
-    either way (the TestClient bench never lands Stage-2 — no provider).
+    R96 → R97 — verbatim coupling MOVED to the router. R96 made this gate
+    hard-return False whenever ``REGENOLD_VERBATIM_ANSWER`` was on, because
+    the route discarded Stage-2 prose under verbatim. That threw out the
+    multi-turn / nuanced cases where the verbatim dump CANNOT answer the
+    question (coreference, role flips, conflict reconciliation). R97
+    restores this gate to its pure ``P2P_GRAPH_RAG_ENABLE_STAGE2`` semantics
+    and moves the verbatim-vs-synthesis decision into
+    :func:`app.engines.answer_router.select_answer_mode`, called from
+    :func:`_two_stage_generate`. Under verbatim, Stage-2 now fires ONLY for
+    SYNTHESIS-routed requests (multi-turn / complex); the route keeps the
+    synthesised answer (its verbatim overwrite is gated on
+    ``stage2_landed``). Simple single-turn QA still takes the fast
+    deterministic verbatim path. davidath stays byte-identical (the
+    TestClient bench wires no Stage-2 provider, so Stage-2 never lands).
     """
-    if os.getenv("REGENOLD_VERBATIM_ANSWER", "1").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    ):
-        return False
     return os.getenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "1").strip().lower() in (
         "1",
         "true",
@@ -3645,7 +3635,38 @@ def _two_stage_generate(
     if not _stage2_provider_enabled():
         return kg_answer, False
 
-    if not _needs_stage2_enhancement(question, context, query):
+    # R97 — adaptive routing. Under verbatim mode (default ON), the route
+    # ships verbatim EUR-Lex text and discards Stage-2 prose UNLESS the
+    # router selects SYNTHESIS — in which case the route keeps the
+    # synthesised answer (its verbatim overwrite is gated on
+    # ``stage2_landed``). The router selects SYNTHESIS for multi-turn /
+    # nuanced questions the verbatim dump cannot answer. Outside verbatim
+    # mode, preserve the historical ``_needs_stage2_enhancement`` gate
+    # byte-for-byte.
+    _route_multi_turn = False
+    from app.engines.answer_router import (  # noqa: PLC0415
+        answer_router_enabled,
+        select_answer_mode,
+        verbatim_enabled,
+    )
+    if verbatim_enabled():
+        if not answer_router_enabled():
+            # REGENOLD_ANSWER_ROUTER=0 → exact R96 behaviour (verbatim
+            # never runs Stage-2). This is the A/B baseline + rollback.
+            return kg_answer, False
+        _decision = select_answer_mode(question, query=query,
+                                       history_turn_count=history_turn_count)
+        if not _decision.is_synthesis:
+            return kg_answer, False
+        _route_multi_turn = _decision.reason == "multi_turn"
+        try:
+            from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                record_note,
+            )
+            record_note(f"answer_route=synthesis:{_decision.reason}")
+        except Exception:  # noqa: BLE001 — fail-soft on trace
+            pass
+    elif not _needs_stage2_enhancement(question, context, query):
         return kg_answer, False
 
     # R87-E — confidence-gated Stage-2 skip.
@@ -3664,12 +3685,26 @@ def _two_stage_generate(
     # Env-gated REGENOLD_STAGE2_MIN_CONFIDENCE (default 0.5). Set to 0.0
     # to disable the gate entirely (R86 behaviour: polish on every row
     # that passes the prior gates).
+    #
+    # R97 — router-aware floor: multi-turn SYNTHESIS uses a lower floor
+    # (REGENOLD_STAGE2_MIN_CONFIDENCE_MULTITURN, default 0.3) because
+    # coreferent follow-ups retrieve sparsely, yet a Sonnet synthesis
+    # across the prior turns still beats a verbatim dump / generic floor.
+    # The drift + self-contradiction guards below still protect the output.
     try:
         _stage2_min_conf = float(
             os.getenv("REGENOLD_STAGE2_MIN_CONFIDENCE", "0.5")
         )
     except ValueError:
         _stage2_min_conf = 0.5
+    if _route_multi_turn:
+        try:
+            _mt_floor = float(
+                os.getenv("REGENOLD_STAGE2_MIN_CONFIDENCE_MULTITURN", "0.3")
+            )
+        except ValueError:
+            _mt_floor = 0.3
+        _stage2_min_conf = min(_stage2_min_conf, _mt_floor)
     if _stage2_min_conf > 0.0:
         _ctx_conf = _compute_confidence(context)
         if _ctx_conf < _stage2_min_conf:

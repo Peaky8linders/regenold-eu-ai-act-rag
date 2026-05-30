@@ -4,13 +4,12 @@ Two fixes derived from the r95-live representative-100 + LLM-judge run
 (production = verbatim R94 + R95-P0/P1, never previously live-judged
 together):
 
-* **Fix #1** — ``_stage2_polish_enabled`` short-circuits OFF when the
-  verbatim exact-text surface is enabled (``REGENOLD_VERBATIM_ANSWER``,
-  default ON). The route discards Stage-2 polish under verbatim, so
-  running it only adds wrapper latency + timeout risk for zero
-  answer/ref change (r95-live: every shipped answer was verbatim
-  regardless of stage2_polish; 34 rows paid 21 s median for discarded
-  prose).
+* **Fix #1 (R97 superseded)** — R96 short-circuited
+  ``_stage2_polish_enabled`` OFF whenever verbatim was on. R97 decoupled
+  that: the gate is now pure ``P2P_GRAPH_RAG_ENABLE_STAGE2`` and the
+  verbatim-vs-synthesis decision moved into the answer router (see
+  ``tests/test_r97_answer_router.py``). The tests below now pin the R97
+  contract: ``_stage2_polish_enabled`` ignores verbatim.
 
 * **Fix #2** — the HRAIS-listing ref-budget lift (10 → 22) no longer
   fires on multi-turn finals. r95-live showed limited-risk multi-turn
@@ -30,33 +29,40 @@ from app.engines.graph_rag import _stage2_polish_enabled
 from app.main import app
 
 
-# ─── Fix #1 — verbatim short-circuits Stage-2 ────────────────────────────────
+# ─── Fix #1 (R97 contract) — gate decoupled from verbatim ────────────────────
 
 
 class TestStage2VerbatimShortCircuit:
-    def test_verbatim_on_disables_stage2(self, monkeypatch) -> None:
-        """Verbatim ON (default) → Stage-2 gate OFF even with the master
-        switch explicitly ON. The route discards Stage-2 under verbatim."""
+    """R97 — ``_stage2_polish_enabled`` is now the pure master env gate
+    (``P2P_GRAPH_RAG_ENABLE_STAGE2``); the verbatim coupling moved to the
+    answer router. These tests pin the decoupling so a future revert to the
+    R96 verbatim short-circuit is loud."""
+
+    def test_verbatim_on_does_not_disable_master_gate(self, monkeypatch) -> None:
+        """R97: verbatim ON no longer forces the gate OFF — the router
+        decides per-request. Master ON → gate ON regardless of verbatim."""
         monkeypatch.setenv("REGENOLD_VERBATIM_ANSWER", "1")
         monkeypatch.setenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "1")
-        assert _stage2_polish_enabled() is False
+        assert _stage2_polish_enabled() is True
 
-    def test_verbatim_default_on_disables_stage2(self, monkeypatch) -> None:
-        """Unset verbatim defaults ON → Stage-2 gate OFF."""
+    def test_verbatim_default_on_does_not_disable_master_gate(self, monkeypatch) -> None:
+        """Unset verbatim (defaults ON) → gate still ON when master ON."""
         monkeypatch.delenv("REGENOLD_VERBATIM_ANSWER", raising=False)
         monkeypatch.setenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "1")
-        assert _stage2_polish_enabled() is False
+        assert _stage2_polish_enabled() is True
 
-    def test_verbatim_off_restores_master_switch(self, monkeypatch) -> None:
-        """Verbatim OFF → gate falls through to P2P_GRAPH_RAG_ENABLE_STAGE2."""
+    def test_verbatim_off_master_on(self, monkeypatch) -> None:
+        """Verbatim OFF + master ON → gate ON (unchanged)."""
         monkeypatch.setenv("REGENOLD_VERBATIM_ANSWER", "0")
         monkeypatch.setenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "1")
         assert _stage2_polish_enabled() is True
 
-    def test_verbatim_off_master_off_stays_off(self, monkeypatch) -> None:
-        """Verbatim OFF + master OFF → still OFF (no resurrection)."""
-        monkeypatch.setenv("REGENOLD_VERBATIM_ANSWER", "0")
+    def test_master_off_stays_off(self, monkeypatch) -> None:
+        """Master OFF → gate OFF regardless of verbatim (no resurrection)."""
+        monkeypatch.setenv("REGENOLD_VERBATIM_ANSWER", "1")
         monkeypatch.setenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "0")
+        assert _stage2_polish_enabled() is False
+        monkeypatch.setenv("REGENOLD_VERBATIM_ANSWER", "0")
         assert _stage2_polish_enabled() is False
 
 
