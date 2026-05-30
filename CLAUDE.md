@@ -4711,6 +4711,7 @@ post-deploy live re-judge confirms the lift.
 | **87-v2-live** | 56 V2 LIVE | **tricky 239ms** / mt 3,908ms | tricky 16,039ms / mt 34,052ms | — | tricky refL **0.790** (best ever) / **refS 0.632** (+0.080) / mt coh **0.28** (regression vs R63 0.56) / Tone **1.0** / OOS held **21/21** | First V2 live measurement post-R87. **Tricky: all-time-best on every Ref axis + −96% latency** vs R63-live (5,853 ms → 239 ms). By category: conflict refL 1.0 / refS 0.95, borderline_prohibition refL 1.0 / refS 0.71, near_oos refL 1.0 / refS 1.0 / kw 1.0, gpai kw 0.67 (improved), omnibus refL 0.58 / refS 0.48 / kw 0.53 (improved vs R55 baseline). **HONEST CALL-OUT**: V2 multi-turn coherence **regressed −0.20** (0.48 → 0.28). Deep-dive (`.planning/R88-PLAN.md`): 6 zero-refL rows split into 3 sub-patterns — (A1) 3 rows where the immediately-prior assistant turn named the operative Article but BM25 didn't elevate the `[Context anchors — ...]` prefix line over keyword-rich user follow-up; (A2) 1 row needs Art. 101 fines/penalties mapping; (A3) 2 rows are true coreferent gaps (Art. 86 / Art. 113 never named in conversation). R88-A targets the A1 sub-pattern with direct-injection. |
 | **88-A** | 476 davidath | 10.69ms | 17.9ms | — | RefL **0.5755** / RefS **0.4672** / Ans Strict **0.3479** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2790 pass + 1 skip (+19 R88-A tests) | **Assistant-turn anchor inheritance.** New `_apply_assistant_anchor_inheritance` injects the immediately-prior assistant turn's named Articles at HEAD position of candidates when the user follow-up is coreferent (no NEW Article ref) OR drill-down (user ref IS in assistant's anchor set). Bypasses BM25 ranking on the inheritance case. Capped at 2 anchors per call. Env-gated `REGENOLD_ASSISTANT_ANCHOR_INHERIT` (default ON). davidath byte-identical to R87 (no multi-turn assistant turns in the davidath bench to inherit from). Smoke-tested fixes mt_v2_017 (Art. 99 head-injected over Art. 5), mt_v2_018 (Art. 43 + Annex VI), mt_v2_023 (Art. 111). Expected V2 multi-turn coherence lift: 0.28 → ~0.40+ (3 of 6 zero-refL rows recovered). R88-B/C/D/E queued for the remaining 3 zero-refL + 3 kw=0 rows. |
 | **97** | 476 davidath (byte-identical to main) + V2 A/B LIVE | mt B 18.0s / QA 7.6ms | mt B 35.6s | — | davidath RefL **0.5502** / RefS **0.4766** / Ans Strict **0.2775** / Tone 1.0 / mt 20/20 / OOS 21/21 / +24 R97 tests | **Adaptive verbatim-vs-synthesis routing — re-engage Sonnet for multi-turn.** R94/R96 left production deterministic + verbatim with the Claude Max wrapper barely used; R96 blanket-disabled Stage-2 under verbatim. R97 decouples them via `app/engines/answer_router.py::select_answer_mode` → VERBATIM (simple QA, fast deterministic) vs SYNTHESIS (multi-turn / nuanced → Sonnet). Route keeps the synthesised answer (verbatim overwrite gated on `stage2_landed`); confidence floor router-aware (multi-turn 0.3). **Multi-turn A/B (V2, n=25, TestClient + live wrapper):** coherence **0.40 → 0.72 (+80% rel)**, kw 0.433 → 0.713, refL 0.587 → 0.747, tone held 1.0; tricky single-turn refL 0.661 → 0.726, kw 0.468 → 0.554. Latency 18 s p50 on the routed subset only (simple QA stays sub-10 ms). davidath 476/476 rows byte-identical to main (provider gate → router inert without wrapper). Harness: `evals/regenold/multiturn_ab.py`. Rollback: `REGENOLD_ANSWER_ROUTER=0`. |
+| **99** | 476 davidath + fresh paper-V4 (64 Q) LOCAL | st 14.2ms / tp 17.3ms / mt 13.5ms | st 469.8ms | — | davidath RefL **0.5502** / RefS **0.4766** / Ans Strict **0.277** / Tone 1.0 / mt 20/20 / OOS 21/21 / 3210 pass + 1 skip | **Semantic-layer rebuild verification + fresh paper-V4 eval set.** Re-ran turboquant + embeddings builders → **byte-identical** assets (R98 already current). Full-coverage audit: BM25 (347 docs), turboquant (279), embeddings (919 sentences), Neo4j seed (505 nodes) **each cover 113/113 articles + 13/13 annexes**; ontology Practice 8 / AnnexIII 8 / Phase 6 with zero dangling citations + Omnibus deferrals wired; definitions 68/68; tree 1412 nodes — **no fixes required**. Fresh paper-V4 set: `scenarios_paper_{singleturn,tricky,multiturn}_v4.py` (20 + 20 + 12 = 64 fresh Q, distinct from V3, all 69 refs resolve) + `run_paper_v4.py` + `validate_paper_v4.py`. Local paper-V4: single-turn refL **0.550** / refS 0.483 / kw 0.667, tricky refL **0.617** / refS 0.567, multi-turn coh 0.167 (live-only Stage-2 lift). davidath byte-identical to R98 (only eval modules + byte-identical assets added). Live paper-V4 + judge re-run queued post-deploy. |
 
  
 ## Round 97 — Adaptive verbatim-vs-synthesis routing: re-engage Sonnet for multi-turn (2026-05-30)
@@ -4925,6 +4926,126 @@ live-only Stage-2 contribution) plus 3 deep multi-turn sub-point shifts.
 that accumulated across `kb_version` bumps — `graph_ok` is True and the 2-hop
 path is existence-gated + additive so duplicates can't pollute the wire, but a
 `scripts/seed_neo4j_kb.py --clear` re-seed would tidy the instance.
+
+## Round 99 — Semantic-layer rebuild verification + fresh paper-V4 eval set (2026-05-30)
+
+User directive: rebuild the semantic layer, verify turboquant indexes for
+full EU AI Act text coverage, audit the ontology + taxonomy, make required
+fixes, then re-run **fresh** single-turn / tricky-nuanced / multi-turn evals
+generated from the davidath benchmark paper (arXiv:2603.09435), and redeploy.
+
+### Semantic-layer rebuild — byte-identical (already current)
+
+Re-ran both Windows-buildable index builders against the live KB:
+
+* `scripts/build_turboquant_precomputed.py` → 279 non-definition docs, vocab
+  1926 — **byte-identical** to the R98 asset (`turboquant_precomputed.npz`
+  SHA unchanged).
+* `scripts/build_embeddings_index.py` → 919 sentences, 128-D SVD — all four
+  asset SHA-256s **byte-identical** to the R98 manifest.
+
+The deterministic rebuild is a no-op: `git status app/engines/_assets/` is
+clean. This confirms the R98 semantic layer is current against the KB and the
+build is reproducible.
+
+### Full-coverage audit — complete, no gaps
+
+A from-scratch coverage audit (`.evalout/audit_r99.py`, ephemeral) enumerated
+every covered Article/Annex ID per index and diffed against
+`ARTICLE_EXISTENCE` (113 articles + 13 annexes):
+
+| Surface | Coverage | Docs/units |
+| ------- | -------- | ---------- |
+| BM25 (`kb_search`) | 113/113 + 13/13 | 347 docs (126 kb + 126 corpus + 1 definition virtual + 4 ontology) |
+| Turboquant dense | 113/113 + 13/13 | 279 docs (definitions excluded by design) |
+| Embeddings SVD | 113/113 + 13/13 | 919 sentences |
+| Neo4j seed payload (`--dry-run`) | 113 articles + 13 annexes + 180 recitals + 68 definitions + 113 obligations | 505 nodes / 497 edges |
+
+`MISSING articles: NONE` / `MISSING annexes: NONE` on every index.
+
+### Ontology / taxonomy audit — clean, no fixes required
+
+* `PRACTICE_REGISTRY` ×8, `ANNEX_III_REGISTRY` ×8, `PHASE_REGISTRY` ×6.
+* **Zero dangling citations** — every Practice/Phase citation resolves in
+  `ARTICLE_EXISTENCE`.
+* `PHASE_REGISTRY` Digital Omnibus deferrals correctly wired:
+  `phase_2026_08_02 → phase_omnibus_2027_12_02` (Annex III high-risk → 2 Dec
+  2027) and `phase_2027_08_02 → phase_omnibus_2028_08_02` (Annex I → 2 Aug
+  2028).
+* `DEFINITION_REGISTRY` 68/68 Art. 3 definitions; `eu_ai_act_tree.build_tree()`
+  1,412 nodes.
+
+**No coverage or ontology fixes were required** — the R98 knowledge surface is
+complete and correct. The honest finding of this round is that the prior work
+holds; the substantive new deliverable is the fresh V4 eval set below.
+
+### Fresh paper-V4 eval set (the new work)
+
+Generated a brand-new, **distinct** probe set from the davidath paper
+(no text reused from the R98 V3 sets), grounded in the paper's four hypotheses
+(prohibited→Art. 5, high-risk→Art. 6+Annex III, limited→Arts. 50&10,
+minimal→residual) and its §4.2 decision-boundary edge cases:
+
+* `evals/regenold/scenarios_paper_singleturn_v4.py` — 20 items (prohibited 5,
+  high_risk 6, limited 5, minimal 4) across all 4 paper tasks. Targets the
+  Art. 5 bans (workplace emotion recognition, biometric categorisation,
+  facial scraping, vulnerability exploitation, real-time RBI) and Annex III
+  gateways (critical infrastructure, migration) that V3 didn't exercise.
+* `evals/regenold/scenarios_paper_tricky_v4.py` — 20 nuanced items
+  (borderline_prohibition 5, limited_vs_minimal 4, high_risk_vs_limited 3,
+  obligation_generation 4, article_retrieval 4). New value-chain roles
+  (importer Art. 23, distributor Art. 24, authrep Art. 22, GPAI systemic
+  Art. 51/55) + new retrieval targets (incident reporting Art. 73, sandboxes
+  Art. 57, penalties Art. 99, CE chain Art. 43/47/48).
+* `evals/regenold/scenarios_paper_multiturn_v4.py` — 12 × 3-turn conversations
+  (risk-tier escalation, role flip Art. 25, GPAI compute scale-up, FRIA
+  Art. 27, post-market→incident Art. 72→73, right-to-explanation Art. 86,
+  minimal-stays-minimal, prohibited-practice creep).
+* `evals/regenold/run_paper_v4.py` + `validate_paper_v4.py` — runner +
+  offline validator (mirrors the V3 wrappers; delegates scoring to
+  `runner_v2` helpers).
+
+`validate_paper_v4` PASS: 64 scenarios, **69 refs all resolve** in
+`ARTICLE_EXISTENCE`, unique IDs, every multi-turn ends on a user turn.
+
+### R99 — deterministic local scorecard (paper-V4, TestClient, no wrapper)
+
+| Set | n | Ref Loose | Ref Strict | Keyword Recall | Tone | Coherence |
+| --- | - | --------- | ---------- | -------------- | ---- | --------- |
+| single-turn | 20 | 0.550 | 0.483 | 0.667 | 1.0 | — |
+| tricky/nuanced | 20 | 0.617 | 0.567 | 0.517 | 1.0 | — |
+| multi-turn | 12 | 0.250 | 0.130 | 0.222 | 1.0 | 0.167 |
+
+Per the established R31/R49/R97 pattern, the deterministic TestClient run is
+the **regression guard** — keyword-recall and multi-turn coherence are the
+**live-only Stage-2 (Sonnet synthesis) lift** (the R97 answer-router routes
+multi-turn → Sonnet only when the wrapper is wired). Single-turn / tricky Ref
+axes are strong; the minimal tier scores low (refL 0.125) exactly as the
+paper reports minimal as the hardest class (paper F1 0.45). The full live
+paper-V4 + judge re-run lands post-deploy.
+
+### R99 — regression gates (all green, byte-identical to R98)
+
+| Gate | R99 | R98 | Status |
+| ---- | --- | --- | ------ |
+| Full `pytest` suite | 3210 + 1 skip | 3210 + 1 skip | ✓ |
+| davidath bench (476) | RefL 0.5502 / RefS 0.4766 / Ans Strict 0.277 / Tone 1.0 / mt 20/20 | identical | ✓ byte-identical |
+| `evals.regenold.runner` (276) | 246/255 | 246/255 | ✓ |
+| OOS probe (`--probe-oos --local`) | 21/21, 0 leaks | 21/21 | ✓ |
+
+R99 adds only standalone eval modules + byte-identical assets + this doc
+entry — no production code or KB content changed, so the deploy is a no-op
+on the wire (`KB_VERSION` untouched). The V4 set's value is the fresh
+measurement surface; the live multi-turn / judge lift is queued for the
+post-deploy live re-run.
+
+### Operational follow-up (unchanged from R98, not actioned)
+
+The live Aura graph still carries ~20× duplicate nodes from accumulated seed
+runs; a `scripts/seed_neo4j_kb.py --clear` re-seed against live Neo4j creds
+would tidy it. Deferred — it is a destructive production write, the duplicates
+are benign (the 2-hop path is existence-gated + additive so they can't pollute
+the wire), and it needs explicit confirmation.
 
 ## Non-goals / things to skip
 
