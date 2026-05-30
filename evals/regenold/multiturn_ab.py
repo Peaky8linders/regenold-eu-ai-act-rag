@@ -72,7 +72,7 @@ def _run_v2(label: str, router_on: bool, *, multiturn_limit: int | None,
     if tricky_limit is not None:
         cmd += ["--tricky-limit", str(tricky_limit)]
     print(f"\n[A/B] running v2 (router={'ON' if router_on else 'OFF'}) "
-          f"label={label} …", flush=True)
+          f"label={label} ...", flush=True)
     subprocess.run(cmd, env=env, check=True, timeout=timeout)
     sidecar = _RESULTS / f"v2-{label}.json"
     return json.loads(sidecar.read_text(encoding="utf-8"))
@@ -88,7 +88,7 @@ def _run_judge(v2_label: str, judge_label: str, *, timeout: float) -> dict | Non
         "--bench-sidecar", str(_RESULTS / f"v2-{v2_label}.json"),
         "--label", judge_label, "--provider", "wrapper", "--concurrency", "1",
     ]
-    print(f"\n[A/B] judging {v2_label} → judge-{judge_label} …", flush=True)
+    print(f"\n[A/B] judging {v2_label} -> judge-{judge_label} ...", flush=True)
     try:
         subprocess.run(cmd, env=env, check=True, timeout=timeout)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
@@ -112,8 +112,8 @@ def _delta_row(label: str, a, b) -> str:
     if av is None or bv is None:
         return f"  {label:<26} A={a!s:>8}  B={b!s:>8}  Δ=     -"
     d = bv - av
-    arrow = "↑" if d > 1e-9 else ("↓" if d < -1e-9 else "·")
-    return f"  {label:<26} A={av:>8.4f}  B={bv:>8.4f}  Δ={d:>+8.4f} {arrow}"
+    arrow = "up" if d > 1e-9 else ("dn" if d < -1e-9 else "==")
+    return f"  {label:<26} A={av:>8.4f}  B={bv:>8.4f}  d={d:>+8.4f} {arrow}"
 
 
 _JUDGE_AXES = ("correctness", "refs", "conciseness", "tone")

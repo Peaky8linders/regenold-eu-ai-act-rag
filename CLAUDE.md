@@ -4710,8 +4710,99 @@ post-deploy live re-judge confirms the lift.
 | **87-live** | rep-100 LIVE | **5,816ms** | 37,517ms | — | **RefL 0.6773** (+0.067 / +11% rel) / **RefS 0.5852** (+0.017) / **Ans Strict 0.3263** (+0.039 / +14% rel) / **Tone 1.0** / **Latency p50 −61%** | **Largest single-round live lift the project has measured.** Per-category: multi_turn refL **0.371 → 0.557** (+0.186 / +50%) ✓ P1+P2 confirmed; deployer_obligation refL **0.466 → 0.566** (+0.100 / +21%) ✓ P4+P5 confirmed; provider_obligation Ans Strict **0.325 → 0.411** (+0.086); deployer Ans Strict **0.268 → 0.328** (+0.060). Cumulative since R76-live baseline: Ans Strict 0.236 → 0.326 (+38% rel), Ref Loose 0.555 → 0.677 (+22% rel), Latency p50 ~17s → 5.8s (−66%), Tone held throughout. Sidecar: `representative-100-r87-live-postship.json`. |
 | **87-v2-live** | 56 V2 LIVE | **tricky 239ms** / mt 3,908ms | tricky 16,039ms / mt 34,052ms | — | tricky refL **0.790** (best ever) / **refS 0.632** (+0.080) / mt coh **0.28** (regression vs R63 0.56) / Tone **1.0** / OOS held **21/21** | First V2 live measurement post-R87. **Tricky: all-time-best on every Ref axis + −96% latency** vs R63-live (5,853 ms → 239 ms). By category: conflict refL 1.0 / refS 0.95, borderline_prohibition refL 1.0 / refS 0.71, near_oos refL 1.0 / refS 1.0 / kw 1.0, gpai kw 0.67 (improved), omnibus refL 0.58 / refS 0.48 / kw 0.53 (improved vs R55 baseline). **HONEST CALL-OUT**: V2 multi-turn coherence **regressed −0.20** (0.48 → 0.28). Deep-dive (`.planning/R88-PLAN.md`): 6 zero-refL rows split into 3 sub-patterns — (A1) 3 rows where the immediately-prior assistant turn named the operative Article but BM25 didn't elevate the `[Context anchors — ...]` prefix line over keyword-rich user follow-up; (A2) 1 row needs Art. 101 fines/penalties mapping; (A3) 2 rows are true coreferent gaps (Art. 86 / Art. 113 never named in conversation). R88-A targets the A1 sub-pattern with direct-injection. |
 | **88-A** | 476 davidath | 10.69ms | 17.9ms | — | RefL **0.5755** / RefS **0.4672** / Ans Strict **0.3479** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2790 pass + 1 skip (+19 R88-A tests) | **Assistant-turn anchor inheritance.** New `_apply_assistant_anchor_inheritance` injects the immediately-prior assistant turn's named Articles at HEAD position of candidates when the user follow-up is coreferent (no NEW Article ref) OR drill-down (user ref IS in assistant's anchor set). Bypasses BM25 ranking on the inheritance case. Capped at 2 anchors per call. Env-gated `REGENOLD_ASSISTANT_ANCHOR_INHERIT` (default ON). davidath byte-identical to R87 (no multi-turn assistant turns in the davidath bench to inherit from). Smoke-tested fixes mt_v2_017 (Art. 99 head-injected over Art. 5), mt_v2_018 (Art. 43 + Annex VI), mt_v2_023 (Art. 111). Expected V2 multi-turn coherence lift: 0.28 → ~0.40+ (3 of 6 zero-refL rows recovered). R88-B/C/D/E queued for the remaining 3 zero-refL + 3 kw=0 rows. |
+| **97** | 476 davidath (byte-identical to main) + V2 A/B LIVE | mt B 18.0s / QA 7.6ms | mt B 35.6s | — | davidath RefL **0.5502** / RefS **0.4766** / Ans Strict **0.2775** / Tone 1.0 / mt 20/20 / OOS 21/21 / +24 R97 tests | **Adaptive verbatim-vs-synthesis routing — re-engage Sonnet for multi-turn.** R94/R96 left production deterministic + verbatim with the Claude Max wrapper barely used; R96 blanket-disabled Stage-2 under verbatim. R97 decouples them via `app/engines/answer_router.py::select_answer_mode` → VERBATIM (simple QA, fast deterministic) vs SYNTHESIS (multi-turn / nuanced → Sonnet). Route keeps the synthesised answer (verbatim overwrite gated on `stage2_landed`); confidence floor router-aware (multi-turn 0.3). **Multi-turn A/B (V2, n=25, TestClient + live wrapper):** coherence **0.40 → 0.72 (+80% rel)**, kw 0.433 → 0.713, refL 0.587 → 0.747, tone held 1.0; tricky single-turn refL 0.661 → 0.726, kw 0.468 → 0.554. Latency 18 s p50 on the routed subset only (simple QA stays sub-10 ms). davidath 476/476 rows byte-identical to main (provider gate → router inert without wrapper). Harness: `evals/regenold/multiturn_ab.py`. Rollback: `REGENOLD_ANSWER_ROUTER=0`. |
 
  
+## Round 97 — Adaptive verbatim-vs-synthesis routing: re-engage Sonnet for multi-turn (2026-05-30)
+
+User directive: production had gone effectively **deterministic + verbatim**
+since R94/R96 — the Claude Max wrapper + Sonnet was barely used (only Groq
+Stage-0). R96 blanket-disabled Stage-2 polish whenever `REGENOLD_VERBATIM_ANSWER`
+is ON (default), because the route REPLACES the answer with verbatim EUR-Lex
+text and the polished prose was discarded. That is **correct for simple
+single-turn QA** (a verbatim provision quote IS the answer) but **wrong for
+multi-turn / nuanced conversations** the verbatim dump cannot answer
+(coreference — "does the regulator you mentioned require X?", role flips,
+two-article conflict reconciliation, cross-framework). The LLM-supercharged
+path adds the most value exactly where R96 turned it off.
+
+### The router — `app/engines/answer_router.py` (new)
+`select_answer_mode(question, history_turn_count, query) -> RouteDecision`
+returns `SYNTHESIS` (route to Sonnet) when ANY of:
+- **multi-turn** — `"Conversation so far:"` marker in the flattened question
+  OR `history_turn_count >= 2`;
+- **nuanced single-turn** — `is_complex_question(...)` (conflict /
+  role-ambiguity / cross-framework / borderline-prohibition / GPAI boundary);
+- **synthesis intent** — `query.intent in {gap_analysis, cross_framework}`.
+Else `VERBATIM` (fast deterministic). Pure-stdlib, fail-soft → VERBATIM.
+
+### Engine + route wiring
+- `graph_rag._stage2_polish_enabled()` reverts to **pure**
+  `P2P_GRAPH_RAG_ENABLE_STAGE2` (R96's verbatim coupling removed).
+- `_two_stage_generate`: under verbatim, Stage-2 fires iff the router selects
+  SYNTHESIS (`REGENOLD_ANSWER_ROUTER=0` → exact R96 behaviour = rollback).
+  Outside verbatim the historical `_needs_stage2_enhancement` gate is
+  preserved byte-for-byte. **Router-aware confidence floor**: multi-turn
+  synthesis uses a lower floor (`REGENOLD_STAGE2_MIN_CONFIDENCE_MULTITURN`,
+  default 0.3) since coreferent follow-ups retrieve sparsely; single-turn
+  keeps the R87-E 0.5 floor.
+- `routes/regenold.py`: the verbatim overwrite is **skipped when
+  `stage2_landed`** — the synthesised answer reaches the wire; when Stage-2
+  was skipped or fell back (drift / contradiction / wrapper failure),
+  verbatim applies as the safe deterministic fallback. Cache key folds in
+  `REGENOLD_ANSWER_ROUTER` / `REGENOLD_VERBATIM_ANSWER` /
+  `..._MULTITURN` (R79 doctrine). Side benefit: this **re-activates the
+  previously-dead R72 refs-faithfulness reconcile** under verbatim multi-turn
+  synthesis.
+
+### Multi-turn A/B benchmark — `evals/regenold/multiturn_ab.py` (new)
+A reusable A/B harness — the answer to "the best way to benchmark multi-turn":
+runs the V2 probe set (25 multi-turn + 31 nuanced single-turn) through the
+in-process TestClient with the Claude Max wrapper active, twice (router OFF =
+R96 deterministic baseline / router ON = R97), scores coherence + ref + kw +
+tone + latency, optional LLM-as-judge (`--judge`, wrapper provider). The A/B
+is valid because the baseline run has Sonnet OFF — we never diff two
+non-deterministic Sonnet runs against each other.
+
+**Result (local TestClient + live Claude Max wrapper):**
+
+| Multi-turn (n=25)   | A: router OFF | B: router ON | Δ |
+| ------------------- | ------------- | ------------ | --- |
+| **Coherence rate**  | 0.40          | **0.72**     | **+0.32 (+80% rel)** ✓✓ |
+| Keyword recall      | 0.433         | **0.713**    | +0.28 ✓✓ |
+| Ref Loose           | 0.587         | **0.747**    | +0.16 ✓ |
+| Ref Strict          | 0.532         | **0.573**    | +0.041 ✓ |
+| Regulatory Tone     | 1.0           | 1.0          | held |
+| Latency p50         | 1.1 s         | 18.0 s       | Sonnet cost (routed subset only) |
+
+| Tricky single-turn (n=31) | A     | B         | Δ |
+| ------------------------- | ----- | --------- | --- |
+| Ref Loose                 | 0.661 | **0.726** | +0.064 ✓ |
+| Ref Strict                | 0.618 | **0.651** | +0.032 ✓ |
+| Keyword recall            | 0.468 | **0.554** | +0.086 ✓ |
+| Regulatory Tone           | 1.0   | 1.0       | held |
+
+Multi-turn coherence lifts **0.40 → 0.72 (+80% relative)** and keyword recall
++0.28 with tone held at 1.0; nuanced single-turn (conflict / borderline /
+role-ambiguity) also improves. The latency cost (18 s p50) is the Sonnet
+round-trip and applies **only to the routed multi-turn / nuanced subset** —
+simple single-turn QA stays on the fast deterministic verbatim path (davidath
+QA p50 7.6 ms). This is the "deterministic only when needed" trade the user
+asked for.
+
+### Regression guards — davidath byte-identical
+- davidath bench **476/476 rows byte-identical to main** (predicted answers +
+  refs); only latency (timing noise) differs. The provider gate keeps the
+  router code inert in the TestClient bench (no wrapper → no Stage-2). RefL
+  0.5502 / RefS 0.4766 / Ans Strict 0.2775 / Tone 1.0 / mt 20/20.
+- 276-runner 244/255 identical to main; OOS probe 21/21, 0 leaks.
+- Full suite +24 new R97 tests pass; R96 short-circuit tests rewritten to the
+  decoupled contract.
+
+### Rollback
+`railway variables --set REGENOLD_ANSWER_ROUTER=0` → exact R96 behaviour
+(verbatim-only, Sonnet never fires). Every knob env-gated.
+
 Δ on the local rubric is modest (-11% sentences, +12% p50 latency) because
 the local harness is binary substring-matched and already saturated. The
 upgrades target the **competition rubric** axes the local harness can't
