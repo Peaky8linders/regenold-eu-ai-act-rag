@@ -872,11 +872,39 @@ def healthz_graph() -> dict[str, object]:
     return base
 
 
-@app.get("/")
-def root() -> dict[str, str]:
+@app.get("/info")
+def info() -> dict[str, str]:
+    """Machine-readable service descriptor.
+
+    Moved from ``/`` to ``/info`` so the interactive Lexy chat UI
+    (registered by :func:`app.web_ui.register_web_routes`) can own the
+    root path as the human-facing competition landing page. Programmatic
+    consumers that previously hit ``/`` for the JSON descriptor use
+    ``/info``; the wire contract ``POST /api/v1/regenold/eu-ai-act/ask``
+    is unchanged.
+    """
     return {
         "service": "regenold-eu-ai-act-rag",
         "version": settings.version,
         "docs": "/docs",
+        "ui": "/",
         "ask_endpoint": "/api/v1/regenold/eu-ai-act/ask",
     }
+
+
+# ─── Interactive web UI (Lexy) ───────────────────────────────────────────
+# Registered LAST so its ``GET /`` (the chat landing page) and
+# ``GET /lexy_avatar.png`` mount on the root app after ``/api/v1`` and the
+# ``/healthz*`` probes are already bound — no path collision. The UI is a
+# static, self-contained HTML page; it injects NO server-side secret (the
+# reviewer supplies their own API key, persisted client-side). Failure to
+# register the UI must never block the API, so it is best-effort.
+try:
+    from app.web_ui import register_web_routes
+
+    register_web_routes(app)
+except Exception as _ui_exc:  # noqa: BLE001 — UI is optional; never block the API
+    logger.warning(
+        "regenold.startup web_ui registration skipped: %s — API unaffected",
+        _ui_exc,
+    )
