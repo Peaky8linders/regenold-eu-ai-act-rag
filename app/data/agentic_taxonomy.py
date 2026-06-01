@@ -35,7 +35,6 @@ from __future__ import annotations
 from enum import Enum
 from typing import TypedDict
 
-
 TAXONOMY_VERSION = "2026.04.27.v1"
 
 

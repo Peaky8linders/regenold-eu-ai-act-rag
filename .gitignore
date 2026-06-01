@@ -53,3 +53,7 @@ _aireg_*.parquet
 
 # Git worktrees
 .worktrees/
+
+# audit scratch dir + stray node deps (this is a Python repo)
+_audit/
+node_modules/

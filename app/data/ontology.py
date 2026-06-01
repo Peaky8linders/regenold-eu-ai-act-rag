@@ -59,11 +59,9 @@ the legacy maps will be migrated into derived views in a follow-up.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from enum import Enum
-from typing import Optional
-
 
 # ── Actor roles (Art. 3 definitions, AI Act value chain) ─────────────────
 
@@ -126,7 +124,7 @@ class Phase:
     effective_date: date
     articles: tuple[str, ...]
     description: str
-    superseded_by: Optional[str] = None  # id of a later Phase
+    superseded_by: str | None = None  # id of a later Phase
 
 
 PHASE_REGISTRY: dict[str, Phase] = {
@@ -243,7 +241,7 @@ class Practice:
     description: str
     citation: tuple[str, ...]  # e.g. ("Art. 5", "Art. 5.1.a") — internal form
     exceptions: tuple[str, ...] = ()
-    related_high_risk_anchor: Optional[str] = None  # e.g. "Annex III" if the
+    related_high_risk_anchor: str | None = None  # e.g. "Annex III" if the
     # exempted variant falls into high-risk
     effective_phase: str = "phase_2025_02_02"
     keywords: tuple[str, ...] = ()  # phrases that anchor a question to this Practice
@@ -629,7 +627,7 @@ ANNEX_III_REGISTRY: dict[str, AnnexIIICategory] = {
 # ── Cross-entity helpers ─────────────────────────────────────────────────
 
 
-def practice_for_keyword(keyword: str) -> Optional[Practice]:
+def practice_for_keyword(keyword: str) -> Practice | None:
     """Return the :class:`Practice` whose ``keywords`` contains ``keyword``.
 
     Substring-aware case-insensitive match (mirrors the scope filter's
@@ -644,7 +642,7 @@ def practice_for_keyword(keyword: str) -> Optional[Practice]:
     return None
 
 
-def category_for_keyword(keyword: str) -> Optional[AnnexIIICategory]:
+def category_for_keyword(keyword: str) -> AnnexIIICategory | None:
     """Return the :class:`AnnexIIICategory` whose ``keywords`` contains ``keyword``."""
     needle = keyword.lower().strip()
     if not needle:
@@ -667,7 +665,7 @@ def all_articles_referenced() -> frozenset[str]:
         refs.update(practice.citation)
         if practice.related_high_risk_anchor:
             refs.add(practice.related_high_risk_anchor)
-    for category in ANNEX_III_REGISTRY.values():
+    for _category in ANNEX_III_REGISTRY.values():
         # The Annex III registry doesn't carry citations on the dataclass
         # because every category is implicitly Annex III + Art. 6.2 +
         # Chapter III Section 2 — but we treat "Annex III" + "Art. 6" as

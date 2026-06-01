@@ -1295,8 +1295,6 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "untargeted scraping": "Art. 5",
     "facial-image scraping": "Art. 5",
     "facial image scraping": "Art. 5",
-    "real-time biometric": "Art. 5",
-    "real time biometric": "Art. 5",
     "real-time rbi": "Art. 5",
     "real time rbi": "Art. 5",
     "real-time remote biometric": "Art. 5",
@@ -1429,7 +1427,7 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "instructions of use": "Art. 13",
     "accuracy metrics": "Art. 15",
     "value chain": "Art. 25",
-    "rebrand": "Art. 25",
+
     "third-party provider": "Art. 25",
     "third party provider": "Art. 25",
     "deployer information": "Art. 26",
@@ -1585,7 +1583,7 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "student grading": "Annex III",
     "essay grading": "Annex III",
     "education grading": "Annex III",
-    "credit scoring": "Annex III",
+
     "cv screening": "Annex III",
     "cv-screening": "Annex III",
     "resume screening": "Annex III",
@@ -1620,7 +1618,7 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "vendor liability": "Art. 26",
     "buy a third party": "Art. 26",
     "buy a third party ai": "Art. 26",
-    "third party ai": "Art. 26",
+
     "medical device": "Art. 6",
     "diagnostic ai": "Art. 6",
     # NB: "linear regression" / "weighted score" / "weighted score
@@ -1918,12 +1916,7 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     # polluting Ans/Ref conciseness and displacing the real answer.
     # "digital omnibus" stays in _AI_ACT_ANCHORS (keeps the underlying
     # question in-scope) but no longer anchors any article.
-    "ai-generated csam": "Art. 5",
     "ai csam": "Art. 5",
-    "non-consensual intimate": "Art. 5",
-    "non consensual intimate": "Art. 5",
-    "nudification": "Art. 5",
-    "intimate imagery": "Art. 5",
     # ── R47-E zero-retrieval gap-closers (V2-eval miss analysis) ─────
     # Each phrase below was a V2-eval IN_SCOPE question whose BM25 +
     # ontology + xref retrieval returned 0 candidates because the user

@@ -46,6 +46,23 @@ import hashlib
 import os
 import re
 import time
+
+# R84 — per-request memoise for ``classify_intent`` (2026-05-24).
+#
+# Three call sites in this route (``_resolve_intent_anchors``, the
+# R66-E intent-boost path, and the R47-E zero-retrieval fallback) all
+# invoke ``classify_intent`` independently. The module-level R37
+# ``_INTENT_CACHE`` LRU already memoises across requests, but ON FIRST
+# encounter of a question each of the three sites pays a full
+# wrapper / Groq round-trip — ~0.3-1 s per cold miss × 3 = 0.9-3 s of
+# avoidable latency per cold request.
+#
+# A ContextVar-backed dict scoped to the FastAPI request handler
+# collapses the three calls down to ONE cold-cache RTT. The keys are
+# the raw question strings the call sites pass; sites that pass
+# different keys (``live_question`` vs the history-flattened
+# ``question``) memo into distinct slots — correct, by design.
+from contextvars import ContextVar  # noqa: E402,PLC0415
 from typing import Any
 
 import structlog
@@ -64,6 +81,8 @@ from app.engines.scenario_classifier import (
 )
 from app.engines.sentence_index import (
     classify_question as classify_question_type,
+)
+from app.engines.sentence_index import (
     select_answer_sentence,
     select_definition_sentence,
 )
@@ -83,19 +102,39 @@ from app.integrations.regenold.models import (
 )
 from app.integrations.regenold.reasoning_trace import (
     activate as _activate_reasoning_trace,
+)
+from app.integrations.regenold.reasoning_trace import (
     current as _current_reasoning_trace,
+)
+from app.integrations.regenold.reasoning_trace import (
     deactivate as _deactivate_reasoning_trace,
+)
+from app.integrations.regenold.reasoning_trace import (
     record_anchors as _trace_anchors,
+)
+from app.integrations.regenold.reasoning_trace import (
     record_cache_hit as _trace_cache_hit,
-    record_compound_roles as _trace_compound_roles,
+)
+from app.integrations.regenold.reasoning_trace import (
     record_confidence as _trace_confidence,
+)
+from app.integrations.regenold.reasoning_trace import (
     record_guard as _trace_guard,
+)
+from app.integrations.regenold.reasoning_trace import (
     record_intent as _trace_intent,
+)
+from app.integrations.regenold.reasoning_trace import (
     record_note as _trace_note,
+)
+from app.integrations.regenold.reasoning_trace import (
     record_retrieval_path as _trace_retrieval_path,
+)
+from app.integrations.regenold.reasoning_trace import (
     record_scope as _trace_scope,
+)
+from app.integrations.regenold.reasoning_trace import (
     record_stage2 as _trace_stage2,
-    record_top_k as _trace_top_k,
 )
 from app.integrations.regenold.scope import (
     ConversationVerdict,
@@ -107,23 +146,6 @@ from app.integrations.regenold.text_normalize import normalize_unicode_punctuati
 from app.llm.intent_classifier import classify_intent
 from app.models import GraphRAGRequest
 from app.rate_limit import limiter
-
-# R84 — per-request memoise for ``classify_intent`` (2026-05-24).
-#
-# Three call sites in this route (``_resolve_intent_anchors``, the
-# R66-E intent-boost path, and the R47-E zero-retrieval fallback) all
-# invoke ``classify_intent`` independently. The module-level R37
-# ``_INTENT_CACHE`` LRU already memoises across requests, but ON FIRST
-# encounter of a question each of the three sites pays a full
-# wrapper / Groq round-trip — ~0.3-1 s per cold miss × 3 = 0.9-3 s of
-# avoidable latency per cold request.
-#
-# A ContextVar-backed dict scoped to the FastAPI request handler
-# collapses the three calls down to ONE cold-cache RTT. The keys are
-# the raw question strings the call sites pass; sites that pass
-# different keys (``live_question`` vs the history-flattened
-# ``question``) memo into distinct slots — correct, by design.
-from contextvars import ContextVar  # noqa: E402,PLC0415
 
 _request_intent_cache: ContextVar[dict | None] = ContextVar(
     "_request_intent_cache", default=None
@@ -170,7 +192,6 @@ regenold_router = APIRouter(tags=["regenold"])
 # we have zero new deps. Thread-safe via a single re-entrant lock —
 # uvicorn's per-worker model means contention is bounded by worker
 # count, not request rate.
-import hashlib  # noqa: E402,PLC0415 — keep imports adjacent to the cache
 import threading  # noqa: E402,PLC0415
 from collections import OrderedDict  # noqa: E402,PLC0415
 
@@ -1454,6 +1475,8 @@ def _try_extractive_answer(
         try:
             from app.integrations.regenold.grounded_prose import (  # noqa: PLC0415
                 _first_clause as _gp_first_clause,
+            )
+            from app.integrations.regenold.grounded_prose import (
                 _kb_summary as _gp_kb_summary,
             )
         except Exception:  # noqa: BLE001 — fall back to sentence extraction
@@ -1484,6 +1507,8 @@ def _try_extractive_answer(
             try:
                 from app.engines.embeddings_index import (  # noqa: PLC0415
                     is_available as _emb_available,
+                )
+                from app.engines.embeddings_index import (
                     query as _emb_query,
                 )
             except Exception:  # noqa: BLE001
@@ -1528,6 +1553,8 @@ def _try_extractive_answer(
         try:
             from app.engines.semantic_layer import (  # noqa: PLC0415
                 is_tree_extract_enabled as _tree_extract_on,
+            )
+            from app.engines.semantic_layer import (
                 paragraph_extract as _tree_paragraph,
             )
             if _tree_extract_on() and engine_citations:
@@ -1563,6 +1590,8 @@ def _try_extractive_answer(
         try:
             from app.engines.vector_rerank import (  # noqa: PLC0415
                 is_enabled as _vrr_enabled,
+            )
+            from app.engines.vector_rerank import (
                 rerank_sentences as _vrr,
             )
             if _vrr_enabled():
@@ -1855,7 +1884,7 @@ def _suppress_noise_anchors(
         return list(candidates)
 
     drop: set[str] = set()
-    for c, b in zip(candidates, bases):
+    for c, b in zip(candidates, bases, strict=False):
         if b == "3" and not definitional:
             drop.add(c)
         elif b == "51" and not gpai:
@@ -2144,7 +2173,7 @@ def _prune_non_anchor_refs(
         m.group(1).upper() for m in _LIVE_ANNEX_RE.finditer(live)
     }
     intent_source = "explicit"
-    
+
     if not explicit_article_nums and not explicit_annex_romans and marker in live_question:
         history_part = live_question.split(marker, 1)[0]
         explicit_article_nums = {m.group(1) for m in _LIVE_ARTICLE_RE.finditer(history_part)}
@@ -2392,7 +2421,7 @@ def _build_scope_refusal_response(
         )
 
     chain_tenant_id = "partner:regenold"
-    ip_hash: str | None = None
+    _ip_hash: str | None = None
 
     try:
         store = get_evidence_store()
@@ -4241,6 +4270,8 @@ def regenold_eu_ai_act_ask(
     ):
         from app.integrations.regenold.citation_guard import (  # noqa: PLC0415
             is_enabled as _guard_enabled,
+        )
+        from app.integrations.regenold.citation_guard import (
             maybe_apply_guard,
         )
         if _guard_enabled():
@@ -4341,8 +4372,8 @@ def regenold_eu_ai_act_ask(
         and os.getenv("REGENOLD_ANSWER_TEMPLATE", "0") in ("1", "true", "yes", "on")
     ):
         try:
-            from app.engines.sentence_index import classify_question  # noqa: PLC0415
             from app.engines.answer_template import apply_template  # noqa: PLC0415
+            from app.engines.sentence_index import classify_question  # noqa: PLC0415
             _qtype = classify_question(question)
             _primary = references[0] if references else None
             answer_text = apply_template(
@@ -4396,11 +4427,11 @@ def regenold_eu_ai_act_ask(
     # while honouring the 3-sentence + 600-char soft cap and the
     # consistency invariant.
     if references and answer_text:
-        from app.integrations.regenold.grounded_prose import (  # noqa: PLC0415
-            stitch_grounded_prose,
-        )
         from app.engines.graph_rag import (  # noqa: PLC0415
             _STAGE2_REFUSAL_MARKERS,
+        )
+        from app.integrations.regenold.grounded_prose import (  # noqa: PLC0415
+            stitch_grounded_prose,
         )
         low_answer = answer_text.lower()
         if any(m in low_answer for m in _STAGE2_REFUSAL_MARKERS):
@@ -4434,7 +4465,9 @@ def regenold_eu_ai_act_ask(
                     # R59 — re-apply tone guard; the main enforce_tone()
                     # call above ran BEFORE this guard replaced the text.
                     try:
-                        from app.integrations.regenold.tone_guard import enforce_tone  # noqa: PLC0415
+                        from app.integrations.regenold.tone_guard import (
+                            enforce_tone,  # noqa: PLC0415
+                        )
                         answer_text = enforce_tone(answer_text)
                     except Exception:  # noqa: BLE001 — fail-soft
                         pass
@@ -4577,6 +4610,8 @@ def regenold_eu_ai_act_ask(
         try:
             from app.integrations.regenold.cite_describe_guard import (  # noqa: PLC0415
                 is_enabled as _cd_guard_enabled,
+            )
+            from app.integrations.regenold.cite_describe_guard import (
                 maybe_apply_guard as _cd_maybe_apply_guard,
             )
             if _cd_guard_enabled():
@@ -4681,8 +4716,9 @@ def regenold_eu_ai_act_ask(
     ):
         try:
             import re
+
             from app.data.article_existence import ARTICLE_EXISTENCE
-            
+
             # Extract cited articles/annexes in polished prose
             prose_citations = set()
             for match in re.finditer(r"\b(Article|Art\.|Annex)\s+([IVXLCDM\d]+)\b", answer_text, re.IGNORECASE):
@@ -4696,14 +4732,14 @@ def regenold_eu_ai_act_ask(
                         prose_citations.add(f"Article {num}")
                 elif prefix.startswith("annex"):
                     prose_citations.add(f"Annex {num.upper()}")
-            
+
             # Extract references bases (standardizing to e.g. "Article 16", "Annex III")
             reference_bases = set()
             for ref in references:
                 parts = str(ref).split(".")
                 if parts:
                     reference_bases.add(parts[0].strip())
-            
+
             # Verify if every prose citation matches a base in reference_bases
             has_hallucination = False
             bad_citation = None
@@ -4714,7 +4750,7 @@ def regenold_eu_ai_act_ask(
                     catalog_key = cite
                     if cite.startswith("Article "):
                         catalog_key = "Art. " + cite[len("Article "):]
-                    
+
                     if catalog_key in ARTICLE_EXISTENCE:
                         logger.info(
                             "Component D Grounding Guard: Prose cited %s which was missing "
@@ -4727,7 +4763,7 @@ def regenold_eu_ai_act_ask(
                         has_hallucination = True
                         bad_citation = cite
                         break
-            
+
             if has_hallucination:
                 logger.warning(
                     "Component D Grounding Guard: Stage-2 polished prose cited %s "

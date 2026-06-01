@@ -43,7 +43,6 @@ from __future__ import annotations
 
 from typing import Final
 
-
 # ── Narrower sets — preserve each consumer's pre-R46 surface exactly ────
 
 

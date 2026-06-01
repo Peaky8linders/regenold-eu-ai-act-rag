@@ -63,7 +63,6 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
-
 SCHEMA_VERSION: str = "r50.1"
 
 
@@ -139,7 +138,7 @@ class ReasoningTrace:
         return json.dumps(self.to_json_dict(), separators=(",", ":"))
 
 
-_CURRENT: ContextVar["ReasoningTrace | None"] = ContextVar(
+_CURRENT: ContextVar[ReasoningTrace | None] = ContextVar(
     "regenold_reasoning_trace", default=None,
 )
 

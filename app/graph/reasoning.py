@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 def reason_compliance(
-    client: "GraphClient",
+    client: GraphClient,
     risk_level: str,
     answers: dict[str, str],
     operator_role: str | None = None,
@@ -184,7 +184,7 @@ def reason_compliance(
 
 
 def satisfy_once_analysis(
-    client: "GraphClient",
+    client: GraphClient,
     answers: dict[str, str],
 ) -> dict:
     """Compute cross-framework satisfy-once analysis via graph traversal.
@@ -263,7 +263,7 @@ def satisfy_once_analysis(
 
 
 def _compute_cross_framework_coverage(
-    client: "GraphClient",
+    client: GraphClient,
     answers: dict[str, str],
 ) -> dict:
     """Compute NIST and ISO coverage from answered questions."""
@@ -293,7 +293,7 @@ def _compute_cross_framework_coverage(
     }
 
 
-def _build_obligation_chain(client: "GraphClient", obl_id: str) -> dict | None:
+def _build_obligation_chain(client: GraphClient, obl_id: str) -> dict | None:
     """Build a chain showing: obligation → assessing questions → remediation tasks."""
     # Get obligation details
     obl = client.execute_read(

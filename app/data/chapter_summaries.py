@@ -48,10 +48,8 @@ does Chapter X cover?" rather than asking about a specific provision.
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 from app.data.article_existence import ARTICLE_EXISTENCE
-
 
 # ── Chapter summaries (regulator-voice, 100-180 chars each) ──────────────
 
@@ -409,8 +407,8 @@ def _intent_chapter_priors(intent_label: str | None) -> tuple[str, ...]:
 
 
 def chapter_for_query(
-    question: str, intent_label: Optional[str] = None
-) -> Optional[str]:
+    question: str, intent_label: str | None = None
+) -> str | None:
     """Heuristic chapter mapper for fall-back retrieval.
 
     Returns the chapter ID (Roman numeral string ``"I"`` ... ``"XIII"``)
@@ -446,7 +444,7 @@ def chapter_for_query(
     return None
 
 
-def summary_for_chapter(chapter: str) -> Optional[str]:
+def summary_for_chapter(chapter: str) -> str | None:
     """Return the regulator-voice summary for ``chapter``, or ``None``."""
     return CHAPTER_SUMMARY.get(chapter)
 

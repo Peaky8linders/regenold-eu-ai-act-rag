@@ -47,8 +47,9 @@ from __future__ import annotations
 
 import functools
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Iterator, Literal, Optional
+from typing import Literal
 
 from app.data.eu_ai_act_corpus import (
     ART_3_DEFINITIONS,
@@ -94,14 +95,14 @@ class TreeNode:
 
     node_id: str
     kind: NodeKind
-    article_number: Optional[str]
-    paragraph_number: Optional[int]
-    subpoint_letter: Optional[str]
+    article_number: str | None
+    paragraph_number: int | None
+    subpoint_letter: str | None
     text: str
-    parent_id: Optional[str]
+    parent_id: str | None
     risk_tier: RiskTier
     timeline_effective_date: str
-    chapter_id: Optional[str]
+    chapter_id: str | None
     # ``children_ids`` is mutable per build, then frozen via dataclass on
     # publication. We expose it as a tuple so the surface stays immutable.
     children_ids: tuple[str, ...] = field(default_factory=tuple)
@@ -321,7 +322,7 @@ _ANNEX_ITEM_RE = re.compile(r"(?:^|[.:;]\s)(\d{1,2})\.\s+(?=[A-Z])")
 # ──────────────────────────────────────────────────────────────────────────
 
 
-def _split_paragraphs_article(text: str) -> list[tuple[Optional[int], str]]:
+def _split_paragraphs_article(text: str) -> list[tuple[int | None, str]]:
     """Split an article body into ``(paragraph_number, paragraph_text)`` pairs.
 
     If the article has no numbered paragraphs (e.g. Art. 4 — single block),
@@ -335,7 +336,7 @@ def _split_paragraphs_article(text: str) -> list[tuple[Optional[int], str]]:
     if not matches or matches[0].start() != 0:
         return [(None, text.strip())]
 
-    out: list[tuple[Optional[int], str]] = []
+    out: list[tuple[int | None, str]] = []
     for i, m in enumerate(matches):
         num = int(m.group(1))
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
@@ -348,7 +349,7 @@ def _split_paragraphs_article(text: str) -> list[tuple[Optional[int], str]]:
     return out
 
 
-def _split_subpoints(paragraph_text: str) -> list[tuple[Optional[str], str]]:
+def _split_subpoints(paragraph_text: str) -> list[tuple[str | None, str]]:
     """Split a paragraph (or annex item) body into ``(letter, text)`` pairs.
 
     Returns one entry with ``letter=None`` when the paragraph has no
@@ -369,7 +370,7 @@ def _split_subpoints(paragraph_text: str) -> list[tuple[Optional[str], str]]:
     # ``first.start()`` is at the ``[:;]`` punctuation; +1 includes it.
     preamble = paragraph_text[: first.start() + 1].strip()
 
-    out: list[tuple[Optional[str], str]] = []
+    out: list[tuple[str | None, str]] = []
     if preamble:
         out.append((None, preamble))
 
@@ -383,7 +384,7 @@ def _split_subpoints(paragraph_text: str) -> list[tuple[Optional[str], str]]:
     return out
 
 
-def _split_annex_items(text: str) -> list[tuple[Optional[int], str]]:
+def _split_annex_items(text: str) -> list[tuple[int | None, str]]:
     """Split an annex body into ``(item_number, item_text)`` pairs.
 
     Annex IV (the architecture PDF specifically calls it out) and Annex III
@@ -394,7 +395,7 @@ def _split_annex_items(text: str) -> list[tuple[Optional[int], str]]:
     if not matches:
         return [(None, text.strip())]
 
-    out: list[tuple[Optional[int], str]] = []
+    out: list[tuple[int | None, str]] = []
     # Preamble before the first numbered item — kept as item_number=None.
     first = matches[0]
     preamble = text[: first.start()].strip()
@@ -416,7 +417,7 @@ def _split_annex_items(text: str) -> list[tuple[Optional[int], str]]:
 # ──────────────────────────────────────────────────────────────────────────
 
 
-def _chapter_id_for(short_key: str) -> Optional[str]:
+def _chapter_id_for(short_key: str) -> str | None:
     ch = ARTICLE_CHAPTER.get(short_key)
     if ch is None:
         return None
@@ -442,7 +443,7 @@ def _make_article_subtree(
     body: str,
     risk: RiskTier,
     timeline: str,
-    chapter_id: Optional[str],
+    chapter_id: str | None,
     nodes: dict[str, TreeNode],
 ) -> None:
     """Walk one article's text and append its tree to ``nodes`` in-place."""
@@ -720,7 +721,7 @@ def iter_children(parent_id: str) -> Iterator[TreeNode]:
     return (tree[c] for c in parent.children_ids if c in tree)
 
 
-def parent_of(node_id: str) -> Optional[TreeNode]:
+def parent_of(node_id: str) -> TreeNode | None:
     """Return the parent node, or ``None`` for top-level chapters/recitals.
 
     Top-level nodes (article roots, annex roots, recitals, definitions

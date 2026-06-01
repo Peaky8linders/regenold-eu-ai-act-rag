@@ -32,7 +32,6 @@ Consumed by:
 """
 from __future__ import annotations
 
-
 ARTICLE_FULL_TEXT: dict[str, str] = {
     'Annex I': (
         'Section A. List of Union harmonisation legislation based on the New Legislative '

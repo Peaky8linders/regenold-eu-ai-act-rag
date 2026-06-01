@@ -115,7 +115,7 @@ def pathrag_candidates(
             continue
         edges: Path = [
             (f"Art. {a}", f"Art. {b}")
-            for a, b in zip(nodes, nodes[1:])
+            for a, b in zip(nodes, nodes[1:], strict=False)
         ]
         paths.append(edges)
     paths = prune_redundant_paths(paths, jaccard_threshold=0.8)

@@ -28,7 +28,6 @@ The ordering is:
 
 from __future__ import annotations
 
-
 # Name → numeric rank. Higher rank == more severe. Lowercase canonical form.
 SEVERITY_ORDER: dict[str, int] = {
     "info": 0,

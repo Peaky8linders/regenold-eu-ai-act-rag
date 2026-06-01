@@ -37,11 +37,10 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 from app.data.eu_ai_act_corpus import (
-    ARTICLE_FULL_TEXT,
     ART_3_DEFINITIONS,
+    ARTICLE_FULL_TEXT,
 )
 from app.data.kb_search import _tokenize
-
 
 # ── Sentence splitter ────────────────────────────────────────────────────
 

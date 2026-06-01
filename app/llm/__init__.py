@@ -7,7 +7,6 @@ path, and the local ``openai_wrapper`` (Claude Max via the
 """
 from __future__ import annotations
 
-import os
 from typing import Literal
 
 

@@ -63,8 +63,9 @@ import os
 import threading
 import uuid
 from collections import deque
-from datetime import datetime, timezone
-from typing import Any, Iterator
+from collections.abc import Iterator
+from datetime import UTC, datetime
+from typing import Any
 
 from app.evidence.models import (
     ChainStatus,
@@ -133,7 +134,7 @@ def _compute_data_hash(payload: dict[str, Any], previous_hash: str) -> str:
 
 def _utc_now_iso() -> str:
     """Return current UTC time in ISO 8601 format with Z suffix."""
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _coerce_entry_type(entry_type: Any) -> str:
@@ -424,8 +425,10 @@ class PostgresAuditStore:
         """
         if self._engine is not None:
             return self._engine
-        from sqlalchemy import create_engine  # noqa: PLC0415 — lazy
-        from sqlalchemy import text  # noqa: PLC0415 — lazy
+        from sqlalchemy import (
+            create_engine,  # noqa: PLC0415 — lazy
+            text,  # noqa: PLC0415 — lazy
+        )
 
         url = self._database_url
         if url.startswith("postgres://"):

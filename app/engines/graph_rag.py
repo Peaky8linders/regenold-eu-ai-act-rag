@@ -612,7 +612,7 @@ def _llm_parse_query(question: str) -> GraphQuery:
                 return _deterministic_parse(question)
             text = text_raw.strip()
         elif provider == "groq":
-            from app.llm.openai_wrapper_provider import get_groq_provider, OpenAIWrapperRequest
+            from app.llm.openai_wrapper_provider import OpenAIWrapperRequest, get_groq_provider
             resp = get_groq_provider().complete(
                 OpenAIWrapperRequest(
                     system=system_prompt,
@@ -735,13 +735,13 @@ def _llm_generate_answer(
 
         if getattr(context, "semantically_relevant_statements", None):
             context_parts.append(
-                f"\nSEMANTICALLY RELEVANT STATEMENTS (AtomicFacts):\n"
+                "\nSEMANTICALLY RELEVANT STATEMENTS (AtomicFacts):\n"
                 + "\n".join(f"- {s}" for s in context.semantically_relevant_statements)
             )
 
         if getattr(context, "referenced_annexes_and_recitals", None):
             context_parts.append(
-                f"\nREFERENCED ANNEXES AND RECITALS (Queue):\n"
+                "\nREFERENCED ANNEXES AND RECITALS (Queue):\n"
                 + "\n".join(
                     f"- [{r['ref']}] {r['text']}"
                     for r in context.referenced_annexes_and_recitals
@@ -782,7 +782,7 @@ def _llm_generate_answer(
                 return _deterministic_answer(question, context)
             return validate_llm_output(text_raw.strip())
         elif provider == "groq":
-            from app.llm.openai_wrapper_provider import get_groq_provider, OpenAIWrapperRequest
+            from app.llm.openai_wrapper_provider import OpenAIWrapperRequest, get_groq_provider
             resp = get_groq_provider().complete(
                 OpenAIWrapperRequest(
                     system=full_system,
@@ -2253,7 +2253,7 @@ def _seed_classification_obligations(context: GraphContext, topic: dict) -> None
 
 
 def _seed_scenario_obligations(
-    context: "GraphContext", verdict: "ScenarioVerdict"
+    context: GraphContext, verdict: ScenarioVerdict
 ) -> None:
     """Replace ``context.obligations`` with the scenario verdict's article pack.
 
@@ -2532,7 +2532,7 @@ def _detect_article_6_3_inquiry(question: str) -> bool:
     if idx >= 0:
         raw_q = raw_q[idx + len(_FLATTEN_MARKER):]
     q = raw_q.strip().lower()
-    
+
     pattern = re.compile(
         r"\b(?:art(?:icle)?\s+6\(3\)|6\s*\(3\)|exception\s+to\s+high\s*-\s*risk\b|"
         r"high\s*-\s*risk\s+exception\b|high\s*-\s*risk\s+exemption\b|"
@@ -2813,6 +2813,8 @@ def _populate_semantic_statements(context: GraphContext, question: str) -> None:
     try:
         from app.engines.embeddings_index import (
             is_available as _emb_available,
+        )
+        from app.engines.embeddings_index import (
             query as _emb_query,
         )
         if _emb_available():
@@ -2833,8 +2835,9 @@ def _populate_semantic_statements(context: GraphContext, question: str) -> None:
 def _expand_referenced_annexes_and_recitals(context: GraphContext) -> None:
     """Parse primary retrieved context for referenced Annexes and Recitals and append them to context."""
     import re
-    from app.data.kb import EC_CHECKER_OBLIGATION_MAP
+
     from app.data.eu_ai_act_corpus import RECITALS
+    from app.data.kb import EC_CHECKER_OBLIGATION_MAP
 
     annex_pat = re.compile(r"\bAnnex\s+([IVXLCDM]+)\b", re.IGNORECASE)
     recital_pat = re.compile(r"\bRecital\s+(\d+)\b", re.IGNORECASE)
@@ -3075,7 +3078,7 @@ _COMPLEX_QUESTION_KEYWORDS = frozenset({
 def _needs_stage2_enhancement(
     question: str,
     context: GraphContext,  # noqa: ARG001 — reserved for future richness checks
-    query: "GraphQuery | None" = None,
+    query: GraphQuery | None = None,
 ) -> bool:
     """Return True when the question is complex enough to benefit from Stage-2 polish.
 
@@ -3169,7 +3172,7 @@ def _build_context_references_block(context: GraphContext) -> str:
     return "\n".join(parts) if parts else "No EU AI Act references match this query."
 
 
-def _context_article_refs(context: "GraphContext | None") -> list[str]:
+def _context_article_refs(context: GraphContext | None) -> list[str]:
     """R69 — collect distinct Article/Annex refs present in a GraphContext.
 
     Used to seed the cross-reference context pass (the architecture's
@@ -3331,7 +3334,7 @@ _STAGE2_REFUSAL_MARKERS: tuple[str, ...] = (
 
 
 def _polished_prose_self_contradicts_refs(
-    prose: str, context: "GraphContext | None"
+    prose: str, context: GraphContext | None
 ) -> tuple[bool, str | None]:
     """Detect Stage-2 self-contradiction: refusal template + non-empty refs.
 
@@ -3368,7 +3371,7 @@ def _polished_prose_self_contradicts_refs(
     return False, None
 
 
-def _extract_context_grounded_refs(context: "GraphContext") -> set[str]:
+def _extract_context_grounded_refs(context: GraphContext) -> set[str]:
     """Return the set of Art./Annex references present in ``context``.
 
     Walks ``obligations``, ``article_info``, and ``gaps`` looking for
@@ -3423,7 +3426,7 @@ def _extract_context_grounded_refs(context: "GraphContext") -> set[str]:
                     grounded.add(f"Annex {m_annex.group(1).upper()}")
                     continue
                 grounded.add(ref)
-                
+
         # R69 cross-references: include injected cross-reference articles as grounded
         for xref_str in getattr(context, "xrefs", []) or []:
             parts = xref_str.split(":", 1)
@@ -3443,7 +3446,7 @@ def _extract_context_grounded_refs(context: "GraphContext") -> set[str]:
 
 def _polished_prose_has_unknown_citations(
     prose: str,
-    context: "GraphContext | None" = None,
+    context: GraphContext | None = None,
 ) -> tuple[bool, str | None]:
     """Detect citation drift in Stage-2 polished prose.
 
@@ -3486,7 +3489,7 @@ def _polished_prose_has_unknown_citations(
         ref = f"Art. {num_int}" if num_int >= 0 else f"Art. {raw_num}"
         if ref not in ARTICLE_EXISTENCE:
             return True, ref
-        
+
         # R101 — Catalog-assisted dynamic grounding. If the cited article
         # exists in ARTICLE_EXISTENCE, we do NOT count it as drift when
         # REGENOLD_DYNAMIC_GROUNDING is enabled! This allows the LLM's parametric
@@ -3494,7 +3497,7 @@ def _polished_prose_has_unknown_citations(
         import os
         if os.getenv("REGENOLD_DYNAMIC_GROUNDING", "0").strip().lower() in ("1", "true", "yes", "on"):
             return False, None
-            
+
         if grounded_refs and ref not in grounded_refs:
             return True, ref
         return False, None
@@ -3503,11 +3506,11 @@ def _polished_prose_has_unknown_citations(
         ref = f"Annex {roman.upper()}"
         if ref not in ARTICLE_EXISTENCE:
             return True, ref
-            
+
         import os
         if os.getenv("REGENOLD_DYNAMIC_GROUNDING", "0").strip().lower() in ("1", "true", "yes", "on"):
             return False, None
-            
+
         if grounded_refs and ref not in grounded_refs:
             return True, ref
         return False, None
@@ -3679,7 +3682,7 @@ def _claude_max_enhance_answer(
         elif _env_provider == "groq":
             from app.llm.openai_wrapper_provider import is_groq_provider_enabled
             _use_groq = is_groq_provider_enabled()
-            
+
         if _use_anthropic_sdk:
             text_raw = _anthropic_complete_for_graph_rag(
                 system=PROMPT_HARDENING_PREFIX + ANSWER_GENERATE_SYSTEM,
@@ -3689,7 +3692,7 @@ def _claude_max_enhance_answer(
                 complex_question=complex_q,
             )
         elif _use_groq:
-            from app.llm.openai_wrapper_provider import get_groq_provider, OpenAIWrapperRequest
+            from app.llm.openai_wrapper_provider import OpenAIWrapperRequest, get_groq_provider
             resp = get_groq_provider().complete(
                 OpenAIWrapperRequest(
                     system=PROMPT_HARDENING_PREFIX + ANSWER_GENERATE_SYSTEM,
@@ -3748,7 +3751,7 @@ def _claude_max_enhance_answer(
 def _two_stage_generate(
     question: str,
     context: GraphContext,
-    query: "GraphQuery | None" = None,
+    query: GraphQuery | None = None,
     system_description: str | None = None,
     history_turn_count: int = 1,
 ) -> tuple[str, bool]:

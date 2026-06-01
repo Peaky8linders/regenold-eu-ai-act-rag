@@ -26,7 +26,6 @@ import re
 
 from app.integrations.regenold.models import MAX_ANSWER_SENTENCES
 
-
 # R38 Issue A2: per-intent answer length cap (characters). Combined with
 # MAX_ANSWER_SENTENCES, drives the answer-template substitution. Gold
 # distributions: definitional ~140c, classification ~260c, scenario ~500c.

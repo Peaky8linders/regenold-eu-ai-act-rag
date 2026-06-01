@@ -62,7 +62,6 @@ from __future__ import annotations
 import logging
 import os
 import re
-import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -134,7 +133,7 @@ class RoleObligation:
 _EXECUTOR: Any = None
 
 
-def _get_executor() -> "ThreadPoolExecutor":
+def _get_executor() -> ThreadPoolExecutor:
     """Lazy single-pool accessor — daemon threads, capped at 2 workers."""
     global _EXECUTOR
     if _EXECUTOR is None:
@@ -346,7 +345,7 @@ def _normalise_role(role: str) -> str | None:
 # ─── Client resolution ─────────────────────────────────────────────────────
 
 
-def _resolve_client() -> "GraphClient | None":
+def _resolve_client() -> GraphClient | None:
     """Lazy-load + return the graph client iff it's connected.
 
     Mirrors :func:`app.engines.graph_expand_2hop._resolve_client`. The

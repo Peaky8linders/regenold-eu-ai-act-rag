@@ -26,9 +26,8 @@ topic verdict or to a scenario verdict without branching code paths.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable
-
 
 # ── Role detection ───────────────────────────────────────────────────────
 

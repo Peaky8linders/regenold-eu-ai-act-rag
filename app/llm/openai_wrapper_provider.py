@@ -367,7 +367,7 @@ _GROQ_SINGLETON_LOCK = threading.Lock()
 
 def is_groq_provider_enabled() -> bool:
     """True iff general Groq provider is enabled.
-    
+
     Requires GROQ_API_KEY.
     """
     return bool(os.getenv("GROQ_API_KEY", "").strip())
@@ -408,7 +408,7 @@ def get_groq_provider() -> _OpenAIWrapperProvider:
     Same double-checked-locking shape as the default singleton. Reads
     ``GROQ_API_BASE`` (default ``https://api.groq.com/openai/v1``) and
     ``GROQ_API_KEY`` at first construction. The 60 s default timeout
-    matches Stage-2 needs — intent fast-fail posture uses per-request 
+    matches Stage-2 needs — intent fast-fail posture uses per-request
     timeout overrides.
     """
     global _GROQ_SINGLETON

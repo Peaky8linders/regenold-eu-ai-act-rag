@@ -55,9 +55,9 @@ import os
 import re
 import threading
 import time
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from functools import lru_cache
-from typing import Iterable, Literal, Mapping, Sequence
+from typing import Literal
 
 from app.data.ontology import ANNEX_III_REGISTRY, PRACTICE_REGISTRY
 
@@ -814,10 +814,10 @@ def _parse_llm_json(text: str) -> BooleanTags | None:
             continue
         if isinstance(value, bool):
             clean[key] = value
-    
+
     if not clean:
         return None
-        
+
     try:
         return BooleanTags(**clean)
     except TypeError:

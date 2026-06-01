@@ -66,11 +66,10 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Iterable
 from functools import lru_cache
-from typing import Iterable
 
 from app.data.article_existence import ARTICLE_EXISTENCE
-
 
 __all__ = [
     "ROLES",

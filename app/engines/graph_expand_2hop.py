@@ -130,7 +130,7 @@ class GraphExpansion:
 _EXECUTOR: Any = None
 
 
-def _get_executor() -> "ThreadPoolExecutor":
+def _get_executor() -> ThreadPoolExecutor:
     """Lazy executor accessor — single-worker pool, daemon threads.
 
     ``concurrent.futures`` pulls ``threading`` + ``queue`` (~40 ms cold
@@ -283,7 +283,7 @@ def _empty_expansion(seeds: list[str]) -> GraphExpansion:
     )
 
 
-def _resolve_client() -> "GraphClient | None":
+def _resolve_client() -> GraphClient | None:
     """Lazy-load + return the graph client iff it's connected."""
     try:
         from app.graph.client import get_graph_client
@@ -358,22 +358,22 @@ def expand_2hop(
             started = time.perf_counter()
             results = rushdb_client.expand_2hop(seed_nums, cap=cap, timeout_ms=timeout_ms)
             elapsed_ms = int((time.perf_counter() - started) * 1000)
-            
+
             hop1: list[str] = []
             hop2: list[str] = []
             seen_internal: set[str] = set()
-            
+
             for row in results:
                 internal = _num_to_internal(str(row.get("num")))
                 if not internal or internal in seen_internal or not _is_real_ref(internal):
                     continue
                 seen_internal.add(internal)
-                
+
                 if row.get("hops") == 1:
                     hop1.append(internal)
                 elif len(hop2) < max_hop2:
                     hop2.append(internal)
-                    
+
             return GraphExpansion(
                 seed_articles=tuple(seed_echo),
                 hop1_articles=tuple(hop1),

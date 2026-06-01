@@ -54,7 +54,6 @@ import os
 import re
 from functools import lru_cache
 
-
 _ENV_FLAG = "REGENOLD_CITATION_GUARD"
 _MIN_OVERLAP_TOKENS = 1
 

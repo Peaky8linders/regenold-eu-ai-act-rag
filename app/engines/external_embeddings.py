@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 from typing import TYPE_CHECKING, Literal
 
 import httpx
@@ -63,7 +62,7 @@ def get_embedding(
 
     single_input = isinstance(texts, str)
     input_list = [texts] if single_input else list(texts)
-    
+
     # Strip leading/trailing whitespaces to avoid API quirks
     input_list = [t.strip() for t in input_list]
     if not input_list or all(not t for t in input_list):
@@ -82,7 +81,7 @@ def get_embedding(
             # Cohere embed v3: Search Query for queries, Search Document for corpus docs
             input_type = "search_query" if is_query else "search_document"
             model = os.getenv("REGENOLD_EXTERNAL_EMBEDDING_MODEL", "embed-english-v3.0")
-            
+
             with httpx.Client(timeout=30.0) as client:
                 for idx in range(0, len(input_list), batch_size):
                     batch = input_list[idx : idx + batch_size]
@@ -95,7 +94,7 @@ def get_embedding(
                     res.raise_for_status()
                     data = res.json()
                     embeddings.extend(data["embeddings"])
-                
+
         else:  # openai
             api_key = os.getenv("OPENAI_API_KEY", "dummy").strip()
             api_base = os.getenv("OPENAI_API_BASE", OPENAI_API_URL).strip()
@@ -112,7 +111,7 @@ def get_embedding(
                 "Content-Type": "application/json",
             }
             model = os.getenv("REGENOLD_EXTERNAL_EMBEDDING_MODEL", "text-embedding-3-small")
-            
+
             with httpx.Client(timeout=30.0) as client:
                 for idx in range(0, len(input_list), batch_size):
                     batch = input_list[idx : idx + batch_size]

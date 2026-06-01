@@ -46,7 +46,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 from app.data.kb import EC_CHECKER_OBLIGATION_MAP
 
@@ -1098,6 +1098,8 @@ def semantic_coverage_map(
     try:
         from app.engines.embeddings_index import (  # noqa: PLC0415
             is_available as _emb_available,
+        )
+        from app.engines.embeddings_index import (
             query as _emb_query,
         )
     except Exception:  # noqa: BLE001 — module import guard

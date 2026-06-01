@@ -51,12 +51,9 @@ the dense path closes the recall gap on paraphrased queries.
 from __future__ import annotations
 
 import logging
-import math
 import os
-import re
 import threading
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -139,10 +136,10 @@ class _DenseIndex:
         self._failed = False
         # Populated after _setup():
         self._vocab: dict[str, int] = {}
-        self._idf: "np.ndarray | None" = None
-        self._mean_doc_vec: "np.ndarray | None" = None  # unused after r31 rewrite
-        self._v_t: "np.ndarray | None" = None  # SVD V_T (dim × vocab)
-        self._doc_vecs_dense: "np.ndarray | None" = None  # plain fallback
+        self._idf: np.ndarray | None = None
+        self._mean_doc_vec: np.ndarray | None = None  # unused after r31 rewrite
+        self._v_t: np.ndarray | None = None  # SVD V_T (dim × vocab)
+        self._doc_vecs_dense: np.ndarray | None = None  # plain fallback
         self._compressed: object | None = None  # turboquant CompressedVectors
         self._quantizer: object | None = None  # turboquant TurboQuant
         self._num_docs: int = 0
@@ -179,6 +176,7 @@ class _DenseIndex:
         # Heavy imports stay inside _build so module import is free.
         import json  # noqa: PLC0415
         from pathlib import Path  # noqa: PLC0415
+
         import numpy as np  # noqa: PLC0415
 
         self._use_external = False
@@ -197,7 +195,7 @@ class _DenseIndex:
                 keep_doc_idx = [i for i in range(n_total) if bm25.sources[i] != "definition"]
                 self._bm25_idx_map = list(keep_doc_idx)
                 raw_texts = [" ".join(bm25.docs[orig_i]) for orig_i in self._bm25_idx_map]
-                
+
                 logger.info("turboquant_index: requesting external embeddings for n=%d documents...", len(raw_texts))
                 ext_vecs = external_embeddings.get_embedding(raw_texts, is_query=False)
                 if ext_vecs is not None:
@@ -371,7 +369,7 @@ class _DenseIndex:
             )
 
     # --- query ----------------------------------------------------------
-    def _embed_query(self, question: str) -> "np.ndarray | None":
+    def _embed_query(self, question: str) -> np.ndarray | None:
         """Embed the question into the same 128-d unit-norm subspace."""
         if not self._setup():
             return None

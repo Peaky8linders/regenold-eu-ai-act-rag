@@ -29,7 +29,6 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-
 ROLE_OBLIGATIONS_VERSION = "2026.04.27.v1"
 
 

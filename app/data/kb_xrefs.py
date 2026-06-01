@@ -46,7 +46,6 @@ from functools import lru_cache
 from app.data.article_existence import ARTICLE_EXISTENCE
 from app.data.kb import EC_CHECKER_OBLIGATION_MAP
 
-
 # Article and annex citation patterns. Matches the short ``Art.`` form
 # (and the no-period ``Art`` form when followed by digits), and the
 # Roman-numeral Annex form. Sub-paragraph chains like ``(1)(a)`` are

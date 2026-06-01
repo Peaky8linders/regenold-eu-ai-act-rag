@@ -58,7 +58,6 @@ import re
 
 from app.data.kb_xrefs import cross_refs as _xref_neighbors
 
-
 # Hardcoded HRAIS / prohibition / transparency chains per the
 # High-Precision RAG architecture PDF. Each entry maps a HUB article
 # to its dependent obligation chain. The router walks these AFTER the

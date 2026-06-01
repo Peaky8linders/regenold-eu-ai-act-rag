@@ -10,7 +10,8 @@ import concurrent.futures
 import logging
 import re
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from app.graph.rushdb_config import (
     create_rushdb_client,
@@ -151,7 +152,7 @@ def expand_2hop(
         seed_set = set(seed_article_nums)
         hop1_results = []
         hop1_next = list(hop1_refs - seed_set)
-        
+
         for num in hop1_next:
             hop1_results.append({"num": num, "hops": 1})
             if len(hop1_results) >= cap:
@@ -184,7 +185,7 @@ def expand_2hop(
             hop2_results.append({"num": num, "hops": 2})
             if len(hop1_results) + len(hop2_results) >= cap:
                 break
-                
+
         return hop1_results + hop2_results
 
     res = _run_with_timeout(_do, timeout_ms)
@@ -198,7 +199,7 @@ def lookup_definition_by_term(
     def _do():
         client = _get_client()
         slug = _slug_term(term)
-        
+
         # 1. Exact slug match
         res = client.records.find({
             "labels": ["Definition"],
@@ -207,7 +208,7 @@ def lookup_definition_by_term(
         })
         if res and hasattr(res, "data") and res.data:
             return getattr(res.data[0], "text", None)
-            
+
         # 2. $contains fallback
         res2 = client.records.find({
             "labels": ["Definition"],
@@ -216,7 +217,7 @@ def lookup_definition_by_term(
         })
         if res2 and hasattr(res2, "data") and res2.data:
             return getattr(res2.data[0], "text", None)
-            
+
         return None
 
     return _run_with_timeout(_do, timeout_ms)
@@ -229,7 +230,7 @@ def recitals_for_article(
     """Returns [{article_ref, recital_number, text}, ...] or [] on failure."""
     def _do():
         client = _get_client()
-        
+
         from app.integrations.regenold.refs import to_internal_form
         # Need article_id formatting
         internal = to_internal_form(article_ref) or article_ref
@@ -249,10 +250,10 @@ def recitals_for_article(
             "where": {"article_anchor": {"$contains": art_id}},
             "limit": max_recitals
         })
-        
+
         if not res or not hasattr(res, "data"):
             return []
-            
+
         out = []
         for doc in res.data:
             out.append({
@@ -273,7 +274,8 @@ def get_stats() -> dict:
     wheel is absent — CI mocks ``get_metadata`` without wiring ``_get_client``.
     """
     t0 = time.time()
-    elapsed = lambda: round((time.time() - t0) * 1000, 2)
+    def elapsed():
+        return round((time.time() - t0) * 1000, 2)
 
     if not is_configured():
         return {

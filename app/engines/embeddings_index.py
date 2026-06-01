@@ -44,13 +44,11 @@ Hard constraints (per the task brief):
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import re
 import threading
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -107,7 +105,7 @@ _STOPWORDS = frozenset({
     "what", "which", "where", "when", "why", "how", "we", "us", "our",
     "you", "your", "i", "me", "my", "any", "all", "some", "each", "every",
     "either", "neither", "more", "most", "less", "least", "many", "much",
-    "few", "such", "also", "than", "then", "so",
+    "few", "such", "also", "than", "so",
     # AI Act prose recurring words (mirrors kb_search)
     "system", "systems", "ai", "provider", "providers", "deployer",
     "deployers", "obligation", "obligations", "requirement",
@@ -317,7 +315,7 @@ def asset_manifest() -> dict:
 # ── Query path ───────────────────────────────────────────────────────────
 
 
-def _embed_query(text: str) -> "np.ndarray | None":
+def _embed_query(text: str) -> np.ndarray | None:
     """Project the query into the same 128-D unit-norm subspace.
 
     Returns ``None`` when:

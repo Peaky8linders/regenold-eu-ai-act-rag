@@ -68,7 +68,6 @@ from __future__ import annotations
 
 import os
 
-
 _ENV_FLAG: str = "REGENOLD_CITE_DESCRIBE_GUARD"
 
 

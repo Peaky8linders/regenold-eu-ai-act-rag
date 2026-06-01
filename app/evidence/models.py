@@ -26,7 +26,7 @@ schema-compatible swap.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -41,7 +41,7 @@ def _utc_now_iso() -> str:
     the audit chain importable even if other parts of the app are
     half-loaded (e.g. during test collection).
     """
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class EvidenceEntryType(str, Enum):

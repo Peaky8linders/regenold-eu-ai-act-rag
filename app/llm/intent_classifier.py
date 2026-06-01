@@ -226,7 +226,7 @@ class _BreakerState:
 
 
 _BREAKER = _BreakerState()
-_CACHE: "OrderedDict[str, IntentResult]" = OrderedDict()
+_CACHE: OrderedDict[str, IntentResult] = OrderedDict()
 _CACHE_LOCK = threading.Lock()
 
 

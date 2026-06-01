@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-
 # ─── Namespace Constants ─────────────────────────────────────────────────────
 
 DPV_NS = "https://w3id.org/dpv#"

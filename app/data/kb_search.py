@@ -96,11 +96,8 @@ from functools import lru_cache
 from typing import Literal
 
 from app.data.article_sections import articles_for_sections
-from app.data.kb import EC_CHECKER_OBLIGATION_MAP
-from app.data.ontology import (
-    ANNEX_III_REGISTRY,
-    PHASE_REGISTRY,
-    PRACTICE_REGISTRY,
+from app.data.eu_ai_act_corpus import (
+    ART_3_DEFINITIONS as _UPSTREAM_DEFINITIONS,
 )
 
 # Round 25 — augment the BM25 corpus with the full EUR-Lex prose from the
@@ -111,11 +108,17 @@ from app.data.ontology import (
 # 26, 43-49, 56-60, 70-90 — top miss zones on the davidath benchmark).
 from app.data.eu_ai_act_corpus import (
     ARTICLE_CHAPTER,
+)
+from app.data.eu_ai_act_corpus import (
     ARTICLE_FULL_TEXT as _UPSTREAM_FULL_TEXT,
-    ART_3_DEFINITIONS as _UPSTREAM_DEFINITIONS,
+)
+from app.data.kb import EC_CHECKER_OBLIGATION_MAP
+from app.data.ontology import (
+    ANNEX_III_REGISTRY,
+    PHASE_REGISTRY,
+    PRACTICE_REGISTRY,
 )
 from app.engines.entity_extractor import boosted_articles
-
 
 DocSource = Literal["kb", "ontology", "corpus", "definition"]
 
@@ -619,8 +622,10 @@ def top_articles_by_relevance(
         from app.engines.entity_extractor import (  # noqa: PLC0415
             boosted_articles,
             extract_entities,
-            is_enabled as _entity_enabled,
             is_qa_shape_with_single_role,
+        )
+        from app.engines.entity_extractor import (
+            is_enabled as _entity_enabled,
         )
         entity_boosts = boosted_articles(question)
         # Cache the extracted entities for the injection step below —
@@ -636,6 +641,8 @@ def top_articles_by_relevance(
     try:
         from app.engines.embeddings_index import (  # noqa: PLC0415
             is_available as _emb_available,
+        )
+        from app.engines.embeddings_index import (
             query as _emb_query,
         )
         if _emb_available():
@@ -760,6 +767,8 @@ def top_articles_by_relevance(
     try:
         from app.engines.turboquant_index import (  # noqa: PLC0415
             dense_top_k,
+        )
+        from app.engines.turboquant_index import (
             is_enabled as _dense_enabled,
         )
         if _dense_enabled():
@@ -809,6 +818,8 @@ def top_articles_by_relevance(
     try:
         from app.engines.rushdb_hybrid_retrieval import (  # noqa: PLC0415
             is_hybrid_enabled as _rush_hybrid_on,
+        )
+        from app.engines.rushdb_hybrid_retrieval import (
             retrieve_article_refs as _rush_hybrid_refs,
         )
         if _rush_hybrid_on():
@@ -830,7 +841,11 @@ def top_articles_by_relevance(
     try:
         from app.engines.graph_expand_2hop import (  # noqa: PLC0415
             expand_2hop as _g2,
+        )
+        from app.engines.graph_expand_2hop import (
             fuse_with_kb_xrefs as _g2_fuse,
+        )
+        from app.engines.graph_expand_2hop import (
             is_enabled as _g2_enabled,
         )
     except Exception:  # noqa: BLE001 — neo4j missing on a stripped install
@@ -1015,7 +1030,7 @@ def top_articles_by_relevance_in_chapters(
     # (Annex I safety-component list, Annex II harmonisation legislation,
     # Annex III high-risk use-case list are structurally part of Chapter III)
     # or when a query keyword hints at an annex directly.
-    annex_keys = {k for k, v in ARTICLE_CHAPTER.items() if v is None and k.startswith("Annex")}
+    _annex_keys = {k for k, v in ARTICLE_CHAPTER.items() if v is None and k.startswith("Annex")}
     chapter_annex_inclusion: set[str] = set()
     if "III" in chapter_set:
         chapter_annex_inclusion.update({"Annex I", "Annex II", "Annex III", "Annex IV"})

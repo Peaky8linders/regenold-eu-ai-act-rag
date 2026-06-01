@@ -9,7 +9,6 @@ requirements with remediation guidance and effort estimates.
 
 from __future__ import annotations
 
-
 # ─── Article Requirement Structure ──────────────────────────────────────
 
 

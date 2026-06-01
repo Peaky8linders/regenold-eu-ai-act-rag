@@ -15,7 +15,6 @@ from __future__ import annotations
 from app.data.article_existence import ARTICLE_EXISTENCE
 from app.data.eu_ai_act_corpus import ARTICLE_CHAPTER
 
-
 _CHAPTER_III_SECTION_RANGES: tuple[tuple[str, range], ...] = (
     ("III.1", range(6, 8)),    # Classification as high-risk
     ("III.2", range(8, 16)),   # Requirements for high-risk AI systems

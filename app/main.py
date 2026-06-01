@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading as _threading
 from typing import Any
 
 from fastapi import FastAPI
@@ -173,7 +174,6 @@ def _log_llm_provider_status() -> None:
 # (when ``DATABASE_URL`` is set, only ONE worker actually performs the
 # write; the others observe the seeded graph on their next health probe).
 
-import threading as _threading
 
 # Module-level guard so even within a single process two startup hooks
 # can't both fire the seeder. ``daemon=True`` is critical — uvicorn
@@ -505,19 +505,19 @@ def _run_rushdb_auto_seed_in_thread(reason: str) -> None:
 def _maybe_auto_seed_rushdb() -> None:
     if os.getenv("REGENOLD_SKIP_STARTUP_LOG") == "1":
         return
-    import threading as _threading
+
     try:
-        from app.graph.rushdb_client import is_enabled, get_metadata
+        from app.graph.rushdb_client import get_metadata, is_enabled
         if not is_enabled():
             return
         meta = get_metadata() or {}
-        from scripts.seed_rushdb_kb import SEED_VERSION
         from app.data.kb import KB_VERSION
-        
+        from scripts.seed_rushdb_kb import SEED_VERSION
+
         if meta.get("seed_version") == SEED_VERSION and meta.get("kb_version") == KB_VERSION:
             logger.info("regenold.startup rushdb_seed_current")
             return
-            
+
         logger.info("regenold.startup rushdb_seed_started")
         thread = _threading.Thread(
             target=_run_rushdb_auto_seed_in_thread,
@@ -744,7 +744,8 @@ def healthz_graph() -> dict[str, object]:
 
     # ─── RushDB Path ──────────────────────────────────────────────────────
     try:
-        from app.graph.rushdb_client import is_enabled as is_rushdb_enabled, get_stats as get_rushdb_stats
+        from app.graph.rushdb_client import get_stats as get_rushdb_stats
+        from app.graph.rushdb_client import is_enabled as is_rushdb_enabled
         if is_rushdb_enabled():
             stats = get_rushdb_stats()
             base["graph_enabled"] = True

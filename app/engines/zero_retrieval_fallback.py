@@ -62,7 +62,7 @@ regulator would expect us to cite when we have no specific hook.
 """
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from app.data.article_existence import ARTICLE_EXISTENCE
 

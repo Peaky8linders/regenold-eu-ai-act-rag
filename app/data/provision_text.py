@@ -35,13 +35,13 @@ from __future__ import annotations
 import re
 from functools import lru_cache
 
+from app.data.article_existence import ARTICLE_EXISTENCE
 from app.data.official_eu_ai_act import (
+    OFFICIAL_ANNEX_TITLES,
     OFFICIAL_ARTICLE_TEXT,
     OFFICIAL_ARTICLE_TITLES,
-    OFFICIAL_ANNEX_TITLES,
 )
 from app.data.official_text_patches import OFFICIAL_TEXT_PATCHES
-from app.data.article_existence import ARTICLE_EXISTENCE
 from app.integrations.regenold import refs as _refs
 
 __all__ = [
@@ -380,7 +380,7 @@ def _drill_subpoints(
     second = scored[1][2] if len(scored) > 1 else 0
     confident = bool(q_tok) and top >= 1 and (top - second) >= 1
     order = (
-        [(l, t) for l, t, _ in scored] if confident
+        [(letter, t) for letter, t, _ in scored] if confident
         else sorted(subs.items(), key=lambda kv: kv[0])  # doc order
     )
 

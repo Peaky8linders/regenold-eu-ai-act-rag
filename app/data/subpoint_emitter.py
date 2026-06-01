@@ -20,8 +20,7 @@ leaf ref). On Regenold (likely sub-point gold), strict match wins.
 from __future__ import annotations
 
 import re
-from typing import Iterable
-
+from collections.abc import Iterable
 
 # Format the spec calls for: ("Article 5.1.f", 1.0). Confidence == 1.0
 # means REPLACE the base. < 1.0 means EMIT BOTH.

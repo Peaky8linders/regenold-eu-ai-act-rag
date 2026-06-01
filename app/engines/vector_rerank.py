@@ -120,6 +120,7 @@ class _Searcher:
         # Heavy imports stay inside this method so module-load remains
         # zero-cost when the feature is off.
         import json  # noqa: PLC0415
+
         import onnxruntime as ort  # noqa: PLC0415 — env-gated, lazy
         from tokenizers import Tokenizer  # noqa: PLC0415
         from turbovec import IdMapIndex  # noqa: PLC0415
@@ -149,7 +150,7 @@ class _Searcher:
                 for k, v in (payload.get("id_map") or {}).items()
             }
 
-    def embed(self, text: str) -> "np.ndarray | None":  # type: ignore[name-defined]
+    def embed(self, text: str) -> np.ndarray | None:  # type: ignore[name-defined]
         """Embed a single query string to a 384-d float32 unit-norm vector."""
         if not self._setup():
             return None
@@ -196,7 +197,6 @@ class _Searcher:
         """
         if not self._setup():
             return None
-        import numpy as np  # noqa: PLC0415
 
         emb = self.embed(query)
         if emb is None:
@@ -206,7 +206,7 @@ class _Searcher:
         # over-fetch cost is negligible (sub-ms brute-force scan).
         scores, ids = self._index.search(emb[None, :], k=64)  # type: ignore[union-attr]
         out: list[tuple[str, float]] = []
-        for s, idx_u64 in zip(scores[0], ids[0]):
+        for s, idx_u64 in zip(scores[0], ids[0], strict=False):
             mapping = self._id_to_sentence.get(int(idx_u64))
             if mapping is None:
                 continue

@@ -50,7 +50,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 from app.data.eu_ai_act_tree import (
     _split_annex_items,
@@ -111,7 +111,7 @@ _ART_REF_RE = re.compile(r"\bart(?:icle)?\.?\s*0*(\d{1,3})\b", re.IGNORECASE)
 _ANNEX_REF_RE = re.compile(r"\bannex\s+([IVX]{1,5})\b", re.IGNORECASE)
 
 
-def _corpus_ref_for(ref: str) -> Optional[str]:
+def _corpus_ref_for(ref: str) -> str | None:
     """Map a ref (with optional sub-points) to the corpus short key.
 
     ``"Art. 13(2)(a)"`` → ``"Art. 13"``; ``"Annex IV.2"`` → ``"Annex IV"``.
@@ -128,7 +128,7 @@ def _corpus_ref_for(ref: str) -> Optional[str]:
     return None
 
 
-def _slug_for(ref: str) -> Optional[str]:
+def _slug_for(ref: str) -> str | None:
     """Map a ref to a tree article-root slug (``art_13`` / ``annex_iv``)."""
     if not ref:
         return None
@@ -167,7 +167,7 @@ length axis."""
 # ──────────────────────────────────────────────────────────────────────────
 
 
-def paragraph_extract(question: str, article_ref: str) -> Optional[str]:
+def paragraph_extract(question: str, article_ref: str) -> str | None:
     """Return the *paragraph* block containing the best-matching sentence.
 
     Strategy: reuse the Round-34-tuned BM25 sentence scorer
@@ -242,7 +242,7 @@ def paragraph_extract(question: str, article_ref: str) -> Optional[str]:
     if len(sent_tokens) < 3:
         return None
     body_len = len(body.strip())
-    best_block: Optional[str] = None
+    best_block: str | None = None
     best_overlap = 0
     for block in blocks:
         overlap = len(_word_set(block) & sent_tokens)
@@ -282,7 +282,7 @@ _CROSS_REF_MAX_ITEMS = 3
 budget, and 3 sibling provisions is the spec's 'minimal set' spirit."""
 
 
-def _xref_to_slug(xref: str) -> Optional[str]:
+def _xref_to_slug(xref: str) -> str | None:
     """``"Annex IV"`` → ``"annex_iv"``; ``"Article 11"`` → ``"art_11"``."""
     m = re.match(r"Article\s+(\d{1,3})$", xref.strip())
     if m:
