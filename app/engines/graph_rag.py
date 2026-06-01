@@ -217,6 +217,40 @@ def _graph_rag_provider() -> str:
     )
 
 
+def _looks_structurally_truncated(text: str | None) -> bool:
+    """Heuristic: does ``text`` look cut mid-clause (no natural ending)?
+
+    R102 — the Claude-Max wrapper reports ``finish_reason="stop"`` even on
+    a stream truncated mid-word, so the finish_reason guard can't catch it.
+    A completed regulatory answer ends with sentence-terminal punctuation
+    (``.``/``!``/``?``), optionally wrapped by a closing quote/paren/bracket
+    (``)``/``]``/``”``/``"``/``'``). Anything else — a trailing letter,
+    digit, comma, semicolon, colon, or dash — means the model stopped
+    mid-clause and the text is partial.
+
+    Conservative by construction: it only fires on a *non-empty* answer
+    whose stripped tail is NOT terminal punctuation, so it never
+    false-positives on a complete sentence. Empty/whitespace text is
+    handled upstream (``validate_llm_output``) and returns False here so
+    this guard owns exactly one concern.
+    """
+    if not text:
+        return False
+    stripped = text.rstrip()
+    if not stripped:
+        return False
+    # Peel trailing closing wrappers a complete sentence may carry after
+    # its terminator: e.g. ``(see Annex IV).`` ends ``).`` → peel ``)``
+    # is unnecessary because the terminator is already last; but ``…IV.)``
+    # ends ``)`` → peel to reach the ``.``. Quotes/brackets likewise.
+    tail = stripped
+    while tail and tail[-1] in ")]}\"”’'":
+        tail = tail[:-1].rstrip()
+    if not tail:
+        return False
+    return tail[-1] not in ".!?…"
+
+
 def _openai_wrapper_complete_for_graph_rag(
     *, system: str, user: str, max_tokens: int, temperature: float,
     complex_question: bool = False,
@@ -311,6 +345,29 @@ def _openai_wrapper_complete_for_graph_rag(
         logger.warning(
             "graph_rag.openai_wrapper_truncated — finish_reason=length "
             "(model=%s, completion_tokens=%d) — falling back to deterministic.",
+            response.model,
+            response.completion_tokens,
+        )
+        return None
+    # R102 — STRUCTURAL truncation guard. The Claude-Max
+    # ``claude-code-openai-wrapper`` (CLI subprocess behind cloudflared)
+    # IGNORES ``max_tokens`` and reports ``finish_reason="stop"`` EVEN when
+    # the underlying Claude CLI / SSE stream truncates the answer mid-word
+    # (subprocess buffer / chunk boundary / Max session ceiling). Verified
+    # at the boundary: sending max_tokens=24 returned completion_tokens=1742
+    # with finish_reason="stop". The ``=="length"`` check above therefore
+    # never fires on that wrapper, so a mid-word fragment ("…safety
+    # component of a produc") shipped as stage2_landed=True and the
+    # normaliser appended a period ("produc."). When finish_reason is NOT a
+    # trustworthy truncation signal, fall back to detecting an answer that
+    # ends mid-clause — no sentence-terminal punctuation — and treat it as
+    # a soft failure too.
+    if _looks_structurally_truncated(response.text):
+        logger.warning(
+            "graph_rag.openai_wrapper_truncated_structural — finish_reason=%r "
+            "but text ends mid-clause (model=%s, completion_tokens=%d) — "
+            "falling back to deterministic.",
+            getattr(response, "finish_reason", None),
             response.model,
             response.completion_tokens,
         )
@@ -3633,10 +3690,16 @@ def _claude_max_enhance_answer(
             "obligations that appear in the EU AI ACT REFERENCES block, "
             "and make sure every article or annex you cite is described "
             "in the prose — state in a few words what it requires, never "
-            "cite a bare number. Lead with a direct answer, AT MOST 3 "
-            "sentences. Combine related obligations into one sentence rather "
-            "than emitting a 4th — the wire normaliser hard-caps at 3 and "
-            "any 4th sentence (and its cited articles) is dropped."
+            "cite a bare number. Lead with a DIRECT verdict (for a yes/no or "
+            "either/or question, the first clause states the answer — 'Not "
+            "always', 'Only when …', 'Yes, when …' — then the conditions). "
+            "For a practice restricted only in certain contexts, state both "
+            "the prohibited context AND its treatment elsewhere (high-risk "
+            "under Article 6 / Annex III, or Article 50 transparency), and "
+            "name any carve-out explicitly. AT MOST 4 sentences, preferring 3 "
+            "when they fully answer; use a 4th only for a distinct substantive "
+            "point (a complementary risk tier, an exception, or a "
+            "cross-reference), never filler."
         )
         try:
             max_tokens = settings.graph_rag.max_tokens
@@ -3714,6 +3777,18 @@ def _claude_max_enhance_answer(
                 logger.warning(
                     "graph_rag.groq_stage2_truncated — finish_reason=length "
                     "(completion_tokens=%d) — falling back to deterministic.",
+                    resp.completion_tokens,
+                )
+                text_raw = None
+            elif _looks_structurally_truncated(resp.text):
+                # R102 — structural truncation backstop (mirrors the
+                # openai_wrapper path). Any provider that under-reports a
+                # mid-clause cut as a natural stop is caught here.
+                logger.warning(
+                    "graph_rag.groq_stage2_truncated_structural — "
+                    "finish_reason=%r but text ends mid-clause "
+                    "(completion_tokens=%d) — falling back to deterministic.",
+                    getattr(resp, "finish_reason", None),
                     resp.completion_tokens,
                 )
                 text_raw = None

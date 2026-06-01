@@ -940,7 +940,7 @@ def _hard_truncate_at_clause(text: str, limit: int) -> str:
 
 
 def normalise_answer_for_regenold(
-    text: str, max_sentences: int = MAX_ANSWER_SENTENCES, question: str = ""
+    text: str, max_sentences: int | None = None, question: str = ""
 ) -> str:
     """Full Regenold-spec normalisation pipeline applied to engine output.
 
@@ -954,13 +954,32 @@ def normalise_answer_for_regenold(
        (``"graph context"``, ``"knowledge graph"`` etc.).
     4. Strip ``"Direct Answer:"`` / ``"Answer:"`` style openers from the
        FIRST sentence so the prose flows naturally.
-    5. Cap at ``max_sentences`` (default 4 per spec).
+    5. Cap at ``max_sentences`` sentences.
     6. Re-join with single spaces.
+
+    ``max_sentences`` default resolution (when the caller passes ``None``):
+    the runtime ``REGENOLD_MAX_ANSWER_SENTENCES`` env var, falling back to
+    the module constant ``MAX_ANSWER_SENTENCES`` (3). This keeps the
+    constant — and the davidath bench (which never sets the env) — at the
+    spec's tight 3-sentence cap byte-identically, while letting an operator
+    opt into a slightly fuller 4-sentence answer on the live deploy (the
+    competition spec allows "3-4 sentences"). Clamped to [1, 6] so a typo
+    can't uncap the answer.
 
     Returns the cleaned, plain-prose answer ready to ship.
     """
     if not text:
         return text
+
+    if max_sentences is None:
+        try:
+            max_sentences = int(
+                os.getenv("REGENOLD_MAX_ANSWER_SENTENCES", "").strip()
+                or MAX_ANSWER_SENTENCES
+            )
+        except ValueError:
+            max_sentences = MAX_ANSWER_SENTENCES
+        max_sentences = max(1, min(max_sentences, 6))
 
     qa_cap = int(os.getenv("REGENOLD_QA_LENGTH_CAP", "400").strip())
     is_scenario = False

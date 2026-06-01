@@ -282,6 +282,85 @@ class TestOpenAIWrapperCompleteForGraphRagTruncation:
             )
         assert result == "Polished prose."
 
+    def test_wrapper_midword_truncation_with_stop_returns_none(
+        self, monkeypatch
+    ) -> None:
+        """ROOT-CAUSE REGRESSION (live bug: ``...safety component of a produc.``).
+
+        The Claude-Max ``claude-code-openai-wrapper`` ignores ``max_tokens``
+        and reports ``finish_reason="stop"`` EVEN when the underlying Claude
+        CLI/SSE stream truncates the answer mid-word. The R91 guard only
+        checked ``finish_reason == "length"``, so the mid-word fragment shipped
+        as ``stage2_landed=True``. The structural guard must detect that the
+        text ends without sentence-terminal punctuation and bail so the caller
+        falls back to the complete deterministic answer.
+        """
+        monkeypatch.setenv("OPENAI_API_BASE", "http://127.0.0.1:8000/v1")
+        monkeypatch.setenv("OPENAI_API_KEY", "dummy")
+
+        fake_resp = MagicMock()
+        fake_resp.error = None
+        # Mid-word cut, finish_reason="stop" (the actual wrapper behaviour).
+        fake_resp.text = (
+            "Under Article 11, providers must draw up technical documentation "
+            "before placing a high-risk AI system on the market. Article 6 "
+            "classifies an AI system as high-risk when it is intended as a "
+            "safety component of a produc"
+        )
+        fake_resp.model = "claude-sonnet-4-6"
+        fake_resp.completion_tokens = 95
+        fake_resp.finish_reason = "stop"
+        fake_provider = MagicMock()
+        fake_provider.complete.return_value = fake_resp
+
+        with patch(
+            "app.llm.openai_wrapper_provider.get_openai_wrapper_provider",
+            return_value=fake_provider,
+        ):
+            from app.engines.graph_rag import (
+                _openai_wrapper_complete_for_graph_rag,
+            )
+            result = _openai_wrapper_complete_for_graph_rag(
+                system="s", user="u", max_tokens=512, temperature=0.0,
+            )
+        assert result is None
+
+    def test_wrapper_complete_answer_with_trailing_paren_returns_text(
+        self, monkeypatch
+    ) -> None:
+        """Guard must NOT false-positive on legitimate complete answers whose
+        final char is ``)`` / ``”`` after the terminator, or a bare
+        sentence end."""
+        monkeypatch.setenv("OPENAI_API_BASE", "http://127.0.0.1:8000/v1")
+        monkeypatch.setenv("OPENAI_API_KEY", "dummy")
+
+        for complete_text in (
+            "Article 13 requires transparency (see Annex IV).",
+            "Providers must keep logs under Article 12.",
+            "Is this prohibited under Article 5?",
+            'The Act calls this a "high-risk system."',
+        ):
+            fake_resp = MagicMock()
+            fake_resp.error = None
+            fake_resp.text = complete_text
+            fake_resp.model = "claude-sonnet-4-6"
+            fake_resp.completion_tokens = 30
+            fake_resp.finish_reason = "stop"
+            fake_provider = MagicMock()
+            fake_provider.complete.return_value = fake_resp
+
+            with patch(
+                "app.llm.openai_wrapper_provider.get_openai_wrapper_provider",
+                return_value=fake_provider,
+            ):
+                from app.engines.graph_rag import (
+                    _openai_wrapper_complete_for_graph_rag,
+                )
+                result = _openai_wrapper_complete_for_graph_rag(
+                    system="s", user="u", max_tokens=512, temperature=0.0,
+                )
+            assert result == complete_text, f"false-positive on: {complete_text!r}"
+
 
 # ─── 4. Anthropic SDK path bails on max_tokens stop_reason ────────────────
 

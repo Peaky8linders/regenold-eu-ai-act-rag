@@ -29,7 +29,13 @@ class GraphSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="NEO4J_", extra="ignore")
 
     enabled: bool = False
-    uri: str = "bolt://localhost:7687"
+    # Default points at the Regenold Neo4j Aura instance (R98 — Aura is the
+    # production graph backend). Overridable via ``NEO4J_URI``; the Railway
+    # dashboard / local ``.env`` set the operative value. ``neo4j+s://``
+    # uses TLS + routing and REQUIRES ``NEO4J_PASSWORD`` (username defaults
+    # to the Aura ``neo4j``); without the password the client cannot
+    # authenticate and the engine falls back to the deterministic KB path.
+    uri: str = "neo4j+s://6fc3fff5.databases.neo4j.io"
     # R98 — accept BOTH ``NEO4J_USERNAME`` (the env_prefix default) and
     # ``NEO4J_USER`` (what the seeder CLI sets and what many Neo4j Aura
     # deploys / Railway dashboards use). The user's Railway instance names
