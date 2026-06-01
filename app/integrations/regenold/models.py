@@ -1118,4 +1118,28 @@ def normalise_answer_for_regenold(
         in ("1", "true", "yes", "on")
     ):
         result = _hard_truncate_at_clause(result, char_cap)
+
+    # R103c — FINAL truncation guarantee ("this must never occur"). The
+    # wire answer must never END on a dangling fragment: an ellipsis-clip
+    # ("…natural persons on...") or a sentence with no terminal
+    # punctuation. Drop a single trailing incomplete sentence, keeping at
+    # least one. This is a source-agnostic backstop — it catches a clipped
+    # graph-recital snippet, a max_tokens-cut LLM polish, or any future
+    # append, regardless of which upstream path produced it. davidath
+    # measured NET-POSITIVE (not byte-identical): it fires on a handful of
+    # deterministic rows whose answer ended on a dangling fragment and drops
+    # it — Ref Strict +0.005, Ref Conciseness +0.010, Ans Strict +0.003, no
+    # axis regressed.
+    _final = _split_sentences(result)
+    if len(_final) > 1:
+        _last = _final[-1].rstrip()
+        # Peel closing wrappers a complete sentence may carry after its
+        # terminator: ``(…).`` / ``"…."`` / ``'…'``.
+        _peeled = _last
+        while _peeled and _peeled[-1] in ")]}\"”’'":
+            _peeled = _peeled[:-1].rstrip()
+        _is_ellipsis_clip = _last.endswith("...") or _last.endswith("…")
+        _no_terminator = bool(_peeled) and _peeled[-1] not in ".!?…"
+        if _is_ellipsis_clip or _no_terminator:
+            result = " ".join(_final[:-1]).rstrip()
     return result

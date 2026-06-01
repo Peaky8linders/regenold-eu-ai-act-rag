@@ -4383,8 +4383,17 @@ def regenold_eu_ai_act_ask(
                     _r_first = _r_text.split(". ", 1)[0].strip()
                     if not _r_first.endswith("."):
                         _r_first = _r_first + "."
+                    # R103c — NEVER append a mid-sentence clip. The old
+                    # ``[:197] + "..."`` produced dangling fragments such as
+                    # "…inferring emotions or intentions of natural persons
+                    # on..." (Recital 18, anchored to Art. 5, surfaced
+                    # whenever Stage-2 cited Art. 5). A recital is
+                    # supplementary grounding, not load-bearing — if its
+                    # first sentence is too long to append whole, drop it
+                    # rather than truncate. Appended snippets are therefore
+                    # always complete sentences.
                     if len(_r_first) > 200:
-                        _r_first = _r_first[:197].rstrip() + "..."
+                        continue
                     _recital_snippets.append(_r_first)
             if _recital_snippets:
                 # Dedupe while preserving order (rare but possible when two
