@@ -124,6 +124,34 @@ class TestDefinitionLookup:
         s = select_definition_sentence("What does foobar mean?")
         assert s is None
 
+    def test_system_of_artificial_intelligence_synonym(self):
+        # R102 GraphRAG-bench gt_08 root cause: the canonical Art. 3(1) key
+        # is "ai system"; the verbose phrasing "(system of) artificial
+        # intelligence" must normalise to it instead of missing → BM25
+        # false-matching Art. 65 (the Board). General synonym, not overfit.
+        for q in (
+            'What is the definition of a "system of artificial intelligence"?',
+            "What is an artificial intelligence system?",
+            "What does artificial intelligence system mean?",
+        ):
+            s = select_definition_sentence(q)
+            assert s is not None, f"missed AI-system synonym: {q!r}"
+            assert "machine-based" in s.lower() or "infer" in s.lower()
+
+    def test_hyphenated_term_normalises(self):
+        # R102 GraphRAG-bench ng_07: "What does systemic-risk mean?" — the
+        # Art. 3 key is "systemic risk" (space). Hyphen must normalise.
+        s = select_definition_sentence("What does systemic-risk mean?")
+        assert s is not None
+        assert "general-purpose" in s.lower() or "high-impact" in s.lower() or "scale" in s.lower()
+
+    def test_general_purpose_ai_definition(self):
+        # ng_08 — "What is the definition of General-purpose AI?" → the
+        # "general-purpose ai model" / "...system" key.
+        s = select_definition_sentence("What is the definition of General-purpose AI?")
+        assert s is not None
+        assert "generality" in s.lower() or "distinct tasks" in s.lower() or "model" in s.lower()
+
     def test_extract_term_handles_quotes(self):
         # Smart quotes around the term.
         t = _extract_definition_term("What does ‘deployer’ mean?")

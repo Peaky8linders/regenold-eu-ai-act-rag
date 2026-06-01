@@ -575,11 +575,21 @@ def _strip_leading_enumerator(sentence: str | None) -> str | None:
 # Definition-question term extractors. Each regex tries to pull the
 # *term being defined* out of the question. First non-empty match wins.
 # Each pattern uses ``\b`` boundaries so partial-word matches don't fire.
+# R102 — the trailing boundary keywords (under / in / according / of)
+# MUST be word-bounded (``\s+...\b``). The pre-R102 patterns wrote them
+# as bare alternations ``(?:\?|under|in|...)`` with no leading ``\s`` and
+# no ``\b``, so the non-greedy term capture stopped at the FIRST substring
+# match — e.g. "system of artificial intelligence" truncated to "system of
+# artificial" because the bare ``in`` matched inside "**in**telligence".
+# That mis-extraction sent the definitional fast-path to None → BM25
+# false-matched Art. 65 (the Board) for the AI-system definition. Anchoring
+# each keyword to a whole following word fixes every term that happens to
+# contain "in"/"under"/"of" as a substring.
 _DEFINITION_TERM_PATTERNS: tuple[re.Pattern[str], ...] = (
     # "What is the definition of (an|the|a) X?"
     re.compile(
         r"\bdefinition\s+of\s+(?:an?\s+|the\s+)?['‘’\"]?(?P<term>[\w\-\s]+?)"
-        r"['‘’\"]?\s*(?:\?|under|in|according|$)",
+        r"['‘’\"]?\s*(?:\?|\s+under\b|\s+in\b|\s+according\b|$)",
         re.IGNORECASE,
     ),
     # "How is X defined?"
@@ -596,19 +606,19 @@ _DEFINITION_TERM_PATTERNS: tuple[re.Pattern[str], ...] = (
     # "What is (an|the|a) X?"  — broad, last to fire so the specific ones win.
     re.compile(
         r"\bwhat\s+is\s+(?:an?\s+|the\s+)?['‘’\"]?(?P<term>[\w\-\s]+?)"
-        r"['‘’\"]?\s*(?:\?|under|in|according|$)",
+        r"['‘’\"]?\s*(?:\?|\s+under\b|\s+in\b|\s+according\b|$)",
         re.IGNORECASE,
     ),
     # "Who is considered (an|a) X?"
     re.compile(
         r"\bwho\s+is\s+considered\s+(?:an?\s+|the\s+)?['‘’\"]?"
-        r"(?P<term>[\w\-\s]+?)['‘’\"]?\s*(?:\?|under|of|in|$)",
+        r"(?P<term>[\w\-\s]+?)['‘’\"]?\s*(?:\?|\s+under\b|\s+of\b|\s+in\b|$)",
         re.IGNORECASE,
     ),
     # "Who is (a|an) X?"
     re.compile(
         r"\bwho\s+is\s+(?:an?\s+|the\s+)?['‘’\"]?(?P<term>[\w\-\s]+?)"
-        r"['‘’\"]?\s*(?:\?|of|in|$)",
+        r"['‘’\"]?\s*(?:\?|\s+of\b|\s+in\b|$)",
         re.IGNORECASE,
     ),
 )
@@ -624,6 +634,55 @@ _TERM_NORMALISERS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^['‘’\"]\s*", re.I), ""),
     (re.compile(r"\s*['‘’\"]$", re.I), ""),
 )
+
+
+# R102 — synonym normalisation so verbose / hyphenated phrasings of a
+# defined term resolve to the canonical Art. 3 dictionary key. GENERAL
+# (not question-specific): "artificial intelligence" is the long form of
+# "ai" throughout the Act, and the gold keys use spaces, not hyphens.
+# Surfaced by the GraphRAG-paper Appendix-B.2 live retest:
+#   * gt_08 "system of artificial intelligence" → "ai system"
+#   * ng_07 "systemic-risk" → "systemic risk"
+#   * ng_08 "general-purpose ai" → "general-purpose ai model"
+# Applied AFTER `_TERM_NORMALISERS`, BEFORE the dict lookup.
+_AI_PHRASE_RE = re.compile(r"\bartificial\s+intelligence\b", re.IGNORECASE)
+
+
+def _canonicalise_definition_term(term: str) -> list[str]:
+    """Return candidate canonical keys for ``term``, most-specific first.
+
+    Each candidate is matched against ``ART_3_DEFINITIONS`` by the caller.
+    Pure string transforms — never raises, never invents content.
+    """
+    base = term.strip().lower()
+    candidates: list[str] = [base]
+
+    def _add(c: str) -> None:
+        c = re.sub(r"\s{2,}", " ", c).strip()
+        if c and c not in candidates:
+            candidates.append(c)
+
+    # 1. Hyphens → spaces ("systemic-risk" → "systemic risk").
+    _add(base.replace("-", " "))
+    # 2. "artificial intelligence" → "ai" ("artificial intelligence system"
+    #    → "ai system"; "general-purpose artificial intelligence" →
+    #    "general-purpose ai"). Apply on both the raw + de-hyphenated forms.
+    for variant in (base, base.replace("-", " ")):
+        _add(_AI_PHRASE_RE.sub("ai", variant))
+    # 3. "system of artificial intelligence" / "system of ai" → "ai system"
+    #    (the Act's "X system" defined terms are sometimes asked as
+    #    "system of X").
+    m = re.match(r"system\s+of\s+(.+)$", base.replace("-", " "))
+    if m:
+        inner = _AI_PHRASE_RE.sub("ai", m.group(1)).strip()
+        _add(f"{inner} system")
+    # 4. "general-purpose ai" → the model/system keys (Art. 3(63)/(66)).
+    gp = candidates[-1] if candidates else base
+    for c in list(candidates):
+        if c in ("general purpose ai", "general-purpose ai", "gpai"):
+            _add("general-purpose ai model")
+            _add("general-purpose ai system")
+    return candidates
 
 
 def _extract_definition_term(question: str) -> str | None:
@@ -653,20 +712,24 @@ def select_definition_sentence(question: str) -> str | None:
     term = _extract_definition_term(question)
     if not term:
         return None
-    term_low = term.lower()
-    # Exact match first.
-    if term_low in ART_3_DEFINITIONS:
-        return _strip_trailing_clauses(ART_3_DEFINITIONS[term_low])
-    # Leading-article variants ("a deployer" → "deployer").
-    for prefix in ("a ", "an ", "the "):
-        if term_low.startswith(prefix) and term_low[len(prefix):] in ART_3_DEFINITIONS:
-            return _strip_trailing_clauses(
-                ART_3_DEFINITIONS[term_low[len(prefix):]]
-            )
-    # Pluralisation tolerance — gold defs are singular ("provider"
-    # not "providers"), questions sometimes plural.
-    if term_low.endswith("s") and term_low[:-1] in ART_3_DEFINITIONS:
-        return _strip_trailing_clauses(ART_3_DEFINITIONS[term_low[:-1]])
+    # R102 — expand the extracted term into canonical-key candidates
+    # (hyphen→space, "artificial intelligence"→"ai", "system of X"→"X
+    # system", GPAI model/system). Each candidate then runs the same
+    # exact / leading-article / plural tolerance the single term used to.
+    for term_low in _canonicalise_definition_term(term):
+        # Exact match first.
+        if term_low in ART_3_DEFINITIONS:
+            return _strip_trailing_clauses(ART_3_DEFINITIONS[term_low])
+        # Leading-article variants ("a deployer" → "deployer").
+        for prefix in ("a ", "an ", "the "):
+            if term_low.startswith(prefix) and term_low[len(prefix):] in ART_3_DEFINITIONS:
+                return _strip_trailing_clauses(
+                    ART_3_DEFINITIONS[term_low[len(prefix):]]
+                )
+        # Pluralisation tolerance — gold defs are singular ("provider"
+        # not "providers"), questions sometimes plural.
+        if term_low.endswith("s") and term_low[:-1] in ART_3_DEFINITIONS:
+            return _strip_trailing_clauses(ART_3_DEFINITIONS[term_low[:-1]])
     return None
 
 
