@@ -5344,6 +5344,71 @@ correctness + conciseness lift; it is bounded by the R84/R87-E Stage-2 gates
 (confidence floor + narrowed trigger) and the R81-A1 single-Sonnet-round-trip
 (no Opus extended-thinking on the default path).
 
+## Round 103 — Enumeration char-cap removal + Opus 4.8 complex path (2026-06-01)
+
+User report: *"what about article 5.1.x"* (follow-up to an emotion-recognition
+turn) returned Article 5(1)'s prohibited practices **(a)–(f) only** — silently
+dropping **(g) biometric categorisation** and **(h) real-time RBI**, an
+incomplete list that reads as complete.
+
+### Root cause (systematic-debugging)
+
+NOT the data: the Art. 5 KB stub enumerates all eight (a)–(h), and
+`select_best_stub` feeds Sonnet the full joined summary (4212 chars, contains
+(g)+(h)) — verified. NOT the model: Sonnet *had* the full context and started
+writing all eight. The chopper was the **R102 answer-length caps**:
+`REGENOLD_HARD_CHAR_CAP=1` (limit 600) truncated the long enumeration
+mid-list, and the sentence cap cut multi-sentence enumerations. The
+deterministic single-sentence enumeration was already complete under both old
+and new caps — the truncation only bit the live Sonnet multi-sentence path.
+
+### Fix (per user direction — general, not a hardcoded Article-5 patch)
+
+* **Remove the QA char cap, keep the 4-sentence professional bound** (the PDF
+  rule). `railway.toml`: `REGENOLD_HARD_CHAR_CAP` `1`→`0` (stop the
+  mid-sentence chop), `REGENOLD_QA_LENGTH_CAP` `600`→`1200` (let a complete
+  4-sentence answer / full enumeration through). `MAX_ANSWER_SENTENCES` stays
+  4 (env) / 3 (code constant → davidath byte-identical). The 4-sentence cap +
+  the Stage-2 prompt are now the length governors.
+* **Opus 4.8 on the complex gate, NO extended thinking** —
+  [`app/config.py`](app/config.py) `complex_model` `""`→`claude-opus-4-8`,
+  `complex_thinking_tokens` `1024`→`0`. The R81-A1 16 s-p50 / 51 s-outlier
+  latency disaster was the **extended-thinking budget**, NOT Opus; Opus 4.8
+  (stronger reasoner than the R51 4.7) as a plain model swap runs at ~Sonnet
+  latency and lifts the hard ~20% (conflict / borderline-prohibition / GPAI
+  thresholds / multi-turn coreference). Verified reachable via the Max
+  wrapper (`claude-opus-4-8`, HTTP 200, ~6 s tiny prompt). Sonnet stays the
+  default for the other ~80%; Groq is **not** on the answer path (Stage-0
+  intent only — wrong tool for the tone/correctness axes).
+* An earlier hardcoded Article-5 (a)–(h) override was prototyped then
+  **reverted** — overfit; the general cap relaxation fixes the whole class of
+  enumeration/multi-part answers.
+
+### Verification
+
+* Full suite **3265 passed + 1 skip** (3 complex-model-routing / anthropic
+  tests updated for the new Opus-4.8 / thinking-0 defaults).
+* davidath **byte-identical** (Ans Strict 0.335 / Ref Loose 0.586 / Ref
+  Strict 0.472 / Tone 1.0 / mt 20/20) — the config + `railway.toml` changes
+  are deterministic-neutral (no wrapper in the bench → complex swap inert;
+  bench never reads `railway.toml`; code-default caps + `MAX_ANSWER_SENTENCES=3`
+  unchanged). 276-runner **255/255**; OOS probe **21/21, 0 leaks**.
+* **Live-wrapper E2E** (Claude Max, new caps): single-turn *"What practices
+  are prohibited under Article 5?"* now ships the **complete (a)–(h)** list
+  ((g)+(h) present); the user's turn-2 *"what about article 5.1.x"* gives a
+  smart, complete, 4-sentence answer (*"Article 5(1)(x) does not exist;
+  Article 5(1) enumerates exactly eight practices (a)–(h)…"*) instead of the
+  silent (a)–(f) truncation.
+
+### Trade + rollback
+
+Removing the char cap trades the **davidath conciseness proxy** (quadratic
+length-ratio vs ~140-char gold) for professional completeness — the live
+LLM-judge + the PDF rules reward complete ≤4-sentence answers over minimal
+token count (the R99.2/R100 finding). Fully reversible:
+`railway variables --set REGENOLD_HARD_CHAR_CAP=1 REGENOLD_QA_LENGTH_CAP=600`
+(restore caps) / `P2P_GRAPH_RAG_COMPLEX_MODEL=` (disable Opus swap).
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

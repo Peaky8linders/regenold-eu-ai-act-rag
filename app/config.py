@@ -62,23 +62,41 @@ class GraphRAGSettings(BaseSettings):
     # and the deterministic + Sonnet polish path is rubric-positive
     # in aggregate.
     #
+    # **R103 reversal (2026-06-01): default = ``claude-opus-4-8``, NO
+    # extended thinking.** The R81-A1 latency disaster (16 s p50, 51 s
+    # outlier) was the 8000→1024-token EXTENDED-THINKING budget, NOT
+    # Opus itself. Opus 4.8 (newer + stronger reasoning than the 4.7
+    # R51 tried) with ``complex_thinking_tokens=0`` runs as a plain
+    # model swap at ~Sonnet latency, lifting the hard reasoning
+    # categories (conflict / borderline-prohibition / GPAI thresholds /
+    # multi-turn coreference — the ~20% the complexity gate fires on)
+    # without the thinking-budget tail. Verified reachable via the Max
+    # wrapper (`claude-opus-4-8`, HTTP 200, ~6 s tiny prompt).
+    #
     # Operator override (per-deploy): set
-    # ``P2P_GRAPH_RAG_COMPLEX_MODEL=claude-opus-4-7`` to restore the
-    # R51 production setting; pair with
-    # ``P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS=8000`` for the original
-    # R51 thinking budget if desired.
-    complex_model: str = ""
-    """Model name for the complex-question path. **R81-A1 default**:
-    empty (no swap; every Stage-2 polish call uses the base ``model``).
-    Set to ``claude-opus-4-7`` (the pre-R81-A1 default) to restore
-    the structured-reasoning path on complex rows; trades latency
-    for category-specific quality. The wrapper falls back to
-    deterministic if the configured complex model is unreachable, so
-    worst case is a soft miss, not a 500."""
+    # ``P2P_GRAPH_RAG_COMPLEX_MODEL=`` (empty) to disable the swap and
+    # keep every Stage-2 call on Sonnet for cost/latency reasons.
+    complex_model: str = "claude-opus-4-8"
+    """Model name for the complex-question path. **R103 default**:
+    ``claude-opus-4-8`` (no extended thinking — see
+    ``complex_thinking_tokens=0``). Set empty to disable the swap
+    (every Stage-2 polish call uses the base ``model``). The provider
+    falls back to deterministic if the configured complex model is
+    unreachable, so worst case is a soft miss, not a 500."""
 
-    complex_thinking_tokens: int = 1024
+    complex_thinking_tokens: int = 0
     """``max_thinking_tokens`` for extended-thinking Stage-2 polish on
     complex questions.
+
+    **R103 — default 0 (extended thinking OFF).** The complex path now
+    swaps to Opus 4.8 as a plain (stronger) model, NOT an extended-
+    thinking run — extended thinking was the sole driver of the
+    R81-A1 / r80.2-live 16 s p50 + 51 s outlier latency disaster. 0
+    means no ``X-Claude-Max-Thinking-Tokens`` header is sent, so Opus
+    4.8 answers at ~Sonnet latency. Re-enable per-deploy with
+    ``P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS=2500`` (engine clamps to
+    [1024, 16000]) ONLY if a live A/B shows the reasoning lift beats
+    the latency cost.
 
     R80.2 — reduced 2500 → 1024 (the engine clamp floor). The
     r80-stage2-tunnel run still showed an 87 s max-latency outlier

@@ -339,11 +339,14 @@ class TestAnthropicCompleteFailSoft:
         monkeypatch.setattr(
             settings.graph_rag, "api_key", _SS("sk-ant-fake"), raising=True
         )
-        # R81-A1: complex_model defaults to ""; restore the R51 production
-        # setting on this test only so the swap path under test still
-        # fires. complex_thinking_tokens still defaults to 1024 (R80.2).
+        # R103: complex_model defaults to claude-opus-4-8 and
+        # complex_thinking_tokens to 0 (extended thinking OFF by default).
+        # Override BOTH on this test only so the swap + extended-thinking
+        # surface under test still fires.
         original_complex = settings.graph_rag.complex_model
+        original_thinking = settings.graph_rag.complex_thinking_tokens
         settings.graph_rag.complex_model = "claude-opus-4-7"
+        settings.graph_rag.complex_thinking_tokens = 2500
 
         class _Block:
             text = "Polished prose."
@@ -375,8 +378,9 @@ class TestAnthropicCompleteFailSoft:
             )
         finally:
             settings.graph_rag.complex_model = original_complex
+            settings.graph_rag.complex_thinking_tokens = original_thinking
         assert result == "Polished prose."
-        # complex_model now swaps to claude-opus-4-7 because we set it
+        # complex_model swaps to claude-opus-4-7 because we set it
         # explicitly above (mirroring an operator override).
         assert captured["model"] == "claude-opus-4-7"
         # Thinking kwarg present, budget clamped to [1024, 16000].

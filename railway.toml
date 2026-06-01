@@ -115,19 +115,29 @@ REGENOLD_NOISE_SUPPRESS = "1"
 # the binary judge conciseness axis rewards ≤600-char answers — the R78
 # davidath-wash / live-win discipline. Disable with
 # REGENOLD_HARD_CHAR_CAP=0.
-REGENOLD_HARD_CHAR_CAP = "1"
+#
+# R103 (2026-06-01) — DISABLED. The R102 hard cap (600) chopped
+# multi-part answers mid-sentence: an 8-item enumeration (e.g. all of
+# Article 5(1)'s prohibited practices (a)-(h), ~700 chars as one
+# cite-anchored sentence) was truncated at 600, silently dropping
+# (g) biometric categorisation + (h) real-time RBI — an incomplete
+# list that reads as complete. Per the user directive: remove the
+# char cap, keep the 4-sentence professional-concise bound from the
+# PDF rules. The 4-sentence cap (below) + the Stage-2 prompt are the
+# real length governors now. Re-enable with REGENOLD_HARD_CHAR_CAP=1.
+REGENOLD_HARD_CHAR_CAP = "0"
 
-# Round 102 — answer length. The competition spec allows "3-4 sentences".
-# The code constant MAX_ANSWER_SENTENCES stays 3 (davidath byte-identical;
-# the bench never reads railway.toml). Live deploy opts into 4 so yes/no +
-# either/or answers can lead with a direct verdict AND map the
-# complementary risk tier ("prohibited in workplaces/education under
-# Article 5, high-risk under Annex III elsewhere") + name the carve-out —
-# the completeness gap surfaced on the emotion-recognition + medical-scribe
-# examples. QA char cap raised 400→600 so the 4th sentence survives the
-# hard-char-cap backstop. Revert with REGENOLD_MAX_ANSWER_SENTENCES=3.
+# Round 102/103 — answer length. The competition spec allows "3-4
+# sentences". The code constant MAX_ANSWER_SENTENCES stays 3 (davidath
+# byte-identical; the bench never reads railway.toml). Live deploy opts
+# into 4 so yes/no + either/or answers can lead with a direct verdict
+# AND map the complementary risk tier + name the carve-out. R103 raises
+# the QA char cap 600 → 1200 so a complete 4-sentence answer (or a full
+# enumeration like Article 5(1)(a)-(h)) is never dropped by the
+# sentence-granular soft cap; the 4-sentence cap is the real bound.
+# Revert with REGENOLD_MAX_ANSWER_SENTENCES=3 / REGENOLD_QA_LENGTH_CAP=600.
 REGENOLD_MAX_ANSWER_SENTENCES = "4"
-REGENOLD_QA_LENGTH_CAP = "600"
+REGENOLD_QA_LENGTH_CAP = "1200"
 
 # Round 66-B — Stage-2.5 cite-describe guard. Drops references whose
 # KB-summary token set doesn't overlap the answer prose (the inverse
