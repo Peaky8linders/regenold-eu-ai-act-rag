@@ -1236,3 +1236,28 @@ def test_engine_prompt_no_longer_mentions_graph_context() -> None:
     # Positive pin — the prompt should still tell the model to ground
     # answers in the regulation.
     assert "regulation" in low or "eu ai act" in low
+
+
+def test_r103_definition_question_cites_article_3() -> None:
+    """R103 — a resolved Art. 3 definition question must cite Article 3.
+
+    GraphRAG-bench live retest found "What is the definition of an AI
+    system?" returning the correct verbatim Art. 3(1) prose but citing
+    Article 2 / Article 51 (BM25 token bleed). The definitional fast-path
+    fires for these; the wire reference must be Article 3.
+    """
+    settings.regenold.api_key = SecretStr("regenold-test-key")
+    c = _client()
+    for q in (
+        'What is the definition of a "system of artificial intelligence"?',
+        "What does systemic-risk mean?",
+        "What is the definition of General-purpose AI?",
+    ):
+        r = c.post(
+            "/api/v1/regenold/eu-ai-act/ask",
+            headers={"X-Regenold-Api-Key": "regenold-test-key"},
+            json=_messages(q),
+        )
+        assert r.status_code == 200, r.json()
+        refs = r.json().get("references") or []
+        assert "Article 3" in refs, f"definition q did not cite Article 3: {q!r} -> {refs}"

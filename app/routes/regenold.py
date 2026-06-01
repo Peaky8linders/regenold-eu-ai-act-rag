@@ -4094,6 +4094,33 @@ def regenold_eu_ai_act_ask(
 
     references: list[str] = candidates[:_effective_max_refs]
 
+    # R103 — definitional reference attribution. Every term defined by the
+    # Act lives in Article 3; when the question is a definition that the
+    # Art. 3 fast-path (``select_definition_sentence``) actually resolves,
+    # the wire reference MUST be Article 3 — not whatever BM25 surfaced for
+    # the term tokens. Live GraphRAG-bench retest found the answer prose
+    # correct (verbatim Art. 3(1)/(65)/(63)) but ``references`` citing
+    # Article 2 / Article 51 (BM25 token bleed) → refL 0.00 on gt_08 /
+    # ng_07 / ng_08. This promotes "Article 3" to the head when the
+    # definitional fast-path fires, deduping any existing entry. Strictly
+    # gated to the resolved-definition case so non-definition questions are
+    # untouched; env-off (``REGENOLD_DEFINITION_REF=0``) reverts.
+    if (
+        os.getenv("REGENOLD_DEFINITION_REF", "1").strip().lower()
+        in ("1", "true", "yes", "on")
+        and not _stage2_landed
+        and classify_question_type(question) == "definition"
+    ):
+        try:
+            if select_definition_sentence(question):
+                references = ["Article 3"] + [
+                    r for r in references if r and r.split(".")[0].strip()
+                    not in ("Article 3", "Art. 3")
+                ]
+                references = references[:_effective_max_refs]
+        except Exception:  # noqa: BLE001 — never let the override 500 the route
+            pass
+
     confidence = float(getattr(rag_res, "confidence", 0.0) or 0.0)
     retrieval_path = _resolve_retrieval_path(getattr(rag_res, "graph_stats", {}) or {})
 
