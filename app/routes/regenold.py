@@ -1100,6 +1100,15 @@ def _engine_cache_key(
             # decision (SYNTHESIS vs VERBATIM) → stage2 + answer, so it is
             # part of the cache identity.
             "REGENOLD_SYNTHESIS_DEFAULT",
+            # R103.1 — dynamic grounding flips the Stage-2 drift guard
+            # (_detect_polished_prose_drift in graph_rag.py): with it ON, a
+            # polished answer citing a REAL ARTICLE_EXISTENCE article the
+            # retrieval didn't pre-surface is KEPT instead of falling back to
+            # the deterministic stub. That decision is baked into
+            # GraphRAGResponse.answer (the engine output this cache stores),
+            # so a warm-cache flip would otherwise keep serving the pre-flip
+            # stub for a previously-asked question. Same R79 doctrine.
+            "REGENOLD_DYNAMIC_GROUNDING",
         )
     )
     import json
