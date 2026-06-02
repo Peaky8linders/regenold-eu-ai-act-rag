@@ -139,6 +139,22 @@ REGENOLD_HARD_CHAR_CAP = "0"
 REGENOLD_MAX_ANSWER_SENTENCES = "4"
 REGENOLD_QA_LENGTH_CAP = "1200"
 
+# Round 103.1 — Stage-2 dynamic grounding. The Issue-#51 drift guard
+# (_detect_polished_prose_drift in graph_rag.py) rejects a Sonnet answer
+# that cites a REAL EU AI Act article (present in ARTICLE_EXISTENCE) the
+# deterministic retrieval didn't pre-surface, then silently falls back to
+# the generic deterministic stub. Live repro: "Can a system that tracks
+# patient weight be deployed or is it high-risk under Article 5?" — Sonnet
+# correctly reasoned to Article 10 (data governance) + Article 6/49/71, the
+# guard flagged "prose cites Art. 10 (not in catalog) — falling back to
+# kg_answer", and the wire shipped an off-topic RBI/social-scoring stub.
+# With dynamic grounding ON, articles that exist in ARTICLE_EXISTENCE are
+# NOT counted as drift — only genuinely hallucinated (non-existent)
+# citations still trip the guard. davidath byte-identical (the drift guard
+# only runs when Stage-2 fires; the TestClient bench has no wrapper, so
+# Stage-2 never runs there). Revert with REGENOLD_DYNAMIC_GROUNDING=0.
+REGENOLD_DYNAMIC_GROUNDING = "1"
+
 # Round 66-B — Stage-2.5 cite-describe guard. Drops references whose
 # KB-summary token set doesn't overlap the answer prose (the inverse
 # of the R31 sentence-level citation guard which drops sentences).
