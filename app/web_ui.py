@@ -46,6 +46,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <script src="https://unpkg.com/lucide@latest"></script>
     <!-- Marked.js for Markdown parsing -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- DOMPurify — sanitize model/user markdown before innerHTML (XSS guard, R104) -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
     <style>
         :root {
             --bg-primary: #050814;
@@ -1201,18 +1203,44 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         const optReasoning = document.getElementById('opt-reasoning');
         const optTelemetry = document.getElementById('opt-telemetry');
 
+        // R104 — XSS guards. The model `answer`, the user's own input, the
+        // references list, and the healthz fields all flow into the DOM. The
+        // partner API key lives in localStorage on this same origin, so any
+        // unsanitized HTML sink would let injected markup exfiltrate it.
+        // escapeHtml() neutralises every interpolated server/user string;
+        // renderMarkdown() runs marked through DOMPurify and fails safe to
+        // plain text if the sanitizer didn't load.
+        function escapeHtml(s) {
+            const d = document.createElement('div');
+            d.textContent = (s === undefined || s === null) ? '' : String(s);
+            return d.innerHTML;
+        }
+        function renderMarkdown(text) {
+            const raw = marked.parse(text || '');
+            if (window.DOMPurify) return DOMPurify.sanitize(raw);
+            // Fail-safe: no sanitizer loaded -> never inject raw HTML.
+            return escapeHtml(text || '');
+        }
+
         // Persist the partner API key client-side only (localStorage), so the
         // server never has to inject it into the HTML. Restore it on load and
         // save on every edit. Wrapped in try/catch because localStorage can
         // throw in private-browsing / sandboxed iframes.
         const API_KEY_STORAGE = 'regenold_api_key';
         try {
+            // R104 — prefer the URL *fragment* (#key=...) over the query
+            // string (?key=...). Fragments are never sent to the server, so
+            // the partner key cannot land in Railway/uvicorn access logs.
+            // Query-param support is kept for backward-compat with existing
+            // shared links; in both cases the URL is cleaned immediately.
+            const hashParams = new URLSearchParams(window.location.hash.slice(1));
             const urlParams = new URLSearchParams(window.location.search);
-            const keyParam = urlParams.get('key');
+            const keyParam = hashParams.get('key') || urlParams.get('key');
             if (keyParam) {
                 cfgApiKey.value = keyParam.trim();
                 localStorage.setItem(API_KEY_STORAGE, keyParam.trim());
-                // Clean URL query parameters to avoid showing the key in address bar
+                // Strip both query and fragment so the key isn't shown in the
+                // address bar or left behind in browser history.
                 window.history.replaceState({}, document.title, window.location.pathname);
             } else {
                 const savedKey = localStorage.getItem(API_KEY_STORAGE);
@@ -1273,7 +1301,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const res = await fetch('/healthz');
                 if (res.ok) {
                     const data = await res.json();
-                    document.getElementById('diag-api').innerHTML = `<span class="badge-ok">OK (v${data.version || '0.1.0'})</span>`;
+                    document.getElementById('diag-api').innerHTML = `<span class="badge-ok">OK (v${escapeHtml(data.version || '0.1.0')})</span>`;
                 } else {
                     document.getElementById('diag-api').innerHTML = '<span class="badge-err">Error</span>';
                 }
@@ -1287,9 +1315,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 if (res.ok) {
                     const data = await res.json();
                     if (data.llm_ok) {
-                        document.getElementById('diag-llm').innerHTML = `<span class="badge-ok" title="${data.detail || ''}">${data.provider || 'Ready'}</span>`;
+                        document.getElementById('diag-llm').innerHTML = `<span class="badge-ok" title="${escapeHtml(data.detail || '')}">${escapeHtml(data.provider || 'Ready')}</span>`;
                     } else {
-                        document.getElementById('diag-llm').innerHTML = `<span class="badge-err" title="${data.detail || ''}">Fail</span>`;
+                        document.getElementById('diag-llm').innerHTML = `<span class="badge-err" title="${escapeHtml(data.detail || '')}">Fail</span>`;
                     }
                 } else {
                     document.getElementById('diag-llm').innerHTML = '<span class="badge-err">Error</span>';
@@ -1304,9 +1332,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 if (res.ok) {
                     const data = await res.json();
                     if (data.graph_ok) {
-                        document.getElementById('diag-graph').innerHTML = `<span class="badge-ok" title="${data.detail || ''}">Neo4j</span>`;
+                        document.getElementById('diag-graph').innerHTML = `<span class="badge-ok" title="${escapeHtml(data.detail || '')}">Neo4j</span>`;
                     } else {
-                        document.getElementById('diag-graph').innerHTML = `<span class="badge-err" title="${data.detail || ''}">No Conn</span>`;
+                        document.getElementById('diag-graph').innerHTML = `<span class="badge-err" title="${escapeHtml(data.detail || '')}">No Conn</span>`;
                     }
                 } else {
                     document.getElementById('diag-graph').innerHTML = '<span class="badge-err">Error</span>';
@@ -1448,7 +1476,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             const bubble = document.createElement('div');
             bubble.className = 'msg-bubble';
-            bubble.innerHTML = marked.parse(text);
+            bubble.innerHTML = renderMarkdown(text);  // R104 — sanitized markdown
 
             const meta = document.createElement('div');
             meta.className = 'msg-meta';
@@ -1506,10 +1534,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     card.className = 'ref-card';
                     card.innerHTML = `
                         <div class="ref-header">
-                            <span class="ref-title">${ref}</span>
+                            <span class="ref-title">${escapeHtml(ref)}</span>
                             <span class="ref-badge">Grounded</span>
                         </div>
-                        <div class="ref-desc">${description}</div>
+                        <div class="ref-desc">${escapeHtml(description)}</div>
                     `;
                     citationsContainer.appendChild(card);
                 });

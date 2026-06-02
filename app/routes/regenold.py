@@ -981,6 +981,7 @@ def _engine_cache_key(
     question: str,
     system_context: str | None,
     history_turn_count: int = 0,
+    reasoning_active: bool = False,
 ) -> str:
     """Sha256-hash of the engine input fingerprint.
 
@@ -1109,6 +1110,22 @@ def _engine_cache_key(
             # so a warm-cache flip would otherwise keep serving the pre-flip
             # stub for a previously-asked question. Same R79 doctrine.
             "REGENOLD_DYNAMIC_GROUNDING",
+            # R104 — eng-review cache-poisoning audit. These three env vars
+            # flip the ENGINE output (the GraphRAGResponse this cache stores)
+            # but were missing from the key, violating the R30/R56/R79
+            # "any input that flips engine behaviour must be in the key"
+            # doctrine:
+            #   * REGENOLD_GENERAL_VERDICT — gates the general-classification
+            #     verdict floor inside _deterministic_answer (graph_rag.py
+            #     2456/2858); flips GraphRAGResponse.answer + references.
+            #   * REGENOLD_EMBEDDINGS_INDEX — gates the dense AtomicFacts
+            #     semantic-statement retrieval path (kb_search 649, graph_rag
+            #     3087); flips references + the Stage-2 context.
+            #   * REGENOLD_REF_SEM_THRESHOLD — tunes which AtomicFacts
+            #     sentences feed the engine's semantic-statement context.
+            "REGENOLD_GENERAL_VERDICT",
+            "REGENOLD_EMBEDDINGS_INDEX",
+            "REGENOLD_REF_SEM_THRESHOLD",
         )
     )
     import json
@@ -1120,6 +1137,14 @@ def _engine_cache_key(
         f"provider:{provider_bit}",
         f"engine:{engine_flags}",
         f"history:{int(history_turn_count)}",
+        # R104 — ?include_reasoning=true activates the per-request reasoning
+        # trace, which (in graph_rag _two_stage_generate /
+        # _claude_max_enhance_answer) forces Stage-2 polish + the Opus
+        # complex-model path AND bypasses the confidence floor. That flips
+        # the cached GraphRAGResponse.answer, so a reasoning ask and a
+        # non-reasoning ask for the same question must have distinct cache
+        # identities (R79 doctrine).
+        f"reasoning:{int(reasoning_active)}",
     ]).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()
 
@@ -3255,7 +3280,16 @@ def regenold_eu_ai_act_ask(
     # routing (``is_complex_question``), so it must be part of the key or
     # a denoised multi-turn follow-up could collide with a cached
     # single-turn answer and skip that routing.
-    cache_key = _engine_cache_key(question, system_context, _history_turn_count)
+    cache_key = _engine_cache_key(
+        question,
+        system_context,
+        _history_turn_count,
+        # R104 — fold the active reasoning trace into the key (see
+        # _engine_cache_key). The trace is already activated above (line
+        # ~3096) when ?include_reasoning=true, so this reflects the request's
+        # actual Stage-2 routing.
+        reasoning_active=_current_reasoning_trace() is not None,
+    )
     rag_res = _ENGINE_CACHE.get(cache_key)
     _trace_cache_hit(rag_res is not None)
     if rag_res is None:
@@ -4880,9 +4914,14 @@ def regenold_eu_ai_act_ask(
                 _kg = getattr(rag_res, "kg_answer", "") or ""
                 if _kg:
                     answer_text = normalise_answer_for_regenold(_kg, question=question)
+                    # R104 — do NOT mutate rag_res.graph_stats in place here.
+                    # rag_res is the object returned by _ENGINE_CACHE.get, so
+                    # writing stage2_landed=False onto it poisons the cached
+                    # entry for every later hit of this question (the R78.1
+                    # bug class). The local _stage2_landed flag is what the
+                    # downstream verbatim gate reads, so updating only the
+                    # local is correct and leaves the cache pristine.
                     _stage2_landed = False
-                    if hasattr(rag_res, "graph_stats") and isinstance(rag_res.graph_stats, dict):
-                        rag_res.graph_stats["stage2_landed"] = False
         except Exception as exc:
             logger.warning("Component D Grounding Guard failed: %s", exc, exc_info=True)
 
