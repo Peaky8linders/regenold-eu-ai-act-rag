@@ -4664,12 +4664,37 @@ def regenold_eu_ai_act_ask(
     # the 1-2 articles it cites on QA rows (BM25 overlap ≥ 2 → no clause
     # appended), so bench numbers are byte-identical. The win lands on
     # scenario answers with 5-10 refs where prose describes only 1-2.
+    # The GENERAL classification verdict is curated, complete prose that
+    # already describes every ref in its own words — exactly like the curated
+    # ``_CLASSIFICATION_TOPICS`` protected above via ``not
+    # _is_classification_topic``. But the general verdict is the *fallthrough*
+    # floor (it fires precisely when ``_detect_classification_topic`` returns
+    # None), so ``_is_classification_topic`` is False for it and the augment
+    # gate did NOT skip it. The augmenter then inline-rewrote the verdict's
+    # grammatically-embedded "Article 5"/"Article 6" tokens into truncated
+    # KB-stub clips → run-on fusion ("prohibited under Article 5 prohibits
+    # eight categories..."), a mid-enumeration "(a)"-only truncation, and a
+    # ".:" artifact. Protect it identically to the curated topics. The gate is
+    # the same predicate the engine uses, so it is a strict no-op on every
+    # other path (0 davidath rows → byte-identical bench).
+    _is_general_verdict = False
+    try:
+        from app.engines.graph_rag import (  # noqa: PLC0415
+            general_classification_verdict_refs,
+        )
+        _is_general_verdict = bool(
+            general_classification_verdict_refs(live_user_message or question)
+        )
+    except Exception:  # noqa: BLE001 — fail-soft, must not 500 the route
+        _is_general_verdict = False
+
     if (
         os.getenv("REGENOLD_REF_DESCRIBE_AUG", "1") in ("1", "true", "yes", "on")
         and answer_text
         and references
         and retrieval_path not in ("consistency_guard", "no_match")
         and not _is_classification_topic
+        and not _is_general_verdict
         and not _extractive_fired
         and not (getattr(rag_res, "graph_stats", {}) or {}).get("stage2_landed")
     ):
@@ -4718,6 +4743,7 @@ def regenold_eu_ai_act_ask(
         and references
         and retrieval_path not in ("consistency_guard", "no_match")
         and not _is_classification_topic
+        and not _is_general_verdict
         and (getattr(rag_res, "graph_stats", {}) or {}).get("stage2_landed")
     ):
         try:

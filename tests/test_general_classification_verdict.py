@@ -203,3 +203,63 @@ class TestRouteEndToEnd:
         answer = r.json().get("answer", "").lower()
         # Must answer the scope carve-out, not emit the risk-tier verdict.
         assert "not among the practices prohibited under article 5" not in answer
+
+
+# ── The verdict is curated, complete prose — never augment it ───────────
+
+
+class TestVerdictShipsCleanNotAugmented:
+    """The general verdict must ship verbatim, never inline-rewritten.
+
+    Live bug (2026-06-03): ``augment_with_ref_descriptions`` (the deterministic
+    ref-describer, default ON) ran on the general verdict because the route's
+    augment-gate only skips *curated* ``_CLASSIFICATION_TOPICS``
+    (``not _is_classification_topic``) — the general verdict is the fallthrough
+    floor, so it was unprotected. In ``replace_mode`` the augmenter rewrote the
+    bare "Article 5"/"Article 6" tokens (grammatically EMBEDDED in the verdict's
+    own prose, e.g. "prohibited under Article 5 (...)") into truncated KB-stub
+    clips, producing run-on fusion + a mid-enumeration ``(a)``-only truncation +
+    a ``.:`` artifact:
+
+        "...prohibited under Article 5 prohibits eight categories of AI
+         practice: (a) subliminal / manipulative / deceptive. ... turns on
+         Article 6 classifies an AI system as high-risk when ...: it is
+         high-risk only if ..."
+
+    The verdict already describes every ref in its own words, so augmenting it
+    is pure harm. These assertions pin the fusion/truncation signatures out.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_stage2(self, monkeypatch):
+        # The augmenter only runs on the deterministic (non-Stage-2) path,
+        # which is also the production floor — force it so the test is stable
+        # whether or not a Claude Max wrapper is reachable.
+        monkeypatch.setenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "0")
+
+    def test_verdict_not_inline_fused(self, det_client: TestClient) -> None:
+        r = det_client.post(
+            "/api/v1/regenold/eu-ai-act/ask",
+            json=[{"role": "user", "content": PATIENT_WEIGHT_Q}],
+        )
+        assert r.status_code == 200
+        answer = r.json().get("answer", "")
+        low = answer.lower()
+        # Fusion signatures — the augmenter splicing a KB-stub clip onto the
+        # grammatically-embedded "Article 5"/"Article 6" tokens.
+        assert "prohibits eight categories" not in low, (
+            f"Art. 5 KB-stub fused into the verdict prose: {answer!r}"
+        )
+        assert "classifies an ai system as high-risk when" not in low, (
+            f"Art. 6 KB-stub fused into the verdict prose: {answer!r}"
+        )
+        # Truncation signature — the 8-category list clipped after "(a)".
+        assert "(a) subliminal" not in low, (
+            f"Article 5 enumeration truncated into the verdict: {answer!r}"
+        )
+        # Concatenation artifact left when a clip ending in "." meets the
+        # template's ":".
+        assert ".:" not in answer, f"'.:' artifact in verdict: {answer!r}"
+        # The clean verdict prose must survive intact.
+        assert "social scoring, untargeted facial-image scraping" in answer
+        assert "limited- or minimal-risk" in answer
