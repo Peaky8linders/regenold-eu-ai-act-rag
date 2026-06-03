@@ -1199,9 +1199,16 @@ def _answer_covers_ref(
         if answer_text and internal_ref:
             stripped = internal_ref.replace("Art. ", "").replace("Annex ", "")
             if internal_ref.startswith("Art. "):
-                # Match "Article N" (user-facing) AND "Art. N" (internal).
+                # Match "Article N" / "Art. N" AND the plural list forms
+                # "Articles N" / "Arts. N" (R106). A role-obligation stub
+                # cites several articles inside one parenthetical, e.g.
+                # "(Arts. 11 and 18)" — without the plural forms the first
+                # number escaped the covered-check and got redundantly
+                # re-described as a tacked-on "Article 11 requires…" clause.
                 if (
                     f"Article {stripped}" in answer_text
+                    or f"Articles {stripped}" in answer_text
+                    or f"Arts. {stripped}" in answer_text
                     or internal_ref in answer_text
                 ):
                     return True
@@ -1400,11 +1407,31 @@ def augment_with_ref_descriptions(
                         #    only when there's no em-dash / lowercase verb already.
                         bare_pattern = re.compile(r'\b' + re.escape(user_ref) + r'\b(?!\s*(?:—|requires|mandates|prohibits|classifies|establishes|lays|specifies|grants))')
 
-                        if parenthesized_pattern.search(answer):
+                        # R106 — guard BOTH inline-expand branches with
+                        # ``not is_covered``. Commit d623849 removed the guard
+                        # from both, which let the augmenter splice a KB clause
+                        # onto a cite that is ALREADY named in the prose — the
+                        # robotic redundancy the user flagged:
+                        #   * PARENTHESIZED "operate a quality-management system
+                        #     (Article 17)" → "(Article 17 requires providers …
+                        #     to operate a quality management system …)" — a
+                        #     verbose self-repeat.
+                        #   * BARE "comply with Article 13 for …" → "comply with
+                        #     Article 13 requires … for …" — a run-on fusion
+                        #     (the general-classification-verdict bug).
+                        # ``_answer_covers_ref`` treats a literal cite (incl. the
+                        # R106 plural "Arts. N" forms) as covered, so the guard
+                        # fires exactly when the cite is already present. The
+                        # in-place expansion now only fires for a cite the prose
+                        # does NOT already carry; genuinely-undescribed refs
+                        # still get an APPENDED clause via the is_covered branch
+                        # below. This keeps role-obligation / KB-stub answers
+                        # clean and preserves the verdict-fusion fix.
+                        if not is_covered and parenthesized_pattern.search(answer):
                             answer = parenthesized_pattern.sub(f"({natural})", answer, count=1)
                             clauses_added += 1
                             replaced_inline = True
-                        elif bare_pattern.search(answer):
+                        elif not is_covered and bare_pattern.search(answer):
                             answer = bare_pattern.sub(natural, answer, count=1)
                             clauses_added += 1
                             replaced_inline = True

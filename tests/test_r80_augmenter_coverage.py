@@ -112,3 +112,44 @@ class TestR80DAugmenterIntegration:
             f"augmenter must append cite-anchored clause: {result!r}"
         )
         assert len(result) > len(base)
+
+
+class TestR106InlineExpansionGuard:
+    """R106 — guard BOTH inline-replace branches with ``not is_covered``.
+
+    Commit d623849 removed the guard from both inline-expand branches, which
+    spliced a KB clause onto a cite ALREADY named in the prose — the robotic
+    redundancy the user flagged. Two shapes:
+      * bare embedded ("comply with Article 13 for ...") → run-on fusion;
+      * parenthesized ("operate a QMS (Article 17)") → verbose self-repeat
+        "(Article 17 requires ... to operate a QMS ...)".
+    Both are now suppressed when the cite is already present; genuinely-
+    undescribed refs still get an APPENDED clause.
+    """
+
+    def test_embedded_bare_cite_not_fused(self) -> None:
+        base = (
+            "The provider must comply with Article 13 for high-risk AI "
+            "systems."
+        )
+        result = augment_with_ref_descriptions(
+            base, user_facing_refs=["Article 13"]
+        )
+        assert result == base
+        # The fusion signature must be absent.
+        assert "Article 13 requires" not in result, (
+            f"inline KB clause fused onto an embedded cite: {result!r}"
+        )
+
+    def test_parenthesized_covered_cite_not_expanded(self) -> None:
+        # A parenthesized cite already present is 'covered' (literally named)
+        # and must NOT be inline-expanded into a redundant
+        # "(Article 13 requires ...)" — the role-obligation-stub bloat fix.
+        base = "The provider must comply with the requirements (Article 13)."
+        result = augment_with_ref_descriptions(
+            base, user_facing_refs=["Article 13"]
+        )
+        assert "Article 13 requires" not in result, (
+            f"redundant inline expansion should be suppressed: {result!r}"
+        )
+        assert "(Article 13)" in result, f"clean cite not preserved: {result!r}"

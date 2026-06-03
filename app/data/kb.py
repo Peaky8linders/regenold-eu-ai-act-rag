@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 # Art. 52(4) open-source designation, Art. 53(2) FOSS carve-out,
 # Art. 55 four systemic-risk obligations, Art. 79 market-surveillance
 # procedure).
-KB_VERSION = "2024.1689.v11"
+KB_VERSION = "2024.1689.v12"
 
 
 @dataclass(frozen=True)
@@ -1032,13 +1032,15 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     "Art. 16": {
         "dimension": "tech_docs",
         "summary": (
-            "Provider obligations for high-risk AI: ensure system meets Section-2 "
-            "requirements, indicate provider identity on the system, operate a "
-            "quality-management system (Art. 17), keep documentation (Arts. 11 + "
-            "18), keep logs (Art. 19), undertake conformity assessment (Art. 43), "
-            "draw up declaration of conformity (Art. 47), affix CE marking (Art. "
-            "48), register in EU database (Art. 49), take corrective actions (Art. "
-            "20), and demonstrate compliance to authorities (Art. 21)."
+            "Providers of high-risk AI systems must ensure the system meets the "
+            "Chapter III Section 2 requirements and bears their identity, operate "
+            "a quality-management system (Art. 17), keep the technical "
+            "documentation (Arts. 11 and 18) and automatically generated logs "
+            "(Art. 19), have the system undergo conformity assessment (Art. 43), "
+            "draw up the EU declaration of conformity (Art. 47), affix the CE "
+            "marking (Art. 48), register the system in the EU database (Art. 49), "
+            "take corrective action where it is not in conformity (Art. 20), and "
+            "demonstrate compliance to competent authorities on request (Art. 21)."
         ),
     },
     "Art. 18": {
@@ -1094,21 +1096,25 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     "Art. 23": {
         "dimension": "governance",
         "summary": (
-            "Importer obligations for high-risk AI: verify that the provider has "
-            "performed conformity assessment, drawn up technical documentation, "
-            "affixed CE marking, accompanied the system with declaration of "
-            "conformity + instructions for use, and appointed an authorised "
-            "representative; indicate importer identity on the system."
+            "Before placing a high-risk AI system on the market, importers must "
+            "verify that the provider has carried out the conformity assessment, "
+            "drawn up the technical documentation, and affixed the CE marking, "
+            "that the system is accompanied by the EU declaration of conformity "
+            "and instructions for use and that an authorised representative has "
+            "been appointed (Art. 22), and must indicate their identity on the "
+            "system and ensure that storage and transport conditions do not "
+            "jeopardise its compliance."
         ),
     },
     "Art. 24": {
         "dimension": "governance",
         "summary": (
-            "Distributor obligations for high-risk AI: verify CE marking, "
-            "declaration of conformity, instructions for use, and that the "
-            "provider + importer have complied with their obligations; take "
-            "corrective action and inform authorities when non-compliance is "
-            "identified."
+            "Before making a high-risk AI system available on the market, "
+            "distributors must verify that it bears the CE marking, is accompanied "
+            "by the EU declaration of conformity and the instructions for use, and "
+            "that the provider and importer have complied with their obligations, "
+            "and must withhold the system and take corrective action and inform "
+            "the relevant authorities where they consider it is not in conformity."
         ),
     },
     "Art. 25": {

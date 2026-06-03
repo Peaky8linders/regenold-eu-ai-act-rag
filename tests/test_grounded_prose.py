@@ -256,25 +256,26 @@ class TestAugmentWithRefDescriptions:
         assert out  # non-empty
 
     def test_inline_replace_mode(self) -> None:
-        """Inline bare or parenthesized citations are replaced with descriptions in-place.
+        """A cite already present in the prose is NOT inline-expanded (R106).
 
-        R90 — the in-place expansion now uses counsel-voice prose:
-        ``(Article 13)`` → ``(Article 13 requires high-risk AI systems...)``
-        rather than the pre-R90 em-dash typographic format.
+        R90 originally rewrote ``(Article 13)`` → ``(Article 13 requires high-risk
+        AI systems...)`` in place. R106 guards BOTH inline-expand branches with
+        ``not is_covered``: a literal "(Article 13)" cite is already 'covered'
+        (named), so the augmenter leaves it clean rather than bloating it into a
+        redundant self-repeating parenthetical (the robotic
+        "operate a QMS (Article 17 requires ... to operate a QMS ...)" shape the
+        user flagged). Descriptions for genuinely-undescribed refs still flow
+        through the append path.
         """
         from app.integrations.regenold.grounded_prose import augment_with_ref_descriptions
         import os
 
         answer = "The provider must comply with the requirements (Article 13)."
-        # With replace mode enabled:
         with mock.patch.dict(os.environ, {"REGENOLD_REF_DESCRIBE_REPLACE": "1"}):
             out = augment_with_ref_descriptions(answer, ["Article 13"])
 
-        # Counsel-voice integration: "Article 13 requires high-risk AI..."
-        # The em-dash typographic format is no longer produced.
-        assert "Article 13 requires" in out, f"counsel-voice prose missing: {out!r}"
-        assert "(Article 13 requires" in out, f"parenthesized expansion not in-place: {out!r}"
-        # Em-dash typographic prefix should NOT appear.
+        # No redundant inline bloat — the cite is preserved as a clean citation.
+        assert "Article 13 requires" not in out, f"redundant inline expansion: {out!r}"
         assert "Article 13 —" not in out, f"old em-dash format still present: {out!r}"
-        # Verify in-place substitution preserved surrounding context.
+        assert "(Article 13)" in out, f"clean cite not preserved: {out!r}"
         assert out.startswith("The provider must comply with the requirements")
