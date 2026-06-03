@@ -546,6 +546,11 @@ def _stage2_provider_enabled() -> bool:
         result = is_groq_provider_enabled()
         logger.debug("Stage2 groq provider enabled: %s", result)
         return result
+    if env_value == "gemini":
+        from app.llm.openai_wrapper_provider import is_gemini_provider_enabled
+        result = is_gemini_provider_enabled()
+        logger.debug("Stage2 gemini provider enabled: %s", result)
+        return result
     if env_value == "anthropic":
         try:
             from app.config import settings
@@ -713,6 +718,20 @@ def _llm_parse_query(question: str) -> GraphQuery:
                     system=system_prompt,
                     user=sanitized_question,
                     model=os.getenv("REGENOLD_STAGE1_MODEL_GROQ", "llama-3.3-70b-versatile"),
+                    max_tokens=512,
+                    temperature=0.0,
+                )
+            )
+            if resp.error:
+                return _deterministic_parse(question)
+            text = (resp.text or "").strip()
+        elif provider == "gemini":
+            from app.llm.openai_wrapper_provider import OpenAIWrapperRequest, get_gemini_provider
+            resp = get_gemini_provider().complete(
+                OpenAIWrapperRequest(
+                    system=system_prompt,
+                    user=sanitized_question,
+                    model=os.getenv("REGENOLD_STAGE1_MODEL_GEMINI", "gemini-2.5-flash"),
                     max_tokens=512,
                     temperature=0.0,
                 )
@@ -889,6 +908,21 @@ def _llm_generate_answer(
             )
             if resp.error:
                 logger.warning("graph_rag.groq_call_failed: %s", resp.error[:200])
+                return _deterministic_answer(question, context)
+            return validate_llm_output((resp.text or "").strip())
+        elif provider == "gemini":
+            from app.llm.openai_wrapper_provider import OpenAIWrapperRequest, get_gemini_provider
+            resp = get_gemini_provider().complete(
+                OpenAIWrapperRequest(
+                    system=full_system,
+                    user=user_message,
+                    model=os.getenv("REGENOLD_STAGE2_MODEL_GEMINI", "gemini-2.5-flash"),
+                    max_tokens=settings.graph_rag.max_tokens,
+                    temperature=settings.graph_rag.temperature,
+                )
+            )
+            if resp.error:
+                logger.warning("graph_rag.gemini_call_failed: %s", resp.error[:200])
                 return _deterministic_answer(question, context)
             return validate_llm_output((resp.text or "").strip())
 
@@ -4069,6 +4103,7 @@ def _claude_max_enhance_answer(
         _env_provider = force_provider or os.getenv("P2P_GRAPH_RAG_PROVIDER", "").strip().lower()
         _use_anthropic_sdk = False
         _use_groq = False
+        _use_gemini = False
         if _env_provider == "anthropic":
             try:
                 from app.config import settings as _s  # noqa: PLC0415
@@ -4078,6 +4113,9 @@ def _claude_max_enhance_answer(
         elif _env_provider == "groq":
             from app.llm.openai_wrapper_provider import is_groq_provider_enabled
             _use_groq = is_groq_provider_enabled()
+        elif _env_provider == "gemini":
+            from app.llm.openai_wrapper_provider import is_gemini_provider_enabled
+            _use_gemini = is_gemini_provider_enabled()
 
         if _use_anthropic_sdk:
             text_raw = _anthropic_complete_for_graph_rag(
@@ -4102,11 +4140,6 @@ def _claude_max_enhance_answer(
                 logger.warning("graph_rag.groq_stage2_call_failed: %s", resp.error[:200])
                 text_raw = None
             elif getattr(resp, "finish_reason", None) == "length":
-                # R91 — truncation guard, mirrors the wrapper / SDK
-                # paths. A truncated Stage-2 polish would set
-                # ``stage2_landed=True`` and trigger R72 reference
-                # reconciliation against partial prose, silently
-                # pruning valid citations.
                 logger.warning(
                     "graph_rag.groq_stage2_truncated — finish_reason=length "
                     "(completion_tokens=%d) — falling back to deterministic.",
@@ -4114,11 +4147,40 @@ def _claude_max_enhance_answer(
                 )
                 text_raw = None
             elif _looks_structurally_truncated(resp.text):
-                # R102 — structural truncation backstop (mirrors the
-                # openai_wrapper path). Any provider that under-reports a
-                # mid-clause cut as a natural stop is caught here.
                 logger.warning(
                     "graph_rag.groq_stage2_truncated_structural — "
+                    "finish_reason=%r but text ends mid-clause "
+                    "(completion_tokens=%d) — falling back to deterministic.",
+                    getattr(resp, "finish_reason", None),
+                    resp.completion_tokens,
+                )
+                text_raw = None
+            else:
+                text_raw = resp.text
+        elif _use_gemini:
+            from app.llm.openai_wrapper_provider import OpenAIWrapperRequest, get_gemini_provider
+            resp = get_gemini_provider().complete(
+                OpenAIWrapperRequest(
+                    system=PROMPT_HARDENING_PREFIX + ANSWER_GENERATE_SYSTEM,
+                    user=user_message,
+                    model=os.getenv("REGENOLD_STAGE2_MODEL_GEMINI", "gemini-2.5-flash"),
+                    max_tokens=max_tokens,
+                    temperature=0.0,
+                )
+            )
+            if resp.error:
+                logger.warning("graph_rag.gemini_stage2_call_failed: %s", resp.error[:200])
+                text_raw = None
+            elif getattr(resp, "finish_reason", None) == "length":
+                logger.warning(
+                    "graph_rag.gemini_stage2_truncated — finish_reason=length "
+                    "(completion_tokens=%d) — falling back to deterministic.",
+                    resp.completion_tokens,
+                )
+                text_raw = None
+            elif _looks_structurally_truncated(resp.text):
+                logger.warning(
+                    "graph_rag.gemini_stage2_truncated_structural — "
                     "finish_reason=%r but text ends mid-clause "
                     "(completion_tokens=%d) — falling back to deterministic.",
                     getattr(resp, "finish_reason", None),

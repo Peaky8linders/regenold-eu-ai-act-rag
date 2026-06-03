@@ -434,3 +434,53 @@ def _reset_groq_singleton_for_tests() -> None:
             except Exception:  # noqa: BLE001
                 pass
         _GROQ_SINGLETON = None
+
+
+# ── Gemini provider (OpenAI-compatible) ──────────────────────────────────────
+
+_GEMINI_DEFAULT_BASE = "https://generativelanguage.googleapis.com/v1beta/openai/"
+_GEMINI_SINGLETON: _OpenAIWrapperProvider | None = None
+_GEMINI_SINGLETON_LOCK = threading.Lock()
+
+
+def is_gemini_provider_enabled() -> bool:
+    """True iff Gemini provider is enabled.
+
+    Requires GEMINI_API_KEY.
+    """
+    return bool(os.getenv("GEMINI_API_KEY", "").strip())
+
+
+def get_gemini_provider() -> _OpenAIWrapperProvider:
+    """Return the process-wide pooled Gemini provider.
+
+    Same double-checked-locking shape as the default singleton. Reads
+    ``GEMINI_API_BASE`` (default ``https://generativelanguage.googleapis.com/v1beta/openai/``) and
+    ``GEMINI_API_KEY`` at first construction.
+    """
+    global _GEMINI_SINGLETON
+    if _GEMINI_SINGLETON is None:
+        with _GEMINI_SINGLETON_LOCK:
+            if _GEMINI_SINGLETON is None:
+                _GEMINI_SINGLETON = _OpenAIWrapperProvider(
+                    base_url=(
+                        os.getenv("GEMINI_API_BASE", "").strip()
+                        or _GEMINI_DEFAULT_BASE
+                    ),
+                    api_key=os.getenv("GEMINI_API_KEY", ""),
+                    timeout=float(os.getenv("GEMINI_TIMEOUT_SECONDS", "60")),
+                )
+    return _GEMINI_SINGLETON
+
+
+def _reset_gemini_singleton_for_tests() -> None:
+    """Reset the Gemini singleton. Test-only — not part of the public API."""
+    global _GEMINI_SINGLETON
+    with _GEMINI_SINGLETON_LOCK:
+        if _GEMINI_SINGLETON is not None:
+            try:
+                _GEMINI_SINGLETON._close()  # noqa: SLF001 — test hook
+            except Exception:  # noqa: BLE001
+                pass
+        _GEMINI_SINGLETON = None
+

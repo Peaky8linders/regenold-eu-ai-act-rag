@@ -338,3 +338,43 @@ def test_parse_retry_after_helper() -> None:
     assert _parse_retry_after("Wed, 21 Oct 2026 07:28:00 GMT") == 0.0
     # Negative clamped to 0 (defensive — server bug shouldn't crash us)
     assert _parse_retry_after("-3") == 0.0
+
+
+class TestGeminiProvider:
+    def test_gemini_enabled_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from app.llm.openai_wrapper_provider import is_gemini_provider_enabled
+
+        # When GEMINI_API_KEY is not set
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        assert is_gemini_provider_enabled() is False
+
+        # When GEMINI_API_KEY is empty
+        monkeypatch.setenv("GEMINI_API_KEY", "  ")
+        assert is_gemini_provider_enabled() is False
+
+        # When GEMINI_API_KEY is present
+        monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+        assert is_gemini_provider_enabled() is True
+
+    def test_gemini_provider_singleton(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from app.llm.openai_wrapper_provider import (
+            get_gemini_provider,
+            _reset_gemini_singleton_for_tests,
+        )
+
+        _reset_gemini_singleton_for_tests()
+        monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+        monkeypatch.setenv("GEMINI_API_BASE", "https://custom.gemini.api/v1")
+        monkeypatch.setenv("GEMINI_TIMEOUT_SECONDS", "30")
+
+        provider = get_gemini_provider()
+        assert provider._base_url == "https://custom.gemini.api/v1"
+        assert provider._api_key == "test-gemini-key"
+        assert provider._timeout == 30.0
+
+        # Singleton preservation
+        provider2 = get_gemini_provider()
+        assert provider is provider2
+
+        _reset_gemini_singleton_for_tests()
+
