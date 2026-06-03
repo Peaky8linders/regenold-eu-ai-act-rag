@@ -448,6 +448,13 @@ def regulatory_tone(text: str) -> float:
     for pattern, penalty in _TONE_DEMERIT_PATTERNS:
         if pattern.search(text):
             score -= penalty
+    # Additional penalty for list‑dump / overly terse answers
+    # If the answer contains many short lines (average < 5 words) we deduct a small amount.
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if len(lines) > 5:
+        avg_words = sum(len(ln.split()) for ln in lines) / len(lines)
+        if avg_words < 5:
+            score -= 0.15
     # Bonus capped at +0.30 total so a paragraph stuffed with anchors
     # can't drown the demerits.
     bonus = 0.0

@@ -537,19 +537,28 @@ def _stage2_provider_enabled() -> bool:
     from app.llm.openai_wrapper_provider import is_openai_wrapper_enabled
 
     env_value = os.getenv("P2P_GRAPH_RAG_PROVIDER", "").strip().lower()
+    logger.debug("Stage2 provider env var: %s", env_value)
     if env_value == "cli":
+        logger.debug("Stage2 disabled: provider=cli")
         return False
     if env_value == "groq":
         from app.llm.openai_wrapper_provider import is_groq_provider_enabled
-        return is_groq_provider_enabled()
+        result = is_groq_provider_enabled()
+        logger.debug("Stage2 groq provider enabled: %s", result)
+        return result
     if env_value == "anthropic":
         try:
             from app.config import settings
-            return settings.graph_rag.api_key is not None
+            result = settings.graph_rag.api_key is not None
+            logger.debug("Stage2 anthropic provider enabled (api_key present): %s", result)
+            return result
         except Exception:  # noqa: BLE001
+            logger.exception("Error checking anthropic provider for Stage2")
             return False
     # auto / openai_wrapper / unset — historical default, gate via wrapper.
-    return is_openai_wrapper_enabled()
+    result = is_openai_wrapper_enabled()
+    logger.debug("Stage2 default wrapper enabled: %s", result)
+    return result
 
 
 def _stage2_polish_enabled() -> bool:
