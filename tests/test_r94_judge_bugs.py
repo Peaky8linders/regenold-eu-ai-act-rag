@@ -158,15 +158,24 @@ def test_first_clause_no_dangling_conjunction(monkeypatch) -> None:
     )
 
 
-def test_first_clause_default_off_is_byte_identical(monkeypatch) -> None:
-    """Default (flag OFF) keeps the pre-R94 hard-cut so davidath is
-    byte-identical — the win is gated to the live deploy."""
+def test_first_clause_default_is_clause_complete(monkeypatch) -> None:
+    """Clause-complete is now ALWAYS-ON — `_clause_complete_enabled()` is
+    hard-coded ``True`` ("per user directive to prevent mid-word character
+    slicing"), so the pre-R94 flag-gated hard-cut path is unreachable. With
+    the env unset, `_first_clause` produces the SAME clean-boundary clause as
+    the flag-ON path: it never returns the raw mid-word hard-cut, never ends
+    on a dangling connective, and always terminates cleanly."""
     monkeypatch.delenv("REGENOLD_CLAUSE_COMPLETE", raising=False)
     from app.integrations.regenold.grounded_prose import _first_clause
 
     out = _first_clause(_ART49_STUB, max_chars=90)
-    # Pre-R94 behaviour: hard-cut at 90 chars + terminator.
-    assert out == _ART49_STUB[:90].rstrip(",;: ") + "."
+    # No longer the pre-R94 mid-word hard-cut.
+    assert out != _ART49_STUB[:90].rstrip(",;: ") + "."
+    # Clean clause-complete invariants (same as the flag-ON path).
+    assert out.rstrip()[-1] in ".!?"
+    assert not out.rstrip().rstrip(".").lower().endswith(
+        (" and", " or", " to", " the", " of", " a", " with")
+    ), f"_first_clause produced a dangling fragment: {out!r}"
 
 
 def test_augmenter_no_runon_or_dangling(client: TestClient, monkeypatch) -> None:

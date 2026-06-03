@@ -32,6 +32,80 @@ R64 (2026-05-19) — distinguish import failures from runtime failures:
 from __future__ import annotations
 
 import logging
+import os
+
+# ── R105 — deterministic offline test environment ────────────────────────
+#
+# pydantic ``Settings`` loads the repo ``.env`` (via ``env_file``), which on a
+# developer / CI machine carries the PRODUCTION integration credentials
+# (``NEO4J_URI`` → live Aura, ``GROQ_API_KEY`` / ``OPENAI_API_BASE`` → the
+# Claude-Max wrapper). Combined with ``is_openai_wrapper_enabled()`` being
+# hard-coded ``True`` and the wrapper base URL falling back to the live
+# ``wrapper.antifragile-ai.net`` tunnel (60 s timeout), an unguarded
+# ``pytest -q`` fires REAL Stage-2 polish + Neo4j hops + de-noiser calls on
+# hundreds of route tests. Symptoms: a 74-minute, non-deterministic suite
+# whose mock-based de-noiser / wrapper tests FAIL because a real provider
+# answers instead of the mock, and whose live-Aura latency makes route tests
+# flaky.
+#
+# Every round's contract ("davidath byte-identical because TestClient skips
+# Stage-2") assumes NONE of these services are reachable from the test
+# process. This block restores that invariant by neutralising the
+# integration-activating env vars in ``os.environ`` BEFORE the first ``app``
+# import below — ``os.environ`` takes precedence over the ``.env`` file in
+# pydantic, and the per-call ``os.getenv`` gates (Stage-2 master flag,
+# de-noiser) read the same values. Tests that need a live-shaped surface opt
+# back in per-test via ``monkeypatch.setenv`` / ``monkeypatch.delenv`` (which
+# override this base and auto-revert).
+#
+# NOTE: ``P2P_GRAPH_RAG_PROVIDER`` is deliberately NOT forced to ``cli`` — the
+# R97/R100/R56 Stage-2 tests patch ``is_openai_wrapper_enabled`` + set
+# ``P2P_GRAPH_RAG_ENABLE_STAGE2=1`` and rely on the default provider routing;
+# forcing ``cli`` would make ``_stage2_provider_enabled()`` short-circuit
+# before their patch. The Stage-2 master gate below is the safe lever — it
+# short-circuits ``_two_stage_generate`` ahead of the provider check, and the
+# Stage-2-exercising tests set it back to ``1`` themselves.
+#
+# Escape hatch: ``REGENOLD_TEST_ALLOW_LIVE=1`` skips the neutralisation
+# entirely (e.g. an intentional live-integration smoke run from pytest).
+if os.getenv("REGENOLD_TEST_ALLOW_LIVE", "").strip().lower() not in (
+    "1",
+    "true",
+    "yes",
+    "on",
+):
+    # Empty string overrides the ``.env`` value and reads as "disabled" by
+    # every presence / truthy gate (graph client, Groq key, RushDB token, …).
+    # NOTE: ``OPENAI_API_KEY`` is deliberately NOT cleared — some unit tests
+    # (e.g. ``test_external_embeddings``) build a mocked OpenAI client that
+    # still needs a non-empty key; and the Stage-2 master gate is left at its
+    # code default (ON) so the drift / cap / consistency tests that exercise
+    # ``_two_stage_generate`` keep working — they patch the wrapper provider,
+    # so they never touch the network.
+    for _var in (
+        "NEO4J_URI",
+        "NEO4J_PASSWORD",
+        "NEO4J_USER",
+        "NEO4J_USERNAME",
+        "DATABASE_URL",
+        "GROQ_API_KEY",
+        "COHERE_API_KEY",
+        "RUSHDB_AUTH_TOKEN",
+        "REGENOLD_INTENT_PROVIDER",
+        "P2P_GRAPH_RAG_API_KEY",
+    ):
+        os.environ[_var] = ""
+    # Point the Claude-Max wrapper at an UNREACHABLE local port. Route tests
+    # that don't patch the provider then fail-fast (connection refused, ~1 ms)
+    # → deterministic fallback, instead of a 10-60 s live call to the
+    # production ``wrapper.antifragile-ai.net`` tunnel (the wrapper is
+    # hard-coded "enabled" + falls back to that tunnel when the base is empty).
+    # Unit tests that patch ``_openai_wrapper_complete_for_graph_rag`` /
+    # ``get_openai_wrapper_provider`` bypass the HTTP layer entirely, so this
+    # is invisible to them.
+    os.environ["OPENAI_API_BASE"] = "http://127.0.0.1:1/v1"
+    # Multi-turn query de-noiser network OFF (unit tests opt back in per-test).
+    os.environ["REGENOLD_QUERY_DENOISER"] = "0"
 
 import pytest
 

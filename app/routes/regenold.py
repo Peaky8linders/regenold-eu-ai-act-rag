@@ -5015,6 +5015,32 @@ def regenold_eu_ai_act_ask(
         except Exception:  # noqa: BLE001 — never break the route on a cap
             logger.warning("stage2_conciseness_cap_failure", exc_info=True)
 
+    # R105 — post-cap reference reconciliation (refs-faithfulness). The
+    # R104.2 conciseness cap above truncates the Stage-2 prose AFTER the
+    # R72 reconcile (line ~4826) already finalised ``references`` against
+    # the UN-truncated prose — and after the Component D guard may have
+    # APPENDED a ref the (full) prose cited. A reference whose describing
+    # sentence the cap truncated away is then "cited but never described"
+    # in the FINAL shipped prose: the LLM-as-judge's refs-faithfulness
+    # penalty (r1042-conc-live measured refs 0.53 → 0.37 after #178 added
+    # the cap). Re-reconcile the wire references against the FINAL
+    # ``answer_text`` so every shipped reference is named in the answer
+    # actually returned. Same gating as the R72 pass (skip scenario-shape,
+    # honour the recall floor + REGENOLD_REFS_RECONCILE off-switch).
+    # davidath byte-identical BY CONSTRUCTION: gated on the local
+    # ``_stage2_landed`` (always False on the wrapper-less bench → strict
+    # no-op, mirroring the conciseness cap it follows).
+    if (
+        _stage2_landed
+        and answer_text
+        and os.getenv("REGENOLD_REFS_RECONCILE", "1") in ("1", "true", "yes", "on")
+        and not _looks_like_scenario_shape(question)
+        and len(references) > reconcile_floor
+    ):
+        references = _reconcile_references_to_prose(
+            references, answer_text, floor=reconcile_floor
+        )
+
     # Default response shape = competition spec only. Telemetry block
     # populated only when ?include_telemetry=true (and serialised via
     # response_model_exclude_none on the route, so unset Optional
