@@ -558,6 +558,39 @@ _LEADING_LABEL_RE = re.compile(
 )
 
 
+def _strip_dangling_paren(text: str) -> str:
+    """Drop a trailing unbalanced parenthetical fragment from a clip.
+
+    R104.1 — ``_first_clause`` clips KB stubs to a tight char budget, and
+    the within-window boundary walk can land at a comma INSIDE an unclosed
+    ``(`` (e.g. the Art. 3 stub
+    "...'AI system' (machine-based, varying autonomy, ...)" clips to
+    "...'AI system' (machine-based."), leaving a dangling open paren that
+    reads as a broken, truncated answer — exactly the unprofessional
+    artifact the regulatory tone bar (and the GraphRAG-paper reference
+    style) rejects. When the result carries more ``(`` than ``)``, cut back
+    to just before the last unbalanced ``(`` and re-terminate.
+
+    Byte-identical passthrough when parentheses are already balanced, so
+    answers (and the davidath deterministic-augmenter path) that never clip
+    inside a paren are completely unaffected. Never empties a non-empty
+    input unless the entire content was the dangling fragment (caller skips
+    empty clauses).
+    """
+    if not text or text.count("(") <= text.count(")"):
+        return text  # balanced — unchanged
+    while text.count("(") > text.count(")"):
+        cut = text.rfind("(")
+        if cut <= 0:
+            return text
+        text = text[:cut].rstrip(" ,;:—-")
+        if not text:
+            return ""
+    if text[-1] not in ".!?":
+        text = text + "."
+    return text
+
+
 def _first_clause(summary: str, *, max_chars: int) -> str:
     """Return the leading substantive clause(s) from ``summary``,
     trimmed to ``max_chars`` and ending on a clean boundary.
@@ -625,7 +658,9 @@ def _first_clause(summary: str, *, max_chars: int) -> str:
     for terminator in (". ", "; ", ", "):
         idx = window.rfind(terminator)
         if idx > max_chars // 2:
-            return cleaned[: idx + 1].rstrip(",;: ").rstrip(".") + "."
+            return _strip_dangling_paren(
+                cleaned[: idx + 1].rstrip(",;: ").rstrip(".") + "."
+            )
     # R94 bug 3 — no clean boundary INSIDE the window. The pre-R94 path
     # (kept as the default for davidath byte-identity) hard-cut at
     # ``max_chars`` (mid-clause), leaving a dangling conjunction ("Requires
@@ -659,9 +694,9 @@ def _first_clause(summary: str, *, max_chars: int) -> str:
             if low.endswith(dangler):
                 cut = cut[: len(cut) - len(dangler)].rstrip(",;: ")
                 break
-        return cut + "."
+        return _strip_dangling_paren(cut + ".")
     # Default (davidath byte-identical): hard-cut + terminator.
-    return cleaned[: max_chars].rstrip(",;: ") + "."
+    return _strip_dangling_paren(cleaned[: max_chars].rstrip(",;: ") + ".")
 
 
 def _format_lead_citation_list(user_facing_refs: list[str]) -> str:
