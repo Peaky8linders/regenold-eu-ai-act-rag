@@ -237,6 +237,80 @@ def _reset_request_intent_cache():
     yield
 
 
+# R105 — reset the pooled LLM provider singletons + the lazy Anthropic
+# client cache between tests. The provider module memoises FOUR
+# process-wide objects that bind to env at FIRST construction and never
+# rebuild:
+#
+#   * ``openai_wrapper_provider._SINGLETON``  — bound to ``OPENAI_API_BASE``
+#   * ``openai_wrapper_provider._GROQ_SINGLETON``   — bound to ``GROQ_API_KEY``
+#   * ``openai_wrapper_provider._GEMINI_SINGLETON``  — bound to ``GEMINI_API_KEY``
+#   * ``graph_rag._get_anthropic_client`` — ``lru_cache(maxsize=1)`` keyed
+#     on NO args, holding a client built from ``settings.graph_rag.api_key``.
+#
+# A Stage-2-exercising test (e.g. ``test_anthropic_provider.py``,
+# ``test_r97_answer_router.py``) constructs one of these under its own
+# ``monkeypatch.setenv`` / ``monkeypatch.setattr`` setup; the value is
+# cached. When that test's monkeypatch reverts, the SINGLETON does NOT —
+# it stays bound to the now-reverted env, and a later test reading the
+# same accessor gets the stale object. Concrete observed failures (pass
+# in isolation, fail in-suite):
+#   * ``test_r91_llm_truncation::test_anthropic_end_turn_returns_text`` —
+#     monkeypatches ``anthropic.Anthropic`` to a fake, but the cached
+#     ``_get_anthropic_client`` returns the prior test's client (built
+#     before the patch) → the fake ``create()`` never runs → result is
+#     ``None`` instead of the mocked text.
+#   * the ``test_graph_rag_bugfixes`` drift-guard tests, similarly, see a
+#     cached wrapper / anthropic client from a Stage-2 polluter.
+# This mirrors the c4a7505 anthropic-client-cache fix (which only cleared
+# the cache inside ``test_anthropic_provider``'s own fixture) and the
+# R63-E / R84 / R100 reset-shared-state pattern — lifted to the whole
+# suite so any test order is isolated. Fail-soft: a reset error never
+# blocks a test.
+try:
+    from app.llm import openai_wrapper_provider as _llm_provider
+except ImportError:  # pragma: no cover — tested env always has this
+    _llm_provider = None
+
+try:
+    from app.engines.graph_rag import _get_anthropic_client as _anthropic_client_cache
+except ImportError:  # pragma: no cover — tested env always has this
+    _anthropic_client_cache = None
+
+
+@pytest.fixture(autouse=True)
+def _reset_llm_provider_singletons():
+    """Drop the pooled LLM provider singletons + Anthropic client cache (R105)."""
+    if _llm_provider is not None:
+        # Groq + Gemini have dedicated reset helpers (close the pooled
+        # httpx.Client + null the module global).
+        for _helper in ("_reset_groq_singleton_for_tests", "_reset_gemini_singleton_for_tests"):
+            fn = getattr(_llm_provider, _helper, None)
+            if fn is not None:
+                try:
+                    fn()
+                except Exception:  # noqa: BLE001 — never block a test on cleanup
+                    pass
+        # The main wrapper singleton has no helper — reset its module
+        # global directly, closing the pooled client first.
+        try:
+            existing = getattr(_llm_provider, "_SINGLETON", None)
+            if existing is not None:
+                try:
+                    existing._close()  # noqa: SLF001 — test hook
+                except Exception:  # noqa: BLE001
+                    pass
+            _llm_provider._SINGLETON = None
+        except Exception:  # noqa: BLE001
+            pass
+    if _anthropic_client_cache is not None:
+        try:
+            _anthropic_client_cache.cache_clear()
+        except Exception:  # noqa: BLE001
+            pass
+    yield
+
+
 # R89-A code-review fix (E&EC-F4) — clear REGENOLD_R89A_FORCE_APPEND
 # before every test so a developer running the full suite with the
 # production env var set (matches railway.toml) sees CI / local parity.
@@ -255,6 +329,53 @@ def _reset_r89a_force_append_env(monkeypatch):
     deterministic regardless of the developer's shell state.
     """
     monkeypatch.delenv("REGENOLD_R89A_FORCE_APPEND", raising=False)
+    yield
+
+
+# R105 — default the per-call answer-shaping env knobs OFF for every test.
+#
+# Three env vars flip CALL-TIME behaviour of code the deterministic
+# regression tests assert against. They are NOT in the import-time
+# neutralisation block at the top of this file (that block runs ONCE,
+# before the first import, and only covers integration credentials). A
+# test that sets one without ``monkeypatch`` — or any future leak into
+# the process environment — persists into later tests and silently flips
+# behaviour, producing in-suite-ONLY failures (the tests pass in
+# isolation because the developer ``.env`` does NOT auto-load into
+# ``os.environ``). Defaulting them OFF per test makes the affected guards
+# deterministic regardless of run order. Tests that need the ON path opt
+# back in via ``monkeypatch.setenv`` (which overrides this ``delenv`` for
+# that one test and auto-reverts). Mirrors the ``_reset_r89a_force_append_env``
+# pattern above.
+#
+# * ``REGENOLD_DYNAMIC_GROUNDING`` — the R101 drift guard
+#   (``graph_rag._polished_prose_has_unknown_citations``) treats a cited
+#   catalog Article as NON-drift even when absent from the request context
+#   (parametric-memory tolerance). The Stage-2 drift-guard tests in
+#   ``test_graph_rag_bugfixes.py`` (``test_real_but_ungrounded_cite_flagged``,
+#   ``test_two_stage_generate_drops_polish_on_ungrounded_real_cite``,
+#   ``test_articles_plural_grounded_context_catches_unlisted``) assert the
+#   STRICT behaviour (real-but-ungrounded → drift), which only holds OFF.
+#   ``test_r105_post_cap_reconcile.py`` opts it ON via its own setenv.
+# * ``REGENOLD_MAX_ANSWER_SENTENCES`` — ``normalise_answer_for_regenold``
+#   reads it at call time; an unset value falls back to the code constant
+#   ``MAX_ANSWER_SENTENCES`` (3). A leaked higher value (e.g. 6 from
+#   ``test_r105``'s ``_stage2_env``) breaks
+#   ``test_citation_minimisation_and_caps::test_sentence_cap_enforced_when_input_exceeds``.
+# * ``REGENOLD_HARD_CHAR_CAP`` — the R78 hard-truncate backstop, default
+#   OFF in code; a leaked ``1`` makes
+#   ``test_citation_minimisation_and_caps::test_soft_cap_keeps_at_least_one_sentence_even_if_all_cite``
+#   truncate a load-bearing cite sentence it asserts is preserved. The
+#   ``TestR78HardCharCap`` cases opt it ON via their own setenv.
+@pytest.fixture(autouse=True)
+def _reset_answer_shaping_env(monkeypatch):
+    """Default the per-call answer-shaping env knobs OFF for every test (R105)."""
+    for _var in (
+        "REGENOLD_DYNAMIC_GROUNDING",
+        "REGENOLD_MAX_ANSWER_SENTENCES",
+        "REGENOLD_HARD_CHAR_CAP",
+    ):
+        monkeypatch.delenv(_var, raising=False)
     yield
 
 

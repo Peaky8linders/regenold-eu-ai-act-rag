@@ -5409,6 +5409,77 @@ token count (the R99.2/R100 finding). Fully reversible:
 `railway variables --set REGENOLD_HARD_CHAR_CAP=1 REGENOLD_QA_LENGTH_CAP=600`
 (restore caps) / `P2P_GRAPH_RAG_COMPLEX_MODEL=` (disable Opus swap).
 
+## Round 107 — Finalise the multi-turn round: green suite + grounded_prose multi-ref fix + scratch purge (2026-06-04)
+
+The multi-turn improvement round (P1–P5 from `.planning/MULTITURN-IMPROVEMENT-PLAN.md`)
+had landed piecemeal on `main` under commit `1ea4682` but was **never closed
+out** — it left the suite with **9 failing tests** and **5 scratch files dumped
+in the repo root**. R107 closes the round: `main` was green-but-unfinalised, not
+mid-feature. Diagnosed with a **dynamic workflow** (fan-out-and-verify — 3 fixers
+in isolated worktrees, each adversarially verified against gutted-assertion
+"fixes").
+
+### The 3 disjoint failure clusters (9 tests)
+
+* **C1 — `stitch_grounded_prose` multi-ref substance regression (real WIRE bug).**
+  For `["Art. 51","Art. 101","Art. 64","Art. 74"]` the char-cap-overflow
+  recovery **dropped the whole 2nd substance sentence** (Art. 101's "AI Office" /
+  "direct fines" tokens vanished from the consistency-guard substitute prose,
+  surviving only in the references list). Root cause: the R94
+  `_clause_complete_enabled` whole-sentence overshoot returns a 364-char lead
+  sentence against a 220-char 2nd-ref budget; two over-budget refs exceed
+  `MAX_GROUNDED_CHARS` (580); the old recovery `pop()`-ed the last sentence
+  outright. **Fix (`app/integrations/regenold/grounded_prose.py`):** new
+  `_trim_substance_to_budget` helper + a **TRIM-BEFORE-DROP** pass — re-trim the
+  longest substance sentence to the remaining budget on a clean `; `/`, `
+  boundary (preserving its leading cite anchor) so BOTH refs survive; only fall
+  through to the drop loop if trimming can't recover enough. **davidath
+  byte-identical** (single-ref stitch unchanged across all 131 KB refs, verified
+  via git-stash A/B = 0 diffs — single-ref QA never enters the trim branch).
+  Fixes `test_consistency_guard.py::test_probe2_refs_now_surface_art_101_substance`.
+
+* **C2 — stale embeddings test vs the R105 conftest guard (test-only).**
+  conftest pins `OPENAI_API_BASE=http://127.0.0.1:1/v1` (no-live-calls guard);
+  `external_embeddings.py` honours it, so the request URL became the dead-port
+  base, but `test_get_embedding_openai_mock` hard-codes `api.openai.com` and
+  never overrode the base. **Fix:** the test `monkeypatch.delenv("OPENAI_API_BASE")`
+  so the code falls back to the canonical URL it asserts. Assertions preserved.
+
+* **C3 — R80.2 Stage-2-default-ON + `.env` leak → deterministic-path tax +
+  cached-singleton pollution (test-only).** `test_latency_p95_under_one_second`
+  asserts the deterministic 276-runner p95 < 1 s, but R80.2 flipped the Stage-2
+  master gate default ON, so with the developer `.env` present the route fired
+  wrapper(dead-port)→groq(401) failover per question (~287 s, `groq_fallback_failed:
+  api_status_401`). Separately, 4 tests passed alone but failed in-suite — a
+  Stage-2 test left a **process-wide LLM provider singleton / `_get_anthropic_client`
+  lru_cache** bound to reverted env. **Fix (`tests/`):** two autouse conftest
+  fixtures — `_reset_llm_provider_singletons` (drops the wrapper / groq / gemini
+  singletons + `_get_anthropic_client.cache_clear()` between tests, extending the
+  c4a7505 anthropic-cache fix suite-wide) and `_reset_answer_shaping_env`
+  (defaults `REGENOLD_DYNAMIC_GROUNDING` / `REGENOLD_MAX_ANSWER_SENTENCES` /
+  `REGENOLD_HARD_CHAR_CAP` to their code-defaults per test — the real fix for the
+  drift-guard pollution) — plus the latency test pins the deterministic path
+  (`P2P_GRAPH_RAG_ENABLE_STAGE2=0` + `provider=cli`). No production code touched.
+
+### Repo hygiene
+
+Removed 5 scratch files `1ea4682` accidentally committed to the repo root
+(`test_live.py` — hits the live production URL —, `test_timeout.py`,
+`retry_timeouts.py`, `generate_report.py`, `.gen_eval_scorecard.py`).
+`testpaths=["tests"]` meant they never polluted pytest, but they don't belong in
+the tree.
+
+### Gates (all green)
+
+* `pytest -p no:cacheprovider -q` — **3319 passed, 1 skipped, 0 failed** (was
+  9 failed / 3310 passed; +0 new failures from the suite-wide conftest fixtures).
+* `evals.regenold.runner_v2 --local --probe-oos` — **OOS 21/21, 0 leaks**.
+* `evals.regenold.runner` — **276/276**.
+* davidath: C1 verified **byte-identical** on the deterministic single-ref path;
+  C2/C3 are test-only (no wire bytes changed). The only production-behaviour
+  change is C1, and it strictly ADDS surviving substance to the multi-ref
+  consistency-guard substitute (the live answer-quality win).
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

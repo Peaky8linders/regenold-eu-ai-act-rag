@@ -883,7 +883,9 @@ class TestRegenoldEvalGate:
             f"{len(over_ceiling)} scenarios exceeded hard ceiling {hard_ceiling}: {over_ceiling[:5]}"
         )
 
-    def test_latency_p95_under_one_second(self) -> None:
+    def test_latency_p95_under_one_second(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Deterministic-fallback path must complete < 1 s p95.
 
         Regenold scores Latency per question. The TestClient harness
@@ -891,7 +893,31 @@ class TestRegenoldEvalGate:
         if a regression blocks on a network call the p95 would balloon
         past the 1 s ceiling. Loose floor (1 s) so warm-cold variance
         on CI doesn't trigger flaky failures.
+
+        R105 — this test measures the DETERMINISTIC path (per the
+        docstring). R80.2 flipped the Stage-2 master gate default ON
+        (``P2P_GRAPH_RAG_ENABLE_STAGE2``), so with a developer ``.env``
+        present (``P2P_GRAPH_RAG_PROVIDER=openai_wrapper`` + a real
+        ``GROQ_API_KEY``) ``run_all()`` would attempt Stage-2 polish on
+        every scenario: wrapper(dead-port) → groq(live 401) failover per
+        question, ballooning p95 well past the 1 s ceiling (~300 s
+        wall). Pin the deterministic path explicitly so the measurement
+        is what the test name claims — the engine never reaches a live
+        provider. (The conftest base already neutralises ``GROQ_API_KEY``
+        + points ``OPENAI_API_BASE`` at a dead port, but the Stage-2
+        master gate stays at its code default ON for the ~50 Stage-2
+        tests that rely on it; this test opts OUT of Stage-2 entirely.)
         """
+        # Master gate OFF → ``_two_stage_generate`` short-circuits before
+        # any provider check, so no wrapper / groq network attempt fires.
+        monkeypatch.setenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "0")
+        # Belt-and-braces: force the deterministic provider + clear any
+        # leaked live-provider credentials for the duration of the run.
+        monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "cli")
+        monkeypatch.delenv("GROQ_API_KEY", raising=False)
+        monkeypatch.delenv("REGENOLD_INTENT_PROVIDER", raising=False)
+        monkeypatch.setenv("OPENAI_API_BASE", "http://127.0.0.1:1/v1")
+
         from evals.regenold.runner import _percentile, run_all
 
         results = run_all()

@@ -778,6 +778,55 @@ def _format_substance(user_ref: str, clause: str) -> str:
     return f"Under {user_ref}, {cleaned}"
 
 
+def _trim_substance_to_budget(sentence: str, budget: int) -> str:
+    """Trim an already-formatted substance sentence to ``budget`` chars
+    on a clean clause boundary, preserving its leading cite anchor.
+
+    R104.2 char-cap-overflow recovery helper. The input is a finished
+    substance sentence (e.g. ``"Under Article 101, GPAI penalties: the
+    Commission ... obligations, supplying incorrect ..."``). When two
+    refs together overflow ``MAX_GROUNDED_CHARS`` because one clause
+    overshot its per-ref budget (the R94 ``_clause_complete_enabled``
+    whole-sentence overshoot), we re-trim the longest sentence here so
+    BOTH refs survive instead of dropping one wholesale.
+
+    Trims to the latest ``; `` / ``, `` boundary that fits inside
+    ``budget`` and lands past the half-point, then re-terminates with a
+    period; falls back to a word-cut + period when no clean boundary
+    fits. The abbreviation-laden ``. `` boundary is NOT used here (the
+    sentence is mid-clause anyway), and ``_strip_dangling_paren`` cleans
+    any clip that lands inside an open parenthetical. Returns ``""`` when
+    nothing usable survives so the caller falls through to the drop loop.
+    """
+    s = sentence.strip()
+    if not s or len(s) <= budget:
+        return s
+    window = s[:budget]
+    for terminator in ("; ", ", "):
+        idx = window.rfind(terminator)
+        if idx > budget // 2:
+            return _strip_dangling_paren(
+                window[: idx + 1].rstrip(",;: ").rstrip(".") + "."
+            )
+    # No clean clause boundary in the back half — word-cut so we never
+    # slice mid-word, drop any trailing dangling connective, re-terminate.
+    cut = window
+    if budget < len(s) and s[budget] != " ":
+        ws = cut.rfind(" ")
+        if ws > budget // 2:
+            cut = cut[:ws]
+    cut = cut.rstrip(",;: ")
+    low = cut.lower()
+    for dangler in (" and", " or", " to", " the", " of", " a", " an",
+                    " with", " for", " in"):
+        if low.endswith(dangler):
+            cut = cut[: len(cut) - len(dangler)].rstrip(",;: ")
+            break
+    if not cut:
+        return ""
+    return _strip_dangling_paren(cut.rstrip(".") + ".")
+
+
 # ── Public API ──────────────────────────────────────────────────────────
 
 
@@ -1010,9 +1059,48 @@ def stitch_grounded_prose(
     substance_sentences = [_ensure_terminator(s) for s in substance_sentences]
     out = " ".join(substance_sentences).strip()
 
-    # If we blew the char cap (rare: long KB stubs + 3 refs), drop the
-    # last substance sentence and re-assemble. Iterate at most twice
-    # (we have at most 2 substance sentences).
+    # R104.2 — char-cap-overflow recovery: TRIM-BEFORE-DROP.
+    #
+    # Root cause this guards: ``_first_clause`` (under the R94
+    # ``_clause_complete_enabled`` overshoot) can return a WHOLE first
+    # sentence that exceeds the ``max_chars`` budget the caller passed —
+    # e.g. Art. 101's lead sentence is 364 chars but the 2nd-ref budget
+    # is 220. Two over-budget refs then push the assembled prose past
+    # ``MAX_GROUNDED_CHARS`` (580). The old recovery dropped the LAST
+    # substance sentence outright, deleting the 2nd ref's substance
+    # entirely (the Probe-2 [Art. 51, Art. 101, ...] bug — Art. 101's
+    # "AI Office" / "direct fines" tokens vanished).
+    #
+    # Fix: when over cap with 2+ substance sentences, first try to
+    # RE-TRIM the longest sentence to the remaining budget on a clean
+    # clause boundary (preserving its leading cite anchor) so BOTH refs
+    # survive. Only fall through to the drop loop if trimming can't
+    # claw enough back. Single-ref inputs (davidath QA) never enter
+    # here — the lone lead sentence is ≤ ~400 chars, well under cap.
+    if len(out) > MAX_GROUNDED_CHARS and len(substance_sentences) > 1:
+        # Budget for the longest sentence = total cap minus the other
+        # sentences (and one inter-sentence space each).
+        longest_idx = max(
+            range(len(substance_sentences)),
+            key=lambda i: len(substance_sentences[i]),
+        )
+        others_len = sum(
+            len(s) for i, s in enumerate(substance_sentences) if i != longest_idx
+        )
+        joins = len(substance_sentences) - 1
+        budget = MAX_GROUNDED_CHARS - others_len - joins
+        if budget >= 80:  # only worth trimming if a meaningful clause survives
+            trimmed = _trim_substance_to_budget(
+                substance_sentences[longest_idx], budget
+            )
+            if trimmed:
+                substance_sentences[longest_idx] = _ensure_terminator(trimmed)
+                out = " ".join(substance_sentences).strip()
+
+    # If we still blew the char cap (rare: long KB stubs + 3 refs, or
+    # trimming couldn't recover enough), drop the last substance
+    # sentence and re-assemble. Iterate at most twice (we have at most
+    # 2 substance sentences).
     while len(out) > MAX_GROUNDED_CHARS and len(substance_sentences) > 1:
         substance_sentences.pop()
         out = " ".join(substance_sentences).strip()

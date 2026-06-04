@@ -59,6 +59,13 @@ def test_get_embedding_cohere_mock(monkeypatch):
 def test_get_embedding_openai_mock(monkeypatch):
     """get_embedding handles OpenAI HTTP requests correctly."""
     monkeypatch.delenv("COHERE_API_KEY", raising=False)
+    # conftest.py pins ``OPENAI_API_BASE`` to a dead loopback as a no-live-calls
+    # guard (R105); the production code honours it
+    # (``api_base = os.getenv("OPENAI_API_BASE", OPENAI_API_URL)``), which would
+    # make the request URL ``http://127.0.0.1:1/v1/embeddings`` instead of the
+    # canonical endpoint this test asserts. Drop it so the code falls back to
+    # ``OPENAI_API_URL`` — the test owns the base it verifies against.
+    monkeypatch.delenv("OPENAI_API_BASE", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-testkey")
     monkeypatch.setenv("REGENOLD_EXTERNAL_EMBEDDING_MODEL", "text-embedding-3-small")
 
