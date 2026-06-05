@@ -5480,6 +5480,71 @@ the tree.
   change is C1, and it strictly ADDS surviving substance to the multi-ref
   consistency-guard substitute (the live answer-quality win).
 
+## Round 108 — Legal-tone punctuation: no dash separators or ellipses (2026-06-05)
+
+User directive: wire answers must read as concise EU AI Act legal-professional
+prose, with **no ellipses (`...` / `…`) and no dash separators**. A live-wrapper
+probe of 10 real eval/benchmark questions (gt_01/02/05, deployer obligations,
+GPAI threshold, hospital-triage scenario, recruitment multi-turn, fine-tune)
+confirmed the issue: 3 of 10 Stage-2 Sonnet answers shipped em-dashes (`—`) used
+as clause separators / appositives (e.g. *"Training-data content summary — the
+Commission adopted …"*, *"the core GPAI obligations — maintaining … — rather
+than relying upstream"*). Ellipsis was already scrubbed by the R103c final pass;
+the gap was dash separators.
+
+### Root cause
+
+* `normalise_answer_for_regenold`'s R103c final pass scrubbed ellipses but never
+  touched em/en dashes.
+* The Stage-2 system prompt (`ANSWER_GENERATE_SYSTEM`) and the Stage-2
+  user-message *modelled* the forbidden style to Sonnet — ~18 em-dashes plus
+  ellipses in the instructions themselves (`VOICE —`, `"Only when …"`,
+  `the answer — '…' —`), training the very punctuation we wanted gone.
+* Two hand-authored KB describers (Art. 5.1.f, Art. 56) and one refusal-copy
+  string carried em-dashes.
+
+### The fix — four surfaces
+
+* **Universal deterministic backstop** —
+  [`answer_normaliser.strip_dash_separators`](app/integrations/regenold/answer_normaliser.py)
+  rewrites dash *separators* to legal-prose punctuation: em/en dash and a
+  whitespace-flanked hyphen → comma (or `" to "` between digits, e.g.
+  `2025–2027` → `2025 to 2027`). **Intra-word hyphens in compound legal terms are
+  never touched** (`high-risk`, `socio-economic`, `post-market`, `call-centre`,
+  `AI-generated`, `one-third`, `open-source`). Wired into
+  `normalise_answer_for_regenold` (the single universal answer pass — covers
+  synthesis, deterministic, and verbatim-via-normalise). Pure, idempotent,
+  fail-soft. Env-reversible `REGENOLD_STRIP_DASHES=0`.
+* **Source quality** — de-dashed `ANSWER_GENERATE_SYSTEM` + both Stage-2
+  user-message branches and added an explicit **rule 15 (PUNCTUATION)**: "no
+  em-dashes, en-dashes, ellipses, or a spaced hyphen as a separator; join clauses
+  with commas, semicolons, colons, or separate sentences; keep ordinary hyphens
+  in compound terms". The prompt no longer models the forbidden style, so Sonnet
+  writes clean prose at the source and the backstop only mops up the rare slip.
+* **Hand-authored copy** — de-dashed the Art. 5.1.f / Art. 56
+  `grounded_prose` describers (the consistency-guard substitute path bypasses the
+  Stage-2 normaliser when it fires) and the `scope.refusal_copy_for` "Please ask
+  a regulatory question" string (the refusal path returns before
+  `normalise_answer_for_regenold`).
+
+### Verification
+
+* **Live-wrapper re-probe** (same 10 questions, Claude Max Stage-2 ON): **10/10
+  CLEAN** — zero em/en dashes, zero ellipses, zero spaced-hyphen separators;
+  every compound legal hyphen preserved.
+* **davidath A/B** (476 items, deterministic, `REGENOLD_STRIP_DASHES` 0 vs 1):
+  **byte-identical on every axis** (Ans Strict 0.3463, Ref Loose 0.5965, Ref
+  Strict 0.4558, Ans Conciseness 0.6209, Tone 1.0, multi-turn 20/20; one
+  −0.0001 on QA Ans Loose = single-token noise). The strip is benchmark-neutral
+  — deterministic answers rarely carry dash separators, and comma substitution
+  doesn't move token overlap.
+* `pytest -q` — **3347 passed, 1 skipped** (+28 `tests/test_dash_normalisation.py`).
+* `evals.regenold.runner_v2 --local --probe-oos` — **OOS 21/21, 0 leaks**.
+* `evals.regenold.runner` — **276/276**.
+
+The win lands on the **live wire** (Sonnet Stage-2 answers no longer ship dash
+separators); davidath is the regression guard and stays flat by construction.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

@@ -56,7 +56,80 @@ from __future__ import annotations
 
 import re
 
-__all__ = ["strip_preamble_templates"]
+__all__ = ["strip_preamble_templates", "strip_dash_separators"]
+
+
+# ── Dash-separator normalisation ─────────────────────────────────────
+#
+# EU AI Act legal prose reads cleanest without dash *separators*: an
+# em-dash (``—``), en-dash (``–``), or a spaced hyphen (``" - "``) used
+# as a clause break or appositive reads as informal / database-dump
+# style and is penalised by the regulatory-tone bar. Stage-2 Sonnet
+# polish and a few hand-authored KB describers emit them; this is the
+# deterministic backstop that guarantees the wire answer never ships
+# one.
+#
+# CRITICAL — intra-word hyphens are NEVER touched. Standard regulatory
+# terminology ("high-risk", "socio-economic", "post-market",
+# "call-centre", "AI-generated", "one-third", "open-source") uses the
+# hyphen-minus (``-``) inside a word with NO surrounding whitespace and
+# is correct legal wording. Only the typographic dash characters and a
+# whitespace-flanked hyphen are rewritten.
+#
+# Replacement policy:
+#   * dash between two digits (a numeric range, e.g. ``2025–2027``,
+#     ``10–25``) → ``" to "`` (reads as professional legal prose).
+#   * any other dash separator → ``", "`` (comma). Comma is the most
+#     grammatically forgiving substitution for an appositive /
+#     parenthetical / clause break and reads as continuous prose.
+
+# Numeric-range dash: digit, optional space, em/en dash, optional
+# space, digit  →  " to ".
+_RANGE_DASH_RE = re.compile(r"(?<=\d)\s*[—–]\s*(?=\d)")
+# Numeric-range spaced hyphen: digit ` - ` digit  →  " to ".
+_RANGE_SPACED_HYPHEN_RE = re.compile(r"(?<=\d)\s-\s(?=\d)")
+# Sentence-terminator immediately followed by a dash separator
+# (``". — "`` / ``"! – "``) — keep the sentence break, drop the dash, so
+# we never leave a ``"., "`` period-comma artifact. Run BEFORE the
+# generic separator rules. A terminator is never a digit, so the range
+# rules above can't have consumed it.
+_TERM_DASH_RE = re.compile(r"([.!?])\s*[—–]\s*")
+_TERM_SPACED_HYPHEN_RE = re.compile(r"([.!?])\s+-\s+")
+# Em/en dash used as a separator (spaced or unspaced)  →  ", ".
+_SEP_DASH_RE = re.compile(r"\s*[—–]\s*")
+# Spaced hyphen used as a dash (whitespace on BOTH sides — never an
+# intra-word hyphen)  →  ", ".
+_SEP_SPACED_HYPHEN_RE = re.compile(r"\s+-\s+")
+
+
+def strip_dash_separators(text: str) -> str:
+    """Replace dash *separators* with legal-prose punctuation.
+
+    Em/en dashes and whitespace-flanked hyphens used as clause breaks
+    become commas (or ``" to "`` between digits). Intra-word hyphens in
+    compound legal terms are preserved untouched.
+
+    Pure, idempotent, fail-soft: any exception (or a non-string /
+    empty input) returns the input unchanged.
+    """
+    if not text or not isinstance(text, str) or not text.strip():
+        return text
+    try:
+        out = _RANGE_DASH_RE.sub(" to ", text)
+        out = _RANGE_SPACED_HYPHEN_RE.sub(" to ", out)
+        # Terminator + dash → keep the sentence break (no period-comma).
+        out = _TERM_DASH_RE.sub(r"\1 ", out)
+        out = _TERM_SPACED_HYPHEN_RE.sub(r"\1 ", out)
+        out = _SEP_DASH_RE.sub(", ", out)
+        out = _SEP_SPACED_HYPHEN_RE.sub(", ", out)
+        # Tidy artefacts a substitution may leave behind.
+        out = re.sub(r",\s*,", ",", out)        # ",," → ","
+        out = re.sub(r"\s+,", ",", out)          # " ," → ","
+        out = re.sub(r"[ \t]{2,}", " ", out)     # collapse runs of spaces
+        out = re.sub(r"^\s*,\s*", "", out)        # leading dash → comma → drop
+        return out.strip()
+    except Exception:
+        return text
 
 
 # ── Patterns ─────────────────────────────────────────────────────────

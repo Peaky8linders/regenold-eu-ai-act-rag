@@ -2929,7 +2929,7 @@ def refusal_copy_for(verdict: ScopeVerdict) -> str:
         # R55-A — third-person regulator voice (no first-person pronouns).
         return (
             "This assistant answers EU AI Act questions only (Regulation 2024/1689). "
-            "Please ask a regulatory question — for example, \"What does Article 13 require?\" "
+            "Please ask a regulatory question, for example, \"What does Article 13 require?\" "
             "or \"What are the deployer obligations under Article 26?\"."
         )
 

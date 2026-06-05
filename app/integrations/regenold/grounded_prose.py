@@ -190,8 +190,8 @@ _ART_SUBPOINT_DESCRIBERS: dict[str, str] = {
     # mt_v2_012 keywords: workplace, prohibited, call centre.
     "Article 5.1.f": (
         "emotion recognition in the workplace and in educational "
-        "institutions is prohibited — including monitoring employees "
-        "or call-centre agents — with a narrow medical/safety carve-out "
+        "institutions is prohibited, including monitoring employees "
+        "or call-centre agents, with a narrow medical/safety carve-out "
         "for systems placed on the market for therapeutic or accident-"
         "prevention purposes"
     ),
@@ -294,7 +294,7 @@ _ART_SUBPOINT_DESCRIBERS: dict[str, str] = {
     "Article 56": (
         "Codes of Practice by the AI Office offer a route for GPAI "
         "providers to demonstrate Article 53 and 55 compliance; "
-        "signing is voluntary — providers may use any alternative "
+        "signing is voluntary, and providers may use any alternative "
         "adequate means to demonstrate compliance"
     ),
     # Art 111 — transitional / grandfathering.

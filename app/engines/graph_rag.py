@@ -4008,7 +4008,7 @@ def _claude_max_enhance_answer(
                 if _xrefs:
                     context.xrefs = _xrefs
                     user_message += (
-                        "CROSS-REFERENCED PROVISIONS (background only — "
+                        "CROSS-REFERENCED PROVISIONS (background only, "
                         "cite only if directly relevant to the question):\n"
                         + "\n".join(f"- {x}" for x in _xrefs)
                         + "\n\n"
@@ -4039,17 +4039,20 @@ def _claude_max_enhance_answer(
                 "compliance response. Cite only articles, annexes and "
                 "obligations that appear in the EU AI ACT REFERENCES block, "
                 "and make sure every article or annex you cite is described "
-                "in the prose — state in a few words what it requires, never "
+                "in the prose: state in a few words what it requires, never "
                 "cite a bare number. Lead with a DIRECT verdict (for a yes/no or "
-                "either/or question, the first clause states the answer — 'Not "
-                "always', 'Only when …', 'Yes, when …' — then the conditions). "
+                "either/or question, the first clause states the answer, such as "
+                "'Not always', 'Only when the stated conditions hold', or 'Yes, "
+                "when the stated conditions hold', then the conditions). "
                 "For a practice restricted only in certain contexts, state both "
                 "the prohibited context AND its treatment elsewhere (high-risk "
                 "under Article 6 / Annex III, or Article 50 transparency), and "
-                "name any carve-out explicitly. AT MOST 4 sentences, preferring 3 "
-                "when they fully answer; use a 4th only for a distinct substantive "
-                "point (a complementary risk tier, an exception, or a "
-                "cross-reference), never filler."
+                "name any carve-out explicitly. Write in plain professional legal "
+                "prose: no em-dashes, en-dashes, or ellipses; join clauses with "
+                "commas, semicolons, colons, or separate sentences. AT MOST 4 "
+                "sentences, preferring 3 when they fully answer; use a 4th only "
+                "for a distinct substantive point (a complementary risk tier, an "
+                "exception, or a cross-reference), never filler."
             )
         try:
             max_tokens = settings.graph_rag.max_tokens

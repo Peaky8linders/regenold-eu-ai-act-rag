@@ -8,7 +8,10 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 from app.data.article_existence import ARTICLE_EXISTENCE
-from app.integrations.regenold.answer_normaliser import strip_preamble_templates
+from app.integrations.regenold.answer_normaliser import (
+    strip_dash_separators,
+    strip_preamble_templates,
+)
 
 
 class RegenoldChatMessage(BaseModel):
@@ -1168,6 +1171,22 @@ def normalise_answer_for_regenold(
         in ("1", "true", "yes", "on")
     ):
         result = _hard_truncate_at_clause(result, char_cap)
+
+    # Dash-separator scrub — concise legal-prose wording must carry no
+    # dash *separators* (em-dash ``—``, en-dash ``–``, or a spaced
+    # hyphen ``" - "`` used as a clause break). Stage-2 Sonnet polish and
+    # a couple of KB describers emit them; this deterministic backstop
+    # rewrites them to commas (or ``" to "`` between digits) while
+    # preserving intra-word hyphens in compound terms ("high-risk",
+    # "socio-economic", "post-market"). Default ON, env-reversible via
+    # REGENOLD_STRIP_DASHES=0.
+    if os.getenv("REGENOLD_STRIP_DASHES", "1").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        result = strip_dash_separators(result)
 
     # R103c — FINAL truncation guarantee. Ensure all answers are complete sentences,
     # contain absolutely no ellipses ('...' or '…'), consist of 1-4 sentences, and use
