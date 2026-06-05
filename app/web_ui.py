@@ -924,32 +924,114 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             transition: width 1s ease-out;
         }
 
-        /* Typing indicator */
-        .typing-indicator {
+        /* Thinking pipeline — animated answer-path progress (ChatGPT / Gemini style).
+           Each stage is revealed in turn, held >= 1s, with a shimmering active
+           label and a checkmark on completion. */
+        .thinking-panel {
+            display: flex;
+            flex-direction: column;
+            min-width: 250px;
+        }
+
+        .thinking-head {
             display: flex;
             align-items: center;
-            gap: 4px;
-            padding: 4px 8px;
+            gap: 9px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            letter-spacing: 0.3px;
+            margin-bottom: 12px;
         }
 
-        .typing-dot {
+        .think-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .think-step {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            padding: 4px 0;
+            font-size: 13px;
+            opacity: 0;
+            transform: translateY(5px);
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+
+        .think-step.visible {
+            opacity: 1;
+            transform: none;
+        }
+
+        .think-icon {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-cyan);
+        }
+
+        .thinking-panel .dot {
             width: 6px;
             height: 6px;
-            background: var(--accent-cyan);
             border-radius: 50%;
-            animation: bounce-dot 1.4s infinite ease-in-out both;
-            box-shadow: 0 0 4px var(--accent-cyan);
+            background: var(--text-muted);
         }
 
-        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
-        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+        .thinking-panel .ring,
+        .thinking-head .head-ring {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid rgba(0, 240, 255, 0.18);
+            border-top-color: var(--accent-cyan);
+            animation: spin 0.7s linear infinite;
+        }
+
+        .thinking-head .head-ring {
+            width: 13px;
+            height: 13px;
+            flex-shrink: 0;
+        }
+
+        .think-icon .check {
+            width: 15px;
+            height: 15px;
+        }
+
+        .think-label {
+            color: var(--text-secondary);
+            transition: color 0.3s;
+        }
+
+        .think-step.done .think-label {
+            color: var(--text-muted);
+        }
+
+        .think-step.active .think-label {
+            background: linear-gradient(90deg, var(--text-muted) 0%, #f8fafc 30%, var(--accent-cyan) 50%, #f8fafc 70%, var(--text-muted) 100%);
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: shimmer 1.5s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes shimmer {
+            to { background-position: -200% center; }
+        }
 
         /* Animations */
-        @keyframes bounce-dot {
-            0%, 80%, 100% { transform: scale(0); }
-            40% { transform: scale(1); }
-        }
-
         @keyframes pulse-glow {
             0%, 100% { opacity: 0.5; transform: scale(1); }
             50% { opacity: 0.8; transform: scale(1.05); }
@@ -1395,8 +1477,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             appendMessage('user', text);
             messages.push({ role: 'user', content: text });
 
-            // Append Typing Indicator
-            const typingRow = appendTypingIndicator();
+            // Show the animated "thinking" pipeline — a visualisation of the
+            // real answer path (input -> scope -> classify -> retrieve -> graph
+            // -> ground -> synthesise -> polish -> output). Each stage is held
+            // for at least one second so the journey is legible, ChatGPT /
+            // Gemini "thinking" style. The request fires in parallel below.
+            const pipeline = appendThinkingPipeline();
             chatContainer.scrollTop = chatContainer.scrollHeight;
 
             // Prepare Request parameters
@@ -1413,43 +1499,58 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             if (telemetryOpt) params.push('include_telemetry=true');
             if (params.length > 0) url += '?' + params.join('&');
 
+            const headers = { 'Content-Type': 'application/json' };
+            if (apiKey) {
+                headers['X-Regenold-Api-Key'] = apiKey;
+            }
+
+            // Fire the request in parallel with the animation. ``settled`` never
+            // rejects — it resolves once the request has settled (success OR
+            // failure) so the pipeline knows when the answer is ready and the
+            // final "Polishing" stage can complete.
+            const fetchPromise = fetch(url, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({
+                    messages: messages.map(m => ({ role: m.role, content: m.content }))
+                })
+            });
+            const settled = fetchPromise.then(
+                (r) => ({ ok: true, response: r }),
+                (e) => ({ ok: false, error: e })
+            );
+
             try {
-                const headers = {
-                    'Content-Type': 'application/json'
-                };
-                if (apiKey) {
-                    headers['X-Regenold-Api-Key'] = apiKey;
-                }
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: headers,
-                    body: JSON.stringify({
-                        messages: messages.map(m => ({ role: m.role, content: m.content }))
-                    })
-                });
+                // Play the full path: resolves after every stage has shown
+                // (>= 1s each) AND the response has arrived.
+                await pipeline.run(settled);
+                pipeline.remove();
 
-                // Remove typing indicator
-                typingRow.parentNode.removeChild(typingRow);
-
-                if (response.ok) {
-                    const data = await response.json();
-
-                    // Render response
-                    appendMessage('assistant', data.answer);
-                    messages.push({ role: 'assistant', content: data.answer });
-
-                    // Update diagnostics panel
-                    updateDiagnostics(data);
+                const outcome = await settled;
+                if (!outcome.ok) {
+                    appendMessage('assistant', `❌ **Connection Failed**: Unable to communicate with the FastAPI backend. Check that the service is running locally.\\n\\n*Detail: ${outcome.error.message}*`);
                 } else {
-                    let errMessage = 'Internal Server Error';
-                    try {
-                        const errData = await response.json();
-                        errMessage = errData.detail?.message || errData.detail || response.statusText;
-                    } catch (e) {}
-                    appendMessage('assistant', `⚠️ **Error ${response.status}**: ${errMessage}\\n\\nPlease verify your local backend configuration and ensure uvicorn is running.`);
+                    const response = outcome.response;
+                    if (response.ok) {
+                        const data = await response.json();
+
+                        // Render response
+                        appendMessage('assistant', data.answer);
+                        messages.push({ role: 'assistant', content: data.answer });
+
+                        // Update diagnostics panel
+                        updateDiagnostics(data);
+                    } else {
+                        let errMessage = 'Internal Server Error';
+                        try {
+                            const errData = await response.json();
+                            errMessage = errData.detail?.message || errData.detail || response.statusText;
+                        } catch (e) {}
+                        appendMessage('assistant', `⚠️ **Error ${response.status}**: ${errMessage}\\n\\nPlease verify your local backend configuration and ensure uvicorn is running.`);
+                    }
                 }
             } catch (e) {
-                if (typingRow.parentNode) typingRow.parentNode.removeChild(typingRow);
+                pipeline.remove();
                 appendMessage('assistant', `❌ **Connection Failed**: Unable to communicate with the FastAPI backend. Check that the service is running locally.\\n\\n*Detail: ${e.message}*`);
             } finally {
                 isProcessing = false;
@@ -1493,7 +1594,38 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             lucide.createIcons();
         }
 
-        function appendTypingIndicator() {
+        // PIPELINE_STEPS — the human-readable stages of the real answer path
+        // the backend walks for every question: flatten history + parse the
+        // question (input) -> scope / jurisdiction gate -> deterministic risk
+        // & role classification -> BM25 + KB retrieval -> Neo4j knowledge-graph
+        // expansion -> citation grounding -> Stage-2 LLM synthesis -> normalise
+        // + tone (polish) -> output. Rendered ChatGPT / Gemini "thinking"
+        // style, each stage visible for at least one second.
+        const PIPELINE_STEPS = [
+            'Reading your question',
+            'Checking scope & jurisdiction',
+            'Classifying risk & role',
+            'Searching the EU AI Act',
+            'Traversing the knowledge graph',
+            'Grounding citations',
+            'Synthesising the answer',
+            'Polishing & formatting'
+        ];
+
+        // Minimum on-screen time per stage. The spec requires >= 1 second;
+        // 1100ms lets the shimmer read as deliberate rather than a flicker.
+        const PIPELINE_STEP_MS = 1100;
+
+        // Inline SVG checkmark (no Lucide re-render needed mid-animation).
+        // Uses currentColor so the active accent (cyan) flows through.
+        const _CHECK_SVG = '<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+
+        // Build the animated "thinking" pipeline that replaces the plain typing
+        // dots. Returns a controller: ``run(donePromise)`` plays each stage in
+        // turn (>= PIPELINE_STEP_MS each) and holds on the final "Polishing"
+        // stage until ``donePromise`` settles, so slow Stage-2 LLM requests keep
+        // the panel spinning; ``remove()`` tears the row down.
+        function appendThinkingPipeline() {
             const row = document.createElement('div');
             row.className = 'message-row assistant-row';
 
@@ -1507,16 +1639,70 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const bubble = document.createElement('div');
             bubble.className = 'msg-bubble';
 
-            const typing = document.createElement('div');
-            typing.className = 'typing-indicator';
-            typing.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+            const panel = document.createElement('div');
+            panel.className = 'thinking-panel';
 
-            bubble.appendChild(typing);
+            const head = document.createElement('div');
+            head.className = 'thinking-head';
+            head.innerHTML = '<span class="head-ring"></span><span>Reasoning over the EU AI Act…</span>';
+
+            const stepsWrap = document.createElement('div');
+            stepsWrap.className = 'think-steps';
+
+            const stepEls = PIPELINE_STEPS.map((label) => {
+                const el = document.createElement('div');
+                el.className = 'think-step';
+                el.innerHTML = '<span class="think-icon"><span class="dot"></span></span>'
+                    + '<span class="think-label">' + escapeHtml(label) + '</span>';
+                stepsWrap.appendChild(el);
+                return el;
+            });
+
+            panel.appendChild(head);
+            panel.appendChild(stepsWrap);
+            bubble.appendChild(panel);
             bubbleContainer.appendChild(bubble);
             row.appendChild(avatar);
             row.appendChild(bubbleContainer);
             chatContainer.appendChild(row);
-            return row;
+
+            const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+
+            function setState(el, state) {
+                el.classList.add('visible');
+                el.classList.remove('active', 'done');
+                const icon = el.querySelector('.think-icon');
+                if (state === 'active') {
+                    el.classList.add('active');
+                    icon.innerHTML = '<span class="ring"></span>';
+                } else if (state === 'done') {
+                    el.classList.add('done');
+                    icon.innerHTML = _CHECK_SVG;
+                }
+            }
+
+            async function run(donePromise) {
+                let answered = false;
+                Promise.resolve(donePromise).then(() => { answered = true; }, () => { answered = true; });
+                for (let i = 0; i < stepEls.length; i++) {
+                    setState(stepEls[i], 'active');
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                    await sleep(PIPELINE_STEP_MS);
+                    // Hold the final "Polishing" stage until the answer lands so
+                    // the panel keeps spinning through slow Stage-2 LLM requests
+                    // instead of stalling on a finished checklist.
+                    if (i === stepEls.length - 1) {
+                        while (!answered) { await sleep(120); }
+                    }
+                    setState(stepEls[i], 'done');
+                }
+            }
+
+            function remove() {
+                if (row.parentNode) row.parentNode.removeChild(row);
+            }
+
+            return { row, run, remove };
         }
 
         function updateDiagnostics(data) {
