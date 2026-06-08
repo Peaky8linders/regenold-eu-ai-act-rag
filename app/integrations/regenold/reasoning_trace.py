@@ -92,6 +92,13 @@ class ReasoningTrace:
     engine_confidence: float | None = None
     cache_hit: bool | None = None
     query_denoiser: dict[str, Any] = field(default_factory=dict)
+    # R110 — Sufficient-Context gate audit lineage. One entry per bounded
+    # decomposition sub-query: the sub-query text, the refs it surfaced, the
+    # retrieval source, and the gate reason. This is the glass-box provenance
+    # that rebuts the "agentic RAG is a black box" criticism — every extra
+    # retrieval hop is inspectable. Empty (and dropped from the serialised
+    # payload) unless the R110 gate actually fired.
+    sub_queries: list[dict[str, Any]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     def to_json_dict(self) -> dict[str, Any]:
@@ -126,6 +133,8 @@ class ReasoningTrace:
             out["cache_hit"] = self.cache_hit
         if self.query_denoiser:
             out["query_denoiser"] = dict(self.query_denoiser)
+        if self.sub_queries:
+            out["sub_queries"] = list(self.sub_queries)
         if self.notes:
             out["notes"] = list(self.notes)
         return out
@@ -339,6 +348,41 @@ def record_query_denoiser(
     if provider:
         payload["provider"] = str(provider)[:32]
     trace.query_denoiser = payload
+
+
+def record_sub_query(
+    text: str,
+    *,
+    refs: list[str] | tuple[str, ...] | None = None,
+    source: str | None = None,
+    reason: str | None = None,
+) -> None:
+    """Record one R110 Sufficient-Context decomposition sub-query.
+
+    The glass-box audit lineage for the bounded multi-hop retrieval gate:
+    each call captures a sub-query the gate fired, the references it
+    surfaced (``refs``), the retrieval ``source`` (``"kb"`` / ``"graph"``),
+    and the gate ``reason`` (``"uncovered_explicit_refs"`` /
+    ``"multi_phrase_decompose"``). Serialised into the ``reasoning`` wire
+    field under ``sub_queries`` and persisted in the audit chain — so every
+    extra retrieval hop, and every source it touched, is inspectable.
+
+    Capped at 8 entries (the gate itself caps at :func:`max_sub_queries`,
+    well below this). Zero overhead when the trace is inactive.
+    """
+    trace = current()
+    if trace is None or not text:
+        return
+    if len(trace.sub_queries) >= 8:
+        return
+    entry: dict[str, Any] = {"q": str(text)[:160]}
+    if refs:
+        entry["refs"] = [str(r) for r in refs][:12]
+    if source:
+        entry["source"] = str(source)[:16]
+    if reason:
+        entry["reason"] = str(reason)[:48]
+    trace.sub_queries.append(entry)
 
 
 def record_cite_describe_guard(

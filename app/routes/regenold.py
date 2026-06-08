@@ -1205,6 +1205,16 @@ def _engine_cache_key(
             "REGENOLD_GENERAL_VERDICT",
             "REGENOLD_EMBEDDINGS_INDEX",
             "REGENOLD_REF_SEM_THRESHOLD",
+            # R110 — Sufficient-Context bounded multi-hop decomposition.
+            # When ON, the engine fires a deterministic re-retrieval hop for
+            # complex/multi-part questions whose first-pass context missed a
+            # named anchor or a sub-part, UNIONing the result into
+            # ``context`` → flips the obligations/article_info the citation
+            # pipeline draws from (GraphRAGResponse.references) and the
+            # answer. The MAX_HOPS cap also bounds that output. Both must be
+            # in the cache identity (R30/R56/R79 doctrine).
+            "REGENOLD_SUFFICIENT_CONTEXT",
+            "REGENOLD_SUFFICIENT_CONTEXT_MAX_HOPS",
         )
     )
     import json

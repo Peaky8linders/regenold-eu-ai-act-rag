@@ -37,6 +37,19 @@ NEO4J_AUTO_SEED = "1"
 # ``CLAUDE.md`` round 47-B scorecard.
 REGENOLD_GRAPH_AWARE = "1"
 
+# R110 — Sufficient-Context bounded multi-hop decomposition (the FRAMES /
+# Google Sufficient-Context-Agent methodology, made latency/cost/governance
+# bounded). After the first retrieval, a deterministic missing-pieces analysis
+# fires ONE bounded hop (≤3 deterministic sub-query retrievals, no LLM) when a
+# complex/multi-part question's first pass missed a named anchor or a sub-part,
+# UNIONing the result additively-below-cap. Every sub-query + source touched is
+# logged to the ReasoningTrace audit lineage (glass-box). davidath byte-identical
+# (the deterministic parse + BM25 already saturate that corpus); the win lands on
+# the production Neo4j path + the live judge axes. Disable with
+# ``railway variables --set REGENOLD_SUFFICIENT_CONTEXT=0``. Tune the hop cap with
+# ``REGENOLD_SUFFICIENT_CONTEXT_MAX_HOPS`` (default 3, clamp [1,5]).
+REGENOLD_SUFFICIENT_CONTEXT = "1"
+
 # Round 89-A — Article-level describer force-append for V2 multi-turn.
 # When ON, the 10 R89-A article-level describer keys (Art 27 FRIA, Art
 # 73 incident-15-days, Art 51 systemic-risk-notify, Art 53 FOSS carve-

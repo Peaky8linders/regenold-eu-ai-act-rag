@@ -4518,6 +4518,140 @@ def _two_stage_generate(
 
 # ─── Main entry point ────────────────────────────────────────────────────────
 
+def _covered_article_keys(context: GraphContext) -> set[str]:
+    """Normalised article/annex keys present in the first-pass context.
+
+    R110 — feeds the Sufficient-Context gate's missing-pieces analysis.
+    Reads the ``article`` field (and id fallback) from the obligations +
+    article_info the citation pipeline draws from, so the gate's coverage
+    test matches what will actually be cited.
+    """
+    from app.engines.sufficient_context import _article_key  # noqa: PLC0415
+
+    keys: set[str] = set()
+    for item in context.obligations + context.article_info:
+        for field_name in ("article", "id", "obligation_id"):
+            key = _article_key(str(item.get(field_name, "")))
+            if key:
+                keys.add(key)
+                break
+    return keys
+
+
+def _merge_graph_context(base: GraphContext, extra: GraphContext) -> list[str]:
+    """Union ``extra`` retrieval into ``base`` in place; return added refs.
+
+    R110 — additive-only merge for the Sufficient-Context bounded hop. New
+    obligations / article_info / gaps are APPENDED (deduped by id) so the
+    first-pass anchors keep their priority in the downstream top-15 citation
+    slice — the sub-query results can only fill remaining slots, never
+    displace a first-pass winner (R31/R81 "never displace" doctrine).
+    Counters accumulate so confidence + telemetry reflect the extra hop.
+
+    Returns the list of newly-surfaced article refs (for the audit log).
+    """
+    def _id(item: dict) -> str:
+        return str(item.get("id") or item.get("obligation_id") or "")
+
+    seen_obl = {_id(it) for it in base.obligations + base.article_info if _id(it)}
+    added_refs: list[str] = []
+
+    for item in extra.obligations:
+        oid = _id(item)
+        if oid and oid not in seen_obl:
+            seen_obl.add(oid)
+            base.obligations.append(item)
+            ref = str(item.get("article") or oid)
+            if ref:
+                added_refs.append(ref)
+    for item in extra.article_info:
+        oid = _id(item)
+        if oid and oid not in seen_obl:
+            seen_obl.add(oid)
+            base.article_info.append(item)
+            ref = str(item.get("article") or oid)
+            if ref:
+                added_refs.append(ref)
+
+    seen_gap = {_id(it) for it in base.gaps if _id(it)}
+    for item in extra.gaps:
+        gid = _id(item)
+        if gid and gid not in seen_gap:
+            seen_gap.add(gid)
+            base.gaps.append(item)
+
+    base.nodes_traversed += extra.nodes_traversed
+    base.edges_followed += extra.edges_followed
+    return added_refs
+
+
+def _maybe_sufficient_context_hop(
+    request: GraphRAGRequest,
+    query: GraphQuery,
+    context: GraphContext,
+    answer_dict: dict[str, Any],
+) -> GraphContext:
+    """R110 — bounded, deterministic Sufficient-Context re-retrieval hop.
+
+    After the first retrieval, deterministically assess whether the context
+    covers every anchor the question names / every sub-part a multi-part
+    question asks about. When it does NOT — and the question is genuinely
+    complex/multi-hop — fire ONE bounded hop: decompose into ≤N sub-queries
+    targeting the gaps, retrieve each through the existing deterministic
+    retrieval, and UNION the results. Every sub-query + the refs it surfaced
+    is logged to the audit trace.
+
+    Env-gated ``REGENOLD_SUFFICIENT_CONTEXT`` (default OFF → no-op, davidath
+    byte-identical). Fail-soft: any error returns the unmodified first-pass
+    context so the gate can never break the route.
+    """
+    try:
+        from app.engines.sufficient_context import (  # noqa: PLC0415
+            assess_sufficiency,
+            max_sub_queries,
+            sufficient_context_enabled,
+        )
+
+        if not sufficient_context_enabled():
+            return context
+
+        from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+            record_note,
+            record_sub_query,
+        )
+
+        covered = _covered_article_keys(context)
+        verdict = assess_sufficiency(request.question, covered)
+        if verdict.sufficient or not verdict.sub_queries:
+            return context
+
+        # Production retrieves from Neo4j (source="graph"); the bench / KB
+        # path is source="kb". Both are deterministic + bounded.
+        try:
+            from app.graph.client import get_graph_client  # noqa: PLC0415
+            _src = "graph" if get_graph_client().enabled else "kb"
+        except Exception:  # noqa: BLE001
+            _src = "kb"
+
+        risk_level = request.risk_level.value if request.risk_level else None
+        for sub_q in verdict.sub_queries[: max_sub_queries()]:
+            sub_query = _deterministic_parse(sub_q)
+            sub_ctx = _retrieve_from_graph(
+                sub_query, risk_level=risk_level, answers=answer_dict,
+            )
+            added = _merge_graph_context(context, sub_ctx)
+            record_sub_query(
+                sub_q, refs=added, source=_src, reason=verdict.reason,
+            )
+        record_note(
+            f"sufficient_context_hop reason={verdict.reason} "
+            f"sub_queries={len(verdict.sub_queries)}"
+        )
+        return context
+    except Exception:  # noqa: BLE001 — never break the route on the gate
+        return context
+
+
 def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
     """Main entry point: answer a natural language compliance question.
 
@@ -4542,6 +4676,11 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
         risk_level=request.risk_level.value if request.risk_level else None,
         answers=answer_dict,
     )
+
+    # R110 — Sufficient-Context gate (FRAMES-style bounded decomposition).
+    # No-op unless REGENOLD_SUFFICIENT_CONTEXT is on AND the gate finds the
+    # first-pass context insufficient for a complex/multi-part question.
+    context = _maybe_sufficient_context_hop(request, query, context, answer_dict)
 
     # Stage 1 + 2 — Generate
     resolved_q = getattr(request, "resolved_question", None) or request.question
