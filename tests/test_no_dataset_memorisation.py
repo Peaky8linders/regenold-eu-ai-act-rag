@@ -28,7 +28,7 @@ def test_no_dataset_memorisation() -> None:
     # We find strings matching the exemplar answers
     exemplars = [
         "A remote biometric identification system is defined in Article 3(36) as an AI system used for identifying natural persons at a distance through the comparison of biometric data against reference data, excluding real-time systems in private spaces.",
-        "A provider must first establish a quality management system under Article 17, draw up the required technical documentation specified in Article 11, and undergo the conformity assessment procedure in Article 43. Additionally, the provider must register the system in the EU database pursuant to Article 51.",
+        "A provider must first establish a quality management system under Article 17, draw up the required technical documentation specified in Article 11, and undergo the conformity assessment procedure in Article 43. Additionally, the provider must register the system in the EU database pursuant to Article 49.",
         "The use of AI systems to detect emotions of natural persons in educational institutions is prohibited under Article 5(1)(f). Deployers must not place or use such systems in classrooms, as emotion recognition in educational environments is classified as an unacceptable risk.",
         "AI systems used by law enforcement for profiling natural persons are classified as high-risk under Annex III(6)(a). Providers of such systems must establish a risk management system pursuant to Article 9, ensure high-quality training and data governance under Article 10, and enable human oversight in accordance with Article 14."
     ]
