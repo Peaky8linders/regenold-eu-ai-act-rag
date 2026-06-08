@@ -150,8 +150,8 @@ _ART_CONDITIONAL_DESCRIBERS: dict[str, tuple] = {
         ),
         (
             "limited-risk transparency duties under Article 50 apply "
-            "cumulatively with Article 13 high-risk transparency duties "
-            "— both apply to the same system, not in the alternative"
+            "cumulatively with Article 13 high-risk transparency duties; "
+            "both apply to the same system, not in the alternative"
         ),
     ),
 }

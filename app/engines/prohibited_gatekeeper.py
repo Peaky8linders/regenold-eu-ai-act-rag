@@ -204,7 +204,7 @@ _PRACTICE_VERDICT_CLAUSE: dict[str, str] = {
     "biometric_categorisation_sensitive":
         "Biometric categorisation that infers sensitive attributes (race, political opinion, religious belief, sexual orientation) is prohibited under Article 5(1)(g).",
     "real_time_rbi":
-        "Real-time remote biometric identification in publicly accessible spaces by law enforcement is prohibited under Article 5(1)(h), with narrow Annex II exceptions.",
+        "Real-time remote biometric identification in publicly accessible spaces by law enforcement is prohibited under Article 5(1)(h), with narrow exceptions for victim searches, imminent or terrorist threats, and locating serious-crime suspects.",
     "omnibus_csam_ncii":
         "AI systems designed to generate child sexual abuse material or non-consensual intimate imagery are prohibited.",
 }

@@ -33,7 +33,7 @@ ARTICLE_REQUIREMENTS: dict[str, dict] = {
                 "effort_hours": 8,
             },
             "5(1)(c)": {
-                "text": "Social scoring by public authorities leading to detrimental or unfavourable treatment.",
+                "text": "Social scoring of natural persons (by any provider or deployer, public or private) where the resulting score leads to detrimental or unfavourable treatment in unrelated social contexts, or to treatment unjustified or disproportionate to the social behaviour.",
                 "remediation": "Ensure AI system does not perform social scoring. Document intended use boundaries.",
                 "effort_hours": 4,
             },

@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 # Art. 52(4) open-source designation, Art. 53(2) FOSS carve-out,
 # Art. 55 four systemic-risk obligations, Art. 79 market-surveillance
 # procedure).
-KB_VERSION = "2024.1689.v12"
+KB_VERSION = "2024.1689.v14"
 
 
 @dataclass(frozen=True)
@@ -743,9 +743,20 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     "Art. 6": {
         "dimension": "risk_mgmt",
         "summary": (
-            "Classifies an AI system as high-risk when it is intended as a safety "
-            "component of a product covered by Annex I, or falls into one of the "
-            "eight Annex III use cases."
+            "Classifies an AI system as high-risk on two routes. Annex I route "
+            "(Article 6(1)): the system is a safety component of, or is itself, a "
+            "product covered by the Union harmonisation legislation listed in Annex I "
+            "AND that product must undergo a third-party conformity assessment under "
+            "that sectoral legislation. Annex III route (Article 6(2)): the system "
+            "falls within one of the eight Annex III use cases. Article 6(3) "
+            "derogation: an Annex III system is NOT high-risk where it poses no "
+            "significant risk of harm and meets one of four conditions (a narrow "
+            "procedural task; improving the result of a previously completed human "
+            "activity; detecting decision-making patterns or deviations without "
+            "replacing or influencing the human assessment; or a preparatory task), "
+            "unless it profiles natural persons, in which case it is always high-risk; "
+            "the provider must document this self-assessment before placing the system "
+            "on the market and still register it under Article 49(2)."
         ),
     },
     "Art. 9": {
@@ -937,14 +948,20 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     "Art. 99": {
         "dimension": "risk_mgmt",
         "summary": (
-            "Penalty regime: up to EUR 35M or 7% of worldwide annual turnover for "
-            "Article 5 prohibited-practice violations; up to EUR 15M / 3% for other "
-            "obligations breaches; up to EUR 7.5M / 1% for incorrect or misleading "
-            "information to authorities. "
-            "Fines shall be proportionate to the gravity and nature of the infringement "
-            "and individual circumstances. Under Article 99(6), for SMEs and start-ups, "
-            "competent authorities shall apply lower fines where lower amounts are "
-            "effective and proportionate."
+            "Administrative penalty regime: three fine ceilings by breach type, each "
+            "whichever is higher of the fixed amount or the worldwide-turnover "
+            "percentage. Article 99(3): up to EUR 35M or 7% of total worldwide annual "
+            "turnover for non-compliance with the Article 5 prohibited practices. "
+            "Article 99(4): up to EUR 15M or 3% of total worldwide annual turnover for "
+            "non-compliance with any other obligation under the Regulation, including "
+            "the high-risk AI system obligations on providers, deployers, importers and "
+            "distributors and the Article 50 transparency obligations. Article 99(5): "
+            "up to EUR 7.5M or 1% for supplying incorrect, incomplete or misleading "
+            "information to notified bodies or competent authorities. Penalties must be "
+            "effective, proportionate and dissuasive and proportionate to the gravity "
+            "and nature of the infringement; under Article 99(6), for SMEs and "
+            "start-ups, the applicable ceiling is the lower of the percentage or the "
+            "fixed amount."
         ),
     },
     "Annex IV": {

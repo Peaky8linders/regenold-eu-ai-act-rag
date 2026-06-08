@@ -5545,6 +5545,88 @@ the gap was dash separators.
 The win lands on the **live wire** (Sonnet Stage-2 answers no longer ship dash
 separators); davidath is the regression guard and stays flat by construction.
 
+## Round 109 — Answer-quality audit: factual errors, incomplete enumeration, citation discipline, MedTech correctness (2026-06-08)
+
+Driven by an external 20-item live-eval dataset (`antifragile.ai`) + the
+GraphRAG-paper benchmark (`scenarios_graphrag_benchmark.py`), where an expert
+legal reviewer flagged recurring anti-patterns on the live answers. Two dynamic
+Workflow audits (5 + 6 parallel lanes) mapped every instance and root cause;
+fixes were verified against the davidath bench (regression guard) AND re-measured
+live (the win surface).
+
+### Anti-patterns fixed (cross-checked against the benchmark gold)
+
+* **A — Factual error (draft-vs-final).** Art. 5(1)(c) social scoring was
+  scoped to "public authorities" (a limitation removed from the FINAL
+  Regulation 2024/1689). Fixed in the live `social_scoring` describer
+  (`graph_rag.py`), `article_requirements_full.py`, and the Stage-2 FACTUAL
+  GUARD. The dormant generated `eu_ai_act_corpus.py:8322` left as-is (0
+  consumers; regenerated upstream).
+* **B — Incomplete enumeration.** The Stage-2 prompt (`graph_rag_prompts.py`
+  rule 12 + HARD LENGTH DISCIPLINE) actively forbade enumerating a closed set
+  ("name only 2-3"). New **rule 12b CLOSED-SET COMPLETENESS** requires every
+  member when the question's subject IS the set ("what practices are
+  prohibited", "what risk categories"). Stage-2-only → davidath-neutral by
+  construction.
+* **C — Tier over-focus.** "What risk categories?" returned only the prohibited
+  tier. The `risk_framework_overview` describer now names all four tiers + the
+  parallel GPAI regime (Arts. 51-55) + the high-risk dual route (Annex I /
+  Annex III); ANSWER-THE-HEADLINE + `_KEYWORD_ENTITY_MAP` add GPAI.
+* **D — Tangential / irrelevant citations.** Q2 cited Annex II + Art. 27 (FRIA);
+  Q4/Q10/Q14 over-cited. New per-shape REFERENCE-SELECTION rules (sectors → Art.
+  6 + Annex III only; role-contrast definition → Art. 3 only; product
+  conformity → foreground Art. 43) + the R72 reconcile drop the rest. Fixed a
+  real Stage-2 exemplar mis-cite (**EU-database registration Art. 51 → Art.
+  49**).
+* **E — Material omissions.** The Art. 6 KB stub gained Art. 6(1)(b)
+  **third-party conformity assessment** + the Art. 6(3) carve-outs + Art. 49(2)
+  registration. The Art. 99 penalties stub now binds concrete ceilings to
+  paragraphs (**99(3) EUR 35M/7% · 99(4) EUR 15M/3% incl. high-risk +
+  transparency · 99(5) EUR 7.5M/1%**). The Art. 6(3) deterministic describer
+  corrected (profiling kill-switch, Art. 49(2)). The prohibited-gatekeeper RBI
+  clause corrected ("Annex II exceptions" → the Art. 5(1)(h)(i)-(iii)
+  exceptions). KB_VERSION bumped **v12 → v14** (Art. 6 then Art. 99).
+* **Guiding-principles retrieval failure (gt_07).** "What are the guiding
+  principles of the AI Act?" mis-routed via BM25 to GPAI Art. 54. New
+  deterministic `_detect_guiding_principles_inquiry` intercept emits the
+  Recital-27 trustworthy-AI principles anchored on **Art. 1 (purpose) + Art. 4
+  (AI literacy)**. Fires on **0 davidath questions** → byte-identical.
+* **MedTech correctness.** `medtech_triage` describer fixed (clinical-trial
+  selection is NOT unconditionally Annex III(5)(d); only emergency triage is);
+  `annex_i_safety_component` now names Art. 43 + the notified-body route;
+  `tone_guard` extended ("you place/become" → third person, "applies to you" →
+  "applies to the operator"); `grounded_prose` Art. 50 describer de-dashed;
+  `"substantial modification"` → also Art. 25 (was Art. 3 definition only).
+
+### Fresh MedTech / life-sciences eval (the domain Regenold serves)
+
+`evals/regenold/scenarios_medtech_lifesci.py` (18 scenarios, distinct from the
+existing `med_01..07`) + `run_medtech.py` (deterministic `--local` / live
+`--endpoint`, reasoning-trace capture) + `test_medtech_lifesci_eval.py` (refs
+all resolve, ids unique, distinct from the benchmark).
+
+### Scorecards
+
+| Surface | Result |
+| ------- | ------ |
+| davidath (476, deterministic) | Ans Strict **0.3457** / Ref Loose **0.5965** / Ref Strict **0.4558** / Tone 1.0 / mt 20/20 — neutral vs R108 (Ref byte-identical; the Art. 6 + Art. 99 stubs are bench-positive on the Art-6 / penalty rows) |
+| 276-runner | **255/255 (100%)** every category |
+| OOS probe | **21/21, 0 leaks** |
+| pytest | full suite green (the 14 Stage-2 "failures" are an env artefact of `provider=cli` defeating the Stage-2 gate; **95/95 pass under the project's clean env**) |
+| GraphRAG-paper benchmark (LIVE Sonnet, 28 scored) | Ref Loose **0.7613** / Ref Strict **0.584** / kw 0.456 / tone 0.99 — confirms Q1 (4 tiers + GPAI), Q3 (Art 6(1)(b) + Annex I), Q9 (€35M/7%, €15M/3%, €7.5M/1%), gt_07 fixed |
+| Fresh MedTech (LIVE Sonnet, 18) | Ref Loose **0.588** / Ref Strict **0.506** / kw 0.382 / Tone 1.0 / 0 refusals (+0.14 RefL over the deterministic floor) |
+
+### R110 follow-ups (live MedTech weak rows)
+
+3/18 live rows mis-anchored on the wrong actor/regime: **mt_04** (provider CDS
+duties → got deployer Art 26/27/86), **mt_05** (deployer obligations → got Art
+25/53 GPAI), **mt_13** (substantial modification → got Art 51/53 GPAI). A
+role/topic-discipline retrieval pass (provider↔deployer↔GPAI cross-wiring) is
+the R110 candidate. The deterministic-only weak rows (mt_08 research, mt_11
+synthetic-content) **lift to refL 1.0 on the live path** — a deliberate
+"don't overfit the deterministic keyword maps to my own eval's phrasing; let
+Sonnet own the paraphrase" call, confirmed correct by the live run.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

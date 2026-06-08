@@ -426,11 +426,16 @@ class TestArticle63Routing:
         context = GraphContext()
         ans = _deterministic_answer("What are the requirements for Article 6(3) exception?", context)
         
-        # Verify the answer text is the expected Article 6(3) structured verdict
-        assert "preparatory tasks" in ans
+        # Verify the answer text is the expected Article 6(3) structured verdict.
+        # R109 batch-2 rewrote this describer to track the final Regulation
+        # 2024/1689 wording: Art. 6(3)(d) "a preparatory task" (singular), the
+        # documentation duty reads "document the assessment", and the
+        # registration anchor is Art. 49(2) (the old "submit to the national
+        # supervisory authority" phrasing was dropped as inaccurate).
+        assert "preparatory task" in ans
         assert "not high-risk" in ans
-        assert "document their assessment" in ans
-        assert "supervisory authority" in ans
+        assert "document the assessment" in ans
+        assert "Article 49(2)" in ans
         
         # Verify references seeded
         articles = [o.get("article") for o in context.obligations]

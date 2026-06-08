@@ -121,6 +121,23 @@ _FIRST_PERSON_REWRITES: tuple[tuple[re.Pattern[str], str], ...] = (
     # a DROP (R55-A behaviour): a grammatical rewrite here needs verb
     # conjugation (lose → loses), which is out of R70's scope.
     (re.compile(r"\byou\s+(?=lose\b|gain\b|receive\b|forfeit\b|surrender\b|retain\b)", re.I), ""),
+    # R109 — bare second-person subject before a present-tense business
+    # verb ("you place an AI system" / "you become the provider"). A
+    # grammatical third-person rewrite needs per-verb conjugation, so
+    # each common operator verb maps to its third-person form. Mirrors
+    # the R70 verb-scope discipline: only "you" + a known verb is
+    # rewritten, so a standalone or quoted "you" is never touched.
+    (re.compile(r"\byou\s+place\b", re.I), "the operator places"),
+    (re.compile(r"\byou\s+become\b", re.I), "the operator becomes"),
+    (re.compile(r"\byou\s+put\b", re.I), "the operator puts"),
+    (re.compile(r"\byou\s+develop\b", re.I), "the operator develops"),
+    (re.compile(r"\byou\s+deploy\b", re.I), "the operator deploys"),
+    (re.compile(r"\byou\s+provide\b", re.I), "the operator provides"),
+    (re.compile(r"\byou\s+offer\b", re.I), "the operator offers"),
+    (re.compile(r"\byou\s+supply\b", re.I), "the operator supplies"),
+    # R109 — object pronoun in an applicability context
+    # ("the Act applies to you" → "... applies to the operator").
+    (re.compile(r"\b(appl(?:y|ies|icable))\s+to\s+you\b", re.I), r"\1 to the operator"),
     # "your <noun>" — second-person possessive → "the operator's
     # <noun>". Regulator voice attributes obligations to a named
     # operator, so the explicit possessive reads truer than a bare

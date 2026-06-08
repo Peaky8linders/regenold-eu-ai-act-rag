@@ -1101,14 +1101,17 @@ _KEYWORD_ENTITY_MAP: tuple[tuple[str, str], ...] = (
     ("risk categories", "Art. 5"),
     ("risk categories", "Art. 6"),
     ("risk categories", "Art. 50"),
+    ("risk categories", "Art. 51"),
     ("risk category", "Art. 3"),
     ("risk category", "Art. 5"),
     ("risk category", "Art. 6"),
     ("risk category", "Art. 50"),
+    ("risk category", "Art. 51"),
     ("risk taxonomy", "Art. 3"),
     ("risk taxonomy", "Art. 5"),
     ("risk taxonomy", "Art. 6"),
     ("risk taxonomy", "Art. 50"),
+    ("risk taxonomy", "Art. 51"),
     ("high-risk requirements", "Art. 9"),
     ("high-risk requirements", "Art. 11"),
     ("high-risk requirements", "Art. 13"),
@@ -1171,6 +1174,11 @@ _KEYWORD_ENTITY_MAP: tuple[tuple[str, str], ...] = (
     ("what is a deployer", "Art. 3"),
     ("what is a provider", "Art. 3"),
     ("substantial modification", "Art. 3"),
+    # Art. 25(1)(b): a substantial modification makes the modifier a new
+    # provider, who must run a fresh conformity assessment. Art. 3(23)
+    # only DEFINES the term; the obligation lives in Art. 25, so surface
+    # both for substantial-modification questions.
+    ("substantial modification", "Art. 25"),
     ("putting into service", "Art. 3"),
     ("placing on the market", "Art. 3"),
     ("ai literacy", "Art. 4"),
@@ -2012,10 +2020,16 @@ _CLASSIFICATION_TOPICS: list[dict] = [
             ),
         ],
         "answer": (
-            "Using AI to triage or prioritise patients (e.g. for a clinical trial or "
-            "emergency dispatch) is high-risk under Annex III(5)(d) (essential services). "
-            "If the system also uses biometric categorisation to infer sensitive "
-            "attributes, it is prohibited under Article 5(1)(g)."
+            "AI used for emergency healthcare patient triage, or to dispatch or "
+            "prioritise emergency first-response services, is high-risk under Annex "
+            "III(5)(d) (Article 6(2)). Selecting or prioritising patients for a clinical "
+            "trial is not itself a listed Annex III use case, so it is high-risk only "
+            "where it determines access to or eligibility for essential healthcare "
+            "services, or where it categorises natural persons by sensitive attributes "
+            "(Annex III(1)(b)). Such biometric categorisation is prohibited under "
+            "Article 5(1)(g) where it deduces race, political opinions, trade-union "
+            "membership, religious or philosophical beliefs, sex life, or sexual "
+            "orientation."
         ),
         "refs": ["Art. 5", "Art. 6", "Annex III"],
     },
@@ -2095,10 +2109,12 @@ _CLASSIFICATION_TOPICS: list[dict] = [
             re.compile(r"social\s+scor", re.IGNORECASE),
         ],
         "answer": (
-            "Social scoring by public authorities or on their behalf — AI systems that "
-            "evaluate or classify natural persons based on social behaviour or personal "
-            "characteristics leading to detrimental treatment in unrelated contexts — is "
-            "prohibited under Article 5 regardless of deployment context."
+            "Social scoring is prohibited under Article 5(1)(c): AI systems that "
+            "evaluate or classify natural persons over time based on their social "
+            "behaviour or personal characteristics, where the resulting score leads to "
+            "detrimental or unfavourable treatment in unrelated social contexts, or to "
+            "treatment that is unjustified or disproportionate. The prohibition binds any "
+            "provider or deployer, public or private, regardless of deployment context."
         ),
         "refs": ["Art. 5"],
     },
@@ -2415,14 +2431,17 @@ _CLASSIFICATION_TOPICS: list[dict] = [
             re.compile(r"\bsafety\s+component", re.IGNORECASE),
         ],
         "answer": (
-            "An AI system used as a safety component of a product covered by EU "
-            "harmonisation legislation in Annex I (medical devices under MDR/IVDR, "
-            "machinery, toys, lifts, civil aviation, motor vehicles, etc.), or which "
-            "constitutes such a product itself, is high-risk under Article 6.1 when "
-            "the product requires a third-party conformity assessment. The full Chapter "
-            "III Section 2 obligations stack on top of the sectoral requirements."
+            "An AI system that is a safety component of, or is itself, a product "
+            "covered by the Union harmonisation legislation in Annex I (for example a "
+            "medical device under the MDR or IVDR), where that product must undergo a "
+            "third-party conformity assessment, is high-risk under Article 6(1). The "
+            "applicable conformity-assessment procedure is set out in Article 43: for "
+            "Annex I products it is carried out under the relevant sectoral legislation, "
+            "with notified-body involvement where that legislation requires it, and the "
+            "full Chapter III Section 2 provider obligations stack on top of the "
+            "sectoral requirements."
         ),
-        "refs": ["Art. 6", "Annex I"],
+        "refs": ["Art. 6", "Art. 43", "Annex I"],
     },
     # ── Risk Framework Overview / Taxonomy ────────────────────────────
     {
@@ -2431,11 +2450,17 @@ _CLASSIFICATION_TOPICS: list[dict] = [
             re.compile(r"(?:what(?:'s|\s+is|\s+are)(?:\s+the)?|what)\s+risk\s+(?:categor|tier|level|class)", re.IGNORECASE)
         ],
         "answer": (
-            "The AI Act establishes a risk-based framework, categorising AI systems "
-            "based on their potential for harm. Here are the risk categories: "
-            "Unacceptable Risk, High Risk, Limited Risk and Minimal Risk."
+            "The EU AI Act applies a risk-based framework with four tiers plus a "
+            "parallel regime for general-purpose AI models. Unacceptable-risk practices "
+            "are prohibited outright under Article 5; high-risk systems are classified "
+            "under Article 6 (as a safety component of an Annex I product, or as one of "
+            "the Annex III use cases) and carry the Chapter III Section 2 obligations; "
+            "limited-risk systems carry the Article 50 transparency duties; and "
+            "minimal-risk systems have no mandatory obligations. General-purpose AI "
+            "models are governed separately under Articles 51 to 55, with stricter "
+            "duties for models posing systemic risk."
         ),
-        "refs": ["Art. 3", "Art. 5", "Art. 6", "Art. 50"],
+        "refs": ["Art. 5", "Art. 6", "Annex III", "Art. 50", "Art. 51"],
     },
     # ── Education grading / student assessment (Annex III.3) ──────────
     {
@@ -2896,6 +2921,33 @@ def _detect_article_6_3_inquiry(question: str) -> bool:
     return bool(pattern.search(q))
 
 
+_GUIDING_PRINCIPLES_RE = re.compile(
+    r"\b(?:guiding|general|core|ethical|underlying|overarching)\s+principles?\b"
+    r"|\bprinciples?\s+(?:established|laid\s+down|underpinning|behind|that\s+underpin)\b"
+    r"|\bprinciples?\s+of\s+the\s+(?:ai\s+)?(?:act|regulation)\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_guiding_principles_inquiry(question: str) -> bool:
+    """True if the question asks for the AI Act's guiding/general principles.
+
+    The Act's general principles applicable to all AI systems live in
+    Recital 27 (the trustworthy-AI framework) and are operationalised by
+    Article 4 (AI literacy); there is no single binding "principles"
+    article, so plain BM25 mis-routes the question (it landed on Art. 54
+    GPAI authorised-representative content on the live benchmark). This
+    gate routes it to a faithful curated answer anchored on Art. 1 +
+    Art. 4.
+    """
+    raw_q = question or ""
+    marker = "Latest question:\n"
+    idx = raw_q.rfind(marker)
+    if idx >= 0:
+        raw_q = raw_q[idx + len(marker):]
+    return bool(_GUIDING_PRINCIPLES_RE.search(raw_q))
+
+
 def _deterministic_answer(question: str, context: GraphContext) -> str:
     """Generate a structured answer without LLM, using graph data directly."""
     # Article 6(3) "Not-High-Risk" Exception Intercept
@@ -2903,13 +2955,39 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
         verdict = {
             "name": "article_6_3_exception",
             "answer": (
-                "Under Article 6(3), an AI system is not high-risk if it performs only "
-                "preparatory tasks, narrow profiling support, or minor administrative duties "
-                "without pre-determining decisions. Providers relying on this exception "
-                "must document their assessment, complete it before market placement, and "
-                "submit the assessment to the national supervisory authority upon request."
+                "Under Article 6(3), an Annex III system is not high-risk where it poses "
+                "no significant risk of harm and performs only a narrow procedural task, "
+                "improves the result of a previously completed human activity, detects "
+                "decision-making patterns or deviations without replacing or influencing "
+                "the human assessment, or performs a preparatory task. This exception "
+                "never applies where the system profiles natural persons. The provider "
+                "must document the assessment before placing the system on the market and "
+                "register it under Article 49(2)."
             ),
             "refs": ["Art. 6"],
+        }
+        _seed_classification_obligations(context, verdict)
+        return verdict["answer"]
+
+    # Guiding / general principles intercept (Recital 27 + Art. 4 literacy,
+    # anchored on Art. 1 purpose). Without this, "what are the guiding
+    # principles of the AI Act?" mis-routes via BM25 to GPAI Art. 54.
+    if _detect_guiding_principles_inquiry(question):
+        verdict = {
+            "name": "guiding_principles",
+            "answer": (
+                "The EU AI Act rests on general principles applicable to all AI "
+                "systems, reflecting the trustworthy-AI framework: human agency and "
+                "oversight, technical robustness and safety, privacy and data "
+                "governance, transparency, diversity, non-discrimination and fairness, "
+                "and social and environmental wellbeing. Article 1 frames the "
+                "Regulation's purpose as promoting human-centric and trustworthy AI "
+                "while ensuring a high level of protection of health, safety, and "
+                "fundamental rights. Article 4 operationalises these principles by "
+                "requiring providers and deployers to ensure a sufficient level of AI "
+                "literacy among their staff."
+            ),
+            "refs": ["Art. 1", "Art. 4"],
         }
         _seed_classification_obligations(context, verdict)
         return verdict["answer"]
