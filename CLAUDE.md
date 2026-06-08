@@ -4712,7 +4712,7 @@ post-deploy live re-judge confirms the lift.
 | **88-A** | 476 davidath | 10.69ms | 17.9ms | — | RefL **0.5755** / RefS **0.4672** / Ans Strict **0.3479** / Tone 1.0 / mt 20/20 / OOS 21/21 / 2790 pass + 1 skip (+19 R88-A tests) | **Assistant-turn anchor inheritance.** New `_apply_assistant_anchor_inheritance` injects the immediately-prior assistant turn's named Articles at HEAD position of candidates when the user follow-up is coreferent (no NEW Article ref) OR drill-down (user ref IS in assistant's anchor set). Bypasses BM25 ranking on the inheritance case. Capped at 2 anchors per call. Env-gated `REGENOLD_ASSISTANT_ANCHOR_INHERIT` (default ON). davidath byte-identical to R87 (no multi-turn assistant turns in the davidath bench to inherit from). Smoke-tested fixes mt_v2_017 (Art. 99 head-injected over Art. 5), mt_v2_018 (Art. 43 + Annex VI), mt_v2_023 (Art. 111). Expected V2 multi-turn coherence lift: 0.28 → ~0.40+ (3 of 6 zero-refL rows recovered). R88-B/C/D/E queued for the remaining 3 zero-refL + 3 kw=0 rows. |
 | **97** | 476 davidath (byte-identical to main) + V2 A/B LIVE | mt B 18.0s / QA 7.6ms | mt B 35.6s | — | davidath RefL **0.5502** / RefS **0.4766** / Ans Strict **0.2775** / Tone 1.0 / mt 20/20 / OOS 21/21 / +24 R97 tests | **Adaptive verbatim-vs-synthesis routing — re-engage Sonnet for multi-turn.** R94/R96 left production deterministic + verbatim with the Claude Max wrapper barely used; R96 blanket-disabled Stage-2 under verbatim. R97 decouples them via `app/engines/answer_router.py::select_answer_mode` → VERBATIM (simple QA, fast deterministic) vs SYNTHESIS (multi-turn / nuanced → Sonnet). Route keeps the synthesised answer (verbatim overwrite gated on `stage2_landed`); confidence floor router-aware (multi-turn 0.3). **Multi-turn A/B (V2, n=25, TestClient + live wrapper):** coherence **0.40 → 0.72 (+80% rel)**, kw 0.433 → 0.713, refL 0.587 → 0.747, tone held 1.0; tricky single-turn refL 0.661 → 0.726, kw 0.468 → 0.554. Latency 18 s p50 on the routed subset only (simple QA stays sub-10 ms). davidath 476/476 rows byte-identical to main (provider gate → router inert without wrapper). Harness: `evals/regenold/multiturn_ab.py`. Rollback: `REGENOLD_ANSWER_ROUTER=0`. |
 | **99** | 476 davidath + fresh paper-V4 (64 Q) LOCAL | st 14.2ms / tp 17.3ms / mt 13.5ms | st 469.8ms | — | davidath RefL **0.5502** / RefS **0.4766** / Ans Strict **0.277** / Tone 1.0 / mt 20/20 / OOS 21/21 / 3210 pass + 1 skip | **Semantic-layer rebuild verification + fresh paper-V4 eval set.** Re-ran turboquant + embeddings builders → **byte-identical** assets (R98 already current). Full-coverage audit: BM25 (347 docs), turboquant (279), embeddings (919 sentences), Neo4j seed (505 nodes) **each cover 113/113 articles + 13/13 annexes**; ontology Practice 8 / AnnexIII 8 / Phase 6 with zero dangling citations + Omnibus deferrals wired; definitions 68/68; tree 1412 nodes — **no fixes required**. Fresh paper-V4 set: `scenarios_paper_{singleturn,tricky,multiturn}_v4.py` (20 + 20 + 12 = 64 fresh Q, distinct from V3, all 69 refs resolve) + `run_paper_v4.py` + `validate_paper_v4.py`. Local paper-V4: single-turn refL **0.550** / refS 0.483 / kw 0.667, tricky refL **0.617** / refS 0.567, multi-turn coh 0.167 (live-only Stage-2 lift). davidath byte-identical to R98 (only eval modules + byte-identical assets added). Live paper-V4 + judge re-run queued post-deploy. |
-| **110** | 476 davidath A/B (gate OFF vs ON) + 276 det A/B + live-wire smoke | p50 16.9ms (OFF) / 19.9ms (ON) | 2.6s | — | davidath RefL **0.5965** / RefS **0.4558** / Ans Strict **0.3463** / Tone 1.0 / mt 20/20 / OOS 21/21 / 3412 pass + 1 skip | **FRAMES Sufficient-Context bounded multi-hop retrieval.** Deep-research of the FRAMES benchmark ([arXiv:2409.12941](https://arxiv.org/abs/2409.12941): single-step 0.45 → multi-step 0.66, oracle 0.73) + Google's Sufficient-Context Agentic RAG (FramesQA 58.68→93.61%; [arXiv:2411.06037](https://arxiv.org/abs/2411.06037)) → grafted the Sufficient-Context loop-gate in **bounded** form. New `app/engines/sufficient_context.py`: deterministic missing-pieces analysis (`assess_sufficiency`) fires ONE bounded hop (≤3 deterministic sub-query retrievals, NO LLM) when a complex/multi-part question's first pass missed a named anchor or a sub-part; `decompose_question` is verb+clause-initial-guarded (splits "importers AND what must distributors do", not noun-lists). `_merge_graph_context` additive-unions behind the first-pass anchors (never displaces a winner). Every sub-query + source logged to `ReasoningTrace.sub_queries` (glass-box audit lineage on the wire via `?include_reasoning=true`) — the direct rebuttal to the post's "black box" critique. Env-gated `REGENOLD_SUFFICIENT_CONTEXT` (railway.toml ON; bench never reads it → byte-identical). **davidath byte-identical gate ON vs OFF on every axis** (parse+BM25 saturation, the R31/R69 pattern); 276 deterministic 255/255 both arms (refs_within_max 221 vs 219 = noise); OOS 21/21; live smoke surfaced both Art 13+50 via Stage-2 with sub_query provenance on the wire, latency 12-15s = existing Sonnet cost not the gate. The win lands on the production Neo4j path + live judge multi-part axes (deferred: bounded CoVe verify behind a future `REGENOLD_ANSWER_VERIFY`). Analysis: `docs/AGENTIC_RAG_POST_ANALYSIS.md`. |
+| **110** | 476 davidath A/B (gate OFF vs ON) + 276 det A/B + live-wire smoke | p50 12.4ms (OFF) / 17.0ms (ON) | 2.6s | — | davidath RefL **0.5965** / RefS **0.4558** / Ans Strict **0.3457** / Tone 1.0 / mt 20/20 / OOS 21/21 / 3412 pass + 1 skip (rebased on #190) | **FRAMES Sufficient-Context bounded multi-hop retrieval.** Deep-research of the FRAMES benchmark ([arXiv:2409.12941](https://arxiv.org/abs/2409.12941): single-step 0.45 → multi-step 0.66, oracle 0.73) + Google's Sufficient-Context Agentic RAG (FramesQA 58.68→93.61%; [arXiv:2411.06037](https://arxiv.org/abs/2411.06037)) → grafted the Sufficient-Context loop-gate in **bounded** form. New `app/engines/sufficient_context.py`: deterministic missing-pieces analysis (`assess_sufficiency`) fires ONE bounded hop (≤3 deterministic sub-query retrievals, NO LLM) when a complex/multi-part question's first pass missed a named anchor or a sub-part; `decompose_question` is verb+clause-initial-guarded (splits "importers AND what must distributors do", not noun-lists). `_merge_graph_context` additive-unions behind the first-pass anchors (never displaces a winner). Every sub-query + source logged to `ReasoningTrace.sub_queries` (glass-box audit lineage on the wire via `?include_reasoning=true`) — the direct rebuttal to the post's "black box" critique. Env-gated `REGENOLD_SUFFICIENT_CONTEXT` (railway.toml ON; bench never reads it → byte-identical). **davidath byte-identical gate ON vs OFF on every axis** (parse+BM25 saturation, the R31/R69 pattern); 276 deterministic 255/255 both arms (refs_within_max 221 vs 219 = noise); OOS 21/21; live smoke surfaced both Art 13+50 via Stage-2 with sub_query provenance on the wire, latency 12-15s = existing Sonnet cost not the gate. The win lands on the production Neo4j path + live judge multi-part axes (deferred: bounded CoVe verify behind a future `REGENOLD_ANSWER_VERIFY`). Analysis: `docs/AGENTIC_RAG_POST_ANALYSIS.md`. |
 
  
 ## Round 97 — Adaptive verbatim-vs-synthesis routing: re-engage Sonnet for multi-turn (2026-05-30)
@@ -5657,7 +5657,7 @@ methodology to lift accuracy / precision. Full analysis at
   sub-query + source touched makes the iterative path *more* auditable than
   single-shot, not less.
 
-### What R109 ships — a bounded, auditable Sufficient-Context gate
+### What R110 ships — a bounded, auditable Sufficient-Context gate
 
 The one missing piece (the Sufficient-Context loop-gate) grafted in *bounded*
 form at the retrieval layer:
@@ -5691,7 +5691,7 @@ form at the retrieval layer:
 
 ### The three constraints, answered
 
-| Post's critique | R109's answer |
+| Post's critique | R110's answer |
 | --------------- | ------------- |
 | Latency ("30 sec") | Adaptive-routed (fires only on multi-part questions) + capped at ONE hop of ≤3 deterministic retrievals (sub-ms BM25 / 50 ms-capped Neo4j). Live smoke: the gate adds ≤150 ms; the 12-15 s observed is the *existing* Sonnet Stage-2 cost, not the gate. |
 | Token bill | The gate + decomposition are **deterministic** — zero LLM calls. No exponential loop. |
@@ -5699,10 +5699,10 @@ form at the retrieval layer:
 
 ### Round 109 — scorecard (476 davidath items)
 
-| Axis | R108 / R109 gate OFF | R109 gate ON | Δ |
-| ---- | -------------------- | ------------ | --- |
-| Ans Correctness Strict | 0.3463 | 0.3463 | flat ✓ |
-| Ans Conciseness | 0.621 | 0.621 | flat ✓ |
+| Axis | rebased main (#190) gate OFF | R110 gate ON | Δ |
+| ---- | ---------------------------- | ------------ | --- |
+| Ans Correctness Strict | 0.3457 | 0.3457 | flat ✓ |
+| Ans Conciseness | 0.6163 | 0.6163 | flat ✓ |
 | Ref Correctness Loose | 0.5965 | 0.5965 | flat ✓ |
 | Ref Correctness Strict | 0.4558 | 0.4558 | flat ✓ |
 | Ref Conciseness | 0.4136 | 0.4136 | flat ✓ |
@@ -5722,7 +5722,7 @@ multi-part axes, which the deterministic local bench cannot score.
 | Gate | Result |
 | ---- | ------ |
 | `pytest` | 3412 pass + 1 skip (+63 `tests/test_sufficient_context.py`) |
-| davidath bench gate-OFF | byte-identical to R108 (regression guard) |
+| davidath bench gate-OFF | byte-identical to rebased main #190 (regression guard) |
 | davidath bench gate-ON | byte-identical to OFF (every axis) |
 | 276-runner (deterministic, OFF vs ON) | both **255/255**, RISK_F1 0.85, Retrieval F1 0.71 (refs_within_max 221 vs 219 = noise) |
 | OOS probe (`runner_v2 --local --probe-oos`) | **21/21, 0 leaks** (gate doesn't touch scope) |
