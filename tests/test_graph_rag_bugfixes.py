@@ -250,8 +250,14 @@ class TestContextUngroundedDriftGuard:
         )
         assert drifted is False
 
-    def test_real_but_ungrounded_cite_flagged(self) -> None:
-        """Art. 99 is in the catalog but NOT in the request context — drift."""
+    def test_real_but_ungrounded_cite_tolerated(self) -> None:
+        """R113 — Art. 99 is in the catalog but NOT in the request context.
+
+        User directive (2026-06-11): Stage-2 polish is always needed; a
+        real catalog provision cited from parametric memory must NOT
+        drop the whole polish to the deterministic dump. Tolerated with
+        a trace note instead of flagged as drift.
+        """
         ctx = GraphContext()
         ctx.obligations = [
             {"id": "o1", "text": "Risk classification.", "article": "Art. 6"},
@@ -260,11 +266,11 @@ class TestContextUngroundedDriftGuard:
             "Art. 99 penalties apply.",
             context=ctx,
         )
-        assert drifted is True, (
-            "Art. 99 is real but ungrounded in the request context; "
-            "must flag as drift to prevent semantic context leakage"
+        assert drifted is False, (
+            "Real-but-ungrounded refs are tolerated per the R113 "
+            "Stage-2-always directive; only fabricated refs drift"
         )
-        assert bad == "Art. 99"
+        assert bad is None
 
     def test_no_context_param_falls_back_to_catalog_check(self) -> None:
         """Backward compatibility: caller without ``context`` keyword
@@ -277,9 +283,10 @@ class TestContextUngroundedDriftGuard:
         assert drifted is True
         assert bad == "Art. 999"
 
-    def test_two_stage_generate_drops_polish_on_ungrounded_real_cite(self) -> None:
-        """End-to-end: Stage-2 polishes prose citing Art. 99 when context
-        only has Art. 6 — _two_stage_generate must fall back to kg answer."""
+    def test_two_stage_generate_ships_polish_on_ungrounded_real_cite(self) -> None:
+        """R113 end-to-end: Stage-2 polish citing real-but-ungrounded
+        Art. 99 SHIPS (user directive: no fallback to deterministic for
+        a catalog-valid polish)."""
         ctx = GraphContext()
         ctx.obligations = [
             {"id": "o1", "text": "Risk classification.", "article": "Art. 6"},
@@ -297,8 +304,10 @@ class TestContextUngroundedDriftGuard:
             ),
         ):
             answer, used = _two_stage_generate(_MULTI_TURN_Q, ctx)
-        assert used is False, "Real-but-ungrounded cite must drop the polish"
-        assert "Art. 99" not in answer
+        assert used is True, (
+            "Real-but-ungrounded cite must NOT drop the polish (R113)"
+        )
+        assert "Art. 99" in answer
 
 
 # ─── Issue #52 — Drift regex variants ────────────────────────────────────────
@@ -352,8 +361,9 @@ class TestDriftRegexWidened:
         assert drifted is True
         assert bad == "Art. 250"
 
-    def test_articles_plural_grounded_context_catches_unlisted(self) -> None:
-        """Real articles in prose but not in grounded context → drift."""
+    def test_articles_plural_grounded_context_tolerates_unlisted(self) -> None:
+        """R113 — real articles in prose but not in grounded context are
+        tolerated (no drift); only fabricated provisions drift."""
         ctx = GraphContext()
         ctx.obligations = [
             {"id": "o1", "text": "Risk classification.", "article": "Art. 6"},
@@ -362,8 +372,8 @@ class TestDriftRegexWidened:
             "Articles 9 and 10 apply here.",
             context=ctx,
         )
-        assert drifted is True
-        assert bad in {"Art. 9", "Art. 10"}
+        assert drifted is False
+        assert bad is None
 
     def test_annexes_plural_fake_member(self) -> None:
         """``Annexes IV and M`` — plural list must validate every annex."""
@@ -379,6 +389,190 @@ class TestDriftRegexWidened:
             "Annexes IV and V apply here."
         )
         assert drifted is False
+
+
+# ─── R113 — Grounding parity + Stage-2-always (2026-06-11 live incident) ─────
+
+
+class TestR113GroundingParityStage2Always:
+    """Live incident: "What obligations do providers of high-risk systems
+    have under Article 16?" — retrieval anchored Art. 16, the references
+    block handed Sonnet the Art. 16 stub text naming Arts. 11/17/18/19/
+    20/21/43/47/48/49, the prompt said "cite only articles present in
+    the supplied references", Sonnet complied citing Article 11 — and
+    the drift guard dropped the whole polish because its grounding set
+    only read the ``article`` FIELD ({Art. 16}), never the stub TEXT.
+
+    R113 contract:
+    * grounding set == every provision named in the rendered references
+      block (guard/prompt parity), including the ``Arts. 11 and 18``
+      abbreviation form;
+    * real-but-ungrounded refs are tolerated (trace note), never drift;
+    * fabricated refs get sentence-scrubbed; the deterministic fallback
+      fires only when scrubbing leaves nothing substantive.
+    """
+
+    @staticmethod
+    def _art16_context() -> GraphContext:
+        from app.data.kb import EC_CHECKER_OBLIGATION_MAP
+
+        stub = EC_CHECKER_OBLIGATION_MAP["Art. 16"]
+        ctx = GraphContext()
+        ctx.obligations = [
+            {
+                "id": "art16",
+                "text": stub["summary"],
+                "article": "Art. 16",
+            },
+        ]
+        ctx.nodes_traversed = 1
+        return ctx
+
+    _LIVE_POLISH = (
+        "Article 16 requires providers of high-risk AI systems to ensure "
+        "compliance with the Chapter III Section 2 requirements, operate a "
+        "quality management system under Article 17, and keep the technical "
+        "documentation required by Articles 11 and 18. Providers must also "
+        "retain automatically generated logs under Article 19, complete "
+        "conformity assessment under Article 43, and draw up the EU "
+        "declaration of conformity under Article 47. They must affix the CE "
+        "marking under Article 48, register the system under Article 49, "
+        "take corrective action under Article 20, and demonstrate compliance "
+        "under Article 21."
+    )
+
+    def test_grounded_refs_mined_from_stub_text(self) -> None:
+        """The grounding set must contain every provision the references
+        block text names — not just the ``article`` field anchor."""
+        from app.engines.graph_rag import _extract_context_grounded_refs
+
+        grounded = _extract_context_grounded_refs(self._art16_context())
+        expected = {
+            "Art. 16", "Art. 11", "Art. 17", "Art. 18", "Art. 19",
+            "Art. 20", "Art. 21", "Art. 43", "Art. 47", "Art. 48",
+            "Art. 49",
+        }
+        missing = expected - grounded
+        assert not missing, (
+            f"grounding set missed provisions named in the stub text: "
+            f"{sorted(missing)} (got {sorted(grounded)})"
+        )
+
+    def test_arts_abbreviation_form_mined(self) -> None:
+        """KB stubs use ``Arts. 11 and 18`` — the miner must parse it."""
+        from app.engines.graph_rag import _extract_context_grounded_refs
+
+        ctx = GraphContext()
+        ctx.obligations = [
+            {
+                "id": "o1",
+                "text": "Keep the technical documentation (Arts. 11 and 18).",
+                "article": "Art. 16",
+            },
+        ]
+        grounded = _extract_context_grounded_refs(ctx)
+        assert {"Art. 11", "Art. 18"} <= grounded
+
+    def test_live_art16_polish_is_not_drift(self) -> None:
+        """The exact live-incident polish must pass the drift guard."""
+        drifted, bad = _polished_prose_has_unknown_citations(
+            self._LIVE_POLISH, context=self._art16_context()
+        )
+        assert drifted is False, f"false drift on legitimate xref: {bad}"
+
+    def test_live_art16_two_stage_ships_polish(self) -> None:
+        """End-to-end: the live question ships the Sonnet polish."""
+        with (
+            patch(
+                "app.llm.openai_wrapper_provider.is_openai_wrapper_enabled",
+                return_value=True,
+            ),
+            patch(
+                "app.engines.graph_rag._openai_wrapper_complete_for_graph_rag",
+                return_value=self._LIVE_POLISH,
+            ),
+        ):
+            answer, used = _two_stage_generate(
+                "What obligations do providers of high-risk systems have "
+                "under Article 16?",
+                self._art16_context(),
+            )
+        assert used is True, "Stage-2 polish must land (R113 directive)"
+        assert "Article 17" in answer
+
+    def test_tolerated_ungrounded_ref_recorded_in_trace(self) -> None:
+        """A tolerated real-but-ungrounded ref must leave a trace note."""
+        from app.integrations.regenold import reasoning_trace as rt
+
+        trace = rt.activate()
+        try:
+            ctx = GraphContext()
+            ctx.obligations = [
+                {"id": "o1", "text": "Risk classification.", "article": "Art. 6"},
+            ]
+            drifted, _ = _polished_prose_has_unknown_citations(
+                "Art. 99 penalties apply.", context=ctx
+            )
+            assert drifted is False
+            assert any(
+                "stage2_ungrounded_cite_tolerated" in n and "Art. 99" in n
+                for n in trace.notes
+            ), f"expected tolerance note, got {trace.notes}"
+        finally:
+            rt.deactivate()
+
+    def test_fabricated_cite_scrubbed_ships_remaining_prose(self) -> None:
+        """A fabricated provision drops ONLY its sentence; the rest of
+        the polish ships (deterministic fallback is the last resort)."""
+        polish = (
+            "Article 6 establishes the high-risk classification rules. "
+            "Article 999 overrides everything else in the Regulation."
+        )
+        ctx = GraphContext()
+        ctx.obligations = [
+            {"id": "o1", "text": "Risk classification.", "article": "Art. 6"},
+        ]
+        ctx.nodes_traversed = 1
+        with (
+            patch(
+                "app.llm.openai_wrapper_provider.is_openai_wrapper_enabled",
+                return_value=True,
+            ),
+            patch(
+                "app.engines.graph_rag._openai_wrapper_complete_for_graph_rag",
+                return_value=polish,
+            ),
+        ):
+            answer, used = _two_stage_generate(_MULTI_TURN_Q, ctx)
+        assert used is True, "scrubbed polish must ship"
+        assert "999" not in answer
+        assert "Article 6" in answer
+
+    def test_scrub_helper_removes_only_offending_sentences(self) -> None:
+        from app.engines.graph_rag import _scrub_fabricated_citation_sentences
+
+        ctx = GraphContext()
+        ctx.obligations = [
+            {"id": "o1", "text": "Risk classification.", "article": "Art. 6"},
+        ]
+        prose = (
+            "Article 6 sets the classification framework for high-risk "
+            "systems. Per Annex XX, registration is mandatory. The "
+            "classification applies before placing on the market."
+        )
+        scrubbed = _scrub_fabricated_citation_sentences(prose, ctx)
+        assert scrubbed is not None
+        assert "Annex XX" not in scrubbed
+        assert "Article 6" in scrubbed
+
+    def test_scrub_helper_gives_up_when_nothing_substantive_remains(self) -> None:
+        from app.engines.graph_rag import _scrub_fabricated_citation_sentences
+
+        ctx = GraphContext()
+        scrubbed = _scrub_fabricated_citation_sentences(
+            "Article 999 requires gibberish.", ctx
+        )
+        assert scrubbed is None
 
 
 # ─── Issue #54 — BM25 short-query recall ─────────────────────────────────────

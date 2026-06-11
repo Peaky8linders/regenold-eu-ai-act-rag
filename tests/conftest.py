@@ -348,15 +348,14 @@ def _reset_r89a_force_append_env(monkeypatch):
 # that one test and auto-reverts). Mirrors the ``_reset_r89a_force_append_env``
 # pattern above.
 #
-# * ``REGENOLD_DYNAMIC_GROUNDING`` — the R101 drift guard
-#   (``graph_rag._polished_prose_has_unknown_citations``) treats a cited
-#   catalog Article as NON-drift even when absent from the request context
-#   (parametric-memory tolerance). The Stage-2 drift-guard tests in
-#   ``test_graph_rag_bugfixes.py`` (``test_real_but_ungrounded_cite_flagged``,
-#   ``test_two_stage_generate_drops_polish_on_ungrounded_real_cite``,
-#   ``test_articles_plural_grounded_context_catches_unlisted``) assert the
-#   STRICT behaviour (real-but-ungrounded → drift), which only holds OFF.
-#   ``test_r105_post_cap_reconcile.py`` opts it ON via its own setenv.
+# * ``REGENOLD_DYNAMIC_GROUNDING`` — R101 historically gated the
+#   parametric-memory tolerance in the Stage-2 drift guard. R113
+#   (2026-06-11) baked that tolerance into the CODE default
+#   (``graph_rag._polished_prose_has_unknown_citations`` only flags
+#   fabricated provisions now), so the flag's remaining effect is the
+#   R72 reconcile floor in ``routes/regenold.py``. Still defaulted OFF
+#   per test for determinism; ``test_r105_post_cap_reconcile.py`` opts
+#   it ON via its own setenv.
 # * ``REGENOLD_MAX_ANSWER_SENTENCES`` — ``normalise_answer_for_regenold``
 #   reads it at call time; an unset value falls back to the code constant
 #   ``MAX_ANSWER_SENTENCES`` (3). A leaked higher value (e.g. 6 from

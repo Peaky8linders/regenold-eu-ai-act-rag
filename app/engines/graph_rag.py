@@ -4018,6 +4018,48 @@ _PROSE_ANNEXES_ENUM_RE = re.compile(
 )
 _PROSE_ENUM_SPLIT_RE = re.compile(r"\s*(?:,|and)\s*", re.IGNORECASE)
 
+# R113 — grounding-set miner regexes. These run over the SAME rendered
+# references-block text the Stage-2 prompt supplies, so the drift guard
+# and the prompt agree about what "the supplied references" contains.
+# Deliberately MORE generous than the prose-side regexes above: they
+# also accept the KB stubs' ``Arts. 11 and 18`` abbreviation and ``or`` /
+# ``&`` list separators. Over-matching here only widens what the guard
+# tolerates — it cannot introduce a fabricated provision into prose
+# (the prose-side scan stays strict).
+_GROUNDING_ARTICLE_LIST_RE = re.compile(
+    r"\bArt(?:icle)?s?\.?\s+(\d{1,3}(?:\s*(?:,|and|or|&)\s*\d{1,3})*)",
+    re.IGNORECASE,
+)
+_GROUNDING_ANNEX_LIST_RE = re.compile(
+    r"\bAnnex(?:es)?\s+([IVXLCDM]+(?:\s*(?:,|and|or|&)\s*[IVXLCDM]+)*)\b",
+    re.IGNORECASE,
+)
+_GROUNDING_NUM_RE = re.compile(r"\d{1,3}")
+_GROUNDING_ROMAN_RE = re.compile(r"\b[IVXLCDM]+\b", re.IGNORECASE)
+
+
+def _mine_refs_from_text(text: str) -> set[str]:
+    """R113 — extract every ``Art. N`` / ``Annex X`` named in ``text``.
+
+    Feeds ONLY the drift guard's grounding set (what the polish is
+    allowed to cite), never the wire references list. Handles the KB
+    stubs' citation shapes: ``(Art. 17)``, ``(Arts. 11 and 18)``,
+    ``Article 49``, ``Articles 9, 10 and 15``, ``Annexes IV and V``.
+    """
+    refs: set[str] = set()
+    if not text:
+        return refs
+    try:
+        for m in _GROUNDING_ARTICLE_LIST_RE.finditer(text):
+            for num in _GROUNDING_NUM_RE.findall(m.group(1)):
+                refs.add(f"Art. {int(num)}")
+        for m in _GROUNDING_ANNEX_LIST_RE.finditer(text):
+            for roman in _GROUNDING_ROMAN_RE.findall(m.group(1)):
+                refs.add(f"Annex {roman.upper()}")
+    except Exception:  # noqa: BLE001 — miner must never raise
+        pass
+    return refs
+
 
 # R48 — Stage-2 self-contradiction refusal markers.
 #
@@ -4245,6 +4287,28 @@ def _extract_context_grounded_refs(context: GraphContext) -> set[str]:
                     m_annex = re.match(r"^Annex\s+([IVXLCDM]+)\b", label, re.IGNORECASE)
                     if m_annex:
                         grounded.add(f"Annex {m_annex.group(1).upper()}")
+            # The xref TEXT is shown to the model too — mine it fully.
+            grounded |= _mine_refs_from_text(xref_str)
+
+        # R113 — guard/prompt parity. The Stage-2 prompt instructs the
+        # model to "cite only articles present in the supplied
+        # references" and supplies _build_context_references_block —
+        # whose stub TEXT names cross-referenced provisions (the Art. 16
+        # stub names Arts. 11/17/18/19/20/21/43/47/48/49). Pre-R113 the
+        # grounding set read only the ``article`` FIELD, so the guard
+        # flagged provisions the prompt itself supplied (live incident:
+        # an Article 16 question dropped the whole polish over a
+        # legitimate "Articles 11 and 18" cite). Mine the rendered block
+        # so guard and prompt agree about what was supplied.
+        # Additive-only: a failure here (e.g. a partial context object
+        # missing optional fields) must NOT empty the field-derived set —
+        # the contradiction guard keys on it being non-empty.
+        try:
+            grounded |= _mine_refs_from_text(
+                _build_context_references_block(context)
+            )
+        except Exception:  # noqa: BLE001 — parity mining is best-effort
+            pass
     except Exception:  # noqa: BLE001 — guard must never raise on malformed context
         return set()
     return grounded
@@ -4256,16 +4320,25 @@ def _polished_prose_has_unknown_citations(
 ) -> tuple[bool, str | None]:
     """Detect citation drift in Stage-2 polished prose.
 
-    Returns ``(drifted, first_unknown)``. ``drifted=True`` when prose
-    mentions any ``Art./Article N`` or ``Annex X`` that:
+    Returns ``(drifted, first_unknown)``. ``drifted=True`` ONLY when
+    prose mentions an ``Art./Article N`` or ``Annex X`` that is NOT in
+    the EU AI Act catalog (:data:`ARTICLE_EXISTENCE`) — a fabricated
+    provision. The caller scrubs the offending sentence(s) and ships
+    the remaining polish, falling back to the deterministic KG answer
+    only when nothing substantive survives.
 
-    * is NOT in the EU AI Act catalog (:data:`ARTICLE_EXISTENCE`); OR
-    * (Issue #51) IS in the catalog but is NOT in the request-specific
-      ``context`` — Stage-2 was told to cite only the supplied
-      references, so a real-but-ungrounded citation is still drift.
-
-    The caller drops the polished output and falls back to the
-    deterministic KG answer rather than ship a fabricated citation.
+    R113 (2026-06-11 user directive — Stage-2 polish always ships):
+    a provision that IS in the catalog but is NOT in the
+    request-specific grounding set is TOLERATED, not drift. The
+    grounding set now mines the SAME rendered references-block text the
+    prompt supplies (guard/prompt parity), so a residual ungrounded ref
+    means the model drew on parametric memory for a real provision —
+    recorded as a ``stage2_ungrounded_cite_tolerated`` trace note for
+    observability, never a reason to drop the polish to the
+    deterministic dump. (Supersedes the Issue #51 drop-on-ungrounded
+    behaviour; the live incident was an Article 16 answer dropped over
+    a legitimate "Articles 11 and 18" cite that the Art. 16 stub text
+    itself supplied.)
 
     Backward compat: when ``context`` is None, only the catalog check
     runs (matches the Round-15 behaviour pinned by
@@ -4274,15 +4347,14 @@ def _polished_prose_has_unknown_citations(
     This is the LAST line of defence against hallucination — the
     Stage-2 prompt already supplies the structured references block AND
     the system prompt forbids fabrication, but a temperature=0 Sonnet
-    call still occasionally drifts. The eval scorer dings any
-    references[] / prose mismatch hard, so the safer move is to drop
-    the polish entirely on detection.
+    call still occasionally drifts.
     """
     from app.data.article_existence import ARTICLE_EXISTENCE
 
     grounded_refs = (
         _extract_context_grounded_refs(context) if context is not None else set()
     )
+    tolerated: list[str] = []
 
     def _article_ref_drift(raw_num: str) -> tuple[bool, str | None]:
         # Issue #52 — int-normalise leading-zero captures so
@@ -4295,57 +4367,145 @@ def _polished_prose_has_unknown_citations(
         ref = f"Art. {num_int}" if num_int >= 0 else f"Art. {raw_num}"
         if ref not in ARTICLE_EXISTENCE:
             return True, ref
-
-        # R101 — Catalog-assisted dynamic grounding. If the cited article
-        # exists in ARTICLE_EXISTENCE, we do NOT count it as drift when
-        # REGENOLD_DYNAMIC_GROUNDING is enabled! This allows the LLM's parametric
-        # memory to answer the question, and we will dynamically ground it in Component D.
-        import os
-        if os.getenv("REGENOLD_DYNAMIC_GROUNDING", "0").strip().lower() in ("1", "true", "yes", "on"):
-            return False, None
-
-        if grounded_refs and ref not in grounded_refs:
-            return True, ref
+        if grounded_refs and ref not in grounded_refs and ref not in tolerated:
+            tolerated.append(ref)
         return False, None
 
     def _annex_ref_drift(roman: str) -> tuple[bool, str | None]:
         ref = f"Annex {roman.upper()}"
         if ref not in ARTICLE_EXISTENCE:
             return True, ref
-
-        import os
-        if os.getenv("REGENOLD_DYNAMIC_GROUNDING", "0").strip().lower() in ("1", "true", "yes", "on"):
-            return False, None
-
-        if grounded_refs and ref not in grounded_refs:
-            return True, ref
+        if grounded_refs and ref not in grounded_refs and ref not in tolerated:
+            tolerated.append(ref)
         return False, None
 
-    for raw_num in _PROSE_ARTICLE_RE.findall(prose):
-        drifted, bad = _article_ref_drift(raw_num)
-        if drifted:
-            return True, bad
-    for enum_match in _PROSE_ARTICLES_ENUM_RE.finditer(prose):
-        for raw_num in _PROSE_ENUM_SPLIT_RE.split(enum_match.group(1)):
-            raw_num = raw_num.strip()
-            if not raw_num.isdigit():
-                continue
+    def _record_tolerated() -> None:
+        if not tolerated:
+            return
+        try:
+            from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                current as _current_trace,
+                record_note,
+            )
+            trace = _current_trace()
+            for ref in tolerated[:5]:
+                note = f"stage2_ungrounded_cite_tolerated ref={ref}"
+                # The scrub loop re-runs this check — dedupe the note.
+                if trace is not None and note in trace.notes:
+                    continue
+                record_note(note)
+        except Exception:  # noqa: BLE001 — trace is best-effort
+            pass
+
+    def _scan() -> tuple[bool, str | None]:
+        for raw_num in _PROSE_ARTICLE_RE.findall(prose):
             drifted, bad = _article_ref_drift(raw_num)
             if drifted:
                 return True, bad
-    for roman in _PROSE_ANNEX_RE.findall(prose):
-        drifted, bad = _annex_ref_drift(roman)
-        if drifted:
-            return True, bad
-    for enum_match in _PROSE_ANNEXES_ENUM_RE.finditer(prose):
-        for roman in _PROSE_ENUM_SPLIT_RE.split(enum_match.group(1)):
-            roman = roman.strip()
-            if not roman:
-                continue
+        for enum_match in _PROSE_ARTICLES_ENUM_RE.finditer(prose):
+            for raw_num in _PROSE_ENUM_SPLIT_RE.split(enum_match.group(1)):
+                raw_num = raw_num.strip()
+                if not raw_num.isdigit():
+                    continue
+                drifted, bad = _article_ref_drift(raw_num)
+                if drifted:
+                    return True, bad
+        for roman in _PROSE_ANNEX_RE.findall(prose):
             drifted, bad = _annex_ref_drift(roman)
             if drifted:
                 return True, bad
-    return False, None
+        for enum_match in _PROSE_ANNEXES_ENUM_RE.finditer(prose):
+            for roman in _PROSE_ENUM_SPLIT_RE.split(enum_match.group(1)):
+                roman = roman.strip()
+                if not roman:
+                    continue
+                drifted, bad = _annex_ref_drift(roman)
+                if drifted:
+                    return True, bad
+        return False, None
+
+    result = _scan()
+    _record_tolerated()
+    return result
+
+
+def _ref_mention_pattern(ref: str | None) -> re.Pattern[str] | None:
+    """R113 — compile a sentence-level matcher for a flagged reference.
+
+    Accepts the normalised shapes :func:`_polished_prose_has_unknown_citations`
+    emits (``Art. N`` / ``Annex ROMAN``) and matches the citation
+    wherever it appears in a sentence, including inside plural
+    enumerations (``Articles 9 and 250`` matches for ``Art. 250``).
+    """
+    if not ref:
+        return None
+    m_art = re.match(r"^Art\.\s+(\d{1,3})$", ref)
+    if m_art:
+        num = m_art.group(1)
+        return re.compile(
+            rf"\bArt(?:icle)?s?\.?\s+(?:\d{{1,3}}\s*(?:,|and|or|&)\s*)*0*{num}\b",
+            re.IGNORECASE,
+        )
+    m_annex = re.match(r"^Annex\s+([IVXLCDM]+)$", ref, re.IGNORECASE)
+    if m_annex:
+        roman = m_annex.group(1)
+        return re.compile(
+            rf"\bAnnex(?:es)?\s+(?:[IVXLCDM]+\s*(?:,|and|or|&)\s*)*{roman}\b",
+            re.IGNORECASE,
+        )
+    return None
+
+
+def _scrub_fabricated_citation_sentences(
+    prose: str,
+    context: "GraphContext | None" = None,
+) -> str | None:
+    """R113 — drop ONLY the sentences carrying fabricated citations.
+
+    The pre-R113 drift guard discarded the entire Stage-2 polish on the
+    first fabricated provision, shipping the deterministic dump instead
+    (user directive 2026-06-11: Stage-2 polish always ships). This
+    helper removes the offending sentence(s) and returns the remaining
+    polish when something substantive survives (≥ 40 chars — a short
+    but complete regulatory sentence); ``None`` means nothing safe is
+    left and the caller takes the deterministic fallback as the genuine
+    last resort.
+
+    Uses the production sentence splitter from
+    :mod:`app.integrations.regenold.models` so ``Art. 13`` / ``e.g.``
+    abbreviation periods don't split sentences (the R54.1 C1 class of
+    bug), with a simple regex fallback if that import ever fails.
+    """
+    try:
+        from app.integrations.regenold.models import (  # noqa: PLC0415
+            _split_sentences,
+        )
+        sentences = [s for s in _split_sentences(prose or "") if s.strip()]
+    except Exception:  # noqa: BLE001 — fall back to a naive splitter
+        sentences = [
+            s.strip()
+            for s in re.split(r"(?<=[.!?])\s+", prose or "")
+            if s.strip()
+        ]
+    if not sentences:
+        return None
+
+    for _ in range(8):  # bounded — one pass per distinct fabricated ref
+        joined = " ".join(s.strip() for s in sentences).strip()
+        if not joined:
+            return None
+        drifted, bad = _polished_prose_has_unknown_citations(joined, context)
+        if not drifted:
+            return joined if len(joined) >= 40 else None
+        pattern = _ref_mention_pattern(bad)
+        if pattern is None:
+            return None
+        kept = [s for s in sentences if not pattern.search(s)]
+        if len(kept) == len(sentences):
+            # Could not isolate the offending sentence — give up safely.
+            return None
+        sentences = kept
+    return None
 
 
 def _claude_max_enhance_answer(
@@ -4787,34 +4947,57 @@ def _two_stage_generate(
         return kg_answer, False
 
     # Post-Stage-2 hallucination guard: every Art./Annex mention in the
-    # polished prose must resolve to a real provision in ARTICLE_EXISTENCE
-    # AND must be grounded in the request-specific context (Issue #51 —
-    # the Stage-2 prompt told the model to cite only the supplied
-    # references, so a real-but-ungrounded citation is still drift). On
-    # drift, drop the polish and ship the Stage-1 KG answer. The
-    # underlying call succeeded — at temperature 0 this drift is
+    # polished prose must resolve to a real provision in
+    # ARTICLE_EXISTENCE. R113 (user directive 2026-06-11 — Stage-2
+    # polish always ships): real-but-ungrounded citations are tolerated
+    # inside the check itself (trace note), so ``drifted`` here means a
+    # FABRICATED provision. Scrub only the offending sentence(s) and
+    # ship the surviving polish; the deterministic Stage-1 answer is the
+    # genuine last resort when nothing substantive survives the scrub.
+    # The underlying call succeeded — at temperature 0 this drift is
     # deterministic, so this branch IS cacheable (no
     # ``stage2_call_failed`` flag).
     drifted, bad_ref = _polished_prose_has_unknown_citations(enhanced, context)
     if drifted:
-        logger.warning(
-            "stage2_drift_detected: prose cites %s (not in catalog or ungrounded) — "
-            "falling back to kg_answer",
-            bad_ref,
-        )
-        # R112.3 — surface the silent drop in the reasoning trace. A
-        # completed-then-rejected polish was previously
-        # indistinguishable from Stage-2-never-attempted (r112-live
-        # mt_02 / rgn_02 / rgn_08 burned 24-29 s then shipped the
-        # deterministic stub with no trace evidence why).
-        try:
-            from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
-                record_note,
+        scrubbed = _scrub_fabricated_citation_sentences(enhanced, context)
+        if scrubbed:
+            logger.warning(
+                "stage2_drift_detected: prose cites fabricated %s — "
+                "scrubbed the offending sentence(s), shipping the rest",
+                bad_ref,
             )
-            record_note(f"stage2_drift_guard_dropped_polish ref={bad_ref}"[:160])
-        except Exception:  # noqa: BLE001 — trace is best-effort
-            pass
-        return kg_answer, False
+            try:
+                from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                    record_note,
+                )
+                record_note(
+                    f"stage2_fabricated_cite_scrubbed ref={bad_ref}"[:160]
+                )
+            except Exception:  # noqa: BLE001 — trace is best-effort
+                pass
+            enhanced = scrubbed
+        else:
+            logger.warning(
+                "stage2_drift_detected: prose cites fabricated %s and no "
+                "substantive prose survives the scrub — falling back to "
+                "kg_answer",
+                bad_ref,
+            )
+            # R112.3 — surface the silent drop in the reasoning trace. A
+            # completed-then-rejected polish was previously
+            # indistinguishable from Stage-2-never-attempted (r112-live
+            # mt_02 / rgn_02 / rgn_08 burned 24-29 s then shipped the
+            # deterministic stub with no trace evidence why).
+            try:
+                from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                    record_note,
+                )
+                record_note(
+                    f"stage2_drift_guard_dropped_polish ref={bad_ref}"[:160]
+                )
+            except Exception:  # noqa: BLE001 — trace is best-effort
+                pass
+            return kg_answer, False
 
     # R48 — Stage-2 self-contradiction guard. Sonnet occasionally emits
     # "no references returned" prose even when the prompt's references
