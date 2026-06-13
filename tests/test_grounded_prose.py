@@ -256,16 +256,17 @@ class TestAugmentWithRefDescriptions:
         assert out  # non-empty
 
     def test_inline_replace_mode(self) -> None:
-        """A cite already present in the prose is NOT inline-expanded (R106).
+        """A PARENTHESIZED cite is inline-expanded to counsel-voice prose.
 
-        R90 originally rewrote ``(Article 13)`` → ``(Article 13 requires high-risk
-        AI systems...)`` in place. R106 guards BOTH inline-expand branches with
-        ``not is_covered``: a literal "(Article 13)" cite is already 'covered'
-        (named), so the augmenter leaves it clean rather than bloating it into a
-        redundant self-repeating parenthetical (the robotic
-        "operate a QMS (Article 17 requires ... to operate a QMS ...)" shape the
-        user flagged). Descriptions for genuinely-undescribed refs still flow
-        through the append path.
+        R90 rewrote ``(Article 13)`` → ``(Article 13 requires high-risk AI
+        systems...)`` in place. R106 briefly guarded BOTH inline-expand branches
+        with ``not is_covered`` — but a parenthesized cite is always literally
+        present, so that guard killed the parenthesized expansion entirely. The
+        R116 revision restores it: a PARENTHESIZED cite is a standalone citation,
+        so expanding it adds the article's description (refs-faithfulness) and is
+        always grammatical. Only the BARE-cite branch keeps the ``not is_covered``
+        guard (a bare embedded cite would fuse into a run-on). See
+        ``test_r80_augmenter_coverage.py::test_parenthesized_cite_still_expands``.
         """
         from app.integrations.regenold.grounded_prose import augment_with_ref_descriptions
         import os
@@ -274,8 +275,9 @@ class TestAugmentWithRefDescriptions:
         with mock.patch.dict(os.environ, {"REGENOLD_REF_DESCRIBE_REPLACE": "1"}):
             out = augment_with_ref_descriptions(answer, ["Article 13"])
 
-        # No redundant inline bloat — the cite is preserved as a clean citation.
-        assert "Article 13 requires" not in out, f"redundant inline expansion: {out!r}"
+        # The standalone parenthesized cite is expanded in place to add Article 13's
+        # description (the R116-revision contract); the bare-cite run-on guard is
+        # tested separately in test_r80_augmenter_coverage.py.
+        assert "(Article 13 requires" in out, f"parenthesized expansion must fire: {out!r}"
         assert "Article 13 —" not in out, f"old em-dash format still present: {out!r}"
-        assert "(Article 13)" in out, f"clean cite not preserved: {out!r}"
         assert out.startswith("The provider must comply with the requirements")

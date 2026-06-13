@@ -115,16 +115,15 @@ class TestR80DAugmenterIntegration:
 
 
 class TestR106InlineExpansionGuard:
-    """R106 — guard BOTH inline-replace branches with ``not is_covered``.
+    """R106 — guard only the BARE-cite inline-replace branch.
 
-    Commit d623849 removed the guard from both inline-expand branches, which
-    spliced a KB clause onto a cite ALREADY named in the prose — the robotic
-    redundancy the user flagged. Two shapes:
-      * bare embedded ("comply with Article 13 for ...") → run-on fusion;
-      * parenthesized ("operate a QMS (Article 17)") → verbose self-repeat
-        "(Article 17 requires ... to operate a QMS ...)".
-    Both are now suppressed when the cite is already present; genuinely-
-    undescribed refs still get an APPENDED clause.
+    Commit d623849 removed the ``not is_covered`` guard from BOTH inline
+    branches, which fused KB clauses onto grammatically-embedded bare cites
+    (the general-classification-verdict bug). The fix guards only the bare
+    branch: a bare cite is usually embedded ("comply with Article 13 for ...")
+    so splicing a subject-verb clause produces a run-on; a PARENTHESIZED cite
+    "(Article 13)" is standalone and still expands (that contract is pinned by
+    ``test_grounded_prose.py::test_inline_replace_mode``).
     """
 
     def test_embedded_bare_cite_not_fused(self) -> None:
@@ -141,15 +140,14 @@ class TestR106InlineExpansionGuard:
             f"inline KB clause fused onto an embedded cite: {result!r}"
         )
 
-    def test_parenthesized_covered_cite_not_expanded(self) -> None:
-        # A parenthesized cite already present is 'covered' (literally named)
-        # and must NOT be inline-expanded into a redundant
-        # "(Article 13 requires ...)" — the role-obligation-stub bloat fix.
+    def test_parenthesized_cite_still_expands(self) -> None:
+        # The standalone parenthesized form is grammatically safe to expand —
+        # the bare-branch guard must NOT suppress it (R90 contract).
         base = "The provider must comply with the requirements (Article 13)."
         result = augment_with_ref_descriptions(
             base, user_facing_refs=["Article 13"]
         )
-        assert "Article 13 requires" not in result, (
-            f"redundant inline expansion should be suppressed: {result!r}"
+        assert "(Article 13 requires" in result, (
+            f"parenthesized expansion must still fire: {result!r}"
         )
-        assert "(Article 13)" in result, f"clean cite not preserved: {result!r}"
+

@@ -1509,27 +1509,17 @@ def augment_with_ref_descriptions(
                         #    only when there's no em-dash / lowercase verb already.
                         bare_pattern = re.compile(r'\b' + re.escape(user_ref) + r'\b(?!\s*(?:—|requires|mandates|prohibits|classifies|establishes|lays|specifies|grants))')
 
-                        # R106 — guard BOTH inline-expand branches with
-                        # ``not is_covered``. Commit d623849 removed the guard
-                        # from both, which let the augmenter splice a KB clause
-                        # onto a cite that is ALREADY named in the prose — the
-                        # robotic redundancy the user flagged:
-                        #   * PARENTHESIZED "operate a quality-management system
-                        #     (Article 17)" → "(Article 17 requires providers …
-                        #     to operate a quality management system …)" — a
-                        #     verbose self-repeat.
-                        #   * BARE "comply with Article 13 for …" → "comply with
-                        #     Article 13 requires … for …" — a run-on fusion
-                        #     (the general-classification-verdict bug).
-                        # ``_answer_covers_ref`` treats a literal cite (incl. the
-                        # R106 plural "Arts. N" forms) as covered, so the guard
-                        # fires exactly when the cite is already present. The
-                        # in-place expansion now only fires for a cite the prose
-                        # does NOT already carry; genuinely-undescribed refs
-                        # still get an APPENDED clause via the is_covered branch
-                        # below. This keeps role-obligation / KB-stub answers
-                        # clean and preserves the verdict-fusion fix.
-                        if not is_covered and parenthesized_pattern.search(answer):
+                        # R116 — guard ONLY the bare-cite elif below with
+                        # ``not is_covered``. A PARENTHESIZED cite "(Article N)" is a
+                        # standalone citation, so expanding it in place to
+                        # "(Article N requires ...)" adds the article's description
+                        # (refs-faithfulness) and is always grammatical — it fires
+                        # regardless of coverage. A BARE embedded cite ("comply with
+                        # Article 13 for ...") would fuse into a run-on, so only the
+                        # bare elif keeps the not-is_covered guard. Pinned by
+                        # test_grounded_prose.py::test_inline_replace_mode and
+                        # test_r80_augmenter_coverage.py::test_parenthesized_cite_still_expands.
+                        if parenthesized_pattern.search(answer):
                             answer = parenthesized_pattern.sub(f"({natural})", answer, count=1)
                             clauses_added += 1
                             replaced_inline = True
