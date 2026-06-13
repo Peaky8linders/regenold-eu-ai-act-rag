@@ -214,12 +214,19 @@ def main(argv: list[str] | None = None) -> int:
         "--v2", action="store_true",
         help="Use the R116 fresh medtech/life-sciences V2 set instead of the R109 set.",
     )
+    parser.add_argument(
+        "--v3", action="store_true",
+        help="Use the R120 fresh medtech/life-sciences V3 set.",
+    )
     args = parser.parse_args(argv)
 
     scenarios = None
     if args.v2:
         from evals.regenold.scenarios_medtech_lifesci_v2 import MEDTECH_SCENARIOS_V2
         scenarios = MEDTECH_SCENARIOS_V2
+    elif args.v3:
+        from evals.regenold.scenarios_medtech_lifesci_v3 import MEDTECH_SCENARIOS_V3
+        scenarios = MEDTECH_SCENARIOS_V3
 
     if args.local:
         endpoint = _local_endpoint_url("include_reasoning=true")

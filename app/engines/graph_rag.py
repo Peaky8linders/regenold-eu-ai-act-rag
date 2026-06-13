@@ -3642,6 +3642,8 @@ def _retrieve_from_graph(
         return _retrieve_from_kb(query, risk_level)
 
     effective_risk = query.risk_context or risk_level or "high"
+    if effective_risk and not effective_risk.startswith("risk_"):
+        effective_risk = f"risk_{effective_risk.replace('risk_', '').replace('-risk', '')}"
     answer_dict = answers or {}
     answer_strs = {
         k: (v.value if isinstance(v, AssessmentAnswer) else str(v))
@@ -3663,7 +3665,7 @@ def _retrieve_from_graph(
         # If specific article is mentioned, get article-specific obligations
         for entity in query.entities:
             if entity.startswith("Art."):
-                art_id = entity.replace("Art. ", "art").replace("Art.", "art")
+                art_id = entity.replace("Art. ", "article_").replace("Art.", "article_")
                 art_obls = client.execute_read(
                     CYPHER_TEMPLATES["obligations_for_article"],
                     {"article_id": art_id},

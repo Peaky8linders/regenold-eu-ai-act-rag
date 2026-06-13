@@ -183,7 +183,7 @@ CYPHER_TEMPLATES = {
         "o.paragraph_ref AS paragraph ORDER BY o.article_ref"
     ),
     "obligations_for_article": (
-        "MATCH (a:Article {id: $article_id})-[:REQUIRES]->(o:Obligation) "
+        "MATCH (a:Article {id: $article_id})-[:HAS_OBLIGATION]->(o:Obligation) "
         "RETURN o.id AS id, o.text AS text, o.article_ref AS article, "
         "o.paragraph_ref AS paragraph"
     ),
