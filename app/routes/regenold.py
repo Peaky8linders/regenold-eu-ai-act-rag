@@ -1281,6 +1281,15 @@ def _engine_cache_key(
             # cache identity (R30/R56/R79 cache-poisoning doctrine).
             "REGENOLD_LOGIC_RAG",
             "REGENOLD_LOGIC_RAG_MODEL",
+            # R117-review — the LogicRAG latency/cap knobs also flip the
+            # engine output: a tighter budget / node cap / per-call timeout
+            # can truncate the DAG or skip pruning ranks, producing a
+            # different (lower-quality but confidence>=0.3, hence cacheable)
+            # GraphRAGResponse. Per the cache-poisoning doctrine they belong
+            # in the cache identity so changing them doesn't serve stale prose.
+            "REGENOLD_LOGIC_RAG_BUDGET",
+            "REGENOLD_LOGIC_RAG_TIMEOUT",
+            "REGENOLD_LOGIC_RAG_MAX_NODES",
         )
     )
     import json

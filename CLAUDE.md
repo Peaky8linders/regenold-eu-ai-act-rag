@@ -6141,6 +6141,74 @@ verdicts ship as authored. davidath **byte-identical** (the predicate fires on
 3 %) + the Article 99(6) SME rule; the prohibited control keeps the 99(3)
 35M / 7 % ceiling.
 
+## Round 118 — R117 deep-code-review: LogicRAG hardening (2026-06-14)
+
+Auto `/plan-eng-review` (eng-manager lens) + `CR-SKILL.md` deep-code-review
+(6 parallel specialists + verifier) over the R117 range `6ab4aed..HEAD`
+(new `logic_rag.py` default-ON in prod + Groq/Claude-Max provider arch +
+RushDB removal). The RushDB removal was clean (0 dangling refs in `app/`);
+every confirmed defect was in the new, previously-untested
+[`app/engines/logic_rag.py`](app/engines/logic_rag.py). 9 verified findings
+fixed (4 Critical + 5 Important); 1 cross-agent finding ("cache key missing
+`REGENOLD_LOGIC_RAG`") was a **false positive** (it IS at
+`routes/regenold.py:1282-1283`). Full report:
+[`docs/reviews/r117-logicrag-hardening-2026-06-14-fc5076d.md`](docs/reviews/r117-logicrag-hardening-2026-06-14-fc5076d.md).
+
+### Critical fixes (all in `logic_rag.py` unless noted)
+
+* **C1 — `_merge_contexts` dropped `obligations` + 9 other payload fields.**
+  It copied only `article_info` + counters + `degraded`; `GraphContext` has
+  17 fields. `obligations` is the PRIMARY citation/answer source
+  (`context.obligations + context.article_info`). A multi-rank DAG therefore
+  shipped an obligation-empty context — strictly worse than the single-rank
+  deterministic path. Now carries every payload field (dedup-by-id +
+  order-preserving string dedup + `cross_framework` shallow-merge).
+* **C2 — no total wall-clock cap.** 1 decompose + N per-rank pruning calls
+  (15s each) + Stage-2 after → 45-60s vs the sub-20s budget and Railway
+  `healthcheckTimeout=30` (502 risk). Added `REGENOLD_LOGIC_RAG_BUDGET`
+  (default 12s) deadline + per-call `timeout_override=remaining` +
+  `REGENOLD_LOGIC_RAG_MAX_NODES` cap (default 6).
+* **C3 — `str.format()` on user/LLM/KB strings** crashed on a literal
+  `{`/`}` (silently disabled LogicRAG, or corrupted the prompt). New
+  single-pass brace-safe `_safe_fill`.
+* **C4 — empty-DAG → empty (non-`None`) context** bypassed the route's
+  `if context is None` deterministic fallback → R47-E zero-retrieval floor.
+  `execute_logic_rag` now returns `None` on empty DAG / content-free
+  retrieval.
+
+### Important fixes
+
+* **M1 — synthetic "LogicRAG Synthesis" `article_info` entry** reached the
+  Stage-2 prompt as a citable `(Article: LogicRAG Synthesis)` line + burned a
+  citation slot. Replaced with a dedicated `GraphContext.synthesis_memory`
+  field rendered as a labelled NON-citation Stage-2 block.
+* **M2 — prompt-injection surface** — LogicRAG skipped `sanitize_for_llm`
+  (Stage-1/2 apply it; `PROMPT_HARDENING_PREFIX` is a `""` no-op). Now
+  sanitises the query before any prompt build.
+* **M3 — topo-sort int/str id mismatch** (`"id":1` vs `"dependencies":["1"]`)
+  left edges unresolved → all-in-one-rank. Normalised to `str`; missing-dep
+  refs dropped, not stalled.
+* **M4 — `_call_llm` ignored `finish_reason="length"`** → truncated rolling
+  memory shipped as complete. Now a soft failure (mirrors R91).
+* **M5 — no node cap / dup-id dedup** in `_finalise_dag`.
+* **Cache key** — added `REGENOLD_LOGIC_RAG_{BUDGET,TIMEOUT,MAX_NODES}` to
+  `_engine_cache_key` (R30/R56/R79 doctrine).
+
+### Verification (476 davidath + gates)
+
+LogicRAG is OFF in the deterministic bench (no `REGENOLD_LOGIC_RAG=1`, no
+wrapper), so every fix is inert there → **davidath byte-identical by
+construction** (the `GraphContext.synthesis_memory` field defaults `""`, the
+block render is a no-op without it, the cache-key add changes only the key not
+the once-asked answer). Gates: full suite **3685 pass, 1 skip** (the 22
+remaining failures are the documented pre-existing `provider=cli`
+Stage-2-gate env artifact — identical at baseline via a stash A/B; all 135
+Stage-2 tests pass under the wrapper-enabling env with these changes); OOS
+probe **21/21, 0 leaks**; 276-runner **255/255**; +25 R117-review regression
+tests in `tests/test_logic_rag.py`. The wins (multi-rank obligations now
+carried, latency bounded, no zero-retrieval floor off LogicRAG, no injection
+surface) land on the LIVE Neo4j + Claude-Max path where LogicRAG fires.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

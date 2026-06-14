@@ -678,6 +678,13 @@ class GraphContext:
     referenced_annexes_and_recitals: list[dict] = field(default_factory=list)
     web_search_results: list[str] = field(default_factory=list)
     retrieval_path: str = "neo4j"
+    # R117-review — LogicRAG's synthesised multi-hop rolling memory. Set only
+    # by ``logic_rag.execute_logic_rag`` (default "" everywhere else, so the
+    # Stage-2 context block render below is a no-op for non-LogicRAG paths).
+    # Rendered as a clearly-labelled NON-citation section — replaces the old
+    # fake "LogicRAG Synthesis" article_info entry that leaked a non-resolvable
+    # "(Article: LogicRAG Synthesis)" line into the Stage-2 prompt.
+    synthesis_memory: str = ""
 
 
 # ─── LLM Integration ────────────────────────────────────────────────────────
@@ -3002,6 +3009,15 @@ def _build_context_references_block(context: GraphContext) -> str:
                 f"{d.get('obligation_count', 0)} obligations"
                 for d in context.dimension_info
             )
+        )
+    # R117-review — LogicRAG multi-hop synthesis. Supporting context only;
+    # the explicit "cite only the Articles above" framing stops Stage-2 from
+    # treating the synthesis as a citable provision.
+    if getattr(context, "synthesis_memory", ""):
+        parts.append(
+            "\nSYNTHESIZED MULTI-HOP ANALYSIS "
+            "(supporting context — cite only the Articles above, not this synthesis):\n"
+            + context.synthesis_memory
         )
     return "\n".join(parts) if parts else "No EU AI Act references match this query."
 
