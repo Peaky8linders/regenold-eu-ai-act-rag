@@ -15,6 +15,7 @@ Pure-stdlib. Module-level. ~µs per call. Returns False on parse failure.
 """
 from __future__ import annotations
 
+import os
 import re
 
 # ── Category-keyword fact patterns ──────────────────────────────────────
@@ -169,6 +170,47 @@ def _is_multi_phrase(scan_text: str) -> bool:
     return bool(_MULTI_CLAUSE_RE.search(scan_text))
 
 
+# ── R118 REC-1 — widened difficulty gate (env-gated, default OFF) ────────
+#
+# The R118 Opus-4.8 audit found the live gate fires on SENTENCE COUNT
+# (``_is_multi_phrase``'s "two sentences ≥4 words" rule), not regulatory
+# difficulty — every Opus route on the 20 Antifragile questions came
+# through that rule, and ZERO came through the five category regexes.
+# Genuinely-hard SINGLE-sentence questions (always-prohibited carve-out,
+# biometric-triage borderline, workplace-emotion ban, GPAI-model duties,
+# regulated-product conformity) get the weaker Sonnet model purely because
+# the user phrased them in one sentence.
+#
+# This widened pattern catches those difficulty signals. It also fixes the
+# latent ``always\s+prohibit\b`` boundary bug (the trailing ``\b`` blocked
+# the inflected "always prohibit*ed*"). Gated behind
+# ``REGENOLD_COMPLEX_GATE_WIDE`` so the DEFAULT path stays byte-identical
+# (live + bench) until a live A/B confirms the lift. The gate only selects
+# the Stage-2 MODEL (Sonnet vs Opus 4.8) — a false fire costs latency, not
+# correctness, and never touches scope.
+_GATE_WIDE_RE = re.compile(
+    r"(?:"
+    r"(?:always|ever)\s+prohibit\w*|"            # "is X always prohibited?" (Q12)
+    r"monitor\w*\s+(?:the\s+)?emotion\w*|"        # "monitor the emotions of workers" (Q19)
+    r"emotion\w*\s+(?:recognition|detection|inference)|"
+    r"biometric\w*\b.{0,80}\b(?:sort|categori[sz]|priorit|infer|attribute)|"  # biometric triage (Q15)
+    r"general[\s-]purpose\s+ai\s+model|"          # GPAI-model duties (Q16)
+    r"safety\s+component|"                         # regulated-product safety component (Q14/Q20)
+    r"robotic\s+surgery|"
+    r"conformity\s+assessment"
+    r")",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _gate_wide_enabled() -> bool:
+    """Env gate for the R118 widened difficulty patterns. Default OFF →
+    byte-identical routing. Fresh read per call (no settings singleton)."""
+    return os.environ.get("REGENOLD_COMPLEX_GATE_WIDE", "0").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
 # ── Public API ──────────────────────────────────────────────────────────
 
 
@@ -226,6 +268,13 @@ def is_complex_question(question: str, history_turn_count: int = 1) -> bool:
     if _CONFLICT_RE.search(scan_text):
         return True
     if _CROSS_FRAMEWORK_RE.search(scan_text):
+        return True
+    # R118 REC-1 — widened difficulty gate (env-gated, default OFF). Routes
+    # genuinely-hard SINGLE-sentence questions (always-prohibited carve-out,
+    # biometric triage, workplace-emotion ban, GPAI-model duties, regulated-
+    # product conformity) to Opus 4.8 instead of Sonnet. Byte-identical when
+    # the env is unset.
+    if _gate_wide_enabled() and _GATE_WIDE_RE.search(scan_text):
         return True
     # Multi-phrase / multi-question input (user directive 2026-06-02):
     # bundling more than one phrase or question warrants the complex

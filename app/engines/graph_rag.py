@@ -447,10 +447,17 @@ def _anthropic_complete_for_graph_rag(
             model, capped,
         )
 
+    # R118 REC-4 — mirror the wrapper-path floor (R112.2 ``safe_max_tokens``)
+    # into the Anthropic-SDK path. Pre-R118 this passed ``max_tokens`` raw
+    # (=384 by config default), so a Pro-tier Anthropic deploy capped Opus
+    # complex answers at 384 → frequent ``stop_reason=max_tokens`` truncation
+    # → soft-fail to deterministic, silently downgrading exactly the hard
+    # questions Opus was chosen for. Floor at 1024 to match the wrapper path.
+    safe_max_tokens = max(max_tokens or 1024, 1024)
     try:
         response = client.messages.create(
             model=model,
-            max_tokens=max_tokens,
+            max_tokens=safe_max_tokens,
             temperature=temperature,
             system=system,
             messages=[{"role": "user", "content": user}],

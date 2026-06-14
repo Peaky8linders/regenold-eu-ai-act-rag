@@ -5912,6 +5912,70 @@ sides (`"special categories"` exists only in the engine map). No action needed.
 * **Unit** — `test_r117_scribe_reanchor` + `test_regenold_scope` +
   `test_classification_verdicts` → **347 pass**.
 
+## Round 118 — Antifragile live re-measurement + MedTech multi-turn eval + Opus 4.8 usage (2026-06-15)
+
+Re-measured the 20-question Antifragile expert review LIVE against deployed
+Railway (`d8e6115`, Sonnet 4.6 + Opus 4.8 complex path), built + ran a fresh
+MedTech/life-sciences multi-turn eval, and audited + optimised the Opus 4.8
+Stage-2 usage. Full report:
+[`docs/reviews/R118-antifragile-live-medtech-opus.md`](docs/reviews/R118-antifragile-live-medtech-opus.md)
++ [`docs/reviews/R118-opus48-usage-audit.md`](docs/reviews/R118-opus48-usage-audit.md).
+
+### Antifragile-20 LIVE (vs the expert ground truth)
+Ref Loose **0.646** / Ref Strict **0.718** / Ans Strict **0.482** / Ans
+Conciseness 0.70 / **Tone 1.0** / kw 0.51 / **expert-mistakes resolved 16/37
+(43%)** / Stage-2 fired 20/20 / Opus fired 5/20 / latency **p50 22.8 s, p95
+65 s**. The load-bearing legal errors from the original review are **fixed**:
+social-scoring "by public authorities" (q01/q02), provider/deployer role error
+(q05, 50(1) provider / 50(3) deployer), penalty 99(4) €15M/3% (q09),
+guiding-principles topic-shift (q07), irrelevant citations (q02/q04/q06).
+
+### #1 remaining gap — multi-part answer truncation (live-only)
+q01 "four tiers"→tier 1, q03 "two routes"→route 1, q12/q13/q15 drop the
+high-risk/transparency layers → both completeness AND the missing parts'
+citations are lost (q01 RefL 0.17, q03 0.33). When NOT truncated (q04/q05/q06)
+RefL 1.0. Answers are 1-2 sentences, **under** the 4-sentence/1200-char caps →
+it's Stage-2 over-compression ("AT MOST 3 sentences" R80.1 vs closed-set
+completeness R111), NOT the wire cap. q13 truncates **on the Opus path too** →
+not a model-capability issue. Highest-leverage lever → **R119**.
+
+### MedTech multi-turn eval (new) — `scenarios_medtech_multiturn_r118.py`
+10 × 3-turn medtech/life-sci scenarios. Live (re-scored): Ref Loose **0.485**,
+4/10 coherent, Tone 1.0, Opus 4/10, p50 33 s. Strong on GPAI-systemic (refL
+1.0) + worker-emotion (1.0); weak rows (mt_05 R&D→market, mt_06 chatbot
+deployer-duty) **mis-anchor the final turn and are on the Opus path** — the
+multi-turn coreference/retrieval gap is not fixed by a stronger model.
+
+### Opus 4.8 usage — audit + shipped
+The audit (verified) found Stage-2 fires for EVERY in-scope question (R-2026-06-11
+`forced_synthesis_override`); `is_complex_question` only selects Sonnet vs Opus
+4.8 — and the discriminator is **sentence count** (`_is_multi_phrase`), not
+regulatory difficulty (all 5 Opus routes via "two sentences", zero via the five
+difficulty regexes). Shipped (both env-gated, davidath byte-identical):
+* **REC-1** — `REGENOLD_COMPLEX_GATE_WIDE` (default OFF) in
+  `app/engines/question_complexity.py`: widened difficulty gate routes hard
+  single-sentence questions (always/ever-prohibited, monitor-emotions,
+  biometric-triage, general-purpose-AI-model, safety-component, robotic-surgery,
+  conformity-assessment) to Opus 4.8; fixes the latent `always\s+prohibit\b`
+  boundary bug. Verified: OFF → 5 complex (baseline), ON → 9 (adds q12/15/19/20).
+* **REC-4** — `app/engines/graph_rag.py`: Anthropic-SDK Stage-2 `max_tokens`
+  floor (→1024) parity with the wrapper path (R112.2). The SDK sibling passed
+  the raw 384 default → Pro-tier Opus truncation.
+* Deferred (need live A/B): REC-2 small extended-thinking budget; REC-3
+  5-sentence complex envelope; default REC-1 ON.
+
+### Gates
+pytest R118-gate (10) + complexity (30) + anthropic (21) = **61/61**; REC-1
+firing OFF→ON 5→9; OOS probe **21/21, 0 leaks**; single deterministic route
+call correct. **davidath byte-identical by construction** (REC-1 env-OFF
+firing verified; REC-4 `provider=cli`-inert) — the full 476-row run was blocked
+by a pre-existing harness latency (external-embeddings → `api.openai.com` ~6.5 s
+on role-noun queries; affects main equally; fast-path env is
+`OPENAI_API_BASE=http://127.0.0.1:1/v1`, NOT `env -u OPENAI_API_BASE`). New
+eval surfaces: `evals/regenold/antifragile_groundtruth.py`,
+`antifragile_live.py`, `scenarios_medtech_multiturn_r118.py`,
+`build_judge_input.py`; `tests/test_r118_opus_gate.py`.
+
 ## Round 114 — Antifragile deep re-review: persona workflow + wire fixes + generalization audit (2026-06-12)
 
 A full persona-based re-review of the 20-question Antifragile dataset against

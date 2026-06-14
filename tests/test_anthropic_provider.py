@@ -316,7 +316,10 @@ class TestAnthropicCompleteFailSoft:
         # Default model when unset comes from settings.graph_rag.model.
         kwargs = captured["create_kwargs"]
         assert kwargs["model"] == settings.graph_rag.model
-        assert kwargs["max_tokens"] == 64
+        # R118 REC-4 — the SDK path now floors max_tokens to 1024 (parity with
+        # the wrapper-path R112.2 floor), so a low request (here 64) is lifted
+        # to 1024 to avoid Pro-tier Opus truncation. Pre-R118 this asserted 64.
+        assert kwargs["max_tokens"] == 1024
         assert kwargs["temperature"] == 0.0
         assert kwargs["system"] == "hello"
         assert kwargs["messages"] == [{"role": "user", "content": "ping"}]
