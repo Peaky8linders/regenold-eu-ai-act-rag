@@ -5819,6 +5819,96 @@ PDF-example classification topic — hard rule #3 caution), q20 Art. 14/72
 robotic-surgery depth, deterministic QA-dump lead ordering (q02/q10
 fallback shapes — live Stage-2 heals them).
 
+## Round 117-FOLLOWUP — de-overfit medical-scribe vocab + engine/scope divergence audit (2026-06-14)
+
+Generalization follow-up to the R117 audit, which flagged three overfit
+findings but left them UNCHANGED because they are davidath-relevant AND touch
+the protected doctor-patient-transcription PDF example (hard rule #3) — they
+needed careful A/B verification first (the R115 "Deferred" note above named the
+scope.py side of exactly this concern). This round resolves them: the genuine,
+gate-safe overfit ships; the two real engine/scope divergences are documented
+as intentional because reconciling either would regress davidath or break a
+pinned test.
+
+### OVF-2 / OVF-3 — SHIPPED: scribe vocab re-anchored off the Annex III assertion
+
+[`app/integrations/regenold/scope.py`](app/integrations/regenold/scope.py)
+`KEYWORD_TO_ARTICLE` — the **R116 medical-transcription "vocab widening" block**
+(`ambient clinical documentation`, `medical`/`clinical scribe`, `clinical
+notes`, `medical`/`clinical dictation`, `consultation`/`visit transcription`,
+`clinical`/`medical speech-to-text`, …) mapped a PURE transcription tool — no
+diagnostic or decision function — to **`Annex III`** (high-risk). That is wrong
+and was overfit paraphrase-tuning of the protected PDF example: a pure scribe is
+**limited-risk**, whose operative duty is the Art. 50 transparency obligation.
+Re-anchored the 14 R116 entries **`Annex III` → `Art. 50`**.
+
+This brings scope.py into line with the project's OWN established decisions,
+all of which already rejected "transcription = Annex III":
+* `app/data/subpoint_emitter.py` maps the same phrases to the **Art. 6.1 leaf
+  ONLY** (the conditional medical-device-safety-component route), with an
+  explicit comment that an Annex III leaf contradicts the deterministic answer
+  prose ("not listed in Annex III as a high-risk use case");
+* the engine keyword map already dropped `transcrib`→Annex III, pinned by
+  `test_classification_verdicts.py::test_transcribe_not_routed_to_annex_iii_via_keyword`;
+* the MedTech scribe scenarios (`mv2_03`, `mv3_07`) carry gold `["Article 50"]`
+  / "not high-risk".
+
+The **R39 block above is deliberately LEFT at `Annex III`** — it is the
+established doctor-patient-transcription PDF-example handling (hard rule #3),
+and that scenario (`risk_doctor_patient_transcription`) frames its question
+around Annex III ("…high-risk as per the use cases of Annex III?") and must
+surface it. The R116 phrases have **zero textual overlap** with that scenario,
+so the re-anchor cannot touch it.
+
+**davidath-safe by construction**: the 14 scribe phrases have **0 hits** across
+`qa_pairs.json` + `scenarios.json` (verified deterministically), so changing
+their article mapping cannot move any gold-scored row. +1 regression module
+`tests/test_r117_scribe_reanchor.py` (R116 phrases → Art. 50; R39 phrases stay
+Annex III).
+
+### OVF-4 — DOCUMENTED, NOT shipped: engine ↔ scope `_KEYWORD_ENTITY_MAP` divergence
+
+The R117 audit listed four "divergent" keys. Reading both maps
+([`_graph_rag_data.py`](app/engines/_graph_rag_data.py) `_KEYWORD_ENTITY_MAP`
+vs `scope.py` `KEYWORD_TO_ARTICLE`) showed only **two** actually diverge — and
+both are A/B-blocked from a safe reconcile, so they stay as-is:
+
+* **`"transparency obligation(s)"`** — engine → **Art. 50**, scope → **Art. 13**.
+  NOT reconciled: engine→Art.50 is **test-locked** by
+  `test_graph_rag_bugfixes.py` ("`transparency obligations` … must surface
+  Art. 50"), and the phrase has **29 davidath hits** (2 QA + 27 scenarios) →
+  changing either side moves the davidath Ref axes (violates byte-identical)
+  AND/OR breaks a pinned test. The divergence is appropriate **context-
+  sensitivity**: scope anchors the high-risk transparency article (Art. 13) for
+  scope-gating; the engine surfaces the general/limited-risk transparency entity
+  (Art. 50). Left divergent.
+* **`"medical device(s)"`** — engine → **Annex I**, scope → **Art. 6**.
+  NOT reconciled: **0 davidath hits** (no gate signal to choose a direction),
+  and both sides are internally consistent — the engine deliberately groups
+  `medical device` with `mdr`/`ivdr` → Annex I (the product-list route), scope
+  anchors the Art. 6 high-risk-classification article, and the engine's own
+  `medical_transcription` verdict already cites **both** Art. 6 AND Annex I.
+  Forcing one side would either introduce intra-module inconsistency or make an
+  unverifiable live-only change. Left divergent.
+
+The other two audit-listed keys do **not** actually diverge: `"conformity
+assessment"` → Art. 43 on both sides; `"data governance"` → Art. 10 on both
+sides (`"special categories"` exists only in the engine map). No action needed.
+
+### Verification (isolated worktree, A/B off main HEAD a2a8b3a)
+
+* **davidath (476)** — **byte-identical** baseline ↔ post-edit on every rubric
+  axis: Ans Strict **0.3511** / Ref Loose **0.5925** / Ref Strict **0.4719** /
+  Ref Conciseness **0.43** / Tone **1.0** / multi-turn **20/20**. Structural:
+  0 R116-phrase hits in the dataset → the re-anchor is a no-op on the bench.
+* **OOS probe** (`runner_v2 --local --probe-oos`) — **21/21 pass, 0 scope
+  leaks** (r34_p0 5, r47_e 2, r54_1_c2 8, injection 3, other_regulation 3).
+* **276-runner** — **255/255 pass** (0 fail), RISK_F1 macro 0.85, Retrieval
+  F1 0.76; the protected `risk_doctor_patient_transcription` scenario passes
+  (R39 untouched, and its own gold framing already says "NOT … in Annex III").
+* **Unit** — `test_r117_scribe_reanchor` + `test_regenold_scope` +
+  `test_classification_verdicts` → **347 pass**.
+
 ## Round 114 — Antifragile deep re-review: persona workflow + wire fixes + generalization audit (2026-06-12)
 
 A full persona-based re-review of the 20-question Antifragile dataset against

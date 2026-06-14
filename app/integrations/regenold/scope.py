@@ -1516,25 +1516,49 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "health record": "Annex III",
     "clinical dialogue": "Annex III",
     "physician dialogue": "Annex III",
-    # R116 — medical-transcription vocab widening. Same Annex III anchor as
-    # the R39 block above (the subpoint_emitter independently emits the
-    # Art. 6.1 leaf). Multi-word, medical-qualified forms ONLY, so generic
-    # speech-to-text / dictation / note-taking OUTSIDE a clinical context
-    # never flips scope (verified against the OOS probe set).
-    "ambient clinical documentation": "Annex III",
-    "ambient voice documentation": "Annex III",
-    "clinical documentation ai": "Annex III",
-    "clinical note generation": "Annex III",
-    "clinical note-taking": "Annex III",
-    "clinical notes": "Annex III",
-    "medical dictation": "Annex III",
-    "clinical dictation": "Annex III",
-    "medical scribe": "Annex III",
-    "clinical scribe": "Annex III",
-    "consultation transcription": "Annex III",
-    "visit transcription": "Annex III",
-    "clinical speech-to-text": "Annex III",
-    "medical speech-to-text": "Annex III",
+    # R116 — medical-transcription vocab widening.
+    # R117-FOLLOWUP (de-overfit): re-anchored from "Annex III" to "Art. 50".
+    # A PURE transcription / scribe tool with no diagnostic or decision
+    # function is NOT an Annex III high-risk use case — it is limited-risk,
+    # whose operative duty is the Art. 50 transparency obligation (inform
+    # people they interact with / receive output from an AI system). The old
+    # "Annex III" value was overfit paraphrase-tuning that asserted a wrong
+    # classification and contradicted the project's own established decision
+    # that transcription must NOT route to Annex III:
+    #   * subpoint_emitter.py maps these same phrases to the Art. 6.1 leaf
+    #     ONLY (the conditional medical-device-safety-component route), with
+    #     an explicit comment that emitting an Annex III leaf contradicts the
+    #     deterministic answer prose ("not listed in Annex III");
+    #   * the engine keyword map already dropped transcrib→Annex III, pinned
+    #     by test_classification_verdicts.py::
+    #     test_transcribe_not_routed_to_annex_iii_via_keyword;
+    #   * the MedTech scribe scenarios (mv2_03 / mv3_07) carry gold
+    #     ["Article 50"] / "not high-risk".
+    # The R39 block ABOVE deliberately stays "Annex III": it is the
+    # established doctor-patient-transcription PDF-example handling (hard rule
+    # #3), and that scenario (risk_doctor_patient_transcription) frames its
+    # question around Annex III ("...high-risk as per the use cases of Annex
+    # III?") and must surface it. The R116 phrases below have ZERO overlap
+    # with that scenario's text, so this re-anchor cannot touch it.
+    # davidath-safe: these scribe phrases have 0 hits across qa_pairs.json +
+    # scenarios.json (verified), so the bench stays byte-identical.
+    # Multi-word, medical-qualified forms ONLY, so generic speech-to-text /
+    # dictation / note-taking OUTSIDE a clinical context never flips scope
+    # (verified against the OOS probe set).
+    "ambient clinical documentation": "Art. 50",
+    "ambient voice documentation": "Art. 50",
+    "clinical documentation ai": "Art. 50",
+    "clinical note generation": "Art. 50",
+    "clinical note-taking": "Art. 50",
+    "clinical notes": "Art. 50",
+    "medical dictation": "Art. 50",
+    "clinical dictation": "Art. 50",
+    "medical scribe": "Art. 50",
+    "clinical scribe": "Art. 50",
+    "consultation transcription": "Art. 50",
+    "visit transcription": "Art. 50",
+    "clinical speech-to-text": "Art. 50",
+    "medical speech-to-text": "Art. 50",
     # ── Round-2 anchor surfacing (Regenold competition gap-closers) ──
     # Each phrase below was a real eval failure — the question passed
     # scope but didn't surface a defensive citation because no keyword
