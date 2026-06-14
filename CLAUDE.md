@@ -5901,6 +5901,9 @@ sides (`"special categories"` exists only in the engine map). No action needed.
   axis: Ans Strict **0.3511** / Ref Loose **0.5925** / Ref Strict **0.4719** /
   Ref Conciseness **0.43** / Tone **1.0** / multi-turn **20/20**. Structural:
   0 R116-phrase hits in the dataset → the re-anchor is a no-op on the bench.
+  Empirically confirmed by a per-row sidecar diff (baseline ↔ post-edit):
+  **0 differences across all 476 rows** on `pred_answer`, `pred_refs`, and all
+  7 rubric score axes (only `latency_ms` differs).
 * **OOS probe** (`runner_v2 --local --probe-oos`) — **21/21 pass, 0 scope
   leaks** (r34_p0 5, r47_e 2, r54_1_c2 8, injection 3, other_regulation 3).
 * **276-runner** — **255/255 pass** (0 fail), RISK_F1 macro 0.85, Retrieval
