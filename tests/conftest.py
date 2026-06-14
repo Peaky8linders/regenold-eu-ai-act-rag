@@ -75,7 +75,7 @@ if os.getenv("REGENOLD_TEST_ALLOW_LIVE", "").strip().lower() not in (
     "on",
 ):
     # Empty string overrides the ``.env`` value and reads as "disabled" by
-    # every presence / truthy gate (graph client, Groq key, RushDB token, …).
+    # every presence / truthy gate (graph client, Groq key, …).
     # NOTE: ``OPENAI_API_KEY`` is deliberately NOT cleared — some unit tests
     # (e.g. ``test_external_embeddings``) build a mocked OpenAI client that
     # still needs a non-empty key; and the Stage-2 master gate is left at its
@@ -90,7 +90,6 @@ if os.getenv("REGENOLD_TEST_ALLOW_LIVE", "").strip().lower() not in (
         "DATABASE_URL",
         "GROQ_API_KEY",
         "COHERE_API_KEY",
-        "RUSHDB_AUTH_TOKEN",
         "REGENOLD_INTENT_PROVIDER",
         "P2P_GRAPH_RAG_API_KEY",
     ):
@@ -408,35 +407,4 @@ def _r94_pin_verbatim_off(request, monkeypatch):
     yield
 
 
-# R98 (2026-05-30) — RushDB is now OPT-IN. The 2026-05-25 RushDB migration
-# hit RushDB's free-trial limits, so Neo4j Aura is the default graph
-# backend again and every RushDB surface is gated behind
-# ``REGENOLD_GRAPH_BACKEND=rushdb`` (see
-# app/graph/rushdb_config.py::rushdb_backend_selected). The RushDB-specific
-# suites still exercise the dormant RushDB code paths, so they opt in here;
-# every other test runs under the default neo4j backend (RushDB inert),
-# which is exactly what production now does.
-_RUSHDB_OPT_IN_MODULES = frozenset(
-    {
-        "test_rushdb_client",
-        "test_rushdb_auto_seed",
-        "test_rushdb_hybrid_retrieval",
-        "test_seed_rushdb_kb",
-    }
-)
 
-
-@pytest.fixture(autouse=True)
-def _rushdb_backend_opt_in(request, monkeypatch):
-    """Select the RushDB backend for the RushDB-specific suites only.
-
-    ``test_healthz_graph`` is intentionally excluded: it monkeypatches
-    ``rushdb_client.is_enabled`` directly (replacing the function), so it
-    bypasses the backend gate and doesn't need the opt-in.
-    """
-    mod = getattr(request, "module", None)
-    name = getattr(mod, "__name__", "") if mod is not None else ""
-    stem = name.rsplit(".", 1)[-1]
-    if stem in _RUSHDB_OPT_IN_MODULES:
-        monkeypatch.setenv("REGENOLD_GRAPH_BACKEND", "rushdb")
-    yield

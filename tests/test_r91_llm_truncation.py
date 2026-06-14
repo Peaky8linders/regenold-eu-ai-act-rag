@@ -226,9 +226,9 @@ class TestRewriteMultiturnQueryTruncation:
 
 class TestOpenAIWrapperCompleteForGraphRagTruncation:
     def test_wrapper_truncated_returns_none(self, monkeypatch) -> None:
-        """``_openai_wrapper_complete_for_graph_rag`` returns None when
+        """``_openai_wrapper_complete_for_graph_rag`` raises RuntimeError when
         the underlying wrapper response carries ``finish_reason="length"``.
-        That None propagates to ``_claude_max_enhance_answer`` →
+        The exception propagates to ``_claude_max_enhance_answer`` →
         ``_two_stage_generate`` falls back to the deterministic KG draft
         → ``stage2_landed=False`` → R72 reconcile no-op → valid cites
         stay on the wire."""
@@ -251,10 +251,10 @@ class TestOpenAIWrapperCompleteForGraphRagTruncation:
             from app.engines.graph_rag import (
                 _openai_wrapper_complete_for_graph_rag,
             )
-            result = _openai_wrapper_complete_for_graph_rag(
-                system="s", user="u", max_tokens=512, temperature=0.0,
-            )
-        assert result is None
+            with pytest.raises(RuntimeError, match="truncated"):
+                _openai_wrapper_complete_for_graph_rag(
+                    system="s", user="u", max_tokens=512, temperature=0.0,
+                )
 
     def test_wrapper_natural_stop_returns_text(self, monkeypatch) -> None:
         """``finish_reason="stop"`` (or absent) returns the text as before."""
@@ -320,10 +320,10 @@ class TestOpenAIWrapperCompleteForGraphRagTruncation:
             from app.engines.graph_rag import (
                 _openai_wrapper_complete_for_graph_rag,
             )
-            result = _openai_wrapper_complete_for_graph_rag(
-                system="s", user="u", max_tokens=512, temperature=0.0,
-            )
-        assert result is None
+            with pytest.raises(RuntimeError, match="truncated"):
+                _openai_wrapper_complete_for_graph_rag(
+                    system="s", user="u", max_tokens=512, temperature=0.0,
+                )
 
     def test_wrapper_complete_answer_with_trailing_paren_returns_text(
         self, monkeypatch

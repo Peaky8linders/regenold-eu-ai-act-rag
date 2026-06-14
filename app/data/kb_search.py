@@ -860,24 +860,7 @@ def top_articles_by_relevance(
             # R69 — RRF when REGENOLD_RRF_FUSION is on, else additive fill.
             fused = _fuse_dense(fused, emb_refs, k, bm25_scores=best)
 
-    # RushDB hybrid retrieval (Hybrid_RAG_Guide.md): intent + semantic +
-    # metadata parallel search on Article/Annex ``content`` fields.
-    # Env-gated REGENOLD_RUSHDB_HYBRID=1 (default OFF). Purely additive —
-    # never displaces BM25 winners; davidath parity preserved.
-    try:
-        from app.engines.rushdb_hybrid_retrieval import (  # noqa: PLC0415
-            is_hybrid_enabled as _rush_hybrid_on,
-        )
-        from app.engines.rushdb_hybrid_retrieval import (
-            retrieve_article_refs as _rush_hybrid_refs,
-        )
-        if _rush_hybrid_on():
-            rush_refs = _rush_hybrid_refs(question, limit=k)
-            for extra_ref in rush_refs:
-                if extra_ref not in fused and len(fused) < k * 2:
-                    fused.append(extra_ref)
-    except Exception:  # noqa: BLE001 — fail-soft
-        pass
+
 
     # Round 35 — Neo4j 2-hop graph expansion (env-gated REGENOLD_GRAPH_2HOP).
     # When OFF (default) the call returns empty in 1 µs and ``fused`` is

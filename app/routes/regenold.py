@@ -1259,9 +1259,6 @@ def _engine_cache_key(
             #     already keyed).
             #   * REGENOLD_STAGE2_WEB_SEARCH — gates the Stage-2 DDG
             #     web-search context path in graph_rag.
-            #   * REGENOLD_RUSHDB_HYBRID / REGENOLD_GRAPH_BACKEND —
-            #     backend selector + hybrid-retrieval gate (double-gated,
-            #     but the doctrine is unconditional).
             # NOT added: P2P_GRAPH_RAG_MODEL / P2P_GRAPH_RAG_COMPLEX_MODEL /
             # P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS — those are snapshot
             # into the module-level ``settings`` singleton at import time
@@ -1277,8 +1274,6 @@ def _engine_cache_key(
             "REGENOLD_STAGE2_MODEL_GROQ",
             "REGENOLD_STAGE2_MODEL_GEMINI",
             "REGENOLD_STAGE2_WEB_SEARCH",
-            "REGENOLD_RUSHDB_HYBRID",
-            "REGENOLD_GRAPH_BACKEND",
             # R117 — LogicRAG (execute_logic_rag) REPLACES the entire retrieval
             # engine when REGENOLD_LOGIC_RAG=1, and REGENOLD_LOGIC_RAG_MODEL
             # selects the synthesis-prose model that lands in the cached

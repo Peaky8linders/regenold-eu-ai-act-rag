@@ -114,56 +114,6 @@ class TestDisabledPath:
         assert r.status_code == 200
 
 
-# ─── RushDB path: healthy stats ──────────────────────────────────────────────
-
-
-class TestRushdbPath:
-    def test_rushdb_healthy_returns_stats(
-        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """When RushDB is primary and enabled, the graph health probe should
-        return the RushDB stats and counts with detail='ok (rushdb)'."""
-        monkeypatch.setenv("RUSHDB_AUTH_TOKEN", "fake-token")
-        
-        monkeypatch.setattr(
-            "app.graph.rushdb_client.is_enabled",
-            lambda: True,
-        )
-        monkeypatch.setattr(
-            "app.graph.rushdb_client.get_stats",
-            lambda: {
-                "graph_ok": True,
-                "node_counts": {
-                    "Article": 113,
-                    "Annex": 13,
-                    "Recital": 180,
-                    "Definition": 68,
-                    "Obligation": 113,
-                    "AnnexIIICategory": 8,
-                    "RiskLevel": 4,
-                    "OperatorRole": 5,
-                },
-                "seed_version": "2026-05-27-rushdb-v2",
-                "kb_version": "2026.05.27.v2",
-                "total_nodes": 505,
-                "total_edges": 351,
-                "elapsed_ms": 12,
-            },
-        )
-
-        r = client.get("/healthz/graph")
-        assert r.status_code == 200
-        body = r.json()
-        assert body["graph_enabled"] is True
-        assert body["graph_ok"] is True
-        assert body["detail"] == "ok (rushdb)"
-        assert body["seed_version"] == "2026-05-27-rushdb-v2"
-        assert body["kb_version"] == "2026.05.27.v2"
-        assert body["node_counts"]["Article"] == 113
-        assert body["node_counts"]["Annex"] == 13
-        assert body["edge_counts"]["cross_refs_inferred"] == 351
-        assert body["elapsed_ms"] == 12
-
 
 # ─── Unhealthy path: connection fails / ping errors ──────────────────────────
 

@@ -29,7 +29,7 @@ def _mock_wrapper():
     inspect the OpenAIWrapperRequest the engine builds."""
     mock_provider = MagicMock()
     mock_provider.complete = MagicMock(
-        return_value=OpenAIWrapperResponse(text="ok", model="claude-sonnet-4-6")
+        return_value=OpenAIWrapperResponse(text="ok.", model="claude-sonnet-4-6")
     )
     with patch(
         "app.llm.openai_wrapper_provider.get_openai_wrapper_provider",
