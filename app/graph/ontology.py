@@ -17,6 +17,13 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from app.graph.schema import (
+    REL_HAS_DEFINITION,
+    REL_HAS_OBLIGATION,
+    REL_HAS_RECITAL_ANCHOR,
+    REL_TRIGGERS_HIGH_RISK_UNDER,
+)
+
 # ─── Node Types ──────────────────────────────────────────────────────────────
 
 
@@ -282,7 +289,18 @@ class CampaignNode(BaseModel):
 
 class EdgeType(str, Enum):
     # ─── Layer 1 (global KB) ──────────────────────────────────────────────
-    requires = "REQUIRES"
+    # R121 — the article→obligation / definition / recital / high-risk edges
+    # the seeder actually MERGEs, sourced from the single schema source of
+    # truth (``app.graph.schema``). ``requires`` below is a stale, UNSEEDED
+    # alias kept only for backward-compat; the real article→obligation edge
+    # is ``has_obligation`` (= ``HAS_OBLIGATION``). See R99.1 for the drift bug
+    # this divergence caused (the read query matched ``REQUIRES`` → empty graph
+    # → wire zero-retrieval floor).
+    has_obligation = REL_HAS_OBLIGATION
+    has_definition = REL_HAS_DEFINITION
+    has_recital_anchor = REL_HAS_RECITAL_ANCHOR
+    triggers_high_risk_under = REL_TRIGGERS_HIGH_RISK_UNDER
+    requires = "REQUIRES"  # DEPRECATED / unseeded — use ``has_obligation``
     assesses = "ASSESSES"
     belongs_to = "BELONGS_TO"
     applies_at = "APPLIES_AT"
