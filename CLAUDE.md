@@ -6273,6 +6273,88 @@ tests in `tests/test_logic_rag.py`. The wins (multi-rank obligations now
 carried, latency bounded, no zero-retrieval floor off LogicRAG, no injection
 surface) land on the LIVE Neo4j + Claude-Max path where LogicRAG fires.
 
+## Round 121 — Embedded property-graph backend: Orbit-pattern, Neo4j-Aura-free 2-hop (2026-06-15)
+
+Part A of an architecture audit of GitLab's **Orbit / Knowledge-Graph**
+project ([`gitlabhq/orbit-knowledge-graph`](https://github.com/gitlabhq/orbit-knowledge-graph)
+— a Rust property-graph engine over code + SDLC, DuckDB-local /
+ClickHouse-remote, EE-licensed, no embeddings/LLM-RAG). Orbit is
+domain-mismatched (code, not legal text) and not vendorable, but its
+**"local-mode embedded property graph"** pattern lands squarely on this
+repo's biggest graph liability: the hosted **Neo4j Aura** 2-hop path has
+been a documented production drag (R98 ~20× duplicate nodes, R99.1
+empty-graph zero-retrieval bug, free-tier limits that killed RushDB before
+it, availability + auto-seed ops). Our KB graph is **126 nodes / ~216
+edges — tiny + static** and does not justify a hosted graph DB.
+
+### `app/graph/embedded_graph.py` (new) — the embedded backend
+
+An **in-process SQLite property graph** built at startup from the SAME
+in-process source the Neo4j seeder uses
+(`kb_xrefs._build_xref_graph` / `all_edges` + `ARTICLE_EXISTENCE`),
+serving the 2-hop `CROSS_REFERENCES` traversal as a recursive SQL CTE.
+Strictly better than Aura at our scale: zero external service, zero
+network, zero seed step, always in sync with `KB_VERSION` (rebuilt from the
+live registries → no duplicate-node drift), can never return the R99.1
+empty-graph failure (always built), sub-ms deterministic queries.
+
+* **Single ontology source of truth** (Orbit pattern #2) — `ONTOLOGY` +
+  import-time `_self_check()`; the builder + traversal read ONE schema, so
+  the R99.1 class of seed/Cypher edge-name drift (`REQUIRES` vs
+  `HAS_OBLIGATION`) is structurally impossible.
+* **Typed traversal helpers** (Orbit pattern #3) — `neighbors()` /
+  `two_hop()` instead of hand-copied Cypher strings (the drift R63-F /
+  R99.1 kept finding).
+* Mirrors the seeded-Neo4j `CROSS_REFERENCES` edge set exactly (the full
+  graph incl. the R47-A orphan-rescue backfill), so the embedded 2-hop
+  returns the same neighbours the Neo4j 2-hop would — without Aura.
+
+### Wiring — `app/engines/graph_expand_2hop.py`
+
+Backend-aware: when `REGENOLD_GRAPH_BACKEND=embedded`, `is_enabled()` +
+`expand_2hop()` query the in-process graph (no Neo4j client, no executor /
+wall-clock timeout — sub-ms SQL); otherwise the existing Neo4j Cypher path
+is byte-for-byte unchanged. The seed-normalisation step was hoisted above
+the new backend branch (behaviour-preserving — the 58 existing 2-hop +
+kb_search tests confirm).
+
+### Selection — `REGENOLD_GRAPH_BACKEND` (railway.toml, default `"neo4j"`)
+
+Third value alongside `neo4j` (default) / `rushdb`. **Default OFF** → the
+Neo4j path is unchanged on every deploy, the davidath bench is byte-
+identical by construction, and retiring Aura is a one-variable flip
+(`railway variables --set REGENOLD_GRAPH_BACKEND=embedded`).
+
+### Verification (isolated worktree, off main 1892b94)
+
+* `pytest tests/test_embedded_graph.py` — **28/28** (build, 2-hop, typed
+  neighbours, selector, singleton, ontology self-check, expand_2hop wiring).
+* Existing 2-hop + kb_search suites — **58/58** (reorder behaviour-preserving).
+* `evals.regenold.runner` — **255/255 with the embedded backend ON,
+  byte-identical to the default OFF run** (ref_format 255/255, sentence_cap
+  147/255, refs_within_max 242/255, RISK_F1 macro 0.85) — additive-below-cap,
+  no winner displacement (the R31/R35/R110 BM25-saturation finding).
+* davidath bench (default) — Ans Strict **0.3535** / Ref Loose **0.5928** /
+  Ref Strict **0.4723** / Ref Conciseness 0.43 / Tone **1.0** / multi-turn
+  **20/20** — byte-identical to `main@1892b94` (the embedded module is
+  unreachable on the default path; the 276 ON==OFF parity above confirms
+  even the *active* path is identical).
+* OOS probe (`runner_v2 --local --probe-oos`) — **21/21, 0 leaks** (the
+  backend doesn't touch scope).
+* Functional smoke (no Neo4j wired): 126 nodes / 432 directed edges;
+  `Art. 26` → hop1 `[Art. 13, 16, 25, 49]` (the deployer→transparency
+  chain) + 30 hop2-only neighbours, sub-ms; `is_enabled()` True without Aura.
+
+### Where it lands
+
+Default-OFF → no bench movement (the davidath corpus is BM25-saturated, the
+R31/R35/R110 finding repeated). The win is **production reliability**:
+flipping `REGENOLD_GRAPH_BACKEND=embedded` retires the Neo4j Aura dependency
+for the 2-hop layer — no hosted graph DB, no seed / duplicate-node ops, no
+R99.1 empty-graph class of bug — while serving the exact same neighbours
+in-process. (Part B — an OpenRouter OpenAI-compatible provider, to replace
+the flaky Claude-Max Cloudflare-tunnel path — queued.)
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

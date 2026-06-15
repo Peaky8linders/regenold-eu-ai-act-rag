@@ -42,12 +42,21 @@ P2P_GRAPH_RAG_ENABLE_STAGE2 = "1"
 REGENOLD_INTENT_PROVIDER = "groq"
 REGENOLD_LOGIC_RAG = "1"
 
-# R98 — graph backend selector. Neo4j Aura is the durable graph backend
-# again (the 2026-05-25 RushDB migration hit RushDB's free-trial limits).
-# This var is the master switch: "neo4j" (default) keeps every RushDB
-# surface inert even if RUSHDB_AUTH_TOKEN is still present; "rushdb"
-# re-enables the RushDB dual-path. The Neo4j Aura creds (NEO4J_URI /
-# NEO4J_USERNAME / NEO4J_PASSWORD) live in the Railway dashboard.
+# R98 / R121 — graph backend selector. The master switch has THREE values:
+#   * "neo4j"    (default) — the hosted Neo4j Aura 2-hop CROSS_REFERENCES
+#                path (creds NEO4J_URI / NEO4J_USERNAME / NEO4J_PASSWORD in
+#                the dashboard). Keeps every RushDB surface inert.
+#   * "embedded" — R121 Orbit-pattern in-process SQLite property graph
+#                (app/graph/embedded_graph.py). Serves the same 2-hop
+#                traversal with ZERO external service: no Aura, no seed
+#                step, no duplicate-node drift (the R98 ~20× / R99.1
+#                empty-graph problems), always in sync with KB_VERSION.
+#                Built in-process from the SAME kb_xrefs source the seeder
+#                uses → identical neighbours. Retires the Aura dependency
+#                for the additive 2-hop layer. Flip on with:
+#                  railway variables --set REGENOLD_GRAPH_BACKEND=embedded
+#   * "rushdb"   — re-enables the RushDB dual-path (also needs
+#                RUSHDB_AUTH_TOKEN). Opt-in only since R98 (free-trial limits).
 REGENOLD_GRAPH_BACKEND = "neo4j"
 
 # Auto-seed Neo4j on boot when NEO4J_URI is set. Default ON — operators
