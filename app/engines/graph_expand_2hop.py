@@ -95,6 +95,28 @@ def _env_enabled() -> bool:
     return os.environ.get(_ENV_VAR, "") == "1"
 
 
+_BACKEND_ENV = "REGENOLD_GRAPH_2HOP_BACKEND"
+
+
+def _backend() -> str:
+    """Resolve the 2-hop traversal backend (R121).
+
+    ``"embedded"`` (default) walks the in-process xref adjacency graph
+    (:func:`app.data.kb_xrefs._build_xref_graph` — the FULL R47 graph, the
+    same data the Neo4j seed is built from). Zero external service,
+    deterministic, sub-ms, and immune to the Neo4j dup-node / empty-graph /
+    availability failure modes (R98 / R99.1). ``"neo4j"`` uses the original
+    Cypher ``CROSS_REFERENCES*1..2`` traversal against a seeded Aura instance —
+    retained as an opt-in, NOT deleted. Unrecognised values fall back to
+    ``"embedded"``.
+    """
+    return (
+        "neo4j"
+        if os.environ.get(_BACKEND_ENV, "").strip().lower() == "neo4j"
+        else "embedded"
+    )
+
+
 # ── Public dataclass ────────────────────────────────────────────────────────
 
 
@@ -262,8 +284,12 @@ def is_enabled() -> bool:
                 return False
     except Exception:
         pass
-    # Lazy client import — defers the heavy ``app.graph.client`` load
-    # until the first ``is_enabled()`` / ``expand_2hop`` call.
+    # R121 — the default embedded backend walks the in-process xref graph and
+    # needs no Neo4j client; enablement is just the env-gate above.
+    if _backend() == "embedded":
+        return True
+    # neo4j backend (opt-in): lazy client import — defers the heavy
+    # ``app.graph.client`` load until the first ``is_enabled()`` call.
     try:
         from app.graph.client import get_graph_client
     except Exception:  # noqa: BLE001
@@ -340,6 +366,10 @@ def expand_2hop(
         return GraphExpansion()
     if max_hop2 <= 0:
         return _empty_expansion(seed_articles)
+
+    # R121 — default backend: in-process xref-graph walk, no Neo4j.
+    if _backend() == "embedded":
+        return _expand_2hop_embedded(seed_articles, max_hop2=max_hop2)
 
     client = _resolve_client()
     if client is None:
@@ -424,6 +454,98 @@ def expand_2hop(
             if len(hop2) < max_hop2:
                 hop2.append(internal)
 
+    return GraphExpansion(
+        seed_articles=tuple(seed_echo),
+        hop1_articles=tuple(hop1),
+        hop2_articles=tuple(hop2),
+        elapsed_ms=elapsed_ms,
+    )
+
+
+def _seed_to_internal(seed: str) -> str | None:
+    """Normalise a seed ref to the xref-graph key form (``Art. N`` / ``Annex X``).
+
+    The in-memory xref adjacency graph collapses sub-points to the parent
+    article, so ``Art. 13.2`` → ``Art. 13``. Mirrors :func:`_seed_to_num` but
+    returns the internal string the graph is keyed on, not the Neo4j
+    ``number`` property.
+    """
+    if not seed:
+        return None
+    try:
+        spec = _refs_parse(seed)
+    except _RefsInvalidRefError:
+        return None
+    if spec.is_annex:
+        return f"Annex {spec.annex_roman}"
+    return f"Art. {spec.article_number}"
+
+
+def _expand_2hop_embedded(
+    seed_articles: list[str],
+    *,
+    max_hop2: int = 5,
+) -> GraphExpansion:
+    """In-process 2-hop walk over the in-memory xref adjacency graph (R121).
+
+    The default backend. Mirrors the Neo4j ``CROSS_REFERENCES*1..2`` semantics
+    — split hop1 vs hop2-only neighbours, existence-gate, cap hop2 — but over
+    :func:`app.data.kb_xrefs._build_xref_graph` (the FULL R47 graph, the same
+    data the Neo4j seed is built from). No external service; never raises.
+
+    Determinism: seeds keep their input (BM25-rank) order; neighbours follow
+    the graph's tuple order, so the output is reproducible run-to-run.
+    """
+    seed_echo = [s for s in seed_articles if s]
+    started = time.perf_counter()
+    try:
+        from app.data.kb_xrefs import _build_xref_graph  # noqa: PLC0415
+
+        graph = _build_xref_graph()
+    except Exception:  # noqa: BLE001
+        logger.debug("graph_2hop embedded: xref graph build failed", exc_info=True)
+        return _empty_expansion(seed_articles)
+
+    # Normalise seeds → graph-key form, preserving BM25-rank order, deduped.
+    seeds_internal: list[str] = []
+    seed_set: set[str] = set()
+    for s in seed_echo:
+        norm = _seed_to_internal(s)
+        if norm is not None and norm not in seed_set:
+            seed_set.add(norm)
+            seeds_internal.append(norm)
+    if not seeds_internal:
+        return _empty_expansion(seed_articles)
+
+    # Hop 1 — direct neighbours of the seeds (excluding the seeds themselves).
+    hop1: list[str] = []
+    hop1_seen: set[str] = set()
+    for seed in seeds_internal:
+        for nbr in graph.get(seed, ()):
+            if nbr in seed_set or nbr in hop1_seen:
+                continue
+            if not _is_real_ref(nbr):
+                continue
+            hop1_seen.add(nbr)
+            hop1.append(nbr)
+
+    # Hop 2-only — neighbours of hop1 that are not a seed or a hop1 node.
+    hop2: list[str] = []
+    hop2_seen: set[str] = set()
+    for n1 in hop1:
+        if len(hop2) >= max_hop2:
+            break
+        for nbr in graph.get(n1, ()):
+            if nbr in seed_set or nbr in hop1_seen or nbr in hop2_seen:
+                continue
+            if not _is_real_ref(nbr):
+                continue
+            hop2_seen.add(nbr)
+            hop2.append(nbr)
+            if len(hop2) >= max_hop2:
+                break
+
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
     return GraphExpansion(
         seed_articles=tuple(seed_echo),
         hop1_articles=tuple(hop1),

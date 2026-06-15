@@ -1167,6 +1167,7 @@ def _engine_cache_key(
         for v in (
             "P2P_GRAPH_RAG_ENABLE_STAGE2",
             "REGENOLD_GRAPH_2HOP",
+            "REGENOLD_GRAPH_2HOP_BACKEND",  # R121 — embedded vs neo4j 2-hop
             "REGENOLD_GRAPH_AWARE",
             "REGENOLD_ENTITY_BOOST",
             "REGENOLD_ENTITY_BOOST_FACTOR_ROLE",

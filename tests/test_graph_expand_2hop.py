@@ -54,8 +54,16 @@ class _FakeClient:
 
 @pytest.fixture(autouse=True)
 def _clear_env(monkeypatch):
-    """Default to env-var unset for every test (explicit set inside)."""
+    """Default to env-var unset for every test (explicit set inside).
+
+    R121 — this module exercises the **Neo4j Cypher** backend (every test
+    mocks ``get_graph_client``). The default backend is now ``embedded``, so
+    pin this module to ``neo4j`` so the mocked-client assertions still drive
+    the Cypher path. The embedded backend has its own suite
+    (``test_graph_expand_embedded.py``).
+    """
     monkeypatch.delenv("REGENOLD_GRAPH_2HOP", raising=False)
+    monkeypatch.setenv("REGENOLD_GRAPH_2HOP_BACKEND", "neo4j")
     yield
 
 
