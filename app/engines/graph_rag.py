@@ -394,7 +394,7 @@ def _openai_wrapper_complete_for_graph_rag(
     else:
         try:
             from app.integrations.regenold.reasoning_trace import record_llm_thinking
-            record_llm_thinking("Standard fast-path generation used (extended thinking disabled or not supported by model tier).", stage=stage_name)
+            record_llm_thinking("Fast-path generation used (extended thinking is disabled by configuration; set P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS > 0 on the complex-question path to enable it).", stage=stage_name)
         except Exception:
             pass
             
@@ -522,7 +522,7 @@ def _anthropic_complete_for_graph_rag(
         else:
             try:
                 from app.integrations.regenold.reasoning_trace import record_llm_thinking
-                record_llm_thinking("Standard fast-path generation used (extended thinking disabled or not supported by model tier).", stage=stage_name)
+                record_llm_thinking("Fast-path generation used (extended thinking is disabled by configuration; set P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS > 0 on the complex-question path to enable it).", stage=stage_name)
             except Exception:
                 pass
     except Exception as exc:  # noqa: BLE001
