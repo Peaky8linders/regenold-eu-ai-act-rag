@@ -415,6 +415,52 @@ CONCEPTS: dict[str, dict] = {
             "workplace.{0,20}deployment",
         ),
     },
+    # R120 — MedTech safety-component classification → Art. 6 (the AI Act
+    # high-risk gateway for safety components of Annex-I-regulated products,
+    # Art. 6(1)(a)). A live MedTech eval found the engine surfaced the
+    # generic obligation chain (Arts. 10/11/12) instead of the classification
+    # basis. The EU product-law terms (MDR/IVDR/Class III/IIb/SaMD) have 0
+    # davidath QUESTION hits → davidath-neutral; "safety component" boosts
+    # Art. 6 only on davidath safety-component scenarios where Art. 6 is
+    # already gold → rubric-positive.
+    "medtech_classification": {
+        "art": 6,
+        # Aliases are deliberately PRODUCT-SPECIFIC. An earlier cut also
+        # carried a broad ``ce.{0,5}mark…risk`` regex (matched davidath
+        # "CE marking … high-risk", gold Art. 48) and ``union harmonisation
+        # legislation`` (matched davidath conformity-exemption questions,
+        # gold Art. 43) — both dropped because they fired on non-Art-6
+        # davidath QA rows. The surviving aliases have 0 davidath QUESTION
+        # hits except "safety component", which fires only on davidath
+        # safety-component scenarios where Art. 6 IS gold (rubric-positive).
+        "aliases": (
+            r"class\s+iii\b",
+            r"class\s+iib\b",
+            r"\bivdr\b",
+            r"\bmdr\b",
+            "safety component",
+            "software as a medical device",
+            r"\bsamd\b",
+            r"notified body.{0,25}conformity",
+            "medical device regulation",
+        ),
+    },
+    # R120 — modification-responsibility → Art. 25 (a substantial
+    # modification makes the modifier a new provider). The literal
+    # "substantial modification" / "substantially modified" aliases were
+    # DROPPED: a davidath QA row ("What must a provider do if a substantial
+    # modification is made…") carries gold Art. 43, so boosting Art. 25 there
+    # would over-cite. mv4_12 fires via "significantly modifying"; the
+    # surviving paraphrase aliases have 0 davidath QUESTION hits.
+    "substantial_modification": {
+        "art": 25,
+        "aliases": (
+            r"significant\w*\s.{0,12}modif",
+            r"modif.{0,30}clinical performance",
+            "major modification",
+            "fundamentally modified",
+        ),
+    },
 }
 
 

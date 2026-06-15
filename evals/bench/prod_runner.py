@@ -328,7 +328,11 @@ def _run_qa_http(
     work: list[tuple[str, dict[str, Any]]] = []
     for idx, item in enumerate(items):
         q = item.get("question") or ""
-        work.append((f"qa_{idx:03d}", {**item, "__question": q}))
+        # Respect a caller-supplied item_id (e.g. the unified live runner's
+        # mv4_*/aireg-*/airb_* labels) so per-scenario analysis is possible;
+        # fall back to the index-based id for callers that don't set one
+        # (davidath qa_pairs) — backward-compatible.
+        work.append((str(item.get("item_id") or f"qa_{idx:03d}"), {**item, "__question": q}))
 
     raw = _batch_dispatch(
         work,

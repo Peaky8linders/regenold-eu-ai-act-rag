@@ -22,8 +22,14 @@ from app.routes.regenold import _collapse_parent_refs
 # ───────────────────────── _collapse_parent_refs ─────────────────────────
 
 
-def test_collapse_keeps_deepest_descendant() -> None:
-    """Article 13 + Article 13.1 + Article 13.1.a → only Article 13.1.a."""
+def test_collapse_keeps_deepest_descendant(monkeypatch) -> None:
+    """Article 13 + Article 13.1 + Article 13.1.a → only Article 13.1.a.
+
+    Collapse is opt-in (``REGENOLD_COLLAPSE_PARENT_REFS``, default OFF to
+    maximise recall against human-annotated gold keys); enable it here to
+    exercise the smallest-cover logic.
+    """
+    monkeypatch.setenv("REGENOLD_COLLAPSE_PARENT_REFS", "1")
     out = _collapse_parent_refs(["Article 13", "Article 13.1.a", "Article 13.1"])
     assert out == ["Article 13.1.a"]
 
@@ -34,22 +40,25 @@ def test_collapse_keeps_siblings_independent() -> None:
     assert out == ["Article 13.1.a", "Article 13.2.b"]
 
 
-def test_collapse_preserves_order_after_drop() -> None:
+def test_collapse_preserves_order_after_drop(monkeypatch) -> None:
     """Survivors keep their relative position; only ancestors disappear."""
+    monkeypatch.setenv("REGENOLD_COLLAPSE_PARENT_REFS", "1")
     out = _collapse_parent_refs(
         ["Article 5", "Article 13.1.a", "Article 13", "Article 5.1.b"]
     )
     assert out == ["Article 13.1.a", "Article 5.1.b"]
 
 
-def test_collapse_annex_chain() -> None:
+def test_collapse_annex_chain(monkeypatch) -> None:
     """Annexes follow the same parent-collapse rule as Articles."""
+    monkeypatch.setenv("REGENOLD_COLLAPSE_PARENT_REFS", "1")
     out = _collapse_parent_refs(["Annex III", "Annex III.1", "Annex III.1.b"])
     assert out == ["Annex III.1.b"]
 
 
-def test_collapse_annex_and_article_independent() -> None:
+def test_collapse_annex_and_article_independent(monkeypatch) -> None:
     """An Annex chain doesn't collapse an Article chain (different namespaces)."""
+    monkeypatch.setenv("REGENOLD_COLLAPSE_PARENT_REFS", "1")
     out = _collapse_parent_refs(["Annex IV", "Article 11", "Article 11.1"])
     assert out == ["Annex IV", "Article 11.1"]
 
@@ -63,6 +72,20 @@ def test_collapse_no_ancestors_returns_input_order() -> None:
 def test_collapse_empty_input_safe() -> None:
     """Empty list is a no-op (route relies on this for the zero-ref path)."""
     assert _collapse_parent_refs([]) == []
+
+
+def test_collapse_default_off_keeps_parents(monkeypatch) -> None:
+    """Default (env unset) keeps parents alongside children.
+
+    ``REGENOLD_COLLAPSE_PARENT_REFS`` is OFF by default (MedTech / R119)
+    so the wire keeps both ``Article 13`` and ``Article 13.1.a`` to
+    maximise recall against human-annotated gold keys. This pins that
+    production default so a future toggle of the gate is a deliberate,
+    visible change.
+    """
+    monkeypatch.delenv("REGENOLD_COLLAPSE_PARENT_REFS", raising=False)
+    refs = ["Article 13", "Article 13.1.a", "Article 13.1"]
+    assert _collapse_parent_refs(refs) == refs
 
 
 # ─────────────────────── normalise_answer_for_regenold ───────────────────────

@@ -538,6 +538,17 @@ def _entity_boosts_from_entities(
     return out
 
 
+# R120 — MedTech product-law signal for the Annex I companion injection.
+# Matches ONLY EU medical-device product terms (MDR/IVDR/Class III/IIb/
+# SaMD/IVD) — all with 0 davidath QUESTION hits — so the Annex I injection
+# below is davidath-neutral by construction.
+_MEDTECH_PRODUCT_RE = re.compile(
+    r"\bclass\s+ii[ab]\b|\bclass\s+iii\b|\bmdr\b|\bivdr\b|"
+    r"software as a medical device|\bsamd\b|in vitro diagnostic",
+    re.IGNORECASE,
+)
+
+
 def top_articles_by_relevance(
     question: str, *, k: int = 3, min_score: float = 1.5,
 ) -> list[str]:
@@ -792,6 +803,38 @@ def top_articles_by_relevance(
                 cb = _confidence_boost(role_art_ref)
                 rb = _bf("role")
                 best[role_art_ref] = synthetic_base * cb * rb
+        except Exception:  # noqa: BLE001 — never fail BM25 on injection
+            pass
+
+    # R120 — MedTech Annex I companion injection (product-specific signal).
+    # Annex I (the Union harmonisation legislation list — MDR/IVDR sit in
+    # its Section A) is the classification BASIS for AI safety components of
+    # regulated medical devices, but its EUR-Lex sector-list prose has ~0
+    # BM25 overlap with MedTech question vocabulary, so it never clears the
+    # admission floor. Inject it ONLY on product-specific tokens (0 davidath
+    # QUESTION hits → davidath-neutral by construction). Gated on
+    # ``_ents_for_injection is not None`` so REGENOLD_ENTITY_BOOST=0 disables
+    # it too. Never displaces a BM25 winner (synthetic mid-pack score). Bare
+    # "safety component" (gold=Art 6 on its 1 davidath row) does NOT trigger
+    # this — avoids an Annex I over-cite there.
+    if (
+        _ents_for_injection is not None
+        and best
+        and question
+        and _MEDTECH_PRODUCT_RE.search(question)
+    ):
+        try:
+            from app.engines.entity_extractor import (  # noqa: PLC0415
+                boost_factor as _bf,
+            )
+            # Lift Annex I to a top-tier synthetic score. Use max() so a
+            # pre-existing tiny BM25 score for Annex I (which would make a
+            # bare ``not in best`` guard skip the lift) is still raised.
+            _annex_i_synthetic = (
+                max(best.values()) * 0.5 * _confidence_boost("Annex I") * _bf("concept")
+            )
+            if _annex_i_synthetic > best.get("Annex I", 0.0):
+                best["Annex I"] = _annex_i_synthetic
         except Exception:  # noqa: BLE001 — never fail BM25 on injection
             pass
 

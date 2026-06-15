@@ -2141,17 +2141,21 @@ def _collapse_parent_refs(refs: list[str]) -> list[str]:
     removed in place. This means the most-specific citation continues
     to lead the list (per ``_reference_rank``'s ``-specificity`` sort
     key), so the wire response opens with the strongest grounding.
+
+    Env-gated via ``REGENOLD_COLLAPSE_PARENT_REFS`` (default OFF = keep
+    parents alongside children to maximise recall against human-annotated
+    gold keys). Set ``REGENOLD_COLLAPSE_PARENT_REFS=1`` to re-enable the
+    original smallest-cover collapsing behaviour.
     """
-    # Smallest-Cover Citations: Keep parent citations (e.g. Article 5) alongside 
-    # child references (e.g. Article 5.1.a) to maximize recall when evaluated 
-    # against human-annotated keys.
-    return refs
-    
     if not refs:
         return refs
-    # Compute every ancestor of every ref. An ancestor is the same
-    # prefix shape with a trailing dot-segment removed. For
-    # ``Article 13.2.a`` the ancestors are ``{"Article 13.2", "Article 13"}``.
+    # Smallest-Cover Citations: when gated OFF, keep parent citations
+    # (e.g. Article 5) alongside child references (e.g. Article 5.1.a)
+    # to maximize recall when evaluated against human-annotated keys.
+    if os.getenv("REGENOLD_COLLAPSE_PARENT_REFS", "0").strip().lower() not in (
+        "1", "true", "yes", "on",
+    ):
+        return list(refs)
     ancestors: set[str] = set()
     for ref in refs:
         # Strip the type prefix to isolate the dotted ID body.
@@ -4231,6 +4235,7 @@ def regenold_eu_ai_act_ask(
     # prose still only describes 1-2 articles for those shapes.
     _has_compound_roles = False
     _compound_strength = ""
+    _has_listing_intent = False
     _scenario_verdict_for_budget = None
     try:
         _scenario_verdict_for_budget = classify_scenario_query(resolved_question or question)

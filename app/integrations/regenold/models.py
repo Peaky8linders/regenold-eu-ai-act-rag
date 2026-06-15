@@ -1095,13 +1095,18 @@ def normalise_answer_for_regenold(
     constant — and the davidath bench (which never sets the env) — at the
     spec's tight 3-sentence cap byte-identically, while letting an operator
     opt into a slightly fuller 4-sentence answer on the live deploy (the
-    competition spec allows "3-4 sentences"). Clamped to [1, 6] so a typo
-    can't uncap the answer.
+    competition spec allows "3-4 sentences"). Multi-phrase or closed-set
+    enumeration questions (R119) get a fuller cap so multi-part answers
+    are not truncated mid-list. Clamped to [1, 12] so a typo can't uncap
+    the answer.
 
     Returns the cleaned, plain-prose answer ready to ship.
     """
     if not text:
         return text
+
+    _is_multi = False
+    _is_enum = False
 
     if max_sentences is None:
         try:
@@ -1112,8 +1117,6 @@ def normalise_answer_for_regenold(
         except ValueError:
             max_sentences = MAX_ANSWER_SENTENCES
 
-        _is_multi = False
-        _is_enum = False
         try:
             from app.routes.regenold import _is_closed_set_enumeration_ask
             from app.engines.question_complexity import is_complex_question, _is_multi_phrase
