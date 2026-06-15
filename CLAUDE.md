@@ -6355,6 +6355,72 @@ R99.1 empty-graph class of bug — while serving the exact same neighbours
 in-process. (Part B — an OpenRouter OpenAI-compatible provider, to replace
 the flaky Claude-Max Cloudflare-tunnel path — queued.)
 
+## Round 122 — Complexity-adaptive answer length (conciseness) (2026-06-15)
+
+User directive: "Conciseness is subjective depending on the complexity of
+question and the EU AI Act related article and paragraphs. optimise
+accordingly." The competition's conciseness axis scores answer length **vs
+that question's own exemplary gold** (`evals/bench/metrics.py::answer_conciseness`
+— quadratic char-length ratio, optimal = match gold), not a fixed budget.
+
+### Root cause — a FLAT length target on a per-question-gold metric
+
+The Stage-2 prompt
+([`app/data/graph_rag_prompts.py`](app/data/graph_rag_prompts.py)) gave ONE
+length target for ALL questions: rule 5 *"keep the whole answer under ~600
+characters"* + the BLUF block *"1–4 concise sentences … a fifth or sixth
+sentence only for a distinct substantive point"*. That `~600 chars` is
+calibrated for the ~520-char scenario gold — so on a simple QA whose gold is
+~140 chars, even a prompt-compliant answer is 4× too long (conciseness ~0.05),
+and the explicit "fifth or sixth sentence" license fed over-length answers.
+
+The two live datasets fail in **opposite** directions, which is exactly why a
+flat rule (or a hard cap) is wrong:
+* **`r121-live-rep100` judge** — conciseness pass-rate **0.21**, dominated by
+  *"sentence count exceeds 4"* (45/100 rows TOO LONG on broad single-topic QA).
+* **R118 antifragile-20** — multi-part answers TRUNCATED to 1-2 sentences
+  (q01 "four tiers"→1, q03 "two routes"→1, TOO SHORT on multi-part).
+
+### The fix — scale length to the question's complexity (Stage-2 prompt only)
+
+Rule 5 + the ANSWER_FORMAT BLUF block now both say the same adaptive thing:
+* simple single-provision / definitional lookup → **ONE tight sentence
+  (~120-220 chars)** — matches the ~140-char QA gold;
+* multi-article scenario / multi-part / role-risk classification → 3-4
+  sentences;
+* closed exhaustively-enumerated statutory set (rule 12b) → every member, even
+  if that needs more.
+
+**No rigid 4-sentence cap** (the user rejected that — "there are answers that
+will require more than 4 sentences"), and the contradictory "fifth or sixth
+sentence" license is removed. Length tracks the question's actual complexity,
+never a fixed target. Composes with the existing rule 12b (closed-set
+completeness) + ANSWER-THE-HEADLINE lines.
+
+### Verification (R121 base = `origin/main` f7a859d; +4 lines, no R121 bundling)
+
+* davidath bench (476) — **byte-identical to R121**: Ans Strict **0.3535** /
+  Ans Loose 0.1888 / Ans Conciseness **0.6136** / Ref Loose **0.5928** / Ref
+  Strict **0.4723** / Ref Conciseness 0.43 / Tone **1.0** / multi-turn
+  **20/20**. The change is Stage-2-prompt-only → unreachable on the
+  deterministic bench (provider=cli, no wrapper) → byte-identical *by
+  construction* (the established R49/R69/R108/R111 pattern).
+* `evals.regenold.runner` (276) — **255/255 (100%)**, RISK_F1 macro 0.85 —
+  identical to R121.
+* OOS probe (`runner_v2 --local --probe-oos`) — **21/21, 0 leaks** (prompt
+  change doesn't touch the scope gate).
+* No test pins the old prompt text (grep-confirmed).
+
+### Where it lands
+
+davidath is the regression guard, not the win surface — the conciseness lift
+is **live-only** (the deterministic bench never fires Stage-2 / Sonnet). The
+target is the live LLM-judge conciseness axis (r121-live 0.21 → projected
+~0.45+ as simple-QA answers drop to 1-2 sentences) AND the R118 multi-part
+truncation (multi-part answers now licensed to run 3-4+ sentences). Confirm
+post-deploy with a live `evals.bench.representative_100 --endpoint <live>` +
+`evals.judge.runner` re-run — conciseness↑ without correctness / refs↓.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a
