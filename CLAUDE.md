@@ -6601,9 +6601,72 @@ fusion is inert under `provider=cli`; Part 2 is eval-only, zero wire impact):
 * davidath bench (476) + 276-runner — see scorecard below (byte-identical
   guard).
 
-Live verification (TestClient → Claude Max tunnel, the eval rule) — fresh
-medtech-graphrag-v124 + a representative-100 subset, both judged by the
-4-axis Sonnet LLM-as-judge — lands in the scorecard below.
+### Round 124 — scorecard (merged as PR #207, then re-measured live)
+
+**Deterministic regression gates (byte-identical guard):**
+
+| Gate | Result |
+| ---- | ------ |
+| davidath 476 — Ans Strict / Ref Loose / Ref Strict / Ref Conc / Tone / mt | **0.3535 / 0.5928 / 0.4723 / 0.43 / 1.0 / 20/20** — byte-identical to R123 |
+| 276-runner | **255/255**, RISK_F1 macro 0.85, ref_format 255/255 |
+| OOS scope probe | **21/21, 0 leaks** |
+| `test_fusion_stage2` / `test_r124_medtech_graphrag` | **45/45 · 9/9** |
+
+Part 1 is byte-identical by construction (fusion inert under `provider=cli`);
+the win is live-only.
+
+**Part-1 latency / gate behaviour (live, TestClient → Claude Max tunnel):**
+
+| Question shape | reasoning-trace verdict | wrapper round-trips | latency |
+| -------------- | ----------------------- | ------------------- | ------- |
+| simple (`grb_24` penalties) | `fusion_skip gate=complex non_complex_question` → single Sonnet polish | **1** | 17.8 s |
+| complex (`grb_20` oncology lifecycle) | `fusion_judge_landed judge=claude-sonnet-4-6 panel=[mistral,opus]` (SWAP fired — Opus, not Sonnet, is the one wrapper member; Groq+Mistral parallel) | **2** | ~76 s |
+
+Down from R123's 2-3 wrapper round-trips (Sonnet + Opus panel + Sonnet judge).
+The remaining absolute seconds are the inherent Claude-Max-tunnel + Opus cost
+the user acknowledged; R124 removes the *extra* serialized tunnel calls.
+
+**Live fresh medtech-graphrag-v124 (24 rows, R124 fusion + 4-axis Sonnet judge):**
+
+| Axis | deterministic floor | live | judge (pass-rate) |
+| ---- | ------------------- | ---- | ----------------- |
+| Ref Loose | 0.646 | **0.729** | — |
+| Ref Strict | 0.42 | **0.579** | — |
+| Keyword recall | 0.454 | **0.651** | — |
+| Regulatory Tone | 1.0 | **1.0** | **Tone 1.00** |
+| Conciseness | — | — | **0.667** (recovered) |
+| Correctness | — | — | 0.94 over-non-error (factual 0.88) |
+| Refs faithfulness | — | — | 0.625 |
+| Latency p50 / p95 | — | 31.6 s / 72.7 s | — |
+
+By reasoning level (live refL): L1 **0.79** · L2 **0.72** · L3 **0.72** · L4
+**0.70** — the live Sonnet+fusion path synthesises the multi-article L4 answers
+the deterministic floor (L4 refL 0.47) could not. 0 refusals, 0 HTTP failures.
+The 8 judge-correctness "errors" are wrapper-call timeouts on the judge's own
+calls, not engine failures.
+
+**Live representative-100 subset (12 rows, R124 fusion + judge):**
+
+| Axis | live | judge (pass-rate) |
+| ---- | ---- | ----------------- |
+| Ref Loose | **0.888** | — |
+| Ans Strict | 0.524 | — |
+| Ref Strict | 0.591 | — |
+| Regulatory Tone | 1.0 | **Tone 1.00** |
+| Conciseness | — | **0.917** (recovered) |
+| Correctness | — | 0.889 over-non-error (factual 0.85) |
+| Refs faithfulness | — | 0.75 |
+| Latency p50 | 14.7 s | — |
+
+deployer / provider / governance / risk_classification categories all Ref Loose
+**1.0**; the 100 s+ latency tail is the 2-turn multi-turn rows (both turns fire
+fusion).
+
+**Conciseness — the user's caveat directly confirmed.** The judge Conciseness
+axis reads **0.917** (representative surface) and **0.667** (the harder
+multi-part medical set) with **Tone 1.0** on both — nowhere near the 0.29
+merge-bloat collapse. The R123 SELECT-not-MERGE judge (preserved untouched by
+R124) holds; R124's latency changes did not regress it.
 
 ## Non-goals / things to skip
 
