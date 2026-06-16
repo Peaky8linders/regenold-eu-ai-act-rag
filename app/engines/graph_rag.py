@@ -3809,13 +3809,15 @@ def _claude_max_enhance_answer(
             pass
 
         # Fusion Stage-2 (Mixture-of-Agents): a diverse panel (Sonnet 4.6 via
-        # the Claude Max wrapper + Groq Llama 3.3 70B + Mistral Large) answers
-        # in parallel, then Claude Opus 4.8 judges + synthesises the single best
-        # final answer — all reusing this exact ``system_prompt`` + ``user_message``
-        # (which already carries the EU AI Act references block, query profile,
-        # and cross-references). Fires BEFORE the single-provider dispatch when
-        # enabled; ``fusion_complete`` returns None on any degenerate/failure
-        # path so we fall through to the canonical single-provider call below.
+        # the Claude Max wrapper + Groq Llama 3.3 70B + Mistral Large, plus
+        # Opus 4.8 when the question is complex) answers IN PARALLEL, then
+        # Sonnet 4.6 JUDGES and emits the single most concise + correct draft as
+        # the final answer (judge + Stage-2 polish in one call). All reuse this
+        # exact ``system_prompt`` + ``user_message`` (which already carries the
+        # EU AI Act references block, query profile, and cross-references). Fires
+        # BEFORE the single-provider dispatch when enabled; ``fusion_complete``
+        # returns None on any degenerate/failure path so we fall through to the
+        # canonical single-provider call below.
         text_raw = None
         _fusion_used = False
         try:

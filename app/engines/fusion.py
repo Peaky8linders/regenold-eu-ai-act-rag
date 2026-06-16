@@ -1,37 +1,53 @@
-"""Mixture-of-Agents (MoA) fusion Stage-2 — diverse panel + Opus 4.8 judge.
+"""Mixture-of-Agents (MoA) fusion Stage-2 — diverse panel + a SELECT judge.
 
 Principle (OpenRouter "Fusion", https://openrouter.ai/openrouter/fusion):
-a panel of diverse expert models answers the prompt in parallel; a judge
-model compares their drafts (consensus / contradictions / unique insights /
-blind spots) and synthesises the single best final answer. OpenRouter bills
-per underlying completion. We run our OWN panel on the flat **Claude Max**
-subscription (Sonnet 4.6 via the Cloudflare-tunnelled wrapper) + **Groq**
-Llama 3.3 70B + **Mistral** Large, judged by **Claude Opus 4.8** (also via
-Max) — so the fusion cost stays on the Max subscription plus cheap
-serverless tokens, never per-completion OpenRouter billing.
+a panel of diverse expert models answers the prompt in parallel; a judge model
+reads their drafts and produces the single best final answer. We run our OWN
+panel on the flat **Claude Max** subscription (Sonnet 4.6 via the
+Cloudflare-tunnelled wrapper) + **Groq** Llama 3.3 70B + **Mistral** Large, and
+for the hardest ~20% of questions (``complex_question`` per the existing
+``is_complex_question`` logic) we add **Claude Opus 4.8** as a fourth candidate.
+The judge is **Claude Sonnet 4.6** — so the fusion cost stays on the Max
+subscription plus cheap serverless tokens, never per-completion OpenRouter
+billing.
+
+**The judge SELECTS, it does not MERGE.** An earlier cut told the judge to
+"adopt the most accurate content AND include any correct point one draft raised
+that the others missed" — a union/merge instruction that produced a fuller
+answer than any single draft and collapsed the competition's Answer-Conciseness
+axis (length-ratio-vs-gold, quadratic) from ~0.70 to ~0.29. The judge now picks
+the SINGLE draft that best satisfies the Regenold rubric and, among drafts that
+are correct + complete, prefers the SHORTEST — then emits it as the final
+polished answer. Conciseness is the tie-break among correct answers, never a cut
+to correctness.
+
+**One call does judge + Stage-2 polish.** The judge call reuses the exact
+Stage-2 ``system`` (full rubric) + ``user`` (which already carries the
+``EU AI ACT REFERENCES`` block + query profile + cross-references) and is
+instructed to emit the chosen draft as the FINAL answer, lightly tightened to
+the system rules — so there is no separate polishing round-trip. Total LLM
+calls = N parallel panel drafts + 1 judge-and-polish.
 
 Wiring: :func:`app.engines.graph_rag._claude_max_enhance_answer` calls
 :func:`fusion_complete` BEFORE its single-provider dispatch when
-:func:`fusion_stage2_enabled`. The panel members each receive the SAME
-Stage-2 ``system`` + ``user`` (the ``user`` already carries the
-``EU AI ACT REFERENCES`` block + query profile + cross-references), so the
-judge is bound to the exact same ground truth + rubric as the single-provider
-path. Returns ``None`` on any degenerate / failure path so the caller falls
-through to the canonical single-Sonnet Stage-2 (which itself falls back to the
-deterministic Stage-1 answer). **Never raises.**
+:func:`fusion_stage2_enabled`. Returns ``None`` on any degenerate / failure path
+(fewer than ``min_candidates`` panel drafts, judge error / empty / truncated) so
+the caller falls through to the canonical single-provider Stage-2 (which itself
+falls back to the deterministic Stage-1 answer). **Never raises.**
 
 Because the davidath bench runs with ``P2P_GRAPH_RAG_PROVIDER=cli`` →
 :func:`graph_rag._stage2_provider_enabled` returns ``False`` → Stage-2 never
-fires → fusion never fires → the bench is **byte-identical** regardless of
-this module. The wins land on the LIVE wire (the Claude-Max + Groq + Mistral
-panel) and the live LLM-judge axes.
+fires → fusion never fires → the bench is **byte-identical** regardless of this
+module. The wins land on the LIVE wire (the panel + judge) and the live
+LLM-judge axes.
 
 Env:
   REGENOLD_FUSION_STAGE2          master gate (default ON; "0"/"false" disables)
-  REGENOLD_FUSION_JUDGE_MODEL     judge model id (default ``claude-opus-4-8``)
+  REGENOLD_FUSION_JUDGE_MODEL     judge model id (default ``claude-sonnet-4-6``)
   REGENOLD_FUSION_PANEL           comma list of panel members to enable
-                                  (default ``sonnet,groq,mistral``;
-                                  available: sonnet, opus, groq, mistral, gemini)
+                                  (default ``sonnet,groq,mistral``; ``opus`` is
+                                  auto-added on complex questions; available:
+                                  sonnet, opus, groq, mistral, gemini)
   REGENOLD_FUSION_TIMEOUT         per-call timeout seconds (default 60)
   REGENOLD_FUSION_MIN_CANDIDATES  min panel drafts required to run the judge
                                   (default 2 — below this we fall through to
@@ -56,7 +72,9 @@ _PANEL_REGISTRY: dict[str, tuple[str, str]] = {
 }
 
 _DEFAULT_PANEL = ("sonnet", "groq", "mistral")
-_DEFAULT_JUDGE_MODEL = "claude-opus-4-8"
+# Sonnet 4.6 is the judge (fast, tone-calibrated, picks the most concise +
+# correct draft). Opus 4.8 rides the PANEL for complex questions instead.
+_DEFAULT_JUDGE_MODEL = "claude-sonnet-4-6"
 
 
 def fusion_stage2_enabled() -> bool:
@@ -124,15 +142,24 @@ def _provider_for(transport: str):
     return None
 
 
-def _enabled_panel() -> list[tuple[str, str, str]]:
+def _enabled_panel(complex_question: bool = False) -> list[tuple[str, str, str]]:
     """Resolve the configured panel to ``(label, model, transport)`` triples,
-    keeping only members whose transport is live."""
+    keeping only members whose transport is live.
+
+    On a ``complex_question`` (the existing ``is_complex_question`` gate),
+    **Opus 4.8 is appended to the panel** so the hardest ~20% of questions get a
+    frontier-model candidate the Sonnet judge can pick. Additive — it never
+    removes a configured member, and is deduped below (no double Opus if an
+    operator already listed it).
+    """
     raw = os.getenv("REGENOLD_FUSION_PANEL", "").strip()
     labels = (
         [s.strip().lower() for s in raw.split(",") if s.strip()]
         if raw
         else list(_DEFAULT_PANEL)
     )
+    if complex_question and "opus" not in labels:
+        labels = [*labels, "opus"]
     out: list[tuple[str, str, str]] = []
     seen: set[str] = set()
     for label in labels:
@@ -189,19 +216,50 @@ def _one_candidate(
 
 
 def _build_judge_user(user: str, drafts: list[tuple[str, str]]) -> str:
-    """Append the panel drafts + the synthesis instruction to the Stage-2
-    ``user`` message. Drafts are labelled generically (DRAFT 1..n) so the judge
-    weighs content, not the model's name."""
+    """Append the panel drafts + the SELECT-and-polish instruction to the
+    Stage-2 ``user`` message.
+
+    Drafts are labelled generically (DRAFT 1..n) so the judge weighs content,
+    not the model's name. The instruction is deliberately a SELECT (pick one),
+    NOT a MERGE — merging coverage from multiple drafts is what bloats the
+    answer and collapses the conciseness axis. The judge emits the chosen draft
+    as the FINAL polished answer in this one call (judge + Stage-2 polish).
+    """
     lines = [user.rstrip(), ""]
     lines.append(
-        f"You are the FUSION JUDGE. Below are {len(drafts)} independent draft "
-        "answers to the QUESTION above, written by different expert models "
-        "from the SAME EU AI Act references. Compare them: treat points most "
-        "drafts agree on as higher-confidence, resolve any contradiction "
-        "against the EU AI ACT REFERENCES block above, adopt the most accurate "
-        "and best-cited content, and include any correct point one draft raised "
-        "that the others missed. Discard any claim not supported by the "
-        "references block or that misstates the EU AI Act."
+        f"You are the FUSION JUDGE and final editor. Below are {len(drafts)} "
+        "independent draft answers to the QUESTION above, each written by a "
+        "different expert model from the SAME EU AI Act references. In ONE step, "
+        "CHOOSE THE SINGLE BEST DRAFT and emit it as the final answer. Judge the "
+        "drafts against the EU AI Act references block above and the system "
+        "rules, in this priority order:"
+    )
+    lines.append(
+        "1. CORRECTNESS: grounded in the references, with no claim the references "
+        "do not support, no misstatement of the regulation, and the right verdict "
+        "for the question."
+    )
+    lines.append(
+        "2. REFERENCES: cites the right Articles and Annexes (only those in the "
+        "references block) and DESCRIBES each cited provision in the prose, "
+        "neither over-cited nor under-cited."
+    )
+    lines.append(
+        "3. COMPLETENESS: answers every distinct sub-question the question "
+        "actually asks, and only what it asks."
+    )
+    lines.append(
+        "4. CONCISENESS: among drafts that are correct AND complete, prefer the "
+        "SHORTEST. A concise answer that fully answers the question scores higher "
+        "than a longer one that adds correct-but-unrequested detail. Match the "
+        "length a regulator's model answer would have for THIS question: a direct "
+        "single-provision or definitional lookup is one tight sentence, a "
+        "scenario or multi-part question is longer, and an exhaustively "
+        "enumerated closed set names every member."
+    )
+    lines.append(
+        "5. TONE: neutral third-person regulator voice (provider, deployer, "
+        "operator), no first person, no preamble."
     )
     lines.append("")
     for i, (_label, text) in enumerate(drafts, start=1):
@@ -209,14 +267,15 @@ def _build_judge_user(user: str, drafts: list[tuple[str, str]]) -> str:
         lines.append(text.strip())
         lines.append("")
     lines.append(
-        "Write ONLY the single best final answer as PLAIN TEXT — no markdown, "
-        "no bold/asterisks, no headings, and no 'Verdict:' / 'Bottom line:' "
-        "labels. Do not mention the drafts, the panel, or that multiple answers "
-        "existed. Follow every rule in the system prompt: lead with a direct "
-        "verdict (the first clause states the answer, with no label), cite and "
-        "describe every Article or Annex you use (only those in the references "
-        "block), use plain professional legal prose with no em-dashes, "
-        "en-dashes, or ellipses, and stay within the sentence cap — be concise."
+        "Emit ONLY the chosen draft as the single final answer, in PLAIN TEXT — "
+        "no markdown, no bold/asterisks, no headings, no 'Verdict:' / 'Bottom "
+        "line:' labels, and do not mention the drafts, the panel, or that you "
+        "judged. You MAY lightly tighten the chosen draft to obey the system "
+        "rules: trim filler / preamble, ensure every cited Article or Annex is "
+        "described, keep neutral third-person regulator voice, and use plain "
+        "legal prose with no em-dashes, en-dashes, or ellipses. Do NOT blend "
+        "content from the other drafts, do NOT add framework context the "
+        "question did not ask for, and do NOT make the chosen draft longer."
     )
     return "\n".join(lines)
 
@@ -238,14 +297,19 @@ def fusion_complete(
     temperature: float = 0.0,
     complex_question: bool = False,
 ) -> str | None:
-    """Run the MoA fusion Stage-2: diverse panel (parallel) + Opus 4.8 judge.
+    """Run the MoA fusion Stage-2: diverse panel (parallel) + a SELECT judge.
 
-    Returns the judge's synthesised final answer, or ``None`` on any
-    degenerate / failure path (fewer than ``min_candidates`` panel drafts,
-    judge error / empty / truncated) so the caller falls through to the
-    canonical single-provider Stage-2. Never raises.
+    The panel members answer concurrently (Sonnet 4.6 + Groq Llama 3.3 70B +
+    Mistral Large, plus Opus 4.8 when ``complex_question``); the judge (Sonnet
+    4.6 by default) reads all drafts and emits the single best one as the final
+    polished answer — in one call (judge + Stage-2 polish).
+
+    Returns the judge's final answer, or ``None`` on any degenerate / failure
+    path (fewer than ``min_candidates`` panel drafts, judge error / empty /
+    truncated) so the caller falls through to the canonical single-provider
+    Stage-2. Never raises.
     """
-    panel = _enabled_panel()
+    panel = _enabled_panel(complex_question)
     if len(panel) < _min_candidates():
         # Not enough diverse transports live to fuse — let the caller run the
         # trusted single-provider (Sonnet) path instead.
@@ -283,8 +347,9 @@ def fusion_complete(
         _trace(f"fusion_skip too_few_drafts={len(drafts)}/{len(panel)}")
         return None
 
-    # Judge: Opus 4.8 via the Max wrapper. Reuse the SAME ``system`` (carries
-    # the full Stage-2 rubric) and append the drafts + synthesis instruction.
+    # Judge: Sonnet 4.6 via the Max wrapper. Reuse the SAME ``system`` (carries
+    # the full Stage-2 rubric) and append the drafts + the SELECT-and-polish
+    # instruction. Judge temperature is 0.0 for a deterministic pick.
     judge_model = _judge_model()
     judge_user = _build_judge_user(user, drafts)
     judge_max_tokens = max(int(max_tokens or 0), 1024)

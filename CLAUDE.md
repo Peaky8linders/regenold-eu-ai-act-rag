@@ -6421,6 +6421,87 @@ truncation (multi-part answers now licensed to run 3-4+ sentences). Confirm
 post-deploy with a live `evals.bench.representative_100 --endpoint <live>` +
 `evals.judge.runner` re-run — conciseness↑ without correctness / refs↓.
 
+## Round 123 — Mixture-of-Agents fusion Stage-2: SELECT-not-MERGE judge (conciseness fix) (2026-06-16)
+
+The R-Fusion Stage-2 (`app/engines/fusion.py`) ran a diverse parallel panel
+(Sonnet 4.6 + Groq Llama 3.3 70B + Mistral Large) and had **Claude Opus 4.8
+judge by MERGING** the drafts — its instruction was "adopt the most accurate
+content AND include any correct point one draft raised that the others missed".
+That union/merge produced a fuller answer than any single draft and **collapsed
+Answer-Conciseness 0.70 → 0.29** (`metrics.answer_conciseness` is a quadratic
+char-length ratio vs THIS question's gold — merging coverage always overshoots).
+The known completeness-vs-conciseness tension, landing on the wrong side.
+
+### The fix — judge SELECTS, it does not MERGE (`app/engines/fusion.py`)
+
+`_build_judge_user` is rewritten from a synthesis/union instruction to a
+**SELECT-and-tighten** one: the judge reads the labelled DRAFT 1..n and CHOOSES
+THE SINGLE BEST draft against the Regenold rubric in priority order —
+**1. correctness, 2. references (right + described), 3. completeness, 4.
+conciseness, 5. tone** — and emits it as the final answer, lightly tightened to
+the system rules. Conciseness is the **tie-break among correct + complete
+drafts** ("prefer the SHORTEST that fully answers"), never a cut to correctness;
+the judge is explicitly forbidden to blend drafts, add unrequested framework
+context, or lengthen the chosen draft. Because the panel members already write
+to the R122 complexity-scaled length, selecting the most-concise-that's-complete
+restores gold-length matching instead of always shipping the longest.
+
+### Per the user directive
+
+* **Panel runs in parallel** (unchanged — `ThreadPoolExecutor`): Groq Llama 3.3
+  70B + Sonnet 4.6 + Mistral Large by default; **Opus 4.8 is appended to the
+  panel for complex questions** (`_enabled_panel(complex_question)`, gated on the
+  existing `is_complex_question` logic) so the hard ~20% get a frontier-model
+  candidate the judge can pick.
+* **Judge is Sonnet 4.6** (`_DEFAULT_JUDGE_MODEL` `claude-opus-4-8` →
+  `claude-sonnet-4-6`) — fast, tone-calibrated, picks the most concise + correct
+  variant with the rubric in mind. (Opus 4.8 moved from judge → panel.)
+* **One API call does judge + Stage-2 polish** — the judge call reuses the exact
+  Stage-2 `system` (full rubric) + `user` (references block + query profile +
+  cross-refs) and emits the chosen draft as the FINAL polished answer; there is
+  no separate polish round-trip. Total LLM calls = N parallel panel drafts + 1
+  judge-and-polish.
+
+### Prompt token reduction (`app/data/graph_rag_prompts.py`)
+
+The Stage-2 system prompt is replicated across every panel member + the judge in
+MoA, so each cut compounds N+1×. Conservative, semantics-preserving dedup:
+collapsed the duplicated "scale length to complexity" guidance (rule 5 was
+internally repeated AND verbatim-restated in the ANSWER_FORMAT BLUF block) into
+one canonical statement + pointers; pointed the ANSWER-THE-HEADLINE four-tier
+restatement at rule 12b (it was duplicated verbatim); fixed the broken `80. 12c.`
+rule numbering. Every factual guard + exemplar preserved.
+
+### Verification (isolated worktree off `fusion-stage2`)
+
+* davidath bench (476, deterministic `provider=cli`) — **byte-identical to R122**
+  (Ans Strict 0.3535 / Ref Loose 0.5928 / Ref Strict 0.4723 / Tone 1.0 / mt
+  20/20). By construction: fusion fires only under a wired Stage-2 provider
+  (`_stage2_provider_enabled()` is False under `cli`) → inert on the bench; the
+  prompt is Stage-2-only; the graph_rag.py change is a comment. The established
+  R49/R69/R108/R122 pattern — bench is the regression guard, the win lands live.
+* `evals.regenold.runner` (276) — **all categories 100%** (`risk_classification`
+  17/17, `in_scope_multi_turn` 102/102).
+* OOS probe (`runner_v2 --local --probe-oos`) — **21/21, 0 leaks**.
+* `tests/test_fusion_stage2.py` — **27/27** (rewritten for select-not-merge +
+  Sonnet judge + Opus-on-complex panel; the fake wrapper distinguishes the judge
+  call by the `FUSION JUDGE` marker). The 135 Stage-2 tests pass under the
+  wrapper-enabling env (the `provider=cli` "failures" are the documented
+  R109/R118 env artifact, not a regression).
+
+### Where it lands
+
+The conciseness collapse fix is **live-only** — the deterministic bench never
+fires the panel/judge. Expected on the next live representative-100 + judge
+re-run: Answer-Conciseness recovers toward ~0.70 (no merge-overshoot) while
+correctness / references / tone hold (the judge still picks the best-cited,
+correct draft; Opus 4.8 strengthens the complex-question candidate pool). Env:
+`REGENOLD_FUSION_STAGE2` (master gate, default ON), `REGENOLD_FUSION_JUDGE_MODEL`
+(default `claude-sonnet-4-6`), `REGENOLD_FUSION_PANEL` (default
+`sonnet,groq,mistral`; `opus` auto-added on complex). Groq + Mistral panel
+members need `GROQ_API_KEY` / `MISTRAL_API_KEY`; without them the panel shrinks
+and fusion falls through to the single-Sonnet path (fail-soft, never raises).
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a
