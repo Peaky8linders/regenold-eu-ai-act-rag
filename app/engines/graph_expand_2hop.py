@@ -262,6 +262,17 @@ def is_enabled() -> bool:
                 return False
     except Exception:
         pass
+    # Embedded backend (Orbit-pattern in-process SQLite property graph) —
+    # no Neo4j needed. When selected, the env-gate + a successful build
+    # are the only activation conditions.
+    if _embedded_selected():
+        try:
+            from app.graph.embedded_graph import get_embedded_graph
+
+            return bool(get_embedded_graph().enabled)
+        except Exception:  # noqa: BLE001
+            logger.debug("graph_2hop embedded is_enabled failed", exc_info=True)
+            return False
     # Lazy client import — defers the heavy ``app.graph.client`` load
     # until the first ``is_enabled()`` / ``expand_2hop`` call.
     try:
@@ -308,6 +319,41 @@ def _resolve_client() -> GraphClient | None:
     return client
 
 
+def _embedded_selected() -> bool:
+    """True iff the embedded (in-process) graph backend is selected.
+
+    Lazy import so the heavy-data ``embedded_graph`` module (and its
+    import-time self-check) only loads when the backend is actually
+    chosen. Defensive — any import failure reports "not selected".
+    """
+    try:
+        from app.graph.embedded_graph import embedded_backend_selected
+
+        return embedded_backend_selected()
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _embedded_rows(seed_nums: list[str], cap: int) -> list[dict]:
+    """Fetch 2-hop rows from the in-process embedded graph. Never raises.
+
+    Returns the same ``{num, hops}`` row shape the Neo4j ``execute_read``
+    path returns, so the downstream hop1/hop2 split + existence gate is
+    backend-agnostic. Sub-ms SQL — no executor / wall-clock timeout
+    needed (unlike the network Cypher path).
+    """
+    try:
+        from app.graph.embedded_graph import get_embedded_graph
+
+        graph = get_embedded_graph()
+        if not graph.enabled:
+            return []
+        return graph.two_hop(seed_nums, cap)
+    except Exception:  # noqa: BLE001
+        logger.debug("graph_2hop embedded query failed", exc_info=True)
+        return []
+
+
 def expand_2hop(
     seed_articles: list[str],
     *,
@@ -341,12 +387,8 @@ def expand_2hop(
     if max_hop2 <= 0:
         return _empty_expansion(seed_articles)
 
-    client = _resolve_client()
-    if client is None:
-        return _empty_expansion(seed_articles)
-
-    # Normalise seeds → numbers. Drop unparseable refs but keep the
-    # echo in ``seed_articles``.
+    # Normalise seeds → numbers (backend-agnostic). Drop unparseable
+    # refs but keep the echo in ``seed_articles``.
     seed_nums: list[str] = []
     seed_echo: list[str] = []
     for s in seed_articles:
@@ -360,37 +402,47 @@ def expand_2hop(
     cap = max(max_hop2 * 2, 4)
 
     started = time.perf_counter()
-
-    # Run the Cypher inside the executor so we can enforce the
-    # Python-side wall-clock timeout. ``execute_read`` already catches
-    # its own exceptions and returns ``[]`` — we still wrap defensively
-    # so a future implementation that raises doesn't escape.
-    def _call() -> list[dict]:
-        try:
-            return client.execute_read(
-                _CYPHER_2HOP,
-                {"seed_nums": seed_nums, "cap": cap},
-            )
-        except Exception:  # noqa: BLE001
-            logger.debug("graph_2hop execute_read raised", exc_info=True)
-            return []
-
-    # Defer the futures import to first use — see ``_get_executor`` docstring.
-    from concurrent.futures import TimeoutError as _FutTimeout
-
     rows: list[dict] = []
-    try:
-        fut = _get_executor().submit(_call)
-        rows = fut.result(timeout=max(timeout_ms, 1) / 1000.0)
-    except _FutTimeout:
-        logger.info(
-            "graph_2hop cypher timeout seeds=%s budget=%dms",
-            seed_nums, timeout_ms,
-        )
-        rows = []
-    except Exception:  # noqa: BLE001
-        logger.debug("graph_2hop submit/result failed", exc_info=True)
-        rows = []
+
+    if _embedded_selected():
+        # Embedded in-process SQLite property graph — no Neo4j, no
+        # network, no executor/timeout needed (sub-ms SQL). Defensive:
+        # any failure collapses to empty rows → an empty expansion.
+        rows = _embedded_rows(seed_nums, cap)
+    else:
+        client = _resolve_client()
+        if client is None:
+            return _empty_expansion(seed_articles)
+
+        # Run the Cypher inside the executor so we can enforce the
+        # Python-side wall-clock timeout. ``execute_read`` already catches
+        # its own exceptions and returns ``[]`` — we still wrap defensively
+        # so a future implementation that raises doesn't escape.
+        def _call() -> list[dict]:
+            try:
+                return client.execute_read(
+                    _CYPHER_2HOP,
+                    {"seed_nums": seed_nums, "cap": cap},
+                )
+            except Exception:  # noqa: BLE001
+                logger.debug("graph_2hop execute_read raised", exc_info=True)
+                return []
+
+        # Defer the futures import to first use — see ``_get_executor`` docstring.
+        from concurrent.futures import TimeoutError as _FutTimeout
+
+        try:
+            fut = _get_executor().submit(_call)
+            rows = fut.result(timeout=max(timeout_ms, 1) / 1000.0)
+        except _FutTimeout:
+            logger.info(
+                "graph_2hop cypher timeout seeds=%s budget=%dms",
+                seed_nums, timeout_ms,
+            )
+            rows = []
+        except Exception:  # noqa: BLE001
+            logger.debug("graph_2hop submit/result failed", exc_info=True)
+            rows = []
 
     elapsed_ms = int((time.perf_counter() - started) * 1000)
 

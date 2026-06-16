@@ -1238,6 +1238,12 @@ def _engine_cache_key(
             # in the cache identity (R30/R56/R79 doctrine).
             "REGENOLD_SUFFICIENT_CONTEXT",
             "REGENOLD_SUFFICIENT_CONTEXT_MAX_HOPS",
+            # R125 review — optional LLM planner / rewriter flip the sub-query
+            # text used by the Sufficient-Context hop. Default OFF, but if an
+            # operator A/Bs either live LLM component, the cached engine output
+            # must not be shared with the deterministic sub-query path.
+            "REGENOLD_SUFFICIENT_CONTEXT_LLM_PLANNER",
+            "REGENOLD_SUFFICIENT_CONTEXT_LLM_REWRITE",
             # R112 — cache-poisoning audit round 2. Per-call env reads that
             # flip the engine output (the GraphRAGResponse this cache
             # stores) but were missing from the key:
@@ -1277,6 +1283,11 @@ def _engine_cache_key(
             "REGENOLD_STAGE2_MODEL_GROQ",
             "REGENOLD_STAGE2_MODEL_GEMINI",
             "REGENOLD_STAGE2_WEB_SEARCH",
+            # R118/R123 — complex-question routing controls model choice and
+            # prompt shape (Sonnet vs Opus / sentence envelope), hence cached
+            # Stage-2 prose. Both are per-request env reads.
+            "REGENOLD_COMPLEX_GATE_WIDE",
+            "REGENOLD_COMPLEX_SENTENCE_CAP",
             # R117 — LogicRAG (execute_logic_rag) REPLACES the entire retrieval
             # engine when REGENOLD_LOGIC_RAG=1, and REGENOLD_LOGIC_RAG_MODEL
             # selects the synthesis-prose model that lands in the cached
@@ -1293,6 +1304,35 @@ def _engine_cache_key(
             "REGENOLD_LOGIC_RAG_BUDGET",
             "REGENOLD_LOGIC_RAG_TIMEOUT",
             "REGENOLD_LOGIC_RAG_MAX_NODES",
+            # R-Fusion — Mixture-of-Agents Stage-2 (app/engines/fusion.py):
+            # when ON, a diverse panel + Opus 4.8 judge REPLACE the
+            # single-provider Stage-2 polish, so the master gate + judge model
+            # + panel composition all flip the cached GraphRAGResponse.answer.
+            # Per the R30/R56/R79 cache-poisoning doctrine they belong in the
+            # cache identity.
+            "REGENOLD_FUSION_STAGE2",
+            "REGENOLD_FUSION_JUDGE_MODEL",
+            "REGENOLD_FUSION_PANEL",
+            # R124 — the fusion latency knobs also flip the cached
+            # GraphRAGResponse.answer: REGENOLD_FUSION_GATE decides WHETHER the
+            # panel fires at all (panel+judge vs single-Sonnet polish, a
+            # different answer); REGENOLD_FUSION_FAST_TIMEOUT changes which
+            # panel drafts land in time. Both belong in the cache identity.
+            "REGENOLD_FUSION_GATE",
+            "REGENOLD_FUSION_TIMEOUT",
+            "REGENOLD_FUSION_FAST_TIMEOUT",
+            "REGENOLD_FUSION_MIN_CANDIDATES",
+        )
+    )
+    # R125 review — the configured fusion panel is not the effective panel:
+    # Groq / Mistral / Gemini members disappear when their API-key env vars are
+    # absent. Include only boolean availability (never the secret values) so a
+    # mid-process key add/remove cannot serve stale fused / non-fused prose.
+    fusion_transport_bits = ":".join(
+        (
+            f"groq:{int(bool(os.getenv('GROQ_API_KEY', '').strip()))}",
+            f"mistral:{int(bool(os.getenv('MISTRAL_API_KEY', '').strip()))}",
+            f"gemini:{int(bool(os.getenv('GEMINI_API_KEY', '').strip()))}",
         )
     )
     import json
@@ -1303,6 +1343,7 @@ def _engine_cache_key(
         f"flags:{flag_bits}",
         f"provider:{provider_bit}",
         f"engine:{engine_flags}",
+        f"fusion_live:{fusion_transport_bits}",
         f"history:{int(history_turn_count)}",
         # R104 — ?include_reasoning=true activates the per-request reasoning
         # trace, which (in graph_rag _two_stage_generate /

@@ -72,6 +72,29 @@ def test_max_sub_queries_clamped(monkeypatch, env) -> None:
     assert 1 <= sc.max_sub_queries() <= 5
 
 
+def test_llm_planner_and_rewriter_default_off(monkeypatch) -> None:
+    monkeypatch.delenv("REGENOLD_SUFFICIENT_CONTEXT_LLM_PLANNER", raising=False)
+    monkeypatch.delenv("REGENOLD_SUFFICIENT_CONTEXT_LLM_REWRITE", raising=False)
+    assert sc.llm_planner_enabled() is False
+    assert sc.llm_rewriter_enabled() is False
+
+
+def test_assess_sufficiency_does_not_call_llm_planner_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("REGENOLD_SUFFICIENT_CONTEXT_LLM_PLANNER", raising=False)
+
+    def _boom(_question: str):
+        raise AssertionError("LLM planner should be default-off")
+
+    import app.engines.frames_planner as fp
+    monkeypatch.setattr(fp, "decompose_question_llm", _boom)
+    verdict = sc.assess_sufficiency(
+        "What must importers do and what must distributors do?",
+        covered_articles=set(),
+    )
+    assert verdict.sufficient is False
+    assert verdict.reason == "multi_phrase_decompose"
+
+
 # ── Reference normalisation ──────────────────────────────────────────────
 
 
@@ -340,6 +363,29 @@ def test_merge_graph_context_gaps_dedup() -> None:
     extra = GraphContext(gaps=[{"obligation_id": "g1"}, {"obligation_id": "g2"}])
     gr._merge_graph_context(base, extra)
     assert [g["obligation_id"] for g in base.gaps] == ["g1", "g2"]
+
+
+def test_merge_graph_context_preserves_non_obligation_payloads() -> None:
+    base = GraphContext(xrefs=["Art. 13"], semantically_relevant_statements=["base"])
+    extra = GraphContext(
+        xrefs=["Art. 13", "Annex IV"],
+        semantically_relevant_statements=["base", "extra semantic"],
+        referenced_annexes_and_recitals=[{"ref": "Annex IV", "text": "tech docs"}],
+        dimension_info=[{"id": "dim1"}],
+        transitive_deps=[{"id": "dep1"}],
+        web_search_results=["industry note"],
+        cross_framework={"nist": ["map"]},
+        synthesis_memory="multi-hop synthesis",
+    )
+    gr._merge_graph_context(base, extra)
+    assert base.xrefs == ["Art. 13", "Annex IV"]
+    assert "extra semantic" in base.semantically_relevant_statements
+    assert base.referenced_annexes_and_recitals == [{"ref": "Annex IV", "text": "tech docs"}]
+    assert base.dimension_info == [{"id": "dim1"}]
+    assert base.transitive_deps == [{"id": "dep1"}]
+    assert base.web_search_results == ["industry note"]
+    assert base.cross_framework == {"nist": ["map"]}
+    assert base.synthesis_memory == "multi-hop synthesis"
 
 
 # ── Engine wire: the bounded hop ─────────────────────────────────────────

@@ -89,8 +89,14 @@ if os.getenv("REGENOLD_TEST_ALLOW_LIVE", "").strip().lower() not in (
         "NEO4J_USERNAME",
         "DATABASE_URL",
         "GROQ_API_KEY",
+        "MISTRAL_API_KEY",
+        "MISTRAL_API_BASE",
+        "GEMINI_API_KEY",
+        "GEMINI_API_BASE",
+        "ANTHROPIC_API_KEY",
         "COHERE_API_KEY",
         "REGENOLD_INTENT_PROVIDER",
+        "REGENOLD_FUSION_STAGE2",
         "P2P_GRAPH_RAG_API_KEY",
     ):
         os.environ[_var] = ""

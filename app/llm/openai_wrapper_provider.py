@@ -577,3 +577,55 @@ def _reset_gemini_singleton_for_tests() -> None:
                 pass
         _GEMINI_SINGLETON = None
 
+
+# ── Mistral provider (OpenAI-compatible) ─────────────────────────────────────
+#
+# R-Fusion — Mistral Large is a diverse non-Anthropic panel member for the
+# Mixture-of-Agents fusion Stage-2 (see app/engines/fusion.py). Its OpenAI-spec
+# Chat Completions endpoint lets the generic ``_OpenAIWrapperProvider`` drive it
+# unchanged. Gated on ``MISTRAL_API_KEY``; default endpoint is Mistral's public
+# OpenAI-compatible base (override via ``MISTRAL_API_BASE``).
+
+_MISTRAL_DEFAULT_BASE = "https://api.mistral.ai/v1"
+_MISTRAL_SINGLETON: _OpenAIWrapperProvider | None = None
+_MISTRAL_SINGLETON_LOCK = threading.Lock()
+
+
+def is_mistral_provider_enabled() -> bool:
+    """True iff the Mistral provider is enabled — requires ``MISTRAL_API_KEY``."""
+    return bool(os.getenv("MISTRAL_API_KEY", "").strip())
+
+
+def get_mistral_provider() -> _OpenAIWrapperProvider:
+    """Return the process-wide pooled Mistral provider.
+
+    Same double-checked-locking shape as the default singleton. Reads
+    ``MISTRAL_API_BASE`` (default ``https://api.mistral.ai/v1``) and
+    ``MISTRAL_API_KEY`` at first construction.
+    """
+    global _MISTRAL_SINGLETON
+    if _MISTRAL_SINGLETON is None:
+        with _MISTRAL_SINGLETON_LOCK:
+            if _MISTRAL_SINGLETON is None:
+                _MISTRAL_SINGLETON = _OpenAIWrapperProvider(
+                    base_url=(
+                        os.getenv("MISTRAL_API_BASE", "").strip()
+                        or _MISTRAL_DEFAULT_BASE
+                    ),
+                    api_key=os.getenv("MISTRAL_API_KEY", ""),
+                    timeout=float(os.getenv("MISTRAL_TIMEOUT_SECONDS", "60")),
+                )
+    return _MISTRAL_SINGLETON
+
+
+def _reset_mistral_singleton_for_tests() -> None:
+    """Reset the Mistral singleton. Test-only — not part of the public API."""
+    global _MISTRAL_SINGLETON
+    with _MISTRAL_SINGLETON_LOCK:
+        if _MISTRAL_SINGLETON is not None:
+            try:
+                _MISTRAL_SINGLETON._close()  # noqa: SLF001 — test hook
+            except Exception:  # noqa: BLE001
+                pass
+        _MISTRAL_SINGLETON = None
+

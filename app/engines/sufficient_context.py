@@ -75,6 +75,14 @@ if TYPE_CHECKING:  # pragma: no cover — typing only
 _TRUE = {"1", "true", "yes", "on"}
 
 
+def _enabled_env(name: str, default: bool = False) -> bool:
+    """Small bool-env helper for optional Sufficient-Context LLM stages."""
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return val.strip().lower() in _TRUE
+
+
 def sufficient_context_enabled() -> bool:
     """True when the Sufficient-Context gate is active. **Default ON.**
 
@@ -99,6 +107,25 @@ def sufficient_context_enabled() -> bool:
     if val is None:
         return True
     return val.strip().lower() in _TRUE
+
+
+def llm_planner_enabled() -> bool:
+    """Whether the optional LLM Planner Agent may decompose sub-queries.
+
+    Default OFF. R110 deliberately shipped a deterministic, zero-token
+    Sufficient-Context gate; enabling the LLM planner adds a live provider call
+    on the retrieval path and must be an explicit operator A/B.
+    """
+    return _enabled_env("REGENOLD_SUFFICIENT_CONTEXT_LLM_PLANNER", False)
+
+
+def llm_rewriter_enabled() -> bool:
+    """Whether the optional LLM Query Rewriter may rewrite sub-queries.
+
+    Default OFF for the same latency / cache-key reasons as
+    :func:`llm_planner_enabled`.
+    """
+    return _enabled_env("REGENOLD_SUFFICIENT_CONTEXT_LLM_REWRITE", False)
 
 
 def max_sub_queries() -> int:
@@ -393,9 +420,16 @@ def assess_sufficiency(
             reason="uncovered_explicit_refs",
         )
 
-    # (2) Multi-part decomposition — the decomposition is the complexity gate.
-    from app.engines.frames_planner import decompose_question_llm
-    clauses = decompose_question_llm(question)
+    # (2) Multi-part decomposition — deterministic by default. The optional
+    # LLM planner is explicit-opt-in because it adds a provider round trip on
+    # the retrieval path; the bounded FRAMES gate's production contract is
+    # otherwise zero-token and predictable-latency.
+    if llm_planner_enabled():
+        from app.engines.frames_planner import decompose_question_llm
+
+        clauses = decompose_question_llm(live)
+    else:
+        clauses = decompose_question(live)
     if len(clauses) >= 2:
         return SufficiencyVerdict(
             sufficient=False,

@@ -6273,6 +6273,401 @@ tests in `tests/test_logic_rag.py`. The wins (multi-rank obligations now
 carried, latency bounded, no zero-retrieval floor off LogicRAG, no injection
 surface) land on the LIVE Neo4j + Claude-Max path where LogicRAG fires.
 
+## Round 121 — Embedded property-graph backend: Orbit-pattern, Neo4j-Aura-free 2-hop (2026-06-15)
+
+Part A of an architecture audit of GitLab's **Orbit / Knowledge-Graph**
+project ([`gitlabhq/orbit-knowledge-graph`](https://github.com/gitlabhq/orbit-knowledge-graph)
+— a Rust property-graph engine over code + SDLC, DuckDB-local /
+ClickHouse-remote, EE-licensed, no embeddings/LLM-RAG). Orbit is
+domain-mismatched (code, not legal text) and not vendorable, but its
+**"local-mode embedded property graph"** pattern lands squarely on this
+repo's biggest graph liability: the hosted **Neo4j Aura** 2-hop path has
+been a documented production drag (R98 ~20× duplicate nodes, R99.1
+empty-graph zero-retrieval bug, free-tier limits that killed RushDB before
+it, availability + auto-seed ops). Our KB graph is **126 nodes / ~216
+edges — tiny + static** and does not justify a hosted graph DB.
+
+### `app/graph/embedded_graph.py` (new) — the embedded backend
+
+An **in-process SQLite property graph** built at startup from the SAME
+in-process source the Neo4j seeder uses
+(`kb_xrefs._build_xref_graph` / `all_edges` + `ARTICLE_EXISTENCE`),
+serving the 2-hop `CROSS_REFERENCES` traversal as a recursive SQL CTE.
+Strictly better than Aura at our scale: zero external service, zero
+network, zero seed step, always in sync with `KB_VERSION` (rebuilt from the
+live registries → no duplicate-node drift), can never return the R99.1
+empty-graph failure (always built), sub-ms deterministic queries.
+
+* **Single ontology source of truth** (Orbit pattern #2) — `ONTOLOGY` +
+  import-time `_self_check()`; the builder + traversal read ONE schema, so
+  the R99.1 class of seed/Cypher edge-name drift (`REQUIRES` vs
+  `HAS_OBLIGATION`) is structurally impossible.
+* **Typed traversal helpers** (Orbit pattern #3) — `neighbors()` /
+  `two_hop()` instead of hand-copied Cypher strings (the drift R63-F /
+  R99.1 kept finding).
+* Mirrors the seeded-Neo4j `CROSS_REFERENCES` edge set exactly (the full
+  graph incl. the R47-A orphan-rescue backfill), so the embedded 2-hop
+  returns the same neighbours the Neo4j 2-hop would — without Aura.
+
+### Wiring — `app/engines/graph_expand_2hop.py`
+
+Backend-aware: when `REGENOLD_GRAPH_BACKEND=embedded`, `is_enabled()` +
+`expand_2hop()` query the in-process graph (no Neo4j client, no executor /
+wall-clock timeout — sub-ms SQL); otherwise the existing Neo4j Cypher path
+is byte-for-byte unchanged. The seed-normalisation step was hoisted above
+the new backend branch (behaviour-preserving — the 58 existing 2-hop +
+kb_search tests confirm).
+
+### Selection — `REGENOLD_GRAPH_BACKEND` (railway.toml, default `"neo4j"`)
+
+Third value alongside `neo4j` (default) / `rushdb`. **Default OFF** → the
+Neo4j path is unchanged on every deploy, the davidath bench is byte-
+identical by construction, and retiring Aura is a one-variable flip
+(`railway variables --set REGENOLD_GRAPH_BACKEND=embedded`).
+
+### Verification (isolated worktree, off main 1892b94)
+
+* `pytest tests/test_embedded_graph.py` — **28/28** (build, 2-hop, typed
+  neighbours, selector, singleton, ontology self-check, expand_2hop wiring).
+* Existing 2-hop + kb_search suites — **58/58** (reorder behaviour-preserving).
+* `evals.regenold.runner` — **255/255 with the embedded backend ON,
+  byte-identical to the default OFF run** (ref_format 255/255, sentence_cap
+  147/255, refs_within_max 242/255, RISK_F1 macro 0.85) — additive-below-cap,
+  no winner displacement (the R31/R35/R110 BM25-saturation finding).
+* davidath bench (default) — Ans Strict **0.3535** / Ref Loose **0.5928** /
+  Ref Strict **0.4723** / Ref Conciseness 0.43 / Tone **1.0** / multi-turn
+  **20/20** — byte-identical to `main@1892b94` (the embedded module is
+  unreachable on the default path; the 276 ON==OFF parity above confirms
+  even the *active* path is identical).
+* OOS probe (`runner_v2 --local --probe-oos`) — **21/21, 0 leaks** (the
+  backend doesn't touch scope).
+* Functional smoke (no Neo4j wired): 126 nodes / 432 directed edges;
+  `Art. 26` → hop1 `[Art. 13, 16, 25, 49]` (the deployer→transparency
+  chain) + 30 hop2-only neighbours, sub-ms; `is_enabled()` True without Aura.
+
+### Where it lands
+
+Default-OFF → no bench movement (the davidath corpus is BM25-saturated, the
+R31/R35/R110 finding repeated). The win is **production reliability**:
+flipping `REGENOLD_GRAPH_BACKEND=embedded` retires the Neo4j Aura dependency
+for the 2-hop layer — no hosted graph DB, no seed / duplicate-node ops, no
+R99.1 empty-graph class of bug — while serving the exact same neighbours
+in-process. (Part B — an OpenRouter OpenAI-compatible provider, to replace
+the flaky Claude-Max Cloudflare-tunnel path — queued.)
+
+## Round 122 — Complexity-adaptive answer length (conciseness) (2026-06-15)
+
+User directive: "Conciseness is subjective depending on the complexity of
+question and the EU AI Act related article and paragraphs. optimise
+accordingly." The competition's conciseness axis scores answer length **vs
+that question's own exemplary gold** (`evals/bench/metrics.py::answer_conciseness`
+— quadratic char-length ratio, optimal = match gold), not a fixed budget.
+
+### Root cause — a FLAT length target on a per-question-gold metric
+
+The Stage-2 prompt
+([`app/data/graph_rag_prompts.py`](app/data/graph_rag_prompts.py)) gave ONE
+length target for ALL questions: rule 5 *"keep the whole answer under ~600
+characters"* + the BLUF block *"1–4 concise sentences … a fifth or sixth
+sentence only for a distinct substantive point"*. That `~600 chars` is
+calibrated for the ~520-char scenario gold — so on a simple QA whose gold is
+~140 chars, even a prompt-compliant answer is 4× too long (conciseness ~0.05),
+and the explicit "fifth or sixth sentence" license fed over-length answers.
+
+The two live datasets fail in **opposite** directions, which is exactly why a
+flat rule (or a hard cap) is wrong:
+* **`r121-live-rep100` judge** — conciseness pass-rate **0.21**, dominated by
+  *"sentence count exceeds 4"* (45/100 rows TOO LONG on broad single-topic QA).
+* **R118 antifragile-20** — multi-part answers TRUNCATED to 1-2 sentences
+  (q01 "four tiers"→1, q03 "two routes"→1, TOO SHORT on multi-part).
+
+### The fix — scale length to the question's complexity (Stage-2 prompt only)
+
+Rule 5 + the ANSWER_FORMAT BLUF block now both say the same adaptive thing:
+* simple single-provision / definitional lookup → **ONE tight sentence
+  (~120-220 chars)** — matches the ~140-char QA gold;
+* multi-article scenario / multi-part / role-risk classification → 3-4
+  sentences;
+* closed exhaustively-enumerated statutory set (rule 12b) → every member, even
+  if that needs more.
+
+**No rigid 4-sentence cap** (the user rejected that — "there are answers that
+will require more than 4 sentences"), and the contradictory "fifth or sixth
+sentence" license is removed. Length tracks the question's actual complexity,
+never a fixed target. Composes with the existing rule 12b (closed-set
+completeness) + ANSWER-THE-HEADLINE lines.
+
+### Verification (R121 base = `origin/main` f7a859d; +4 lines, no R121 bundling)
+
+* davidath bench (476) — **byte-identical to R121**: Ans Strict **0.3535** /
+  Ans Loose 0.1888 / Ans Conciseness **0.6136** / Ref Loose **0.5928** / Ref
+  Strict **0.4723** / Ref Conciseness 0.43 / Tone **1.0** / multi-turn
+  **20/20**. The change is Stage-2-prompt-only → unreachable on the
+  deterministic bench (provider=cli, no wrapper) → byte-identical *by
+  construction* (the established R49/R69/R108/R111 pattern).
+* `evals.regenold.runner` (276) — **255/255 (100%)**, RISK_F1 macro 0.85 —
+  identical to R121.
+* OOS probe (`runner_v2 --local --probe-oos`) — **21/21, 0 leaks** (prompt
+  change doesn't touch the scope gate).
+* No test pins the old prompt text (grep-confirmed).
+
+### Where it lands
+
+davidath is the regression guard, not the win surface — the conciseness lift
+is **live-only** (the deterministic bench never fires Stage-2 / Sonnet). The
+target is the live LLM-judge conciseness axis (r121-live 0.21 → projected
+~0.45+ as simple-QA answers drop to 1-2 sentences) AND the R118 multi-part
+truncation (multi-part answers now licensed to run 3-4+ sentences). Confirm
+post-deploy with a live `evals.bench.representative_100 --endpoint <live>` +
+`evals.judge.runner` re-run — conciseness↑ without correctness / refs↓.
+
+## Round 123 — Mixture-of-Agents fusion Stage-2: SELECT-not-MERGE judge (conciseness fix) (2026-06-16)
+
+The R-Fusion Stage-2 (`app/engines/fusion.py`) ran a diverse parallel panel
+(Sonnet 4.6 + Groq Llama 3.3 70B + Mistral Large) and had **Claude Opus 4.8
+judge by MERGING** the drafts — its instruction was "adopt the most accurate
+content AND include any correct point one draft raised that the others missed".
+That union/merge produced a fuller answer than any single draft and **collapsed
+Answer-Conciseness 0.70 → 0.29** (`metrics.answer_conciseness` is a quadratic
+char-length ratio vs THIS question's gold — merging coverage always overshoots).
+The known completeness-vs-conciseness tension, landing on the wrong side.
+
+### The fix — judge SELECTS, it does not MERGE (`app/engines/fusion.py`)
+
+`_build_judge_user` is rewritten from a synthesis/union instruction to a
+**SELECT-and-tighten** one: the judge reads the labelled DRAFT 1..n and CHOOSES
+THE SINGLE BEST draft against the Regenold rubric in priority order —
+**1. correctness, 2. references (right + described), 3. completeness, 4.
+conciseness, 5. tone** — and emits it as the final answer, lightly tightened to
+the system rules. Conciseness is the **tie-break among correct + complete
+drafts** ("prefer the SHORTEST that fully answers"), never a cut to correctness;
+the judge is explicitly forbidden to blend drafts, add unrequested framework
+context, or lengthen the chosen draft. Because the panel members already write
+to the R122 complexity-scaled length, selecting the most-concise-that's-complete
+restores gold-length matching instead of always shipping the longest.
+
+### Per the user directive
+
+* **Panel runs in parallel** (unchanged — `ThreadPoolExecutor`): Groq Llama 3.3
+  70B + Sonnet 4.6 + Mistral Large by default; **Opus 4.8 is appended to the
+  panel for complex questions** (`_enabled_panel(complex_question)`, gated on the
+  existing `is_complex_question` logic) so the hard ~20% get a frontier-model
+  candidate the judge can pick.
+* **Judge is Sonnet 4.6** (`_DEFAULT_JUDGE_MODEL` `claude-opus-4-8` →
+  `claude-sonnet-4-6`) — fast, tone-calibrated, picks the most concise + correct
+  variant with the rubric in mind. (Opus 4.8 moved from judge → panel.)
+* **One API call does judge + Stage-2 polish** — the judge call reuses the exact
+  Stage-2 `system` (full rubric) + `user` (references block + query profile +
+  cross-refs) and emits the chosen draft as the FINAL polished answer; there is
+  no separate polish round-trip. Total LLM calls = N parallel panel drafts + 1
+  judge-and-polish.
+
+### Prompt token reduction (`app/data/graph_rag_prompts.py`)
+
+The Stage-2 system prompt is replicated across every panel member + the judge in
+MoA, so each cut compounds N+1×. Conservative, semantics-preserving dedup:
+collapsed the duplicated "scale length to complexity" guidance (rule 5 was
+internally repeated AND verbatim-restated in the ANSWER_FORMAT BLUF block) into
+one canonical statement + pointers; pointed the ANSWER-THE-HEADLINE four-tier
+restatement at rule 12b (it was duplicated verbatim); fixed the broken `80. 12c.`
+rule numbering. Every factual guard + exemplar preserved.
+
+### Verification (isolated worktree off `fusion-stage2`)
+
+* davidath bench (476, deterministic `provider=cli`) — **byte-identical to R122**
+  (Ans Strict 0.3535 / Ref Loose 0.5928 / Ref Strict 0.4723 / Tone 1.0 / mt
+  20/20). By construction: fusion fires only under a wired Stage-2 provider
+  (`_stage2_provider_enabled()` is False under `cli`) → inert on the bench; the
+  prompt is Stage-2-only; the graph_rag.py change is a comment. The established
+  R49/R69/R108/R122 pattern — bench is the regression guard, the win lands live.
+* `evals.regenold.runner` (276) — **all categories 100%** (`risk_classification`
+  17/17, `in_scope_multi_turn` 102/102).
+* OOS probe (`runner_v2 --local --probe-oos`) — **21/21, 0 leaks**.
+* `tests/test_fusion_stage2.py` — **27/27** (rewritten for select-not-merge +
+  Sonnet judge + Opus-on-complex panel; the fake wrapper distinguishes the judge
+  call by the `FUSION JUDGE` marker). The 135 Stage-2 tests pass under the
+  wrapper-enabling env (the `provider=cli` "failures" are the documented
+  R109/R118 env artifact, not a regression).
+
+### Where it lands
+
+The conciseness collapse fix is **live-only** — the deterministic bench never
+fires the panel/judge. Expected on the next live representative-100 + judge
+re-run: Answer-Conciseness recovers toward ~0.70 (no merge-overshoot) while
+correctness / references / tone hold (the judge still picks the best-cited,
+correct draft; Opus 4.8 strengthens the complex-question candidate pool). Env:
+`REGENOLD_FUSION_STAGE2` (master gate, default ON), `REGENOLD_FUSION_JUDGE_MODEL`
+(default `claude-sonnet-4-6`), `REGENOLD_FUSION_PANEL` (default
+`sonnet,groq,mistral`; `opus` auto-added on complex). Groq + Mistral panel
+members need `GROQ_API_KEY` / `MISTRAL_API_KEY`; without them the panel shrinks
+and fusion falls through to the single-Sonnet path (fail-soft, never raises).
+
+## Round 124 — Fusion latency: gate + swap-not-add + per-transport timeout; fresh MedTech/GraphRAG-Bench benchmark (2026-06-16)
+
+Two user directives: (1) cut the R123 MoA-fusion latency (p50 40-75 s, p95 up
+to 187 s) — *"gate fusion optimisation; the lever is panel size; fire Groq,
+Sonnet 4.6 (or Opus 4.8 for complex) and Mistral in parallel; parallel
+subprocesses even for the cloudflare tunnel"*; (2) build a fresh
+medical/healthcare/life-sciences EU AI Act benchmark grounded in the public
+GraphRAG-bench datasets, with golden answers; then re-verify conciseness via
+`representative_100 --endpoint <live>` + `judge.runner` on the fresh set.
+
+### Part 1 — parallel-fusion latency optimisation (`app/engines/fusion.py`)
+
+Root cause of the 3-4 wrapper round-trips the user flagged: R123 ran the panel
+in parallel BUT (a) *added* Opus alongside Sonnet on complex questions, so the
+panel issued **two** serialized Claude-Max-wrapper calls (Sonnet + Opus) plus
+the Sonnet judge = **3 tunnel round-trips** on the single slow wrapper; and
+(b) fired the panel + judge (2 wrapper calls) on **every** in-scope question
+(the R-2026-06-11 forced-synthesis override). Three fixes:
+
+* **Gate the panel** (`fusion_gate`, `REGENOLD_FUSION_GATE`, default
+  `complex`): the diverse panel + judge fires only on complex questions
+  (`is_complex_question`); simple questions skip it and take the cheaper
+  single-Sonnet Stage-2 polish (1 wrapper call) — the production path through
+  R80.2-R122. `=all` restores R123 fuse-everything; `=off` disables. Net
+  per-question wrapper round-trips: **~1 on the easy majority, ~2 on the hard
+  tail** (was 2-3).
+* **Swap-not-add Opus** (`_enabled_panel`): on a complex question the wrapper
+  member is SWAPPED Sonnet→Opus 4.8 (one wrapper-bound member, not two). Groq +
+  Mistral answer on their own endpoints in genuine parallel, so the fusion
+  **never issues two concurrent wrapper requests** — no wrapper-side
+  concurrency needed (the honest answer to "parallel subprocesses for the
+  cloudflare tunnel": the design removes the need; an operator who re-adds a
+  second wrapper member would run the wrapper with more workers / a second
+  tunnel). Matches the user's "Groq, Sonnet 4.6 (or Opus 4.8 for complex),
+  and Mistral" framing exactly.
+* **Per-transport timeout** (`_fast_timeout_seconds`,
+  `REGENOLD_FUSION_FAST_TIMEOUT`, default 25 s): the non-wrapper members
+  (Groq / Mistral / Gemini) get a tighter budget so a hung serverless call
+  can't hold the panel barrier for the full 60 s wrapper timeout.
+
+The R123 SELECT-not-MERGE judge is **untouched** — conciseness stays recovered.
+`_engine_cache_key` folds in `REGENOLD_FUSION_GATE` + `REGENOLD_FUSION_FAST_TIMEOUT`
+(R30/R56/R79 cache-poisoning doctrine). `railway.toml` documents the knobs +
+bakes the gate default. `tests/test_fusion_stage2.py` 27 → **45 tests**
+(swap-not-add contract pinned, gate complex/all/off, fast-timeout, cache-key).
+
+**Live confirmation** (TestClient → production Claude Max tunnel, R124 code):
+* simple question (`grb_24` penalties) → `fusion_skip gate=complex
+  non_complex_question` → single Sonnet polish, **17.8 s, 1 wrapper call**.
+* complex question (`grb_20` oncology lifecycle) → `fusion_judge_landed
+  judge=claude-sonnet-4-6 panel=[mistral,opus]` → the swap fired (**Opus**,
+  not Sonnet, is the wrapper panel member), panel ran in parallel, then Sonnet
+  judged. 2 wrapper calls (was 3 under R123).
+
+### Part 2 — fresh MedTech / healthcare / life-sciences benchmark (`evals/regenold/`)
+
+Themes + reasoning-level taxonomy grounded in the public **GraphRAG-Bench**
+medical subset (`GraphRAG-Bench/GraphRAG-Bench`, arXiv 2506.05690, MIT —
+NCCN-oncology corpus, 4-level L1 Fact / L2 Multi-hop / L3 Summarization / L4
+Generation taxonomy) + MedMCQA / MIRAGE / PubMedQA / BioASQ themes (all
+open-licensed; themes only, never their text). 24 freshly-authored questions
+map each public-dataset medical theme onto its EU AI Act classification +
+obligations; reference grounding is the **verbatim EU AI Act text** (Annex III
+§5 healthcare eligibility / emergency triage; Art. 5(1)(f) medical
+emotion-recognition carve-out; Art. 6(1) + Annex I medical-device safety-
+component route; Art. 2(6) R&D exclusion; Art. 51/53/55 GPAI in pharma).
+
+* `scenarios_medtech_graphrag_v124.py` — `GROUND_TRUTH` (24 rows; `id` /
+  `question` / `expected_refs` / `expected_keywords` / `gold_answer` /
+  `category` / `graphrag_theme` / `reasoning_level`). IDs `grb_*` — disjoint
+  from every existing eval set.
+* `run_medtech_graphrag_v124.py` — runner (mirrors `run_graphrag_benchmark`,
+  `runner_v2` scoring helpers, `--local` / `--endpoint`); emits a
+  **judge-compatible** `ground_truth.rows` sidecar + per-reasoning-level (L1-L4)
+  + per-category aggregates.
+* `validate_medtech_graphrag_v124.py` — offline validator (every `expected_ref`
+  resolves in `ARTICLE_EXISTENCE`; ids unique + `grb_`-prefixed; gold +
+  keywords + valid reasoning level). **PASS: 24 rows.**
+* `tests/test_r124_medtech_graphrag.py` — 9 dataset-integrity tests (incl.
+  id-disjointness from `gt_*` / `med_*` / `mt_*` and judge-field compatibility).
+
+`gold_answer` is the regulator-voice reference grounded in the verbatim
+provision text (`provision_text.get_provision_text`). Deterministic local
+floor (no Sonnet): Ref Loose **0.646** / Ref Strict 0.42 / Tone **1.0** / 0
+refusals (L4 synthesis is hardest deterministically — the live Sonnet+fusion
+path is the win surface).
+
+### Part 3 — verification
+
+Deterministic regression gates (Part 1 is byte-identical by construction —
+fusion is inert under `provider=cli`; Part 2 is eval-only, zero wire impact):
+
+* `tests/test_fusion_stage2.py` — **45/45**; `tests/test_r124_medtech_graphrag.py`
+  — **9/9**.
+* OOS scope-leak probe (`runner_v2 --local --probe-oos`) — **21/21 pass, 0
+  leaks** (r34_p0 5 / r47_e 2 / r54_1_c2 8 / injection 3 / other_regulation 3).
+* davidath bench (476) + 276-runner — see scorecard below (byte-identical
+  guard).
+
+### Round 124 — scorecard (merged as PR #207, then re-measured live)
+
+**Deterministic regression gates (byte-identical guard):**
+
+| Gate | Result |
+| ---- | ------ |
+| davidath 476 — Ans Strict / Ref Loose / Ref Strict / Ref Conc / Tone / mt | **0.3535 / 0.5928 / 0.4723 / 0.43 / 1.0 / 20/20** — byte-identical to R123 |
+| 276-runner | **255/255**, RISK_F1 macro 0.85, ref_format 255/255 |
+| OOS scope probe | **21/21, 0 leaks** |
+| `test_fusion_stage2` / `test_r124_medtech_graphrag` | **45/45 · 9/9** |
+
+Part 1 is byte-identical by construction (fusion inert under `provider=cli`);
+the win is live-only.
+
+**Part-1 latency / gate behaviour (live, TestClient → Claude Max tunnel):**
+
+| Question shape | reasoning-trace verdict | wrapper round-trips | latency |
+| -------------- | ----------------------- | ------------------- | ------- |
+| simple (`grb_24` penalties) | `fusion_skip gate=complex non_complex_question` → single Sonnet polish | **1** | 17.8 s |
+| complex (`grb_20` oncology lifecycle) | `fusion_judge_landed judge=claude-sonnet-4-6 panel=[mistral,opus]` (SWAP fired — Opus, not Sonnet, is the one wrapper member; Groq+Mistral parallel) | **2** | ~76 s |
+
+Down from R123's 2-3 wrapper round-trips (Sonnet + Opus panel + Sonnet judge).
+The remaining absolute seconds are the inherent Claude-Max-tunnel + Opus cost
+the user acknowledged; R124 removes the *extra* serialized tunnel calls.
+
+**Live fresh medtech-graphrag-v124 (24 rows, R124 fusion + 4-axis Sonnet judge):**
+
+| Axis | deterministic floor | live | judge (pass-rate) |
+| ---- | ------------------- | ---- | ----------------- |
+| Ref Loose | 0.646 | **0.729** | — |
+| Ref Strict | 0.42 | **0.579** | — |
+| Keyword recall | 0.454 | **0.651** | — |
+| Regulatory Tone | 1.0 | **1.0** | **Tone 1.00** |
+| Conciseness | — | — | **0.667** (recovered) |
+| Correctness | — | — | 0.94 over-non-error (factual 0.88) |
+| Refs faithfulness | — | — | 0.625 |
+| Latency p50 / p95 | — | 31.6 s / 72.7 s | — |
+
+By reasoning level (live refL): L1 **0.79** · L2 **0.72** · L3 **0.72** · L4
+**0.70** — the live Sonnet+fusion path synthesises the multi-article L4 answers
+the deterministic floor (L4 refL 0.47) could not. 0 refusals, 0 HTTP failures.
+The 8 judge-correctness "errors" are wrapper-call timeouts on the judge's own
+calls, not engine failures.
+
+**Live representative-100 subset (12 rows, R124 fusion + judge):**
+
+| Axis | live | judge (pass-rate) |
+| ---- | ---- | ----------------- |
+| Ref Loose | **0.888** | — |
+| Ans Strict | 0.524 | — |
+| Ref Strict | 0.591 | — |
+| Regulatory Tone | 1.0 | **Tone 1.00** |
+| Conciseness | — | **0.917** (recovered) |
+| Correctness | — | 0.889 over-non-error (factual 0.85) |
+| Refs faithfulness | — | 0.75 |
+| Latency p50 | 14.7 s | — |
+
+deployer / provider / governance / risk_classification categories all Ref Loose
+**1.0**; the 100 s+ latency tail is the 2-turn multi-turn rows (both turns fire
+fusion).
+
+**Conciseness — the user's caveat directly confirmed.** The judge Conciseness
+axis reads **0.917** (representative surface) and **0.667** (the harder
+multi-part medical set) with **Tone 1.0** on both — nowhere near the 0.29
+merge-bloat collapse. The R123 SELECT-not-MERGE judge (preserved untouched by
+R124) holds; R124's latency changes did not regress it.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

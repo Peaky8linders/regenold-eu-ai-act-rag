@@ -394,7 +394,7 @@ def _openai_wrapper_complete_for_graph_rag(
     else:
         try:
             from app.integrations.regenold.reasoning_trace import record_llm_thinking
-            record_llm_thinking("Standard fast-path generation used (extended thinking disabled or not supported by model tier).", stage=stage_name)
+            record_llm_thinking("Fast-path generation used (extended thinking is disabled by configuration; set P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS > 0 on the complex-question path to enable it).", stage=stage_name)
         except Exception:
             pass
             
@@ -522,7 +522,7 @@ def _anthropic_complete_for_graph_rag(
         else:
             try:
                 from app.integrations.regenold.reasoning_trace import record_llm_thinking
-                record_llm_thinking("Standard fast-path generation used (extended thinking disabled or not supported by model tier).", stage=stage_name)
+                record_llm_thinking("Fast-path generation used (extended thinking is disabled by configuration; set P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS > 0 on the complex-question path to enable it).", stage=stage_name)
             except Exception:
                 pass
     except Exception as exc:  # noqa: BLE001
@@ -3780,6 +3780,7 @@ def _claude_max_enhance_answer(
         _env_provider = force_provider or os.getenv("P2P_GRAPH_RAG_PROVIDER", "").strip().lower()
         _use_anthropic_sdk = False
         _use_gemini = False
+        _use_groq = False
         if _env_provider == "anthropic":
             try:
                 from app.config import settings as _s  # noqa: PLC0415
@@ -3789,6 +3790,9 @@ def _claude_max_enhance_answer(
         elif _env_provider == "gemini":
             from app.llm.openai_wrapper_provider import is_gemini_provider_enabled
             _use_gemini = is_gemini_provider_enabled()
+        elif _env_provider == "groq":
+            from app.llm.openai_wrapper_provider import is_groq_provider_enabled
+            _use_groq = is_groq_provider_enabled()
 
         system_prompt = PROMPT_HARDENING_PREFIX + ANSWER_GENERATE_SYSTEM
         try:
@@ -3808,7 +3812,46 @@ def _claude_max_enhance_answer(
         except Exception:
             pass
 
-        if _use_anthropic_sdk:
+        # Fusion Stage-2 (Mixture-of-Agents): a diverse panel (Sonnet 4.6 via
+        # the Claude Max wrapper + Groq Llama 3.3 70B + Mistral Large, plus
+        # Opus 4.8 when the question is complex) answers IN PARALLEL, then
+        # Sonnet 4.6 JUDGES and emits the single most concise + correct draft as
+        # the final answer (judge + Stage-2 polish in one call). All reuse this
+        # exact ``system_prompt`` + ``user_message`` (which already carries the
+        # EU AI Act references block, query profile, and cross-references). Fires
+        # BEFORE the single-provider dispatch when enabled; ``fusion_complete``
+        # returns None on any degenerate/failure path so we fall through to the
+        # canonical single-provider call below.
+        text_raw = None
+        _fusion_used = False
+        try:
+            from app.engines.fusion import (  # noqa: PLC0415
+                fusion_complete,
+                fusion_stage2_enabled,
+            )
+            # Fusion's judge and wrapper-bound panel member intentionally use
+            # the Claude-Max wrapper. Do not invoke it when the operator has
+            # explicitly selected a non-wrapper Stage-2 provider (Anthropic SDK,
+            # Gemini, Groq); otherwise a latency/cost opt-out silently still
+            # pays one or two wrapper tunnel round-trips before provider
+            # dispatch. Unset / auto / openai_wrapper keep historical fusion.
+            _fusion_allowed = _env_provider in ("", "auto", "openai_wrapper", "wrapper")
+            if fusion_stage2_enabled() and _fusion_allowed:
+                _fused = fusion_complete(
+                    system=system_prompt,
+                    user=user_message,
+                    max_tokens=max_tokens,
+                    temperature=0.0,
+                    complex_question=complex_q,
+                )
+                if _fused is not None:
+                    text_raw, _fusion_used = _fused, True
+        except Exception as exc:  # noqa: BLE001 — fusion never breaks Stage-2
+            logger.warning("graph_rag.fusion_stage2_error: %s", exc)
+
+        if _fusion_used:
+            pass
+        elif _use_anthropic_sdk:
             try:
                 from app.integrations.regenold.reasoning_trace import record_note
                 from app.config import settings
@@ -3854,6 +3897,25 @@ def _claude_max_enhance_answer(
                     getattr(resp, "finish_reason", None),
                     resp.completion_tokens,
                 )
+                text_raw = None
+            else:
+                text_raw = resp.text
+        elif _use_groq:
+            from app.llm.openai_wrapper_provider import OpenAIWrapperRequest, get_groq_provider
+            resp = get_groq_provider().complete(
+                OpenAIWrapperRequest(
+                    system=system_prompt,
+                    user=user_message,
+                    model=os.getenv("REGENOLD_STAGE2_MODEL_GROQ", "llama-3.3-70b-versatile"),
+                    max_tokens=max_tokens,
+                    temperature=0.0,
+                )
+            )
+            if resp.error:
+                logger.warning("graph_rag.groq_stage2_call_failed: %s", resp.error[:200])
+                text_raw = None
+            elif getattr(resp, "finish_reason", None) == "length" or _looks_structurally_truncated(resp.text):
+                logger.warning("graph_rag.groq_stage2_truncated — falling back to deterministic.")
                 text_raw = None
             else:
                 text_raw = resp.text
@@ -4154,12 +4216,46 @@ def _merge_graph_context(base: GraphContext, extra: GraphContext) -> list[str]:
             if ref:
                 added_refs.append(ref)
 
-    seen_gap = {_id(it) for it in base.gaps if _id(it)}
-    for item in extra.gaps:
-        gid = _id(item)
-        if gid and gid not in seen_gap:
-            seen_gap.add(gid)
-            base.gaps.append(item)
+    def _extend_dicts_by_id(dst: list[dict], src: list[dict]) -> None:
+        seen = {_id(it) for it in dst if _id(it)}
+        for item in src:
+            key = _id(item)
+            if key:
+                if key in seen:
+                    continue
+                seen.add(key)
+            if item not in dst:
+                dst.append(item)
+
+    _extend_dicts_by_id(base.gaps, extra.gaps)
+    _extend_dicts_by_id(base.satisfied, extra.satisfied)
+    _extend_dicts_by_id(base.dimension_info, extra.dimension_info)
+    _extend_dicts_by_id(base.transitive_deps, extra.transitive_deps)
+    _extend_dicts_by_id(
+        base.referenced_annexes_and_recitals,
+        extra.referenced_annexes_and_recitals,
+    )
+
+    for attr in ("xrefs", "semantically_relevant_statements", "web_search_results"):
+        dst = getattr(base, attr)
+        seen_values = set(dst)
+        for value in getattr(extra, attr):
+            if value not in seen_values:
+                seen_values.add(value)
+                dst.append(value)
+
+    for key, value in extra.cross_framework.items():
+        base.cross_framework.setdefault(key, value)
+
+    if extra.synthesis_memory:
+        if base.synthesis_memory:
+            if extra.synthesis_memory not in base.synthesis_memory:
+                base.synthesis_memory = f"{base.synthesis_memory}\n{extra.synthesis_memory}"
+        else:
+            base.synthesis_memory = extra.synthesis_memory
+
+    if extra.degraded:
+        base.degraded = True
 
     base.nodes_traversed += extra.nodes_traversed
     base.edges_followed += extra.edges_followed
@@ -4238,8 +4334,14 @@ def _maybe_sufficient_context_hop(
             if sub_q.startswith("Article ") or sub_q.startswith("Annex "):
                 rewritten_q = sub_q
             else:
-                from app.engines.frames_rewriter import rewrite_sub_query_llm
-                rewritten_q = rewrite_sub_query_llm(sub_q, request.question)
+                from app.engines.sufficient_context import llm_rewriter_enabled
+
+                if llm_rewriter_enabled():
+                    from app.engines.frames_rewriter import rewrite_sub_query_llm
+
+                    rewritten_q = rewrite_sub_query_llm(sub_q, request.question)
+                else:
+                    rewritten_q = sub_q
             
             sub_query = _deterministic_parse(rewritten_q)
             sub_ctx = _retrieve_from_graph(
