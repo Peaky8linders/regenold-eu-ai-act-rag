@@ -6,10 +6,46 @@ reads their drafts and produces the single best final answer. We run our OWN
 panel on the flat **Claude Max** subscription (Sonnet 4.6 via the
 Cloudflare-tunnelled wrapper) + **Groq** Llama 3.3 70B + **Mistral** Large, and
 for the hardest ~20% of questions (``complex_question`` per the existing
-``is_complex_question`` logic) we add **Claude Opus 4.8** as a fourth candidate.
-The judge is **Claude Sonnet 4.6** — so the fusion cost stays on the Max
-subscription plus cheap serverless tokens, never per-completion OpenRouter
-billing.
+``is_complex_question`` logic) we **swap** the wrapper member to **Claude
+Opus 4.8**. The judge is **Claude Sonnet 4.6** — so the fusion cost stays on
+the Max subscription plus cheap serverless tokens, never per-completion
+OpenRouter billing.
+
+R124 — latency optimisation (the user's "gate fusion optimisation; the lever
+is panel size; fire Groq, Sonnet 4.6 (or Opus 4.8 for complex) and Mistral in
+parallel; parallel subprocesses even for the cloudflare tunnel"):
+
+* **One wrapper-bound panel member, not two.** R123 *added* Opus alongside
+  Sonnet on complex questions, so the panel issued TWO serialized Claude-Max
+  wrapper calls (Sonnet + Opus) plus the Sonnet judge = **3 tunnel
+  round-trips** on the single slow wrapper — the dominant latency cost the user
+  flagged (p50 40-75 s). R124 SWAPS Sonnet→Opus on complex
+  (:func:`_enabled_panel`) so the panel has exactly one wrapper member
+  (Sonnet | Opus); Groq + Mistral answer on their OWN endpoints in genuine
+  parallel. Consequence: the fusion NEVER issues two concurrent wrapper
+  requests, so it needs no wrapper-side concurrency — the only serialized
+  wrapper calls are the one panel member then the judge (panel→judge is an
+  unavoidable data dependency). To parallelise the wrapper itself further (if
+  an operator re-adds a second wrapper member), run the wrapper with more
+  workers / a second tunnel — out of scope here because the design removes the
+  need.
+* **Gate the panel to where it earns its latency** (:func:`fusion_gate`,
+  ``REGENOLD_FUSION_GATE``, default ``complex``). Simple questions skip the
+  panel + judge (2 wrapper calls) and take the cheaper single-Sonnet Stage-2
+  polish (1 wrapper call) — the production path through R80.2-R122. The
+  diverse 3-way panel + judge fires on the hard ~20% (``complex_question``)
+  where the OpenRouter-Fusion lift is real. Net per-question wrapper
+  round-trips: ~1 on the easy majority, ~2 on the hard tail (down from 2-3).
+  Set ``REGENOLD_FUSION_GATE=all`` to restore R123 fuse-everything.
+* **Per-transport timeout** (:func:`_fast_timeout_seconds`,
+  ``REGENOLD_FUSION_FAST_TIMEOUT``, default 25 s): the non-wrapper members
+  (Groq / Mistral / Gemini) are fast (500+ tok/s), so a tighter budget stops a
+  single hung serverless call from holding the panel barrier for the full
+  wrapper timeout.
+
+The SELECT-not-MERGE judge (below) is unchanged from R123 — conciseness stays
+recovered (the merge-bloat that collapsed Answer-Conciseness 0.70→0.29 is gone;
+the judge picks the single best draft and prefers the shortest correct one).
 
 **The judge SELECTS, it does not MERGE.** An earlier cut told the judge to
 "adopt the most accurate content AND include any correct point one draft raised
@@ -43,12 +79,20 @@ LLM-judge axes.
 
 Env:
   REGENOLD_FUSION_STAGE2          master gate (default ON; "0"/"false" disables)
+  REGENOLD_FUSION_GATE            when the panel fires (R124): ``complex``
+                                  (default — fuse only complex questions, single
+                                  Sonnet polish on the rest), ``all`` (R123
+                                  fuse-everything), ``off`` (never fuse).
   REGENOLD_FUSION_JUDGE_MODEL     judge model id (default ``claude-sonnet-4-6``)
   REGENOLD_FUSION_PANEL           comma list of panel members to enable
-                                  (default ``sonnet,groq,mistral``; ``opus`` is
-                                  auto-added on complex questions; available:
-                                  sonnet, opus, groq, mistral, gemini)
-  REGENOLD_FUSION_TIMEOUT         per-call timeout seconds (default 60)
+                                  (default ``sonnet,groq,mistral``; on a complex
+                                  question the wrapper member is SWAPPED
+                                  sonnet→``opus`` — one wrapper member, not two;
+                                  available: sonnet, opus, groq, mistral, gemini)
+  REGENOLD_FUSION_TIMEOUT         per-call timeout seconds for the wrapper
+                                  member + judge (default 60)
+  REGENOLD_FUSION_FAST_TIMEOUT    per-call timeout for the non-wrapper members
+                                  Groq / Mistral / Gemini (default 25)
   REGENOLD_FUSION_MIN_CANDIDATES  min panel drafts required to run the judge
                                   (default 2 — below this we fall through to
                                   the trusted single-Sonnet path)
@@ -76,6 +120,15 @@ _DEFAULT_PANEL = ("sonnet", "groq", "mistral")
 # correct draft). Opus 4.8 rides the PANEL for complex questions instead.
 _DEFAULT_JUDGE_MODEL = "claude-sonnet-4-6"
 
+# R124 — transports that hit their OWN fast serverless endpoint (NOT the single
+# slow Claude-Max wrapper). They answer in genuine parallel and finish fast, so
+# they get a tighter per-call timeout: a hung serverless call can't hold the
+# panel barrier for the full wrapper budget.
+_FAST_TRANSPORTS = frozenset({"groq", "mistral", "gemini"})
+
+# R124 — when the fusion panel fires.
+_FUSION_GATE_VALUES = ("complex", "all", "off")
+
 
 def fusion_stage2_enabled() -> bool:
     """Master gate. Default ON; explicit ``0`` / ``false`` / ``no`` / ``off``
@@ -92,6 +145,39 @@ def fusion_stage2_enabled() -> bool:
         "off",
         "",
     )
+
+
+def fusion_gate() -> str:
+    """When the diverse panel fires. ``REGENOLD_FUSION_GATE`` (default
+    ``complex``):
+
+    * ``complex`` (R124 default) — fuse ONLY complex questions
+      (``complex_question`` passed by the caller, computed from
+      ``is_complex_question``). Simple questions skip the panel + judge (two
+      wrapper round-trips) and take the cheaper single-Sonnet Stage-2 polish
+      (one wrapper round-trip) — the production path through R80.2-R122. The
+      OpenRouter-Fusion lift is real on hard reasoning, marginal on simple
+      single-anchor QA, so this is the latency win: the panel only pays its
+      cost where it earns it.
+    * ``all`` — R123 behaviour: fuse every question that reaches Stage-2.
+    * ``off`` — never fuse; always the single-provider Stage-2 polish.
+
+    Unknown / empty values fall back to ``complex``. The master kill-switch is
+    :func:`fusion_stage2_enabled` (``REGENOLD_FUSION_STAGE2``); this knob is the
+    *when*, that one is the *whether-at-all*.
+    """
+    v = os.getenv("REGENOLD_FUSION_GATE", "complex").strip().lower()
+    return v if v in _FUSION_GATE_VALUES else "complex"
+
+
+def _fast_timeout_seconds() -> float:
+    """Per-call timeout for the non-wrapper panel members (Groq / Mistral /
+    Gemini). Tighter than the wrapper budget so a hung serverless call fails
+    fast instead of holding the panel barrier."""
+    try:
+        return float(os.getenv("REGENOLD_FUSION_FAST_TIMEOUT", "25").strip())
+    except (TypeError, ValueError):
+        return 25.0
 
 
 def _judge_model() -> str:
@@ -146,11 +232,14 @@ def _enabled_panel(complex_question: bool = False) -> list[tuple[str, str, str]]
     """Resolve the configured panel to ``(label, model, transport)`` triples,
     keeping only members whose transport is live.
 
-    On a ``complex_question`` (the existing ``is_complex_question`` gate),
-    **Opus 4.8 is appended to the panel** so the hardest ~20% of questions get a
-    frontier-model candidate the Sonnet judge can pick. Additive — it never
-    removes a configured member, and is deduped below (no double Opus if an
-    operator already listed it).
+    R124 — on a ``complex_question`` (the existing ``is_complex_question``
+    gate), the wrapper-bound member is **SWAPPED** Sonnet→Opus 4.8 rather than
+    Opus being *added* alongside Sonnet. The hardest ~20% of questions get the
+    frontier model, and the panel keeps exactly ONE wrapper-bound member so it
+    never issues two concurrent calls to the single slow Claude-Max wrapper
+    (Groq + Mistral run on their own endpoints in parallel). Idempotent: if an
+    operator already listed ``opus`` (or there is no ``sonnet`` to swap) the
+    panel is left as configured + ``opus`` ensured present — no double Opus.
     """
     raw = os.getenv("REGENOLD_FUSION_PANEL", "").strip()
     labels = (
@@ -159,7 +248,11 @@ def _enabled_panel(complex_question: bool = False) -> list[tuple[str, str, str]]
         else list(_DEFAULT_PANEL)
     )
     if complex_question and "opus" not in labels:
-        labels = [*labels, "opus"]
+        # Swap the standard wrapper member (sonnet) for the frontier model
+        # (opus). If the configured panel has no sonnet, append opus so a
+        # frontier candidate is still present.
+        swapped = ["opus" if lbl == "sonnet" else lbl for lbl in labels]
+        labels = swapped if "opus" in swapped else [*labels, "opus"]
     out: list[tuple[str, str, str]] = []
     seen: set[str] = set()
     for label in labels:
@@ -309,6 +402,18 @@ def fusion_complete(
     truncated) so the caller falls through to the canonical single-provider
     Stage-2. Never raises.
     """
+    # R124 — gate the panel to where it earns its latency. Default ``complex``:
+    # the diverse panel + judge (two wrapper round-trips) fires only on hard
+    # questions; simple questions return None here so the caller runs the
+    # cheaper single-Sonnet Stage-2 polish (one wrapper round-trip).
+    gate = fusion_gate()
+    if gate == "off":
+        _trace("fusion_skip gate=off")
+        return None
+    if gate == "complex" and not complex_question:
+        _trace("fusion_skip gate=complex non_complex_question")
+        return None
+
     panel = _enabled_panel(complex_question)
     if len(panel) < _min_candidates():
         # Not enough diverse transports live to fuse — let the caller run the
@@ -319,9 +424,16 @@ def fusion_complete(
     # Panel members must not truncate — give them a healthy ceiling.
     panel_max_tokens = max(int(max_tokens or 0), 1024)
     timeout = _timeout_seconds()
+    fast_timeout = _fast_timeout_seconds()
 
     drafts: list[tuple[str, str]] = []
     try:
+        # All panel members fire concurrently (one thread each). The single
+        # wrapper-bound member (Sonnet | Opus) and the non-wrapper members
+        # (Groq / Mistral on their own endpoints) run in genuine parallel — the
+        # panel never issues two concurrent wrapper requests (R124 swap-not-add
+        # keeps exactly one wrapper member), so no wrapper-side concurrency is
+        # needed. Wall-clock for the panel ≈ the slowest single member.
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(panel)) as ex:
             futures = {
                 ex.submit(
@@ -329,7 +441,10 @@ def fusion_complete(
                     label, model, transport,
                     system=system, user=user,
                     max_tokens=panel_max_tokens, temperature=temperature,
-                    timeout=timeout,
+                    # R124 — non-wrapper members get the tighter fast budget so a
+                    # hung serverless call can't hold the barrier for the full
+                    # wrapper timeout.
+                    timeout=(fast_timeout if transport in _FAST_TRANSPORTS else timeout),
                 ): label
                 for (label, model, transport) in panel
             }

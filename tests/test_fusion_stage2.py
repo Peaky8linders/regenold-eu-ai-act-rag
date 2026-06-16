@@ -21,6 +21,17 @@ from app.llm import openai_wrapper_provider as owp
 from app.llm.openai_wrapper_provider import OpenAIWrapperResponse
 
 
+@pytest.fixture(autouse=True)
+def _fusion_gate_all(monkeypatch):
+    """R124 — the default ``REGENOLD_FUSION_GATE`` is ``complex`` (fuse only
+    complex questions). The panel-mechanics tests below call
+    ``fusion_complete`` WITHOUT ``complex_question=True`` and expect the panel
+    to fire, so open the gate for the module by default. The dedicated gate
+    tests override this with their own ``setenv`` (the test body's monkeypatch
+    runs after this fixture, so it wins)."""
+    monkeypatch.setenv("REGENOLD_FUSION_GATE", "all")
+
+
 # ── env gating ────────────────────────────────────────────────────────────────
 
 def test_fusion_enabled_default_on(monkeypatch):
@@ -95,21 +106,40 @@ def test_enabled_panel_custom_env(monkeypatch):
     assert labels == ["groq", "mistral"]  # sonnet not requested; non-complex
 
 
-def test_enabled_panel_adds_opus_on_complex(monkeypatch):
-    """Opus 4.8 rides the panel ONLY for complex questions."""
+def test_enabled_panel_swaps_sonnet_for_opus_on_complex(monkeypatch):
+    """R124 — the wrapper member is SWAPPED Sonnet→Opus 4.8 on complex (one
+    wrapper-bound member, not two). Groq + Mistral stay on their own
+    endpoints."""
     monkeypatch.delenv("REGENOLD_FUSION_PANEL", raising=False)
     monkeypatch.setattr(owp, "is_openai_wrapper_enabled", lambda: True)  # opus + sonnet
     monkeypatch.setattr(owp, "is_groq_provider_enabled", lambda: True)
     monkeypatch.setattr(owp, "is_mistral_provider_enabled", lambda: True)
 
     simple = [p[0] for p in fusion._enabled_panel(complex_question=False)]
-    assert simple == ["sonnet", "groq", "mistral"]  # no opus on a simple question
+    assert simple == ["sonnet", "groq", "mistral"]  # Sonnet wrapper member on simple
 
     complex_ = [p[0] for p in fusion._enabled_panel(complex_question=True)]
-    assert "opus" in complex_  # opus added for the hard ~20%
+    assert complex_ == ["opus", "groq", "mistral"]  # SWAP — Sonnet→Opus
+    assert "sonnet" not in complex_  # swapped out, NOT added alongside (R124)
     assert ("opus", "claude-opus-4-8", "wrapper") in fusion._enabled_panel(
         complex_question=True
     )
+    # Exactly ONE wrapper-bound member on complex (no Sonnet+Opus double tunnel).
+    wrapper_members = [
+        p for p in fusion._enabled_panel(complex_question=True) if p[2] == "wrapper"
+    ]
+    assert len(wrapper_members) == 1
+
+
+def test_enabled_panel_swaps_only_when_sonnet_present(monkeypatch):
+    """A custom panel with no sonnet still gets a frontier candidate (opus
+    appended) on complex — never left without one."""
+    monkeypatch.setenv("REGENOLD_FUSION_PANEL", "groq, mistral")
+    monkeypatch.setattr(owp, "is_openai_wrapper_enabled", lambda: True)
+    monkeypatch.setattr(owp, "is_groq_provider_enabled", lambda: True)
+    monkeypatch.setattr(owp, "is_mistral_provider_enabled", lambda: True)
+    labels = [p[0] for p in fusion._enabled_panel(complex_question=True)]
+    assert labels == ["groq", "mistral", "opus"]  # opus appended (nothing to swap)
 
 
 def test_enabled_panel_no_double_opus_when_configured(monkeypatch):
@@ -344,3 +374,146 @@ def test_engine_cache_key_includes_judge_model(monkeypatch):
     monkeypatch.setenv("REGENOLD_FUSION_JUDGE_MODEL", "claude-sonnet-4-6")
     k_b = _engine_cache_key("q", None)
     assert k_a != k_b
+
+
+def test_engine_cache_key_includes_fusion_gate(monkeypatch):
+    """R124 — flipping the fusion gate flips the cached answer (panel+judge vs
+    single-Sonnet polish), so it must invalidate the cache identity."""
+    from app.routes.regenold import _engine_cache_key
+
+    monkeypatch.setenv("REGENOLD_FUSION_GATE", "complex")
+    k_complex = _engine_cache_key("q", None)
+    monkeypatch.setenv("REGENOLD_FUSION_GATE", "all")
+    k_all = _engine_cache_key("q", None)
+    assert k_complex != k_all
+
+
+# ── R124 — fusion gate (when the panel fires) ───────────────────────────────────
+
+def test_fusion_gate_default_is_complex(monkeypatch):
+    monkeypatch.delenv("REGENOLD_FUSION_GATE", raising=False)
+    assert fusion.fusion_gate() == "complex"
+
+
+@pytest.mark.parametrize(
+    "val,expected",
+    [
+        ("complex", "complex"), ("all", "all"), ("off", "off"),
+        ("ALL", "all"), (" off ", "off"),
+        ("bogus", "complex"), ("", "complex"),  # unknown / empty → complex
+    ],
+)
+def test_fusion_gate_values(monkeypatch, val, expected):
+    monkeypatch.setenv("REGENOLD_FUSION_GATE", val)
+    assert fusion.fusion_gate() == expected
+
+
+def test_fusion_complete_gate_complex_skips_simple(monkeypatch):
+    """Default gate=complex: a SIMPLE question returns None (caller runs the
+    cheaper single-Sonnet polish) — the panel + judge never fire."""
+    monkeypatch.setenv("REGENOLD_FUSION_GATE", "complex")
+    called = {"complete": 0}
+
+    class _Track:
+        def complete(self, req):
+            called["complete"] += 1
+            return OpenAIWrapperResponse(text="should not be called")
+
+    _wire_three_transports(monkeypatch, wrapper=_Track(), groq=_Track(), mistral=_Track())
+    out = fusion.fusion_complete(
+        system="SYS", user="QUESTION: x", max_tokens=512, complex_question=False
+    )
+    assert out is None
+    assert called["complete"] == 0  # no panel / judge wrapper calls at all
+
+
+def test_fusion_complete_gate_complex_fires_complex(monkeypatch):
+    """Default gate=complex: a COMPLEX question DOES fuse."""
+    monkeypatch.setenv("REGENOLD_FUSION_GATE", "complex")
+    wrapper = _FakeProvider({
+        "claude-sonnet-4-6": _sonnet_script(
+            panel_text="draft", judge_resp=OpenAIWrapperResponse(text="Final selected answer."),
+        ),
+        "claude-opus-4-8": lambda r: OpenAIWrapperResponse(text="opus draft"),
+    })
+    ok = _FakeProvider({
+        "llama-3.3-70b-versatile": lambda r: OpenAIWrapperResponse(text="groq draft"),
+        "mistral-large-latest": lambda r: OpenAIWrapperResponse(text="mistral draft"),
+    })
+    _wire_three_transports(monkeypatch, wrapper=wrapper, groq=ok, mistral=ok)
+    out = fusion.fusion_complete(
+        system="SYS", user="QUESTION: x", max_tokens=512, complex_question=True
+    )
+    assert out == "Final selected answer."
+
+
+def test_fusion_complete_gate_all_fires_on_simple(monkeypatch):
+    """gate=all (R123): fuse even a simple question."""
+    monkeypatch.setenv("REGENOLD_FUSION_GATE", "all")
+    wrapper = _FakeProvider({
+        "claude-sonnet-4-6": _sonnet_script(
+            panel_text="draft", judge_resp=OpenAIWrapperResponse(text="Selected."),
+        ),
+    })
+    ok = _FakeProvider({
+        "llama-3.3-70b-versatile": lambda r: OpenAIWrapperResponse(text="b"),
+        "mistral-large-latest": lambda r: OpenAIWrapperResponse(text="c"),
+    })
+    _wire_three_transports(monkeypatch, wrapper=wrapper, groq=ok, mistral=ok)
+    out = fusion.fusion_complete(
+        system="SYS", user="QUESTION: x", max_tokens=512, complex_question=False
+    )
+    assert out == "Selected."
+
+
+def test_fusion_complete_gate_off_never_fires(monkeypatch):
+    """gate=off: never fuse, even on a complex question."""
+    monkeypatch.setenv("REGENOLD_FUSION_GATE", "off")
+    boom = _FakeProvider({})
+    _wire_three_transports(monkeypatch, wrapper=boom, groq=boom, mistral=boom)
+    out = fusion.fusion_complete(
+        system="SYS", user="Q", max_tokens=512, complex_question=True
+    )
+    assert out is None
+
+
+# ── R124 — per-transport fast timeout ───────────────────────────────────────────
+
+def test_fast_timeout_default(monkeypatch):
+    monkeypatch.delenv("REGENOLD_FUSION_FAST_TIMEOUT", raising=False)
+    assert fusion._fast_timeout_seconds() == 25.0
+
+
+def test_fast_timeout_env_override(monkeypatch):
+    monkeypatch.setenv("REGENOLD_FUSION_FAST_TIMEOUT", "12.5")
+    assert fusion._fast_timeout_seconds() == 12.5
+
+
+def test_fast_timeout_bad_value_falls_back(monkeypatch):
+    monkeypatch.setenv("REGENOLD_FUSION_FAST_TIMEOUT", "not-a-number")
+    assert fusion._fast_timeout_seconds() == 25.0
+
+
+def test_panel_members_get_per_transport_timeout(monkeypatch):
+    """The non-wrapper members (groq/mistral) get the fast timeout; the
+    wrapper member gets the full wrapper timeout."""
+    monkeypatch.setenv("REGENOLD_FUSION_GATE", "all")
+    monkeypatch.setenv("REGENOLD_FUSION_TIMEOUT", "60")
+    monkeypatch.setenv("REGENOLD_FUSION_FAST_TIMEOUT", "20")
+    seen: dict[str, float] = {}
+
+    def _capture(label, model, transport, *, system, user, max_tokens, temperature, timeout):
+        seen[transport] = timeout
+        return label, f"draft from {label}"
+
+    monkeypatch.setattr(fusion, "_one_candidate", _capture)
+    wrapper = _FakeProvider({
+        "claude-sonnet-4-6": _sonnet_script(
+            panel_text="x", judge_resp=OpenAIWrapperResponse(text="final"),
+        ),
+    })
+    _wire_three_transports(monkeypatch, wrapper=wrapper, groq=wrapper, mistral=wrapper)
+    fusion.fusion_complete(system="SYS", user="Q", max_tokens=512, complex_question=False)
+    assert seen.get("wrapper") == 60.0
+    assert seen.get("groq") == 20.0
+    assert seen.get("mistral") == 20.0

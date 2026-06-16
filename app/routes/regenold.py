@@ -1302,6 +1302,13 @@ def _engine_cache_key(
             "REGENOLD_FUSION_STAGE2",
             "REGENOLD_FUSION_JUDGE_MODEL",
             "REGENOLD_FUSION_PANEL",
+            # R124 — the fusion latency knobs also flip the cached
+            # GraphRAGResponse.answer: REGENOLD_FUSION_GATE decides WHETHER the
+            # panel fires at all (panel+judge vs single-Sonnet polish, a
+            # different answer); REGENOLD_FUSION_FAST_TIMEOUT changes which
+            # panel drafts land in time. Both belong in the cache identity.
+            "REGENOLD_FUSION_GATE",
+            "REGENOLD_FUSION_FAST_TIMEOUT",
         )
     )
     import json

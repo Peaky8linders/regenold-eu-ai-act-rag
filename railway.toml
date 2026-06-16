@@ -60,6 +60,18 @@ REGENOLD_LOGIC_RAG = "1"
 #   REGENOLD_FUSION_JUDGE_MODEL="claude-opus-4-8"
 #   REGENOLD_FUSION_MIN_CANDIDATES="2"   REGENOLD_FUSION_TIMEOUT="60"
 REGENOLD_FUSION_STAGE2 = "1"
+# R124 — fusion LATENCY optimisation. The panel + judge cost 2 wrapper
+# round-trips on the single slow Max tunnel, so we (a) GATE the panel to fire
+# only on complex questions — simple questions take the cheaper single-Sonnet
+# polish (1 wrapper call); (b) on complex, SWAP the wrapper member Sonnet→Opus
+# (one wrapper-bound member, not two — Groq + Mistral run parallel on their own
+# endpoints); (c) give the fast serverless members a tighter timeout. Net:
+# ~1 wrapper call on the easy majority, ~2 on the hard tail (was 2-3).
+# Default in CODE (fusion.fusion_gate / _fast_timeout_seconds); these entries
+# document intent + rollback. Restore R123 fuse-everything with
+#   railway variables --set REGENOLD_FUSION_GATE=all
+REGENOLD_FUSION_GATE = "complex"
+REGENOLD_FUSION_FAST_TIMEOUT = "25"
 
 # R98 / R121 — graph backend selector. The master switch has THREE values:
 #   * "neo4j"    (default) — the hosted Neo4j Aura 2-hop CROSS_REFERENCES

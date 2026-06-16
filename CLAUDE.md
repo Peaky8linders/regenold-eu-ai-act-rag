@@ -6502,6 +6502,109 @@ correct draft; Opus 4.8 strengthens the complex-question candidate pool). Env:
 members need `GROQ_API_KEY` / `MISTRAL_API_KEY`; without them the panel shrinks
 and fusion falls through to the single-Sonnet path (fail-soft, never raises).
 
+## Round 124 — Fusion latency: gate + swap-not-add + per-transport timeout; fresh MedTech/GraphRAG-Bench benchmark (2026-06-16)
+
+Two user directives: (1) cut the R123 MoA-fusion latency (p50 40-75 s, p95 up
+to 187 s) — *"gate fusion optimisation; the lever is panel size; fire Groq,
+Sonnet 4.6 (or Opus 4.8 for complex) and Mistral in parallel; parallel
+subprocesses even for the cloudflare tunnel"*; (2) build a fresh
+medical/healthcare/life-sciences EU AI Act benchmark grounded in the public
+GraphRAG-bench datasets, with golden answers; then re-verify conciseness via
+`representative_100 --endpoint <live>` + `judge.runner` on the fresh set.
+
+### Part 1 — parallel-fusion latency optimisation (`app/engines/fusion.py`)
+
+Root cause of the 3-4 wrapper round-trips the user flagged: R123 ran the panel
+in parallel BUT (a) *added* Opus alongside Sonnet on complex questions, so the
+panel issued **two** serialized Claude-Max-wrapper calls (Sonnet + Opus) plus
+the Sonnet judge = **3 tunnel round-trips** on the single slow wrapper; and
+(b) fired the panel + judge (2 wrapper calls) on **every** in-scope question
+(the R-2026-06-11 forced-synthesis override). Three fixes:
+
+* **Gate the panel** (`fusion_gate`, `REGENOLD_FUSION_GATE`, default
+  `complex`): the diverse panel + judge fires only on complex questions
+  (`is_complex_question`); simple questions skip it and take the cheaper
+  single-Sonnet Stage-2 polish (1 wrapper call) — the production path through
+  R80.2-R122. `=all` restores R123 fuse-everything; `=off` disables. Net
+  per-question wrapper round-trips: **~1 on the easy majority, ~2 on the hard
+  tail** (was 2-3).
+* **Swap-not-add Opus** (`_enabled_panel`): on a complex question the wrapper
+  member is SWAPPED Sonnet→Opus 4.8 (one wrapper-bound member, not two). Groq +
+  Mistral answer on their own endpoints in genuine parallel, so the fusion
+  **never issues two concurrent wrapper requests** — no wrapper-side
+  concurrency needed (the honest answer to "parallel subprocesses for the
+  cloudflare tunnel": the design removes the need; an operator who re-adds a
+  second wrapper member would run the wrapper with more workers / a second
+  tunnel). Matches the user's "Groq, Sonnet 4.6 (or Opus 4.8 for complex),
+  and Mistral" framing exactly.
+* **Per-transport timeout** (`_fast_timeout_seconds`,
+  `REGENOLD_FUSION_FAST_TIMEOUT`, default 25 s): the non-wrapper members
+  (Groq / Mistral / Gemini) get a tighter budget so a hung serverless call
+  can't hold the panel barrier for the full 60 s wrapper timeout.
+
+The R123 SELECT-not-MERGE judge is **untouched** — conciseness stays recovered.
+`_engine_cache_key` folds in `REGENOLD_FUSION_GATE` + `REGENOLD_FUSION_FAST_TIMEOUT`
+(R30/R56/R79 cache-poisoning doctrine). `railway.toml` documents the knobs +
+bakes the gate default. `tests/test_fusion_stage2.py` 27 → **45 tests**
+(swap-not-add contract pinned, gate complex/all/off, fast-timeout, cache-key).
+
+**Live confirmation** (TestClient → production Claude Max tunnel, R124 code):
+* simple question (`grb_24` penalties) → `fusion_skip gate=complex
+  non_complex_question` → single Sonnet polish, **17.8 s, 1 wrapper call**.
+* complex question (`grb_20` oncology lifecycle) → `fusion_judge_landed
+  judge=claude-sonnet-4-6 panel=[mistral,opus]` → the swap fired (**Opus**,
+  not Sonnet, is the wrapper panel member), panel ran in parallel, then Sonnet
+  judged. 2 wrapper calls (was 3 under R123).
+
+### Part 2 — fresh MedTech / healthcare / life-sciences benchmark (`evals/regenold/`)
+
+Themes + reasoning-level taxonomy grounded in the public **GraphRAG-Bench**
+medical subset (`GraphRAG-Bench/GraphRAG-Bench`, arXiv 2506.05690, MIT —
+NCCN-oncology corpus, 4-level L1 Fact / L2 Multi-hop / L3 Summarization / L4
+Generation taxonomy) + MedMCQA / MIRAGE / PubMedQA / BioASQ themes (all
+open-licensed; themes only, never their text). 24 freshly-authored questions
+map each public-dataset medical theme onto its EU AI Act classification +
+obligations; reference grounding is the **verbatim EU AI Act text** (Annex III
+§5 healthcare eligibility / emergency triage; Art. 5(1)(f) medical
+emotion-recognition carve-out; Art. 6(1) + Annex I medical-device safety-
+component route; Art. 2(6) R&D exclusion; Art. 51/53/55 GPAI in pharma).
+
+* `scenarios_medtech_graphrag_v124.py` — `GROUND_TRUTH` (24 rows; `id` /
+  `question` / `expected_refs` / `expected_keywords` / `gold_answer` /
+  `category` / `graphrag_theme` / `reasoning_level`). IDs `grb_*` — disjoint
+  from every existing eval set.
+* `run_medtech_graphrag_v124.py` — runner (mirrors `run_graphrag_benchmark`,
+  `runner_v2` scoring helpers, `--local` / `--endpoint`); emits a
+  **judge-compatible** `ground_truth.rows` sidecar + per-reasoning-level (L1-L4)
+  + per-category aggregates.
+* `validate_medtech_graphrag_v124.py` — offline validator (every `expected_ref`
+  resolves in `ARTICLE_EXISTENCE`; ids unique + `grb_`-prefixed; gold +
+  keywords + valid reasoning level). **PASS: 24 rows.**
+* `tests/test_r124_medtech_graphrag.py` — 9 dataset-integrity tests (incl.
+  id-disjointness from `gt_*` / `med_*` / `mt_*` and judge-field compatibility).
+
+`gold_answer` is the regulator-voice reference grounded in the verbatim
+provision text (`provision_text.get_provision_text`). Deterministic local
+floor (no Sonnet): Ref Loose **0.646** / Ref Strict 0.42 / Tone **1.0** / 0
+refusals (L4 synthesis is hardest deterministically — the live Sonnet+fusion
+path is the win surface).
+
+### Part 3 — verification
+
+Deterministic regression gates (Part 1 is byte-identical by construction —
+fusion is inert under `provider=cli`; Part 2 is eval-only, zero wire impact):
+
+* `tests/test_fusion_stage2.py` — **45/45**; `tests/test_r124_medtech_graphrag.py`
+  — **9/9**.
+* OOS scope-leak probe (`runner_v2 --local --probe-oos`) — **21/21 pass, 0
+  leaks** (r34_p0 5 / r47_e 2 / r54_1_c2 8 / injection 3 / other_regulation 3).
+* davidath bench (476) + 276-runner — see scorecard below (byte-identical
+  guard).
+
+Live verification (TestClient → Claude Max tunnel, the eval rule) — fresh
+medtech-graphrag-v124 + a representative-100 subset, both judged by the
+4-axis Sonnet LLM-as-judge — lands in the scorecard below.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a
