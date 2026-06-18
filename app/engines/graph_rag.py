@@ -40,6 +40,7 @@ from app.data.kb_search import (
 from app.engines.scenario_classifier import (
     ScenarioVerdict,
     classify_scenario_query,
+    _normalise,
 )
 from app.models import (
     AssessmentAnswer,
@@ -1489,6 +1490,13 @@ _VERDICT_CLAUSE_SPLIT_RE = re.compile(
     re.IGNORECASE,
 )
 
+_CLASSIFICATION_FRAGMENT_RE = re.compile(
+    r"^\s*(?:always\s+)?(?:prohibited|prohibit|high[-\s]?risk|minimal[-\s]?risk|"
+    r"limited[-\s]?risk|allowed|legal|regulated|exempt(?:ed)?|in\s+scope|"
+    r"out\s+of\s+scope)\??\s*$",
+    re.IGNORECASE,
+)
+
 # Narrow risk-tier verdict gate for the GENERAL classification fallback
 # (:func:`_general_classification_verdict`).
 #
@@ -1528,13 +1536,15 @@ def _is_classification_question(question: str) -> bool:
     """
     if not question:
         return False
+    question = _normalise(question)
     # Strip the route's "Conversation so far: … Latest question:" preamble
     # so we only test the live question.
     live = question
     if "Latest question:" in live:
         live = live.split("Latest question:", 1)[-1]
     for clause in _VERDICT_CLAUSE_SPLIT_RE.split(live):
-        if _CLASSIFICATION_QUESTION_RE.match(clause.strip()):
+        clause = clause.strip()
+        if _CLASSIFICATION_QUESTION_RE.match(clause) or _CLASSIFICATION_FRAGMENT_RE.match(clause):
             return True
     return False
 
@@ -1560,6 +1570,7 @@ def _detect_classification_topic(question: str) -> dict | None:
     Two-pass: question must look like a verdict ask AND match a topic's
     concept regex.
     """
+    question = _normalise(question)
     if not _is_classification_question(question):
         return None
     live = question
@@ -1616,6 +1627,7 @@ def _general_classification_verdict(question: str) -> dict | None:
     Measured to fire on 0/137 davidath QA + 0/339 scenarios — byte-identical
     bench parity; the win lands on real-world out-of-catalogue questions.
     """
+    question = _normalise(question)
     if not _is_classification_question(question):
         return None
     live = question
@@ -2240,6 +2252,41 @@ def _lead_rank_obligations(question: str, obligations: list[dict]) -> list[dict]
     edge case or when disabled."""
     if not _qa_lead_rank_enabled() or len(obligations) < 2:
         return obligations
+
+    # If the live question names a specific Article / Annex, prefer that
+    # explicit anchor over token-overlap heuristics. This prevents a
+    # follow-up like "what about Annex IV?" from inheriting a nearby but
+    # less specific obligation (e.g. Article 72) simply because its text
+    # shares more query tokens than the anchor itself.
+    explicit_article_nums = re.findall(
+        r"\b(?:Art\.?|Article)\s*(\d{1,3})\b", question, re.IGNORECASE,
+    )
+    explicit_annex_romans = re.findall(
+        r"\bAnnex\s+([IVXLC]+)\b", question, re.IGNORECASE,
+    )
+    if explicit_article_nums or explicit_annex_romans:
+        explicit_anchors = [
+            *(f"Article {n}" for n in explicit_article_nums),
+            *(f"Annex {r.upper()}" for r in explicit_annex_romans),
+        ]
+
+        def _matches_explicit_anchor(obl: dict) -> bool:
+            article = str(obl.get("article", "") or "").strip()
+            if not article:
+                return False
+            article_norm = article.replace("Art.", "Article", 1)
+            article_upper = article_norm.upper()
+            for anchor in explicit_anchors:
+                anchor_upper = anchor.upper()
+                if article_upper == anchor_upper or article_upper.startswith(anchor_upper + "."):
+                    return True
+            return False
+
+        anchored = [obl for obl in obligations if _matches_explicit_anchor(obl)]
+        if anchored:
+            anchored_ids = {id(obl) for obl in anchored}
+            return anchored + [obl for obl in obligations if id(obl) not in anchored_ids]
+
     q_tokens = {
         t for t in re.findall(r"[a-z0-9]+", question.lower())
         if len(t) > 2 and t not in _LEAD_RANK_STOPWORDS

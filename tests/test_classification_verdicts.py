@@ -120,6 +120,7 @@ class TestDetectClassificationTopic:
             "Is a clinical scribing AI high-risk?",
             "Are AI systems that transcribe patient visits prohibited?",
             "Is medical scribing prohibited under the AI Act?",
+            "What about doctor-patient transcription?",
         ],
     )
     def test_medical_transcription_phrasings(self, phrasing: str) -> None:

@@ -664,6 +664,24 @@ _CLASSIFICATION_TOPICS: list[dict] = [
         "name": "medical_transcription",
         "patterns": [
             re.compile(
+                r"\bdoctor[-\s]?patient\s+transcription\b|"
+                r"\bmedical\s+transcription\b|"
+                r"\bclinical\s+transcription\b|"
+                r"\bpatient\s+transcription\b|"
+                r"\bdoctor[-\s]?patient\s+scrib(?:e|ing|ing)?\b",
+                re.IGNORECASE,
+            ),
+            re.compile(
+                r"\b(?:doctor|patient|clinical|medical|consultation|health(?:care)?)"
+                r"[\w\s\-,]{0,40}?\btranscription\b",
+                re.IGNORECASE,
+            ),
+            re.compile(
+                r"\btranscription\b[\w\s\-,]{0,40}?(?:doctor|patient|clinical|medical|"
+                r"consultation|health(?:care)?)",
+                re.IGNORECASE,
+            ),
+            re.compile(
                 r"\btranscrib\w*\s+[\w\s\-,]{0,40}?(doctor|patient|clinical|medical|"
                 r"consultation|appointment|exam|visit|health(?:care)?)",
                 re.IGNORECASE,

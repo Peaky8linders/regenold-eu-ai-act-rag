@@ -2234,6 +2234,12 @@ class TestR57AScopeLeakFixes:
         v = classify_scope("Summarise Article 50 transparency obligations.")
         assert v.in_scope is True
 
+    def test_doctor_patient_transcription_routes_to_art_50(self) -> None:
+        v = classify_scope("What about doctor-patient transcription?")
+        assert v.in_scope is True
+        assert v.reason == ScopeReason.IN_SCOPE
+        assert v.referenced_articles == ("Art. 50",)
+
     def test_r57_a_legit_explain_anchor_still_in_scope(self) -> None:
         """``explain`` is NOT in the creative-content imperative list."""
         v = classify_scope("Explain Article 5 prohibitions.")

@@ -401,3 +401,97 @@ class TestR66DPrimaryAnchorMap:
         # the Art. 6 taxonomy default.
         assert result.primary_anchor == "Art. 5"
         assert "Art. 99" in result.alternate_anchors
+
+
+class TestIntentTaxonomyValidation:
+    """Regression guard for the R125.1 full-coverage intent taxonomy.
+
+    R125.1 implements the *purpose* of the rejected
+    ``intent_classifier_extensions.py`` bundle — broad intent detection
+    across the whole EU AI Act + every risk tier — but with
+    LEGALLY-CORRECT anchors (the bundle shipped deployer→Art.24,
+    distributor→Art.28, CE→Art.20, conformity→Art.19, post-market→Art.21,
+    all wrong) and wired into the live arrays + prompt. These tests pin
+    the legally-correct anchors AND the fail-fast invariants that keep
+    future taxonomy drift loud.
+    """
+
+    # The article/annex assignment that MUST hold — these are the exact
+    # mappings the rejected bundle got wrong. A future edit that
+    # reintroduces a wrong anchor fails here, not silently in production.
+    _LEGALLY_CORRECT = {
+        "prohibited_practice": "Art. 5",
+        "provider_obligations": "Art. 16",
+        "deployer_obligations": "Art. 26",
+        "importer_obligations": "Art. 23",
+        "distributor_obligations": "Art. 24",
+        "authorised_representative": "Art. 22",
+        "value_chain_responsibilities": "Art. 25",
+        "conformity_assessment": "Art. 43",
+        "ce_marking": "Art. 48",
+        "registration": "Art. 49",
+        "post_market_monitoring": "Art. 72",
+        "gpai_obligations": "Art. 53",
+        "gpai_systemic": "Art. 55",
+        "gpai_fines": "Art. 101",
+        "union_institution_fines": "Art. 100",
+        "annex_high_risk_usecases": "Annex III",
+        "annex_technical_documentation": "Annex IV",
+        "annex_harmonisation_law": "Annex I",
+    }
+
+    def test_full_coverage_labels_use_legally_correct_anchors(self) -> None:
+        for label, anchor in self._LEGALLY_CORRECT.items():
+            assert label in ic.INTENT_LABELS, f"{label} missing from INTENT_LABELS"
+            assert ic.INTENT_PRIMARY_ANCHOR.get(label) == anchor, (
+                f"{label} must anchor {anchor}, got "
+                f"{ic.INTENT_PRIMARY_ANCHOR.get(label)!r}"
+            )
+
+    def test_every_risk_tier_is_covered(self) -> None:
+        # The "types of risk" the user asked for: prohibited / high-risk /
+        # limited-transparency / GPAI / GPAI-systemic each have a label.
+        for label in (
+            "prohibited_practice",
+            "risk_classification",
+            "transparency_obligation",
+            "gpai_obligations",
+            "gpai_systemic",
+        ):
+            assert label in ic.INTENT_LABELS
+
+    def test_labels_unique_and_anchors_subset_of_labels(self) -> None:
+        assert len(ic.INTENT_LABELS) == len(set(ic.INTENT_LABELS))
+        assert set(ic.INTENT_PRIMARY_ANCHOR).issubset(set(ic.INTENT_LABELS))
+
+    def test_all_anchors_resolve_in_catalog(self) -> None:
+        from app.data.article_existence import ARTICLE_EXISTENCE
+
+        bad = {
+            lbl: a
+            for lbl, a in ic.INTENT_PRIMARY_ANCHOR.items()
+            if a not in ARTICLE_EXISTENCE
+        }
+        assert not bad, f"anchors not in catalog: {bad}"
+
+    def test_validate_intent_taxonomy_passes_on_real_taxonomy(self) -> None:
+        # The live taxonomy must not raise (it runs at import; pin it here too).
+        ic._validate_intent_taxonomy()
+
+    def test_validate_intent_taxonomy_rejects_anchor_for_unknown_label(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            ic,
+            "INTENT_PRIMARY_ANCHOR",
+            {**ic.INTENT_PRIMARY_ANCHOR, "totally_unknown_intent_xyz": "Art. 26"},
+        )
+        with pytest.raises(RuntimeError, match="labels not present"):
+            ic._validate_intent_taxonomy()
+
+    def test_validate_intent_taxonomy_rejects_phantom_reference(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            ic,
+            "INTENT_PRIMARY_ANCHOR",
+            {**ic.INTENT_PRIMARY_ANCHOR, "definition": "Art. 114"},
+        )
+        with pytest.raises(RuntimeError, match="invalid EU AI Act refs"):
+            ic._validate_intent_taxonomy()

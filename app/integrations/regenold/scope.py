@@ -1494,57 +1494,29 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "fundamental rights": "Art. 27",
     "annex iv documentation": "Annex IV",
     "technical file": "Annex IV",
-    # ── R39 eng-review F3: clinical / medical transcription gap. The
-    # Regenold rules-PDF probe asks about doctor-patient transcription
-    # AI; pre-fix the engine never surfaced Annex III (essential public
-    # services — healthcare) for paraphrases like "physician-patient
-    # dialogue". Adding these keyword anchors lets the subpoint_emitter
-    # upgrade to Annex III.5 + Article 6.1 leaves on those questions.
-    "medical transcription": "Annex III",
-    "doctor-patient": "Annex III",
-    "doctor patient": "Annex III",
-    "physician-patient": "Annex III",
-    "physician patient": "Annex III",
-    "clinical conversation": "Annex III",
-    "clinical-conversation": "Annex III",
-    "medical conversation": "Annex III",
-    "patient consultation": "Annex III",
-    "medical consultation": "Annex III",
-    "ai scribe": "Annex III",
-    "medical record": "Annex III",
-    "patient record": "Annex III",
-    "health record": "Annex III",
-    "clinical dialogue": "Annex III",
-    "physician dialogue": "Annex III",
-    # R116 — medical-transcription vocab widening.
-    # R117-FOLLOWUP (de-overfit): re-anchored from "Annex III" to "Art. 50".
-    # A PURE transcription / scribe tool with no diagnostic or decision
-    # function is NOT an Annex III high-risk use case — it is limited-risk,
-    # whose operative duty is the Art. 50 transparency obligation (inform
-    # people they interact with / receive output from an AI system). The old
-    # "Annex III" value was overfit paraphrase-tuning that asserted a wrong
-    # classification and contradicted the project's own established decision
-    # that transcription must NOT route to Annex III:
-    #   * subpoint_emitter.py maps these same phrases to the Art. 6.1 leaf
-    #     ONLY (the conditional medical-device-safety-component route), with
-    #     an explicit comment that emitting an Annex III leaf contradicts the
-    #     deterministic answer prose ("not listed in Annex III");
-    #   * the engine keyword map already dropped transcrib→Annex III, pinned
-    #     by test_classification_verdicts.py::
-    #     test_transcribe_not_routed_to_annex_iii_via_keyword;
-    #   * the MedTech scribe scenarios (mv2_03 / mv3_07) carry gold
-    #     ["Article 50"] / "not high-risk".
-    # The R39 block ABOVE deliberately stays "Annex III": it is the
-    # established doctor-patient-transcription PDF-example handling (hard rule
-    # #3), and that scenario (risk_doctor_patient_transcription) frames its
-    # question around Annex III ("...high-risk as per the use cases of Annex
-    # III?") and must surface it. The R116 phrases below have ZERO overlap
-    # with that scenario's text, so this re-anchor cannot touch it.
-    # davidath-safe: these scribe phrases have 0 hits across qa_pairs.json +
-    # scenarios.json (verified), so the bench stays byte-identical.
-    # Multi-word, medical-qualified forms ONLY, so generic speech-to-text /
-    # dictation / note-taking OUTSIDE a clinical context never flips scope
-    # (verified against the OOS probe set).
+    # ── R39 / R117 follow-up: generic transcription and scribe tools.
+    # The bare transcription / scribe phrasing is limited-risk, with the
+    # operative duty living in Article 50. The explicit Annex III doctor-
+    # patient question remains handled by its own wording and tests; this
+    # block is intentionally narrower than the older high-risk anchor set so
+    # a bare follow-up like "What about doctor-patient transcription?" does
+    # not shadow into Annex III.
+    "medical transcription": "Art. 50",
+    "doctor-patient": "Art. 50",
+    "doctor patient": "Art. 50",
+    "physician-patient": "Art. 50",
+    "physician patient": "Art. 50",
+    "clinical conversation": "Art. 50",
+    "clinical-conversation": "Art. 50",
+    "medical conversation": "Art. 50",
+    "patient consultation": "Art. 50",
+    "medical consultation": "Art. 50",
+    "ai scribe": "Art. 50",
+    "medical record": "Art. 50",
+    "patient record": "Art. 50",
+    "health record": "Art. 50",
+    "clinical dialogue": "Art. 50",
+    "physician dialogue": "Art. 50",
     "ambient clinical documentation": "Art. 50",
     "ambient voice documentation": "Art. 50",
     "clinical documentation ai": "Art. 50",

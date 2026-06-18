@@ -91,6 +91,27 @@ app/routes/regenold.py
    registries, the xref graph (both regex and manual), and the
    definitions registry.
 
+## Fresh session plug-in
+
+When you start a fresh Claude Code session on this repo, read this file
+first, then check these current handoff points:
+
+1. The broad intent-classifier expansion bundle was rejected; the live
+   classifier stays coarse and calibrated, with import-time taxonomy
+   validation guarding against bad labels / anchors.
+2. The active regression fix is the transcription split: generic
+   doctor-patient transcription now routes to Article 50 / limited-risk
+   transparency, while the explicit Annex III doctor-patient-conversations
+   path remains covered by the separate Q3 wording.
+3. The last verified narrow checks were:
+   - `tests/test_regenold_scope.py` for the Article 50 transcription
+     scope split.
+   - `tests/test_classification_verdicts.py` for the Q3 verdict path.
+   - `tests/test_subpoint_emitter.py` for the transcription subpoint /
+     medical-device route.
+4. If you continue editing routing logic, re-run the narrow tests above
+   before widening scope.
+
 ## Recent code changes (2026-05-15 — rounds 19–23 since 18.1)
 
 ### Round 19 — explicit-anchor pruning (591f0f5)
@@ -6667,6 +6688,89 @@ axis reads **0.917** (representative surface) and **0.667** (the harder
 multi-part medical set) with **Tone 1.0** on both — nowhere near the 0.29
 merge-bloat collapse. The R123 SELECT-not-MERGE judge (preserved untouched by
 R124) holds; R124's latency changes did not regress it.
+
+## Round 125 — Intent-classifier extension triage (2026-06-18)
+
+Reviewed the incoming `intentclassifier improvements/` bundle. All mirrored
+runtime/test files except `intent_classifier.py` and a truncated `ontology.py`
+were content-identical to the repo after ignoring line endings. The proposed
+`intent_classifier_extensions.py` is not importable (`INTENT_TO CHAPTER_MAP`
+syntax error), and the proposed broad intent table contains legally-wrong
+anchors (examples: deployer duties mapped to Art. 24 instead of Art. 26,
+distributor duties to Art. 28 instead of Art. 24, CE marking to Art. 20 instead
+of Art. 48, conformity assessment to Art. 19 instead of Art. 43, post-market
+monitoring to Art. 21 instead of Art. 72).
+
+Decision: **do not integrate the broad 90+ label expansion**. The live
+classifier remains a deliberately coarse, calibrated taxonomy; downstream
+retrieval already carries article/sub-point coverage through BM25, entity
+boosts, GraphRAG expansion, and verbatim provision extraction. Turning Stage-0
+intent into a full article lookup table would fight those calibrated paths and
+increase false precision.
+
+What landed safely: `app/llm/intent_classifier.py::_validate_intent_taxonomy()`
+now fails fast if a default anchor references a non-existent EU AI Act provision
+or if `INTENT_PRIMARY_ANCHOR` contains a label the classifier cannot emit.
+`tests/test_intent_classifier.py::TestIntentTaxonomyValidation` pins the guard
+and rejects the known-bad expansion labels. The bundle's generated validation
+script was left out of production because it is syntactically invalid and
+validates the wrong invariant (100% intent-to-anchor coverage) for this system.
+
+## Round 125.1 — Full-coverage intent taxonomy, done correctly (2026-06-18)
+
+Operator directive overriding the R125 "do not integrate" decision: the
+`intent_classifier_extensions.py` bundle's *purpose* — extend intent detection
+across the full EU AI Act (all article clusters) and every risk tier — is
+wanted; implement it **properly and correctly**. R125.1 delivers that without
+the bundle's defects.
+
+What was wrong with the bundle (all kept out): a literal `SyntaxError`
+(`INTENT_TO CHAPTER_MAP`), dead code (imported nowhere), legally-wrong anchors
+(deployer→Art.24, distributor→Art.28, CE→Art.20, conformity→Art.19,
+post-market→Art.21), and the 94-literal-per-article design the deep-review
+(`docs/reviews/r125-*.md`) showed degrades classification (C1 ordering, C3
+prompt bloat, M4 overlap).
+
+What R125.1 ships in the LIVE classifier (`app/llm/intent_classifier.py`):
+- `INTENT_LABELS` 15 → **57** — all 15 existing labels kept (backward-compat)
+  plus 42 distinct topic labels covering operator roles (provider Art.16,
+  deployer Art.26, importer Art.23, distributor Art.24, authrep Art.22, value
+  chain Art.25), the high-risk requirements (Arts. 9-15, 17), conformity / CE /
+  registration (Arts. 43, 47, 48, 49, 40), post-market / enforcement (Arts. 72,
+  20, 74), governance + notified bodies (Arts. 64, 65, 70, 31, 28), GPAI
+  (Arts. 53, 55, 56, 54, 101), penalties (Arts. 99, 101, 100), fundamental-
+  rights remedies (Arts. 27, 86, 85), scope/definitions/literacy (Arts. 2, 3,
+  4), sandboxes (Arts. 57, 60), codes (Art. 95), timeline (Art. 113), and the
+  key annexes (I/III/IV). Explicit article questions stay on `article_lookup`
+  (anchor parsed from the question text) — so "full article coverage" holds
+  without a label per article.
+- **"Types of risk"** are first-class: `prohibited_practice` (Art. 5),
+  `risk_classification` (Art. 6, general), `transparency_obligation` (Art. 50,
+  limited risk), `gpai_obligations` (Art. 53), `gpai_systemic` (Art. 55).
+- `INTENT_PRIMARY_ANCHOR` 12 → **54** anchored labels, every anchor
+  legally-correct and validated against `ARTICLE_EXISTENCE` at import by
+  `_validate_intent_taxonomy()`.
+- System prompt rewritten as a compact, category-grouped label list +
+  per-role/per-tier/per-penalty disambiguation (mitigates C3 vs the bundle's
+  verbose 4× prompt).
+
+Why this can't regress retrieval (the R125 "false precision" worry): the
+consumption path is fail-safe — `classify_intent()` only runs when an LLM
+provider is wired (so the deterministic `provider=cli` davidath bench never
+exercises it → **davidath byte-identical by construction**); intent anchors
+below confidence 0.7 are ignored; the high-confidence `boost_for_intent` only
+REORDERS candidates (never deletes deterministic winners); and an unrecognised
+intent falls through to the deterministic path. A granular taxonomy with
+*correct* anchors therefore only raises precision or is neutral — the bundle's
+risk was *confidently-wrong* anchors, which R125.1 fixes.
+
+Tests: `tests/test_intent_classifier.py::TestIntentTaxonomyValidation`
+rewritten — instead of asserting the expansion is absent, it pins the
+legally-correct anchors (deployer→26, importer→23, distributor→24, CE→48,
+conformity→43, post-market→72, GPAI-fines→101, …), risk-tier coverage, label
+uniqueness, full catalog resolution, and the fail-fast guard (reject unknown
+label / phantom ref). 26/26 pass. The win lands on the LIVE wrapper path
+(Stage-0 intent), which the deterministic bench cannot score.
 
 ## Non-goals / things to skip
 

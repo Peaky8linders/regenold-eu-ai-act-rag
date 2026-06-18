@@ -78,30 +78,102 @@ logger = logging.getLogger(__name__)
 
 # ── Intent taxonomy ──────────────────────────────────────────────────────────
 #
-# Coarse 10-way classification. Each label maps to ONE primary article /
-# annex anchor (or a short set for the small ``role_obligations`` /
-# ``gpai_systemic`` clusters). The engine reads ``intent.primary_anchor``
-# to narrow the candidate citation set on conceptual questions.
+# R125.1 — full EU AI Act coverage. This is the *correct* realisation of the
+# rejected ``intent_classifier_extensions.py`` bundle (R125 triage): broad
+# intent detection spanning every article cluster + all risk tiers, but with
+# LEGALLY-CORRECT anchors (the bundle shipped deployer→Art.24, distributor→
+# Art.28, CE→Art.20, conformity→Art.19, post-market→Art.21 — all wrong) and
+# wired into the LIVE classifier arrays + prompt (the bundle's module was dead
+# code with a SyntaxError). The deliberately-narrow 94-literal-per-article
+# design from the bundle is NOT used — the deep-review (docs/reviews/
+# r125-*.md) proved it degrades classification (C1 ordering, C3 prompt bloat,
+# M4 overlap). Instead this is a comprehensive *topic* taxonomy: any EU AI Act
+# question maps to a distinct intent + the single most-load-bearing article/
+# annex for that topic. Explicit article questions ("what does Art. 47 say?")
+# are covered by ``article_lookup`` (anchor parsed from the question text).
 #
-# Anti-overfit guardrail: the taxonomy intentionally avoids
-# per-PDF-example labels (no ``q1_hardware``, ``q2_emotion``,
-# ``q3_transcription``). CLAUDE.md hard rule #3 — generalisation > overfit.
+# Safety: every anchor is validated against ARTICLE_EXISTENCE at import
+# (``_validate_intent_taxonomy``). The consumption path is fail-safe —
+# anchors below confidence 0.7 are ignored, the high-confidence boost only
+# REORDERS candidates (never deletes deterministic winners), and an intent
+# the parser doesn't recognise falls through to the deterministic path. So a
+# correct, granular taxonomy can only raise precision or be neutral.
+#
+# Anti-overfit guardrail (CLAUDE.md hard rule #3): NO per-PDF-example labels
+# (no ``q1_hardware`` / ``q2_emotion`` / ``q3_transcription``) — every label
+# is a generalisable EU AI Act topic.
 
 
 INTENT_LABELS: tuple[str, ...] = (
+    # ── explicit lookup (anchor comes from the question text) ──
     "article_lookup",
-    "risk_classification",
-    "role_obligations",
-    "definition",
-    "penalty_inquiry",
-    "timeline_question",
-    "transparency_obligation",
-    "incident_reporting",
-    "sandbox",
-    "gpai_systemic",
-    "fria",
-    "comparative",
-    "compliance_checklist",
+    # ── scope / meta (Chapter I) ──
+    "scope_applicability",     # Art. 2 — who/what the Act applies to
+    "definition",              # Art. 3 — defined terms
+    "ai_literacy",             # Art. 4 — AI-literacy duty
+    "comparative",             # Art. 2 — AI Act vs GDPR/MDR/NIS2/DSA
+    # ── risk tiers / "types of risk" (Chapters II, V) ──
+    "prohibited_practice",     # Art. 5 — banned uses
+    "risk_classification",     # Art. 6 — general "what tier is X / categories"
+    "transparency_obligation", # Art. 50 — limited-risk disclosure / deepfake
+    "gpai_obligations",        # Art. 53 — GPAI model provider duties
+    "gpai_systemic",           # Art. 55 — GPAI with systemic risk
+    "gpai_codes_of_practice",  # Art. 56 — GPAI codes of practice
+    "gpai_authorised_representative",  # Art. 54 — GPAI authrep (≠ Art. 22)
+    # ── operator roles (Chapter III §3 + value chain) ──
+    "role_obligations",        # Art. 26 — generic operator duties (fallback)
+    "provider_obligations",    # Art. 16 — provider of high-risk AI
+    "deployer_obligations",    # Art. 26 — deployer of high-risk AI
+    "importer_obligations",    # Art. 23 — importer
+    "distributor_obligations", # Art. 24 — distributor
+    "authorised_representative",  # Art. 22 — non-EU provider authrep
+    "value_chain_responsibilities",  # Art. 25 — modifier becomes provider
+    # ── high-risk requirements (Chapter III §2) ──
+    "risk_management_system",  # Art. 9
+    "data_governance",         # Art. 10
+    "technical_documentation", # Art. 11
+    "record_keeping_logs",     # Art. 12
+    "information_to_deployers",# Art. 13 — instructions for use / transparency
+    "human_oversight",         # Art. 14
+    "accuracy_robustness",     # Art. 15 — accuracy, robustness, cybersecurity
+    "quality_management_system",  # Art. 17
+    # ── conformity / market entry (Chapter III §§4-5) ──
+    "conformity_assessment",   # Art. 43
+    "eu_declaration_of_conformity",  # Art. 47
+    "ce_marking",              # Art. 48
+    "registration",            # Art. 49 — EU database registration
+    "harmonised_standards",    # Art. 40 — standards / common specs
+    # ── post-market / enforcement (Chapters III §3, IX) ──
+    "post_market_monitoring",  # Art. 72
+    "incident_reporting",      # Art. 73 — serious incidents
+    "corrective_actions",      # Art. 20
+    "market_surveillance",     # Art. 74
+    # ── governance (Chapter VII) + notified bodies (Chapter III §4) ──
+    "ai_office",               # Art. 64
+    "ai_board",                # Art. 65 — European Artificial Intelligence Board
+    "national_authorities",    # Art. 70
+    "notified_body",           # Art. 31
+    "notifying_authority",     # Art. 28
+    # ── sandboxes / testing (Chapter VI) ──
+    "sandbox",                 # Art. 57 — regulatory sandboxes
+    "real_world_testing",      # Art. 60 — testing in real-world conditions
+    # ── penalties (Chapter XII) ──
+    "penalty_inquiry",         # Art. 99 — penalties on operators
+    "gpai_fines",              # Art. 101 — Commission fines on GPAI providers
+    "union_institution_fines", # Art. 100 — EDPS fines on Union bodies
+    # ── fundamental-rights remedies (Chapters III §3, IX) ──
+    "fria",                    # Art. 27 — fundamental-rights impact assessment
+    "right_to_explanation",    # Art. 86 — explanation of individual decisions
+    "right_to_complaint",      # Art. 85 — right to lodge a complaint
+    # ── codes / timeline / compliance ──
+    "codes_of_conduct",        # Art. 95 — voluntary codes (non-high-risk)
+    "timeline_question",       # Art. 113 — application dates / deadlines
+    "compliance_checklist",    # Art. 9 — "what must I do to comply"
+    # ── annex lookups ──
+    "annex_high_risk_usecases",      # Annex III
+    "annex_technical_documentation", # Annex IV
+    "annex_harmonisation_law",       # Annex I
+    # ── fallbacks (no anchor) ──
     "out_of_scope",
     "other",
 )
@@ -133,20 +205,109 @@ INTENT_LABELS: tuple[str, ...] = (
 #   ``cross_framework`` retrieval lens then surfaces the other
 #   regulation's anchors via the keyword path.
 INTENT_PRIMARY_ANCHOR: dict[str, str] = {
-    "penalty_inquiry": "Art. 99",
-    "transparency_obligation": "Art. 50",
-    "incident_reporting": "Art. 73",
-    "sandbox": "Art. 57",
-    "fria": "Art. 27",
-    "gpai_systemic": "Art. 55",
-    "role_obligations": "Art. 26",
+    # scope / meta (Chapter I)
+    "scope_applicability": "Art. 2",
     "definition": "Art. 3",
-    "timeline_question": "Art. 113",
-    # R66-D additions
-    "risk_classification": "Art. 6",
-    "compliance_checklist": "Art. 9",
+    "ai_literacy": "Art. 4",
     "comparative": "Art. 2",
+    # risk tiers / GPAI (Chapters II, V)
+    "prohibited_practice": "Art. 5",
+    "risk_classification": "Art. 6",       # R66-D — general risk-tier default
+    "transparency_obligation": "Art. 50",
+    "gpai_obligations": "Art. 53",
+    "gpai_systemic": "Art. 55",
+    "gpai_codes_of_practice": "Art. 56",
+    "gpai_authorised_representative": "Art. 54",
+    # operator roles (Chapter III §3 + value chain) — LEGALLY CORRECT anchors
+    # (the rejected R125 bundle had deployer→24, distributor→28: both wrong)
+    "role_obligations": "Art. 26",
+    "provider_obligations": "Art. 16",
+    "deployer_obligations": "Art. 26",
+    "importer_obligations": "Art. 23",
+    "distributor_obligations": "Art. 24",
+    "authorised_representative": "Art. 22",
+    "value_chain_responsibilities": "Art. 25",
+    # high-risk requirements (Chapter III §2)
+    "risk_management_system": "Art. 9",
+    "data_governance": "Art. 10",
+    "technical_documentation": "Art. 11",
+    "record_keeping_logs": "Art. 12",
+    "information_to_deployers": "Art. 13",
+    "human_oversight": "Art. 14",
+    "accuracy_robustness": "Art. 15",
+    "quality_management_system": "Art. 17",
+    # conformity / market entry (Chapter III §§4-5)
+    "conformity_assessment": "Art. 43",
+    "eu_declaration_of_conformity": "Art. 47",
+    "ce_marking": "Art. 48",
+    "registration": "Art. 49",
+    "harmonised_standards": "Art. 40",
+    # post-market / enforcement
+    "post_market_monitoring": "Art. 72",
+    "incident_reporting": "Art. 73",
+    "corrective_actions": "Art. 20",
+    "market_surveillance": "Art. 74",
+    # governance + notified bodies (Chapters VII, III §4)
+    "ai_office": "Art. 64",
+    "ai_board": "Art. 65",
+    "national_authorities": "Art. 70",
+    "notified_body": "Art. 31",
+    "notifying_authority": "Art. 28",
+    # sandboxes / testing (Chapter VI)
+    "sandbox": "Art. 57",
+    "real_world_testing": "Art. 60",
+    # penalties (Chapter XII)
+    "penalty_inquiry": "Art. 99",
+    "gpai_fines": "Art. 101",
+    "union_institution_fines": "Art. 100",
+    # fundamental-rights remedies
+    "fria": "Art. 27",
+    "right_to_explanation": "Art. 86",
+    "right_to_complaint": "Art. 85",
+    # codes / timeline / compliance
+    "codes_of_conduct": "Art. 95",
+    "timeline_question": "Art. 113",
+    "compliance_checklist": "Art. 9",       # R66-D — load-bearing entry point
+    # annex lookups
+    "annex_high_risk_usecases": "Annex III",
+    "annex_technical_documentation": "Annex IV",
+    "annex_harmonisation_law": "Annex I",
 }
+
+
+def _validate_intent_taxonomy() -> None:
+    """Fail fast when the curated intent taxonomy drifts.
+
+    Not every intent label should have a default anchor. Labels such as
+    ``article_lookup``, ``out_of_scope``, and ``other`` are deliberately
+    resolved from the user's explicit references or by downstream logic.
+    The invariants that matter are narrower: every default anchor must be
+    a real EU AI Act Article/Annex, and every anchored intent must be a
+    label the classifier is allowed to emit.
+    """
+    labels = set(INTENT_LABELS)
+    extra_anchors = sorted(set(INTENT_PRIMARY_ANCHOR) - labels)
+    if extra_anchors:
+        raise RuntimeError(
+            "INTENT_PRIMARY_ANCHOR contains labels not present in "
+            f"INTENT_LABELS: {extra_anchors}"
+        )
+
+    from app.data.article_existence import ARTICLE_EXISTENCE  # noqa: PLC0415
+
+    invalid_anchors = sorted(
+        (label, anchor)
+        for label, anchor in INTENT_PRIMARY_ANCHOR.items()
+        if anchor not in ARTICLE_EXISTENCE
+    )
+    if invalid_anchors:
+        raise RuntimeError(
+            "INTENT_PRIMARY_ANCHOR contains invalid EU AI Act refs: "
+            f"{invalid_anchors}"
+        )
+
+
+_validate_intent_taxonomy()
 
 
 @dataclass(frozen=True)
@@ -271,22 +432,76 @@ markdown fences) with this exact shape:
 
 {"reasoning": "<step-by-step logic>", "intent": "<label>", "primary_anchor": "<Art. N | Annex X | empty>", "alternate_anchors": ["<Art. N>", ...], "confidence": 0.0-1.0}
 
-Valid intent labels (pick exactly one):
-- article_lookup        — user explicitly names an article/annex and asks what it says
-- risk_classification   — user asks if X is prohibited / high-risk / limited / minimal
-- role_obligations      — user asks about provider / deployer / importer / distributor duties
-- definition            — user asks for a definition of an Act term
-- penalty_inquiry       — user asks about fines / sanctions / max penalty
-- timeline_question     — user asks about applicability dates / deadlines / review clauses
-- transparency_obligation — user asks about Art. 50 disclosure / deepfake labelling / synthetic media marking
-- incident_reporting    — user asks about serious incident reporting (Art. 73)
-- sandbox               — user asks about regulatory sandboxes / testing (Arts. 57-61)
-- gpai_systemic         — user asks about GPAI / general-purpose AI / systemic risk (Arts. 51-55)
-- fria                  — user asks about Fundamental Rights Impact Assessment (Art. 27)
-- comparative           — user compares the EU AI Act to another regulation (GDPR, DMA, etc.)
-- compliance_checklist  — user asks "what do I need to do to comply"
-- out_of_scope          — question is NOT about the EU AI Act
-- other                 — falls through
+Pick EXACTLY ONE intent label. If the user explicitly names a specific
+article/annex ("what does Art. 47 say?", "explain Annex VIII") choose
+article_lookup. Otherwise pick the single best TOPIC label below:
+
+Scope & definitions:
+- article_lookup — user names a specific article/annex and asks what it says
+- scope_applicability — who/what the Act applies to, territorial scope, exclusions
+- definition — meaning of a defined Act term (Art. 3)
+- ai_literacy — staff AI-literacy duty (Art. 4)
+- comparative — compares the AI Act to another law (GDPR/MDR/NIS2/DSA)
+
+Risk tiers & GPAI:
+- prohibited_practice — is X banned / a prohibited practice (Art. 5)
+- risk_classification — general "what risk tier / what categories" (high-risk etc.)
+- transparency_obligation — limited-risk disclosure / deepfake / synthetic-media labelling (Art. 50)
+- gpai_obligations — general-purpose AI MODEL provider duties (Art. 53)
+- gpai_systemic — GPAI with systemic risk (Art. 55)
+- gpai_codes_of_practice — GPAI codes of practice (Art. 56)
+- gpai_authorised_representative — authrep of a non-EU GPAI MODEL provider (Art. 54)
+
+Operator roles (use the SPECIFIC label when the role is named):
+- provider_obligations — provider of a high-risk AI system (Art. 16)
+- deployer_obligations — deployer / user of a high-risk AI system (Art. 26)
+- importer_obligations — importer (Art. 23)
+- distributor_obligations — distributor (Art. 24)
+- authorised_representative — non-EU provider's EU authrep for an AI SYSTEM (Art. 22)
+- value_chain_responsibilities — when a modifier/rebrander becomes a provider (Art. 25)
+- role_obligations — operator duties when the role is generic / unspecified
+
+High-risk requirements (Chapter III §2):
+- risk_management_system (Art. 9), data_governance (Art. 10),
+  technical_documentation (Art. 11), record_keeping_logs (Art. 12),
+  information_to_deployers — instructions for use (Art. 13), human_oversight (Art. 14),
+  accuracy_robustness — accuracy/robustness/cybersecurity (Art. 15),
+  quality_management_system (Art. 17)
+
+Conformity & market entry:
+- conformity_assessment (Art. 43), eu_declaration_of_conformity (Art. 47),
+  ce_marking (Art. 48), registration — EU database (Art. 49),
+  harmonised_standards / common specs (Art. 40)
+
+Post-market & enforcement:
+- post_market_monitoring (Art. 72), incident_reporting — serious incidents (Art. 73),
+  corrective_actions (Art. 20), market_surveillance (Art. 74)
+
+Governance & notified bodies:
+- ai_office (Art. 64), ai_board — European AI Board (Art. 65),
+  national_authorities (Art. 70), notified_body (Art. 31), notifying_authority (Art. 28)
+
+Sandboxes & testing:
+- sandbox — regulatory sandbox (Art. 57), real_world_testing (Art. 60)
+
+Penalties:
+- penalty_inquiry — fines on operators (Art. 99),
+  gpai_fines — Commission fines on GPAI providers (Art. 101),
+  union_institution_fines — EDPS fines on EU bodies (Art. 100)
+
+Fundamental-rights remedies:
+- fria — fundamental-rights impact assessment (Art. 27),
+  right_to_explanation — explanation of an individual decision (Art. 86),
+  right_to_complaint (Art. 85)
+
+Other:
+- codes_of_conduct — voluntary codes for non-high-risk AI (Art. 95)
+- timeline_question — application dates / deadlines / review clauses (Art. 113)
+- compliance_checklist — "what do I need to do to comply"
+- annex_high_risk_usecases (Annex III), annex_technical_documentation (Annex IV),
+  annex_harmonisation_law (Annex I)
+- out_of_scope — NOT about the EU AI Act
+- other — none of the above
 
 primary_anchor must be ONE of:
 - "Art. N" where N is the article number (e.g. "Art. 13")
@@ -298,16 +513,30 @@ same shape as primary_anchor. Empty list if none.
 
 confidence: 0.0 (unsure) to 1.0 (certain). Use < 0.6 when ambiguous.
 
-Disambiguation guidance (R66-D — judge-driven):
-- If the question implies *prohibition* ("is X banned?", "is Y prohibited?",
-  "is Z illegal under the Act?") choose ``risk_classification`` and set
-  ``primary_anchor`` to ``"Art. 5"``. alternate_anchors should include
-  Art. 99 (penalty) only if penalty is asked. DO NOT include Art. 51 (GPAI).
-- If the question asks for general risk categories ("What risk categories are provided for AI systems?"), choose ``risk_classification``, set ``primary_anchor`` to ``""``, and list ``["Art. 5", "Art. 6", "Art. 50"]`` in alternate_anchors.
-- If the question is generic ("is X high-risk?", "what tier does Y fall
-  into?") choose ``risk_classification`` and set ``primary_anchor`` to
-  ``"Art. 6"`` (Annex III via alternate_anchors when an Annex-III use case is named).
-- If the question asks for the definition of high-risk, choose ``risk_classification``, set ``primary_anchor`` to ``"Art. 6"``, and ensure ``alternate_anchors`` includes ``["Annex I", "Annex III"]`` to capture exceptions.
+Disambiguation guidance (judge-driven):
+- Prohibition ("is X banned?", "is Y prohibited?", "is Z illegal under the
+  Act?") → ``prohibited_practice``, ``primary_anchor`` ``"Art. 5"``.
+  alternate_anchors should include Art. 99 only if penalty is also asked.
+  DO NOT include Art. 51 (GPAI).
+- General risk categories ("What risk categories are provided for AI
+  systems?") → ``risk_classification``, ``primary_anchor`` ``""``,
+  alternate_anchors ``["Art. 5", "Art. 6", "Art. 50"]``.
+- Generic "is X high-risk?" / "what tier does Y fall into?" →
+  ``risk_classification``, ``primary_anchor`` ``"Art. 6"`` (add Annex III to
+  alternate_anchors when an Annex-III use case is named).
+- "Definition of high-risk" → ``risk_classification``, ``primary_anchor``
+  ``"Art. 6"``, alternate_anchors ``["Annex I", "Annex III"]``.
+- A SPECIFIC operator role named → use the specific role label with its
+  legally-correct anchor: provider→Art. 16, deployer→Art. 26, importer→
+  Art. 23, distributor→Art. 24, non-EU AI-system authrep→Art. 22, GPAI-model
+  authrep→Art. 54. Use ``role_obligations`` ONLY when the role is generic
+  ("what must operators do?").
+- GPAI: a general-purpose AI MODEL provider's duties → ``gpai_obligations``
+  (Art. 53); systemic-risk threshold/duties → ``gpai_systemic`` (Art. 55);
+  fines on a GPAI provider → ``gpai_fines`` (Art. 101).
+- Penalties: fines on operators generally → ``penalty_inquiry`` (Art. 99);
+  fines on a GPAI MODEL provider → ``gpai_fines`` (Art. 101); fines on a
+  Union institution/body → ``union_institution_fines`` (Art. 100).
 - ``compliance_checklist`` is for "what do I need to do?" / "list the
   obligations for ..." — primary_anchor should land on the most-load-bearing
   article for the role × risk tier (Art. 9 for high-risk providers,
