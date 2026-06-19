@@ -395,7 +395,7 @@ def _openai_wrapper_complete_for_graph_rag(
     else:
         try:
             from app.integrations.regenold.reasoning_trace import record_llm_thinking
-            record_llm_thinking("Fast-path generation used (extended thinking is disabled by configuration; set P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS > 0 on the complex-question path to enable it).", stage=stage_name)
+            record_llm_thinking("Single-pass synthesis (no extended thinking on the standard path).", stage=stage_name)
         except Exception:
             pass
             
@@ -523,7 +523,7 @@ def _anthropic_complete_for_graph_rag(
         else:
             try:
                 from app.integrations.regenold.reasoning_trace import record_llm_thinking
-                record_llm_thinking("Fast-path generation used (extended thinking is disabled by configuration; set P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS > 0 on the complex-question path to enable it).", stage=stage_name)
+                record_llm_thinking("Single-pass synthesis (no extended thinking on the standard path).", stage=stage_name)
             except Exception:
                 pass
     except Exception as exc:  # noqa: BLE001
@@ -1193,6 +1193,23 @@ def _deterministic_parse(question: str) -> GraphQuery:
     # that risks over-eager entity injection for questions whose primary
     # intent isn't the mapped article.
     # Uses module-level :data:`_KEYWORD_ENTITY_MAP` (defined above the function).
+    # R127 — role-definitional intercept (issue #7). "What is a deployer?",
+    # "Who is considered a provider?" etc. must LEAD with the Art. 3
+    # DEFINITION, not the role's obligation chain — the bare ``importer`` →
+    # Art. 23 / ``distributor`` → Art. 24 keyword entries below would otherwise
+    # shadow Art. 3, and the route's QA-shape role injection would inject
+    # Art. 26 ahead of it (R125 trace: "What is a deployer?" → [Art. 26,
+    # Art. 13, Art. 3]). Fires only on the SUBJECT-HEAD shape, so obligation/
+    # penalty phrasings ("What is the maximum fine for a provider…", gold
+    # Art. 99) are excluded. Verified davidath-neutral/positive: matches
+    # 1/137 QA (qa_005, gold Article 3) + 0/339 scenarios.
+    try:
+        from app.engines.entity_extractor import role_definitional_term  # noqa: PLC0415
+        if role_definitional_term(question) is not None and "Art. 3" not in entities:
+            entities.insert(0, "Art. 3")
+    except Exception as exc:  # noqa: BLE001 — fail-soft
+        logger.debug("r127_role_definitional_anchor_failed: %s", exc)
+
     # R112 — collision-prone entries (the "fines" → "defines" family) are
     # matched with word boundaries via _KEYWORD_ENTITY_BOUNDARY_RES; every
     # other entry keeps the substring test (plural/inflected recall).
@@ -2345,7 +2362,9 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
             # exactly that sentence (R114, Antifragile Q7 wire regression).
             "answer": (
                 "Under Article 1's purpose of promoting human-centric and "
-                "trustworthy AI, the EU AI Act reflects seven guiding principles: "
+                "trustworthy AI while ensuring a high level of protection of "
+                "health, safety, fundamental rights, democracy, and the rule of "
+                "law, the EU AI Act reflects seven guiding principles: "
                 "human agency and oversight; technical robustness and safety; "
                 "privacy and data governance; transparency; diversity, "
                 "non-discrimination and fairness; social and environmental "
@@ -3805,10 +3824,16 @@ def _claude_max_enhance_answer(
         # (Opus 4.8) when the question is complex, OR it bundles more than
         # one phrase/question. This is handled entirely inside ``is_complex_question``.
         try:
-            from app.engines.question_complexity import is_complex_question  # noqa: PLC0415
+            from app.engines.question_complexity import (  # noqa: PLC0415
+                is_complex_question,
+                is_fusion_worthy,
+            )
             complex_q = is_complex_question(question, history_turn_count)
+            # R127 — tighter gate for the 2-call MoA fusion panel (latency).
+            fusion_worthy = is_fusion_worthy(question, history_turn_count)
         except Exception:  # noqa: BLE001
             complex_q = False
+            fusion_worthy = False
 
         # R56 — Stage-2 provider routing. The historical
         # ``_claude_max_enhance_answer`` name is preserved for back-compat;
@@ -3872,7 +3897,14 @@ def _claude_max_enhance_answer(
                 fusion_complete,
                 fusion_stage2_enabled,
             )
-            if fusion_stage2_enabled():
+            # R127 — fire the diverse MoA panel (2 serialized wrapper calls: the
+            # Opus panel member, then the judge) ONLY on fusion-worthy questions
+            # (the genuinely-hard single-turn categories). Multi-turn + merely-
+            # multi-phrase questions skip the panel and take the cheaper single-
+            # provider Stage-2 below (still Opus when complex_q) — cutting
+            # latency without losing the panel where it earns its cost.
+            _fusion_on = fusion_stage2_enabled()
+            if _fusion_on and fusion_worthy:
                 _fused = fusion_complete(
                     system=system_prompt,
                     user=user_message,
@@ -3882,6 +3914,14 @@ def _claude_max_enhance_answer(
                 )
                 if _fused is not None:
                     text_raw, _fusion_used = _fused, True
+            elif _fusion_on:
+                try:
+                    from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                        record_note,
+                    )
+                    record_note("fusion_skip gate=worthy single_provider")
+                except Exception:  # noqa: BLE001 — trace is best-effort
+                    pass
         except Exception as exc:  # noqa: BLE001 — fusion never breaks Stage-2
             logger.warning("graph_rag.fusion_stage2_error: %s", exc)
 
@@ -4573,5 +4613,18 @@ def _compute_confidence(context: GraphContext) -> float:
     if context.nodes_traversed < 5:
         return 0.5  # Sparse data
     if context.gaps or context.satisfied:
-        return 0.85  # Rich data with gap analysis
+        return 0.85  # Rich data with gap analysis (compliance-assessment payload)
+    # R127 — the gaps/satisfied tier above is populated ONLY from a structured
+    # compliance-assessment ``answers`` payload (parent CodexAI surface); the
+    # Regenold ``/ask`` wire sends an OpenAI-style messages array and never
+    # supplies it, so the 0.85 tier was structurally unreachable on this wire
+    # and every healthy retrieval flat-lined at 0.7 (R125 live traces). Reward
+    # genuinely rich obligation retrieval — a multi-article scenario / multi-
+    # obligation question, which the wire DOES produce — so the confidence
+    # signal differentiates rich (>= 3 obligations) from moderate. Safe vs the
+    # downstream gates: the R87-E Stage-2 web-search floor (< 0.5) and the
+    # R78.1 cache floor (< 0.3) are both below 0.7, so promoting 0.7 -> 0.85
+    # cannot flip either; the value is otherwise observability-only.
+    if len(getattr(context, "obligations", None) or ()) >= 3:
+        return 0.85  # Rich obligation retrieval (reachable on the /ask wire)
     return 0.7  # Moderate data

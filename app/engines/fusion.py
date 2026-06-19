@@ -509,6 +509,25 @@ def fusion_complete(
         f"fusion_judge_landed judge={judge_model} panel=[{panel_labels}] "
         f"drafts={len(drafts)}"
     )
+    # R127 — populate the Stage-2 observability ("thinking") field on the
+    # fusion path so it is consistent with the single-provider path (which
+    # records llm_thinking in ``_openai_wrapper_complete_for_graph_rag``). The
+    # gpai R125 trace showed this field EMPTY on the fusion path while the
+    # non-fusion path was populated. Names the panel members whose drafts the
+    # judge weighed and the judge model that SELECTed the final answer.
+    try:
+        from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+            record_llm_thinking,
+        )
+        record_llm_thinking(
+            f"Mixture-of-Agents fusion: panel [{panel_labels}] produced "
+            f"{len(drafts)} drafts; judge {judge_model} SELECTed the single "
+            f"best draft (correctness, references, completeness, conciseness, "
+            f"tone) as the final answer.",
+            stage="Stage 2 (Fusion judge)",
+        )
+    except Exception:  # noqa: BLE001 — trace is optional
+        pass
     logger.info(
         "fusion.judged judge=%s panel=[%s] drafts=%d",
         judge_model, panel_labels, len(drafts),

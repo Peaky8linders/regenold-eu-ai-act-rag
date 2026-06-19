@@ -1309,6 +1309,12 @@ def _engine_cache_key(
             # panel drafts land in time. Both belong in the cache identity.
             "REGENOLD_FUSION_GATE",
             "REGENOLD_FUSION_FAST_TIMEOUT",
+            # R127 — the tightened fusion-panel predicate. When strict (default),
+            # the MoA panel fires only on genuinely-hard single-turn questions;
+            # =0 restores R124 (fuse every complex question). It flips WHETHER the
+            # panel runs (panel+judge vs single-Sonnet → a different cached
+            # GraphRAGResponse.answer), so it belongs in the cache identity.
+            "REGENOLD_FUSION_WORTHY_STRICT",
         )
     )
     import json
@@ -2306,6 +2312,31 @@ _REFS_RECONCILE_FLOOR = 1
 # _is_scenario_question branch. Controlled by REGENOLD_QA_REF_BUDGET
 # env (default ON).
 _QA_MAX_REFERENCES = 3
+
+# R127 (#9 med_05) — risk-classification-ask detector. A "We are ..." question
+# that asks a FOCUSED obligation question WITHOUT a risk-classification ask is a
+# QA, not a multi-article risk-pyramid scenario. The davidath scenario template
+# ALWAYS asks "what is the risk classification ..." (verified 339/339 carry a
+# risk-classification ask), so demoting a no-risk-ask "We are ..." question to
+# the QA budget + no HRAIS-expand is davidath byte-identical. Fixes med_05
+# ("We are developing a chatbot ... what transparency obligations apply?")
+# which over-cited Art 5/6/27/49/Annex III via the scenario budget + expand.
+_RISK_CLASSIFICATION_ASK_RE = re.compile(
+    r"\b(?:risk\s+classification|risk\s+(?:level|category|tier|pyramid)|"
+    r"what\s+(?:is\s+the\s+)?risk|which\s+risk|high[\s-]risk|prohibited|"
+    r"classif\w+\s+as|what\s+tier)\b",
+    re.IGNORECASE,
+)
+
+
+def _scenario_qa_demote_enabled() -> bool:
+    """Env gate for the R127 scenario-to-QA demotion (#9 med_05). Default ON;
+    set ``REGENOLD_SCENARIO_QA_DEMOTE=0`` to restore the R124 behaviour
+    (every "We are ..." shape is a scenario). Fresh read per call."""
+    return os.getenv("REGENOLD_SCENARIO_QA_DEMOTE", "1").strip().lower() not in {
+        "0", "false", "no", "off", "",
+    }
+
 
 _R72_ARTICLE_NUM_RE = re.compile(r"^Article\s+(\d+)", re.IGNORECASE)
 _R72_ANNEX_ROMAN_RE = re.compile(r"^Annex\s+([IVXLC]+)", re.IGNORECASE)
@@ -4240,6 +4271,22 @@ def regenold_eu_ai_act_ask(
         should_expand_for_question,
     )
     _is_scenario_question = should_expand_for_question(question)
+    # R127 (#9 med_05) — demote a "We are ..." question to QA when it carries
+    # NO risk-classification ask (a focused single-obligation question, not a
+    # risk-pyramid scenario). davidath byte-identical: all 339 scenarios ask
+    # for the risk classification, so none are demoted; med_05's transparency
+    # question is demoted and no longer over-cites the HRAIS chain.
+    if (
+        _is_scenario_question
+        and _scenario_qa_demote_enabled()
+        and not _RISK_CLASSIFICATION_ASK_RE.search(question)
+    ):
+        _is_scenario_question = False
+        try:
+            from app.integrations.regenold.reasoning_trace import record_note
+            record_note("scenario_demoted_to_qa no_risk_classification_ask")
+        except Exception:  # noqa: BLE001 — trace is best-effort
+            pass
     # Dynamic budget — scenarios get a 10-ref budget (matches gold avg),
     # QA stays at the spec's tight 5 (single-article gold).
     # R47-C — when a compound-role pattern fires (provider+deployer,

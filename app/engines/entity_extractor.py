@@ -619,6 +619,55 @@ _QA_SCENARIO_OPENERS: tuple[str, ...] = (
 )
 
 
+# ── R127 — role-definitional shape (issue #7) ──────────────────────────────
+#
+# "What is a deployer?" / "Who is considered a provider?" must surface the
+# Article 3 DEFINITION, not the role's obligation chain (Art. 26 deployer /
+# Art. 23 importer / Art. 24 distributor). The role noun must be the SUBJECT
+# HEAD of a definitional question — immediately after the interrogative +
+# optional article, terminated by EOS / "?" / "of an AI system" / "under the
+# Act". This excludes obligation/penalty phrasings ("What is the maximum fine
+# for a provider…", gold Art. 99) where the role is an OBJECT, not the subject;
+# the subject-head anchoring is load-bearing (a loose ``what is .{0,30}
+# provider`` would mis-fire on those davidath rows).
+_ROLE_DEF_NOUN = (
+    r"(?:deployer|provider|importer|distributor|operator|"
+    r"authoris(?:ed|ed)\s+representative|authorized\s+representative)"
+)
+_ROLE_DEFINITIONAL_RE = re.compile(
+    r"^\s*(?:what\s+is|what's|who\s+is|who's|define|definition\s+of)\s+"
+    r"(?:a\s+|an\s+|the\s+)?['‘’\"]?(?:" + _ROLE_DEF_NOUN + r")['‘’\"]?"
+    r"\s*(?:\?|$|\s+(?:of|under|in|according)\b)",
+    re.IGNORECASE,
+)
+_ROLE_CONSIDERED_RE = re.compile(
+    r"^\s*who\s+(?:is\s+)?considered\s+"
+    r"(?:a\s+|an\s+|the\s+)?['‘’\"]?(?:" + _ROLE_DEF_NOUN + r")['‘’\"]?",
+    re.IGNORECASE,
+)
+
+
+def role_definitional_term(question: str | None) -> str | None:
+    """Return the matched role-definitional prefix iff ``question`` is a
+    SUBJECT-HEAD role-definitional shape ("What is a deployer?", "Who is
+    considered a provider?"), else ``None``.
+
+    Scans only the live turn of a flattened multi-turn prompt (R60.1/R71
+    doctrine). Fail-soft — never raises.
+    """
+    if not question:
+        return None
+    try:
+        q = question.strip()
+        idx = q.rfind("Latest question:\n")
+        if idx != -1:
+            q = q[idx + len("Latest question:\n"):]
+        m = _ROLE_DEFINITIONAL_RE.match(q) or _ROLE_CONSIDERED_RE.match(q)
+        return m.group(0) if m else None
+    except Exception:  # noqa: BLE001 — fail-soft
+        return None
+
+
 def is_qa_shape_with_single_role(
     question: str | None,
     entities: dict[str, list[tuple[str, int]]] | None = None,
@@ -637,6 +686,14 @@ def is_qa_shape_with_single_role(
     if not question:
         return False
     try:
+        # R127 — role-definitional shapes ("What is a deployer?", "Who is
+        # considered a provider?") must NOT fire the role-Article injection;
+        # they lead with the Art. 3 definition (the engine HEAD-inserts Art. 3).
+        # Excluding them here stops Art. 26 / Art. 23 / Art. 24 being injected
+        # ahead of Art. 3 on the wire (R125 trace: "What is a deployer?" →
+        # [Art. 26, Art. 13, Art. 3]).
+        if role_definitional_term(question) is not None:
+            return False
         if entities is None:
             entities = extract_entities(question)
         roles = entities.get("role") or []
