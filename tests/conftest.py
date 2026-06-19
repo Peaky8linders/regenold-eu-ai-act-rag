@@ -105,6 +105,17 @@ if os.getenv("REGENOLD_TEST_ALLOW_LIVE", "").strip().lower() not in (
     os.environ["OPENAI_API_BASE"] = "http://127.0.0.1:1/v1"
     # Multi-turn query de-noiser network OFF (unit tests opt back in per-test).
     os.environ["REGENOLD_QUERY_DENOISER"] = "0"
+    # R127 — the PRODUCTION graph-backend default is now ``embedded`` (the
+    # in-process SQLite property graph; Aura retired as the default). The
+    # historical Neo4j-path tests (``test_graph_expand_2hop`` mocks the
+    # client + asserts Cypher-shaped hop1/hop2 rows; the client-activation
+    # tests) were written against the old neo4j default, so pin neo4j as the
+    # test-suite base. Embedded-path tests opt in via
+    # ``monkeypatch.setenv("REGENOLD_GRAPH_BACKEND", "embedded")``; the
+    # default-resolution test deletes the var to assert the embedded code
+    # default. NEO4J_URI stays empty above, so the Neo4j *client* is still
+    # disabled in tests — only the backend *selector* reads neo4j here.
+    os.environ["REGENOLD_GRAPH_BACKEND"] = "neo4j"
 
 import pytest
 

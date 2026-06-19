@@ -180,11 +180,19 @@ class TestNeighbors:
 
 
 class TestBackendSelector:
-    def test_not_selected_by_default(self, monkeypatch) -> None:
-        from app.graph.embedded_graph import embedded_backend_selected
+    def test_embedded_is_default(self, monkeypatch) -> None:
+        # R127 — embedded is now the default backend (Aura retired as
+        # default). Deleting the env var exercises the CODE default.
+        from app.graph.embedded_graph import (
+            embedded_backend_selected,
+            graph_backend,
+            neo4j_backend_selected,
+        )
 
         monkeypatch.delenv("REGENOLD_GRAPH_BACKEND", raising=False)
-        assert embedded_backend_selected() is False
+        assert graph_backend() == "embedded"
+        assert embedded_backend_selected() is True
+        assert neo4j_backend_selected() is False
 
     def test_selected_when_embedded(self, monkeypatch) -> None:
         from app.graph.embedded_graph import embedded_backend_selected
@@ -198,11 +206,65 @@ class TestBackendSelector:
         monkeypatch.setenv("REGENOLD_GRAPH_BACKEND", "  Embedded ")
         assert embedded_backend_selected() is True
 
-    def test_neo4j_value_not_selected(self, monkeypatch) -> None:
-        from app.graph.embedded_graph import embedded_backend_selected
+    def test_neo4j_value_selects_neo4j_not_embedded(self, monkeypatch) -> None:
+        # R127 — explicit ``neo4j`` opts back into Aura: embedded OFF,
+        # neo4j ON (this is what gates the Neo4j driver activation).
+        from app.graph.embedded_graph import (
+            embedded_backend_selected,
+            graph_backend,
+            neo4j_backend_selected,
+        )
 
         monkeypatch.setenv("REGENOLD_GRAPH_BACKEND", "neo4j")
+        assert graph_backend() == "neo4j"
         assert embedded_backend_selected() is False
+        assert neo4j_backend_selected() is True
+
+    def test_rushdb_value_selects_neither_embedded_nor_neo4j(self, monkeypatch) -> None:
+        from app.graph.embedded_graph import (
+            embedded_backend_selected,
+            neo4j_backend_selected,
+        )
+
+        monkeypatch.setenv("REGENOLD_GRAPH_BACKEND", "rushdb")
+        assert embedded_backend_selected() is False
+        assert neo4j_backend_selected() is False
+
+
+class TestClientActivationGate:
+    """R127 — the Neo4j driver activates only on explicit neo4j backend."""
+
+    def test_client_disabled_when_embedded_even_with_uri(self, monkeypatch) -> None:
+        from unittest.mock import MagicMock
+
+        from app.graph.client import _should_activate
+
+        # NEO4J_URI present (as a stale dashboard var would be) but the
+        # embedded backend is active → the Neo4j client must NOT activate,
+        # so no Aura retrieval / boot-seed network cost is paid.
+        monkeypatch.setenv("NEO4J_URI", "bolt://stale-aura:7687")
+        monkeypatch.setenv("REGENOLD_GRAPH_BACKEND", "embedded")
+        assert _should_activate(MagicMock()) is False
+
+    def test_client_disabled_when_rushdb_even_with_uri(self, monkeypatch) -> None:
+        from unittest.mock import MagicMock
+
+        from app.graph.client import _should_activate
+
+        monkeypatch.setenv("NEO4J_URI", "bolt://stale-aura:7687")
+        monkeypatch.setenv("REGENOLD_GRAPH_BACKEND", "rushdb")
+        assert _should_activate(MagicMock()) is False
+
+    def test_neo4j_backend_still_requires_uri(self, monkeypatch) -> None:
+        from unittest.mock import MagicMock
+
+        from app.graph.client import _should_activate
+
+        # Explicit neo4j backend but no URI → still disabled (the historical
+        # NEO4J_URI gate is preserved beneath the new backend gate).
+        monkeypatch.setenv("REGENOLD_GRAPH_BACKEND", "neo4j")
+        monkeypatch.delenv("NEO4J_URI", raising=False)
+        assert _should_activate(MagicMock()) is False
 
 
 # ── Singleton ────────────────────────────────────────────────────────────────
@@ -278,11 +340,22 @@ class TestExpand2hopEmbeddedWiring:
             assert ref != "Art. 6"
             assert ref not in exp.hop1_articles  # hop2-only
 
-    def test_default_backend_does_not_use_embedded(self, monkeypatch) -> None:
-        # Backend unset → embedded NOT used; with no NEO4J_URI the Neo4j
-        # client is disabled, so is_enabled() is False (existing behaviour).
+    def test_default_backend_uses_embedded(self, monkeypatch) -> None:
+        # R127 — backend unset → embedded is the CODE default → the 2-hop
+        # uses the in-process graph (no Neo4j needed). With the env-gate on,
+        # is_enabled() is True via the embedded graph, NOT the Neo4j client.
         monkeypatch.delenv("NEO4J_URI", raising=False)
         monkeypatch.delenv("REGENOLD_GRAPH_BACKEND", raising=False)
+        monkeypatch.setenv("REGENOLD_GRAPH_2HOP", "1")
+        from app.engines import graph_expand_2hop as g2
+
+        assert g2.is_enabled() is True
+
+    def test_explicit_neo4j_without_uri_is_disabled(self, monkeypatch) -> None:
+        # Explicit neo4j backend but no URI → the Neo4j client stays
+        # disabled, and embedded is NOT selected, so is_enabled() is False.
+        monkeypatch.delenv("NEO4J_URI", raising=False)
+        monkeypatch.setenv("REGENOLD_GRAPH_BACKEND", "neo4j")
         monkeypatch.setenv("REGENOLD_GRAPH_2HOP", "1")
         from app.engines import graph_expand_2hop as g2
 

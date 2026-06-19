@@ -301,16 +301,46 @@ def _reset_embedded_graph_for_tests() -> None:
 # ── Backend selector ─────────────────────────────────────────────────────────
 
 _BACKEND_ENV = "REGENOLD_GRAPH_BACKEND"
+_DEFAULT_BACKEND = "embedded"
+
+
+def graph_backend() -> str:
+    """Resolve the active graph backend.
+
+    R127 — the default is now ``embedded`` (this in-process SQLite property
+    graph), NOT the hosted Neo4j Aura. Aura kept incurring operational drag
+    (R98 ~20x duplicate nodes, R99.1 empty-graph zero-retrieval, boot
+    auto-seed, free-tier limits) for a ~126-node / ~216-edge static KB graph
+    that does not justify a hosted DB. The embedded backend serves the same
+    2-hop CROSS_REFERENCES neighbours in-process — sub-ms, $0, no network,
+    always in sync with ``KB_VERSION`` (rebuilt from the live registries, so
+    no duplicate-node drift).
+
+    Returns one of ``embedded`` (default), ``neo4j``, ``rushdb``. Unknown /
+    empty values resolve to the default. ``tests/conftest.py`` pins
+    ``neo4j`` so the historical Neo4j-path tests still exercise that path;
+    the davidath bench leaves ``REGENOLD_GRAPH_2HOP`` unset so the 2-hop is
+    off there regardless of backend → byte-identical.
+    """
+    val = os.getenv(_BACKEND_ENV, _DEFAULT_BACKEND).strip().lower()
+    return val or _DEFAULT_BACKEND
 
 
 def embedded_backend_selected() -> bool:
-    """True iff ``REGENOLD_GRAPH_BACKEND=embedded`` (default: not selected).
+    """True iff the embedded in-process graph backend is active (R127 default)."""
+    return graph_backend() == "embedded"
 
-    Default-OFF: unset / ``neo4j`` / anything else keeps the historical
-    Neo4j path. The davidath bench never sets this, so it stays
-    byte-identical.
+
+def neo4j_backend_selected() -> bool:
+    """True iff the hosted Neo4j Aura backend is EXPLICITLY selected.
+
+    R127 — Aura now activates only on an explicit
+    ``REGENOLD_GRAPH_BACKEND=neo4j``; the unset default is ``embedded``.
+    ``app.graph.client._should_activate`` gates the Neo4j driver on this so a
+    deploy that still carries ``NEO4J_URI`` in its dashboard does NOT pay the
+    Aura retrieval / boot-seed network cost unless it opts back in.
     """
-    return os.getenv(_BACKEND_ENV, "").strip().lower() == "embedded"
+    return graph_backend() == "neo4j"
 
 
 # ── Import-time fail-loud self-check (cheap; no SQLite) ───────────────────────
@@ -349,5 +379,7 @@ __all__ = [
     "ONTOLOGY",
     "EmbeddedGraph",
     "get_embedded_graph",
+    "graph_backend",
     "embedded_backend_selected",
+    "neo4j_backend_selected",
 ]
