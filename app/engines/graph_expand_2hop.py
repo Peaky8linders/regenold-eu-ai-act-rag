@@ -95,6 +95,30 @@ def _env_enabled() -> bool:
     return os.environ.get(_ENV_VAR, "") == "1"
 
 
+# ── F1 fix gate — full-cap so hop1 can't crowd out hop2 (default ON) ──────────
+#
+# Both backends order ``(hops, num)`` then ``LIMIT cap``; the OLD cap
+# (``max(max_hop2*2, 4)`` = 10) is filled by the 1-hop neighbours of any HUB
+# seed (Art. 5/6/26 each have ≥10 one-hop neighbours), so ZERO hop2-only refs
+# survive the LIMIT → the 2-hop feature contributes nothing for hubs. Sizing
+# the query cap to the catalog ceiling lets every hop1+hop2 row return so the
+# Python-side ``max_hop2`` cap (NOT the SQL LIMIT) is the binding output limit.
+# Both backends RETURN/SELECT DISTINCT by article number, so the distinct-row
+# count is ≤ |ARTICLE_EXISTENCE| (verified: a hub seed yields ≤ ~50 rows).
+# Env-reversible: ``REGENOLD_GRAPH_2HOP_FULL_CAP=0`` restores the old cap.
+_FULL_CAP_ENV = "REGENOLD_GRAPH_2HOP_FULL_CAP"
+
+
+def _full_cap_enabled() -> bool:
+    """True iff the F1 full-cap fix is active (default ON; ``=0`` reverts)."""
+    return os.environ.get(_FULL_CAP_ENV, "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
 # ── Public dataclass ────────────────────────────────────────────────────────
 
 
@@ -215,6 +239,27 @@ def _is_real_ref(internal_ref: str) -> bool:
     misseeded Neo4j won't pass this gate.
     """
     return internal_ref in ARTICLE_EXISTENCE
+
+
+def _hop2_sort_key(internal_ref: str) -> tuple[int, int, str]:
+    """Relevance proxy for ordering the 2-hop-only candidates.
+
+    Both backends order by the bare ``num`` as a STRING, which sorts
+    ``"100"`` before ``"11"`` — so the first ``max_hop2`` hop2 refs for a hub
+    anchor are the final-provision / amendment articles (Art. 100-113), the
+    LEAST relevant ones. Ordering numerically instead surfaces the
+    substantive obligation chain (e.g. Art. 6 → Arts. 10-15) and pushes the
+    amendment articles + annexes to the tail. Deterministic; the ref string
+    breaks any tie.
+    """
+    if internal_ref.startswith("Art. "):
+        try:
+            return (0, int(internal_ref[len("Art. ") :]), internal_ref)
+        except ValueError:
+            return (1, 0, internal_ref)
+    # Annexes after all articles — the directly-relevant annex for an anchor
+    # is normally a 1-hop neighbour (already surfaced), not a 2-hop one.
+    return (2, 0, internal_ref)
 
 
 # ── Cypher ─────────────────────────────────────────────────────────────────
@@ -399,7 +444,15 @@ def expand_2hop(
     if not seed_nums:
         return _empty_expansion(seed_articles)
 
-    cap = max(max_hop2 * 2, 4)
+    if _full_cap_enabled():
+        # F1 fix: don't let the SQL LIMIT crowd out hop2 with hop1 rows for
+        # hub seeds. The catalog size bounds the distinct-row count, so this
+        # never truncates and the Python-side max_hop2 cap below is the
+        # binding output limit. Still ≥ the old cap, so non-hub behaviour is
+        # unchanged (the first max_hop2 hop2 rows are identical).
+        cap = max(len(ARTICLE_EXISTENCE), max_hop2 * 2, 4)
+    else:
+        cap = max(max_hop2 * 2, 4)
 
     started = time.perf_counter()
     rows: list[dict] = []
@@ -448,7 +501,7 @@ def expand_2hop(
 
     # Split rows by hop tier + dedupe + existence-check.
     hop1: list[str] = []
-    hop2: list[str] = []
+    hop2_all: list[str] = []
     seen_internal: set[str] = set()
     for row in rows:
         if not isinstance(row, dict):
@@ -472,9 +525,20 @@ def expand_2hop(
         if hop_n <= 1:
             hop1.append(internal)
         else:
-            # 2-hop-only candidates — capped to max_hop2.
-            if len(hop2) < max_hop2:
-                hop2.append(internal)
+            # Collect ALL 2-hop-only candidates; cap AFTER ordering below.
+            hop2_all.append(internal)
+
+    if _full_cap_enabled():
+        # The full cap returns every hop1+hop2 row (no SQL truncation), so we
+        # re-order the 2-hop-only candidates by relevance proxy — substantive
+        # articles before amendment/final-provision articles + annexes —
+        # instead of the backend's lexicographic-string order. Backend-agnostic
+        # (both backends return the full set under the full cap), so embedded
+        # and Neo4j stay in parity.
+        hop2 = sorted(hop2_all, key=_hop2_sort_key)[:max_hop2]
+    else:
+        # Legacy: first max_hop2 in the backend's (hops, string-num) order.
+        hop2 = hop2_all[:max_hop2]
 
     return GraphExpansion(
         seed_articles=tuple(seed_echo),

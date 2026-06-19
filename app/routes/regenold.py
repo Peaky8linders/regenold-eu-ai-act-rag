@@ -1336,6 +1336,10 @@ def _engine_cache_key(
             "REGENOLD_STAGE2_SIMPLE_SKIP",
             "REGENOLD_GRAPH_BACKEND",
             "REGENOLD_MAX_HOP2",
+            # F1 fix — sizes the 2-hop SQL LIMIT so hop1 can't crowd out
+            # hop2 for hub seeds; flips which hop2 refs fuse into the
+            # references list. Same 2-hop bucket as REGENOLD_GRAPH_2HOP.
+            "REGENOLD_GRAPH_2HOP_FULL_CAP",
         )
     )
     import json

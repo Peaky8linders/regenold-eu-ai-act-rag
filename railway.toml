@@ -14,6 +14,15 @@ restartPolicyMaxRetries = 3
 # ``railway variables --set REGENOLD_GRAPH_2HOP=0`` if a future round
 # regresses on it.
 REGENOLD_GRAPH_2HOP = "1"
+# F1 fix (default ON in code) — the 2-hop SQL ``LIMIT`` was sized
+# ``max(max_hop2*2, 4)`` = 10, which the 1-hop neighbours of any HUB seed
+# (Art. 5/6/26 each ≥10) fill entirely, so ZERO hop2-only refs survived →
+# the 2-hop feature contributed nothing for the most-common anchors. The
+# fix sizes the cap to the catalog ceiling so the Python-side ``max_hop2``
+# cap is the binding output limit. This is a LIVE retrieval change (more
+# hop2 refs surface, additively-below-budget); roll back with:
+#   railway variables --set REGENOLD_GRAPH_2HOP_FULL_CAP=0
+REGENOLD_GRAPH_2HOP_FULL_CAP = "1"
 # R117 — provider architecture (operator directive): Groq for FAST Stage-0
 # intent detection, then the Cloudflare-tunnel Claude Max subscription ALWAYS
 # for Stage-1/2 polish + reasoning.

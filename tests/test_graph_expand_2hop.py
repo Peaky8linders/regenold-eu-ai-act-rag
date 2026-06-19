@@ -206,14 +206,29 @@ def test_expand_2hop_strips_subpoints(monkeypatch):
     assert params["seed_nums"] == ["13"]
 
 
-def test_expand_2hop_cap_is_double_max_hop2(monkeypatch):
-    """LIMIT cap is ``max_hop2 * 2`` so we have headroom to filter."""
+def test_expand_2hop_cap_full_vs_legacy(monkeypatch):
+    """F1 fix: the LIMIT cap is the catalog ceiling by default (so hop1 can't
+    crowd out hop2 for hub seeds); ``REGENOLD_GRAPH_2HOP_FULL_CAP=0`` restores
+    the legacy ``max_hop2 * 2`` cap."""
+    from app.data.article_existence import ARTICLE_EXISTENCE
+
     monkeypatch.setenv("REGENOLD_GRAPH_2HOP", "1")
+
+    # Legacy cap under the rollback flag.
+    monkeypatch.setenv("REGENOLD_GRAPH_2HOP_FULL_CAP", "0")
     client = _FakeClient(enabled=True, return_value=[])
     _install_fake(monkeypatch, client)
     expand_2hop(["Art. 6"], max_hop2=5)
     _, params = client.calls[0]
     assert params["cap"] == 10
+
+    # Default (fix ON) → catalog ceiling, never truncates before hop2.
+    monkeypatch.setenv("REGENOLD_GRAPH_2HOP_FULL_CAP", "1")
+    client = _FakeClient(enabled=True, return_value=[])
+    _install_fake(monkeypatch, client)
+    expand_2hop(["Art. 6"], max_hop2=5)
+    _, params = client.calls[0]
+    assert params["cap"] == len(ARTICLE_EXISTENCE)
 
 
 def test_expand_2hop_caps_hop2_at_max_hop2(monkeypatch):
