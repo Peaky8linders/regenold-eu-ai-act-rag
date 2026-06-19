@@ -3827,7 +3827,17 @@ def _claude_max_enhance_answer(
             user_message += (
                 f"KNOWLEDGE GRAPH ANSWER (draft):\n{kg_answer}\n\n"
                 "Refine the knowledge-graph draft above into a clear, concise "
-                "compliance response. Cite only articles, annexes and "
+                "compliance response. ANSWER THE CURRENT QUESTION ONLY: when the "
+                "QUESTION contains a conversation history (a 'Latest question:' "
+                "marker or earlier turns), answer the user's LATEST question. Do "
+                "NOT open with, or devote sentences to, provisions raised only in "
+                "an earlier turn (for example a prior turn's Fundamental Rights "
+                "Impact Assessment, right-to-explanation, or risk-classification "
+                "discussion) UNLESS the latest question asks about them; the first "
+                "clause must answer the latest question, not restate prior-turn "
+                "context. Never introduce a sector, use-case, or fact (medical, "
+                "employment, biometric, law-enforcement, etc.) that the latest "
+                "question did not state. Cite only articles, annexes and "
                 "obligations that appear in the EU AI ACT REFERENCES block, "
                 "and make sure every article or annex you cite is described "
                 "in the prose: state in a few words what it requires, never "
@@ -3843,8 +3853,9 @@ def _claude_max_enhance_answer(
                 "commas, semicolons, colons, or separate sentences. Prefer 1–4 "
                 "concise sentences when that fully answers; use additional "
                 "sentences only for distinct substantive points (another risk "
-                "tier, a carve-out, or a cross-reference), or when rule 12b "
-                "closed-set completeness requires naming every member of a set."
+                "tier, a carve-out, or a cross-reference) directly responsive to "
+                "the latest question, or when rule 12b closed-set completeness "
+                "requires naming every member of a set."
             )
         try:
             max_tokens = settings.graph_rag.max_tokens
