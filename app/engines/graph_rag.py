@@ -1726,7 +1726,51 @@ def general_classification_verdict_refs(question: str) -> tuple[str, ...]:
     return tuple(verdict["refs"])
 
 
-def _seed_classification_obligations(context: GraphContext, topic: dict) -> None:
+def _stage2_ref_substance(ref: str, question: str = "") -> str:
+    """Real KB-substance line for a verdict ref — the synthetic-obligation
+    ``text`` fed to the Stage-2 "APPLICABLE OBLIGATIONS" context block.
+
+    The verdict seeders below previously set a content-free placeholder
+    (``"Classification verdict reference: Art. 5."``). That placeholder
+    (a) gave the Stage-2 model nothing describable for the refs-faithfulness
+    axis (the judge's weakest), and (b) leaked verbatim into polished answers
+    ("... not categorically prohibited. Classification verdict.") when the
+    model echoed it. Substituting the real KB summary clause gives the model
+    accurate substance for every cited provision — so it describes the
+    article it cites instead of parroting a marker.
+
+    Deterministic-path byte-identical: every verdict path in
+    ``_deterministic_answer`` returns its own ``answer`` BEFORE the
+    obligation-walk, so this text is consumed ONLY in the Stage-2 context
+    block (``provider != cli``); the davidath bench never reads it. The wire
+    ``references`` derive from the synthetic ``article`` field, unchanged.
+    Multi-stub articles (Art. 5 / 50 / 53 / 56) pick the question-relevant
+    stub via ``_KBEntry.select_best_stub`` (R63-C/R64). Fail-soft.
+    """
+    try:
+        from app.integrations.regenold.grounded_prose import (
+            _first_clause,
+            _kb_summary,
+            _user_facing,
+        )
+
+        user = _user_facing(ref)
+        summary = _kb_summary(ref, question)
+        if summary:
+            clause = _first_clause(summary, max_chars=240)
+            if clause:
+                # Colon separator (not an em-dash): the Stage-2 context block
+                # is prompt input, and modelling an em-dash here invites the
+                # R108-forbidden dash-separator into the polished answer.
+                return f"{user}: {clause}"
+        return user
+    except Exception:  # noqa: BLE001 — substance is best-effort context only
+        return ref
+
+
+def _seed_classification_obligations(
+    context: GraphContext, topic: dict, question: str = ""
+) -> None:
     """Replace ``context.obligations`` with synthetic entries for the topic refs.
 
     The route extracts wire references from ``context.obligations +
@@ -1737,12 +1781,14 @@ def _seed_classification_obligations(context: GraphContext, topic: dict) -> None
     poison the wire ``references``.
 
     The synthetic ``id`` is keyed per-ref so the route's per-id dedup
-    surfaces all of them.
+    surfaces all of them. The ``text`` carries the real KB substance for
+    each ref (see :func:`_stage2_ref_substance`) so the Stage-2 model has
+    describable content rather than a content-free verdict marker.
     """
     synthetic = [
         {
             "id": f"classification-{topic['name']}-{ref}",
-            "text": f"Classification verdict reference: {ref}.",
+            "text": _stage2_ref_substance(ref, question),
             "article": ref,
         }
         for ref in topic["refs"]
@@ -1759,7 +1805,7 @@ def _seed_classification_obligations(context: GraphContext, topic: dict) -> None
 
 
 def _seed_scenario_obligations(
-    context: GraphContext, verdict: ScenarioVerdict
+    context: GraphContext, verdict: ScenarioVerdict, question: str = ""
 ) -> None:
     """Replace ``context.obligations`` with the scenario verdict's article pack.
 
@@ -1767,14 +1813,14 @@ def _seed_scenario_obligations(
     ``context.obligations + context.article_info`` to assemble the wire
     ``references`` field, so the verdict's article set has to land there
     or it won't ship. Stale rows are cleared so an earlier retrieval pass
-    can't poison the citation list.
+    can't poison the citation list. The ``text`` carries the real KB
+    substance per ref (see :func:`_stage2_ref_substance`) so the Stage-2
+    model can describe each cited article rather than echo a marker.
     """
     synthetic = [
         {
             "id": f"scenario-{verdict.role}-{verdict.risk_level}-{ref}",
-            "text": (
-                f"Scenario verdict ({verdict.role}, {verdict.risk_level}): {ref}."
-            ),
+            "text": _stage2_ref_substance(ref, question),
             "article": ref,
         }
         for ref in verdict.articles
@@ -2007,7 +2053,7 @@ def _build_role_obligation_answer(role_id: str, risk_id: str) -> tuple[str, tupl
     return answer, refs
 
 
-def _seed_role_obligation_obligations(context: GraphContext, role_id: str, risk_id: str, refs: tuple[str, ...]) -> None:
+def _seed_role_obligation_obligations(context: GraphContext, role_id: str, risk_id: str, refs: tuple[str, ...], question: str = "") -> None:
     """Replace ``context.obligations`` with synthetic entries for the role-
     obligation refs so the route's citation extraction surfaces them on
     the wire. Mirrors :func:`_seed_classification_obligations`.
@@ -2015,12 +2061,14 @@ def _seed_role_obligation_obligations(context: GraphContext, role_id: str, risk_
     Also clears ``context.article_info`` because the route's reference
     extraction reads from BOTH lists — leaving stale article info from
     an earlier retrieval pass would leak unrelated citations alongside
-    the matrix verdict. See May 2026 audit C5.
+    the matrix verdict. See May 2026 audit C5. The ``text`` carries the
+    real KB substance per ref (see :func:`_stage2_ref_substance`) so the
+    Stage-2 model describes each cited article rather than echo a marker.
     """
     synthetic = [
         {
             "id": f"role-obligation-{role_id}-{risk_id}-{ref}",
-            "text": f"Role-obligation matrix entry: {role_id} × {risk_id} → {ref}.",
+            "text": _stage2_ref_substance(ref, question),
             "article": ref,
         }
         for ref in refs
@@ -2383,7 +2431,7 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
             ),
             "refs": ["Art. 6"],
         }
-        _seed_classification_obligations(context, verdict)
+        _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
 
     # Guiding / general principles intercept (Recital 27 + Art. 4 literacy,
@@ -2411,7 +2459,7 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
             ),
             "refs": ["Art. 1", "Art. 4"],
         }
-        _seed_classification_obligations(context, verdict)
+        _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
 
     # Minimal-/low-risk residual-tier intercept (R111 Q6). Without this,
@@ -2438,7 +2486,7 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
             ),
             "refs": ["Art. 5", "Art. 6", "Art. 50"],
         }
-        _seed_classification_obligations(context, verdict)
+        _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
 
     # Scientific-R&D pre-market scope-exclusion intercept (R111 Q17;
@@ -2468,7 +2516,7 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
             ),
             "refs": ["Art. 2"],
         }
-        _seed_classification_obligations(context, verdict)
+        _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
 
     # High-risk penalties intercept (R111 Q9). "What are the penalties for
@@ -2497,7 +2545,7 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
             ),
             "refs": ["Art. 99"],
         }
-        _seed_classification_obligations(context, verdict)
+        _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
 
     # High-Risk Deadline Intercept
@@ -2522,7 +2570,7 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
             ),
             "refs": ["Art. 113", "Annex III", "Art. 26", "Art. 27", "Art. 13"],
         }
-        _seed_classification_obligations(context, verdict)
+        _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
 
     # Structured-scenario fast path — fires when the question matches the
@@ -2534,7 +2582,7 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     # natural-language scenarios that lack the regulatory anchor words.
     scenario_verdict = classify_scenario_query(question)
     if scenario_verdict is not None:
-        _seed_scenario_obligations(context, scenario_verdict)
+        _seed_scenario_obligations(context, scenario_verdict, question)
         return scenario_verdict.answer
 
     # Classification-verdict short-circuit. For "is X prohibited / high-
@@ -2544,7 +2592,7 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     # them on the wire. See ``_CLASSIFICATION_TOPICS`` for the catalog.
     classification = _detect_classification_topic(question)
     if classification is not None:
-        _seed_classification_obligations(context, classification)
+        _seed_classification_obligations(context, classification, question)
         return classification["answer"]
 
     # Role × risk-class matrix path. "What does a deployer of an Annex III
@@ -2556,7 +2604,7 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
         built = _build_role_obligation_answer(role_id, risk_id)
         if built is not None:
             answer, refs = built
-            _seed_role_obligation_obligations(context, role_id, risk_id, refs)
+            _seed_role_obligation_obligations(context, role_id, risk_id, refs, question)
             return answer
 
     # General classification-verdict fallback. A verdict-shaped question
@@ -2573,7 +2621,7 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     if _env_enabled("REGENOLD_GENERAL_VERDICT", default="1"):
         general_verdict = _general_classification_verdict(question)
         if general_verdict is not None:
-            _seed_classification_obligations(context, general_verdict)
+            _seed_classification_obligations(context, general_verdict, question)
             return general_verdict["answer"]
 
     # R112 — the earlier `classify_scenario_query(question)` call at the top
