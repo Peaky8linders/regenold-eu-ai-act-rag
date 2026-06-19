@@ -652,6 +652,43 @@ def _stage2_polish_enabled() -> bool:
     )
 
 
+def _stage2_simple_skip_enabled() -> bool:
+    """R127 (#1) — skip Stage-2 LLM polish for clearly-SIMPLE questions.
+
+    The 2026-06-11 "Stage-2 for all" directive (the ``forced_synthesis_override``
+    in :func:`_two_stage_generate`) fires the LLM polish on EVERY in-scope
+    question, paying a ~15-22s Claude-Max-tunnel round-trip even for a simple
+    single-anchor lookup the deterministic engine already answers
+    citation-exact. R77 measured the deterministic answer as net-POSITIVE on
+    the LLM-judge axes (and far faster) for exactly this class. When this gate
+    is ON, :func:`_two_stage_generate` ships the deterministic Stage-1 answer
+    for a question that is NOT complex, NOT multi-turn, NOT reasoning-traced,
+    and that :func:`_needs_stage2_enhancement` does not flag.
+
+    **Default OFF.** Activating it REVERSES the 2026-06-11 directive for the
+    simple class, and the simple-question quality impact is LIVE-ONLY — the
+    deterministic davidath / 276 evals never fire Stage-2, so they cannot
+    validate it (they stay byte-identical whether this is ON or OFF). Per the
+    project's discipline for unverifiable-live changes (cf. R78 hard-char-cap,
+    R69 tree-extract: ship gated, default-safe, A/B before defaulting), the
+    activation decision is a live representative-100 + LLM-judge A/B:
+
+        railway variables --set REGENOLD_STAGE2_SIMPLE_SKIP=1
+
+    Expected live win: p50 ~15-22s → sub-second on the simple-question
+    majority; risk: simple-question answer-quality regression vs the Sonnet
+    polish (bounded by the conservative gate — only NOT-complex / NOT-multi-turn
+    / NOT-flagged questions skip). Read fresh per call (Railway env rebind
+    takes effect next request).
+    """
+    return os.getenv("REGENOLD_STAGE2_SIMPLE_SKIP", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 # ─── Internal data structures ────────────────────────────────────────────────
 
 @dataclass
@@ -4023,6 +4060,29 @@ def _two_stage_generate(
 
     # R56 — accept EITHER the Max wrapper OR the Anthropic SDK direct
     if not _stage2_provider_enabled():
+        return kg_answer, False
+
+    # R127 (#1) — simple-question skip. Ship the deterministic Stage-1 answer
+    # (no LLM round-trip) for a question that is NOT complex, NOT multi-turn,
+    # NOT reasoning-traced (all captured by ``force_stage2``), and that the
+    # historical ``_needs_stage2_enhancement`` heuristic does not flag. This
+    # reverses the 2026-06-11 "Stage-2 for all" directive ONLY for the
+    # clearly-simple class (single-anchor lookups the deterministic engine
+    # answers citation-exact — R77 measured that net-positive on the judge
+    # axes + far faster). Complex / multi-turn / synthesis questions fall
+    # through to the full Stage-2 (and fusion) path below. Env-reversible.
+    if (
+        _stage2_simple_skip_enabled()
+        and not force_stage2
+        and not _needs_stage2_enhancement(question, context, query)
+    ):
+        try:
+            from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                record_note,
+            )
+            record_note("stage2_skipped_simple_question_deterministic_ship")
+        except Exception:  # noqa: BLE001 — trace is best-effort
+            pass
         return kg_answer, False
 
     # (2026-06-11) User Directive: Ensure Stage 2 is NOT skipped and done for all questions.

@@ -218,7 +218,9 @@ class TestStage2ClaudeMaxProxy:
         assert "False" in stage2_line
 
     def test_stage2_fires_for_simple_question_when_wrapper_enabled(self) -> None:
-        """With Stage-2-always enabled, simple questions also trigger Stage 2."""
+        """R127 (#1) — the simple-question skip gate DEFAULTS OFF, so the
+        2026-06-11 Stage-2-for-all contract holds: a simple question polishes
+        when the wrapper is enabled."""
         with (
             patch("app.llm.openai_wrapper_provider.is_openai_wrapper_enabled", return_value=True),
             patch(
@@ -233,6 +235,25 @@ class TestStage2ClaudeMaxProxy:
         assert result.answer == "Polished simple answer."
         stage2_line = next(t for t in result.reasoning_trace if "Stage 2" in t)
         assert "True" in stage2_line
+
+    def test_stage2_skipped_for_simple_question_when_skip_enabled(self, monkeypatch) -> None:
+        """R127 (#1) — REGENOLD_STAGE2_SIMPLE_SKIP=1 ships the deterministic
+        answer for a simple question (no wrapper round-trip)."""
+        monkeypatch.setenv("REGENOLD_STAGE2_SIMPLE_SKIP", "1")
+        with (
+            patch("app.llm.openai_wrapper_provider.is_openai_wrapper_enabled", return_value=True),
+            patch(
+                "app.engines.graph_rag._openai_wrapper_complete_for_graph_rag",
+                return_value="Polished simple answer.",
+            ) as mock_wrapper,
+        ):
+            req = GraphRAGRequest(question=_SIMPLE_Q)
+            result = ask_compliance_question(req)
+
+        mock_wrapper.assert_not_called()
+        assert result.answer != "Polished simple answer."  # deterministic ship
+        stage2_line = next(t for t in result.reasoning_trace if "Stage 2" in t)
+        assert "False" in stage2_line
 
     def test_stage2_fires_for_multi_turn_when_wrapper_enabled(self) -> None:
         with (
@@ -343,6 +364,9 @@ class TestTwoStageGenerateUnit:
         assert answer
 
     def test_runs_stage2_for_simple_question_when_wrapper_enabled(self) -> None:
+        # R127 (#1) — the simple-question skip gate DEFAULTS OFF, so the
+        # 2026-06-11 "Stage-2 for all" contract holds: a simple question still
+        # polishes when the wrapper is enabled.
         with (
             patch("app.llm.openai_wrapper_provider.is_openai_wrapper_enabled", return_value=True),
             patch(
@@ -353,6 +377,38 @@ class TestTwoStageGenerateUnit:
             answer, used = _two_stage_generate(_SIMPLE_Q, _empty_ctx())
         assert used
         assert answer == "Polished simple answer."
+        mock.assert_called_once()
+
+    def test_simple_skip_on_skips_stage2_for_simple_question(self, monkeypatch) -> None:
+        # R127 (#1) — with REGENOLD_STAGE2_SIMPLE_SKIP=1, a simple single-anchor
+        # question ships the deterministic answer with NO wrapper round-trip.
+        monkeypatch.setenv("REGENOLD_STAGE2_SIMPLE_SKIP", "1")
+        with (
+            patch("app.llm.openai_wrapper_provider.is_openai_wrapper_enabled", return_value=True),
+            patch(
+                "app.engines.graph_rag._openai_wrapper_complete_for_graph_rag",
+                return_value="Polished simple answer.",
+            ) as mock,
+        ):
+            answer, used = _two_stage_generate(_SIMPLE_Q, _empty_ctx())
+        assert not used
+        assert answer  # the deterministic Stage-1 answer
+        mock.assert_not_called()
+
+    def test_simple_skip_on_still_runs_stage2_for_multi_turn(self, monkeypatch) -> None:
+        # The skip is gated on _needs_stage2_enhancement, so multi-turn /
+        # complex questions still polish even with the skip enabled.
+        monkeypatch.setenv("REGENOLD_STAGE2_SIMPLE_SKIP", "1")
+        with (
+            patch("app.llm.openai_wrapper_provider.is_openai_wrapper_enabled", return_value=True),
+            patch(
+                "app.engines.graph_rag._openai_wrapper_complete_for_graph_rag",
+                return_value="Polished answer.",
+            ) as mock,
+        ):
+            answer, used = _two_stage_generate(_MULTI_TURN_Q, _empty_ctx())
+        assert used
+        assert answer == "Polished answer."
         mock.assert_called_once()
 
     def test_returns_enhanced_for_complex_question_when_wrapper_enabled(self) -> None:
