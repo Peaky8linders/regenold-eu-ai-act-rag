@@ -2526,6 +2526,72 @@ def _reconcile_references_to_prose(
         return references
 
 
+# R133 — parenthetical sub-point citations the prose names (``Article 6(1)``,
+# ``Article 5(1)(a)``, ``Annex IV(2)``). group(1) = bare parent prefix,
+# group(2) = the ``(N)`` / ``(N)(x)`` chain. No ``\s*`` between them so a
+# spaced cross-Regulation paren ("Article 50 of Regulation (EU) 2024/…") never
+# matches; the chain must attach directly to the number / Roman id.
+_PROSE_SUBPOINT_RE = re.compile(
+    r"((?:Article\s+\d+)|(?:Annex\s+[IVXLC]+))((?:\((?:\d+|[A-Za-z]+)\))+)",
+    re.IGNORECASE,
+)
+
+_MAX_PROSE_SUBPOINT_ADDS = 3
+
+
+def _surface_prose_subpoints(answer: str, references: list[str]) -> list[str]:
+    """Surface sub-points the FINAL answer prose names but the wire
+    references carry only as the bare parent.
+
+    When the (Stage-2-synthesised) answer cites a sub-point of an
+    already-cited article/annex — e.g. it says ``Article 6(1)`` /
+    ``Article 6(2)`` but the wire references carry only the bare
+    ``Article 6`` — insert the user-facing sub-point form (``Article 6.1``)
+    immediately after the parent so the citation list matches the precision
+    of the prose. The parent is kept (the prose typically cites it
+    standalone too). A parent the answer doesn't already cite is never
+    fabricated. Bounded (``_MAX_PROSE_SUBPOINT_ADDS``), deduped, order-
+    preserving, fail-soft.
+    """
+    if not answer or not references:
+        return references
+    try:
+        from app.integrations.regenold import refs as _refs  # noqa: PLC0415
+
+        # parent (user-facing) -> ordered sub-point forms named in prose
+        wanted: dict[str, list[str]] = {}
+        for m in _PROSE_SUBPOINT_RE.finditer(answer):
+            parent_tok, chain = m.group(1), m.group(2)
+            try:
+                parent_uf = _refs.to_user_facing(parent_tok)
+                sub_uf = _refs.to_user_facing(parent_tok + chain)
+            except Exception:  # noqa: BLE001 — skip unparseable token
+                continue
+            if sub_uf == parent_uf:  # no sub-point resolved
+                continue
+            bucket = wanted.setdefault(parent_uf, [])
+            if sub_uf not in bucket:
+                bucket.append(sub_uf)
+        if not wanted:
+            return references
+
+        existing = set(references)
+        out: list[str] = []
+        added = 0
+        for ref in references:
+            out.append(ref)
+            for sub in wanted.get(ref.strip(), ()):  # noqa: PLR1730
+                if added >= _MAX_PROSE_SUBPOINT_ADDS:
+                    break
+                if sub not in existing:
+                    out.append(sub)
+                    existing.add(sub)
+                    added += 1
+        return out
+    except Exception:  # noqa: BLE001 — never break the route
+        return references
+
+
 def _prune_non_anchor_refs(
     refs: list[str],
     live_question: str,
@@ -5753,6 +5819,25 @@ def regenold_eu_ai_act_ask(
                 references = _upgraded_refs
         except Exception:  # noqa: BLE001 — never let the upgrade 500 the route
             pass
+
+    # R133 — surface prose-named sub-points. When the FINAL (Stage-2-
+    # synthesised) answer cites a sub-point of an already-cited article
+    # (e.g. the prose says "Article 6(1)" / "Article 6(2)" but the wire
+    # references carry only the bare "Article 6"), add the sub-point form
+    # ("Article 6.1") to references so the citation list matches the
+    # precision of the prose the user reads. Gated on ``_stage2_landed`` —
+    # the deterministic davidath bench has no wrapper, so Stage-2 never
+    # lands → strict no-op → byte-identical (the R72 / R94.1 / R131
+    # stage2-gated pattern). Env-reversible REGENOLD_SURFACE_PROSE_SUBPOINTS.
+    if (
+        _stage2_landed
+        and answer_text
+        and references
+        and retrieval_path != "no_match"
+        and os.getenv("REGENOLD_SURFACE_PROSE_SUBPOINTS", "1").strip().lower()
+        in ("1", "true", "yes", "on")
+    ):
+        references = _surface_prose_subpoints(answer_text, references)
 
     # R50 / R131 — finalise the reasoning trace AFTER every reference pass
     # so ``?include_reasoning=true`` surfaces the exact wire ``references``
