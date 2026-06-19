@@ -282,16 +282,33 @@ def _openai_wrapper_complete_for_graph_rag(
         thinking_budget = int(
             getattr(settings.graph_rag, "complex_thinking_tokens", 0) or 0
         )
+        standard_thinking = int(
+            getattr(settings.graph_rag, "thinking_tokens", 0) or 0
+        )
     except Exception:  # noqa: BLE001
         configured = ""
         complex_model = ""
         thinking_budget = 0
+        standard_thinking = 0
     base_model = configured or "claude-sonnet-4-6"
     # R51 complex-question routing; R116 removed the Fable 5 ultra
     # tier, so a complex question swaps to ``complex_model`` (Opus
     # 4.8) only, else the base ``model`` (Sonnet 4.6).
     model = complex_model if (complex_question and complex_model) else base_model
-    
+
+    # R135 — extended-thinking budget for THIS call. Complex questions use the
+    # (Opus) ``complex_thinking_tokens``; the standard ~80% Sonnet synthesis
+    # path uses ``thinking_tokens`` so Sonnet 4.6 ALSO reasons before answering
+    # (operator directive). Stage-2 ONLY — the Stage-1 parse (JSON entity
+    # extraction) must never burn a thinking budget / risk corrupting its JSON.
+    is_stage2 = "stage 2" in (stage_name or "").lower()
+    if complex_question:
+        eff_thinking = thinking_budget
+    elif is_stage2:
+        eff_thinking = standard_thinking
+    else:
+        eff_thinking = 0
+
     # Record the chosen model in the reasoning trace so the UI can surface it.
     try:
         from app.integrations.regenold.reasoning_trace import record_note as _rn
@@ -299,20 +316,27 @@ def _openai_wrapper_complete_for_graph_rag(
     except Exception:  # noqa: BLE001 — trace is optional
         pass
     extra_headers: dict[str, str] = {}
-    if complex_question and thinking_budget > 0:
+    if eff_thinking > 0:
         # Cap at wrapper's recommended ceiling. The wrapper itself
         # enforces 0-50000; we stay well inside that range.
-        capped = max(1024, min(thinking_budget, 16000))
+        capped = max(1024, min(eff_thinking, 16000))
         extra_headers["X-Claude-Max-Thinking-Tokens"] = str(capped)
         logger.info(
-            "graph_rag.stage2_extended_thinking model=%s budget=%d",
-            model, capped,
+            "graph_rag.stage2_extended_thinking model=%s budget=%d complex=%s",
+            model, capped, complex_question,
         )
 
-    # R112.2 - Ensure we don't trigger `max_thinking_tokens` validation errors 
+    # R112.2 - Ensure we don't trigger `max_thinking_tokens` validation errors
     # if the wrapper uses an older map from `max_tokens` to `max_thinking_tokens`.
     # Pydantic requires an int, and Claude requires max_thinking_tokens >= 1024.
-    safe_max_tokens = max(max_tokens or 1024, 1024)
+    # R135 — when extended thinking is on, the API requires max_tokens > the
+    # thinking budget; give the answer ~512-token headroom above it so the
+    # synthesis is not squeezed by the thinking allocation.
+    safe_max_tokens = max(
+        max_tokens or 1024,
+        (eff_thinking + 512) if eff_thinking > 0 else 0,
+        1024,
+    )
     
     response = get_openai_wrapper_provider().complete(
         OpenAIWrapperRequest(
@@ -393,9 +417,25 @@ def _openai_wrapper_complete_for_graph_rag(
         except Exception:
             pass
     else:
+        # R135 — be honest about whether thinking was REQUESTED. When a budget
+        # was sent (Sonnet standard path or Opus complex) but the wrapper
+        # returned no ``reasoning_content``, the model still reasoned (improving
+        # the answer); the wrapper just did not surface the text (needs the
+        # wrapper-repo patch). Only say "no extended thinking" when none was asked.
         try:
             from app.integrations.regenold.reasoning_trace import record_llm_thinking
-            record_llm_thinking("Single-pass synthesis (no extended thinking on the standard path).", stage=stage_name)
+            if eff_thinking > 0:
+                record_llm_thinking(
+                    f"Extended thinking requested ({eff_thinking} tokens); the "
+                    "model reasoned before answering but the provider did not "
+                    "surface the reasoning text.",
+                    stage=stage_name,
+                )
+            else:
+                record_llm_thinking(
+                    "Single-pass synthesis (no extended thinking on this call).",
+                    stage=stage_name,
+                )
         except Exception:
             pass
             
@@ -436,22 +476,37 @@ def _anthropic_complete_for_graph_rag(
         thinking_budget = int(
             getattr(settings.graph_rag, "complex_thinking_tokens", 0) or 0
         )
+        standard_thinking = int(
+            getattr(settings.graph_rag, "thinking_tokens", 0) or 0
+        )
     except Exception:  # noqa: BLE001
         configured = ""
         complex_model = ""
         thinking_budget = 0
+        standard_thinking = 0
     base_model = configured or "claude-sonnet-4-6"
     # R116 removed the Fable 5 ultra tier; complex -> complex_model
     # (Opus 4.8) only, else base ``model`` (Sonnet 4.6).
     model = complex_model if (complex_question and complex_model) else base_model
 
+    # R135 — same Stage-2-only thinking budget as the wrapper path: complex →
+    # ``complex_thinking_tokens`` (Opus); standard Sonnet synthesis →
+    # ``thinking_tokens`` so Sonnet 4.6 also reasons; Stage-1 parse → none.
+    is_stage2 = "stage 2" in (stage_name or "").lower()
+    if complex_question:
+        eff_thinking = thinking_budget
+    elif is_stage2:
+        eff_thinking = standard_thinking
+    else:
+        eff_thinking = 0
+
     extra: dict[str, object] = {}
-    if complex_question and thinking_budget > 0:
-        capped = max(1024, min(thinking_budget, 16000))
+    if eff_thinking > 0:
+        capped = max(1024, min(eff_thinking, 16000))
         extra["thinking"] = {"type": "enabled", "budget_tokens": capped}
         logger.info(
-            "graph_rag.stage2_extended_thinking_anthropic model=%s budget=%d",
-            model, capped,
+            "graph_rag.stage2_extended_thinking_anthropic model=%s budget=%d complex=%s",
+            model, capped, complex_question,
         )
 
     # R118 REC-4 — mirror the wrapper-path floor (R112.2 ``safe_max_tokens``)
@@ -460,7 +515,13 @@ def _anthropic_complete_for_graph_rag(
     # complex answers at 384 → frequent ``stop_reason=max_tokens`` truncation
     # → soft-fail to deterministic, silently downgrading exactly the hard
     # questions Opus was chosen for. Floor at 1024 to match the wrapper path.
-    safe_max_tokens = max(max_tokens or 1024, 1024)
+    # R135 — when thinking is on, the answer needs output room ABOVE the
+    # thinking budget (the API requires max_tokens > budget_tokens).
+    safe_max_tokens = max(
+        max_tokens or 1024,
+        (eff_thinking + 512) if eff_thinking > 0 else 0,
+        1024,
+    )
     try:
         response = client.messages.create(
             model=model,
@@ -523,7 +584,18 @@ def _anthropic_complete_for_graph_rag(
         else:
             try:
                 from app.integrations.regenold.reasoning_trace import record_llm_thinking
-                record_llm_thinking("Single-pass synthesis (no extended thinking on the standard path).", stage=stage_name)
+                if eff_thinking > 0:
+                    record_llm_thinking(
+                        f"Extended thinking requested ({eff_thinking} tokens); the "
+                        "model reasoned before answering but no reasoning text was "
+                        "returned.",
+                        stage=stage_name,
+                    )
+                else:
+                    record_llm_thinking(
+                        "Single-pass synthesis (no extended thinking on this call).",
+                        stage=stage_name,
+                    )
             except Exception:
                 pass
     except Exception as exc:  # noqa: BLE001

@@ -540,25 +540,33 @@ def fusion_complete(
         _trace(f"fusion_skip insufficient_panel={len(panel)}")
         return None
 
-    # Panel members must not truncate — give them a healthy ceiling.
-    panel_max_tokens = max(int(max_tokens or 0), 1024)
     timeout = _timeout_seconds()
     fast_timeout = _fast_timeout_seconds()
 
-    # R131.3 — surface the wrapper member's (Opus) real extended-thinking on the
-    # complex/fusion path. Budget from settings (clamped in _one_candidate);
-    # only the wrapper transport honours the header. Collected per-member and
-    # recorded into the reasoning trace in the MAIN thread below (the trace
-    # ContextVar is not visible to the panel worker threads).
+    # R131.3 / R135 — surface the wrapper member's real extended-thinking. The
+    # wrapper panel member is Opus on a complex question (R124 swap), else
+    # Sonnet; both reason before answering. Budget: complex → the (Opus)
+    # ``complex_thinking_tokens``; non-complex (fusion only fires here under
+    # ``gate=all``) → the (Sonnet) ``thinking_tokens`` so Sonnet also thinks.
+    # Clamped in _one_candidate; only the wrapper transport honours the header.
+    # Collected per-member and recorded into the reasoning trace in the MAIN
+    # thread below (the trace ContextVar is not visible to the panel workers).
     _think_budget = 0
-    if complex_question:
-        try:
-            from app.config import settings as _settings  # noqa: PLC0415
-            _think_budget = int(
-                getattr(_settings.graph_rag, "complex_thinking_tokens", 0) or 0
-            )
-        except Exception:  # noqa: BLE001
-            _think_budget = 0
+    try:
+        from app.config import settings as _settings  # noqa: PLC0415
+        _key = "complex_thinking_tokens" if complex_question else "thinking_tokens"
+        _think_budget = int(getattr(_settings.graph_rag, _key, 0) or 0)
+    except Exception:  # noqa: BLE001
+        _think_budget = 0
+
+    # Panel members must not truncate — give them a healthy ceiling. When the
+    # wrapper member runs extended thinking, the answer needs output room ABOVE
+    # the thinking budget (the API requires max_tokens > budget_tokens).
+    panel_max_tokens = max(
+        int(max_tokens or 0),
+        (_think_budget + 512) if _think_budget > 0 else 0,
+        1024,
+    )
     panel_thinking: dict[str, str] = {}
 
     drafts: list[tuple[str, str]] = []

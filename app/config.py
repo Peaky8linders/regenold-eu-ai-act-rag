@@ -128,6 +128,26 @@ class GraphRAGSettings(BaseSettings):
       * R80.2: reduced 2500 → 1024 (current).
     """
 
+    thinking_tokens: int = 1024
+    """``max_thinking_tokens`` for extended-thinking on the STANDARD Stage-2
+    synthesis path — Sonnet 4.6, the ~80% of questions the complexity gate
+    does NOT flag.
+
+    **R135 (operator directive) — default 1024 (Sonnet 4.6 ALSO thinks).**
+    Previously only the complex/Opus path used extended thinking
+    (``complex_thinking_tokens``); the standard Sonnet path ran thinking-free.
+    The directive: Sonnet should reason before answering to improve answer
+    quality, not just Opus on the hard ~20%. The model thinks (improving the
+    answer) whether or not the wrapper surfaces the reasoning text in
+    ``reasoning.llm_thinking`` (surfacing the text needs the wrapper-repo
+    patch — see project memory). Applied to Stage-2 ONLY (never the Stage-1
+    parse / JSON entity-extraction call). 1024 is the wrapper/API clamp
+    floor. Latency trade: ~+3-8 s per standard Stage-2 call (a scored axis).
+    Fully reversible: ``P2P_GRAPH_RAG_THINKING_TOKENS=0`` restores the fast
+    thinking-free Sonnet path. Clamped at the engine to [1024, 16000]; 0
+    disables.
+    """
+
 
 class RegenoldSettings(BaseSettings):
     """Regenold partner-tier auth + rate-limit settings."""
