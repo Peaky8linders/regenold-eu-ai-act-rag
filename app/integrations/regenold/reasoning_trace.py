@@ -353,6 +353,7 @@ def record_query_denoiser(
     fallback_reason: str | None = None,
     model: str | None = None,
     provider: str | None = None,
+    salvaged_deterministic: bool = False,
 ) -> None:
     """Record R86 Query De-Noiser outcome (R87-A observability).
 
@@ -367,10 +368,13 @@ def record_query_denoiser(
     * ``"length_out_of_bounds"`` — rewrite < 10 or > 500 chars
     * ``"exception"`` — uncaught error in the rewrite path
 
-    ``fired=True`` means the rewrite replaced the concatenated history;
-    ``fired=False`` means the caller used the existing fallback path.
-    Either way the route lands an answer — this just lets the judge
-    attribute multi-turn retrieval drift to de-noiser non-firing.
+    ``fired=True`` means the LLM rewrite replaced the concatenated history;
+    ``fired=False`` means the caller used a fallback path. When the LLM
+    provider was wired but FAILED, ``salvaged_deterministic=True`` records
+    that the R131 deterministic salvage used the self-contained final user
+    turn as the standalone query (instead of the contaminating history
+    concatenation). Either way the route lands an answer — this just lets
+    the judge attribute multi-turn retrieval drift to de-noiser non-firing.
     """
     trace = current()
     if trace is None:
@@ -386,6 +390,8 @@ def record_query_denoiser(
         payload["model"] = str(model)[:64]
     if provider:
         payload["provider"] = str(provider)[:32]
+    if salvaged_deterministic:
+        payload["salvaged_deterministic"] = True
     trace.query_denoiser = payload
 
 

@@ -3115,6 +3115,80 @@ _QUERY_DENOISER_SYSTEM = (
 )
 
 
+# R131 — deterministic standalone-query salvage for a FAILED LLM de-noiser.
+# The de-noiser rewrites a multi-turn follow-up into a standalone query so the
+# verbose prior-turn history (e.g. a prior assistant turn citing Article 86 /
+# Article 27) does NOT bleed earlier-turn anchors into retrieval. It depends on
+# an external LLM (Groq Llama 3.3 70B, else the Claude Max wrapper). When that
+# provider FAILS (the observed production "denoiser skipped (provider_error)"
+# on a Groq TPD cap, or a tunnel timeout) the historical behaviour fell through
+# to the raw history-concatenation path — re-introducing exactly the
+# contamination the de-noiser exists to remove. R131 salvages the common case
+# deterministically: if the LIVE final user turn is itself self-contained
+# (a substantive, non-coreferent question), use it verbatim as the standalone
+# query, dropping the contaminating history block. Coreferent / elliptical
+# follow-ups ("are these continuous?", "what about that system?") genuinely
+# need the history, so they keep the concatenation path unchanged.
+_DENOISE_SALVAGE_ENV = "REGENOLD_DENOISE_SALVAGE"
+
+# Leading connectors that mark a turn as coreferent (it depends on prior
+# context). Anchored at the start of the (lower-cased, stripped) turn.
+_DENOISE_LEADING_COREF_RE = re.compile(
+    r"^(?:and\s+|but\s+|so\s+|then\s+|also\s+|ok(?:ay)?,?\s+)?"
+    r"(?:what about|how about|and what about|what if|and if|what then|"
+    r"in that case|does (?:it|that|this|she|he|they)\b|do (?:they|we)\b|"
+    r"is (?:it|that|this)\b|are (?:these|those|they)\b|can (?:we|it|they)\b|"
+    r"would (?:it|that|they)\b|will (?:it|that|they)\b)",
+    re.IGNORECASE,
+)
+
+# Mid-turn markers that signal dependence on a previously-established entity.
+_DENOISE_COREF_MARKERS: tuple[str, ...] = (
+    "this system", "that system", "the system you", "the regulator you",
+    "you mentioned", "as we discussed", "as discussed", "carry over",
+    "carries over", "still apply", "those checks", "these checks",
+    "the same", "as above", "like i said", "as i said",
+)
+
+
+def _is_denoise_salvage_enabled() -> bool:
+    """R131 deterministic salvage gate — default ON; set ``=0`` to disable."""
+    return os.environ.get(_DENOISE_SALVAGE_ENV, "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
+def _live_turn_is_self_contained(live_question: str) -> bool:
+    """True iff the final user turn can stand alone as a search query.
+
+    High-precision: requires a substantive AI-Act anchor (so a generic
+    fragment is never treated as standalone) AND the absence of coreference
+    markers (so a follow-up that depends on prior turns keeps the history).
+    Conservative by design — when unsure it returns False and the caller
+    keeps the existing concatenation path.
+    """
+    q = (live_question or "").strip()
+    if len(q.split()) < 6:
+        return False  # short → likely elliptical / coreferent
+    low = q.lower()
+    if _DENOISE_LEADING_COREF_RE.match(low):
+        return False
+    if any(marker in low for marker in _DENOISE_COREF_MARKERS):
+        return False
+    # Must carry its own AI-Act subject — reuse the maintained scope anchor
+    # set rather than duplicating a keyword list.
+    try:
+        from app.integrations.regenold.scope import (  # noqa: PLC0415
+            _has_ai_act_anchor,
+        )
+    except Exception:  # noqa: BLE001 — fail safe: do not salvage if unsure
+        return False
+    return bool(_has_ai_act_anchor(q))
+
+
 def _rewrite_multiturn_query(
     live_question: str,
     history_turns: list,
@@ -3123,13 +3197,44 @@ def _rewrite_multiturn_query(
 
     Uses the Groq singleton (Llama 3.3 70B, ~200ms) when available,
     else falls back to the default OpenAI wrapper (Haiku, ~500ms).
-    Timeout: 1.0s.  Any failure → ``None`` (caller keeps concatenation).
+    Timeout: 1.0s.  On LLM-provider failure the R131 deterministic salvage
+    (:func:`_live_turn_is_self_contained`) returns the self-contained live
+    turn so the contaminating history is dropped; otherwise → ``None``
+    (caller keeps concatenation).
 
     R87-A — every exit path records the de-noiser outcome onto the
     active ReasoningTrace via ``record_query_denoiser`` so the LLM-as-
     judge runner + post-deploy analysis can attribute multi-turn
     retrieval drift to de-noiser non-firing.
     """
+    def _salvage_on_provider_failure(
+        reason: str,
+        *,
+        latency_ms: int = 0,
+        rewritten_chars: int = 0,
+        model: str = "",
+        provider_name: str = "",
+    ) -> str | None:
+        """Record a provider-failure outcome and, when the live turn is
+        self-contained, return it as the deterministic standalone query."""
+        salvage = (
+            live_question
+            if (
+                _is_denoise_salvage_enabled()
+                and _live_turn_is_self_contained(live_question)
+            )
+            else None
+        )
+        record_query_denoiser(
+            fired=False,
+            latency_ms=int(latency_ms),
+            rewritten_chars=int(rewritten_chars),
+            fallback_reason=reason,
+            model=model or None,
+            provider=provider_name or None,
+            salvaged_deterministic=bool(salvage),
+        )
+        return salvage
     # Lazy import keeps cold-start small + isolates the trace dep.
     from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
         record_query_denoiser,
@@ -3197,8 +3302,7 @@ def _rewrite_multiturn_query(
             )
     except Exception:  # noqa: BLE001 — singleton init must not crash route
         logger.debug("query_denoiser: provider acquisition failed", exc_info=True)
-        record_query_denoiser(fired=False, fallback_reason="provider_init_error")
-        return None
+        return _salvage_on_provider_failure("provider_init_error")
 
     if provider is None:
         record_query_denoiser(fired=False, fallback_reason="no_provider")
@@ -3221,17 +3325,12 @@ def _rewrite_multiturn_query(
         latency_ms = (time.monotonic_ns() - start_ns) // 1_000_000
         if resp.error or not resp.text.strip():
             logger.debug("query_denoiser: LLM returned error=%s", resp.error)
-            record_query_denoiser(
-                fired=False,
-                latency_ms=int(latency_ms),
-                fallback_reason=(
-                    "provider_error"
-                    if resp.error else "empty_text"
-                ),
+            return _salvage_on_provider_failure(
+                "provider_error" if resp.error else "empty_text",
+                latency_ms=latency_ms,
                 model=model,
-                provider=provider_name,
+                provider_name=provider_name,
             )
-            return None
         # R91 — truncation guard. ``max_tokens=100`` is a tight rewrite
         # budget; a ``finish_reason="length"`` response means the LLM ran
         # out of room mid-sentence. A truncated rewrite that passes the
@@ -3242,14 +3341,12 @@ def _rewrite_multiturn_query(
             logger.debug(
                 "query_denoiser: response truncated (finish_reason=length)"
             )
-            record_query_denoiser(
-                fired=False,
-                latency_ms=int(latency_ms),
-                fallback_reason="truncated",
+            return _salvage_on_provider_failure(
+                "truncated",
+                latency_ms=latency_ms,
                 model=model,
-                provider=provider_name,
+                provider_name=provider_name,
             )
-            return None
         rewritten = resp.text.strip().strip('"').strip("'")
         # Sanity: if the rewrite is too short or suspiciously long, bail
         if len(rewritten) < 10 or len(rewritten) > 500:
@@ -3257,15 +3354,13 @@ def _rewrite_multiturn_query(
                 "query_denoiser: rewrite length %d out of bounds",
                 len(rewritten),
             )
-            record_query_denoiser(
-                fired=False,
-                latency_ms=int(latency_ms),
+            return _salvage_on_provider_failure(
+                "length_out_of_bounds",
+                latency_ms=latency_ms,
                 rewritten_chars=len(rewritten),
-                fallback_reason="length_out_of_bounds",
                 model=model,
-                provider=provider_name,
+                provider_name=provider_name,
             )
-            return None
         record_query_denoiser(
             fired=True,
             latency_ms=int(latency_ms),
@@ -3277,22 +3372,32 @@ def _rewrite_multiturn_query(
     except Exception:  # noqa: BLE001
         logger.debug("query_denoiser: LLM call failed", exc_info=True)
         latency_ms = (time.monotonic_ns() - start_ns) // 1_000_000
-        record_query_denoiser(
-            fired=False,
-            latency_ms=int(latency_ms),
-            fallback_reason="exception",
+        return _salvage_on_provider_failure(
+            "exception",
+            latency_ms=latency_ms,
             model=model,
-            provider=provider_name,
+            provider_name=provider_name,
         )
-        return None
 
 
 class QuestionHistoryResult(tuple):
     resolved_question: str | None
+    salvaged: bool
 
-    def __new__(cls, question: str, system_context: str | None, resolved_question: str | None):
+    def __new__(
+        cls,
+        question: str,
+        system_context: str | None,
+        resolved_question: str | None,
+        salvaged: bool = False,
+    ):
         obj = super().__new__(cls, (question, system_context))
         obj.resolved_question = resolved_question
+        # R131 — True when the deterministic de-noiser salvage replaced the
+        # multi-turn flatten with the self-contained live turn (provider-failed
+        # de-noiser). The route then treats the request as single-turn for
+        # scope + reference assembly so prior-turn anchors do not bleed in.
+        obj.salvaged = bool(salvaged)
         return obj
 
 
@@ -3376,6 +3481,7 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
     # anchor line will carry forward as a scope anchor too.
     anchor_line = _extract_conversation_anchors(all_prior_turns) if all_prior_turns else ""
 
+    _salvaged = False  # R131 — set when the deterministic de-noiser salvage fires
     if history_turns:
         # R86 — Query De-Noiser: attempt an LLM rewrite of the follow-up
         # into a standalone search query BEFORE flooding the retrieval
@@ -3383,6 +3489,19 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
         # rewrite replaces the concatenated history; on failure we fall
         # through to the existing concatenation path — zero-risk.
         denoised = _rewrite_multiturn_query(live_question, history_turns)
+        # R131 — deterministic salvage: the de-noiser returns the verbatim
+        # live turn (== live_question) ONLY when an LLM provider was wired but
+        # FAILED and the final turn is self-contained. In that case retrieve +
+        # answer on the live turn ALONE — dropping the prior-turn history AND
+        # the inherited anchor line, which (when the prior turns are about a
+        # different topic, e.g. an assistant turn citing Article 86 / Article
+        # 27) would otherwise bleed earlier-turn provisions into the answer.
+        # A self-contained final turn does not need that context, so this is
+        # the clean single-turn behaviour. It deliberately bypasses the R91
+        # scenario-shape guard below: when the FINAL turn is a self-contained
+        # QA, preserving a PRIOR turn's scenario shape is the contamination,
+        # not a feature.
+        _is_denoise_salvage = denoised is not None and denoised == live_question
         # R91 / Bug 3: preserve scenario shape. If any prior turn (or the
         # live question) is scenario-shaped but the denoised rewrite
         # dropped that shape, fall through to the concatenation path
@@ -3396,10 +3515,15 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
         ) or _looks_like_scenario_shape(live_question)
         _denoised_dropped_shape = (
             denoised is not None
+            and not _is_denoise_salvage
             and _scenario_shape_in_prior
             and not _looks_like_scenario_shape(denoised)
         )
-        if denoised is not None and not _denoised_dropped_shape:
+        if _is_denoise_salvage:
+            question = live_question
+            resolved_turn = live_question
+            _salvaged = True
+        elif denoised is not None and not _denoised_dropped_shape:
             anchor_prefix = (anchor_line + "\n") if anchor_line else ""
             question = f"{anchor_prefix}{denoised}"
             resolved_turn = denoised
@@ -3455,7 +3579,7 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
     if system_context is not None and len(system_context) > 1000:
         system_context = system_context[-1000:]
 
-    return QuestionHistoryResult(question, system_context, resolved_turn)
+    return QuestionHistoryResult(question, system_context, resolved_turn, _salvaged)
 
 
 @regenold_router.post(
@@ -3637,7 +3761,22 @@ def regenold_eu_ai_act_ask(
     # after "What does Art. 13 require?" still counts as in-scope
     # because the prior turn establishes Art. 13 as an anchor — this
     # is the "coreference rescue" branch in classify_conversation.
-    scope = classify_conversation(req.messages)
+    if history_res.salvaged:
+        # R131 — the deterministic de-noiser salvage treated this turn as a
+        # self-contained single-turn question (the LLM de-noiser failed and the
+        # final turn stands alone). Run scope on the live turn ALONE so the
+        # prior-turn anchors (e.g. a prior assistant turn citing Article 86 /
+        # Article 27) do not flow through scope.anchor_articles into the wire
+        # references and the per-reference description pass. This mirrors, at the
+        # scope layer, the single-turn engine query the salvage already produced.
+        _salvage_user = next(
+            (m for m in reversed(req.messages) if m.role == "user"), None
+        )
+        scope = classify_conversation(
+            [_salvage_user] if _salvage_user is not None else req.messages
+        )
+    else:
+        scope = classify_conversation(req.messages)
     # R50 — record scope verdict + anchor articles into the reasoning
     # trace. The recorder short-circuits when the trace is inactive.
     _trace_scope(
@@ -4002,9 +4141,15 @@ def regenold_eu_ai_act_ask(
             if _r88a_dialogue[_i].role == "user":
                 _r88a_last_user_idx = _i
                 break
+        # R131 — when the de-noiser salvage fired (self-contained final turn,
+        # failed LLM de-noiser), suppress assistant-anchor inheritance: a
+        # standalone new-topic question must NOT inherit the prior assistant
+        # turn's Articles (e.g. an Article 86 / Article 27 discussion from an
+        # earlier turn), which would otherwise be HEAD-injected as candidates
+        # and then described into the answer.
         _r88a_history = (
             _r88a_dialogue[:_r88a_last_user_idx]
-            if _r88a_last_user_idx > 0 else []
+            if (_r88a_last_user_idx > 0 and not history_res.salvaged) else []
         )
         _r88a_live_q = (
             _r88a_dialogue[_r88a_last_user_idx].content

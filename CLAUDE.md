@@ -7037,6 +7037,100 @@ modest one (R80.2 ran 1024 in production).
   wrapper Stage-2 path, inert under the TestClient/cli bench; web_ui is
   frontend-only). Real thinking content surfaces post-deploy via the live
   Opus + Claude-Max wrapper.
+## Round 133 — Multi-turn de-noiser salvage: clean answer when the LLM de-noiser fails (2026-06-19)
+
+> Numbered R133 (R132 was taken by the concurrent PR #224); the in-code
+> tags read `R131` from when this branch opened — the round number raced
+> with the parallel R131.x / R132 PRs.
+
+A live multi-turn Q&A landed on Sonnet 4.6 and shipped a **not-good
+answer** plus the operator flagged **"Intent & Query denoiser skipped
+(provider_error) model llama-3.3-70b-versatile"**. The final turn was a
+self-contained QA — *"Does the technical documentation of a high-risk AI
+system require to provide specifications regarding the required
+hardware?"* — but the answer **led with Article 86 (right to explanation)
+and Article 27 (FRIA)** and tacked on an invented medical conformity
+paragraph, burying the correct *Yes — Article 11 + Annex IV (incl. the
+Annex IV.1.e hardware sub-point)* answer.
+
+### Root cause (systematic-debugging, reproduced near-verbatim live)
+
+The conversation was **multi-turn** (the de-noiser only runs multi-turn —
+single-turn records `single_turn`, not `provider_error`). The R86 query
+de-noiser rewrites the coreferent follow-up into a standalone query,
+stripping prior-turn contamination — but it depends on an external LLM
+(Groq Llama 3.3 70B, else the Claude Max wrapper). Groq returned a
+`provider_error` (TPD cap / tunnel timeout) and the de-noiser **skipped
+with no fallback**, so the flattened history — including a prior assistant
+turn that discussed Art. 86 / Art. 27 — drove retrieval, scope anchors,
+and the per-reference description pass. Reproduced: with the de-noiser
+forced to fail, the wire answer is byte-for-byte the production answer.
+The contamination had **three independent sources** the de-noiser
+normally suppresses: the engine flatten (`history_block`), `scope.
+anchor_articles` (`classify_conversation` on the full conversation), and
+the R88-A assistant-anchor inheritance (Art. 86/27 HEAD-injected as
+candidates). With clean input the engine AND Sonnet produce the correct
+answer — the route was re-contaminating it post-engine.
+
+### The fix — deterministic salvage, gated to the failure path only
+
+The LLM de-noiser is fragile (the wrapper Haiku fallback is slow + ignores
+the terse-rewrite format, so it bails too). R131 salvages the common case
+deterministically, fired **only when an LLM provider was wired and FAILED
+AND the final user turn is self-contained** (substantive AI-Act anchor +
+no coreference markers). In that case the request is processed as a clean
+single turn:
+* [`app/routes/regenold.py::_rewrite_multiturn_query`](app/routes/regenold.py)
+  — on provider failure (`provider_error` / `empty_text` / `truncated` /
+  `length_out_of_bounds` / `exception` / `provider_init_error`), if
+  `_live_turn_is_self_contained(live_question)` returns the live turn as
+  the standalone query (else `None` → existing concatenation). `_DENOISE_
+  LEADING_COREF_RE` + `_DENOISE_COREF_MARKERS` + `scope._has_ai_act_anchor`
+  gate it.
+* The flatten (`_build_question_from_history`) detects the salvage
+  (`denoised == live_question`), sets `question = live_question` (bypassing
+  the R91 scenario-shape guard — a self-contained final turn must not
+  inherit a PRIOR turn's scenario shape) and flags `QuestionHistoryResult.
+  salvaged`.
+* The route, when `salvaged`, runs `classify_conversation` on the **live
+  turn alone** and **suppresses R88-A assistant-anchor inheritance** —
+  closing the two residual contamination paths so the references stay
+  `[Article 11, Annex IV, Annex IV.1.e, …]`.
+* Stage-2 prompt hardening (defense-in-depth, all paths):
+  [`ANSWER_GENERATE_SYSTEM`](app/data/graph_rag_prompts.py) VOICE block +
+  the [`_claude_max_enhance_answer`](app/engines/graph_rag.py) refine
+  instruction now say *answer the LATEST question; do not lead with /
+  describe provisions raised only in earlier turns; never introduce a
+  sector/use-case the latest question did not state* (kills the invented
+  medical framing).
+* `reasoning_trace.record_query_denoiser` gains `salvaged_deterministic`
+  for `?include_reasoning=true` observability.
+
+Env off-switch `REGENOLD_DENOISE_SALVAGE=0`. The Groq `provider_error`
+itself is an external availability issue (paid tier / fallback); R131
+makes the system robust to it rather than masking it.
+
+### Verification — davidath byte-identical, live repro fixed
+
+* **davidath QA bench A/B** (worktree vs `main`, deterministic `cli`):
+  **byte-identical on every axis** — Ans Strict 0.4022 / Ans Loose 0.1411
+  / Ans Conciseness 0.1936 / Ref Loose 0.8321 / Ref Strict 0.5528 / Ref
+  Conciseness 0.4395 / Tone 1.0. By construction: in `cli`/no-provider
+  (the bench) `_rewrite_multiturn_query` returns `None` → `salvaged=False`
+  → every salvage branch is a no-op; Stage-2 prompt + trace are LLM-only.
+* `evals.regenold.runner` (276) — **255/255**, all categories 100%
+  (multi-turn scenarios unchanged).
+* OOS probe (`runner_v2 --local --probe-oos`) — **21/21, 0 leaks**.
+* Gate tests: `cli` no-provider → no salvage; provider-fail + self-
+  contained → salvage; provider-fail + coreferent ("Are these checks
+  continuous?") / short ("What about deployers?") → **no** salvage
+  (multi-turn coherence preserved). +22 `tests/test_r131_denoise_salvage.py`;
+  R86/R87-A/R88-A/R91/multiturn suites (121) green.
+* **Live repro** (Claude Max wrapper, de-noiser forced to fail): the wire
+  answer flips from *"Under Article 86 … Under Article 27 … FRIA …"* (refs
+  Art 26/86/27) to *"Under Article 11, read together with Annex IV, the
+  technical documentation … must contain … Annex IV …"* (refs `[Annex IV,
+  Article 11, Annex IV.2, Annex IV.1.e, Annex IV.2.c]`).
 
 ## Non-goals / things to skip
 
