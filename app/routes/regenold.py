@@ -3383,6 +3383,7 @@ def _rewrite_multiturn_query(
 class QuestionHistoryResult(tuple):
     resolved_question: str | None
     salvaged: bool
+    self_contained_focus: bool
 
     def __new__(
         cls,
@@ -3390,6 +3391,7 @@ class QuestionHistoryResult(tuple):
         system_context: str | None,
         resolved_question: str | None,
         salvaged: bool = False,
+        self_contained_focus: bool = False,
     ):
         obj = super().__new__(cls, (question, system_context))
         obj.resolved_question = resolved_question
@@ -3398,6 +3400,16 @@ class QuestionHistoryResult(tuple):
         # de-noiser). The route then treats the request as single-turn for
         # scope + reference assembly so prior-turn anchors do not bleed in.
         obj.salvaged = bool(salvaged)
+        # R133.1 — True when the final user turn is self-contained AND an LLM
+        # de-noiser RAN (success OR salvage), i.e. on the production multi-turn
+        # paths only. Superset of `salvaged`: it ALSO fires on de-noiser
+        # SUCCESS, so the route focuses scope + R88-A anchor inheritance on the
+        # live turn alone, closing the prior-turn contamination that the
+        # de-noiser clean rewrite alone does not (the engine flatten is clean,
+        # but scope.anchor_articles + assistant-anchor inheritance still ran on
+        # the full conversation). Always False in cli/no-provider (the davidath
+        # bench) → byte-identical by construction.
+        obj.self_contained_focus = bool(self_contained_focus)
         return obj
 
 
@@ -3482,6 +3494,7 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
     anchor_line = _extract_conversation_anchors(all_prior_turns) if all_prior_turns else ""
 
     _salvaged = False  # R131 — set when the deterministic de-noiser salvage fires
+    _self_contained_focus = False  # R133.1 — focus scope + R88-A on the live turn
     if history_turns:
         # R86 — Query De-Noiser: attempt an LLM rewrite of the follow-up
         # into a standalone search query BEFORE flooding the retrieval
@@ -3502,6 +3515,21 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
         # QA, preserving a PRIOR turn's scenario shape is the contamination,
         # not a feature.
         _is_denoise_salvage = denoised is not None and denoised == live_question
+        # R133.1 — the de-noiser SUCCESS path leaves the engine query clean
+        # (the standalone rewrite), but `scope.anchor_articles` +
+        # `_apply_assistant_anchor_inheritance` still run on the FULL
+        # conversation downstream — so a prior assistant turn citing Article 86
+        # / Article 27 bleeds those into the wire even when the rewrite is
+        # clean. When the live turn is self-contained AND an LLM de-noiser RAN
+        # (success OR salvage), focus scope + R88-A on the live turn alone.
+        # `denoised is not None` ⇒ a provider was wired and returned text, i.e.
+        # the production multi-turn path; it is None in cli/no-provider (the
+        # bench) so this is always False there → davidath byte-identical.
+        _self_contained_focus = (
+            denoised is not None
+            and _is_denoise_salvage_enabled()
+            and _live_turn_is_self_contained(live_question)
+        )
         # R91 / Bug 3: preserve scenario shape. If any prior turn (or the
         # live question) is scenario-shaped but the denoised rewrite
         # dropped that shape, fall through to the concatenation path
@@ -3524,7 +3552,15 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
             resolved_turn = live_question
             _salvaged = True
         elif denoised is not None and not _denoised_dropped_shape:
-            anchor_prefix = (anchor_line + "\n") if anchor_line else ""
+            # R133.1 — when the live turn is self-contained, drop the
+            # prior-turn anchor line too: the standalone rewrite is the whole
+            # query, and the inherited anchors are exactly the prior-turn
+            # contamination we are focusing away from.
+            anchor_prefix = (
+                ""
+                if _self_contained_focus
+                else ((anchor_line + "\n") if anchor_line else "")
+            )
             question = f"{anchor_prefix}{denoised}"
             resolved_turn = denoised
         else:
@@ -3579,7 +3615,9 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
     if system_context is not None and len(system_context) > 1000:
         system_context = system_context[-1000:]
 
-    return QuestionHistoryResult(question, system_context, resolved_turn, _salvaged)
+    return QuestionHistoryResult(
+        question, system_context, resolved_turn, _salvaged, _self_contained_focus
+    )
 
 
 @regenold_router.post(
@@ -3761,14 +3799,17 @@ def regenold_eu_ai_act_ask(
     # after "What does Art. 13 require?" still counts as in-scope
     # because the prior turn establishes Art. 13 as an anchor — this
     # is the "coreference rescue" branch in classify_conversation.
-    if history_res.salvaged:
-        # R131 — the deterministic de-noiser salvage treated this turn as a
-        # self-contained single-turn question (the LLM de-noiser failed and the
-        # final turn stands alone). Run scope on the live turn ALONE so the
-        # prior-turn anchors (e.g. a prior assistant turn citing Article 86 /
-        # Article 27) do not flow through scope.anchor_articles into the wire
-        # references and the per-reference description pass. This mirrors, at the
-        # scope layer, the single-turn engine query the salvage already produced.
+    if history_res.self_contained_focus:
+        # R131 / R133.1 — the live turn is self-contained AND an LLM de-noiser
+        # ran (success OR salvage), so treat this as a single-turn question.
+        # Run scope on the live turn ALONE so the prior-turn anchors (e.g. a
+        # prior assistant turn citing Article 86 / Article 27) do not flow
+        # through scope.anchor_articles into the wire references and the
+        # per-reference description pass. This mirrors, at the scope layer, the
+        # single-turn engine query the de-noiser already produced. R133.1
+        # widens this from the salvage-only path (R131) to the de-noiser-success
+        # path, which leaves the engine query clean but still ran scope on the
+        # full conversation.
         _salvage_user = next(
             (m for m in reversed(req.messages) if m.role == "user"), None
         )
@@ -4141,15 +4182,17 @@ def regenold_eu_ai_act_ask(
             if _r88a_dialogue[_i].role == "user":
                 _r88a_last_user_idx = _i
                 break
-        # R131 — when the de-noiser salvage fired (self-contained final turn,
-        # failed LLM de-noiser), suppress assistant-anchor inheritance: a
-        # standalone new-topic question must NOT inherit the prior assistant
-        # turn's Articles (e.g. an Article 86 / Article 27 discussion from an
-        # earlier turn), which would otherwise be HEAD-injected as candidates
-        # and then described into the answer.
+        # R131 / R133.1 — when the live turn is self-contained AND an LLM
+        # de-noiser ran (success OR salvage), suppress assistant-anchor
+        # inheritance: a standalone new-topic question must NOT inherit the
+        # prior assistant turn's Articles (e.g. an Article 86 / Article 27
+        # discussion from an earlier turn), which would otherwise be
+        # HEAD-injected as candidates and then described into the answer. R133.1
+        # widens this from salvage-only (R131) to the de-noiser-success path.
         _r88a_history = (
             _r88a_dialogue[:_r88a_last_user_idx]
-            if (_r88a_last_user_idx > 0 and not history_res.salvaged) else []
+            if (_r88a_last_user_idx > 0 and not history_res.self_contained_focus)
+            else []
         )
         _r88a_live_q = (
             _r88a_dialogue[_r88a_last_user_idx].content

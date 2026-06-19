@@ -232,3 +232,105 @@ def test_questionhistoryresult_salvaged_default_false() -> None:
     assert res.salvaged is False
     res2 = r.QuestionHistoryResult("q", None, "q", True)
     assert res2.salvaged is True
+
+
+# ── R133.1 — self_contained_focus on the de-noiser-SUCCESS path ───────────
+#
+# The R131 salvage only fired when the de-noiser FAILED. But a SUCCESSFUL
+# de-noiser leaves the engine query clean while `scope.anchor_articles` +
+# R88-A assistant-anchor inheritance still ran on the full conversation —
+# re-contaminating the wire with prior-turn Articles (Art. 86 / 27). R133.1
+# adds `self_contained_focus` (a superset of `salvaged`) that fires on de-noiser
+# SUCCESS too, so the route focuses scope + R88-A on the live turn alone.
+
+
+def _clean_rewrite_denoiser(monkeypatch):
+    """Force the de-noiser to SUCCEED with a clean standalone rewrite."""
+    monkeypatch.setattr(
+        r,
+        "_rewrite_multiturn_query",
+        lambda live, hist: (
+            "Technical documentation hardware specification requirements for a "
+            "high-risk AI system under Annex IV"
+        ),
+    )
+
+
+def test_questionhistoryresult_focus_default_false() -> None:
+    res = r.QuestionHistoryResult("q", None, "q")
+    assert res.self_contained_focus is False
+    res2 = r.QuestionHistoryResult("q", None, "q", False, True)
+    assert res2.self_contained_focus is True
+
+
+def test_focus_true_on_denoiser_success_self_contained(monkeypatch) -> None:
+    monkeypatch.delenv("REGENOLD_DENOISE_SALVAGE", raising=False)
+    _clean_rewrite_denoiser(monkeypatch)
+    msgs = [
+        _mk_msg("user", "We deploy a high-risk AI system affecting individuals."),
+        _mk_msg("assistant", "Under Article 86 ... Under Article 27, deployers ..."),
+        _mk_msg("user", _SELF_CONTAINED),
+    ]
+    res = r._build_question_from_history(msgs)
+    # De-noiser SUCCEEDED (clean rewrite != live turn) → NOT a salvage, but
+    # focus fires because the final turn is self-contained.
+    assert res.salvaged is False
+    assert res.self_contained_focus is True
+    # The prior-turn anchor line is dropped: question is the clean rewrite,
+    # with no "Conversation so far" history block and no Article 86/27.
+    assert "Conversation so far" not in res[0]
+    assert "Article 86" not in res[0]
+    assert "Article 27" not in res[0]
+
+
+def test_focus_false_on_denoiser_success_coreferent(monkeypatch) -> None:
+    monkeypatch.delenv("REGENOLD_DENOISE_SALVAGE", raising=False)
+    _clean_rewrite_denoiser(monkeypatch)
+    msgs = [
+        _mk_msg("user", "We deploy a high-risk AI system affecting individuals."),
+        _mk_msg("assistant", "Under Article 86 ... Under Article 27, deployers ..."),
+        _mk_msg("user", "Are these checks continuous?"),
+    ]
+    res = r._build_question_from_history(msgs)
+    # Coreferent follow-up is NOT self-contained → no focus, keep the
+    # multi-turn context (scope coreference rescue must still work).
+    assert res.self_contained_focus is False
+
+
+def test_focus_false_in_cli_mode(monkeypatch) -> None:
+    # cli / no-provider (the davidath bench): the real de-noiser returns None,
+    # so focus never fires → davidath byte-identical by construction.
+    monkeypatch.setenv("REGENOLD_QUERY_DENOISER", "1")
+    monkeypatch.delenv("OPENAI_API_BASE", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("REGENOLD_INTENT_PROVIDER", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    import app.llm.openai_wrapper_provider as wp
+
+    monkeypatch.setattr(wp, "is_openai_wrapper_enabled", lambda: False)
+    monkeypatch.setattr(wp, "is_groq_intent_provider_enabled", lambda: False)
+    msgs = [
+        _mk_msg("user", "We deploy a high-risk AI system affecting individuals."),
+        _mk_msg("assistant", "Under Article 86 ... Under Article 27, deployers ..."),
+        _mk_msg("user", _SELF_CONTAINED),
+    ]
+    res = r._build_question_from_history(msgs)
+    assert res.self_contained_focus is False
+    assert res.salvaged is False
+    # Multi-turn concatenation preserved (no focus, no salvage).
+    assert "Conversation so far" in res[0]
+
+
+def test_focus_false_when_salvage_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("REGENOLD_DENOISE_SALVAGE", "0")
+    _clean_rewrite_denoiser(monkeypatch)
+    msgs = [
+        _mk_msg("user", "We deploy a high-risk AI system affecting individuals."),
+        _mk_msg("assistant", "Under Article 86 ... Under Article 27, deployers ..."),
+        _mk_msg("user", _SELF_CONTAINED),
+    ]
+    res = r._build_question_from_history(msgs)
+    # The env off-switch disables focus too (it gates on
+    # `_is_denoise_salvage_enabled()`). The clean rewrite still replaces the
+    # history, but the prior-turn anchor line is retained.
+    assert res.self_contained_focus is False

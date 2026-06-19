@@ -7132,6 +7132,70 @@ makes the system robust to it rather than masking it.
   technical documentation … must contain … Annex IV …"* (refs `[Annex IV,
   Article 11, Annex IV.2, Annex IV.1.e, Annex IV.2.c]`).
 
+## Round 133.1 — Multi-turn de-noiser SUCCESS contamination: focus scope + R88-A on the live turn (2026-06-19)
+
+R133 fixed the multi-turn contamination only on the de-noiser-FAILURE
+(`salvaged`) path. A post-merge live probe + deterministic repro proved a
+SIBLING bug: with the de-noiser SUCCEEDING (clean Groq/Haiku rewrite — the
+normal production path), the same technical-documentation answer still
+**led with Article 86 / Article 27** and shipped refs `[Article 26, Annex IV,
+Article 6, Article 86, Article 27, Annex IV.1.e, Annex IV.2.c]`.
+
+### Root cause (systematic-debugging, reproduced deterministic + live)
+
+The R86 de-noiser rewrites the follow-up into a clean standalone query, so the
+ENGINE query is clean on success. But two route-level passes still ran on the
+FULL conversation downstream, re-contaminating the wire after the engine
+returned the correct answer:
+1. `scope.classify_conversation(req.messages)` → `scope.anchor_articles` folded
+   in the prior assistant turn's Art. 86 / 27 (and the prior user turn's
+   deployer / high-risk → Art. 26 / 6).
+2. R88-A `_apply_assistant_anchor_inheritance` HEAD-injected the prior assistant
+   turn's Art. 86 / 27 as candidates → described into the answer.
+3. The de-noiser-success flatten kept the prior-turn `anchor_line` prefix
+   (`_extract_conversation_anchors(all_prior_turns)`).
+R131 gated all three on `salvaged`, which is only set on de-noiser FAILURE — so
+on success they all fired.
+
+### The fix — `self_contained_focus` (a superset of `salvaged`)
+
+New `QuestionHistoryResult.self_contained_focus` flag, set when the live turn is
+self-contained AND an LLM de-noiser RAN (success OR salvage):
+`denoised is not None and _is_denoise_salvage_enabled() and
+_live_turn_is_self_contained(live_question)`. The three contamination passes now
+gate on `self_contained_focus` instead of `salvaged`:
+* **flatten** ([`_build_question_from_history`](app/routes/regenold.py)) — on the
+  de-noiser-success branch, drop the prior-turn `anchor_line` prefix when focus
+  fires (the standalone rewrite is the whole query).
+* **scope** — run `classify_conversation` on the **live turn alone** under focus
+  (was `if history_res.salvaged:` → now `if history_res.self_contained_focus:`).
+* **R88-A** — suppress assistant-anchor inheritance under focus (`not
+  history_res.self_contained_focus`).
+
+`denoised is not None` ⇒ a provider was wired and returned text (the production
+multi-turn path); it is `None` in cli/no-provider (the bench) so focus is always
+False there → **davidath byte-identical by construction**. Coreferent /
+short follow-ups ("Are these checks continuous?", "What about deployers?") are
+NOT self-contained → focus False → multi-turn coreference rescue preserved. Env
+off-switch `REGENOLD_DENOISE_SALVAGE=0` disables focus too.
+
+### Verification — davidath byte-identical, live repro fixed
+
+* **davidath QA bench** (worktree off cc300e8, deterministic `cli`):
+  **byte-identical to R133** — Ans Strict 0.4022 / Ans Loose 0.1411 / Ans
+  Conciseness 0.1936 / Ref Loose 0.8321 / Ref Strict 0.5528 / Ref Conciseness
+  0.4395 / Tone 1.0.
+* `evals.regenold.runner` (276) — **all categories 100%**, `in_scope_multi_turn`
+  102/102.
+* OOS probe (`runner_v2 --local --probe-oos`) — **21/21, 0 leaks**.
+* +5 focus tests in `tests/test_r131_denoise_salvage.py` (27/27 in the module);
+  R86 / R87-A / R88-A / R91 / multiturn suites (95) green.
+* **Deterministic repro** (de-noiser mocked to SUCCEED with a clean rewrite,
+  `provider=cli`): the wire flips from refs `[Article 26, Annex IV, Article 6,
+  Article 86, Article 27, …]` leading with Article 86 → refs `[Annex IV,
+  Article 6, Article 11, Annex IV.2, Annex IV.1.e, Annex IV.2.c]` with the clean
+  technical-documentation answer (no Article 86 / 27 / 26).
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a
