@@ -185,16 +185,28 @@ def _get_provider() -> Literal["cohere", "openai", None]:
     mode = _opt_in_mode()
     if mode == "off":
         return None
+    # Cohere is a dedicated, canonical embeddings API — a present
+    # ``COHERE_API_KEY`` is itself the explicit opt-in.
     if os.getenv("COHERE_API_KEY"):
         return "cohere"
-    if os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_BASE"):
-        # R112 — skip the openai path when the base is the chat wrapper
-        # (production sets OPENAI_API_BASE for Chat Completions, not
-        # embeddings). Explicit opt-in bypasses the heuristic.
-        if mode == "auto" and _targets_chat_wrapper(
-            os.getenv("OPENAI_API_BASE", "")
-        ):
-            return None
+    # R127 — the OpenAI embeddings path now requires EXPLICIT opt-in
+    # (``REGENOLD_EXTERNAL_EMBEDDINGS=1`` ⇒ mode == "on").
+    #
+    # In this deployment ``OPENAI_API_KEY`` / ``OPENAI_API_BASE`` are the
+    # Claude-Max *chat* wrapper vars (Chat Completions only — no
+    # ``/embeddings`` endpoint). Auto-enabling the openai embeddings path
+    # off their mere presence made a doomed network round-trip on the dense
+    # hot path — the build probe AND every ``_use_external`` per-query call
+    # (the "slow network call per role-noun row"). The R112 wrapper-host
+    # heuristic only caught loopback / ``wrapper`` hosts; an unset base
+    # (``env -u OPENAI_API_BASE``) still resolved to ``api.openai.com`` and
+    # paid the connect timeout. Requiring explicit opt-in removes the entire
+    # accidental-network class: by default the in-process TF-IDF→SVD
+    # turboquant index (``app/engines/turboquant_index.py``) serves dense
+    # retrieval, sub-ms, $0, no tunnel. Operators with a REAL
+    # OpenAI-compatible embeddings endpoint opt in via
+    # ``REGENOLD_EXTERNAL_EMBEDDINGS=1`` + ``OPENAI_API_BASE``.
+    if mode == "on" and (os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_BASE")):
         return "openai"
     return None
 

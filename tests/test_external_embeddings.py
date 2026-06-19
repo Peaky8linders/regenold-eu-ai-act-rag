@@ -20,9 +20,19 @@ def test_is_available_logic(monkeypatch):
     assert ee.is_available() is True
     assert ee._get_provider() == "cohere"
 
-    # 3. OpenAI set -> True
+    # 3. OpenAI key set WITHOUT explicit opt-in -> NOT available (R127).
+    #    In this deployment OPENAI_API_KEY / OPENAI_API_BASE are the
+    #    Claude-Max chat-wrapper vars (no /embeddings endpoint); the openai
+    #    embeddings path must not auto-fire off their mere presence and pay
+    #    a doomed network round-trip on the dense hot path.
     monkeypatch.delenv("COHERE_API_KEY", raising=False)
+    monkeypatch.delenv("REGENOLD_EXTERNAL_EMBEDDINGS", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-testkey")
+    assert ee.is_available() is False
+    assert ee._get_provider() is None
+
+    # 4. OpenAI key + explicit opt-in -> True
+    monkeypatch.setenv("REGENOLD_EXTERNAL_EMBEDDINGS", "1")
     assert ee.is_available() is True
     assert ee._get_provider() == "openai"
 
@@ -67,6 +77,8 @@ def test_get_embedding_openai_mock(monkeypatch):
     # ``OPENAI_API_URL`` — the test owns the base it verifies against.
     monkeypatch.delenv("OPENAI_API_BASE", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-testkey")
+    # R127 — the openai embeddings path is opt-in only.
+    monkeypatch.setenv("REGENOLD_EXTERNAL_EMBEDDINGS", "1")
     monkeypatch.setenv("REGENOLD_EXTERNAL_EMBEDDING_MODEL", "text-embedding-3-small")
 
     mock_emb = [{"index": 0, "embedding": [0.5, 0.6]}]
