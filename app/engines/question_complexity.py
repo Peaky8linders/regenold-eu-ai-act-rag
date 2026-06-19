@@ -211,6 +211,16 @@ def _gate_wide_enabled() -> bool:
     }
 
 
+def _fusion_worthy_strict() -> bool:
+    """Env gate for the R127 tightened fusion-panel predicate. Default ON
+    (strict — the MoA panel fires only on the genuinely-hard single-turn
+    categories). Set ``REGENOLD_FUSION_WORTHY_STRICT=0`` to restore the R124
+    behaviour (fuse every complex question). Fresh read per call."""
+    return os.environ.get(
+        "REGENOLD_FUSION_WORTHY_STRICT", "1"
+    ).strip().lower() not in {"0", "false", "no", "off", ""}
+
+
 # ── Public API ──────────────────────────────────────────────────────────
 
 
@@ -289,4 +299,58 @@ def is_complex_question(question: str, history_turn_count: int = 1) -> bool:
         token_count = len(re.findall(r"\b\w+\b", scan_text))
         if token_count <= 12 and _SHORT_COREFERENT_RE.search(scan_text):
             return True
+    return False
+
+
+def is_fusion_worthy(question: str, history_turn_count: int = 1) -> bool:
+    """Tighter gate than :func:`is_complex_question` — decides whether to fire
+    the R-Fusion Mixture-of-Agents panel (a diverse panel + a judge = TWO
+    serialized Claude-Max wrapper round-trips: the Opus panel member, then the
+    judge).
+
+    The panel earns its 2-call latency only on the genuinely-hard *single-turn*
+    category questions — GPAI boundary / role-ambiguity / borderline-prohibition
+    / conflict / cross-framework, plus the R118 widened difficulty set when
+    ``REGENOLD_COMPLEX_GATE_WIDE`` is enabled. It returns ``False`` for:
+
+    * **multi-turn** questions (``history_turn_count >= 2`` OR the route's
+      ``"Latest question:\\n"`` flatten marker is present) — the flattened
+      history makes the wrapper input large, and panel(Opus) + judge(Sonnet)
+      can exceed the wrapper budget (>75 s observed → the request times out,
+      R125 trace #2). Multi-turn instead takes the single-provider Stage-2
+      polish — still Opus when :func:`is_complex_question`, so quality is
+      preserved at ONE wrapper call.
+    * **merely-multi-phrase** single-turn questions — these route to the panel
+      under :func:`is_complex_question` purely on sentence count (the R118
+      audit: every live Opus route came through ``_is_multi_phrase``, none
+      through the five category regexes), not regulatory difficulty. They keep
+      the single-provider path (still Opus, one call) — the patient-weight
+      directive's Opus quality at half the latency.
+
+    Reversible: ``REGENOLD_FUSION_WORTHY_STRICT=0`` restores the R124 behaviour
+    (the panel fires on every complex question). Pure-stdlib; ``False`` on empty
+    input.
+    """
+    if not question or not question.strip():
+        return False
+    if not _fusion_worthy_strict():
+        # R124 behaviour — fire the panel on every complex question.
+        return is_complex_question(question, history_turn_count)
+    # Multi-turn never fuses (timeout safety): a returned single-model answer
+    # beats a >75 s panel timeout. The route's flatten marker OR a history
+    # depth >= 2 both signal multi-turn.
+    marker = "Latest question:\n"
+    if history_turn_count >= 2 or marker in question:
+        return False
+    scan_text = question  # single-turn → no flatten prefix to strip
+    if (
+        _GPAI_COMPLEX_RE.search(scan_text)
+        or _ROLE_AMBIGUITY_RE.search(scan_text)
+        or _BORDERLINE_PROHIBITION_RE.search(scan_text)
+        or _CONFLICT_RE.search(scan_text)
+        or _CROSS_FRAMEWORK_RE.search(scan_text)
+    ):
+        return True
+    if _gate_wide_enabled() and _GATE_WIDE_RE.search(scan_text):
+        return True
     return False

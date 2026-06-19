@@ -393,15 +393,30 @@ def assess_sufficiency(
             reason="uncovered_explicit_refs",
         )
 
-    # (2) Multi-part decomposition — the decomposition is the complexity gate.
-    from app.engines.frames_planner import decompose_question_llm
-    clauses = decompose_question_llm(question)
-    if len(clauses) >= 2:
-        return SufficiencyVerdict(
-            sufficient=False,
-            sub_queries=tuple(clauses[: max_sub_queries()]),
-            uncovered_anchors=tuple(),
-            reason="multi_phrase_decompose",
-        )
+    # (2) Multi-part decomposition — the DETERMINISTIC decomposer is the
+    # complexity gate. It is verb- + clause-initial-guarded, so a single-clause
+    # prohibition / definitional / lookup question (e.g. "Is real-time RBI in
+    # public spaces prohibited?") never decomposes. The LLM planner
+    # (``decompose_question_llm``) is consulted ONLY to refine the sub-query
+    # *phrasing* once this gate has already confirmed genuine multi-part
+    # structure. This closes the R125 live over-fire where the Stage-0 LLM
+    # ignored its "do not decompose single-topic questions" instruction and
+    # split a one-clause question into 2 sub-queries (a wasted hop + a wasted
+    # LLM round-trip, zero recall gain). The early return below also SKIPS the
+    # LLM call entirely on single-clause questions — a latency win.
+    deterministic_clauses = decompose_question(question)
+    if len(deterministic_clauses) < 2:
+        return SufficiencyVerdict(True, reason="sufficient")
 
-    return SufficiencyVerdict(True, reason="sufficient")
+    from app.engines.frames_planner import decompose_question_llm
+    llm_clauses = decompose_question_llm(question)
+    # Prefer the LLM's phrasing when it also agrees this is multi-part;
+    # otherwise fall back to the deterministic clauses (the gate already
+    # proved >= 2 substantive parts).
+    clauses = llm_clauses if len(llm_clauses) >= 2 else deterministic_clauses
+    return SufficiencyVerdict(
+        sufficient=False,
+        sub_queries=tuple(clauses[: max_sub_queries()]),
+        uncovered_anchors=tuple(),
+        reason="multi_phrase_decompose",
+    )

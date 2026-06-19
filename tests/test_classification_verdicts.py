@@ -120,12 +120,37 @@ class TestDetectClassificationTopic:
             "Is a clinical scribing AI high-risk?",
             "Are AI systems that transcribe patient visits prohibited?",
             "Is medical scribing prohibited under the AI Act?",
-            "What about doctor-patient transcription?",
         ],
     )
     def test_medical_transcription_phrasings(self, phrasing: str) -> None:
+        # Verdict-shaped phrasings ("…prohibited?" / "…high-risk?") fire the
+        # 5-anchor Q3 medical_transcription topic (the prohibited-or-Annex-III
+        # framing). They pass the two-pass verdict gate in
+        # ``_detect_classification_topic``.
         topic = _detect_classification_topic(phrasing)
         assert topic is not None and topic["name"] == "medical_transcription"
+
+    def test_bare_transcription_followup_not_topic(self) -> None:
+        """R128.1 — a BARE, non-verdict-shaped follow-up ("What about
+        doctor-patient transcription?") must NOT fire the 5-anchor
+        ``medical_transcription`` topic.
+
+        Per the established R117 transcription-split, generic doctor-patient
+        transcription is LIMITED-risk and routes through scope to Article 50
+        alone — pinned by
+        ``test_regenold_scope.py::test_doctor_patient_transcription_routes_to_art_50``.
+        Firing the prohibited-or-Annex-III 5-anchor verdict (Art 5/6/Annex
+        I/III/50) on a bare follow-up would over-cite against a question whose
+        reference-correct answer is Article 50. The two-pass verdict gate in
+        ``_detect_classification_topic`` is deliberate: it keeps the heavy
+        classification verdict off bare follow-ups, which inherit their
+        classification intent from prior conversation turns. (The previously
+        failing parametrize case asserted the opposite, pre-split, behaviour.)
+        """
+        assert (
+            _detect_classification_topic("What about doctor-patient transcription?")
+            is None
+        )
 
     def test_emotion_recognition_workplace_wins_over_general(self) -> None:
         # Q2-shape question with workplace context — must route to workplace topic

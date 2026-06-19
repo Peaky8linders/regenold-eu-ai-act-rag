@@ -6772,6 +6772,91 @@ uniqueness, full catalog resolution, and the fail-fast guard (reject unknown
 label / phantom ref). 26/26 pass. The win lands on the LIVE wrapper path
 (Stage-0 intent), which the deterministic bench cannot score.
 
+## Round 128 — Reference-correctness: Art. 6 gold-protection in noise-suppress (2026-06-19)
+
+An external "algorithmic forensic analysis" attributed a class of
+reference mismatches — the live wire shipping **Articles 10/11** instead
+of the gold **Article 6 + Annex III** on a healthcare-eligibility
+question (benchmark row `grb_04`) — to "multiplicative chaining
+over-retrieval" in the BM25 scoring equation, and proposed dampening the
+operational articles (Arts. 9-15/17 ×0.35), a ×0.10 limited-risk concept
+drift penalty, and a negative constraint on the MoA fusion judge.
+
+A `systematic-debugging` investigation (reproduced deterministic **and**
+live) **refuted the proposed mechanism** and found the real root cause
+UPSTREAM. The analysis genuinely read the real `kb_search.py:759`
+scoring line — `role_drift_penalty`, `emb_boost`, `additive_lexical` all
+exist — but mis-attributed every actual failure:
+
+* **grb_04 live → Art 10/11** is a **Stage-2 hallucination downstream of
+  retrieval *losing* the gold Art 6**, not a scoring over-retrieval.
+  `_suppress_noise_anchors` (R95) was dropping Art 6 as a "broad" anchor
+  because the question carried no explicit `high-risk`/`classify` token
+  ("what does the Act require for an AI system that evaluates eligibility
+  for public healthcare benefits?"). With Art 6 gone from the grounding
+  context, live Sonnet free-associated the generic HRAIS obligation chain
+  (Arts. 10/11/16/17); the reasoning trace logged
+  `stage2_ungrounded_cite_tolerated` ×4 and shipped them. Dampening
+  retrieval scores treats neither cause.
+* **grb_03 "Art 5 + Annex I leakage via MoA fusion"** — an R126 artifact
+  **already fixed on R127**; fusion never even fired
+  (`fusion_skip gate=worthy single_provider`).
+* The `_reconcile_references_to_prose` "locks prose strings into the
+  wire" claim is **backwards** (it is a prose-driven *pruner*); the
+  current MoA judge already forbids out-of-set refs (the "completeness"
+  prompt was reverted in R123). The real prose-injection vector is
+  **Component D** (`regenold.py` R101 catalog-grounding append), which
+  the analysis never named.
+* The proposed `role_boost 3.0→2.0` validation question: these rows are
+  not role-noun questions, so the role boost is inert on them; dropping
+  it would only regress the R81-N.1 importer/distributor fix.
+
+### The fix (RC-1) — `_suppress_noise_anchors` Annex-III guard
+
+[`app/routes/regenold.py::_suppress_noise_anchors`](app/routes/regenold.py)
+never drops Article 6 while an Annex III candidate (or Annex III
+sub-point) survives — Article 6(2) is the operative high-risk
+*classification* article for **every** Annex III system, so that drop is
+never correct (an `annex_iii_present` guard, ~6 lines). All R95
+phantom-drop behaviour is preserved: Art 6 still drops on
+importer/deployer obligation QA where no Annex III is present.
+
+### Gates
+
+* grb deterministic A/B (R127 baseline → RC-1): **grb_04 refL 0.00 →
+  0.50** (gold Art 6 restored to the wire — pred `[40,49,46,28,71,43]`
+  → `[40,49,46,28,Art 6]`), overall **RefL 0.802 → 0.833 / RefS 0.530 →
+  0.551**, no regressions across the 24 medical rows.
+* `tests/test_r128_ref_correctness.py` (+6) + the 22 R95 noise-suppress
+  tests → **28 pass**.
+* `evals.regenold.runner` 276-runner — **0 fails, all categories pass**.
+* OOS probe (`runner_v2 --local --probe-oos`) — **21/21, 0 leaks**.
+* davidath 476 — net-neutral/positive: RC-1 only changes the narrow
+  slice (Art 6 + Annex III both candidates, no high-risk token, Art 6
+  not gold); the grb medical-row A/B (exactly that shape) is net-positive.
+
+### Where it lands
+
+The deterministic davidath bench is the regression guard; the live win
+is the analysis's flagged symptom — on the production neo4j + Stage-2
+path, protecting Art 6 means Stage-2 grounds on Art 6 + Annex III and
+stops free-associating the Arts. 10/11 obligation cluster. The
+established R31/R49/R69 pattern — byte-identical local, the win lands
+live.
+
+### Documented follow-ups (not shipped — deeper / live-only / sensitive)
+
+* **grb_04 residual** (refL 0.50): Annex III is still absent + a BM25
+  derogation/registration cluster (Art 40/46/49/28) wins for the
+  "eligibility/public/authority" lexical mismatch — the engine discards
+  the BM25 Annex III winner on the `kb_fallback` path. A clean fix needs
+  an essential-services/eligibility concept → Art 6 + Annex III anchor
+  (Agent-verified davidath-safe: 0 QA hits, 9 scenario hits all
+  Art-6-gold) and trimming the derogation cluster.
+* **Component D ungrounded-cite tolerance** — the live over-citation
+  backstop the analysis was groping toward; live-only and risks the
+  R101 dynamic-grounding behaviour, so it needs a live A/B.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a
