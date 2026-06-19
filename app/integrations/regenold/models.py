@@ -1107,34 +1107,46 @@ def normalise_answer_for_regenold(
 
     _is_multi = False
     _is_enum = False
+    _no_cap = False
 
     if max_sentences is None:
-        try:
-            max_sentences = int(
-                os.getenv("REGENOLD_MAX_ANSWER_SENTENCES", "").strip()
-                or MAX_ANSWER_SENTENCES
-            )
-        except ValueError:
-            max_sentences = MAX_ANSWER_SENTENCES
+        # Operator-directed (2026-06-18): REGENOLD_MAX_ANSWER_SENTENCES=0
+        # (or off / none / unlimited) removes the sentence cap ENTIRELY so a
+        # multi-part answer is never truncated mid-content / loses useful
+        # information. The competition PDF only *encourages* 1-4 sentences
+        # (soft) and scores conciseness vs the gold length; the operator
+        # accepts that trade for completeness. Detected from the raw env
+        # string BEFORE the int parse ("0"/"off" aren't valid counts). The
+        # code constant MAX_ANSWER_SENTENCES (3) is the fallback when the env
+        # is unset, so the davidath bench stays byte-identical.
+        _raw_ms = os.getenv("REGENOLD_MAX_ANSWER_SENTENCES", "").strip().lower()
+        if _raw_ms in {"0", "off", "none", "unlimited", "-1"}:
+            _no_cap = True
+            max_sentences = 12  # placeholder; unused on the no-cap path
+        else:
+            try:
+                max_sentences = int(_raw_ms or MAX_ANSWER_SENTENCES)
+            except ValueError:
+                max_sentences = MAX_ANSWER_SENTENCES
 
-        try:
-            from app.routes.regenold import _is_closed_set_enumeration_ask
-            from app.engines.question_complexity import is_complex_question, _is_multi_phrase
-            
-            _is_complex = is_complex_question(question, history_turn_count=1)
-            _is_multi = _is_multi_phrase(question)
-            _is_enum = _is_closed_set_enumeration_ask(question)
-            
-            if _is_multi or _is_enum:
-                max_sentences = 12
-            elif _is_complex:
-                _complex_cap = int(os.getenv("REGENOLD_COMPLEX_SENTENCE_CAP", "5"))
-                if _complex_cap > max_sentences:
-                    max_sentences = _complex_cap
-        except Exception:
-            pass
+            try:
+                from app.routes.regenold import _is_closed_set_enumeration_ask
+                from app.engines.question_complexity import is_complex_question, _is_multi_phrase
 
-        max_sentences = max(1, min(max_sentences, 12))
+                _is_complex = is_complex_question(question, history_turn_count=1)
+                _is_multi = _is_multi_phrase(question)
+                _is_enum = _is_closed_set_enumeration_ask(question)
+
+                if _is_multi or _is_enum:
+                    max_sentences = 12
+                elif _is_complex:
+                    _complex_cap = int(os.getenv("REGENOLD_COMPLEX_SENTENCE_CAP", "5"))
+                    if _complex_cap > max_sentences:
+                        max_sentences = _complex_cap
+            except Exception:
+                pass
+
+            max_sentences = max(1, min(max_sentences, 12))
 
     # R112 — defensive env parse (mirrors the max_sentences pattern
     # above). REGENOLD_QA_LENGTH_CAP is an operator-tuned Railway knob
@@ -1185,7 +1197,7 @@ def normalise_answer_for_regenold(
     # The deployer must…" → "The deployer must…").
     sentences[0] = _strip_sentence_opener(sentences[0])
     sentences = [s for s in sentences if s.strip()]
-    capped = sentences[:max_sentences]
+    capped = sentences if _no_cap else sentences[:max_sentences]
     # Soft char cap: prefer regulator-citation-bearing sentences when
     # we're over budget. Drop the longest sentence that does NOT cite
     # an article/annex; iterate until ≤ char_cap OR only
@@ -1208,7 +1220,8 @@ def normalise_answer_for_regenold(
     effective_cap = int(char_cap * 1.10) if has_augmenter_desc else char_cap
 
     while (
-        len(capped) > 1
+        not _no_cap
+        and len(capped) > 1
         and sum(len(s) for s in capped) + (len(capped) - 1) > effective_cap
     ):
         # Find the longest non-cite sentence; if all sentences cite,
