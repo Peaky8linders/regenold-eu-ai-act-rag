@@ -609,7 +609,8 @@ _KB_STUB_LABEL_RE = re.compile(
 # the markdown stripper turned ``**Direct Answer:**`` into the sentence
 # ``Direct Answer.``). Drop these entirely.
 _META_LABEL_ONLY_RE = re.compile(
-    r"^(?:Direct Answer|Answer|Summary|Direct Response|Key Requirements|Notes?)\s*[.:!?]?\s*$",
+    r"^(?:Direct Answer|Answer|Summary|Direct Response|Key Requirements|Notes?"
+    r"|Verdict|Classification|Scenario)\s*[.:!?]?\s*$",
     re.IGNORECASE,
 )
 
@@ -681,6 +682,44 @@ _MD_CODE_INLINE_RE = re.compile(r"`([^`]+)`")
 _MD_ITALIC_RE = re.compile(r"(?<!\*)\*([^*\n]+)\*(?!\*)")
 
 
+# R132 — markdown TABLE handling. Live Stage-2 (Sonnet) sometimes answers an
+# either/or classification question with a structured "Verdict:" table
+# (``| Scenario | Classification |`` / ``|---|---|`` / data rows). The wire is
+# judged on flowing prose; an un-flattened table ships pipe-delimited rows
+# plus a ``|---|---|`` delimiter that the per-line terminator below turns into
+# broken ``…|. |---|---|.`` fragments (the user-reported failure). We drop the
+# delimiter / pure-punctuation rows, drop the header row (the content row
+# directly above a delimiter), and flatten each remaining data row's
+# ``| a | b |`` cells to comma-joined prose so the substance survives. Pure
+# legal prose never starts a line with ``|`` nor is purely punctuation, so
+# these are no-ops on the deterministic answer path (davidath byte-identical).
+
+
+def _is_punct_only_line(ln: str) -> bool:
+    """True iff ``ln`` carries no alphanumeric content (delimiter / rule / stray pipes)."""
+    s = ln.strip()
+    return bool(s) and not any(ch.isalnum() for ch in s)
+
+
+def _is_table_delimiter_row(ln: str) -> bool:
+    """True iff ``ln`` is a markdown table delimiter (``|---|---|``, ``| :--- | ---: |``)."""
+    s = ln.strip()
+    return bool(s) and set(s) <= {"|", "-", ":", " "} and "-" in s and "|" in s
+
+
+def _is_table_row(ln: str) -> bool:
+    """True iff ``ln`` looks like a markdown table row (leading pipe + ≥1 separator)."""
+    s = ln.strip()
+    return s.startswith("|") and s.count("|") >= 2
+
+
+def _flatten_table_row(ln: str) -> str:
+    """Flatten a ``| a | b | c |`` table row to ``"a, b, c"`` prose."""
+    cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+    cells = [c for c in cells if c]
+    return ", ".join(cells)
+
+
 def _strip_markdown(text: str) -> str:
     """Convert markdown-formatted prose to plain prose with hard sentence breaks.
 
@@ -726,6 +765,30 @@ def _strip_markdown(text: str) -> str:
     # clean ``X. Y. Z.`` boundaries.
     lines = [ln.strip() for ln in out.split("\n")]
     lines = [ln for ln in lines if ln]
+    if not lines:
+        return ""
+    # R132 — flatten markdown tables: drop delimiter / pure-punctuation rows,
+    # drop the header row (content row directly above a delimiter), and flatten
+    # each remaining table row's cells to comma-joined prose.
+    flattened: list[str] = []
+    n = len(lines)
+    for i, ln in enumerate(lines):
+        if _is_punct_only_line(ln):
+            # "|---|---|" delimiter, "---" thematic break, stray "|" — no content.
+            continue
+        if _is_table_row(ln):
+            nxt = lines[i + 1] if i + 1 < n else ""
+            if _is_table_delimiter_row(nxt):
+                # Header row of a canonical table — drop (the delimiter that
+                # marks it is dropped by the punct-only check above).
+                continue
+            row = _flatten_table_row(ln)
+            if not row:
+                continue
+            flattened.append(row)
+            continue
+        flattened.append(ln)
+    lines = flattened
     if not lines:
         return ""
     terminated: list[str] = []

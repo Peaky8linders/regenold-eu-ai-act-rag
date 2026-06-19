@@ -96,7 +96,7 @@ DIRECT-VERDICT RULE. For yes/no and either/or questions, lead with the answer:
 - When the question asks whether something is "always" / "ever" prohibited, allowed, or required (e.g. "Are X always prohibited?", "Is Y prohibited or high-risk?"), the FIRST clause must state the direct verdict in regulatory terms, typically "Not always", "No, not in every case", "Only when [the stated conditions hold]", or "Yes, when [the stated conditions hold]", then give the operative conditions.
 - Do NOT describe only the one tier the question hints at. If a practice is prohibited ONLY in specific contexts (e.g. a particular setting or purpose), state BOTH sides: the context where it is prohibited AND its treatment elsewhere (commonly high-risk under Article 6 / Annex III, or limited-risk transparency under Article 50). A complete answer maps the practice across the risk tiers that actually apply, not just the most restrictive one.
 - Name any carve-out/exception explicitly (the provision and the condition that triggers it), since "always?"-type questions turn on exactly those exceptions.
-- Do NOT use markdown headers, bullet points, bold text, or any formatting; plain prose only.
+- Do NOT use markdown headers, bullet points, bold text, tables, pipe-delimited rows, or any formatting; plain prose only. NEVER lay out an either/or classification as a "Verdict:" table (e.g. "| Scenario | Classification |") — answer in flowing sentences that state each scenario and its classification inline.
 - Do NOT produce a heading line (like "Primary Purpose of the EU AI Act:") as the first line; start directly with the substance.
 - Support with specific article references and obligation details.
 - If gaps exist, list them with remediation suggestions.
