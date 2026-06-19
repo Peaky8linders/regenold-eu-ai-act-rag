@@ -2592,6 +2592,138 @@ def _surface_prose_subpoints(answer: str, references: list[str]) -> list[str]:
         return references
 
 
+# R134 — context guards for ``_add_prose_named_refs``. A bare
+# ``Article N`` / ``Annex N`` mention in polished prose is NOT always an AI
+# Act citation worth promoting:
+#   * CROSS-REGULATION — "Article 50 of Regulation (EU) 2016/679" is GDPR
+#     Article 50, not AI-Act Article 50; "Article 7 of the GDPR"; "Article 5
+#     of Directive …". Only the AI Act's own self-reference (Regulation
+#     2024/1689 / "this Regulation" / "the AI Act") is a real citation.
+#   * CONTRAST / NEGATION — "…applies, NOT Article 5", "distinct from
+#     Article 5", "rather than Article 5": the named article is being
+#     contrasted AWAY, so citing it contradicts the answer.
+# Cross-instrument signal: GDPR / a Directive / a Decision / the Treaty /
+# the Charter — none of which is the AI Act. ``of the Regulation`` /
+# ``of this Regulation`` (the AI Act referring to itself) deliberately do
+# NOT match — only a SPECIFIC other instrument does.
+_CROSS_INSTRUMENT_RE = re.compile(
+    r"\bof\s+(?:the\s+)?gdpr\b"
+    r"|\bof\s+(?:council\s+)?directive\b"
+    r"|\bof\s+decision\b"
+    r"|\bof\s+(?:the\s+)?treaty\b"
+    r"|\bof\s+(?:the\s+)?charter\b",
+    re.IGNORECASE,
+)
+# A NUMBERED EU Regulation reference; group(1) is the ``YYYY/NNN`` id. Only
+# a number that is NOT the AI Act (2024/1689) is a cross-Regulation ref.
+_NUMBERED_REG_RE = re.compile(
+    r"\bof\s+regulation\s*\(e[uc]\)\s*(\d{4}/\d+)", re.IGNORECASE
+)
+_CONTRAST_BEHIND_RE = re.compile(
+    r"(?:\bnot|rather than|unlike|distinct from|instead of|as opposed to|"
+    r"other than|in contrast to|differs from|different from)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _prose_mention_is_real_citation(prose: str, start: int, end: int) -> bool:
+    """False when a prose ``Article N`` / ``Annex N`` mention is a
+    cross-Regulation reference (GDPR / a Directive / a different numbered
+    EU Regulation) or a contrasted-away (negated) mention. An AI-Act
+    self-reference ("Article 6 of the Regulation", "of Regulation (EU)
+    2024/1689") is a REAL citation and returns True.
+
+    ``start`` / ``end`` bracket the matched mention in ``prose``.
+    """
+    ahead = prose[end : end + 56]
+    if _CROSS_INSTRUMENT_RE.search(ahead):
+        return False  # GDPR / Directive / Treaty / Charter / Decision
+    m_reg = _NUMBERED_REG_RE.search(ahead)
+    if m_reg and m_reg.group(1) != "2024/1689":
+        return False  # a different numbered EU Regulation
+    before = prose[max(0, start - 24) : start]
+    if _CONTRAST_BEHIND_RE.search(before):
+        return False  # contrasted-away / negated mention
+    return True
+
+
+def _add_prose_named_refs(
+    references: list[str], prose: str, *, cap: int = 2
+) -> list[str]:
+    """Promote refs the answer prose explicitly names into the citations.
+
+    The INVERSE of :func:`_reconcile_references_to_prose` — that pass drops
+    cited refs the prose never names; this one ADDS the article / annex the
+    prose DOES name when it is missing from the wire ``references``, so the
+    citation list and the answer prose stay consistent (R134 — a live
+    Stage-2 answer that says "Article 6(1)" must cite Article 6, not leave
+    it uncited).
+
+    Conservative by design: existence-gated against ``ARTICLE_EXISTENCE``
+    (a Sonnet-named article that is not a real provision is never added),
+    context-guarded (``_prose_mention_is_real_citation`` skips
+    cross-Regulation references like "Article 50 of the GDPR" and
+    contrasted-away mentions like "not Article 5"), capped at ``cap``
+    additions, additions appended in first-mention order so the original
+    order + ranking is preserved. The drop (reconcile) and add passes run
+    reconcile-then-add and target near-disjoint sets — reconcile drops
+    refs not named in prose; this adds named-but-uncited refs — so a
+    reconcile-dropped ref is not re-added in practice. Fail-soft: returns
+    ``references`` unchanged on any error.
+    """
+    try:
+        if not prose:
+            return references
+        from app.data.article_existence import ARTICLE_EXISTENCE  # noqa: PLC0415
+
+        present_nums: set[str] = set()
+        present_annex: set[str] = set()
+        for r in references:
+            m = _R72_ARTICLE_NUM_RE.match(r.strip())
+            if m:
+                present_nums.add(m.group(1))
+                continue
+            m = _R72_ANNEX_ROMAN_RE.match(r.strip())
+            if m:
+                present_annex.add(m.group(1).upper())
+
+        additions: list[str] = []
+        seen: set[str] = set()
+        for m in _LIVE_ARTICLE_RE.finditer(prose):
+            num = m.group(1)
+            key = f"a:{num}"
+            if num in present_nums or key in seen:
+                continue
+            if f"Art. {num}" not in ARTICLE_EXISTENCE:
+                continue
+            if not _prose_mention_is_real_citation(prose, m.start(), m.end()):
+                continue
+            additions.append(f"Article {num}")
+            seen.add(key)
+            if len(additions) >= cap:
+                break
+        if len(additions) < cap:
+            for m in _LIVE_ANNEX_RE.finditer(prose):
+                rn = m.group(1).upper()
+                key = f"x:{rn}"
+                if rn in present_annex or key in seen:
+                    continue
+                if f"Annex {rn}" not in ARTICLE_EXISTENCE:
+                    continue
+                if not _prose_mention_is_real_citation(prose, m.start(), m.end()):
+                    continue
+                additions.append(f"Annex {rn}")
+                seen.add(key)
+                if len(additions) >= cap:
+                    break
+
+        if not additions:
+            return references
+        return list(references) + additions
+    except Exception:  # noqa: BLE001 — fail-soft; never break the route
+        return references
+
+
 def _prune_non_anchor_refs(
     refs: list[str],
     live_question: str,
@@ -5613,14 +5745,30 @@ def regenold_eu_ai_act_ask(
     # paraphrase-robust semantic coverage map (CiteFix keyword+semantic
     # blend, FRONT span-grounding) so it ONLY describes cited articles the
     # polished prose genuinely left uncovered — never prunes, so no
-    # ref_loose regression. Env-gated ``REGENOLD_STAGE2_REF_AUGMENT``
-    # (default OFF pending the live representative-100 + judge A/B).
+    # ref_loose regression. Env-gated ``REGENOLD_STAGE2_REF_AUGMENT``.
+    #
+    # R134 — default flipped ON → OFF (code now matches the "default OFF"
+    # intent the comment always stated). The append-describer was bolting
+    # raw ``Under <ref>, <KB-stub>`` clauses onto fluent Sonnet prose,
+    # producing the live answer-quality defects a user flagged:
+    #   * an off-topic ``Under Article 50, … cumulatively with Article 13``
+    #     LEAD force-prepended by the conditional describer,
+    #   * a dangling, mid-clause-truncated ``Under Annex III, Eight
+    #     high-risk use-case categories: biometrics, critical
+    #     infrastructure.`` APPEND,
+    #   * a clunky register-clash against Sonnet's natural prose.
+    # Worse, by appending a describer for every under-described cited ref
+    # it DEFEATED the R72 ``_reconcile_references_to_prose`` pass below
+    # (the appended clause made the prose "describe" the ref, so reconcile
+    # kept it). With the augmenter OFF the polished Sonnet prose ships as
+    # written and reconcile drops the genuinely-undescribed (over-cited)
+    # refs — so the citation list matches the answer.
     #
     # davidath byte-identical by construction: the deterministic TestClient
     # bench never lands Stage-2 (no wrapper) → stage2_landed is always
     # False → this block never fires locally.
     if (
-        os.getenv("REGENOLD_STAGE2_REF_AUGMENT", "1").strip().lower()
+        os.getenv("REGENOLD_STAGE2_REF_AUGMENT", "0").strip().lower()
         in ("1", "true", "yes", "on")
         and answer_text
         and references
@@ -5739,6 +5887,24 @@ def regenold_eu_ai_act_ask(
         and len(references) > reconcile_floor
     ):
         references = _reconcile_references_to_prose(references, answer_text, floor=reconcile_floor)
+
+    # R134 — bidirectional reconcile: ADD refs the polished prose explicitly
+    # NAMES but the wire never cited (the inverse of the R72 drop above). A
+    # live Stage-2 answer that says "Article 6(1)" must cite Article 6 —
+    # otherwise the citation list contradicts the prose (a user-flagged
+    # defect). Existence-gated, capped, Stage-2-gated (davidath byte-
+    # identical — no Stage-2 on the bench), skips scenario shape (curated
+    # multi-article gold the verdict cannot enumerate). The drop + add passes
+    # are disjoint (drop removes refs NOT in prose; add only adds refs that
+    # ARE in prose). Env off-switch: REGENOLD_PROSE_NAMED_REFS=0.
+    if (
+        os.getenv("REGENOLD_PROSE_NAMED_REFS", "1").strip().lower()
+        in ("1", "true", "yes", "on")
+        and graph_stats.get("stage2_landed")
+        and not _looks_like_scenario_shape(question)
+        and references
+    ):
+        references = _add_prose_named_refs(references, answer_text)
 
     # R94 — verbatim exact-text answer mode (default ON).
     #
