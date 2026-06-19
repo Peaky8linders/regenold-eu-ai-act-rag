@@ -81,6 +81,14 @@ class ReasoningTrace:
 
     scope: dict[str, Any] = field(default_factory=dict)
     anchors_used: list[str] = field(default_factory=list)
+    # R131 — the FINAL wire references (citations) shipped to the caller,
+    # recorded AFTER every reference pass (anchor surface, sub-point emit,
+    # reconcile, R130 ``Article 3.N`` upgrade). Distinct from
+    # ``anchors_used`` (keyword-derived, internal ``Art. N`` form, no
+    # sub-points): this is the exact ``references`` list the API returns —
+    # ``Article 26`` / ``Article 3.1`` / ``Annex IV.2`` — so the UI
+    # reasoning panel surfaces the same citations as the wire response.
+    references: list[str] = field(default_factory=list)
     intent_label: str | None = None
     retrieval_path: str | None = None
     top_k_bm25: list[dict[str, Any]] = field(default_factory=list)
@@ -112,6 +120,8 @@ class ReasoningTrace:
             out["scope"] = self.scope
         if self.anchors_used:
             out["anchors_used"] = list(self.anchors_used)
+        if self.references:
+            out["references"] = list(self.references)
         if self.intent_label is not None:
             out["intent_label"] = self.intent_label
         if self.retrieval_path is not None:
@@ -216,6 +226,24 @@ def record_anchors(anchors: list[str] | tuple[str, ...]) -> None:
     if trace is None:
         return
     trace.anchors_used = list(anchors)
+
+
+def record_references(refs: list[str] | tuple[str, ...]) -> None:
+    """Record the FINAL wire references (citations) returned to the caller.
+
+    Captures the citation list AFTER every reference pass — anchor
+    surface, sub-point emit, the R72/R105 reconciles, and the R130
+    ``Article 3`` → ``Article 3.N`` upgrade — so the
+    ``?include_reasoning=true`` trace surfaces exactly the ``references``
+    the API ships, sub-points included (``Article 3.1`` / ``Annex IV.2``).
+    The UI reasoning panel renders this alongside the answer so the
+    citations shown match the wire response, not an earlier internal
+    anchor set. Zero overhead when the trace is inactive.
+    """
+    trace = current()
+    if trace is None:
+        return
+    trace.references = list(refs)
 
 
 def record_intent(label: str | None) -> None:

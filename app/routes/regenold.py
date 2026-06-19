@@ -134,6 +134,9 @@ from app.integrations.regenold.reasoning_trace import (
     record_note as _trace_note,
 )
 from app.integrations.regenold.reasoning_trace import (
+    record_references as _trace_references,
+)
+from app.integrations.regenold.reasoning_trace import (
     record_retrieval_path as _trace_retrieval_path,
 )
 from app.integrations.regenold.reasoning_trace import (
@@ -5456,22 +5459,14 @@ def regenold_eu_ai_act_ask(
     obligations_found = max(0, int(graph_stats.get("obligations_found", 0) or 0))
     gaps_found = max(0, int(graph_stats.get("gaps_found", 0) or 0))
 
-    # R50 — final pass: record the resolved retrieval_path + confidence
-    # into the trace, then serialise. The trace JSON wins when
-    # ?include_reasoning=true is set; falls back to the legacy
-    # telemetry / empty-string behaviour otherwise.
-    _trace_retrieval_path(str(retrieval_path))
-    _trace_confidence(float(confidence))
-    _reasoning_payload_main = _maybe_serialize_reasoning(include_reasoning)
-    _final_reasoning = _reasoning_payload_main if _reasoning_payload_main else (
-        _build_telemetry_reasoning(
-            confidence=confidence,
-            kb_version=KB_VERSION,
-            retrieval_path=retrieval_path,
-            ref_count=len(references),
-        )
-        if include_telemetry else ""
-    )
+    # R50 / R131 — the trace finalisation (resolved retrieval_path +
+    # confidence + final wire references) and serialisation now run LAST,
+    # after every reference pass (R72 reconcile, conciseness cap, R105,
+    # R130 ``Article 3.N``) and the verbatim ``retrieval_path`` swap, so the
+    # ``?include_reasoning=true`` payload reflects the exact ``references``
+    # the API ships — sub-points included — and the resolved retrieval_path.
+    # See the ``_trace_references`` finalisation block below, just before the
+    # response is assembled.
 
     # R72 — reference reconciliation (refs-faithfulness, the judge's
     # weakest axis). When the answer is Stage-2-polished, drop wire
@@ -5758,6 +5753,26 @@ def regenold_eu_ai_act_ask(
                 references = _upgraded_refs
         except Exception:  # noqa: BLE001 — never let the upgrade 500 the route
             pass
+
+    # R50 / R131 — finalise the reasoning trace AFTER every reference pass
+    # so ``?include_reasoning=true`` surfaces the exact wire ``references``
+    # (with sub-points like ``Article 3.1`` / ``Annex IV.2``) AND the
+    # resolved ``retrieval_path`` (e.g. the verbatim swap). The recorders +
+    # serialise are no-ops with no active trace, so the default path stays
+    # zero-overhead and byte-identical.
+    _trace_retrieval_path(str(retrieval_path))
+    _trace_confidence(float(confidence))
+    _trace_references(list(references))
+    _reasoning_payload_main = _maybe_serialize_reasoning(include_reasoning)
+    _final_reasoning = _reasoning_payload_main if _reasoning_payload_main else (
+        _build_telemetry_reasoning(
+            confidence=confidence,
+            kb_version=KB_VERSION,
+            retrieval_path=retrieval_path,
+            ref_count=len(references),
+        )
+        if include_telemetry else ""
+    )
 
     # Default response shape = competition spec only. Telemetry block
     # populated only when ?include_telemetry=true (and serialised via

@@ -6857,6 +6857,64 @@ live.
   backstop the analysis was groping toward; live-only and risks the
   R101 dynamic-grounding behaviour, so it needs a live A/B.
 
+## Round 131 — Final wire references (with sub-points) surfaced in the reasoning logs (2026-06-19)
+
+R130 (PR #218) made the API ``references`` carry sub-points
+(``Article 3.1`` for "What is an AI system?", and the existing
+``Annex IV.2`` / ``Article 50.3`` machinery). But the
+``?include_reasoning=true`` trace — the JSON the UI renders as the
+"reasoning logs" — **never recorded the final citation list**. It carried
+``anchors_used`` (keyword-derived, internal ``Art. N`` form, no sub-points,
+and ``None`` on the definitional path) — so the citations shown in the UI
+did **not** match the ``references`` the API actually returned.
+
+Verified with a deterministic ``?include_reasoning=true`` probe (pre-fix):
+`"What is an AI system?"` → API ``references`` ``['Article 3.1']`` but the
+reasoning JSON had **no ``references`` key** (only ``anchors_used: None``);
+`"…technical documentation contain?"` → API ``['Article 11', 'Annex IV',
+'Annex IV.2']`` but reasoning ``anchors_used: ['Annex IV']``.
+
+### Fix — record the FINAL references into the trace, serialise last
+
+* **`app/integrations/regenold/reasoning_trace.py`** — new
+  ``references: list[str]`` field on ``ReasoningTrace`` + ``record_references``
+  recorder + ``to_json_dict`` emission (empty list dropped). Distinct from
+  ``anchors_used`` — this is the exact wire citation list in wire form
+  (``Article 26`` / ``Article 3.1`` / ``Annex IV.2``).
+* **`app/routes/regenold.py`** — moved the trace finalisation
+  (``_trace_retrieval_path`` + ``_trace_confidence`` + serialise) from its
+  old mid-route position to run **LAST**, after every reference pass (R72
+  reconcile, conciseness cap, R105, R130 ``Article 3.N`` upgrade) AND the
+  verbatim ``retrieval_path`` swap, and added ``_trace_references(references)``
+  there. Side benefit: the trace's ``retrieval_path`` was previously recorded
+  before the R5625 ``verbatim_exact_text`` swap (stale) — it's now accurate.
+
+Post-fix probe: ``reasoning.references`` **exactly equals** the wire
+``references`` (sub-points included) on every shape — ``Article 3.1`` /
+``Article 3.4`` / ``Article 3.63`` / ``Article 53.1`` / ``Annex IV.2`` — and
+an OOS refusal correctly drops the key (empty → not emitted).
+
+### Why davidath is byte-identical
+
+The whole change is gated on ``?include_reasoning=true``, which the bench
+never sets; the recorders + serialise are no-ops with no active trace; the
+wire ``answer`` + ``references`` are untouched (pinned by
+``test_param_does_not_change_answer_or_references``). The only other delta —
+the ``_build_telemetry_reasoning`` ``ref_count`` now reflects post-reconcile
+refs — is gated on ``?include_telemetry=true`` (also bench-unset). The
+established R50/R110/R127 reasoning-only pattern: byte-identical local, the
+win lands on the live wire / UI.
+
+### Gates
+
+* davidath bench (476, deterministic) — byte-identical to R130
+  (Ans Strict 0.3535 / Ref Loose 0.5949 / Ref Strict 0.4744 / Tone 1.0 /
+  mt 20/20).
+* ``evals.regenold.runner`` (276) — all categories 100%.
+* ``evals.regenold.runner_v2 --local --probe-oos`` — 21/21, 0 leaks.
+* ``+13`` ``tests/test_r131_reasoning_references.py`` (recorder contract +
+  route ``reasoning.references == wire references`` + refusal/default).
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a
