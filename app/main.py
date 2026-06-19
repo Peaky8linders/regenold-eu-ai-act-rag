@@ -113,6 +113,45 @@ def _log_llm_provider_status() -> None:
             provider_label,
         )
 
+    # ─── Embedded-graph boot-time status (R129 default backend) ───────────
+    # When ``REGENOLD_GRAPH_BACKEND=embedded`` (the R129 default) the live
+    # 2-hop backend is the in-process SQLite property graph, NOT Neo4j. The
+    # Neo4j probe below would report it as "did not activate" (the driver is
+    # gated OFF), so surface the embedded graph's real build status here and
+    # SKIP the misleading Neo4j warning. Read-only, sub-ms, never raises.
+    try:
+        from app.graph.embedded_graph import (
+            embedded_backend_selected,
+            get_embedded_graph,
+        )
+
+        _embedded_selected = embedded_backend_selected()
+    except Exception:  # noqa: BLE001 — boot log must never block startup
+        _embedded_selected = False
+    if _embedded_selected:
+        try:
+            _eg = get_embedded_graph()
+            if _eg.enabled:
+                logger.info(
+                    "regenold.startup graph_backend=embedded enabled=True "
+                    "node_count=%d edge_count=%d",
+                    _eg.node_count(),
+                    _eg.edge_count(),
+                )
+            else:
+                logger.warning(
+                    "regenold.startup graph_backend=embedded enabled=False — "
+                    "the in-process graph build FAILED. 2-hop expansion is a "
+                    "no-op; the engine still serves via the deterministic KB "
+                    "path. Check earlier 'embedded_graph build failed' logs."
+                )
+        except Exception as _eexc:  # noqa: BLE001
+            logger.warning(
+                "regenold.startup graph_backend=embedded probe failed: %s",
+                _eexc,
+            )
+        return
+
     # ─── Neo4j boot-time status ────────────────────────────────────────────
     # Mirror the LLM startup log. Operators who set ``NEO4J_URI`` want a
     # single boot-log line confirming the graph is reachable AND seeded,
@@ -582,11 +621,25 @@ def _run_index_warmup_in_thread() -> None:
 
         build_tree()
 
+    def _warm_embedded_graph() -> None:
+        # R129 — when the embedded backend is the live 2-hop graph, build it
+        # at boot so the build cost (and any build FAILURE) surfaces in the
+        # warm-up log rather than on the first user request. No-op when a
+        # different backend is selected. Sub-ms build (~126 nodes).
+        from app.graph.embedded_graph import (
+            embedded_backend_selected,
+            get_embedded_graph,
+        )
+
+        if embedded_backend_selected():
+            get_embedded_graph()
+
     _step("kb_search_bm25", _warm_kb_search)
     _step("sentence_index", _warm_sentence_index)
     _step("embeddings_index", _warm_embeddings_index)
     _step("turboquant_dense", _warm_turboquant)
     _step("eu_ai_act_tree", _warm_tree)
+    _step("embedded_graph", _warm_embedded_graph)
 
     logger.info(
         "regenold.startup index_warmup_completed elapsed_s=%.2f %s",
@@ -841,6 +894,7 @@ def healthz_graph() -> dict[str, object]:
     start = _time.perf_counter()
     base: dict[str, object] = {
         "version": settings.version,
+        "backend": "neo4j",
         "graph_enabled": False,
         "graph_ok": False,
         "detail": "",
@@ -850,6 +904,44 @@ def healthz_graph() -> dict[str, object]:
         "node_counts": {},
         "edge_counts": {},
     }
+
+    # ─── Embedded backend path (R129 default) ─────────────────────────────
+    # When ``REGENOLD_GRAPH_BACKEND=embedded`` the live 2-hop backend is the
+    # in-process SQLite property graph, NOT Neo4j. The Neo4j-only paths below
+    # would report ``graph_enabled=false`` / "driver not installed" even
+    # though the embedded graph is healthy and serving — a false alarm for
+    # any uptime monitor that alerts on ``graph_ok=false``. Report the
+    # embedded graph's real build status instead. Read-only, sub-ms.
+    try:
+        from app.graph.embedded_graph import (
+            embedded_backend_selected,
+            get_embedded_graph,
+        )
+
+        _embedded_selected = embedded_backend_selected()
+    except Exception as exc:  # noqa: BLE001 — health probe must never raise
+        _embedded_selected = False
+        base["detail"] = f"embedded_backend_probe_failed: {exc!s}"[:200]
+    if _embedded_selected:
+        base["backend"] = "embedded"
+        try:
+            graph = get_embedded_graph()
+            ok = bool(graph.enabled)
+            base["graph_enabled"] = ok
+            base["graph_ok"] = ok
+            if ok:
+                base["detail"] = "ok (embedded)"
+                base["node_counts"] = {"Article+Annex": graph.node_count()}
+                base["edge_counts"] = {"CROSS_REFERENCES": graph.edge_count()}
+            else:
+                base["detail"] = (
+                    "embedded_graph build failed — 2-hop expansion is a no-op; "
+                    "engine serves via the deterministic KB path"
+                )
+        except Exception as exc:  # noqa: BLE001 — health probe must never raise
+            base["detail"] = f"embedded_graph_probe_failed: {exc!s}"[:200]
+        base["elapsed_ms"] = int((_time.perf_counter() - start) * 1000)
+        return base
 
     # ─── Disabled path ────────────────────────────────────────────────────
     if not os.environ.get("NEO4J_URI"):

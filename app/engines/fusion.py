@@ -465,7 +465,13 @@ def _deterministic_judge(user: str, drafts: list[tuple[str, str]]) -> str | None
     allowed = _allowed_refs_from_user(user)
     best_text: str | None = None
     best_score = float("-inf")
-    for label, text in drafts:
+    # ``drafts`` arrives in ``as_completed`` (wall-clock) order, which is
+    # non-deterministic across the serverless panel members. Iterating it with
+    # a strict ``>`` would resolve a score TIE to whichever draft arrived first
+    # → the "deterministic" judge returns different answers for byte-identical
+    # inputs (and the route engine-cache assumes identical inputs → identical
+    # output). Sort by panel label first so ties break on a stable key.
+    for label, text in sorted(drafts, key=lambda d: d[0]):
         if not text or not text.strip() or _looks_truncated(text):
             continue
         transport = _PANEL_REGISTRY.get(label, ("", ""))[1]

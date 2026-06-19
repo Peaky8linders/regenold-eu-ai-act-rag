@@ -12,7 +12,11 @@ a hosted graph DB that has been a documented production liability:
 * free-tier limits (the reason RushDB was dropped before it).
 * network availability + an auto-seed ops burden on every deploy.
 
-Our KB graph is **505 nodes / ~500 edges — tiny and static**; it does
+Our KB graph is tiny and static — this module builds the **126
+``CROSS_REFERENCES`` nodes (113 articles + 13 annexes) / ~216 undirected
+edges** the 2-hop traversal actually walks (the full Neo4j seed carries
+505 nodes incl. recitals / definitions / obligations, but those are not
+part of the article↔article xref graph). It does
 not justify a hosted graph DB. This module is the
 `GitLab Orbit <https://github.com/gitlabhq/orbit-knowledge-graph>`_
 "local mode" pattern applied to us: build the property graph **in
@@ -180,26 +184,32 @@ class EmbeddedGraph:
         return self._conn is not None
 
     def node_count(self) -> int:
-        if self._conn is None:
-            return 0
+        # Bind ``self._conn`` to a local INSIDE the lock and re-check for None
+        # so a concurrent ``close()`` (which also takes the lock) can't null
+        # the attribute between the guard and the execute → AttributeError.
         with self._lock:
-            return int(self._conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0])
+            conn = self._conn
+            if conn is None:
+                return 0
+            return int(conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0])
 
     def edge_count(self) -> int:
         """Directed edge count (undirected edges stored both ways)."""
-        if self._conn is None:
-            return 0
         with self._lock:
-            return int(self._conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0])
+            conn = self._conn
+            if conn is None:
+                return 0
+            return int(conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0])
 
     def directed_edges(self) -> list[tuple[str, str]]:
         """Every stored ``(src, dst)`` edge — internal-ref form."""
-        if self._conn is None:
-            return []
         with self._lock:
+            conn = self._conn
+            if conn is None:
+                return []
             return [
                 (r[0], r[1])
-                for r in self._conn.execute("SELECT src, dst FROM edges").fetchall()
+                for r in conn.execute("SELECT src, dst FROM edges").fetchall()
             ]
 
     # ─── Typed traversal (Orbit pattern #3) ──────────────────────────────
@@ -211,7 +221,7 @@ class EmbeddedGraph:
         (``"Art. 6"`` / ``"Annex III"``). Undirected traversal (mirrors
         the Cypher ``CROSS_REFERENCES*1..N``). Deterministic order.
         """
-        if self._conn is None or not ref or hops <= 0:
+        if not ref or hops <= 0:
             return []
         sql = """
         WITH RECURSIVE walk(id, h) AS (
@@ -223,7 +233,10 @@ class EmbeddedGraph:
         SELECT DISTINCT id FROM walk WHERE id != ? ORDER BY id
         """
         with self._lock:
-            cur = self._conn.execute(sql, (ref, _EDGE_TYPE, _EDGE_TYPE, hops, ref))
+            conn = self._conn
+            if conn is None:
+                return []
+            cur = conn.execute(sql, (ref, _EDGE_TYPE, _EDGE_TYPE, hops, ref))
             return [r[0] for r in cur.fetchall()]
 
     def two_hop(self, seed_nums: list[str], cap: int) -> list[dict]:
@@ -236,7 +249,7 @@ class EmbeddedGraph:
         ``(hops, num)`` lexicographically (matching the Cypher
         ``ORDER BY hops, num``), capped at ``cap``.
         """
-        if self._conn is None or cap <= 0:
+        if cap <= 0:
             return []
         nums = [str(n).strip() for n in seed_nums if str(n).strip()]
         if not nums:
@@ -261,16 +274,24 @@ class EmbeddedGraph:
         """
         params = [*nums, _EDGE_TYPE, _EDGE_TYPE, _MAX_HOP_DEFAULT, cap]
         with self._lock:
-            cur = self._conn.execute(sql, params)
+            conn = self._conn
+            if conn is None:
+                return []
+            cur = conn.execute(sql, params)
             return [{"num": r[0], "hops": int(r[1])} for r in cur.fetchall()]
 
     def close(self) -> None:
-        if self._conn is not None:
-            try:
-                self._conn.close()
-            except Exception:  # noqa: BLE001 — best-effort
-                pass
-            self._conn = None
+        # Acquire the read lock so ``close()`` cannot null ``self._conn``
+        # while another thread holds it mid-query (the read methods bind the
+        # connection to a local under this same lock). Without this, a
+        # concurrent reader could hit ``Cannot operate on a closed database``.
+        with self._lock:
+            if self._conn is not None:
+                try:
+                    self._conn.close()
+                except Exception:  # noqa: BLE001 — best-effort
+                    pass
+                self._conn = None
 
 
 # ── Singleton ────────────────────────────────────────────────────────────────

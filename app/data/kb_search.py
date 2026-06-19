@@ -915,6 +915,9 @@ def top_articles_by_relevance(
     # against ARTICLE_EXISTENCE.
     try:
         from app.engines.graph_expand_2hop import (  # noqa: PLC0415
+            GraphExpansion as _GraphExpansion,
+        )
+        from app.engines.graph_expand_2hop import (
             expand_2hop as _g2,
         )
         from app.engines.graph_expand_2hop import (
@@ -934,9 +937,16 @@ def top_articles_by_relevance(
     try:
         expansion = _g2(fused[:3], max_hop2=max_hop2)  # seed from top-3 BM25 winners
     except Exception:  # noqa: BLE001 — never let graph expand 500 the route
-        expansion = []
+        # ``expand_2hop`` is documented to never raise (every internal error
+        # path returns an empty GraphExpansion), so this is belt-and-braces —
+        # but the sentinel MUST be a GraphExpansion, not ``[]``: the guard
+        # below and ``fuse_with_kb_xrefs`` both expect the dataclass (they read
+        # ``.hop2_articles``). A bare ``[]`` was only accidentally safe.
+        expansion = _GraphExpansion()
     fused_before = list(fused)
-    fused = _g2_fuse(fused, expansion, budget=k) if expansion else fused
+    # A GraphExpansion is always truthy, so test the field that carries the
+    # fusion candidates (empty hop2 → nothing to fuse → leave ``fused``).
+    fused = _g2_fuse(fused, expansion, budget=k) if expansion.hop2_articles else fused
     if len(fused) > len(fused_before):
         logger.debug("Graph 2-hop surfaced new refs: %s", [x for x in fused if x not in fused_before])
 

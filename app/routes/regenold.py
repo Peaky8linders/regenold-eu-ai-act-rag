@@ -1319,6 +1319,23 @@ def _engine_cache_key(
             # SELECT-and-polish) picks a different final answer, so it flips
             # the cached GraphRAGResponse.answer. Same cache-poisoning doctrine.
             "REGENOLD_FUSION_JUDGE",
+            # R129-review — three engine-behaviour flags the R129 changes
+            # introduced/activated but left out of the key (R30/R56/R79
+            # cache-poisoning doctrine):
+            #   * REGENOLD_STAGE2_SIMPLE_SKIP — when ON, _two_stage_generate
+            #     ships the deterministic Stage-1 answer instead of the Sonnet
+            #     polish for simple questions → flips GraphRAGResponse.answer +
+            #     stage2_landed (same bucket as P2P_GRAPH_RAG_ENABLE_STAGE2).
+            #   * REGENOLD_GRAPH_BACKEND — selects which 2-hop graph
+            #     (embedded SQLite vs Neo4j) graph_expand_2hop traverses; the
+            #     two can return different neighbours (a stale/empty Neo4j seed
+            #     vs the always-in-sync embedded graph) → flips references.
+            #     Same bucket as REGENOLD_GRAPH_2HOP.
+            #   * REGENOLD_MAX_HOP2 — sizes the 2-hop candidate budget
+            #     (kb_search reads it), so it changes which hop2 refs fuse in.
+            "REGENOLD_STAGE2_SIMPLE_SKIP",
+            "REGENOLD_GRAPH_BACKEND",
+            "REGENOLD_MAX_HOP2",
         )
     )
     import json

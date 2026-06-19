@@ -73,7 +73,14 @@ def _should_activate(settings: GraphSettings) -> bool:
         if not neo4j_backend_selected():
             return False
     except Exception:  # noqa: BLE001 — never let the gate break activation logic
-        pass
+        # Fail-OPEN to the historical Neo4j path, but log it: an embedded_graph
+        # import failure here silently re-enables Aura (with no other signal),
+        # so make that backend-flip traceable instead of invisible.
+        logger.warning(
+            "graph backend selector import failed — falling back to the Neo4j "
+            "activation gate; the embedded-graph default could not be read.",
+            exc_info=True,
+        )
     if not os.environ.get("NEO4J_URI"):
         return False
     if not _neo4j_available():
