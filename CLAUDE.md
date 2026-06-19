@@ -6915,6 +6915,129 @@ win lands on the live wire / UI.
 * ``+13`` ``tests/test_r131_reasoning_references.py`` (recorder contract +
   route ``reasoning.references == wire references`` + refusal/default).
 
+## Round 131.1 — Inverted-phrasing Art. 3 resolver + denoiser test-env hardening (2026-06-19)
+
+Two follow-ups after the R131 merge.
+
+### Resolver: inverted / paraphrased definitional phrasing → Article 3.N
+
+R130's ``definition_citation_for_question`` was conservative — its literal
+whole-word alias scan misses the **inverted** definitional shape "system of
+artificial intelligence" (the Antifragile review's q08), so a bare
+``Article 3`` shipped where the gold is ``Article 3.1``. R131.1 adds a
+**canonicalised fallback** that reuses the existing R102
+``_extract_definition_term`` + ``_canonicalise_definition_term`` ("system of
+X" → "X system", "artificial intelligence" → "ai", GPAI variants) and
+retries with **EXACT-alias matching** (not substring — so "risk categories"
+never matches the "risk" alias). A leading-article strip ("a system of …")
+handles the "How is X defined?" extractor shape.
+
+* [`app/data/definitions.py`](app/data/definitions.py) — refactored the
+  literal scan into ``_scan_normalised_for_citation`` + new
+  ``_exact_alias_citation`` helper; the resolver now runs literal scan →
+  canonicalised exact-match fallback. Lazy-imports the engine canonicaliser
+  (fail-soft; no data→engine load-time coupling).
+
+Result (resolver): "What is a system of artificial intelligence?",
+"What is the definition of a system of artificial intelligence?",
+"How is a system of artificial intelligence defined?",
+"What is an artificial intelligence system?" all → ``Art. 3.1``; "risk
+categories" / ambiguous "provider vs deployer" / non-definitional → unchanged.
+Route e2e: "What is a system of artificial intelligence?" ships
+``Article 3.1`` (API + reasoning). **Purely additive** — every case R130
+already resolved is unchanged.
+
+**davidath byte-identical** — the bench collapses references to article HEADS
+(``Article 3.1`` → head ``Article 3``); the fallback only upgrades a bare
+``Article 3`` the route already cites; +6 R130-module tests.
+
+**Documented follow-up (NOT in scope here):** the "How is **a** … defined?"
+phrasing where the *engine's* R114 definitional anchor
+(``select_definition_sentence``) shares the same leading-article gap, so the
+engine retrieves the amendment articles (Art. 65/108/107) and never anchors
+Article 3 → the route's R130 gate has no Article 3 to upgrade. Closing that
+needs a leading-article strip in the shared ``_canonicalise_definition_term``
+(affects ``select_definition_sentence`` answer text → needs a davidath A/B);
+the actual q08 ("definition of a system of AI") works end-to-end already.
+
+### Denoiser tests hermetic against R127's cli gate
+
+The 4 wrapper-branch tests in ``tests/test_r87a_query_denoiser_trace.py``
+failed whenever ``P2P_GRAPH_RAG_PROVIDER=cli`` was set in the ambient env
+(the deterministic-eval / developer setting). R127 made
+``is_openai_wrapper_enabled()`` return ``False`` under ``cli``, so
+``_rewrite_multiturn_query`` short-circuits to ``no_provider`` before reaching
+the test's ``get_openai_wrapper_provider`` patch → ``out`` is ``None``. The
+tests predate R127's gate and weren't isolated from it. Fix: a file-level
+autouse fixture ``_neutralise_cli_provider_gate`` ``monkeypatch.delenv``-s
+``P2P_GRAPH_RAG_PROVIDER`` so the wrapper branch is reachable under any
+invocation env. Test-only; no production change. (``test_records_no_provider_fallback``
+patches ``is_openai_wrapper_enabled`` directly and is unaffected.) 11/11 pass
+under ``cli`` now (was 7/11).
+
+### Gates
+
+* ``pytest tests/test_r130_definition_subpoints.py
+  tests/test_r131_reasoning_references.py
+  tests/test_r87a_query_denoiser_trace.py`` — all green.
+* davidath bench (476) — byte-identical to R131 / R130
+  (Ans Strict 0.3535 / Ref Loose 0.5949 / Ref Strict 0.4744 / Tone 1.0 /
+  mt 20/20).
+* full suite — no new failures vs the R131 baseline (the 4 denoiser
+  ``cli`` failures are now fixed).
+
+## Round 131.2 — UI: final citations in the reasoning log + real LLM thinking (2026-06-19)
+
+Operator directive: make sure the reasoning logs, citations (articles +
+sub-points), **and the LLM thinking** are all shown in the UI **and** the
+API for Regenold.
+
+Audit of the existing surfaces:
+* **API** — already complete: ``references`` (sub-points included),
+  ``reasoning.references`` (R131), and ``reasoning.llm_thinking`` all ship.
+* **UI** ([`app/web_ui.py`](app/web_ui.py)) — already requests
+  ``?include_reasoning=true`` (default), renders the **Citations** tab from
+  ``data.references`` (full ref string → sub-points show), the **Reasoning
+  Log** drawer, and a **🧠 LLM Thinking** section from
+  ``trace.llm_thinking``. Two gaps closed:
+
+### UI — surface the final citations inside the reasoning log
+
+The reasoning-log **Retrieval** section showed only ``anchors_used`` (the
+input keyword anchors), not the final wire ``references``. Added a
+``citations`` line rendering ``trace.references`` (the R131 field —
+``Article 26`` / ``Article 3.1`` / ``Annex IV.2``), so the reasoning log
+itself shows the exact citations the answer ships, co-located with the
+retrieval reasoning.
+
+### LLM thinking — re-enable a modest extended-thinking budget
+
+``reasoning.llm_thinking`` was populated but showed the placeholder
+``"Single-pass synthesis (no extended thinking on the standard path)"``
+because R103 disabled extended thinking (``complex_thinking_tokens=0``) for
+latency. Per operator directive (surface REAL model reasoning), R131.2
+re-enables a **modest 1024-token** budget as the CODE default
+([`app/config.py`](app/config.py)) — fired ONLY on the ~20% complex/Opus
+path (standard Sonnet stays fast/thinking-free). The chain is wired:
+complex question → ``X-Claude-Max-Thinking-Tokens: 1024`` header → Opus 4.8
+returns ``reasoning_content`` → wrapper ``.thinking`` → engine
+``record_llm_thinking`` → ``trace.llm_thinking`` → UI 🧠 panel. **Latency
+trade:** ~+5-15 s on complex questions only (a scored axis); fully
+reversible per-deploy with ``P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS=0``. The
+R81-A1 / r80.2-live latency disaster was the **8000**-token budget, not a
+modest one (R80.2 ran 1024 in production).
+
+### Gates (R131.2)
+
+* ``tests/test_complex_model_routing.py`` + ``tests/test_anthropic_provider.py``
+  — 31 pass (default test updated: complex path now sends the 1024 thinking
+  header; the simple-question + explicit-0 cost-guard tests unchanged).
+* ``tests/test_web_ui.py`` — 5 pass (UI change is additive JS).
+* davidath bench (476) — byte-identical (config thinking is read only on the
+  wrapper Stage-2 path, inert under the TestClient/cli bench; web_ui is
+  frontend-only). Real thinking content surfaces post-deploy via the live
+  Opus + Claude-Max wrapper.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

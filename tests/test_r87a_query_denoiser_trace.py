@@ -24,6 +24,26 @@ from app.integrations.regenold import reasoning_trace as rt
 from app.routes.regenold import _rewrite_multiturn_query
 
 
+@pytest.fixture(autouse=True)
+def _neutralise_cli_provider_gate(monkeypatch):
+    """Make the wrapper/Groq de-noiser branch reachable regardless of the
+    ambient provider env.
+
+    R127 made ``is_openai_wrapper_enabled()`` return ``False`` whenever
+    ``P2P_GRAPH_RAG_PROVIDER=cli`` — the deterministic-eval / developer
+    setting (and the value the davidath harness exports). These tests
+    exercise the LLM-wired de-noiser path and ``patch`` the provider
+    factory; under the cli gate ``_rewrite_multiturn_query`` short-circuits
+    to ``no_provider`` BEFORE reaching that patch, so the wrapper-branch
+    assertions fail. Drop the cli override here so the suite passes under
+    any invocation env. Tests that want the wrapper OFF patch
+    ``is_openai_wrapper_enabled`` directly (``test_records_no_provider_fallback``)
+    and are unaffected; the disabled / single-turn / trace-inactive tests
+    short-circuit before the provider gate.
+    """
+    monkeypatch.delenv("P2P_GRAPH_RAG_PROVIDER", raising=False)
+
+
 @pytest.fixture
 def trace():
     """Activate a fresh trace per test; deactivate on teardown."""

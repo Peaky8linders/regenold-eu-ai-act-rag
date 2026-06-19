@@ -1989,10 +1989,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             }
 
             // ── Retrieval ────────────────────────────────────────────────────
-            if (trace.retrieval_path || trace.anchors_used?.length || trace.top_k_bm25?.length) {
+            if (trace.retrieval_path || trace.anchors_used?.length || trace.references?.length || trace.top_k_bm25?.length) {
                 let body = '';
                 if (trace.retrieval_path) body += kv('path', `<span class="rlog-val highlight">${escapeHtml(trace.retrieval_path)}</span>`);
                 if (trace.anchors_used?.length) body += kv('anchors', tags(trace.anchors_used));
+                // R131 — the FINAL wire citations (Article 26 / Article 3.1 /
+                // Annex IV.2 — sub-points included), recorded after every
+                // reference pass, so the reasoning log shows the exact refs the
+                // answer ships, not just the input anchors.
+                if (trace.references?.length) body += kv('citations', tags(trace.references));
                 if (trace.xref_expand_added?.length) body += kv('xrefs', tags(trace.xref_expand_added));
                 if (trace.top_k_bm25?.length) {
                     const hits = trace.top_k_bm25.map(h => `<span class="rlog-tag">${escapeHtml(h.ref || '')} <span style="color:var(--text-muted)">${h.score != null ? h.score.toFixed(1) : ''}</span></span>`).join('');

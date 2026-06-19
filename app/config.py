@@ -63,10 +63,12 @@ class GraphRAGSettings(BaseSettings):
     # in aggregate.
     #
     # R103 (2026-06-01): default = claude-opus-4-8, extended thinking
-    # OFF (complex_thinking_tokens=0). The R81-A1 latency disaster
-    # (16 s p50, 51 s outlier) was the 8000->1024-token
-    # extended-thinking budget, NOT the model swap; Opus 4.8 as a
-    # plain (stronger) model swap lifts the hard reasoning categories
+    # OFF (complex_thinking_tokens=0). R131.2 (2026-06-19) re-enables a
+    # MODEST 1024-token thinking budget (operator directive — surface real
+    # model reasoning in the reasoning trace / UI; see the field docstring).
+    # The R81-A1 latency disaster (16 s p50, 51 s outlier) was the
+    # 8000-token extended-thinking budget, NOT the model swap or a modest
+    # budget; Opus 4.8 as a (stronger) model swap lifts the hard reasoning categories
     # (conflict / borderline-prohibition / GPAI thresholds / multi-turn
     # coreference, the ~20% the complexity gate fires on) without the
     # thinking-budget tail.
@@ -86,19 +88,27 @@ class GraphRAGSettings(BaseSettings):
     ``claude-opus-4-8``. Set empty to disable the swap (every Stage-2
     polish call uses the base ``model``)."""
 
-    complex_thinking_tokens: int = 0
+    complex_thinking_tokens: int = 1024
     """``max_thinking_tokens`` for extended-thinking Stage-2 polish on
     complex questions.
 
-    **R103 — default 0 (extended thinking OFF).** The complex path now
-    swaps to Opus 4.8 as a plain (stronger) model, NOT an extended-
-    thinking run — extended thinking was the sole driver of the
-    R81-A1 / r80.2-live 16 s p50 + 51 s outlier latency disaster. 0
-    means no ``X-Claude-Max-Thinking-Tokens`` header is sent, so Opus
-    4.8 answers at ~Sonnet latency. Re-enable per-deploy with
-    ``P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS=2500`` (engine clamps to
-    [1024, 16000]) ONLY if a live A/B shows the reasoning lift beats
-    the latency cost.
+    **R131.2 — default 1024 (extended thinking ON, modest).** Operator
+    directive: surface REAL model reasoning in the ``?include_reasoning=true``
+    trace's ``llm_thinking`` field + the UI 🧠 panel (it otherwise shows the
+    ``"Single-pass synthesis (no extended thinking)"`` placeholder). 1024 is
+    the engine clamp floor — the smallest budget that produces visible
+    reasoning, and the proven R80.2 production value — fired ONLY on the
+    ~20% complex/Opus path (the standard Sonnet path stays thinking-free /
+    fast). Latency trade: ~+5-15 s on complex questions only (a scored axis);
+    fully reversible per-deploy with ``P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS=0``
+    to restore the R103 fast placeholder. The R81-A1 / r80.2-live latency
+    disaster (16 s p50, 51 s outlier) was the **8000**-token budget, not a
+    modest one.
+
+    **R103 (superseded by R131.2) — default 0 (extended thinking OFF).** The
+    complex path swaps to Opus 4.8 as a plain (stronger) model; 0 means no
+    ``X-Claude-Max-Thinking-Tokens`` header is sent, so Opus 4.8 answers at
+    ~Sonnet latency.
 
     R80.2 — reduced 2500 → 1024 (the engine clamp floor). The
     r80-stage2-tunnel run still showed an 87 s max-latency outlier

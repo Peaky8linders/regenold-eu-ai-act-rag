@@ -82,17 +82,17 @@ class TestDefaultRouting:
     def test_complex_question_swaps_to_opus48_by_default(
         self, _mock_wrapper
     ) -> None:
-        """**R103 default behaviour**: with no env override, a
-        ``complex_question=True`` call swaps the model to
-        ``opus-4-8`` (the default) — Opus 4.8 is the
-        stronger reasoner for the ~20% complex categories (conflict /
-        borderline-prohibition / GPAI thresholds / multi-turn
-        coreference). Pre-R103 (R81-A1) the default was empty (no swap,
-        Sonnet only) to cut the latency outlier; R103 re-enables the
-        swap WITHOUT extended thinking (``complex_thinking_tokens=0``),
-        which was the sole latency driver, so Opus 4.8 answers at
-        ~Sonnet latency. Operators can disable the swap with
-        ``P2P_GRAPH_RAG_COMPLEX_MODEL=`` (empty)."""
+        """**R103 + R131.2 default behaviour**: with no env override, a
+        ``complex_question=True`` call swaps the model to ``opus-4-8``
+        (the default) — Opus 4.8 is the stronger reasoner for the ~20%
+        complex categories (conflict / borderline-prohibition / GPAI
+        thresholds / multi-turn coreference). R131.2 re-enables a MODEST
+        1024-token extended-thinking budget (operator directive — surface
+        real model reasoning in the trace / UI), so the wrapper request
+        now carries the ``X-Claude-Max-Thinking-Tokens: 1024`` header on
+        the complex path. Operators can disable the swap with
+        ``P2P_GRAPH_RAG_COMPLEX_MODEL=`` (empty) or the thinking with
+        ``P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS=0``."""
         _openai_wrapper_complete_for_graph_rag(
             system="x", user="y", max_tokens=400, temperature=0.0,
             complex_question=True,
@@ -102,9 +102,9 @@ class TestDefaultRouting:
         assert req.model == "claude-opus-4-8"
         # Pin the new defaults so a future revert is loud, not silent.
         assert settings.graph_rag.complex_model == "claude-opus-4-8"
-        assert settings.graph_rag.complex_thinking_tokens == 0
-        # Extended thinking OFF by default → no thinking header sent.
-        assert "X-Claude-Max-Thinking-Tokens" not in req.extra_headers
+        assert settings.graph_rag.complex_thinking_tokens == 1024
+        # R131.2 — modest extended thinking ON by default → header sent.
+        assert req.extra_headers.get("X-Claude-Max-Thinking-Tokens") == "1024"
 
     def test_complex_question_swap_path_when_opus_configured(
         self, _mock_wrapper

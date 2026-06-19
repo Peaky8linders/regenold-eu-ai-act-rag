@@ -147,3 +147,67 @@ def test_route_non_definitional_keeps_no_spurious_art3_subpoint(client):
         "What are the obligations of providers of high-risk AI systems?",
     )
     assert not any(r.startswith("Article 3.") for r in refs), refs
+
+
+# ── R131.1 — canonicalised fallback for inverted / paraphrased phrasing ───
+# The R130 literal alias scan missed inverted definitional shapes ("system of
+# artificial intelligence", q08 of the Antifragile review) and shipped bare
+# Article 3. R131.1 reuses the R102 ``_canonicalise_definition_term`` +
+# ``_extract_definition_term`` to resolve those to the specific Article 3.N,
+# with EXACT-alias matching so it never over-fires.
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What is a system of artificial intelligence?",
+        "What is the definition of a system of artificial intelligence?",
+        "How is a system of artificial intelligence defined?",
+        "What is an artificial intelligence system?",
+    ],
+)
+def test_resolver_inverted_ai_system_phrasing_to_art_3_1(question):
+    from app.data.definitions import definition_citation_for_question
+
+    assert definition_citation_for_question(question) == "Art. 3.1", question
+
+
+def test_resolver_inverted_fallback_does_not_overfire():
+    """The canonicalised fallback uses EXACT alias matching, so it never
+    promotes a non-defined-term. ``_canonicalise_definition_term`` on
+    'risk categories' yields no exact Art. 3 alias → no NEW subpoint from
+    the fallback. Ambiguous two-term questions still keep the base."""
+    from app.data.definitions import definition_citation_for_question
+
+    # Ambiguity guard preserved (two distinct defined terms named).
+    assert (
+        definition_citation_for_question(
+            "What is the difference between a provider and a deployer?"
+        )
+        is None
+    )
+    # Pure non-definitional shapes resolve to nothing.
+    assert definition_citation_for_question("Tell me a joke about cats.") is None
+
+
+def test_resolver_inverted_is_purely_additive_vs_r130():
+    """R131.1 only ADDS resolutions for the inverted-phrasing misses; every
+    case R130 already resolved is unchanged."""
+    from app.data.definitions import definition_citation_for_question as f
+
+    assert f("What is an AI system?") == "Art. 3.1"
+    assert f("Who is a deployer?") == "Art. 3.4"
+    assert f("What is a general-purpose AI model?") == "Art. 3.63"
+
+
+def test_route_inverted_ai_system_phrasing_emits_article_3_1(client):
+    refs = _ask(client, "What is a system of artificial intelligence?")
+    assert "Article 3.1" in refs, refs
+    assert "Article 3" not in refs, refs
+
+
+def test_route_risk_categories_keeps_no_art3_subpoint(client):
+    """A framework-overview question never ships an Article 3.x subpoint on
+    the wire — the route only upgrades a bare Article 3 already in refs."""
+    refs = _ask(client, "What are the risk categories under the EU AI Act?")
+    assert not any(r.startswith("Article 3") for r in refs), refs

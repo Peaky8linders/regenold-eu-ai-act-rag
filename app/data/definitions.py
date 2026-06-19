@@ -1107,6 +1107,59 @@ def search_definitions(
     return [(defn.citation, defn) for _, defn in scored[:top_k]]
 
 
+def _scan_normalised_for_citation(ql: str) -> tuple[str | None, bool]:
+    """Whole-word, most-specific-alias-wins scan of a normalised string ``ql``
+    against the Art. 3 registry.
+
+    ``ql`` must already be ``_normalise``-d with hyphens flattened to spaces.
+    Returns ``(citation_or_None, ambiguous)`` — ``ambiguous`` is True when two
+    DISTINCT defined terms match at the same maximal alias length (caller
+    keeps the base ``Article 3`` rather than guessing).
+    """
+    best_defn: Definition | None = None
+    best_len = 0
+    ambiguous = False
+    for defn in _DEFINITIONS:
+        defn_match_len = 0
+        for name in (defn.term, *defn.keywords):
+            norm = _normalise(name).replace("-", " ")
+            if not norm:
+                continue
+            if re.search(r"\b" + re.escape(norm) + r"\b", ql):
+                defn_match_len = max(defn_match_len, len(norm))
+        if defn_match_len == 0:
+            continue
+        if defn_match_len > best_len:
+            best_len = defn_match_len
+            best_defn = defn
+            ambiguous = False
+        elif defn_match_len == best_len and defn.citation != (
+            best_defn.citation if best_defn else None
+        ):
+            # Two equally-specific DISTINCT defined terms named — don't guess.
+            ambiguous = True
+    if best_defn is None or ambiguous:
+        return None, ambiguous
+    return best_defn.citation, False
+
+
+def _exact_alias_citation(cand_norm: str) -> str | None:
+    """Return the Art. 3 citation whose term/alias EXACTLY equals ``cand_norm``.
+
+    For the canonicalised fallback the extracted term IS the defined term, so
+    an EXACT alias match (not a substring scan) is the conservative choice:
+    ``"ai system"`` resolves to Art. 3.1, but ``"risk categories"`` must NOT
+    match the ``"risk"`` alias (which a substring scan would). ``cand_norm``
+    must already be ``_normalise``-d with hyphens flattened.
+    """
+    for defn in _DEFINITIONS:
+        for name in (defn.term, *defn.keywords):
+            norm = _normalise(name).replace("-", " ")
+            if norm and norm == cand_norm:
+                return defn.citation
+    return None
+
+
 def definition_citation_for_question(question: str) -> str | None:
     """Resolve a definitional question to its specific Art. 3 sub-point citation.
 
@@ -1149,32 +1202,48 @@ def definition_citation_for_question(question: str) -> str | None:
     if not ql:
         return None
 
-    best_defn: Definition | None = None
-    best_len = 0
-    ambiguous = False
-    for defn in _DEFINITIONS:
-        defn_match_len = 0
-        for name in (defn.term, *defn.keywords):
-            norm = _normalise(name).replace("-", " ")
-            if not norm:
-                continue
-            if re.search(r"\b" + re.escape(norm) + r"\b", ql):
-                defn_match_len = max(defn_match_len, len(norm))
-        if defn_match_len == 0:
-            continue
-        if defn_match_len > best_len:
-            best_len = defn_match_len
-            best_defn = defn
-            ambiguous = False
-        elif defn_match_len == best_len and defn.citation != (
-            best_defn.citation if best_defn else None
-        ):
-            # Two equally-specific DISTINCT defined terms named — don't guess.
-            ambiguous = True
-
-    if best_defn is None or ambiguous:
+    # 1. Literal whole-word alias scan (the R130 path).
+    citation, ambiguous = _scan_normalised_for_citation(ql)
+    if citation is not None:
+        return citation
+    if ambiguous:
+        # Two distinct defined terms named literally → keep base Article 3.
         return None
-    return best_defn.citation
+
+    # 2. R131.1 — canonicalised fallback. The literal scan misses inverted /
+    # paraphrased definitional shapes ("system of artificial intelligence",
+    # "artificial-intelligence system") because they don't substring-match the
+    # "ai system" alias. Reuse the R102 term extractor + canonicaliser
+    # ("system of X" → "X system", "artificial intelligence" → "ai", GPAI
+    # variants) and retry the scan against each canonical candidate, keeping
+    # the same most-specific-wins + ambiguity-guard semantics. Lazy import —
+    # a top-level import would couple this data module to the engine layer at
+    # load time; the engine is already imported by the time the route calls
+    # this, and the resolver must never raise.
+    try:
+        from app.engines.sentence_index import (  # noqa: PLC0415
+            _canonicalise_definition_term,
+            _extract_definition_term,
+        )
+    except Exception:  # noqa: BLE001 — resolver is fail-soft; bail to base
+        return None
+    term = _extract_definition_term(question)
+    if not term:
+        return None
+    # Strip a leading article — the "How is X defined?" extractor keeps it
+    # ("a system of artificial intelligence"), which blocks the canonicaliser's
+    # "system of X" → "X system" rule (it anchors on a leading "system of").
+    term = re.sub(r"^\s*(?:an?|the)\s+", "", term.strip(), flags=re.IGNORECASE)
+    if not term:
+        return None
+    for cand in _canonicalise_definition_term(term):
+        cand_norm = _normalise(cand).replace("-", " ")
+        if not cand_norm:
+            continue
+        cand_citation = _exact_alias_citation(cand_norm)
+        if cand_citation is not None:
+            return cand_citation
+    return None
 
 
 __all__ = [
