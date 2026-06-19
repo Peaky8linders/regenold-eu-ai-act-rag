@@ -1245,12 +1245,19 @@ def test_engine_prompt_no_longer_mentions_graph_context() -> None:
 
 
 def test_r103_definition_question_cites_article_3() -> None:
-    """R103 — a resolved Art. 3 definition question must cite Article 3.
+    """R103 — a resolved Art. 3 definition question must cite the Article 3 head.
 
     GraphRAG-bench live retest found "What is the definition of an AI
     system?" returning the correct verbatim Art. 3(1) prose but citing
     Article 2 / Article 51 (BM25 token bleed). The definitional fast-path
-    fires for these; the wire reference must be Article 3.
+    fires for these; the wire reference must attribute to Article 3.
+
+    R130 — where the question confidently names a single Art. 3 defined term
+    the wire now cites the SPECIFIC sub-point ("Article 3.65" for systemic
+    risk) per the Regenold rules-PDF "optionally a sub-point" allowance. The
+    anti-BM25-bleed contract is unchanged: the Article 3 HEAD must be present
+    (bare ``Article 3`` for phrasings that don't resolve to a single term, or
+    ``Article 3.N`` when they do).
     """
     settings.regenold.api_key = SecretStr("regenold-test-key")
     c = _client()
@@ -1266,4 +1273,6 @@ def test_r103_definition_question_cites_article_3() -> None:
         )
         assert r.status_code == 200, r.json()
         refs = r.json().get("references") or []
-        assert "Article 3" in refs, f"definition q did not cite Article 3: {q!r} -> {refs}"
+        assert any(
+            ref == "Article 3" or ref.startswith("Article 3.") for ref in refs
+        ), f"definition q did not cite the Article 3 head: {q!r} -> {refs}"

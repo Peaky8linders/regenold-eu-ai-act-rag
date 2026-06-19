@@ -33,6 +33,7 @@ in the route layer, not here.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 
@@ -1106,9 +1107,80 @@ def search_definitions(
     return [(defn.citation, defn) for _, defn in scored[:top_k]]
 
 
+def definition_citation_for_question(question: str) -> str | None:
+    """Resolve a definitional question to its specific Art. 3 sub-point citation.
+
+    The Regenold competition rules PDF allows references "optionally [with] a
+    sub-point, after a dot symbol" and its worked example cites ``Article 3.1``
+    for "AI system" — i.e. a question about a term *defined* in Article 3 should
+    cite the SPECIFIC numbered point, not the bare ``Article 3``.
+
+    Returns the internal-form citation (``"Art. 3.N"``) when the question
+    confidently names a SINGLE Article-3 defined term — i.e. a defined-term
+    alias (or the canonical term) appears as a WHOLE-WORD match in the
+    normalised question. Returns ``None`` when no defined term, or more than one
+    DISTINCT defined term, matches at maximal specificity (ambiguous → keep the
+    base ``Article 3``).
+
+    The point number is the registry's CI-lint-verified Article 3 numbering
+    (``tests/test_r112_data_fixes.py``), so e.g. "AI system" → ``"Art. 3.1"``
+    (the rules-PDF worked-example gold), "provider" → ``"Art. 3.3"``,
+    "general-purpose AI model" → ``"Art. 3.63"``.
+
+    Matching notes:
+    * Whole-word (``\\b``) match so a short alias never matches inside a longer
+      token ("ai" must not match inside "gpai"; the registry has no bare "ai"
+      alias anyway, but the boundary makes it robust to future additions).
+    * Hyphen-tolerant: "general purpose ai model" (space) and
+      "general-purpose ai model" (hyphen) both match, by flattening hyphens to
+      spaces on BOTH sides before the boundary scan.
+    * Most-specific alias wins (the longest matching alias), so a question that
+      names "general-purpose AI model" resolves to Art. 3.63 even though "model"
+      / "ai system" might also be present; two DISTINCT definitions matching at
+      the same maximal length is treated as ambiguous → ``None``.
+
+    Designed for the route's reference-emission layer: the caller upgrades a
+    bare ``Article 3`` candidate to this sub-point. davidath-score-neutral
+    (the bench collapses references to article HEADS).
+    """
+    if not question or not question.strip():
+        return None
+    ql = _normalise(question).replace("-", " ")
+    if not ql:
+        return None
+
+    best_defn: Definition | None = None
+    best_len = 0
+    ambiguous = False
+    for defn in _DEFINITIONS:
+        defn_match_len = 0
+        for name in (defn.term, *defn.keywords):
+            norm = _normalise(name).replace("-", " ")
+            if not norm:
+                continue
+            if re.search(r"\b" + re.escape(norm) + r"\b", ql):
+                defn_match_len = max(defn_match_len, len(norm))
+        if defn_match_len == 0:
+            continue
+        if defn_match_len > best_len:
+            best_len = defn_match_len
+            best_defn = defn
+            ambiguous = False
+        elif defn_match_len == best_len and defn.citation != (
+            best_defn.citation if best_defn else None
+        ):
+            # Two equally-specific DISTINCT defined terms named — don't guess.
+            ambiguous = True
+
+    if best_defn is None or ambiguous:
+        return None
+    return best_defn.citation
+
+
 __all__ = [
     "Definition",
     "DEFINITION_REGISTRY",
     "lookup_term",
     "search_definitions",
+    "definition_citation_for_question",
 ]

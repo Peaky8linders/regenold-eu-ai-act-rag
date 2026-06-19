@@ -5694,6 +5694,50 @@ def regenold_eu_ai_act_ask(
             references, answer_text, floor=reconcile_floor
         )
 
+    # R130 — Article 3 definitional sub-point. The Regenold rules PDF allows a
+    # sub-point after a dot ("Article 3.1" for the "AI system" definition) and
+    # scores ``references`` against gold that uses them where applicable. The
+    # engine's R114 definitional anchor and the R103 attribution block both emit
+    # a BARE ``Article 3`` for "What is X?" questions; this upgrades it to the
+    # term's specific numbered point. Runs LAST so it covers every path
+    # (deterministic + Stage-2) and survives the upstream reconciles; the
+    # internal gate (bare Article 3 present AND a single defined term resolves)
+    # makes it a no-op on non-definitional questions and on framework-overview
+    # questions (no single sub-point applies). davidath-score-neutral — the
+    # bench collapses references to article heads (``Article 3.1`` → head
+    # ``Article 3``). Env-gated by the existing subpoint-emit flag.
+    if (
+        references
+        and retrieval_path != "no_match"
+        and os.getenv("REGENOLD_SUBPOINT_EMIT", "1").strip().lower()
+        in ("1", "true", "yes", "on")
+        and any(r.strip() in ("Article 3", "Art. 3") for r in references)
+    ):
+        try:
+            from app.data.definitions import (  # noqa: PLC0415
+                definition_citation_for_question,
+            )
+
+            _def_cit = definition_citation_for_question(live_user_message or question)
+            _def_ref = reference_from_article_ref(_def_cit) if _def_cit else None
+            if _def_ref:
+                _seen_def: set[str] = set()
+                _upgraded_refs: list[str] = []
+                for _r in references:
+                    if _r.strip() in ("Article 3", "Art. 3"):
+                        # Replace the first bare Article 3 with the sub-point;
+                        # drop any later bare-Article-3 duplicate (e.g. a parent
+                        # re-emitted by R87-C alongside the leaf).
+                        if _def_ref not in _seen_def:
+                            _upgraded_refs.append(_def_ref)
+                            _seen_def.add(_def_ref)
+                    elif _r not in _seen_def:
+                        _upgraded_refs.append(_r)
+                        _seen_def.add(_r)
+                references = _upgraded_refs
+        except Exception:  # noqa: BLE001 — never let the upgrade 500 the route
+            pass
+
     # Default response shape = competition spec only. Telemetry block
     # populated only when ?include_telemetry=true (and serialised via
     # response_model_exclude_none on the route, so unset Optional
