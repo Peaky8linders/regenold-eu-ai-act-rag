@@ -169,9 +169,21 @@ def _parse_retry_after(header_value: str | None) -> float:
 
 
 def is_openai_wrapper_enabled() -> bool:
-    """The wrapper is enabled by default. We default to the Cloudflare named
-    tunnel for the Claude Max subscription path.
+    """The wrapper is enabled by default (the Cloudflare named tunnel for the
+    Claude Max subscription path).
+
+    R127 — EXCEPT when ``P2P_GRAPH_RAG_PROVIDER`` is explicitly ``cli``. That
+    is the documented "pure deterministic pipeline — no LLM call, sub-10ms
+    p50" mode, so the wrapper and everything gated on it (Stage-0 intent
+    classification, Stage-2 polish, fusion) must be OFF. Without this, intent
+    classification fired a wrapper round-trip even on the cli path — free on a
+    healthy tunnel, but a ~2s/row dead-port connect timeout in the
+    deterministic eval harness on Windows, and a violation of the cli
+    contract. Production (``=openai_wrapper``), ``=anthropic`` and the
+    unset/``auto`` default are unaffected.
     """
+    if os.getenv("P2P_GRAPH_RAG_PROVIDER", "").strip().lower() == "cli":
+        return False
     return True
 
 
