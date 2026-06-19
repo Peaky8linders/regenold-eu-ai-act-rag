@@ -28,8 +28,15 @@ def _fusion_gate_all(monkeypatch):
     ``fusion_complete`` WITHOUT ``complex_question=True`` and expect the panel
     to fire, so open the gate for the module by default. The dedicated gate
     tests override this with their own ``setenv`` (the test body's monkeypatch
-    runs after this fixture, so it wins)."""
+    runs after this fixture, so it wins).
+
+    R127 — also pin ``REGENOLD_FUSION_JUDGE=llm`` so the historical
+    ``fusion_complete`` tests (which mock the wrapper judge call) keep
+    exercising the Sonnet SELECT-and-polish judge. The new R127 deterministic
+    DEFAULT is covered by ``TestDeterministicJudge``, whose tests override this
+    with their own ``setenv`` / ``delenv``."""
     monkeypatch.setenv("REGENOLD_FUSION_GATE", "all")
+    monkeypatch.setenv("REGENOLD_FUSION_JUDGE", "llm")
 
 
 # ── env gating ────────────────────────────────────────────────────────────────
@@ -517,3 +524,96 @@ def test_panel_members_get_per_transport_timeout(monkeypatch):
     assert seen.get("wrapper") == 60.0
     assert seen.get("groq") == 20.0
     assert seen.get("mistral") == 20.0
+
+
+# ── R127 — deterministic SELECT judge (default; $0, no extra tunnel call) ─────
+
+class TestDeterministicJudge:
+    def test_default_judge_mode_is_deterministic(self, monkeypatch):
+        monkeypatch.delenv("REGENOLD_FUSION_JUDGE", raising=False)
+        assert fusion.fusion_judge_mode() == "deterministic"
+
+    def test_judge_mode_llm_override(self, monkeypatch):
+        monkeypatch.setenv("REGENOLD_FUSION_JUDGE", "llm")
+        assert fusion.fusion_judge_mode() == "llm"
+
+    def test_judge_mode_unknown_falls_back_deterministic(self, monkeypatch):
+        monkeypatch.setenv("REGENOLD_FUSION_JUDGE", "banana")
+        assert fusion.fusion_judge_mode() == "deterministic"
+
+    def test_prefers_wrapper_draft_on_tie(self):
+        # Same grounding (all cite Article 50) → the wrapper (Claude) draft
+        # wins the tie-break, keeping the wire prose on the Max subscription.
+        user = "QUESTION: x\n\nEU AI ACT REFERENCES:\n- Article 50"
+        drafts = [
+            ("groq", "Article 50 transparency applies to the deployer here."),
+            ("sonnet", "Article 50 requires the deployer to inform exposed persons."),
+            ("mistral", "Article 50 obliges deployers to disclose AI use clearly."),
+        ]
+        assert fusion._deterministic_judge(user, drafts) == (
+            "Article 50 requires the deployer to inform exposed persons."
+        )
+
+    def test_penalises_hallucinated_ref_over_wrapper_bonus(self):
+        # The wrapper draft cites a NON-retrieved Article 99 (-3.0) which beats
+        # its +1.5 wrapper bonus, so the clean Groq draft wins.
+        user = "QUESTION: x\n\nEU AI ACT REFERENCES:\n- Article 50"
+        drafts = [
+            ("sonnet", "Article 99 sets the penalties and Article 50 transparency applies here."),
+            ("groq", "Article 50 requires the deployer to inform exposed persons of AI use."),
+        ]
+        assert fusion._deterministic_judge(user, drafts).startswith(
+            "Article 50 requires"
+        )
+
+    def test_drops_truncated_drafts(self, monkeypatch):
+        monkeypatch.setattr(
+            fusion, "_looks_truncated", lambda t: t.startswith("Article 50 requires the")
+        )
+        user = "QUESTION: x\n\nEU AI ACT REFERENCES:\n- Article 50"
+        drafts = [
+            ("sonnet", "Article 50 requires the"),  # truncated → skipped
+            ("groq", "Article 50 obliges deployers to inform exposed persons of AI use."),
+        ]
+        assert fusion._deterministic_judge(user, drafts).startswith("Article 50 obliges")
+
+    def test_all_unusable_returns_none(self, monkeypatch):
+        monkeypatch.setattr(fusion, "_looks_truncated", lambda _t: True)
+        assert fusion._deterministic_judge("u", [("sonnet", "x"), ("groq", "y")]) is None
+
+    def test_fusion_complete_deterministic_makes_no_judge_call(self, monkeypatch):
+        monkeypatch.setenv("REGENOLD_FUSION_JUDGE", "deterministic")
+
+        def _sonnet_panel_only(req):
+            # A judge call would carry the FUSION JUDGE marker — must NOT happen.
+            assert "FUSION JUDGE" not in (req.user or ""), "deterministic mode must not call the LLM judge"
+            return OpenAIWrapperResponse(
+                text="Article 50 requires the deployer to inform exposed persons."
+            )
+
+        wrapper = _FakeProvider({"claude-sonnet-4-6": _sonnet_panel_only})
+        ok = _FakeProvider({
+            "llama-3.3-70b-versatile": lambda r: OpenAIWrapperResponse(
+                text="Groq draft about Article 50 transparency here."
+            ),
+            "mistral-large-latest": lambda r: OpenAIWrapperResponse(
+                text="Mistral draft about Article 50 transparency here."
+            ),
+        })
+        _wire_three_transports(monkeypatch, wrapper=wrapper, groq=ok, mistral=ok)
+        out = fusion.fusion_complete(
+            system="SYS",
+            user="QUESTION: x\n\nEU AI ACT REFERENCES:\n- Article 50",
+            max_tokens=512,
+        )
+        # Wrapper (sonnet) panel draft is preferred (tie-break) + returned verbatim.
+        assert out == "Article 50 requires the deployer to inform exposed persons."
+
+    def test_engine_cache_key_includes_judge_mode(self, monkeypatch):
+        from app.routes.regenold import _engine_cache_key
+
+        monkeypatch.setenv("REGENOLD_FUSION_JUDGE", "deterministic")
+        k_det = _engine_cache_key("q", None)
+        monkeypatch.setenv("REGENOLD_FUSION_JUDGE", "llm")
+        k_llm = _engine_cache_key("q", None)
+        assert k_det != k_llm

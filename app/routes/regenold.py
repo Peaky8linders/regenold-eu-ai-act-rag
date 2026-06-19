@@ -1309,6 +1309,10 @@ def _engine_cache_key(
             # panel drafts land in time. Both belong in the cache identity.
             "REGENOLD_FUSION_GATE",
             "REGENOLD_FUSION_FAST_TIMEOUT",
+            # R127 — the judge MODE (deterministic SELECT vs llm
+            # SELECT-and-polish) picks a different final answer, so it flips
+            # the cached GraphRAGResponse.answer. Same cache-poisoning doctrine.
+            "REGENOLD_FUSION_JUDGE",
         )
     )
     import json

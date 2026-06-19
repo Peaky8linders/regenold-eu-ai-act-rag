@@ -42,24 +42,30 @@ P2P_GRAPH_RAG_ENABLE_STAGE2 = "1"
 REGENOLD_INTENT_PROVIDER = "groq"
 REGENOLD_LOGIC_RAG = "1"
 
-# R-Fusion — Mixture-of-Agents Stage-2 (app/engines/fusion.py). On every
-# Stage-2 synthesis, a diverse panel answers in parallel — Sonnet 4.6 (Claude
-# Max via the Cloudflare tunnel) + Groq Llama 3.3 70B + Mistral Large — then
-# Claude Opus 4.8 (also via Max) JUDGES the drafts (consensus / contradictions /
-# blind spots) and synthesises the single best answer, reusing the exact same
-# EU AI Act references block. The OpenRouter "Fusion" principle, run on the flat
-# Max subscription + cheap serverless tokens instead of per-completion billing.
+# R-Fusion — Mixture-of-Agents Stage-2 (app/engines/fusion.py). On a complex
+# Stage-2 synthesis, a diverse panel answers in parallel — Opus 4.8 (Claude
+# Max via the Cloudflare tunnel) + Groq Llama 3.3 70B + Mistral Large — then a
+# JUDGE picks the single best draft, reusing the exact same EU AI Act
+# references block. The OpenRouter "Fusion" principle, run on the flat Max
+# subscription + cheap serverless tokens instead of per-completion billing.
 # Requires GROQ_API_KEY + MISTRAL_API_KEY (dashboard secrets) for the full
 # 3-model panel; with fewer than 2 panel transports live it falls through to the
 # single-Sonnet Stage-2 (fail-soft, never breaks the wire). Default ON in CODE
 # (fusion.fusion_stage2_enabled) per the R80.2 dashboard-override lesson; this
 # entry documents intent + rollback. Disable with:
 #   railway variables --set REGENOLD_FUSION_STAGE2=0
+# R127 — the JUDGE is now DETERMINISTIC by default (fusion.fusion_judge_mode):
+# it SELECTS the best panel draft with a pure-Python rubric scorer + NO extra
+# LLM call, removing the second serialized Max-tunnel round-trip (panel→judge)
+# and roughly halving complex-question latency, while keeping generation 100%
+# on Max ($0). Restore the historical Sonnet SELECT-and-polish LLM judge with:
+#   railway variables --set REGENOLD_FUSION_JUDGE=llm
 # Tune the panel / judge:
 #   REGENOLD_FUSION_PANEL="sonnet,groq,mistral"   (also: opus, gemini)
-#   REGENOLD_FUSION_JUDGE_MODEL="claude-opus-4-8"
+#   REGENOLD_FUSION_JUDGE_MODEL="claude-sonnet-4-6"   (only used when JUDGE=llm)
 #   REGENOLD_FUSION_MIN_CANDIDATES="2"   REGENOLD_FUSION_TIMEOUT="60"
 REGENOLD_FUSION_STAGE2 = "1"
+REGENOLD_FUSION_JUDGE = "deterministic"
 # R124 — fusion LATENCY optimisation. The panel + judge cost 2 wrapper
 # round-trips on the single slow Max tunnel, so we (a) GATE the panel to fire
 # only on complex questions — simple questions take the cheaper single-Sonnet

@@ -102,6 +102,7 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 import os
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -382,6 +383,98 @@ def _looks_truncated(text: str) -> bool:
         return False
 
 
+# ── R127 — deterministic SELECT judge (default; $0, no extra tunnel call) ─────
+
+_JUDGE_MODE_VALUES = ("deterministic", "llm")
+
+_ART_RE = re.compile(r"\bArticle\s+(\d+)", re.IGNORECASE)
+_ANNEX_RE = re.compile(r"\bAnnex\s+([IVXLCDM]+)\b", re.IGNORECASE)
+_FIRST_PERSON_MARKERS = (" i ", " we ", " our ", " us ", " you ", " your ", "let me", "let us")
+_DASH_MARKERS = ("—", "–", "...", "…")
+
+
+def fusion_judge_mode() -> str:
+    """How the panel drafts are reduced to the final answer.
+
+    ``deterministic`` (R127 DEFAULT) — SELECT the single best panel draft with
+    a pure-Python rubric-proxy scorer and NO extra LLM call. The panel drafts
+    are already full Stage-2 answers (each ran the complete Stage-2
+    system+user prompt), so selecting one IS a complete answer. This removes
+    the SECOND serialized Claude-Max-tunnel round-trip the LLM judge cost
+    (panel wrapper member → judge), roughly halving complex-question latency,
+    while keeping generation 100% on the Max subscription ($0 marginal). The
+    downstream route normalisation (tone_guard, dash-strip, reference
+    reconcile, validate_llm_output) does the "light tightening" the LLM judge
+    used to do inline.
+
+    ``llm`` — the historical Sonnet SELECT-and-polish judge (one extra wrapper
+    round-trip). Restore with ``REGENOLD_FUSION_JUDGE=llm``. Unknown values
+    resolve to ``deterministic``.
+    """
+    v = os.getenv("REGENOLD_FUSION_JUDGE", "deterministic").strip().lower()
+    return v if v in _JUDGE_MODE_VALUES else "deterministic"
+
+
+def _refs_in(text: str) -> set[str]:
+    arts = {f"Article {m.group(1)}" for m in _ART_RE.finditer(text or "")}
+    annexes = {f"Annex {m.group(1).upper()}" for m in _ANNEX_RE.finditer(text or "")}
+    return arts | annexes
+
+
+def _allowed_refs_from_user(user: str) -> set[str]:
+    """References the drafts may cite — parsed from the Stage-2 ``user``
+    message (which carries the ``EU AI ACT REFERENCES`` block). A draft citing
+    a ref OUTSIDE this set hallucinated it (the retrieval never surfaced it)."""
+    return _refs_in(user or "")
+
+
+def _score_draft(text: str, allowed: set[str], transport: str) -> float:
+    """Rubric-proxy score for SELECT (higher = better).
+
+    Not the final word on correctness — its job is to prefer the frontier
+    Claude (wrapper) draft UNLESS it is structurally broken (truncated /
+    empty / cites a non-retrieved ref), in which case a clean alternative
+    wins. Tone / dash penalties are light tie-breakers (downstream route
+    normalisation cleans those anyway)."""
+    t = (text or "").strip()
+    if not t:
+        return float("-inf")
+    score = 0.0
+    cited = _refs_in(t)
+    if allowed:
+        hallucinated = cited - allowed
+        score -= 3.0 * len(hallucinated)       # cites a ref the retrieval never surfaced
+        if cited & allowed:
+            score += 1.0                        # grounds in >=1 allowed ref
+    low = f" {t.lower()} "
+    score -= 0.5 * sum(low.count(m) for m in _FIRST_PERSON_MARKERS)
+    score -= 0.25 * sum(t.count(m) for m in _DASH_MARKERS)
+    if len(t) < 40:
+        score -= 3.0                            # stub / non-answer
+    if transport == "wrapper":
+        score += 1.5                            # frontier Claude + keeps wire on Max
+    return score
+
+
+def _deterministic_judge(user: str, drafts: list[tuple[str, str]]) -> str | None:
+    """SELECT the best panel draft (verbatim) with no extra LLM call.
+
+    Drops truncated / empty drafts, scores the rest, returns the top draft's
+    text. ``None`` only when every draft is unusable, so the caller falls
+    through to the single-provider Stage-2 path."""
+    allowed = _allowed_refs_from_user(user)
+    best_text: str | None = None
+    best_score = float("-inf")
+    for label, text in drafts:
+        if not text or not text.strip() or _looks_truncated(text):
+            continue
+        transport = _PANEL_REGISTRY.get(label, ("", ""))[1]
+        s = _score_draft(text, allowed, transport)
+        if s > best_score:
+            best_score, best_text = s, text.strip()
+    return best_text
+
+
 def fusion_complete(
     *,
     system: str,
@@ -461,6 +554,27 @@ def fusion_complete(
     if len(drafts) < _min_candidates():
         _trace(f"fusion_skip too_few_drafts={len(drafts)}/{len(panel)}")
         return None
+
+    # R127 — deterministic SELECT judge (default). Pick the best panel draft
+    # with NO extra LLM call, removing the second serialized Claude-Max-tunnel
+    # round-trip the LLM judge cost. Generation stays 100% on the Max
+    # subscription ($0). ``REGENOLD_FUSION_JUDGE=llm`` restores the Sonnet
+    # SELECT-and-polish judge below.
+    if fusion_judge_mode() == "deterministic":
+        _panel = ",".join(label for label, _ in drafts)
+        chosen = _deterministic_judge(user, drafts)
+        if not chosen:
+            _trace(f"fusion_judge_det_unusable panel=[{_panel}] drafts={len(drafts)}")
+            return None
+        _trace(
+            f"fusion_judge_landed judge=deterministic panel=[{_panel}] "
+            f"drafts={len(drafts)}"
+        )
+        logger.info(
+            "fusion.judged judge=deterministic panel=[%s] drafts=%d",
+            _panel, len(drafts),
+        )
+        return chosen
 
     # Judge: Sonnet 4.6 via the Max wrapper. Reuse the SAME ``system`` (carries
     # the full Stage-2 rubric) and append the drafts + the SELECT-and-polish
