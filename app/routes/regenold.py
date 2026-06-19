@@ -2131,13 +2131,26 @@ def _suppress_noise_anchors(
     if not more_specific_present:
         return list(candidates)
 
+    # R128 — Article 6(2) is the operative high-risk *classification* article
+    # for every Annex III system. When an Annex III candidate survives, dropping
+    # Art. 6 as a "broad" anchor is never correct: it strips the gold
+    # classification basis. This was the live grb_04 healthcare-eligibility
+    # failure — retrieval lost Art. 6 (no explicit `high-risk`/`classify` token
+    # in "what does the Act require for an AI system that evaluates eligibility
+    # …"), so Stage-2 then free-associated the generic HRAIS obligation chain
+    # (Arts. 10/11/16/17). The Annex-III co-occurrence is the precise signal
+    # that the broad-anchor drop of Art. 6 is unsafe.
+    annex_iii_present = any(
+        c == "Annex III" or c.startswith("Annex III.") for c in candidates
+    )
+
     drop: set[str] = set()
     for c, b in zip(candidates, bases, strict=False):
         if b == "3" and not definitional:
             drop.add(c)
         elif b == "51" and not gpai:
             drop.add(c)
-        elif b == "6" and not high_risk:
+        elif b == "6" and not high_risk and not annex_iii_present:
             drop.add(c)
         elif b == "5" and not prohibition:
             drop.add(c)
