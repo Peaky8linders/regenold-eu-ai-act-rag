@@ -33,6 +33,38 @@ from typing import Any
 from evals.bench import metrics as M
 from evals.regenold.runner_v2 import _keyword_recall, _post, _ref_metrics
 
+try:  # R130 — exact sub-point gold curated from the reviewer remarks.
+    from evals.regenold.antifragile_subpoint_gold import ANTIFRAGILE_SUBPOINT_GOLD
+except ImportError:  # pragma: no cover — fallback so the head-level run still works.
+    ANTIFRAGILE_SUBPOINT_GOLD = {}
+
+
+def _subpoint_metrics(pred_refs: list[str], gold_refs: list[str]) -> dict[str, float]:
+    """Sub-point-EXACT reference set-F1 (the axis R130 lifts).
+
+    Unlike :func:`_ref_metrics` (which collapses to article HEADS), this scores
+    the full wire ref string ("Article 5.1.f", "Annex IV.1.e") against the
+    reviewer's exact corrected sub-point gold. A head-only prediction
+    ("Article 5") when the gold is a leaf ("Article 5.1.f") counts as a MISS —
+    so the score directly measures whether the system emits the right sub-point.
+    """
+    p = {r.strip() for r in pred_refs if r and r.strip()}
+    g = {r.strip() for r in gold_refs if r and r.strip()}
+    if not g and not p:
+        return {"loose": 1.0, "strict": 1.0, "conciseness": 1.0}
+    if not g or not p:
+        return {"loose": 0.0, "strict": 0.0, "conciseness": 0.0}
+    overlap = len(p & g)
+    loose = overlap / len(g)  # recall of gold sub-point refs
+    if overlap == 0:
+        strict = 0.0
+    else:
+        precision = overlap / len(p)
+        recall = overlap / len(g)
+        strict = 2 * precision * recall / (precision + recall)
+    ratio = min(len(p), len(g)) / max(len(p), len(g))
+    return {"loose": loose, "strict": strict, "conciseness": ratio * ratio}
+
 LIVE_ENDPOINT = (
     "https://regenold-eu-ai-act-rag-production.up.railway.app"
     "/api/v1/regenold/eu-ai-act/ask"
@@ -136,6 +168,12 @@ def _score_row(qid: str, gt: dict, body: dict, latency_ms: float,
     gold_answer = gt.get("gold_answer", "")
     gold_refs = _norm_refs(gt.get("gold_refs", []))
     refm = _ref_metrics(refs, gold_refs)
+    # R130 — exact sub-point reference scoring against the reviewer's corrected
+    # citations (incl. sub-points). Falls back to the head-level gold when no
+    # curated sub-point gold exists for the row.
+    _sp_entry = ANTIFRAGILE_SUBPOINT_GOLD.get(qid, {})
+    gold_subpoint_refs = _sp_entry.get("refs", gold_refs)
+    refm_sp = _subpoint_metrics(refs, gold_subpoint_refs)
     answer_low = _norm(answer)
     mistakes = gt.get("mistakes", [])
     resolved = [m for m in mistakes if _mistake_resolved(answer_low, refs, m)]
@@ -156,6 +194,11 @@ def _score_row(qid: str, gt: dict, body: dict, latency_ms: float,
         "ref_loose": refm["loose"],
         "ref_strict": refm["strict"],
         "ref_conciseness": refm["conciseness"],
+        # R130 — sub-point-exact reference correctness vs the reviewer's gold.
+        "gold_subpoint_refs": gold_subpoint_refs,
+        "ref_subpoint_loose": refm_sp["loose"],
+        "ref_subpoint_strict": refm_sp["strict"],
+        "ref_subpoint_conciseness": refm_sp["conciseness"],
         "regulatory_tone": M.regulatory_tone(answer),
         "keyword_recall": _keyword_recall(answer, gt.get("expected_keywords", [])),
         # mistake resolution
@@ -275,6 +318,9 @@ def _aggregate_af(rows: list[dict]) -> dict:
         "ref_loose": _mean([r["ref_loose"] for r in ok]),
         "ref_strict": _mean([r["ref_strict"] for r in ok]),
         "ref_conciseness": _mean([r["ref_conciseness"] for r in ok]),
+        "ref_subpoint_loose": _mean([r.get("ref_subpoint_loose", 0.0) for r in ok]),
+        "ref_subpoint_strict": _mean([r.get("ref_subpoint_strict", 0.0) for r in ok]),
+        "ref_subpoint_conciseness": _mean([r.get("ref_subpoint_conciseness", 0.0) for r in ok]),
         "regulatory_tone": _mean([r["regulatory_tone"] for r in ok]),
         "keyword_recall": _mean([r["keyword_recall"] for r in ok]),
         "mistakes_total": mt_total, "mistakes_resolved": mt_fixed,
