@@ -509,9 +509,10 @@ def test_panel_members_get_per_transport_timeout(monkeypatch):
     monkeypatch.setenv("REGENOLD_FUSION_FAST_TIMEOUT", "20")
     seen: dict[str, float] = {}
 
-    def _capture(label, model, transport, *, system, user, max_tokens, temperature, timeout):
+    def _capture(label, model, transport, *, system, user, max_tokens,
+                 temperature, timeout, thinking_budget=0):
         seen[transport] = timeout
-        return label, f"draft from {label}"
+        return label, f"draft from {label}", ""
 
     monkeypatch.setattr(fusion, "_one_candidate", _capture)
     wrapper = _FakeProvider({
@@ -617,3 +618,107 @@ class TestDeterministicJudge:
         monkeypatch.setenv("REGENOLD_FUSION_JUDGE", "llm")
         k_llm = _engine_cache_key("q", None)
         assert k_det != k_llm
+
+
+# ── R131.3 — real Opus extended-thinking surfaced on the fusion path ─────────
+
+
+class TestR131_3FusionThinking:
+    """The wrapper-bound (Opus) panel member requests extended thinking on a
+    complex question and its real chain-of-thought is recorded into the
+    reasoning trace so ?include_reasoning=true + the UI 🧠 panel show genuine
+    model reasoning (previously EMPTY on the fusion/deterministic-judge path)."""
+
+    def test_opus_thinking_recorded_into_trace(self, monkeypatch):
+        from app.config import settings
+        from app.integrations.regenold import reasoning_trace as rt
+
+        # Production default judge (R127): deterministic SELECT, no wrapper
+        # judge round-trip — the opus-only fake serves the panel draft cleanly,
+        # and the thinking-record fires before the judge branch regardless.
+        monkeypatch.setenv("REGENOLD_FUSION_JUDGE", "deterministic")
+        orig = settings.graph_rag.complex_thinking_tokens
+        settings.graph_rag.complex_thinking_tokens = 1024
+        seen_headers: dict[str, str] = {}
+
+        def _opus_panel(req):
+            seen_headers.update(req.extra_headers or {})
+            return OpenAIWrapperResponse(
+                text="Article 51 classifies a GPAI model as systemic risk at "
+                     "10^25 FLOPs.",
+                thinking="Reasoning: the question asks about GPAI systemic risk; "
+                         "Article 51 sets the 10^25 FLOPs threshold and the "
+                         "Commission designation route.",
+                model="claude-opus-4-8",
+            )
+
+        wrapper = _FakeProvider({"claude-opus-4-8": _opus_panel})
+        groq = _FakeProvider({
+            "llama-3.3-70b-versatile": lambda r: OpenAIWrapperResponse(
+                text="GPAI is systemic under Article 51."
+            )
+        })
+        mistral = _FakeProvider({
+            "mistral-large-latest": lambda r: OpenAIWrapperResponse(
+                text="Article 51 governs systemic GPAI."
+            )
+        })
+        _wire_three_transports(monkeypatch, wrapper=wrapper, groq=groq, mistral=mistral)
+
+        trace = rt.activate()
+        try:
+            out = fusion.fusion_complete(
+                system="SYS",
+                user="Q: GPAI systemic?\n\nEU AI ACT REFERENCES:\n- Article 51",
+                max_tokens=512,
+                complex_question=True,
+            )
+            thinking_blob = dict(trace.llm_thinking)
+        finally:
+            rt.deactivate()
+            settings.graph_rag.complex_thinking_tokens = orig
+
+        assert out is not None
+        # The wrapper (Opus) member was asked for extended thinking.
+        assert seen_headers.get("X-Claude-Max-Thinking-Tokens") == "1024"
+        # The REAL Opus chain-of-thought is recorded under a Fusion-panel stage.
+        assert any("Fusion panel" in stage for stage in thinking_blob), thinking_blob
+        assert any("Reasoning:" in txt for txt in thinking_blob.values()), thinking_blob
+
+    def test_no_thinking_header_when_budget_zero(self, monkeypatch):
+        """Budget 0 → no header on the wrapper member; trace thinking stays empty."""
+        from app.config import settings
+        from app.integrations.regenold import reasoning_trace as rt
+
+        monkeypatch.setenv("REGENOLD_FUSION_JUDGE", "deterministic")
+        orig = settings.graph_rag.complex_thinking_tokens
+        settings.graph_rag.complex_thinking_tokens = 0
+        seen_headers: dict[str, str] = {}
+
+        def _opus_panel(req):
+            seen_headers.update(req.extra_headers or {})
+            return OpenAIWrapperResponse(text="Art 51 systemic GPAI.", model="claude-opus-4-8")
+
+        wrapper = _FakeProvider({"claude-opus-4-8": _opus_panel})
+        groq = _FakeProvider({
+            "llama-3.3-70b-versatile": lambda r: OpenAIWrapperResponse(text="Art 51.")
+        })
+        mistral = _FakeProvider({
+            "mistral-large-latest": lambda r: OpenAIWrapperResponse(text="Art 51.")
+        })
+        _wire_three_transports(monkeypatch, wrapper=wrapper, groq=groq, mistral=mistral)
+
+        trace = rt.activate()
+        try:
+            out = fusion.fusion_complete(
+                system="SYS", user="Q\n\nEU AI ACT REFERENCES:\n- Article 51",
+                max_tokens=512, complex_question=True,
+            )
+            thinking_blob = dict(trace.llm_thinking)
+        finally:
+            rt.deactivate()
+            settings.graph_rag.complex_thinking_tokens = orig
+
+        assert out is not None
+        assert "X-Claude-Max-Thinking-Tokens" not in seen_headers
+        assert thinking_blob == {}

@@ -279,14 +279,32 @@ def _trace(msg: str) -> None:
 def _one_candidate(
     label: str, model: str, transport: str, *, system: str, user: str,
     max_tokens: int, temperature: float, timeout: float,
-) -> tuple[str, str | None]:
-    """Run one panel member. Returns ``(label, text_or_None)``. Never raises."""
+    thinking_budget: int = 0,
+) -> tuple[str, str | None, str]:
+    """Run one panel member. Returns ``(label, text_or_None, thinking)``.
+
+    R131.3 — ``thinking`` carries the model's extended-thinking text
+    (``reasoning_content``) when the member is the wrapper-bound member (the
+    R124 swap-not-add Opus on a complex question) AND ``thinking_budget > 0``,
+    so the real Opus chain-of-thought surfaces in the ``?include_reasoning=true``
+    trace + the UI 🧠 panel on the fusion (complex) path. Empty for the
+    non-wrapper members (Groq / Mistral return no separate reasoning) and when
+    the budget is 0. Never raises.
+    """
     try:
         from app.llm.openai_wrapper_provider import OpenAIWrapperRequest  # noqa: PLC0415
 
         provider = _provider_for(transport)
         if provider is None:
-            return label, None
+            return label, None, ""
+        # R131.3 — request extended thinking on the wrapper-bound member when a
+        # budget is configured. Only the wrapper transport honours the header;
+        # Groq / Mistral ignore it. Clamp mirrors graph_rag's [1024, 16000].
+        extra_headers: dict[str, str] = {}
+        if transport == "wrapper" and thinking_budget > 0:
+            extra_headers["X-Claude-Max-Thinking-Tokens"] = str(
+                max(1024, min(thinking_budget, 16000))
+            )
         resp = provider.complete(
             OpenAIWrapperRequest(
                 system=system,
@@ -295,18 +313,20 @@ def _one_candidate(
                 max_tokens=max_tokens,
                 temperature=temperature,
                 timeout_seconds=timeout,
+                extra_headers=extra_headers,
             )
         )
+        thinking = (getattr(resp, "thinking", "") or "").strip()
         if resp.error:
             logger.info("fusion.panel_member_error label=%s err=%s", label, resp.error[:120])
-            return label, None
+            return label, None, thinking
         text = (resp.text or "").strip()
         if not text:
-            return label, None
-        return label, text
+            return label, None, thinking
+        return label, text, thinking
     except Exception as exc:  # noqa: BLE001 — a panel member never breaks fusion
         logger.info("fusion.panel_member_exc label=%s exc=%s", label, exc)
-        return label, None
+        return label, None, ""
 
 
 def _build_judge_user(user: str, drafts: list[tuple[str, str]]) -> str:
@@ -525,6 +545,22 @@ def fusion_complete(
     timeout = _timeout_seconds()
     fast_timeout = _fast_timeout_seconds()
 
+    # R131.3 — surface the wrapper member's (Opus) real extended-thinking on the
+    # complex/fusion path. Budget from settings (clamped in _one_candidate);
+    # only the wrapper transport honours the header. Collected per-member and
+    # recorded into the reasoning trace in the MAIN thread below (the trace
+    # ContextVar is not visible to the panel worker threads).
+    _think_budget = 0
+    if complex_question:
+        try:
+            from app.config import settings as _settings  # noqa: PLC0415
+            _think_budget = int(
+                getattr(_settings.graph_rag, "complex_thinking_tokens", 0) or 0
+            )
+        except Exception:  # noqa: BLE001
+            _think_budget = 0
+    panel_thinking: dict[str, str] = {}
+
     drafts: list[tuple[str, str]] = []
     try:
         # All panel members fire concurrently (one thread each). The single
@@ -544,14 +580,17 @@ def fusion_complete(
                     # hung serverless call can't hold the barrier for the full
                     # wrapper timeout.
                     timeout=(fast_timeout if transport in _FAST_TRANSPORTS else timeout),
+                    thinking_budget=_think_budget,
                 ): label
                 for (label, model, transport) in panel
             }
             for fut in concurrent.futures.as_completed(futures, timeout=timeout + 15):
                 try:
-                    label, text = fut.result()
+                    label, text, thinking = fut.result()
                 except Exception:  # noqa: BLE001
                     continue
+                if thinking:
+                    panel_thinking[label] = thinking
                 if text:
                     drafts.append((label, text))
     except Exception as exc:  # noqa: BLE001 — pool/timeout never breaks fusion
@@ -560,6 +599,23 @@ def fusion_complete(
     if len(drafts) < _min_candidates():
         _trace(f"fusion_skip too_few_drafts={len(drafts)}/{len(panel)}")
         return None
+
+    # R131.3 — record the wrapper member's REAL extended-thinking (Opus CoT)
+    # into the reasoning trace so ``?include_reasoning=true`` + the UI 🧠 panel
+    # show genuine model reasoning on the complex/fusion path. It was empty
+    # before: the deterministic-judge branch returns below without recording,
+    # and the panel members never requested / captured thinking. Runs in the
+    # MAIN thread (the trace ContextVar isn't visible to the panel workers) so
+    # it fires for BOTH judge modes. Fail-soft — the trace is optional.
+    if panel_thinking:
+        try:
+            from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                record_llm_thinking,
+            )
+            for _lbl, _txt in panel_thinking.items():
+                record_llm_thinking(_txt, stage=f"Stage 2 (Fusion panel: {_lbl})")
+        except Exception:  # noqa: BLE001 — trace is optional
+            pass
 
     # R127 — deterministic SELECT judge (default). Pick the best panel draft
     # with NO extra LLM call, removing the second serialized Claude-Max-tunnel
