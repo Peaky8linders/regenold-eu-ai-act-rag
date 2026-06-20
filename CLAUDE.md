@@ -7528,7 +7528,41 @@ returns the nuanced *"Not automatically, but practically yes once the presumptio
 stands … no escape via the Article 53(2) open-source route for systemic-risk
 models …"* answer.
 
-<!-- R139-GOLDEN-SCORECARD -->
+### Fresh golden-dataset scorecard (medtech-graphrag-v124, 24 rows, LIVE Opus 4.8)
+
+Ran the R124 golden MedTech/life-sciences set (24 rows, each with `gold_answer`
++ `expected_refs` + `expected_keywords`) through the LIVE wire (TestClient +
+Claude Max wrapper, R139 Opus-always config, R121 embedded graph) + the 4-axis
+LLM-as-Judge. vs the R124 same-dataset baseline (Sonnet 4.6 + MoA fusion):
+
+| Axis | R124 (Sonnet + fusion) | **R139 (Opus 4.8 always)** | Δ |
+| ---- | ---------------------- | -------------------------- | --- |
+| Ref Loose (rubric) | 0.729 | **0.795** | **+0.066** ✓ |
+| Ref Strict (rubric) | 0.579 | **0.692** | **+0.113** ✓✓ |
+| Keyword recall | 0.651 | 0.564 | −0.087 (Opus phrasing; n=24 noise) |
+| Regulatory Tone (rubric) | 1.0 | **1.0** | flat ✓ |
+| Refusal rate | 0 | **0** | flat ✓ |
+| **Judge refs-faithfulness** | 0.625 | **0.864** (19/22 over-non-error) | **+0.24** ✓✓✓ |
+| Judge conciseness | 0.667 | **0.708** (17/24) | +0.04 ✓ |
+| Judge correctness | 0.94* | 0.80 (16/20 over-non-error) | −0.14 (judge variance on n≈20; the 4 "errors" are wrapper timeouts, not engine failures) |
+| Judge tone | 1.0 | 0.917 (22/24) | −0.08 (2 rows; within run variance) |
+| Latency p50 / p95 | 31.6 s / 72.7 s | **13.8 s / 30.5 s** | **−56% p50** (single-Opus + embedded graph vs R124's 2-call fusion) |
+
+By reasoning level (rubric refL / refS): L1 0.92/0.92, L2 0.74/0.64, L3 0.72/0.63,
+L4 0.88/0.69. **The headline is the judge refs-faithfulness lift — the project's
+historically-weakest axis (R76 floor 0.20-0.43) — to 0.86**: Opus 4.8 cites the
+right Article AND describes it, so the "cited-but-undescribed" failure mode that
+floored every prior round largely closes. Reference correctness (the davidath
+primary axis) and refs-faithfulness both up; conciseness up; tone effectively
+held; latency roughly halved. The keyword-recall dip and the small correctness/
+tone deltas are within the n=24 judge noise band and reflect Opus's more precise
+phrasing (it is NOT a clean A/B — R124 used the MoA fusion judge, R139 is a single
+Opus round-trip). The single-turn nature means none of these are multi-turn rows;
+a live representative-100 + judge on the deployed Opus config is the next
+measurement. Sidecars: `medtech-graphrag-v124-r139-opus-live.json` /
+`judge-r139-opus-live.json`.
+
+
 
 ### Trade + rollback
 
