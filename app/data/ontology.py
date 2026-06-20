@@ -777,6 +777,28 @@ def obligations_for(role: ActorRole, risk_class: RiskClass) -> tuple[str, ...]:
     return ROLE_OBLIGATIONS.get(role, {}).get(risk_class, ())
 
 
+def validate_legal_triple(
+    article: str, role: ActorRole, risk_class: RiskClass
+) -> bool:
+    """Return True iff ``(article, role, risk_class)`` is a LEGAL triple.
+
+    R138 — the ontology-constraint validation predicate the "semantic
+    layer" post calls for ("a triple that violates the schema is caught
+    before it reaches the LLM"). A triple is legal iff ``article`` is in
+    the obligation set the ontology binds to ``(role, risk_class)``.
+
+    This is the queryable form of :func:`obligations_for`. Its main job is
+    as a CI guardrail (see ``tests/test_kb_consistency.py``): it lets a
+    lint assert that no provider-only duty (conformity assessment Art. 43,
+    EU declaration Art. 47, CE marking Art. 48) is cross-wired onto a
+    non-provider role, and that the GPAI authorised-representative article
+    (Art. 54) sits only under :data:`ActorRole.AUTHORISED_REPRESENTATIVE`
+    — the exact class of silent bug the May-2026 ontology audit caught by
+    hand. Pure lookup; never raises.
+    """
+    return article in ROLE_OBLIGATIONS.get(role, {}).get(risk_class, ())
+
+
 # ── Public API ───────────────────────────────────────────────────────────
 
 
@@ -798,4 +820,5 @@ __all__ = [
     "category_for_keyword",
     "all_articles_referenced",
     "obligations_for",
+    "validate_legal_triple",
 ]

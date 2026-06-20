@@ -141,6 +141,20 @@ REGENOLD_GRAPH_AWARE = "1"
 # intent documentation. Disable explicitly with REGENOLD_SUFFICIENT_CONTEXT=0.
 REGENOLD_SUFFICIENT_CONTEXT = "1"
 
+# R138 — SEMANTIC CONTRACT pre-generation validator (the ontology/KG/
+# semantic-layer architecture's genuine ~12% gap: enforce the semantic
+# contract BEFORE the LLM generates, not only via post-generation guards).
+# A short deterministic advisory derived from the GROUNDED references is
+# injected into the Stage-2 context: the high-risk obligation chain present
+# vs absent (the R128 grb_04 free-association failure mode), the single
+# operator role's applicable-vs-provider-only duties (role_ambiguity axis),
+# and the prohibited-vs-high-risk tier distinction (borderline_prohibition
+# axis). ADVISORY ONLY — never drops a reference or candidate (R16/R49:
+# over-pruning hurts), so the deterministic davidath bench is byte-identical
+# (no Stage-2 there). Default ON in code too; disable with
+# REGENOLD_SEMANTIC_CONTRACT=0.
+REGENOLD_SEMANTIC_CONTRACT = "1"
+
 # Round 89-A — Article-level describer force-append for V2 multi-turn.
 # When ON, the 10 R89-A article-level describer keys (Art 27 FRIA, Art
 # 73 incident-15-days, Art 51 systemic-risk-notify, Art 53 FOSS carve-

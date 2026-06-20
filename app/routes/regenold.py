@@ -1343,6 +1343,15 @@ def _engine_cache_key(
             # hop2 for hub seeds; flips which hop2 refs fuse into the
             # references list. Same 2-hop bucket as REGENOLD_GRAPH_2HOP.
             "REGENOLD_GRAPH_2HOP_FULL_CAP",
+            # R138 — the SEMANTIC CONTRACT advisory (app/engines/
+            # semantic_validator.py) is injected into the Stage-2 generation
+            # context, so toggling it flips GraphRAGResponse.answer on the
+            # live polish path. Additive context only (never a ref/candidate
+            # change), so the deterministic davidath bench is byte-identical
+            # either way — but it belongs in the cache identity per the
+            # R30/R56/R79 doctrine so a mid-deploy flip cannot serve stale
+            # polished prose for a previously-asked question.
+            "REGENOLD_SEMANTIC_CONTRACT",
         )
     )
     import json

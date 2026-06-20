@@ -7349,6 +7349,97 @@ project's discipline (R72/R80/R100) measures live before shipping. Also ships:
 the R136 eval-harness DNS/network retry hardening (`evals/bench/_http_retry.py`,
 eval-only) cherry-picked onto this branch.
 
+## Round 138 — Semantic-contract pre-generation validator (steal from the ontology/KG/semantic-layer post) (2026-06-20)
+
+A user-supplied "Ontologies, Knowledge Graphs, and a Semantic Layer"
+architecture post (Vimal Dwarampudi, May 2026 — typed ontology + RDF facts +
+POLE+O + a LangGraph orchestration layer that validates the *semantic
+contract* before the LLM generates) was deep-audited element-by-element
+against the codebase by a 7-agent workflow, then the genuine gap was
+integrated.
+
+### Audit verdict — ~88% already built (R69's "~90%" stands)
+
+The post's READ/representational layer is essentially complete here:
+
+| Post element | Verdict |
+| ------------ | ------- |
+| Ontology (typed concepts / role×risk×article matrix) | EXISTS — `ontology.py` `ROLE_OBLIGATIONS`, `role_obligations.py`, `clara_logic` risk-pyramid |
+| RDF triples / SPARQL | WRONG_FOR_CODEBASE — property-graph (Neo4j + R121 embedded SQLite) + BM25 by design; no external triple store |
+| POLE+O (Person/Object/Location/Event) | PARTIAL — `query_structure.analyse_query` extracts actor/location/application/risk; the Event/lifecycle axis is the one genuinely-novel slice (deferred — narrow live audience) |
+| Linguistic-frame deterministic verbalization | EMPIRICALLY_REJECTED — R100 measured synthesis correctness 0.335 vs verbatim 0.274; do NOT refactor toward deterministic-frame-primary |
+| resolve_intent / build_grounded_prompt / generate | EXISTS — intent_classifier (57-way), Stage-2 build, MoA fusion |
+| **validate_constraints (pre-LLM semantic contract)** | **PARTIAL → the genuine ~12% gap** — every guard (citation_guard / cite_describe_guard / drift) runs AFTER the LLM mis-synthesises; nothing validates the semantic contract BEFORE generation |
+| Pinecone / Milvus / Elasticsearch / Cohere / bge-large / LangGraph | WRONG_FOR_CODEBASE — external service / GPU; Railway is CPU-only, the deterministic-fallback design is dependency-free |
+
+The post's core claim — GraphRAG does not (b) validate retrieved fragments are
+mutually consistent or (c) prevent the model mixing unrelated provisions into a
+plausible-but-invalid answer — names the exact shape of the **R128 grb_04**
+production failure (Article 6 grounded; Stage-2 free-associated Articles 10/11).
+
+### What R138 ships
+
+* **`app/engines/semantic_validator.py`** (new, pure stdlib, fail-soft) — a
+  deterministic "SEMANTIC CONTRACT" advisory derived from the GROUNDED
+  references, injected into the Stage-2 generation context next to the R69
+  `QUERY PROFILE` / cross-reference hooks. Three checks: (1) CHAIN —
+  high-risk gateway (Art. 6 / Annex III) present → name the Articles 9-15
+  obligation dependents present vs absent so the model grounds obligations in
+  the present ones and does not invent the absent ones (the grb_04 steer);
+  (2) ROLE — exactly one operator role detected (and NOT a compound
+  provider+deployer scenario, suppressed via
+  `scenario_classifier._detect_compound_roles`) → name the role's duties and
+  flag the provider-only duties (conformity Art. 43 / CE Art. 48 / declaration
+  Art. 47 / design reqs 9-15) that do NOT apply unless an Art. 25 flip
+  (role_ambiguity axis); (3) RISK-TIER — both Art. 5 and Art. 6 grounded →
+  instruct distinguishing the prohibited context from the high-risk context
+  (borderline_prohibition axis).
+* **CRITICAL design choice — ADVISORY ONLY.** Unlike the post's
+  `validate_constraints` node (which DROPS invalid candidates) and the audit's
+  first-cut "contradiction-drop", this validator NEVER drops a reference or
+  filters a candidate. Reasons: (a) over-pruning hurts more than over-broad
+  answers (R16/R49); (b) for legal text an Art. 5 + Art. 6 co-citation is
+  usually the CORRECT borderline-prohibition *nuance* ("banned at the
+  workplace, high-risk elsewhere"), not an error. So it is recall-safe AND
+  davidath-byte-identical by construction (Stage-2-only; the deterministic
+  TestClient bench never runs Stage-2).
+* **`app/data/ontology.py::validate_legal_triple(article, role, risk_class)`**
+  — the post's ontology-constraint validation as a queryable predicate +
+  a CI lint (`tests/test_kb_consistency.py::TestR138LegalTripleLint`) that
+  pins the legality invariants the May-2026 audit caught by hand: no
+  provider-only duty cross-wired onto a non-provider role, Art. 54 (GPAI
+  authrep) only under AUTHORISED_REPRESENTATIVE, Art. 27 FRIA only under
+  DEPLOYER × Annex III. Import/test-time only — zero request-path effect.
+* Env gate `REGENOLD_SEMANTIC_CONTRACT` (default ON in code + railway.toml;
+  `=0` reverts) folded into `_engine_cache_key` (R30/R56/R79 doctrine).
+* `record_note("semantic_contract: ...")` to the ReasoningTrace (glass-box).
+
+### Rejected / deferred (audit ranked, not shipped)
+
+POLE Event/lifecycle axis (#4, narrow live audience); deterministic
+per-(article,role,risk) frame registry (#5, R100-rejected); RDF/SPARQL/
+LangGraph/external-vector-DB (#6, WRONG_FOR_CODEBASE); intent-typed 2-hop
+filter (#2, latent — Neo4j is dead in prod per R136 so the 2-hop never fires);
+and the audit's candidate contradiction-DROP (dangerous for legal text).
+
+### Gates (all green)
+
+| Gate | Result |
+| ---- | ------ |
+| pytest (full, provider=cli) | 4066 pass, 1 skip, +29 new R138 tests pass; 49 pre-existing env-artifact failures **byte-identical to HEAD** (empty A/B diff both ways → zero new regressions) |
+| davidath qa-only (gate ON vs OFF) | **byte-identical, 0/137 rows differ** — Ans Strict 0.4022, Ref Loose 0.8321, Ref Strict 0.5528, Tone 1.0 |
+| 276-runner | all categories 100% |
+| OOS probe (`runner_v2 --local --probe-oos`) | 21/21, 0 leaks |
+| **LIVE** (Claude Max wrapper, `?include_reasoning=true`) | grb_04 / deployer / emotion-recognition all HTTP 200, `semantic_contract` FIRED + Stage-2 landed; grb_04 classifies via Art. 6(2)+Annex III without free-associating the obligation chain; deployer stays in-lane (Art. 26/27, no provider-only leak); emotion-recognition distinguishes prohibited-context from the medical carve-out |
+
+### Where the win lands
+
+davidath is the regression guard (byte-identical), not the win surface (it's
+BM25-saturated + never runs Stage-2 — the R31/R69/R110 pattern). The win lands
+on the live LLM-judge refs-faithfulness (floor 0.20-0.43) + correctness axes
+and the V2 role_ambiguity / borderline_prohibition axes. The post-deploy
+verification is a live representative-100 + `evals.judge.runner` re-run.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

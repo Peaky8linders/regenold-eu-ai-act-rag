@@ -27,7 +27,11 @@ from app.data.ontology import (
     PHASE_REGISTRY,
     PRACTICE_REGISTRY,
     ROLE_OBLIGATIONS,
+    ActorRole,
+    RiskClass,
     all_articles_referenced,
+    obligations_for,
+    validate_legal_triple,
 )
 
 
@@ -473,3 +477,70 @@ class TestKBVersionSnapshot:
             f"KB_VERSION must match `<YYYY>.<reg_id>.v<build>` "
             f"(e.g. `2024.1689.v3`); got {KB_VERSION!r}"
         )
+
+
+class TestR138LegalTripleLint:
+    """R138 — ontology (article, role, risk_class) cross-wiring guardrail.
+
+    The "semantic layer" architecture's ontology-constraint validation,
+    realised as a CI lint. ``validate_legal_triple`` is the queryable
+    predicate; these tests pin the legality invariants the May-2026
+    ontology audit established BY HAND so a future edit that re-introduces
+    a cross-wiring bug (Art. 54 under PROVIDER, conformity Art. 43 onto a
+    DEPLOYER, FRIA Art. 27 onto an Annex-I deployer) fails CI. Import /
+    test-time only — zero request-path effect.
+    """
+
+    def test_validate_legal_triple_consistent_with_obligations_for(self) -> None:
+        for role, by_risk in ROLE_OBLIGATIONS.items():
+            for risk, articles in by_risk.items():
+                for art in articles:
+                    assert validate_legal_triple(art, role, risk) is True
+                # A definitely-absent article is rejected.
+                assert validate_legal_triple("Art. 999", role, risk) is False
+
+    def test_every_triple_article_resolves_in_catalog(self) -> None:
+        for role, by_risk in ROLE_OBLIGATIONS.items():
+            for risk, articles in by_risk.items():
+                for art in articles:
+                    assert _is_known_or_prefix_known(art), (
+                        f"{role.value} × {risk.value} cites {art!r} which "
+                        f"does not resolve in ARTICLE_EXISTENCE"
+                    )
+
+    def test_provider_only_duties_not_cross_wired(self) -> None:
+        """Conformity assessment (43), EU declaration (47), CE marking
+        (48) bind the provider (and the product-manufacturer flip), never
+        a deployer / importer / distributor / authrep."""
+        provider_only = {"Art. 43", "Art. 47", "Art. 48"}
+        non_provider = (
+            ActorRole.DEPLOYER,
+            ActorRole.IMPORTER,
+            ActorRole.DISTRIBUTOR,
+            ActorRole.AUTHORISED_REPRESENTATIVE,
+        )
+        for role in non_provider:
+            owed = {a for risk in RiskClass for a in obligations_for(role, risk)}
+            leaked = owed & provider_only
+            assert not leaked, f"{role.value} wrongly owes {leaked}"
+
+    def test_article_54_is_authrep_only(self) -> None:
+        """Art. 54 is the GPAI authorised-representative article — it must
+        NOT appear under PROVIDER (the exact May-2026 audit bug)."""
+        for role in ActorRole:
+            owed = {a for risk in RiskClass for a in obligations_for(role, risk)}
+            if role is ActorRole.AUTHORISED_REPRESENTATIVE:
+                assert "Art. 54" in owed
+            else:
+                assert "Art. 54" not in owed, (
+                    f"Art. 54 (GPAI authrep) wrongly wired onto {role.value}"
+                )
+
+    def test_fria_article_27_only_deployer_annex_iii(self) -> None:
+        """Art. 27 FRIA binds only the deployer of an Annex III high-risk
+        system (not Annex I deployers, who sit under MDR/IVDR)."""
+        for role in ActorRole:
+            for risk in RiskClass:
+                if "Art. 27" in obligations_for(role, risk):
+                    assert role is ActorRole.DEPLOYER
+                    assert risk is RiskClass.HIGH_RISK_ANNEX_III

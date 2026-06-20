@@ -3988,6 +3988,38 @@ def _claude_max_enhance_answer(
             except Exception:  # noqa: BLE001 — never let xref context 500 Stage-2
                 pass
 
+            # R138 — SEMANTIC CONTRACT (the ontology/KG/semantic-layer
+            # post's genuine ~12% gap: validate the semantic contract
+            # BEFORE generation, not only via post-generation guards).
+            # A short deterministic advisory derived from the GROUNDED
+            # references: the high-risk obligation chain present vs absent,
+            # the single operator role's applicable-vs-provider-only
+            # duties, and the prohibited-vs-high-risk tier distinction.
+            # ADVISORY ONLY — never drops a reference or candidate (R16 /
+            # R49: over-pruning hurts). Additive Stage-2 context, so the
+            # deterministic davidath bench (no Stage-2) is byte-identical.
+            try:
+                from app.engines.semantic_validator import (  # noqa: PLC0415
+                    build_contract,
+                    is_enabled as _sc_enabled,
+                    render as _sc_render,
+                )
+                if _sc_enabled():
+                    _sc = build_contract(
+                        question, _context_article_refs(context)
+                    )
+                    if not _sc.is_empty():
+                        user_message += _sc_render(_sc)
+                        try:
+                            from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                                record_note as _rn,
+                            )
+                            _rn("semantic_contract: " + ",".join(_sc.notes))
+                        except Exception:  # noqa: BLE001
+                            pass
+            except Exception:  # noqa: BLE001 — never let the contract 500 Stage-2
+                pass
+
         if getattr(context, "web_search_results", None):
             user_message += (
                 "WEB SEARCH RESULTS (Supplementary Use-Case Context):\n"
