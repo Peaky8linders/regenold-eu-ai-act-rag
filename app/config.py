@@ -18,6 +18,29 @@ class GraphRAGSettings(BaseSettings):
 
     api_key: SecretStr | None = None
     model: str = "claude-sonnet-4-6"
+    """Stage-1 PARSE model (JSON entity extraction) AND the base model for any
+    non-Stage-2 LLM call. Default Sonnet 4.6 — fast, cheap, and it must NEVER
+    pay an Opus latency tax or a thinking budget (the parse is a strict-schema
+    JSON call; extended thinking there only risks corrupting the JSON). The
+    Stage-2 ANSWER is governed by :attr:`stage2_model`, not this field."""
+
+    stage2_model: str = "claude-opus-4-8"
+    """R139 (operator directive 2026-06-20) — model for the Stage-2 ANSWER
+    (the user-facing legal prose), used on EVERY Stage-2 polish/synthesis call
+    regardless of question complexity. Default ``claude-opus-4-8``: Opus 4.8 is
+    the stronger legal reasoner and produces verdict-first, professionally-toned
+    answers where Sonnet 4.6 buried the bottom line (the medtech "is X high
+    risk?" → "Article 6(1) read with Annex I is the operative provision…"
+    regression that motivated this round). Empty → fall back to :attr:`model`
+    for Stage-2 (the pre-R139 behaviour: Sonnet standard / Opus complex).
+
+    Cost is flat on the production Claude Max subscription (the wrapper bills
+    the Max plan, not per token), so "always Opus" carries no marginal token
+    cost there; the trade is latency (Opus is slower than Sonnet), mitigated by
+    :attr:`thinking_tokens` (a MODERATE budget on the ~80% simple questions) vs
+    :attr:`complex_thinking_tokens` (EXTENDED only on the ~20% complex ones).
+    Override per-deploy with ``P2P_GRAPH_RAG_STAGE2_MODEL``."""
+
     max_tokens: int = 384
     """Stage-1/2 polish output token cap.
 
@@ -88,9 +111,22 @@ class GraphRAGSettings(BaseSettings):
     ``claude-opus-4-8``. Set empty to disable the swap (every Stage-2
     polish call uses the base ``model``)."""
 
-    complex_thinking_tokens: int = 1024
-    """``max_thinking_tokens`` for extended-thinking Stage-2 polish on
-    complex questions.
+    complex_thinking_tokens: int = 4000
+    """``max_thinking_tokens`` — the **EXTENDED** thinking budget for the
+    ~20% of questions :func:`app.engines.question_complexity.is_complex_question`
+    flags (conflict / borderline-prohibition / GPAI thresholds / role-ambiguity
+    / multi-turn coreference, plus the R118 widened difficulty set).
+
+    **R139 — default 4000 (extended thinking on COMPLEX questions).** Per the
+    operator directive, the complex tier gets a genuinely extended budget so
+    Opus 4.8 deliberates before committing on the hard legal-reasoning cases;
+    the latency cost lands ONLY on the complex ~20% (the user accepts latency
+    there). 4000 is a deliberate middle ground: clearly extended vs the 1024
+    MODERATE budget on simple questions, yet well below the 8000-token budget
+    that drove the R51 / r80.2-live 103 s latency outlier. Clamped at the
+    engine to [1024, 16000]; ``0`` disables. The answer gets ``budget + 512``
+    output-token headroom above the thinking allocation. Override per-deploy
+    with ``P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS``.
 
     **R131.2 — default 1024 (extended thinking ON, modest).** Operator
     directive: surface REAL model reasoning in the ``?include_reasoning=true``
@@ -128,10 +164,21 @@ class GraphRAGSettings(BaseSettings):
       * R80.2: reduced 2500 → 1024 (current).
     """
 
-    thinking_tokens: int = 2048
-    """``max_thinking_tokens`` for extended-thinking on the STANDARD Stage-2
-    synthesis path — Sonnet 4.6, the ~80% of questions the complexity gate
-    does NOT flag.
+    thinking_tokens: int = 1024
+    """``max_thinking_tokens`` — the **MODERATE** thinking budget for the
+    STANDARD Stage-2 synthesis path: the ~80% of questions the complexity gate
+    does NOT flag. As of R139 these run on Opus 4.8 (:attr:`stage2_model`), not
+    Sonnet.
+
+    **R139 — default 1024 (MODERATE, latency-conscious).** With Opus 4.8 now on
+    every Stage-2 answer, the simple-question path is the 80% that dominates
+    latency, so its thinking budget is kept at the engine floor (1024) "so the
+    latency is not impacted" (operator directive). Complex questions get the
+    larger :attr:`complex_thinking_tokens` (EXTENDED) instead. Lowered from the
+    R138 value of 2048 because that was tuned for the faster Sonnet standard
+    path; on Opus the moderate 1024 keeps simple-question latency bounded.
+    Clamped at the engine to [1024, 16000]; ``0`` the fast thinking-free path.
+    Override per-deploy with ``P2P_GRAPH_RAG_THINKING_TOKENS``.
 
     **R138 (operator directive) — default 2048 (doubled from R135's 1024).**
     The operator asked to double Sonnet 4.6's standard-path extended-thinking

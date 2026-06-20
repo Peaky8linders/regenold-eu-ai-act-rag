@@ -7440,6 +7440,107 @@ on the live LLM-judge refs-faithfulness (floor 0.20-0.43) + correctness axes
 and the V2 role_ambiguity / borderline_prohibition axes. The post-deploy
 verification is a live representative-100 + `evals.judge.runner` re-run.
 
+## Round 139 — Stage-2 answer always Opus 4.8 + adaptive thinking (moderate/extended) (2026-06-20)
+
+> Branch `r139-opus-stage2` off `origin/main` (R138). Numbered R139; the round
+> raced with concurrent R13x PRs — renumber at merge if it collides.
+
+Operator directive: the user tested questions that triggered Sonnet 4.6 on
+Stage-2 and got unsatisfactory answers — e.g. *"Is a medtech system that tracks
+patient weight considered high risk?"* returned an **article-first, buried-
+verdict** answer (*"Article 6(1) read with Annex I is the operative provision. …
+very likely high-risk … Route 1, Annex I (primary and most probable route)."*).
+The ask: route Stage-2 to **Claude Opus 4.8 always**, with **moderate** thinking
+on simple questions (so latency is not impacted) and **extended** thinking on
+complex ones; keep a professional EU AI Act legal tone; enforce the Regenold
+rules; then re-measure on golden datasets.
+
+### Why Opus-always fixes it (not a prompt rewrite)
+
+The Stage-2 prompt **already** mandates verdict-first answers — the R114/R130
+``DIRECT-VERDICT RULE`` + the classification user-message explicitly say *"Lead
+with the concise classification VERDICT in the FIRST clause … Do NOT open with
+'Article N is the operative provision' … and bury the verdict"*. The bad answer
+was a **Sonnet 4.6 instruction-following failure**, not a missing rule. The
+fix is the stronger model: Opus 4.8 follows the existing verdict-first +
+regulator-tone rules reliably. **Cost is flat on the Claude Max subscription**
+(the wrapper bills the Max plan, not per token), so "always Opus" carries no
+marginal token cost on the production path; the only trade is latency, mitigated
+by the moderate-on-simple thinking split.
+
+### What R139 ships (Stage-2-only → davidath byte-identical by construction)
+
+* **`app/config.py`** — new ``GraphRAGSettings.stage2_model = "claude-opus-4-8"``
+  (the always-Opus Stage-2 ANSWER model, env ``P2P_GRAPH_RAG_STAGE2_MODEL``).
+  ``model`` stays ``claude-sonnet-4-6`` — it is now ONLY the Stage-1 parse (JSON
+  entity extraction) + the base for non-Stage-2 calls (fast, no Opus tax, no
+  thinking). Thinking budgets retuned for the new "Opus everywhere" baseline:
+  ``thinking_tokens`` 2048 → **1024** (MODERATE — the ~80% simple-question
+  majority, kept at the engine floor so latency stays bounded);
+  ``complex_thinking_tokens`` 1024 → **4000** (EXTENDED — the ~20%
+  ``is_complex_question`` flags; well below the 8000 that drove the R51/r80.2
+  103 s outlier).
+* **`app/engines/graph_rag.py`** — both LLM paths
+  (``_openai_wrapper_complete_for_graph_rag`` + ``_anthropic_complete_for_graph_rag``)
+  reorder ``is_stage2`` before the model pick and route:
+  complex Stage-2 → ``complex_model`` (Opus); standard Stage-2 → ``stage2_model``
+  (Opus); Stage-1 parse / other → ``base_model`` (Sonnet, no thinking).
+  ``is_stage2`` keys off the caller's ``stage_name`` (only the Stage-2
+  polish/synthesis calls pass "Stage 2 …"). Added ``stage_name="Stage 2
+  (Polishing)"`` to the Anthropic-SDK Stage-2 call site (it was omitted, so the
+  Pro-tier path never saw the Stage-2 signal) + aligned its trace-note display
+  model.
+* **Fusion (MoA) is unchanged** — on a complex single-turn question the panel
+  already SWAPS its wrapper member Sonnet→Opus 4.8 (R124) and the deterministic
+  judge favours that draft, so fusion-worthy rows already emit an Opus final.
+  R139's thinking-budget retune flows into the fusion Opus panel member too.
+  Net: **every Stage-2 answer is Opus 4.8**, simple or complex, single-provider
+  or fusion-selected.
+
+### Verification — deterministic gates (worktree off origin/main = R138)
+
+| Gate | Result |
+| ---- | ------ |
+| davidath QA-only (137) | **byte-identical to R136/R137/R138** — Ans Strict 0.4022 / Ans Loose 0.1411 / Ref Loose 0.8321 / Ref Strict 0.5528 / Ref Conciseness 0.4395 / Tone 1.0. Stage-2 is provider-gated → inert under ``cli`` (no wrapper) → the config + routing changes can't move the local bench (the R49/R69/R110 pattern). |
+| `evals.regenold.runner` (276) | **all categories 100%** (in_scope_multi_turn 102/102, risk_classification 17/17, …) |
+| OOS probe (`runner_v2 --local --probe-oos`) | **21/21, 0 leaks** (the change doesn't touch scope) |
+| unit | routing + anthropic + fusion suites **90 pass** (+3 new ``TestStage2AlwaysOpus`` tests pinning: simple Stage-2 → Opus + moderate thinking; complex Stage-2 → Opus + extended thinking; Stage-1 parse → Sonnet + no thinking; the R131.2 1024-default assertion updated to the R139 4000 extended budget) |
+
+### Verification — LIVE (TestClient + Claude Max wrapper, Opus 4.8 routing)
+
+The user's exact example is **fixed** — it now leads with the verdict:
+
+> **Q:** Is a medtech system that tracks patient weight considered high risk?
+> **A:** *"It depends: high-risk only if the system is a safety component of, or
+> is itself, a medical device that under the Medical Device Regulation (or IVDR)
+> must undergo third-party conformity assessment, in which case Article 6(1) read
+> with Annex I classifies it as high-risk. The deciding condition is therefore
+> the device's status under the Union harmonisation legislation listed in Annex I,
+> not the weight-tracking function as such. …"* — refs ``[Article 6, Article 6.1,
+> Annex I]``, ``model=claude-opus-4-8``, ``stage2=True``, thinking ON.
+
+Across a 5-shape probe (classification / definition / multi-part obligations /
+closed-set Article 5 enumeration / GPAI-systemic borderline) every answer ships
+on ``claude-opus-4-8`` with Stage-2 landed, adaptive thinking on, complete +
+verdict-first, third-person regulator voice, no dash/ellipsis. The GPAI row
+("…always systemic, or a carve-out?") gets the EXTENDED-thinking complex path and
+returns the nuanced *"Not automatically, but practically yes once the presumption
+stands … no escape via the Article 53(2) open-source route for systemic-risk
+models …"* answer.
+
+<!-- R139-GOLDEN-SCORECARD -->
+
+### Trade + rollback
+
+The trade is latency (Opus is slower than Sonnet; extended thinking adds time on
+the complex ~20%). Fully reversible per-deploy:
+``P2P_GRAPH_RAG_STAGE2_MODEL=`` (empty → Stage-2 falls back to ``model`` =
+Sonnet standard / Opus complex, the pre-R139 behaviour), or
+``P2P_GRAPH_RAG_THINKING_TOKENS=0`` / ``P2P_GRAPH_RAG_COMPLEX_THINKING_TOKENS=0``
+to drop the thinking budgets. davidath is the regression guard (byte-identical);
+the win lands live (Opus quality + reliable verdict-first tone on the production
+Claude-Max wrapper) — the established R31/R49/R69/R138 pattern.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a
