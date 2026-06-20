@@ -424,17 +424,18 @@ class TestPostJsonWithRetry:
                 max_retries=2, backoff_s=0.5,
             )
 
-        # Two sleeps between three attempts; exponential 0.5, 1.0.
+        # Two sleeps between three attempts. R136 added full jitter
+        # (0.5x-1.5x) on the exponential base (0.5, 1.0) so concurrent
+        # retriers de-correlate — so assert the jittered RANGES.
         assert sleep.call_count == 2
-        assert sleep.call_args_list[0].args[0] == pytest.approx(0.5)
-        assert sleep.call_args_list[1].args[0] == pytest.approx(1.0)
+        assert 0.25 <= sleep.call_args_list[0].args[0] <= 0.75  # 0.5 × [0.5,1.5]
+        assert 0.5 <= sleep.call_args_list[1].args[0] <= 1.5  # 1.0 × [0.5,1.5]
         assert attempts == 3
         assert err is None
         # Latency includes the slept wall-time × 1000 (since sleep was
         # patched it adds 0, but the retry helper adds the sleep_s value
-        # to latency anyway so the reported latency reflects what the
-        # caller would have waited).
-        assert latency >= (0.5 + 1.0) * 1000.0
+        # to latency anyway). Use the minimum-jitter lower bound.
+        assert latency >= (0.5 * 0.5 + 1.0 * 0.5) * 1000.0
 
     def test_idempotent_request_object_passed_through(self):
         """Same Request object is used across retries — verifies our

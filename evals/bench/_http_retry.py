@@ -39,6 +39,9 @@ from __future__ import annotations
 
 import http.client
 import json
+import random
+import socket
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -48,6 +51,7 @@ __all__ = [
     "post_json_with_retry",
     "is_retryable_error",
     "is_retryable_status",
+    "install_dns_cache",
     "AttemptResult",
 ]
 
@@ -67,13 +71,42 @@ _RETRYABLE_REASON_TYPES: tuple[type[BaseException], ...] = (
     ConnectionAbortedError,
 )
 
-# Windows socket errno values that map to "connection died at the edge"
-# (these come through as bare OSError with .errno set, NOT wrapped in
-# URLError, when the failure happens between socket attempts).
-#   10054 — WSAECONNRESET  (Connection reset by peer)
-#   10053 — WSAECONNABORTED (Software caused connection abort)
-#   10060 — WSAETIMEDOUT   (Connection timed out)
-_RETRYABLE_WIN_ERRNOS = frozenset({10053, 10054, 10060})
+# Windows socket errno values that map to a TRANSIENT connection failure
+# — "the connection died" or "the local network stack briefly couldn't
+# reach the route". Under CONCURRENT eval load (several runner processes
+# opening long-lived HTTPS connections to the same host at once) the host's
+# network stack / NIC / tunnel client transiently saturates and reports
+# these even though the next attempt succeeds. Retrying (with jittered
+# backoff so the concurrent retriers de-correlate) recovers cleanly.
+#   10050 — WSAENETDOWN      (Network is down)
+#   10051 — WSAENETUNREACH   (Network is unreachable) ← the parallel-run killer
+#   10052 — WSAENETRESET     (Network dropped connection on reset)
+#   10053 — WSAECONNABORTED  (Software caused connection abort)
+#   10054 — WSAECONNRESET    (Connection reset by peer)
+#   10060 — WSAETIMEDOUT     (Connection timed out)
+#   10065 — WSAEHOSTUNREACH  (No route to host)
+# 10061 (WSAECONNREFUSED) is deliberately EXCLUDED — a refused connection
+# is usually a deterministic "nothing is listening", not transient load.
+_RETRYABLE_WIN_ERRNOS = frozenset(
+    {10050, 10051, 10052, 10053, 10054, 10060, 10065}
+)
+
+# DNS resolution failures. Under CONCURRENT eval load (several runner
+# processes hammering the same host, each request doing a fresh lookup),
+# ``getaddrinfo`` can transiently fail with WSAHOST_NOT_FOUND (11001) /
+# WSATRY_AGAIN (11002) / WSANO_DATA (11004) even though the host is valid —
+# the local resolver is saturated, not the name wrong. A retry after backoff
+# (plus the process-level DNS cache from :func:`install_dns_cache`) recovers
+# cleanly. ``socket.gaierror`` is the cross-platform marker (Linux uses
+# EAI_AGAIN); treating it as retryable is safe for an eval client — a
+# genuinely bad host just surfaces after the retries exhaust.
+_RETRYABLE_DNS_ERRNOS = frozenset({11001, 11002, 11004})
+
+
+def _is_retryable_os_errno(exc: BaseException) -> bool:
+    return getattr(exc, "errno", None) in (
+        _RETRYABLE_WIN_ERRNOS | _RETRYABLE_DNS_ERRNOS
+    )
 
 
 def is_retryable_error(exc: BaseException) -> bool:
@@ -97,18 +130,26 @@ def is_retryable_error(exc: BaseException) -> bool:
             return True
         if isinstance(reason, TimeoutError):
             return True
+        # Transient DNS resolution failure under saturation (gaierror is
+        # an OSError subclass, so this must precede the generic OSError
+        # check). ``getaddrinfo failed`` is THE shape produced by running
+        # several eval runners in parallel.
+        if isinstance(reason, socket.gaierror):
+            return True
         if isinstance(reason, OSError):
-            # Windows surfaces edge timeouts as OSError(10060, ...)
-            # wrapped inside URLError.
-            if getattr(reason, "errno", None) in _RETRYABLE_WIN_ERRNOS:
+            # Windows surfaces edge timeouts as OSError(10060, ...) and DNS
+            # saturation as OSError(11001/11002, ...) wrapped inside URLError.
+            if _is_retryable_os_errno(reason):
                 return True
         return False
     if isinstance(exc, TimeoutError):
         return True
     if isinstance(exc, _RETRYABLE_REASON_TYPES):
         return True
+    if isinstance(exc, socket.gaierror):
+        return True
     if isinstance(exc, OSError):
-        if getattr(exc, "errno", None) in _RETRYABLE_WIN_ERRNOS:
+        if _is_retryable_os_errno(exc):
             return True
     return False
 
@@ -116,6 +157,58 @@ def is_retryable_error(exc: BaseException) -> bool:
 def is_retryable_status(status: int) -> bool:
     """5xx is retryable, everything else is not."""
     return 500 <= status < 600
+
+
+# ── Process-level DNS cache (root-cause fix for parallel-run saturation) ─────
+#
+# Each stdlib ``urllib`` POST resolves the host fresh via
+# ``socket.getaddrinfo``. When several eval runners run in parallel, dozens
+# of concurrent lookups for the SAME host saturate the local resolver and it
+# starts returning ``getaddrinfo failed`` (Errno 11001). Caching the
+# resolution per-process collapses N lookups → 1, so the resolver is never
+# hammered. TTL-bounded so a long run still picks up an IP change.
+_DNS_CACHE_LOCK = threading.Lock()
+_DNS_CACHE: dict[tuple, tuple[float, Any]] = {}
+_DNS_CACHE_TTL_S = 300.0
+_ORIG_GETADDRINFO: Any = None
+
+
+def _cached_getaddrinfo(host, port, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+    key = (host, port, args, tuple(sorted(kwargs.items())))
+    now = time.monotonic()
+    with _DNS_CACHE_LOCK:
+        hit = _DNS_CACHE.get(key)
+        if hit is not None and (now - hit[0]) < _DNS_CACHE_TTL_S:
+            return hit[1]
+    # Resolve OUTSIDE the lock so concurrent threads don't serialise on a
+    # slow lookup; a transient failure propagates to the caller, where the
+    # retry helper (gaierror is now retryable) recovers it.
+    res = _ORIG_GETADDRINFO(host, port, *args, **kwargs)
+    with _DNS_CACHE_LOCK:
+        _DNS_CACHE[key] = (now, res)
+    return res
+
+
+def install_dns_cache(ttl_s: float = 300.0) -> None:
+    """Install a process-level TTL cache over ``socket.getaddrinfo``.
+
+    Idempotent. Eval-only (this module is never imported by ``app/``), so
+    patching the global resolver here is scoped to eval runner processes.
+    Called automatically at module import; callers may re-invoke to tune
+    ``ttl_s``.
+    """
+    global _ORIG_GETADDRINFO, _DNS_CACHE_TTL_S
+    _DNS_CACHE_TTL_S = ttl_s
+    if getattr(socket.getaddrinfo, "_regenold_cached", False):
+        return
+    _ORIG_GETADDRINFO = socket.getaddrinfo
+    _cached_getaddrinfo._regenold_cached = True  # type: ignore[attr-defined]
+    socket.getaddrinfo = _cached_getaddrinfo  # type: ignore[assignment]
+
+
+# Activate on import so every eval runner that imports this helper gets the
+# cache + retryable-DNS behaviour for free.
+install_dns_cache()
 
 
 # ── Single attempt ─────────────────────────────────────────────────────────
@@ -213,7 +306,8 @@ def _single_attempt(
         )
     except OSError as exc:
         elapsed = (time.perf_counter() - start) * 1000.0
-        retryable = getattr(exc, "errno", None) in _RETRYABLE_WIN_ERRNOS
+        # gaierror (DNS) is an OSError subclass — mark it retryable too.
+        retryable = isinstance(exc, socket.gaierror) or _is_retryable_os_errno(exc)
         return AttemptResult(
             empty, elapsed, 0,
             f"os_error: {exc}"[:200],
@@ -257,8 +351,9 @@ def post_json_with_retry(
     api_key: str | None,
     timeout: float,
     *,
-    max_retries: int = 2,
+    max_retries: int = 4,
     backoff_s: float = 0.5,
+    max_backoff_s: float = 8.0,
     user_agent: str = _USER_AGENT,
 ) -> tuple[dict[str, Any], float, int, str | None, int, list[str]]:
     """POST ``payload`` to ``url``; one-shot retry on transient failures.
@@ -332,8 +427,15 @@ def post_json_with_retry(
             break
 
         # Retryable failure with budget left — record + back off + loop.
+        # Exponential backoff CAPPED at ``max_backoff_s``, then multiplied by
+        # full jitter (0.5x-1.5x). The jitter is the thundering-herd fix:
+        # when several runner processes all hit a transient network failure
+        # at the same instant (the parallel-run case), deterministic backoff
+        # makes them retry in lockstep and re-collide; jitter de-correlates
+        # them so the local network stack drains between waves.
         retried_errors.append(result.error)
-        sleep_s = backoff_s * (2 ** retry_idx)
+        base = min(max_backoff_s, backoff_s * (2 ** retry_idx))
+        sleep_s = base * random.uniform(0.5, 1.5)
         if sleep_s > 0:
             time.sleep(sleep_s)
             total_latency_ms += sleep_s * 1000.0
