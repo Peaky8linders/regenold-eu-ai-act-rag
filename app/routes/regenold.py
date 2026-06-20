@@ -2572,6 +2572,20 @@ def _surface_prose_subpoints(answer: str, references: list[str]) -> list[str]:
             bucket = wanted.setdefault(parent_uf, [])
             if sub_uf not in bucket:
                 bucket.append(sub_uf)
+        # R136 — minimal-reference over-citation guard. When the prose names
+        # >=3 distinct sub-points of the SAME parent, the answer is describing
+        # the whole article's structure (e.g. a "what is high-risk" answer
+        # enumerating Article 6(1)/(2)/(3)); the parent article — already in
+        # ``references`` — is the minimal cover for all of them. Surfacing
+        # every sub-point alongside the parent over-cites against the
+        # competition's minimal-reference + reference-conciseness rules (live
+        # antifragile q03 shipped Article 6 + 6.1 + 6.2 + 6.3 where the gold,
+        # even at sub-point granularity, is Article 6 alone). Keep the parent;
+        # drop its sub-points. Targeted clauses (1-2 sub-points of a parent —
+        # e.g. Article 50(1)/(3) for a transparency-duty split) are preserved,
+        # so the R133 precision win is untouched. davidath byte-identical: the
+        # bench collapses sub-points to heads, so the head set is unchanged.
+        wanted = {p: subs for p, subs in wanted.items() if len(subs) < 3}
         if not wanted:
             return references
 

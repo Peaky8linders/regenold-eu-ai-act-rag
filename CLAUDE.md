@@ -7196,6 +7196,62 @@ off-switch `REGENOLD_DENOISE_SALVAGE=0` disables focus too.
   Article 6, Article 11, Annex IV.2, Annex IV.1.e, Annex IV.2.c]` with the clean
   technical-documentation answer (no Article 86 / 27 / 26).
 
+## Round 136 — E2E audit + live-driven reference-conciseness fixes + fresh medtech eval set (2026-06-20)
+
+Full end-to-end pipeline audit (parallel-agent workflow over intent → semantic
+layer → embeddings/turboquant → retrieval/rerank → stages/fusion → output
+formatting, scored against the competition rubric) + a **live Antifragile-20
+re-measurement** against deployed Railway (R135, Sonnet 4.6 + Opus 4.8 fusion).
+
+### Live ground-truth (R135 production, Antifragile-20)
+Ref Loose **0.846** / Ref Strict **0.764** / Ans Strict **0.624** / Tone **1.0**
+/ kw 0.736 / mistakes-resolved **23/37**. The system is near-ceiling; the audit
++ live row-level data surfaced two clean, **davidath-byte-identical** wire
+defects (both confirmed by the per-row sidecar, not projected):
+
+### Fix 1 — sub-point over-citation guard (`_surface_prose_subpoints`)
+The R133 prose-sub-point surfacer re-added EVERY prose-named sub-point after the
+`_collapse_parent_refs` pass, so a broad "what is high-risk" answer shipped
+`Article 6, 6.1, 6.2, 6.3, Annex I, Annex III` where the gold (even at sub-point
+granularity) is `Article 6` alone (q03 ref_subpoint_conciseness **0.25**). Fix:
+when the prose names **≥3 distinct sub-points of the SAME parent** (a
+"describe-the-whole-article" pattern), the parent is the minimal cover — drop
+its sub-points, keep the parent. Targeted 1-2 sub-point clauses (Article 50(1)/(3)
+duty split, Article 3.1 definition) are **preserved** (the R133 precision win is
+untouched). davidath byte-identical: the bench collapses sub-points to heads.
+
+### Fix 2 — degenerate-fallback deflection removal (`normalise_answer_for_regenold`)
+When every sentence scrubbed to empty, the R103c fallback shipped a refusal-shaped
+*"Please refer to the referenced articles for the detailed compliance
+requirements"* deflection ALONGSIDE a non-empty references list — the
+cite-but-don't-describe failure the project eliminated in R49-A/R81-H/R109. Now
+prefers the cleaned pre-pass text; never ships that deflection.
+
+### Fresh MedTech / life-sciences eval set (deliverable)
+`evals/regenold/scenarios_medtech_lifesci_r136.py` (24 `ls_*` rows, disjoint from
+every existing set) + `run_medtech_lifesci_r136.py` + `tests/test_r136_medtech_lifesci.py`
+— realistic medical-device / hospital-deployer / pharma-GPAI / value-chain
+scenarios grounded in verbatim EU AI Act (Art 6(1)+Annex I+Art 43 MDR route,
+Annex III(5) healthcare, Art 5(1)(f)/(g) prohibitions, Art 2(6) R&D, Art 51/53/55
+GPAI, Art 10 data governance, Art 14/72/73 oversight+post-market). All 24 refs
+resolve in `ARTICLE_EXISTENCE`; judge-compatible sidecar.
+
+### Gates (all green, isolated worktree off origin/main = R135)
+* davidath bench (476) — **byte-identical on every rubric axis** (QA Ans Strict
+  0.4022 / Ref Loose 0.8321 / Ref Strict 0.5528 / Tone 1.0; scenarios Ans Strict
+  0.3338 / Ref Loose 0.4990 / Tone 1.0; overall Ans Strict 0.3535 / Ref Loose
+  0.5949 / Ref Strict 0.4744 / mt 20/20) — confirmed by per-axis A/B diff.
+* `evals.regenold.runner` (276) — **255/255 (100%)**.
+* `evals.regenold.runner_v2 --local --probe-oos` — **21/21, 0 leaks**.
+* `tests/test_r136_fixes.py` (8) + `tests/test_r136_medtech_lifesci.py` (4) green;
+  no regressions in the R130/R131/R133 sub-point + consistency-guard suites (the
+  1 `test_r105` failure is the documented pre-existing `provider=cli`-defeats-
+  Stage-2 env artifact — identical on pristine `origin/main` via git-stash A/B).
+
+The two wire fixes target reference-conciseness/precision defects the live judge
+penalises but the BM25-saturated davidath bench cannot move; the win lands on the
+post-deploy live re-run.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

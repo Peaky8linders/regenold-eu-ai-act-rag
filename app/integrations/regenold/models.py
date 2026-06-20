@@ -1458,12 +1458,22 @@ def normalise_answer_for_regenold(
                 
         cleaned_sentences.append(s_clean)
 
-    # Fallback to a highly professional 2-sentence default if no valid sentences remain.
+    # R136 — degenerate-input fallback (every sentence was a sub-40-char
+    # clipped fragment). NEVER ship the old "Please refer to the referenced
+    # articles for the detailed compliance requirements" deflection: it is a
+    # refusal-shaped, cite-but-don't-describe sentence that ships ALONGSIDE a
+    # non-empty references list (the exact judge failure mode R49-A / R81-H /
+    # R109 eliminated). Instead prefer the cleaned pre-pass text (ellipses
+    # scrubbed); only if even that is empty fall back to a SINGLE neutral
+    # sentence (never empty — the Round-16 "over-broad beats empty" finding).
     if not cleaned_sentences:
-        cleaned_sentences = [
-            "The requested classification and obligations are governed by the specific provisions of the EU AI Act.",
-            "Please refer to the referenced articles for the detailed compliance requirements applicable to this system."
-        ]
+        _fallback = re.sub(r"\.\.\.+|…", " ", result)
+        _fallback = re.sub(r"\s+", " ", _fallback).strip()
+        if _fallback:
+            if _fallback[-1] not in ".!?":
+                _fallback += "."
+            return _fallback
+        return "The referenced EU AI Act provisions govern this question."
 
 
     result = " ".join(cleaned_sentences).strip()
