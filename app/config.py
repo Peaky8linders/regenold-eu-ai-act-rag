@@ -128,24 +128,34 @@ class GraphRAGSettings(BaseSettings):
       * R80.2: reduced 2500 → 1024 (current).
     """
 
-    thinking_tokens: int = 1024
+    thinking_tokens: int = 2048
     """``max_thinking_tokens`` for extended-thinking on the STANDARD Stage-2
     synthesis path — Sonnet 4.6, the ~80% of questions the complexity gate
     does NOT flag.
 
-    **R135 (operator directive) — default 1024 (Sonnet 4.6 ALSO thinks).**
-    Previously only the complex/Opus path used extended thinking
-    (``complex_thinking_tokens``); the standard Sonnet path ran thinking-free.
-    The directive: Sonnet should reason before answering to improve answer
-    quality, not just Opus on the hard ~20%. The model thinks (improving the
-    answer) whether or not the wrapper surfaces the reasoning text in
-    ``reasoning.llm_thinking`` (surfacing the text needs the wrapper-repo
-    patch — see project memory). Applied to Stage-2 ONLY (never the Stage-1
-    parse / JSON entity-extraction call). 1024 is the wrapper/API clamp
-    floor. Latency trade: ~+3-8 s per standard Stage-2 call (a scored axis).
-    Fully reversible: ``P2P_GRAPH_RAG_THINKING_TOKENS=0`` restores the fast
-    thinking-free Sonnet path. Clamped at the engine to [1024, 16000]; 0
+    **R138 (operator directive) — default 2048 (doubled from R135's 1024).**
+    The operator asked to double Sonnet 4.6's standard-path extended-thinking
+    budget "to get better answers" — more deliberation before the
+    bottom-line-up-front verdict + grounded explanation, especially on
+    concrete use-case / application / system classification questions. The
+    engine gives the answer ``budget + 512`` tokens of output headroom above
+    the thinking allocation (``safe_max_tokens``), so 2048 leaves ample room
+    for a complete multi-part answer (also helps the R118 multi-part
+    truncation). Latency trade: ~+5-12 s per standard Stage-2 call (a scored
+    axis); the R81-A1 / r80.2-live latency disaster was the **8000**-token
+    budget, not a modest one. Fully reversible per-deploy:
+    ``P2P_GRAPH_RAG_THINKING_TOKENS=1024`` restores the R135 value, ``=0``
+    the fast thinking-free path. Clamped at the engine to [1024, 16000]; 0
     disables.
+
+    **R135 — default 1024 (Sonnet 4.6 ALSO thinks).** Previously only the
+    complex/Opus path used extended thinking (``complex_thinking_tokens``);
+    the standard Sonnet path ran thinking-free. The directive: Sonnet should
+    reason before answering, not just Opus on the hard ~20%. The model thinks
+    (improving the answer) whether or not the wrapper surfaces the reasoning
+    text in ``reasoning.llm_thinking`` (surfacing the text needs the
+    wrapper-repo patch — see project memory). Applied to Stage-2 ONLY (never
+    the Stage-1 parse / JSON entity-extraction call).
     """
 
 

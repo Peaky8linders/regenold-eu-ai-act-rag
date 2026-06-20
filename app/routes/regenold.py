@@ -2587,6 +2587,13 @@ _PROSE_SUBPOINT_RE = re.compile(
 
 _MAX_PROSE_SUBPOINT_ADDS = 3
 
+# R138 — upper bound for the final citation-consistency pass. Uncapped in
+# spirit (every provision the shipped answer names must be cited), but a
+# backstop against a pathological prose. A wire answer is a few sentences, so
+# it never names this many real provisions; 8 comfortably covers a multi-part
+# synthesis answer.
+_CITE_CONSISTENCY_CAP = 8
+
 
 def _surface_prose_subpoints(answer: str, references: list[str]) -> list[str]:
     """Surface sub-points the FINAL answer prose names but the wire
@@ -6203,6 +6210,39 @@ def regenold_eu_ai_act_ask(
             protected=_definitional_art3_protected(
                 live_user_message or question, references
             ),
+        )
+
+    # R138 — final citation-consistency guarantee (user directive: every
+    # article / annex the SHIPPED answer names must appear in the wire
+    # references + the UI citations list). The R134 ``_add_prose_named_refs``
+    # runs earlier capped at 2 AND before the conciseness backstop; the
+    # Component-D guard appends prose cites then truncates back to
+    # ``_effective_max_refs`` (line ~6081), so a prose-named ref beyond the
+    # budget is silently dropped again — the live ``stage2_ungrounded_cite_
+    # tolerated`` / ``noise_suppress_dropped`` gap. This final, uncapped pass
+    # runs AFTER every answer-text transform (consistency guard, augment,
+    # conciseness backstop) AND every reference pass (R72 / R105 reconcile
+    # drop), so it reconciles the wire references UP to whatever the FINAL
+    # prose actually cites — without re-truncating below it (consistency wins
+    # over the budget heuristic; the answer is already a few sentences).
+    # Reuses ``_add_prose_named_refs`` existence + cross-instrument + contrast
+    # guards. Stage-2-gated -> davidath byte-identical (no Stage-2 on the
+    # bench); scenario shapes keep their curated multi-article refs; verbatim
+    # quotes are skipped (their EUR-Lex text cross-references other articles).
+    # Runs BEFORE the R130 (Art. 3 sub-point) + R133 (prose sub-point) passes
+    # so a newly-surfaced base article's named sub-points are surfaced too.
+    # Env off-switch: REGENOLD_CITE_CONSISTENCY=0.
+    if (
+        _stage2_landed
+        and answer_text
+        and references
+        and retrieval_path not in ("no_match", "verbatim_exact_text")
+        and not _looks_like_scenario_shape(question)
+        and os.getenv("REGENOLD_CITE_CONSISTENCY", "1").strip().lower()
+        in ("1", "true", "yes", "on")
+    ):
+        references = _add_prose_named_refs(
+            references, answer_text, cap=_CITE_CONSISTENCY_CAP
         )
 
     # R130 — Article 3 definitional sub-point. The Regenold rules PDF allows a
