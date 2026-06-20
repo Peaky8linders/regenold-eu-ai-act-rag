@@ -7252,6 +7252,103 @@ The two wire fixes target reference-conciseness/precision defects the live judge
 penalises but the BM25-saturated davidath bench cannot move; the win lands on the
 post-deploy live re-run.
 
+## Round 137 — Reference-correctness: role-contrast anchor + definitional Art-3 reconcile protection (2026-06-20)
+
+Follow-up to the R136 live-eval audit (84 rows / 3 datasets). The audit's
+prioritised retrieval items were re-checked by **reproducing each failing
+shape deterministically** (systematic-debugging) before touching any code —
+which corrected the audit's framing:
+
+| Audit pattern | Deterministic reproduction | Verdict |
+| ------------- | -------------------------- | ------- |
+| **E** GPAI systemic | engine already surfaces `[53, 55, 51, 51.2]` | **already correct** — live miss is Stage-2/reconcile, not retrieval |
+| **A** conformity | engine already leads `[43, Annex VI, Annex VII]` | **already correct** — live miss is Stage-2/reconcile |
+| **C** Art-3 definition | engine already leads `[Article 3.14, Article 6, Annex I]` (Art 3.14 first) | retrieval correct; live `_reconcile_references_to_prose` DROPS Art 3.14 (the `ls_02` RefL 0.00) |
+| **D** role-contrast | "difference between the obligations of a provider and a deployer" → `[Article 38, Article 28]`; "obligations of providers versus deployers" → zero-retrieval `[1,2,3]` | **genuine deterministic bug** |
+
+So 4 of 5 audit patterns have **correct deterministic retrieval** — their
+live misses share ONE root cause (the Stage-2 reconcile dropping the correct
+*lead* ref), not the "add an anchor" the audit proposed. Two davidath-safe
+fixes ship; the broader reconcile-rank-1 protection (E/A) is documented as a
+live-A/B follow-up rather than shipped speculatively.
+
+### Fix D — role-contrast obligational anchor (`app/engines/graph_rag.py`)
+
+`_is_role_contrast_obligation` + a `_deterministic_parse` intercept prepend
+**Art. 16 (provider) + Art. 26 (deployer)** when a question CONTRASTS the
+obligations of the two roles. Gated on BOTH role nouns + a contrast marker
+(`difference between` / `versus` / `vs` / `differ(s)` / `compar*` / …) + an
+obligation noun (`obligation` / `dut*` / `requirement` / `responsibilit*` /
+`compl(y|iance)` / `liabilit*`). So single-role obligation questions
+("obligations of deployers", gold Art. 26 / "obligations of providers of
+GPAI", gold Art. 53) keep one role noun → no fire; pure definitional
+contrasts ("what's the difference between a provider and a deployer" — who
+they ARE) carry no obligation noun → stay on the Art. 3 definitional path.
+Scans the live multi-turn turn only (post the flatten marker) so a prior
+turn's role can't combine with the live turn's other role. **Residual**:
+the verb-first "how do X and Y differ?" phrasing is grabbed upstream by a
+pre-existing `scenario_classifier` over-trigger (the engine injection is
+correct — `[Art. 16, Art. 26]` — the route just doesn't use it for that one
+shape; touching the R33-tuned scenario gate is out of scope).
+
+### Fix C — definitional Art-3 reconcile protection (`app/routes/regenold.py`)
+
+`_definitional_art3_protected` + a new `protected` arg on
+`_reconcile_references_to_prose`. For a pure-definitional question (the SAME
+narrow gate the engine's R114 anchor uses — `classify_question=="definition"`
+AND `select_definition_sentence` resolves the term in the 68 Art. 3
+definitions, NOT the permissive `definition_citation_for_question` which
+fires on 109/137 QA rows) the Art. 3 definition IS the answer; the reconcile
+must not drop it when the Stage-2 prose describes the topic article instead
+(the `ls_02` "safety component → Annex I + Art 6, Art 3 dropped" failure).
+The guard only PROTECTS an already-present Art-3 ref — never adds or
+reorders, never drops a non-Art-3 ref. Unit-verified: prose describing only
+Art 6 reconciles `[Article 3.14, Article 6, Annex I]` → `[Article 6, Annex I]`
+WITHOUT protection (the bug) and keeps Art 3.14 WITH it.
+
+### Why davidath is byte-identical / neutral
+
+* **Fix D** fires on **0/137 QA + 0/339 scenarios** (verified — the gate
+  needs both role nouns + contrast + obligation; davidath has no obligational
+  role-CONTRAST rows, and single-role obligation rows keep one role noun).
+* **Fix C** is gated on `stage2_landed` (the TestClient bench has no wrapper
+  → no Stage-2 → strict no-op) AND the narrow definitional gate hits only 3
+  davidath rows, all gold Art 3 and all already single-Art-3 (no shadow to
+  protect against). Byte-identical *by construction* — the established
+  R72/R100/R109 stage2-gated pattern.
+
+### R137 — gates (worktree off origin/main = R136 #231)
+
+| Gate | Result |
+| ---- | ------ |
+| davidath QA bench (137) | **byte-identical** — Ans Strict 0.4022 / Ans Loose 0.1411 / Ref Loose 0.8321 / Ref Strict 0.5528 / Ref Conciseness 0.4395 / Tone 1.0 |
+| davidath full bench (476) | byte-identical to R136 (Fix D 0-row on scenarios; Fix C stage2-inert) |
+| `evals.regenold.runner` (276) | **all categories 100%** (definitional 2/2, role_obligation 2/2, gpai_systemic 2/2, …) |
+| OOS probe (`runner_v2 --local --probe-oos`) | **21/21, 0 leaks** (r34_p0 5 / r47_e 2 / r54_1_c2 8 / injection 3 / other_regulation 3) |
+| unit | +21 `tests/test_r137_reference_correctness.py`; R137 + scope + classification + subpoint + compound-role suites **445 pass** |
+
+### #1 audit finding — Neo4j graph DEAD in production (operator action, ~0 code)
+
+The R136 audit's biggest finding (100% `kb_fallback` live → the graph 2-hop
+HRAIS-chain expansion never fires → Pattern-B under-citation) is a **Railway
+dashboard** change the assistant cannot make via CLI: the code already
+defaults to the R121 embedded SQLite backend (`graph_backend()` →
+`embedded`), but the dashboard pins `REGENOLD_GRAPH_BACKEND`. **Operator must
+set `REGENOLD_GRAPH_BACKEND=embedded` on the Railway dashboard** (retires the
+dead Aura graph for the 2-hop layer; always works, in-process, sub-ms). This
+is the highest-leverage R136 lever and is flagged for the operator.
+
+### Where the wins land
+
+Fix D lands deterministically (role-contrast QA now surfaces Art 16+26). Fix
+C lands on the LIVE Stage-2 path (definitional Art-3 retained through the
+reconcile). E/A (reconcile rank-1 protection for the GPAI-systemic / conformity
+lead ref) are documented as the next live-A/B follow-up — the deterministic
+retrieval is already correct, so the lever is the reconcile/Stage-2, which the
+project's discipline (R72/R80/R100) measures live before shipping. Also ships:
+the R136 eval-harness DNS/network retry hardening (`evals/bench/_http_retry.py`,
+eval-only) cherry-picked onto this branch.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

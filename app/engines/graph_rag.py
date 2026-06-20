@@ -1198,6 +1198,53 @@ _KEYWORD_ENTITY_BOUNDARY_RES: dict[str, re.Pattern[str]] = {
 
 # ─── Deterministic fallbacks (no LLM required) ──────────────────────────────
 
+# R137 — role-contrast obligational anchor (GraphRAG-bench gt_10 class /
+# R136 audit Pattern D). A question that CONTRASTS the OBLIGATIONS of a
+# provider vs a deployer — "difference between the obligations of a provider
+# and a deployer", "provider versus deployer duties", "obligations of
+# providers vs deployers" — must surface BOTH operator-obligation anchors,
+# Art. 16 (provider) AND Art. 26 (deployer). Reproduced (R137): the engine
+# instead surfaced the governance articles BM25 ranks for the bare role
+# nouns (Art. 38 / Art. 28) or fell to the zero-retrieval Art. 1/2/3 floor.
+# Gated on BOTH role nouns + a contrast marker + an obligation NOUN, so:
+#   * single-role obligation questions ("obligations of deployers", gold
+#     Art. 26 / "obligations of providers of GPAI", gold Art. 53) — only
+#     one role noun present → no fire;
+#   * pure definitional contrasts ("what's the difference between a provider
+#     and a deployer" — who they ARE) — no obligation noun → stays on the
+#     existing Art. 3 definitional path.
+# Verified davidath-neutral: 0/137 QA + 0/339 scenarios match the gate.
+_ROLE_CONTRAST_MARKER_RE = re.compile(
+    r"difference between|distinction between|as opposed to"
+    r"|\bdiffers?\b|\bversus\b|\bvs\b"
+    r"|\bcompar(?:e|ed|ing|ison)\b"
+    r"|\bcontrast(?:ed)?\s+(?:with|to)\b",
+    re.IGNORECASE,
+)
+# Prefix match (no trailing ``\b``) so plurals / inflections are caught:
+# obligation(s), dut(y/ies), requirement(s), responsibilit(y/ies),
+# comply / compliance, liabilit(y/ies).
+_ROLE_CONTRAST_OBLIGATION_RE = re.compile(
+    r"\b(?:obligation|dut(?:y|ies)|requirement|responsibilit|"
+    r"compl(?:y|iance)|liabilit)",
+    re.IGNORECASE,
+)
+
+
+def _is_role_contrast_obligation(text_lower: str) -> bool:
+    """True when the text contrasts provider vs deployer OBLIGATIONS.
+
+    Requires BOTH role nouns + a contrast marker + an obligation noun.
+    ``text_lower`` is already lower-cased.
+    """
+    if "provider" not in text_lower or "deployer" not in text_lower:
+        return False
+    return bool(
+        _ROLE_CONTRAST_MARKER_RE.search(text_lower)
+        and _ROLE_CONTRAST_OBLIGATION_RE.search(text_lower)
+    )
+
+
 def _deterministic_parse(question: str) -> GraphQuery:
     """Parse question using keyword matching when LLM is unavailable."""
     # R79 — normalise Unicode dashes / non-breaking spaces before the
@@ -1331,6 +1378,22 @@ def _deterministic_parse(question: str) -> GraphQuery:
             continue
         if art_ref not in entities:
             entities.append(art_ref)
+
+    # R137 — role-contrast obligational anchor (see module-level
+    # ``_is_role_contrast_obligation``). Scans the LIVE turn only (post the
+    # flatten marker) so a prior multi-turn turn mentioning one role can't
+    # combine with the live turn's other role to false-fire. PREPENDS Art. 16
+    # + Art. 26 so the operator-obligation anchors lead the budget and BM25
+    # (which fires ``if not entities``) can't surface the Art. 28/38
+    # governance pollution the bare role nouns rank for.
+    _contrast_scan = q_lower
+    if "Latest question:\n" in question:
+        _idx = question.rfind("Latest question:\n")
+        _contrast_scan = question[_idx + len("Latest question:\n"):].lower()
+    if _is_role_contrast_obligation(_contrast_scan):
+        _role_anchors = [a for a in ("Art. 16", "Art. 26") if a not in entities]
+        if _role_anchors:
+            entities = _role_anchors + entities
 
     # R81-N — typed-entity NER. Closes the 15–24% retrieval-fail
     # bucket where role/concept signals lose the BM25 race to the

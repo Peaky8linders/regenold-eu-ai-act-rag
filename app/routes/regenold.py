@@ -2496,8 +2496,48 @@ def _is_closed_set_enumeration_ask(question: str) -> bool:
         return False
 
 
+_ARTICLE_3_HEAD_RE = re.compile(r"^Article\s+3(?:\.|$)")
+
+
+def _definitional_art3_protected(
+    question: str, references: list[str]
+) -> frozenset[str]:
+    """R137 — Art. 3 refs to protect from the reconcile drop on a
+    pure-definitional question.
+
+    Fires the SAME narrow gate the engine's R114 definitional anchor uses
+    (``classify_question == "definition"`` AND ``select_definition_sentence``
+    resolves the term in the 68 Art. 3 definitions) — NOT the permissive
+    ``definition_citation_for_question`` (which resolves on 109/137 davidath
+    QA rows). On a definitional question the Art. 3 definition is the answer;
+    a Stage-2 answer that describes the topic article (the ls_02 'safety
+    component → Annex I + Art 6, Art 3 dropped' failure) must not strip the
+    Art. 3 citation. Returns the Art. 3 ref strings present in
+    ``references`` (head ``Article 3``); empty when not definitional.
+    Stage-2-gated upstream → davidath byte-identical.
+    """
+    try:
+        from app.engines.sentence_index import (  # noqa: PLC0415
+            classify_question,
+            select_definition_sentence,
+        )
+
+        if classify_question(question) != "definition":
+            return frozenset()
+        if select_definition_sentence(question) is None:
+            return frozenset()
+        return frozenset(
+            r for r in references if _ARTICLE_3_HEAD_RE.match(r.strip())
+        )
+    except Exception:  # noqa: BLE001 — fail-soft; protection is best-effort
+        return frozenset()
+
+
 def _reconcile_references_to_prose(
-    references: list[str], prose: str, floor: int = _REFS_RECONCILE_FLOOR
+    references: list[str],
+    prose: str,
+    floor: int = _REFS_RECONCILE_FLOOR,
+    protected: frozenset[str] | None = None,
 ) -> list[str]:
     """Drop wire references the answer prose never describes.
 
@@ -2505,12 +2545,21 @@ def _reconcile_references_to_prose(
     survive, tops up with the highest-ranked undescribed references so
     the list is never emptied (recall insurance). Original order is
     preserved. Fail-soft: returns ``references`` unchanged on any error.
+
+    ``protected`` (R137) — refs that must NEVER be dropped even when the
+    prose doesn't name them. Used to keep the Art. 3 definition on a
+    definitional question (the documented ls_02 live drop): for a
+    "what is X?" question the definition IS the answer, so a Stage-2
+    answer that describes the topic article instead must not strip Art. 3.
     """
     try:
         if not references:
             return references
+        protected = protected or frozenset()
         described = [
-            r for r in references if _reference_described_in_prose(r, prose)
+            r
+            for r in references
+            if r in protected or _reference_described_in_prose(r, prose)
         ]
         if len(described) >= len(references):
             return references  # every reference is described — nothing to drop
@@ -5900,7 +5949,14 @@ def regenold_eu_ai_act_ask(
         and not _looks_like_scenario_shape(question)
         and len(references) > reconcile_floor
     ):
-        references = _reconcile_references_to_prose(references, answer_text, floor=reconcile_floor)
+        references = _reconcile_references_to_prose(
+            references,
+            answer_text,
+            floor=reconcile_floor,
+            protected=_definitional_art3_protected(
+                live_user_message or question, references
+            ),
+        )
 
     # R134 — bidirectional reconcile: ADD refs the polished prose explicitly
     # NAMES but the wire never cited (the inverse of the R72 drop above). A
@@ -6141,7 +6197,12 @@ def regenold_eu_ai_act_ask(
         and len(references) > reconcile_floor
     ):
         references = _reconcile_references_to_prose(
-            references, answer_text, floor=reconcile_floor
+            references,
+            answer_text,
+            floor=reconcile_floor,
+            protected=_definitional_art3_protected(
+                live_user_message or question, references
+            ),
         )
 
     # R130 — Article 3 definitional sub-point. The Regenold rules PDF allows a
