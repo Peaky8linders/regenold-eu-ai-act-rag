@@ -7440,6 +7440,103 @@ on the live LLM-judge refs-faithfulness (floor 0.20-0.43) + correctness axes
 and the V2 role_ambiguity / borderline_prohibition axes. The post-deploy
 verification is a live representative-100 + `evals.judge.runner` re-run.
 
+## Round 139 — Fix the davidath bench's ROLE + ship a live pairwise-judge win-measure (2026-06-20)
+
+Every round since R77 ends with the same caveat — "davidath byte-identical,
+the win lands live, confirm post-deploy with a representative-100 + judge run".
+A 4-lane audit workflow named the root cause precisely: davidath
+(`evals/bench/runner.py`) runs `provider=cli` (no Sonnet Stage-2), so the
+``_stage2_provider_enabled()`` gate is False and **it cannot see ANY Stage-2 /
+synthesis / live win** — and its metrics are **token-overlap** (Jaccard
+correctness, char-ratio conciseness, regex tone) which R99.2/R100 proved
+*diverge* from the live LLM-judge (verbatim scored 0.25 judge-correctness while
+token-recall was blind). davidath is a good **regression guard**, a false
+**win-measure**. (The R82 tokenizer bias is already fixed; not re-litigated.)
+
+### Part A — fix davidath: make its true role first-class
+
+* **`--assert-baseline <label>`** (`runner.py::assert_baseline`) — per-row
+  byte-diff of `pred_answer` + `pred_refs` + every score axis (qa + scenarios)
+  vs a stored baseline sidecar; exits nonzero listing the first diverging
+  rows. Turns 30 rounds of manual "byte-identical ✓" eyeballing (which an
+  unchanged aggregate mean hides — R80) into a mechanical CI gate.
+* **Self-documenting role** — the sidecar header carries `role:
+  "regression_guard"` + `win_measure: "evals.harness.ab_judge"`, and the
+  terminal banner says "NOT a win-measure (provider=cli, no Stage-2);
+  diverges from the live judge (R99.2)". Stops a future session reading a flat
+  bench as "no win".
+* **Golden stemmer test** (`tests/test_text_normalise_golden.py`) — pins the
+  R82-A custom greedy stemmer's morphological-collapse invariants (the one
+  residual risk in the guard's own scorer).
+
+### Part B — the better alternative: a live pairwise-judge A/B win-measure
+
+`evals/harness/` (new package). The crux is **variance control**: Sonnet
+Stage-2 is non-deterministic, so the existing absolute judge can't reliably
+diff two Sonnet runs (the R100 `graphrag_ab` is only valid because one arm is
+deterministic) — yet nearly all recent work (semantic contract, BLUF prompt,
+thinking tokens, fusion, citation consistency) is Sonnet-vs-Sonnet. There was
+**no reliable A/B for it**.
+
+* **`probe_set.py`** — consolidates the manually-authored, weakness-targeted,
+  gold-bearing probes into ONE 108-row corpus (paper-V4 52 + V2 tricky/multiturn
+  56) covering every documented live-weak axis (omnibus / role_ambiguity /
+  conflict / borderline_prohibition / gpai / cross_framework / near_oos / the 4
+  risk tiers / multi-turn coref + role-flip). OOS stays a SEPARATE binary
+  refusal gate.
+* **`pairwise_prompts.py`** — 4 per-axis A-vs-B renderers derived from the
+  absolute `evals/judge/prompts.py` rubric.
+* **`ab_judge.py`** — runs each probe row through the route under two
+  env-defined arms (baseline vs branch) via the in-process TestClient + the
+  local Claude Max wrapper, then a **position-swapped pairwise judge** (judge
+  each pair A-first AND B-first; a decisive win requires BOTH orders to agree,
+  cancelling position bias) aggregates a per-axis **win-rate + two-sided
+  sign-test p-value** + a significance verdict. Reuses ~80% existing code
+  (`runner_v2._ensure_local_auth`/`_post_local`, the `evals.judge.runner` call
+  / retry / parse / KB-summary spine, `evals.bench.metrics`). A **deterministic
+  tier** (`--deterministic`, no Sonnet, exact ref/keyword scoring) covers the
+  ~70% of rounds that are retrieval/scope changes for free; a **no-wrapper
+  fallback** skips the live tier loudly rather than substituting token-overlap
+  as a win proxy.
+
+### Why pairwise > absolute (the design choice)
+
+Pairwise cancels three noise sources at once: the judge's own variance is
+SHARED (one call sees both answers) not differenced; relative preference is far
+more reliable for an LLM judge than an absolute pass/fail threshold; and a
+win-rate over a probe set has a CI that shrinks with n + a real significance
+test, instead of a noisy point delta. The audit's first-cut "drop the worse
+candidate" was rejected — for legal text Art. 5 + Art. 6 is usually a correct
+*nuance*, not an error (the R16/R49 over-pruning lesson). Rejected wholesale:
+RDF/SPARQL/LangGraph/Pinecone/Cohere/bge (wrong-for-codebase, external/GPU) and
+deterministic-frame verbalization (R100-rejected).
+
+### Verification (gates)
+
+| Gate | Result |
+| ---- | ------ |
+| new tests | `tests/test_harness_ab_judge.py` (24) + `tests/test_text_normalise_golden.py` (10) — **34 pass** (probe-set load → 108 rows; position-swap agree→decisive / flip→tie; sign-test; deterministic scoring) |
+| davidath `--assert-baseline` self-check | run vs itself → **BYTE-IDENTICAL, exit 0** (banner + role field confirmed) |
+| harness deterministic tier (live smoke) | R138-flag A/B → delta **+0.0000** (correct — the flag is Stage-2-only, deterministically inert) |
+| **harness live pairwise (Claude Max wrapper)** | R138 semantic-contract OFF vs ON, n=6 borderline/gpai → per-axis win-rate + sign-test produced end-to-end; all axes p≥0.25 → correctly reported **"ns"** (a 6-row probe can't establish significance — the harness says so instead of overclaiming) |
+| 276-runner / OOS | 255/255 all categories · 21/21, 0 leaks |
+| davidath / 276 / OOS byte-identical | **by construction** — zero `app/` code touched (diff is `evals/bench/runner.py` + new `evals/harness/` + 2 test files) |
+
+### The per-round protocol this establishes
+
+1. davidath `--assert-baseline` — cheap deterministic regression gate.
+2. `ab_judge --deterministic` — exact A/B for retrieval/scope/budget changes.
+3. `ab_judge` (live pairwise on the 108-row primary set) — the win-measure for
+   Stage-2 / prompt / fusion / synthesis changes (~90 min / ~$12-equivalent at
+   the wrapper rate limit; the binding cost is the 10/min limit, not dollars on
+   the Max path).
+4. `runner_v2 --probe-oos` — the hard refusal gate.
+
+This retires the "confirm post-deploy" ritual with a pre-merge, in-process,
+variance-controlled measurement of the axes davidath structurally can't see.
+(Two `tests/test_prod_runner.py` `_http_retry` attempt-count failures are
+pre-existing on `origin/main` — that code is untouched here.)
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a
