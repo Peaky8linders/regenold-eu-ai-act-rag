@@ -100,11 +100,11 @@ class TestDefaultRouting:
         req: OpenAIWrapperRequest = _mock_wrapper.complete.call_args.args[0]
         # Load-bearing: the complex path swaps to Opus 4.8 by default.
         assert req.model == "claude-opus-4-8"
-        # Pin the new defaults so a future revert is loud, not silent.
+        # Pin the R139 defaults so a future revert is loud, not silent.
         assert settings.graph_rag.complex_model == "claude-opus-4-8"
-        assert settings.graph_rag.complex_thinking_tokens == 1024
-        # R131.2 — modest extended thinking ON by default → header sent.
-        assert req.extra_headers.get("X-Claude-Max-Thinking-Tokens") == "1024"
+        # R139 — EXTENDED thinking budget on the complex tier (was 1024 in R131.2).
+        assert settings.graph_rag.complex_thinking_tokens == 4000
+        assert req.extra_headers.get("X-Claude-Max-Thinking-Tokens") == "4000"
 
     def test_complex_question_swap_path_when_opus_configured(
         self, _mock_wrapper
@@ -219,4 +219,66 @@ class TestComplexRouting:
         finally:
             settings.graph_rag.complex_thinking_tokens = original_tokens
         req: OpenAIWrapperRequest = _mock_wrapper.complete.call_args.args[0]
+        assert "X-Claude-Max-Thinking-Tokens" not in req.extra_headers
+
+
+class TestStage2AlwaysOpus:
+    """R139 — Stage-2 ANSWER is ALWAYS Opus 4.8 (operator directive). The
+    ``stage2_model`` knob routes EVERY Stage-2 polish/synthesis call to Opus,
+    simple or complex; the Stage-1 parse stays on the fast base model.
+
+    ``is_stage2`` keys off the caller's ``stage_name`` (only the Stage-2 polish
+    calls pass "Stage 2 …"), so these tests pass it explicitly — the other
+    tests in this module omit it (is_stage2=False → base-model path).
+    """
+
+    def test_stage2_simple_uses_opus_with_moderate_thinking(
+        self, _mock_wrapper
+    ) -> None:
+        """Simple Stage-2 question → ``stage2_model`` (Opus 4.8) + the MODERATE
+        ``thinking_tokens`` budget (1024 by default), so latency stays bounded
+        on the ~80% simple majority while the answer is verdict-first Opus
+        quality."""
+        _openai_wrapper_complete_for_graph_rag(
+            system="x", user="Is a medtech system that tracks patient weight high risk?",
+            max_tokens=400, temperature=0.0,
+            complex_question=False,
+            stage_name="Stage 2 (Polishing)",
+        )
+        req: OpenAIWrapperRequest = _mock_wrapper.complete.call_args.args[0]
+        assert req.model == settings.graph_rag.stage2_model == "claude-opus-4-8"
+        # MODERATE thinking on the simple Stage-2 path.
+        assert req.extra_headers.get("X-Claude-Max-Thinking-Tokens") == str(
+            settings.graph_rag.thinking_tokens
+        )
+
+    def test_stage2_complex_uses_opus_with_extended_thinking(
+        self, _mock_wrapper
+    ) -> None:
+        """Complex Stage-2 question → ``complex_model`` (Opus 4.8) + the
+        EXTENDED ``complex_thinking_tokens`` budget (4000 by default)."""
+        _openai_wrapper_complete_for_graph_rag(
+            system="x", user="y", max_tokens=400, temperature=0.0,
+            complex_question=True,
+            stage_name="Stage 2 (Polishing)",
+        )
+        req: OpenAIWrapperRequest = _mock_wrapper.complete.call_args.args[0]
+        assert req.model == settings.graph_rag.complex_model == "claude-opus-4-8"
+        assert req.extra_headers.get("X-Claude-Max-Thinking-Tokens") == str(
+            settings.graph_rag.complex_thinking_tokens
+        )
+
+    def test_stage1_parse_stays_on_base_model_no_thinking(
+        self, _mock_wrapper
+    ) -> None:
+        """The Stage-1 PARSE (JSON entity extraction) must NEVER swap to Opus
+        or burn a thinking budget — it stays on the fast base model with no
+        thinking header, even though stage2_model is Opus."""
+        _openai_wrapper_complete_for_graph_rag(
+            system="x", user="y", max_tokens=400, temperature=0.0,
+            complex_question=False,
+            stage_name="Stage 1 (Scope & Extraction)",
+        )
+        req: OpenAIWrapperRequest = _mock_wrapper.complete.call_args.args[0]
+        assert req.model == settings.graph_rag.model == "claude-sonnet-4-6"
         assert "X-Claude-Max-Thinking-Tokens" not in req.extra_headers
