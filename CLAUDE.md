@@ -7795,6 +7795,91 @@ built to replace. A pairwise `ab_judge` Baseline-vs-fusion confirmation is the
 right gate before any routing flip; queued as a follow-up. The fixes ship now
 regardless (orthogonal to routing).
 
+## Round 143 — Stage-2 precision: emotion cross-tier completeness + healthcare-eligibility Annex III(5)(a) + Annex IV tech-doc reference-selection (2026-06-21)
+
+A live-eval-driven prompt-precision round. Three surgical `ANSWER_GENERATE_SYSTEM`
+([`app/data/graph_rag_prompts.py`](app/data/graph_rag_prompts.py)) edits closing
+gaps a live Antifragile/MedTech re-review surfaced, each fact-verified against the
+repo's OWN pinned official text (`provision_text.get_provision_text`) before any
+prose was written (hard rule #4). All three are **Stage-2-prompt-only → davidath
+byte-identical by construction** (the deterministic bench runs `provider=cli`, so
+`_stage2_provider_enabled()` is False and `ANSWER_GENERATE_SYSTEM` is never sent —
+the established R49/R69/R108/R111/R122/R138 pattern).
+
+### What R142 already covered (verified, NOT duplicated)
+A 3-agent verification pass (regulatory-fact check + code-surface map + davidath-
+impact scan) confirmed R142 already ships: the Art. 5(1)(h) RBI qualifier (FACTUAL
+GUARD line — *"qualify it as 'real-time remote biometric identification in publicly
+accessible spaces for law enforcement'; never list a bare ...'"*), the Art. 50
+per-paragraph actor split (50(1)/(2) provider, 50(3)/(4) deployer), the Annex
+III(5)(d) emergency-triage discipline (*"never cite it as the generic high-risk
+example for routine clinical AI"*), and — at the deterministic layer — the
+`subpoint_emitter` already emits the full emotion triple (`Article 5.1.f, Annex
+III.1.c, Article 50.3`) and the Annex IV hardware leaves (`Annex IV.1.e, Annex
+IV.2.c`). So P2-Q3 (RBI qualifier) was effectively done; the genuine remaining
+gaps were all in the Stage-2 prompt.
+
+### Fix 1 (P1-Q2) — emotion-recognition cross-tier completeness
+The BIOMETRIC/EMOTION FACTUAL GUARD gains an EMOTION-RECOGNITION CROSS-TIER
+COMPLETENESS clause: an "is emotion recognition always/ever prohibited?" question
+must map ALL THREE tiers, not just the most restrictive one — PROHIBITED only in
+the workplace or education institutions (Article 5(1)(f), medical/safety carve-out),
+NOT prohibited but HIGH-RISK under Annex III(1)(c) (emotion recognition under the
+biometrics heading) elsewhere, with the deployer's Article 50(3) duty to inform
+exposed persons; lead framing via the Article 3(39) definition. Verified: Annex
+III(1)(c) = "AI systems intended to be used for emotion recognition" (point 1
+Biometrics); Art 3(39) = "emotion recognition system"; Art 50(3) = the deployer
+duty.
+
+### Fix 2 (P1-Q4) — healthcare-eligibility Annex III(5)(a) (the positive complement)
+The MEDICAL guard gains the *positive* rule R142 lacked: a system evaluating a
+person's ELIGIBILITY for essential public assistance benefits and services,
+including healthcare, **by or on behalf of a public authority**, is high-risk under
+**Annex III(5)(a)** (eligibility for benefits), NOT under 5(d) (emergency response).
+Also **corrected** the 5(d) description to its full faithful scope (the verification
+flagged the prior text as incomplete): 5(d) covers evaluating/classifying emergency
+calls, dispatching/prioritising first-response services, AND emergency healthcare
+patient-triage — not "triage only". Plus a conservative Art. 4 AI-literacy mention
+on the limited/minimal-risk closing, gated to "only when Article 4 is among the
+supplied references, never as an invented citation" (no over-citation risk).
+
+### Fix 3 (P3-Q1 prose) — Annex IV technical-documentation reference-selection
+New REFERENCE SELECTION bullet: a TECHNICAL-DOCUMENTATION-CONTENT question
+(what the documentation must contain / what goes in Annex IV) cites Article 11
+(which requires the documentation) + the specific Annex IV sub-points the question
+targets — in particular **Annex IV(1)(e)** (the description of the hardware on which
+the system is intended to run) and **Annex IV(2)(c)** (the computational resources) —
+and must NOT pull in Article 6 or recite the two high-risk classification routes on
+a pure technical-documentation-content question. This is reference-selection prose
+(NOT a new classification topic → hard rule #3 respected), and the davidath-impact
+scan confirmed it is davidath-safe: the only 3 davidath tech-doc-content rows are
+gold Article 11 / Article 18 (zero have Article 6), so steering off Article 6
+changes no gold-scored row. (The deterministic `subpoint_emitter` 1(b)/1(d)
+additions + `_suppress_noise_anchors` Art-6 drop are DEFERRED — low-value, ref-
+conciseness risk, PDF-example-touching; the prompt rule achieves P3's intent on
+the live Stage-2 path more safely.)
+
+### Gates (worktree off origin/main = R142)
+* davidath QA bench (`--qa-only`, provider=cli) — **byte-identical to R136/R137/R138**:
+  Ans Strict 0.4022 / Ans Loose 0.1411 / Ref Loose 0.8321 / Ref Strict 0.5528 /
+  Ref Conciseness 0.4395 / Tone 1.0.
+* `evals.regenold.runner` (276) — **all categories 100%** (in_scope_multi_turn
+  102/102, risk_classification 17/17, definitional 2/2, role_obligation 2/2,
+  transparency_art50 1/1).
+* OOS probe (`runner_v2 --local --probe-oos`) — **21/21, 0 leaks** (r34_p0 5 /
+  r47_e 2 / r54_1_c2 8 / injection 3 / other_regulation 3).
+* No pinned-text test asserts the edited prompt spans; `ANSWER_GENERATE_SYSTEM`
+  imports cleanly (zero new em-dashes/ellipses; Edit 2 removed one pre-existing
+  em-dash).
+
+### Where it lands
+davidath is the regression guard (byte-identical), not the win surface. The wins
+land on the live LLM-judge: completeness/correctness on the emotion-recognition
+"always prohibited?" shape (the cross-tier map), reference-correctness on
+healthcare-eligibility (5(a) vs 5(d)) and technical-documentation (Annex IV(1)(e),
+no Art 6 over-cite). Confirm post-deploy with `evals.harness.ab_judge` (the R139
+pairwise win-measure) + a live representative-100 + judge re-run.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a
