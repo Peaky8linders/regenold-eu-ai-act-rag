@@ -7872,13 +7872,46 @@ the live Stage-2 path more safely.)
   imports cleanly (zero new em-dashes/ellipses; Edit 2 removed one pre-existing
   em-dash).
 
-### Where it lands
-davidath is the regression guard (byte-identical), not the win surface. The wins
-land on the live LLM-judge: completeness/correctness on the emotion-recognition
-"always prohibited?" shape (the cross-tier map), reference-correctness on
-healthcare-eligibility (5(a) vs 5(d)) and technical-documentation (Annex IV(1)(e),
-no Art 6 over-cite). Confirm post-deploy with `evals.harness.ab_judge` (the R139
-pairwise win-measure) + a live representative-100 + judge re-run.
+### Live A/B re-measurement — HONEST result: branch == baseline on the 4 probed shapes
+A focused live A/B (4 affected-shape questions through the in-process route + the
+live Claude Max **Opus 4.8** Stage-2 path, branch prompt vs `origin/main` prompt,
+single sample per arm) found the branch and baseline **equivalent** — no
+regression, but **no demonstrated win** on the probed shapes:
+
+| Shape | Branch | Baseline | Read |
+| ----- | ------ | -------- | ---- |
+| emotion-in-retail | full cross-tier (refs incl. `Annex III.1.c` + `Article 50.3`) | full cross-tier (same) | R142's generic DIRECT-VERDICT rule already maps all tiers WHEN the refs are retrieved → Fix 1 adds no marginal value here |
+| emotion "always prohibited?" | degenerate (Article-5-only, refs `[Article 5, 5.1.f]`) | degenerate (same) | `kb_fallback` surfaced only Article 5; Opus wrote a prohibition-only answer and the R72 reconcile pruned `Annex III.1.c` + `Article 50.3` as undescribed → Fix 1 inert |
+| healthcare-eligibility | Art 6(2)/Annex III verdict, no `5(a)` pin | same (+ Art 49(2)) | Annex III not retrieved → cannot cite `Annex III(5)(a)` → Fix 2 inert |
+| tech-doc hardware | Art 11 + Annex IV, no Art 6 | same, no Art 6 | baseline already avoided Article 6 on this phrasing → Fix 3 adds no marginal value here |
+
+The structural finding (robust to Opus sampling noise — it is a retrieval
+observation, not a quality delta): on 3 of 4 shapes the `kb_fallback` path
+surfaces only the **parent article**, so the prompt physically cannot pin the
+sub-point (`Annex III(1)(c)` / `(5)(a)` / `Annex IV(1)(e)`) — Stage-2 grounds
+only on the supplied refs (rule 11). And on the one full-ref case
+(emotion-in-retail) R142's generic rule already produced the cross-tier map.
+
+**What the round actually is**: correct, faithful (hard rule #4 — incl. the
+5(d) scope correction), davidath byte-identical, **harmless** (zero regression
+live), and it codifies the precise sub-point mapping — but its live payoff is
+**contingent on the deferred deterministic retrieval/verdict work**, NOT a
+standalone win. The genuine live lever for these shapes (→ R144):
+1. Surface `Annex III` + `Article 50` for the emotion "always prohibited?"
+   shape, and make the deterministic emotion classification VERDICT prose itself
+   carry the three-tier map, so Stage-2 polishes a complete answer rather than
+   regenerating a narrow Article-5-only one that the R72 reconcile then prunes
+   the sub-points from. (Touches a PDF-example topic — hard rule #3 care + a
+   davidath scenario A/B required: emotion is 24 scenarios, gold 5/6/50.)
+2. Surface `Annex III(5)(a)` on the public-authority eligibility shape.
+3. Pin `Annex IV(1)(e)` on tech-doc hardware (the R111 `subpoint_emitter`
+   already emits it; the route's R72 reconcile / ref budget drops it when the
+   answer describes it only generically).
+
+Caveat: single-sample-per-arm; the equivalence is indicative, not statistical
+(`ab_judge`'s env-flag arms cannot A/B two prompt files, so a position-swapped
+pairwise over many samples was not run). The qualitative retrieval-bottleneck
+finding does not depend on sampling.
 
 ## Non-goals / things to skip
 
