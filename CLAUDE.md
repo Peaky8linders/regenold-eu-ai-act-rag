@@ -7564,6 +7564,61 @@ measurement. Sidecars: `medtech-graphrag-v124-r139-opus-live.json` /
 
 
 
+### R139 follow-up — kill the colloquial / buried-verdict openers (live tone fix)
+
+A live re-probe (and the operator's production screenshot, still on the
+un-deployed-R139 Sonnet path) surfaced two un-professional opener patterns the
+existing prompt did not fully suppress — present in BOTH Sonnet and Opus output:
+1. **"It depends:"** — the Stage-2 ``DIRECT-VERDICT`` rule literally MODELLED
+   *"It depends: high-risk only when [condition]"* as the conditional-verdict
+   template. "It depends" is conversational, not EU-AI-Act legal-professional.
+2. **"The operative provision is Article 6(1) …"** — the meta-opener the round
+   was meant to kill. The prompt forbade only the *forward* word order
+   ("Article N is the operative provision"); Opus reverted to the *reversed*
+   order under temperature-0 variance.
+
+Fixes (all Stage-2-prompt + a deterministic backstop → davidath byte-identical):
+* **Prompt** (`graph_rag_prompts.py` + the engine Stage-2 user-messages) — the
+  ``It depends`` template is replaced everywhere by a FORMAL conditional verdict
+  ("High-risk only where [the operative condition]" / "Not high-risk unless …")
+  and "It depends" is explicitly forbidden. The forbidden meta-opener now covers
+  ANY word order ("The operative provision is Article N" / "The applicable
+  provision is Article N" / "Under Article N…") with a hard "FIRST WORDS must be
+  the subject entity or the classification itself" rule + a worked exemplar.
+* **`answer_normaliser.strip_hedge_opener`** (new, default ON, env
+  ``REGENOLD_STRIP_HEDGE=0``) — deterministic backstop wired into
+  ``normalise_answer_for_regenold`` after the R81-H preamble strip: removes a
+  leading ``It depends:`` / ``It depends, `` / ``It depends. `` / ``It depends — ``
+  and re-capitalises (the remainder is already the conditional verdict).
+  Conservative: a delimiter must immediately follow ``depends`` (so "It depends
+  on whether … ; <verdict>", which carries the condition before any delimiter,
+  is left intact) AND the remainder must keep ≥ 40 chars. Pure, idempotent,
+  fail-soft, never empties. +13 `tests/test_r139_hedge_strip.py`.
+
+Live re-probe (TestClient + wrapper, Opus 4.8) — the user's exact question, 3
+runs, all clean: leads with the classification ("The system described is not
+among the practices prohibited under Article 5 … high-risk only where it is a
+safety component of a regulated medical device requiring third-party conformity
+assessment"), zero "It depends", zero "operative provision" meta-opener.
+davidath QA byte-identical (0.4022 / 0.8321 / 0.5528 / Tone 1.0 — the strip is a
+no-op on the deterministic path, which never emits an "It depends" opener); 276
+100%; OOS 21/21; +84 affected-suite tests (the R138 `thinking_tokens==2048` +
+`"It depends" in prompt` pins updated to the R139 values). Two R138 tests
+re-pinned: `test_thinking_tokens_doubled` → `test_thinking_tokens_adaptive_r139`
+(1024/4000/Opus), `test_prompt_has_direct_answer_first_rule` (asserts the formal
+conditional present + "It depends" absent).
+
+### Deployment note — R139 was NOT live when the operator screenshotted
+
+The production screenshot showed `model used = SONNET 4.6` +
+`stage2_model=claude-sonnet-4-6` + `Extended thinking requested (2048 tokens)` —
+that is the **R138 deploy**, not this branch (R139 sets Opus + 1024/4000). PR
+#236 was un-merged, so the Opus routing never reached production. The branch is
+verified correct (live probe shows `model=claude-opus-4-8` on every Stage-2
+answer); it must MERGE to `main` for Railway to deploy it. No dashboard override
+blocks it — `stage2_model` is a NEW config field (no pinned env var), so the
+code default (Opus 4.8) takes effect on the next deploy.
+
 ### Trade + rollback
 
 The trade is latency (Opus is slower than Sonnet; extended thinking adds time on

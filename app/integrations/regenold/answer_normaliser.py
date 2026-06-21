@@ -56,7 +56,7 @@ from __future__ import annotations
 
 import re
 
-__all__ = ["strip_preamble_templates", "strip_dash_separators"]
+__all__ = ["strip_preamble_templates", "strip_dash_separators", "strip_hedge_opener"]
 
 
 # ── Dash-separator normalisation ─────────────────────────────────────
@@ -294,3 +294,45 @@ def strip_preamble_templates(text: str) -> str:
     except Exception:
         # Fail-soft: any exception returns the original.
         return original
+
+
+# R139 — colloquial "It depends" hedge opener. The Stage-2 DIRECT-VERDICT rule
+# formerly modelled "It depends: high-risk only when …" as a conditional-verdict
+# opener; "It depends" reads as conversational, not EU-AI-Act legal-professional
+# voice. A delimiter must immediately follow "depends" (so "It depends on
+# whether …" — which carries the deciding condition before any delimiter — is
+# left untouched).
+_HEDGE_OPENER_RE = re.compile(r"^\s*it\s+depends\b\s*[:.,;—–-]+\s*", re.IGNORECASE)
+
+
+def strip_hedge_opener(text: str) -> str:
+    """R139 — strip a leading colloquial ``It depends`` hedge from the answer.
+
+    Removes a leading ``It depends:`` / ``It depends, `` / ``It depends. `` /
+    ``It depends — `` so the answer leads with the regulatory classification
+    itself (the remainder is already the conditional verdict, e.g. ``High-risk
+    only where …``). Conservative: fires ONLY when a delimiter immediately
+    follows ``depends`` AND the remainder still carries substance (≥ 40 chars),
+    so a near-empty ``It depends.`` is left intact. Pure, idempotent, fail-soft;
+    never empties. Env-reversible ``REGENOLD_STRIP_HEDGE=0``.
+    """
+    import os  # noqa: PLC0415 — local to keep the module import surface lean
+
+    if os.getenv("REGENOLD_STRIP_HEDGE", "1").strip().lower() in (
+        "0", "false", "no", "off",
+    ):
+        return text
+    if not text or not text.strip():
+        return text
+    try:
+        m = _HEDGE_OPENER_RE.match(text)
+        if not m:
+            return text
+        remainder = text[m.end():].lstrip()
+        if len(remainder) < 40:
+            # Substance floor — don't strip a near-empty answer down to a stub.
+            return text
+        out = _capitalise_first_letter(remainder)
+        return out if out and out.strip() else text
+    except Exception:
+        return text

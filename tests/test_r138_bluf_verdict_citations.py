@@ -35,11 +35,16 @@ _ART_RE = re.compile(r"\bArticle\s+(\d{1,3})\b")
 _ANNEX_RE = re.compile(r"\bAnnex\s+([IVXLC]+)\b")
 
 
-# ── Change 2 — doubled Sonnet standard-path thinking budget ───────────────
+# ── Change 2 — adaptive thinking budgets (R138 doubled; R139 retuned) ─────
 
 
-def test_thinking_tokens_doubled() -> None:
-    assert settings.graph_rag.thinking_tokens == 2048
+def test_thinking_tokens_adaptive_r139() -> None:
+    # R139 — Stage-2 is always Opus 4.8; the MODERATE simple-question budget was
+    # retuned 2048 → 1024 (latency-conscious on the now-Opus 80% majority), and
+    # the EXTENDED complex budget 1024 → 4000.
+    assert settings.graph_rag.thinking_tokens == 1024
+    assert settings.graph_rag.complex_thinking_tokens == 4000
+    assert settings.graph_rag.stage2_model == "claude-opus-4-8"
 
 
 # ── Change 1 — BLUF verdict-first prompt ──────────────────────────────────
@@ -47,8 +52,12 @@ def test_thinking_tokens_doubled() -> None:
 
 def test_prompt_has_direct_answer_first_rule() -> None:
     assert "DIRECT ANSWER FIRST" in ANSWER_GENERATE_SYSTEM
-    # Verdict-first for a SPECIFIC system, not just "always/ever" questions.
-    assert "It depends: high-risk only when" in ANSWER_GENERATE_SYSTEM
+    # R139 — verdict-first for a SPECIFIC system, stated as a FORMAL conditional
+    # ("High-risk only where …"), NOT the colloquial "It depends" (which R139
+    # removed from the prompt as un-professional and forbids explicitly).
+    assert "High-risk only where" in ANSWER_GENERATE_SYSTEM
+    assert "It depends: high-risk only when" not in ANSWER_GENERATE_SYSTEM
+    assert 'NEVER open with the colloquial "It depends"' in ANSWER_GENERATE_SYSTEM
     # The reader must see the answer first, not the operative provision.
     assert "bury the verdict" in ANSWER_GENERATE_SYSTEM
 

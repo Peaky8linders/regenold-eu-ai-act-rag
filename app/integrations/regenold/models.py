@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, model_validator
 from app.data.article_existence import ARTICLE_EXISTENCE
 from app.integrations.regenold.answer_normaliser import (
     strip_dash_separators,
+    strip_hedge_opener,
     strip_preamble_templates,
 )
 
@@ -1332,6 +1333,13 @@ def normalise_answer_for_regenold(
         "on",
     ):
         result = strip_preamble_templates(result)
+
+    # R139 — strip a leading colloquial "It depends" hedge so the answer leads
+    # with the regulatory classification (EU AI Act legal-professional voice).
+    # Default ON; env-reversible REGENOLD_STRIP_HEDGE=0. Backstop for the
+    # Stage-2 prompt's source-side fix (the DIRECT-VERDICT rule no longer models
+    # "It depends" as a conditional-verdict opener).
+    result = strip_hedge_opener(result)
 
     # R92 — wire citation-form enforcement (default ON). Normalise any
     # "Art. N" / "Arts. N" in the answer prose to the spec "Article N" /
