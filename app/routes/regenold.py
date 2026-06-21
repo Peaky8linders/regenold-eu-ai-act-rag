@@ -2825,8 +2825,10 @@ def _final_ref_clamp(
 
     Gated on ``stage2_landed`` → davidath byte-identical (no Stage-2 on the
     deterministic bench). Scenario shapes (curated multi-article gold) and the
-    verbatim / no-match paths are exempt, mirroring the R138 pass. Env
-    off-switch ``REGENOLD_FINAL_REF_CLAMP`` (default ON). Route post-processing
+    verbatim / no-match paths are exempt, mirroring the R138 pass. Env switch
+    ``REGENOLD_FINAL_REF_CLAMP`` (**default OFF as of R142.1** — the live
+    pairwise judge found it net-negative; see the inline note at the gate).
+    Route post-processing
     on the already-cached engine output, so — like ``REGENOLD_QA_REF_BUDGET`` /
     ``REGENOLD_REFS_RECONCILE`` — it is deliberately NOT in the engine cache key
     (it re-runs on every cache hit; R79 finding).
@@ -2839,7 +2841,16 @@ def _final_ref_clamp(
         return references
     if budget <= 0 or len(references) <= budget:
         return references
-    if os.getenv("REGENOLD_FINAL_REF_CLAMP", "1").strip().lower() not in (
+    # R142.1 — default OFF. The R139 `ab_judge` live pairwise (28 rows, gates ON
+    # vs OFF) showed this clamp NET-NEGATIVE: it never won a row and LOST refs
+    # (11-0, p=0.001) + correctness (9-0, p=0.004). Root cause: the positional
+    # [:budget] clamp drops a GOLD ref on multi-article questions (every
+    # correctness loss was also a refs loss), so the judge prefers the unclamped
+    # answer's gold-recall. It helps single-article QA over-citation but hurts
+    # the multi-article-gold majority. Re-enable (=1) only for a single-article
+    # deploy, or after a gold-protected redesign (don't drop a load-bearing /
+    # described ref). Default "0".
+    if os.getenv("REGENOLD_FINAL_REF_CLAMP", "0").strip().lower() not in (
         "1",
         "true",
         "yes",

@@ -136,7 +136,10 @@ _REFS_OVER = [f"Article {n}" for n in (3, 16, 26, 22, 23, 25, 11, 49, 50, 99)]
 
 class TestFinalRefClamp:
     def _clamp(self, refs, monkeypatch, **kw):
-        monkeypatch.delenv("REGENOLD_FINAL_REF_CLAMP", raising=False)
+        # R142.1 — the clamp default is now OFF (the live pairwise judge found it
+        # net-negative). These behaviour tests exercise the explicitly-enabled
+        # (=1) path; the default-OFF no-op is pinned by test_default_is_off.
+        monkeypatch.setenv("REGENOLD_FINAL_REF_CLAMP", "1")
         defaults = dict(
             budget=3,
             stage2_landed=True,
@@ -212,3 +215,17 @@ class TestFinalRefClamp:
 
     def test_empty_refs(self, monkeypatch: pytest.MonkeyPatch) -> None:
         assert self._clamp([], monkeypatch, budget=3) == []
+
+    def test_default_is_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # R142.1 — with the env unset the clamp is a no-op (default flipped to
+        # OFF after the R139 ab_judge pairwise found it net-negative: lost refs
+        # 11-0 p=0.001 + correctness 9-0 p=0.004 vs gates-OFF).
+        monkeypatch.delenv("REGENOLD_FINAL_REF_CLAMP", raising=False)
+        out = _final_ref_clamp(
+            _REFS_OVER,
+            budget=3,
+            stage2_landed=True,
+            scenario_shape=False,
+            retrieval_path="kb_fallback",
+        )
+        assert out == _REFS_OVER
