@@ -7728,6 +7728,73 @@ variance-controlled measurement of the axes davidath structurally can't see.
 (Two `tests/test_prod_runner.py` `_http_retry` attempt-count failures are
 pre-existing on `origin/main` — that code is untouched here.)
 
+## Round 142 — reference-precision clamp + incomplete-verdict truncation guard (2026-06-21)
+
+The R141 production eval round (live Antifragile-20 + GraphRAG-40 + MedTech-24,
+all Opus-4.8 Stage-2 via the tunnel) surfaced two LIVE-only Stage-2 defects a
+4-lane investigation workflow root-caused with file:line evidence. Both fixes
+are gated on the live Stage-2 path → **davidath byte-identical by construction**
+(the deterministic bench runs `provider=cli`, so `stage2_landed` is never True
+and the new code is a strict no-op there).
+
+### Over-citation (q10 shipped 10 refs vs gold ~2; grb_20 16 vs 4)
+The R138 cite-consistency pass (`_add_prose_named_refs` cap=8) and the R133
+`_surface_prose_subpoints` pass re-add prose-named refs UNCAPPED, AFTER the
+Component-D block last enforced `_effective_max_refs` (`regenold.py` ~6097), so
+nothing re-clamps — a QA budget of 3 ships 3 + up to 8 = 11. A verbose
+synthesis answer names many articles → the wire over-cites; Ref Strict /
+Conciseness crater while Ref Loose stays high. **Fix:** `_final_ref_clamp`
+re-applies the SAME per-question budget as a final positional clamp (refs are
+rank-ordered, gold concentrated at the head, R138 appends behind), scenario- /
+verbatim- / no-match-exempt, env `REGENOLD_FINAL_REF_CLAMP` (default ON). QA
+clamps to 3; scenarios keep their 10/22-ref budget.
+
+### Truncation (verdict-less dangling answers — q20 / med_8)
+The Claude-Max wrapper cuts the stream after an IRAC lead-in even on a SHORT
+answer (R102 — it reports `finish_reason=stop` on cuts), shipping a
+period-terminated answer with the verdict unsaid ("…Applying that test to the
+facts." / "The operative reasoning."). The structural-truncation guard only
+checks for terminal punctuation, so these pass it. **Fix:**
+`_looks_incomplete_verdict` flags the three promissory shapes (IRAC application
+clause / bare promissory header / trailing colon) → soft-fail → deterministic
+Stage-1 fallback (a complete verdict), env `REGENOLD_STAGE2_VERDICT_GUARD`;
+plus the answer-token headroom above the thinking budget is widened 512 → 1024
+(env `REGENOLD_STAGE2_ANSWER_HEADROOM`) on both the wrapper + Anthropic-SDK
+Stage-2 paths.
+
+### Gates (all green)
+* davidath QA `--assert-baseline` vs clean R141: **byte-identical** (pred_answer
+  0 diffs, pred_refs 0 diffs, all 13 rubric axes 0 diffs — only `latency_ms`).
+* 276-runner **255/255** (RISK_F1 0.85); OOS probe **21/21, 0 leaks**.
+* +34 R142 unit tests (`tests/test_r142_refprecision_truncation.py`) + 252
+  touched-surface tests pass.
+* LIVE validation: the truncation guard FIRED on a real Sonnet stream-cut
+  (`completion_tokens=421`, undelivered verdict → deterministic fallback)
+  during the routing A/B — direct proof the fix works in production conditions.
+
+### Model-routing A/B for SIMPLE questions (medtech v124, 24 rows, live, fixed pipeline)
+Evaluated three Stage-2 strategies for simple questions (the R139 `ab_judge`
+pairwise is the definitive win-measure; this is the absolute-rubric + latency
+first pass):
+
+| Arm | RefL | RefS | RefConc | tone | p50 | p95 | refusal |
+| --- | ---- | ---- | ------- | ---- | --- | --- | ------- |
+| Baseline (Opus-always, R139.1) | 0.757 | 0.648 | 0.522 | 1.0 | 18.4s | 32.8s | 0 |
+| A: Sonnet 4.6 + 10K thinking | 0.823 | 0.643 | 0.502 | 1.0 | 28.2s | 64.0s | 0.042 |
+| B: fusion (Sonnet+Groq+Mistral) + Opus judge | 0.799 | 0.658 | 0.545 | 1.0 | 17.8s | 32.5s | 0 |
+
+**Verdict: keep Opus-always (no routing change in this PR).** Arm A is rejected
+— +0.07 RefL but **+53% latency** (p50 28s, p95 64s) AND it truncates more
+through the wrapper (the 1 refusal = a stream-cut → deterministic fallback; a
+scored axis worse). Arm B (fusion+Opus) is the genuinely interesting one — best
+RefS/RefConc at **latency parity** with Baseline (the panel runs Groq+Mistral in
+parallel, so it costs ~1 Opus-judge call) — but the deltas (RefS 0.648→0.658,
+RefL 0.757→0.799) sit inside the n=24 non-deterministic-rubric noise band, and
+the absolute rubric is exactly the noisy measure R139's `ab_judge` pairwise was
+built to replace. A pairwise `ab_judge` Baseline-vs-fusion confirmation is the
+right gate before any routing flip; queued as a follow-up. The fixes ship now
+regardless (orthogonal to routing).
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a
