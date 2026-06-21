@@ -1959,9 +1959,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const mClass = modelClass(detectedModel);
             const mLabel = modelLabel(detectedModel);
             const complexBadge = isComplex ? ' <span style="font-size:10px;color:#a78bfa">(complex routing)</span>' : '';
+            // An LLM model only PRODUCED this answer when Stage-2 actually landed
+            // (trace.stage2_polish === true). The "stage2_model=…" note records the
+            // model the engine *selected/attempted* BEFORE the call — so when Stage-2
+            // fails (provider down / wrapper outage / truncation) the deterministic
+            // pipeline produced the answer. Pre-R141 the header always showed the
+            // attempted model, so an outage read as "★ Opus 4.8 answered" when Opus
+            // never ran. Show the honest answer source instead.
+            const stage2Landed = trace.stage2_polish === true;
+            let answerBadge;
+            if (stage2Landed) {
+                answerBadge = `<span class="reasoning-model-badge ${mClass}">${escapeHtml(mLabel)}${complexBadge}</span>`;
+            } else {
+                const attempted = (trace.stage2_polish === false && detectedModel)
+                    ? ` <span style="font-size:10px;color:var(--text-muted)">(Stage-2 ${escapeHtml(mLabel)} did not land)</span>`
+                    : '';
+                answerBadge = `<span class="reasoning-model-badge" style="background:#3f3f46;color:#d4d4d8">Deterministic</span>${attempted}`;
+            }
             parts.push(`<div class="reasoning-header-bar">
                 <span class="schema-ver">schema ${escapeHtml(schemaVer)}</span>
-                <span class="reasoning-model-badge ${mClass}">${escapeHtml(mLabel)}${complexBadge}</span>
+                ${answerBadge}
             </div>`);
 
             // ── Scope ────────────────────────────────────────────────────────
@@ -2022,8 +2039,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             // ── Stage-2 model ────────────────────────────────────────────────
             if (trace.stage2_polish !== null && trace.stage2_polish !== undefined) {
-                let body = kv('stage2', `<span class="rlog-val ${trace.stage2_polish ? 'ok' : 'warn'}">${trace.stage2_polish ? 'landed' : 'skipped / fallback'}</span>`);
-                if (detectedModel) body += kv('model used', `<span class="rlog-val highlight reasoning-model-badge ${mClass}" style="padding:2px 6px;font-size:10px">${escapeHtml(modelLabel(detectedModel))}</span>`);
+                // Distinguish "the LLM was attempted but FAILED" (provider error /
+                // wrapper outage / truncation → deterministic fallback) from a plain
+                // gate-skip, so a provider outage is VISIBLE here instead of being
+                // masked as "Opus 4.8 answered".
+                const failNote = (trace.notes || []).find(n => /stage2_failed_both_providers|stage2_call_failed/i.test(n));
+                const stage2State = stage2Landed
+                    ? 'landed'
+                    : (failNote ? 'attempted → FAILED → deterministic fallback' : 'skipped → deterministic');
+                let body = kv('stage2', `<span class="rlog-val ${stage2Landed ? 'ok' : 'warn'}">${stage2State}</span>`);
+                if (detectedModel) {
+                    const lbl = stage2Landed ? 'model used' : 'model attempted';
+                    const tail = stage2Landed ? '' : ' <span style="color:var(--text-muted);font-size:10px">— did not produce this answer</span>';
+                    body += kv(lbl, `<span class="rlog-val highlight reasoning-model-badge ${mClass}" style="padding:2px 6px;font-size:10px">${escapeHtml(modelLabel(detectedModel))}</span>${tail}`);
+                }
+                if (failNote) body += kv('failure', `<span class="rlog-val warn">${escapeHtml(failNote)}</span>`);
                 if (isComplex) body += kv('gate', '<span class="rlog-val" style="color:#a78bfa">complex routing — question complexity gate fired</span>');
                 parts.push(section('model-hdr', '✦', 'LLM Stage-2', body));
             }

@@ -369,14 +369,43 @@ def _openai_wrapper_complete_for_graph_rag(
         # doesn't silently A/B Sonnet against deterministic-fallback
         # for an entire round and only spot the mismatch in the JSON
         # snapshot post-hoc.
+        _err_low = response.error.lower()
         if "not_logged_in" in response.error:
             logger.error(
                 "graph_rag.openai_wrapper_not_logged_in — Sonnet path is DOWN. "
                 "Re-seed the wrapper's OAuth token by running login.bat. ",
             )
-        elif "out of extra usage" in response.error.lower() or "credit balance" in response.error.lower():
+        elif "out of extra usage" in _err_low or "credit balance" in _err_low:
             logger.error(
                 "graph_rag.openai_wrapper_quota_exhausted — LLM quota limits reached: %s. ",
+                response.error[:200],
+            )
+        elif (
+            # The wrapper masks an expired Claude-Max OAuth token (the bundled
+            # Claude Code CLI returns HTTP 401 "Invalid authentication
+            # credentials") as an HTTP 500 "No response from Claude Code".
+            # That falls outside the not_logged_in/quota strings above, so it
+            # was logged at WARNING — a silent provider OUTAGE where EVERY
+            # Stage-2 call fails and the whole deploy degrades to deterministic
+            # fallback. Treat it as loud as a logged-out wrapper: it needs the
+            # same fix (re-auth) and the operator must see it immediately.
+            "no response from claude" in _err_low
+            or "api_status_500" in _err_low
+            or "api_status_401" in _err_low
+            or "api_status_403" in _err_low
+        ):
+            logger.error(
+                "graph_rag.openai_wrapper_provider_outage — Stage-2 LLM path is "
+                "DOWN (likely an expired Claude-Max OAuth token: the wrapper "
+                "masks the bundled Claude Code CLI's HTTP 401 as a 500 'No "
+                "response from Claude Code'). EVERY Stage-2 call is failing and "
+                "the deploy is serving DETERMINISTIC fallback answers. Re-seed "
+                "the wrapper's OAuth token by running login.bat, then verify "
+                "with: curl -s -X POST http://127.0.0.1:8000/v1/chat/completions "
+                "-H 'Content-Type: application/json' -d "
+                "'{\"model\":\"claude-sonnet-4-6\",\"max_tokens\":16,"
+                "\"messages\":[{\"role\":\"user\",\"content\":\"reply OK\"}]}'. "
+                "Detail: %s",
                 response.error[:200],
             )
         else:
