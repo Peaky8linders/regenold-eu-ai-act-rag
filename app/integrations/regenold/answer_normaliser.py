@@ -56,7 +56,12 @@ from __future__ import annotations
 
 import re
 
-__all__ = ["strip_preamble_templates", "strip_dash_separators", "strip_hedge_opener"]
+__all__ = [
+    "strip_preamble_templates",
+    "strip_dash_separators",
+    "strip_hedge_opener",
+    "strip_section_headers",
+]
 
 
 # ── Dash-separator normalisation ─────────────────────────────────────
@@ -331,6 +336,127 @@ def strip_hedge_opener(text: str) -> str:
         remainder = text[m.end():].lstrip()
         if len(remainder) < 40:
             # Substance floor — don't strip a near-empty answer down to a stub.
+            return text
+        out = _capitalise_first_letter(remainder)
+        return out if out and out.strip() else text
+    except Exception:
+        return text
+
+
+# R145 — pseudo-section-header fragments. Opus 4.8, on complex multi-part
+# classification questions ("Is X prohibited? Or high-risk per Annex III?"),
+# sometimes structures the answer as a sectioned legal memo with short
+# heading-like sentence fragments that announce a sub-topic instead of stating
+# substance — e.g. "Why it is not prohibited (Article 5).", "Why it is not
+# Annex III high-risk.", "The condition that would make it high-risk (Article
+# 6)." Those fragments read as headings even without markdown (hurting the
+# conciseness axis) and the per-issue sections they introduce restate the same
+# finding several times (hurting coherence). The Stage-2 prompt forbids them at
+# source (rule 5c); this is the deterministic backstop. Conservative + high
+# precision: it drops ONLY a sentence that matches a header shape AND is short,
+# never empties the answer, never drops a substantive sentence (the content the
+# fragment announced survives in the following sentence). davidath is
+# byte-identical (deterministic answers never carry these fragments, and the
+# bench runs provider=cli with no Stage-2). Env-reversible
+# ``REGENOLD_STRIP_SECTION_HEADERS=0``.
+
+_HEADER_MAX_CHARS = 95
+
+# Pattern Q — declarative "Why <subject> <be/aux> ..." fragment that is NOT a
+# question. A real answer sentence never opens "Why it is not prohibited." as a
+# STATEMENT; that shape is always a rhetorical section label.
+_WHY_HEADER_RE = re.compile(
+    r"^\s*Why\s+(?:it|this|that|the\s+system|the\s+tool|the\s+model|"
+    r"the\s+application|the\s+service|the\s+software)"
+    r"(?:'s|\s+(?:is|was|are|does|do|would|becomes?|qualifies|falls|"
+    r"counts|remains?|applies))\b[^?]*?[.:]?\s*$",
+    re.IGNORECASE,
+)
+
+# Pattern P — "The <issue-noun> that/which <relative clause> (Article N)." — an
+# IRAC issue-header noun phrase that ends in a parenthetical statutory tag with
+# NO main-clause predicate. The relativizer (that/which/...) immediately after
+# the issue noun + the finite-verb exclusion (below) keep a SUBSTANTIVE sentence
+# such as "The condition that triggers high-risk is third-party conformity
+# assessment (Article 6)." (the relative clause carries an "is" predicate) and a
+# plain "The condition is X (Article 6)." (no relativizer) both intact.
+_ISSUE_HEADER_RE = re.compile(
+    r"^\s*The\s+(?:condition|reason|route|test|basis|trigger|distinction|"
+    r"exception|consequence|rationale|factor|element|circumstance|"
+    r"first\s+route|second\s+route|remaining\s+route|other\s+route|"
+    r"applicable\s+route|key\s+condition|operative\s+condition)\s+"
+    r"(?:that|which|under\s+which|for\s+which)\s+(?P<mid>[^?()]*?)\s*"
+    r"\((?:Article|Annex)\s+[^)]+\)\s*[.:]?\s*$",
+    re.IGNORECASE,
+)
+# A finite copula/main predicate inside the relative clause means the sentence
+# carries substance ("...that IS X (Article N).") — NOT a bare issue header.
+_FINITE_PREDICATE_RE = re.compile(
+    r"\b(?:is|are|was|were|means|requires?|applies|covers?|includes?|"
+    r"establishes?|sets|lays|mandates?|prohibits?|classifies)\b",
+    re.IGNORECASE,
+)
+
+# Sentence boundary (naive — sufficient: a header fragment ends in a clean
+# ". "/".$" boundary, and a mis-split of mid-sentence abbreviations can never
+# fabricate a header match, so the rejoin reconstructs the original text).
+_SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[.!?])\s+")
+
+_MIN_SECTION_REMAINDER = 80
+
+
+def _is_section_header_fragment(sentence: str) -> bool:
+    """True iff ``sentence`` is a short pseudo-section-header fragment."""
+    s = sentence.strip()
+    if not s or len(s) > _HEADER_MAX_CHARS:
+        return False
+    if "?" in s:
+        # A question is not a declarative header (and an answer should not echo
+        # the user's question); leave it for the caller to handle.
+        return False
+    if _WHY_HEADER_RE.match(s):
+        return True
+    m = _ISSUE_HEADER_RE.match(s)
+    if m and not _FINITE_PREDICATE_RE.search(m.group("mid")):
+        return True
+    return False
+
+
+def strip_section_headers(text: str) -> str:
+    """R145 — drop pseudo-section-header sentence fragments from the answer.
+
+    Removes short heading-like fragments such as "Why it is not prohibited
+    (Article 5)." or "The condition that would make it high-risk (Article 6)."
+    that Opus emits when it over-structures a complex classification answer as a
+    sectioned memo. The substantive content those fragments announce survives in
+    the following sentence, so removal loses no information; it improves
+    conciseness (drops the padding) and coherence (kills the IRAC scaffolding).
+
+    Conservative + fail-soft: drops ONLY sentences matching a tight header shape;
+    never empties the answer (returns the original if removal would leave < 80
+    chars of substance or no non-header sentence); idempotent. Env-reversible
+    ``REGENOLD_STRIP_SECTION_HEADERS=0``.
+    """
+    import os  # noqa: PLC0415 — local to keep the module import surface lean
+
+    if os.getenv("REGENOLD_STRIP_SECTION_HEADERS", "1").strip().lower() in (
+        "0", "false", "no", "off",
+    ):
+        return text
+    if not text or not text.strip():
+        return text
+    try:
+        sentences = _SENTENCE_BOUNDARY_RE.split(text.strip())
+        if len(sentences) < 2:
+            # A single sentence is never a "section" structure; even if it
+            # matched a header shape, dropping it would empty the answer.
+            return text
+        kept = [s for s in sentences if not _is_section_header_fragment(s)]
+        if len(kept) == len(sentences):
+            return text  # nothing matched
+        remainder = " ".join(s.strip() for s in kept if s.strip()).strip()
+        # Never-empty / substance-floor guard.
+        if not remainder or len(remainder) < _MIN_SECTION_REMAINDER:
             return text
         out = _capitalise_first_letter(remainder)
         return out if out and out.strip() else text

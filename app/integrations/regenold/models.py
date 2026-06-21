@@ -12,6 +12,7 @@ from app.integrations.regenold.answer_normaliser import (
     strip_dash_separators,
     strip_hedge_opener,
     strip_preamble_templates,
+    strip_section_headers,
 )
 
 
@@ -1340,6 +1341,15 @@ def normalise_answer_for_regenold(
     # Stage-2 prompt's source-side fix (the DIRECT-VERDICT rule no longer models
     # "It depends" as a conditional-verdict opener).
     result = strip_hedge_opener(result)
+
+    # R145 — drop pseudo-section-header fragments ("Why it is not prohibited
+    # (Article 5).", "The condition that would make it high-risk (Article 6).")
+    # that Opus emits when it over-structures a complex classification answer as
+    # a sectioned legal memo. Deterministic backstop for the Stage-2 prompt's
+    # COHESION rule (5c). Default ON; env-reversible
+    # REGENOLD_STRIP_SECTION_HEADERS=0. davidath byte-identical (deterministic
+    # answers carry no such fragments; bench runs provider=cli with no Stage-2).
+    result = strip_section_headers(result)
 
     # R92 — wire citation-form enforcement (default ON). Normalise any
     # "Art. N" / "Arts. N" in the answer prose to the spec "Article N" /

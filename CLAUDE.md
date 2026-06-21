@@ -8014,6 +8014,77 @@ a one-line default flip.
 `scores` comparison, so it reports all rows "diverging" on a re-run; the reliable
 byte-identity check is a pred_answer / pred_refs / scores-ex-latency diff.)
 
+## Round 145 — Opus Stage-2 cohesion: kill the sectioned-memo / pseudo-headers + tier-negation padding (2026-06-22)
+
+Operator report: extended Opus 4.8 Stage-2 prose hurts conciseness AND
+coherence. The flagged example (the doctor-patient transcription PDF question,
+a `general_classification` row that runs full Opus Stage-2, NOT a curated skip)
+came back as a sectioned legal memo with heading-like sentence fragments
+("Why it is not prohibited (Article 5).", "Why it is not Annex III high-risk.",
+"The condition that would make it high-risk (Article 6).") and the SAME
+conclusion ("Annex III does not apply") restated three times. Two further asks:
+do NOT truncate an enumeration of obligations, and fix this GENERALLY (not
+biased to the transcription question — hard rule #3).
+
+Root cause: the R144 Stage-2 prompt already forbids markdown headers + the
+first heading LINE, but nothing forbade mid-answer pseudo-section-header
+SENTENCE fragments or restating the same finding, and `is_general_classification`
+Opus over-elaborates a multi-part classification into an IRAC memo. The token
+headroom is generous (R142 `safe_max_tokens` = 2048 simple / 5024 complex), and
+production normalise runs uncapped (`REGENOLD_MAX_ANSWER_SENTENCES=0`,
+`REGENOLD_HARD_CHAR_CAP=0`), so obligation enumerations are NOT truncated; the
+fix must improve conciseness by REMOVING redundancy + scaffolding, never by a
+length cut.
+
+### The fix — prompt (source) + deterministic backstop (defense-in-depth)
+
+* **`app/data/graph_rag_prompts.py`** — new `ANSWER_GENERATE_SYSTEM` rule **5c
+  (COHESION)** + an ANSWER_FORMAT bullet: write ONE flowing answer, never a
+  sectioned justification memo; no heading-like sub-topic fragments ("Why it is
+  not X.", "The condition that would make it Y (Article N)."); state each
+  conclusion EXACTLY ONCE (no triple-restated "not in Annex III"); dispose of a
+  NON-applicable tier in one brief clause and do NOT enumerate the prohibited
+  practices / Annex III categories the system is NOT. Carve-out: naming the
+  distinct obligations of a role or every member of a closed set (rules 12b /
+  ANSWER-THE-HEADLINE) is required completeness, NOT repetition, and the
+  no-restatement rule "never licenses dropping a member of an enumerated set".
+* **`app/engines/graph_rag.py`** — both Stage-2 user-messages (classification +
+  refine branches) gained the same concise cohesion instruction.
+* **`app/integrations/regenold/answer_normaliser.py`** — new
+  `strip_section_headers` (mirrors R139 `strip_hedge_opener`): drops short
+  pseudo-section-header fragments via two high-precision patterns — a
+  declarative "Why <subject> <be/aux> ..." fragment (never a real answer
+  sentence) and "The <issue-noun> that/which <relative clause> (Article N)."
+  with a finite-predicate exclusion (so "The condition that triggers X **is** Y
+  (Article N)." and "The condition **is** Y (Article N)." both survive). The
+  content the fragment announced survives in the following sentence, so removal
+  loses nothing. Fail-soft, never-empty, idempotent, single-sentence-safe.
+  Env-reversible `REGENOLD_STRIP_SECTION_HEADERS=0`. Wired into
+  `normalise_answer_for_regenold` after `strip_hedge_opener`.
+
+### Verification
+
+* **davidath QA byte-identical** — two-run A/B (backstop OFF reproduces the
+  documented R136-R144 baseline Ans Strict 0.4022 / Ref Loose 0.8321 / Ref
+  Strict 0.4395... exactly; backstop ON gives **0/137 pred_answer + pred_refs
+  diffs**). By construction: the prompt is inert under `provider=cli` (no
+  Stage-2), and the backstop never fires on a deterministic davidath answer
+  (none carry these fragments). The established R49/R69/R139 pattern.
+* 276-runner **255/255 (100%)**, RISK_F1 macro 0.85; OOS probe **21/21, 0
+  leaks**; +30 `tests/test_r145_cohesion.py`; 342 touched-surface tests green
+  (the 2 `provider=cli`-forced Stage-2 "failures" are the documented env
+  artifact — pass under the clean env).
+* **LIVE (Claude Max Opus 4.8 Stage-2, in-process route)** — the transcription
+  example: pseudo-header fragments **3 → 0**, "Annex III" restated **3× → 2×**,
+  length ~2300 chars / ~8 memo-sentences → **1290 chars / 5 flowing
+  sentences**, BLUF verdict first, no memo scaffolding. Generalises: recruitment
+  + credit-scoring classification questions return tight 3-sentence answers with
+  0 pseudo-headers. Latency 10-14 s is the existing Opus cost, not the change.
+
+The win lands on the live Opus Stage-2 path (the bench is the regression guard);
+the deterministic backstop is the safety net for when Opus slips a header (proven
+on the captured example: 701 → 572 chars, all 3 headers removed, substance kept).
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a
