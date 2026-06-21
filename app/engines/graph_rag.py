@@ -252,6 +252,79 @@ def _looks_structurally_truncated(text: str | None) -> bool:
     return tail[-1] not in ".!?…"
 
 
+# R142 — incomplete-verdict guard. Even when an answer ends in terminal
+# punctuation (so ``_looks_structurally_truncated`` passes), the Claude-Max
+# wrapper can cut the stream right after an IRAC lead-in, leaving the verdict
+# unsaid: "…Applying that test to the facts." / "The operative reasoning." /
+# a trailing "…:" that promised a list. These ship a verdict-less answer (the
+# live q20 / med_8 symptom — the cut lands mid-reasoning even on a short
+# answer, so it is NOT a max_tokens-ceiling issue). Detect the clearest
+# promissory endings and treat them as a soft failure → deterministic Stage-1
+# fallback (a complete verdict). Conservative by design: three narrow,
+# period-terminated patterns that complete answers do not exhibit.
+_PROMISSORY_TAIL_RE = re.compile(
+    r"\bapplying\b[^.!?]{0,80}\bto the\s+"
+    r"(?:facts|present(?:\s+(?:case|scenario|situation|matter))?|scenario|"
+    r"situation|circumstances|case(?:\s+at\s+hand)?)\b[\s)\].,;:\"'’”–-]*$",
+    re.IGNORECASE,
+)
+_BARE_HEADER_TAIL_RE = re.compile(
+    r"^\(?(?:the\s+)?(?:operative|key|core|relevant|governing)\s+"
+    r"(?:reasoning|analysis|provision|question|consideration|test|framework)\)?[.:]?$",
+    re.IGNORECASE,
+)
+
+
+def _looks_incomplete_verdict(text: str | None) -> bool:
+    """Heuristic: did the answer set up a conclusion it never delivered?
+
+    Complements :func:`_looks_structurally_truncated` (which only catches a
+    tail lacking terminal punctuation). Fires on three high-confidence,
+    period-terminated promissory shapes the wrapper-truncation symptom rows
+    exhibit; conservative so it does not drop complete answers (e.g.
+    "…applying the test to the facts, the system is high-risk." and "The
+    operative provision is Article 6." both pass — they carry the verdict).
+    Stage-2 path only → davidath byte-identical (the deterministic bench never
+    reaches it).
+    """
+    if not text:
+        return False
+    stripped = text.rstrip()
+    if not stripped:
+        return False
+    # (1) a promised continuation (list / conclusion) that never arrived.
+    if stripped.endswith(":"):
+        return True
+    # (2) an IRAC application clause with the conclusion missing
+    #     ("…Applying that test to the facts.").
+    if _PROMISSORY_TAIL_RE.search(stripped):
+        return True
+    # (3) the final "sentence" is a bare promissory header
+    #     ("The operative reasoning.").
+    parts = [s.strip() for s in re.split(r"(?<=[.!?])\s+", stripped) if s.strip()]
+    if parts and _BARE_HEADER_TAIL_RE.match(parts[-1]):
+        return True
+    return False
+
+
+def _stage2_answer_headroom() -> int:
+    """R142 — output-token headroom for the answer ABOVE the thinking budget.
+
+    The ``X-Claude-Max-Thinking-Tokens`` allocation counts INSIDE ``max_tokens``,
+    so the historical +512 left only ~512 answer tokens on the simple Opus path
+    (thinking 1024) — enough to squeeze a long enumerated answer. Default 1024
+    doubles the answer envelope regardless of the thinking budget. Env-tunable
+    via ``REGENOLD_STAGE2_ANSWER_HEADROOM``; clamped to [256, 8192].
+    """
+    raw = os.getenv("REGENOLD_STAGE2_ANSWER_HEADROOM", "").strip()
+    if not raw:
+        return 1024
+    try:
+        return max(256, min(int(raw), 8192))
+    except ValueError:
+        return 1024
+
+
 def _openai_wrapper_complete_for_graph_rag(
     *, system: str, user: str, max_tokens: int, temperature: float,
     complex_question: bool = False, stage_name: str = "Stage"
@@ -346,14 +419,19 @@ def _openai_wrapper_complete_for_graph_rag(
     # if the wrapper uses an older map from `max_tokens` to `max_thinking_tokens`.
     # Pydantic requires an int, and Claude requires max_thinking_tokens >= 1024.
     # R135 — when extended thinking is on, the API requires max_tokens > the
-    # thinking budget; give the answer ~512-token headroom above it so the
-    # synthesis is not squeezed by the thinking allocation.
+    # thinking budget; give the answer headroom above it so the synthesis is
+    # not squeezed by the thinking allocation.
+    # R142 — widen that headroom 512 → 1024 (env REGENOLD_STAGE2_ANSWER_HEADROOM).
+    # The thinking allocation counts INSIDE max_tokens, so +512 left only ~512
+    # answer tokens on the simple Opus path (thinking 1024) — a long enumerated
+    # legal answer could exhaust it. 1024 doubles the answer envelope.
+    _answer_headroom = _stage2_answer_headroom()
     safe_max_tokens = max(
         max_tokens or 1024,
-        (eff_thinking + 512) if eff_thinking > 0 else 0,
+        (eff_thinking + _answer_headroom) if eff_thinking > 0 else 0,
         1024,
     )
-    
+
     response = get_openai_wrapper_provider().complete(
         OpenAIWrapperRequest(
             system=system,
@@ -444,11 +522,23 @@ def _openai_wrapper_complete_for_graph_rag(
     # trustworthy truncation signal, fall back to detecting an answer that
     # ends mid-clause — no sentence-terminal punctuation — and treat it as
     # a soft failure too.
-    if _looks_structurally_truncated(response.text):
+    # R142 — also catch a period-terminated answer that set up a verdict it
+    # never delivered ("…Applying that test to the facts." / "The operative
+    # reasoning." / a trailing ":"). The wrapper can cut the stream mid-IRAC
+    # even on a SHORT answer (so the structural check above — which only tests
+    # terminal punctuation — passes it). Treat as a soft failure → deterministic
+    # Stage-1 fallback (a complete verdict). Env-reversible.
+    _verdict_guard = (
+        os.getenv("REGENOLD_STAGE2_VERDICT_GUARD", "1").strip().lower()
+        in ("1", "true", "yes", "on")
+    )
+    if _looks_structurally_truncated(response.text) or (
+        _verdict_guard and _looks_incomplete_verdict(response.text)
+    ):
         logger.warning(
             "graph_rag.openai_wrapper_truncated_structural — finish_reason=%r "
-            "but text ends mid-clause (model=%s, completion_tokens=%d) — "
-            "raising error to trigger retry.",
+            "but text ends mid-clause or with an undelivered verdict (model=%s, "
+            "completion_tokens=%d) — raising error to fall back to deterministic.",
             getattr(response, "finish_reason", None),
             response.model,
             response.completion_tokens,
@@ -571,9 +661,12 @@ def _anthropic_complete_for_graph_rag(
     # questions Opus was chosen for. Floor at 1024 to match the wrapper path.
     # R135 — when thinking is on, the answer needs output room ABOVE the
     # thinking budget (the API requires max_tokens > budget_tokens).
+    # R142 — match the wrapper path's widened answer headroom (512 → 1024,
+    # env REGENOLD_STAGE2_ANSWER_HEADROOM).
+    _answer_headroom = _stage2_answer_headroom()
     safe_max_tokens = max(
         max_tokens or 1024,
-        (eff_thinking + 512) if eff_thinking > 0 else 0,
+        (eff_thinking + _answer_headroom) if eff_thinking > 0 else 0,
         1024,
     )
     try:

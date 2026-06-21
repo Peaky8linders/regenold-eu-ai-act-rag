@@ -2803,6 +2803,52 @@ def _add_prose_named_refs(
         return references
 
 
+def _final_ref_clamp(
+    references: list[str],
+    *,
+    budget: int,
+    stage2_landed: bool,
+    scenario_shape: bool,
+    retrieval_path: str,
+) -> list[str]:
+    """R142 — final reference-budget clamp on the live Stage-2 path.
+
+    The R138 cite-consistency pass and the R133 prose-sub-point pass re-add
+    prose-named references UNCAPPED, after the Component-D block last enforced
+    ``_effective_max_refs``. On the live synthesis path a verbose answer names
+    many articles, so the wire over-cites (q10 10 refs vs gold ~2; grb_20 16 vs
+    4) — Ref Strict / Conciseness crater while Ref Loose stays high. Re-apply
+    the SAME per-question budget as a final positional clamp: references are
+    rank-ordered (gold concentrated at the head; the R138 additions append
+    behind it), so a prefix clamp drops the over-citation surplus, not the
+    anchors.
+
+    Gated on ``stage2_landed`` → davidath byte-identical (no Stage-2 on the
+    deterministic bench). Scenario shapes (curated multi-article gold) and the
+    verbatim / no-match paths are exempt, mirroring the R138 pass. Env
+    off-switch ``REGENOLD_FINAL_REF_CLAMP`` (default ON). Route post-processing
+    on the already-cached engine output, so — like ``REGENOLD_QA_REF_BUDGET`` /
+    ``REGENOLD_REFS_RECONCILE`` — it is deliberately NOT in the engine cache key
+    (it re-runs on every cache hit; R79 finding).
+    """
+    if not references:
+        return references
+    if not stage2_landed or scenario_shape:
+        return references
+    if retrieval_path in ("no_match", "verbatim_exact_text"):
+        return references
+    if budget <= 0 or len(references) <= budget:
+        return references
+    if os.getenv("REGENOLD_FINAL_REF_CLAMP", "1").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        return references
+    return references[:budget]
+
+
 def _prune_non_anchor_refs(
     refs: list[str],
     live_question: str,
@@ -6316,6 +6362,31 @@ def regenold_eu_ai_act_ask(
         in ("1", "true", "yes", "on")
     ):
         references = _surface_prose_subpoints(answer_text, references)
+
+    # R142 — final reference-budget clamp. The R138 cite-consistency + R133
+    # prose-sub-point passes above re-add prose-named refs UNCAPPED, defeating
+    # the per-question budget the Component-D block last enforced. Re-clamp to
+    # ``_effective_max_refs`` so pure QA ships its tight 3-ref set (q10 was
+    # shipping 10 vs gold ~2) while scenarios keep their 10/22-ref budget.
+    # Stage-2-gated → davidath byte-identical; scenario / verbatim / no-match
+    # exempt. Runs LAST, before the trace finalisation, so the trace reflects
+    # the shipped refs. Env off-switch REGENOLD_FINAL_REF_CLAMP.
+    _clamped_refs = _final_ref_clamp(
+        references,
+        budget=_effective_max_refs,
+        stage2_landed=_stage2_landed,
+        scenario_shape=_looks_like_scenario_shape(question),
+        retrieval_path=str(retrieval_path),
+    )
+    if len(_clamped_refs) != len(references):
+        references = _clamped_refs
+        try:
+            from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                record_note as _rn,
+            )
+            _rn(f"final_ref_clamp_to={_effective_max_refs}")
+        except Exception:  # noqa: BLE001 — fail-soft on trace
+            pass
 
     # R50 / R131 — finalise the reasoning trace AFTER every reference pass
     # so ``?include_reasoning=true`` surfaces the exact wire ``references``
