@@ -8014,6 +8014,97 @@ a one-line default flip.
 `scores` comparison, so it reports all rows "diverging" on a re-run; the reliable
 byte-identity check is a pred_answer / pred_refs / scores-ex-latency diff.)
 
+## Round 146 — Stage-2 fidelity guard: the intelligent Stage-1/Stage-2 combine (2026-06-22)
+
+Operator directive: build "a version that combines stage 1 and stage 2 in an
+intelligent manner to get the best of both." The motivating failure (the R143/R144
+emotion case): Opus Stage-2 regenerated a correct deterministic CROSS-TIER verdict
+(prohibited / high-risk / transparency) into a degenerate Article-5-only answer,
+and the R72 reconcile then pruned the dropped tiers' citations. R144 fixed that for
+the 6 curated authoritative intercepts with a binary Stage-2 SKIP. R146 is the
+*intelligent* generalisation: keep Opus polish, but GUARD it against dropping a
+load-bearing tier — so the deterministic Stage-1 draft is the CONTENT source of
+truth and Opus polish lands only when faithful.
+
+### `app/engines/stage2_fidelity.py` (new, pure-stdlib, fail-soft)
+
+`guard_cross_tier_polish(deterministic, polished, question)` runs INSIDE
+`_two_stage_generate` after the Opus polish (and after the existing drift +
+self-contradiction guards), before the final return. It acts ONLY when ALL of:
+
+1. **The QUESTION asks for a cross-tier classification** —
+   `is_cross_tier_classification_ask`: enumerated tier options ("prohibited,
+   high-risk, or limited?"), "what / which risk tier|category|level", or
+   "always / ever prohibited". This is the crucial gate the first cut lacked.
+2. **The deterministic draft is cross-tier** — `extract_tier_set` (word-boundary
+   anchors: Art. 5 / Art. 6 + Annex III / Art. 50 / Arts. 51-55; "Article 5"
+   never matches inside "Article 50") returns ≥ 2 tiers.
+3. **Opus dropped a tier** the deterministic draft asserted.
+
+Then it ships the COMPLETE deterministic verdict (mode=`fallback`, default — the
+R144-proven-correct path, no splice/conciseness risk) or, mode=`repair`
+(env-opt-in), grafts the dropped tier's deterministic clause onto the polish. A
+conservative verdict-flip guard catches the rare "not prohibited" → flat-ban
+inversion. Env-gated `REGENOLD_STAGE2_FIDELITY` (default ON) +
+`REGENOLD_STAGE2_FIDELITY_MODE` (`fallback` default | `repair`), folded into
+`_engine_cache_key` (R30/R56/R79 doctrine). Clean separation from R144: the
+curated authoritative intercepts skip Stage-2 entirely (4583), so this guard only
+sees NON-curated cross-tier classifications.
+
+### Why the question gate (systematic-debugging finding)
+
+The first cut fired on ANY cross-tier deterministic draft. A live mechanism probe
+(spy on the exact guard inputs, wrapper active) showed why that over-reaches:
+for a FOCUSED "is X high-risk?" question the engine's deterministic verdict is a
+verbose cross-tier dump (e.g. transcription det = {prohibited, high_risk,
+limited}), and Opus NARROWING it to the relevant tier is correct (conciseness) —
+re-inflating the omitted tiers would regress conciseness (the R142.1 over-citation
+trap in a new form). The question gate keeps the guard off those rows. Live-verified:
+the cross-tier-classification ask ("...prohibited, high-risk, or limited?") engages
+the guard (Opus 4.8 was faithful across 3 samples → `complete` → ships the polish),
+while the focused yes/no ("is transcription high-risk?") → `not_classification_ask`
+→ no-op → Opus's narrowed answer ships.
+
+### Honest scope
+
+This is a SAFETY NET, not a metrics-mover. Opus 4.8 is usually faithful on
+cross-tier asks (every live sample kept all tiers), so the fallback rarely fires —
+exactly like the existing drift / self-contradiction / R142 truncation guards. Its
+value is guaranteeing completeness on the narrow cross-tier-classification-ask ×
+Opus-drops-a-tier case (the unit tests prove the fallback/repair mechanics fire
+correctly there). It is structurally incapable of net-regressing: it can only
+(a) no-op, (b) ship the faithful polish, or (c) ship the complete, ≤4-sentence
+deterministic verdict on a question that explicitly asked for the cross-tier
+classification — and the question gate prevents the conciseness-inflation failure
+mode. (A latent residual: route-level passes downstream of `_two_stage_generate`
+— reconcile / normalise — can still prune a tier AFTER the guard; moving the guard
+to the route against the threaded Stage-1 draft is a deferred follow-up.)
+
+### Gates (worktree off origin/main = R144 c191970)
+
+* davidath QA bench (`--qa-only`, `provider=cli`) — **byte-identical to
+  R136-R144**: Ans Strict 0.4022 / Ans Loose 0.1411 / Ref Loose 0.8321 / Ref
+  Strict 0.5528 / Ref Conciseness 0.4395 / Tone 1.0. By construction: the guard
+  is inside the Stage-2 path, which `_stage2_provider_enabled()` gates False under
+  `cli` → unreachable on the bench (the R49/R69/R110 pattern).
+* `evals.regenold.runner` (276) — **all categories 100%** (0 fails;
+  risk_classification 17/17, in_scope_multi_turn 102/102).
+* OOS probe (`runner_v2 --local --probe-oos`) — **21/21, 0 leaks**.
+* `tests/test_r146_stage2_fidelity.py` — **47 tests** (tier-set precision, the
+  classification-ask gate, env gates, every action branch, engine integration
+  incl. the byte-identical-under-`cli` guarantee) + 156 engine/route/integration
+  tests (consistency-guard, fusion, reasoning-references, regenold-integration,
+  r136, two-stage, r142, r144, anthropic) pass.
+* **LIVE mechanism probe** (Claude Max Opus 4.8 Stage-2): the guard engages on the
+  cross-tier-classification ask (`complete` on faithful Opus) and no-ops
+  (`not_classification_ask`) on the focused yes/no — verified end-to-end.
+
+The deterministic gates are the regression guard; the win lands live on the rare
+cross-tier-classification ask where Opus drops a tier. A full `ab_judge` live
+pairwise A/B is the post-deploy confirmation (the guard fires too rarely on the
+live distribution to move a small-n pairwise above Opus generation noise — the
+mechanism probe + unit tests are the decisive correctness evidence).
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

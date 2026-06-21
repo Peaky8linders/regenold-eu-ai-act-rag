@@ -4738,6 +4738,45 @@ def _two_stage_generate(
             pass
         return kg_answer, False
 
+    # R146 — Stage-2 fidelity guard (the intelligent Stage-1/Stage-2 combine).
+    # The deterministic Stage-1 draft (``kg_answer``) is the CONTENT source of
+    # truth. When it is a CROSS-TIER classification (asserts >= 2 risk tiers)
+    # and Opus polish DROPPED one of those tiers — the emotion-bug class, where a
+    # prohibited/high-risk/transparency verdict was rewritten into a
+    # prohibition-only answer and the R72 reconcile then pruned the dropped
+    # tiers' citations — the guard repairs (re-injects the deterministic clause
+    # for the dropped tier, keeping the rest of the polish) or falls back to the
+    # complete deterministic verdict. Opus polish lands when faithful; the
+    # deterministic content is guaranteed otherwise. Env REGENOLD_STAGE2_FIDELITY.
+    try:
+        from app.engines.stage2_fidelity import (  # noqa: PLC0415
+            guard_cross_tier_polish,
+        )
+
+        guarded, action = guard_cross_tier_polish(kg_answer, enhanced, resolved_q)
+        if action not in (
+            "disabled",
+            "not_classification_ask",
+            "not_cross_tier",
+            "complete",
+            "error",
+        ):
+            try:
+                from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                    record_note,
+                )
+                record_note(f"stage2_fidelity={action}"[:160])
+            except Exception:  # noqa: BLE001 — trace is best-effort
+                pass
+        if guarded == kg_answer and action.startswith("fallback"):
+            # The guard fell back to the deterministic cross-tier verdict; mark
+            # stage2_used False so the wire ships it (consistent with the R72
+            # reconcile / verbatim gates that key on stage2_landed).
+            return kg_answer, False
+        enhanced = guarded
+    except Exception:  # noqa: BLE001 — never break Stage-2 on a guard error
+        pass
+
     return enhanced, True
 
 
