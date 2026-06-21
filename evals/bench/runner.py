@@ -16,6 +16,7 @@ CLI:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from datetime import datetime, timezone
@@ -313,6 +314,15 @@ def run(
 
     payload = {
         "label": label,
+        # R138 — davidath is a REGRESSION GUARD, not a win-measure. It runs
+        # provider=cli (no Sonnet Stage-2), so it cannot see any Stage-2 /
+        # synthesis / live win, and its token-overlap correctness diverges
+        # from the live LLM-judge (R99.2: verbatim token-recall blind to a
+        # 0.25 judge-correctness). To MEASURE a win, use evals/harness/ab_judge
+        # (the live pairwise harness). Encoded here so a future session reading
+        # the sidecar doesn't mistake a flat bench for "no win".
+        "role": "regression_guard",
+        "win_measure": "evals.harness.ab_judge",
         "started_at": started_at,
         "finished_at": finished_at,
         "dataset_fingerprint": bench_dataset.dataset_fingerprint(),
@@ -330,6 +340,11 @@ def _format_human_summary(payload: dict[str, Any]) -> str:
     lines: list[str] = []
     lines.append("=" * 78)
     lines.append(f"Regenold competition benchmark — label={payload.get('label')!r}")
+    lines.append(
+        "ROLE: regression guard (provider=cli, NO Stage-2). Token-overlap "
+        "metrics; NOT a win-measure — diverges from the live judge (R99.2). "
+        "Measure wins with: python -m evals.harness.ab_judge"
+    )
     lines.append("=" * 78)
     fingerprint = payload.get("dataset_fingerprint") or {}
     lines.append(
@@ -382,6 +397,53 @@ def _format_human_summary(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+_DIFF_KEYS = ("pred_answer", "pred_refs", "scores")
+
+
+def assert_baseline(payload: dict[str, Any], baseline_label: str, *, max_show: int = 12) -> int:
+    """R138 — per-row byte-diff of a fresh run vs a stored baseline sidecar.
+
+    Turns the 30-rounds-of-manual "byte-identical ✓" eyeball into a real CI
+    gate: compares ``pred_answer`` + ``pred_refs`` + every score axis per row
+    (qa + scenarios) against ``results/<baseline_label>.json`` and returns a
+    NONZERO exit code listing the first ``max_show`` diverging rows. Catches
+    the per-row churn an unchanged aggregate mean hides (R80 noted exactly
+    this). Returns 0 iff every row matches.
+    """
+    base_path = storage.RESULTS_DIR / f"{baseline_label}.json"
+    if not base_path.exists():
+        print(f"[assert-baseline] no baseline sidecar at {base_path}", file=sys.stderr)
+        return 3
+    base = json.loads(base_path.read_text(encoding="utf-8"))
+
+    diffs: list[str] = []
+    for source in ("qa", "scenarios"):
+        cur_rows = {r.get("item_id"): r for r in (payload.get(source) or [])}
+        base_rows = {r.get("item_id"): r for r in (base.get(source) or [])}
+        ids = sorted(set(cur_rows) | set(base_rows))
+        for rid in ids:
+            cr, br = cur_rows.get(rid), base_rows.get(rid)
+            if cr is None or br is None:
+                diffs.append(f"{source}:{rid} present in only one run")
+                continue
+            for k in _DIFF_KEYS:
+                if cr.get(k) != br.get(k):
+                    diffs.append(f"{source}:{rid} {k} changed")
+                    break
+
+    if diffs:
+        print(f"[assert-baseline] {len(diffs)} diverging rows vs {baseline_label!r}:",
+              file=sys.stderr)
+        for d in diffs[:max_show]:
+            print(f"  - {d}", file=sys.stderr)
+        if len(diffs) > max_show:
+            print(f"  … and {len(diffs) - max_show} more", file=sys.stderr)
+        return 1
+    print(f"[assert-baseline] BYTE-IDENTICAL to {baseline_label!r} "
+          f"(qa+scenarios, pred_answer + pred_refs + all score axes).")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
@@ -408,6 +470,14 @@ def main(argv: list[str] | None = None) -> int:
         default=20,
         help="Cap the multi-turn coherence probe at this many scenarios.",
     )
+    parser.add_argument(
+        "--assert-baseline",
+        default=None,
+        metavar="LABEL",
+        help="R138 regression gate: after the run, per-row diff pred_answer + "
+        "pred_refs + every score axis vs results/LABEL.json; exit 1 on any "
+        "divergence (the mechanical 'byte-identical' check).",
+    )
     args = parser.parse_args(argv)
 
     from pathlib import Path
@@ -423,6 +493,8 @@ def main(argv: list[str] | None = None) -> int:
         qa_dataset_path=qa_dataset_path
     )
     print(_format_human_summary(payload))
+    if args.assert_baseline:
+        return assert_baseline(payload, args.assert_baseline)
     return 0
 
 
