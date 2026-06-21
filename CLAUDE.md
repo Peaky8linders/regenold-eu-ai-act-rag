@@ -7913,6 +7913,64 @@ Caveat: single-sample-per-arm; the equivalence is indicative, not statistical
 pairwise over many samples was not run). The qualitative retrieval-bottleneck
 finding does not depend on sampling.
 
+## Round 144 — deterministic root-cause fixes for the R143 live-marginal shapes (2026-06-21)
+
+The R143 live A/B showed the prompt round was harmless but marginal. A
+`systematic-debugging` Phase-1 reproduction of the 4 shapes on the
+DETERMINISTIC (`provider=cli`) path revealed THREE distinct root causes — and
+overturned the live-A/B's surface read for emotion.
+
+### Fix #1 (SHIPPED) — emotion classification: restore the R111 Stage-2 skip
+
+**Root cause (the surprise):** the deterministic emotion verdict is ALREADY
+perfect — `"Are emotion recognition systems always prohibited?"` deterministically
+returns refs `[Article 5, 5.1.f, 50.3, Annex III.1.c, Article 50]` + the exact
+cross-tier answer ("not categorically prohibited … only in workplaces/education …
+Elsewhere high-risk under Annex III and triggers Article 50 transparency"). The
+LIVE failure (degenerate Article-5-only answer) is **Stage-2 (Opus) regenerating
+the correct verdict into a narrower one**, after which the R72 reconcile prunes
+the Annex III(1)(c) + Article 50(3) sub-points. The mechanism: the **2026-06-11
+"Stage-2 for all" directive bypassed the R111 `_is_curated_authoritative_intercept`
+Stage-2 skip** (`grep` confirms it is no longer called in the engine), so the
+authoritative curated verdicts Stage-2 was proven to degrade (R111: guiding
+principles, minimal-risk, Art 6(3), R&D scope, penalties — and now emotion) run
+through Stage-2 again.
+
+**Fix** ([`app/engines/graph_rag.py`](app/engines/graph_rag.py)): restore the
+R111 authoritative-intercept Stage-2 skip in `_two_stage_generate`
+(env-reversible `REGENOLD_CURATED_STAGE2_SKIP`, default ON) + add a narrow
+`_detect_emotion_classification_inquiry` (emotion-recognition + a
+permissibility/risk-tier cue, scenario-opener-excluded) to
+`_is_curated_authoritative_intercept`. The deterministic cross-tier verdict now
+ships outright — robust to Opus sampling variance.
+
+**Verification (worktree off origin/main = R142):**
+* **davidath byte-identical by construction** — the curated gate +
+  emotion detector fire on **0 of 137 QA + 0 of 339 scenarios** (proven by a
+  full-dataset scan; route-gate exemptions + Stage-2 skip never trigger on any
+  davidath row, and Stage-2 is off on the bench anyway).
+* +46 tests pass (`tests/test_r144_emotion_curated.py` 22 new + `test_r111_qa_review.py`
+  24 — the restored skip doesn't break the existing intercepts).
+* `evals.regenold.runner` (276) — **255/255 (100%)**; OOS probe **21/21, 0 leaks**.
+* **LIVE re-probe** (Claude Max Opus Stage-2): emotion "always prohibited?"
+  flips from the degenerate Article-5-only answer (`stage2=True`, 21.2 s, refs
+  `[Article 5, 5.1.f]`) to the correct cross-tier verdict (`stage2=False`, 4.1 s,
+  refs `[Article 5, 5.1.f, 50.3, Annex III.1.c, Article 50]`) — correct, complete,
+  and 5× faster.
+
+### Fix #2 (eligibility Annex III(5)(a)) + Fix #3 (tech-doc Article 6 over-cite) — queued
+
+Phase-1 root causes (deterministic repro): **#2** the public-authority
+healthcare-eligibility shape gets a GENERIC high-risk two-route verdict (Article
+6/Annex I/Annex III), not the eligibility-specific Annex III(5)(a), and wrongly
+includes the Annex I product route → needs an eligibility-specific verdict.
+**#3** the tech-doc answer drags in `Article 6` + an off-topic "classifies on two
+routes" sentence because `_suppress_noise_anchors` keeps Article 6 when the
+question literally says "high-risk AI system" (the `high_risk` flag blocks the
+drop) → needs a tech-doc-content Article-6 drop. Both are deterministic, need a
+davidath A/B (the gold-int shape means Annex sub-points are neutral but a new
+ref affects precision), and #3 touches the tech-doc PDF example (hard rule #3).
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

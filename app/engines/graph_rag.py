@@ -2581,16 +2581,69 @@ def _detect_high_risk_penalty_inquiry(question: str) -> bool:
     )
 
 
+# R144 — emotion-recognition CLASSIFICATION intercept. The deterministic
+# emotion verdict (``_graph_rag_data`` emotion_recognition_* topics) is an
+# authoritative cross-tier answer: PROHIBITED in the workplace / education
+# institutions (Article 5(1)(f), medical/safety carve-out), HIGH-RISK under
+# Annex III(1)(c) elsewhere, with the Article 50(3) deployer transparency duty.
+# The 2026-06-11 "Stage-2 for all" directive bypassed the R111 curated-intercept
+# skip, so Stage-2 (Opus) regenerates this into a narrower Article-5-only answer
+# on the abstract "always/ever prohibited?" phrasing, after which the R72
+# reconcile prunes the Annex III(1)(c) + Article 50(3) sub-points (verified
+# live, R144). Scoped to the classification ASK (emotion-recognition + a
+# permissibility / risk-tier cue) and excludes the "We are a {role}..."
+# scenario shape, so it fires on 0 davidath rows (0 QA emotion rows + the 24
+# emotion SCENARIO rows excluded) and the deterministic bench stays byte-identical.
+_EMOTION_RECOGNITION_RE = re.compile(
+    r"emotion\s+(?:recognition|inference|detection)", re.IGNORECASE
+)
+_EMOTION_CLASSIFY_CUE_RE = re.compile(
+    r"prohibit|\bbanned?\b|forbid|\ballow|permit|lawful|unlawful|\billegal\b"
+    r"|categoric|\balways\b|\bever\b|high[-\s]?risk|risk\s+(?:tier|categor|level|class)"
+    r"|classif|which\s+risk|what\s+risk",
+    re.IGNORECASE,
+)
+
+
+def _detect_emotion_classification_inquiry(question: str) -> bool:
+    """True when the question asks whether an emotion recognition system is
+    prohibited / allowed / high-risk (the classification ask). See the module
+    comment above for the full rationale + byte-identical guarantee."""
+    raw_q = question or ""
+    marker = "Latest question:\n"
+    idx = raw_q.rfind(marker)
+    if idx >= 0:
+        raw_q = raw_q[idx + len(marker):]
+    if _MINIMAL_RISK_SCENARIO_OPENER_RE.search(raw_q):
+        return False
+    return bool(
+        _EMOTION_RECOGNITION_RE.search(raw_q)
+        and _EMOTION_CLASSIFY_CUE_RE.search(raw_q)
+    )
+
+
+def _curated_stage2_skip_enabled() -> bool:
+    """R144 — env gate (default ON) restoring the R111 authoritative-intercept
+    Stage-2 skip that the 2026-06-11 'Stage-2 for all' directive bypassed.
+    Set ``REGENOLD_CURATED_STAGE2_SKIP=0`` to keep Stage-2 polishing the
+    curated verdicts (the 2026-06-11 behaviour)."""
+    return os.getenv("REGENOLD_CURATED_STAGE2_SKIP", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
 def _is_curated_authoritative_intercept(question: str) -> bool:
     """True when :func:`_deterministic_answer` would emit a curated closed-set
     or scope verdict that Stage-2 polish must NOT override.
 
     Covers: guiding principles (7-principle closed set), minimal-risk
     residual tier, the Article 6(3) high-risk exception, the scientific R&D
-    pre-market scope exclusion, and the high-risk penalties ceiling. These
-    are authoritative curated answers whose content Stage-2 has been observed
-    to drop or override (live: Sonnet deleted the 7-principle list and turned
-    the Art. 2 R&D-scope answer into a GPAI obligations dump). Deliberately
+    pre-market scope exclusion, the high-risk penalties ceiling, and (R144)
+    the emotion-recognition classification cross-tier verdict. These are
+    authoritative curated answers whose content Stage-2 has been observed to
+    drop or override (live: Sonnet deleted the 7-principle list, turned the
+    Art. 2 R&D-scope answer into a GPAI obligations dump, and collapsed the
+    emotion cross-tier verdict to an Article-5-only answer). Deliberately
     EXCLUDES risk_framework_overview and general_classification (those are
     synthesis-positive and bench-neutral). Returns False on every davidath row
     (none match these gates), so the deterministic bench is byte-identical.
@@ -2601,6 +2654,7 @@ def _is_curated_authoritative_intercept(question: str) -> bool:
         or _detect_article_6_3_inquiry(question)
         or _detect_research_scope_inquiry(question)
         or _detect_high_risk_penalty_inquiry(question)
+        or _detect_emotion_classification_inquiry(question)
     )
 
 
@@ -4512,6 +4566,26 @@ def _two_stage_generate(
                 record_note,
             )
             record_note("stage2_skipped_simple_question_deterministic_ship")
+        except Exception:  # noqa: BLE001 — trace is best-effort
+            pass
+        return kg_answer, False
+
+    # R144 — restore the R111 authoritative-intercept Stage-2 skip that the
+    # 2026-06-11 "Stage-2 for all" directive (below) bypassed. Stage-2 (Opus)
+    # regenerates the curated authoritative verdicts (emotion cross-tier,
+    # guiding principles, minimal risk, Article 6(3), R&D scope, penalties)
+    # into degraded answers — live: the emotion cross-tier verdict collapses
+    # to Article-5-only and the R72 reconcile then prunes its Annex III(1)(c)
+    # + Article 50(3) sub-points. The deterministic verdict is authoritative
+    # and complete here, so ship it. Env-reversible
+    # (REGENOLD_CURATED_STAGE2_SKIP=0); fires on 0 davidath rows so the
+    # deterministic bench is byte-identical.
+    if _curated_stage2_skip_enabled() and _is_curated_authoritative_intercept(question):
+        try:
+            from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                record_note,
+            )
+            record_note("stage2_skipped_curated_authoritative")
         except Exception:  # noqa: BLE001 — trace is best-effort
             pass
         return kg_answer, False
