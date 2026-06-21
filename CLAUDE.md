@@ -7795,6 +7795,49 @@ built to replace. A pairwise `ab_judge` Baseline-vs-fusion confirmation is the
 right gate before any routing flip; queued as a follow-up. The fixes ship now
 regardless (orthogonal to routing).
 
+## Round 142.1 — disable the over-citation clamp: live pairwise judge found it net-negative (2026-06-21)
+
+Ran the R139 `ab_judge` live pairwise (the proper win-measure — davidath is only
+the byte-identical regression guard) on the just-merged R142 fixes: baseline =
+gates OFF (R141 behaviour) vs branch = gates ON (R142), 28 single-turn rows
+(paper_st_v4 + paper_tricky_v4), position-swapped, two-sided sign test.
+
+| Axis | B-win (R142) | A-win (R141) | tie | p | verdict |
+| ---- | ------------ | ------------ | --- | - | ------- |
+| correctness | 0 | 9 | 19 | 0.004 | BASELINE wins (sig) |
+| refs | 0 | 11 | 17 | 0.001 | BASELINE wins (sig) |
+| conciseness | 0 | 1 | 27 | 1.0 | ns |
+| tone | 0 | 2 | 26 | 0.5 | ns |
+
+The R142 bundle **never won a row** and LOST refs (p=0.001) + correctness
+(p=0.004). Per-row root cause: **every** correctness-loss row is also a
+refs-loss row → the sole regressor is the **over-citation clamp**
+(`_final_ref_clamp`), the only gate that touches refs. On multi-article
+risk-tier questions the positional `[:budget]` clamp drops a **gold** ref, so
+the unclamped answer wins gold-recall on refs AND reads as more complete on
+correctness. The clamp helps single-article QA over-citation (q10) but hurts the
+multi-article-gold majority — and the realistic question mix is multi-article-heavy.
+
+**Fix:** flip `REGENOLD_FINAL_REF_CLAMP` **default ON → OFF** (env-gated, so this
+is the clean rollback the gate was built for). The truncation guard
+(`REGENOLD_STAGE2_VERDICT_GUARD`) + answer-headroom (`REGENOLD_STAGE2_ANSWER_HEADROOM`)
+stay ON — the per-row analysis does NOT implicate them (no isolated loss; the
+guard correctly caught a real Sonnet stream-cut during the routing A/B), and they
+fix a real bug (q20 verdict truncation). The clamp INFRASTRUCTURE + tests stay
+for a future **gold-protected** redesign (never drop a load-bearing / described
+ref; scope to single-article-gold questions).
+
+Gates: davidath byte-identical (manual ex-latency diff: pred_answer / pred_refs /
+all rubric scores 0 diffs — the clamp is stage2-gated AND now default-OFF); 276
+**255/255**; OOS **21/21**; 35 R142 tests (default-OFF pinned). The win this round
+is **negative-result discipline** — davidath called R142 byte-identical, the live
+pairwise judge caught a significant regression, and the env-gate made the rollback
+a one-line default flip.
+
+(Tooling note: `evals.bench.runner --assert-baseline` includes `latency_ms` in its
+`scores` comparison, so it reports all rows "diverging" on a re-run; the reliable
+byte-identity check is a pred_answer / pred_refs / scores-ex-latency diff.)
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a
