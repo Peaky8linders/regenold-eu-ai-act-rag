@@ -8176,6 +8176,86 @@ pairwise A/B is the post-deploy confirmation (the guard fires too rarely on the
 live distribution to move a small-n pairwise above Opus generation noise — the
 mechanism probe + unit tests are the decisive correctness evidence).
 
+## Round 147 — Stage-2 conciseness: run-on clause-density discipline (prompt lever; re-sentencer rejected) (2026-06-22)
+
+The R146 live judge (medtech, 24 rows) put conciseness at **0.625** — the
+weakest axis and the only one materially below target (tone 0.958, correctness
+0.889 over-non-error, refs 0.85 over-non-error). R145's pseudo-header kill bought
+only +0.04 (0.583 to 0.625). The refined failure mode (from the R146 judge
+rationales): **8 of 9 conciseness fails are run-on clause-density**, not the
+pseudo-headers R145 already removed — "single run-on sentence exceeds 4-sentence
+limit", "one run-on paragraph parsed as ~6-7 clauses", "3 dense run-on sentences
+packing multiple clauses". The judge decomposes a dense comma/"and"-joined
+paragraph into one clause per point and penalises every point beyond four.
+
+### What R147 ships — the prompt lever (the robust fix)
+
+`app/data/graph_rag_prompts.py` — two edits to `ANSWER_GENERATE_SYSTEM`:
+
+* **LENGTH DISCIPLINE rule strengthened**: "Write AT MOST four sentences, each a
+  complete, period-terminated sentence; NEVER deliver the answer as a single
+  run-on paragraph or comma-spliced wall of clauses." It spells out the judge's
+  clause-decomposition so the model understands *why*, and — critically against
+  the R126/R140 trap — mandates achieving brevity by GROUPING related obligations
+  into one sentence built around a count plus key items (e.g. "the high-risk
+  requirements of Articles 9 to 15: risk management, data governance, technical
+  documentation, logging, transparency, human oversight, and accuracy and
+  cybersecurity"), NEVER by dropping a required provision or leaving a
+  sub-question unanswered. Completeness of the asked-for closed set (rule 12b) and
+  of every distinct sub-question (rule 7) still take priority; a packed closed-set
+  list counts as one point.
+* **A run-on BAD/GOOD contrastive example** added to CONTRASTIVE CALIBRATION: the
+  BAD answer strings nine obligations into one run-on sentence; the GOOD answer is
+  verdict-first ("High-risk."), four clean sentences, with the obligations grouped
+  into one "Articles 9 to 15 (...)" point — full coverage preserved. The example
+  is dash-free (rule 15 / R108: the prompt must not MODEL the forbidden
+  punctuation to the model).
+
+### Why the deterministic re-sentencer was REJECTED (not shipped)
+
+The R147 plan also proposed a deterministic "run-on re-sentencer" backstop that
+inserts sentence breaks to form ≤4 period-sentences. A systematic-debugging
+analysis rejected it as the wrong tool for this failure mode:
+
+1. **The judge counts clause/thought count, not punctuation.** A single run-on
+   sentence is already flagged as ">4 sentences". Re-punctuating cannot reduce
+   the penalised *thought-count* — it only relabels where the periods sit.
+2. **It can only fail two ways.** Either it drops content to hit four points (the
+   R126/R140 trap the project keeps hitting), or it inserts periods at
+   comma/"and" boundaries, producing ungrammatical subjectless fragments
+   ("Requires X. Data governance under Article 10.") that fail the tone axis —
+   the very axis at 0.958 we must not regress.
+3. **It conflicts with rule 12b**, which deliberately packs a closed set into ONE
+   comma-separated sentence; converting those commas/semicolons to periods turns
+   one required point into eight sentences.
+
+The only force that genuinely reduces thought-count is the generator. This is the
+same "plausible but wrong" class the project has rejected with evidence before
+(R142.1 over-citation clamp, R69 RRF wash, the Gemini pack). `tests/test_r147_conciseness.py`
+pins both the prompt change AND the absence of any `resentence_runons` transform
+in the answer normaliser, so a future round that adds one must do so consciously
+with its own live ab_judge gate.
+
+### Gates (worktree off origin/main = R145 02a348c)
+
+* davidath QA bench (`--qa-only`, `provider=cli`, `--assert-baseline`) —
+  **byte-identical to R145** (exit 0, zero divergence): Ans Strict 0.4022 / Ans
+  Loose 0.1411 / Ref Loose 0.8321 / Ref Strict 0.5528 / Ref Conciseness 0.4395 /
+  Tone 1.0. By construction: a Stage-2-prompt-only change, unreachable on the
+  `cli` bench (the R49/R69/R110/R146 pattern).
+* OOS probe (`runner_v2 --local --probe-oos`) — **21/21, 0 leaks**.
+* `evals.regenold.runner` (276) — **all categories pass** (deterministic; the
+  prompt change cannot reach it).
+* `tests/test_r147_conciseness.py` (+8) + R145 cohesion + golden-normalise — pass.
+
+The deterministic gates are the regression guard; the conciseness lift lands
+**live** on the next representative-100 + LLM-judge re-run (the deterministic
+bench runs `provider=cli` and never fires Stage-2 / Opus, so it structurally
+cannot measure the generation-side conciseness change — the established
+R31/R49/R110/R146 pattern). Post-deploy verification: `ab_judge` pairwise
+(R139 harness) with the R147 prompt vs the R145 prompt, gating conciseness up
+toward 0.8 AND correctness / refs / tone not down.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a
