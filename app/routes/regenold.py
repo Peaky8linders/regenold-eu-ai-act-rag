@@ -3618,110 +3618,144 @@ def _rewrite_multiturn_query(
         record_query_denoiser(fired=False, fallback_reason="import_error")
         return None
 
-    # Provider preference: Groq Llama 3.3 70B (sub-300 ms typical) when
-    # the operator wired the GROQ_API_KEY + REGENOLD_INTENT_PROVIDER=groq
-    # combo per R52; else the OpenAI-wrapper singleton (Haiku-fast).
-    # If neither is configured we bail — the caller falls back to the
-    # existing concatenation path.
-    provider = None
-    model = ""
-    provider_name = ""
+    # R148 — provider preference CHAIN, not a single pick. Groq Llama 3.3
+    # 70B (sub-300 ms typical, R52) first when the operator wired
+    # GROQ_API_KEY + REGENOLD_INTENT_PROVIDER=groq; then the OpenAI wrapper
+    # (Haiku) as a FALLBACK. When both are configured a Groq outage — e.g.
+    # the free-tier tokens-per-day 429 cap that surfaced as the production
+    # "denoiser skipped (provider_error)" — degrades to Haiku instead of
+    # dropping the multi-turn rewrite. Mirrors the intent classifier's
+    # existing Groq→wrapper fallback (app/llm/intent_classifier.py). When
+    # only one provider is configured it is the sole attempt; when neither
+    # is, we bail to the caller's concatenation path. Each provider is
+    # acquired in its own guard so one singleton's init failure can't block
+    # the other.
+    candidates: list[tuple[object, str, str]] = []
+    any_configured = False
     try:
         if is_groq_intent_provider_enabled():
-            provider = get_groq_intent_provider()
-            provider_name = "groq"
-            # Groq's Llama 3.3 70B Versatile is the same Stage-0 model
-            # R52 uses; matches the de-noiser's "fast rewrite" budget.
-            model = os.environ.get(
-                "REGENOLD_DENOISER_MODEL_GROQ",
-                "llama-3.3-70b-versatile",
-            )
-        elif is_openai_wrapper_enabled():
-            provider = get_openai_wrapper_provider()
-            provider_name = "wrapper"
-            # Haiku — much faster than Sonnet for a 100-token rewrite.
-            model = os.environ.get(
-                "REGENOLD_DENOISER_MODEL",
-                "claude-haiku-4-5-20251001",
-            )
+            any_configured = True
+            candidates.append((
+                get_groq_intent_provider(),
+                # Groq's Llama 3.3 70B Versatile is the same Stage-0 model
+                # R52 uses; matches the de-noiser's "fast rewrite" budget.
+                os.environ.get(
+                    "REGENOLD_DENOISER_MODEL_GROQ", "llama-3.3-70b-versatile"
+                ),
+                "groq",
+            ))
     except Exception:  # noqa: BLE001 — singleton init must not crash route
-        logger.debug("query_denoiser: provider acquisition failed", exc_info=True)
-        return _salvage_on_provider_failure("provider_init_error")
+        logger.debug("query_denoiser: groq provider init failed", exc_info=True)
+    try:
+        if is_openai_wrapper_enabled():
+            any_configured = True
+            candidates.append((
+                get_openai_wrapper_provider(),
+                # Haiku — much faster than Sonnet for a 100-token rewrite.
+                os.environ.get(
+                    "REGENOLD_DENOISER_MODEL", "claude-haiku-4-5-20251001"
+                ),
+                "wrapper",
+            ))
+    except Exception:  # noqa: BLE001 — singleton init must not crash route
+        logger.debug("query_denoiser: wrapper provider init failed", exc_info=True)
 
-    if provider is None:
+    if not candidates:
+        if any_configured:
+            # A provider was configured but every singleton init raised.
+            return _salvage_on_provider_failure("provider_init_error")
         record_query_denoiser(fired=False, fallback_reason="no_provider")
         return None
 
-    start_ns = time.monotonic_ns()
-    try:
-        req = OpenAIWrapperRequest(
-            system=_QUERY_DENOISER_SYSTEM,
-            user=user_prompt[:1500],  # cap input size
-            model=model,
-            max_tokens=100,
-            temperature=0.0,
-            # 1.0 s fail-fast: the multi-turn p50 is 28.6 s so a 200 ms
-            # Groq RTT is rounding error, but a hung wrapper call must
-            # not add a multi-second tail to the critical path.
-            timeout_seconds=1.0,
-        )
-        resp = provider.complete(req)
-        latency_ms = (time.monotonic_ns() - start_ns) // 1_000_000
-        if resp.error or not resp.text.strip():
-            logger.debug("query_denoiser: LLM returned error=%s", resp.error)
-            return _salvage_on_provider_failure(
-                "provider_error" if resp.error else "empty_text",
-                latency_ms=latency_ms,
+    # Try each provider in preference order. A provider FAILURE (transport
+    # error, api_status_429/4xx/5xx surfaced as resp.error, or an empty
+    # completion) falls through to the next. Content-quality bails on a
+    # SUCCESSFUL response (truncation / length-out-of-bounds) are terminal —
+    # the same max_tokens budget applies to every provider, so retrying
+    # would only add latency for no gain.
+    last_reason = "provider_error"
+    last_model = ""
+    last_provider = ""
+    last_latency = 0
+    for provider, model, provider_name in candidates:
+        start_ns = time.monotonic_ns()
+        try:
+            req = OpenAIWrapperRequest(
+                system=_QUERY_DENOISER_SYSTEM,
+                user=user_prompt[:1500],  # cap input size
                 model=model,
-                provider_name=provider_name,
+                # 1.0 s fail-fast PER PROVIDER: the multi-turn p50 is 28.6 s
+                # so a 200 ms Groq RTT is rounding error, but a hung call
+                # must not add a multi-second tail to the critical path. The
+                # fallback chain is at most two such calls.
+                max_tokens=100,
+                temperature=0.0,
+                timeout_seconds=1.0,
             )
-        # R91 — truncation guard. ``max_tokens=100`` is a tight rewrite
-        # budget; a ``finish_reason="length"`` response means the LLM ran
-        # out of room mid-sentence. A truncated rewrite that passes the
-        # 10 < len <= 500 sanity bounds would otherwise become the
-        # retrieval query, dragging downstream BM25 / dense paths off the
-        # actual intent. Bail to the caller's concatenation fallback.
-        if getattr(resp, "finish_reason", None) == "length":
-            logger.debug(
-                "query_denoiser: response truncated (finish_reason=length)"
-            )
-            return _salvage_on_provider_failure(
-                "truncated",
-                latency_ms=latency_ms,
-                model=model,
-                provider_name=provider_name,
-            )
-        rewritten = resp.text.strip().strip('"').strip("'")
-        # Sanity: if the rewrite is too short or suspiciously long, bail
-        if len(rewritten) < 10 or len(rewritten) > 500:
-            logger.debug(
-                "query_denoiser: rewrite length %d out of bounds",
-                len(rewritten),
-            )
-            return _salvage_on_provider_failure(
-                "length_out_of_bounds",
-                latency_ms=latency_ms,
+            resp = provider.complete(req)
+            last_latency = (time.monotonic_ns() - start_ns) // 1_000_000
+            last_model, last_provider = model, provider_name
+            if resp.error or not resp.text.strip():
+                last_reason = "provider_error" if resp.error else "empty_text"
+                logger.debug(
+                    "query_denoiser: %s via %s (error=%s) — trying next provider",
+                    last_reason, provider_name, resp.error,
+                )
+                continue
+            # R91 — truncation guard. ``max_tokens=100`` is a tight rewrite
+            # budget; a ``finish_reason="length"`` response means the LLM ran
+            # out of room mid-sentence. A truncated rewrite that passes the
+            # 10 < len <= 500 sanity bounds would otherwise become the
+            # retrieval query, dragging downstream BM25 / dense paths off the
+            # actual intent. Terminal (see note above).
+            if getattr(resp, "finish_reason", None) == "length":
+                logger.debug(
+                    "query_denoiser: response truncated (finish_reason=length)"
+                )
+                return _salvage_on_provider_failure(
+                    "truncated",
+                    latency_ms=last_latency,
+                    model=model,
+                    provider_name=provider_name,
+                )
+            rewritten = resp.text.strip().strip('"').strip("'")
+            # Sanity: if the rewrite is too short or suspiciously long, bail.
+            if len(rewritten) < 10 or len(rewritten) > 500:
+                logger.debug(
+                    "query_denoiser: rewrite length %d out of bounds",
+                    len(rewritten),
+                )
+                return _salvage_on_provider_failure(
+                    "length_out_of_bounds",
+                    latency_ms=last_latency,
+                    rewritten_chars=len(rewritten),
+                    model=model,
+                    provider_name=provider_name,
+                )
+            record_query_denoiser(
+                fired=True,
+                latency_ms=int(last_latency),
                 rewritten_chars=len(rewritten),
                 model=model,
-                provider_name=provider_name,
+                provider=provider_name,
             )
-        record_query_denoiser(
-            fired=True,
-            latency_ms=int(latency_ms),
-            rewritten_chars=len(rewritten),
-            model=model,
-            provider=provider_name,
-        )
-        return rewritten
-    except Exception:  # noqa: BLE001
-        logger.debug("query_denoiser: LLM call failed", exc_info=True)
-        latency_ms = (time.monotonic_ns() - start_ns) // 1_000_000
-        return _salvage_on_provider_failure(
-            "exception",
-            latency_ms=latency_ms,
-            model=model,
-            provider_name=provider_name,
-        )
+            return rewritten
+        except Exception:  # noqa: BLE001
+            last_latency = (time.monotonic_ns() - start_ns) // 1_000_000
+            last_model, last_provider, last_reason = model, provider_name, "exception"
+            logger.debug(
+                "query_denoiser: LLM call failed via %s — trying next provider",
+                provider_name, exc_info=True,
+            )
+            continue
+
+    # Every provider in the chain failed → deterministic salvage / concat.
+    return _salvage_on_provider_failure(
+        last_reason,
+        latency_ms=last_latency,
+        model=last_model,
+        provider_name=last_provider,
+    )
 
 
 class QuestionHistoryResult(tuple):
