@@ -44,6 +44,21 @@ P2P_GRAPH_RAG_PROVIDER = "openai_wrapper"
 # Stage-2 polish + reasoning ALWAYS on (the Claude Max tunnel). The code default
 # is already ON (R80.2); pinned here explicitly per the operator directive.
 P2P_GRAPH_RAG_ENABLE_STAGE2 = "1"
+# R146 — Stage-2 fidelity guard (the intelligent Stage-1/Stage-2 combine). The
+# deterministic Stage-1 draft is the CONTENT source of truth. The guard acts
+# ONLY when the QUESTION asks for a cross-tier classification ("prohibited,
+# high-risk, or limited?", "what risk tier", "always prohibited") AND the
+# deterministic verdict is cross-tier (>= 2 risk tiers) AND Opus polish DROPPED a
+# tier — then it ships the COMPLETE deterministic verdict (mode=fallback, the
+# R144-proven correct path) instead of the tier-incomplete polish. On focused
+# yes/no questions Opus narrowing the verdict is correct, so the guard is a
+# no-op. Opus polish lands when faithful; deterministic completeness is
+# guaranteed on the cross-tier-classification asks. Code default ON; disable /
+# switch mode (mode=repair grafts the dropped tier's clause onto the polish):
+#   railway variables --set REGENOLD_STAGE2_FIDELITY=0
+#   railway variables --set REGENOLD_STAGE2_FIDELITY_MODE=repair   # vs "fallback"
+REGENOLD_STAGE2_FIDELITY = "1"
+REGENOLD_STAGE2_FIDELITY_MODE = "fallback"
 # Stage-0 intent detection on Groq (fast). Requires GROQ_API_KEY in the
 # dashboard; without it the classifier falls back cleanly to the wrapper (no
 # silent disablement). The free Groq tier has a 100K tokens/day cap, so use a

@@ -1352,6 +1352,16 @@ def _engine_cache_key(
             # R30/R56/R79 doctrine so a mid-deploy flip cannot serve stale
             # polished prose for a previously-asked question.
             "REGENOLD_SEMANTIC_CONTRACT",
+            # R146 — the Stage-2 fidelity guard (app/engines/stage2_fidelity.py)
+            # runs INSIDE _two_stage_generate after the Opus polish and can
+            # repair (re-inject a dropped tier's deterministic clause) or fall
+            # back to the deterministic verdict (flipping stage2_landed). Both
+            # flip GraphRAGResponse.answer on the live polish path, so they
+            # belong in the cache identity per the R30/R56/R79 doctrine. The
+            # deterministic davidath bench never wires a Stage-2 provider, so the
+            # guard is inert there → the bench stays byte-identical either way.
+            "REGENOLD_STAGE2_FIDELITY",
+            "REGENOLD_STAGE2_FIDELITY_MODE",
         )
     )
     import json
