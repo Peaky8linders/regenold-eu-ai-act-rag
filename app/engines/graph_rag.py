@@ -1882,6 +1882,19 @@ def _is_classification_question(question: str) -> bool:
         clause = clause.strip()
         if _CLASSIFICATION_QUESTION_RE.match(clause) or _CLASSIFICATION_FRAGMENT_RE.match(clause):
             return True
+    # R149 — also test the FULL un-split live question. The clause splitter
+    # breaks on " or " inside a subject noun phrase ("Are subliminal OR
+    # manipulative AI techniques prohibited?" -> ["Are subliminal",
+    # "manipulative AI techniques prohibited?"]), so neither fragment matches
+    # "are X prohibited" and a genuine prohibited-practice verdict question is
+    # mis-read as a description -> falls to the QA-dump and pollutes the answer
+    # with off-topic obligation prose. Testing the whole live question recovers
+    # it WITHOUT loosening the conservative per-clause anchoring (the clause
+    # loop above still gates compound questions). Env-reversible via the R149
+    # lower-risk-tier toggle (so the ab_judge baseline arm reproduces main).
+    if _lower_risk_verdicts_enabled():
+        if _CLASSIFICATION_QUESTION_RE.match(live.strip()):
+            return True
     return False
 
 
@@ -1940,6 +1953,16 @@ _GENERAL_CLASSIFICATION_VERDICT = (
 
 _GENERAL_CLASSIFICATION_REFS = ["Art. 5", "Art. 6", "Annex III", "Annex I", "Art. 50"]
 
+# R149 — single reversible toggle for the lower-risk-tier deterministic-path
+# fixes (spam/minimal + chatbot/limited verdict completion + subliminal /
+# prohibited-practice-disjunction routing). Default ON. ``=0`` reproduces the
+# pre-R149 behaviour, which is exactly what the ``ab_judge`` baseline arm sets.
+_REGULATED_VERDICT_RE = re.compile(r"\bregulated\b", re.IGNORECASE)
+
+
+def _lower_risk_verdicts_enabled() -> bool:
+    return _env_enabled("REGENOLD_LOWER_RISK_VERDICTS", default="1")
+
 
 def _general_classification_verdict(question: str) -> dict | None:
     """Domain-general risk-tier verdict for un-catalogued classification asks.
@@ -1970,7 +1993,16 @@ def _general_classification_verdict(question: str) -> dict | None:
     if "Latest question:" in live:
         live = live.split("Latest question:", 1)[-1]
     if not _RISK_VERDICT_RE.search(live):
-        return None
+        # R149 — "Is X regulated under the AI Act?" is a tier-classification
+        # ask (regulated as high-risk only where Annex I/III applies, otherwise
+        # limited-/minimal-risk), but "regulated" is not a _RISK_VERDICT_RE
+        # verb, so the ask fell through to the high-risk QA-dump (the live
+        # spam-filter bug). Admit it via the gated "regulated" trigger. The
+        # scope gate + research/scope intercepts already divert out-of-scope
+        # "is X regulated?" asks upstream, so reaching here means an in-scope
+        # system whose honest answer IS the tier map.
+        if not (_lower_risk_verdicts_enabled() and _REGULATED_VERDICT_RE.search(live)):
+            return None
     return {
         "name": "general_classification",
         "answer": _GENERAL_CLASSIFICATION_VERDICT,

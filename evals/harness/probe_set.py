@@ -107,6 +107,9 @@ _PRIMARY_SOURCES: tuple[tuple[str, str, bool], ...] = (
     ("evals.regenold.scenarios_paper_multiturn_v4", "paper_mt_v4", True),
     ("evals.regenold.scenarios_tricky_v2", "tricky_v2", False),
     ("evals.regenold.scenarios_multiturn_v2", "mt_v2", True),
+    # R149 — lower-risk-tier classification (minimal / limited verdict
+    # completion + prohibited-practice disjunction routing).
+    ("evals.regenold.scenarios_lower_risk_v149", "lower_risk_v149", False),
 )
 
 

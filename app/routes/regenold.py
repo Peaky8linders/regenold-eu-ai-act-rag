@@ -1362,6 +1362,15 @@ def _engine_cache_key(
             # guard is inert there → the bench stays byte-identical either way.
             "REGENOLD_STAGE2_FIDELITY",
             "REGENOLD_STAGE2_FIDELITY_MODE",
+            # R149 — the lower-risk-tier toggle flips the engine output (the
+            # general-verdict "regulated" admission + the full-question
+            # classification gate change which describer/verdict fires →
+            # GraphRAGResponse.answer + references) AND the route's QA-trim
+            # exemption (the chatbot verdict-completion). All flip the cached
+            # answer, so it belongs in the cache identity per the R30/R56/R79
+            # doctrine — and its omission corrupted the same-process ab_judge
+            # two-arm run (cross-arm cache contamination).
+            "REGENOLD_LOWER_RISK_VERDICTS",
         )
     )
     import json
@@ -4291,6 +4300,30 @@ def regenold_eu_ai_act_ask(
     except Exception:  # noqa: BLE001 — fail-soft
         _is_curated_intercept = False
 
+    # R149 — the general-classification verdict (the fallthrough tier-mapping
+    # answer for un-catalogued "is X high-risk / regulated?" asks) is NOT a
+    # curated topic, so ``_is_classification_topic`` is False for it; yet its
+    # deliberately multi-sentence tier map ("not prohibited under Article 5 …
+    # high-risk only if Annex I/III … otherwise limited-/minimal-risk, Article
+    # 50 transparency") must NOT be collapsed to a single sentence by the
+    # extractive-QA pass / QA-trim below (the live chatbot bug: the verdict
+    # shipped only its middle "high-risk turns on Article 6" sentence, dropping
+    # the not-prohibited lead AND the limited-/minimal-risk conclusion).
+    # Mirrors the ``_is_curated_intercept`` exemption; fires on 0 davidath rows.
+    try:
+        from app.engines.graph_rag import (  # noqa: PLC0415
+            general_classification_verdict_refs as _gcv_refs,
+        )
+
+        _lower_risk_on = os.getenv(
+            "REGENOLD_LOWER_RISK_VERDICTS", "1"
+        ).strip().lower() in ("1", "true", "yes", "on")
+        _is_general_verdict = _lower_risk_on and bool(
+            _gcv_refs(resolved_question or question)
+        )
+    except Exception:  # noqa: BLE001 — fail-soft
+        _is_general_verdict = False
+
     # R68 — role×risk obligation-matrix dump detection.
     #
     # The engine's ``_deterministic_answer`` emits the FULL provider×risk
@@ -4380,6 +4413,7 @@ def regenold_eu_ai_act_ask(
         and not _is_multiturn
         and not _is_classification_topic
         and not _is_curated_intercept
+        and not _is_general_verdict
         and not _stage2_landed
     ):
         extracted = _try_extractive_answer(
