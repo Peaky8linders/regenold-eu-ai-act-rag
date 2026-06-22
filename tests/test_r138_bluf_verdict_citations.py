@@ -42,7 +42,9 @@ def test_thinking_tokens_adaptive_r139() -> None:
     # R139 — Stage-2 is always Opus 4.8; the MODERATE simple-question budget was
     # retuned 2048 → 1024 (latency-conscious on the now-Opus 80% majority), and
     # the EXTENDED complex budget 1024 → 4000.
-    assert settings.graph_rag.thinking_tokens == 1024
+    # R148 — standard-path budget bumped back 1024 → 2048 (operator directive:
+    # more deliberation "to get better answers"; reversible via env).
+    assert settings.graph_rag.thinking_tokens == 2048
     assert settings.graph_rag.complex_thinking_tokens == 4000
     assert settings.graph_rag.stage2_model == "claude-opus-4-8"
 

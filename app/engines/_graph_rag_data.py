@@ -742,7 +742,10 @@ _CLASSIFICATION_TOPICS: list[dict] = [
             "prohibition in Article 5 only applies in workplaces and educational "
             "institutions, with a narrow medical/safety exception. Elsewhere the system "
             "is high-risk under Annex III and triggers Article 50 transparency duties "
-            "toward exposed persons."
+            "toward exposed persons. Article 5(1)(h) separately prohibits a distinct "
+            "biometric practice, real-time remote biometric identification in publicly "
+            "accessible spaces for law enforcement, permitting it only under narrow, "
+            "exhaustively-listed exceptions subject to prior authorisation."
         ),
         "refs": ["Art. 5", "Annex III", "Art. 50"],
     },

@@ -164,11 +164,21 @@ class GraphRAGSettings(BaseSettings):
       * R80.2: reduced 2500 → 1024 (current).
     """
 
-    thinking_tokens: int = 1024
+    thinking_tokens: int = 2048
     """``max_thinking_tokens`` — the **MODERATE** thinking budget for the
     STANDARD Stage-2 synthesis path: the ~80% of questions the complexity gate
     does NOT flag. As of R139 these run on Opus 4.8 (:attr:`stage2_model`), not
     Sonnet.
+
+    **R148 — default 2048 (operator directive: bump from 1024).** The operator
+    asked to raise the standard-path thinking budget from 1024 "to get better
+    answers" — more deliberation before the bottom-line-up-front verdict + the
+    grounded explanation. 2048 restores the proven R138 value, well below the
+    8000 that caused the R51/r80.2 latency outliers. The trade is +latency on
+    the ~80% standard path (a SCORED axis), fully reversible per-deploy via
+    ``P2P_GRAPH_RAG_THINKING_TOKENS=1024``; a live ab_judge A/B (correctness /
+    refs up vs latency) is the recommended post-deploy confirmation. Complex
+    questions continue to use the larger :attr:`complex_thinking_tokens`.
 
     **R139 — default 1024 (MODERATE, latency-conscious).** With Opus 4.8 now on
     every Stage-2 answer, the simple-question path is the 80% that dominates

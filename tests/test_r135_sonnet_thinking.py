@@ -49,11 +49,13 @@ def _call(stage_name: str, complex_question: bool, max_tokens: int = 384):
 class TestStandardSonnetThinking:
     def test_stage2_standard_requests_thinking(self, _wrapper):
         """The standard (non-complex) Stage-2 synthesis path requests
-        extended thinking with the ``thinking_tokens`` budget — Sonnet 4.6
-        now reasons before answering."""
+        extended thinking with the ``thinking_tokens`` budget. R139 made
+        every Stage-2 answer run on ``stage2_model`` (Opus 4.8), so the
+        standard path now uses Opus, not Sonnet (this assertion was stale
+        from R135 and is corrected in R148)."""
         _call(_STAGE2, complex_question=False)
         req = _wrapper.complete.call_args.args[0]
-        assert req.model == settings.graph_rag.model  # Sonnet, not Opus
+        assert req.model == settings.graph_rag.stage2_model  # Opus 4.8 (R139)
         assert req.extra_headers.get(_HDR) == str(settings.graph_rag.thinking_tokens)
 
     def test_stage1_parse_never_thinks(self, _wrapper):
@@ -104,7 +106,9 @@ class TestStandardSonnetThinking:
 
 class TestConfig:
     def test_thinking_tokens_default(self):
-        assert settings.graph_rag.thinking_tokens == 1024
+        # R148 — bumped 1024 -> 2048 (operator directive: more standard-path
+        # deliberation; reversible via P2P_GRAPH_RAG_THINKING_TOKENS).
+        assert settings.graph_rag.thinking_tokens == 2048
 
 
 class TestAnthropicParity:

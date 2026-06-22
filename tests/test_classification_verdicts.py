@@ -167,6 +167,25 @@ class TestDetectClassificationTopic:
         )
         assert topic is not None and topic["name"] == "emotion_recognition_general"
 
+    def test_emotion_general_answer_carries_5_1_h_context(self) -> None:
+        # R148 — the emotion verdict must note emotion-recognition systems are
+        # not a categorically prohibited class and that Article 5(1)(h) bans a
+        # DIFFERENT biometric practice (real-time RBI in publicly accessible
+        # spaces for law enforcement, with exhaustive exceptions). Faithful to
+        # the pinned Art. 5(1)(h) catalogue in kb.py.
+        topic = _detect_classification_topic(
+            "Are AI systems intended for emotion recognition from biometric data "
+            "always prohibited?"
+        )
+        assert topic is not None and topic["name"] == "emotion_recognition_general"
+        answer = topic["answer"]
+        # Category point stated ONCE (sentence 1; no redundant restatement).
+        assert "not categorically prohibited" in answer
+        # The new 5(1)(h) distinction (a different biometric practice).
+        assert "5(1)(h)" in answer
+        assert "real-time remote biometric identification" in answer
+        assert "law enforcement" in answer
+
     def test_cv_screening_routes_to_hiring(self) -> None:
         topic = _detect_classification_topic(
             "Is AI used to screen CVs for hiring prohibited or high-risk?"
