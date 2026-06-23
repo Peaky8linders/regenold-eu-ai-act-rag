@@ -30,6 +30,24 @@ def normalize_article_id(ref: str) -> str:
         return f"annex_{m_annex.group(1).upper()}"
     return ref.replace(" ", "_").replace(".", "")
 
+
+def _provision_root(ref: str) -> tuple[str, str]:
+    """Return ``(label, node_id)`` for a provision ref, matching the seeder's
+    node labels (``scripts/seed_neo4j_kb.py``): annex refs become ``:Annex``
+    nodes, everything else ``:Article``.
+
+    ``Annex III`` -> ``("Annex", "annex_III")``; ``Art. 6`` ->
+    ``("Article", "article_6")``. Labels cannot be Cypher parameters, so the
+    label is concatenated into the query string — it comes from this fixed
+    function, never user input. Previously every provision root (including
+    annexes) was MERGEd as ``:Article``, creating duplicate nodes orphaned
+    from the seeder's ``:Annex`` nodes and breaking the FALLS_UNDER /
+    SUBJECT_TO / APPLIES_TO edges.
+    """
+    label = "Annex" if re.match(r"^Annex\s", ref.strip(), re.IGNORECASE) else "Article"
+    return label, normalize_article_id(ref)
+
+
 def ingest_ontology() -> None:
     """Read the ontology module and ingest it into the Neo4j graph."""
     client = get_graph_client()
@@ -51,19 +69,18 @@ def ingest_ontology() -> None:
                 {"risk_class": risk_class.value}
             ))
             for article in articles:
-                norm_art = normalize_article_id(article)
-                # Merge the article root just to ensure relationships can attach
+                label, norm_art = _provision_root(article)
+                # Merge the provision root (Article/Annex per seeder labels)
+                # so relationships attach to the seeded node, not a duplicate.
                 queries.append((
-                    "MERGE (a:Article {id: $article})",
+                    "MERGE (a:" + label + " {id: $article})",
                     {"article": norm_art}
                 ))
                 queries.append((
-                    """
-                    MATCH (r:ActorRole {id: $role})
-                    MATCH (rc:RiskClass {id: $risk_class})
-                    MATCH (a:Article {id: $article})
-                    MERGE (r)-[:SUBJECT_TO {risk_class: $risk_class}]->(a)
-                    """,
+                    "MATCH (r:ActorRole {id: $role}) "
+                    "MATCH (rc:RiskClass {id: $risk_class}) "
+                    "MATCH (a:" + label + " {id: $article}) "
+                    "MERGE (r)-[:SUBJECT_TO {risk_class: $risk_class}]->(a)",
                     {"role": role.value, "risk_class": risk_class.value, "article": norm_art}
                 ))
 
@@ -126,19 +143,17 @@ def ingest_ontology() -> None:
                 "description": cat.description
             }
         ))
-        # Ensure 'Annex III' and 'Art. 6' roots
+        # Ensure 'Annex III' and 'Art. 6' roots (correct seeder labels)
         for anchor in ["Annex III", "Art. 6"]:
-            norm_anchor = normalize_article_id(anchor)
+            label, norm_anchor = _provision_root(anchor)
             queries.append((
-                "MERGE (a:Article {id: $anchor})",
+                "MERGE (a:" + label + " {id: $anchor})",
                 {"anchor": norm_anchor}
             ))
             queries.append((
-                """
-                MATCH (c:AnnexIIICategory {id: $id})
-                MATCH (a:Article {id: $anchor})
-                MERGE (c)-[:FALLS_UNDER]->(a)
-                """,
+                "MATCH (c:AnnexIIICategory {id: $id}) "
+                "MATCH (a:" + label + " {id: $anchor}) "
+                "MERGE (c)-[:FALLS_UNDER]->(a)",
                 {"id": c_id, "anchor": norm_anchor}
             ))
 
@@ -159,26 +174,24 @@ def ingest_ontology() -> None:
             }
         ))
         for art in phase.articles:
-            norm_art = normalize_article_id(art)
+            label, norm_art = _provision_root(art)
             queries.append((
-                "MERGE (a:Article {id: $art})",
+                "MERGE (a:" + label + " {id: $art})",
                 {"art": norm_art}
             ))
             queries.append((
-                """
-                MATCH (ph:Phase {id: $id})
-                MATCH (a:Article {id: $art})
-                MERGE (ph)-[:APPLIES_TO]->(a)
-                """,
+                "MATCH (ph:Phase {id: $id}) "
+                "MATCH (a:" + label + " {id: $art}) "
+                "MERGE (ph)-[:APPLIES_TO]->(a)",
                 {"id": phase_id, "art": norm_art}
             ))
 
     client.execute_write_batch(queries)
     logger.info("Successfully ingested ontology into Neo4j graph.")
     
-    # 5. Ingest Legal AST (Ontology Leap)
+    # 5. Ingest Legal AST (Ontology Leap) — reuse the same open client.
     from app.engines.legal_ast import ingest_legal_ast
-    ingest_legal_ast()
+    ingest_legal_ast(client)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

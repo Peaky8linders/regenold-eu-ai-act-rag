@@ -72,18 +72,26 @@ def parse_article_to_ast(article_ref: str, tree_nodes: list[Any] = None) -> ASTN
         ])
     return None
 
-def ingest_legal_ast() -> None:
+def ingest_legal_ast(client=None) -> None:
     """Ingests the hierarchical Legal AST representation into Neo4j.
-    
-    Creates the Article -> Paragraph -> Point hierarchy for the entire
-    EU AI Act, establishing the rigid structural backbone needed for 
-    deterministic Cypher traversals and exact citations.
+
+    Creates the Article -> Paragraph -> Point and Annex -> Paragraph -> Point
+    hierarchy for the entire EU AI Act, establishing the rigid structural
+    backbone needed for deterministic Cypher traversals and exact citations.
+
+    ``client`` lets a caller (e.g. ``scripts/seed_neo4j_kb.py::run_seed``)
+    reuse an already-open :class:`~app.graph.client.GraphClient` rather than
+    the lazily-acquired singleton. Article/Annex nodes are MERGEd by the same
+    ``id`` convention the seeder uses (``article_<n>`` / ``annex_<ROMAN>``)
+    so the paragraphs/points attach to the seeded nodes instead of creating
+    duplicates.
     """
     from app.graph.client import get_graph_client
     import logging
     logger = logging.getLogger(__name__)
 
-    client = get_graph_client()
+    if client is None:
+        client = get_graph_client()
     if not client.enabled:
         logger.warning("Graph client disabled; skipping Legal AST ingestion.")
         return
@@ -188,10 +196,16 @@ def ingest_legal_ast() -> None:
 
         elif key.startswith("Annex "):
             roman = key[len("Annex "):].strip()
-            annex_id = f"annex_{roman.lower()}"
-            
+            # Match the seeder convention (scripts/seed_neo4j_kb.py::_article_id):
+            # ``Annex III`` -> ``:Annex {id: 'annex_III'}`` (UPPERCASE roman).
+            # legal_ast previously created ``:Article {id: 'annex_iii'}`` — a
+            # mislabeled, case-mismatched duplicate orphaned from the seeded
+            # :Annex node + the ontology FALLS_UNDER edges. Use the same label
+            # and id so paragraphs/points attach to the seeded annex node.
+            annex_id = f"annex_{roman.upper()}"
+
             queries.append((
-                "MERGE (a:Article {id: $id})",
+                "MERGE (a:Annex {id: $id})",
                 {"id": annex_id}
             ))
 
@@ -207,7 +221,7 @@ def ingest_legal_ast() -> None:
                         MERGE (p:Paragraph {id: $id})
                         SET p.number = '1', p.text = $text
                         WITH p
-                        MATCH (a:Article {id: $article_id})
+                        MATCH (a:Annex {id: $article_id})
                         MERGE (a)-[:HAS_PARAGRAPH]->(p)
                         """,
                         {"id": para_id, "text": body, "article_id": annex_id}
@@ -233,7 +247,7 @@ def ingest_legal_ast() -> None:
                     MERGE (p:Paragraph {id: $id})
                     SET p.number = $num, p.text = $text
                     WITH p
-                    MATCH (a:Article {id: $article_id})
+                    MATCH (a:Annex {id: $article_id})
                     MERGE (a)-[:HAS_PARAGRAPH]->(p)
                     """,
                     {"id": para_id, "num": str(m), "text": item_text, "article_id": annex_id}

@@ -95,7 +95,7 @@ logger = logging.getLogger(__name__)
 #: new edge type, removed source, etc.). Surfaces in the ``KBMetadata``
 #: node so consumers can detect a graph that's stale relative to the
 #: currently-running code.
-SEED_VERSION = "2026-05-24-r84c"
+SEED_VERSION = "2026-06-23-legalast"
 
 #: Cap on per-transaction batch size to stay well clear of the Neo4j
 #: 4194304-byte default transaction limit. The shape of our payloads
@@ -658,13 +658,6 @@ SET d.kind = $kind,
     d.text = $text
 """
 
-_CYPH_MERGE_OBLIGATION = """
-MERGE (o:Obligation {id: $id})
-SET o.text = $text,
-    o.risk_level = $risk_level,
-    o.roles = $roles
-"""
-
 _MERGE_PARAGRAPH = """
 MERGE (p:Paragraph {id: $id})
 SET p.number = $number,
@@ -745,7 +738,7 @@ MERGE (s)-[r:CROSS_REFERENCES]->(t)
 SET r.source = $edge_source
 """
 
-_CYPH_MERGE_HAS_RECITAL_ANCHOR = """
+_CYPHER_HAS_RECITAL_ANCHOR = """
 MATCH (a:Article {id: $source_id})
 MATCH (r:Recital {id: $target_id})
 MERGE (a)-[:HAS_RECITAL_ANCHOR]->(r)
@@ -1037,6 +1030,28 @@ def _apply_env_overrides(args: argparse.Namespace) -> None:
         os.environ["NEO4J_DATABASE"] = args.neo4j_database
 
 
+def _ingest_legal_ast_hierarchy(client) -> int:
+    """Build the Article/Annex -> Paragraph -> Point hierarchy on ``client``.
+
+    Reuses the single :func:`app.engines.legal_ast.ingest_legal_ast` builder
+    (so there is ONE source of the Paragraph/Point hierarchy, no seeder vs
+    legal_ast drift) against the already-open seed client. Fail-soft: returns
+    ``0`` and logs on any error so a hierarchy hiccup never aborts an
+    otherwise-successful base seed. Returns ``1`` on success (a coarse marker;
+    the detailed node count is logged by ``ingest_legal_ast`` itself).
+    """
+    try:
+        from app.engines.legal_ast import ingest_legal_ast
+
+        ingest_legal_ast(client)
+        return 1
+    except Exception as exc:  # pragma: no cover - defensive
+        logging.getLogger(__name__).warning(
+            "Legal AST hierarchy ingestion failed (base seed unaffected): %s", exc
+        )
+        return 0
+
+
 def run_seed(
     *,
     dry_run: bool = False,
@@ -1098,6 +1113,12 @@ def run_seed(
         counts = seed_graph(
             client, payload, batch_size=batch_size, verbose=verbose
         )
+        # Ontology Leap — build the Article/Annex -> Paragraph -> Point
+        # hierarchy (full EU AI Act coverage) on top of the base seed so the
+        # deterministic Article 6(3) Cypher (and any future sub-point
+        # traversal) has nodes to traverse. Fail-soft: a hierarchy-ingest
+        # error must NOT abort an otherwise-successful base seed.
+        counts["legal_ast_hierarchy"] = _ingest_legal_ast_hierarchy(client)
     finally:
         client.close()
 
@@ -1167,9 +1188,12 @@ def main(argv: list[str] | None = None) -> int:
     written = seed_graph(
         client, payload, batch_size=args.batch_size, verbose=args.verbose
     )
+    # Ontology Leap — Article/Annex -> Paragraph -> Point hierarchy.
+    _ingest_legal_ast_hierarchy(client)
     print("\n---- Seed complete ----")
     for label, count in written.items():
         print(f"    {label:<28} = {count}")
+    print("    legal_ast_hierarchy          = ingested (Article/Annex -> Paragraph -> Point)")
     client.close()
     return 0
 

@@ -3586,7 +3586,11 @@ def _build_context_references_block(context: GraphContext) -> str:
         )
     if context.bridging_context:
         parts.append(
-            "\nCROSS-REGULATORY BRIDGING CONTEXT:\n"
+            "\nCROSS-REGULATORY BRIDGING CONTEXT "
+            "(supporting context only — these are NON-EU-AI-Act references "
+            "(e.g. GDPR / MDR); mention them in the prose if relevant but NEVER "
+            "emit them as an Article/Annex citation — the wire references list "
+            "is EU AI Act Articles/Annexes only):\n"
             + "\n".join(f"- {bridge}" for bridge in context.bridging_context)
         )
     # R117-review — LogicRAG multi-hop synthesis. Supporting context only;
@@ -5121,16 +5125,28 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
                                 break
                                 
                     if condition_met:
+                        # The citation that reaches the wire MUST be the internal
+                        # canonical form ``Art. 6(3)(a)`` — the route's
+                        # ``reference_from_article_ref`` (app/integrations/regenold/
+                        # refs.py) converts it to the strict dotted wire form
+                        # ``Article 6.3.a``. The parenthesised ``Article 6(3)(a)``
+                        # is the FORBIDDEN wire shape per CLAUDE.md hard rule #1
+                        # (``_ARTICLE_OUTPUT_RE`` rejects parentheses), so never
+                        # inject it as the citation. ``exact_citation`` (user-facing
+                        # parens) is kept only for human-readable Stage-2 prose.
+                        internal_citation = f"Art. 6(3)({letter})"
                         exact_citation = f"Article 6(3)({letter})"
                         verdict_str = f"{exact_citation} logical evaluation: Practice exempt / Condition met for '{text}'."
                         if not hasattr(context, "ast_evaluations"):
                             context.ast_evaluations = []
                         context.ast_evaluations.append(verdict_str)
-                        
-                        # Mechanically inject perfect citation into RAG context
+
+                        # Mechanically inject perfect citation into RAG context.
+                        # ``article`` becomes CitationNode.article_ref -> the wire
+                        # reference, so it carries the internal-canonical form.
                         context.article_info.append({
                             "id": point_id,
-                            "article": exact_citation,
+                            "article": internal_citation,
                             "text": f"Exception to high-risk classification under {exact_citation}: The system performs a {text}."
                         })
                         context.nodes_traversed += 3
