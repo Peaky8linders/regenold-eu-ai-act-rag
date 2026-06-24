@@ -2594,10 +2594,21 @@ def _reconcile_references_to_prose(
     try:
         if not references:
             return references
-        
-        # Disabled post-processing pruning to improve Keyword Recall / Ref Strict metrics.
-        # Graph traversal now pulls accurate structural context without needing the LLM to output exact text anchors.
-        return references
+        # R72/R148-triage — restore the prune body so the call-site env gate
+        # ``REGENOLD_REFS_RECONCILE`` (default "1") actually controls behaviour:
+        # =1 prunes cited-but-undescribed refs (R72 refs-faithfulness pass),
+        # =0 keeps every ref (the Gemini "Optimize GraphRAG metrics" behaviour).
+        # The Gemini commit disabled the body unconditionally, which silently
+        # made the env gate a no-op AND left the ``described``-referencing code
+        # below unreachable (review finding I1). Restored verbatim.
+        protected = protected or frozenset()
+        described = [
+            r
+            for r in references
+            if r in protected or _reference_described_in_prose(r, prose)
+        ]
+        if len(described) >= len(references):
+            return references  # every reference is described — nothing to drop
         keep: list[str] = list(described)
         for r in references:
             if len(keep) >= floor:
