@@ -8256,6 +8256,84 @@ R31/R49/R110/R146 pattern). Post-deploy verification: `ab_judge` pairwise
 (R139 harness) with the R147 prompt vs the R145 prompt, gating conciseness up
 toward 0.8 AND correctness / refs / tone not down.
 
+## Round 250 — Gemini multi-specialist findings triage: R72 reconcile restore + I1 dead-code fix + G3 live pairwise A/B (2026-06-24)
+
+A Gemini agent supplied 3 specialists' findings + proposed fixes (Antifragile /
+GraphRAG-bench / MedTech). Triage (`/plan-eng-review` + code-review skill +
+systematic-debugging) found **all 7 findings were already implemented on `main`**
+by `66db30c` ("Optimize GraphRAG metrics…"), and a self-review `a96355f` ("Fix
+bugs from deep code review…") had already **reverted the 2 dangerous changes**
+and hardened the rest (report:
+`docs/reviews/perf-optimizations-2026-06-24-06-20-00-66db30c.md`). This round
+verified each landed change (file:line + deterministic repro) and **closed the
+one review finding the self-review left unfixed**. Full record:
+`.planning/GEMINI-FINDINGS-TRIAGE-2026-06-24.md`. PR #250 (`8c11e9b`).
+
+### Per-finding verdicts
+* **G2 `cross_refs` limit 2→10** (the dangerous one — 5× KB-path xref expansion,
+  davidath QA precision poison per the R47 core/full split): **already reverted
+  to 2** by `a96355f` C5. Safe.
+* **A2 over-broad `what is a → Art.3` insertion**: **already reverted** by
+  `a96355f` C4 — R127 `role_definitional_term` already inserts Art.3 ("Who is a
+  provider?" → Article 3.3, verified). The retained intent branch is harmless.
+* **G3 `_reconcile_references_to_prose` disabled** (`66db30c` `return references`
+  + dead code): this is the **issue introduced** — it killed the intentional
+  R72 refs-faithfulness pass AND silently made the `REGENOLD_REFS_RECONCILE` env
+  gate a no-op AND left the `described`-block unreachable (review finding **I1**,
+  which `a96355f` never fixed since it didn't touch `regenold.py`). **Fix:
+  restored the R72 prune body** so `=1` prunes / `=0` keeps-all; shipped default
+  `=1` (prune/R72), env-reversible, floor-protected.
+* **A1 `max_tokens 512→2048`** (5 sites): harmless/mostly-inert — the real
+  Stage-2 answer envelope is `safe_max_tokens = max(max_tokens or 1024,
+  eff_thinking+headroom, 1024)` = 3072 simple / 5024 complex; parse-side bumps
+  are a pointless ceiling. Kept.
+* **A3 concise-definition prompt rule**: prompt-only, davidath-neutral. Kept.
+* **G1 `obligations_for_article_with_xrefs` Cypher**: live-graph-only; Aura IS
+  live+seeded (248 CROSS_REFERENCES, seed `2026-06-23-legalast`); `a96355f` made
+  it directed (C3) + ordered (C6). Kept.
+* **M1 melanoma/dermoscopy/oncology taxonomy + new `annex_iii_5_services` topic
+  + `medical device→Art.6` / `health insurance→Annex III` keywords**: davidath
+  **Ref Loose +0.0073**, OOS 21/21, 3 PDF examples intact, `\b`-bounded (C2/I2 —
+  no `smriti→mri` misfire). Kept.
+
+### G3 — the proper win-measure (live pairwise judge, NOT davidath)
+The reconcile is `stage2_landed`-gated → **davidath byte-identical either way**
+(live-only), so the deterministic bench structurally cannot decide it. Ran
+`evals.harness.ab_judge` live pairwise (Sonnet judge, position-swapped, sign
+test), 24 multi-article tricky rows, `=0` (keep-all/Gemini) vs `=1` (prune/R72):
+
+| Axis | B-win (prune) | A-win (keep-all) | tie | win%B | p |
+| ---- | ------------- | ---------------- | --- | ----- | - |
+| **refs** | **7** | 3 | 14 | **0.700** | 0.344 |
+| correctness | 1 | 3 | 20 | 0.250 | 0.625 |
+| conciseness | 1 | 0 | 23 | 1.000 | 1.000 |
+| tone | 0 | 0 | 24 | — | 1.000 |
+
+**Prune (R72) leans win on the refs axis it targets (7-3), no significant
+regression on any axis** — the OPPOSITE of R142.1 (where the *positional*
+over-citation clamp lost refs at p=0.001). The prose-driven, floor-protected
+reconcile is gentler and doesn't drop gold. Nothing reaches p<0.05 (n=24, mostly
+ties — reconcile fires only on cites>describes rows), but the directional signal
++ R72's documented purpose validate keeping the shipped `=1` default. No code
+change from the A/B; env-reversible if a larger run ever refutes it.
+
+### Gates
+davidath QA A/B (pre-Gemini `609c729` → current): **net-positive every axis**
+(Ref Loose 0.8321→0.8394); 276-runner all categories 100%; OOS 21/21, 0 leaks;
+reconcile unit suite 69/70 (the 1 fail is the documented pre-existing
+`provider=cli`-defeats-Stage-2 env artifact, confirmed identical on clean
+baseline `609c729`). davidath **byte-identical by construction** for G3 (stage2-
+gated). Live infra healthy: `/healthz/llm` openai_wrapper/sonnet-4-6 ✓,
+`/healthz/graph` neo4j/Aura graph_ok ✓.
+
+### Where the wins land
+The I1 dead-code fix + R72 reconcile restore land on the **live Stage-2 path**
+(the judge refs-faithfulness axis) — the davidath bench is the regression guard,
+not the win surface (the established R31/R49/R69/R72 pattern). Authoritative
+post-deploy validation: the named datasets (GraphRAG-bench / MedTech /
+Antifragile) against the deployed wire (Aura + Cloudflare tunnel + Claude Max) +
+LLM-judge.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

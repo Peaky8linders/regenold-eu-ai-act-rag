@@ -81,16 +81,37 @@ C5 `limit 10→2` reverted ✓; C6 ORDER BY ✓; I2 medical regex `\b` ✓.
 * 276-runner — all categories 100% (re-confirm pending).
 * Reconcile unit suite — 69/70 pass (1 pre-existing cli env artifact, confirmed on baseline).
 
-## Post-hoc validation (running)
+## Post-hoc validation — G3 live pairwise A/B (RESULT)
 
-`ab_judge` live pairwise (Claude Max wrapper, position-swapped, sign-tested):
+`ab_judge` live pairwise (Claude Max wrapper, Sonnet judge, position-swapped,
+two-sided sign test), 24 multi-article tricky rows
+(`paper_tricky_v4` + `tricky_v2`):
 **A/baseline `REGENOLD_REFS_RECONCILE=0` (keep-all / Gemini) vs B/branch `=1`
-(prune / R72)** on the multi-article tricky probe rows. Validates the shipped
-prune default; if it shows prune is net-negative, flip `REGENOLD_REFS_RECONCILE=0`
-(instant, env-only, no code change). + a live run of the named datasets
-(GraphRAG-bench / MedTech / Antifragile) through the deployed wire + LLM-judge,
-to validate the overall post-Gemini quality and the G1 cross-ref / A3 prompt
-live wins.
+(prune / R72)**.
+
+| Axis | B-win (prune) | A-win (keep-all) | tie | win%B | p | verdict |
+| ---- | ------------- | ---------------- | --- | ----- | - | ------- |
+| **refs** | **7** | 3 | 14 | **0.700** | 0.344 | **prune leans win** (the axis R72 targets) |
+| correctness | 1 | 3 | 20 | 0.250 | 0.625 | keep-all leans (ns) |
+| conciseness | 1 | 0 | 23 | 1.000 | 1.000 | prune leans (ns) |
+| tone | 0 | 0 | 24 | — | 1.000 | all ties |
+
+**Verdict — shipped prune (R72) default is directionally validated.** Prune
+leans win on **refs** (7-3, win-rate 0.70 — the faithfulness axis the reconcile
+is built for) with **no significant regression on any axis**. This is the
+**opposite** of R142.1, where the *positional* over-citation clamp lost refs at
+p=0.001: the prose-driven, floor-protected reconcile is gentler and does not
+drop gold. Nothing reaches p<0.05 (n=24, mostly ties — the reconcile only fires
+on the subset of rows whose Stage-2 answer cites > it describes), but the signal
++ R72's documented purpose support keeping `REGENOLD_REFS_RECONCILE=1`. **No
+code change required — the deployed default already reflects this finding**; if
+a larger future run ever refutes it, flip `REGENOLD_REFS_RECONCILE=0` (instant,
+env-only). Sidecar: `evals/bench/results/ab-judge-g3-reconcile-triage.json`
+(gitignored).
+
+The named-dataset live validation (GraphRAG-bench / MedTech / Antifragile
+through the deployed wire + LLM-judge) runs separately as the overall
+post-deploy quality check (G1 cross-ref / A3 prompt live wins).
 
 ## Shipped (PR `triage/gemini-findings`)
 
