@@ -68,6 +68,10 @@ class ScopeReason(str, Enum):
     # EU framework (DSA / NIS2 / CRA / PLD). The refusal names the
     # correct framework so the partner can re-route the question.
     NEAR_OOS = "near_oos"
+    # R256 — pure greeting / capability / small-talk ("hi", "how are
+    # you", "what can you do?"). Split out of CONVERSATIONAL so the route
+    # can return the friendly Lexy introduction instead of a refusal.
+    GREETING = "greeting"
 
 
 @dataclass(frozen=True)
@@ -93,6 +97,16 @@ class ScopeVerdict:
     # framework the question actually belongs to (e.g. "Digital Services
     # Act"). Empty string for every other reason.
     near_oos_framework: str = ""
+    # R256 — True only for the step-8 generic fallback (CONVERSATIONAL
+    # with no anchor AND no clear greeting / generic-knowledge / nonsense
+    # signal). This is the bucket where a genuine-but-keyword-less EU AI
+    # Act question ("Does the deep-fake disclosure duty apply when
+    # prosecuting a crime?") is indistinguishable, deterministically,
+    # from a clearly off-topic request ("best restaurant in Rome?"). The
+    # route hands this bucket to the LLM scope gate when one is wired so
+    # the genuine question is answered and the off-topic one is refused
+    # with a tailored Lexy reply.
+    ambiguous: bool = False
 
 
 # ── Article reference extraction ─────────────────────────────────────────
@@ -2738,6 +2752,16 @@ def classify_scope(question: str) -> ScopeVerdict:
     """
     text = _normalise(question or "")
     if not text or len(text) < 3 or not _has_alphabetic_content(text):
+        # R256 — a bare greeting ("hi") trips the < 3-char min-length
+        # floor; still surface it as a greeting so it gets the friendly
+        # Lexy introduction rather than a generic decline. Safe at this
+        # length: a 2-char string cannot carry an Article anchor.
+        if text and _question_is_pure_conversational(text):
+            return ScopeVerdict(
+                in_scope=False,
+                reason=ScopeReason.GREETING,
+                evidence="Greeting (short), no AI Act content.",
+            )
         return ScopeVerdict(
             in_scope=False,
             reason=ScopeReason.EMPTY_OR_NONSENSE,
@@ -2911,12 +2935,25 @@ def classify_scope(question: str) -> ScopeVerdict:
             referenced_articles=known,
         )
 
-    # 6. Conversational / generic-knowledge.
-    if _question_is_pure_conversational(text) or _question_is_generic_knowledge(text):
+    # 6. Greeting / capability — pure small-talk ("hi", "how are you?",
+    # "who are you?", "what can you do?"). R256: surfaced as its own
+    # GREETING reason so the route can answer with the friendly Lexy
+    # introduction instead of a refusal.
+    if _question_is_pure_conversational(text):
+        return ScopeVerdict(
+            in_scope=False,
+            reason=ScopeReason.GREETING,
+            evidence="Greeting / capability small-talk, no AI Act content.",
+        )
+
+    # 6b. Generic-knowledge — a clearly off-topic ask matching a recognised
+    # off-domain pattern ("capital of X", "the weather", a joke / poem /
+    # recipe). High-confidence OOS — refused deterministically.
+    if _question_is_generic_knowledge(text):
         return ScopeVerdict(
             in_scope=False,
             reason=ScopeReason.CONVERSATIONAL,
-            evidence="Pure conversational or generic-knowledge phrasing.",
+            evidence="Generic-knowledge phrasing, no AI Act content.",
         )
 
     # 7. Nonsense fallthrough.
@@ -2927,13 +2964,17 @@ def classify_scope(question: str) -> ScopeVerdict:
             evidence="No EU AI Act anchors or dictionary words detected.",
         )
 
-    # 8. Generic fallback — no strong signal in any direction. Treat as
-    # conversational (the safer refusal) so we don't ship a confident
-    # boilerplate answer to a question we can't anchor.
+    # 8. Generic fallback — no anchor AND no clear OOS signal. This is the
+    # AMBIGUOUS bucket: a genuine keyword-less AI Act question and a
+    # clearly off-topic request both land here, so deterministically we
+    # cannot tell them apart. Flagged ambiguous so the route can consult
+    # the LLM scope gate (R256) before refusing — answering the genuine
+    # question and refusing the off-topic one with a tailored Lexy reply.
     return ScopeVerdict(
         in_scope=False,
         reason=ScopeReason.CONVERSATIONAL,
         evidence="No EU AI Act anchor, dimension, or article reference found.",
+        ambiguous=True,
     )
 
 
@@ -2943,6 +2984,68 @@ def classify_scope(question: str) -> ScopeVerdict:
 # match against the exact strings. Each refusal stays within the spec's
 # "3-4 sentences max" budget. The route uses these directly and pins
 # ``retrieval_path="no_match"`` + ``confidence=0.0``.
+#
+# R256 — branded "Lexy" voice. The assistant introduces itself on a
+# greeting, declines off-topic and unanswerable questions while pointing
+# back at the regulation, and refuses to act on adversarial prompts. The
+# exact strings below are operator-supplied copy and are matched verbatim
+# by the OOS-probe refusal markers (``evals/regenold/runner_v2.py``) — do
+# not paraphrase without updating those markers.
+
+#: Friendly self-introduction for a greeting / "what can you do?".
+LEXY_GREETING = (
+    "I am Lexy, a Compliance assistant that can answer your questions "
+    "related to the EU AI Act, based on my Knowledge Graph and ontology. "
+    "What can I help you with?"
+)
+
+#: Generic decline for an off-topic / unanswerable / nonsense question.
+LEXY_OOS_GENERIC = (
+    "I cannot answer your question from my Knowledge Graph, which address "
+    "only obligations under Regulation (EU) 2024/1689 (the AI Act), such as "
+    "AI literacy duties for providers and deployers (Article 4), "
+    "coordination of notified bodies (Article 38), and access to the "
+    "Scientific Panel's expert pool (Article 69). If you have a question "
+    "about AI Act compliance, I am glad to help."
+)
+
+#: Tailored decline for a coherent off-topic request — ``{clause}`` is an
+#: LLM-supplied verb phrase completing "I cannot ___" (e.g. "recommend a
+#: restaurant in Rome"). Falls back to :data:`LEXY_OOS_GENERIC` when no
+#: clause is available.
+LEXY_OOS_TAILORED_TEMPLATE = (
+    "I cannot {clause} from these materials, which address only obligations "
+    "under Regulation (EU) 2024/1689 (the AI Act), such as AI literacy "
+    "duties for providers and deployers (Article 4), coordination of "
+    "notified bodies (Article 38), and access to the Scientific Panel's "
+    "expert pool (Article 69). If you have a question about AI Act "
+    "compliance, I am glad to help."
+)
+
+#: Refusal for an adversarial / prompt-injection input.
+LEXY_ADVERSARIAL = (
+    "I am Lexy, a Compliance assistant for the EU AI Act (Regulation (EU) "
+    "2024/1689), grounded in my Knowledge Graph and ontology. I do not act "
+    "on instructions that try to override my purpose, reveal my "
+    "configuration, or otherwise manipulate me. If you have a question "
+    "about AI Act compliance, I am glad to help."
+)
+
+
+def lexy_tailored_oos_refusal(clause: str | None) -> str:
+    """Build the tailored off-topic decline from an LLM-supplied clause.
+
+    ``clause`` is a short verb phrase completing "I cannot ___" (e.g.
+    ``"recommend a restaurant in Rome"``). When it is empty / ``None`` or
+    looks unusable, fall back to :data:`LEXY_OOS_GENERIC` so the wire
+    response is always clean branded prose.
+    """
+    clean = (clause or "").strip().strip("\"'").rstrip(".").strip()
+    # Reject empties + anything that doesn't look like a short verb phrase
+    # (the template reads "I cannot {clause} from these materials").
+    if not clean or len(clean) > 80 or "\n" in clean:
+        return LEXY_OOS_GENERIC
+    return LEXY_OOS_TAILORED_TEMPLATE.format(clause=clean)
 
 
 def _format_neighbour_articles(unknown: tuple[str, ...]) -> str:
@@ -3039,28 +3142,23 @@ def refusal_copy_for(verdict: ScopeVerdict) -> str:
         )
 
     if verdict.reason == ScopeReason.PROMPT_INJECTION:
-        # R55-A — third-person regulator voice (no first-person pronouns).
-        return (
-            "This assistant answers EU AI Act questions only (Regulation 2024/1689). "
-            "Please ask a regulatory question, for example, \"What does Article 13 require?\" "
-            "or \"What are the deployer obligations under Article 26?\"."
-        )
+        # R256 — branded adversarial refusal: state Lexy's purpose and
+        # decline to act on the injection / jailbreak attempt.
+        return LEXY_ADVERSARIAL
+
+    if verdict.reason == ScopeReason.GREETING:
+        # R256 — friendly Lexy self-introduction for a greeting /
+        # "what can you do?" small-talk turn.
+        return LEXY_GREETING
 
     if verdict.reason == ScopeReason.CONVERSATIONAL:
-        # R55-A — third-person regulator voice (no first-person pronouns).
-        return (
-            "This assistant answers EU AI Act questions only (Regulation 2024/1689). "
-            "Try a regulatory question, for example: \"What does Article 13 require for transparency?\" "
-            "or \"What are the deployer obligations under Article 26?\"."
-        )
+        # R256 — generic branded decline for an off-topic question that
+        # carries no EU AI Act content.
+        return LEXY_OOS_GENERIC
 
     if verdict.reason == ScopeReason.EMPTY_OR_NONSENSE:
-        return (
-            "No matching obligation found in the EU AI Act for this question. "
-            "Try rephrasing with a specific article reference (e.g. \"Article 13\"), "
-            "a risk level (e.g. \"high-risk\"), or a compliance dimension "
-            "(e.g. \"transparency\")."
-        )
+        # R256 — same generic branded decline for empty / nonsense input.
+        return LEXY_OOS_GENERIC
 
     # IN_SCOPE — caller should not ask for refusal copy.
     return ""
@@ -3582,6 +3680,11 @@ def classify_conversation(
 
     if (
         live_verdict.reason not in hard_refusal_reasons
+        # R256 — a bare greeting / capability turn ("hi", "thanks") is a
+        # short follow-up shape, but it should always receive the Lexy
+        # introduction, never be rescued into a re-answer of the prior
+        # topic.
+        and live_verdict.reason != ScopeReason.GREETING
         and not _is_explicit_scope_negation_refusal(live_text, live_verdict)
         and _live_question_borrows_anchor(live_text, tuple(rescue_anchors))
     ):

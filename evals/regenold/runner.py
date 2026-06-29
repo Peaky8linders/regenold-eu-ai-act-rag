@@ -259,6 +259,12 @@ def _predict_risk_class(body: dict) -> str | None:
         "does not appear in the eu ai act",
         "this assistant only covers the eu ai act",
         "this assistant only answers eu ai act",
+        "this assistant answers eu ai act questions only",
+        # R256 — branded "Lexy" decline / greeting / adversarial copy.
+        "i cannot answer your question from my knowledge graph",
+        "from these materials, which address only obligations",
+        "i am lexy",
+        "i do not act on instructions",
     )
     is_refusal = (not refs) and any(m in answer for m in refusal_markers)
     if is_refusal or body.get("__http_status", 200) in (400, 401, 403, 404, 422):

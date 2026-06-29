@@ -125,6 +125,11 @@ def _refused(body: dict) -> bool:
         "this assistant answers eu ai act questions only",
         "this assistant only covers eu ai act questions",
         "this question is about a regulation outside the eu ai act",
+        # R256 — branded "Lexy" decline / greeting / adversarial copy.
+        "i cannot answer your question from my knowledge graph",
+        "from these materials, which address only obligations",
+        "i am lexy",
+        "i do not act on instructions",
     )
     return any(marker in answer for marker in refusal_markers)
 

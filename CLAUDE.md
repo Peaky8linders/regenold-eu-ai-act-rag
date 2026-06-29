@@ -8628,6 +8628,94 @@ feature. New `tests/test_topic_filter.py` (16 tests) pins the new default
 - davidath — byte-identical by construction (refusal branch unreached on
   in-scope rows).
 
+## Round 256 — Branded "Lexy" scope replies + topic filter back ON by default + LLM gate for the ambiguous OOS bucket (2026-06-29)
+
+Operator directive: re-introduce branded "Lexy" scope responses on top of the
+R255 removal — answer the named buckets with EXACT operator-supplied copy. R256
+**reverts R255's `REGENOLD_TOPIC_FILTER` default OFF → ON** but replaces the old
+terse refusal copy with the branded Lexy strings, and adds an LLM gate that
+rescues genuine keyword-less AI-Act questions that the deterministic classifier
+can't tell apart from off-topic.
+
+### The branded copy (`app/integrations/regenold/scope.py`)
+
+Four operator-supplied constants (FIRST-PERSON — deliberately overrides the
+R55-A third-person refusal rule for the rebrand):
+
+* `LEXY_GREETING` — *"I am Lexy, a Compliance assistant that can answer your
+  questions related to the EU AI Act, based on my Knowledge Graph and ontology.
+  What can I help you with?"* (greeting / capability / "how are you").
+* `LEXY_OOS_GENERIC` — *"I cannot answer your question from my Knowledge Graph,
+  which address only obligations under Regulation (EU) 2024/1689 (the AI Act),
+  such as AI literacy duties for providers and deployers (Article 4),
+  coordination of notified bodies (Article 38), and access to the Scientific
+  Panel's expert pool (Article 69). If you have a question about AI Act
+  compliance, I am glad to help."* (random / nonsense / generic-knowledge).
+* `LEXY_OOS_TAILORED_TEMPLATE` (`{clause}`) — *"I cannot {clause} from these
+  materials, which address only obligations under Regulation (EU) 2024/1689…"*
+  (e.g. "recommend a restaurant in Rome"); falls back to `LEXY_OOS_GENERIC` for
+  an empty / >80-char / multiline clause via `lexy_tailored_oos_refusal()`.
+* `LEXY_ADVERSARIAL` — states Lexy's purpose + that it won't act on adversarial
+  / injection prompts (PROMPT_INJECTION).
+
+(The "which address" grammar is the operator's verbatim wording — preserved.)
+
+### Classifier split + the ambiguous bucket
+
+New `ScopeReason.GREETING` + `ScopeVerdict.ambiguous: bool`. `classify_scope`
+splits: a short / pure-conversational greeting → **GREETING**; generic-knowledge
+("What is the capital of France?") → **CONVERSATIONAL**; the step-8 fallthrough
+(a question with no clear signal — where a genuine keyword-less AI-Act question
+AND a clear off-topic both land) → **CONVERSATIONAL + `ambiguous=True`**.
+`refusal_copy_for`: GREETING→`LEXY_GREETING`, CONVERSATIONAL /
+EMPTY_OR_NONSENSE→`LEXY_OOS_GENERIC`, PROMPT_INJECTION→`LEXY_ADVERSARIAL`;
+OTHER_REGULATION / NEAR_OOS / NON_EXISTENT_ARTICLE framework copy untouched.
+`classify_conversation` coreference-rescue is guarded so a GREETING live turn
+always gets the intro (never rescued in-scope).
+
+### The LLM gate — `app/integrations/regenold/lexy_gate.py` (new, fail-soft)
+
+`decide_ambiguous_oos(question) -> (in_scope, tailored_clause)` is consulted by
+the route **only for the ambiguous step-8 bucket**. It asks the Claude Max
+wrapper a binary "IN_SCOPE / REFUSE: <2-7 word verb phrase>" question (2.5 s, 48
+max-tokens, success-only bounded cache). `IN_SCOPE` → the route ANSWERS (closes
+the R255 false-refusal class — e.g. the live deep-fakes-in-criminal-prosecution
+question — without re-enabling a broad keyword filter); `REFUSE: <clause>` → the
+tailored Lexy decline. Every failure mode (no provider / network / malformed /
+`REGENOLD_LEXY_LLM_GATE=0`) → `(False, "")` → generic decline. So under `cli` /
+no-wrapper (the bench) the ambiguous bucket simply declines with the generic
+copy — deterministic-safe.
+
+### Always-respond reasons
+
+`_ALWAYS_RESPOND_SCOPE_REASONS = {GREETING, PROMPT_INJECTION,
+NON_EXISTENT_ARTICLE}` reply regardless of the toggle (greeting intro / security
+guard / "Article 200 doesn't exist" correction). `_topic_filter_enabled()`
+default flips to `"1"`. `_build_scope_refusal_response` gains an
+`answer_override` for the tailored decline.
+
+### Eval-harness markers (3 independent lists)
+
+A refusal-marker list each in `runner_v2.py::_REFUSAL_MARKERS`,
+`runner.py::refusal_markers`, and `scenarios.py::_refused()` must all recognise
+the branded copy or the harness misclassifies the new replies. Added "i cannot
+answer your question from my knowledge graph" / "from these materials, which
+address only obligations" / "i am lexy" / "i do not act on instructions".
+
+### Gates
+
+* davidath QA bench — **byte-identical to current main** (Ans Strict 0.4037 /
+  Ref Loose 0.8394 / Ref Strict 0.5543 / Tone 1.0): the change only touches the
+  `not scope.in_scope` branch, which every in-scope row bypasses; the `cli`
+  bench never reaches the LLM gate.
+* 276-runner — **255/255 (100%)**, RISK_F1 macro 1.00.
+* OOS probe (`runner_v2 --local --probe-oos`, self-enables the filter) —
+  **21/21, 0 leaks** (the branded copy is recognised as a refusal).
+* `tests/test_r256_lexy_scope.py` (35) + rewritten `tests/test_topic_filter.py`
+  (16, default-ON branded contract) + the R255 OOS-route tests re-pinned to the
+  branded copy. Rollback: `REGENOLD_TOPIC_FILTER=0` (answer everything, R255) /
+  `REGENOLD_LEXY_LLM_GATE=0` (ambiguous bucket always declines, no LLM call).
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

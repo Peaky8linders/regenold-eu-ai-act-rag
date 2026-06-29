@@ -7,6 +7,8 @@ from pydantic import SecretStr
 
 from app.config import settings
 from app.integrations.regenold.scope import (
+    LEXY_GREETING,
+    LEXY_OOS_GENERIC,
     ScopeReason,
     ScopeVerdict,
     classify_conversation,
@@ -210,14 +212,16 @@ class TestClassifyScopeSingleMessage:
         assert v.reason == ScopeReason.NON_EXISTENT_ARTICLE
 
     def test_conversational_greeting(self) -> None:
+        # R256 — greetings / small-talk are surfaced as GREETING so the
+        # route can answer with the Lexy self-introduction.
         v = classify_scope("Hi, how are you?")
         assert v.in_scope is False
-        assert v.reason == ScopeReason.CONVERSATIONAL
+        assert v.reason == ScopeReason.GREETING
 
     def test_conversational_thanks(self) -> None:
         v = classify_scope("Thanks!")
         assert v.in_scope is False
-        assert v.reason == ScopeReason.CONVERSATIONAL
+        assert v.reason == ScopeReason.GREETING
 
     def test_conversational_general_knowledge(self) -> None:
         v = classify_scope("What is the capital of France?")
@@ -414,17 +418,30 @@ class TestRefusalCopy:
         assert "Regulation 2024/1689" in out
 
     def test_conversational_copy(self) -> None:
+        # R256 — branded Lexy generic decline.
         v = ScopeVerdict(
             in_scope=False,
             reason=ScopeReason.CONVERSATIONAL,
             evidence="",
         )
         out = refusal_copy_for(v)
-        assert "EU AI Act" in out
-        # R92 — wire-format compliance: refusal prose must use the spec
+        assert out == LEXY_OOS_GENERIC
+        assert "AI Act" in out
+        assert "Regulation (EU) 2024/1689" in out
+        # R92 — wire-format compliance: refusal prose uses the spec
         # "Article N" citation form, never "Art. N".
-        assert "Article 13" in out  # Concrete example phrasing for the user
-        assert "Art. 13" not in out
+        assert "Article 4" in out and "Article 38" in out and "Article 69" in out
+        assert "Art. 4" not in out
+
+    def test_greeting_copy(self) -> None:
+        # R256 — greeting receives the friendly Lexy self-introduction.
+        v = ScopeVerdict(in_scope=False, reason=ScopeReason.GREETING, evidence="")
+        assert refusal_copy_for(v) == LEXY_GREETING
+
+    def test_empty_or_nonsense_copy(self) -> None:
+        # R256 — nonsense receives the generic Lexy decline.
+        v = ScopeVerdict(in_scope=False, reason=ScopeReason.EMPTY_OR_NONSENSE, evidence="")
+        assert refusal_copy_for(v) == LEXY_OOS_GENERIC
 
     def test_prompt_injection_copy(self) -> None:
         v = ScopeVerdict(
@@ -1866,11 +1883,16 @@ class TestR55EWeakKeywordRescue:
 
 
 class TestR55ARefusalCopyNoFirstPerson:
-    """R55-A part 1 — refusal templates rewritten to third-person
-    regulator voice. The pre-R55 templates ('I only answer questions
-    about the EU AI Act…') triggered the judge tone rubric's
-    first-person hard-fail on every refusal row (~9 of 14 V2 tone
-    failures).
+    """R55-A part 1 — framework refusal templates use third-person
+    regulator voice (OTHER_REGULATION / NEAR_OOS / NON_EXISTENT_ARTICLE).
+
+    R256 supersedes the third-person rule for the BRANDED reasons
+    (GREETING / CONVERSATIONAL / EMPTY_OR_NONSENSE / PROMPT_INJECTION):
+    the operator-supplied Lexy voice is intentionally first-person
+    ("I am Lexy", "I cannot answer your question from my Knowledge
+    Graph"). Those reasons are asserted against the exact Lexy copy in
+    ``TestRefusalCopy`` above; the third-person checks below cover only
+    the framework templates that R256 left unchanged.
     """
 
     def _assert_no_first_person(self, text: str) -> None:
@@ -1917,34 +1939,38 @@ class TestR55ARefusalCopyNoFirstPerson:
         out = refusal_copy_for(v)
         self._assert_no_first_person(out)
 
-    def test_refusal_prompt_injection_no_first_person(self) -> None:
+    def test_refusal_prompt_injection_is_lexy_branded(self) -> None:
+        """R256 — adversarial input gets the first-person Lexy refusal
+        (supersedes the R55-A third-person rule for this reason)."""
+        from app.integrations.regenold.scope import LEXY_ADVERSARIAL
+
         v = ScopeVerdict(
             in_scope=False,
             reason=ScopeReason.PROMPT_INJECTION,
             evidence="injection attempt",
         )
         out = refusal_copy_for(v)
-        self._assert_no_first_person(out)
+        assert out == LEXY_ADVERSARIAL
+        assert "I am Lexy" in out
+        assert "I do not act on instructions" in out
 
-    def test_refusal_conversational_no_first_person(self) -> None:
+    def test_refusal_conversational_is_lexy_branded(self) -> None:
+        """R256 — off-topic gets the first-person Lexy generic decline."""
         v = ScopeVerdict(
             in_scope=False,
             reason=ScopeReason.CONVERSATIONAL,
             evidence="off-topic",
         )
-        out = refusal_copy_for(v)
-        self._assert_no_first_person(out)
+        assert refusal_copy_for(v) == LEXY_OOS_GENERIC
 
-    def test_refusal_empty_or_nonsense_no_first_person(self) -> None:
-        """EMPTY_OR_NONSENSE template (was already first-person-free
-        pre-R55 but we pin it via a regression test)."""
+    def test_refusal_empty_or_nonsense_is_lexy_branded(self) -> None:
+        """R256 — nonsense gets the first-person Lexy generic decline."""
         v = ScopeVerdict(
             in_scope=False,
             reason=ScopeReason.EMPTY_OR_NONSENSE,
             evidence="empty",
         )
-        out = refusal_copy_for(v)
-        self._assert_no_first_person(out)
+        assert refusal_copy_for(v) == LEXY_OOS_GENERIC
 
     def test_refusal_non_existent_article_no_first_person(self) -> None:
         """NON_EXISTENT_ARTICLE template was already first-person-free
@@ -1969,14 +1995,15 @@ class TestR55ARefusalCopyNoFirstPerson:
         out = refusal_copy_for(v)
         assert "This assistant" in out or "this assistant" in out
 
-    def test_refusal_conversational_third_person_lead(self) -> None:
+    def test_refusal_conversational_lexy_lead(self) -> None:
+        # R256 — CONVERSATIONAL now leads with the branded Lexy decline.
         v = ScopeVerdict(
             in_scope=False,
             reason=ScopeReason.CONVERSATIONAL,
             evidence="off-topic",
         )
         out = refusal_copy_for(v)
-        assert "This assistant" in out or "this assistant" in out
+        assert out.startswith("I cannot answer your question from my Knowledge Graph")
 
 
 

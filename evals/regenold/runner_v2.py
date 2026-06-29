@@ -52,6 +52,13 @@ _REFUSAL_MARKERS = (
     "this assistant answers eu ai act questions only",
     "does not appear in the eu ai act",
     "no matching obligation found",
+    # R256 — branded "Lexy" decline / greeting / adversarial copy
+    # (scope.py::LEXY_*). These are the discriminators for the new
+    # default-on subject-topic decline.
+    "i cannot answer your question from my knowledge graph",
+    "from these materials, which address only obligations",
+    "i am lexy",
+    "i do not act on instructions",
 )
 
 # R56-B — references that are acceptable on a refusal response. The

@@ -146,10 +146,12 @@ from app.integrations.regenold.reasoning_trace import (
 from app.integrations.regenold.reasoning_trace import (
     record_stage2 as _trace_stage2,
 )
+from app.integrations.regenold.lexy_gate import decide_ambiguous_oos
 from app.integrations.regenold.scope import (
     ConversationVerdict,
     ScopeReason,
     classify_conversation,
+    lexy_tailored_oos_refusal,
     refusal_copy_for,
     text_has_injection,
     extract_referenced_articles,
@@ -3252,35 +3254,51 @@ def _build_telemetry_reasoning(
 
 # ── EU AI Act subject-topic filter toggle ───────────────────────────────
 #
-# The scope gate (``classify_conversation``) refuses any question it judges
-# is not an EU AI Act question — greetings ("hi, what can you do?"),
-# other-regulation asks, near-OOS adjacent frameworks (DSA / NIS2 / PLD /
-# CRA), and "no matching obligation" nonsense — by shipping
-# ``refusal_copy_for(verdict)`` instead of an answer. In production this
-# subject-topic filter false-positived on naturally-phrased, legitimate
-# questions, so it is DISABLED by default: the route answers every question
-# and lets the RAG engine ground it in the regulation. Set
-# ``REGENOLD_TOPIC_FILTER=1`` (or ``true`` / ``yes`` / ``on``) to restore
-# the legacy subject-matter refusals.
+# The scope gate (``classify_conversation``) classifies any question it
+# judges is not an EU AI Act question. R256 — the route answers these with
+# a branded "Lexy" reply via ``refusal_copy_for(verdict)``:
+#   * GREETING            — friendly self-introduction ("I am Lexy, …").
+#   * PROMPT_INJECTION    — security refusal that states Lexy's purpose.
+#   * NON_EXISTENT_ARTICLE — helpful in-domain correction.
+#   * CONVERSATIONAL / OTHER_REGULATION / NEAR_OOS / EMPTY_OR_NONSENSE —
+#     subject-topic out-of-scope: a polite decline that points back at the
+#     regulation.
 #
-# Two refusal classes are NOT subject-topic filtering and always stand,
-# regardless of the toggle:
-#   * PROMPT_INJECTION    — a security guard, not a topic gate.
-#   * NON_EXISTENT_ARTICLE — a helpful in-domain correction ("Article 200
-#     does not exist; did you mean Article 112 or Article 113?").
-_ALWAYS_REFUSE_SCOPE_REASONS = frozenset(
-    {ScopeReason.PROMPT_INJECTION, ScopeReason.NON_EXISTENT_ARTICLE}
+# The first three ALWAYS produce a branded reply (a greeting / injection /
+# bogus-article-ref is never a regulatory answer). The subject-topic
+# reasons are gated on ``REGENOLD_TOPIC_FILTER`` (R256: DEFAULT ON) — set
+# it to ``0`` to answer literally every question (the R255 behaviour).
+#
+# R255 disabled the subject-topic filter because the keyword classifier
+# false-positived on genuine, keyword-less AI Act questions. R256 keeps
+# those answered WITHOUT re-opening the broad filter: a genuine question
+# with no anchor lands in the AMBIGUOUS ``CONVERSATIONAL`` bucket
+# (``ScopeVerdict.ambiguous``), which the route hands to the LLM scope
+# gate (``decide_ambiguous_oos``). The model rescues the genuine question
+# (answer) and confirms the off-topic one (tailored decline); with no LLM
+# wired it fails soft to the generic decline.
+_ALWAYS_RESPOND_SCOPE_REASONS = frozenset(
+    {
+        ScopeReason.GREETING,
+        ScopeReason.PROMPT_INJECTION,
+        ScopeReason.NON_EXISTENT_ARTICLE,
+    }
 )
+# Backwards-compatible alias (imported by tests + older call sites).
+_ALWAYS_REFUSE_SCOPE_REASONS = _ALWAYS_RESPOND_SCOPE_REASONS
 
 
 def _topic_filter_enabled() -> bool:
-    """True when the legacy EU AI Act subject-topic refusal is active.
+    """True when the EU AI Act subject-topic decline is active.
 
-    Default OFF — the route answers every question; only the security /
-    helpful-correction refusal classes survive (see
-    ``_ALWAYS_REFUSE_SCOPE_REASONS``).
+    R256 — DEFAULT ON: subject-topic out-of-scope questions
+    (CONVERSATIONAL / OTHER_REGULATION / NEAR_OOS / EMPTY_OR_NONSENSE)
+    receive a branded Lexy decline. Set ``REGENOLD_TOPIC_FILTER=0`` (or
+    ``false`` / ``no`` / ``off``) to answer every question instead (the
+    R255 behaviour). The always-respond classes (greeting / injection /
+    non-existent-article) are unaffected by the toggle.
     """
-    return os.getenv("REGENOLD_TOPIC_FILTER", "0").strip().lower() in (
+    return os.getenv("REGENOLD_TOPIC_FILTER", "1").strip().lower() in (
         "1",
         "true",
         "yes",
@@ -3289,14 +3307,16 @@ def _topic_filter_enabled() -> bool:
 
 
 def _scope_refusal_active(reason: ScopeReason) -> bool:
-    """Whether an out-of-scope ``reason`` should still ship a refusal.
+    """Whether an out-of-scope ``reason`` should still ship a branded reply.
 
-    Security + helpful-correction reasons always refuse. Subject-topic
-    reasons (CONVERSATIONAL / OTHER_REGULATION / NEAR_OOS /
-    EMPTY_OR_NONSENSE) refuse only when the topic filter is explicitly
-    re-enabled via ``REGENOLD_TOPIC_FILTER``.
+    Greeting / security / helpful-correction reasons always respond.
+    Subject-topic reasons (CONVERSATIONAL / OTHER_REGULATION / NEAR_OOS /
+    EMPTY_OR_NONSENSE) respond only when the topic filter is on (R256
+    default ON; ``REGENOLD_TOPIC_FILTER=0`` answers them instead). This
+    helper does NOT account for the ambiguous-bucket LLM rescue — that
+    decision is made at the call site.
     """
-    if reason in _ALWAYS_REFUSE_SCOPE_REASONS:
+    if reason in _ALWAYS_RESPOND_SCOPE_REASONS:
         return True
     return _topic_filter_enabled()
 
@@ -3311,6 +3331,7 @@ def _build_scope_refusal_response(
     question: str,
     system_context: str | None,
     history_turns: list[Any],
+    answer_override: str | None = None,
 ) -> RegenoldAskResponse:
     """Construct the spec-clean refusal response for an out-of-scope conversation.
 
@@ -3329,7 +3350,10 @@ def _build_scope_refusal_response(
     """
     # ``EvidenceEntryType`` and ``get_evidence_store`` are imported at
     # module top — no shadow imports here.
-    answer_text = refusal_copy_for(scope.verdict)
+    # R256 — ``answer_override`` carries the tailored Lexy decline built
+    # from the LLM scope gate's verb phrase; falls back to the reason's
+    # standard branded copy.
+    answer_text = answer_override or refusal_copy_for(scope.verdict)
     confidence = 0.0
     retrieval_path: Any = "no_match"
 
@@ -4389,24 +4413,46 @@ def regenold_eu_ai_act_ask(
     )
     if scope.anchor_articles:
         _trace_anchors(list(scope.anchor_articles))
-    if not scope.in_scope and _scope_refusal_active(scope.reason):
-        _trace_retrieval_path("scope_refusal")
-        return _build_scope_refusal_response(
-            scope=scope,
-            include_telemetry=include_telemetry,
-            include_reasoning=include_reasoning,
-            request=request,
-            api_key=api_key,
-            question=question,
-            system_context=system_context,
-            history_turns=req.messages,
-        )
     if not scope.in_scope:
-        # Subject-topic filter disabled (the default): a non-injection,
-        # non-correction out-of-scope verdict no longer refuses. Fall
+        _scope_reason = scope.reason
+        _scope_answer_override: str | None = None
+        _scope_should_respond = _scope_refusal_active(_scope_reason)
+        # R256 — ambiguous CONVERSATIONAL bucket (step-8 fallback): a
+        # genuine keyword-less AI Act question and a clearly off-topic
+        # request are deterministically indistinguishable here. When the
+        # topic filter is on, consult the LLM scope gate — it rescues the
+        # genuine question (answer it) or returns a verb phrase for the
+        # tailored Lexy decline. Fail-soft → keep the deterministic
+        # refusal. Only the ambiguous step-8 bucket pays the LLM call.
+        if (
+            _scope_should_respond
+            and _scope_reason == ScopeReason.CONVERSATIONAL
+            and getattr(scope.verdict, "ambiguous", False)
+        ):
+            _gate_question = scope.live_question or question
+            _gate_in_scope, _gate_clause = decide_ambiguous_oos(_gate_question)
+            if _gate_in_scope:
+                _scope_should_respond = False
+                _trace_note("lexy_oos_rescue: in_scope")
+            elif _gate_clause:
+                _scope_answer_override = lexy_tailored_oos_refusal(_gate_clause)
+        if _scope_should_respond:
+            _trace_retrieval_path("scope_refusal")
+            return _build_scope_refusal_response(
+                scope=scope,
+                include_telemetry=include_telemetry,
+                include_reasoning=include_reasoning,
+                request=request,
+                api_key=api_key,
+                question=question,
+                system_context=system_context,
+                history_turns=req.messages,
+                answer_override=_scope_answer_override,
+            )
+        # Topic filter off, or the LLM rescued an ambiguous question: fall
         # through and let the RAG engine ground an answer in the
         # regulation. Record the suppressed reason for the reasoning trace.
-        _trace_note(f"topic_filter_suppressed: {scope.reason.value}")
+        _trace_note(f"topic_filter_suppressed: {_scope_reason.value}")
 
     # R51 — count prior user+assistant turns so the engine's complex-
     # question gate can fire on multi-turn finals (3+ turns + short
