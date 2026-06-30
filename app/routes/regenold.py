@@ -2430,6 +2430,94 @@ _R72_ARTICLE_NUM_RE = re.compile(r"^Article\s+(\d+)", re.IGNORECASE)
 _R72_ANNEX_ROMAN_RE = re.compile(r"^Annex\s+([IVXLC]+)", re.IGNORECASE)
 
 
+# R261 — dismissive-only citation drop. A Stage-2 answer that names an article
+# ONLY to say it is ANOTHER actor's obligation ("the Article 9 to 15 design
+# requirements ... remain provider obligations") or that "does not apply" carries
+# a cite-but-don't-describe fault: the wire cites the article, but the prose never
+# substantively states what it requires (the judge refs-faithfulness floor —
+# grb_07 shipped Art 9 & 25 this way, 71% faithful, below the 80% bar). Drop such
+# refs (floor-protected). Conservative cue set: ONLY the unambiguous "remains
+# another actor's duty" / "does not apply" framings — deliberately NOT "becomes a
+# provider under Article N" (that IS the substance of Art 25 on a role-flip
+# question, so it must not be treated as a dismissal).
+_DISMISSAL_CUE_RE = re.compile(
+    r"\bremain[s]?\s+(?:the\s+|a\s+)?(?:provider|importer|distributor|deployer|"
+    r"manufacturer|authorised\s+representative)(?:'s|s')?\s+(?:obligation|"
+    r"responsibilit|dut)"
+    r"|\bcontinue[s]?\s+to\s+be\s+(?:the\s+|a\s+)?(?:provider|importer|"
+    r"distributor|deployer|manufacturer)(?:'s)?\b"
+    r"|\b(?:does|do|would|will)\s+not\s+apply\b"
+    r"|\bnot\s+(?:the\s+)?(?:deployer|hospital|user|provider|importer|"
+    r"distributor)(?:'s)?\s+(?:obligation|dut|responsibilit)",
+    re.IGNORECASE,
+)
+
+
+def _dismissive_cite_drop_enabled() -> bool:
+    """R261 env gate. Default OFF pending the live pairwise ab_judge (refs
+    axis) — this is a reference change, so per the CLAUDE.md Validation policy
+    davidath byte-identical is NOT sufficient to ship. Set
+    ``REGENOLD_DISMISSIVE_CITE_DROP=1`` to enable. Fresh read per call."""
+    return os.getenv("REGENOLD_DISMISSIVE_CITE_DROP", "0").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+def _ref_is_dismissive_only(ref: str, sentences: list[str]) -> bool:
+    """True when EVERY prose sentence that names ``ref``'s article/annex carries
+    a dismissal cue (and at least one sentence names it). Such a ref is cited but
+    never substantively described. A ref named in ANY non-dismissal sentence is
+    kept (it is genuinely described there)."""
+    m = _R72_ARTICLE_NUM_RE.match(ref.strip())
+    if m:
+        mention_re = re.compile(
+            rf"\b(?:Article|Art\.?)\s*{re.escape(m.group(1))}\b", re.IGNORECASE
+        )
+    else:
+        m = _R72_ANNEX_ROMAN_RE.match(ref.strip())
+        if not m:
+            return False
+        mention_re = re.compile(
+            rf"\bAnnex\s+{re.escape(m.group(1))}\b", re.IGNORECASE
+        )
+    mentioning = [s for s in sentences if mention_re.search(s)]
+    if not mentioning:
+        return False  # not named at all — the R72 reconcile owns the undescribed case
+    return all(_DISMISSAL_CUE_RE.search(s) for s in mentioning)
+
+
+def _drop_dismissive_only_refs(
+    references: list[str], prose: str, *, floor: int = 2
+) -> list[str]:
+    """R261 — drop wire references the prose names ONLY in a dismissal clause.
+
+    Floor-protected (never below ``floor`` — the highest-ranked dropped refs are
+    added back to reach the floor), order-preserving, fail-soft. Prose-driven —
+    never a positional drop (the R142.1 lesson: a positional ref clamp lost the
+    live pairwise 11-0 by dropping a gold ref). Gated on ``_stage2_landed`` at the
+    call site → davidath byte-identical."""
+    try:
+        if not references or not prose or len(references) <= floor:
+            return references
+        from app.engines.sentence_index import split_legal_sentences  # noqa: PLC0415
+
+        sentences = split_legal_sentences(prose)
+        dismissive = [r for r in references if _ref_is_dismissive_only(r, sentences)]
+        if not dismissive:
+            return references
+        keep = [r for r in references if r not in dismissive]
+        if len(keep) < floor:
+            for r in references:  # add back highest-ranked dismissive to the floor
+                if r in dismissive and r not in keep:
+                    keep.append(r)
+                    if len(keep) >= floor:
+                        break
+        keepset = set(keep)
+        return [r for r in references if r in keepset]
+    except Exception:  # noqa: BLE001 — fail-soft; never 500 the route
+        return references
+
+
 def _reference_described_in_prose(ref: str, prose: str) -> bool:
     """True when ``prose`` names the article / annex that ``ref`` cites.
 
@@ -6783,6 +6871,33 @@ def regenold_eu_ai_act_ask(
             _rn(f"final_ref_clamp_to={_effective_max_refs}")
         except Exception:  # noqa: BLE001 — fail-soft on trace
             pass
+
+    # R261 — drop dismissive-only citations. A Stage-2 answer that names an
+    # article ONLY to say it is another actor's obligation ("...the Article 9 to
+    # 15 design requirements ... remain provider obligations ...") cites it
+    # without describing it — the judge refs-faithfulness fault (grb_07 shipped
+    # Art 9 & 25 this way). Prose-driven, floor-protected, never a positional
+    # drop (the R142.1 lesson). Stage-2-gated → davidath byte-identical. Env-gated
+    # REGENOLD_DISMISSIVE_CITE_DROP (default OFF pending the live pairwise
+    # ab_judge refs axis — a reference change cannot ship on davidath alone).
+    if (
+        _stage2_landed
+        and answer_text
+        and references
+        and retrieval_path != "no_match"
+        and _dismissive_cite_drop_enabled()
+    ):
+        _dd_refs = _drop_dismissive_only_refs(references, answer_text)
+        if _dd_refs != references:
+            references = _dd_refs
+            try:
+                from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                    record_note as _rn,
+                )
+
+                _rn("dismissive_cite_drop")
+            except Exception:  # noqa: BLE001 — fail-soft on trace
+                pass
 
     # R260 — risk-framework taxonomy closed-set ref completeness. The R257
     # intercept seeds all five tier-refs but the budget cap / suppress-noise /
