@@ -312,17 +312,26 @@ def _stage2_answer_headroom() -> int:
 
     The ``X-Claude-Max-Thinking-Tokens`` allocation counts INSIDE ``max_tokens``,
     so the historical +512 left only ~512 answer tokens on the simple Opus path
-    (thinking 1024) — enough to squeeze a long enumerated answer. Default 1024
-    doubles the answer envelope regardless of the thinking budget. Env-tunable
-    via ``REGENOLD_STAGE2_ANSWER_HEADROOM``; clamped to [256, 8192].
+    (thinking 1024) — enough to squeeze a long enumerated answer. R142 widened
+    it to 1024.
+
+    R257 — the Opus-4.8 thinking budgets (2048 simple / 4000 complex, R139) ate
+    so far into ``max_tokens`` that a 1024 headroom still left only ~1024 answer
+    tokens. The Opus 4.8 LLM-judge on the 99-row production set flagged ~8 long
+    multi-obligation answers (oncology recommender, customer-support chatbot,
+    pharma foundation model, SME documentation) TRUNCATED mid-final-sentence —
+    failing BOTH refs (the cut-off sentence's cited article never gets described)
+    AND conciseness. 2048 gives the answer a full ~2K-token envelope so verbose
+    complex answers COMPLETE. davidath-neutral (Stage-2 only). Env-tunable via
+    ``REGENOLD_STAGE2_ANSWER_HEADROOM``; clamped to [256, 8192].
     """
     raw = os.getenv("REGENOLD_STAGE2_ANSWER_HEADROOM", "").strip()
     if not raw:
-        return 1024
+        return 2048
     try:
         return max(256, min(int(raw), 8192))
     except ValueError:
-        return 1024
+        return 2048
 
 
 def _openai_wrapper_complete_for_graph_rag(
@@ -2574,6 +2583,111 @@ def _detect_research_scope_inquiry(question: str) -> bool:
     return bool(_RESEARCH_SCOPE_RE.search(raw_q))
 
 
+# Risk-framework TAXONOMY intercept (production rows 22 + 47). A general
+# "what are the risk categories / explain the risk tiers" question must name
+# all four tiers (prohibited Art. 5, high-risk Art. 6, limited Art. 50,
+# minimal) plus the parallel GPAI regime (Arts. 51-55). The curated
+# ``risk_framework_overview`` topic already does this BUT is gated behind
+# ``_is_classification_question``, which rejects the "what are ALL THE risk
+# categories" and "EXPLAIN the risk categories" phrasings (it anchors on
+# "what (is|are) (the) risk…", so the "all the" quantifier and the "explain"
+# verb both miss). Retrieval then falls to BM25 and the QA 3-ref budget
+# truncates to Art. 3/5/6, dropping the limited-risk Art. 50 tier (live rows
+# 22/47 shipped an Art-5-only answer about RBI law enforcement).
+#
+# The pattern is END-ANCHORED on the Act reference / question mark so it fires
+# ONLY when "risk categor|tier|level|class" is the OBJECT of the question
+# (taxonomy ask), never when a specific system follows ("what risk tier is
+# THIS chatbot?", "the risk classification OF a recipe recommender?") — those
+# are verdict asks handled by the classification path. Fires on 0 davidath
+# rows (137 QA + 339 scenarios verified) so the bench stays byte-identical.
+_RISK_FRAMEWORK_TAXONOMY_RE = re.compile(
+    r"(?:what(?:'s|\s+is|\s+are)|which|list|name|explain|describe|outline|"
+    r"summari[sz]e|enumerate|tell\s+me\s+about|give\s+me|walk\s+me\s+through|"
+    r"go\s+(?:over|through))"
+    r"(?:\s+(?:all|me|us))?(?:\s+the)?"
+    r"(?:\s+(?:different|various|main|distinct|four|key|eu\s+ai\s+act))?"
+    r"\s+risk[-\s]?(?:categor(?:y|ies)|tiers?|levels?|classes|classifications?)"
+    r"(?:\s+(?:in|of|under|within|defined\s+in)\s+(?:the\s+)?(?:eu\s+)?"
+    r"(?:ai\s+act|regulation|act|framework|regulation\s*\(eu\)\s*2024/1689))?"
+    r"\s*[?.]?\s*$",
+    re.IGNORECASE,
+)
+# Defensive negative — never read a "risk management|assessment|mitigation|
+# analysis" phrase as a taxonomy ask (those share the "risk" token but not
+# the categor/tier/level/class object).
+_RISK_FRAMEWORK_NEG_RE = re.compile(
+    r"\brisk[-\s]?(?:management|assessment|mitigation|analysis|appetite)\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_risk_framework_inquiry(question: str) -> bool:
+    """True iff the question is a general risk-tier TAXONOMY ask (not a
+    verdict on a specific system). See ``_RISK_FRAMEWORK_TAXONOMY_RE``."""
+    raw_q = question or ""
+    marker = "Latest question:\n"
+    idx = raw_q.rfind(marker)
+    if idx >= 0:
+        raw_q = raw_q[idx + len(marker):]
+    raw_q = raw_q.strip()
+    if _RISK_FRAMEWORK_NEG_RE.search(raw_q):
+        return False
+    return bool(_RISK_FRAMEWORK_TAXONOMY_RE.search(raw_q))
+
+
+# "Does the Act apply to AI systems or AI models or both?" scope intercept
+# (production row 6). The live wire mis-retrieved Article 108 (amendments to
+# civil-aviation / motor-vehicle regimes) and answered about safety components
+# instead of the actual SCOPE answer: the Regulation governs BOTH — AI systems
+# (the core regime, Art. 3(1) defined, Art. 2 scope, risk tiers) AND
+# general-purpose AI models (Chapter V, Arts. 51-55, Art. 3(63) defined), under
+# two parallel regimes. Judge-confirmed correctness failure.
+#
+# Requires (a) a "systems ... or ... models" comparison AND (b) the
+# applicability SUBJECT being the Act/Regulation itself, NOT a specific concept.
+# The negative guard EXCLUDES "does SYSTEMIC RISK / HIGH-RISK apply to systems or
+# models?" (production row 23 — a distinct, correctly-answered GPAI-systemic
+# question whose answer is "GPAI models, not systems"). 0 davidath hits.
+_SYSTEMS_OR_MODELS_CMP_RE = re.compile(
+    r"\b(?:ai\s+)?systems?\b[^?.]{0,30}\bor\b[^?.]{0,30}"
+    r"\b(?:ai\s+|general[-\s]?purpose\s+(?:ai\s+)?|gpai\s+)?models?\b"
+    r"|\b(?:ai\s+|general[-\s]?purpose\s+(?:ai\s+)?|gpai\s+)?models?\b"
+    r"[^?.]{0,30}\bor\b[^?.]{0,30}\b(?:ai\s+)?systems?\b",
+    re.IGNORECASE,
+)
+_ACT_APPLIES_SUBJECT_RE = re.compile(
+    r"(?:\b(?:eu\s+)?ai\s+act\b|\bthe\s+act\b|\bthis\s+regulation\b|"
+    r"\bthe\s+regulation\b|\bregulation\b[^?.]{0,14}2024/1689)"
+    r"[^?.]{0,45}\b(?:appl|cover|regulate|govern|scope|extend)"
+    r"|\b(?:appl(?:y|ies|icable)|cover|covers|regulate|govern|scope\s+of|"
+    r"fall\s+under|subject\s+to)\b"
+    r"[^?.]{0,45}(?:\b(?:eu\s+)?ai\s+act\b|\bthe\s+act\b|\bthe\s+regulation\b)",
+    re.IGNORECASE,
+)
+_SYSTEMS_OR_MODELS_NEG_RE = re.compile(
+    r"\bsystemic\s+risk\b|\bhigh[-\s]?risk\b|\bprohibit", re.IGNORECASE
+)
+
+
+def _detect_systems_or_models_inquiry(question: str) -> bool:
+    """True iff the question asks whether the EU AI Act applies to AI systems
+    or AI models or both (the SCOPE answer is 'both'). Excludes the
+    "does systemic/high-risk apply to systems or models" concept questions."""
+    raw_q = question or ""
+    marker = "Latest question:\n"
+    idx = raw_q.rfind(marker)
+    if idx >= 0:
+        raw_q = raw_q[idx + len(marker):]
+    raw_q = raw_q.strip()
+    if _SYSTEMS_OR_MODELS_NEG_RE.search(raw_q):
+        return False
+    return bool(
+        _SYSTEMS_OR_MODELS_CMP_RE.search(raw_q)
+        and _ACT_APPLIES_SUBJECT_RE.search(raw_q)
+    )
+
+
 # High-risk penalties intercept (R111 Q9). A penalty/fine question about
 # high-risk systems must surface the Article 99(4) ceiling + the 99(6) SME
 # rule, not the generic 99(1) opener. Requires a penalty/fine subject AND a
@@ -2701,6 +2815,7 @@ def _is_curated_authoritative_intercept(question: str) -> bool:
         or _detect_research_scope_inquiry(question)
         or _detect_high_risk_penalty_inquiry(question)
         or _detect_emotion_classification_inquiry(question)
+        or _detect_systems_or_models_inquiry(question)
     )
 
 
@@ -2925,6 +3040,54 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
                 "proportionate and dissuasive."
             ),
             "refs": ["Art. 99"],
+        }
+        _seed_classification_obligations(context, verdict, question)
+        return verdict["answer"]
+
+    # Risk-framework TAXONOMY intercept (production rows 22 + 47). A general
+    # "what are all the risk categories / explain the risk tiers" ask must name
+    # all four tiers + the GPAI regime; the gated ``risk_framework_overview``
+    # topic misses the "all the" / "explain" phrasings (see
+    # _detect_risk_framework_inquiry). Mirrors the topic's answer + refs.
+    if _detect_risk_framework_inquiry(question):
+        verdict = {
+            "name": "risk_framework_overview",
+            "answer": (
+                "The EU AI Act applies a risk-based framework with four tiers plus "
+                "a parallel regime for general-purpose AI models. Unacceptable-risk "
+                "practices are prohibited outright under Article 5; high-risk systems "
+                "are classified under Article 6 (as a safety component of an Annex I "
+                "product, or as one of the Annex III use cases) and carry the "
+                "Chapter III Section 2 obligations; limited-risk systems carry the "
+                "Article 50 transparency duties; and minimal-risk systems have no "
+                "mandatory obligations. General-purpose AI models are governed "
+                "separately under Articles 51 to 55, with stricter duties for models "
+                "posing systemic risk."
+            ),
+            "refs": ["Art. 5", "Art. 6", "Annex III", "Art. 50", "Art. 51"],
+        }
+        _seed_classification_obligations(context, verdict, question)
+        return verdict["answer"]
+
+    # "Does the Act apply to AI systems or AI models or both?" scope intercept
+    # (production row 6 — live mis-retrieved Article 108 and answered about
+    # safety components). The answer is BOTH, under two parallel regimes.
+    if _detect_systems_or_models_inquiry(question):
+        verdict = {
+            "name": "systems_or_models_scope",
+            "answer": (
+                "Both. The EU AI Act's core regime governs AI systems, defined in "
+                "Article 3(1) and brought within scope by Article 2, through the "
+                "risk-based tiers (prohibited practices under Article 5, high-risk "
+                "systems under Article 6, and limited-risk transparency duties under "
+                "Article 50). General-purpose AI models are regulated separately "
+                "under Chapter V (Articles 51 to 55), are defined in Article 3(63), "
+                "and carry their own provider obligations with additional duties for "
+                "models posing systemic risk. The Regulation therefore applies to "
+                "both AI systems and general-purpose AI models under two parallel "
+                "regimes."
+            ),
+            "refs": ["Art. 2", "Art. 3", "Art. 51"],
         }
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]

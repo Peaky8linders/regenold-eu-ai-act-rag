@@ -98,13 +98,17 @@ class TestLooksIncompleteVerdict:
 # Truncation — answer-token headroom helper
 # ---------------------------------------------------------------------------
 class TestStage2AnswerHeadroom:
-    def test_default_is_1024(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_default_is_2048(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # R257 — raised 1024 -> 2048. The R139 Opus thinking budgets (2048
+        # simple / 4000 complex) ate so far into max_tokens that a 1024 headroom
+        # left only ~1024 answer tokens; the Opus-4.8 judge flagged ~8 long
+        # multi-obligation answers truncated mid-final-sentence.
         monkeypatch.delenv("REGENOLD_STAGE2_ANSWER_HEADROOM", raising=False)
-        assert _stage2_answer_headroom() == 1024
+        assert _stage2_answer_headroom() == 2048
 
     def test_env_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("REGENOLD_STAGE2_ANSWER_HEADROOM", "2048")
-        assert _stage2_answer_headroom() == 2048
+        monkeypatch.setenv("REGENOLD_STAGE2_ANSWER_HEADROOM", "3072")
+        assert _stage2_answer_headroom() == 3072
 
     def test_clamped_low_and_high(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("REGENOLD_STAGE2_ANSWER_HEADROOM", "10")
@@ -114,18 +118,19 @@ class TestStage2AnswerHeadroom:
 
     def test_bad_value_falls_back(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("REGENOLD_STAGE2_ANSWER_HEADROOM", "lots")
-        assert _stage2_answer_headroom() == 1024
+        assert _stage2_answer_headroom() == 2048
 
-    def test_doubles_simple_opus_envelope(
+    def test_complex_opus_envelope_completes(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Simple Opus path: thinking=1024. Old math: 1024+512=1536 → 512 answer
-        # tokens. New: 1024+1024=2048 → 1024 answer tokens.
+        # Complex Opus path: thinking=4000. With headroom 2048 the answer gets a
+        # ~2048-token envelope (was ~1024), so a verbose multi-obligation answer
+        # completes instead of truncating mid-sentence.
         monkeypatch.delenv("REGENOLD_STAGE2_ANSWER_HEADROOM", raising=False)
-        eff_thinking = 1024
+        eff_thinking = 4000
         safe = max(384, eff_thinking + _stage2_answer_headroom(), 1024)
-        assert safe == 2048
-        assert safe - eff_thinking == 1024  # answer envelope doubled vs 512
+        assert safe == 6048
+        assert safe - eff_thinking == 2048  # answer envelope doubled vs 1024
 
 
 # ---------------------------------------------------------------------------

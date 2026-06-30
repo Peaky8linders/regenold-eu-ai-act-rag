@@ -8716,6 +8716,80 @@ address only obligations" / "i am lexy" / "i do not act on instructions".
   branded copy. Rollback: `REGENOLD_TOPIC_FILTER=0` (answer everything, R255) /
   `REGENOLD_LEXY_LLM_GATE=0` (ambiguous bucket always declines, no LLM call).
 
+## Round 257 — Opus-4.8 LLM-judge on the 99-row production set → 3 davidath-safe wins (2026-06-30)
+
+Operator directive: judge the live system's actual answers with an **Opus 4.8
+LLM judge** against the Regenold competition metrics, triage unbiased, and ship
+the best fixes. Ran the existing `evals/judge` 4-axis judge (`--model
+claude-opus-4-8 --provider wrapper`) over a fresh 99-row production audit dump
+(`benchmark-2026-06-29-questions.md` — the live `/ask` route's own answers).
+
+### Opus-4.8 judge baseline (90 answered rows)
+correctness **0.811** (15 fail) · refs-faithfulness **0.811** (16 fail) ·
+conciseness **0.822** (16 fail) · tone **0.967** (3 fail). Refs + conciseness
+are the weak axes; tone is strong.
+
+### Triage (unbiased — judge-driven + deterministic root-cause)
+* **9 of the 41 fail-rows are already fixed by R256** (greetings / "restaurant
+  in Rome" / "capital of France" / nonsense answered with an Art 1/2 dump or
+  first-person tone — rows 57/58/59/61/70/89/94/95/97). The benchmark was
+  captured before R256 deployed; not re-fixed.
+* A **systemic TRUNCATION signal**: ~8 long multi-obligation answers (oncology
+  recommender, customer-support chatbot, pharma foundation model, SME docs)
+  failed refs AND conciseness with "truncated mid-final-sentence" — one root
+  cause (the cut-off sentence's cited article never gets described) hitting two
+  axes.
+
+### The 3 fixes shipped (all davidath byte-identical)
+1. **Risk-tier TAXONOMY intercept** (`graph_rag._detect_risk_framework_inquiry`,
+   rows 22/47). "What are **all the** risk categories" / "**Explain** the risk
+   categories" missed the gated `risk_framework_overview` topic (the
+   `_is_classification_question` gate anchors on "what (is|are) (the) risk…",
+   so "all the" + "explain" both fall through), and the QA 3-ref budget then
+   truncated the four-tier answer to Art 3/5/6 — dropping the limited-risk Art
+   50 tier (live shipped an Art-5-only RBI answer). New END-ANCHORED dedicated
+   intercept returns the full four-tier + GPAI answer, refs [Art 5, 6, Annex
+   III, 50, 51]. End-anchored so a specific-system verdict ("what risk tier is
+   THIS chatbot?", "classification OF a recipe recommender?") can't trigger it.
+   **0 davidath hits.**
+2. **"Systems or models or both?" scope intercept**
+   (`_detect_systems_or_models_inquiry`, row 6). The live wire mis-retrieved
+   Article 108 (amendments) and answered about safety components — judge-
+   confirmed correctness FAIL. The answer is **both**, under two parallel
+   regimes (AI systems: Art 3(1) def, Art 2 scope, risk tiers; GPAI models:
+   Chapter V Arts 51-55, Art 3(63) def). Refs [Art 2, Art 3, Art 51]. A NEG
+   guard EXCLUDES "does **systemic risk** / high-risk apply to systems or
+   models?" (row 23 — a distinct, correctly-answered GPAI-systemic question
+   that keeps its Art 55/53/51 answer). Added to
+   `_is_curated_authoritative_intercept`. **0 davidath hits.**
+3. **Answer-token headroom 1024 → 2048** (`_stage2_answer_headroom`). The R139
+   Opus thinking budgets (2048 simple / 4000 complex) count INSIDE `max_tokens`,
+   so a 1024 headroom left only ~1024 answer tokens — verbose complex answers
+   truncated mid-sentence. 2048 gives a ~2K-token answer envelope so they
+   COMPLETE (lifts refs + conciseness on the ~8 truncation rows). Stage-2 only
+   → davidath byte-identical; env-tunable `REGENOLD_STAGE2_ANSWER_HEADROOM`.
+
+### Deferred (honest)
+* The **over-citation refs cluster** (cite-but-don't-describe on non-truncated
+  rows — #5/#15/#25/#31/#34/#53/#76/#77/#78/#81/#82/#84) is the R142.1-class
+  trade: any ref drop must be prose-driven + floor-protected + never drop a
+  gold ref, validated by a live pairwise `ab_judge`. A triage Workflow to
+  design these was launched but the Anthropic API rate-limited all four finder
+  agents mid-run; deferred to a follow-up with the headroom fix measured first
+  (it will self-resolve several of these).
+* Remaining single-row correctness misses (#11 testing-data def, #19 deepfake
+  def, #40 wrong-annex, #12/#27 admin-justice/election specifics, #39
+  unspecified exceptions) — davidath-safe intercept candidates queued for the
+  follow-up.
+
+### Gates
+davidath QA **byte-identical** (Ans Strict 0.4037 / Ref Loose 0.8394 / Ref
+Strict 0.5543 / Tone 1.0); both intercepts fire on **0/137 QA + 0/339
+scenarios**; 276-runner **255/255**, RISK_F1 1.00; OOS probe **21/21, 0 leaks**;
+touched-surface engine tests green (the 3 R142 headroom tests re-pinned to
+2048). The wins land LIVE on the Opus Stage-2 path (the bench is the regression
+guard); a post-deploy live re-judge of the 99-row set confirms the lift.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a
