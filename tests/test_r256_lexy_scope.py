@@ -205,6 +205,50 @@ def test_gate_exception_fails_soft(monkeypatch: pytest.MonkeyPatch) -> None:
     assert decide_ambiguous_oos("best restaurant in Rome?") == (False, "")
 
 
+def test_gate_cache_evicts_when_full(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R258 — the bounded result cache FIFO-evicts when full instead of
+    freezing, so it keeps caching fresh questions past ``_CACHE_MAX``
+    (the prior guard stopped caching entirely once full)."""
+    monkeypatch.delenv("REGENOLD_LEXY_LLM_GATE", raising=False)
+    lexy_gate.reset_cache_for_tests()
+
+    calls = {"n": 0}
+
+    class _FakeResp:
+        def __init__(self, text: str) -> None:
+            self.text = text
+            self.error = None
+
+    class _CountingProvider:
+        def complete(self, req):  # noqa: ANN001
+            calls["n"] += 1
+            return _FakeResp("REFUSE: do that")
+
+    monkeypatch.setattr(
+        "app.llm.openai_wrapper_provider.is_openai_wrapper_enabled", lambda: True
+    )
+    monkeypatch.setattr(
+        "app.llm.openai_wrapper_provider.get_openai_wrapper_provider",
+        lambda: _CountingProvider(),
+    )
+
+    cap = lexy_gate._CACHE_MAX
+    for i in range(cap + 5):
+        decide_ambiguous_oos(f"off-topic question number {i}?")
+
+    # Bounded — never exceeds the cap.
+    assert len(lexy_gate._CACHE) == cap
+    # A recently-asked question is still cached → a re-ask is a HIT
+    # (no extra provider call) — the whole point of the cache.
+    n_before = calls["n"]
+    decide_ambiguous_oos(f"off-topic question number {cap + 4}?")
+    assert calls["n"] == n_before
+    # The oldest key was evicted → a re-ask of #0 is a MISS (new call),
+    # proving eviction rather than the old fill-once-then-freeze.
+    decide_ambiguous_oos("off-topic question number 0?")
+    assert calls["n"] == n_before + 1
+
+
 # ── route end-to-end (default filter ON) ─────────────────────────────────
 
 

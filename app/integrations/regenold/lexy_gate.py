@@ -145,7 +145,15 @@ def decide_ambiguous_oos(question: str) -> tuple[bool, str]:
 
     result = _parse(resp.text)
     with _CACHE_LOCK:
-        if key not in _CACHE and len(_CACHE) < _CACHE_MAX:
+        if key not in _CACHE:
+            # R258 — FIFO-evict the oldest entry when full so the bounded
+            # cache keeps serving recent re-asks / retries instead of
+            # freezing after _CACHE_MAX distinct questions (the prior
+            # ``len(_CACHE) < _CACHE_MAX`` guard stopped caching entirely
+            # once full). ``dict`` preserves insertion order, so the first
+            # key is the oldest.
+            if len(_CACHE) >= _CACHE_MAX:
+                _CACHE.pop(next(iter(_CACHE)), None)
             _CACHE[key] = result
     return result
 
