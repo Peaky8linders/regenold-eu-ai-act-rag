@@ -90,6 +90,41 @@ app/routes/regenold.py
    `KEYWORD_TO_ARTICLE`, `_CLASSIFICATION_TOPICS`, the ontology
    registries, the xref graph (both regex and manual), and the
    definitions registry.
+6. **A/B (`ab_judge`) IS THE MERGE GATE — davidath is NOT.** See the
+   Validation policy below. Do not ship an answer-quality / Stage-2 /
+   prompt / reference / scope change on "davidath byte-identical" alone.
+
+## Validation policy — A/B (`ab_judge`), not davidath, is the merge gate
+
+**Operator rule (2026-06-30):** stop validating with davidath and ship on
+the **live pairwise `evals.harness.ab_judge`**. davidath is a *regression
+guard only* (it runs `provider=cli`, no Stage-2, token-overlap metrics —
+R139/R99.2 proved those *diverge* from the live judge). "davidath
+byte-identical" means **inert on the bench**, NOT "no regression" and
+*never* "a win". A whole session can pass every davidath gate while the
+actual production feature is broken (this is how R256's LLM rescue shipped
+silently inert — the mocked tests + davidath were all green; only a
+**live** probe + `ab_judge` would have caught it).
+
+The gate for ANY change that can move an answer, a reference, the tone, or
+the scope decision:
+
+1. **Live verification first** — probe the deployed wire (or the local
+   route + the Claude Max wrapper) on the real failing cases. If it's a
+   reference / Stage-2 / scope change, you MUST see it work LIVE.
+2. **`evals.harness.ab_judge`** (R139) — the position-swapped pairwise
+   judge, baseline-OFF vs branch-ON, per-axis win-rate + sign-test. This
+   is the **merge gate**. A reference change especially (R142.1 lost a
+   live pairwise 11-0 by dropping a gold ref) does not ship without it.
+3. davidath (`evals.bench.runner --assert-baseline`) + 276-runner + OOS
+   probe — keep these ONLY as cheap regression guards (did I break a row
+   that already worked?), never as the evidence that a change is good.
+
+Practical: env-gate every such change (default-ON in code) so `ab_judge`
+can A/B OFF↔ON, ship default-ON only after the A/B holds/wins, and keep
+the env off-switch for instant rollback. If the Anthropic API is
+rate-limiting the `ab_judge` run, WAIT and retry — do not substitute
+davidath and merge anyway.
 
 ## Fresh session plug-in
 
