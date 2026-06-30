@@ -41,9 +41,12 @@ def _fusion_gate_all(monkeypatch):
 
 # ── env gating ────────────────────────────────────────────────────────────────
 
-def test_fusion_enabled_default_on(monkeypatch):
+def test_fusion_disabled_default_off(monkeypatch):
+    # 2026-06-30 Sonnet-5-routing directive — the MoA panel is OFF by default so
+    # complex questions route to a single Opus 4.8 call (not a Groq/Mistral
+    # panel). Pin the new default loudly so a future revert is not silent.
     monkeypatch.delenv("REGENOLD_FUSION_STAGE2", raising=False)
-    assert fusion.fusion_stage2_enabled() is True
+    assert fusion.fusion_stage2_enabled() is False
 
 
 @pytest.mark.parametrize("val", ["0", "false", "no", "off", "FALSE", ""])

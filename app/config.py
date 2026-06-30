@@ -17,29 +17,38 @@ class GraphRAGSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="P2P_GRAPH_RAG_", extra="ignore")
 
     api_key: SecretStr | None = None
-    model: str = "claude-sonnet-4-6"
+    model: str = "claude-sonnet-5"
     """Stage-1 PARSE model (JSON entity extraction) AND the base model for any
-    non-Stage-2 LLM call. Default Sonnet 4.6 — fast, cheap, and it must NEVER
-    pay an Opus latency tax or a thinking budget (the parse is a strict-schema
-    JSON call; extended thinking there only risks corrupting the JSON). The
-    Stage-2 ANSWER is governed by :attr:`stage2_model`, not this field."""
+    non-Stage-2 LLM call.
 
-    stage2_model: str = "claude-opus-4-8"
-    """R139 (operator directive 2026-06-20) — model for the Stage-2 ANSWER
-    (the user-facing legal prose), used on EVERY Stage-2 polish/synthesis call
-    regardless of question complexity. Default ``claude-opus-4-8``: Opus 4.8 is
-    the stronger legal reasoner and produces verdict-first, professionally-toned
-    answers where Sonnet 4.6 buried the bottom line (the medtech "is X high
-    risk?" → "Article 6(1) read with Annex I is the operative provision…"
-    regression that motivated this round). Empty → fall back to :attr:`model`
-    for Stage-2 (the pre-R139 behaviour: Sonnet standard / Opus complex).
+    **2026-06-30 operator directive — Sonnet 5 replaces Sonnet 4.6 on the Claude
+    Max tunnel.** Default ``claude-sonnet-5`` — the newly-released Sonnet 5 is a
+    stronger reasoner than Sonnet 4.6 at ~the same latency, so the Stage-1 parse
+    gets better entity extraction (→ better retrieval) for free. It must still
+    NEVER pay an Opus latency tax or a thinking budget here (the parse is a
+    strict-schema JSON call; extended thinking only risks corrupting the JSON).
+    The Stage-2 ANSWER is governed by :attr:`stage2_model`, not this field.
+    Override per-deploy with ``P2P_GRAPH_RAG_MODEL``."""
+
+    stage2_model: str = "claude-sonnet-5"
+    """Model for the Stage-2 ANSWER (the user-facing legal prose) on the
+    STANDARD (simple / low-complexity) path — the ~80% of questions the
+    complexity gate does NOT flag. Complex questions use :attr:`complex_model`
+    (Opus 4.8) instead.
+
+    **2026-06-30 operator directive — Sonnet 5 (with reasoning tokens) answers
+    the simple tier; Opus 4.8 answers the complex tier.** Default
+    ``claude-sonnet-5``: Sonnet 5 with a moderate extended-thinking budget
+    (:attr:`thinking_tokens`) is fast AND produces verdict-first,
+    professionally-toned answers, so it owns the simple majority while Opus 4.8
+    (:attr:`complex_model`) is reserved for the hard ~20%. This supersedes the
+    R139 "always Opus 4.8 for Stage-2" directive (Opus on every simple question
+    cost latency the simple tier doesn't need; Sonnet 5 closes the quality gap
+    that motivated R139). Empty → fall back to :attr:`model` for Stage-2.
 
     Cost is flat on the production Claude Max subscription (the wrapper bills
-    the Max plan, not per token), so "always Opus" carries no marginal token
-    cost there; the trade is latency (Opus is slower than Sonnet), mitigated by
-    :attr:`thinking_tokens` (a MODERATE budget on the ~80% simple questions) vs
-    :attr:`complex_thinking_tokens` (EXTENDED only on the ~20% complex ones).
-    Override per-deploy with ``P2P_GRAPH_RAG_STAGE2_MODEL``."""
+    the Max plan, not per token). Override per-deploy with
+    ``P2P_GRAPH_RAG_STAGE2_MODEL``."""
 
     max_tokens: int = 384
     """Stage-1/2 polish output token cap.
@@ -245,10 +254,10 @@ class AppSettings(BaseSettings):
     regenold: RegenoldSettings = Field(default_factory=RegenoldSettings)
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
 
-    # Bumped to 1.0.1 as the R147 deploy marker (2026-06-22) — surfaced on
-    # /healthz/llm + /healthz/graph so a redeploy can be VERIFIED live (the
-    # endpoints expose no git SHA). Purely cosmetic; nothing keys on it.
-    version: str = "1.0.1"
+    # Bumped to 1.0.2 as the 2026-06-30 Sonnet-5-routing deploy marker —
+    # surfaced on /healthz/llm + /healthz/graph so a redeploy can be VERIFIED
+    # live (the endpoints expose no git SHA). Purely cosmetic; nothing keys on it.
+    version: str = "1.0.2"
 
 
 settings = AppSettings()

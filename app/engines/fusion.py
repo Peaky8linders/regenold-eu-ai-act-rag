@@ -132,19 +132,27 @@ _FUSION_GATE_VALUES = ("complex", "all", "off")
 
 
 def fusion_stage2_enabled() -> bool:
-    """Master gate. Default ON; explicit ``0`` / ``false`` / ``no`` / ``off``
-    disables.
+    """Master gate. **Default OFF as of the 2026-06-30 Sonnet-5-routing
+    directive**; explicit ``1`` / ``true`` / ``yes`` / ``on`` enables.
+
+    The operator's directive defines a clean two-tier model routing — Sonnet 5
+    (with reasoning tokens) answers the simple ~80%, Opus 4.8 answers the
+    complex ~20%. The R124 Mixture-of-Agents panel (Opus 4.8 + Groq Llama +
+    Mistral, deterministic-judged) could let a Groq/Mistral draft win a complex
+    answer, contradicting "Opus 4.8 for complex". With fusion OFF, complex
+    questions take the single-provider Stage-2 path → ``complex_model``
+    (Opus 4.8). Re-enable the MoA panel with
+    ``railway variables --set REGENOLD_FUSION_STAGE2=1``.
 
     Note this only matters when Stage-2 itself fires (a provider is wired via
     :func:`graph_rag._stage2_provider_enabled`). The deterministic bench runs
     ``provider=cli`` so fusion stays inert there regardless of this flag.
     """
-    return os.getenv("REGENOLD_FUSION_STAGE2", "1").strip().lower() not in (
-        "0",
-        "false",
-        "no",
-        "off",
-        "",
+    return os.getenv("REGENOLD_FUSION_STAGE2", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
     )
 
 

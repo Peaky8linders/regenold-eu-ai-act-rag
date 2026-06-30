@@ -223,22 +223,23 @@ class TestComplexRouting:
 
 
 class TestStage2AlwaysOpus:
-    """R139 — Stage-2 ANSWER is ALWAYS Opus 4.8 (operator directive). The
-    ``stage2_model`` knob routes EVERY Stage-2 polish/synthesis call to Opus,
-    simple or complex; the Stage-1 parse stays on the fast base model.
+    """2026-06-30 Sonnet-5-routing directive (supersedes R139's always-Opus).
+    Stage-2 ANSWER: the SIMPLE tier → ``stage2_model`` (Sonnet 5 + reasoning
+    tokens); the COMPLEX tier → ``complex_model`` (Opus 4.8 + extended thinking).
+    The Stage-1 parse stays on the fast base model (now Sonnet 5).
 
     ``is_stage2`` keys off the caller's ``stage_name`` (only the Stage-2 polish
     calls pass "Stage 2 …"), so these tests pass it explicitly — the other
     tests in this module omit it (is_stage2=False → base-model path).
     """
 
-    def test_stage2_simple_uses_opus_with_moderate_thinking(
+    def test_stage2_simple_uses_sonnet5_with_moderate_thinking(
         self, _mock_wrapper
     ) -> None:
-        """Simple Stage-2 question → ``stage2_model`` (Opus 4.8) + the MODERATE
-        ``thinking_tokens`` budget (1024 by default), so latency stays bounded
-        on the ~80% simple majority while the answer is verdict-first Opus
-        quality."""
+        """Simple Stage-2 question → ``stage2_model`` (Sonnet 5) + the MODERATE
+        ``thinking_tokens`` reasoning budget, so latency stays bounded on the
+        ~80% simple majority while the answer is verdict-first quality. Pins the
+        2026-06-30 default loudly so a revert to Opus is not silent."""
         _openai_wrapper_complete_for_graph_rag(
             system="x", user="Is a medtech system that tracks patient weight high risk?",
             max_tokens=400, temperature=0.0,
@@ -246,8 +247,8 @@ class TestStage2AlwaysOpus:
             stage_name="Stage 2 (Polishing)",
         )
         req: OpenAIWrapperRequest = _mock_wrapper.complete.call_args.args[0]
-        assert req.model == settings.graph_rag.stage2_model == "claude-opus-4-8"
-        # MODERATE thinking on the simple Stage-2 path.
+        assert req.model == settings.graph_rag.stage2_model == "claude-sonnet-5"
+        # MODERATE reasoning tokens on the simple Stage-2 path.
         assert req.extra_headers.get("X-Claude-Max-Thinking-Tokens") == str(
             settings.graph_rag.thinking_tokens
         )
@@ -271,14 +272,15 @@ class TestStage2AlwaysOpus:
     def test_stage1_parse_stays_on_base_model_no_thinking(
         self, _mock_wrapper
     ) -> None:
-        """The Stage-1 PARSE (JSON entity extraction) must NEVER swap to Opus
-        or burn a thinking budget — it stays on the fast base model with no
-        thinking header, even though stage2_model is Opus."""
+        """The Stage-1 PARSE (JSON entity extraction) must NEVER swap to a
+        stronger model or burn a thinking budget — it stays on the fast base
+        model (Sonnet 5 as of 2026-06-30) with no thinking header, even though
+        the Stage-2 answer paths do."""
         _openai_wrapper_complete_for_graph_rag(
             system="x", user="y", max_tokens=400, temperature=0.0,
             complex_question=False,
             stage_name="Stage 1 (Scope & Extraction)",
         )
         req: OpenAIWrapperRequest = _mock_wrapper.complete.call_args.args[0]
-        assert req.model == settings.graph_rag.model == "claude-sonnet-4-6"
+        assert req.model == settings.graph_rag.model == "claude-sonnet-5"
         assert "X-Claude-Max-Thinking-Tokens" not in req.extra_headers

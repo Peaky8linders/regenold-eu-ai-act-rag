@@ -88,7 +88,14 @@ REGENOLD_LOGIC_RAG = "1"
 #   REGENOLD_FUSION_PANEL="sonnet,groq,mistral"   (also: opus, gemini)
 #   REGENOLD_FUSION_JUDGE_MODEL="claude-sonnet-4-6"   (only used when JUDGE=llm)
 #   REGENOLD_FUSION_MIN_CANDIDATES="2"   REGENOLD_FUSION_TIMEOUT="60"
-REGENOLD_FUSION_STAGE2 = "1"
+# 2026-06-30 Sonnet-5-routing directive — fusion is OFF (code default flipped in
+# fusion.fusion_stage2_enabled). The directive defines a clean two-tier routing:
+# Sonnet 5 (reasoning tokens) answers simple, Opus 4.8 answers complex. The MoA
+# panel could let a Groq/Mistral draft win a complex answer, contradicting
+# "Opus 4.8 for complex", so complex questions now take the single-provider
+# Stage-2 path -> complex_model (Opus 4.8). Re-enable the panel with:
+#   railway variables --set REGENOLD_FUSION_STAGE2=1
+REGENOLD_FUSION_STAGE2 = "0"
 REGENOLD_FUSION_JUDGE = "deterministic"
 # R124 — fusion LATENCY optimisation. The panel + judge cost 2 wrapper
 # round-trips on the single slow Max tunnel, so we (a) GATE the panel to fire
