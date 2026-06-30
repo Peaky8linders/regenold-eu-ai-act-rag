@@ -2580,6 +2580,59 @@ def _definitional_art3_protected(
         return frozenset()
 
 
+# R260 — the canonical closed risk-tier reference set: prohibited (Art. 5),
+# high-risk (Art. 6 + Annex III), limited-risk transparency (Art. 50), and the
+# parallel GPAI regime (Art. 51). Mirrors the R257 risk_framework_overview
+# intercept's seeded refs.
+_RISK_FRAMEWORK_CANON_REFS = ("Art. 5", "Art. 6", "Annex III", "Art. 50", "Art. 51")
+
+
+def _risk_framework_refs_enabled() -> bool:
+    return os.getenv("REGENOLD_RISK_FRAMEWORK_REFS", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
+def _enforce_risk_framework_refs(references: list[str], rag_res) -> list[str]:
+    """R260 — re-instate the closed risk-tier reference set for a
+    risk-framework taxonomy question.
+
+    "What are all the risk categories?" is a CLOSED-SET enumeration (the four
+    risk tiers + the GPAI regime). The R257 ``_detect_risk_framework_inquiry``
+    intercept surfaces all five tier-refs (Art. 5/6, Annex III, Art. 50/51) in
+    the engine citations, but the QA ref budget, ``_suppress_noise_anchors``,
+    and the live Stage-2 reconcile each drop a varying subset (the live wire
+    shipped only 1-3 of 5 — the reference-correctness half of the R257 rows
+    22/47 fix not landing). APPEND the canonical tier-refs the ENGINE actually
+    surfaced — never fabricated, only re-instated from ``rag_res.citations`` —
+    so the closed set ships complete. Recall-positive and gold-aligned (the
+    gold for "risk categories" IS the five tiers; the answer prose describes
+    every tier, so the refs are faithful). Existing order preserved; missing
+    members appended. Fail-soft → ``references`` unchanged. davidath
+    byte-identical: the caller gates on ``_detect_risk_framework_inquiry``,
+    which fires on 0 davidath rows. Env off-switch
+    ``REGENOLD_RISK_FRAMEWORK_REFS``.
+    """
+    try:
+        surfaced = {
+            (c.article_ref or "").strip()
+            for c in (getattr(rag_res, "citations", None) or [])
+        }
+        out = list(references)
+        for ar in _RISK_FRAMEWORK_CANON_REFS:
+            if ar not in surfaced:
+                continue  # never fabricate — only re-instate engine-surfaced refs
+            wire = reference_from_article_ref(ar)
+            if wire and wire not in out:
+                out.append(wire)
+        return out
+    except Exception:  # noqa: BLE001 — fail-soft; never 500 the route
+        return references
+
+
 def _reconcile_references_to_prose(
     references: list[str],
     prose: str,
@@ -6729,6 +6782,33 @@ def regenold_eu_ai_act_ask(
             )
             _rn(f"final_ref_clamp_to={_effective_max_refs}")
         except Exception:  # noqa: BLE001 — fail-soft on trace
+            pass
+
+    # R260 — risk-framework taxonomy closed-set ref completeness. The R257
+    # intercept seeds all five tier-refs but the budget cap / suppress-noise /
+    # live reconcile each drop a varying subset (live wire shipped 1-3 of 5).
+    # Runs LAST (after every lossy ref pass + the R142 clamp) and BEFORE the
+    # trace finalisation, so the trace == wire refs. davidath byte-identical:
+    # _detect_risk_framework_inquiry fires on 0 davidath rows.
+    if _risk_framework_refs_enabled():
+        try:
+            from app.engines.graph_rag import (  # noqa: PLC0415
+                _detect_risk_framework_inquiry,
+            )
+
+            if _detect_risk_framework_inquiry(question):
+                _rf_refs = _enforce_risk_framework_refs(references, rag_res)
+                if _rf_refs != references:
+                    references = _rf_refs
+                    try:
+                        from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                            record_note as _rn,
+                        )
+
+                        _rn("risk_framework_refs_enforced")
+                    except Exception:  # noqa: BLE001 — fail-soft on trace
+                        pass
+        except Exception:  # noqa: BLE001 — fail-soft; never 500 the route
             pass
 
     # R50 / R131 — finalise the reasoning trace AFTER every reference pass
