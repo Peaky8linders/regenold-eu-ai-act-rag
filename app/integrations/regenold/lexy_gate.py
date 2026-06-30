@@ -39,9 +39,30 @@ logger = structlog.get_logger(__name__)
 # with the generic copy when the topic filter is on).
 _ENV_GATE = "REGENOLD_LEXY_LLM_GATE"
 
-# The gate is a tiny binary classification — a short, fast call.
-_GATE_TIMEOUT_SECONDS = 2.5
+# R259 — the gate is a tiny binary classification (48 max-tokens) BUT it
+# pays the full Claude-Max-wrapper round-trip through the Cloudflare
+# tunnel, which runs ~7-9 s in production even for a trivial prompt
+# (``/healthz/llm`` measured 8.8 s). The original 2.5 s timeout ALWAYS
+# fired before the reply landed, so ``decide_ambiguous_oos`` fail-soft-ed
+# to the generic decline on EVERY call — the LLM rescue was silently
+# inert in production (a genuine keyword-less AI Act question such as the
+# deep-fake / criminal-offence Article 50(4) ask was always refused).
+# Default 15 s gives comfortable headroom over the observed 6.7-8.3 s
+# gate latency. Env-tunable via ``REGENOLD_LEXY_GATE_TIMEOUT``; clamped
+# to [2, 30].
+_ENV_TIMEOUT = "REGENOLD_LEXY_GATE_TIMEOUT"
+_DEFAULT_GATE_TIMEOUT_SECONDS = 15.0
 _GATE_MAX_TOKENS = 48
+
+
+def _gate_timeout() -> float:
+    raw = os.getenv(_ENV_TIMEOUT, "").strip()
+    if not raw:
+        return _DEFAULT_GATE_TIMEOUT_SECONDS
+    try:
+        return max(2.0, min(float(raw), 30.0))
+    except ValueError:
+        return _DEFAULT_GATE_TIMEOUT_SECONDS
 
 _SYSTEM = (
     "You are a strict scope gate for Lexy, an assistant that ONLY answers "
@@ -132,7 +153,7 @@ def decide_ambiguous_oos(question: str) -> tuple[bool, str]:
                 user=_build_user(key),
                 max_tokens=_GATE_MAX_TOKENS,
                 temperature=0.0,
-                timeout_seconds=_GATE_TIMEOUT_SECONDS,
+                timeout_seconds=_gate_timeout(),
             )
         )
     except Exception as exc:  # noqa: BLE001 — fail-soft to the generic refusal

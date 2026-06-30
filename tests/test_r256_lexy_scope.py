@@ -249,6 +249,49 @@ def test_gate_cache_evicts_when_full(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls["n"] == n_before + 1
 
 
+def test_gate_timeout_default_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R259 — the gate timeout must clear the Claude-Max-tunnel latency
+    (~7-9 s). Default 15 s; env-tunable + clamped to [2, 30]."""
+    monkeypatch.delenv("REGENOLD_LEXY_GATE_TIMEOUT", raising=False)
+    assert lexy_gate._gate_timeout() == 15.0
+    monkeypatch.setenv("REGENOLD_LEXY_GATE_TIMEOUT", "8")
+    assert lexy_gate._gate_timeout() == 8.0
+    monkeypatch.setenv("REGENOLD_LEXY_GATE_TIMEOUT", "100")  # clamp high
+    assert lexy_gate._gate_timeout() == 30.0
+    monkeypatch.setenv("REGENOLD_LEXY_GATE_TIMEOUT", "0.1")  # clamp low
+    assert lexy_gate._gate_timeout() == 2.0
+    monkeypatch.setenv("REGENOLD_LEXY_GATE_TIMEOUT", "nonsense")  # fail-soft
+    assert lexy_gate._gate_timeout() == 15.0
+
+
+def test_gate_request_uses_configured_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R259 — the wrapper request carries ``_gate_timeout()`` (not the old
+    hard-coded 2.5 s that always timed out in production)."""
+    monkeypatch.delenv("REGENOLD_LEXY_LLM_GATE", raising=False)
+    monkeypatch.setenv("REGENOLD_LEXY_GATE_TIMEOUT", "12")
+    lexy_gate.reset_cache_for_tests()
+    seen = {}
+
+    class _FakeResp:
+        text = "IN_SCOPE"
+        error = None
+
+    class _CapturingProvider:
+        def complete(self, req):  # noqa: ANN001
+            seen["timeout"] = req.timeout_seconds
+            return _FakeResp()
+
+    monkeypatch.setattr(
+        "app.llm.openai_wrapper_provider.is_openai_wrapper_enabled", lambda: True
+    )
+    monkeypatch.setattr(
+        "app.llm.openai_wrapper_provider.get_openai_wrapper_provider",
+        lambda: _CapturingProvider(),
+    )
+    assert decide_ambiguous_oos("does the deep-fake duty apply to crimes?") == (True, "")
+    assert seen["timeout"] == 12.0
+
+
 # ── route end-to-end (default filter ON) ─────────────────────────────────
 
 
