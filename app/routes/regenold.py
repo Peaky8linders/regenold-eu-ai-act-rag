@@ -1379,6 +1379,15 @@ def _engine_cache_key(
             # doctrine — and its omission corrupted the same-process ab_judge
             # two-arm run (cross-arm cache contamination).
             "REGENOLD_LOWER_RISK_VERDICTS",
+            # R262 — the single-actor answer-scope tightening clause
+            # (graph_rag_prompts.answer_scope_clause) is appended to the Stage-2
+            # system prompt, so toggling it flips GraphRAGResponse.answer on the
+            # live polish path. Stage-2-only → davidath byte-identical either
+            # way; but it MUST be in the cache identity per the R30/R56/R79
+            # doctrine, and its omission would corrupt the same-process
+            # ab_judge two-arm run (the documented R149 cross-arm cache
+            # contamination).
+            "REGENOLD_ANSWER_SCOPE_TIGHTEN",
         )
     )
     import json

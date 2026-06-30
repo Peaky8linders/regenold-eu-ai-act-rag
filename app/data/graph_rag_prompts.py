@@ -7,6 +7,8 @@ knowledge graph. The system uses a two-stage approach:
   2. Generate: graph context + question → cited answer
 """
 
+import os
+
 # ─── Query Parsing Prompt ────────────────────────────────────────────────────
 
 QUERY_PARSE_SYSTEM = """\
@@ -172,6 +174,48 @@ A: "The use of AI systems to detect emotions of natural persons in educational i
 Q: "We are a provider of an AI system used by law enforcement for profiling natural persons. What are our primary obligations?"
 A: "AI systems used by law enforcement for profiling natural persons are classified as high-risk under Annex III(6)(a). Providers of such systems must establish a risk management system pursuant to Article 9, ensure high-quality training and data governance under Article 10, and enable human oversight in accordance with Article 14."
 """
+
+
+# ─── R262 — single-actor answer-scope tightening (Stage-2 over-coverage) ─────
+# The R251 live judge surfaced that the dominant production over-citation is
+# answer OVER-COVERAGE: on a question scoped to ONE operator role's
+# obligations (e.g. "what are the deployer's obligations?"), Stage-2 (Opus)
+# also DESCRIBES the OTHER roles' obligation chains (a deployer answer that
+# recites the provider's Article 9-15 design duties + Article 86), and because
+# the R72 reconcile keeps any DESCRIBED ref, those non-gold articles ship on
+# the wire. Dropping a *described* ref at the route is the R142.1 anti-pattern
+# (lost the live pairwise 11-0). The safe lever is to stop Stage-2 describing
+# the other actor's duties in the first place.
+#
+# This clause GENERALISES the existing REFERENCE-SELECTION importer rule
+# ("primary reference MUST be Article 23 … do not cite the underlying
+# requirements") to every role AND adds the prose dimension. It is conditional
+# and conservative — it narrows ONLY when the question is scoped to ONE named
+# role's obligations, and explicitly carves out system-level / role-contrast /
+# multi-actor / multi-part questions so completeness (rules 7, 12b) is never
+# violated and no GOLD article is dropped.
+#
+# Env-gated REGENOLD_ANSWER_SCOPE_TIGHTEN (default ON) and read at call time so
+# evals.harness.ab_judge can A/B OFF↔ON via the env flip. Appended to the
+# Stage-2 system prompt at both call sites in graph_rag.py.
+ANSWER_SCOPE_TIGHTEN_CLAUSE = """
+
+ACTOR SCOPE (answer only the asked role's own duties). When the question asks specifically for the obligations, duties, requirements, or responsibilities of ONE named operator role, namely the provider, the deployer, the importer, the distributor, or the authorised representative (e.g. "what are the deployer's obligations", "its obligations as a deployer", "what must the importer do", "what must the provider put in place"), describe and cite ONLY that role's OWN obligations, and do NOT enumerate or describe the OTHER roles' obligation chains. For a DEPLOYER-obligations question, name the deployer duties (Article 26, plus Article 27 where a fundamental rights impact assessment is owed) and STOP; do NOT recite the provider's Article 9 to 15 design-and-development obligations, the Article 16 placing-on-market duties, the Article 43 conformity assessment, the Article 17 quality management system, or the Article 25 value-chain duties. For an IMPORTER-obligations question name Article 23 and stop; for a DISTRIBUTOR-obligations question name Article 24 and stop; for an AUTHORISED-REPRESENTATIVE-obligations question name Article 22 and stop; for a PROVIDER-obligations question name the provider's own duty set and stop. You MAY name another role's provision in a SINGLE clause only when it is the operative LINK the asked role depends on (for instance a deployer must use the system within the provider's instructions and implement the human-oversight measures the provider specified), without then enumerating that other role's full obligation set. This narrowing does NOT apply, and you must answer EVERY part in full, when the question instead asks about a SYSTEM's requirements generally (not scoped to one role), CONTRASTS two roles, asks what BOTH a provider and a deployer must do, or raises a separate sub-question about another actor."""
+
+
+def answer_scope_clause() -> str:
+    """R262 — env-gated single-actor answer-scope tightening clause.
+
+    Returns the :data:`ANSWER_SCOPE_TIGHTEN_CLAUSE` to append to
+    ``ANSWER_GENERATE_SYSTEM`` when ``REGENOLD_ANSWER_SCOPE_TIGHTEN`` is enabled
+    (default ON), else ``""``. Read at CALL time (not import time) so the
+    ``evals.harness.ab_judge`` two-arm env flip toggles it. Fail-soft: any
+    unexpected env value falls back to enabled.
+    """
+    val = os.getenv("REGENOLD_ANSWER_SCOPE_TIGHTEN", "1").strip().lower()
+    if val in ("0", "false", "no", "off"):
+        return ""
+    return ANSWER_SCOPE_TIGHTEN_CLAUSE
 
 
 # ─── Common Compliance Questions (for suggested prompts) ─────────────────────

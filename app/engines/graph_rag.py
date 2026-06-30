@@ -1119,7 +1119,10 @@ def _llm_generate_answer(
     provider = _graph_rag_provider()
     try:
         from app.config import settings
-        from app.data.graph_rag_prompts import ANSWER_GENERATE_SYSTEM
+        from app.data.graph_rag_prompts import (
+            ANSWER_GENERATE_SYSTEM,
+            answer_scope_clause,
+        )
 
         # Build context message
         context_parts = []
@@ -1210,7 +1213,9 @@ def _llm_generate_answer(
         # regulation expert, not as a graph-querying agent.
         user_message += f"EU AI ACT REFERENCES:\n{context_text}"
 
-        full_system = PROMPT_HARDENING_PREFIX + ANSWER_GENERATE_SYSTEM
+        # R262 — append the env-gated single-actor answer-scope tightening
+        # clause (default ON; ab_judge A/Bs it via REGENOLD_ANSWER_SCOPE_TIGHTEN).
+        full_system = PROMPT_HARDENING_PREFIX + ANSWER_GENERATE_SYSTEM + answer_scope_clause()
 
         if provider == "openai_wrapper":
             text_raw = _openai_wrapper_complete_for_graph_rag(
@@ -4391,7 +4396,10 @@ def _claude_max_enhance_answer(
     """
     try:
         from app.config import settings
-        from app.data.graph_rag_prompts import ANSWER_GENERATE_SYSTEM
+        from app.data.graph_rag_prompts import (
+            ANSWER_GENERATE_SYSTEM,
+            answer_scope_clause,
+        )
         from app.security.prompt_guard import (
             PROMPT_HARDENING_PREFIX,
             sanitize_for_llm,
@@ -4614,7 +4622,22 @@ def _claude_max_enhance_answer(
             from app.llm.openai_wrapper_provider import is_gemini_provider_enabled
             _use_gemini = is_gemini_provider_enabled()
 
-        system_prompt = PROMPT_HARDENING_PREFIX + ANSWER_GENERATE_SYSTEM
+        # R262 — append the env-gated single-actor answer-scope tightening
+        # clause (default ON; ab_judge A/Bs it via REGENOLD_ANSWER_SCOPE_TIGHTEN).
+        # This is the live Stage-2 polish/synthesis path; record a glass-box
+        # trace note so `?include_reasoning=true` shows it fired in production.
+        _scope_clause = answer_scope_clause()
+        system_prompt = PROMPT_HARDENING_PREFIX + ANSWER_GENERATE_SYSTEM + _scope_clause
+        if _scope_clause:
+            try:
+                from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                    current as _current_trace,
+                    record_note,
+                )
+                if _current_trace() is not None:
+                    record_note("answer_scope_tighten: applied")
+            except Exception:  # noqa: BLE001 — trace is best-effort
+                pass
         try:
             from app.routes.regenold import _is_closed_set_enumeration_ask
             if complex_q or _is_closed_set_enumeration_ask(question):
