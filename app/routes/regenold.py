@@ -1389,6 +1389,17 @@ def _engine_cache_key(
             # (cross-arm cache contamination) — caught live, not
             # theoretical.
             "REGENOLD_DEFINITIONAL_ART3_GENERALIZE",
+            # R262 — the obligation-enumeration → Opus rule
+            # (question_complexity._OBLIGATION_ENUM_RE) flips
+            # is_complex_question True for "what must a <role> …" asks, which
+            # routes Stage-2 to Opus 4.8 instead of Sonnet-5 → a different
+            # GraphRAGResponse.answer on the live polish path. Per the
+            # R149/R263 cross-arm cache-contamination lesson it MUST be in the
+            # cache identity so a same-process ab_judge A/B (env 0 vs 1) does
+            # not serve the baseline arm's cached answer to the branch arm.
+            # The deterministic davidath bench never fires Stage-2, so it is
+            # byte-identical either way.
+            "REGENOLD_OBLIGATION_ENUM_OPUS",
         )
     )
     import json

@@ -5,6 +5,10 @@ on regulatory difficulty (not just sentence count), routing genuinely-hard
 SINGLE-sentence questions to Opus 4.8. Default OFF → byte-identical routing.
 Also fixes the latent ``always\\s+prohibit\\b`` boundary bug.
 
+R262 obligation-enumeration → Opus (the narrow "what must a <role> …" rule,
+default ON, model-selection only) is covered in
+``tests/test_r262_obligation_enum.py``.
+
 REC-4: the Anthropic-SDK Stage-2 path now floors ``max_tokens`` to 1024
 (parity with the wrapper-path R112.2 floor), so a Pro-tier Opus complex
 answer is not capped at the config default 384 and silently truncated.

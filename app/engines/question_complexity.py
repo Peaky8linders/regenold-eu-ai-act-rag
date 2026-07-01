@@ -211,6 +211,41 @@ def _gate_wide_enabled() -> bool:
     }
 
 
+# ── R262 (2026-06-30) — obligation-ENUMERATION → Opus (always-on, default ON) ─
+#
+# User directive: keep Sonnet-5 for genuinely-simple QA, but route
+# multi-obligation questions to Opus 4.8. The R261 `_is_multi_phrase` gate
+# already routes multi-sentence / coordinated-clause questions to Opus, but a
+# SINGLE-clause "what must a provider put in place for a high-risk AI system?"
+# stays on Sonnet-5 despite being a sprawling multi-obligation ask (Arts 9-18 +
+# 43 + 47-49 + 72 …) — the R261 medtech-judge obligation-enumeration fail rows.
+#
+# This is DELIBERATELY narrower than the R118 `_GATE_WIDE_RE` flip: it fires
+# ONLY on the "what must a <operator role> …" shape, so it does NOT touch the
+# `TestSimpleSkips` precision floor (single-topic "transparency obligations" /
+# "cybersecurity requirements" / a "safety component" scenario stay on Sonnet —
+# those questions Sonnet handles fine, per the user's keep-simple constraint).
+# Model-selection ONLY (Sonnet-5 vs Opus 4.8); never touches scope / retrieval /
+# the wire answer, so the deterministic bench is byte-identical. R139's live
+# medtech-graphrag measurement is the win evidence: Opus 4.8 beat Sonnet on
+# exactly this obligation-enumeration class (refs-faithfulness 0.63 → 0.86).
+# Env off-switch `REGENOLD_OBLIGATION_ENUM_OPUS=0` for instant rollback.
+_OBLIGATION_ENUM_RE = re.compile(
+    r"\bwhat\s+must\s+(?:a|an|the|any)?\s*"
+    r"(?:provider|deployer|importer|distributor|manufacturer|operator|"
+    r"authoris\w*\s+representative|authorized\s+representative)\b",
+    re.IGNORECASE,
+)
+
+
+def _obligation_enum_opus_enabled() -> bool:
+    """Env gate for the R262 obligation-enumeration → Opus rule. Default ON.
+    Fresh read per call (no settings singleton)."""
+    return os.environ.get(
+        "REGENOLD_OBLIGATION_ENUM_OPUS", "1"
+    ).strip().lower() not in {"0", "false", "no", "off", ""}
+
+
 def _fusion_worthy_strict() -> bool:
     """Env gate for the R127 tightened fusion-panel predicate. Default ON
     (strict — the MoA panel fires only on the genuinely-hard single-turn
@@ -278,6 +313,13 @@ def is_complex_question(question: str, history_turn_count: int = 1) -> bool:
     if _CONFLICT_RE.search(scan_text):
         return True
     if _CROSS_FRAMEWORK_RE.search(scan_text):
+        return True
+    # R262 (default ON) — single-clause obligation-ENUMERATION question
+    # ("what must a provider / deployer / … put in place?"). A sprawling
+    # multi-obligation ask that `_is_multi_phrase` misses on a single clause;
+    # routed to Opus 4.8. Deliberately narrow — does not touch the simple-skip
+    # precision floor. Set REGENOLD_OBLIGATION_ENUM_OPUS=0 to disable.
+    if _obligation_enum_opus_enabled() and _OBLIGATION_ENUM_RE.search(scan_text):
         return True
     # R118 REC-1 — widened difficulty gate (env-gated, default OFF). Routes
     # genuinely-hard SINGLE-sentence questions (always-prohibited carve-out,
