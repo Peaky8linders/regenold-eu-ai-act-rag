@@ -169,18 +169,55 @@ class TestAnthropicProviderRouting:
     """--provider anthropic dispatches to _call_judge_anthropic and falls
     soft on missing key / SDK import error."""
 
-    def test_resolve_caller_anthropic(self) -> None:
-        from evals.judge.runner import _resolve_caller, _call_judge_anthropic
-        assert _resolve_caller("anthropic") is _call_judge_anthropic
+    def test_resolve_caller_anthropic(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # R263 — _resolve_caller now wraps the provider function in a
+        # lambda to thread a configurable timeout through (Sonnet 5 +
+        # the live wrapper routinely needs 60-90s, beyond the historical
+        # 30s default), so it can no longer be identity-compared against
+        # the bare function. Assert it DISPATCHES to the right one instead.
+        import evals.judge.runner as runner_mod
+        calls: list[tuple[str, float]] = []
+        monkeypatch.setattr(
+            runner_mod, "_call_judge_anthropic",
+            lambda p, timeout_s=30.0: calls.append((p, timeout_s)) or {"verdict": "pass"},
+        )
+        caller = runner_mod._resolve_caller("anthropic", timeout_s=42.0)
+        caller("hello")
+        assert calls == [("hello", 42.0)]
 
-    def test_resolve_caller_wrapper(self) -> None:
-        from evals.judge.runner import _resolve_caller, _call_judge_sonnet
-        assert _resolve_caller("wrapper") is _call_judge_sonnet
+    def test_resolve_caller_wrapper(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import evals.judge.runner as runner_mod
+        calls: list[tuple[str, float]] = []
+        monkeypatch.setattr(
+            runner_mod, "_call_judge_sonnet",
+            lambda p, timeout_s=30.0: calls.append((p, timeout_s)) or {"verdict": "pass"},
+        )
+        caller = runner_mod._resolve_caller("wrapper", timeout_s=42.0)
+        caller("hello")
+        assert calls == [("hello", 42.0)]
 
-    def test_resolve_caller_unknown_falls_back_to_wrapper(self) -> None:
+    def test_resolve_caller_unknown_falls_back_to_wrapper(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         """Unknown provider strings fall back to wrapper (default)."""
-        from evals.judge.runner import _resolve_caller, _call_judge_sonnet
-        assert _resolve_caller("nonsense") is _call_judge_sonnet
+        import evals.judge.runner as runner_mod
+        calls: list[tuple[str, float]] = []
+        monkeypatch.setattr(
+            runner_mod, "_call_judge_sonnet",
+            lambda p, timeout_s=30.0: calls.append((p, timeout_s)) or {"verdict": "pass"},
+        )
+        caller = runner_mod._resolve_caller("nonsense", timeout_s=42.0)
+        caller("hello")
+        assert calls == [("hello", 42.0)]
+
+    def test_resolve_caller_default_timeout_is_30s(self) -> None:
+        """No explicit timeout_s arg -> the historical 30s default, so
+        every pre-R263 caller (runner_v2, ab_judge) keeps its tuning."""
+        import inspect
+
+        from evals.judge.runner import _resolve_caller
+        sig = inspect.signature(_resolve_caller)
+        assert sig.parameters["timeout_s"].default == 30.0
 
     def test_anthropic_no_key_returns_judge_error(
         self, monkeypatch: pytest.MonkeyPatch,

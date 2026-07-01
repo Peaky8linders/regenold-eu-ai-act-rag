@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 # (Art. 25(2) cooperation-duty re-anchor + real 25(4) written-agreement
 # clause, Art. 99(4) closed enumeration, Art. 79/109 Reg-2019/1020
 # Art. 3(19) qualification).
-KB_VERSION = "2024.1689.v17"
+KB_VERSION = "2024.1689.v18"
 
 
 @dataclass(frozen=True)
@@ -879,6 +879,14 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
         # actor-less stub ("emotion-recognition systems must inform exposed
         # persons") invited "providers" as the default subject in polished
         # prose — Art. 50(3) and 50(4) are DEPLOYER duties.
+        # R263 Fix 3: Art. 50(4) has TWO disclosure duties, not one — the
+        # deepfake (image/audio/video) duty AND a separate text-generation
+        # duty for content published on matters of public interest, each
+        # with its own exceptions. The stub previously named only the
+        # deepfake duty, so a question about the public-interest text duty
+        # and its two exceptions (law-enforcement-authorised use; human
+        # review/editorial control) got a verdict that named the exceptions
+        # existed without naming what they were.
         "summary": (
             "Art. 50: Transparency obligations split by actor: providers "
             "must ensure AI systems interacting with natural persons "
@@ -887,7 +895,15 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "(Art. 50(2)); deployers must inform exposed persons when "
             "operating emotion-recognition or biometric-categorisation "
             "systems (Art. 50(3)) and must label deepfakes as artificially "
-            "generated or manipulated (Art. 50(4))."
+            "generated or manipulated (Art. 50(4)). Art. 50(4) also requires "
+            "deployers who use an AI system to generate or manipulate text "
+            "published to inform the public on matters of public interest "
+            "to disclose that the text was artificially generated or "
+            "manipulated; this disclosure duty does not apply where the use "
+            "is authorised by law to detect, prevent, investigate or "
+            "prosecute criminal offences, or where the content has "
+            "undergone human review or editorial control and a natural or "
+            "legal person holds editorial responsibility for publishing it."
         ),
     },
     "Art. 53": _KBEntry(

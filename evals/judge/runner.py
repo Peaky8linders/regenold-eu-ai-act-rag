@@ -474,17 +474,24 @@ def _call_judge_with_retry(
 # ── Per-row driver ──────────────────────────────────────────────────────
 
 
-def _resolve_caller(provider: str) -> Callable[[str], dict[str, Any]]:
+def _resolve_caller(provider: str, timeout_s: float = 30.0) -> Callable[[str], dict[str, Any]]:
     """Pick the per-axis judge call function based on the CLI ``--provider``
-    flag. Defaults to the wrapper path for backwards-compat."""
+    flag. Defaults to the wrapper path for backwards-compat.
+
+    R263 — ``timeout_s`` is now threaded through (default unchanged at
+    30s, matching the historical ``claude-sonnet-4-6`` tuning). Newer /
+    reasoning-enabled judge models (e.g. ``claude-sonnet-5``) routinely
+    run 20-60s+ per call over the live wrapper/tunnel — pass a larger
+    value via ``--timeout`` for those.
+    """
     if provider == "anthropic":
-        return _call_judge_anthropic
+        return lambda p: _call_judge_anthropic(p, timeout_s=timeout_s)
     if provider == "groq":
-        return _call_judge_groq
+        return lambda p: _call_judge_groq(p, timeout_s=timeout_s)
     # "wrapper" or anything else falls back to the wrapper (historical
     # default) — runner_v2 / bench-runner sidecars produced pre-R66-C
     # all assume the wrapper path is active.
-    return _call_judge_sonnet
+    return lambda p: _call_judge_sonnet(p, timeout_s=timeout_s)
 
 
 def _judge_row(
@@ -539,9 +546,10 @@ def _run_judge(
     concurrency: int,
     verbose: bool,
     provider: str,
+    timeout_s: float = 30.0,
 ) -> list[dict[str, Any]]:
     article_summaries = _load_article_summaries()
-    caller = _resolve_caller(provider)
+    caller = _resolve_caller(provider, timeout_s)
     out: list[dict[str, Any] | None] = [None] * len(rows)
     completed = 0
     lock = threading.Lock()
@@ -677,6 +685,7 @@ def run(
     concurrency: int = 2,
     verbose: bool = False,
     provider: str = "wrapper",
+    timeout_s: float = 30.0,
     out_dir: Path | None = None,
 ) -> dict[str, Any]:
     # Groq free-tier TPM constraints require sequential evaluation.
@@ -710,7 +719,7 @@ def run(
         flush=True,
     )
     t0 = time.monotonic()
-    judged = _run_judge(rows, concurrency, verbose, provider)
+    judged = _run_judge(rows, concurrency, verbose, provider, timeout_s)
     elapsed_s = round(time.monotonic() - t0, 2)
     finished_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -828,6 +837,15 @@ def main(argv: list[str] | None = None) -> int:
             "what the provider accepts."
         ),
     )
+    parser.add_argument(
+        "--timeout", type=float, default=30.0,
+        help=(
+            "Per-call timeout in seconds (default 30, tuned for "
+            "claude-sonnet-4-6). Newer/reasoning-enabled judge models "
+            "(e.g. claude-sonnet-5) routinely need 60-90s over the live "
+            "wrapper/tunnel — raise this accordingly."
+        ),
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
     set_judge_model(args.model)
@@ -836,6 +854,7 @@ def main(argv: list[str] | None = None) -> int:
         label=args.label,
         rows_limit=args.rows_limit,
         concurrency=args.concurrency,
+        timeout_s=args.timeout,
         verbose=args.verbose,
         provider=args.provider,
     )

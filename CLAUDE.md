@@ -8825,6 +8825,176 @@ touched-surface engine tests green (the 3 R142 headroom tests re-pinned to
 2048). The wins land LIVE on the Opus Stage-2 path (the bench is the regression
 guard); a post-deploy live re-judge of the 99-row set confirms the lift.
 
+## Round 263 — Sonnet-5 judge on the live production + Antifragile datasets: closes R257's deferred correctness misses (2026-06-30 / 2026-07-01)
+
+Operator directive: launch live evals against the attached production Q&A
+dump (96-row `/ask` audit, 2026-06-29) + the 20-question Antifragile review,
+using a **Sonnet-5** LLM judge (unbiased, adversarial-triage persona +
+calibrated 4-axis judge) scored against the Regenold competition metrics,
+then ship the validated fixes via subagents without regressing anything.
+
+### Judge infrastructure
+
+* **`evals/regenold/production_audit_20260629.py`** (new) — parses the
+  attached markdown (96 production rows + the 20 Antifragile rows, each with
+  an embedded expert critique) into a judge-compatible sidecar. Strips the
+  human critique before judging so the calibrated judge stays blind to it;
+  a companion `-raw.json` keeps the critique for triage.
+* **`evals/judge/adversarial_triage.py`** (new) — a freeform adversarial
+  "find issues aggressively" LLM pass distinct from the calibrated 4-axis
+  judge (`{issues: [{category, severity, confidence, evidence,
+  suggested_fix}], overall_verdict}` per row).
+* **`evals/judge/runner.py`** — `_resolve_caller` / `_run_judge` / `run` /
+  the CLI now accept a `--timeout` (default 30 s), since Sonnet 5 needs
+  60-90 s+ per call vs the historical 30 s tuned for `claude-sonnet-4-6`.
+* **`evals/regenold/run_r263_live_reprobe.py`** (new) — re-asks a list of
+  questions fresh against the CURRENT system (TestClient + the Claude Max
+  wrapper) rather than judging the STALE captured "Live answer" text, which
+  predates dozens of fix rounds and mostly re-litigates already-fixed bugs.
+
+### Findings — R257's own deferred list, closed
+
+The 20 Antifragile questions + the 6 R257-deferred production misses were
+re-probed live. Two genuine, currently-live defects surfaced (both R257's
+own "Deferred (honest)" bullet named: *"#11 testing-data def, #19 deepfake
+def, #12/#27 admin-justice/election specifics"*):
+
+1. **"testing data" / "deep fake" definitional questions lose to a
+   topic-keyword or BM25 route** — `_KEYWORD_ENTITY_MAP`'s `deepfake`/`deep
+   fake` → Art. 50 entries and a BM25 hit on the unrelated Art. 52 GPAI-
+   systemic-notification text shadow the engine's OWN definitional machinery
+   (`classify_question == "definition"` + `definition_citation_for_question`
+   resolving the term), which already computes the correct Art. 3.N citation
+   but never gets a chance to surface it.
+2. **Annex III point 8 (administration of justice / democratic processes)
+   has no dedicated verdict** — "is an AI system that assists a judicial
+   authority... high-risk?" and "is an AI system that influences an
+   election... high-risk?" fell through to generic retrieval instead of the
+   Annex III(8)(a)/(b) sub-point split.
+3. **A separate technical-documentation-*assessment-certificate*
+   concept** (the notified body's Annex VII conformity-assessment
+   certificate) was indistinguishable from the provider's own Art. 11 /
+   Annex IV technical documentation.
+4. **Article 50(4) stub named only the deep-fake disclosure duty**, not the
+   separate public-interest-text disclosure duty and its two exceptions
+   (law-enforcement authorisation; human review / editorial control).
+
+### The fixes shipped
+
+* **Fix 1** — `app/engines/graph_rag.py`: two new curated intercepts,
+  `_detect_annex_iii_8_admin_justice_inquiry` /
+  `_detect_annex_iii_8_election_inquiry`, each grounded in verbatim Annex
+  III(8)(a)/(b) text, refs `[Annex III.8, Annex III.8.a/.b, Article 6]`.
+* **Fix 2** — `app/engines/_graph_rag_data.py` + `app/integrations/
+  regenold/scope.py`: three new multi-word keyword-entity entries routing
+  "technical documentation assessment certificate" → **Annex VII**, additive
+  alongside (not instead of) the existing "technical documentation" → Art.
+  11/Annex IV entry.
+* **Fix 3** — `app/data/kb.py` Art. 50 stub: added the Art. 50(4)
+  public-interest-text disclosure duty + its two exceptions, verified
+  verbatim against the regulation text. `KB_VERSION` bumped `v17` → `v18`
+  + signature pin updated (R56-A lint).
+* **Fix A — generalised Art. 3 definitional entity rescue**
+  (`app/engines/graph_rag.py::_deterministic_parse`) — mirrors the existing
+  R127 role-definitional intercept (`"What is a deployer?"` → lead with
+  Art. 3) to EVERY Art. 3 defined term, gated on
+  `REGENOLD_DEFINITIONAL_ART3_GENERALIZE` (default ON).
+* **Fix C — multi-clause definitional-question rescue**
+  (`app/engines/sentence_index.py::select_definition_sentence`) — a new
+  quote-anchored pattern in `_DEFINITION_TERM_PATTERNS` extracts the term
+  from *"What is the meaning [and purpose] of 'X'…?"* even when trailing
+  clauses follow (the deep-fake / testing-data live-failure shape).
+
+### R263.1 — self-caught regression, fixed within the same round
+
+A rigorous davidath A/B (per the project's hard rule #6 discipline — verify
+before shipping, don't trust "looks additive") found Fix A's **first cut**
+gated on `classify_question(question) == "definition"`, which mistags
+several obligation / duration / deadline / procedure-shaped "What is...?"
+questions as definitional (the SAME upstream classifier quirk Fix C already
+had to work around). On those rows, `entities.insert(0, "Art. 3")` was **not
+purely additive** — putting Art. 3 at the head of the entity list
+demonstrably DISPLACED the correct multi-article retrieval chain (a
+market-surveillance-authority procedure question and a technical-doc
+retention-period question both went Ref Loose 1.0 → 0.0; an AI-literacy
+duty question and two sandbox/real-world-testing duration questions got
+diluted). A first attempt at an obligation/duration keyword blacklist still
+missed a **new** "What is the procedure if...?" phrasing — vocabulary
+blacklisting is whack-a-mole. **Final fix**: gate on
+`select_definition_sentence(question) is not None` instead of
+`classify_question` — the SAME purpose-built, already-battle-tested
+extraction (`_extract_definition_term` against `_DEFINITION_TERM_PATTERNS`)
+that generates the definitional ANSWER TEXT, so a question only passes this
+gate if the engine's own definitional machinery would also answer it as a
+definition. Verified against every known-bad row (all return None) and
+every intended-positive row (deep-fake / testing-data / deployer / provider
+/ AI-system — all resolve).
+
+### Verification (rigorous, git-stash-isolated)
+
+* **davidath — byte-identical to the pre-round baseline on every row**:
+  0/135 unique QA rows differ (`pred_answer` + `pred_refs`), 0/339
+  scenario rows differ. Ans Strict 0.4037 / Ans Loose 0.1404 / Ans
+  Conciseness 0.196 / Ref Loose 0.8394 / Ref Strict 0.5543 / Ref
+  Conciseness 0.4395 / Tone 1.0 (QA); OVERALL (476) Ans Strict 0.3539 / Ref
+  Loose 0.597 / Ref Strict 0.4748 / Tone 1.0 / multi-turn 20/20.
+* **Full suite (4477 tests) — byte-identical failure SET** vs a
+  `git stash -u`-isolated clean baseline under the identical env: 51/51
+  failures both sides, 0 new, 0 fixed. All 51 are the documented
+  pre-existing `provider=cli`-defeats-Stage-2 env artifact (confirmed: the
+  same 51 tests all pass under the clean/default env).
+* `evals.regenold.runner` (276) — **255/255 (100%)**, every category.
+* `evals.regenold.runner_v2 --local --probe-oos` — **21/21, 0 leaks**.
+* **Live verification** (TestClient + the Claude Max wrapper, hard rule
+  #6 point 1) — all 8 target questions probed end-to-end: the 2 Annex
+  III(8) questions, the Annex VII certificate question, the Art. 50(4)
+  public-interest question, the deep-fake + testing-data definitional
+  questions, and the 2 regression-check questions (market-surveillance
+  procedure, AI-literacy duty) ALL return correct, complete, faithfully-
+  cited answers — and the 2 regression-check questions correctly do **not**
+  trigger the Art-3 rescue (no spurious `Article 3.x` padding).
+* `evals.harness.ab_judge` live pairwise (Fix A's env toggle, `paper_st_v4`
+  + `paper_tricky_v4`, single-turn, n=20, `--judge-provider wrapper`) —
+  the first attempt surfaced R263.2 below (cross-arm cache contamination);
+  the corrected re-run was in progress (baseline arm complete, branch arm
+  underway, zero divergence observed so far on the questions scored) when
+  the session boundary killed the long-running wrapper process twice in a
+  row. Not repeated a third time: Fix A's target rows aren't IN this
+  generic probe set (they're custom production-audit questions), so this
+  run was always a no-regression check on OTHER questions, not a
+  demonstration of the win — and the win is already directly proven by the
+  live-verification bullet above (the two regression-check questions in
+  THAT probe correctly show zero behavioural change). Queued as a fast
+  follow-up rerun, not a merge blocker.
+
+### R263.2 — cache-key omission caught while building the ab_judge A/B
+
+Building the Fix-A pairwise A/B (toggling `REGENOLD_DEFINITIONAL_ART3_
+GENERALIZE` within one process) reproduced the EXACT class of bug this
+project already named once (R149's own comment: *"its omission corrupted
+the same-process ab_judge two-arm run (cross-arm cache contamination)"*):
+the branch arm's 20 rows all returned in under a second, identical to the
+baseline arm's answers, because `_engine_cache_key` never folded in
+`REGENOLD_DEFINITIONAL_ART3_GENERALIZE` — the branch arm was silently
+served the baseline arm's CACHED `GraphRAGResponse` for every repeated
+question. Fixed per the R30/R56/R79/R81-N.1/R149 doctrine ("any input that
+flips engine behaviour must be in the cache key"): added the flag to
+`app/routes/regenold.py::_engine_cache_key`'s `engine_flags` tuple.
+davidath byte-identical before/after (confirmed twice: QA-only and the
+full pytest suite, both exact-match against the same clean baseline) — the
+bench never serves an in-run cache hit (R28), so the fix changes cache
+IDENTITY, never a computed answer, on the deterministic path. The genuine
+value is closing the exact live testing hazard R149 already flagged once
+but this specific flag had reintroduced.
+
+### Where the wins land
+
+The davidath bench is the regression guard (byte-identical by construction
+— none of these 5 narrow fixes fire on any of the 476 davidath rows), not
+the win surface. All 5 fixes close R257's own deferred correctness-miss
+list; the live verification above confirms each one now produces the
+correct answer end-to-end through the deployed Stage-2 Opus/Sonnet path.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

@@ -1274,6 +1274,17 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "quality management system": "Art. 17",
     "qms": "Art. 17",
     "technical documentation": "Annex IV",
+    # R263 Fix 2 — the longer phrase wins the span match (the alternation
+    # regex sorts keys descending by length and `re.finditer` consumes the
+    # matched span), so "technical documentation assessment certificate"
+    # anchors Annex VII WITHOUT the shorter "technical documentation" entry
+    # above also firing on the same span. Distinct concept from the bare
+    # "technical documentation" (-> Annex IV, the provider's own Art. 11
+    # dossier) and from bare "certificate" (-> Art. 44, certificate
+    # validity/lifecycle, handled elsewhere) — this is the notified body's
+    # Annex VII conformity-assessment certificate.
+    "technical documentation assessment certificate": "Annex VII",
+    "documentation assessment certificate": "Annex VII",
     "human oversight": "Art. 14",
     "data governance": "Art. 10",
     "transparency obligation": "Art. 13",

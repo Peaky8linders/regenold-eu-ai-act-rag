@@ -1527,6 +1527,59 @@ def _deterministic_parse(question: str) -> GraphQuery:
     except Exception as exc:  # noqa: BLE001 — fail-soft
         logger.debug("r127_role_definitional_anchor_failed: %s", exc)
 
+    # R263 — generalise the R127 role-definitional intercept to EVERY Art. 3
+    # defined term, not just roles. Live re-probe found "What is a deep fake
+    # according to the EU AI Act?" and "What is the meaning and purpose of
+    # 'testing data'...?" both shadowed by a topic-keyword route (the
+    # _KEYWORD_ENTITY_MAP "deepfake"/"deep fake" -> Art. 50 entries below;
+    # "testing data" loses to a BM25 hit on the unrelated Art. 52 GPAI-
+    # systemic-notification text) even though the engine's OWN definitional
+    # machinery (classify_question == "definition" AND
+    # definition_citation_for_question resolving the term) already computes
+    # the correct Art. 3.N answer and just never gets a chance to surface it.
+    #
+    # R263.1 — a davidath A/B (gate isolated via the env var below) proved
+    # the FIRST cut's gate (``classify_question(question) == "definition"``)
+    # too permissive: the classifier mistags several obligation / duration /
+    # deadline / procedure-shaped "What is ..." questions as "definition"
+    # (the same upstream classifier quirk R263's ``select_definition_sentence``
+    # fix already worked around), and on those rows
+    # ``entities.insert(0, "Art. 3")`` is NOT purely additive — putting
+    # Art. 3 at the head of the entity list demonstrably DISPLACED the
+    # correct multi-article retrieval chain (a market-surveillance-authority
+    # procedure question: Ref Loose 1.0 -> 0.0; a technical-doc retention-
+    # period question: Ref Loose 1.0 -> 0.0) rather than just padding it (an
+    # AI-literacy duty question, two sandbox-duration questions, a
+    # real-world-testing-duration question). A first attempt at a negative
+    # keyword guard (required/duration/timeframe/period/...) still missed a
+    # "What is the procedure if ...?" row, because new non-definitional
+    # phrasings keep surfacing — vocabulary blacklisting is whack-a-mole.
+    #
+    # Fix: gate on ``select_definition_sentence(question) is not None``
+    # instead of ``classify_question``. It shares the SAME purpose-built,
+    # already-battle-tested extraction (``_extract_definition_term`` against
+    # ``_DEFINITION_TERM_PATTERNS``) that ``select_definition_sentence`` uses
+    # to generate the definitional ANSWER TEXT — so a question only passes
+    # this gate if the engine's own definitional machinery would also answer
+    # it as a definition. Verified against every known-bad row (returns
+    # None for all of them) and every intended-positive row (deep-fake,
+    # testing-data, deployer, provider, AI-system — all resolve).
+    if os.getenv("REGENOLD_DEFINITIONAL_ART3_GENERALIZE", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    ):
+        try:
+            from app.data.definitions import definition_citation_for_question  # noqa: PLC0415
+            from app.engines.sentence_index import select_definition_sentence  # noqa: PLC0415
+
+            if (
+                "Art. 3" not in entities
+                and select_definition_sentence(question) is not None
+                and definition_citation_for_question(question) is not None
+            ):
+                entities.insert(0, "Art. 3")
+        except Exception as exc:  # noqa: BLE001 — fail-soft
+            logger.debug("r263_definitional_art3_anchor_failed: %s", exc)
+
     # R112 — collision-prone entries (the "fines" → "defines" family) are
     # matched with word boundaries via _KEYWORD_ENTITY_BOUNDARY_RES; every
     # other entry keeps the substring test (plural/inflected recall).
@@ -2688,6 +2741,80 @@ def _detect_systems_or_models_inquiry(question: str) -> bool:
     )
 
 
+# Annex III point 8 — "Administration of justice and democratic processes"
+# sub-point intercept (R263 Fix 1). Two live questions returned generic
+# content instead of point 8's own sub-points:
+#   - "what are the high-risk uses ... under Administration of justice and
+#     democratic processes" -> the generic flat 8-category Annex III list
+#     instead of point 8's own (a)/(b) text.
+#   - "how are AI systems intended to influence an election or referendum
+#     classified, and what exception is given for certain campaign-related
+#     tools" -> a generic Art. 6(3) derogation instead of the Annex III(8)(b)
+#     campaign-tooling carve-out the question explicitly asks about.
+#
+# Verbatim Annex III point 8 (get_provision_text("Annex III.8")):
+#   "(a) AI systems intended to be used by a judicial authority or on their
+#   behalf to assist a judicial authority in researching and interpreting
+#   facts and the law and in applying the law to a concrete set of facts, or
+#   to be used in a similar way in alternative dispute resolution; (b) AI
+#   systems intended to be used for influencing the outcome of an election or
+#   referendum or the voting behaviour of natural persons in the exercise of
+#   their vote in elections or referenda. This does not include AI systems to
+#   the output of which natural persons are not directly exposed, such as
+#   tools used to organise, optimise or structure political campaigns from an
+#   administrative or logistical point of view."
+#
+# Two narrow gates so the generic "what are the Annex III high-risk
+# categories" overview (a legitimately DIFFERENT, already-correct flat-list
+# answer) never fires this: each gate requires BOTH a question-shape cue
+# (what/how/which) AND the specific point-8 topic phrase (administration of
+# justice / democratic processes / election / referendum / campaign /
+# judicial). 0 davidath QA + 0 davidath scenario hits for any of these
+# phrases (verified against the dataset), so the bench is byte-identical.
+_ANNEX_III_8_ADMIN_JUSTICE_TOPIC_RE = re.compile(
+    r"administration\s+of\s+justice|democratic\s+process(?:es)?"
+    r"|judicial\s+authorit|alternative\s+dispute\s+resolution",
+    re.IGNORECASE,
+)
+_ANNEX_III_8_ELECTION_TOPIC_RE = re.compile(
+    r"\belection\b|\breferend(?:um|a)\b|\bvoting\s+behaviour\b"
+    r"|\bcampaign(?:s|-related)?\b",
+    re.IGNORECASE,
+)
+_ANNEX_III_8_QUESTION_SHAPE_RE = re.compile(
+    r"^\s*(?:what|which|how|are|is|does|do)\b", re.IGNORECASE,
+)
+
+
+def _detect_annex_iii_8_admin_justice_inquiry(question: str) -> bool:
+    """True iff the question asks specifically about Annex III point 8's
+    administration-of-justice / democratic-processes sub-points, not the
+    generic flat list of the 8 Annex III high-risk categories."""
+    raw_q = question or ""
+    marker = "Latest question:\n"
+    idx = raw_q.rfind(marker)
+    if idx >= 0:
+        raw_q = raw_q[idx + len(marker):]
+    raw_q = raw_q.strip()
+    if not _ANNEX_III_8_QUESTION_SHAPE_RE.search(raw_q):
+        return False
+    return bool(_ANNEX_III_8_ADMIN_JUSTICE_TOPIC_RE.search(raw_q))
+
+
+def _detect_annex_iii_8_election_inquiry(question: str) -> bool:
+    """True iff the question asks how election/referendum-influencing AI
+    systems are classified, including the campaign-tooling carve-out."""
+    raw_q = question or ""
+    marker = "Latest question:\n"
+    idx = raw_q.rfind(marker)
+    if idx >= 0:
+        raw_q = raw_q[idx + len(marker):]
+    raw_q = raw_q.strip()
+    if not _ANNEX_III_8_QUESTION_SHAPE_RE.search(raw_q):
+        return False
+    return bool(_ANNEX_III_8_ELECTION_TOPIC_RE.search(raw_q))
+
+
 # High-risk penalties intercept (R111 Q9). A penalty/fine question about
 # high-risk systems must surface the Article 99(4) ceiling + the 99(6) SME
 # rule, not the generic 99(1) opener. Requires a penalty/fine subject AND a
@@ -2816,6 +2943,8 @@ def _is_curated_authoritative_intercept(question: str) -> bool:
         or _detect_high_risk_penalty_inquiry(question)
         or _detect_emotion_classification_inquiry(question)
         or _detect_systems_or_models_inquiry(question)
+        or _detect_annex_iii_8_admin_justice_inquiry(question)
+        or _detect_annex_iii_8_election_inquiry(question)
     )
 
 
@@ -3088,6 +3217,57 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
                 "regimes."
             ),
             "refs": ["Art. 2", "Art. 3", "Art. 51"],
+        }
+        _seed_classification_obligations(context, verdict, question)
+        return verdict["answer"]
+
+    # Annex III point 8 — administration-of-justice sub-points (R263 Fix 1).
+    # A question that names "administration of justice" / "democratic
+    # processes" / "judicial authority" wants point 8's OWN sub-points, not
+    # the flat 8-category Annex III overview. Verbatim grounded in Annex
+    # III(8)(a).
+    if _detect_annex_iii_8_admin_justice_inquiry(question):
+        verdict = {
+            "name": "annex_iii_8_admin_justice",
+            "answer": (
+                "Annex III point 8 lists two high-risk use cases under "
+                "administration of justice and democratic processes. Point "
+                "8(a) covers AI systems intended to be used by a judicial "
+                "authority, or on its behalf, to assist in researching and "
+                "interpreting facts and the law and in applying the law to "
+                "a concrete set of facts, or to be used similarly in "
+                "alternative dispute resolution. Point 8(b) covers AI "
+                "systems intended to influence the outcome of an election "
+                "or referendum, or the voting behaviour of natural persons "
+                "in exercising their vote, with a carve-out for tools that "
+                "only organise, optimise or structure political campaigns "
+                "from an administrative or logistical point of view."
+            ),
+            "refs": ["Annex III.8", "Annex III.8.a", "Annex III.8.b"],
+        }
+        _seed_classification_obligations(context, verdict, question)
+        return verdict["answer"]
+
+    # Annex III point 8(b) — election/referendum classification + the
+    # campaign-tooling exception (R263 Fix 1). The question explicitly asks
+    # for the exception, so the answer must name it (not the generic
+    # Article 6(3) derogation, a different and broader provision).
+    if _detect_annex_iii_8_election_inquiry(question):
+        verdict = {
+            "name": "annex_iii_8_election",
+            "answer": (
+                "Under Annex III point 8(b), AI systems intended to be used "
+                "to influence the outcome of an election or referendum, or "
+                "the voting behaviour of natural persons in exercising "
+                "their vote, are classified as high-risk under Article "
+                "6(2). The exception applies to AI systems whose output "
+                "natural persons are not directly exposed to, such as "
+                "tools used only to organise, optimise or structure "
+                "political campaigns from an administrative or logistical "
+                "point of view; those campaign-tooling systems fall "
+                "outside this high-risk category."
+            ),
+            "refs": ["Annex III.8", "Annex III.8.b", "Art. 6"],
         }
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]

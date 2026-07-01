@@ -588,6 +588,24 @@ def _strip_leading_enumerator(sentence: str | None) -> str | None:
 # each keyword to a whole following word fixes every term that happens to
 # contain "in"/"under"/"of" as a substring.
 _DEFINITION_TERM_PATTERNS: tuple[re.Pattern[str], ...] = (
+    # R263 — "What is the meaning/definition/purpose [and meaning/...] of
+    # 'X'?" with the term QUOTED mid-question. The generic "what is the
+    # definition of X" / "what is X" patterns below require the term to
+    # immediately follow the lead-in (their capture charset excludes quote
+    # characters), so a quoted term preceded by extra words ("the meaning
+    # AND PURPOSE of 'testing data'") falls through both — this pattern
+    # anchors on the QUOTE itself rather than a fixed word position, so it
+    # is robust to which descriptive noun(s) precede "of". Quote-anchored
+    # (not a bare substring scan) — narrow and safe; does not fire on an
+    # unquoted mention of a defined term inside an unrelated question
+    # (e.g. a duration/procedure question that merely mentions "AI
+    # systems" in passing).
+    re.compile(
+        r"\bwhat\s+is\s+the\s+(?:meaning|definition|purpose)"
+        r"(?:\s+and\s+(?:meaning|definition|purpose))?\s+of\s+"
+        r"['‘’\"](?P<term>[\w\-\s]+?)['‘’\"]",
+        re.IGNORECASE,
+    ),
     # "What is the definition of (an|the|a) X?"
     re.compile(
         r"\bdefinition\s+of\s+(?:an?\s+|the\s+)?['‘’\"]?(?P<term>[\w\-\s]+?)"
@@ -712,26 +730,25 @@ def select_definition_sentence(question: str) -> str | None:
     direct answer, already in gold-length range).
     """
     term = _extract_definition_term(question)
-    if not term:
-        return None
-    # R102 — expand the extracted term into canonical-key candidates
-    # (hyphen→space, "artificial intelligence"→"ai", "system of X"→"X
-    # system", GPAI model/system). Each candidate then runs the same
-    # exact / leading-article / plural tolerance the single term used to.
-    for term_low in _canonicalise_definition_term(term):
-        # Exact match first.
-        if term_low in ART_3_DEFINITIONS:
-            return _strip_trailing_clauses(ART_3_DEFINITIONS[term_low])
-        # Leading-article variants ("a deployer" → "deployer").
-        for prefix in ("a ", "an ", "the "):
-            if term_low.startswith(prefix) and term_low[len(prefix):] in ART_3_DEFINITIONS:
-                return _strip_trailing_clauses(
-                    ART_3_DEFINITIONS[term_low[len(prefix):]]
-                )
-        # Pluralisation tolerance — gold defs are singular ("provider"
-        # not "providers"), questions sometimes plural.
-        if term_low.endswith("s") and term_low[:-1] in ART_3_DEFINITIONS:
-            return _strip_trailing_clauses(ART_3_DEFINITIONS[term_low[:-1]])
+    if term:
+        # R102 — expand the extracted term into canonical-key candidates
+        # (hyphen→space, "artificial intelligence"→"ai", "system of X"→"X
+        # system", GPAI model/system). Each candidate then runs the same
+        # exact / leading-article / plural tolerance the single term used to.
+        for term_low in _canonicalise_definition_term(term):
+            # Exact match first.
+            if term_low in ART_3_DEFINITIONS:
+                return _strip_trailing_clauses(ART_3_DEFINITIONS[term_low])
+            # Leading-article variants ("a deployer" → "deployer").
+            for prefix in ("a ", "an ", "the "):
+                if term_low.startswith(prefix) and term_low[len(prefix):] in ART_3_DEFINITIONS:
+                    return _strip_trailing_clauses(
+                        ART_3_DEFINITIONS[term_low[len(prefix):]]
+                    )
+            # Pluralisation tolerance — gold defs are singular ("provider"
+            # not "providers"), questions sometimes plural.
+            if term_low.endswith("s") and term_low[:-1] in ART_3_DEFINITIONS:
+                return _strip_trailing_clauses(ART_3_DEFINITIONS[term_low[:-1]])
     return None
 
 

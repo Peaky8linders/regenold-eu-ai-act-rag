@@ -1379,6 +1379,16 @@ def _engine_cache_key(
             # doctrine — and its omission corrupted the same-process ab_judge
             # two-arm run (cross-arm cache contamination).
             "REGENOLD_LOWER_RISK_VERDICTS",
+            # R263 — the generalised Art. 3 definitional entity rescue
+            # (graph_rag._deterministic_parse) inserts "Art. 3" as a
+            # retrieval entity when it fires, flipping
+            # GraphRAGResponse.references (and therefore the answer). Same
+            # R149 lesson: an ab_judge two-arm A/B toggling this env var
+            # in the SAME process without it in the cache key served the
+            # baseline arm's cached response verbatim for the branch arm
+            # (cross-arm cache contamination) — caught live, not
+            # theoretical.
+            "REGENOLD_DEFINITIONAL_ART3_GENERALIZE",
         )
     )
     import json

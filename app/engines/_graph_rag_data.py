@@ -111,6 +111,19 @@ _KEYWORD_ENTITY_MAP: tuple[tuple[str, str], ...] = (
     ("technical documentation", "Art. 11"),
     ("system architecture", "Art. 11"),
     ("training methodology", "Art. 11"),
+    # R263 Fix 2 — "technical documentation assessment certificate" is a
+    # distinct concept from the GENERAL technical documentation Art. 11
+    # requires: it is the document a NOTIFIED BODY issues under Annex VII
+    # (Chapter III Section 2 conformity assessment), not the provider's own
+    # Art. 11 dossier. This is additive (it ALSO contains the substring
+    # "technical documentation" so Art. 11 still fires above — both
+    # anchors are correct candidates for a question about the certificate's
+    # contents). Narrow enough not to fire on bare "certificate" (which
+    # routes to Art. 44, certificate validity/lifecycle) or bare "technical
+    # documentation" (Art. 11, the general dossier requirement) alone.
+    ("technical documentation assessment certificate", "Annex VII"),
+    ("documentation assessment certificate", "Annex VII"),
+    ("assessment certificate contain", "Annex VII"),
     # High-risk classification (Art. 6 / Annex III).
     # NB: "biometric identification" routes Art. 5 FIRST (real-time RBI
     # in public spaces is prohibited per Art. 5(1)(h)) and Annex III(1)

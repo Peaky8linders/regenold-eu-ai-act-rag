@@ -381,8 +381,18 @@ _EXPECTED_BM25_ONLY: dict[str, list[str]] = {
     "We are a provider of an AI chatbot for customer service.": [
         "Art. 16", "Art. 49", "Annex X", "Art. 3", "Art. 1",
     ],
+    # R263 Fix 3 lengthened the bare ``Art. 50`` KB stub's summary (new
+    # public-interest text-generation duty + exceptions sentence). BM25's
+    # length-normalisation slightly dilutes a longer doc's score, so the
+    # already-existing tighter ``Art. 50.3`` sub-entry (whose summary is
+    # topically tight to "emotion-recognition" / "biometric-categorisation")
+    # now narrowly outranks the bare ``Art. 50`` doc, which also drops out
+    # of the top-5 in favour of the ``Art. 3`` definitional virtual doc.
+    # Re-captured after the KB_VERSION v17 -> v18 content bump; this is the
+    # documented refactor-equivalence pin reacting to a deliberate content
+    # edit, not a regression in the entity-extraction refactor it guards.
     "Are emotion recognition systems prohibited in the workplace?": [
-        "Annex III", "Art. 5", "Art. 50", "Art. 50.3", "Art. 13",
+        "Annex III", "Art. 5", "Art. 50.3", "Art. 13", "Art. 3",
     ],
     "Who must register the system in the EU database?": [
         "Art. 49", "Art. 16", "Art. 22", "Art. 71", "Art. 83",
@@ -390,8 +400,11 @@ _EXPECTED_BM25_ONLY: dict[str, list[str]] = {
     "What records must deployers retain and for how long?": [
         "Art. 26", "Art. 61", "Annex IX", "Annex X", "Art. 10",
     ],
+    # R263 Fix 3 — see the matching comment above; the lengthened bare
+    # ``Art. 50`` doc's diluted BM25 score now drops it out of this row's
+    # top-5, replaced by ``Art. 96`` (Right to lodge a complaint).
     "transparency obligations for limited-risk systems": [
-        "Art. 13", "Art. 6", "Art. 1", "Art. 2", "Art. 50",
+        "Art. 13", "Art. 6", "Art. 1", "Art. 2", "Art. 96",
     ],
     "What is the definition of a general-purpose AI model?": [
         "Art. 53", "Art. 3", "Art. 51", "Art. 90", "Art. 92",
@@ -404,8 +417,11 @@ _EXPECTED_DEFAULT_ENV: dict[str, list[str]] = {
     "What are the obligations of importers of high-risk AI systems?": [
         "Art. 23", "Art. 20", "Art. 6", "Art. 95", "Art. 13",
     ],
+    # R263 Fix 3 — see the matching comment in ``_EXPECTED_BM25_ONLY``
+    # above; same re-rank, different tail slot (the dense paths fill the
+    # 5th slot with ``Art. 50`` here instead of BM25's ``Art. 3``).
     "Are emotion recognition systems prohibited in the workplace?": [
-        "Annex III", "Art. 5", "Art. 50", "Art. 50.3", "Art. 13",
+        "Annex III", "Art. 5", "Art. 50.3", "Art. 13", "Art. 50",
     ],
     "What records must deployers retain and for how long?": [
         "Art. 26", "Art. 61", "Annex IX", "Annex X", "Art. 10",

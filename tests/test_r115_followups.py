@@ -211,4 +211,7 @@ class TestR115Art43IntegratedProcedure:
         text = str(EC_CHECKER_OBLIGATION_MAP["Art. 43"])
         assert "43(3)" in text
         assert "MDR" in text or "Medical Device" in text
-        assert KB_VERSION == "2024.1689.v17"
+        # R263 Fix 3 bumped KB_VERSION v17 -> v18 for an unrelated Art. 50
+        # stub edit; the Art. 43(3)/MDR content this test guards is
+        # untouched by that bump, so re-pin to the new value.
+        assert KB_VERSION == "2024.1689.v18"
