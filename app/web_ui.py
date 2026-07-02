@@ -45,11 +45,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Antifragile OS — Lexy Compliance Assistant</title>
+    <title>Lexy · Compliance Assistant</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <!-- Marked.js for Markdown parsing -->
@@ -58,19 +58,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
     <style>
         :root {
-            --bg-primary: #050814;
-            --bg-secondary: #0d1226;
-            --bg-glass: rgba(13, 18, 38, 0.7);
-            --bg-glass-hover: rgba(22, 31, 64, 0.8);
-            --accent-cyan: #00f0ff;
-            --accent-cyan-rgb: 0, 240, 255;
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-glass: rgba(30, 41, 59, 0.7);
+            --bg-glass-hover: rgba(30, 41, 59, 0.8);
+            --accent-cyan: #0ea5e9;
+            --accent-cyan-rgb: 14, 165, 233;
             --accent-blue: #3b82f6;
-            --accent-glow: rgba(0, 240, 255, 0.15);
+            --accent-glow: rgba(14, 165, 233, 0.15);
             --text-primary: #f8fafc;
             --text-secondary: #94a3b8;
             --text-muted: #64748b;
-            --border-glass: rgba(255, 255, 255, 0.08);
-            --border-glow: rgba(0, 240, 255, 0.25);
+            --border-glass: rgba(51, 65, 85, 0.6);
+            --border-glow: rgba(14, 165, 233, 0.25);
             --transition-speed: 0.3s;
             --sidebar-width: 320px;
             --drawer-width: 420px;
@@ -86,9 +86,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             font-family: 'Inter', system-ui, sans-serif;
             background-color: var(--bg-primary);
             background-image:
-                radial-gradient(circle at 0% 0%, rgba(0, 240, 255, 0.06) 0%, transparent 40%),
+                radial-gradient(circle at 0% 0%, rgba(14, 165, 233, 0.06) 0%, transparent 40%),
                 radial-gradient(circle at 100% 100%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
-                radial-gradient(circle at 50% 50%, rgba(13, 18, 38, 0.5) 0%, #050814 100%);
+                radial-gradient(circle at 50% 50%, rgba(30, 41, 59, 0.5) 0%, #0f172a 100%);
             background-attachment: fixed;
             color: var(--text-primary);
             height: 100vh;
@@ -110,13 +110,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             border-radius: 3px;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: rgba(0, 240, 255, 0.3);
+            background: rgba(14, 165, 233, 0.3);
         }
 
         /* Layout */
         .sidebar {
             width: var(--sidebar-width);
-            background: rgba(7, 10, 22, 0.8);
+            background: rgba(2, 6, 23, 0.8);
             border-right: 1px solid var(--border-glass);
             display: flex;
             flex-direction: column;
@@ -136,7 +136,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         .detail-drawer {
             width: var(--drawer-width);
-            background: rgba(7, 10, 22, 0.85);
+            background: rgba(2, 6, 23, 0.85);
             border-left: 1px solid var(--border-glass);
             display: flex;
             flex-direction: column;
@@ -170,21 +170,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .logo-text {
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Instrument Serif', Georgia, serif;
             font-size: 18px;
             font-weight: 700;
             letter-spacing: 0.5px;
-            background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
+            background: linear-gradient(135deg, #fff 0%, #7dd3fc 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
         .logo-badge {
-            background: rgba(0, 240, 255, 0.1);
-            border: 1px solid rgba(0, 240, 255, 0.3);
+            background: rgba(14, 165, 233, 0.1);
+            border: 1px solid rgba(14, 165, 233, 0.3);
             color: var(--accent-cyan);
             font-size: 10px;
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Inter', sans-serif;
             font-weight: 600;
             padding: 2px 6px;
             border-radius: 4px;
@@ -212,7 +212,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             right: -6px;
             bottom: -6px;
             border-radius: 50%;
-            background: radial-gradient(circle, rgba(0, 240, 255, 0.4) 0%, transparent 70%);
+            background: radial-gradient(circle, rgba(14, 165, 233, 0.4) 0%, transparent 70%);
             z-index: -1;
             animation: pulse-glow 3s infinite ease-in-out;
         }
@@ -223,7 +223,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             border-radius: 50%;
             border: 2px solid var(--accent-cyan);
             object-fit: cover;
-            box-shadow: 0 0 20px rgba(0, 240, 255, 0.2);
+            box-shadow: 0 0 20px rgba(14, 165, 233, 0.2);
             background-color: var(--bg-secondary);
         }
 
@@ -240,7 +240,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .avatar-name {
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Instrument Serif', Georgia, serif;
             font-size: 20px;
             font-weight: 600;
             margin-bottom: 4px;
@@ -260,7 +260,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .section-title {
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Inter', sans-serif;
             font-size: 11px;
             font-weight: 600;
             color: var(--text-muted);
@@ -293,7 +293,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         .diagnostic-item:hover {
             background: rgba(255, 255, 255, 0.04);
-            border-color: rgba(0, 240, 255, 0.15);
+            border-color: rgba(14, 165, 233, 0.15);
         }
 
         .diag-label {
@@ -332,10 +332,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         .badge-loading {
             color: var(--accent-cyan);
-            background: rgba(0, 240, 255, 0.1);
+            background: rgba(14, 165, 233, 0.1);
             padding: 2px 6px;
             border-radius: 4px;
-            border: 1px solid rgba(0, 240, 255, 0.2);
+            border: 1px solid rgba(14, 165, 233, 0.2);
             font-size: 10px;
             font-weight: 600;
             animation: pulse-glow 1.5s infinite ease-in-out;
@@ -378,7 +378,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         .form-input {
             width: 100%;
-            background: rgba(5, 8, 20, 0.7);
+            background: rgba(2, 6, 23, 0.7);
             border: 1px solid var(--border-glass);
             border-radius: 6px;
             padding: 8px 10px;
@@ -391,7 +391,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         .form-input:focus {
             border-color: var(--accent-cyan);
-            box-shadow: 0 0 10px rgba(0, 240, 255, 0.15);
+            box-shadow: 0 0 10px rgba(14, 165, 233, 0.15);
         }
 
         .checkbox-input {
@@ -400,7 +400,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             height: 16px;
             border: 1px solid var(--border-glass);
             border-radius: 4px;
-            background: rgba(5, 8, 20, 0.7);
+            background: rgba(2, 6, 23, 0.7);
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -410,7 +410,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         .checkbox-input:checked {
             border-color: var(--accent-cyan);
-            background: rgba(0, 240, 255, 0.15);
+            background: rgba(14, 165, 233, 0.15);
         }
 
         .checkbox-input:checked::after {
@@ -429,7 +429,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: rgba(5, 8, 20, 0.5);
+            background: rgba(2, 6, 23, 0.5);
             backdrop-filter: blur(10px);
         }
 
@@ -440,7 +440,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .workspace-title {
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Inter', sans-serif;
             font-size: 16px;
             font-weight: 600;
         }
@@ -467,10 +467,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .btn-action:hover, .btn-action.active {
-            background: rgba(0, 240, 255, 0.08);
+            background: rgba(14, 165, 233, 0.08);
             border-color: var(--accent-cyan);
             color: var(--accent-cyan);
-            box-shadow: 0 0 10px rgba(0, 240, 255, 0.1);
+            box-shadow: 0 0 10px rgba(14, 165, 233, 0.1);
         }
 
         /* Chat view */
@@ -517,7 +517,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         .assistant-row .msg-avatar {
             border-color: var(--accent-cyan);
-            box-shadow: 0 0 8px rgba(0, 240, 255, 0.2);
+            box-shadow: 0 0 8px rgba(14, 165, 233, 0.2);
         }
 
         .msg-bubble-container {
@@ -543,7 +543,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .assistant-row .msg-bubble {
-            background: rgba(13, 18, 38, 0.65);
+            background: rgba(30, 41, 59, 0.65);
             border: 1px solid var(--border-glass);
             border-bottom-left-radius: 2px;
             color: var(--text-primary);
@@ -602,9 +602,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         .cite-badge {
             display: inline-block;
-            background: rgba(45, 212, 191, 0.15);
+            background: rgba(14, 165, 233, 0.15);
             color: var(--accent-cyan);
-            border: 1px solid rgba(45, 212, 191, 0.3);
+            border: 1px solid rgba(14, 165, 233, 0.3);
             border-radius: 6px;
             padding: 1px 6px;
             font-size: 12px;
@@ -615,9 +615,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .cite-badge:hover {
-            background: rgba(45, 212, 191, 0.25);
-            border-color: rgba(45, 212, 191, 0.5);
-            box-shadow: 0 0 8px rgba(45, 212, 191, 0.2);
+            background: rgba(14, 165, 233, 0.25);
+            border-color: rgba(14, 165, 233, 0.5);
+            box-shadow: 0 0 8px rgba(14, 165, 233, 0.2);
         }
 
         /* Welcome layout */
@@ -638,11 +638,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .welcome-title {
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Instrument Serif', Georgia, serif;
             font-size: 28px;
             font-weight: 800;
             margin-bottom: 12px;
-            background: linear-gradient(135deg, #fff 0%, #93c5fd 50%, #22d3ee 100%);
+            background: linear-gradient(135deg, #fff 0%, #7dd3fc 50%, #0ea5e9 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
@@ -662,7 +662,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .suggestion-card {
-            background: rgba(13, 18, 38, 0.45);
+            background: rgba(30, 41, 59, 0.45);
             border: 1px solid var(--border-glass);
             border-radius: 12px;
             padding: 16px;
@@ -675,14 +675,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .suggestion-card:hover {
-            background: rgba(22, 31, 64, 0.6);
+            background: rgba(30, 41, 59, 0.6);
             border-color: var(--accent-cyan);
-            box-shadow: 0 0 15px rgba(0, 240, 255, 0.1);
+            box-shadow: 0 0 15px rgba(14, 165, 233, 0.1);
             transform: translateY(-2px);
         }
 
         .sug-title {
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Inter', sans-serif;
             font-size: 13px;
             font-weight: 600;
             color: var(--accent-cyan);
@@ -701,7 +701,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .input-area {
             padding: 24px;
             border-top: 1px solid var(--border-glass);
-            background: rgba(5, 8, 20, 0.7);
+            background: rgba(2, 6, 23, 0.7);
             backdrop-filter: blur(10px);
         }
 
@@ -711,7 +711,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             margin: auto;
             display: flex;
             align-items: center;
-            background: rgba(13, 18, 38, 0.8);
+            background: rgba(30, 41, 59, 0.8);
             border: 1px solid var(--border-glass);
             border-radius: 14px;
             padding: 6px 6px 6px 16px;
@@ -720,7 +720,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         .input-wrapper:focus-within {
             border-color: var(--accent-cyan);
-            box-shadow: 0 0 20px rgba(0, 240, 255, 0.15);
+            box-shadow: 0 0 20px rgba(14, 165, 233, 0.15);
         }
 
         .chat-input {
@@ -739,7 +739,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .btn-send {
             background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-blue) 100%);
             border: none;
-            color: #000;
+            color: #fff;
             width: 40px;
             height: 40px;
             border-radius: 10px;
@@ -748,12 +748,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             justify-content: center;
             cursor: pointer;
             transition: var(--transition-speed);
-            box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
+            box-shadow: 0 0 15px rgba(14, 165, 233, 0.3);
             outline: none;
         }
 
         .btn-send:hover {
-            box-shadow: 0 0 25px rgba(0, 240, 255, 0.5);
+            box-shadow: 0 0 25px rgba(14, 165, 233, 0.5);
             transform: scale(1.05);
         }
 
@@ -775,7 +775,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .drawer-title {
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Inter', sans-serif;
             font-size: 15px;
             font-weight: 600;
             display: flex;
@@ -786,7 +786,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .drawer-tabs {
             display: flex;
             border-bottom: 1px solid var(--border-glass);
-            background: rgba(5, 8, 20, 0.3);
+            background: rgba(2, 6, 23, 0.3);
         }
 
         .drawer-tab {
@@ -809,7 +809,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .drawer-tab.active {
             color: var(--accent-cyan);
             border-bottom-color: var(--accent-cyan);
-            background: rgba(0, 240, 255, 0.02);
+            background: rgba(14, 165, 233, 0.02);
         }
 
         .drawer-body {
@@ -843,7 +843,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .ref-card:hover {
-            border-color: rgba(0, 240, 255, 0.15);
+            border-color: rgba(14, 165, 233, 0.15);
             background: rgba(255, 255, 255, 0.03);
         }
 
@@ -855,7 +855,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .ref-title {
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Inter', sans-serif;
             font-size: 13px;
             font-weight: 600;
             color: var(--accent-cyan);
@@ -887,8 +887,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .reasoning-header-bar {
-            background: rgba(0, 240, 255, 0.05);
-            border: 1px solid rgba(0, 240, 255, 0.2);
+            background: rgba(14, 165, 233, 0.05);
+            border: 1px solid rgba(14, 165, 233, 0.2);
             border-radius: 8px;
             padding: 10px 14px;
             display: flex;
@@ -904,7 +904,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .reasoning-model-badge {
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Inter', sans-serif;
             font-size: 11px;
             font-weight: 600;
             padding: 3px 8px;
@@ -914,8 +914,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .reasoning-model-badge.sonnet {
-            background: rgba(0, 240, 255, 0.1);
-            border: 1px solid rgba(0, 240, 255, 0.25);
+            background: rgba(14, 165, 233, 0.1);
+            border: 1px solid rgba(14, 165, 233, 0.25);
             color: var(--accent-cyan);
         }
 
@@ -951,7 +951,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             gap: 8px;
             padding: 8px 12px;
             font-size: 10px;
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Inter', sans-serif;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 1px;
@@ -960,7 +960,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         .reasoning-section-header.scope-hdr { color: #34d399; background: rgba(52,211,153,0.05); }
         .reasoning-section-header.intent-hdr { color: #60a5fa; background: rgba(96,165,250,0.05); }
-        .reasoning-section-header.retrieval-hdr { color: var(--accent-cyan); background: rgba(0,240,255,0.04); }
+        .reasoning-section-header.retrieval-hdr { color: var(--accent-cyan); background: rgba(14, 165, 233,0.04); }
         .reasoning-section-header.graph-hdr { color: #a78bfa; background: rgba(167,139,250,0.05); }
         .reasoning-section-header.guards-hdr { color: #fb923c; background: rgba(251,146,60,0.05); }
         .reasoning-section-header.model-hdr { color: #c084fc; background: rgba(192,132,252,0.05); }
@@ -1079,7 +1079,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .stat-value {
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Inter', sans-serif;
             font-size: 20px;
             font-weight: 700;
             color: var(--text-primary);
@@ -1087,7 +1087,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         .stat-value.highlight {
             color: var(--accent-cyan);
-            text-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+            text-shadow: 0 0 10px rgba(14, 165, 233, 0.2);
         }
 
         .progress-bar-bg {
@@ -1119,7 +1119,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             display: flex;
             align-items: center;
             gap: 9px;
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Inter', sans-serif;
             font-size: 12px;
             font-weight: 600;
             color: var(--text-secondary);
@@ -1171,7 +1171,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             width: 14px;
             height: 14px;
             border-radius: 50%;
-            border: 2px solid rgba(0, 240, 255, 0.18);
+            border: 2px solid rgba(14, 165, 233, 0.18);
             border-top-color: var(--accent-cyan);
             animation: spin 0.7s linear infinite;
         }
@@ -1330,7 +1330,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="welcome-container" id="welcome-message">
                 <h1 class="welcome-title">EU AI Act Workspace</h1>
                 <p class="welcome-desc">
-                    Greetings! I am Lexy, your AI compliance copilot. Powered by the Antifragile RAG engine, I perform deep legal analysis over the EU AI Act.
+                    I am Lexy, your EU AI Act compliance assistant. Ask a question and I will answer with citations to the exact Articles and Annexes.
                 </p>
                 <div class="suggestion-grid">
                     <div class="suggestion-card" onclick="selectSuggestion('Is a remote biometric identification system prohibited under Article 5?')">
