@@ -417,20 +417,38 @@ class TestWrongKeywordMappingsRemoved:
         )
 
     def test_healthcare_not_routed_to_annex_iii_via_keyword(self) -> None:
-        # Original concern: the bare ``healthcare`` keyword should not
-        # appear in :data:`_KEYWORD_ENTITY_MAP` — healthcare AI for an
-        # MDR/IVDR medical device routes via Art. 6(1)+Annex I (safety
-        # component), NOT per-se Annex III. The keyword map remains
-        # clean (asserted below).
+        # Original concern: a BARE / unqualified ``healthcare`` keyword must
+        # not appear in :data:`_KEYWORD_ENTITY_MAP` — generic healthcare AI
+        # is an MDR/IVDR medical-device safety component under Art. 6(1)+Annex
+        # I, NOT per-se Annex III. Mapping bare ``healthcare`` → Annex III was
+        # the original bug (it made the doctor-patient transcription Q3 dump
+        # the Annex III description as if it applied).
+        #
+        # The ONE legitimate exception is the QUALIFIED Annex III(5)(a)
+        # essential-services eligibility phrase ``public healthcare`` — public
+        # authorities evaluating eligibility for essential public assistance
+        # benefits and services, INCLUDING healthcare (Annex III point 5(a),
+        # verbatim: "evaluate the eligibility of natural persons for essential
+        # public assistance benefits and services, including healthcare
+        # services"). That key was added + benchmark-validated in R250/R251
+        # (66db30c: davidath Ref Loose +0.0073, OOS 21/21, 3 PDF examples
+        # intact) and directly serves the R128 healthcare-eligibility rows
+        # ("eligibility for public healthcare benefits?"). The guard therefore
+        # forbids any UNQUALIFIED ``healthcare`` key while allowing that
+        # specific qualified multi-word key.
         from app.engines.graph_rag import (
             _KEYWORD_ENTITY_MAP,
             _deterministic_parse,
         )
 
+        allowed_healthcare_keys = {"public healthcare"}
         for kw, _ in _KEYWORD_ENTITY_MAP:
-            assert "healthcare" not in kw, (
-                f"Regression — bare ``healthcare`` is back in the "
-                f"keyword map ({kw!r})."
+            if "healthcare" not in kw:
+                continue
+            assert kw in allowed_healthcare_keys, (
+                f"Regression — an unqualified ``healthcare`` key routes to "
+                f"Annex III ({kw!r}). Only the qualified Annex III(5)(a) "
+                f"eligibility phrase(s) {sorted(allowed_healthcare_keys)} may."
             )
 
         # NB: a question about "healthcare deployers handle data" may
