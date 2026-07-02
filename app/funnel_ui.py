@@ -45,20 +45,20 @@ FUNNEL_TEMPLATE = """<!DOCTYPE html>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         :root {
-            --bg-primary: #0f172a;
-            --bg-secondary: #1e293b;
-            --bg-glass: rgba(30, 41, 59, 0.72);
-            --bg-glass-hover: rgba(30, 41, 59, 0.85);
+            --bg-primary: #f8fafc;
+            --bg-secondary: #ffffff;
+            --bg-glass: #ffffff;
+            --bg-glass-hover: #ffffff;
             --accent-cyan: #0ea5e9;
-            --accent-blue: #3b82f6;
+            --accent-blue: #2563eb;
             --accent-glow: rgba(14, 165, 233, 0.18);
-            --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
-            --text-muted: #64748b;
-            --border-glass: rgba(51, 65, 85, 0.6);
-            --border-glow: rgba(14, 165, 233, 0.28);
-            --ok: #34d399;
-            --err: #fb7185;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --border-glass: #e2e8f0;
+            --border-glow: rgba(14, 165, 233, 0.35);
+            --ok: #059669;
+            --err: #dc2626;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -81,6 +81,8 @@ FUNNEL_TEMPLATE = """<!DOCTYPE html>
         .brand img { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--border-glow); box-shadow: 0 0 24px var(--accent-glow); }
         .brand .wordmark { font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; font-size: 26px; letter-spacing: -0.01em; }
         .brand .wordmark span { color: var(--accent-cyan); }
+        .brand-text { display: flex; flex-direction: column; gap: 2px; }
+        .brand-tag { font-size: 12px; color: var(--text-muted); font-weight: 500; letter-spacing: 0.01em; }
         .pill { font-size: 12px; color: var(--text-secondary); border: 1px solid var(--border-glass); padding: 6px 12px; border-radius: 999px; background: var(--bg-glass); }
         .hero { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 48px; align-items: start; }
         @media (max-width: 880px) { .hero { grid-template-columns: 1fr; gap: 32px; } header.top { margin-bottom: 36px; } }
@@ -93,8 +95,8 @@ FUNNEL_TEMPLATE = """<!DOCTYPE html>
         .features li i { color: var(--accent-cyan); flex-shrink: 0; margin-top: 2px; }
         .features li strong { color: var(--text-primary); font-weight: 600; }
 
-        .card { background: var(--bg-glass); backdrop-filter: blur(18px); border: 1px solid var(--border-glass); border-radius: 20px; padding: 28px; box-shadow: 0 24px 60px rgba(0,0,0,0.45); }
-        .tabs { display: flex; gap: 6px; background: rgba(255,255,255,0.04); border-radius: 12px; padding: 5px; margin-bottom: 22px; }
+        .card { background: var(--bg-glass); backdrop-filter: blur(18px); border: 1px solid var(--border-glass); border-radius: 20px; padding: 28px; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08); }
+        .tabs { display: flex; gap: 6px; background: rgba(15, 23, 42,0.04); border-radius: 12px; padding: 5px; margin-bottom: 22px; }
         .tab { flex: 1; text-align: center; padding: 10px 12px; border-radius: 9px; font-size: 14px; font-weight: 600; color: var(--text-secondary); cursor: pointer; border: none; background: transparent; transition: all .2s; }
         .tab.active { background: var(--bg-glass-hover); color: var(--text-primary); box-shadow: inset 0 0 0 1px var(--border-glow); }
         .card h2 { font-family: 'Instrument Serif', Georgia, serif; font-size: 23px; font-weight: 400; margin-bottom: 6px; }
@@ -102,15 +104,15 @@ FUNNEL_TEMPLATE = """<!DOCTYPE html>
         label { display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin: 14px 0 6px; }
         input[type=email], input[type=text] {
             width: 100%; padding: 12px 14px; font-size: 15px; font-family: inherit;
-            background: rgba(2, 6, 23,0.6); border: 1px solid var(--border-glass); border-radius: 10px; color: var(--text-primary); transition: border-color .2s, box-shadow .2s;
+            background: #ffffff; border: 1px solid var(--border-glass); border-radius: 10px; color: var(--text-primary); transition: border-color .2s, box-shadow .2s;
         }
         input:focus { outline: none; border-color: var(--border-glow); box-shadow: 0 0 0 3px var(--accent-glow); }
         .btn { width: 100%; margin-top: 22px; padding: 13px 18px; font-size: 15px; font-weight: 700; font-family: 'Inter', sans-serif; border: none; border-radius: 11px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; transition: transform .12s, box-shadow .2s, opacity .2s; }
         .btn-primary { background: var(--accent-cyan); color: #ffffff; box-shadow: 0 8px 20px var(--accent-glow); }
         .btn-primary:hover { background: #38bdf8; transform: translateY(-1px); box-shadow: 0 12px 30px var(--accent-glow); }
         .btn:disabled { opacity: .55; cursor: progress; }
-        .btn-ghost { background: rgba(255,255,255,0.05); color: var(--text-primary); border: 1px solid var(--border-glass); }
-        .btn-ghost:hover { background: rgba(255,255,255,0.09); }
+        .btn-ghost { background: rgba(15, 23, 42,0.05); color: var(--text-primary); border: 1px solid var(--border-glass); }
+        .btn-ghost:hover { background: rgba(15, 23, 42,0.09); }
         .hint { font-size: 12px; color: var(--text-muted); margin-top: 14px; text-align: center; }
         .hint a { color: var(--accent-cyan); text-decoration: none; cursor: pointer; }
         .msg { font-size: 13px; margin-top: 14px; padding: 10px 12px; border-radius: 9px; display: none; }
@@ -121,9 +123,9 @@ FUNNEL_TEMPLATE = """<!DOCTYPE html>
         @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
         .keybox .ok-badge { display: inline-flex; align-items: center; gap: 8px; color: var(--ok); font-weight: 600; font-size: 14px; margin-bottom: 14px; }
         .key-field { display: flex; gap: 8px; align-items: stretch; }
-        .key-field code { flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 13px; background: rgba(2, 6, 23,0.75); border: 1px solid var(--border-glow); border-radius: 10px; padding: 13px 14px; color: var(--accent-cyan); word-break: break-all; }
-        .copy-btn { flex-shrink: 0; padding: 0 14px; border-radius: 10px; border: 1px solid var(--border-glass); background: rgba(255,255,255,0.05); color: var(--text-primary); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
-        .copy-btn:hover { background: rgba(255,255,255,0.1); }
+        .key-field code { flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 13px; background: #f0f9ff; border: 1px solid var(--border-glow); border-radius: 10px; padding: 13px 14px; color: var(--accent-cyan); word-break: break-all; }
+        .copy-btn { flex-shrink: 0; padding: 0 14px; border-radius: 10px; border: 1px solid var(--border-glass); background: rgba(15, 23, 42,0.05); color: var(--text-primary); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+        .copy-btn:hover { background: rgba(15, 23, 42,0.1); }
         .keybox .save-note { font-size: 12px; color: var(--text-muted); margin: 12px 0 4px; }
         .divider { display: flex; align-items: center; gap: 12px; margin: 22px 0; color: var(--text-muted); font-size: 12px; }
         .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border-glass); }
@@ -139,14 +141,16 @@ FUNNEL_TEMPLATE = """<!DOCTYPE html>
         <header class="top">
             <div class="brand">
                 <img src="/lexy_avatar.png" alt="Lexy" onerror="this.style.display='none'">
-                <div class="wordmark">Lex<span>y</span></div>
+                <div class="brand-text">
+                    <div class="wordmark">Lex<span>y</span></div>
+                    <div class="brand-tag">EU AI Act Virtual Assistant</div>
+                </div>
             </div>
             <div class="pill">EU AI Act · Regulation (EU) 2024/1689</div>
         </header>
 
         <section class="hero">
             <div>
-                <div class="eyebrow"><i data-lucide="sparkles" style="width:15px;height:15px"></i> Free, grounded, cited</div>
                 <h1>Understand the <span class="grad">EU AI Act</span> in plain language.</h1>
                 <p class="sub">Ask any EU AI Act question. Get a plain-language answer, cited to the exact Articles and Annexes.</p>
                 <ul class="features">
@@ -154,11 +158,6 @@ FUNNEL_TEMPLATE = """<!DOCTYPE html>
                     <li><i data-lucide="zap" style="width:18px;height:18px"></i><span><strong>Risk classification and obligations.</strong> Prohibited, high-risk, or limited, and who must do what.</span></li>
                     <li><i data-lucide="key-round" style="width:18px;height:18px"></i><span><strong>Your own API key.</strong> Use Lexy in the chat or call the Q&amp;A API directly.</span></li>
                 </ul>
-                <div class="trust">
-                    <span><i data-lucide="gift"></i> Always free</span>
-                    <span><i data-lucide="shield-check"></i> No credit card</span>
-                    <span><i data-lucide="clock"></i> Instant access</span>
-                </div>
             </div>
 
             <div class="card" aria-live="polite">

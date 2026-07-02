@@ -58,19 +58,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
     <style>
         :root {
-            --bg-primary: #0f172a;
-            --bg-secondary: #1e293b;
-            --bg-glass: rgba(30, 41, 59, 0.7);
-            --bg-glass-hover: rgba(30, 41, 59, 0.8);
+            --bg-primary: #f8fafc;
+            --bg-secondary: #ffffff;
+            --bg-glass: #ffffff;
+            --bg-glass-hover: #ffffff;
             --accent-cyan: #0ea5e9;
             --accent-cyan-rgb: 14, 165, 233;
             --accent-blue: #3b82f6;
-            --accent-glow: rgba(14, 165, 233, 0.15);
-            --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
-            --text-muted: #64748b;
-            --border-glass: rgba(51, 65, 85, 0.6);
-            --border-glow: rgba(14, 165, 233, 0.25);
+            --accent-glow: rgba(14, 165, 233, 0.18);
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --border-glass: #e2e8f0;
+            --border-glow: rgba(14, 165, 233, 0.35);
             --transition-speed: 0.3s;
             --sidebar-width: 320px;
             --drawer-width: 420px;
@@ -88,7 +88,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             background-image:
                 radial-gradient(circle at 0% 0%, rgba(14, 165, 233, 0.06) 0%, transparent 40%),
                 radial-gradient(circle at 100% 100%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
-                radial-gradient(circle at 50% 50%, rgba(30, 41, 59, 0.5) 0%, #0f172a 100%);
+                radial-gradient(circle at 50% 50%, #f1f5f9 0%, #f8fafc 100%);
             background-attachment: fixed;
             color: var(--text-primary);
             height: 100vh;
@@ -103,10 +103,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             height: 6px;
         }
         ::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.01);
+            background: rgba(15, 23, 42, 0.01);
         }
         ::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(15, 23, 42, 0.1);
             border-radius: 3px;
         }
         ::-webkit-scrollbar-thumb:hover {
@@ -116,7 +116,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         /* Layout */
         .sidebar {
             width: var(--sidebar-width);
-            background: rgba(2, 6, 23, 0.8);
+            background: rgba(255, 255, 255, 0.8);
             border-right: 1px solid var(--border-glass);
             display: flex;
             flex-direction: column;
@@ -136,7 +136,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         .detail-drawer {
             width: var(--drawer-width);
-            background: rgba(2, 6, 23, 0.85);
+            background: rgba(255, 255, 255, 0.85);
             border-left: 1px solid var(--border-glass);
             display: flex;
             flex-direction: column;
@@ -174,7 +174,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             font-size: 18px;
             font-weight: 700;
             letter-spacing: 0.5px;
-            background: linear-gradient(135deg, #fff 0%, #7dd3fc 100%);
+            background: linear-gradient(135deg, #0f172a 0%, #0ea5e9 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
@@ -212,7 +212,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             right: -6px;
             bottom: -6px;
             border-radius: 50%;
-            background: radial-gradient(circle, rgba(14, 165, 233, 0.4) 0%, transparent 70%);
+            background: radial-gradient(circle, rgba(14, 165, 233, 0.22) 0%, transparent 70%);
             z-index: -1;
             animation: pulse-glow 3s infinite ease-in-out;
         }
@@ -280,7 +280,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .diagnostic-item {
-            background: rgba(255, 255, 255, 0.02);
+            background: rgba(15, 23, 42, 0.02);
             border: 1px solid var(--border-glass);
             border-radius: 8px;
             padding: 10px 12px;
@@ -292,7 +292,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .diagnostic-item:hover {
-            background: rgba(255, 255, 255, 0.04);
+            background: rgba(15, 23, 42, 0.04);
             border-color: rgba(14, 165, 233, 0.15);
         }
 
@@ -343,7 +343,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         /* Config Widget */
         .config-panel {
-            background: rgba(255, 255, 255, 0.02);
+            background: rgba(15, 23, 42, 0.02);
             border: 1px solid var(--border-glass);
             border-radius: 8px;
             padding: 14px;
@@ -378,7 +378,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         .form-input {
             width: 100%;
-            background: rgba(2, 6, 23, 0.7);
+            background: rgba(255, 255, 255, 0.7);
             border: 1px solid var(--border-glass);
             border-radius: 6px;
             padding: 8px 10px;
@@ -400,7 +400,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             height: 16px;
             border: 1px solid var(--border-glass);
             border-radius: 4px;
-            background: rgba(2, 6, 23, 0.7);
+            background: rgba(255, 255, 255, 0.7);
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -429,7 +429,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: rgba(2, 6, 23, 0.5);
+            background: rgba(255, 255, 255, 0.5);
             backdrop-filter: blur(10px);
         }
 
@@ -452,7 +452,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .btn-action {
-            background: rgba(255, 255, 255, 0.04);
+            background: rgba(15, 23, 42, 0.04);
             border: 1px solid var(--border-glass);
             color: var(--text-secondary);
             width: 36px;
@@ -536,14 +536,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .user-row .msg-bubble {
-            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            background: #e0f2fe;
             border: 1px solid var(--border-glass);
             border-bottom-right-radius: 2px;
             color: var(--text-primary);
         }
 
         .assistant-row .msg-bubble {
-            background: rgba(30, 41, 59, 0.65);
+            background: rgba(255, 255, 255, 0.65);
             border: 1px solid var(--border-glass);
             border-bottom-left-radius: 2px;
             color: var(--text-primary);
@@ -594,7 +594,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .msg-bubble code {
             font-family: 'JetBrains Mono', monospace;
             font-size: 12px;
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(15, 23, 42, 0.05);
             padding: 2px 4px;
             border-radius: 4px;
             color: #f43f5e;
@@ -642,7 +642,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             font-size: 28px;
             font-weight: 800;
             margin-bottom: 12px;
-            background: linear-gradient(135deg, #fff 0%, #7dd3fc 50%, #0ea5e9 100%);
+            background: linear-gradient(120deg, #0f172a 0%, #0369a1 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
@@ -662,7 +662,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .suggestion-card {
-            background: rgba(30, 41, 59, 0.45);
+            background: rgba(255, 255, 255, 0.45);
             border: 1px solid var(--border-glass);
             border-radius: 12px;
             padding: 16px;
@@ -675,7 +675,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .suggestion-card:hover {
-            background: rgba(30, 41, 59, 0.6);
+            background: rgba(255, 255, 255, 0.6);
             border-color: var(--accent-cyan);
             box-shadow: 0 0 15px rgba(14, 165, 233, 0.1);
             transform: translateY(-2px);
@@ -701,7 +701,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .input-area {
             padding: 24px;
             border-top: 1px solid var(--border-glass);
-            background: rgba(2, 6, 23, 0.7);
+            background: rgba(255, 255, 255, 0.7);
             backdrop-filter: blur(10px);
         }
 
@@ -711,7 +711,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             margin: auto;
             display: flex;
             align-items: center;
-            background: rgba(30, 41, 59, 0.8);
+            background: rgba(255, 255, 255, 0.8);
             border: 1px solid var(--border-glass);
             border-radius: 14px;
             padding: 6px 6px 6px 16px;
@@ -758,7 +758,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .btn-send:disabled {
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(15, 23, 42, 0.05);
             color: var(--text-muted);
             box-shadow: none;
             cursor: not-allowed;
@@ -786,7 +786,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .drawer-tabs {
             display: flex;
             border-bottom: 1px solid var(--border-glass);
-            background: rgba(2, 6, 23, 0.3);
+            background: rgba(255, 255, 255, 0.3);
         }
 
         .drawer-tab {
@@ -803,7 +803,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         .drawer-tab:hover {
             color: var(--text-primary);
-            background: rgba(255, 255, 255, 0.01);
+            background: rgba(15, 23, 42, 0.01);
         }
 
         .drawer-tab.active {
@@ -835,7 +835,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .ref-card {
-            background: rgba(255, 255, 255, 0.02);
+            background: rgba(15, 23, 42, 0.02);
             border: 1px solid var(--border-glass);
             border-radius: 8px;
             padding: 14px;
@@ -844,7 +844,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         .ref-card:hover {
             border-color: rgba(14, 165, 233, 0.15);
-            background: rgba(255, 255, 255, 0.03);
+            background: rgba(15, 23, 42, 0.03);
         }
 
         .ref-header {
@@ -938,7 +938,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .reasoning-section {
-            background: rgba(255, 255, 255, 0.02);
+            background: rgba(15, 23, 42, 0.02);
             border: 1px solid var(--border-glass);
             border-radius: 8px;
             overflow: hidden;
@@ -1007,7 +1007,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             font-size: 10px;
             font-family: 'JetBrains Mono', monospace;
             margin: 1px 3px 1px 0;
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(15, 23, 42, 0.05);
             border: 1px solid var(--border-glass);
             color: var(--text-secondary);
         }
@@ -1036,7 +1036,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             font-family: 'JetBrains Mono', monospace;
             color: var(--text-secondary);
             padding: 3px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.03);
+            border-bottom: 1px solid rgba(15, 23, 42,0.03);
             word-break: break-word;
             white-space: pre-wrap;
         }
@@ -1062,7 +1062,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .stat-card {
-            background: rgba(255, 255, 255, 0.02);
+            background: rgba(15, 23, 42, 0.02);
             border: 1px solid var(--border-glass);
             border-radius: 10px;
             padding: 16px;
@@ -1091,7 +1091,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         .progress-bar-bg {
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(15, 23, 42, 0.05);
             height: 4px;
             border-radius: 2px;
             overflow: hidden;
