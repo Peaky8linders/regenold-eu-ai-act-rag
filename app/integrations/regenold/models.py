@@ -589,7 +589,13 @@ _META_LEAK_SUBSTRINGS_R265: tuple[str, ...] = (
     "the references block",
     "references supplied above",
     "does not appear in the references",
-    "does not appear in the eu ai act",
+    # R266.1 — reference-scoped ONLY. The bare "does not appear in the eu ai
+    # act" wrongly deleted CORRECT statutory-absence sentences (e.g. "The
+    # term 'artificial general intelligence' does not appear in the EU AI
+    # Act, which is technique-agnostic.") — a legitimate, common correct-
+    # answer shape for the q005/explainability family this round targets.
+    # The retrieval-scoped form still catches the meta-refusal leak.
+    "does not appear in the eu ai act references",
     "current retrieval",
     "query profile",
     "i will flag",

@@ -3077,8 +3077,17 @@ _RECLASSIFY_NONPROVIDER_ROLE_RE = re.compile(
 )
 _RECLASSIFY_PROVIDER_RE = re.compile(r"\bprovider\b", re.IGNORECASE)
 _RECLASSIFY_ACTION_RE = re.compile(
-    r"\bwhat\s+(?:kind\s+of\s+)?actions?\b|\btak(?:e|es|ing)\s+actions?\b"
-    r"|\bname\s+or\s+trademark\b|\bname\s*/\s*trademark\b"
+    # R266.1 — a genuine RECLASSIFY/FLIP signal is required. The bare
+    # "what actions"/"take actions" cues (present in the R265 first cut)
+    # matched ANY "what actions must a <role> take ... provider ..."
+    # obligation question and shipped the wrong Article 25 reclassification
+    # verdict (e.g. deployer-duty gold Art. 26, importer-duty gold Art. 23,
+    # serious-incident gold Art. 20/73). The remaining alternations all name
+    # an actual value-chain flip (name/trademark, substantial modification,
+    # intended-purpose change, rebrand, deemed/becomes/treated/seen/regarded
+    # as a provider). q025 ("...seen as a provider... what kind of action?")
+    # still fires via "seen as a provider".
+    r"\bname\s+or\s+trademark\b|\bname\s*/\s*trademark\b"
     r"|\bput\s+(?:its|their|your|his|her)\s+name\b"
     r"|\bsubstantial\s+modif\w*\b|\bmodif\w*\s+(?:the\s+)?intended\s+purpose\b"
     r"|\brebrand\w*\b|\breclassif\w*\b|\bre-?classified\b"
@@ -3120,10 +3129,28 @@ def _detect_reclassification_inquiry(question: str) -> bool:
 # rules of procedure / voting threshold / designate-members) that the davidath
 # "What is the European Artificial Intelligence Board?" / standing-sub-group
 # rows (gold Article 65) do NOT carry, so the deterministic bench is byte-identical.
+# R266.1 — require a QUALIFIED reference to the European AI Board (full/
+# abbreviated name, "board member(s)", "members of the board", or a
+# "board's <governance-noun>" possessive). Dropping the bare "the/a board"
+# alternation kills the residual notified-body false-fire ("Can the Board
+# suspend a notified body designation?" / "does the Board play a role?" +
+# a `designat*` cue) that the earlier `(?<!across )` lookbehind did not
+# reach, while q033 ("European Artificial Intelligence Board...") and the
+# "a Board member's term" shape still match via the name / board-member
+# forms.
 _AI_BOARD_RE = re.compile(
-    r"artificial\s+intelligence\s+board|(?<!across )\b(?:the|a)\s+board\b|\bai\s+board\b",
+    r"artificial\s+intelligence\s+board"
+    r"|\bai\s+board\b"
+    r"|\beuropean\s+board\b"
+    r"|\bboard\s+members?\b"
+    r"|\bmembers?\s+of\s+the\s+board\b"
+    r"|\bboard['’]s\s+(?:rules|composition|members?|representatives?|term|mandate|procedure|voting)",
     re.IGNORECASE,
 )
+# Notified-body designation / suspension is the notifying-authority /
+# notified-body regime (Arts. 28/31/36), NOT Board governance — never
+# route it to the Article 65 verdict.
+_AI_BOARD_NOTIFIED_BODY_RE = re.compile(r"\bnotif(?:ying|ied)\b", re.IGNORECASE)
 _AI_BOARD_GOVERNANCE_CUE_RE = re.compile(
     r"\brenewable\b|\brenewal\b|\brules\s+of\s+procedure\b"
     r"|\bvoting\s+threshold\b|\bvoting\s+majority\b|\btwo[-\s]thirds\b"
@@ -3142,6 +3169,16 @@ def _detect_ai_board_governance_inquiry(question: str) -> bool:
     idx = raw_q.rfind(marker)
     if idx >= 0:
         raw_q = raw_q[idx + len(marker):]
+    if _MINIMAL_RISK_SCENARIO_OPENER_RE.search(raw_q):
+        return False
+    # A notified-body designation question is the Art. 28/31/36 regime, not
+    # Board governance — unless it explicitly names the AI Board itself.
+    if _AI_BOARD_NOTIFIED_BODY_RE.search(raw_q) and not re.search(
+        r"artificial\s+intelligence\s+board|\bai\s+board\b|\bboard\s+members?\b",
+        raw_q,
+        re.IGNORECASE,
+    ):
+        return False
     return bool(
         _AI_BOARD_RE.search(raw_q) and _AI_BOARD_GOVERNANCE_CUE_RE.search(raw_q)
     )
@@ -3561,9 +3598,10 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
                 "high-risk AI system that remains high-risk (Article 25(1)(b)). "
                 "Third, if it modifies the intended purpose of an AI system, "
                 "including a general-purpose AI system, so that it becomes "
-                "high-risk (Article 25(1)(c)); the initial provider is then no "
-                "longer treated as the provider of that system under Article "
-                "25(2)."
+                "high-risk (Article 25(1)(c)). In each of these three cases the "
+                "operator assumes the provider obligations in Article 16, and "
+                "the initial provider is no longer considered the provider of "
+                "that specific system under Article 25(2)."
             ),
             "refs": ["Art. 25", "Art. 25.1", "Art. 16"],
         }
