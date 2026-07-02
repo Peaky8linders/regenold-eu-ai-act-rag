@@ -5530,6 +5530,43 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
     if hasattr(request, "bridging_context") and request.bridging_context:
         context.bridging_context.extend(request.bridging_context)
 
+    # MedTech cross-framework bridging (R263). Appends non-EU-AI-Act sectoral
+    # standards (ISO 14971 / IEC 62304 / MDR-IVDR) to the Stage-2 ONLY
+    # ``bridging_context`` (rendered with an explicit "NEVER emit as a
+    # citation" guard, see ``_build_context_block``); it can never reach the
+    # wire ``references`` list. Gated by ``REGENOLD_MEDTECH`` (default ON) so
+    # ``ab_judge`` can A/B it. Fully fail-soft — a malformed map entry must
+    # never 500 the ``/ask`` route.
+    if os.environ.get("REGENOLD_MEDTECH", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    ):
+        try:
+            _q_low = request.question.lower()
+            if any(kw in _q_low for kw in ("medical", "samd", "surgery", "patient", "diagnostic")):
+                from app.data.medtech_standards import MEDTECH_STANDARD_MAP
+                _ctx_refs = list(getattr(context, "article_info", []) or []) + list(
+                    getattr(context, "obligations", []) or []
+                )
+                for article, bridge_data in MEDTECH_STANDARD_MAP.items():
+                    # Fire when the question names the article OR it was
+                    # retrieved. Word-boundary regex so "article 9" does NOT
+                    # match "article 99" (R124-I2).
+                    art_num = re.escape(article.replace("Art. ", ""))
+                    if re.search(rf"\barticle {art_num}\b", _q_low) or any(
+                        a.get("article", "") == article or a.get("article_ref", "") == article
+                        for a in _ctx_refs
+                    ):
+                        standard = bridge_data.get("standard", "")
+                        name = bridge_data.get("name", "")
+                        bridge = bridge_data.get("bridge", "")
+                        if bridge:
+                            context.bridging_context.append(
+                                f"Relevant Standard ({standard} - {name}): {bridge}"
+                            )
+        except Exception:  # noqa: BLE001 — bridging is best-effort context only
+            logger.debug("medtech bridging injection skipped", exc_info=True)
+
+
     # Deterministic Pre-Filtering & Citation Injection (The Ontology Leap)
     try:
         # Convert answers to booleans where possible

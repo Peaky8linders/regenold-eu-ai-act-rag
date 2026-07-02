@@ -25,6 +25,7 @@ topic verdict or to a scenario verdict without branching code paths.
 """
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -711,6 +712,45 @@ _PROHIBITED_MARKERS = (
 )
 
 
+def _medtech_enabled() -> bool:
+    """R263 master gate for the MedTech Annex-I classifier + bridging.
+
+    Env ``REGENOLD_MEDTECH`` (default ON). Set ``=0`` to disable and
+    reproduce the pre-R263 baseline (clean ``ab_judge`` A/B OFF↔ON per
+    CLAUDE.md hard rule #6). Read per-call so the A/B / tests can flip it.
+    """
+    return os.environ.get("REGENOLD_MEDTECH", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
+# R263 — MedTech device-STATUS markers only. Per CLAUDE.md hard rule #4
+# ("a confidently-wrong classification loses more than a missing one"), the
+# Art. 6(1)+Annex I high-risk route applies ONLY where the AI system is, or
+# is a safety component of, a device requiring THIRD-PARTY conformity
+# assessment. These phrasings assert that device status. Deliberately EXCLUDES
+# bare activity/modality nouns ("x-ray", "diagnostic imaging", "patient
+# vital", "robotic surgery") — they match scheduling / admin / educational /
+# consumer-wellness tools and Class-I self-certified devices that are NOT
+# high-risk (an "x-ray appointment scheduler" is not a medical device).
+_MEDTECH_DEVICE_MARKERS: tuple[str, ...] = (
+    "class ii medical device",
+    "class iia medical device",
+    "class iib medical device",
+    "class iii medical device",
+    "ivdr class b",
+    "ivdr class c",
+    "ivdr class d",
+    "samd",
+    "software as a medical device",
+    "safety component of a medical device",
+    "surgical robot",
+)
+
+
 _HIGH_RISK_MARKERS = (
     # Annex III categories (1) biometrics
     "biometric identification",
@@ -922,6 +962,15 @@ def _detect_risk_level(text: str) -> str | None:
     low = _normalise(text).lower()
     if _any_in(low, _PROHIBITED_MARKERS) or _exploit_context(low):
         return "prohibited"
+    
+    # R263 — MedTech Annex-I high-risk route (gated; device-STATUS markers
+    # only, see ``_MEDTECH_DEVICE_MARKERS``). Checked before the generic
+    # high-risk markers so a device-marker scenario gets the Art. 6(1)+Annex I
+    # conformity pack. Env-off (``REGENOLD_MEDTECH=0``) reverts to the pre-R263
+    # baseline classification for a clean ``ab_judge`` A/B.
+    if _medtech_enabled() and _any_in(low, _MEDTECH_DEVICE_MARKERS):
+        return "high-risk-annex-i"
+
     if (
         _any_in(low, _HIGH_RISK_MARKERS)
         or _migration_context(low)
@@ -1021,6 +1070,16 @@ _RISK_ARTICLES: dict[str, tuple[str, ...]] = {
     # as the load-bearing anchors plus Art. 53 (provider obligations)
     # and Art. 55 (systemic-risk obligations) for the broader gold set.
     "gpai": ("Art. 25", "Art. 51", "Art. 53", "Art. 55"),
+    # R263 — MedTech Annex I conformity pathway: classification (Art. 6) +
+    # harmonisation list (Annex I) + conformity assessment (Art. 43) + CE
+    # marking (Art. 48) + the core high-risk requirements (risk management
+    # Art. 9, human oversight Art. 14) + post-market monitoring / serious-
+    # incident reporting (Arts. 72/73). Faithful to the regulation, not tuned
+    # to any single eval's gold tokens.
+    "high-risk-annex-i": (
+        "Art. 6", "Annex I", "Art. 43", "Art. 48",
+        "Art. 9", "Art. 14", "Art. 72", "Art. 73",
+    ),
 }
 
 
@@ -1095,7 +1154,9 @@ class ScenarioVerdict:
     """
 
     role: str
-    risk_level: str  # "prohibited" | "high-risk" | "limited" | "minimal"
+    # "prohibited" | "high-risk" | "high-risk-annex-i" | "limited" |
+    # "minimal" | "gpai"
+    risk_level: str
     articles: tuple[str, ...]  # internal refs ("Art. 5", "Art. 26", ...)
     answer: str  # plain-prose answer ready for normalise_answer_for_regenold
     compound_roles: tuple[str, ...] = field(default_factory=tuple)
@@ -1217,6 +1278,26 @@ def _build_answer(role: str, risk_level: str) -> str:
             "on top of the Article 53 provider obligations (technical "
             "documentation, training data summary, copyright policy)."
         )
+    if risk_level == "high-risk-annex-i":
+        # R263-MedTech — Annex I Union-harmonisation-legislation route.
+        # Faithful regulatory prose: Art. 6(1) classification via the Annex I
+        # product list, the Art. 43 third-party conformity-assessment
+        # procedure with a notified body, CE marking (Art. 48), and the
+        # Chapter III Section 2 requirements (Arts. 9-15).
+        return (
+            "This system is classified as high-risk under Article 6(1) "
+            "and the Annex I Union harmonisation legislation list (medical "
+            "devices). "
+            f"{role_phrase} must ensure the system undergoes a conformity "
+            "assessment procedure under Article 43 involving a notified body "
+            "and, where applicable, bears a CE marking prior to placement on "
+            "the market or putting into service (Articles 6, 43, 48). "
+            "The provider must establish and maintain a risk-management system "
+            "covering identification, estimation, evaluation and mitigation of "
+            "risks to fundamental rights, including data governance, technical "
+            "documentation, human oversight and post-market monitoring "
+            "(Articles 9 to 15)."
+        )
     # Fallback — neutral classification.
     return (
         "This system requires a risk classification "
@@ -1257,7 +1338,10 @@ def _build_article_pack(role: str, risk_level: str) -> tuple[str, ...]:
     base = _RISK_ARTICLES.get(risk_level, ())
     if risk_level == "prohibited":
         bolt = _ROLE_PROHIBITED_ARTICLES.get(role, ())
-    elif risk_level == "high-risk":
+    elif risk_level in ("high-risk", "high-risk-annex-i"):
+        # R124-MedTech — Annex I systems carry the same role-specific
+        # obligation set as Annex III high-risk systems (Art. 16/17/49
+        # for providers, Art. 26/27 for deployers, etc.).
         bolt = _ROLE_HIGHRISK_ARTICLES.get(role, ())
     elif risk_level == "limited":
         bolt = _ROLE_LIMITED_ARTICLES.get(role, ())

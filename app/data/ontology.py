@@ -538,8 +538,8 @@ ANNEX_III_REGISTRY: dict[str, AnnexIIICategory] = {
         keywords=("credit scoring", "creditworthiness", "credit score",
                   "welfare eligibility", "insurance pricing",
                   "emergency dispatch", "medical triage", "clinical triage",
-                  "patient triage", "patient prioritization", "clinical trial triage",
-                  "clinical trial", "determine priority"),
+                  "patient triage", "patient prioritization",
+                  "determine priority"),
     ),
     "law_enforcement": AnnexIIICategory(
         id="law_enforcement",

@@ -318,6 +318,37 @@ _ONTOLOGY_HOP_MAP: dict[str, list[str]] = {
 }
 _ONTOLOGY_HOP_MAX_INJECT = 4
 
+# R263 — MedTech Annex-I conformity-pathway hops, applied ONLY to genuinely
+# medical questions (``is_medical`` in ``_apply_ontology_hops``) AND behind
+# ``REGENOLD_MEDTECH_HOP`` (default OFF).
+#
+# The original Gemini cut folded these keys (plus GPAI Article 51/53 hops) into
+# the GENERAL ``_ONTOLOGY_HOP_MAP``, so they fired on every ``wh + provider``
+# QA question via the pre-existing provider trigger and — via the R112
+# ``_effective_max_refs`` bump — re-opened the R77-I6 QA over-citation
+# regression (measured davidath QA: 18/137 rows over-cite, Ref Strict -0.012 /
+# Ref Conciseness -0.015, Ref Loose flat = zero recall gain). Scoping to
+# ``is_medical`` and defaulting OFF removes that regression; the hop stays an
+# ``ab_judge``-measurable knob (CLAUDE.md hard rule #6) rather than shipped on
+# unproven. GPAI hops are dropped entirely (they were never MedTech).
+_MEDTECH_HOP_MAP: dict[str, list[str]] = {
+    "Article 6":  ["Annex I", "Article 43"],   # classification -> Annex I route + conformity assessment
+    "Annex I":    ["Article 6", "Article 43"],  # harmonisation list -> classification + conformity assessment
+    "Article 43": ["Article 6", "Annex I", "Article 48"],  # conformity assessment -> classification + list + CE
+}
+
+
+def _medtech_hop_enabled() -> bool:
+    """R263 gate for the MedTech ontology hop. Env ``REGENOLD_MEDTECH_HOP``
+    (default OFF pending a live ``ab_judge`` A/B — the general-map version
+    regressed davidath QA)."""
+    return os.environ.get("REGENOLD_MEDTECH_HOP", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
 
 def _apply_ontology_hops(
     candidates: list[str],
@@ -368,10 +399,20 @@ def _apply_ontology_hops(
     if not should_hop:
         return list(candidates)
 
+    # R263 — the MedTech Annex-I hop is consulted ONLY for genuinely medical
+    # questions and only when enabled, so it can never over-cite the generic
+    # provider/GPAI QA rows that the un-scoped Gemini version regressed.
+    medtech_hop = is_medical and _medtech_hop_enabled()
+
     injected: list[str] = []
     seen = set(candidates)
     for cand in candidates:
-        for hop_target in _ONTOLOGY_HOP_MAP.get(cand, []):
+        targets = list(_ONTOLOGY_HOP_MAP.get(cand, []))
+        if medtech_hop:
+            for t in _MEDTECH_HOP_MAP.get(cand, []):
+                if t not in targets:
+                    targets.append(t)
+        for hop_target in targets:
             if hop_target in seen or hop_target in injected:
                 continue
             injected.append(hop_target)
@@ -1192,6 +1233,11 @@ def _engine_cache_key(
             "REGENOLD_DENOISER_MODEL",
             "REGENOLD_DENOISER_MODEL_GROQ",
             "REGENOLD_ONTOLOGY_HOP",
+            # R263 — MedTech classifier/bridging + scoped hop flip engine
+            # output (risk tier, refs, Stage-2 bridging), so they must be in
+            # the cache key (R30/R56/R79 cache-poisoning doctrine).
+            "REGENOLD_MEDTECH",
+            "REGENOLD_MEDTECH_HOP",
             # R87 — dynamic ref-budget + HRAIS expansion gates
             "REGENOLD_HRAIS_LISTING_BUDGET",
             "REGENOLD_HRAIS_EXPAND",
