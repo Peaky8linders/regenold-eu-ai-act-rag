@@ -253,6 +253,14 @@ class _OpenAIWrapperProvider:
             limits=httpx.Limits(
                 max_keepalive_connections=10,
                 max_connections=20,
+                # Keep the pooled TLS connection to the Cloudflare edge (or
+                # the direct provider host) warm across sporadic requests.
+                # httpx's default idle expiry is 5 s, so any gap > 5 s between
+                # LLM calls re-pays the ~150-250 ms edge TLS handshake. 90 s
+                # survives typical inter-request gaps and stays under
+                # Cloudflare's server-side idle close; httpx transparently
+                # retries a server-closed stale connection.
+                keepalive_expiry=90.0,
             ),
         )
         import atexit
