@@ -3541,9 +3541,21 @@ def _detect_art50_text_public_interest_inquiry(question: str) -> bool:
 # when prosecuting a criminal offence?" -> No: Article 50(4) exempts the
 # deepfake disclosure duty where the use is authorised by law to detect,
 # prevent, investigate, or prosecute criminal offences. The live q002 answer
-# said "No" but never cited the operative carve-out (correctness 60). Gated on
-# a deepfake subject + a criminal-justice cue -> 0 davidath rows. (Sibling of
-# the R267.3 public-interest-TEXT intercept above.)
+# said "No" but never cited the operative carve-out (correctness 60). (Sibling
+# of the R267.3 public-interest-TEXT intercept above.)
+#
+# R272 — tightened the gate to ALSO require a disclosure/apply cue. The prior
+# subject+criminal-cue gate over-fired on off-topic questions whose subject is
+# NOT the Article 50(4) disclosure carve-out — e.g. "How does law enforcement
+# use of deep fakes interact with fundamental rights?" and "When can law
+# enforcement create deep fakes lawfully?" — shipping the fixed canned 50(4)
+# answer with Stage-2 SKIPPED so the answer-focus mismatch could not be
+# corrected. Mirroring the sibling `_detect_art50_text_public_interest_inquiry`
+# (which requires topic + exception/apply cue), the intercept now needs
+# subject + criminal cue + disclosure/apply cue. q002's phrasings carry
+# "obligation"/"indicate"/"disclosure"/"duty"/"apply", so they still fire; the
+# two over-fire shapes carry none and fall through to normal RAG. Still 0
+# davidath rows (a strict AND-tightening of a 0-fire detector).
 _DEEPFAKE_CRIM_SUBJ_RE = re.compile(
     r"\bdeep[-\s]?fakes?\b", re.IGNORECASE
 )
@@ -3552,11 +3564,22 @@ _DEEPFAKE_CRIM_CUE_RE = re.compile(
     r"|authorised\s+by\s+law|authorized\s+by\s+law",
     re.IGNORECASE,
 )
+_DEEPFAKE_DISCLOSURE_CUE_RE = re.compile(
+    r"disclos|indicat|transparency|obligation|\bapply\b|\bduty\b|\blabel"
+    r"|reveal",
+    re.IGNORECASE,
+)
 
 
 def _detect_deepfake_criminal_exception_inquiry(question: str) -> bool:
     """True when the question asks whether the Article 50(4) deepfake
-    disclosure duty applies in a criminal-justice / law-enforcement context."""
+    DISCLOSURE duty applies in a criminal-justice / law-enforcement context.
+
+    Requires all three: a deepfake subject, a criminal-justice cue, AND a
+    disclosure/apply cue (R272) — so the intercept fires on the carve-out
+    question (q002) and not on off-topic deepfake + law-enforcement questions
+    (fundamental-rights interaction, lawful creation) that carry no disclosure
+    signal."""
     raw_q = question or ""
     marker = "Latest question:\n"
     idx = raw_q.rfind(marker)
@@ -3565,6 +3588,7 @@ def _detect_deepfake_criminal_exception_inquiry(question: str) -> bool:
     return bool(
         _DEEPFAKE_CRIM_SUBJ_RE.search(raw_q)
         and _DEEPFAKE_CRIM_CUE_RE.search(raw_q)
+        and _DEEPFAKE_DISCLOSURE_CUE_RE.search(raw_q)
     )
 
 

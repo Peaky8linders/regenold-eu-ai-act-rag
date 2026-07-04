@@ -151,6 +151,30 @@ class TestDeepfakeCriminalException:
     def test_does_not_fire_without_criminal_cue(self):
         assert not _detect_deepfake_criminal_exception_inquiry("What is a deep fake?")
 
+    @pytest.mark.parametrize("q", [
+        # R272 — deepfake + law-enforcement cue but NO disclosure/apply cue:
+        # the subject is not the Article 50(4) disclosure carve-out, so the
+        # canned intercept must NOT fire (falls through to normal RAG).
+        "How does law enforcement use of deep fakes interact with fundamental rights?",
+        "When can law enforcement create deep fakes lawfully?",
+        "Are deep fakes used by law enforcement a criminal offence?",
+    ])
+    def test_does_not_fire_without_disclosure_cue(self, q):
+        assert not _detect_deepfake_criminal_exception_inquiry(q)
+
+    @pytest.mark.parametrize("q", [
+        # R272 — the carve-out question still fires: each carries a
+        # disclosure/apply cue alongside the deepfake subject + criminal cue.
+        "Does the obligation to indicate that deep-fakes are artificially "
+        "generated apply when prosecuting a criminal offence?",
+        "Does the deep-fake disclosure duty apply when prosecuting a criminal offence?",
+        "Must a deep fake be labelled when authorised by law to investigate a "
+        "criminal offence?",
+    ])
+    def test_still_fires_on_carve_out_question(self, q):
+        assert _detect_deepfake_criminal_exception_inquiry(q)
+        assert _is_curated_authoritative_intercept(q)
+
 
 # ── testing-data definition (q011) ──────────────────────────────────────────
 
