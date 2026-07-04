@@ -3499,6 +3499,36 @@ def _general_answer_enabled() -> bool:
     )
 
 
+# R273 — "wrong-framework" scope verdicts: the question is primarily about a
+# DIFFERENT EU regulation (near_oos = DSA / NIS2 / CRA / PLD; other_regulation =
+# GDPR / DMA / …). These must NOT be routed to the ungrounded general-assistant
+# LLM: on a wrong-framework question that mentions regulatory concepts, the
+# general model hallucinates EU AI Act provisions — the live VLOP answer cited a
+# non-existent "Article 52a". They get the grounded branded framework-pointer
+# refusal instead (the R49-B behaviour that names the correct regulation). The
+# general assistant stays ON for genuinely benign off-topic questions
+# (CONVERSATIONAL / EMPTY_OR_NONSENSE).
+_WRONG_FRAMEWORK_SCOPE_REASONS = frozenset({
+    ScopeReason.NEAR_OOS,
+    ScopeReason.OTHER_REGULATION,
+})
+
+
+def _general_answer_reason_ok(reason: ScopeReason) -> bool:
+    """R273 — may the ungrounded general assistant answer this out-of-scope
+    ``reason``? Yes for benign off-topic; NO for wrong-framework reasons (it
+    hallucinates AI Act articles there). Reversible:
+    ``REGENOLD_WRONG_FRAMEWORK_GENERAL=1`` restores the pre-R273 routing."""
+    if reason not in _WRONG_FRAMEWORK_SCOPE_REASONS:
+        return True
+    return os.getenv("REGENOLD_WRONG_FRAMEWORK_GENERAL", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 def _general_llm_candidates() -> list[tuple[object, str]]:
     """Ordered ``(provider, model)`` fallback chain for general (non-RAG) text.
 
@@ -4819,7 +4849,7 @@ def regenold_eu_ai_act_ask(
                     _trace_note("lexy_oos_rescue: in_scope")
 
             if not _rescued_to_rag:
-                if _general_answer_enabled():
+                if _general_answer_enabled() and _general_answer_reason_ok(_scope_reason):
                     _ga = _general_assistant_answer(_live_q)
                     if _ga:
                         _trace_retrieval_path("general_assistant")

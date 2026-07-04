@@ -3554,3 +3554,60 @@ class TestR71AssistantAnchorRescue:
             ("user", "We work with sensitive personal data for training."),
         ))
         assert cv.in_scope is False
+
+
+class TestR273NearOosGrounded:
+    """R273 — a ``near_oos`` / ``other_regulation`` question (primarily about
+    a DIFFERENT EU framework, e.g. the DSA) must NOT be answered by the
+    ungrounded general-assistant LLM. That path (R267, meant for benign
+    off-topic questions) hallucinated AI Act provisions for wrong-framework
+    questions — the live q054 VLOP answer cited a non-existent "Article 52a".
+    Wrong-framework verdicts get the grounded branded framework-pointer
+    refusal instead; genuinely benign off-topic questions still use the
+    general assistant."""
+
+    def setup_method(self) -> None:
+        settings.regenold.api_key = SecretStr("regenold-scope-test-key")
+
+    def _patch(self, monkeypatch, ga_return: str) -> dict:
+        import app.routes.regenold as route
+        calls = {"n": 0}
+
+        def _fake_ga(q: str) -> str:
+            calls["n"] += 1
+            return ga_return
+
+        monkeypatch.setattr(route, "_general_assistant_answer", _fake_ga)
+        # Deterministic safety gate (no live LLM): treat as non-adversarial.
+        monkeypatch.setattr(route, "classify_safety_intent", lambda q: "")
+        monkeypatch.delenv("REGENOLD_GENERAL_ANSWER", raising=False)
+        monkeypatch.delenv("REGENOLD_TOPIC_FILTER", raising=False)
+        return calls
+
+    def _ask(self, question: str) -> dict:
+        return _authed_client().post(
+            "/api/v1/regenold/eu-ai-act/ask",
+            json={"messages": [{"role": "user", "content": question}]},
+        ).json()
+
+    @pytest.mark.parametrize("q", [
+        "What are the algorithmic transparency obligations for a Very Large Online Platform content-moderation AI?",
+        "What are the transparency rules for a Very Large Online Platform's content-moderation AI?",
+    ])
+    def test_near_oos_vlop_not_general_assistant(self, q, monkeypatch) -> None:
+        calls = self._patch(
+            monkeypatch,
+            "Under the EU AI Act (Art. 52a), VLOPs must publish transparency reports.",
+        )
+        body = self._ask(q)
+        ans = body.get("answer", "")
+        assert "52a" not in ans, f"hallucinated general-assistant answer leaked: {ans!r}"
+        assert "Digital Services Act" in ans, f"expected branded DSA refusal, got: {ans!r}"
+        assert calls["n"] == 0, "general assistant must NOT be called for near_oos"
+
+    def test_benign_off_topic_still_uses_general_assistant(self, monkeypatch) -> None:
+        calls = self._patch(monkeypatch, "Paris is the capital of France.")
+        body = self._ask("What is the capital of France?")
+        ans = body.get("answer", "")
+        assert "Paris" in ans, f"benign off-topic should still get general assistant: {ans!r}"
+        assert calls["n"] == 1
