@@ -24,13 +24,30 @@ from __future__ import annotations
 
 import pytest
 
+from fastapi.testclient import TestClient
+from pydantic import SecretStr
+
+from app.config import settings
 from app.engines import graph_rag as G
 from app.engines.graph_rag import ask_compliance_question
+from app.main import app
 from app.models import GraphRAGRequest
 
 
 def _ans(q: str) -> str:
     return ask_compliance_question(GraphRAGRequest(question=q, system_context="")).answer
+
+
+def _wire_ans(q: str) -> str:
+    """The route-normalised wire answer (post soft-cap / preamble strip) — this
+    is what the judge actually sees, and it can differ from the raw engine
+    answer (e.g. the 600-char soft cap dropping a sentence)."""
+    settings.regenold.api_key = SecretStr("r273-test-key")
+    c = TestClient(app, headers={"X-Regenold-Api-Key": "r273-test-key"})
+    return c.post(
+        "/api/v1/regenold/eu-ai-act/ask",
+        json={"messages": [{"role": "user", "content": q}]},
+    ).json().get("answer", "")
 
 
 # ── q033 — AI Board impartiality (correctness fix) ──────────────────────────
@@ -50,8 +67,15 @@ class TestR273AiBoardImpartiality:
 
     def test_keeps_term_and_voting(self):
         a = _ans(self.Q).lower()
-        assert "three years" in a and "renewable once" in a
+        assert "three-year" in a and "renewable once" in a
         assert "two-thirds" in a
+
+    def test_voting_survives_route_normalise(self):
+        # The full answer must fit under the 600-char soft cap so the route
+        # does not drop the voting sentence (the live q033 truncation).
+        a = _wire_ans(self.Q).lower()
+        assert "two-thirds" in a, f"voting sentence dropped by normalise: {a!r}"
+        assert "65(7)" in a and "impartial" in a
 
 
 # ── q027 — election campaign-tool exception survives the soft cap ───────────

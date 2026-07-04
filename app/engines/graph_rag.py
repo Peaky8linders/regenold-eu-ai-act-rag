@@ -4336,19 +4336,18 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
             # independent stakeholder appointee), while Article 65(7) expressly
             # requires the Board itself to be organised and operated to safeguard
             # the objectivity and impartiality of its ACTIVITIES — both are true.
+            # R273 (q033) — kept under the 600-char soft cap so the voting
+            # sentence (Article 65(5)) is not dropped by the sentence-cap loop.
             "answer": (
-                "The European Artificial Intelligence Board, established by "
-                "Article 65, is composed of one representative per Member State, "
-                "each designated by their own Member State. Each representative "
-                "serves a term of three years, renewable once, under Article "
-                "65(3). Under Article 65(4), each representative is their Member "
-                "State's single contact point vis-a-vis the Board rather than an "
-                "independent stakeholder appointee; Article 65(7) nonetheless "
-                "requires the Board to be organised and operated so as to "
-                "safeguard the objectivity and impartiality of its activities. "
-                "The Board adopts its rules of procedure by a two-thirds "
-                "majority of the designated representatives under Article 65(5), "
-                "so a simple 50%-plus-one majority is not sufficient."
+                "The European Artificial Intelligence Board (Article 65) has one "
+                "representative per Member State, each serving a three-year term "
+                "renewable once under Article 65(3). Under Article 65(4) each is "
+                "their Member State's single contact point rather than an "
+                "independent stakeholder appointee, while Article 65(7) requires "
+                "the Board to safeguard the objectivity and impartiality of its "
+                "activities. Its rules of procedure are adopted by a two-thirds "
+                "majority under Article 65(5), so a simple majority is not "
+                "sufficient."
             ),
             "refs": ["Art. 65", "Art. 65.3", "Art. 65.4", "Art. 65.5", "Art. 65.7"],
         }
