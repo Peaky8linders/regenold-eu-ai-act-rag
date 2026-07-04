@@ -348,6 +348,32 @@ REGENOLD_CHAIN_COLLAPSE = "1"
 # bench has no Neo4j → the gate branch is never reached locally); the win lands LIVE.
 REGENOLD_KB_PRIMARY_RETRIEVAL = "1"
 
+# 2026-07-04 operator directive — Opus 4.8 "fast mode" answers BOTH Stage-2
+# tiers, thinking-free on simple / with extended reasoning on complex.
+#
+# These are baked as CODE defaults (app/config.py) per the R80.2 lesson
+# (Railway dashboard vars override this [deploy.envs] block), so a fresh deploy
+# with NO dashboard override picks them up. Pinned here for visibility + as a
+# belt-and-suspenders fallback:
+#   * stage2_model     = claude-opus-4-8   (simple tier — was Sonnet 5)
+#   * complex_model    = claude-opus-4-8   (complex tier — unchanged)
+#   * thinking_tokens  = 0                 (SIMPLE tier is thinking-FREE: Opus
+#                                           answers in a single fast pass)
+#   * complex_thinking_tokens = 4000       (COMPLEX tier keeps extended reasoning)
+#
+# "Fast mode" (Claude Code's Opus faster-output path) is a WRAPPER-side setting,
+# not an app header: the bundled claude.exe is >= 2.1.185 (which fast-gates
+# claude-opus-4-8) and fastMode is enabled in the wrapper's ClaudeAgentOptions.
+# The prior finding is that fast mode + the thinking budget are BOTH wall-clock
+# non-levers on the Max tunnel (latency is ~99% the wrapper floor); this round
+# adopts the config per the operator directive at ~neutral latency.
+#
+# Restore the R261 Sonnet-5 simple tier per-deploy:
+#   railway variables --set P2P_GRAPH_RAG_STAGE2_MODEL=claude-sonnet-5
+#   railway variables --set P2P_GRAPH_RAG_THINKING_TOKENS=2048
+P2P_GRAPH_RAG_STAGE2_MODEL = "claude-opus-4-8"
+P2P_GRAPH_RAG_THINKING_TOKENS = "0"
+
 # Round 80.2 — Stage-2 LLM polish + latency knobs are now CODE
 # DEFAULTS, not railway.toml overrides. The R80.1 round added them
 # to [deploy.envs] but Railway dashboard service variables (when

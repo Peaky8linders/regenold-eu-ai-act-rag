@@ -233,13 +233,13 @@ class TestStage2AlwaysOpus:
     tests in this module omit it (is_stage2=False → base-model path).
     """
 
-    def test_stage2_simple_uses_sonnet5_with_moderate_thinking(
+    def test_stage2_simple_uses_opus48_no_thinking(
         self, _mock_wrapper
     ) -> None:
-        """Simple Stage-2 question → ``stage2_model`` (Sonnet 5) + the MODERATE
-        ``thinking_tokens`` reasoning budget, so latency stays bounded on the
-        ~80% simple majority while the answer is verdict-first quality. Pins the
-        2026-06-30 default loudly so a revert to Opus is not silent."""
+        """Simple Stage-2 question → ``stage2_model`` (Opus 4.8) with NO thinking
+        header — the 2026-07-04 directive: Opus answers the simple tier in a
+        single fast pass (``thinking_tokens`` default 0). Pins the default
+        loudly so a revert to Sonnet 5 / a thinking budget is not silent."""
         _openai_wrapper_complete_for_graph_rag(
             system="x", user="Is a medtech system that tracks patient weight high risk?",
             max_tokens=400, temperature=0.0,
@@ -247,11 +247,14 @@ class TestStage2AlwaysOpus:
             stage_name="Stage 2 (Polishing)",
         )
         req: OpenAIWrapperRequest = _mock_wrapper.complete.call_args.args[0]
-        assert req.model == settings.graph_rag.stage2_model == "claude-sonnet-5"
-        # MODERATE reasoning tokens on the simple Stage-2 path.
-        assert req.extra_headers.get("X-Claude-Max-Thinking-Tokens") == str(
-            settings.graph_rag.thinking_tokens
-        )
+        assert req.model == settings.graph_rag.stage2_model == "claude-opus-4-8"
+        # Thinking-free simple tier (thinking_tokens 0 → no header).
+        if settings.graph_rag.thinking_tokens > 0:
+            assert req.extra_headers.get("X-Claude-Max-Thinking-Tokens") == str(
+                settings.graph_rag.thinking_tokens
+            )
+        else:
+            assert "X-Claude-Max-Thinking-Tokens" not in (req.extra_headers or {})
 
     def test_stage2_complex_uses_opus_with_extended_thinking(
         self, _mock_wrapper

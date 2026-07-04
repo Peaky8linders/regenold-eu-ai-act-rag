@@ -39,19 +39,13 @@ _ANNEX_RE = re.compile(r"\bAnnex\s+([IVXLC]+)\b")
 
 
 def test_thinking_tokens_adaptive_r139() -> None:
-    # R139 — Stage-2 is always Opus 4.8; the MODERATE simple-question budget was
-    # retuned 2048 → 1024 (latency-conscious on the now-Opus 80% majority), and
-    # the EXTENDED complex budget 1024 → 4000.
-    # R148 — standard-path budget bumped back 1024 → 2048 (operator directive:
-    # more deliberation "to get better answers"; reversible via env).
-    # 2026-07-03 — restored to 2048 after an un-validated 4000 drift (433727a)
-    # that left this assertion red; the thinking budget is a proven latency
-    # non-lever, so the moderate(2048)/extended(4000) split is restored.
-    assert settings.graph_rag.thinking_tokens == 2048
+    # 2026-07-04 operator directive — Opus 4.8 answers BOTH tiers ("fast mode").
+    # The SIMPLE tier is thinking-FREE (thinking_tokens 0 — Opus single-pass);
+    # the COMPLEX tier keeps the EXTENDED budget (complex_thinking_tokens 4000).
+    # Supersedes the R261 "Sonnet 5 simple / Opus 4.8 complex" split.
+    assert settings.graph_rag.thinking_tokens == 0
     assert settings.graph_rag.complex_thinking_tokens == 4000
-    # R261 switched the standard Stage-2 model Opus 4.8 → Sonnet 5 (with
-    # reasoning); this assertion tracked that change.
-    assert settings.graph_rag.stage2_model == "claude-sonnet-5"
+    assert settings.graph_rag.stage2_model == "claude-opus-4-8"
 
 
 # ── Change 1 — BLUF verdict-first prompt ──────────────────────────────────

@@ -30,21 +30,27 @@ class GraphRAGSettings(BaseSettings):
     The Stage-2 ANSWER is governed by :attr:`stage2_model`, not this field.
     Override per-deploy with ``P2P_GRAPH_RAG_MODEL``."""
 
-    stage2_model: str = "claude-sonnet-5"
+    stage2_model: str = "claude-opus-4-8"
     """Model for the Stage-2 ANSWER (the user-facing legal prose) on the
     STANDARD (simple / low-complexity) path — the ~80% of questions the
     complexity gate does NOT flag. Complex questions use :attr:`complex_model`
-    (Opus 4.8) instead.
+    (also Opus 4.8) instead.
 
-    **2026-06-30 operator directive — Sonnet 5 (with reasoning tokens) answers
-    the simple tier; Opus 4.8 answers the complex tier.** Default
-    ``claude-sonnet-5``: Sonnet 5 with a moderate extended-thinking budget
-    (:attr:`thinking_tokens`) is fast AND produces verdict-first,
-    professionally-toned answers, so it owns the simple majority while Opus 4.8
-    (:attr:`complex_model`) is reserved for the hard ~20%. This supersedes the
-    R139 "always Opus 4.8 for Stage-2" directive (Opus on every simple question
-    cost latency the simple tier doesn't need; Sonnet 5 closes the quality gap
-    that motivated R139). Empty → fall back to :attr:`model` for Stage-2.
+    **2026-07-04 operator directive — Opus 4.8 answers BOTH tiers (fast mode).**
+    Default ``claude-opus-4-8``: the simple tier now runs on Opus 4.8 with NO
+    thinking budget (:attr:`thinking_tokens` = 0 — verdict-first, fast), while
+    the complex tier runs on Opus 4.8 WITH the extended reasoning budget
+    (:attr:`complex_thinking_tokens`). "Fast mode" (Claude Code's Opus
+    faster-output path) is enabled wrapper-side (the bundled ``claude.exe`` is
+    ≥ 2.1.185, which fast-gates ``claude-opus-4-8``); it is not an app-side
+    header. Since both :attr:`stage2_model` and :attr:`complex_model` are now
+    Opus 4.8, the R270 ``REGENOLD_OPUS_FOR_ALL`` flag is moot (both routes land
+    on Opus regardless of it).
+
+    This supersedes the 2026-06-30 "Sonnet 5 simple / Opus 4.8 complex" split
+    (the operator now wants Opus on every answer). Empty → fall back to
+    :attr:`model` for Stage-2. Restore the Sonnet-5 simple tier per-deploy with
+    ``P2P_GRAPH_RAG_STAGE2_MODEL=claude-sonnet-5`` (+ ``THINKING_TOKENS=2048``).
 
     Cost is flat on the production Claude Max subscription (the wrapper bills
     the Max plan, not per token). Override per-deploy with
@@ -173,13 +179,27 @@ class GraphRAGSettings(BaseSettings):
       * R80.2: reduced 2500 → 1024 (current).
     """
 
-    thinking_tokens: int = 2048
-    """``max_thinking_tokens`` — the **MODERATE** thinking budget for the
-    STANDARD Stage-2 synthesis path: the ~80% of questions the complexity gate
-    does NOT flag. Complex questions use the larger EXTENDED
-    :attr:`complex_thinking_tokens` instead.
+    thinking_tokens: int = 0
+    """``max_thinking_tokens`` — thinking budget for the STANDARD Stage-2
+    synthesis path: the ~80% of questions the complexity gate does NOT flag.
+    Complex questions use the larger EXTENDED :attr:`complex_thinking_tokens`
+    instead.
 
-    **2026-07-03 — RESTORED to 2048 (revert un-validated 4000 drift).** Commit
+    **2026-07-04 operator directive — 0 (NO thinking on simple questions).**
+    With Opus 4.8 now answering the simple tier (:attr:`stage2_model`), the
+    operator wants the simple path fast and thinking-free: ``0`` sends no
+    ``X-Claude-Max-Thinking-Tokens`` header, so Opus 4.8 answers simple
+    questions in a single pass (verdict-first, no deliberation tail). The
+    complex tier keeps its EXTENDED :attr:`complex_thinking_tokens` budget.
+    Prior finding: the thinking budget is a wall-clock non-lever on simple
+    questions (4000 / 1024 / 0 all wash — the model does not fill the budget
+    and latency is ~99% the wrapper floor), and there is no quality evidence
+    the higher budget helps the simple tier — so 0 costs nothing measurable and
+    matches the directive. Restore a moderate budget per-deploy with
+    ``P2P_GRAPH_RAG_THINKING_TOKENS=2048``. Clamped at the engine to
+    [1024, 16000] when > 0; ``0`` is the fast thinking-free path.
+
+    **2026-07-03 — was 2048 (revert un-validated 4000 drift).** Commit
     ``433727a`` (bundled with an unrelated AI-Board regex fix) had bumped this
     to 4000 with no A/B — collapsing the moderate(simple)/extended(complex)
     split (both budgets became 4000) and leaving two pinned tests red
