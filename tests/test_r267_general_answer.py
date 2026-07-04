@@ -189,3 +189,32 @@ def test_response_model_accepts_general_assistant_retrieval_path() -> None:
         answer="x", references=[], retrieval_path="general_assistant"
     )
     assert out.retrieval_path == "general_assistant"
+
+
+def test_response_model_accepts_every_reachable_retrieval_path() -> None:
+    """The ``retrieval_path`` Literal must accept EVERY string the route can
+    assign to it (line ~7214, ``if include_telemetry:`` branch). A value not in
+    the Literal raises a Pydantic ValidationError → 500 on
+    ``?include_telemetry=true`` (the recurring R267.2 / 2cb2bd3 / R271 class:
+    ``logic_rag`` from the LogicRAG engine — ON in prod — and
+    ``chapter_summary_fallback`` were missing). If a new engine/route path emits
+    a new ``retrieval_path = "..."``, add it to the Literal in models.py AND
+    here."""
+    from app.integrations.regenold.models import RegenoldAskResponse
+
+    reachable = [
+        "neo4j",
+        "kb_fallback",
+        "deterministic",
+        "no_match",
+        "zero_retrieval_fallback",
+        "consistency_guard",
+        "verbatim_exact_text",
+        "general_assistant",
+        "logic_rag",
+        "chapter_summary_fallback",
+        None,
+    ]
+    for path in reachable:
+        out = RegenoldAskResponse(answer="x", references=[], retrieval_path=path)
+        assert out.retrieval_path == path

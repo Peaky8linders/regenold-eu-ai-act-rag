@@ -142,6 +142,13 @@ class RegenoldAskResponse(BaseModel):
         "consistency_guard",
         "verbatim_exact_text",
         "general_assistant",
+        # NOTE: this Literal must list EVERY string the route can assign to
+        # ``retrieval_path`` (line ~7214, ``if include_telemetry:`` branch) —
+        # a value not listed here raises a Pydantic ValidationError → 500 on
+        # ``?include_telemetry=true`` (the recurring R267.2 / 2cb2bd3 class).
+        # Any new engine/route ``retrieval_path = "..."`` MUST be added here.
+        "logic_rag",                 # R117 LogicRAG engine (ON in prod)
+        "chapter_summary_fallback",  # route chapter-summary fallback
         None,
     ] | None = Field(
         default=None,
