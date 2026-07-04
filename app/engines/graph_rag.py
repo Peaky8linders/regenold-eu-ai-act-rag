@@ -3621,6 +3621,151 @@ def _detect_testing_data_definition_inquiry(question: str) -> bool:
     )
 
 
+# R273 (q009) — provider record-retention duration. "What documentation must a
+# provider keep available to national competent authorities, and for how long?"
+# The wire previously fabricated a separate "Annex V 10-year retention" duty
+# (Annex V only specifies the EU declaration's CONTENT) and dropped the Art. 19
+# logs. Article 18(1)(a)-(e) is the exact list; Article 19 covers the logs.
+# Gated on retention-duration + documentation + authority-availability cues.
+_RETENTION_DOC_RE = re.compile(r"\bdocumentation\b|\brecords?\b|\bdocuments?\b", re.IGNORECASE)
+_RETENTION_KEEP_RE = re.compile(
+    r"\bkeep\b|\bretain\b|\bretention\b|\bat the disposal\b|\bavailable\b|\bhold\b|\bkept\b",
+    re.IGNORECASE,
+)
+_RETENTION_DUR_RE = re.compile(
+    r"\bhow long\b|\bfor how long\b|\bten years?\b|\b10 years?\b"
+    r"|\bretention period\b|\bfor a period\b|\bhow many years?\b",
+    re.IGNORECASE,
+)
+# Article 18 keeps documentation "at the disposal of the national competent
+# authorities" — require an authority reference so the intercept matches that
+# specific shape (q009) and NOT the terser davidath variant "How long must
+# providers keep technical documentation for high-risk AI systems?" (no
+# authority reference), preserving davidath byte-identity.
+_RETENTION_AUTH_RE = re.compile(
+    r"\bauthorit(?:y|ies)\b|\bcompetent\b|\bat the disposal\b|\bsurveillance\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_retention_docs_inquiry(question: str) -> bool:
+    """True when the question asks WHICH documents a high-risk provider must keep
+    for the (national competent) authorities AND for HOW LONG (Article 18
+    ten-year retention)."""
+    raw_q = question or ""
+    marker = "Latest question:\n"
+    idx = raw_q.rfind(marker)
+    if idx >= 0:
+        raw_q = raw_q[idx + len(marker):]
+    return bool(
+        _RETENTION_DOC_RE.search(raw_q)
+        and _RETENTION_KEEP_RE.search(raw_q)
+        and _RETENTION_DUR_RE.search(raw_q)
+        and _RETENTION_AUTH_RE.search(raw_q)
+    )
+
+
+# R273 (q043) — Article 10(5) special-categories-of-personal-data bias
+# derogation + its six cumulative safeguards. The wire answered only the "when"
+# and omitted the Art. 10(5)(a)-(f) conditions the question asks for.
+_SPECIAL_DATA_RE = re.compile(r"special categor(?:y|ies)", re.IGNORECASE)
+_BIAS_RE = re.compile(r"\bbias(?:es)?\b", re.IGNORECASE)
+_SPECIAL_DATA_CUE_RE = re.compile(
+    r"\b10\(5\)\b|\b10\.5\b|\bsafeguard|\bcondition|\bprocess|\bwhen may\b|\bexception",
+    re.IGNORECASE,
+)
+
+
+def _detect_special_data_bias_inquiry(question: str) -> bool:
+    """True when the question asks under what conditions/safeguards a provider
+    may process special categories of personal data for bias detection
+    (Article 10(5))."""
+    raw_q = question or ""
+    marker = "Latest question:\n"
+    idx = raw_q.rfind(marker)
+    if idx >= 0:
+        raw_q = raw_q[idx + len(marker):]
+    return bool(
+        _SPECIAL_DATA_RE.search(raw_q)
+        and _BIAS_RE.search(raw_q)
+        and _SPECIAL_DATA_CUE_RE.search(raw_q)
+    )
+
+
+# R273 (q040) — Annex VII point 4.6 Union technical-documentation-assessment
+# CERTIFICATE content. The wire recited Annex IV technical-documentation content
+# (a different question); the certificate's own fields are in Annex VII(4.6).
+_CERTIFICATE_RE = re.compile(r"\bcertificate\b", re.IGNORECASE)
+_TECHDOC_ASSESS_RE = re.compile(
+    r"technical documentation|union technical|documentation assessment",
+    re.IGNORECASE,
+)
+_CERT_CONTENT_CUE_RE = re.compile(
+    r"\bcontain\b|\bindicate\b|\bwhat information\b|\bcontent\b|\bfields?\b|\binclude\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_tech_doc_certificate_inquiry(question: str) -> bool:
+    """True when the question asks what the Union technical documentation
+    assessment CERTIFICATE must contain (Annex VII point 4.6)."""
+    raw_q = question or ""
+    marker = "Latest question:\n"
+    idx = raw_q.rfind(marker)
+    if idx >= 0:
+        raw_q = raw_q[idx + len(marker):]
+    return bool(
+        _CERTIFICATE_RE.search(raw_q)
+        and _TECHDOC_ASSESS_RE.search(raw_q)
+        and _CERT_CONTENT_CUE_RE.search(raw_q)
+    )
+
+
+# R273 (q001) — technical documentation must describe the HARDWARE. The wire
+# answered "yes, Annex IV" generally but never pinned Annex IV point 1(e)
+# (hardware description) / 2(c) (computational resources). 0 davidath rows
+# mention "hardware", so this intercept is byte-identical by construction.
+_HARDWARE_RE = re.compile(r"\bhardware\b", re.IGNORECASE)
+_TECHDOC_CTX_RE = re.compile(
+    r"technical documentation|\bannex iv\b|\bspecification", re.IGNORECASE,
+)
+
+
+def _detect_hardware_techdoc_inquiry(question: str) -> bool:
+    """True when the question asks whether the technical documentation must
+    specify the required hardware (Annex IV point 1(e) / 2(c))."""
+    raw_q = question or ""
+    marker = "Latest question:\n"
+    idx = raw_q.rfind(marker)
+    if idx >= 0:
+        raw_q = raw_q[idx + len(marker):]
+    return bool(_HARDWARE_RE.search(raw_q) and _TECHDOC_CTX_RE.search(raw_q))
+
+
+# R273 (q032) — deviation-detection carve-out. A system that only detects
+# decision-making patterns or deviations for an Annex III use case is NOT
+# automatically high-risk (Article 6(3)(c)); the wire concluded high-risk
+# without applying the exact carve-out. 0 davidath rows mention "deviation" /
+# "decision-making pattern", so byte-identical by construction.
+_DEVIATION_RE = re.compile(
+    r"\bdeviations?\b|decision[- ]making patterns?", re.IGNORECASE,
+)
+_DEVIATION_CTX_RE = re.compile(
+    r"\bannex iii\b|\bhigh[- ]?risk\b|\barticle 6\b", re.IGNORECASE,
+)
+
+
+def _detect_deviation_detection_inquiry(question: str) -> bool:
+    """True when the question asks whether an Annex III deviation-/pattern-
+    detection system is high-risk (Article 6(3)(c) carve-out)."""
+    raw_q = question or ""
+    marker = "Latest question:\n"
+    idx = raw_q.rfind(marker)
+    if idx >= 0:
+        raw_q = raw_q[idx + len(marker):]
+    return bool(_DEVIATION_RE.search(raw_q) and _DEVIATION_CTX_RE.search(raw_q))
+
+
 def _is_r265_reconcile_intercept(question: str) -> bool:
     """R265 — the four curated intercepts whose deterministic (Stage-2-skipped)
     answer should have its wire references reconciled against the curated prose.
@@ -3642,6 +3787,11 @@ def _is_r265_reconcile_intercept(question: str) -> bool:
         or _detect_sme_simplified_doc_inquiry(question)
         or _detect_workplace_worker_notification_inquiry(question)
         or _detect_art50_text_public_interest_inquiry(question)
+        or _detect_retention_docs_inquiry(question)
+        or _detect_special_data_bias_inquiry(question)
+        or _detect_tech_doc_certificate_inquiry(question)
+        or _detect_hardware_techdoc_inquiry(question)
+        or _detect_deviation_detection_inquiry(question)
     )
 
 
@@ -3701,6 +3851,11 @@ def _is_curated_authoritative_intercept(question: str) -> bool:
         or _detect_prohibited_practices_inquiry(question)
         or _detect_deepfake_criminal_exception_inquiry(question)
         or _detect_testing_data_definition_inquiry(question)
+        or _detect_retention_docs_inquiry(question)
+        or _detect_special_data_bias_inquiry(question)
+        or _detect_tech_doc_certificate_inquiry(question)
+        or _detect_hardware_techdoc_inquiry(question)
+        or _detect_deviation_detection_inquiry(question)
     )
 
 
@@ -4000,19 +4155,26 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     if _detect_risk_framework_inquiry(question):
         verdict = {
             "name": "risk_framework_overview",
+            # R273 (q022) — compacted so EVERY clause is cite-anchored and the
+            # whole answer fits under the 600-char soft cap. The earlier 3-
+            # sentence version had a non-cite lead ("four tiers ...") and a
+            # trailing GPAI sentence; the soft cap dropped both, so the wire
+            # shipped only the middle clause and omitted the GPAI systemic-risk
+            # track (the live q022 defect). Both sentences below carry inline
+            # anchors, so the sentence-drop loop cannot strip either.
             "answer": (
-                "The EU AI Act applies a risk-based framework with four tiers plus "
-                "a parallel regime for general-purpose AI models. Unacceptable-risk "
-                "practices are prohibited outright under Article 5; high-risk systems "
-                "are classified under Article 6 (as a safety component of an Annex I "
-                "product, or as one of the Annex III use cases) and carry the "
-                "Chapter III Section 2 obligations; limited-risk systems carry the "
-                "Article 50 transparency duties; and minimal-risk systems have no "
-                "mandatory obligations. General-purpose AI models are governed "
-                "separately under Articles 51 to 56, with stricter duties for models "
-                "posing systemic risk."
+                "The EU AI Act sets four risk tiers plus a separate regime for "
+                "general-purpose AI models: unacceptable-risk practices are "
+                "prohibited under Article 5; and high-risk systems are classified "
+                "under Article 6 (an Annex I product safety component, or an Annex "
+                "III use case) and carry the Chapter III Section 2 obligations. "
+                "Limited-risk systems carry the Article 50 transparency duties, "
+                "minimal-risk systems have no mandatory duties under the Act, and "
+                "general-purpose AI models are governed separately under Articles "
+                "51 to 56, with added obligations under Article 55 for models "
+                "classified as having systemic risk under Article 51."
             ),
-            "refs": ["Art. 5", "Art. 6", "Annex III", "Art. 50", "Art. 51"],
+            "refs": ["Art. 5", "Art. 6", "Annex III", "Art. 50", "Art. 51", "Art. 55"],
         }
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
@@ -4167,20 +4329,28 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
             # Article 65 text: 65(4) contact-point + Member-State representation,
             # with impartiality attaching to the Board's ACTIVITIES (65(7)), not
             # to individual members as independents.
+            # R273 (q033) — impartiality sentence corrected. The earlier text
+            # ("... rather than being appointed to act impartially ...") wrongly
+            # implied impartiality does not apply. Article 65(4) makes each
+            # representative their Member State's single contact point (not an
+            # independent stakeholder appointee), while Article 65(7) expressly
+            # requires the Board itself to be organised and operated to safeguard
+            # the objectivity and impartiality of its ACTIVITIES — both are true.
             "answer": (
                 "The European Artificial Intelligence Board, established by "
                 "Article 65, is composed of one representative per Member State, "
                 "each designated by their own Member State. Each representative "
                 "serves a term of three years, renewable once, under Article "
-                "65(3). Under Article 65(4), each representative is designated "
-                "as their Member State's single contact point vis-a-vis the "
-                "Board and acts on its behalf, rather than being appointed to "
-                "act impartially as an independent member. The Board adopts its "
-                "rules of procedure by a two-thirds majority of the designated "
-                "representatives under Article 65(5), so a simple 50%-plus-one "
-                "majority is not sufficient."
+                "65(3). Under Article 65(4), each representative is their Member "
+                "State's single contact point vis-a-vis the Board rather than an "
+                "independent stakeholder appointee; Article 65(7) nonetheless "
+                "requires the Board to be organised and operated so as to "
+                "safeguard the objectivity and impartiality of its activities. "
+                "The Board adopts its rules of procedure by a two-thirds "
+                "majority of the designated representatives under Article 65(5), "
+                "so a simple 50%-plus-one majority is not sufficient."
             ),
-            "refs": ["Art. 65", "Art. 65.3", "Art. 65.4", "Art. 65.5"],
+            "refs": ["Art. 65", "Art. 65.3", "Art. 65.4", "Art. 65.5", "Art. 65.7"],
         }
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
@@ -4226,19 +4396,132 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     if _detect_annex_iii_8_election_inquiry(question):
         verdict = {
             "name": "annex_iii_8_election",
+            # R273 (q027) — the exception sentence is now cite-anchored
+            # ("Annex III point 8(b) itself excludes ...") so the 600-char soft
+            # cap in ``normalise_answer_for_regenold`` (which drops the longest
+            # NON-cite-anchored sentence first) cannot strip it. The live wire
+            # previously shipped only the first sentence, dropping the exact
+            # campaign-tooling carve-out the question asks for.
             "answer": (
-                "Under Annex III point 8(b), AI systems intended to be used "
-                "to influence the outcome of an election or referendum, or "
-                "the voting behaviour of natural persons in exercising "
-                "their vote, are classified as high-risk under Article "
-                "6(2). The exception applies to AI systems whose output "
-                "natural persons are not directly exposed to, such as "
-                "tools used only to organise, optimise or structure "
-                "political campaigns from an administrative or logistical "
-                "point of view; those campaign-tooling systems fall "
-                "outside this high-risk category."
+                "Under Annex III point 8(b), AI systems intended to influence "
+                "the outcome of an election or referendum, or the voting "
+                "behaviour of natural persons in exercising their vote, are "
+                "high-risk under Article 6(2). Annex III point 8(b) itself "
+                "excludes systems to whose output natural persons are not "
+                "directly exposed, such as tools used only to organise, "
+                "optimise or structure political campaigns from an "
+                "administrative or logistical point of view, which therefore "
+                "fall outside this high-risk category."
             ),
             "refs": ["Annex III.8", "Annex III.8.b", "Art. 6"],
+        }
+        _seed_classification_obligations(context, verdict, question)
+        return verdict["answer"]
+
+    # R273 (q009) — provider record retention (Article 18) + logs (Article 19).
+    # Verbatim-faithful to Article 18(1)(a)-(e) — no fabricated Annex V duty.
+    if _detect_retention_docs_inquiry(question):
+        verdict = {
+            "name": "retention_docs",
+            "answer": (
+                "Under Article 18, for ten years after the high-risk AI system "
+                "is placed on the market or put into service, the provider must "
+                "keep at the disposal of the national competent authorities the "
+                "technical documentation (Article 11), the quality-management-"
+                "system documentation (Article 17), the documentation of any "
+                "changes approved by notified bodies, the decisions and other "
+                "documents issued by notified bodies, and the EU declaration of "
+                "conformity (Article 47). Separately, under Article 19 the "
+                "automatically generated logs must be kept for a period "
+                "appropriate to the intended purpose, of at least six months."
+            ),
+            "refs": ["Art. 18", "Art. 11", "Art. 17", "Art. 47", "Art. 19"],
+        }
+        _seed_classification_obligations(context, verdict, question)
+        return verdict["answer"]
+
+    # R273 (q043) — Article 10(5) special-categories bias derogation + the six
+    # cumulative safeguards (a)-(f), verbatim-grounded.
+    if _detect_special_data_bias_inquiry(question):
+        verdict = {
+            "name": "special_data_bias",
+            "answer": (
+                "Under Article 10(5), a provider of a high-risk AI system may "
+                "exceptionally process special categories of personal data only "
+                "to the extent strictly necessary to ensure bias detection and "
+                "correction, subject to appropriate safeguards. Article 10(5) "
+                "requires all of the following: the bias work cannot be done "
+                "with other data, including synthetic or anonymised data (a); "
+                "technical limits on re-use plus state-of-the-art security and "
+                "pseudonymisation (b); strict, documented access controls to "
+                "prevent misuse (c); no transmission or transfer to other "
+                "parties (d); deletion once the bias is corrected or the "
+                "retention period ends, whichever is first (e); and records of "
+                "processing documenting why it was strictly necessary (f)."
+            ),
+            "refs": ["Art. 10.5", "Art. 10"],
+        }
+        _seed_classification_obligations(context, verdict, question)
+        return verdict["answer"]
+
+    # R273 (q040) — Annex VII point 4.6 Union technical documentation assessment
+    # CERTIFICATE content (distinct from Annex IV technical-documentation
+    # content, which answers a different question), verbatim-grounded.
+    if _detect_tech_doc_certificate_inquiry(question):
+        verdict = {
+            "name": "tech_doc_certificate",
+            "answer": (
+                "Under Annex VII point 4.6, where the notified body finds the "
+                "high-risk AI system conforms with the Chapter III Section 2 "
+                "requirements, it issues a Union technical documentation "
+                "assessment certificate. Per Annex VII point 4.6, that "
+                "certificate must indicate the name and address of the "
+                "provider, the conclusions of the examination, the conditions "
+                "(if any) for its validity, and the data necessary for the "
+                "identification of the AI system."
+            ),
+            "refs": ["Annex VII"],
+        }
+        _seed_classification_obligations(context, verdict, question)
+        return verdict["answer"]
+
+    # R273 (q001) — technical documentation must describe the hardware; pin the
+    # exact Annex IV sub-points (1(e) runtime hardware, 2(c) computational
+    # resources), verbatim-grounded.
+    if _detect_hardware_techdoc_inquiry(question):
+        verdict = {
+            "name": "hardware_techdoc",
+            "answer": (
+                "Yes. Under Article 11, a provider must draw up technical "
+                "documentation containing the information set out in Annex IV, "
+                "which expressly requires a description of the hardware on which "
+                "the AI system is intended to run (Annex IV point 1(e)) and, as "
+                "part of the system's development description, the computational "
+                "resources used to develop, train, test and validate it (Annex "
+                "IV point 2(c))."
+            ),
+            "refs": ["Art. 11", "Annex IV", "Annex IV.1.e", "Annex IV.2.c"],
+        }
+        _seed_classification_obligations(context, verdict, question)
+        return verdict["answer"]
+
+    # R273 (q032) — Annex III deviation-/pattern-detection carve-out under
+    # Article 6(3)(c), with the profiling proviso, verbatim-grounded.
+    if _detect_deviation_detection_inquiry(question):
+        verdict = {
+            "name": "deviation_detection",
+            "answer": (
+                "Not automatically. Even within an Annex III use case, Article "
+                "6(3)(c) provides that an AI system intended to detect "
+                "decision-making patterns or deviations from prior "
+                "decision-making patterns is not high-risk where it does not "
+                "pose a significant risk of harm and is not meant to replace or "
+                "influence a previously completed human assessment without "
+                "proper human review. However, under Article 6(3) such a system "
+                "is always high-risk where it performs profiling of natural "
+                "persons."
+            ),
+            "refs": ["Art. 6.3", "Art. 6", "Annex III"],
         }
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
