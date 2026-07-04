@@ -9230,6 +9230,52 @@ OFF — the 0-trigger-row proof, empirically confirmed); 276-runner **all
 categories 100%**; OOS probe **21/21, 0 leaks**; +13 `tests/test_r268_multiarticle.py`
 + touched-surface suite green. Env-reversible `REGENOLD_MULTI_ARTICLE_ENTITIES=0`.
 
+## Round 268.1 — Oxford-comma multi-article capture + review of the R268 latency batch (2026-07-04)
+
+An eng-manager + deep-code review of the R268 "latency optimisations and fixes"
+batch (`d6fc4a1..5685c17`: httpx TLS keepalive, `thinking_tokens` 4000→2048,
+multi-article grounding, Art 65(4) cite-anchor) surfaced one real correctness
+gap in R268's own regex plus two Suggestions. The multi-agent specialist
+fan-out was hard-throttled by a sustained Anthropic server-side rate limit, so
+the review was completed inline with empirical ground truth (regexes + engine +
+tests actually run; the existence gate and the wrapper `except` path traced).
+
+### The fix — R268's separator dropped the trailing Oxford-comma item
+`_MULTI_ARTICLE_MENTION_RE` / `_MULTI_ANNEX_MENTION_RE` used a SINGLE-connector
+separator `\s*(?:,|&|/|and|or)\s*`, so the commonest legal-list shape "Articles
+9, 10, **and** 15" — where the last connector is a comma FOLLOWED by "and"
+(`, and`) — matched only the comma, broke the list, and silently dropped "15".
+R268 thus defeated its own multi-article goal on Oxford-comma lists (still a
+strict improvement over pre-R268, which captured NOTHING for plural "Articles").
+Fix: the separator becomes a one-or-more run `(?:\s*(?:,|&|/|and|or)\s*)+` so
+`, and` / `, or` is consumed and the trailing item is captured ("Articles 9, 10,
+and 15" → [9,10,15]; "Annexes XI, XII, or XIII" → [XI,XII,XIII]). Each `(?:sep)+`
+iteration consumes a required connector char, so the bounded `{0,8}` stays
+ReDoS-safe (0.12 ms on a 600-comma pathological input).
+
+### Two Suggestions (documented; no behaviour change)
+* **Annex over-capture (inert)** — an UPPERCASE Roman-letter word after a
+  connector ("Annex III, **CE** marking" → bogus "Annex C") is captured as an
+  entity, but yields no `EC_CHECKER_OBLIGATION_MAP` entry → surfaces no
+  obligation → dropped by the wire's existence gate. Left as-is; pinned inert by
+  a regression test. (Lowercase words are already filtered by the case-sensitive
+  inner `findall`.)
+* **Keepalive comment accuracy** — the R268 `keepalive_expiry=90s` comment
+  claimed "httpx transparently retries a server-closed stale connection". httpx
+  does NOT auto-retry a mid-flight `RemoteProtocolError`; the real safety net is
+  `complete()`'s `except httpx.HTTPError` → provider error → Groq/deterministic
+  fallback (fail-soft, never a 500). Comment corrected to describe the actual
+  behaviour. The keepalive change itself is reliability-safe as shipped.
+
+### Gates
+davidath **byte-identical** — a diff of the pre- vs post-fix regex over all 6358
+davidath string values yields **0 deltas** (its 158 multi-item list-strings
+never use an Oxford comma). 276-runner **255/255 (100%)**, RISK_F1 macro 1.00;
+OOS probe **21/21, 0 leaks**; +12 `tests/test_r268_1_oxford_comma.py` + the 14
+existing R268 tests green. Env-reversible `REGENOLD_MULTI_ARTICLE_ENTITIES=0`.
+The live win lands on the "obligations under Articles X, Y, and Z" Oxford-comma
+shape (davidath is the regression guard, not the win surface — the R268 pattern).
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

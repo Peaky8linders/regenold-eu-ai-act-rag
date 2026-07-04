@@ -1577,10 +1577,19 @@ def _is_role_contrast_obligation(text_lower: str) -> bool:
 # only 13). This token mirrors scope.py's proven ``_ARTICLE_REF_RE`` (Art /
 # Art. / Article / Articles / Artikel) and captures a comma/and/or number
 # list; the caller pulls EVERY number out of the list.
+#
+# R268.1 — the separator is a ONE-OR-MORE run ``(?:sep)+`` so the Oxford-comma
+# shape "Articles 9, 10, and 15" (the connector ", and" is a comma FOLLOWED by
+# "and") consumes both tokens and captures the trailing "15". The pre-R268.1
+# single-separator form matched only ONE connector, so ", and 15" broke the
+# list and silently dropped 15 — defeating this very widening on the commonest
+# legal-list phrasing. davidath byte-identical (its lists never use an Oxford
+# comma); each ``(?:sep)+`` iteration consumes a required connector char, so the
+# bounded ``{0,8}`` stays ReDoS-safe.
 _MULTI_ARTICLE_MENTION_RE = re.compile(
     # Art / Art. / Arts / Arts. / Article / Articles / Artikel(s) / Artikeln.
     r"\bArt(?:icles?|ikels?|ikeln|s)?\.?\s*"
-    r"(\d{1,3}(?:\s*(?:,|&|/|\band\b|\bor\b)\s*\d{1,3}){0,8})",
+    r"(\d{1,3}(?:(?:\s*(?:,|&|/|\band\b|\bor\b)\s*)+\d{1,3}){0,8})",
     re.IGNORECASE,
 )
 
@@ -1591,9 +1600,16 @@ _MULTI_ARTICLE_MENTION_RE = re.compile(
 # "III"). This token accepts "Annex"/"Annexes" + a comma/and/or Roman list;
 # the caller pulls EVERY Roman numeral out. "and"/"or" carry no
 # ``[IVXLC]`` letters, so the per-item ``findall`` skips the separators.
+#
+# R268.1 — same Oxford-comma fix as the article token: the ``(?:sep)+`` run
+# lets "Annexes XI, XII, or XIII" capture the trailing "XIII" (", or" = comma
+# then "or"). NOTE the pre-existing over-capture (an UPPERCASE Roman-letter
+# word after a connector, e.g. "Annex III, CE marking" -> "III","C") is left
+# as-is: the bogus token yields no ``EC_CHECKER_OBLIGATION_MAP`` entry, so it
+# surfaces no obligation and is dropped by the wire's existence gate — inert.
 _MULTI_ANNEX_MENTION_RE = re.compile(
     r"\bAnnex(?:es)?\s+"
-    r"([IVXLC]+(?:\s*(?:,|&|/|\band\b|\bor\b)\s*[IVXLC]+){0,8})",
+    r"([IVXLC]+(?:(?:\s*(?:,|&|/|\band\b|\bor\b)\s*)+[IVXLC]+){0,8})",
     re.IGNORECASE,
 )
 

@@ -257,9 +257,14 @@ class _OpenAIWrapperProvider:
                 # the direct provider host) warm across sporadic requests.
                 # httpx's default idle expiry is 5 s, so any gap > 5 s between
                 # LLM calls re-pays the ~150-250 ms edge TLS handshake. 90 s
-                # survives typical inter-request gaps and stays under
-                # Cloudflare's server-side idle close; httpx transparently
-                # retries a server-closed stale connection.
+                # survives typical inter-request gaps and stays under the edge's
+                # server-side idle close, so the pooled connection is almost
+                # always still live on reuse. In the narrow race where the edge
+                # closed it first, the reuse raises an httpx transport error
+                # (RemoteProtocolError / ConnectError) that ``complete()`` catches
+                # via ``except httpx.HTTPError`` and surfaces as a provider error
+                # -> the engine falls back (Groq, then deterministic). Fail-soft,
+                # never a 500; that one request just pays a fallback instead.
                 keepalive_expiry=90.0,
             ),
         )
