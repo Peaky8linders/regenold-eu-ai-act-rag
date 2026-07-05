@@ -276,6 +276,58 @@ _ENGINE_CACHE = _BoundedLRUCache(capacity=512)
 _MIN_CACHEABLE_CONFIDENCE = 0.3
 
 
+# ── Degraded-mode fallback warning (Cloudflare tunnel / wrapper down) ──────
+# When Stage-2 LLM synthesis is ATTEMPTED but the wrapper call fails —
+# Cloudflare tunnel down, Claude Max auth expired, 429 exhaustion, network
+# error, or structural truncation — the engine ships the deterministic
+# Stage-1 answer and sets ``graph_stats["stage2_call_failed"] = True``
+# (app/engines/graph_rag.py ~6427). We surface a non-fatal ``warning`` on
+# the wire so Regenold can tell a degraded (deterministic-fallback) answer
+# from a fully LLM-polished one. The answer + references stay grounded in
+# the EU AI Act — only the LLM refinement is absent.
+#
+# The flag is True ONLY on a genuine wrapper failure — NEVER on the
+# intentional Stage-2 skip, a successful polish, or ``provider=cli`` (the
+# deterministic bench, where Stage-2 is never attempted). So the warning
+# appears exactly when the tunnel/wrapper is down and the davidath bench
+# stays byte-identical. Env-gated for instant rollback (default ON).
+_FALLBACK_WARNING_TEXT = (
+    "This answer was produced by the deterministic fallback pipeline "
+    "because the primary LLM synthesis service was temporarily "
+    "unavailable; it remains grounded in the EU AI Act but may be less "
+    "refined than usual."
+)
+
+
+def _fallback_warning_enabled() -> bool:
+    """Env gate for the degraded-mode ``warning`` field (default ON)."""
+    return os.getenv("REGENOLD_FALLBACK_WARNING", "1").strip().lower() not in {
+        "0",
+        "off",
+        "false",
+        "no",
+    }
+
+
+def _fallback_warning_for(rag_res: Any) -> str | None:
+    """Return the degraded-mode warning when Stage-2 fell back, else None.
+
+    Reads the engine's ``stage2_call_failed`` flag from ``graph_stats``.
+    Fail-soft: any error returns ``None`` — the warning must never 500 the
+    route. A ``None`` return is serialised out entirely by
+    ``response_model_exclude_none``, keeping the happy-path JSON unchanged.
+    """
+    try:
+        if not _fallback_warning_enabled():
+            return None
+        stats = getattr(rag_res, "graph_stats", None) or {}
+        if stats.get("stage2_call_failed"):
+            return _FALLBACK_WARNING_TEXT
+    except Exception:  # noqa: BLE001 — never fail the route on the warning
+        return None
+    return None
+
+
 # ---------------------------------------------------------------------------
 # R86-D — Deployer 1-hop expansion (module-level helper for testability)
 # ---------------------------------------------------------------------------
@@ -7230,6 +7282,12 @@ def regenold_eu_ai_act_ask(
         if include_telemetry else ""
     )
 
+    # Degraded-mode signal: only set when Stage-2 (Claude Max via the
+    # Cloudflare tunnel) was attempted and failed → deterministic
+    # fallback. ``None`` on every healthy response → excluded by
+    # ``response_model_exclude_none`` → happy-path JSON unchanged.
+    _fallback_warning = _fallback_warning_for(rag_res)
+
     # Default response shape = competition spec only. Telemetry block
     # populated only when ?include_telemetry=true (and serialised via
     # response_model_exclude_none on the route, so unset Optional
@@ -7239,6 +7297,7 @@ def regenold_eu_ai_act_ask(
             answer=answer_text,
             references=references,
             reasoning=_final_reasoning,
+            warning=_fallback_warning,
             confidence=confidence,
             kb_version=KB_VERSION,
             retrieval_path=retrieval_path,  # type: ignore[arg-type]
@@ -7256,6 +7315,9 @@ def regenold_eu_ai_act_ask(
             # includes a "reasoning" key). R50 overrides with the
             # ReasoningTrace JSON when ?include_reasoning=true.
             reasoning=_final_reasoning,
+            # Degraded-mode fallback warning (tunnel/wrapper down). None
+            # on the happy path → excluded from the JSON.
+            warning=_fallback_warning,
         )
 
     # Round-24 audit-chain entry: full question + answer persisted.

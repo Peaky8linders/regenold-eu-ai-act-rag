@@ -107,6 +107,17 @@ class RegenoldAskResponse(BaseModel):
     route so the default response stays clean for the competition
     evaluator. The fields default to ``None`` / 0 so callers that
     enable telemetry can rely on a stable shape.
+
+    ``warning`` is a fourth, degraded-mode-only field. It is populated
+    ONLY when the primary LLM synthesis service (Claude Max via the
+    Cloudflare tunnel) was unavailable and the answer was produced by
+    the deterministic fallback pipeline. Because the route serialises
+    with ``response_model_exclude_none=True``, on every healthy response
+    the field is ``None`` and disappears from the JSON entirely — the
+    happy-path wire shape stays exactly ``reasoning`` / ``answer`` /
+    ``references`` (+ the telemetry block when opted in). Regenold can
+    therefore treat the mere *presence* of ``warning`` as the
+    degraded-mode signal.
     """
 
     answer: str
@@ -117,6 +128,19 @@ class RegenoldAskResponse(BaseModel):
             "Optional intermediate reasoning. Per Regenold spec, "
             "evaluator does not consider this field — defaults to None "
             "so we don't pay latency for unused tokens."
+        ),
+    )
+    # ── Degraded-mode signal (only emitted when the LLM fallback fired) ──
+    warning: str | None = Field(
+        default=None,
+        description=(
+            "Degraded-mode signal. Present ONLY when the primary LLM "
+            "synthesis service (Claude Max via the Cloudflare tunnel) was "
+            "unavailable and the answer was served by the deterministic "
+            "fallback pipeline. Absent (None → excluded from the JSON) on "
+            "every healthy response, so the happy-path wire shape is "
+            "unchanged. The answer + references remain grounded in the EU "
+            "AI Act; only the LLM polish is missing."
         ),
     )
     # ── Optional telemetry block (only emitted with ?include_telemetry=true) ──
