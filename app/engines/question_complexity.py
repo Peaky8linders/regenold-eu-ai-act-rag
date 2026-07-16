@@ -152,6 +152,34 @@ _MULTI_CLAUSE_RE = re.compile(
 )
 
 
+# R276-D2 — the route's injected conversation-anchor line, e.g.
+# ``[Context anchors — articles: Art. 13, Art. 26; roles: deployer]``
+# (built by ``regenold.py::_extract_conversation_anchors``, which
+# normalises every cite to ``Art. N`` form). Anchored at the start and
+# non-greedy to the first ``]`` so it can only ever eat the line we
+# ourselves prepended, never user prose. The em-dash is the literal the
+# route emits; the ASCII hyphen is tolerated for hand-built callers.
+_ANCHOR_PREFIX_RE = re.compile(r"^\s*\[Context anchors\s*[—-][^\]]*\]\s*")
+
+
+def _anchor_strip_enabled() -> bool:
+    """R276-D2 — strip the route's injected anchor line before scanning.
+
+    Default ON. Gated so the fix is A/B-able (``ab_judge`` toggles env
+    in-process) and so it can be rolled back without a redeploy. The flag
+    selects the Stage-2 MODEL/thinking tier, i.e. it flips
+    ``GraphRAGResponse.answer`` ⇒ it is folded into
+    ``regenold.py::_engine_cache_key`` per the R30/R56/R79/R263.2
+    cache-poisoning doctrine.
+    """
+    return os.environ.get("REGENOLD_COMPLEXITY_ABBREV_FIX", "1").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def _is_multi_phrase(scan_text: str) -> bool:
     """True when the input bundles more than one phrase / question.
 
@@ -161,6 +189,23 @@ def _is_multi_phrase(scan_text: str) -> bool:
       * two or more substantive sentences (≥ 4 words each);
       * one sentence coordinating two verb-led clauses via ``or`` / ``and``
         (``_MULTI_CLAUSE_RE``) — the patient-weight example.
+
+    R276-D2 deliberately leaves this naive splitter ALONE. Making it
+    abbreviation-aware looks right and is a trap: neither existing splitter
+    is correct for a QUESTION.
+      * ``sentence_index.split_legal_sentences`` glues ``"… Art. 13. Must
+        we …"`` — its ``_NUMBERED_LIST_RE`` (``\\d{1,3}\\.$``) reads the
+        trailing ``13.`` as a paragraph marker. Measured: 113/113 article
+        numbers stop firing.
+      * ``tone_guard._SENTENCE_SPLIT`` handles ``Art. N.`` but glues
+        ``"… Annex III. Must we …"`` via its ``(?<!\\bAnnex III)``
+        lookbehind.
+    Both are RIGHT for the legal prose they were written for, where those
+    strings are mid-sentence references. In a user question they are
+    sentence ends. A false fire here costs LATENCY only (both tiers are
+    the same model; they differ by thinking budget) — a false MISS costs
+    answer correctness. So the abbreviation guard would trade a cheap
+    error for an expensive one, and is not worth a third splitter.
     """
     if scan_text.count("?") >= 2:
         return True
@@ -302,6 +347,26 @@ def is_complex_question(question: str, history_turn_count: int = 1) -> bool:
     marker = "Latest question:\n"
     idx = question.rfind(marker)
     scan_text = question[idx + len(marker):] if idx >= 0 else question
+    # R276-D2 — drop the route's injected ``[Context anchors — …]`` line.
+    # It is metadata WE prepend (regenold.py::_extract_conversation_anchors),
+    # not user text, so it should never have been scanned for complexity.
+    # Scanning it corrupted the decision in BOTH directions:
+    #   * it ADDED complexity — the anchors are normalised to ``Art. N``
+    #     form, and the naive ``[.!?]`` split read that period as a
+    #     sentence end ⇒ 2 segments ⇒ ``_is_multi_phrase`` ⇒ a 4000-token
+    #     extended-thinking budget bought for nothing (both tiers are the
+    #     same model per R271; only the budget differs, and R271 measured
+    #     thinking-present as ~23% slower);
+    #   * it SUPPRESSED complexity — sitting at position 0 it blocked the
+    #     ``^``-anchored :data:`_SHORT_COREFERENT_RE`, so a genuine short
+    #     follow-up ("And for Annex I …?") was downgraded to the weaker
+    #     tier. That direction costs answer correctness, not just latency.
+    # Only the marker-less denoised path (regenold.py ~:4587) carries the
+    # prefix into the scan — on the flatten path the ``rfind`` above
+    # already skips past it (measured; the R276 plan's table says
+    # otherwise and is wrong on that row).
+    if _anchor_strip_enabled():
+        scan_text = _ANCHOR_PREFIX_RE.sub("", scan_text, count=1)
     if not scan_text.strip():
         return False
     if _GPAI_COMPLEX_RE.search(scan_text):

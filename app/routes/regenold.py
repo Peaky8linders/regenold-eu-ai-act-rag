@@ -1273,6 +1273,12 @@ def _engine_cache_key(
             # R270 — opus-for-all flips the Stage-2 answer MODEL (Sonnet 5 vs
             # Opus 4.8) for standard questions → flips GraphRAGResponse.answer.
             "REGENOLD_OPUS_FOR_ALL",
+            # R276-D2 — the abbreviation-aware complexity scan changes
+            # is_complex_question ⇒ the Stage-2 tier (complex_model +
+            # complex_thinking_tokens vs stage2_model + thinking_tokens=0)
+            # ⇒ flips GraphRAGResponse.answer. R30/R56/R79/R263.2 doctrine:
+            # any env var that flips ENGINE output must be in the key.
+            "REGENOLD_COMPLEXITY_ABBREV_FIX",
             "REGENOLD_GRAPH_2HOP",
             "REGENOLD_GRAPH_AWARE",
             # R252 — KB-primary vs legacy Neo4j-primary retrieval flips the
