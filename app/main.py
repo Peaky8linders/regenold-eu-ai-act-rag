@@ -695,6 +695,37 @@ def _maybe_warm_indexes() -> None:
         )
 
 
+def _deploy_identity() -> dict[str, str]:
+    """Which COMMIT is actually serving this request.
+
+    ``settings.version`` is a hand-bumped literal, so it cannot answer the one
+    question a deploy check must answer: did the container actually roll? A
+    merge that never rolled and a merge that rolled report the same
+    ``version``, and Railway is known to report deploy SUCCESS without
+    replacing the container — so "the workflow went green" is not evidence.
+
+    Railway injects these into the container. Both fall back to ``"unknown"``
+    (unset OR empty) so local dev, tests and non-Railway hosts stay green
+    rather than leaking a stray empty string.
+
+    ``commit`` is the first 12 chars of the SHA. To verify a deploy, compare
+    against a 12-char prefix — NOT ``git rev-parse --short HEAD``, which
+    defaults to 7 and will never be equal::
+
+        curl -s .../healthz | jq -r .commit          # e.g. e495f0c1a2b3
+        git rev-parse origin/main | cut -c1-12       # same 12 chars
+
+    Neither value is a secret: the SHA is public in the repo, and the
+    deployment id is an opaque Railway handle with no credential in it.
+    """
+    sha = (os.getenv("RAILWAY_GIT_COMMIT_SHA") or "").strip()
+    deployment = (os.getenv("RAILWAY_DEPLOYMENT_ID") or "").strip()
+    return {
+        "commit": sha[:12] if sha else "unknown",
+        "deployment_id": deployment or "unknown",
+    }
+
+
 @app.get("/healthz")
 def healthz() -> dict[str, object]:
     from app.llm.openai_wrapper_provider import is_groq_provider_enabled, get_groq_provider, OpenAIWrapperRequest
@@ -732,6 +763,7 @@ def healthz() -> dict[str, object]:
     return {
         "status": "ok",
         "version": settings.version,
+        **_deploy_identity(),
         "is_groq_enabled": is_groq_provider_enabled(),
         "fallback_test": {
             "status": fallback_status,
@@ -795,6 +827,7 @@ def healthz_llm() -> dict[str, object]:
 
     base: dict[str, object] = {
         "version": settings.version,
+        **_deploy_identity(),
         "provider": provider_label,
         "llm_ok": False,
         "detail": "",
