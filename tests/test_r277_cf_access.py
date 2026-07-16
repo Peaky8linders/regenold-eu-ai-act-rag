@@ -183,3 +183,63 @@ class TestFailSoft:
         _set_token(monkeypatch)
         monkeypatch.setenv("OPENAI_API_BASE", WRAPPER)
         assert _resolve_cf_access_headers("https://WRAPPER.ANTIFRAGILE-AI.NET/v1") != {}
+
+
+class TestHealthzCfAccessDiagnostic:
+    """`/healthz/llm` must let an operator tell these apart from OUTSIDE the
+    container — all three otherwise present identically as `api_status_401`:
+      * the deploy hasn't landed        -> no `cf_access` key at all
+      * the env vars aren't arriving    -> client_id_set/client_secret_set false
+      * token set but rejected by policy-> headers_attached true, llm_ok false
+    Booleans only: the id and secret must never be echoed.
+    """
+
+    def _probe(self, monkeypatch: pytest.MonkeyPatch) -> dict:
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+
+        monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "openai_wrapper")
+        monkeypatch.setenv("OPENAI_API_BASE", WRAPPER)
+        monkeypatch.setenv("OPENAI_API_KEY", "dummy")
+        monkeypatch.setenv("REGENOLD_HEALTHZ_PROBE_TIMEOUT", "5")
+        return TestClient(app).get("/healthz/llm").json()
+
+    def test_reports_unconfigured(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        body = self._probe(monkeypatch)
+        assert body["cf_access"] == {
+            "client_id_set": False,
+            "client_secret_set": False,
+            "headers_attached": False,
+        }
+
+    def test_reports_configured_and_attached(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _set_token(monkeypatch)
+        body = self._probe(monkeypatch)
+        assert body["cf_access"] == {
+            "client_id_set": True,
+            "client_secret_set": True,
+            "headers_attached": True,
+        }
+
+    def test_never_echoes_the_secret(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _set_token(monkeypatch)
+        body = self._probe(monkeypatch)
+        blob = repr(body)
+        assert CF_SECRET not in blob
+        assert CF_ID not in blob
+
+    def test_probe_still_returns_http_200(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An uptime monitor must not flap; the probe never raises."""
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+
+        _set_token(monkeypatch)
+        monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "openai_wrapper")
+        monkeypatch.setenv("OPENAI_API_BASE", WRAPPER)
+        monkeypatch.setenv("OPENAI_API_KEY", "dummy")
+        monkeypatch.setenv("REGENOLD_HEALTHZ_PROBE_TIMEOUT", "5")
+        assert TestClient(app).get("/healthz/llm").status_code == 200
