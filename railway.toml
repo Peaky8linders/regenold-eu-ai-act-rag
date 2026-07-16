@@ -33,6 +33,29 @@ REGENOLD_GRAPH_2HOP_FULL_CAP = "1"
 #     openai_wrapper (the Cloudflare named tunnel -> NSSM wrapper -> Claude Max).
 #     OPENAI_API_BASE (tunnel URL) + OPENAI_API_KEY are dashboard secrets.
 #
+# R277 — CLOUDFLARE ACCESS SERVICE TOKEN (required while an Access application
+# fronts the wrapper hostname). A Zero Trust Access app was attached to
+# wrapper.antifragile-ai.net between 2026-07-03 and 2026-07-16; unauthenticated
+# calls (including Railway's) get an HTML login page + HTTP 401, the engine
+# reads that as api_status_401, and production silently serves NO Claude Max —
+# deterministic answers only. Keeping Access is correct (the wrapper has no auth
+# of its own, so an open hostname lets anyone burn the Max quota); the fix is to
+# let the backend through with a service token:
+#   1. Cloudflare Zero Trust -> Access -> Service Auth -> create a service token.
+#   2. Edit the policy on the wrapper.antifragile-ai.net application to Include
+#      that service token (Include -> Service Auth -> <token name>).
+#   3. railway variables --set CF_ACCESS_CLIENT_ID=<client id>
+#      railway variables --set CF_ACCESS_CLIENT_SECRET=<client secret>
+# Both are dashboard SECRETS — never commit them here. The provider attaches
+# CF-Access-Client-Id / CF-Access-Client-Secret ONLY to the Access-protected
+# host (see _resolve_cf_access_headers) so the secret is never transmitted to
+# Groq / Gemini / Mistral, which share the same provider class. With the two
+# vars unset the behaviour is byte-identical to pre-R277.
+# Optional: CF_ACCESS_HOSTNAME pins which host is Access-protected; it defaults
+# to the host of OPENAI_API_BASE.
+# Verify after deploy: curl https://<app>.up.railway.app/healthz/llm
+#   -> expect llm_ok=true (401 in `detail` means the token is missing/not in the policy).
+#
 # The earlier provider="groq" was a split-brain: the Groq Stage-2 routing was
 # added then silently reverted (commit 9dba937), so Stage-2 routed to the
 # wrapper while _stage2_provider_enabled() gated it on GROQ_API_KEY. Setting the

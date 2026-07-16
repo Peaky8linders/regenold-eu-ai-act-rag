@@ -134,6 +134,82 @@ _MAX_RETRY_AFTER_SECONDS = float(os.getenv("OPENAI_MAX_RETRY_AFTER", "8"))
 _CONNECT_TIMEOUT_SECONDS = 5.0
 
 
+# R277 — Cloudflare Access service-token support.
+#
+# The Claude Max wrapper is exposed to Railway over a named cloudflared
+# tunnel at ``wrapper.antifragile-ai.net``. A Cloudflare Access (Zero
+# Trust) application now fronts that hostname, so unauthenticated calls
+# — including Railway's — get an HTML "Cloudflare Access" login page with
+# HTTP 401 (``Cf-Access-Aud`` header present). The engine reads that as
+# ``api_status_401`` and falls back to the deterministic path, i.e.
+# production silently serves NO Claude Max at all.
+#
+# Access is worth keeping: the wrapper has no real auth of its own (its
+# ``Authorization: Bearer`` check is a no-op), so anyone who discovers the
+# hostname could burn the Max quota. The correct fix is a service token —
+# Access stays up, and the backend is allowed through by presenting the
+# ``CF-Access-Client-Id`` / ``CF-Access-Client-Secret`` header pair.
+#
+# SCOPING IS SECURITY-CRITICAL. This provider class is reused verbatim for
+# Groq / Gemini / Mistral (see the singletons below), which point at
+# third-party hosts. Attaching the token unconditionally would transmit a
+# Cloudflare service-token SECRET to api.groq.com, api.mistral.ai and
+# generativelanguage.googleapis.com. So the headers are attached only when
+# the instance's base_url host matches the Access-protected host.
+_CF_ACCESS_CLIENT_ID_ENV = "CF_ACCESS_CLIENT_ID"
+_CF_ACCESS_CLIENT_SECRET_ENV = "CF_ACCESS_CLIENT_SECRET"
+_CF_ACCESS_HOSTNAME_ENV = "CF_ACCESS_HOSTNAME"
+_DEFAULT_WRAPPER_BASE = "https://wrapper.antifragile-ai.net/v1"
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
+
+
+def _host_of(url: str) -> str:
+    from urllib.parse import urlparse
+
+    try:
+        return (urlparse(url).hostname or "").strip().lower()
+    except Exception:  # noqa: BLE001 — never let a malformed URL break provider init
+        return ""
+
+
+def _resolve_cf_access_headers(base_url: str) -> dict[str, str]:
+    """Cloudflare Access service-token headers for ``base_url``, or ``{}``.
+
+    Returns ``{}`` — i.e. behaviour identical to pre-R277 — unless ALL hold:
+      * both ``CF_ACCESS_CLIENT_ID`` and ``CF_ACCESS_CLIENT_SECRET`` are set;
+      * ``base_url`` is not a local host (a local wrapper has no Cloudflare
+        edge in front of it, so the token would be pointless and would leak
+        into a local process);
+      * ``base_url``'s host equals the Access-protected host — taken from
+        ``CF_ACCESS_HOSTNAME`` when set, else the host of ``OPENAI_API_BASE``
+        (else the default wrapper host). This is what keeps the secret off
+        the Groq / Gemini / Mistral endpoints.
+
+    Fail-soft by construction: any missing/mismatched value yields ``{}``.
+    """
+    client_id = os.getenv(_CF_ACCESS_CLIENT_ID_ENV, "").strip()
+    client_secret = os.getenv(_CF_ACCESS_CLIENT_SECRET_ENV, "").strip()
+    if not client_id or not client_secret:
+        return {}
+
+    host = _host_of(base_url)
+    if not host or host in _LOCAL_HOSTS:
+        return {}
+
+    protected = _host_of(
+        f"https://{os.getenv(_CF_ACCESS_HOSTNAME_ENV, '').strip()}"
+    ) or _host_of(
+        os.getenv("OPENAI_API_BASE", "").strip() or _DEFAULT_WRAPPER_BASE
+    )
+    if not protected or host != protected:
+        return {}
+
+    return {
+        "CF-Access-Client-Id": client_id,
+        "CF-Access-Client-Secret": client_secret,
+    }
+
+
 class _BudgetTimeout(httpx.Timeout):
     """``httpx.Timeout`` that compares equal to its read-budget float.
 
@@ -225,6 +301,15 @@ class _OpenAIWrapperProvider:
             or "https://wrapper.antifragile-ai.net/v1"
         )
         self._api_key = api_key or os.getenv("OPENAI_API_KEY", "dummy")
+        # R277 — resolved once per instance (env is read at construction, as
+        # for every other setting here). Empty for the local wrapper and for
+        # the Groq / Gemini / Mistral instances; see _resolve_cf_access_headers.
+        self._cf_access_headers = _resolve_cf_access_headers(self._base_url)
+        if self._cf_access_headers:
+            logger.info(
+                "cloudflare_access_service_token_active host=%s",
+                _host_of(self._base_url),
+            )
         # 60 s default — Claude Sonnet 4.6 Stage-2 polish through the
         # claude-code-openai-wrapper takes 10-20 s for non-trivial
         # questions; the deterministic Stage-1 already landed, so the
@@ -278,12 +363,20 @@ class _OpenAIWrapperProvider:
             pass
 
     def _headers(self) -> dict[str, str]:
-        return {
+        headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         }
+        # R277 — Cloudflare Access service token, when this instance points at
+        # the Access-protected host. ``{}`` everywhere else, so every other
+        # provider path stays byte-identical. ``getattr`` guards instances
+        # built via ``__new__`` (the test suite bypasses ``__init__``); the
+        # default fails CLOSED — no token — which is the safe direction for a
+        # secret.
+        headers.update(getattr(self, "_cf_access_headers", {}) or {})
+        return headers
 
     def complete(self, req: OpenAIWrapperRequest) -> OpenAIWrapperResponse:
         body = {
