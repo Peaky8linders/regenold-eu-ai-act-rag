@@ -418,6 +418,29 @@ def _get_groq_compressed_system_prompt() -> str:
     )
 
 
+def _resolve_complex_model() -> str:
+    """R278 — resolve the complex-tier Stage-2 model with a FRESH env read.
+
+    ``GraphRAGSettings.complex_model`` is an import-time pydantic setting,
+    which made the knob impossible to A/B in-process (the R271 gotcha: two
+    ab_judge env arms silently share the imported value). This resolver
+    reads ``P2P_GRAPH_RAG_COMPLEX_MODEL`` from the environment on every
+    call — when the env var is present it WINS (including an explicit
+    empty string = disable the swap); otherwise the settings default
+    applies. The flag is folded into ``_engine_cache_key`` so a mid-process
+    flip cannot serve a stale cached answer (R30/R56/R79/R263.2 doctrine).
+    """
+    env = os.environ.get("P2P_GRAPH_RAG_COMPLEX_MODEL")
+    if env is not None:
+        return env.strip()
+    try:
+        from app.config import settings
+
+        return getattr(settings.graph_rag, "complex_model", "") or ""
+    except Exception:  # noqa: BLE001 — fail-soft: no swap
+        return ""
+
+
 def _opus_for_all_enabled() -> bool:
     """R270 — route STANDARD Stage-2 answers to the complex model (Opus 4.8)
     too, not just ``is_complex_question`` hits. **Default OFF** (standard
@@ -465,7 +488,7 @@ def _openai_wrapper_complete_for_graph_rag(
     try:
         from app.config import settings
         configured = settings.graph_rag.model
-        complex_model = getattr(settings.graph_rag, "complex_model", "") or ""
+        complex_model = _resolve_complex_model()
         stage2_model = getattr(settings.graph_rag, "stage2_model", "") or ""
         thinking_budget = int(
             getattr(settings.graph_rag, "complex_thinking_tokens", 0) or 0
@@ -804,7 +827,7 @@ def _anthropic_complete_for_graph_rag(
     try:
         from app.config import settings
         configured = settings.graph_rag.model
-        complex_model = getattr(settings.graph_rag, "complex_model", "") or ""
+        complex_model = _resolve_complex_model()
         stage2_model = getattr(settings.graph_rag, "stage2_model", "") or ""
         thinking_budget = int(
             getattr(settings.graph_rag, "complex_thinking_tokens", 0) or 0

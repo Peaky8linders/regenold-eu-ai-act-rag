@@ -1273,6 +1273,11 @@ def _engine_cache_key(
             # R270 — opus-for-all flips the Stage-2 answer MODEL (Sonnet 5 vs
             # Opus 4.8) for standard questions → flips GraphRAGResponse.answer.
             "REGENOLD_OPUS_FOR_ALL",
+            # R278 — the complex-tier Stage-2 model is now resolved with a
+            # FRESH env read (_resolve_complex_model), so a mid-process flip
+            # (the fable-5 vs opus-4.8 A/B arms) flips the engine answer and
+            # must be in the key (R30/R56/R79/R263.2 doctrine).
+            "P2P_GRAPH_RAG_COMPLEX_MODEL",
             # R276-D2 — the abbreviation-aware complexity scan changes
             # is_complex_question ⇒ the Stage-2 tier (complex_model +
             # complex_thinking_tokens vs stage2_model + thinking_tokens=0)
