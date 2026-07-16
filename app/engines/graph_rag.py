@@ -6236,7 +6236,12 @@ def _claude_max_enhance_answer(
             from app.llm.openai_wrapper_provider import is_gemini_provider_enabled
             _use_gemini = is_gemini_provider_enabled()
 
-        system_prompt = PROMPT_HARDENING_PREFIX + ANSWER_GENERATE_SYSTEM
+        # R277 — arm-C minimal-composer variant (env REGENOLD_MINIMAL_COMPOSER,
+        # default OFF → ANSWER_GENERATE_SYSTEM, byte-identical). Fresh env
+        # read per call so the in-process ab_judge two-arm A/B is valid.
+        from app.data.graph_rag_prompts import resolve_answer_system
+
+        system_prompt = PROMPT_HARDENING_PREFIX + resolve_answer_system()
         try:
             from app.routes.regenold import _is_closed_set_enumeration_ask
             if complex_q or _is_closed_set_enumeration_ask(question):

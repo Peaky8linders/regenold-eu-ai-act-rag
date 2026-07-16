@@ -1279,6 +1279,11 @@ def _engine_cache_key(
             # ⇒ flips GraphRAGResponse.answer. R30/R56/R79/R263.2 doctrine:
             # any env var that flips ENGINE output must be in the key.
             "REGENOLD_COMPLEXITY_ABBREV_FIX",
+            # R277 — the minimal-composer Stage-2 system-prompt variant flips
+            # the polished answer text ⇒ flips GraphRAGResponse.answer.
+            # R30/R56/R79/R263.2 doctrine: must be in the cache key so the
+            # in-process ab_judge two-arm A/B cannot cross-contaminate.
+            "REGENOLD_MINIMAL_COMPOSER",
             "REGENOLD_GRAPH_2HOP",
             "REGENOLD_GRAPH_AWARE",
             # R252 — KB-primary vs legacy Neo4j-primary retrieval flips the

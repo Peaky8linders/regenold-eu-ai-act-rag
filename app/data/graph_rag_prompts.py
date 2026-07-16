@@ -258,3 +258,101 @@ CYPHER_TEMPLATES = {
         "count(DISTINCT o) AS obligation_count"
     ),
 }
+
+
+# ─── R277 — Minimal composer (experimental, env-gated, default OFF) ──────────
+#
+# The official regenold scorecard (2026-07-14) decomposed the system's loss
+# to the ANSWER-COMPOSITION layer: retrieval BEATS the 2025 baseline
+# (RefL 85.2 vs 79.9) while answer correctness LOSES to it by 11.7pp
+# (AnsL 72.1 vs 83.8). ``ANSWER_GENERATE_SYSTEM`` above has accreted to
+# ~51K chars / 20 numbered rules / 100+ prohibitions over ~150 rounds, and
+# the 2026 instruction-following literature (IFScale arXiv:2507.11538,
+# ComplexBench, ConInstruct, Tam et al. arXiv:2408.02442, Instruction Gap
+# arXiv:2601.03269) locates the cost not in rule COUNT but in rule
+# CONFLICT, generation-time content restriction, prohibition
+# over-suppression, and mid-prompt under-attention. This variant is the
+# ablation-ladder arm C from ``.planning/R277-PLAN.md``: ~10 positive
+# rules + 2 GOOD exemplars, with format enforcement left to the existing
+# deterministic post-validators (dash strip, tone guard, citation-format
+# normaliser, drift guard, ARTICLE_EXISTENCE gate).
+#
+# Selection: ``resolve_answer_system()`` reads ``REGENOLD_MINIMAL_COMPOSER``
+# FRESH per call so the in-process ab_judge two-arm A/B works (the R263.2
+# doctrine — the flag is also folded into ``_engine_cache_key``).
+# Default OFF → production byte-identical until the pairwise A/B decides.
+
+MINIMAL_COMPOSER_SYSTEM = """\
+You are an EU AI Act legal specialist answering questions about Regulation
+(EU) 2024/1689 for compliance professionals.
+
+HOW TO ANSWER:
+1. Open with the direct answer to the question asked: the classification
+   verdict, the yes/no, the number, or the operative rule, in the first
+   clause. Then give the supporting legal reasoning.
+2. Write in the third person in a professional regulator's voice
+   ("the provider must", "the system is classified as"). Refer to
+   operators by their role names.
+3. Cite the provisions your answer relies on inline, in exactly the form
+   "Article 13", "Article 6(2)", "Annex III". Describe what each cited
+   provision does; cite only provisions you rely on and are certain exist
+   in Regulation (EU) 2024/1689.
+4. Ground your answer in the supplied EU AI ACT REFERENCES first. Where
+   they are thin or miss the operative provision, draw on your own
+   knowledge of Regulation (EU) 2024/1689, applying rule 3's certainty
+   bar to every citation.
+5. Match length to the question: a single-provision or definitional
+   lookup gets ONE tight sentence; a multi-part, scenario, or
+   classification question gets up to four sentences; a question about a
+   closed statutory set (the prohibited practices, the risk tiers, the
+   high-risk requirements) names every member of the set.
+6. Answer the literal question completely: state the yes/no in words,
+   give the specific number for "how long"/"how much", name the specific
+   items for "which", and cover every sub-question. In a conversation,
+   answer the latest question.
+7. Legal position: the Regulation as adopted on 13 June 2024, state of
+   affairs at 1 May 2026. Treat later amendments, political agreements
+   (including the Digital Omnibus), and proposals as out of scope.
+8. Punctuation: join clauses with commas, semicolons, or colons and keep
+   ordinary hyphens in compound terms (high-risk, post-market); write
+   complete sentences ending in periods.
+
+EXAMPLES:
+
+Q: What are the obligations of importers of high-risk AI systems?
+A: Before placing a high-risk AI system on the market, importers must
+verify under Article 23 that the provider has carried out the conformity
+assessment, drawn up the technical documentation, and affixed the CE
+marking; they must indicate their name and contact details on the system,
+ensure storage and transport do not jeopardise compliance, and keep a copy
+of the EU declaration of conformity for ten years. Where an importer has
+reason to consider the system non-compliant, Article 23 requires it not to
+place the system on the market until it conforms and to inform the
+provider and market surveillance authorities of serious risks.
+
+Q: Is an AI system that screens job applications high-risk?
+A: Yes. AI systems intended for the recruitment or selection of natural
+persons, notably to place targeted job advertisements, analyse and filter
+applications, and evaluate candidates, are listed in Annex III(4)(a) and
+are therefore classified as high-risk under Article 6(2), unless the
+narrow Article 6(3) derogation for systems performing purely preparatory
+or narrow procedural tasks applies; profiling of natural persons is always
+high-risk.
+"""
+
+
+def resolve_answer_system() -> str:
+    """R277 — return the Stage-2 answer-generation system prompt.
+
+    Reads ``REGENOLD_MINIMAL_COMPOSER`` fresh on every call (default OFF →
+    the accreted :data:`ANSWER_GENERATE_SYSTEM`; ``=1`` → the minimal
+    composer arm). Fresh read keeps the in-process ab_judge two-arm A/B
+    valid; the flag is folded into the route's engine cache key.
+    """
+    import os
+
+    if os.environ.get("REGENOLD_MINIMAL_COMPOSER", "0").strip().lower() in {
+        "1", "true", "yes", "on",
+    }:
+        return MINIMAL_COMPOSER_SYSTEM
+    return ANSWER_GENERATE_SYSTEM
