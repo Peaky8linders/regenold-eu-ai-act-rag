@@ -118,13 +118,29 @@ class GraphRAGSettings(BaseSettings):
     # with history=1, which can never satisfy the history>=3 gate), so
     # removal is wire-neutral.
     #
+    # R279 (2026-07-17): default flipped to ``claude-fable-5`` per
+    # operator directive, gated on a CLEAN live pairwise A/B
+    # (ab-judge-r278-fable-complex-v2, n=32 complex/hard-mode rows,
+    # position-swapped, Sonnet judge, healthy wrapper): conciseness
+    # fable WINS significantly 19-7 (p=0.029 — the axis where hard
+    # mode is weakest: official RefCon 72.1 / AnsCon 93.4);
+    # correctness leans fable 6-4 (ns); refs even 9-9; tone dead-even
+    # 8-9 (ns). External corroboration: Fable 5 tops LegalBench 88.6%
+    # (Vals.ai 2026-07-09). Same flat-rate Claude-Max cost; the model
+    # id ``claude-fable-5`` + extended-thinking header re-verified
+    # through the wrapper. (Fable 5 previously served this tier in
+    # R112-R115; the R116 removal was an operator directive, not a
+    # measured loss — now reversed by operator directive + this A/B.)
+    #
     # Operator overrides (per-deploy): set
-    # ``P2P_GRAPH_RAG_COMPLEX_MODEL=`` (empty) to disable the swap and
-    # keep every Stage-2 call on Sonnet, or point it at another model.
-    complex_model: str = "claude-opus-4-8"
+    # ``P2P_GRAPH_RAG_COMPLEX_MODEL=claude-opus-4-8`` to restore the
+    # R103-R278 Opus tier, or ``=`` (empty) to disable the swap and
+    # keep every Stage-2 call on the standard tier.
+    complex_model: str = "claude-fable-5"
     """Model name for the complex-question path. Default:
-    ``claude-opus-4-8``. Set empty to disable the swap (every Stage-2
-    polish call uses the base ``model``)."""
+    ``claude-fable-5`` (R279). Set ``claude-opus-4-8`` to restore the
+    prior tier; set empty to disable the swap (every Stage-2 polish
+    call uses the base ``model``)."""
 
     complex_thinking_tokens: int = 4000
     """``max_thinking_tokens`` — the **EXTENDED** thinking budget for the

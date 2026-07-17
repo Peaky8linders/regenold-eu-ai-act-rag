@@ -98,10 +98,12 @@ class TestDefaultRouting:
             complex_question=True,
         )
         req: OpenAIWrapperRequest = _mock_wrapper.complete.call_args.args[0]
-        # Load-bearing: the complex path swaps to Opus 4.8 by default.
-        assert req.model == "claude-opus-4-8"
-        # Pin the R139 defaults so a future revert is loud, not silent.
-        assert settings.graph_rag.complex_model == "claude-opus-4-8"
+        # Load-bearing: the complex path swaps to Fable 5 by default
+        # (R279 — A/B'd vs Opus 4.8: conciseness 19-7 p=0.029, correctness
+        # leans 6-4, refs even, tone dead-even; ab-judge-r278-fable-complex-v2).
+        assert req.model == "claude-fable-5"
+        # Pin the R279 default so a future revert is loud, not silent.
+        assert settings.graph_rag.complex_model == "claude-fable-5"
         # R139 — EXTENDED thinking budget on the complex tier (was 1024 in R131.2).
         assert settings.graph_rag.complex_thinking_tokens == 4000
         assert req.extra_headers.get("X-Claude-Max-Thinking-Tokens") == "4000"
@@ -259,7 +261,7 @@ class TestStage2AlwaysOpus:
     def test_stage2_complex_uses_opus_with_extended_thinking(
         self, _mock_wrapper
     ) -> None:
-        """Complex Stage-2 question → ``complex_model`` (Opus 4.8) + the
+        """Complex Stage-2 question → ``complex_model`` (Fable 5, R279) + the
         EXTENDED ``complex_thinking_tokens`` budget (4000 by default)."""
         _openai_wrapper_complete_for_graph_rag(
             system="x", user="y", max_tokens=400, temperature=0.0,
@@ -267,7 +269,7 @@ class TestStage2AlwaysOpus:
             stage_name="Stage 2 (Polishing)",
         )
         req: OpenAIWrapperRequest = _mock_wrapper.complete.call_args.args[0]
-        assert req.model == settings.graph_rag.complex_model == "claude-opus-4-8"
+        assert req.model == settings.graph_rag.complex_model == "claude-fable-5"
         assert req.extra_headers.get("X-Claude-Max-Thinking-Tokens") == str(
             settings.graph_rag.complex_thinking_tokens
         )
