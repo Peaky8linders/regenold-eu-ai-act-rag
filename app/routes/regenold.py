@@ -3296,6 +3296,47 @@ def _adaptive_clamp_enabled() -> bool:
     )
 
 
+# R282 — the high-risk classification pair. Article 6(2) classifies a system as
+# high-risk VIA an Annex III use case, so a citation that keeps one of the two
+# and lets the budget drop the other ships an INCOMPLETE high-risk answer
+# (mt_v4_005 kept gold Article 6 and lost gold Annex III under the R281 clamp;
+# R128 already carries the reverse — protect Article 6 when Annex III survives).
+# Consumed ONLY by the default-OFF, A/B-gated pair rescue in adaptive_ref_clamp.
+_HIGH_RISK_PAIR = {"Article 6": "Annex III", "Annex III": "Article 6"}
+
+
+def _clamp_pair_rescue_enabled() -> bool:
+    """R282 — Article 6 <-> Annex III pair rescue inside the R281 adaptive clamp.
+
+    **Default OFF — the gold-bearing A/B REJECTED the flip (kept OFF).** This is
+    a strict REFINEMENT of the shipped R281 clamp, but it trades recall for
+    precision unpredictably: it recovers a real gold pair yet re-adds a NON-gold
+    partner on rows where the dropped Annex III / Article 6 was over-citation
+    noise — the very excess the clamp exists to trim.
+
+    A/B RESULT (``easyhard_ab --local`` n=132, live Claude Max, clamp ON in both
+    arms so pair-rescue is the only variable; 0 errors):
+        HARD (n=37): ref_loose(recall) +0.0135 (mt_v4_005's gold Annex III IS
+            recovered, as designed) but ref_strict(F1) +0.0009 (flat) and
+            ref_conc -0.0118  ->  est. Overall **+0.02 pp (a wash)**.
+        EASY (n=95): ref_loose +0.0053 but ref_strict **-0.0088** and ref_conc
+            **-0.0315** (pred:gold 1.55->1.62 — it re-adds non-gold pairs)  ->
+            est. Overall **-0.46 pp (net-negative)**.
+    The rare gold-pair recall gain does NOT outweigh the precision cost on the
+    many rows where Annex III / Article 6 is over-citation noise. Net rubric-
+    negative -> stays OFF (the R142.1 / R280 discipline: a precision fix the
+    gold-bearing gate rejects does not ship). Kept as a documented, gated
+    off-switch: ``REGENOLD_CLAMP_PAIR_RESCUE=1`` buys mt_v4_005-style pair recall
+    at the measured precision cost. Like the parent clamp it is stage2-gated
+    (davidath byte-identical by construction) and route post-processing
+    (deliberately absent from the engine cache key — R79 — so the shared-cache
+    in-process A/B stays valid). Sidecar: easyhard-r282-pairrescue.json.
+    """
+    return os.getenv("REGENOLD_CLAMP_PAIR_RESCUE", "0").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
 def _scenario_clamp_budget() -> int:
     try:
         val = int(
@@ -3369,11 +3410,30 @@ def adaptive_ref_clamp(
             return references
         named = _question_named_heads(live_question)
         head = references[:effective]
+        tail = references[effective:]
         rescued = [
             r
-            for r in references[effective:]
+            for r in tail
             if (_clamp_ref_head(r) or r) in named and r not in head
         ]
+        # R282 — high-risk classification pair rescue (default OFF; see
+        # _clamp_pair_rescue_enabled). When a member of the Article 6 <-> Annex
+        # III pair is already kept (head or question-named rescue) but the
+        # budget dropped its partner into the tail, rescue the partner: Art 6(2)
+        # classifies high-risk VIA Annex III, so shipping one without the other
+        # is an incomplete high-risk citation. Only re-adds refs already in the
+        # input tail (never invents), skips ones already kept (idempotent).
+        if _clamp_pair_rescue_enabled():
+            kept_heads = {(_clamp_ref_head(r) or r) for r in head}
+            kept_heads |= {(_clamp_ref_head(r) or r) for r in rescued}
+            already = set(head) | set(rescued)
+            for r in tail:
+                if r in already:
+                    continue
+                partner = _HIGH_RISK_PAIR.get(_clamp_ref_head(r) or r)
+                if partner is not None and partner in kept_heads:
+                    rescued.append(r)
+                    already.add(r)
         out = head + rescued
         return out if len(out) >= _CLAMP_FLOOR else references
     except Exception:  # noqa: BLE001 — never break the route on a clamp
