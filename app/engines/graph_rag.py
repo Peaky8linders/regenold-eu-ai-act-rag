@@ -2321,6 +2321,24 @@ def _answer_complete_enabled() -> bool:
     return _env_enabled("REGENOLD_ANSWER_COMPLETE", default="0")
 
 
+def _verify_verdict_enabled() -> bool:
+    """R284 — the 'verify-the-verdict' Stage-2 lever, DEFAULT OFF.
+
+    The st_v4_006 A/B finding: Opus Stage-2 self-corrects a wrong ROUTE in the
+    deterministic draft (Annex I -> Annex III) but FAITHFULLY POLISHES a
+    confident-wrong VERDICT ('not among the practices prohibited under Article 5'
+    -> a wrong 'not prohibited' answer). Where H3 fixes that draft deterministically
+    for three named patterns, this lever is the GENERAL safety net: it instructs
+    Opus to independently re-derive the verdict against the exhaustive Article 5
+    list and OVERRIDE a misclassifying draft — catching every described-not-named
+    prohibited practice, not only the patterned three. Balanced so it cannot
+    reclassify a legitimate high-risk (Annex III / Article 6) system as prohibited.
+    Stage-2-only -> davidath byte-identical. UNTESTED — needs a live ab_judge A/B
+    (it can also over-correct); ship default-ON only if the A/B holds.
+    """
+    return _env_enabled("REGENOLD_VERIFY_VERDICT", default="0")
+
+
 def _detect_classification_topic(question: str) -> dict | None:
     """Find the best-matching classification topic for ``question``.
 
@@ -6291,6 +6309,32 @@ def _claude_max_enhance_answer(
                 "into the existing sentence budget, never by adding padding or "
                 "dropping a required part, and cite only the provisions each part "
                 "actually turns on.\n"
+            )
+        if is_general_classification and _verify_verdict_enabled():
+            # R284 verify-the-verdict lever (default OFF). Opus faithfully polishes
+            # a confident-wrong 'not prohibited' draft; this makes it independently
+            # re-derive the verdict against the exhaustive Article 5 list and
+            # override a misclassifying draft. Balanced against over-correction.
+            user_message += (
+                " VERDICT CHECK: the BACKGROUND RISK FRAMEWORK draft is a retrieved "
+                "heuristic that can MISCLASSIFY a practice that is DESCRIBED rather "
+                "than named. Before accepting its verdict, independently test the "
+                "described system against the exhaustive Article 5 prohibited "
+                "practices: predicting a person's risk of committing a crime based "
+                "solely on profiling or personality traits; inferring sensitive "
+                "attributes (race, political opinion, religion, trade-union "
+                "membership, sex life, sexual orientation) from biometric data; "
+                "untargeted scraping of facial images to build recognition "
+                "databases; social scoring across unrelated contexts; subliminal or "
+                "manipulative techniques causing significant harm; exploiting age or "
+                "disability vulnerabilities; real-time remote biometric "
+                "identification in publicly accessible spaces for law enforcement; "
+                "emotion recognition in workplaces or educational institutions. If "
+                "the described system CLEARLY matches one of these, state "
+                "'Prohibited' under Article 5 EVEN IF the draft says it is not "
+                "prohibited - do not defer to a draft that misclassifies. But do NOT "
+                "reclassify a legitimate high-risk (Annex III / Article 6) system as "
+                "prohibited; the Article 5 list is exhaustive.\n"
             )
         try:
             max_tokens = settings.graph_rag.max_tokens

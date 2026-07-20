@@ -1552,6 +1552,9 @@ def _engine_cache_key(
             # R284 H1 — the (default-OFF) multi-part completeness Stage-2 clause;
             # flips the polished answer, so same cache-identity doctrine.
             "REGENOLD_ANSWER_COMPLETE",
+            # R284 — the (default-OFF) verify-the-verdict Stage-2 lever; flips the
+            # polished answer on classification questions, same cache doctrine.
+            "REGENOLD_VERIFY_VERDICT",
         )
     )
     import json
