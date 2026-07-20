@@ -207,14 +207,26 @@ def _report(label: str, base: dict[str, Any], branch: dict[str, Any] | None) -> 
         b = base.get(split) or {}
         if not b.get("n"):
             continue
-        print(f"\n=== {label} — {split} (n={b['n']}, errors={b['errors']}) ===")
         if branch is None:
+            print(f"\n=== {label} — {split} (n={b['n']}, errors={b['errors']}) ===")
             for a in _AXES:
                 print(f"  {a:<12}{b[a]:>9.4f}")
             print(f"  {'pred:gold':<12}{b['pred_gold_ratio']:>9.2f}")
             print(f"  {'latency p50':<12}{b['latency_p50_ms']/1000:>9.1f}s")
             continue
         c = branch.get(split) or {}
+        # Show BOTH arms' error counts (the R282 trap: printing only the
+        # baseline's hides a branch arm that 429'd out half its rows).
+        warn = ""
+        if b.get("n", 0) != c.get("n", 0):
+            warn = ("\n  !! ARM ROW COUNTS DIFFER — the FULL-aggregate deltas "
+                    "below span DIFFERENT row sets and are NOT comparable; "
+                    "trust the PAIRED block")
+        print(
+            f"\n=== {label} — {split} FULL-AGG "
+            f"(baseline n={b['n']} err={b['errors']} "
+            f"| branch n={c.get('n', 0)} err={c.get('errors', 0)}){warn} ==="
+        )
         print(f"  {'axis':<12}{'baseline':>10}{'branch':>10}{'delta':>10}")
         for a in _AXES:
             d = c[a] - b[a]
@@ -236,6 +248,88 @@ def _report(label: str, base: dict[str, Any], branch: dict[str, Any] | None) -> 
             _LEVERAGE[a] * (c[a] - b[a]) * 100.0 for a in _LEVERAGE if a in c
         )
         print(f"  => est. Overall uplift from the 3 reference axes: {uplift:+.2f} pp")
+        print("  [lat p50 above is confounded when a shared engine cache warms "
+              "the 2nd arm — not a product signal in A/B mode]")
+
+
+def _paired(
+    a_rows: list[dict[str, Any]], b_rows: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Per-split aggregates over rows that scored OK in BOTH arms.
+
+    A live A/B where one arm loses rows (e.g. wrapper 429s) leaves the two
+    full-arm aggregates spanning DIFFERENT row sets, so their per-axis means
+    are not comparable — the R282 run hit exactly this and a hand-salvaged
+    n=59 paired subset was the only honest read. This computes that subset
+    automatically: the intersection of ids scored OK in both arms.
+    """
+    bmap = {r["id"]: r for r in b_rows}
+    out: dict[str, Any] = {}
+    for split, is_hard in (("easy", False), ("hard", True)):
+        common: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        for ra in a_rows:
+            if bool(ra["is_multiturn"]) != is_hard:
+                continue
+            if ra.get("error") or not ra.get("scores"):
+                continue
+            rb = bmap.get(ra["id"])
+            if rb is None or rb.get("error") or not rb.get("scores"):
+                continue
+            common.append((ra, rb))
+        if not common:
+            out[split] = {"n": 0}
+            continue
+        agg: dict[str, Any] = {"n": len(common)}
+        for arm, idx in (("baseline", 0), ("branch", 1)):
+            m: dict[str, float] = {
+                a: st.mean(pair[idx]["scores"][a] for pair in common)
+                for a in _AXES
+            }
+            n_pred = sum(
+                len(bench_metrics.article_heads(pair[idx]["pred_refs"]))
+                for pair in common
+            )
+            n_gold = sum(
+                len(bench_metrics.article_heads(pair[idx]["gold_refs"]))
+                for pair in common
+            )
+            m["pred_gold_ratio"] = (n_pred / n_gold) if n_gold else 0.0
+            agg[arm] = m
+        agg["uplift_pp"] = sum(
+            _LEVERAGE[a] * (agg["branch"][a] - agg["baseline"][a]) * 100.0
+            for a in _LEVERAGE
+        )
+        out[split] = agg
+    return out
+
+
+def _report_paired(label: str, paired: dict[str, Any]) -> None:
+    printed = False
+    for split in ("easy", "hard"):
+        p = paired.get(split) or {}
+        if not p.get("n"):
+            continue
+        printed = True
+        b, c = p["baseline"], p["branch"]
+        print(f"\n=== {label} — {split} PAIRED "
+              f"(n={p['n']}, scored OK in BOTH arms) ===")
+        print(f"  {'axis':<12}{'baseline':>10}{'branch':>10}{'delta':>10}")
+        for a in _AXES:
+            d = c[a] - b[a]
+            flag = ""
+            if a == "ref_loose" and d < -0.005:
+                flag = "  <-- GOLD LOSS (R142.1 failure mode)"
+            print(f"  {a:<12}{b[a]:>10.4f}{c[a]:>10.4f}{d:>+10.4f}{flag}")
+        print(
+            f"  {'pred:gold':<12}{b['pred_gold_ratio']:>10.2f}"
+            f"{c['pred_gold_ratio']:>10.2f}"
+            f"{c['pred_gold_ratio'] - b['pred_gold_ratio']:>+10.2f}"
+        )
+        print(f"  => est. Overall uplift (leverage-weighted 3 ref axes): "
+              f"{p['uplift_pp']:+.2f} pp")
+    if printed:
+        print("  [PAIRED is the honest A/B read; latency is omitted here — the "
+              "2nd arm runs on a warm shared cache, not a product signal]")
 
 
 def _parse_env(pairs: list[str] | None) -> dict[str, str]:
@@ -300,6 +394,11 @@ def main() -> None:
 
     _report(args.label, a_agg, b_agg)
 
+    # The paired subset is the honest A/B read when either arm loses rows.
+    paired = _paired(a_rows, b_rows) if b_rows else {}
+    if paired:
+        _report_paired(args.label, paired)
+
     out = _RESULTS / f"easyhard-{args.label}.json"
     out.write_text(
         json.dumps(
@@ -311,6 +410,7 @@ def main() -> None:
                 "branch_env": branch_env,
                 "baseline": a_agg,
                 "branch": b_agg,
+                "paired": paired,
                 "baseline_rows": a_rows,
                 "branch_rows": b_rows,
             },
