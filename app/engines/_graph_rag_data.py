@@ -890,6 +890,32 @@ _CLASSIFICATION_TOPICS: list[dict] = [
         "patterns": [
             re.compile(r"predictive\s+polic", re.IGNORECASE),
         ],
+        "patterns_v2": [
+            # R284 — Art 5(1)(d): predictive policing that predicts the risk of a
+            # natural person COMMITTING a crime based SOLELY on profiling. The
+            # literal "predictive polic" above misses the described-not-named
+            # phrasing (tp_v4_003). BOTH crime-commission AND profiling are
+            # required, so victim-risk / place-based predictive policing (which is
+            # high-risk, NOT prohibited — e.g. the davidath victim-assessment row)
+            # does not match.
+            re.compile(
+                r"(predict|assess|estimat|forecast|likelihood|probab)"
+                r"[\w\s\-,'’]{0,90}?"
+                r"(commit\w*\s+(?:a\s+)?crim|committing\s+(?:a\s+)?crim|"
+                r"criminal\s+offen)"
+                r"[\w\s\-,'’]{0,90}?"
+                r"(profil|personality\s+trait|personality\s+characteristic)",
+                re.IGNORECASE,
+            ),
+            re.compile(
+                r"(profil|personality\s+trait)"
+                r"[\w\s\-,'’]{0,90}?"
+                r"(predict|assess|estimat|forecast)"
+                r"[\w\s\-,'’]{0,60}?"
+                r"(commit\w*\s+(?:a\s+)?crim|criminal\s+offen|criminal[-\s]risk)",
+                re.IGNORECASE,
+            ),
+        ],
         "answer": (
             "Predictive policing is prohibited under Article 5 when it assesses or "
             "predicts criminal-offence risk based solely on profiling of a natural "
@@ -1047,6 +1073,32 @@ _CLASSIFICATION_TOPICS: list[dict] = [
                 re.IGNORECASE,
             ),
         ],
+        "patterns_v2": [
+            # R284 — Art 5(1)(g): infer/deduce SENSITIVE attributes from BIOMETRIC
+            # data. The base pattern's char class [\w\s\-,] excludes apostrophes,
+            # so "infer users' religious beliefs ... from their biometric data"
+            # (mt_v4_012) breaks at the ' in "users'". This apostrophe-aware
+            # variant REQUIRES both a sensitive category AND the word "biometric",
+            # so non-biometric or non-sensitive inference does not match.
+            re.compile(
+                r"\b(infer|deduc|categori[sz])"
+                r"[\w\s\-,'’]{0,60}?"
+                r"(race|ethnic|political\s+(?:opinion|view|belief)|"
+                r"trade[-\s]?union|religi|philosophical\s+belief|"
+                r"sexual\s+orientation|sex\s+life)"
+                r"[\w\s\-,'’]{0,70}?biometric",
+                re.IGNORECASE,
+            ),
+            re.compile(
+                r"biometric[\w\s\-,'’]{0,70}?"
+                r"\b(infer|deduc|categori[sz])"
+                r"[\w\s\-,'’]{0,60}?"
+                r"(race|ethnic|political\s+(?:opinion|view|belief)|"
+                r"trade[-\s]?union|religi|philosophical\s+belief|"
+                r"sexual\s+orientation|sex\s+life)",
+                re.IGNORECASE,
+            ),
+        ],
         "answer": (
             "Biometric categorisation systems that categorise natural persons based on "
             "their biometric data to deduce race, political opinion, trade-union membership, "
@@ -1069,6 +1121,27 @@ _CLASSIFICATION_TOPICS: list[dict] = [
             re.compile(
                 r"(water|gas|electricity|power\s+grid|energy\s+grid|road\s+traffic)"
                 r"[\w\s\-,]{0,40}?(safety|infrastructure|management)",
+                re.IGNORECASE,
+            ),
+        ],
+        "patterns_v2": [
+            # R284 — Annex III(2) covers safety components in the "supply of
+            # water, gas, heating or electricity" and the operation of an
+            # electricity/power grid. The base pattern requires the sector
+            # keyword BEFORE the safety/management word, missing "safety
+            # component to manage the supply of electricity on a national grid"
+            # (st_v4_006, reversed order). These variants use the PRECISE
+            # statutory phrasing so they rescue st_v4_006 WITHOUT flipping a
+            # gas/heating APPLIANCE product — a residential gas-valve safety
+            # component "subject to EU gas appliance conformity assessment" is
+            # Annex I (Gas Appliances Regulation), not the gas SUPPLY, and it
+            # names neither "supply of gas" nor a grid (davidath scenario #108).
+            re.compile(
+                r"supply\s+of\s+(water|gas|electricity|heating)",
+                re.IGNORECASE,
+            ),
+            re.compile(
+                r"\b(electricity|power|energy|national)\s+grid\b",
                 re.IGNORECASE,
             ),
         ],

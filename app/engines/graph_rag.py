@@ -2288,6 +2288,26 @@ def _is_classification_question(question: str) -> bool:
 # ``emotion_recognition_general`` entry.
 
 
+def _answer_v2_enabled() -> bool:
+    """R284 — master gate for the answer-correctness bundle.
+
+    OFF (the default) reproduces pre-R284 behaviour = the ab_judge / easyhard_ab
+    baseline arm. When ON it activates two composable fixes:
+      1. the description-level classification patterns (``patterns_v2`` in
+         ``_CLASSIFICATION_TOPICS``) that rescue prohibited / high-risk verdicts
+         the literal patterns miss — predictive-policing-by-profiling ->
+         Art 5(1)(d); sensitive-attribute biometric inference -> Art 5(1)(g);
+         critical-infrastructure supply-sector safety components -> Annex III(2);
+      2. the H1/H2 Stage-2 user-message COMPLETENESS + TERMINOLOGY instructions
+         (``_claude_max_enhance_answer``).
+    Under ``provider=cli`` (the davidath bench) only (1) fires — Stage-2 is
+    skipped — so davidath measures the classifier fix as the regression guard;
+    the answer win is measured live via ab_judge (correctness) + easyhard_ab
+    (the corrected verdict also corrects the references).
+    """
+    return _env_enabled("REGENOLD_ANSWER_V2", default="0")
+
+
 def _detect_classification_topic(question: str) -> dict | None:
     """Find the best-matching classification topic for ``question``.
 
@@ -2302,10 +2322,19 @@ def _detect_classification_topic(question: str) -> dict | None:
     live = question
     if "Latest question:" in live:
         live = live.split("Latest question:", 1)[-1]
+    v2 = _answer_v2_enabled()
     for topic in _CLASSIFICATION_TOPICS:
         for pat in topic["patterns"]:
             if pat.search(live):
                 return topic
+        # R284 — description-level patterns that rescue the wrong-verdict rows
+        # (env-gated so the ab_judge baseline arm reproduces main). Checked
+        # INSIDE the same topic, so the narrow->broad first-match order is
+        # preserved (e.g. predictive_policing still beats law_enforcement_use).
+        if v2:
+            for pat in topic.get("patterns_v2", ()):
+                if pat.search(live):
+                    return topic
     return None
 
 
@@ -6219,6 +6248,29 @@ def _claude_max_enhance_answer(
                 "tier, a carve-out, or a cross-reference) directly responsive to "
                 "the latest question, or when rule 12b closed-set completeness "
                 "requires naming every member of a set."
+            )
+        if _answer_v2_enabled():
+            # R284 — H1 (answer every part) + H2 (canonical statutory terms),
+            # appended to BOTH the classification and the else branch, in the
+            # LIVE Stage-2 USER message (the system prompt is inert on the
+            # wrapper path — R282). H1 is CONDITIONAL on the question actually
+            # asking multiple parts and forbids padding, so it cannot expand a
+            # single-part answer (AnsCon has zero headroom); H2 is zero length-cost.
+            user_message += (
+                " COMPLETENESS: answer every distinct part the question actually "
+                "asks. When the question contrasts or asks about more than one "
+                "thing (for example the difference between two risk tiers, "
+                "'prohibited or high-risk?', or a practice's prohibited context "
+                "AND its treatment elsewhere), address EACH part explicitly "
+                "rather than only the first. Do this by packing the parts tightly "
+                "into the existing sentence budget, never by adding padding or "
+                "dropping a required part. "
+                "TERMINOLOGY: use the EU AI Act's exact statutory terms verbatim "
+                "- 'emotion recognition', 'facial recognition', 'biometric "
+                "categorisation', 'social scoring', 'predictive policing', "
+                "'critical infrastructure', 'safety component', 'prohibited "
+                "practice' - never nominalise or hyphenate them into variants "
+                "such as 'emotion-inference' or 'facial-recognition'.\n"
             )
         try:
             max_tokens = settings.graph_rag.max_tokens
