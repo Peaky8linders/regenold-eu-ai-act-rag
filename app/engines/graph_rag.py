@@ -2289,23 +2289,36 @@ def _is_classification_question(question: str) -> bool:
 
 
 def _answer_v2_enabled() -> bool:
-    """R284 — master gate for the answer-correctness bundle.
+    """R284 — gate for the CLEAN answer-correctness fixes (H3 + H2).
 
     OFF (the default) reproduces pre-R284 behaviour = the ab_judge / easyhard_ab
-    baseline arm. When ON it activates two composable fixes:
-      1. the description-level classification patterns (``patterns_v2`` in
-         ``_CLASSIFICATION_TOPICS``) that rescue prohibited / high-risk verdicts
-         the literal patterns miss — predictive-policing-by-profiling ->
-         Art 5(1)(d); sensitive-attribute biometric inference -> Art 5(1)(g);
-         critical-infrastructure supply-sector safety components -> Annex III(2);
-      2. the H1/H2 Stage-2 user-message COMPLETENESS + TERMINOLOGY instructions
-         (``_claude_max_enhance_answer``).
-    Under ``provider=cli`` (the davidath bench) only (1) fires — Stage-2 is
-    skipped — so davidath measures the classifier fix as the regression guard;
-    the answer win is measured live via ab_judge (correctness) + easyhard_ab
-    (the corrected verdict also corrects the references).
+    baseline arm. When ON it activates two REFERENCE-PRECISION-ALIGNED fixes:
+      * H3 — description-level classification patterns (``patterns_v2`` in
+        ``_CLASSIFICATION_TOPICS``) that rescue prohibited / high-risk verdicts
+        the literal patterns miss (predictive-policing-by-profiling ->
+        Art 5(1)(d); sensitive-attribute biometric inference -> Art 5(1)(g);
+        critical-infrastructure supply-sector safety components -> Annex III(2)).
+        H3 REDUCES refs on the wrong-verdict rows (tp_v4_003 5->2), so it aligns
+        with the R281 precision discipline.
+      * H2 — Stage-2 user-message TERMINOLOGY instruction (verbatim statutory
+        terms). Wording-only, so it never adds citations.
+    The H1 COMPLETENESS instruction is SEPARATE (``_answer_complete_enabled``,
+    default OFF): the full-bundle easyhard_ab A/B measured it DRIVING
+    over-citation (pred:gold 1.71->1.75, ref_conc -0.042), which re-inflates
+    references against R281. Under ``provider=cli`` (the davidath bench) only H3
+    fires — Stage-2 is skipped — so davidath measures it as the regression guard.
     """
     return _env_enabled("REGENOLD_ANSWER_V2", default="0")
+
+
+def _answer_complete_enabled() -> bool:
+    """R284 H1 — multi-part COMPLETENESS Stage-2 instruction, DEFAULT OFF.
+
+    Split out of ``REGENOLD_ANSWER_V2`` after the full-bundle A/B showed it
+    re-inflates references (over-citation) against the R281 precision discipline.
+    Kept env-gated for a future rework that adds completeness WITHOUT extra cites.
+    """
+    return _env_enabled("REGENOLD_ANSWER_COMPLETE", default="0")
 
 
 def _detect_classification_topic(question: str) -> dict | None:
@@ -6250,12 +6263,24 @@ def _claude_max_enhance_answer(
                 "requires naming every member of a set."
             )
         if _answer_v2_enabled():
-            # R284 — H1 (answer every part) + H2 (canonical statutory terms),
-            # appended to BOTH the classification and the else branch, in the
-            # LIVE Stage-2 USER message (the system prompt is inert on the
-            # wrapper path — R282). H1 is CONDITIONAL on the question actually
-            # asking multiple parts and forbids padding, so it cannot expand a
-            # single-part answer (AnsCon has zero headroom); H2 is zero length-cost.
+            # R284 H2 — canonical statutory TERMINOLOGY, in the LIVE Stage-2 USER
+            # message (the system prompt is inert on the wrapper path — R282).
+            # Wording-only: it never adds a citation, so it is clean on the
+            # reference axes and ships WITH the H3 classifier fix.
+            user_message += (
+                " TERMINOLOGY: use the EU AI Act's exact statutory terms verbatim "
+                "- 'emotion recognition', 'facial recognition', 'biometric "
+                "categorisation', 'social scoring', 'predictive policing', "
+                "'critical infrastructure', 'safety component', 'prohibited "
+                "practice' - never nominalise or hyphenate them into variants "
+                "such as 'emotion-inference' or 'facial-recognition'.\n"
+            )
+        if _answer_complete_enabled():
+            # R284 H1 — multi-part COMPLETENESS. DEFAULT OFF: the full-bundle A/B
+            # measured it driving over-citation (pred:gold 1.71->1.75, ref_conc
+            # -0.042) against R281. The "cite only the provisions each part turns
+            # on" clause is a first rework attempt; do NOT ship ON without an A/B
+            # showing the completeness win WITHOUT the ref re-inflation.
             user_message += (
                 " COMPLETENESS: answer every distinct part the question actually "
                 "asks. When the question contrasts or asks about more than one "
@@ -6264,13 +6289,8 @@ def _claude_max_enhance_answer(
                 "AND its treatment elsewhere), address EACH part explicitly "
                 "rather than only the first. Do this by packing the parts tightly "
                 "into the existing sentence budget, never by adding padding or "
-                "dropping a required part. "
-                "TERMINOLOGY: use the EU AI Act's exact statutory terms verbatim "
-                "- 'emotion recognition', 'facial recognition', 'biometric "
-                "categorisation', 'social scoring', 'predictive policing', "
-                "'critical infrastructure', 'safety component', 'prohibited "
-                "practice' - never nominalise or hyphenate them into variants "
-                "such as 'emotion-inference' or 'facial-recognition'.\n"
+                "dropping a required part, and cite only the provisions each part "
+                "actually turns on.\n"
             )
         try:
             max_tokens = settings.graph_rag.max_tokens

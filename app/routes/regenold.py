@@ -1549,6 +1549,9 @@ def _engine_cache_key(
             # same-process ab_judge / easyhard_ab A/B (env 0 vs 1) does not serve
             # the baseline arm's cached response to the branch arm.
             "REGENOLD_ANSWER_V2",
+            # R284 H1 — the (default-OFF) multi-part completeness Stage-2 clause;
+            # flips the polished answer, so same cache-identity doctrine.
+            "REGENOLD_ANSWER_COMPLETE",
         )
     )
     import json
