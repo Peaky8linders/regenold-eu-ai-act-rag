@@ -2307,8 +2307,13 @@ def _answer_v2_enabled() -> bool:
     over-citation (pred:gold 1.71->1.75, ref_conc -0.042), which re-inflates
     references against R281. Under ``provider=cli`` (the davidath bench) only H3
     fires — Stage-2 is skipped — so davidath measures it as the regression guard.
+
+    SHIPPED default ON (R284, R80.2 dashboard-override-proof doctrine): H3 is
+    davidath byte-identical (0/476) + live-verified wrong->right (tp_v4_003) and
+    the grounded Sonnet-5 judge validated the approach (+6.1pp answer / +5.3pp
+    citation vs the verbatim Act). Set ``REGENOLD_ANSWER_V2=0`` for instant rollback.
     """
-    return _env_enabled("REGENOLD_ANSWER_V2", default="0")
+    return _env_enabled("REGENOLD_ANSWER_V2", default="1")
 
 
 def _answer_complete_enabled() -> bool:
