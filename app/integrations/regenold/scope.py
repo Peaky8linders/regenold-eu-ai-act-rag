@@ -818,6 +818,14 @@ _AI_ACT_ANCHORS: frozenset[str] = frozenset(
         # that don't carry an explicit Art./Annex token but DO mention
         # an AI Act surface.
         "deepfake",
+        # R285 — the HYPHENATED spelling. The anchor set carried "deepfake" and
+        # KEYWORD_TO_ARTICLE carried "deep fake", but the officially-graded
+        # question rg_002 ("Does the obligation to indicate that DEEP-FAKES are
+        # artificially generated apply when prosecuting a criminal offence?")
+        # matched neither, so it fell into the R256 `ambiguous` bucket and was
+        # answered only when the LLM scope gate happened to be reachable. It is
+        # the Act's own Article 50(4) term, so there is no off-topic sense to leak.
+        "deep-fake",
         "ai-generated",
         "synthetic content",
         "watermarking",
@@ -1641,6 +1649,7 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "ai act definition": "Art. 3",
     "is defined under": "Art. 3",
     "deep fake": "Art. 50",
+    "deep-fake": "Art. 50",  # R285 — hyphenated spelling (graded row rg_002)
     "ai-generated": "Art. 50",
     "ai generated": "Art. 50",
     "label ai": "Art. 50",

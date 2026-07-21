@@ -3611,3 +3611,31 @@ class TestR273NearOosGrounded:
         ans = body.get("answer", "")
         assert "Paris" in ans, f"benign off-topic should still get general assistant: {ans!r}"
         assert calls["n"] == 1
+
+
+class TestR285GradedRowScopeGaps:
+    """Anchors recovered from the ACTUAL 2026-07-07 graded question set.
+
+    These are not synthetic probes: every question here is a verbatim row from
+    ``evals.regenold.official_batch`` — the batch the official report scored.
+    """
+
+    def test_hyphenated_deep_fake_is_in_scope(self) -> None:
+        """rg_002. The anchor set had ``deepfake`` and ``deep fake`` but not the
+        hyphenated ``deep-fake``, so the graded question fell into the R256
+        ``ambiguous`` bucket and was answered only when the LLM scope gate was
+        reachable — fragile for a question that is squarely Article 50(4)."""
+        v = classify_scope(
+            "Does the obligation to indicate that deep-fakes are artificially "
+            "generated apply when prosecuting a criminal offence?"
+        )
+        assert v.in_scope, v.reason
+
+    def test_deep_fake_anchor_does_not_leak_off_topic(self) -> None:
+        """The term is the Act's own; it must not widen the gate by itself."""
+        for q in (
+            "What's the best Italian restaurant in Rome?",
+            "I want to suspend my Netflix subscription.",
+            "When did the queen withdraw from public life?",
+        ):
+            assert not classify_scope(q).in_scope, q
