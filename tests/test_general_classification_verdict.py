@@ -111,7 +111,7 @@ class TestEngineAnswer:
         answer = res.answer
         low = answer.lower()
         # The verdict must address the actual high-risk question via Art. 6.
-        assert "article 5 prohibited practices" in low
+        assert "not among the practices prohibited under article 5" in low
         assert "article 6" in low
         # Pre-fix smoking gun: the engine dumped the Art. 5 catalogue.
         assert not answer.startswith("Prohibits eight categories"), (
@@ -202,7 +202,7 @@ class TestRouteEndToEnd:
         assert r.status_code == 200
         answer = r.json().get("answer", "").lower()
         # Must answer the scope carve-out, not emit the risk-tier verdict.
-        assert "article 5 prohibited practices" not in answer
+        assert "not among the practices prohibited under article 5" not in answer
 
 
 # ── The verdict is curated, complete prose — never augment it ───────────
@@ -261,5 +261,123 @@ class TestVerdictShipsCleanNotAugmented:
         # template's ":".
         assert ".:" not in answer, f"'.:' artifact in verdict: {answer!r}"
         # The clean verdict prose must survive intact.
-        assert "Article 50 transparency duties" in answer
-        assert "Annex III use case" in answer
+        assert "social scoring, untargeted facial-image scraping" in answer
+        assert "limited- or minimal-risk" in answer
+
+
+# ── R285 — the softened draft is an A/B ARM, never the silent default ──────
+
+
+class TestR285GeneralVerdictV2Arm:
+    """``REGENOLD_GENERAL_VERDICT_V2`` gates the R284-checkpoint-section-6
+    "general-fallback softening".
+
+    A prior commit shipped a softening with no A/B AND in a form that stopped
+    being an answer — it opened "Evaluate the described system against ...",
+    a second-person instruction telling the reader to do the classification
+    they had just asked for. These tests pin (a) the default is the
+    R284-validated text, (b) the arm is opt-in, and (c) the arm's text is
+    still a declarative, tier-naming, cite-anchored ANSWER.
+    """
+
+    def test_default_arm_is_the_validated_legacy_text(self, monkeypatch) -> None:
+        monkeypatch.delenv("REGENOLD_GENERAL_VERDICT_V2", raising=False)
+        from app.engines import graph_rag as g
+
+        assert g._general_verdict_v2_enabled() is False
+        assert (
+            g._general_classification_verdict_text()
+            == g._GENERAL_CLASSIFICATION_VERDICT_LEGACY
+        )
+
+    def test_arm_selects_the_softened_text(self, monkeypatch) -> None:
+        monkeypatch.setenv("REGENOLD_GENERAL_VERDICT_V2", "1")
+        from app.engines import graph_rag as g
+
+        assert (
+            g._general_classification_verdict_text()
+            == g._GENERAL_CLASSIFICATION_VERDICT_V2
+        )
+
+    def test_softened_text_is_still_an_answer_not_an_instruction(self) -> None:
+        from app.engines import graph_rag as g
+
+        text = g._GENERAL_CLASSIFICATION_VERDICT_V2
+        low = text.lower()
+        # Declarative, not an imperative aimed at the reader.
+        assert not low.startswith("evaluate "), text
+        assert not low.startswith("consider "), text
+        assert not low.startswith("assess "), text
+        # Still names the operative test AND the residual tier.
+        assert "article 6" in low
+        assert "annex i" in low and "annex iii" in low
+        assert "limited- or minimal-risk" in low, (
+            "the residual tier must be named — dropping it was one of the "
+            "regressions in the reverted commit"
+        )
+        # Article 50 stays CONDITIONAL on direct interaction with people; it
+        # does not apply to every non-high-risk system.
+        assert "where it interacts directly with people" in low
+        # Third-person regulator voice: never addresses the reader.
+        assert " you " not in f" {low} " and "your " not in low
+
+    def test_softened_text_drops_the_confident_not_prohibited_assertion(self) -> None:
+        """The whole point of the softening: a described-not-named prohibited
+        practice must not have a confident-wrong draft for Stage-2 to polish."""
+        from app.engines import graph_rag as g
+
+        assert (
+            "not among the practices prohibited"
+            in g._GENERAL_CLASSIFICATION_VERDICT_LEGACY.lower()
+        )
+        assert (
+            "not among the practices prohibited"
+            not in g._GENERAL_CLASSIFICATION_VERDICT_V2.lower()
+        )
+
+    def test_every_sentence_of_both_arms_is_cite_anchored(self) -> None:
+        """Un-anchored sentences are dropped by the soft-cap pass."""
+        import re
+
+        from app.engines import graph_rag as g
+
+        for text in (
+            g._GENERAL_CLASSIFICATION_VERDICT_LEGACY,
+            g._GENERAL_CLASSIFICATION_VERDICT_V2,
+        ):
+            for sentence in [s for s in re.split(r"(?<=\.)\s+", text) if s.strip()]:
+                assert re.search(r"Article \d+|Annex [IVX]+", sentence), (
+                    f"sentence without a cite anchor: {sentence!r}"
+                )
+
+    def test_neither_arm_uses_dash_separators_or_ellipses(self) -> None:
+        from app.engines import graph_rag as g
+
+        for text in (
+            g._GENERAL_CLASSIFICATION_VERDICT_LEGACY,
+            g._GENERAL_CLASSIFICATION_VERDICT_V2,
+        ):
+            assert "—" not in text and "–" not in text and "..." not in text
+
+    def test_arm_flag_is_in_the_engine_cache_key(self) -> None:
+        """R263.2 doctrine: a flag that changes the CACHED engine answer must be
+        in the cache identity, or a same-process A/B serves the baseline arm's
+        response to the branch arm and the measurement is silently void."""
+        import inspect
+
+        from app.routes import regenold
+
+        src = inspect.getsource(regenold._engine_cache_key)
+        assert "REGENOLD_GENERAL_VERDICT_V2" in src
+
+    def test_arms_produce_distinct_engine_answers(self, monkeypatch) -> None:
+        from app.engines.graph_rag import _general_classification_verdict
+
+        q = "We built an AI tool that tracks patient weight in a ward. Is it high-risk?"
+        monkeypatch.setenv("REGENOLD_GENERAL_VERDICT_V2", "0")
+        a = _general_classification_verdict(q)
+        monkeypatch.setenv("REGENOLD_GENERAL_VERDICT_V2", "1")
+        b = _general_classification_verdict(q)
+        assert a is not None and b is not None
+        assert a["answer"] != b["answer"]
+        assert a["refs"] == b["refs"], "the arm changes prose only, never refs"

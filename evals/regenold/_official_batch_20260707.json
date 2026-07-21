@@ -1,0 +1,1651 @@
+[
+ {
+  "id": "rg_001",
+  "question": "Does the technical documentation of a high-risk AI system require to provide specifications regarding the required hardware?",
+  "question_hash": "9fc49a33ddacb99e502a38aeb6b665510262a9ed3b0b3c453ab309165f9eb3ba",
+  "jul07_answer": "Yes. Under Article 11, a provider must draw up technical documentation containing the information set out in Annex IV, which expressly requires a description of the hardware on which the AI system is intended to run (Annex IV point 1(e)) and, as part of the system's development description, the computational resources used to develop, train, test and validate it (Annex IV point 2(c)).",
+  "jul07_refs": [
+   "Article 11",
+   "Annex IV.1.e",
+   "Annex IV.2.c",
+   "Annex IV",
+   "Annex IV.2"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_002",
+  "question": "Does the obligation to indicate that deep-fakes are artificially generated apply when prosecuting a criminal offence?",
+  "question_hash": "838110b04c1486a38db11648a6c7c0c4d0a31a5cb847f93aafea53d88839efa1",
+  "jul07_answer": "No. Under Article 50(4), the deployer's duty to disclose that image, audio, or video content constituting a deep fake has been artificially generated or manipulated does not apply where the use is authorised by law to detect, prevent, investigate, or prosecute criminal offences. Absent that law-enforcement authorisation, the deployer must disclose that the content is a deep fake.",
+  "jul07_refs": [
+   "Article 50.4",
+   "Article 50"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "conversational"
+ },
+ {
+  "id": "rg_003",
+  "question": "When the intended use of an AI system is listed in Annex III of the EU AI Act, the AI system is automatically high-risk, isn't it? If not, can you explain when that is not the case?",
+  "question_hash": "26b686455233010c8f685bc04a1c28c46af83ea037038fbac227543bb0098b7b",
+  "jul07_answer": "Not always. An AI system whose intended use falls within one of the eight Annex III categories is high-risk by default under Article 6(2), but Article 6(3) allows a provider to rebut that classification. The system is not high-risk where it poses no significant risk of harm to the health, safety, or fundamental rights of natural persons and it satisfies one of four conditions: it performs a narrow procedural task, it improves the result of a previously completed human activity, it detects decision-making patterns or deviations from prior patterns without replacing or influencing the human assessment, or it performs a preparatory task to an assessment relevant to an Annex III use case. This derogation does not apply if the system profiles natural persons, in which case it remains high-risk. A provider relying on the derogation must document that self-assessment before placing the system on the market and must still register the system under Article 49(2).",
+  "jul07_refs": [
+   "Annex III",
+   "Article 6",
+   "Article 6.2",
+   "Article 6.3",
+   "Article 49",
+   "Article 49.2"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_004",
+  "question": "I have a medical device that has an AI system as a safety component. The medical device is classified \"medium-risk\" and undergoes a 3rd party conformity assessment. Is the AI system \"medium risk\" too? If yes, why? If not, why not?",
+  "question_hash": "5bd7e6d7c8bd39dc91c5899ae4b3d0d6ba4b619c706e2b10d75d4c5113fbaa0e",
+  "jul07_answer": "No. The AI system is high-risk under the EU AI Act, and the reason it is not \"medium risk\" is that the AI Act does not have a medium-risk tier that a safety component could fall into. Article 6(1) classifies an AI system as high-risk on the Annex I route where it is a safety component of a product covered by the Union harmonisation legislation listed in Annex I and that product must undergo a third-party conformity assessment under that sectoral legislation. Medical devices are Annex I harmonisation legislation, so an AI safety component of a medical device that goes through third-party conformity assessment satisfies both limbs of Article 6(1). The \"medium-risk\" label describes the device's risk class under the sectoral medical device regime, which drives the level of notified-body scrutiny there. It does not transfer to the AI Act, whose classification turns only on whether the two Article 6(1) conditions are met, both of which they are here. The practical consequence is a single conformity procedure rather than two. Under Article 43, high-risk AI systems must undergo a conformity assessment, and Article 43(3) integrates the AI Act assessment into the sectoral third-party procedure for Annex I products, so for a medical device the AI Act requirements are examined within the existing notified-body assessment rather than through the standalone internal-control (Annex VI) or notified-body (Annex VII) routes used for Annex III systems.",
+  "jul07_refs": [
+   "Article 6",
+   "Article 6.1",
+   "Annex I",
+   "Annex III",
+   "Article 43",
+   "Article 43.3",
+   "Annex VI",
+   "Annex VII"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_005",
+  "question": "Does the EU AI Act explicitly requires to use explainable AI techniques such as LIME or SHAP to increase the trustworthiness of high-risk AI systems?",
+  "question_hash": "b695f1aaefb5735ea53db3f5d1d4f2c67b1b8d4bab0f92a85bff6f0bef0a5476",
+  "jul07_answer": "No, the EU AI Act mandates no specific explainable-AI technique such as LIME or SHAP, and Article 13 instead requires only that high-risk AI systems be sufficiently transparent for deployers to interpret their output. Article 14 requires effective human oversight, and Article 15 requires appropriate accuracy, robustness and cybersecurity.",
+  "jul07_refs": [
+   "Article 15",
+   "Article 13",
+   "Article 14"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_006",
+  "question": "Does the EU AI Act apply to AI systems or AI models or both?",
+  "question_hash": "6ca95f07b6dd980f4947103f3d7ab73c6cf76491386ac382d13751ab3214cada",
+  "jul07_answer": "The EU AI Act's core regime governs AI systems, defined in Article 3(1) and brought within scope by Article 2, through the risk-based tiers (prohibited practices under Article 5, high-risk systems under Article 6, and limited-risk transparency duties under Article 50). General-purpose AI models are regulated separately under Chapter V (Articles 51 to 56), are defined in Article 3(63), and carry their own provider obligations with additional duties for models posing systemic risk.",
+  "jul07_refs": [
+   "Article 2",
+   "Article 3.1",
+   "Article 51"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_007",
+  "question": "We want to deploy an AI system that performs biometric verification solely to confirm that a specific natural person is the person he or she claims to be. Is this system prohibited? Is it high-risk?",
+  "question_hash": "864ac467cd4f6ddd2b8c35395779fed68a1878f2902e9043a36daa30947b8b07",
+  "jul07_answer": "Not prohibited, and not high-risk on the biometrics route, a biometric system used solely to verify that a specific natural person is who he or she claims to be is a limited-risk system subject principally to the Article 50 transparency duty, unless it independently qualifies as high-risk under Article 6(1). The described system does not fall within any of the eight exhaustively-listed bans in Article 5 (it involves neither subliminal, manipulative or deceptive techniques nor exploitation of vulnerabilities by age, disability or socio-economic situation, nor any other prohibited practice), so it is not prohibited. Nor does it enter the biometrics use case of Annex III: that category captures remote biometric identification and related biometric categorisation, whereas one-to-one verification confined to confirming a claimed identity is outside it, so the Annex III route to high-risk under Article 6(2) is not engaged. The only remaining path to a high-risk classification is Article 6(1): the system would be high-risk where it functions as a safety component of, or is itself, a product covered by the Union harmonisation legislation listed in Annex I and that product is required to undergo third-party conformity assessment, a determination that turns on the product context in which the verification is deployed. Absent that Annex I nexus, the system remains limited-risk, with the operative obligation being the Article 50 duty to disclose to the natural persons interacting with it that they are interacting with an AI system.",
+  "jul07_refs": [
+   "Article 5",
+   "Article 6",
+   "Article 6.1",
+   "Article 6.2",
+   "Article 50",
+   "Annex III",
+   "Annex I"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_008",
+  "question": "Are AI safety components within medical devices of MDR class IIa, IIb, or III considered to be high-risk according to the EU AI Act? Why?",
+  "question_hash": "5b62966e7fb4fc62a16d10120a8aeef708802f582844cc0b6e9f957670789048",
+  "jul07_answer": "AI safety components within MDR class IIa, IIb, or III medical devices are high-risk under the EU AI Act, because those classes require the involvement of a notified body in their conformity assessment, which satisfies the second condition of Article 6(1). Article 6(1) classifies an AI system as high-risk where it is intended to be used as a safety component of a product covered by the Union harmonisation legislation listed in Annex I, which includes the Medical Devices Regulation, and where that product is required to undergo a third-party conformity assessment before being placed on the market. The MDR reserves self-assessment for class I devices; classes IIa, IIb, and III all mandate notified-body assessment, so the third-party-assessment condition is met and the classification attaches automatically, without any need to consult the Annex III use-case list. The applicable conformity-assessment obligation then follows from Article 43, carried out under the MDR with notified-body involvement rather than the internal-control route, so that the AI Act's requirements are discharged through the sectoral procedure. The verdict is therefore unconditional for these three classes; it would only turn conditional at class I, where a device not requiring third-party assessment (and not otherwise listed in Annex III) would fall outside Article 6(1) on the safety-component route.",
+  "jul07_refs": [
+   "Article 6",
+   "Article 6.1",
+   "Annex I",
+   "Article 43",
+   "Annex III"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_009",
+  "question": "What documentation does a provider of a high-risk AI system needs to keep available for the national competent authorities, and for how long?",
+  "question_hash": "d90c1e2683fdfee815c1d7c6ee61a2a8a911d9ff315e2bee26c8d814e9f6915b",
+  "jul07_answer": "Under Article 18, for ten years after the high-risk AI system is placed on the market or put into service, the provider must keep at the disposal of the national competent authorities the technical documentation (Article 11), the quality-management-system documentation (Article 17), the documentation of any changes approved by notified bodies, the decisions and other documents issued by notified bodies, and the EU declaration of conformity (Article 47). Separately, under Article 19 the automatically generated logs must be kept for a period appropriate to the intended purpose, of at least six months.",
+  "jul07_refs": [
+   "Article 18",
+   "Article 11",
+   "Article 17",
+   "Article 47"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_010",
+  "question": "Which article of the EU AI Act governs human oversight measures?",
+  "question_hash": "5dc34f332c16e152bda014a225c4e6a62addf276214600e57c87655756c901bb",
+  "jul07_answer": "Human oversight measures are governed by Article 14 of the EU AI Act, which requires that high-risk AI systems be designed and developed so they can be effectively overseen by natural persons during the period they are in use. The EU AI Act References place this within the framework of harmonised rules for high-risk AI systems under Article 1, alongside the risk management system that Article 9 requires to be established and maintained for such systems. Note that the References here supply no operative obligation text for Article 14 itself, so the governing article is identified but its detailed measures are not enumerated in the material provided.",
+  "jul07_refs": [
+   "Article 14",
+   "Article 14.1",
+   "Article 14.4",
+   "Article 1",
+   "Article 9"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_011",
+  "question": "What is the meaning and purpose of 'testing data' in the context of AI systems, and why is it important that it is not leaked during the training process?",
+  "question_hash": "b9fc03a635c0f72215466e07114b46ab0e659ab8dedd4dae8acaac5ad4e482fc",
+  "jul07_answer": "Testing data is defined in Article 3(32) as data used to provide an independent evaluation of the AI system, in order to confirm its expected performance before it is placed on the market or put into service. If testing data leaks into the training process, the system is in effect assessed on data it has already seen, which inflates its apparent performance and defeats the purpose of the independent check that Article 10 requires for the datasets of a high-risk AI system.",
+  "jul07_refs": [
+   "Article 3.32",
+   "Article 10"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_012",
+  "question": "What are the high-risk uses of AI systems listed under 'Administration of justice and democratic processes' cited in the EU AI Act?",
+  "question_hash": "fc42597636bfd7eb4fb4be066f07a59df1aa2a538c5a14971a10fbc8ec781598",
+  "jul07_answer": "Annex III point 8 lists two high-risk use cases under administration of justice and democratic processes. Annex III point 8(a) covers AI systems intended to be used by a judicial authority, or on its behalf, to assist in researching and interpreting facts and the law and in applying the law to a concrete set of facts, or to be used similarly in alternative dispute resolution. Annex III point 8(b) covers AI systems intended to influence the outcome of an election or referendum, or the voting behaviour of natural persons in exercising their vote, with a carve-out for tools that only organise, optimise or structure political campaigns from an administrative or logistical point of view.",
+  "jul07_refs": [
+   "Annex III.8.a",
+   "Annex III.8.b",
+   "Annex III.8",
+   "Annex III"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_013",
+  "question": "Under what conditions should providers of general-purpose AI models be subject to exceptions regarding transparency-related requirements, if any? And what do those exceptions not cover?",
+  "question_hash": "e97760e568c38519d34030d46ee72e185fd7c1080d38da54d444f1ef0e79b08a",
+  "jul07_answer": "Only where the model is released under a genuinely free and open-source licence, and even then the exception is narrow. Under the Article 53(2) carve-out, a GPAI provider is relieved of two of its transparency-related duties: drawing up and maintaining the Annex XI technical documentation of the model's training, testing and evaluation (Article 53(1)(a)), and preparing the Annex XII information for downstream providers who integrate the model (Article 53(1)(b)). The exception does not cover the two remaining Article 53(1) duties. The copyright compliance policy (Article 53(1)(c)) and the publicly available summary of training-data content (Article 53(1)(d)) continue to bind every GPAI provider, including open-source releases. The carve-out also falls away entirely for a model classified as posing systemic risk under Article 51, meaning one with high-impact capabilities (presumed above 10^25 FLOPs of cumulative training compute) or so designated by the Commission. In that case the full Article 53 documentation obligations apply regardless of licence, together with the additional Article 55 systemic-risk duties covering model evaluation and adversarial testing, systemic-risk assessment and mitigation, serious-incident reporting to the AI Office, and cybersecurity protection for the model and its infrastructure.",
+  "jul07_refs": [
+   "Article 53",
+   "Article 51",
+   "Article 55",
+   "Annex XI",
+   "Annex XII"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_014",
+  "question": "Which AI systems used in education or vocational training should be classified as high-risk according to the EU AI Act?",
+  "question_hash": "f787bc01673a728a67fa9cb44f142c208e53902e3ce7c4b80f7452e3f261a908",
+  "jul07_answer": "High-risk where the system falls within the education and vocational training use case listed in Annex III, which is one of the eight categories that make an AI system high-risk under the Annex III route of Article 6(2). This route applies regardless of whether the system is a safety component of a regulated product, that separate Annex I route under Article 6(1) covering products subject to third-party conformity assessment being distinct. Even within the education use case, an Annex III system is not high-risk under the Article 6(3) derogation where it poses no significant risk of harm to health, safety or fundamental rights and performs only a narrow procedural task, improves the result of a previously completed human activity, detects decision-making patterns or deviations without replacing or influencing the human assessment, or carries out a preparatory task.",
+  "jul07_refs": [
+   "Article 6",
+   "Annex III.3",
+   "Annex III",
+   "Annex I"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_015",
+  "question": "What obligations, if any, does the EU AI Act set in place for AI systems that interact directly with natural persons? What exceptions, if any, apply?",
+  "question_hash": "54aaed4591d98d5658e47c5f72cc3597e8aab19ebcca281ef046bbdf08066438",
+  "jul07_answer": "Yes, the Act imposes a transparency duty. The obligation rests on the provider and attaches to the design of the system itself. Where the same system also generates synthetic audio, image, video, or text, Article 50(2) additionally requires the provider to mark those outputs in a machine-readable format detectable as artificially generated or manipulated. One exception applies to the disclosure duty in Article 50(1). It does not bind AI systems authorised by law to detect, prevent, or investigate criminal offences, provided appropriate safeguards for the rights and freedoms of third parties are in place. That carve-out is itself reversed where the system is available to the public to report a criminal offence, in which case the disclosure duty continues to apply.",
+  "jul07_refs": [
+   "Article 50.1",
+   "Article 50.3",
+   "Article 50",
+   "Article 50.2"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_016",
+  "question": "What are the administrative fines for non-compliance with the prohibition of the AI practices?",
+  "question_hash": "cf9371ea8d77a094fb869f33451fe9e2ac6c8f954112da2dcae507fd79243e21",
+  "jul07_answer": "Non-compliance with the Article 5 prohibited AI practices carries the highest penalty tier. Under Article 99(3), it is subject to administrative fines of up to EUR 35 million or, if higher, up to 7% of the offender's total worldwide annual turnover for the preceding financial year, whichever is greater. Article 5 is the provision that bans the eight categories of unacceptable practice, including subliminal or manipulative techniques causing significant harm, exploitation of vulnerabilities by age, disability or socio-economic situation, social scoring, untargeted facial-image scraping, workplace and educational emotion inference, sensitive-attribute biometric categorisation, and real-time remote biometric identification by law enforcement.",
+  "jul07_refs": [
+   "Article 99",
+   "Article 99.3",
+   "Article 5"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_017",
+  "question": "How does Annex II relate to prohibited uses of AI systems?",
+  "question_hash": "c339ac802a744bc31dca7b50e82e8bbcb4d7bbf2418e68453e22cdd6c95c0891",
+  "jul07_answer": "Annex II supports one narrow exception to a prohibition, rather than prohibiting anything itself. Article 5 bans real-time remote biometric identification in publicly accessible spaces by law enforcement, but that ban lifts for three exhaustively listed objectives, one of which is locating or identifying a suspect of an offence listed in Annex II. Annex II supplies that closed list of qualifying offences: terrorism, trafficking in human beings, sexual exploitation of children, illicit trafficking in narcotic drugs, weapons or nuclear material, murder, kidnapping, rape, armed robbery, organised crime, participation in a criminal organisation, and environmental crime.",
+  "jul07_refs": [
+   "Annex II",
+   "Article 5"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_018",
+  "question": "Can the European Commission amend Annex III of the EU AI Act to add or modify use-cases classified as high-risk AI systems? Under what conditions?",
+  "question_hash": "b836f01f9f0a14d5b2256bba8667b5c4e58771682aefc2d947a101c0060621f4",
+  "jul07_answer": "The European Commission is empowered to amend Annex III to add or modify high-risk use-cases, but that power is confined and conditional: it may add a use-case only where the system falls within one of the eight area headings already listed in Annex III (biometrics, critical infrastructure, education and vocational training, employment and worker management, and the remaining categories) and poses a risk of harm to health, safety, or fundamental rights that is equivalent to, or greater than, the risk posed by the use-cases already classified as high-risk. The Commission cannot create a new heading or extend Annex III beyond those eight areas by delegated act, enlarging the set of areas itself requires the ordinary legislative procedure (co-decision by the European Parliament and Council), not delegated rule-making. The operative provision is Article 7. Under Article 7(1), the addition of a use-case is lawful only on the two cumulative conditions above (membership in an existing Annex III area and comparable-or-greater risk), and the Commission must assess that risk against the criteria in Article 7(2), including the intended purpose of the system, the extent to which it has been or is likely to be used, the nature and volume of data processed, the degree of autonomy, the reversibility and severity of potential harm, and the extent to which existing Union law already provides redress. Article 7(3) permits the reciprocal action, removing a use-case from Annex III where it no longer presents a significant risk, subject to the safeguard that removal must not decrease the overall level of protection of health, safety, and fundamental rights under Union law. The practical consequence for classification is that Annex III is a dynamic list: a system that is presently only limited- or minimal-risk (subject mainly to the Article 50 transparency duties where it interacts with people, and not within the Article 5 prohibitions) could become high-risk under Article 6(2) if the Commission adds its use-case, but only if that use-case sits within one of the pre-existing Annex III headings and clears the equivalent-risk threshold. A note on scope: the applicable-provisions block supplied names Articles 5, 6, Annex III, Annex I, and Article 50, but the amendment power the operator is asking about is not substantiated by those provisions, it resides in Article 7 (with the delegated-act procedure), which I have cited because the question cannot be answered accurately without it.",
+  "jul07_refs": [
+   "Article 6",
+   "Article 6.2",
+   "Article 50",
+   "Annex III",
+   "Annex I",
+   "Article 7",
+   "Article 5"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_019",
+  "question": "What is a deep fake according to the EU AI Act?",
+  "question_hash": "96b182664668e2ac9598fa5b8f3493fc88ae27863553efb0b8bbe70bf7c3faa2",
+  "jul07_answer": "AI-generated or manipulated image, audio or video content that resembles existing persons, objects, places, entities or events and would falsely appear to a person to be authentic or truthful.",
+  "jul07_refs": [
+   "Article 3.60",
+   "Article 50.4",
+   "Article 50"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_020",
+  "question": "Should market surveilance authorities be provided with remote access to documentations and data sets used to develop a high-risk AI system?",
+  "question_hash": "ec4ed4285d5b8363320332327cbe6e74df2b9476f0b9238d07259bfc077357a7",
+  "jul07_answer": "Not as a standing remote-access entitlement under the provisions available here. Providers must keep the technical documentation drawn up under Article 11 and Annex IV and must demonstrate compliance to competent authorities on request, which is the mechanism through which those authorities obtain the development records (Article 16).",
+  "jul07_refs": [
+   "Article 74",
+   "Article 11",
+   "Article 16",
+   "Annex IV"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_021",
+  "question": "If a provider of a high-risk AI system confirms that the system achieves an appropriate level of accuracy, robustness, and cybersecurity at the time of development, then no further action is required by the provider on these aspects in the future. Correct?",
+  "question_hash": "26cdbe38a67fa6fa022e3877142816ab5ed1eca17a9ac5269409ff498030200f",
+  "jul07_answer": "No. Article 15 requires an appropriate level of accuracy, robustness, and cybersecurity to be achieved and to be maintained so that the system performs consistently in those respects throughout its entire lifecycle, not only at the point of development (Article 15(1)). The lifecycle framing is reinforced by the surrounding obligations.",
+  "jul07_refs": [
+   "Article 15",
+   "Article 15.1"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_022",
+  "question": "What are all the risk categories in the EU AI Act?",
+  "question_hash": "4bccc5edec03458eb6042d2aef8caf24e1ed013e4dc1811c1f0a9afe84ebc51f",
+  "jul07_answer": "The EU AI Act sets four risk tiers plus a separate regime for general-purpose AI models: unacceptable-risk practices are prohibited under Article 5; and high-risk systems are classified under Article 6 (an Annex I product safety component, or an Annex III use case) and carry the Chapter III Section 2 obligations. Limited-risk systems carry the Article 50 transparency duties, minimal-risk systems have no mandatory duties under the Act, and general-purpose AI models are governed separately under Articles 51 to 56, with added obligations under Article 55 for models classified as having systemic risk under Article 51.",
+  "jul07_refs": [
+   "Article 6",
+   "Article 5",
+   "Article 50",
+   "Article 51",
+   "Article 52",
+   "Annex I",
+   "Annex III",
+   "Article 53",
+   "Article 54",
+   "Article 55",
+   "Article 56"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_023",
+  "question": "Does \"systemic risk\" apply to AI systems or general purpose AI models or both?",
+  "question_hash": "d15ae2c03fc9e35489e092382fa151a2c76fe90e54311325f27406e3f20c5f98",
+  "jul07_answer": "Under Article 51, a general-purpose AI model is classified as posing systemic risk when it has high-impact capabilities, which are presumed where cumulative training compute exceeds 10^25 FLOPs, or when the Commission so designates it on the Annex XIII criteria. That designation is the sole gateway to the Article 55 obligations, which require state-of-the-art model evaluation including documented adversarial testing, assessment and mitigation of Union-level systemic risks and their sources, serious-incident tracking and reporting to the AI Office, and adequate cybersecurity protection for both the model and its physical infrastructure. Designation also removes the Article 53(2) open-source carve-out, so a systemic-risk model owes the full Article 53 documentation duties plus the Article 55 duties regardless of licence. AI systems as such are governed by the separate risk framework and are never labelled \"systemic risk\"; that term is reserved to the GPAI model tier, and providers may rely on the Article 56 codes of practice to demonstrate compliance until a harmonised standard is published.",
+  "jul07_refs": [
+   "Article 51",
+   "Article 55",
+   "Article 53",
+   "Article 53.2",
+   "Article 56",
+   "Annex XIII"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_024",
+  "question": "Are AI systems that fall under one of the areas of Annex III, but not falling within a use-case within such areas, considered high-risk?",
+  "question_hash": "b6a98e65b884d2451d7a216a3f231df01bd3c293cb3d26a6997a56ec1ae9a7f3",
+  "jul07_answer": "No. Falling within one of the eight subject-matter areas of Annex III (biometrics, critical infrastructure, education and vocational training, employment and worker management, essential private and public services, law enforcement, migration, asylum and border control, and the administration of justice and democratic processes) does not by itself trigger high-risk status. Under the Annex III route in Article 6(2), a system is high-risk only where it falls within one of the specific enumerated use cases listed under those areas. A system that operates in one of these fields but does not match any of the listed use-case descriptions is therefore outside the Annex III classification.",
+  "jul07_refs": [
+   "Annex III",
+   "Article 6",
+   "Article 6.2"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_025",
+  "question": "Can an operator that is not a provider according to the EU AI Act, for example a deployer, take actions on a given high-risk AI system such that it can be effectively seen as a provider by the authorities? If yes, what kind of action would result in such an outcome?",
+  "question_hash": "18ac2378fe34fe446b9738a838bdcfdf8c5f7642c7f6289e506d981ccba974a1",
+  "jul07_answer": "Yes. Under Article 25(1), a distributor, importer, deployer or other third party is deemed to be the provider of a high-risk AI system, and takes on the provider obligations in Article 16, in any of three cases. First, if it puts its name or trademark on a high-risk AI system already placed on the market (Article 25(1)(a)). Second, if it makes a substantial modification to a high-risk AI system that remains high-risk (Article 25(1)(b)). Third, if it modifies the intended purpose of an AI system, including a general-purpose AI system, so that it becomes high-risk (Article 25(1)(c)). In each of these three cases the operator assumes the provider obligations in Article 16, and the initial provider is no longer considered the provider of that specific system under Article 25(2).",
+  "jul07_refs": [
+   "Article 25.1",
+   "Article 25",
+   "Article 16"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_026",
+  "question": "If I have an AI system that is high-risk because listed in the use cases of Annex III, and change it to a different use case that is not in Annex I or III, does it stay high-risk due to its historical provenance?",
+  "question_hash": "5263bad54c808144a94192f45606b1feaacdc06a6eee3c60232b73df0a686815",
+  "jul07_answer": "No. High-risk status under Article 6 attaches to what the system currently is or does, not to any historical classification it once carried. A system is high-risk only through one of two present-tense routes: it is a safety component of, or is itself, a product covered by the Union harmonisation legislation in Annex I that must undergo third-party conformity assessment (Article 6(1)), or it falls within one of the eight Annex III use cases such as biometrics, employment, or essential services (Article 6(2)). If the changed use case sits outside both Annex I and Annex III, neither route is satisfied and the system is not high-risk, regardless of the fact that its prior use case triggered Annex III.",
+  "jul07_refs": [
+   "Annex III",
+   "Annex I",
+   "Article 6",
+   "Article 6.1",
+   "Article 6.2"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_027",
+  "question": "How are AI systems intended to influence the outcome of an election or referendum classified, and what exception is given for certain campaign-related tools?",
+  "question_hash": "ff86601052e0617c2fe2f469bfb877411af9d367f56e605003ea9d3b251f44b0",
+  "jul07_answer": "Under Annex III point 8(b), AI systems intended to influence the outcome of an election or referendum, or the voting behaviour of natural persons in exercising their vote, are high-risk under Article 6(2). Annex III point 8(b) itself excludes systems to whose output natural persons are not directly exposed, such as tools used only to organise, optimise or structure political campaigns from an administrative or logistical point of view, which therefore fall outside this high-risk category.",
+  "jul07_refs": [
+   "Article 5",
+   "Article 6",
+   "Annex III.8.b",
+   "Annex III.8",
+   "Annex III"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_028",
+  "question": "According to Article 1, what is the objective of the EU AI Act?",
+  "question_hash": "0f303ea93fb3cfd1bc7b8681c4aec7d84577175639dffaab959ce1d057180cf0",
+  "jul07_answer": "According to Article 1, the objective of the EU AI Act is to lay down harmonised rules across the Union for placing AI systems on the market, putting them into service, and using them.",
+  "jul07_refs": [
+   "Article 1"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_029",
+  "question": "Under the EU AI Act, which specific AI systems are explicitly listed as high-risk because they make decisions in critical life- and health-related situations involving emergency calls and triage?",
+  "question_hash": "62cbdebc0a767f71c2efb60744d673c9fe64f7658ada9fa2c97b1acf0b8ede1f",
+  "jul07_answer": "These fall within the essential private and public services category of Annex III, which is one of the eight use-case groups that make a system high-risk. Under the Annex III classification route in Article 6, an AI system is high-risk where it falls within one of those listed use cases, subject to the narrow Article 6(3) derogation for systems posing no significant risk of harm (which never applies where the system profiles natural persons).",
+  "jul07_refs": [
+   "Article 6",
+   "Article 6.3",
+   "Annex III"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_030",
+  "question": "Under Regulation (EU) 2024/1689, as part of their supervisory role for an AI regulatory sandbox, compliance with which specific Article must the market surveillance authority verify?",
+  "question_hash": "ba8a1910bb43277bbf9f3a77b050282358e17eaa155ff158828de12f4a042c44",
+  "jul07_answer": "Compliance with Article 57 is what the market surveillance authority must verify. Article 57 requires each Member State to establish at least one AI regulatory sandbox providing a controlled environment for developing, training, testing, and validating innovative AI systems for a limited time before they are placed on the market, under regulatory guidance and supervised mitigation of identified risks. The market surveillance authority draws its supervisory mandate from Article 74, which designates these authorities, integrates AI Act enforcement with Regulation (EU) 2019/1020, and grants them full investigation and corrective powers, including access to source code where strictly necessary.",
+  "jul07_refs": [
+   "Article 74",
+   "Article 57"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_031",
+  "question": "Is an AI system used to structure or deduplicate information for a use case listed in Annex III considered high-risk?",
+  "question_hash": "c212f194b17f7b1b7a4c11f888d426f53b81a358ded14f60fdc683c8e618ddfd",
+  "jul07_answer": "Not high-risk merely by virtue of structuring or deduplicating information for an Annex III use case, such a system is high-risk under Article 6 only where it itself performs one of the Annex III use-case functions or materially determines that use case's outcome, and not where it is confined to a narrow, preparatory processing task ancillary to that function. Where the deduplication or structuring instead operates as a genuine component of the Annex III decision, for example resolving which biometric identities or which worker records are treated as authoritative in a way that influences the regulated outcome, the system is high-risk and attracts the Chapter III obligations that classification triggers. Separately, this practice is not among those prohibited under Article 5, which bans only the exhaustively-listed categories (subliminal, manipulative or deceptive techniques causing significant harm, and exploitation of vulnerabilities by age, disability or socio-economic situation); mere structuring or deduplication of information engages none of those prohibitions.",
+  "jul07_refs": [
+   "Article 6",
+   "Annex III",
+   "Article 5"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_032",
+  "question": "Is an AI system used to detect decision-making patterns or deviations for a use case listed in Annex III considered high-risk?",
+  "question_hash": "d7bded965ff9a5203e3130e55f854352bebee04797548104c4416e9ee3f38cf4",
+  "jul07_answer": "Even within an Annex III use case, Article 6(3)(c) provides that an AI system intended to detect decision-making patterns or deviations from prior decision-making patterns is not high-risk where it does not pose a significant risk of harm and is not meant to replace or influence a previously completed human assessment without proper human review. However, under Article 6(3) such a system is always high-risk where it performs profiling of natural persons.",
+  "jul07_refs": [
+   "Article 6.3",
+   "Article 6",
+   "Annex III"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_033",
+  "question": "Regarding the European Artificial Intelligence Board: (1) Who designates its members? (2) How long is the term? How many times is the term renewable? (3) must members represent stakeholder interests or act impartially/objectively? (4) what voting threshold is required to adopt the Board's rules of procedure (is a simple 50%+1 majority enough)?",
+  "question_hash": "e41469e9a3de1819757cf652f699ba871b5d239efecebf06d4feb12ae3a79023",
+  "jul07_answer": "The European Artificial Intelligence Board (Article 65) has one representative per Member State, each serving a three-year term renewable once under Article 65(3). Under Article 65(4) each is their Member State's single contact point rather than an independent stakeholder appointee, while Article 65(7) requires the Board to safeguard the objectivity and impartiality of its activities. Its rules of procedure are adopted by a two-thirds majority under Article 65(5), so a simple majority is not sufficient.",
+  "jul07_refs": [
+   "Article 65.3",
+   "Article 65.4",
+   "Article 65.5",
+   "Article 65.7",
+   "Article 65"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_034",
+  "question": "Under the EU AI Act, what jurisdiction does the Court of Justice of the European Union have over Commission decisions fixing fines on providers of general-purpose AI models, and what can the Court do with the fine?",
+  "question_hash": "b0e0452c1fb31b7655492e0d4c6eedcff9bebc7891d1fb7a118a0a663abf3fd6",
+  "jul07_answer": "Unlimited jurisdiction. Exercising that jurisdiction, the Court may cancel the fine, reduce it, or increase it.",
+  "jul07_refs": [
+   "Article 99"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_035",
+  "question": "Consider the situation in which a market surveillance authority (MSA) determines that an AI system, originally classified as non-high-risk by the provider, is in fact high-risk. Does the provider need to recall and suspend the use of the system without undue delay, or does the MSA provide a timeframe within which the provider can take corrective actions? Or does this depend on the gravity of the situation?",
+  "question_hash": "d0d49b14733aa279f2c155ecf1a46d57311feebc99d80ca906f3c976f1333de0",
+  "jul07_answer": "Under the reclassification procedure in Article 80, where a market surveillance authority has sufficient reason to consider that a system the provider self-classified as non-high-risk under Article 6(3) (the Annex III derogation) is in fact high-risk, and its evaluation confirms this, it must require the provider to bring the system into compliance with the Chapter III requirements and to take appropriate corrective action within a period the authority itself prescribes, there is no default duty on the provider to recall or suspend the moment the reclassification is announced. Recall, withdrawal, or suspension become mandatory only at the next stage: if the provider fails to bring the system into conformity within that specified period, or where the system independently presents a risk within the meaning of Article 79, the authority escalates to the Article 79 procedure and may require the operator to withdraw or recall the system without undue delay, including immediate provisional restriction where the seriousness of the risk to health, safety, or fundamental rights warrants it. A note on sourcing: the operator's references block supplies the classification provisions (Articles 5, 6, 50 and Annexes I, III) but not the enforcement provisions that actually govern this scenario. The operative rules here are Article 80 (procedure for systems misclassified as non-high-risk) and Article 79 (systems presenting a risk); I've cited them because the question cannot be answered accurately from the classification articles alone.",
+  "jul07_refs": [
+   "Article 6",
+   "Article 6.3",
+   "Annex III",
+   "Article 80",
+   "Article 79"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_036",
+  "question": "Under the EU AI Act, what presumption applies when a high-risk AI system is trained and tested on data that reflects the specific geographical, behavioural, contextual or functional setting in which it is intended to be used?",
+  "question_hash": "bd6a1616beb1808c5590d0c3bc231a3e442f85889d32df2b5edb7fb4952346a4",
+  "jul07_answer": "Under Article 42(1), a high-risk AI system trained and tested on data reflecting the specific geographical, behavioural, contextual, or functional setting in which it is intended to be used is presumed to comply with the relevant data-governance requirements of Article 10, which requires training, validation, and test datasets to be relevant, sufficiently representative, and to the best extent possible free of errors and complete in view of the intended purpose. This is a rebuttable presumption that eases the demonstration of compliance rather than removing the underlying obligation, and it stands alongside the separate cybersecurity presumption in Article 42(2) for systems certified under a scheme adopted pursuant to Regulation (EU) 2019/881.",
+  "jul07_refs": [
+   "Article 10",
+   "Article 42",
+   "Article 42.1",
+   "Article 42.2"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_037",
+  "question": "When registering a high-risk AI system in the EU database under the EU AI Act, what specific information must the provider submit? List the required items.",
+  "question_hash": "b11e4e6a27167f44b4a00532b77a30ab30b7f17ff1ec6a090d942c9ca1e70811",
+  "jul07_answer": "Providers of Annex III high-risk systems must self-register the system in the public section of the EU database before placing it on the market or putting it into service, under Article 49(1), which governs pre-market registration. The specific data set is fixed by Annex VIII, Section A, the closed list of information providers must supply and thereafter keep up to date. The Commission-run database itself (Article 71) is machine-readable, navigable and searchable, so the submitted fields populate its public section. The required items under Annex VIII, Section A are. Name, address and contact details of the provider. Where a person submits on the provider's behalf, that person's name, address and contact details. Name, address and contact details of the authorised representative, where one exists. The AI system trade name and any additional unambiguous reference allowing its identification and traceability. A description of the intended purpose of the system and of the components and functions it supports. A basic and concise description of the information (data, inputs) the system uses and of its operating logic. The status of the system (on the market or in service, no longer placed on the market or in service, recalled). The type, number and expiry date of the certificate issued by the notified body, and that body's name or single identification number assigned under Article 35(1), where applicable.",
+  "jul07_refs": [
+   "Article 49",
+   "Article 49.1",
+   "Article 71",
+   "Article 35",
+   "Article 35.1",
+   "Annex III",
+   "Annex VIII"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_038",
+  "question": "Under the EU AI Act, what is an \"AI regulatory sandbox\"? Provide the definition elements (what it is, who sets it up, for whom it is intended, to do what, for how long).",
+  "question_hash": "79ef64e26e9784a3698704b09477fc080d6fa3e8dde72214fd0c2c9c6915f077",
+  "jul07_answer": "The AI Office shall make publicly available a list of planned and existing sandboxes and keep it up to date in order to encourage more interaction in the AI regulatory sandboxes and cross-border cooperation.",
+  "jul07_refs": [
+   "Article 57"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_039",
+  "question": "Under the EU AI Act, what transparency obligation applies to deployers when they use an AI system to generate or manipulate text for the purpose of informing the public on matters of public interest, and what are the two exceptions where this obligation does not apply?",
+  "question_hash": "f1c7ec2350259ac75118042da03e3d191e3921ad15b2f462c49940cab29e3232",
+  "jul07_answer": "Under Article 50(4), a deployer that uses an AI system to generate or manipulate text published to inform the public on matters of public interest must disclose that the text has been artificially generated or manipulated. Under Article 50(4), that disclosure duty does not apply in two cases: first, where the use is authorised by law to detect, prevent, investigate or prosecute criminal offences; and second, where the AI-generated content has undergone a process of human review or editorial control and a natural or legal person holds editorial responsibility for the publication of the content.",
+  "jul07_refs": [
+   "Article 50.4",
+   "Article 50"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_040",
+  "question": "Under the EU AI Act, when a high-risk AI system is found to conform with the requirements, what information must the Union technical documentation assessment certificate contain?",
+  "question_hash": "63d37fc10a8c7c88d8f84de052b43cb6b9578d38e34ed8c51cda65980f19f03c",
+  "jul07_answer": "Under Annex VII point 4.6, where the notified body finds the high-risk AI system conforms with the Chapter III Section 2 requirements, it issues a Union technical documentation assessment certificate. Per Annex VII point 4.6, that certificate must indicate the name and address of the provider, the conclusions of the examination, the conditions (if any) for its validity, and the data necessary for the identification of the AI system.",
+  "jul07_refs": [
+   "Annex VII"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_041",
+  "question": "Under the EU AI Act, is there a simplified way for SMEs (including startups) to provide the technical documentation for high-risk AI systems, and who must accept it for conformity assessment?",
+  "question_hash": "36a9e874eba0f380a95ede257066d26b1e503d99c04b931adf4e192b3c12d8c5",
+  "jul07_answer": "Yes. Under Article 11(1), SMEs, including start-ups, may provide the technical documentation elements set out in Annex IV in a simplified manner, using a simplified form the Commission is required to establish for the needs of small and micro enterprises. Where an SME opts to use that form, the notified body performing the conformity assessment must accept it.",
+  "jul07_refs": [
+   "Article 11.1",
+   "Article 11",
+   "Annex IV",
+   "Annex IV.2"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_042",
+  "question": "Under the EU AI Act, must an employer inform affected workers and workers' representatives before putting into service or using a high-risk AI system in the workplace?\nIf so, should possibly specific rules or procedures be followed to provide this information?",
+  "question_hash": "b5ddfd961ebddc0afc349485238babb8f9f27d1c60bfd4508c250fc48fd7e9ef",
+  "jul07_answer": "Yes. Under Article 26(7), a deployer that is an employer must, before putting a high-risk AI system into service or using it at the workplace, inform the workers' representatives and the affected workers that they will be subject to the use of that high-risk AI system. Under Article 26(7), that information must be provided, where applicable, in accordance with the rules and procedures laid down in Union and national law and practice on the information of workers and their representatives.",
+  "jul07_refs": [
+   "Article 26.7",
+   "Article 26"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_043",
+  "question": "Under Article 10(5) of the EU AI Act, when may a provider of a high-risk AI system process special categories of personal data for bias detection and correction, and what key safeguards/conditions must be met?",
+  "question_hash": "4d579bc79d8b007560e2b27db0341f76b237472f4d20cc1a1cbe796c6e79f739",
+  "jul07_answer": "Under Article 10(5), a provider of a high-risk AI system may exceptionally process special categories of personal data only to the extent strictly necessary to ensure bias detection and correction, subject to appropriate safeguards. Article 10(5) requires all of the following: the bias work cannot be done with other data, including synthetic or anonymised data (a); technical limits on re-use plus state-of-the-art security and pseudonymisation (b); strict, documented access controls to prevent misuse (c); no transmission or transfer to other parties (d); deletion once the bias is corrected or the retention period ends, whichever is first (e); and records of processing documenting why it was strictly necessary (f).",
+  "jul07_refs": [
+   "Article 10.5",
+   "Article 10"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_044",
+  "question": "Under the EU AI Act, what specific information must a provider/prospective provider submit (and keep up to date) regarding testing of a high-risk AI system in real-world conditions outside an AI regulatory sandbox?",
+  "question_hash": "ef74264513617b4336a065cf46434d09f5fdc33eda33d3794f34d2a71d8ae19c",
+  "jul07_answer": "The operative regime here is Article 60 (testing of high-risk AI systems in real-world conditions outside a sandbox) together with the registration duty in Article 71 and the data set in Annex IX; the sandbox-establishment provision in the references (Article 57) does not govern this, because the question concerns testing conducted outside any sandbox. Before testing begins, the provider or prospective provider must draw up a real-world testing plan and submit it to the market surveillance authority of the Member State where the testing is to occur, and must register the testing in the EU database referred to in Article 71 under a unique single identification number. The information to be entered and maintained is specified in Annex IX and comprises: (1) that Union-wide unique single identification number of the testing; (2) the name and contact details of the provider or prospective provider and of any deployers involved; (3) a short description of the AI system, its intended purpose, and other information needed to identify it; (4) a summary of the main characteristics of the real-world testing plan; and (5) information on any suspension or termination of the testing.",
+  "jul07_refs": [
+   "Article 60",
+   "Article 57",
+   "Article 71",
+   "Annex IX"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_045",
+  "question": "Under the EU AI Act, if a deployer has reason to believe that the use of a high-risk AI system may present a risk, what must the deployer do, and whom must the deployer inform?",
+  "question_hash": "93a98a6b3ceed656e19dab276ff22ed285d8c436be527cab56c491d3cfcf4a91",
+  "jul07_answer": "Under Article 26, which governs deployer obligations including the duty to monitor operation on the basis of the instructions for use, a deployer who has reason to consider that use in accordance with the instructions may nonetheless present a risk to health, safety, or fundamental rights within the meaning of Article 79(1) must inform the provider or distributor and the relevant market surveillance authority without undue delay, and suspend use of the system. Where the deployer instead identifies a serious incident, it must immediately inform first the provider and then the importer or distributor and the relevant market surveillance authorities, consistent with the serious-incident reporting regime of Article 73. These monitoring, suspension, and notification duties fall on the deployer as such and do not convert it into a provider unless one of the Article 25 triggers applies.",
+  "jul07_refs": [
+   "Article 73",
+   "Article 26",
+   "Article 79",
+   "Article 79.1",
+   "Article 25"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_046",
+  "question": "Under the EU AI Act, what must a provider of a high-risk AI system supply to the deployer in the instructions for use? List the required categories of information.",
+  "question_hash": "bbb743469d31767569c97a325b37cd8a5c577fb3570909aaa9e253637b866c1c",
+  "jul07_answer": "Under Article 13, which requires high-risk AI systems to be sufficiently transparent to deployers and accompanied by instructions for use, the provider must supply the following categories of information to the deployer. The provider's identity and contact details. The system's intended purpose. Its capabilities and limitations of performance, including the level of accuracy, robustness, and cybersecurity, and any known or foreseeable circumstances that may affect those or give rise to risks to health, safety, or fundamental rights. The human oversight measures, including the technical measures put in place to facilitate the deployer's interpretation of the system's output. The expected lifetime of the system and any necessary maintenance and care measures, including software updates, to ensure its proper functioning. These instructions for use are what enable the deployer to meet its own Article 26 obligation to operate the system in accordance with them and to assign human oversight to competent, trained persons.",
+  "jul07_refs": [
+   "Article 13.2",
+   "Article 13",
+   "Article 26"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_047",
+  "question": "Under the EU AI Act, what actions must a provider take when it considers or has reason to consider that a high-risk AI system it has placed on the market or put into service is not in conformity with the Regulation?",
+  "question_hash": "937e94d10ddec4712754d75c98e01b683f93347345db7595e653718592dbaec8",
+  "jul07_answer": "Where a provider considers or has reason to consider that a high-risk AI system it has already placed on the market or put into service is not in conformity, Article 20 requires it to take the necessary corrective actions immediately, which means bringing the system into conformity or, as appropriate, withdrawing it, disabling it, or recalling it. The provider must also inform the distributors of the system concerned and, where applicable, the deployers, the authorised representative, and the importers. This duty sits within the provider's core obligations under Article 16, which lists taking corrective action for a non-conforming system (Article 20) and demonstrating the system's conformity to a competent authority on that authority's reasoned request (Article 21) among the responsibilities every provider of a high-risk AI system bears.",
+  "jul07_refs": [
+   "Article 20",
+   "Article 16",
+   "Article 21"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_048",
+  "question": "Under Regulation (EU) 2024/1689, what is the definition of (a) a \"conformity assessment body\" and (b) \"conformity assessment\"?",
+  "question_hash": "e6cc3a9b1ac260cc86bfc1008b8bf37a3b9f350f8df450265eeb4869e0f6d4e7",
+  "jul07_answer": "Under Regulation (EU) 2024/1689, both terms are defined in Article 3. A \"conformity assessment\" is the process of demonstrating whether the requirements set out in Chapter III, Section 2 for a high-risk AI system have been fulfilled. A \"conformity assessment body\" is a body that performs third-party conformity assessment activities, including testing, certification, and inspection.",
+  "jul07_refs": [
+   "Article 3.21"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_049",
+  "question": "Under the EU AI Act (Regulation (EU) 2024/1689) Article 95, who may draw up codes of conduct, and which bodies must encourage and facilitate their drawing up?",
+  "question_hash": "d1b6bc3c3704bdcf830add6d245e059c6ce75b2f693bbd5850d8689cad701950",
+  "jul07_answer": "Codes of conduct under Article 95 may be drawn up by any party, expressly including providers of non-high-risk AI systems who voluntarily commit to applying some or all of the Section 2 high-risk requirements, adapted to their intended purpose and risk. The Commission and the Member States are the bodies that must encourage and facilitate their drawing up.",
+  "jul07_refs": [
+   "Article 95"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_050",
+  "question": "Under the EU AI Act, which AI systems in the financial services area are classified as high-risk under Annex III(5)(b), and what explicit exceptions are listed?",
+  "question_hash": "9215160b8ec5e521dfb9afa7cdc0c6f7c158aff847c4d2de1b04af9c4f0fcc15",
+  "jul07_answer": "High-risk. Under Annex III(5)(b), part of the \"essential private and public services\" category that places listed use cases in the high-risk tier, AI systems intended to evaluate the creditworthiness of natural persons or to establish their credit score are classified as high-risk. The point carries one explicit carve-out: AI systems used to detect financial fraud are not high-risk on this basis.",
+  "jul07_refs": [
+   "Annex III.5.b",
+   "Annex III"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_051",
+  "question": "Under the EU AI Act, what must a provider established outside the EU do in order to place a high-risk AI system on the Union market?",
+  "question_hash": "0066d65439d50af715391e734864b96b50498508e12eab8ead90592ba47a2a53",
+  "jul07_answer": "A provider established outside the EU must first appoint, by written mandate, an authorised representative established in the Union before the high-risk AI system is placed on the market (Article 22). That representative holds the technical documentation and the EU declaration of conformity available for the authorities and serves as the contact point for market-surveillance bodies (Article 22). The system must undergo the applicable conformity assessment (Article 43), be covered by a signed EU declaration of conformity (Article 47) and bear the CE marking (Article 48), and the provider must register itself and the system in the EU database before placement (Article 49). It must also have drawn up the Annex IV technical documentation before placement (Article 11) and operate a quality management system covering compliance and post-market monitoring (Article 17).",
+  "jul07_refs": [
+   "Article 22",
+   "Article 11",
+   "Article 17",
+   "Article 43",
+   "Article 47",
+   "Article 48",
+   "Article 49",
+   "Annex IV"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_052",
+  "question": "Under the EU AI Act, what minimum elements must a provider's quality management system (QMS) for high-risk AI systems include? List the required elements.",
+  "question_hash": "4d7bcb40595d4daa5bb6023993237bbf137cdf10fe09cff6a0e1ee023a2b18e4",
+  "jul07_answer": "Providers of high-risk AI systems must operate a quality management system under Article 17, documented in a systematic and orderly manner in the form of written policies, procedures and instructions, and it must include at least the following elements. A strategy for regulatory compliance, including compliance with conformity assessment procedures and procedures for managing modifications to the system. Techniques, procedures and systematic actions for the design, design control and design verification of the high-risk AI system. Techniques, procedures and systematic actions for the development, quality control and quality assurance of the system. Examination, test and validation procedures to be carried out before, during and after development, and the frequency with which they are performed. Systems and procedures for data management, covering data acquisition, collection, analysis, labelling, storage, filtration, mining, aggregation and retention. The risk management system required under the Chapter III requirements. The setting-up, implementation and maintenance of a post-market monitoring system. Procedures related to the reporting of a serious incident. The handling of communication with national competent authorities, notified bodies, other operators, customers or other interested parties. Systems and procedures for record-keeping of all relevant documentation and information.",
+  "jul07_refs": [
+   "Article 17"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_053",
+  "question": "Under the EU AI Act, what additional obligations apply to providers of a general-purpose AI model that is classified as a model with systemic risk?",
+  "question_hash": "3a719ac82a0aa7959aa5230e994984e79c529cb1096ec9783246463b897ac498",
+  "jul07_answer": "A provider of a general-purpose AI model with systemic risk must comply with four additional obligations under Article 55, which apply on top of the baseline Article 53 duties. First, Article 55(1)(a) requires the provider to perform model evaluation using standardised protocols and tools that reflect the state of the art, including conducting and documenting adversarial testing (red-teaming) to identify and mitigate systemic risks. Second, Article 55(1)(b) requires the provider to assess and mitigate possible systemic risks at Union level, including their sources, whether they stem from the model's development, its placement on the market, or its use. Third, Article 55(1)(c) requires the provider to keep track of, document, and report serious incidents and possible corrective measures to the AI Office without undue delay, and to national competent authorities where appropriate. Fourth, Article 55(1)(d) requires the provider to ensure an adequate level of cybersecurity protection for both the model itself and its physical infrastructure.",
+  "jul07_refs": [
+   "Article 53",
+   "Article 55",
+   "Article 53.1"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_054",
+  "question": "Under the EU AI Act, what are the four grounds on which non-compliance with the Act may be alleged (as listed in Article 79(6))?",
+  "question_hash": "e49f4522132d6a819d103ba9a823e735e1f4e6271e3dbf53b99106fe7ad0b387",
+  "jul07_answer": "Under Article 79(6), when a market-surveillance authority notifies the Commission and other Member States of a national measure taken against an AI system presenting a risk, it must indicate whether the alleged non-compliance rests on one or more of four grounds. Non-compliance with the prohibited AI practices set out in Article 5.",
+  "jul07_refs": [
+   "Article 79.6",
+   "Article 79",
+   "Article 5"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_055",
+  "question": "Under the EU AI Act, in which specific situations may law enforcement use 'real-time' remote biometric identification in publicly accessible spaces for law-enforcement purposes (i.e., the exceptions to the prohibition)? List the permitted objectives.",
+  "question_hash": "a94158e6806b80c2b24735f3fa147ed492152a667886f4ead115d286f147fbc7",
+  "jul07_answer": "Real-time remote biometric identification in publicly accessible spaces for law enforcement is prohibited under Article 5, but Article 5(1)(h) permits it in three exhaustively listed situations. Third, the localisation or identification of a person suspected of a criminal offence listed in Annex II (which covers offences such as terrorism, trafficking in human beings, and sexual exploitation of children) punishable by a custodial sentence of at least four years. These are the only permitted objectives, and each use remains subject to strict safeguards. The deployer must carry out a Fundamental Rights Impact Assessment before first use under Article 27, register the system in the EU database under Article 49, and obtain prior authorisation from a judicial or independent administrative authority (in duly justified urgency, use may begin with authorisation sought within 24 hours, failing which the use must stop immediately). The relevant market-surveillance authority and national data-protection authority must also be notified. Outside these law-enforcement exceptions, the practice stays prohibited under Article 5. Where a biometric identification system does not fall within the Article 5 ban, it is instead classified as high-risk under the biometrics category of Annex III (Article 6), which triggers the corresponding provider and deployer obligations rather than an outright prohibition.",
+  "jul07_refs": [
+   "Article 5.1.h",
+   "Article 5",
+   "Article 27",
+   "Article 49",
+   "Article 6",
+   "Annex II",
+   "Annex III"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_056",
+  "question": "Under Article 32 of Regulation (EU) 2024/1689, when is a conformity assessment body presumed to comply with the requirements in Article 31?",
+  "question_hash": "7c2b7d26d00d816cfa92ad348bbe47e4ad59a76f6811361ba210533d7a6c02a7",
+  "jul07_answer": "A conformity assessment body is presumed to comply with the Article 31 requirements only where it demonstrates conformity with the criteria laid down in the relevant harmonised standards, or parts of them, whose references have been published in the Official Journal of the European Union, and only to the extent those standards actually cover those requirements (Article 32). The requirements to which this presumption attaches are the substantive conditions notified bodies must meet and continuously satisfy under Article 31, including establishment under national law with legal personality, independence from the provider and from the system being assessed, non-involvement in the design, marketing or use of the AI systems they assess, safeguards against conflicts of interest, documented procedures, sufficient permanent personnel with appropriate competence in AI technologies, data and computing, and adequate cybersecurity, as well as the appropriate liability insurance required under Article 31(12) unless that liability is assumed by the Member State. Where no such published harmonised standards apply, or where they cover the Article 31 requirements only in part, the body must otherwise demonstrate compliance for the uncovered requirements, because the presumption reaches no further than the standards extend.",
+  "jul07_refs": [
+   "Article 32",
+   "Article 31",
+   "Article 31.12"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_057",
+  "question": "Who is entitled to lodge a complaint about an infringement, and to which authority must the complaint be submitted?",
+  "question_hash": "d8727c29b174ac2c85243070ac76785990e4f29dd9276815979c627644bb6958",
+  "jul07_answer": "Any natural or legal person is entitled to lodge a complaint, and it must be submitted to a market-surveillance authority (Article 85, right to lodge a complaint). This entitlement is broader than the equivalent right under Article 77 of the GDPR, because the complainant need not be personally affected.",
+  "jul07_refs": [
+   "Article 85",
+   "Article 77"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_058",
+  "question": "Under the EU AI Act, what must providers of AI systems that generate or manipulate synthetic content do to enable identification of AI-generated/manipulated output, and what quality criteria must that solution meet?",
+  "question_hash": "f05c773f4010f719eff5d7b6050e116ef50781113f24f401b96072556004ec68",
+  "jul07_answer": "Under Article 50(2), providers of AI systems that generate synthetic audio, image, video or text must ensure that the outputs are marked in a machine-readable format and are detectable as artificially generated or manipulated. This marking obligation attaches at the point of generation and rests on the provider, distinct from the separate labelling duty that Article 50(4) places on deployers who create deepfakes or publish AI-generated text on matters of public interest. The technical solution used to satisfy Article 50(2) must meet defined quality criteria.",
+  "jul07_refs": [
+   "Article 50",
+   "Article 50.2",
+   "Article 50.4"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_059",
+  "question": "Under the EU AI Act, what is the scientific panel of independent experts, what are its main support/advisory tasks, and what key characteristics/selection requirements apply to its members?",
+  "question_hash": "df76b32a6c93b8f89983d04dfb8cb2fcbe6d98ff2ff10eaf9293043891b77d44",
+  "jul07_answer": "The scientific panel of independent experts is a body established under Article 68, which creates a panel of experts to support enforcement of the general-purpose AI rules in Chapter V. In carrying out the first task the panel may issue a qualified alert to the AI Office where it has reason to suspect that a general-purpose AI model poses a concrete identifiable risk at Union level, as provided in Article 90.",
+  "jul07_refs": [
+   "Article 65",
+   "Article 68",
+   "Article 90"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_060",
+  "question": "Under the EU AI Act, if a provider identifies a serious incident during testing in real-world conditions of a high-risk AI system, what three actions must the provider take?",
+  "question_hash": "be712cb2fa80fdb419a838e4a2511e162df0f45f72af15a5716341a057b343fc",
+  "jul07_answer": "Three actions are required, and they flow from the real-world-testing regime of Article 60, which permits testing of high-risk AI systems outside a sandbox only under a testing plan, informed consent, EU-database registration, and market-surveillance oversight. The provider must then report the serious incident to the market-surveillance authority of the Member State where it occurred, applying the incident-reporting duty of Article 73, under which a \"serious incident\" (Article 3(49)) covers death, serious irreversible critical-infrastructure disruption, a fundamental-rights violation, or serious property or environmental harm.",
+  "jul07_refs": [
+   "Article 73.1",
+   "Article 60",
+   "Article 73",
+   "Article 3.57"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_061",
+  "question": "Under the EU AI Act, which body has exclusive powers to supervise and enforce the obligations for providers of general-purpose AI models (Chapter V), and which entity is entrusted with implementing those tasks?",
+  "question_hash": "7b0985d4b8c875b45bfbbcc50ec61be8d03c37a371245edafcd98e358a3c5c0f",
+  "jul07_answer": "This allocation is consistent with how the GPAI regime operates in the references. The Commission is the body that designates a model as systemic-risk under Article 51, whether through high-impact capabilities (presumed above 10^25 FLOPs of cumulative training compute) or by decision based on the Annex XIII criteria.",
+  "jul07_refs": [
+   "Article 51",
+   "Annex XIII"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_062",
+  "question": "What must a distributor do if it considers a high-risk AI system is not in conformity with the Act's requirements? Additionally, what extra steps are required if the system presents a risk within the meaning of Article 79(1)?",
+  "question_hash": "99926b6fbe77840d04de378474c12050d4c2302665b25e4274762ecf9e5e1e89",
+  "jul07_answer": "A distributor that considers, on the basis of the information in its possession, that a high-risk AI system is not in conformity with the requirements set out in Section 2 must not make that system available on the market until it has been brought into conformity. This duty sits within Article 24, which governs distributors of high-risk systems and requires them, before making the system available, to verify that it bears the CE marking, is accompanied by the EU declaration of conformity, and carries the instructions for use. Where the non-conforming system additionally presents a risk within the meaning of Article 79(1), the distributor must also inform the provider or the importer of the system, as applicable, of that fact. Beyond this, the distributor does not take on the provider's obligations. The design requirements, the conformity assessment, and the drawing-up of the EU declaration of conformity remain provider duties and do not fall on the distributor unless it becomes a provider by putting its name or trademark on the system, making a substantial modification, or changing its intended purpose.",
+  "jul07_refs": [
+   "Article 79.1",
+   "Article 79",
+   "Article 24"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_063",
+  "question": "Under Article 2(1) of Regulation (EU) 2024/1689 (EU AI Act), which categories of actors/persons does the Act apply to? List the categories.",
+  "question_hash": "b50d3252a2ddd59b80a52ba0ccb3c587f95f704ffcb1ca77d4b404233b969b19",
+  "jul07_answer": "Under Article 2(1), the Act applies to three categories of actors. First, providers that place AI systems or general-purpose AI models on the EU market or put them into service, regardless of whether they are established in the EU or a third country. Second, deployers of AI systems that are established or located within the EU.",
+  "jul07_refs": [
+   "Article 2.1",
+   "Article 2"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_064",
+  "question": "Under the EU AI Act, what conditions must be met before data collected and processed for testing high-risk AI systems in real-world conditions can be transferred to a third country (outside the EU)?",
+  "question_hash": "c0d32f42aacbc358c8a6cf9be65d62498e3d114737adcf4e30c78ef271c16fab",
+  "jul07_answer": "Annex I route (Article 6(1)): the system is a safety component of, or is itself, a product covered by the Union harmonisation legislation listed in Annex I AND that product must undergo a third-party conformity assessment under that sectoral legislation. Under Article 23, Before placing a high-risk AI system on the market.",
+  "jul07_refs": [
+   "Article 6",
+   "Article 23",
+   "Article 39"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_065",
+  "question": "What are the three maximum administrative fine tiers for (a) prohibited AI practices, (b) non-compliance with obligations for high-risk AI systems and general-purpose AI (GPAI) models, and (c) supplying incorrect/incomplete/misleading information? For each tier, give the maximum amount in EUR and the alternative maximum as a percentage of worldwide annual turnover.",
+  "question_hash": "edf858f4cb54b54b4068e59f2fe49beb15682ef6dde7120aa8d55ad7800141e6",
+  "jul07_answer": "The three maximum administrative fine tiers under Article 99 of the EU AI Act are as follows. (a) Prohibited AI practices (Article 5). This tier applies to breaches of the Article 5 prohibitions, such as manipulative techniques causing significant harm, exploitation of vulnerabilities, social scoring, and unlawful biometric practices. (b) Non-compliance with high-risk and GPAI obligations. Up to EUR 15 million or 3% of total worldwide annual turnover, whichever is higher. Under Article 99(4) this ceiling attaches to a closed list of operator and notified-body provisions, including provider obligations (Article 16), authorised-representative, importer, distributor and deployer obligations (Articles 22, 23, 24, 26), notified-body requirements, and the Article 50 transparency duties. The GPAI provider obligations under Article 53 (Annex XI technical documentation, Annex XII downstream information, the copyright policy, and the training-data summary) and the Article 55 systemic-risk obligations are enforced under the separate GPAI fine regime in Article 101, which caps Commission fines on GPAI providers at 3% of worldwide annual turnover or EUR 15 million, whichever is higher. (c) Incorrect, incomplete or misleading information (Article 99(5)). For each tier the enforcing authority takes the higher of the fixed amount or the turnover percentage, except that under Article 99(6) the applicable ceiling for SMEs and start-ups is the lower of the two figures.",
+  "jul07_refs": [
+   "Article 99",
+   "Article 5",
+   "Article 16",
+   "Article 50",
+   "Article 53",
+   "Article 55",
+   "Article 101",
+   "Annex XI",
+   "Annex XII"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_066",
+  "question": "Under the EU AI Act, what is the EU database for high-risk AI systems, what categories of information must it contain, and who is the controller of that database?",
+  "question_hash": "9570546cddffdcef23598d1e8296d5680e3a643823b98fd8d6638d8605861257",
+  "jul07_answer": "The EU database is a centralised, Commission-run registry for high-risk AI systems registered under Article 49, which requires providers of Annex III systems to register before placing them on the market, together with certain general-purpose AI models registered under Article 60, as established by Article 71. It contains the information that providers and deployers must submit under Annex VIII, namely the identification details of the provider and the system, a description of its intended purpose, its conformity assessment and certification status, and the data needed to keep the listing current.",
+  "jul07_refs": [
+   "Article 49",
+   "Article 60",
+   "Article 71",
+   "Annex III",
+   "Annex VIII"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_067",
+  "question": "What are the conditions to classify general-purpose AI (GPAI) model as \"GPAI model with systemic risk\"? Do all need to be met at the same time?",
+  "question_hash": "e753bfa95117b9c1a874fe41c281aa06e98852189a67f32edc2e04bcc0f3bc14",
+  "jul07_answer": "No, the two conditions are alternative rather than cumulative, so meeting either one suffices to classify a general-purpose AI model as a \"GPAI model with systemic risk.\" Under Article 51, which governs this classification, a model qualifies when it has high-impact capabilities, presumed when cumulative training compute exceeds 10^25 FLOPs, or when the Commission designates it on the basis of the Annex XIII criteria. Because these are set out as either/or routes, a model presumed to have high-impact capabilities by crossing the 10^25 FLOPs threshold is classified as systemic-risk without any separate Commission decision, and conversely the Commission may designate a model on the Annex XIII criteria even where the compute presumption does not apply. Once a model falls into this class, the four Article 55 obligations apply on top of the baseline Article 53 duties, namely state-of-the-art model evaluation with adversarial testing, assessment and mitigation of systemic risks and their sources, tracking and reporting of serious incidents to the AI Office, and adequate cybersecurity protection for the model and its physical infrastructure.",
+  "jul07_refs": [
+   "Article 53",
+   "Article 55",
+   "Article 51",
+   "Annex XIII"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_068",
+  "question": "For a high-risk AI system, who is responsible for ensuring that input data is relevant and sufficiently representative for the system's intended purpose, and under what condition does that responsibility apply?",
+  "question_hash": "4552a062753c74232461382dddd0da1197b4de1caa82f43cb282b237b45f3891",
+  "jul07_answer": "Under Article 10, which requires those datasets to be governed by data-governance and management practices appropriate to the intended purpose (Article 10(2)), the provider must ensure the training, validation, and testing datasets are relevant, sufficiently representative, and to the best extent possible free of errors and complete in view of the system's intended purpose (Article 10(3)). This sits within the broader Chapter III duty for providers to meet the high-risk requirements while taking into account the system's intended purpose (Article 8).",
+  "jul07_refs": [
+   "Article 10.3",
+   "Article 10",
+   "Article 10.2",
+   "Article 8"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_069",
+  "question": "I am a distributor of an AI systems. Do I have obligation not to jeopardize its conformity? I was not told if the system is high-risk or not. What if am I am importer instead?",
+  "question_hash": "ff14598f5a5d97a6562e0ed8da338f2ba87d57f7386e084e4a18dd2cc1edd38d",
+  "jul07_answer": "Yes, as a distributor of a high-risk AI system listed in Annex III you carry verification duties before making it available. Article 24 requires the operator to confirm that the system bears the CE marking, is accompanied by the EU declaration of conformity that the provider must draw up under Article 47, and comes with the instructions for use. This duty attaches once the system is high-risk, so the fact that you were not told its classification does not remove the obligation; where the classification is unclear the operator should establish it, because Article 24 applies only if the system is high-risk. As an importer instead, the operator's duty is heavier: Article 23 requires you, before placing the system on the market, to ensure it is in conformity by verifying that the provider has carried out the relevant conformity assessment procedure under Article 43, drawn up the technical documentation, and affixed the CE marking. In both roles the responsibility for meeting the substantive requirements remains with the provider under Article 16, and the operator's function is to verify that provider's compliance rather than to reproduce it.",
+  "jul07_refs": [
+   "Article 24",
+   "Article 47",
+   "Article 23",
+   "Annex III",
+   "Article 16",
+   "Article 43"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_070",
+  "question": "Under the EU AI Act, is an AI system that is a safety component of a medical device classified as MDR Class I (non-sterile, non-measuring, non-reusable surgical) automatically a high-risk AI system? Explain your reasoning.",
+  "question_hash": "079081b87e9c74636b8bdfb7274762a63ce77b35e36a7da321b8d1bca8f96ba2",
+  "jul07_answer": "Classification as high-risk under the Annex I route requires two conditions to hold together under Article 6(1): the AI system must be a safety component of, or itself be, a product covered by the Union harmonisation legislation listed in Annex I, and that product must be required to undergo a third-party conformity assessment under that sectoral legislation. Medical devices fall within the Annex I harmonisation list, so the first condition is satisfied.",
+  "jul07_refs": [
+   "Article 6",
+   "Article 6.1",
+   "Annex I"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_071",
+  "question": "Under Regulation (EU) 2024/1689 (EU AI Act), can the same AI system be subject both to the Act's \"high-risk AI system\" obligations and to the transparency obligations sometimes described informally as \"limited risk\"? Explain briefly.",
+  "question_hash": "5b98ff027ad526055837d9b47a160927353352db44412ff9a7ac9363693dbb34",
+  "jul07_answer": "Yes. The transparency duties in Article 50 and the high-risk obligations apply cumulatively, so a single system can carry both. The \"limited risk\" label is informal shorthand for the Article 50 transparency layer, not a separate exclusive category that displaces high-risk classification.",
+  "jul07_refs": [
+   "Article 50"
+  ],
+  "jul07_confidence": 0.5,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_072",
+  "question": "Under the EU AI Act, can an AI system intended to be used as a toy qualify as a high-risk AI system, and if so under what conditions?",
+  "question_hash": "5a3fdd0ff8e70f692960f30fde3a0605b2f5c47b2172ea526c45699fbf12cb50",
+  "jul07_answer": "An AI system intended for use as a toy is high-risk only where it is itself, or is a safety component of, a toy that is required to undergo a third-party conformity assessment under the Union harmonisation legislation governing toys listed in otherwise it is not high-risk on that route. The operative provision is Article 6(1), which classifies an AI system as high-risk where two cumulative conditions are met: the AI system is a product, or a safety component of a product, covered by the Annex I harmonisation legislation (which includes the Union legislation on the safety of toys), and that product is subject to a third-party conformity assessment under that same legislation before being placed on the market or put into service. A toy AI that carries out only self-assessment (internal production control) under the applicable toy-safety legislation, and is not otherwise caught, does not satisfy the second condition and is therefore not high-risk under Article 6(1); nor does the toy use-case, in itself, fall within any of the Annex III areas that would make it high-risk on the separate Article 6(2) route.",
+  "jul07_refs": [
+   "Article 6",
+   "Article 6.1",
+   "Article 6.2",
+   "Annex I",
+   "Annex III"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_073",
+  "question": "Under the EU AI Act, can an AI system intended to be used as a safety component in a lift qualify as a high-risk AI system, and under what conditions?",
+  "question_hash": "877f77b89fc3c6d6d97bf3b93be1e8d87a4c818640231a6d4f6cceb45317aaf0",
+  "jul07_answer": "High-risk where the AI system is a safety component of a lift that must undergo a third-party conformity assessment under the applicable Union harmonisation legislation for lifts listed in Annex I. Under Article 6(1), an AI system is classified as high-risk on this route where two cumulative conditions are met: first, the AI system is intended to be used as a safety component of a product, or is itself a product, covered by the Union harmonisation legislation listed in Annex I, and lifts fall within that legislation; and second, the product whose safety component is the AI system is required to undergo a third-party conformity assessment with a view to placing it on the market or putting it into service under that same Annex I legislation. Because lifts and their safety components are subject to third-party (notified-body) conformity assessment under the relevant Annex I harmonisation instrument, an AI system performing a genuine safety function in a lift satisfies both limbs and is high-risk; the classification is conditional only in that it turns on the AI system actually being a \"safety component\" (its failure endangering the health and safety of persons) and on the third-party assessment being required rather than a purely internal one.",
+  "jul07_refs": [
+   "Article 6",
+   "Article 6.1",
+   "Annex I"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_074",
+  "question": "Under the EU AI Act (Regulation (EU) 2024/1689), are AI systems intended for emotion recognition from biometric data always prohibited? If not, in which contexts are they prohibited, what exception applies, and how are they classified when not prohibited?",
+  "question_hash": "1b3fc5fe7c4b88c1ef689460c7190e385823f5f2c0ff26780713e941152b7b9f",
+  "jul07_answer": "Emotion recognition is not categorically prohibited under the AI Act; the prohibition in Article 5 only applies in workplaces and educational institutions, with a narrow medical/safety exception. Elsewhere the system is high-risk under Annex III.1(c) and triggers Article 50(3) transparency duties toward exposed persons.",
+  "jul07_refs": [
+   "Article 5",
+   "Article 50.3",
+   "Article 5.1.f",
+   "Annex III.1.c",
+   "Article 50"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_075",
+  "question": "I generated audio with AI for my artistic work (sole purpose). Do I need to provide some marking of its artificial nature? I feel that would compromise the enjoyment of the work.",
+  "question_hash": "afd1320818f840049e22aea35ecd199278ae274b849b83747a9bbcdaf21466e3",
+  "jul07_answer": "Yes, marking is required, but not in a form that shows on the surface of the work. As the provider of an AI system that generates synthetic audio, the operator must ensure the output is marked in a machine-readable format and detectable as artificially generated or manipulated under Article 50(2). This is an embedded, technical marker such as a watermark or metadata, not an audible label, so it does not intrude on the listening experience or compromise enjoyment of the work. A separate disclosure duty falls on the deployer who makes such content public. Where AI-generated audio would constitute a deepfake, Article 50(4) requires the deployer to disclose that the content is artificially generated or manipulated. That provision contains an express carve-out for artistic work: where the content is part of an evidently creative, artistic, fictional or analogous work, the disclosure is limited to a manner that does not hamper the display or enjoyment of the work. So the surface presentation of the operator's piece can remain intact, while the underlying Article 50(2) machine-readable marking still applies at the point of generation.",
+  "jul07_refs": [
+   "Article 50",
+   "Article 50.2",
+   "Article 50.4"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_076",
+  "question": "Under Regulation (EU) 2024/1689 (EU AI Act), how is \"risk\" defined?",
+  "question_hash": "b28bfa44fbb0f0125306315e67be9a6549c28a337855d74b6ef3259fc6b189e5",
+  "jul07_answer": "The combination of the probability of an occurrence of harm and the severity of that harm.",
+  "jul07_refs": [
+   "Article 3.2",
+   "Article 6"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_077",
+  "question": "For AI systems that fit within the use cases listed in Annex III but are considered non-high-risk by the provider, do they need to be registered in the EU database?",
+  "question_hash": "0f37e71c74cd24684d77c3be6a80afde30cb3fb856c1f8cc14bed7d159b49f31",
+  "jul07_answer": "Yes. A provider that invokes the Article 6(3) derogation, treating an Annex III system as non-high-risk because it poses no significant risk of harm and meets one of the four conditions (a narrow procedural task, improving a completed human activity, detecting patterns without replacing human assessment, or a preparatory task), must still register the system in the EU database under Article 49(2).",
+  "jul07_refs": [
+   "Annex III",
+   "Article 6",
+   "Article 6.3",
+   "Article 49",
+   "Article 49.2"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_078",
+  "question": "Do I need informed consent to test a high-risk AI system in real-world conditions outside a regulatory sandbox?",
+  "question_hash": "c7f8618c17bac91ec98169de3a1572f252402457d34aff0d366f4afb93cee27d",
+  "jul07_answer": "Testing a high-risk AI system in real-world conditions outside a sandbox is permitted under Article 60 only where the provider follows an approved real-world-testing plan, registers the testing in the EU database, and secures oversight by the market-surveillance authority, and informed consent of the test subjects is one of those mandatory conditions. Under Article 61 that consent must be freely given, specific, informed, unambiguous, and obtained in advance, and subjects retain the right to withdraw at any time without detriment.",
+  "jul07_refs": [
+   "Article 60",
+   "Article 61"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_079",
+  "question": "A provider becomes aware of a risk (within the meaning of Article 79(1)) for their high-risk AI system. Does the provider need to take immediate corrective action OR immediately investigate the causes OR both? For example, perhaps it's the market surveillance authority that must investigate the cause, and the provider can help later.",
+  "question_hash": "e3a4b6ed16a23a8a9cc850c123c70f92de9f824686b3ee7ecb5e2bb7d3a3854c",
+  "jul07_answer": "Immediate corrective action is the provider's duty. Under Article 20, a provider that considers or has reason to consider that its high-risk AI system is not in conformity must immediately take the necessary corrective actions, meaning bringing it into conformity or withdrawing, disabling, or recalling it as appropriate, and must inform its distributors, deployers, authorised representatives, and importers. Under Article 79, that authority carries out the evaluation once it has sufficient reason to consider the system presents a risk to health, safety, or fundamental rights, and may then require the operator to withdraw, recall, or restrict the system within a proportionate period. Under Article 74, the authority holds the full investigatory and corrective-measure powers for this purpose, including access to source code where strictly necessary. The two duties therefore run in parallel rather than in sequence. The provider acts on the non-conformity at once under Article 20, while the causal investigation is the authority's function under Articles 79 and 74. Where the risk has already materialised as a serious incident, Article 73 additionally requires the provider to report it to the market surveillance authority of the Member State where it occurred within the tiered deadlines, which brings the provider into the authority's causal assessment through the reporting channel rather than as an independent investigator.",
+  "jul07_refs": [
+   "Article 79.1",
+   "Article 79",
+   "Article 20",
+   "Article 74",
+   "Article 73"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_080",
+  "question": "What is Article 50(4) about?",
+  "question_hash": "c09aa5fcc8160ec22540efe11ae4fe71d9499f639cf556c0f780ca12d3a25b50",
+  "jul07_answer": "Article 50(4) sets two disclosure duties on deployers, both under the transparency regime of Article 50. First, deployers of an AI system that generates or manipulates image, audio, or video content constituting a deepfake must disclose that the content has been artificially generated or manipulated.",
+  "jul07_refs": [
+   "Article 50.4",
+   "Article 50"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_081",
+  "question": "Is an AI system high-risk if it is used in a product that: is not listed in Annex I; use case not listed in Annex III; internally uses general purpose AI model with systemic risk due to high impact capabilities?",
+  "question_hash": "f7959df15fc2111c71acb4c4889edde96a34aa09307f17a446b67373708f3c9b",
+  "jul07_answer": "Under the sole gateway to a high-risk classification, an AI system qualifies only via one of two routes: it is a safety component of, or is itself, a product covered by the Union harmonisation legislation listed in Annex I, or it falls within one of the Annex III use-case categories. On the facts given, the product is not listed in Annex I and the use case is not among the Annex III categories, so neither route is satisfied and the system is not high-risk. The classification test in Article 6 turns exclusively on the product/use-case criteria of Annex I and Annex III; it does not import the capabilities of any underlying model.",
+  "jul07_refs": [
+   "Article 6",
+   "Annex III",
+   "Annex I"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_082",
+  "question": "My local small language model says that, as a distributor of high-risk AI systems, I must be careful that transport conditions do not jeopardize compliance. But AI is just software, isn't it? So I am pretty sure my model hallucinated. What do you say?",
+  "question_hash": "32a7a603955468711140e49bd44844849ff210b421c540d1c873205da54ecb3a",
+  "jul07_answer": "The operator's model is correct, not hallucinating. Article 24 governs distributors of high-risk AI systems, and its duties are not limited to checking that the system bears the CE marking and is accompanied by the EU declaration of conformity and the instructions for use. That same article makes a distributor responsible for ensuring that, while the system is under its control, storage and transport conditions do not jeopardise its compliance with the high-risk requirements. The \"just software\" intuition does not hold here, because a high-risk AI system is a regulated product that may be shipped on hardware, embedded in a device, or delivered on physical media, and conditions in transit can degrade or corrupt it, so the obligation applies to the operator as stated.",
+  "jul07_refs": [
+   "Article 24"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_083",
+  "question": "Given an AI system that is high-risk according to Annex III: if it is repurposed to a use case not in Annex III (nor Annex I), then:\n- the repurposed AI system is still high-risk due to reversibility of training into the original system\n- the repurposed AI system is no longer high-risk but it must be reported in the EU database\n- the repurposed AI system is no longer high-risk and there is no need to report it in the EU database",
+  "question_hash": "2089d94df092efcb099f68790eca12fef9b3ae2f3ddb217f8add050b8b4cd71f",
+  "jul07_answer": "High-risk status under the Annex III route depends on whether the system's use case falls within one of the eight Annex III categories, not on how it was trained or whether that training could be reverted (Article 6(2)). If the system is repurposed to a use case outside Annex III, and it is not a safety component of a product covered by the Union harmonisation legislation in Annex I (Article 6(1)), then neither classification route is met and the system is not high-risk.",
+  "jul07_refs": [
+   "Annex III",
+   "Annex I",
+   "Article 6",
+   "Article 6.2",
+   "Article 6.1"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_084",
+  "question": "We have a phone system where the caller can press 1 if they consent to the call being recorded, 2 if they do not. We wish to replace this with an NLP system that understands a voice reply like \"Yes\", \"Sure\", \"Please no\", etc. Would such a system be considered high-risk? It's for our clinic.",
+  "question_hash": "b4ef832198be2ab912d5e790c0ab719a7cdcacd84bd8f95221e55f32c3cdc041",
+  "jul07_answer": "Not high-risk on the facts stated. A system is high-risk only by one of two routes under Article 6, which sets the classification test: the Annex I route, where the AI is a safety component of, or is itself, a product covered by Union harmonisation legislation (which includes medical devices) that must undergo third-party conformity assessment, or the Annex III route, where the AI falls within one of the eight listed use cases (biometrics, critical infrastructure, education, employment, essential private and public services, law enforcement, migration, and administration of justice and democratic processes). An NLP system that recognises the semantic content of a spoken reply to capture recording consent does not fall within any Annex III category. In particular it is not biometrics, because it interprets what the caller says (\"yes\", \"no\") rather than identifying or categorising the person from voice characteristics, so the Annex III biometrics category is not engaged. Nor does the clinic setting bring it within the Annex I route: the consent-capture function is not a safety component of a medical device and is not itself a regulated medical device, so it does not inherit high-risk status from the surrounding harmonisation legislation.",
+  "jul07_refs": [
+   "Article 6",
+   "Annex III",
+   "Annex I"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_085",
+  "question": "Does the AI Act prohibit or classifies as high-risk the use of AI in drones? Can I use AI in a drone to find who's around in town? And what if it's just a toy drone? And what about toy drones used for other applications?",
+  "question_hash": "f4af3cc9be5d91fd07e709cad47f6185766098ac71e6cbc162411ff000089872",
+  "jul07_answer": "AI in a drone is neither prohibited nor high-risk per se, its tier turns on the system's function under Article 6, not on the drone as a platform. Taking the operator's uses in turn: using AI in a drone to find who is around in town is high-risk, because scanning publicly accessible spaces to detect and identify natural persons is remote biometric identification, which is an Annex III point 1 (biometrics) use case; a system performing that function is high-risk under Article 6(2) irrespective of the aircraft carrying it. That classification changes tier, however, in one specific context: where the system performs real-time remote biometric identification in publicly accessible spaces for law-enforcement purposes, it is prohibited under Article 5, permissible only within the narrow, authorised exceptions tied to the serious offences listed in Annex II. So the same capability is prohibited under Article 5 in the law-enforcement real-time context and merely high-risk under Article 6 / Annex III in general or private deployment. If it is \"just a toy drone,\" the toy character does not by itself lower the tier for the surveillance use: a toy drone used to identify who is around remains an Annex III biometrics high-risk system (or Article 5-prohibited in the law-enforcement real-time context), because function, not form factor, governs. A toy is a product covered by Union harmonisation legislation under Annex I, so an AI component in it could in principle be high-risk under Article 6(1) as a safety component of an Annex I product, but only where that product is required to undergo third-party conformity assessment. Toys are generally subject to self-assessment rather than third-party conformity assessment, so a toy drone's AI is not high-risk on the Annex I product-safety route. Consequently, toy drones used for other, ordinary applications, flight assistance, obstacle avoidance, play features, that perform no Annex III use case are minimal-risk, subject only to the Article 50 transparency duties to the extent the system interacts directly with natural persons or generates synthetic content. The deciding condition throughout is functional: high-risk only where the AI performs an Annex III use case (here, biometric identification) or is a safety component of an Annex I product requiring third-party conformity assessment, and prohibited only where it amounts to real-time remote biometric identification in public spaces for law enforcement outside the Article 5 exceptions.",
+  "jul07_refs": [
+   "Article 5",
+   "Article 6",
+   "Article 6.2",
+   "Article 6.1",
+   "Article 50",
+   "Annex III",
+   "Annex I",
+   "Annex II"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_086",
+  "question": "Does the EU AI Act establish a \"proportionality of need\" requirement according to which very powerful but environmentally impactful models (e.g. LLMs) should not be used for simple tasks (e.g. sentiment recognition) when a simpler and performant model is available (e.g. BERT)? If yes, cite which Article or Annex mentions this.",
+  "question_hash": "42c2c4f2170299141dca0ed04f0799434dd1e30660683eee3947dae4c3e38da1",
+  "jul07_answer": "No. The EU AI Act does not establish any \"proportionality of need\" requirement directing that powerful, energy-intensive models be avoided for simple tasks where a smaller model would suffice. None of the applicable provisions imposes an obligation to select the least resource-intensive model capable of a given task. Article 3 defines the terms of the Regulation, including 'AI system' and 'general-purpose AI model', but it sets no efficiency-based selection duty. Article 53, which fixes the obligations of GPAI providers (technical documentation under Annex XI, downstream-provider information under Annex XII, a copyright policy, and a published training-data summary), and Article 55, which adds systemic-risk duties such as model evaluation, systemic-risk mitigation, incident reporting, and cybersecurity, both regulate how a model is documented and governed rather than whether it may be used for a particular task. The Act's obligations attach to the provider and deployer roles and to a system's risk tier, not to a comparative assessment of model size against task complexity, so there is no Article or Annex that would prohibit using an LLM in place of a lighter model such as BERT for a task like sentiment recognition.",
+  "jul07_refs": [
+   "Article 53",
+   "Article 3",
+   "Article 55",
+   "Annex XI",
+   "Annex XII"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_087",
+  "question": "Article 9 of the AI Act lists the five categories of harm that map to AI systems with: no risk, limited risk, high-risk, systemic risk, prohibited. What are the five categories and how do they map to the five risk levels?",
+  "question_hash": "ace12c95c018fa27e63c61ebab9980b5e8a79f08077b0aeebe5f7db9059265e0",
+  "jul07_answer": "The premise does not hold: Article 9 does not list five categories of harm, and the Act does not map five harms onto five risk levels. Article 9 establishes the risk management system required for high-risk AI systems, an operational obligation, not a taxonomy of risk tiers. Unacceptable risk → prohibited. Practices whose harm is deemed intolerable are banned outright under Article 5 (e.g. subliminal/manipulative or deceptive techniques causing significant harm, and exploitation of vulnerabilities by age, disability, or socio-economic situation). This is the \"prohibited\" level. High risk. Systems permitted but subject to the full Chapter III regime are classified under Article 6 on two routes: as a safety component of a product covered by the Union harmonisation legislation in Annex I, or as falling within one of the use cases in Annex III (biometrics, critical infrastructure, education and vocational training, employment and worker management, and the further listed categories). Limited / transparency risk. Systems that interact with people or generate synthetic content carry only the disclosure duties of informing natural persons they are dealing with an AI system and marking AI-generated content in a machine-readable, detectable format. Minimal / no risk. Everything outside the above attracts no system-specific obligations under the Act.",
+  "jul07_refs": [
+   "Article 9",
+   "Article 5",
+   "Article 6",
+   "Annex III",
+   "Annex I"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_088",
+  "question": "We deployed a high-risk AI system in our company. We have a use in mind that is outside the intended use and our legal team say such a use is definitely no risk (no Annex I nor III apply). Can we just go ahead with the new use and do we need to keep logs for it?",
+  "question_hash": "1f94e0598305b78da139f72d414e7b158532f432683edfb2c6b6399468e803b9",
+  "jul07_answer": "Not high‑risk for the new use, and therefore outside the Act's automatic record‑keeping and logging duty, but only if that use genuinely falls outside both Annex I and Annex III and is not a practice prohibited under Article 5. Classification attaches to an AI system by reference to its intended purpose, not to the label the system carried in its original deployment: under Article 6 a system is high‑risk only where it is a safety component of a product covered by the Union harmonisation legislation listed in Annex I, or where it falls within one of the use‑cases in Annex III. If the operator's legal team has confirmed that the intended new use engages neither of those routes, and the use is none of the practices exhaustively banned under Article 5, then for that use the system is limited‑ or minimal‑risk. The only residual duties for such a use are the transparency obligations in disclosing the system's AI nature where it interacts directly with natural persons, and marking any AI‑generated synthetic content, which apply regardless of risk tier. First, the \"no risk\" verdict must rest on a documented, purpose‑based reassessment of the specific new use against the Annex I list and each Annex III category, because it is the intended purpose of that use, not a general sense that it is low‑stakes, that decides Article 6; if the new use in fact touches an Annex III area, it is high‑risk and the full Chapter III regime, including logging, applies.",
+  "jul07_refs": [
+   "Article 5",
+   "Article 6",
+   "Annex III",
+   "Annex I"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_089",
+  "question": "Is an AI that transcribes doctor-patient conversations prohibited? Or is it high-risk as per the use cases of Annex III of the AI Act?",
+  "question_hash": "51b7fffa01473820fb28feb190b47b8346f564893361f6829500dadee5af1a71",
+  "jul07_answer": "An AI system that transcribes doctor, patient conversations is neither prohibited nor, on that function alone, high-risk, it is high-risk only where it operates as a safety component of a medical device covered by the Union harmonisation legislation in Annex I (e.g. MDR/IVDR) and thereby meets the two-limb test of Article 6(1). Transcription does not fall within any of the eight practices exhaustively listed in it is not a subliminal, manipulative or deceptive technique, nor an exploitation of age-, disability- or socio-economic vulnerability, so the prohibition tier is not engaged merely because the subject matter is clinical or the patient is in a position of dependence; Article 5 would bite only if the system were designed to distort behaviour or exploit such vulnerabilities in a way causing significant harm, which mere speech-to-text does not do. Nor is it captured by Annex III, whose high-risk use-case categories (biometrics, critical infrastructure, education and vocational training, employment and worker management, and the further listed areas) do not include clinical documentation or medical transcription as such. Consequently the only route into high-risk is Article 6(1) via Annex I: the classification turns on whether the transcription function is a safety component of, or is itself, a regulated medical device that must undergo third-party conformity assessment, high-risk where that condition is met, and outside the high-risk tier where the tool is a standalone administrative or dictation aid with no medical-device safety role. Where the system is not high-risk, the residual obligation is transparency under Article 50: to the extent the AI interacts directly with the patient it must disclose its AI nature, and any synthetic AI-generated output must be marked in a machine-readable, detectable format.",
+  "jul07_refs": [
+   "Annex III",
+   "Article 6",
+   "Article 6.1",
+   "Article 5",
+   "Annex I",
+   "Article 50"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_090",
+  "question": "As a deployer, do I need to keep logs if I use a powerful LLM (surpassing the FLOPs threshold) for estimating whether customer payment confirmations are received via email?",
+  "question_hash": "05b93d517b46a50d8bd683a1ccf4a7921f1467c6a622dc4220cac4d84a89bb04",
+  "jul07_answer": "That threshold operates only at the level of model classification: Article 51 uses cumulative training compute above 10^25 FLOPs to presume that a general-purpose AI model carries systemic risk, and the obligations flowing from that classification fall on the model's provider, not on a deployer who merely uses the model. Article 3 keeps these roles distinct, defining \"deployer\" and \"provider\" as separate actors. You would take on provider-side obligations only by crossing into provider status under Article 25, meaning the operator puts the operator's name or trademark on the system, make a substantial modification, or change its intended purpose so that it becomes high-risk.",
+  "jul07_refs": [
+   "Article 51",
+   "Article 25",
+   "Article 3.4"
+  ],
+  "jul07_confidence": 0.5,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_091",
+  "question": "Is AI software that helps clinicians take medical decisions around best treatment potentially high-risk? According to what Article and/or Annex?",
+  "question_hash": "f6356fe43c3c424b1d4f4968ddb2c165319c24111ea8d17b3a84ca89f561bb28",
+  "jul07_answer": "Potentially high-risk, and in the clinical-treatment context described, high-risk where the software qualifies as, or as a safety component of, a medical device regulated under the Union harmonisation legislation listed in Annex I (the MDR 2017/745 or IVDR 2017/746) and is required on that basis to undergo third-party conformity assessment, which triggers the high-risk classification under Article 6(1). AI that supports clinicians in choosing best treatment is, as a rule, a clinical decision-support function that meets the definition of a medical device and is placed on the market under a CE-marked, notified-body route rather than self-assessment, so it will ordinarily satisfy both limbs of Article 6(1) and be classified high-risk on the Annex I product-safety route rather than on the Annex III use-case list. The classification is conditional in the sense that it turns on that factual predicate: if the particular software is not a regulated medical device requiring third-party conformity assessment, the Article 6(1) route is not engaged and it would fall to be treated as limited- or minimal-risk, subject principally to the Article 50 transparency duties where it interacts directly with a natural person. The system is not caught by the prohibitions in Article 5, which bans only an exhaustive set of practices, subliminal, manipulative or deceptive techniques and the exploitation of vulnerabilities by age, disability or socio-economic situation, among the other listed categories, none of which describes treatment-decision support offered to a clinician; the relevant tier here is therefore the high-risk classification under Article 6, not the Article 5 ban. Where the high-risk route is engaged through the medical-device predicate, conformity assessment is carried out through the MDR/IVDR notified-body procedure under Article 43(3), producing a single CE marking under Article 48 rather than a parallel assessment.",
+  "jul07_refs": [
+   "Article 6",
+   "Article 6.1",
+   "Article 50",
+   "Annex III",
+   "Annex I",
+   "Article 5",
+   "Article 43",
+   "Article 43.3",
+   "Article 48"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_092",
+  "question": "Do Annex I, Annex II, and Annex III all have to deal with high-risk AI classifications? If not, which doesn't/do not, and what is/are it/they about?",
+  "question_hash": "5ba7dc88fe149ce9e8e767f916f0e5fe8ce9bba4d845e14abe57a7a3a26f9a3b",
+  "jul07_answer": "No. Annex I and Annex III both feed the high-risk classification, but Annex II does not. Annex I lists the Union harmonisation legislation (New Legislative Framework measures such as machinery, toys, radio equipment, medical devices and lifts, plus civil aviation, motor vehicles, marine equipment, rail and agricultural vehicles). Under the Article 6(1) route, an AI system is high-risk where it is a safety component of, or is itself, a product covered by that legislation and that product must undergo third-party conformity assessment. Annex III sets out the eight high-risk use-case categories under the Article 6(2) route: biometrics, critical infrastructure, education and vocational training, employment and worker management, essential private and public services, law enforcement, migration, asylum and border control, and administration of justice and democratic processes. Annex II is unrelated to high-risk classification. It lists the serious criminal offences (terrorism, human trafficking, sexual exploitation of children, illicit trafficking in drugs, weapons or nuclear material, murder, kidnapping, rape, armed robbery, organised crime and environmental crime, each punishable by at least four years' custody) that condition one of the narrow Article 5(1)(h) exceptions permitting real-time remote biometric identification by law enforcement. That practice sits in the prohibited tier under Article 5, not the high-risk tier, so Annex II operates as a limit on a prohibition rather than a trigger for high-risk obligations.",
+  "jul07_refs": [
+   "Annex I",
+   "Annex II",
+   "Annex III",
+   "Article 6",
+   "Article 6.1",
+   "Article 6.2",
+   "Article 5",
+   "Article 5.1.h"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_093",
+  "question": "Is irregular migration a topic considered in the AI Act? If so, to what risk category does it belong?",
+  "question_hash": "0c7cb9532faae65efeccda71f6c543e671c1646b15b20b3b1d081862686a8565",
+  "jul07_answer": "Real-time remote biometric identification by law enforcement is prohibited under Article 5 save for narrow, exhaustively-listed law-enforcement exceptions that each require prior judicial or administrative authorisation; under Article 5(5) Member States may enable those exceptions in national law and may set stricter national rules. Article 5(1)(c) carve-out: the social-scoring prohibition does not affect lawful evaluation practices of natural persons that are carried out for a specific purpose in accordance with Union and national law (Recital 31 final sentence). Article 5(1)(f) carve-out: emotion-recognition systems placed on the market strictly for medical or safety reasons, including systems intended for therapeutical use, fatigue detection in pilots/drivers for accident prevention, and pain/fatigue physical-state monitoring (which Recital 18 expressly excludes from the 'emotion' definition itself), are NOT prohibited (Recital 44 final sentence). Article 5(1)(g) carve-out: the biometric-categorisation prohibition does not cover lawful labelling, filtering or categorisation of biometric datasets acquired in line with Union or national law, including sorting by hair colour or eye colour, which is permitted in law-enforcement contexts (Recital 30). Article 5(1)(h) carve-out catalogue: real-time remote biometric identification in publicly accessible spaces by law enforcement is permitted only for three exhaustive law-enforcement objectives, (i) targeted search for victims of abduction, trafficking and sexual exploitation, and missing persons; (ii) prevention of a specific, substantial and imminent threat to life or physical safety, or a genuine and foreseeable terrorist attack; (iii) localisation or identification of suspects of Annex II offences punishable by at least 4 years' custody. Use requires prior FRIA (Article 27), Article 49 EU-database registration, prior judicial or independent-administrative authorisation (urgency exception: authorisation within 24h, else immediate stop), and notification of the relevant market-surveillance authority and national data-protection authority. Article 5(1)(b) coverage for minors: the vulnerability-exploitation prohibition expressly captures AI systems that exploit vulnerabilities arising from age, minors in particular.",
+  "jul07_refs": [
+   "Article 3.2",
+   "Article 5",
+   "Article 6"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_094",
+  "question": "About obligations of transparency to providers who want to use a GPAI model, do you need to disclose: date of release? number of paramaters? applicable model interaction with hardware? license? samples of outlier data used in training? Given clear yes/no to each item.",
+  "question_hash": "81dd2945307c2150e985f53a259f9f747549d240d7e71cd6b8ea01c2359a98c2",
+  "jul07_answer": "Yes to four of the five, no to the last. The transparency duty to downstream providers who intend to integrate a GPAI model is Article 53(1)(b), which requires the operator to draw up and keep current the information and documentation specified in Annex XII for those integrators. Date of release: Yes. Annex XII requires the date of release and methods of distribution as part of the general model description. Number of parameters: Yes. Annex XII requires disclosure of the model's architecture and number of parameters. Model interaction with hardware: Yes, where applicable. Annex XII requires describing how the model interacts with, or can be used to interact with, hardware or software that is not part of the model itself. License: Yes. Annex XII requires the license for the model. Samples of outlier data used in training: No. Neither Annex XII nor Article 53(1)(b) requires disclosing training-data samples to integrators. The only training-data disclosure obligation is the separate Article 53(1)(d) duty to publish a sufficiently detailed public summary of training content, and that is a general summary, not samples of outlier data.",
+  "jul07_refs": [
+   "Article 53",
+   "Article 53.1.b",
+   "Article 53.1.d",
+   "Article 53.1",
+   "Annex XII"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_095",
+  "question": "Who, if at all, needs to establish the post-market monitoring system for a high-risk AI system? Provider/deployer/AI office? Is it possible that the monitoring system may need to also include info on interaction with other AI systems than the high-risk one in consideration?",
+  "question_hash": "af96442d44c57d2d150c29fcb13f6e0f342acc1312bfe0bea2968cba772fa81d",
+  "jul07_answer": "The provider must establish the post-market monitoring system for a high-risk AI system, not the deployer and not the AI Office. On the substance, Article 72 requires the provider to establish and document a post-market monitoring system proportionate to the nature of the AI technologies and the risks of the high-risk system, to collect and analyse performance data across the system's lifetime (including data provided by deployers), and to feed that back into continuous compliance with the Chapter III requirements. On the operator's second question, yes. Article 72 expressly provides that, where relevant, post-market monitoring shall include an analysis of the interaction with other AI systems. So the monitoring system may legitimately need to capture information about how the high-risk system behaves in combination with other AI systems in its operating environment, not just the high-risk system in isolation. This is a conditional element (\"where relevant\"): it is triggered where such interactions materially bear on the system's performance or continued compliance, and it is not a mandatory data field in every case. If you want, I can map the full Chapter IX chain (Article 72 monitoring → reporting duties) against the operator's specific system.",
+  "jul07_refs": [
+   "Article 72"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_096",
+  "question": "What is an \"area\" and what is a \"use case\" for high-risk as per Article 6(2)? How many areas exist?",
+  "question_hash": "d00d67f07cf94769a42c57df352ec02c2db3f9368f4f2c3d01e7547b73181304",
+  "jul07_answer": "An \"area\" under Article 6(2) is one of the broad domains listed in Annex III within which an AI system is classified high-risk, and a \"use case\" is a specific intended purpose within that area (a particular application the system is put to). Article 6(2) makes an AI system high-risk where it falls within one of the eight Annex III use-case categories, and each of those categories functions as an area containing one or more concrete use cases. The eight Annex III areas are: biometrics; critical infrastructure; education and vocational training; employment and worker management (covering recruitment, task allocation, promotion and termination decisions, and performance evaluation affecting workers' fundamental rights); access to essential private and public services; law enforcement; migration, asylum and border control; and administration of justice and democratic processes. This Annex III route is one of two paths to high-risk status. The other is the Annex I route under Article 6(1), which covers AI that is a safety component of, or is itself, a product under the Union harmonisation legislation listed in Annex I where that product must undergo third-party conformity assessment. Under the Article 6(3) derogation, an Annex III system is not high-risk where it poses no significant risk of harm and performs only a narrow procedural task, improves the result of a completed human activity, detects decision-making patterns without replacing or influencing the human assessment, or carries out a preparatory task, though it remains high-risk whenever it profiles natural persons.",
+  "jul07_refs": [
+   "Article 6.2",
+   "Article 6",
+   "Annex III",
+   "Annex I"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_097",
+  "question": "Name the areas of high-risk use cases. Is healthcare decision making one of them?",
+  "question_hash": "733888945f0e86037a8398a9b8a9bf1fb725fb4a5bdbc247144e6aaa803c0223",
+  "jul07_answer": "Healthcare clinical decision-making is not itself one of the enumerated Annex III use-case areas, though medical AI is still routinely high-risk through the separate Annex I route. Under Article 6(2), the eight Annex III use-case categories are biometrics, critical infrastructure, education and vocational training, employment and worker management, essential private and public services, law enforcement, migration and asylum and border control, and administration of justice and democratic processes (Annex III). Medical AI instead typically becomes high-risk under the Annex I route in Article 6(1), which classifies a system as high-risk where it is, or is a safety component of, a product covered by the Union harmonisation legislation in Annex I and that product must undergo third-party conformity assessment. Annex I lists medical devices, so an AI system functioning as a medical device or as a safety component of one is captured on this basis. Article 43(3) then integrates the AI Act assessment into the sectoral procedure, so a medical device runs a single conformity assessment through its MDR notified body covering both regimes. One Annex III category can also reach the health sector at its access layer: essential private and public services covers AI used to evaluate eligibility for essential healthcare services, which is distinct from the clinical judgement that the Annex I medical-device route addresses.",
+  "jul07_refs": [
+   "Article 6",
+   "Article 6.2",
+   "Article 6.1",
+   "Article 43",
+   "Article 43.3",
+   "Annex III",
+   "Annex I"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "conversational"
+ },
+ {
+  "id": "rg_098",
+  "question": "What does Annex VII point 5.1 say? Try to get the substance right. Do not get confused with other material, like 5.1 in Annex III or Article 7, which is about something else entirely.",
+  "question_hash": "ce95034b9fcaa56f016fd884da4eccb333652f63e38db6cac1e66a9146ac726e",
+  "jul07_answer": "Annex VII point 5.1 falls under the heading \"Changes to the AI system.\" It requires that any change to the high-risk AI system which could affect its compliance with the requirements of the Regulation, or its intended purpose, be approved by the notified body that issued the EU technical-documentation assessment certificate. In other words, once the notified body has audited the quality management system and examined the technical documentation and issued that certificate under the Annex VII procedure, the provider cannot unilaterally alter the system in a way that touches conformity or intended purpose. The provider must notify the notified body, which reassesses the change, and any approval takes the form of a supplement to the original assessment certificate. This is distinct from Annex III point 5 (essential private and public services as a high-risk use case) and from Article 7 (the Commission's delegated-act power to amend the Annex III list), which address entirely different subject matter.",
+  "jul07_refs": [
+   "Article 7",
+   "Annex VII",
+   "Annex III"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_099",
+  "question": "Do providers of GPAI systems, even if not with systemic risk, have an obligation to extensively shield their models from adversarial attacks? What about specifically for adversarial images? What about specifically for prompt injection?",
+  "question_hash": "623d572ce356ac8de1742e015bf45f4fadbbf1a3681a28bce0b892ce913ecf11",
+  "jul07_answer": "The obligations that attach to a non-systemic-risk GPAI provider under Article 53 are limited to maintaining technical documentation (Annex XI), supplying integration information to downstream providers (Annex XII), putting in place a copyright policy, and publishing a training-data summary. None of these requires adversarial hardening. The demanding adversarial-testing and cybersecurity duties sit in Article 55, which imposes state-of-the-art model evaluation including documented adversarial red-teaming and an adequate level of cybersecurity protection only on GPAI models with systemic risk (presumed above 10^25 FLOPs of cumulative training compute). Those Article 55 duties do not reach a model below that threshold. The resilience-against-adversarial-attacks duty in Article 15, which requires appropriate robustness and resistance to evasion, data-poisoning, and adversarial attacks, is framed for high-risk AI systems, not for GPAI models as such. Adversarial images: no distinct obligation. The Act sets no image-specific defensive duty for a non-systemic-risk GPAI provider. Resistance to adversarial or evasion inputs, which would include perturbed images, arises only through Article 15 robustness where the model operates within a high-risk AI system, or through Article 55 adversarial testing where the model carries systemic risk. Prompt injection: no distinct obligation. Likewise there is no prompt-injection-specific requirement for a non-systemic-risk GPAI provider.",
+  "jul07_refs": [
+   "Article 53",
+   "Article 55",
+   "Article 15",
+   "Annex XI",
+   "Annex XII"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_100",
+  "question": "Could the introduction of guardrails in an AI agentic system reduce the risk of the system from high risk to moderate risk? What about changing the capabilities and intended use of the system?",
+  "question_hash": "7012ade14f8b85bef3d519f0bb3acd6a3193d72f7c4b379d4cc67a698cbf0adc",
+  "jul07_answer": "Whether a system is high-risk is fixed by Article 6, which classifies a system as high-risk either where it is a safety component of, or is itself, a product covered by the Annex I harmonisation legislation requiring third-party conformity assessment, or where it falls within one of the eight Annex III use cases. Guardrails are risk-control measures within the risk-management system that Article 9 requires across the lifecycle, including mitigation of foreseeable and misuse risks. Under the Article 6(3) derogation, an Annex III system is not high-risk where it poses no significant risk of harm to health, safety or fundamental rights and performs only a narrow procedural task, improves the result of a previously completed human activity, detects decision-making patterns or deviations without replacing or influencing the human assessment, or carries out a preparatory task. The provider must document that self-assessment before placing the system on the market and still register it under Article 49(2). Under Article 25(1), a deployer or third party who makes a substantial modification or modifies the intended purpose is treated as a provider and assumes the full provider obligations, and a modification that makes a system high-risk pulls it into the regime rather than out of it. So a change of use only lowers exposure where it moves the system into the Article 6(3) conditions, and the same lever can raise exposure if it points the other way.",
+  "jul07_refs": [
+   "Article 25",
+   "Article 25.1",
+   "Article 9",
+   "Article 6",
+   "Article 6.3",
+   "Article 49",
+   "Article 49.2",
+   "Annex I",
+   "Annex III"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_101",
+  "question": "Can law enforcement starts using a real-time remote biometric identification system without prior authorisation? If yes, how much time do they have to seek authorisation, and what happens if the authorisation is refused?",
+  "question_hash": "80d1bd2f80a797d27c6088e480f19cdd47cafc29b36fd324f86247708f016161",
+  "jul07_answer": "Yes, but only in a duly justified situation of urgency. Real-time remote biometric identification in publicly accessible spaces for law enforcement is prohibited under Article 5 except for the narrow, exhaustively listed exceptions, each of which normally requires prior judicial or administrative authorisation. Where urgency justifies it, law enforcement may begin using the system before that authorisation is granted, provided they request the authorisation without undue delay and at the latest within 24 hours of the start of use. If the requested authorisation is refused, the use must be stopped with immediate effect and all data, outputs and results of that use must be discarded and deleted. This all operates within the Article 5(5) framework, under which Member States may choose to enable these exceptions in national law and may impose stricter national rules. Outside the prohibited real-time law-enforcement scenario, biometric identification systems are not banned but fall to be treated as high-risk under Article 6 and Annex III, which lists biometrics among the eight high-risk use-case categories.",
+  "jul07_refs": [
+   "Article 5",
+   "Article 5.5",
+   "Article 5.1.h",
+   "Article 6",
+   "Annex III"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_102",
+  "question": "Consider a private contractor of the municipality that runs a city's emergency-call triage platform. The contractor plans to use an AI tool to prioritize police response decisions. Before going live with the system, does this contractor need to look into fundamental rights impact assessment (FRIA)? Is this because of this scenario belonging to Annex III 5(b) or 5(c)? What about private contractors offering other public services concerning Annex III but NOT specifically 5(b) or 5(c)?",
+  "question_hash": "2aaf19bd97ea20c4b2dd2d1b95abed331698f1aa13a37f486dc6ee84f9d151c9",
+  "jul07_answer": "Yes, the contractor must run a Fundamental Rights Impact Assessment before going live, but not because of Annex III point 5(b) or 5(c). Emergency-call triage that dispatches police sits within Annex III's essential public services category (point 5(d) on emergency first-response dispatching), not the creditworthiness scoring of 5(b) or the life-and-health insurance risk-and-pricing of 5(c). Under Article 6(2), any system falling within an Annex III use case is high-risk, and Article 27 then obliges the relevant deployers to assess the system's impact on fundamental rights before first use, covering the deployment process, affected persons, specific risks, human-oversight measures, and complaints workflows. The reason this obligation reaches the contractor is that Article 27 extends the FRIA duty to private operators providing a public service, which is exactly what a municipal emergency-triage contractor is. Points 5(b) and 5(c) serve a separate function in Article 27. For private contractors delivering other public services within Annex III, the public-service-provider limb is what applies. They must perform the FRIA whenever they deploy a high-risk Annex III system in the course of providing that public service, regardless of whether the use case is 5(b) or 5(c). The one carve-out to keep in view is that Article 27's FRIA duty does not attach to the Annex III critical-infrastructure category, so a public-service contractor operating there would not be caught by this obligation on that basis.",
+  "jul07_refs": [
+   "Annex III.6",
+   "Annex III",
+   "Article 6",
+   "Article 6.2",
+   "Article 27"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_103",
+  "question": "Is the use of deep-fake images in university classes to represent e.g. skin conditions in patients allowed? Does the artificial nature of the content need to be disclosed for such an evidently educational and illustrative use? If so, does the lighter transparency requirement apply like for certain law enforcement situations?",
+  "question_hash": "ae53ddc58f9674cc7dbebe2d8f969e27cbb52614ba67c78aa3f006caf5126fe8",
+  "jul07_answer": "No. Under Article 50(4), the deployer's duty to disclose that image, audio, or video content constituting a deep fake has been artificially generated or manipulated does not apply where the use is authorised by law to detect, prevent, investigate, or prosecute criminal offences. Absent that law-enforcement authorisation, the deployer must disclose that the content is a deep fake.",
+  "jul07_refs": [
+   "Article 50.4",
+   "Article 13",
+   "Annex III.3",
+   "Article 50",
+   "Annex III"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_104",
+  "question": "If a high-risk AI system was already placed on the market or put into service before 2 August 2026, does the AI Act fully apply to it? What about general purpose AI systems?",
+  "question_hash": "0b7e4615da7b96212092ccfbbbcc9646b14e70f7ab1554548bc964ff6f615b12",
+  "jul07_answer": "Not fully, a high-risk AI system already placed on the market or put into service before 2 August 2026 is largely grandfathered and becomes subject to the Act only if, after that date, it undergoes significant changes in its design. Absent a significant design change, the full high-risk obligation set does not attach retroactively to the existing deployment. General-purpose AI models follow a separate transitional track: those placed on the market before 2 August 2025 are not exempt but are given until 2 August 2027 to be brought into compliance with the GPAI provisions (Chapter V, Articles 51 to 56), the provider being obliged in the interim to take the necessary steps to conform by that date. So neither legacy high-risk systems nor pre-existing GPAI models are subject to immediate full application on 2 August 2026, the former turn on the \"significant change\" trigger (with the 2030 backstop for public-authority use), and the latter on the fixed 2 August 2027 deadline. One caveat on terminology: the Act regulates general-purpose AI models (Articles 51 to 56), not \"general-purpose AI systems\" as such; a system built on a GPAI model is classified on its own facts under Article 6, and if it is not a safety component of an Annex I product and does not fall within an Annex III use case, it is limited- or minimal-risk and subject mainly to the Article 50 transparency duties rather than the high-risk transitional rules above.",
+  "jul07_refs": [
+   "Article 6",
+   "Article 50",
+   "Annex I",
+   "Annex III"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_105",
+  "question": "What is Annex X about? What is it used for?",
+  "question_hash": "aa46ab46c9d9681aae9f592809222d49c39a6e2ae0f6d4395abf192d31ce6bbf",
+  "jul07_answer": "Annex X is the schedule that lists exactly which data must be entered in the EU database when a high-risk AI system is registered. It supports the registration duty in Article 49, which obliges providers (and public-authority deployers) to register themselves and the system in the EU database (Article 71) before it is placed on the market or put into service. The required entries include the identity and contact details of the provider, authorised representative and deployer, the system name, trade name and an unambiguous reference, its intended purpose, and its market status (on the market, in service, withdrawn or recalled). Providers must also enter the type and number of any conformity-assessment certificate and the notified body that issued it, the Member States where the system is available, and a copy of the EU declaration of conformity drawn up under Article 47 together with the instructions for use. Annex X also carves out systems used for law enforcement, migration, asylum and border control, whose registration entries are not made publicly accessible.",
+  "jul07_refs": [
+   "Annex X",
+   "Article 49",
+   "Article 71",
+   "Article 47"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_106",
+  "question": "A supermarket uses an AI tool that analyzes only current-cart and checkout anomalies (no biometrics, no face recognition, no sensitive-trait inference, no cross-context social scoring) to flag transactions for optional manual bag checks by store staff. The retailer claims this is \"high risk like policing\", as it: resembles investigation of potentially criminal offences (theft) + evaluates or classifies persons based on observed behaviour in a way that may lead to detrimental or unfavourable treatment. Is this situation potentially high-risk?",
+  "question_hash": "8fa75106b92abbcd1788ac1c0a8d555d0e41cbc885de33594596c90f6bf1e6a9",
+  "jul07_answer": "Not high-risk, and not prohibited. Single-transaction anomaly detection that flags a cart for an optional manual bag check by store staff falls outside both the Article 5(1)(c) social-scoring prohibition and the law-enforcement high-risk category, because the two facts the retailer relies on do not satisfy the statutory tests. Article 5(1)(c) prohibits only systems that evaluate or classify natural persons over time on the basis of social behaviour or personal characteristics, where the resulting score produces detrimental treatment in unrelated social contexts or treatment that is unjustified or disproportionate; here the system assesses a single present transaction (current cart and checkout anomalies), not accumulated behaviour over time, and any consequence, a bag check at that same till, arises within the very transactional context that generated the signal, not an unrelated one, so neither the temporal-scoring element nor the context-transfer element of the prohibition is met. This verdict holds so long as those facts remain true, it would require reassessment only if the tool were in fact deployed by or for a law-enforcement authority, or extended to profile identified individuals across visits over time in a way that drives disadvantage beyond the immediate transaction.",
+  "jul07_refs": [
+   "Article 5",
+   "Article 5.1.c"
+  ],
+  "jul07_confidence": 0.7,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_107",
+  "question": "We are a private educational institution intending to deploy an AI tool that analyses students' prior grades and learning outcomes to recommend whether they should follow the standard or accelerated honours track going forward. We remark that a student who receives the \"standard\" recommendation is *not* barred from choosing accelerated, the system merely provides a suggestion. Are there reasons to believe the system might be high-risk? What articles/annex and specific points, if any, concern this use case?",
+  "question_hash": "1d2a1f2cc752f9fcbbcad9e6c359dffda16ac40da5f702cb8f74750de31a7766",
+  "jul07_answer": "A system that profiles students' prior grades and learning outcomes to recommend a standard versus accelerated honours track is likely high-risk, because it falls within the education and vocational-training use case listed in Annex III and is therefore classified as high-risk under the second route of Article 6 (Article 6(2)), which designates an AI system as high-risk where it is intended to be used within one of the Annex III categories. The Annex III education category captures precisely this function, AI intended to evaluate learning outcomes and to steer a person's assignment or access to an educational or vocational track, and the operative test is the purpose of the system, not the formal bindingness of its output. Article 6 does provide a filter under which a system that would otherwise fall within Annex III is not high-risk where it performs only a narrow procedural task or does not materially influence the outcome of a decision affecting the person; but a system that assesses a student's record and produces a track recommendation is doing exactly the substantive evaluative and steering work that the education category is meant to reach, and an advisory output that shapes how a student, teacher, or institution channels that student still materially influences the educational trajectory. Unless the operator can substantiate that the tool performs only a narrow ancillary function and does not meaningfully influence which track is taken, it remains high-risk under Article 6(2) via the burden of establishing that derogation rests on the operator and should be documented. This is a high-risk classification, not a prohibited practice: Article 5 bans a closed list of practices (subliminal or manipulative techniques causing significant harm and the exploitation of vulnerabilities arising from age, disability, or socio-economic situation, among the eight categories), and a grade-based track-recommendation tool does not, on the facts described, deploy manipulative or exploitative techniques of that kind, so Article 5 is not engaged. The other high-risk route in Article 6 (Article 6(1)) does not apply either, since the system is not a safety component of a product regulated under Annex I harmonisation legislation. As a deployer of a high-risk system, note that the Chapter III provider obligations (risk management, data governance, technical documentation, and the rest) attach primarily to the provider, while distinct deployer duties arise on top of the high-risk designation; and where the system interacts directly with students, the Article 50 transparency duty to disclose its AI nature applies independently of the high-risk status.",
+  "jul07_refs": [
+   "Article 5",
+   "Article 6",
+   "Article 6.2",
+   "Article 6.1",
+   "Article 50",
+   "Annex III.3",
+   "Annex I",
+   "Annex III"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_108",
+  "question": "We manufactured an industrial robot with an embedded AI module that decides when to reduce speed near human workers to prevent hurting them. The robot is covered by the Machinery Regulation, listed in Annex I of the AI Act. We already underwent conformity assessment with a notified body and got a CE mark for the robot. Do we need the AI module undergo a separate AI Act conformity assessment dedicated to the AI Act? Do we need to submit the system to the EU database of high-risk AI systems?",
+  "question_hash": "46ae946e954e1219d36cb214b326148ab7dcdc247c0613ed66cd1a6ab93fcb7f",
+  "jul07_answer": "No separate, standalone AI Act conformity assessment is required, but the AI Act requirements must be covered within the operator's existing procedure. The operator's AI module is a safety component of a product covered by the Machinery Regulation listed in Annex I, which classifies it as high-risk under Article 6(1). Under Article 43(3), the AI Act conformity assessment is integrated into the third-party conformity assessment already required under the sectoral Machinery legislation, so both regimes are discharged through one single procedure rather than a second dedicated AI Act track. This does not automatically mean the CE mark you already hold satisfies the AI Act. The notified-body procedure must actually have examined the AI module against the AI Act obligations, not only the Machinery Regulation ones. If the operator's completed assessment did not cover the AI Act requirements, that single integrated procedure must be extended to include them. Note also that any substantial modification to the module would trigger a fresh conformity assessment under Article 43(4). On registration: yes. The module is a high-risk AI system, and the Commission maintains an EU database of high-risk AI systems under Article 71 in which such systems are registered. That registration obligation applies independently of the fact that the conformity assessment itself is folded into the Machinery procedure.",
+  "jul07_refs": [
+   "Annex I",
+   "Article 6",
+   "Article 6.1",
+   "Article 43",
+   "Article 43.3",
+   "Article 43.4",
+   "Article 71"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_109",
+  "question": "We developed a product listed in Annex I where an AI system is a safety component. We had the option to opt out of the third-party conformity assessment base case by using harmonized standards. Thus no third-party conformity assessment happened. This means we can skip the requirements of Chapter 3 Section 2 of the AI Act, right?",
+  "question_hash": "267ba1c6defdc42bb876586bcab2cf7000e70d465d89bcfda4e879d0d162c252",
+  "jul07_answer": "Union harmonisation legislation list (Section A: New Legislative Framework, machinery, toys, radio equipment, medical devices, lifts, etc.; Section B: civil aviation, motor vehicles, marine equipment, rail, agricultural vehicles), AI safety-components of products covered here are classified high-risk under Article 6(1). Requires providers of high-risk AI to undergo a conformity assessment: internal-control procedure (Annex VI) for Annex-III systems where harmonised standards / common specifications are applied, otherwise notified-body procedure (Annex VII); for Annex-I products, Article 43(3) integrates the AI Act assessment into the sectoral third-party conformity-assessment procedure (for a medical device, the MDR notified-body assessment), one single procedure covering both regimes. Annex I route (Article 6(1)): the system is a safety component of, or is itself, a product covered by the Union harmonisation legislation listed in Annex I AND that product must undergo a third-party conformity assessment under that sectoral legislation. Annex III route (Article 6(2)): the system falls within one of the eight Annex III use cases. Article 6(3) derogation: an Annex III system is NOT high-risk where it poses no significant risk of harm and meets one of four conditions (a narrow procedural task; improving the result of a previously completed human activity; detecting decision-making patterns or deviations without replacing or influencing the human assessment; or a preparatory task), unless it profiles natural persons, in which case it is always high-risk; the provider must document this self-assessment before placing the system on the market and still register it under Article 49(2).",
+  "jul07_refs": [
+   "Annex I"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ },
+ {
+  "id": "rg_110",
+  "question": "A private contractor runs a region's gas supply service on behalf of the local government. It licenses an AI system from a vendor, fine-tunes it on local data, and then puts it into service under its own brand. To learn about correct applicable classifications of the system and the contractor, what material of the AI Act should I read? Does fundamental rights impact assessment (FRIA) applies?",
+  "question_hash": "975cb6ac222b74ebc20ecc0517b65c726e545a74754ffc6c8d99890c4b2755f0",
+  "jul07_answer": "To classify both the system and the contractor, read Article 25 on responsibilities along the AI value chain together with Article 6 on high-risk classification. Because a region's gas supply is critical infrastructure, an AI system operating that service falls to be assessed as high-risk under Article 6. Article 25 then fixes the contractor's status: by putting its own brand on the licensed system and fine-tuning it on local data (a substantial modification), the contractor is treated as a provider and assumes the full provider obligations, not merely a deployer's. It also remains the deployer that puts the system into service, so both roles attach to it at once. Yes, a fundamental rights impact assessment applies. Article 27 requires deployers that are bodies governed by public law, or private operators delivering a public service, to carry out a FRIA before first use of a high-risk system, covering the deployment process, the persons affected, the specific risks, and the human-oversight measures. Running the region's gas supply on behalf of the local government is such a public service, so the contractor must complete that assessment before putting the system into service.",
+  "jul07_refs": [
+   "Article 27",
+   "Article 6",
+   "Article 25",
+   "Article 27.1"
+  ],
+  "jul07_confidence": 0.85,
+  "jul07_retrieval_path": "kb_fallback",
+  "jul07_scope_reason": "in_scope"
+ }
+]

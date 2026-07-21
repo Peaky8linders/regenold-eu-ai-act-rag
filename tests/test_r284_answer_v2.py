@@ -196,7 +196,8 @@ def test_answer_v2_in_engine_cache_key():
 
 
 def test_r284_stage2_flags_default_off_and_in_cache_key():
-    """The Stage-2 completeness lever defaults OFF, while verify-verdict defaults ON. Both read env and are in the cache key."""
+    """The two default-OFF Stage-2 levers (H1 completeness + verify-verdict) read
+    their env and are in the cache key (they flip the polished answer)."""
     import inspect
 
     from app.routes import regenold
@@ -205,11 +206,11 @@ def test_r284_stage2_flags_default_off_and_in_cache_key():
         os.environ.pop("REGENOLD_ANSWER_COMPLETE", None)
         os.environ.pop("REGENOLD_VERIFY_VERDICT", None)
         assert g._answer_complete_enabled() is False
-        assert g._verify_verdict_enabled() is True
-        os.environ["REGENOLD_ANSWER_COMPLETE"] = "1"
-        os.environ["REGENOLD_VERIFY_VERDICT"] = "0"
-        assert g._answer_complete_enabled() is True
         assert g._verify_verdict_enabled() is False
+        os.environ["REGENOLD_ANSWER_COMPLETE"] = "1"
+        os.environ["REGENOLD_VERIFY_VERDICT"] = "1"
+        assert g._answer_complete_enabled() is True
+        assert g._verify_verdict_enabled() is True
         os.environ.pop("REGENOLD_ANSWER_COMPLETE", None)
         os.environ.pop("REGENOLD_VERIFY_VERDICT", None)
 

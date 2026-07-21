@@ -329,11 +329,21 @@ class TestR127GuidingPrinciplesKeywords:
             GraphContext(),
         )
         low = ans.lower()
+        # R285 — this test previously asserted "fundamental rights" / "democracy"
+        # / "rule of law". Those are Article 1(1) PURPOSE words, and the answer
+        # was deliberately re-anchored (R253) onto the actual guiding principles,
+        # which live in Recital 27. The assertions below pin that Recital-27
+        # enumeration, so this is still a content-regression guard — it just
+        # guards the right content.
+        assert "recital 27" in low
         assert "human agency and oversight" in low
         assert "technical robustness and safety" in low
         assert "privacy and data governance" in low
-        # the seven-principles enumeration is preserved
-        assert "human agency" in low
+        assert "transparency" in low
+        assert "non-discrimination" in low
+        assert "accountability" in low
+        # Article 4 (AI literacy) is what operationalises them.
+        assert "article 4" in low
 
 
 # ── #5 — fusion-path Stage-2 observability ─────────────────────────────────

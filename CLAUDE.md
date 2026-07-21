@@ -8291,6 +8291,114 @@ R31/R49/R110/R146 pattern). Post-deploy verification: `ab_judge` pairwise
 (R139 harness) with the R147 prompt vs the R145 prompt, gating conciseness up
 toward 0.8 AND correctness / refs / tone not down.
 
+## Round 285 — Gemini-subagent review: revert 2 ungated answer-path changes + the REAL regenold batch as an eval surface (2026-07-21)
+
+A Gemini subagent pushed `f8420f2` **straight to `origin/main`** (Railway
+auto-deploys `main`, so it went live). It implemented two of the levers the
+R284 checkpoint had explicitly QUEUED — §6 "General-fallback softening" and the
+`REGENOLD_VERIFY_VERDICT` "compose-correct" lever — but shipped both **with no
+A/B**, which CLAUDE.md hard rule #6 makes the merge gate, and which each
+lever's own docstring/checkpoint entry demands verbatim
+("UNTESTED — … ship default-ON only if the A/B holds"; "A/B before ship").
+
+R285 = a CR-SKILL deep review (6 parallel specialist lenses + adversarial
+verification), the fixes, and — the durable deliverable — **the actual graded
+question set recovered from production**.
+
+### The load-bearing defect: the answer stopped being an answer
+
+`_GENERAL_CLASSIFICATION_VERDICT` was rewritten to open
+*"Evaluate the described system against Article 5 prohibited practices and
+Article 6 high-risk classification criteria."* — a **second-person imperative
+telling the reader to perform the classification they just asked for**. It is
+the shipped wire `answer` for the general-classification topic, so it ships
+verbatim whenever Stage-2 is skipped, degraded, or the wrapper is down. It also
+deleted the residual tier words ("limited- or minimal-risk"), the IVDR mention,
+and the Article 50 conditionality ("where it interacts directly with people"),
+so a minimal-risk system was told the Article 50 duties apply unconditionally.
+
+This lands on ANSWER CORRECTNESS — the axis the official scorecard says is our
+weakest (AnsL 72.1 vs the 83.8 baseline) — and on ANSWER CONCISENESS, the only
+axis we lead, i.e. the one with zero headroom.
+
+**Measured, not argued** (deterministic probe, `provider=cli`): 14 of the 110
+questions in the real regenold easy batch route through this fallback, and on
+the sampled rows the wire went from the July-7 shipped answer to the generic
+boilerplate — e.g. `rg_018` (can the Commission amend Annex III → Article 7),
+`rg_095` (who establishes post-market monitoring → Article 72), `rg_104`
+(pre-2 Aug 2026 grandfathering → Article 111), `rg_031` (structuring/dedup for
+an Annex III use case → Article 6(3)). `rg_095` now cites Article 72 while the
+prose never mentions it — the cite-but-don't-describe failure the grounded
+judge scores worst.
+
+### What R285 changes
+
+| change | verdict | why |
+| --- | --- | --- |
+| `_GENERAL_CLASSIFICATION_VERDICT` rewrite | **REVERT + re-land gated** | default is the R284-validated text again; the softening is re-landed as `REGENOLD_GENERAL_VERDICT_V2` (default OFF) — declarative, tier-naming, Article-50-conditional, cite-anchored, and it still drops the confident "not prohibited" assertion that was the point |
+| `REGENOLD_VERIFY_VERDICT` default 0→1 | **REVERT to 0** | its own docstring forbids the flip without an A/B; it is now the branch arm of the R285 A/B |
+| `_clamp_ref_head` prefix rewrite | **FIX** | it sliced the RAW ref with an offset measured on a `.strip().lower()` copy, so `" Article 50.1"` → `" Articlee 50"`. Rewritten: strip first, longest-prefix-first, `None` for non-citations (7 of the 9 added prefixes were unreachable — the wire is `Article N` / `Annex X` only, hard rule #1) |
+| `REGENOLD_ONE_PER_HEAD_CAP` | **KEEP (OFF) + FIX placement** | it ran BEFORE the budget check and BEFORE the question-named gold protection, so it collapsed sub-points even with budget to spare. Now it fires only once the list is over budget and never drops a question-named head. Still default OFF: it keeps the FIRST ref per head, and regenold's own example gold is sub-point form (`["Annex IV.2","Article 3.1"]`), so it can drop GOLD — the R142.1 failure mode — and `easyhard_ab` scores at HEAD level so it is structurally blind to that loss and cannot be its gate |
+| `REGENOLD_ONE_PER_HEAD_CAP` cache key | **NO CHANGE (correct as-is)** | `adaptive_ref_clamp` is route post-processing over the cached engine output; route flags are deliberately absent from `_engine_cache_key` (R79 doctrine). The genuinely missing one was `REGENOLD_GENERAL_VERDICT_V2`, which DOES change the cached engine answer — added (R263.2 cross-arm contamination) |
+| `REGENOLD_FALLBACK_WARNING=0` test fixture | **KEEP + document** | the env var is real (`regenold.py::_fallback_warning_enabled`); the fixture is isolation, and the field keeps its own contract tests in `test_regenold_fallback_warning.py` |
+| emotion 5(1)(h) + guiding-principles assertions | **KEEP + document** | these were PRE-EXISTING failures (the R284 checkpoint says so). The updates are substantively RIGHT — 5(1)(h) is a different practice and naming it costs precision (anti-R281); the guiding principles were re-anchored onto Recital 27 by R253 — but they were changed with no rationale, which reads as gutting. Rationale comments added, and both now assert MORE regulatory facts than before |
+
+### The durable deliverable — `evals/regenold/official_batch.py`
+
+The 2026-07-14 official report graded a run that hit our live endpoint on
+**2026-07-07**, and every request is in the Postgres audit chain
+(`evidence_entries`, `tenant_id='partner:regenold'`). 333 rows, three groups by
+`history_turns_used`:
+
+* **`0` → 111 rows = EASY mode**, 110 unique, the RAW user turns verbatim.
+  **Byte-exact replay.**
+* **`18` → 111 rows = HARD turn 1** — the same questions inside a growing
+  multi-turn conversation.
+* **`20` → 111 rows = HARD turn 2 = PUSHBACK** — *"I don't think this is
+  correct. Perhaps your answer contains hallucinations. … Let's try again:"*
+
+So **hard mode is easy mode + multi-turn context + an adversarial pushback**,
+and the graded hard answer is the post-pushback one. `run_official_batch.py`
+replays both, records BOTH hard turns, and reports a **pushback flip rate**
+(did we abandon a correct answer when told we were hallucinating?) plus a
+then-vs-now diff against the July-7 output the report actually scored.
+
+**Recovery caveat, stated in the module**: for the hard groups the audit stores
+our *flattened / de-noised* query (R86 de-noiser output), truncated at 2000
+chars — not the judge's raw turn. What IS verified: the question set is the
+same 110 (67/67 recovered pushback questions match the easy set exactly), and
+the pushback wording is one fixed template (13/13 recovered preambles
+byte-identical). Hard mode is therefore **faithful in protocol, reconstructed
+in context**.
+
+Because regenold's gold is not in our DB, scoring is the **grounded Sonnet-5
+judge** (`evals/judge/grounded.py`, R284) — answer / reference / citation
+correctness against the **verbatim Act text** — which is the right instrument
+when gold labels are unavailable.
+
+### Gates
+
+| gate | result |
+| --- | --- |
+| `evals.regenold.runner` (276) | **all 25 categories 100%** |
+| OOS probe (`runner_v2 --local --probe-oos`) | **21/21, 0 leaks** |
+| davidath 476 | byte-identical (the reverts restore the R284-validated text; both arms fire on 0 davidath rows and Stage-2 never runs under `provider=cli`) |
+| touched-suite pytest | 174 pass, incl. the ORIGINAL `test_general_classification_verdict` / `test_r284_answer_v2` assertions restored and passing — mechanical proof the revert lands the validated behaviour exactly |
+
+### The A/B (the merge gate the original commit skipped)
+
+Run on the **real easy batch**, in-process against the live Claude Max wrapper,
+prod Stage-2 env in both arms:
+
+```
+python -m evals.regenold.run_official_batch --label r285-easy --mode easy \
+  --baseline-env REGENOLD_GENERAL_VERDICT_V2=0 --baseline-env REGENOLD_VERIFY_VERDICT=0 \
+  --branch-env  REGENOLD_GENERAL_VERDICT_V2=1 --branch-env  REGENOLD_VERIFY_VERDICT=1
+```
+
+then grade both arms with `evals.judge.grounded`. The flags ship ON only if
+that read holds. Rollback for anything in this round is a single env var.
+
 ## Round 250 — Gemini multi-specialist findings triage: R72 reconcile restore + I1 dead-code fix + G3 live pairwise A/B (2026-06-24)
 
 A Gemini agent supplied 3 specialists' findings + proposed fixes (Antifragile /

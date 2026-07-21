@@ -1555,6 +1555,11 @@ def _engine_cache_key(
             # R284 — the (default-OFF) verify-the-verdict Stage-2 lever; flips the
             # polished answer on classification questions, same cache doctrine.
             "REGENOLD_VERIFY_VERDICT",
+            # R285 — the (default-OFF) softened general-classification draft.
+            # It changes the DETERMINISTIC answer text inside the engine, so it
+            # is cached; without it in the identity a same-process A/B serves the
+            # baseline arm's response to the branch arm (the R263.2 bug).
+            "REGENOLD_GENERAL_VERDICT_V2",
         )
     )
     import json
@@ -3572,15 +3577,33 @@ def _scenario_clamp_budget() -> int:
     return val if val >= 1 else _DEFAULT_SCENARIO_CLAMP
 
 
+#: Prefixes ``_clamp_ref_head`` recognises, longest-first so ``Article `` is
+#: never shadowed by ``Art ``. The wire form is only ever ``Article N`` /
+#: ``Annex X`` (CLAUDE.md hard rule #1, enforced by ``_ARTICLE_OUTPUT_RE`` /
+#: ``_ANNEX_OUTPUT_RE``); the internal ``Art. N`` forms are accepted so the
+#: helper is also safe on engine-side ref lists.
+_CLAMP_HEAD_PREFIXES = ("article ", "annex ", "art. ", "ann. ")
+
+
 def _clamp_ref_head(ref: str) -> str | None:
-    """``Article 50.1`` -> ``Article 50``; ``Annex IV.2.c`` -> ``Annex IV``."""
-    # Robust anti-bias support for multiple reference types and prefixes (Article/Art/Annex/Ann/Recital/Rec)
-    ref_lower = ref.lower().strip()
-    for prefix in ("article ", "annex ", "recital ", "art. ", "art ", "ann. ", "ann ", "rec. ", "rec "):
-        if ref_lower.startswith(prefix):
-            val_part = ref[len(prefix):].split(".")[0].strip()
-            orig_prefix = ref[:len(prefix)]
-            return orig_prefix + val_part
+    """``Article 50.1`` -> ``Article 50``; ``Annex IV.2.c`` -> ``Annex IV``.
+
+    Case-insensitive on the prefix, and the returned head preserves the input's
+    own casing/spelling of that prefix. ``None`` when ``ref`` is not a
+    recognised article/annex citation.
+    """
+    stripped = ref.strip()
+    low = stripped.lower()
+    for prefix in _CLAMP_HEAD_PREFIXES:
+        if low.startswith(prefix):
+            # Index into `stripped`, NOT the raw `ref`: slicing the unstripped
+            # string with an offset measured on the stripped/lowered copy shifts
+            # by the leading-whitespace width and malforms the head
+            # (" Article 50.1" -> " Articlee 50").
+            body = stripped[len(prefix):].split(".")[0].strip()
+            if not body:
+                return None
+            return stripped[: len(prefix)] + body
     return None
 
 
@@ -3603,6 +3626,53 @@ def _question_named_heads(question: str) -> set[str]:
     for m in _CLAMP_Q_ANNEX_RE.finditer(live):
         for rn in re.findall(r"[IVXLC]+", m.group(1)):
             out.add(f"Annex {rn.upper()}")
+    return out
+
+
+def _one_per_head_cap_enabled() -> bool:
+    """R285 — collapse a ref list to ONE citation per article/annex head.
+
+    DEFAULT OFF, and it must stay off until an A/B clears it. Two documented
+    hazards:
+
+    * It keeps the FIRST ref per head, so on a list ordered parent-then-leaf it
+      keeps ``Article 6`` and drops ``Article 6.3`` — discarding the precise
+      sub-point. regenold's own example gold is sub-point form
+      (``["Annex IV.2", "Article 3.1"]``), so this can drop GOLD. That is the
+      R142.1 failure mode, and the local gold-scored gate
+      (``evals.harness.easyhard_ab``) scores at HEAD level, so it is structurally
+      BLIND to the loss — it cannot be the gate for this flag.
+    * It silently pre-empts the shipped R276-D1 granularity policy
+      (``REGENOLD_REF_GRANULARITY``), which already decides parent-vs-leaf.
+
+    Parsed like every other route gate (``.strip().lower()`` against a truthy
+    set) rather than a bare ``== "1"``, so ``true``/``yes``/``on`` do not
+    silently fail.
+    """
+    return os.getenv("REGENOLD_ONE_PER_HEAD_CAP", "0").strip().lower() in {
+        "1",
+        "on",
+        "true",
+        "yes",
+    }
+
+
+def _one_per_head(
+    references: list[str], *, protect: set[str] | None = None
+) -> list[str]:
+    """Keep the first reference per article/annex head, order-preserving.
+
+    ``protect`` is a set of heads the live question explicitly named; every
+    reference under a protected head survives (the R142.1 gold-drop guard).
+    """
+    protect = protect or set()
+    seen: set[str] = set()
+    out: list[str] = []
+    for ref in references:
+        head = _clamp_ref_head(ref) or ref
+        if head in protect or head not in seen:
+            seen.add(head)
+            out.append(ref)
     return out
 
 
@@ -3632,19 +3702,20 @@ def adaptive_ref_clamp(
             return references
         if retrieval_path in ("no_match", "verbatim_exact_text"):
             return references
-        if os.getenv("REGENOLD_ONE_PER_HEAD_CAP", "0").strip() == "1":
-            seen_heads = set()
-            capped = []
-            for r in references:
-                h = _clamp_ref_head(r) or r
-                if h not in seen_heads:
-                    seen_heads.add(h)
-                    capped.append(r)
-            references = capped
         effective = _scenario_clamp_budget() if is_scenario_budget else budget
         if effective <= 0 or len(references) <= effective:
             return references
         named = _question_named_heads(live_question)
+        # R285 — the one-per-head cap is a LAST-RESORT way to get under budget,
+        # not an unconditional filter: it runs only once the list is already
+        # over budget, and it never drops a reference whose head the question
+        # explicitly named. (Shipped as-is it ran before the budget check and
+        # before this gold protection, so it collapsed sub-points even when the
+        # budget had room.) Default OFF pending its own A/B.
+        if _one_per_head_cap_enabled():
+            references = _one_per_head(references, protect=named)
+            if len(references) <= effective:
+                return references
         head = references[:effective]
         tail = references[effective:]
         rescued = [

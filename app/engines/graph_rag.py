@@ -2327,7 +2327,7 @@ def _answer_complete_enabled() -> bool:
 
 
 def _verify_verdict_enabled() -> bool:
-    """R284 — the 'verify-the-verdict' Stage-2 lever, DEFAULT ON.
+    """R284 — the 'verify-the-verdict' Stage-2 lever, DEFAULT OFF.
 
     The st_v4_006 A/B finding: Opus Stage-2 self-corrects a wrong ROUTE in the
     deterministic draft (Annex I -> Annex III) but FAITHFULLY POLISHES a
@@ -2338,10 +2338,16 @@ def _verify_verdict_enabled() -> bool:
     list and OVERRIDE a misclassifying draft — catching every described-not-named
     prohibited practice, not only the patterned three. Balanced so it cannot
     reclassify a legitimate high-risk (Annex III / Article 6) system as prohibited.
-    Stage-2-only -> davidath byte-identical. UNTESTED — needs a live ab_judge A/B
-    (it can also over-correct); ship default-ON only if the A/B holds.
+    Stage-2-only -> davidath byte-identical.
+
+    R285: a prior commit flipped this to default-ON with no A/B, contradicting
+    this docstring and CLAUDE.md hard rule #6. Restored to OFF (the R284-validated
+    state); it is the BRANCH arm of the R285 official-batch A/B and ships ON only
+    if that A/B holds. The failure mode the docstring names is real and expensive:
+    over-correction emits a false 'Prohibited' on a legitimate high-risk system,
+    on the axis (answer correctness) the official scorecard says is our weakest.
     """
-    return _env_enabled("REGENOLD_VERIFY_VERDICT", default="1")
+    return _env_enabled("REGENOLD_VERIFY_VERDICT", default="0")
 
 
 def _detect_classification_topic(question: str) -> dict | None:
@@ -2382,13 +2388,70 @@ def _detect_classification_topic(question: str) -> dict | None:
 # means the described system is neither. The verdict states the framework
 # and the two determining factors (Annex I safety component / Annex III use
 # case) rather than reciting whichever article the user happened to name.
-_GENERAL_CLASSIFICATION_VERDICT = (
-    "Evaluate the described system against Article 5 prohibited practices "
-    "and Article 6 high-risk classification criteria. It is high-risk if it "
-    "is a safety component of a product regulated under Annex I (such as a medical "
-    "device under the MDR) or falls within an Annex III use case. Otherwise, it is "
-    "subject mainly to Article 50 transparency duties."
+# The R284-validated text — the shipped DEFAULT. Its one known weakness is the
+# confident opening assertion that the system is "not among the practices
+# prohibited under Article 5": when the classifier misses a practice that is
+# DESCRIBED rather than named, Opus Stage-2 faithfully polishes that wrong
+# verdict (R284 checkpoint section 4). Softening it is the R285 branch arm below.
+_GENERAL_CLASSIFICATION_VERDICT_LEGACY = (
+    "The system described is not among the practices prohibited under Article 5 "
+    "(social scoring, untargeted facial-image scraping, manipulative or "
+    "exploitative techniques, and the other exhaustively-listed bans). Whether it "
+    "is high-risk turns on Article 6: it is high-risk only if it is a safety "
+    "component of a product regulated under Annex I (for example a medical device "
+    "under the MDR or IVDR) or falls within one of the Annex III use cases. "
+    "Otherwise it is limited- or minimal-risk, subject mainly to the Article 50 "
+    "transparency duties where it interacts directly with people."
 )
+
+# R285 branch arm — the R284-checkpoint-section-6 "general-fallback softening",
+# implemented so it stays an ANSWER. It drops the confident "not prohibited"
+# assertion (making the Article 5 point CONDITIONAL, so a described-not-named
+# prohibited practice no longer has a confident-wrong draft to polish) while
+# keeping every property the legacy text earned:
+#   * declarative third-person regulator voice, never an instruction to the reader;
+#   * a verdict-shaped lead that states the operative test;
+#   * the tier words "limited- or minimal-risk" (dropped by the reverted commit);
+#   * the Article 50 duty kept CONDITIONAL on direct interaction with people —
+#     it does not apply to every non-high-risk system;
+#   * every sentence cite-anchored, so the soft-cap cannot drop one.
+_GENERAL_CLASSIFICATION_VERDICT_V2 = (
+    "Classification turns on Article 6: the system is high-risk if it is a safety "
+    "component of a product regulated under Annex I (for example a medical device "
+    "under the MDR or IVDR) or if its intended use falls within one of the Annex III "
+    "use cases. If neither applies, and the system is not one of the practices "
+    "exhaustively prohibited by Article 5, it is limited- or minimal-risk, subject "
+    "mainly to the Article 50 transparency duties where it interacts directly with "
+    "people."
+)
+
+
+def _general_verdict_v2_enabled() -> bool:
+    """R285 — the softened general-classification draft, DEFAULT OFF.
+
+    The R284 checkpoint (section 6) queued this softening but required an A/B
+    before ship ("risky on minimal-risk rows"). A prior commit shipped a
+    softening with no A/B AND in a form that was no longer an answer (it opened
+    "Evaluate the described system against ..." — a second-person instruction to
+    the reader on a question that asked for a classification, on the axis the
+    official scorecard says is our weakest). That is reverted; the softening is
+    re-landed here properly gated as the R285 A/B branch arm.
+    """
+    return _env_enabled("REGENOLD_GENERAL_VERDICT_V2", default="0")
+
+
+def _general_classification_verdict_text() -> str:
+    """The general-classification draft for the active arm."""
+    return (
+        _GENERAL_CLASSIFICATION_VERDICT_V2
+        if _general_verdict_v2_enabled()
+        else _GENERAL_CLASSIFICATION_VERDICT_LEGACY
+    )
+
+
+#: Back-compat alias — the shipped default text. Read the module attribute (not
+#: this constant) on any path that must honour the A/B flag.
+_GENERAL_CLASSIFICATION_VERDICT = _GENERAL_CLASSIFICATION_VERDICT_LEGACY
 
 _GENERAL_CLASSIFICATION_REFS = ["Art. 5", "Art. 6", "Annex III", "Annex I", "Art. 50"]
 
@@ -2444,7 +2507,7 @@ def _general_classification_verdict(question: str) -> dict | None:
             return None
     return {
         "name": "general_classification",
-        "answer": _GENERAL_CLASSIFICATION_VERDICT,
+        "answer": _general_classification_verdict_text(),
         "refs": list(_GENERAL_CLASSIFICATION_REFS),
     }
 

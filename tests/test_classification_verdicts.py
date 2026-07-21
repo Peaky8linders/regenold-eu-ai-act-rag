@@ -181,7 +181,16 @@ class TestDetectClassificationTopic:
         answer = topic["answer"]
         # Category point stated ONCE (sentence 1; no redundant restatement).
         assert "not categorically prohibited" in answer
-        # Matches current answer text.
+        # R285 — this test previously required the answer to ALSO name Article
+        # 5(1)(h). That expectation is SUPERSEDED, deliberately: the R143
+        # cross-tier rule re-shaped this answer to map emotion recognition
+        # across its three tiers, and 5(1)(h) bans a DIFFERENT practice, so
+        # naming it here is a digression that costs reference precision
+        # (anti-R281). The assertions below pin the regulatory facts the answer
+        # must carry instead, so this remains a content-regression guard:
+        #   * the Article 5 ban is confined to workplaces / educational settings;
+        #   * elsewhere the system is high-risk under Annex III.1(c);
+        #   * and it triggers the Article 50(3) deployer transparency duty.
         assert "Article 5 only applies in workplaces" in answer
         assert "Annex III.1(c)" in answer
         assert "Article 50(3)" in answer
