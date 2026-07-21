@@ -381,3 +381,37 @@ class TestR285GeneralVerdictV2Arm:
         assert a is not None and b is not None
         assert a["answer"] != b["answer"]
         assert a["refs"] == b["refs"], "the arm changes prose only, never refs"
+
+
+class TestR285SubstringInterceptHijack:
+    """R285.2 — a curated AUTHORITATIVE intercept must not fire on a question
+    that merely MENTIONS its topic.
+
+    `_detect_robotic_surgery_inquiry` (added by the Gemini commit 75e605d) was a
+    bare substring match. Because the intercept is registered as curated
+    authoritative it SKIPS Stage-2 and is EXEMPT from the R276-R285 reference
+    precision passes, so a hijacked question shipped a canned answer to a
+    different question with no way for the model to recover.
+    """
+
+    def test_fires_on_a_genuine_classification_ask(self) -> None:
+        from app.engines.graph_rag import _detect_robotic_surgery_inquiry as d
+
+        assert d("Is a robotic surgery system high-risk under the EU AI Act?")
+        assert d("Is a surgical robot classified as high-risk?")
+        assert d("Are surgical robots prohibited or high-risk?")
+
+    def test_does_not_hijack_a_different_question_about_the_same_system(self) -> None:
+        from app.engines.graph_rag import _detect_robotic_surgery_inquiry as d
+
+        # Each of these returned the canned "Yes ... high-risk under Article
+        # 6(1)" verdict before the gate was added.
+        assert not d(
+            "What data governance requirements under Article 10 apply to a "
+            "robotic surgery system?"
+        )
+        assert not d(
+            "Who counts as the provider of a surgical robot when a hospital "
+            "fine-tunes it?"
+        )
+        assert not d("How long must logs be retained for a robotic surgery system?")

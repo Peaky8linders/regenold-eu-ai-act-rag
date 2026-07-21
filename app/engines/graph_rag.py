@@ -3975,17 +3975,35 @@ def _detect_user_information_inquiry(question: str) -> bool:
 
 
 def _detect_robotic_surgery_inquiry(question: str) -> bool:
-    """True when the question targets robotic surgery / surgical robot high-risk classification."""
+    """True when the question asks whether robotic surgery / a surgical robot is high-risk.
+
+    R285.2 — this used to be a BARE SUBSTRING match on "robotic surgery" /
+    "surgical robot". Because the intercept is registered as a CURATED
+    AUTHORITATIVE verdict, that made it hijack every question that merely
+    MENTIONED a surgical robot and answer a different one, with Stage-2 skipped
+    so the model could not rescue it and the R276-R285 reference-precision
+    passes exempted. Measured before the fix::
+
+        "What data governance requirements under Article 10 apply to a robotic
+         surgery system?"        -> "Yes. ... high-risk under Article 6(1) ..."
+                                    (Article 10 not even cited)
+        "Who counts as the provider of a surgical robot when a hospital
+         fine-tunes it?"         -> the same canned high-risk text
+                                    (the answer is Article 25)
+
+    The topic is now gated the same way every other curated classification
+    topic is (``_detect_classification_topic`` -> ``_is_classification_question``):
+    the question must actually be asking for a risk-tier verdict.
+    """
     raw_q = question or ""
     _FLATTEN_MARKER = "Latest question:\n"
     idx = raw_q.rfind(_FLATTEN_MARKER)
     if idx >= 0:
         raw_q = raw_q[idx + len(_FLATTEN_MARKER):]
     q = raw_q.strip().lower()
-    return bool(
-        "robotic surgery" in q
-        or "surgical robot" in q
-    )
+    if not ("robotic surgery" in q or "surgical robot" in q):
+        return False
+    return bool(_is_classification_question(q) and _RISK_VERDICT_RE.search(q))
 
 
 # R275 (Antifragile Q8) — pure single-term Article 3 definitional question.
