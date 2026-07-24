@@ -34,7 +34,26 @@ from evals.bench import metrics as bench_metrics
 from evals.bench._http_retry import post_json_with_retry
 from evals.regenold.scenarios_multiturn_v2 import SCENARIOS as MULTITURN_V2
 from evals.regenold.scenarios_oos import OOS_CATEGORIES, OOS_SCENARIOS, OOSScenario
+from evals.regenold.scenarios_oos_holdout import (
+    OOS_HOLDOUT_CATEGORIES,
+    OOS_HOLDOUT_SCENARIOS,
+)
 from evals.regenold.scenarios_tricky_v2 import SCENARIOS as TRICKY_V2
+
+
+# R289 — selectable OOS suite. ``legacy`` is the saturated regression set
+# (21/21 every round because every row was authored to patch a specific
+# incident); ``holdout`` is the never-tuned-against generalisation set. They
+# answer different questions and MUST be reported separately — averaging them
+# hides the gap that matters. See scenarios_oos_holdout's module docstring.
+OOS_SUITES: dict[str, tuple[tuple[OOSScenario, ...], tuple[str, ...]]] = {
+    "legacy": (OOS_SCENARIOS, OOS_CATEGORIES),
+    "holdout": (OOS_HOLDOUT_SCENARIOS, OOS_HOLDOUT_CATEGORIES),
+    "all": (
+        OOS_SCENARIOS + OOS_HOLDOUT_SCENARIOS,
+        OOS_CATEGORIES + OOS_HOLDOUT_CATEGORIES,
+    ),
+}
 
 
 _USER_AGENT = "regenold-eu-ai-act-rag/runner-v2"
@@ -685,6 +704,7 @@ def run_probe_oos(
     limit: int | None,
     verbose: bool,
     use_local: bool = False,
+    suite: str = "legacy",
 ) -> list[dict[str, Any]]:
     """Run every OOS scenario against ``endpoint`` (or local TestClient).
 
@@ -692,8 +712,18 @@ def run_probe_oos(
     live wire without overwhelming the partner rate-limit. Local mode
     serialises because TestClient already runs the FastAPI app
     in-process; concurrency there buys nothing.
+
+    R289 — ``suite`` selects ``legacy`` (the saturated regression set),
+    ``holdout`` (never tuned against) or ``all``. Defaults to ``legacy`` so
+    every existing caller keeps its exact prior behaviour.
     """
-    items = OOS_SCENARIOS[:limit] if limit else OOS_SCENARIOS
+    try:
+        scenarios, _cats = OOS_SUITES[suite]
+    except KeyError:
+        raise SystemExit(
+            f"unknown --oos-suite {suite!r}; choose from {sorted(OOS_SUITES)}"
+        ) from None
+    items = scenarios[:limit] if limit else scenarios
     results: list[dict[str, Any]] = [None] * len(items)  # type: ignore[list-item]
     completed = 0
     lock = threading.Lock()
@@ -763,6 +793,7 @@ def run_probe_oos_only(
     verbose: bool = False,
     out_dir: Path | None = None,
     use_local: bool = False,
+    suite: str = "legacy",
 ) -> dict[str, Any]:
     """Top-level runner for the ``--probe-oos`` mode.
 
@@ -770,11 +801,14 @@ def run_probe_oos_only(
     only the curated OOS regression set. Writes its sidecar to
     ``probe-oos-<label>.json`` (separate filename so it doesn't collide
     with a same-day v2 run).
+
+    R289 — ``suite`` picks which OOS corpus to run. The sidecar records it so
+    a 100% and a 50% run are never mistaken for each other after the fact.
     """
     started_at = _now_iso()
     rows = run_probe_oos(
         endpoint, api_key, timeout, concurrency, limit, verbose,
-        use_local=use_local,
+        use_local=use_local, suite=suite,
     )
     finished_at = _now_iso()
 
@@ -785,6 +819,9 @@ def run_probe_oos_only(
         "mode": "probe-oos-local" if use_local else (
             "probe-oos-live" if endpoint.startswith("http") else "probe-oos"
         ),
+        # R289 — which corpus produced these numbers. Without this a stored
+        # "21/21" and a stored "17/34" are indistinguishable six weeks later.
+        "oos_suite": suite,
         "endpoint": endpoint,
         "started_at": started_at,
         "finished_at": finished_at,
@@ -806,7 +843,10 @@ def run_probe_oos_only(
 def _format_probe_oos(payload: dict[str, Any]) -> str:
     out: list[str] = []
     out.append("=" * 78)
-    out.append(f"V2 --probe-oos runner — label={payload['label']!r}")
+    out.append(
+        f"V2 --probe-oos runner — label={payload['label']!r} "
+        f"suite={payload.get('oos_suite', 'legacy')!r}"
+    )
     out.append(f"endpoint: {payload['endpoint']}")
     out.append(f"mode: {payload['mode']}")
     out.append("=" * 78)
@@ -1008,6 +1048,20 @@ def main(argv: list[str] | None = None) -> int:
             "Exit code is non-zero when any scenario leaks scope."
         ),
     )
+    # R289 — which OOS corpus. `legacy` is the saturated regression set that
+    # has scored 21/21 for many rounds; `holdout` is the never-tuned-against
+    # generalisation set. Default stays `legacy` so no existing invocation
+    # changes meaning.
+    parser.add_argument(
+        "--oos-suite",
+        choices=sorted(OOS_SUITES),
+        default="legacy",
+        help=(
+            "OOS corpus to run: 'legacy' (regression, saturated), "
+            "'holdout' (generalisation, never tuned against), or 'all'. "
+            "Default: legacy."
+        ),
+    )
     # R56-B — CI-friendly transport. Skips live HTTPS entirely and
     # runs against ``app.main:app`` via FastAPI's TestClient.
     parser.add_argument(
@@ -1053,6 +1107,7 @@ def main(argv: list[str] | None = None) -> int:
             limit=args.oos_limit,
             verbose=args.verbose,
             use_local=args.local,
+            suite=args.oos_suite,
         )
         print(_format_probe_oos(payload))
         return 1 if payload["probe_oos"]["summary"]["hard_fail"] else 0
