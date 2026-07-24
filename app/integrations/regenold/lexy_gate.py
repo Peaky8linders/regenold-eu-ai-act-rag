@@ -278,6 +278,7 @@ def _safety_llm_candidates() -> list[tuple[object, str]]:
     singleton's init failure can't drop the rest.
     """
     from app.llm.openai_wrapper_provider import (  # noqa: PLC0415
+        default_groq_model,
         get_gemini_provider,
         get_groq_provider,
         get_mistral_provider,
@@ -291,7 +292,7 @@ def _safety_llm_candidates() -> list[tuple[object, str]]:
     out: list[tuple[object, str]] = []
     for enabled_fn, getter, env_key, default_model in (
         (is_groq_provider_enabled, get_groq_provider,
-         "REGENOLD_SAFETY_MODEL_GROQ", "openai/gpt-oss-120b"),
+         "REGENOLD_SAFETY_MODEL_GROQ", default_groq_model()),
         (is_gemini_provider_enabled, get_gemini_provider,
          "REGENOLD_SAFETY_MODEL_GEMINI", "gemini-2.5-flash"),
         (is_mistral_provider_enabled, get_mistral_provider,

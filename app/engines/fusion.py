@@ -108,13 +108,48 @@ logger = logging.getLogger(__name__)
 
 # Panel registry: label -> (model id, transport key). The transport key
 # selects the pooled provider singleton + its enablement gate.
-_PANEL_REGISTRY: dict[str, tuple[str, str]] = {
-    "sonnet": ("claude-opus-4-8", "wrapper"),
-    "opus": ("claude-opus-4-8", "wrapper"),
-    "groq": (os.getenv("REGENOLD_FUSION_MODEL_GROQ", "openai/gpt-oss-120b"), "groq"),
-    "mistral": ("mistral-large-latest", "mistral"),
-    "gemini": ("gemini-2.5-flash", "gemini"),
-}
+# R289 — this was a module-level dict literal whose "groq" entry called
+# ``os.getenv`` INSIDE it, so the env was read exactly once at import. An
+# in-process A/B arm (easyhard_ab mutates os.environ for both arms) could never
+# move it: by the time the harness set the var, the dict was already built. An
+# env knob that cannot be varied is not a knob. It is now a function, read
+# per call.
+#
+# 8145be2's blanket model swap also pointed the seat LABELLED "sonnet" at
+# ``claude-opus-4-8``. Two consequences, neither of them stated:
+#   1. The label lied — ``_DEFAULT_PANEL`` is written in LABELS
+#      ("sonnet", "groq", "mistral"), so the code read as a diverse panel while
+#      two of the registry's own entries had collapsed onto one model.
+#   2. ``_DEFAULT_JUDGE_MODEL`` became ``claude-opus-4-8`` too, i.e. THE JUDGE
+#      BECAME A PANEL MEMBER — grading a slate containing its own draft. That is
+#      the self-evaluation bias the panel exists to avoid.
+# Restoring the seat to a Sonnet model fixes the label AND removes the judge
+# from the panel in one move. The Opus JUDGE is kept — that part of 8145be2 was
+# deliberate and stated in its commit message.
+_PANEL_SONNET_MODEL = "claude-sonnet-4-6"
+
+
+def _panel_registry() -> dict[str, tuple[str, str]]:
+    """label -> (model id, transport key), resolved fresh on every call."""
+    from app.llm.openai_wrapper_provider import (  # noqa: PLC0415
+        default_groq_model,
+    )
+
+    return {
+        "sonnet": (
+            os.getenv("REGENOLD_FUSION_MODEL_SONNET", "").strip()
+            or _PANEL_SONNET_MODEL,
+            "wrapper",
+        ),
+        "opus": ("claude-opus-4-8", "wrapper"),
+        "groq": (
+            os.getenv("REGENOLD_FUSION_MODEL_GROQ", "").strip()
+            or default_groq_model(),
+            "groq",
+        ),
+        "mistral": ("mistral-large-latest", "mistral"),
+        "gemini": ("gemini-2.5-flash", "gemini"),
+    }
 
 _DEFAULT_PANEL = ("sonnet", "groq", "mistral")
 # Opus 4.8 is the judge (fast, tone-calibrated, picks the most concise +
@@ -265,7 +300,7 @@ def _enabled_panel(complex_question: bool = False) -> list[tuple[str, str, str]]
     out: list[tuple[str, str, str]] = []
     seen: set[str] = set()
     for label in labels:
-        spec = _PANEL_REGISTRY.get(label)
+        spec = _panel_registry().get(label)
         if spec is None or label in seen:
             continue
         model, transport = spec
@@ -502,7 +537,7 @@ def _deterministic_judge(user: str, drafts: list[tuple[str, str]]) -> str | None
     for label, text in sorted(drafts, key=lambda d: d[0]):
         if not text or not text.strip() or _looks_truncated(text):
             continue
-        transport = _PANEL_REGISTRY.get(label, ("", ""))[1]
+        transport = _panel_registry().get(label, ("", ""))[1]
         s = _score_draft(text, allowed, transport)
         if s > best_score:
             best_score, best_text = s, text.strip()

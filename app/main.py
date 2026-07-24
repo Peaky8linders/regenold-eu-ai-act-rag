@@ -728,7 +728,7 @@ def _deploy_identity() -> dict[str, str]:
 
 @app.get("/healthz")
 def healthz() -> dict[str, object]:
-    from app.llm.openai_wrapper_provider import is_groq_provider_enabled, get_groq_provider, OpenAIWrapperRequest
+    from app.llm.openai_wrapper_provider import is_groq_provider_enabled, get_groq_provider, OpenAIWrapperRequest, default_groq_model
     fallback_status = None
     fallback_error = None
     fallback_text = None
@@ -742,7 +742,7 @@ def healthz() -> dict[str, object]:
                 OpenAIWrapperRequest(
                     system="You are a regulation expert. Answer concisely.",
                     user="What is a general purpose AI model under the AI Act?",
-                    model="openai/gpt-oss-120b",
+                    model=default_groq_model(),
                     max_tokens=1024,
                     temperature=0.0,
                 )
