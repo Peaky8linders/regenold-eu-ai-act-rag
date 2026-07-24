@@ -54,7 +54,7 @@ _WRAPPER_CLI_ERROR_SENTINELS: tuple[str, ...] = (
 class OpenAIWrapperRequest(BaseModel):
     system: str = ""
     user: str = Field(min_length=1)
-    model: str = "claude-opus-4-8"
+    model: str = "claude-opus-5"
     max_tokens: int = 1024
     temperature: float = 0.0
     timeout_seconds: float | None = None

@@ -1989,7 +1989,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     else if (/groq|llama|qwen/i.test(n)) detectedModel = 'groq';
                 });
             }
-            if (!detectedModel && trace.stage2_polish === true) detectedModel = 'claude-opus-4-8'; // default
+            if (!detectedModel && trace.stage2_polish === true) detectedModel = 'claude-opus-5'; // default
             if (!detectedModel && trace.stage2_polish === false) detectedModel = 'claude-sonnet-5';
 
             function modelClass(m) {

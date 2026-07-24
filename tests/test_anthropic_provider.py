@@ -344,7 +344,7 @@ class TestAnthropicCompleteFailSoft:
         monkeypatch.setattr(
             settings.graph_rag, "api_key", _SS("sk-ant-fake"), raising=True
         )
-        # R103/R131.2: complex_model defaults to claude-opus-4-8 and
+        # R103/R131.2: complex_model defaults to claude-opus-5 and
         # complex_thinking_tokens to 1024 (modest extended thinking ON).
         # Override BOTH on this test only (opus-4-7 + 2500) so the swap +
         # extended-thinking surface under test fires deterministically.

@@ -90,7 +90,7 @@ def _call_llm(
 
     prov = get_openai_wrapper_provider()
     # Use a faster reasoning model to minimize latency.
-    model = os.getenv("REGENOLD_LOGIC_RAG_MODEL", "claude-opus-4-8")
+    model = os.getenv("REGENOLD_LOGIC_RAG_MODEL", "claude-opus-5")
     # R117 — bound LogicRAG latency. The previous 120s timeout could hang a
     # request for two minutes; the route budget is sub-20s. Configurable via
     # REGENOLD_LOGIC_RAG_TIMEOUT (default 15s). On timeout the call fails soft

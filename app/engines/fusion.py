@@ -141,7 +141,7 @@ def _panel_registry() -> dict[str, tuple[str, str]]:
             or _PANEL_SONNET_MODEL,
             "wrapper",
         ),
-        "opus": ("claude-opus-4-8", "wrapper"),
+        "opus": ("claude-opus-5", "wrapper"),
         "groq": (
             os.getenv("REGENOLD_FUSION_MODEL_GROQ", "").strip()
             or default_groq_model(),
@@ -154,7 +154,7 @@ def _panel_registry() -> dict[str, tuple[str, str]]:
 _DEFAULT_PANEL = ("sonnet", "groq", "mistral")
 # Opus 4.8 is the judge (fast, tone-calibrated, picks the most concise +
 # correct draft). Opus 4.8 rides the PANEL for complex questions as well.
-_DEFAULT_JUDGE_MODEL = "claude-opus-4-8"
+_DEFAULT_JUDGE_MODEL = "claude-opus-5"
 
 # R124 — transports that hit their OWN fast serverless endpoint (NOT the single
 # slow Claude-Max wrapper). They answer in genuine parallel and finish fast, so

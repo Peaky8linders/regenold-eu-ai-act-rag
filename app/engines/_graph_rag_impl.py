@@ -490,7 +490,7 @@ def _openai_wrapper_complete_for_graph_rag(
         stage2_model = ""
         thinking_budget = 0
         standard_thinking = 0
-    base_model = configured or "claude-opus-4-8"
+    base_model = configured or "claude-opus-5"
     # R139 — Stage-2 answer model routing (operator directive: ALWAYS Opus 4.8
     # for the Stage-2 answer, moderate thinking on simple questions, extended
     # thinking on complex ones). ``is_stage2`` keys off the caller's
@@ -506,9 +506,9 @@ def _openai_wrapper_complete_for_graph_rag(
     if complex_question and complex_model:
         model = complex_model
     elif is_stage2:
-        model = complex_model or stage2_model or "claude-opus-4-8"
+        model = complex_model or stage2_model or "claude-opus-5"
         if not model or "opus" not in model.lower():
-            model = "claude-opus-4-8"
+            model = "claude-opus-5"
     else:
         model = base_model
 
@@ -831,7 +831,7 @@ def _anthropic_complete_for_graph_rag(
         stage2_model = ""
         thinking_budget = 0
         standard_thinking = 0
-    base_model = configured or "claude-opus-4-8"
+    base_model = configured or "claude-opus-5"
     # R139 — mirror the wrapper path: Stage-2 answer is ALWAYS Opus 4.8.
     # complex Stage-2 → ``complex_model`` (Opus); standard Stage-2 →
     # ``stage2_model`` (Opus); Stage-1 parse / other → ``base_model`` (Sonnet).
@@ -840,9 +840,9 @@ def _anthropic_complete_for_graph_rag(
     if complex_question and complex_model:
         model = complex_model
     elif is_stage2:
-        model = complex_model or stage2_model or "claude-opus-4-8"
+        model = complex_model or stage2_model or "claude-opus-5"
         if not model or "opus" not in model.lower():
-            model = "claude-opus-4-8"
+            model = "claude-opus-5"
     else:
         model = base_model
 
@@ -4202,7 +4202,7 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
                 "the human assessment, or it performs a preparatory task. Under Article 6(3), this exception "
                 "never applies where the system profiles natural persons. The provider "
                 "must document the assessment before placing the system on the market and "
-                "register it under Article 71(2)."
+                "register it under Article 49(2)."
             ),
             "refs": ["Art. 6", "Art. 6.3", "Art. 71.2"],
         }
@@ -4695,7 +4695,7 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
                 "system documentation (Article 17), the documentation of any "
                 "changes approved by notified bodies, the decisions and other "
                 "documents issued by notified bodies, and the EU declaration of "
-                "conformity (Article 48). Separately, under Article 19 the "
+                "conformity (Article 47). Separately, under Article 19 the "
                 "automatically generated logs must be kept for a period "
                 "appropriate to the intended purpose, of at least six months."
             ),
@@ -6727,7 +6727,7 @@ def _claude_max_enhance_answer(
             try:
                 from app.integrations.regenold.reasoning_trace import record_note
                 from app.config import settings
-                _model = "claude-opus-4-8"
+                _model = "claude-opus-5"
                 record_note(f"stage2_model={_model} complex={complex_q}")
             except Exception: pass
             text_raw = _anthropic_complete_for_graph_rag(

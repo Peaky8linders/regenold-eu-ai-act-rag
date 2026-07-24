@@ -30,7 +30,7 @@ class GraphRAGSettings(BaseSettings):
     The Stage-2 ANSWER is governed by :attr:`stage2_model`, not this field.
     Override per-deploy with ``P2P_GRAPH_RAG_MODEL``."""
 
-    stage2_model: str = "claude-opus-4-8"
+    stage2_model: str = "claude-opus-5"
     """Model for the Stage-2 ANSWER (the user-facing legal prose) on the
     STANDARD (simple / low-complexity) path — the ~80% of questions the
     complexity gate does NOT flag. Complex questions use :attr:`complex_model`
@@ -160,7 +160,7 @@ class GraphRAGSettings(BaseSettings):
     # ``P2P_GRAPH_RAG_COMPLEX_MODEL=claude-fable-5`` to restore the R279
     # Fable tier, or ``=`` (empty) to disable the swap and keep every
     # Stage-2 call on the standard tier.
-    complex_model: str = "claude-opus-4-8"
+    complex_model: str = "claude-opus-5"
     """Model name for the complex-question path. Default:
     ``claude-opus-4-8`` (R280 revert of R279 — Fable 5's only win was on a
     zero-headroom axis and it cost 20-30 s of latency on a scored weak

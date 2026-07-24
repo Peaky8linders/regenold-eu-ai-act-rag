@@ -68,8 +68,8 @@ def test_default_judge_is_sonnet(monkeypatch):
 
 
 def test_judge_model_env_override(monkeypatch):
-    monkeypatch.setenv("REGENOLD_FUSION_JUDGE_MODEL", "claude-opus-4-8")
-    assert fusion._judge_model() == "claude-opus-4-8"
+    monkeypatch.setenv("REGENOLD_FUSION_JUDGE_MODEL", "claude-opus-5")
+    assert fusion._judge_model() == "claude-opus-5"
 
 
 # ── Mistral provider wiring ─────────────────────────────────────────────────────
@@ -131,7 +131,7 @@ def test_enabled_panel_swaps_sonnet_for_opus_on_complex(monkeypatch):
     complex_ = [p[0] for p in fusion._enabled_panel(complex_question=True)]
     assert complex_ == ["opus", "groq", "mistral"]  # SWAP — Sonnet→Opus
     assert "sonnet" not in complex_  # swapped out, NOT added alongside (R124)
-    assert ("opus", "claude-opus-4-8", "wrapper") in fusion._enabled_panel(
+    assert ("opus", "claude-opus-5", "wrapper") in fusion._enabled_panel(
         complex_question=True
     )
     # Exactly ONE wrapper-bound member on complex (no Sonnet+Opus double tunnel).
@@ -346,7 +346,7 @@ def test_fusion_complete_complex_adds_opus_panel_member(monkeypatch):
 
     wrapper = _FakeProvider({
         "claude-sonnet-4-6": _track,
-        "claude-opus-4-8": _track,
+        "claude-opus-5": _track,
     })
     groq = _FakeProvider({
         "qwen/qwen3.6-27b": lambda r: OpenAIWrapperResponse(text="draft groq"),
@@ -360,7 +360,7 @@ def test_fusion_complete_complex_adds_opus_panel_member(monkeypatch):
         system="SYS", user="QUESTION: x", max_tokens=512, complex_question=True
     )
     assert out is not None
-    assert "claude-opus-4-8" in seen_models  # opus answered as a panel member
+    assert "claude-opus-5" in seen_models  # opus answered as a panel member
     assert "claude-sonnet-4-6" in seen_models  # sonnet judged (FUSION JUDGE call)
 
 
@@ -379,7 +379,7 @@ def test_engine_cache_key_includes_fusion_flag(monkeypatch):
 def test_engine_cache_key_includes_judge_model(monkeypatch):
     from app.routes.regenold import _engine_cache_key
 
-    monkeypatch.setenv("REGENOLD_FUSION_JUDGE_MODEL", "claude-opus-4-8")
+    monkeypatch.setenv("REGENOLD_FUSION_JUDGE_MODEL", "claude-opus-5")
     k_a = _engine_cache_key("q", None)
     monkeypatch.setenv("REGENOLD_FUSION_JUDGE_MODEL", "claude-sonnet-4-6")
     k_b = _engine_cache_key("q", None)
@@ -444,7 +444,7 @@ def test_fusion_complete_gate_complex_fires_complex(monkeypatch):
         "claude-sonnet-4-6": _sonnet_script(
             panel_text="draft", judge_resp=OpenAIWrapperResponse(text="Final selected answer."),
         ),
-        "claude-opus-4-8": lambda r: OpenAIWrapperResponse(text="opus draft"),
+        "claude-opus-5": lambda r: OpenAIWrapperResponse(text="opus draft"),
     })
     ok = _FakeProvider({
         "qwen/qwen3.6-27b": lambda r: OpenAIWrapperResponse(text="groq draft"),
@@ -652,10 +652,10 @@ class TestR131_3FusionThinking:
                 thinking="Reasoning: the question asks about GPAI systemic risk; "
                          "Article 51 sets the 10^25 FLOPs threshold and the "
                          "Commission designation route.",
-                model="claude-opus-4-8",
+                model="claude-opus-5",
             )
 
-        wrapper = _FakeProvider({"claude-opus-4-8": _opus_panel})
+        wrapper = _FakeProvider({"claude-opus-5": _opus_panel})
         groq = _FakeProvider({
             "qwen/qwen3.6-27b": lambda r: OpenAIWrapperResponse(
                 text="GPAI is systemic under Article 51."
@@ -700,9 +700,9 @@ class TestR131_3FusionThinking:
 
         def _opus_panel(req):
             seen_headers.update(req.extra_headers or {})
-            return OpenAIWrapperResponse(text="Art 51 systemic GPAI.", model="claude-opus-4-8")
+            return OpenAIWrapperResponse(text="Art 51 systemic GPAI.", model="claude-opus-5")
 
-        wrapper = _FakeProvider({"claude-opus-4-8": _opus_panel})
+        wrapper = _FakeProvider({"claude-opus-5": _opus_panel})
         groq = _FakeProvider({
             "qwen/qwen3.6-27b": lambda r: OpenAIWrapperResponse(text="Art 51.")
         })

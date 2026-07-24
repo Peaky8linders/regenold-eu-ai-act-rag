@@ -880,7 +880,7 @@ def healthz_llm() -> dict[str, object]:
         probe_model = (
             os.getenv("REGENOLD_HEALTHZ_PROBE_MODEL", "").strip()
             or settings.graph_rag.model
-            or "claude-opus-4-8"
+            or "claude-opus-5"
         )
         # Probe timeout. The warm wrapper round-trip is ~4 s, but a
         # cold Railway container's first call after a deploy stacks cold
