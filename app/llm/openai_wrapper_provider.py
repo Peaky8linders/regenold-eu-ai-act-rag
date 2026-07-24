@@ -603,6 +603,57 @@ _GROQ_DEFAULT_BASE = "https://api.groq.com/openai/v1"
 _GROQ_SINGLETON: _OpenAIWrapperProvider | None = None
 _GROQ_SINGLETON_LOCK = threading.Lock()
 
+# R289 — the single source of truth for "which Groq model do we call".
+#
+# 8145be2 changed the default from ``qwen/qwen3.6-27b`` to ``groq/compound`` at
+# EIGHT independent call sites (Stage-0 intent, Stage-1 parse, Stage-2
+# synthesis, the wrapper-failure auto-fallback, the fusion panel, the safety
+# gate, the general-assistant path and the multi-turn denoiser) plus a hardcoded
+# ninth in ``/healthz``. Every one of them broke.
+#
+# The evidence is a controlled before/after on the SAME production probe, which
+# sends a ~50-char system prompt and a ~55-char user prompt:
+#
+#   commit 62ca878  ->  {"status": "ok",    "model": "qwen/qwen3.6-27b"}
+#   commit 8145be2  ->  {"status": "error", "model": "groq/compound",
+#                        "error": 'api_status_413: ... "request_too_large"'}
+#   commit 348ea6a  ->  still 413
+#
+# A ~100-character request cannot be "too large" against a 131,072-token
+# context window, so this is not our payload. Groq's own documentation for the
+# compound system says why: "Rate limits for groq/compound are determined by the
+# rate limits of the individual models that comprise them." compound is an
+# agentic SYSTEM (router + built-in web-search/code-exec tools + synthesis
+# model), not a drop-in chat-completion model, and ONE external call fans out
+# into several internal model calls that all draw on the same account budget.
+# Groq reuses HTTP 413 / ``request_too_large`` for "your remaining rate budget
+# cannot cover this request", which is why a trivial prompt trips it.
+#
+# Two consequences worth stating, because both are tempting wrong turns:
+#   * Truncation knobs cannot fix this. The existing 11,000-char system+user
+#     truncation in graph_rag would not have fired on a 100-char probe.
+#   * Raising max_tokens makes it worse, not better — 8145be2 also took the
+#     fallback completion cap 1024 -> 4096 on the premise that compound
+#     "supports larger context", conflating the context window with the
+#     completion cap and with the rate budget that is actually binding.
+#
+# So the default returns to the live-validated model, and compound stays
+# reachable for anyone who wants to debug it — one knob instead of eight
+# divergent literals.
+_GROQ_LIVE_VALIDATED_MODEL = "qwen/qwen3.6-27b"
+
+
+def default_groq_model() -> str:
+    """Model id for every Groq call that has no more specific override.
+
+    Read per-call (never at import) so an in-process A/B arm can actually
+    change it — see the R263.2 note on ``_engine_cache_key``.
+    """
+    return (
+        os.getenv("REGENOLD_GROQ_DEFAULT_MODEL", "").strip()
+        or _GROQ_LIVE_VALIDATED_MODEL
+    )
+
 
 def is_groq_provider_enabled() -> bool:
     """True iff general Groq provider is enabled.

@@ -1335,6 +1335,24 @@ def _engine_cache_key(
             # "gates go in the key" — it is "anything that changes engine output
             # goes in the key", and a numeric knob is not exempt.
             "REGENOLD_GROUNDING_REF_CHARS",
+            # R289 — every Groq model selector. 8145be2 introduced these as
+            # per-call env overrides (they were hardcoded literals before, so
+            # no cache-key gap could exist) and registered none of them. Each
+            # one picks the model that writes text landing in the cached
+            # ``GraphRAGResponse.answer``, so two arms differing only in a model
+            # id hashed identically — the same R263.2 defect R288.1 had just
+            # fixed for REGENOLD_GROUNDING_REF_CHARS, in a commit merged three
+            # commits later. A model id is not exempt because it is a string.
+            "REGENOLD_GROQ_DEFAULT_MODEL",
+            "REGENOLD_SYNTHESIS_MODEL_GROQ",
+            "REGENOLD_STAGE1_MODEL_GROQ",
+            "REGENOLD_STAGE2_MODEL_GROQ",
+            "REGENOLD_INTENT_MODEL_GROQ",
+            "REGENOLD_DENOISER_MODEL_GROQ",
+            "REGENOLD_GENERAL_MODEL_GROQ",
+            "REGENOLD_SAFETY_MODEL_GROQ",
+            "REGENOLD_FUSION_MODEL_GROQ",
+            "REGENOLD_FUSION_MODEL_SONNET",
             # NOTE — R288 also listed "REGENOLD_GROUNDING_SCOPE_ALL" here. That
             # var is read NOWHERE in the codebase; it was the scope-ablation
             # knob of the ABANDONED Arm 0. Removed rather than left as a decoy
@@ -4428,6 +4446,7 @@ def _general_llm_candidates() -> list[tuple[object, str]]:
     failure cannot drop the rest.
     """
     from app.llm.openai_wrapper_provider import (  # noqa: PLC0415
+        default_groq_model,
         get_gemini_provider,
         get_groq_provider,
         get_mistral_provider,
@@ -4439,7 +4458,7 @@ def _general_llm_candidates() -> list[tuple[object, str]]:
     out: list[tuple[object, str]] = []
     for enabled_fn, getter, env_key, default_model in (
         (is_groq_provider_enabled, get_groq_provider,
-         "REGENOLD_GENERAL_MODEL_GROQ", "groq/compound"),
+         "REGENOLD_GENERAL_MODEL_GROQ", default_groq_model()),
         (is_gemini_provider_enabled, get_gemini_provider,
          "REGENOLD_GENERAL_MODEL_GEMINI", "gemini-2.5-flash"),
         (is_mistral_provider_enabled, get_mistral_provider,
@@ -5019,6 +5038,7 @@ def _rewrite_multiturn_query(
     try:
         from app.llm.openai_wrapper_provider import (  # noqa: PLC0415
             OpenAIWrapperRequest,
+            default_groq_model,
             get_gemini_provider,
             get_groq_intent_provider,
             get_mistral_provider,
@@ -5057,7 +5077,7 @@ def _rewrite_multiturn_query(
                 # natively without reasoning_effort tuning. Override
                 # via REGENOLD_DENOISER_MODEL_GROQ.
                 os.environ.get(
-                    "REGENOLD_DENOISER_MODEL_GROQ", "groq/compound"
+                    "REGENOLD_DENOISER_MODEL_GROQ", default_groq_model()
                 ),
                 "groq",
             ))

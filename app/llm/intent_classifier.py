@@ -66,6 +66,7 @@ from typing import Any
 
 from app.llm.openai_wrapper_provider import (
     OpenAIWrapperRequest,
+    default_groq_model,
     get_groq_intent_provider,
     get_openai_wrapper_provider,
     is_groq_intent_provider_enabled,
@@ -347,7 +348,7 @@ _DEFAULT_MODEL = os.getenv("REGENOLD_INTENT_MODEL", "claude-haiku-4-5-20251001")
 # reasoning and server-side tool orchestration. Override
 # via REGENOLD_INTENT_MODEL_GROQ.
 _DEFAULT_GROQ_MODEL = os.getenv(
-    "REGENOLD_INTENT_MODEL_GROQ", "groq/compound"
+    "REGENOLD_INTENT_MODEL_GROQ", default_groq_model()
 )
 _TIMEOUT_SECONDS = float(os.getenv("REGENOLD_INTENT_TIMEOUT", "3.5"))
 _CACHE_MAX = int(os.getenv("REGENOLD_INTENT_CACHE_MAX", "2048"))
