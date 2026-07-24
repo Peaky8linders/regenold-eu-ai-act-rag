@@ -603,6 +603,54 @@ _GROQ_DEFAULT_BASE = "https://api.groq.com/openai/v1"
 _GROQ_SINGLETON: _OpenAIWrapperProvider | None = None
 _GROQ_SINGLETON_LOCK = threading.Lock()
 
+# R289 — the single source of truth for "which Groq model do we call".
+#
+# This value has now been changed twice by editing NINE separate literals, and
+# the first of those swaps took production down:
+#
+#   8145be2  qwen/qwen3.6-27b -> groq/compound        (broke every Groq path)
+#   5869eec  groq/compound    -> openai/gpt-oss-120b  (fixed it)
+#
+# The 413 is worth recording because the obvious diagnosis was wrong. A
+# controlled before/after on the SAME /healthz probe — a ~50-char system prompt
+# and a ~55-char user prompt — gave:
+#
+#   62ca878  {"status": "ok",    "model": "qwen/qwen3.6-27b"}
+#   8145be2  {"status": "error", "model": "groq/compound", 413 request_too_large}
+#   348ea6a  still 413
+#   5869eec  {"status": "ok",    "model": "openai/gpt-oss-120b"}
+#
+# A ~100-character request cannot exceed a 131,072-token context window, so the
+# payload was never the constraint. Groq's docs give the mechanism: "Rate limits
+# for groq/compound are determined by the rate limits of the individual models
+# that comprise them." compound is an agentic SYSTEM (router + built-in
+# web-search/code-exec tools + synthesis model), so ONE external call fans out
+# into several internal model calls drawing on the same account budget, and Groq
+# reuses 413 / ``request_too_large`` for budget exhaustion. Two tempting wrong
+# turns follow from misreading it as a size problem: truncation knobs cannot
+# help (the existing 11,000-char truncation would never fire on a 100-char
+# probe), and raising max_tokens makes it worse — 8145be2 also took the fallback
+# completion cap 1024 -> 4096 on the premise that compound "supports larger
+# context", conflating the context window with the completion cap and with the
+# rate budget that actually binds.
+#
+# The default lives here so the next change is one line, not nine, and so it is
+# reachable from _engine_cache_key. openai/gpt-oss-120b is the value verified
+# live on production at 5869eec.
+_GROQ_LIVE_VALIDATED_MODEL = "openai/gpt-oss-120b"
+
+
+def default_groq_model() -> str:
+    """Model id for every Groq call that has no more specific override.
+
+    Read per-call (never at import) so an in-process A/B arm can actually
+    change it — see the R263.2 note on ``_engine_cache_key``.
+    """
+    return (
+        os.getenv("REGENOLD_GROQ_DEFAULT_MODEL", "").strip()
+        or _GROQ_LIVE_VALIDATED_MODEL
+    )
+
 
 def is_groq_provider_enabled() -> bool:
     """True iff general Groq provider is enabled.

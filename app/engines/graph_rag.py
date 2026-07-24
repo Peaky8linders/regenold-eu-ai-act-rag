@@ -633,7 +633,11 @@ def _openai_wrapper_complete_for_graph_rag(
                     "Attempting Groq GPT-OSS 120B synthesis.",
                     response.error[:80],
                 )
-                from app.llm.openai_wrapper_provider import get_groq_provider, OpenAIWrapperRequest
+                from app.llm.openai_wrapper_provider import (
+                    OpenAIWrapperRequest,
+                    default_groq_model,
+                    get_groq_provider,
+                )
                 # openai/gpt-oss-120b supports larger context than Qwen 3.6;
                 # cap completion tokens to a reasonable ceiling.
                 groq_max_tokens = min(safe_max_tokens, 4096)
@@ -652,7 +656,9 @@ def _openai_wrapper_complete_for_graph_rag(
                     OpenAIWrapperRequest(
                         system=groq_system,
                         user=groq_user,
-                        model=os.environ.get("REGENOLD_SYNTHESIS_MODEL_GROQ", "openai/gpt-oss-120b"),
+                        model=os.environ.get(
+                            "REGENOLD_SYNTHESIS_MODEL_GROQ", default_groq_model()
+                        ),
                         max_tokens=groq_max_tokens,
                         temperature=temperature,
                     )
@@ -1224,12 +1230,18 @@ def _llm_parse_query(question: str) -> GraphQuery:
                 return _deterministic_parse(question)
             text = text_raw.strip()
         elif provider == "groq":
-            from app.llm.openai_wrapper_provider import OpenAIWrapperRequest, get_groq_provider
+            from app.llm.openai_wrapper_provider import (
+                OpenAIWrapperRequest,
+                default_groq_model,
+                get_groq_provider,
+            )
             resp = get_groq_provider().complete(
                 OpenAIWrapperRequest(
                     system=system_prompt,
                     user=sanitized_question,
-                    model=os.getenv("REGENOLD_STAGE1_MODEL_GROQ", "openai/gpt-oss-120b"),
+                    model=os.getenv(
+                        "REGENOLD_STAGE1_MODEL_GROQ", default_groq_model()
+                    ),
                     max_tokens=2048,
                     temperature=0.0,
                 )
@@ -1429,7 +1441,11 @@ def _llm_generate_answer(
                 return _deterministic_answer(question, context)
             return validate_llm_output(text_raw.strip())
         elif provider == "groq":
-            from app.llm.openai_wrapper_provider import OpenAIWrapperRequest, get_groq_provider
+            from app.llm.openai_wrapper_provider import (
+                OpenAIWrapperRequest,
+                default_groq_model,
+                get_groq_provider,
+            )
             groq_system = full_system
             if len(full_system) > 10000:
                 groq_system = _get_groq_compressed_system_prompt()
@@ -1437,7 +1453,9 @@ def _llm_generate_answer(
                 OpenAIWrapperRequest(
                     system=groq_system,
                     user=user_message,
-                    model=os.getenv("REGENOLD_STAGE2_MODEL_GROQ", "openai/gpt-oss-120b"),
+                    model=os.getenv(
+                        "REGENOLD_STAGE2_MODEL_GROQ", default_groq_model()
+                    ),
                     max_tokens=settings.graph_rag.max_tokens,
                     temperature=settings.graph_rag.temperature,
                 )
