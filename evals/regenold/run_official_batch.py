@@ -76,6 +76,42 @@ def _heads(refs: list[str]) -> set[str]:
     return set(bench_metrics.article_heads(refs or []))
 
 
+def _provenance(body: dict[str, Any] | None) -> dict[str, Any]:
+    """Pull Stage-2 provenance out of the ``reasoning`` trace.
+
+    R292: without this the sidecar records only ``answer`` + ``references``, so a
+    run in which the Stage-2 provider silently degraded (wrapper down, credit
+    exhausted, rate-limited) is INDISTINGUISHABLE from a healthy run — the
+    deterministic fallback still returns a plausible answer. That makes the
+    headline scorecard unfalsifiable. Recording ``stage2_polish`` / the resolved
+    model / ``retrieval_path`` per row makes a degraded run detectable after the
+    fact, and the aggregate ``stage2_landed_rate`` makes it obvious at a glance.
+
+    Fail-soft: a missing / non-JSON ``reasoning`` field yields an empty dict, so
+    this can never break a run.
+    """
+    try:
+        raw = (body or {}).get("reasoning")
+        if not isinstance(raw, str) or not raw.strip():
+            return {}
+        trace = json.loads(raw)
+        if not isinstance(trace, dict):
+            return {}
+        model = ""
+        for note in trace.get("notes") or []:
+            if isinstance(note, str) and "stage2_model=" in note:
+                model = note.split("stage2_model=", 1)[1].split()[0]
+                break
+        return {
+            "stage2_polish": trace.get("stage2_polish"),
+            "retrieval_path": trace.get("retrieval_path"),
+            "engine_confidence": trace.get("engine_confidence"),
+            "stage2_model": model,
+        }
+    except Exception:  # noqa: BLE001 — provenance is best-effort telemetry
+        return {}
+
+
 def _row_metrics(answer: str, refs: list[str]) -> dict[str, Any]:
     return {
         "tone": bench_metrics.regulatory_tone(answer),
@@ -121,6 +157,7 @@ def _run_easy(rows, poster, url, api_key, timeout, ckpt) -> list[dict[str, Any]]
             "latency_ms": latency_ms,
             "http_status": status,
             "attempts": attempts,
+            "provenance": _provenance(body),
         }
         if err or not answer:
             rec["error"] = err or "empty_answer"
@@ -177,6 +214,8 @@ def _run_hard(rows, poster, url, api_key, timeout, ckpt) -> list[dict[str, Any]]
             # turn 1 alongside so the flip is measurable.
             "pred_answer": ans2 or ans1,
             "pred_refs": refs2 or refs1,
+            # Provenance of the GRADED turn (post-pushback when it landed).
+            "provenance": _provenance(body2 if ans2 else body1),
             "turn1_answer": ans1,
             "turn1_refs": refs1,
             "pushback_answer": ans2,
@@ -252,6 +291,24 @@ def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
     for axis in ("tone", "n_refs", "n_ref_heads", "answer_chars"):
         out[axis] = st.mean(r["scores"][axis] for r in ok)
     out["refusal_rate"] = sum(1 for r in ok if r["scores"]["refused"]) / len(ok)
+    # R292 — Stage-2 provenance. `stage2_landed_rate` well under 1.0 means the
+    # LLM path degraded mid-run and the scorecard is measuring the deterministic
+    # fallback, not the system under test. Check this BEFORE reading any axis.
+    prov = [r.get("provenance") or {} for r in ok]
+    seen = [p for p in prov if p.get("stage2_polish") is not None]
+    if seen:
+        out["stage2_landed_rate"] = sum(
+            1 for p in seen if p.get("stage2_polish")
+        ) / len(seen)
+        models = sorted({p.get("stage2_model") or "?" for p in seen if p.get("stage2_polish")})
+        out["stage2_models"] = models
+        paths: dict[str, int] = {}
+        for p in prov:
+            key = str(p.get("retrieval_path") or "unknown")
+            paths[key] = paths.get(key, 0) + 1
+        out["retrieval_paths"] = dict(sorted(paths.items(), key=lambda kv: -kv[1]))
+    else:
+        out["stage2_landed_rate"] = None  # trace not requested / not available
     lat = sorted(r["latency_ms"] for r in ok)
     out["latency_p50_ms"] = lat[len(lat) // 2]
     out["latency_p90_ms"] = lat[int(len(lat) * 0.9)] if len(lat) > 1 else lat[0]
@@ -280,6 +337,13 @@ def _print_agg(title: str, agg: dict[str, Any]) -> None:
             print(f"  {k:<32}{v/1000:>10.1f}s")
         elif isinstance(v, float):
             print(f"  {k:<32}{v:>10.4f}")
+        elif isinstance(v, (list, tuple)):
+            # R292 — stage2_models etc. are lists; ">10" formatting raises.
+            print(f"  {k:<32}{', '.join(str(x) for x in v) or '-':>10}")
+        elif isinstance(v, dict):
+            print(f"  {k:<32}{', '.join(f'{a}={b}' for a, b in v.items()):>10}")
+        elif v is None:
+            print(f"  {k:<32}{'n/a':>10}")
         else:
             print(f"  {k:<32}{v:>10}")
 
@@ -305,7 +369,13 @@ def _arm(
             ckpt_path = _RESULTS / f"official-{label}{suffix}-{m}.ckpt.jsonl"
             ckpt_path.parent.mkdir(parents=True, exist_ok=True)
             print(f"\n--- {label}{suffix} :: {m} (n={len(rows)}) -> {ckpt_path.name}")
-            with ckpt_path.open("a", encoding="utf-8") as ckpt:
+            # R292 — "w", not "a". In append mode, re-running the SAME label
+            # silently merged the previous run's rows into the checkpoint file,
+            # so anything reading the .ckpt.jsonl (a resumed run, or the judge)
+            # graded a mix of stale and fresh answers with no way to tell them
+            # apart. Each run now owns its checkpoint; use a distinct --label to
+            # keep an earlier run.
+            with ckpt_path.open("w", encoding="utf-8") as ckpt:
                 runner = _run_easy if m == "easy" else _run_hard
                 got = runner(rows, poster, url, api_key, timeout, ckpt)
             result[m] = {"rows": got, "agg": _aggregate(got)}
@@ -350,6 +420,12 @@ def main() -> None:
         if local
         else str(args.endpoint)
     )
+    # R292 — ask for the reasoning trace so `_provenance` can record whether
+    # Stage-2 actually landed (see `_provenance`). The rubric ignores the
+    # `reasoning` field, so this cannot affect a score; it only makes a
+    # silently-degraded run detectable.
+    if "include_reasoning" not in url:
+        url = f"{url}{'&' if '?' in url else '?'}include_reasoning=true"
 
     base_env = _parse_env(args.baseline_env)
     branch_env = _parse_env(args.branch_env)
