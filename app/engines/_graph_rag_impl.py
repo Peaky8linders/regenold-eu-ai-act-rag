@@ -4204,7 +4204,7 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
                 "must document the assessment before placing the system on the market and "
                 "register it under Article 49(2)."
             ),
-            "refs": ["Art. 6", "Art. 6.3", "Art. 71.2"],
+            "refs": ["Art. 6", "Art. 6.3", "Art. 49.2"],
         }
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
@@ -4699,7 +4699,7 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
                 "automatically generated logs must be kept for a period "
                 "appropriate to the intended purpose, of at least six months."
             ),
-            "refs": ["Art. 18", "Art. 11", "Art. 17", "Art. 48", "Art. 19"],
+            "refs": ["Art. 18", "Art. 11", "Art. 17", "Art. 47", "Art. 19"],
         }
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]

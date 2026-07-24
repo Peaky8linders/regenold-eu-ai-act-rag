@@ -37,11 +37,28 @@ _client: GraphClient | None = None
 _client_lock = threading.Lock()
 
 # Allowlist of node labels for stats queries (never from user input).
-_STATS_LABELS = frozenset([
-    "Article", "Obligation", "Dimension", "Question",
-    "RiskLevel", "AnnexIIICategory", "RoadmapTask",
-    "NISTSubcategory", "ISOClause", "KBMetadata",
-])
+#
+# R292 — derived from the seeder's own label constants instead of being
+# hand-maintained. The hand-written list had drifted badly: it omitted 9 of the
+# 16 labels the seeder actually creates (Annex, Definition, Recital, Paragraph,
+# Point, SubPoint, Practice, LifecyclePhase, OperatorRole), so /healthz/graph
+# reported a correct, fully-seeded graph as if the Annexes and the whole
+# 656-Paragraph / 416-Point / 37-SubPoint hierarchy were missing. That is worse
+# than cosmetic: it presents a healthy seed as broken (it cost real
+# investigation time this round) and it would equally FAIL TO SURFACE a genuine
+# hierarchy loss. Deriving it here means a future seeder label shows up in the
+# probe automatically.
+#
+# The three legacy parent-CodexAI labels (RoadmapTask / NISTSubcategory /
+# ISOClause) are dropped — verified 0 nodes live. The R63-F `db.labels()`
+# intersect below still filters anything absent, so no warning storm.
+from app.graph import schema as _schema  # noqa: E402  (local, cycle-free)
+
+_STATS_LABELS = frozenset(
+    getattr(_schema, _name)
+    for _name in dir(_schema)
+    if _name.startswith("NODE_") and isinstance(getattr(_schema, _name), str)
+)
 
 
 def _neo4j_available() -> bool:

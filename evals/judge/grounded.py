@@ -288,12 +288,41 @@ def run(*, sidecar: Path, label: str, model: str, provider: str,
         out_dir: Path | None = None) -> dict[str, Any]:
     set_judge_model(model)
     caller = _resolve_caller(provider, timeout_s)
-    rows = [_norm(r) for r in _load_rows(sidecar)]
-    rows = [r for r in rows if r["answer"]]  # skip error/empty-answer rows
+    all_rows = [_norm(r) for r in _load_rows(sidecar)]
+    n_error_rows = sum(1 for r in all_rows if not r["answer"])
+    rows = [r for r in all_rows if r["answer"]]  # skip error/empty-answer rows
     if limit:
         rows = rows[:limit]
     print(f"[grounded] {len(rows)} rows × {len(GROUNDED_AXES)} axes  model={model} "
           f"provider={provider} concurrency={concurrency}", flush=True)
+
+    # R292 — gold coverage banner.
+    #
+    # `_norm` reads gold_refs/expected_refs. The OFFICIAL regenold batch has no
+    # gold at all (regenold never published theirs), and `run_official_batch`
+    # writes `jul07_refs` — which is OUR OWN prior output, NOT gold. Mapping it
+    # into `gold_refs` would make the judge grade "did we match our past self",
+    # which is circular, so we deliberately do NOT. Instead the gap is stamped
+    # on every scorecard: with no gold, reference RECALL is the judge model's
+    # recollection of the Act rather than a text-grounded comparison, while
+    # PRECISION stays text-grounded (each predicted ref is checked against the
+    # verbatim provision). Read the two asymmetrically.
+    n_gold = sum(1 for r in rows if r["gold_refs"])
+    gold_coverage = (n_gold / len(rows)) if rows else 0.0
+    if gold_coverage < 0.5:
+        print(
+            f"[grounded] !! GOLD COVERAGE {n_gold}/{len(rows)} ({gold_coverage:.0%}) — "
+            "reference RECALL is judge recall (model memory), not text-grounded; "
+            "PRECISION remains text-grounded. Do not compare recall across "
+            "datasets with different gold coverage.",
+            flush=True,
+        )
+    if n_error_rows:
+        print(
+            f"[grounded] !! {n_error_rows} row(s) had no answer and are EXCLUDED "
+            "from every axis below — the scorecard does not reflect them.",
+            flush=True,
+        )
     out: list[dict[str, Any] | None] = [None] * len(rows)
     done = 0
     lock = threading.Lock()
@@ -320,6 +349,12 @@ def run(*, sidecar: Path, label: str, model: str, provider: str,
         "provider": provider, "elapsed_s": round(time.monotonic() - t0, 1),
         "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "axes": list(GROUNDED_AXES), "rows": judged, "aggregate": agg,
+        # R292 — provenance of the measurement itself, so a scorecard can be
+        # read correctly months later without re-deriving these caveats.
+        "gold_coverage": round(gold_coverage, 4),
+        "gold_rows": n_gold,
+        "excluded_error_rows": n_error_rows,
+        "recall_is_text_grounded": gold_coverage >= 0.5,
     }
     out_dir = out_dir or Path("evals/bench/results")
     out_dir.mkdir(parents=True, exist_ok=True)
