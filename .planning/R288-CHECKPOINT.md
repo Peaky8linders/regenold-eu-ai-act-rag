@@ -1,8 +1,16 @@
 # R288 — CHECKPOINT / fresh-session handoff
 
-**Date:** 2026-07-24. **Branch:** `main` (⚠ uncommitted — see §1).
+**Date:** 2026-07-24. **Status:** R288 merged as **#298** (`62ca878`), deployed
+(`/healthz` → `commit: 62ca8786d6bb`), **gate default-OFF so inert on the wire**.
+R288.1 review fixes on branch `r288.1-review-fixes` — see §1.
+
 **Two jobs left:** (A) finish R288 with a properly-powered A/B, (B) run + judge the
 HARD official batch, which has **never been graded by our own instrument**.
+
+> **§1 and §2 were rewritten on 2026-07-24 after a post-merge adversarial review.**
+> The original §2d asserted two things about the shipped code that were **false**,
+> and one of them made Job A's prescribed experiment impossible. If you read an
+> older copy of this file, discard §2d and §3 from it.
 
 ---
 
@@ -10,34 +18,54 @@ HARD official batch, which has **never been graded by our own instrument**.
 
 * `CLAUDE.md` hard rule #6 — `evals.harness.ab_judge` / gold-bearing A/B is the
   merge gate, davidath is a REGRESSION GUARD ONLY.
-* Memory: `project_easyhard_ab_noise_floor_n40.md` ← **the most important new
+* Memory: `project_easyhard_ab_noise_floor_n40.md` ← **the most important prior
   finding. Read before designing any A/B.**
 * Memory: `project_nli_verifier_measured_dead.md` — do not revisit NLI/torch.
 * Memory: `project_ans_metrics_not_comparable.md` — never compare a local Ans
   number to the regenold report.
+* **§1.1 below — the two recorded A/B runs are confounded. Do not reuse them.**
 
 ---
 
-## 1. Uncommitted state on `main` (⚠ hazard)
+## 1. State
 
-```
- M app/engines/graph_rag.py      <- R288 Arm-1 (gated OFF)
- M app/routes/regenold.py        <- R288 cache-key entries
-?? tests/test_r288_grounding_text.py            (24 tests, all pass)
-?? evals/harness/nli_refprecision_sim.py        (NLI/lexical ref-filter sim)
-?? evals/harness/nli_discriminative_power.py    (AUC / separation check)
-```
+R288 is **merged and deployed**. `main` = `62ca878` = PR #298, and the production
+`/healthz` reports that same commit. The gate (`REGENOLD_GROUNDING_TEXT`) defaults
+to `0`, so the wire behaviour is unchanged.
+
+The R288.1 review fixes live on **`r288.1-review-fixes`** (branched from
+`origin/main`, worktree `.claude/worktrees/r288-1-review-fixes/`). They are
+gate-ON-only corrections plus one latent bug; nothing changes default behaviour.
 
 ⚠ **Railway auto-deploys `main`,** and per `project_multiagent_autocommit_env.md`
-automation in this environment has auto-committed `main` mid-session before.
-R288 is **default-OFF**, so an accidental deploy is inert on the wire — but do not
-`git add -A` (the repo root is littered with `_v_*.py` / `_r_*.py` scratch files
-that predate this session). Prefer a worktree for new work.
+automation in this environment has auto-committed `main` mid-session before — it
+did so again during the R288.1 session (a parallel agent branched, committed,
+opened #298 and merged it while the review was running). Do not `git add -A`; the
+repo root is littered with `_v_*.py` / `_r_*.py` scratch files that predate this.
+Work in a worktree.
 
-Also still installed locally from this session: **torch + transformers +
-sentence-transformers** (~2.5 GB in `.venv`). Harmless (the only import is behind
-the default-OFF NLI path; OOS probe verified 21/21), but the deploy is torch-free —
-uninstall if you want local/prod parity.
+Also still installed locally: **torch + transformers + sentence-transformers**
+(~2.5 GB in `.venv`). Harmless (the only import is behind the default-OFF NLI
+path; OOS probe verified 21/21), but the deploy is torch-free — uninstall if you
+want local/prod parity.
+
+### 1.1 ⚠ The two recorded A/B runs are CONFOUNDED — do not reuse them
+
+`easyhard-r288-arm1-ab.json` and `easyhard-r288-arm1-tight.json` were both run
+against the **pre-R288.1** engine, in which turning the gate ON also **widened the
+R113 hallucination guard's allowlist** (§2g). Their branch arm therefore measured
+*"verbatim grounding **and** a weaker citation guard"* as one treatment. The
+reference axes in those files cannot be attributed to grounding.
+
+The signature is visible in the numbers: `ref_loose` **0.858 → 0.875** (up — the
+guard dropped fewer citations) with `ref_conc` **0.406 → 0.347** (down sharply —
+more of the surviving citations were off-target). That is what a loosened filter
+looks like, and it is exactly what a genuine grounding win should *not* look like.
+
+`kw_recall` (+0.075 / +0.108, the one stable signal) is measured on **answer
+text**, not on citations, so it is the least affected by the confound — but it is
+not clean either, since the guard can drop a whole polish. **Re-baseline both arms
+on `r288.1-review-fixes` before drawing any conclusion.**
 
 ---
 
@@ -66,20 +94,31 @@ hit-list for *different* articles — **zero overlap** with the retrieved set on
 four probe questions (Article-13 question → Art. 79/80/82). Scoped it renders
 nothing; unscoped it injects off-context noise.
 
-### 2d. Arm 1 is BUILT and gated OFF
+### 2d. Arm 1 is BUILT and gated OFF *(corrected 2026-07-24)*
 `_render_grounding_text()` fetches the question-relevant **verbatim paragraphs of
 the CITED refs** via `provision_text.select_relevant_paragraphs`.
 Env: `REGENOLD_GROUNDING_TEXT` (default `0`), `REGENOLD_GROUNDING_REF_CHARS`
-(default 1200, clamped 200-4000). Both are in `_engine_cache_key` (R263.2 doctrine).
-The question rides on `GraphContext.question` so BOTH block call sites render
-identically (R113 guard/prompt parity).
+(default 1200, clamped 200-4000).
 
-### 2e. Gates already green for Arm 1 (no need to re-run)
+> **The original wording of this section was wrong in two ways.** It said "Both
+> are in `_engine_cache_key`" — only the master gate was; `REGENOLD_GROUNDING_REF_CHARS`
+> was absent, and a **phantom** `REGENOLD_GROUNDING_SCOPE_ALL` (read nowhere in the
+> codebase, a leftover of the abandoned Arm 0) sat in its place. The same false
+> claim appears in #298's commit message and in the code comment. It said "BOTH
+> block call sites" — there are **three** in production (`graph_rag.py:6155`,
+> `graph_rag.py:6415`, `logic_rag.py:415`). Fixed on `r288.1-review-fixes`.
+
+### 2e. Gates green for Arm 1 — and what they do NOT cover
 davidath QA gate-OFF **byte-identical** (Ans Strict 0.4037 / Ref Loose 0.8394 /
 Ref Strict 0.5543 / Ref Conc 0.4395 / Tone 1.0) · 276-runner **255/255** ·
-OOS **21/21, 0 leaks** · `tests/test_r288_grounding_text.py` **24/24** ·
-touched-surface **zero regressions** (stash A/B; the 12 `_when_wrapper_enabled`
-failures are pre-existing under `provider=cli`).
+OOS **21/21, 0 leaks** · `tests/test_r288_grounding_text.py` **30/30** (24 from
+#298 + 6 from R288.1) · touched-surface **zero regressions** (stash A/B; the 12
+`_when_wrapper_enabled` failures are pre-existing under `provider=cli`).
+
+⚠ **Every one of those gates ran with the gate OFF.** They say nothing about
+gate-ON behaviour — which is precisely where both R288.1 defects lived. Do not
+read "all gates green" as "the arm is validated". The arm has never been
+validated; that is Job A.
 
 ### 2f. ⚠ THE MEASUREMENT PROBLEM — this is why R288 is unfinished
 Two `easyhard_ab --limit 40` runs with an **identical baseline arm** did not
@@ -97,10 +136,79 @@ flagged −0.021 and run 2 reversed it to +0.017.
 
 ---
 
+### 2g. What the post-merge review found *(new, 2026-07-24)*
+
+Six blind lens reviewers over the merged diff, each finding then sent to an
+independent skeptic instructed to refute it. **20 findings filed, 20 survived** —
+a 100% survival rate is itself weak evidence that the skeptics were not skeptical
+enough, so the three load-bearing ones below were re-verified by hand, and one
+panel severity was overridden downward.
+
+Fixed on `r288.1-review-fixes` (all injection-tested — revert the fix, the named
+test fails):
+
+| # | Defect | Consequence |
+|---|---|---|
+| 1 | **The gate widened the R113 hallucination allowlist** (§2g) | Confounded both recorded A/Bs |
+| 2 | **`REGENOLD_GROUNDING_REF_CHARS` not in `_engine_cache_key`** | Job A's budget sweep could not have worked |
+| 3 | LogicRAG returned a question-less context | Latent — `REGENOLD_LOGIC_RAG` defaults off |
+
+Panel called #3 "high"; downgraded to **latent** after checking
+`graph_rag.py:7382` — the flag defaults off, so it is wrong-when-enabled, not
+shipped-wrong.
+
+Plus hygiene, none of which changes rendered output: Arm-0 → Arm-1 relabel at
+three sites, dead `_GROUNDING_TAG_RE` removed, `provision_text` import hoisted out
+of the per-ref loop, the "`_llm_generate_answer` has zero callers" docstring
+corrected (it has one, in `tests/test_gemini_routing.py`), two silent
+`except: pass` given a `logger.debug`.
+
+### 2h. The guard-widening defect, in detail — *this is the one that matters*
+
+`_extract_context_grounded_refs` (the R113 drift guard) calls
+`_mine_refs_from_text` on the **rendered** references block to decide what the
+Stage-2 polish is *allowed to cite*. Verbatim Act text is saturated with
+cross-references, so rendering it into that block fed the guard provisions that
+were **never retrieved**.
+
+Reproduced on a 3-obligation context (Arts. 9 / 11 / 13):
+
+```
+gate OFF  grounded refs = 3   ['Art. 9', 'Art. 11', 'Art. 13']
+gate ON   grounded refs = 6   [... + 'Art. 60', 'Art. 72', 'Annex IV']
+```
+
+Art. 60, Art. 72 and Annex IV became citable purely because the **bodies of the
+cited articles name them** — while the block itself instructs the model "do NOT
+cite anything not already listed above". The guard was being defeated by the text
+the treatment introduced.
+
+Fixed by rendering the section behind a marker and cutting it back off **for the
+miner only**:
+`_build_context_references_block(context, include_grounding=False)`. The Stage-2
+prompt is **byte-for-byte unchanged** (still 3366 chars of verbatim text on that
+context) — only the guard's view narrows.
+
+**The first version of the regression test for this was a placebo.** It called
+`_build_context_references_block(..., include_grounding=False)` directly, so it
+asserted only that the mechanism *exists*; reverting the call site inside the
+guard left all 29 tests green. It now calls the real entry point,
+`_extract_context_grounded_refs`. There is also a **positive control** asserting
+the verbatim text still *does* introduce cross-refs, so the guard test cannot pass
+vacuously if the provision corpus ever stops resolving. **Injection-test anything
+you add here — this suite has already produced one false green.**
+
+---
+
 ## 3. JOB A — finish R288 with a powered A/B
 
 **Goal:** decide ship / don't-ship on Arm 1 with a measurement that can actually
 resolve it.
+
+**PREREQUISITE — run this from `r288.1-review-fixes` (or after it merges), NOT
+from `62ca878`.** On `62ca878` the branch arm also carries a loosened citation
+guard (§1.1, §2g) and the budget sweep below is a no-op (§2d). Both are fixed on
+that branch. Re-baseline; do not diff against the two archived runs.
 
 **Design (per §2f):** full n (drop `--limit`) **and** ≥3 repeats per arm, reporting
 mean ± spread. Do NOT ship on a single run. Budget ~4-6 h of wrapper time; run
@@ -123,10 +231,33 @@ curl -s http://127.0.0.1:8000/v1/auth/status | head -c 200
   --branch-env  REGENOLD_GROUNDING_TEXT=1
 ```
 
-**Also sweep the budget** — the 1200-char default grew answers **+12%**, and
-Answer Conciseness is the ONE axis we lead (96.0 easy / 93.4 hard):
-`--branch-env REGENOLD_GROUNDING_REF_CHARS=500` (500 measured kw +0.108 with
-answers still growing; try 300/500/800).
+**Then sweep the three treatment knobs.** All three change what the model sees;
+none of them was ever varied in a valid run.
+
+1. **Per-ref char budget** — the 1200-char default grew answers **+12%**, and
+   Answer Conciseness is the ONE axis we lead (96.0 easy / 93.4 hard):
+   `--branch-env "REGENOLD_GROUNDING_TEXT=1,REGENOLD_GROUNDING_REF_CHARS=500"`
+   (try 300/500/800). ⚠ **This sweep holds the gate ON in both arms**, so before
+   R288.1 both arms hashed to the same `_engine_cache_key` and arm B was served
+   arm A's cached output — a guaranteed flat "no effect". Verify you are on the
+   fixed branch: `pytest tests/test_r288_grounding_text.py -k ref_char_budget`.
+
+2. **`_GROUNDING_MAX_REFS` (currently 3, `graph_rag.py`)** — *not env-gated; edit
+   the constant.* `_context_article_refs` returns primaries first, then their
+   cross-refs, so any question anchoring ≥3 primary articles exhausts the cap on
+   primaries and grounds **zero cross-refs** — while easy answers cite 2.93-3.99
+   refs. The 67%-of-refs-ungrounded defect R288 exists to fix is therefore only
+   partly closed at the shipped setting. Deliberately left at 3 in R288.1 so the
+   archived runs still describe *some* real configuration; raising it is a
+   first-class experiment, not a bugfix.
+
+3. **Annex/recital rows are paraphrase, not verbatim** — the second section of
+   `_render_grounding_text` prints `entry['text']` from
+   `referenced_annexes_and_recitals`, which for Annex entries is the KB summary
+   stub, i.e. exactly the paraphrase R288 exists to replace. (The section header
+   does *not* claim verbatim, so this is an under-delivery, not a mislabel — the
+   review panel's phrasing on this point overstated it.) Routing those refs
+   through `select_relevant_paragraphs` too is the obvious Arm 2.
 
 **Decision gates:**
 1. **KILL:** answer length rises materially across repeats → do not ship (AnsCon
@@ -135,6 +266,11 @@ answers still growing; try 300/500/800).
 3. **SHIP** only if `kw_recall` holds up AND length + recall are flat across
    repeats. Then also run the grounded judge on both arms (§4 pattern) to confirm
    `answer_correctness` moves, since `kw_recall` is only a proxy.
+
+⚠ **Gate 2 needs re-reading post-R288.1.** Before the fix, a *rise* in `ref_loose`
+was the expected artefact of the widened guard, so "recall drops" was the wrong
+alarm to watch. With the guard restored, a recall drop now means what the gate
+says it means. Interpret any pre-R288.1 `ref_loose` reading as uninformative.
 
 ---
 
@@ -218,3 +354,23 @@ Hard: refs 4.02, chars 1177, p50 36.4 s, **pushback conceded 0/110**.
   the comparison (R112).
 * Any new env flag that flips the engine's answer MUST go in `_engine_cache_key`,
   or a same-process A/B serves the OFF arm's cached output to the ON arm (R263.2).
+  **R288 got this wrong and three documents said it got it right** (the commit
+  message, this file's §2d, and the code comment). The doctrine is *"anything that
+  changes engine output"*, not *"gates"* — a **numeric knob is not exempt**, and
+  the trap only springs when the boolean gate is held EQUAL across arms, which is
+  exactly the shape of a tuning sweep. When you add one, write the test that holds
+  every other flag fixed and varies only the new one.
+* **A cache-key entry for a var nothing reads is worse than no entry** — it reads
+  as coverage. `REGENOLD_GROUNDING_SCOPE_ALL` sat in the tuple with a comment
+  calling it "the scope-ablation knob"; it was never read anywhere. Grep any flag
+  you find in that tuple before trusting it.
+* **Anything rendered into the references block is also read by the R113 guard**
+  (`_extract_context_grounded_refs` → `_mine_refs_from_text`). Adding text to that
+  block therefore widens what the polish may cite. If your addition is
+  *supporting* context, exclude it from the miner
+  (`include_grounding=False` is the pattern) or you silently weaken the
+  hallucination guard while measuring it as a win.
+* **Injection-test every regression test you add to `test_r288_grounding_text.py`.**
+  Revert your fix; if the suite stays green the test is a placebo. This has already
+  happened once: a guard test that called the block builder directly instead of the
+  guard passed 29/29 against fully-reverted code.
