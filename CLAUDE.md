@@ -8529,6 +8529,122 @@ Strict 0.4037 / Ref Loose 0.8394 / Ref Strict 0.5543 / Tone 1.0); 276-runner
   prompt-only but needs a live A/B.
 * The **hard**-batch grounded judge has not been run yet (easy only).
 
+## Round 288 — NLI measured dead; verbatim grounding built (gated OFF); the n=40 live A/B noise floor (2026-07-24)
+
+Operator ask: Railway has 24 vCPU / 24 GB, so install torch and test properly
+whether the R286-gated NLI citation verifier is worth it for reference precision.
+**Answer: measured NO** — and the round's most valuable output is a measurement
+finding that invalidates single-run live A/Bs.
+
+### 288-A — neural NLI citation verification is DEAD (measured, not argued)
+
+Installed CPU torch + transformers + sentence-transformers locally and replayed
+`cross-encoder/nli-deberta-v3-base` over **129 recorded live rows** (the
+`easyhard-r282-fullprod-clean` sidecar carries `pred_answer` + `pred_refs` +
+`gold_refs`, so the filter is replayable offline — no deploy needed). The decisive
+metric is whether the score separates GOLD from NON-GOLD refs:
+
+| scorer | ROC-AUC | ms/pair | deps |
+| --- | --- | --- | --- |
+| `nli-deberta-v3-base` | **0.585** | **635** | torch + 1.74 GB weights |
+| `LexicalEntailmentScorer` (already in repo) | **0.749** | **2.7** | none |
+
+0.5 is a coin flip. **The neural model is worse at the task than the free lexical
+proxy and ~235x slower.** Every NLI threshold destroyed recall (easy ref_loose
+0.8134 → 0.6757 at the mildest setting, 26 rows gold-damaged). Cause: MNLI
+cross-encoders collapse to "neutral" on legal text (75% of pairs < 0.027
+entailment) — a training-distribution problem a bigger model does not fix
+(confirmed on a FEVER checkpoint too). `REGENOLD_NLI_VERIFY` stays OFF and
+**torch was NOT added to requirements.txt**: plain `torch` on a Linux builder
+pulls the CUDA stack (~2.7 GB of wheels → 6-8 GB unpacked), past Railway's ~4 GB
+image ceiling; CPU-only is 191.8 MB.
+
+Also corrected: the R286 sidecar's apparent "Ref Strict rose with NLI ON" is a
+metric artifact — it collapsed 137/137 davidath QA rows to exactly 1 ref, and
+davidath QA gold is a single article, so 1 ref maximises precision by
+construction. Two live defects found and left documented (gated OFF): the
+implicit `http://127.0.0.1:8080` fallback in `score_batch` (something IS
+listening on that port on the dev box, so a local A/B is graded by an
+unidentified stub), and `_DEFAULT_ENTAIL_INDEX = 1`, which is **wrong for
+MoritzLaurer checkpoints** (`{0: entailment}`) and never resolved on the remote
+path.
+
+New reusable tooling: `evals/harness/nli_refprecision_sim.py` (replays a
+SCORER-driven ref filter over recorded rows; persistent score cache makes
+threshold sweeps free) and `evals/harness/nli_discriminative_power.py` (the
+AUC/separation check — **run this FIRST for any future scorer**; it kills a bad
+instrument in minutes before a sweep can overfit it).
+
+### 288-B — the 67% grounding gap, and the Arm-0 dead end
+
+Measured on the real 110-row regenold easy batch: **215/322 (67%) of actually
+cited refs have NO paragraph-level text** in the Stage-2 references block
+(`article_requirements_full.py` covers **19 of 131** KB entries and **zero
+annexes**), while prompt rule 5b instructs the model to "use the EXACT
+terminology found in the retrieved articles". That is the `AnsL − RefL = −13.1`
+signature: right article, our paraphrase.
+
+**Arm 0 (rejected, measured):** wiring up the already-computed
+`semantically_relevant_statements` — rendered only by `_llm_generate_answer`,
+which has **zero callers** — does NOT fix it. That field is a dense hit-list for
+OTHER articles: **zero overlap** with the retrieved set on all four probe
+questions (Article-13 question → Art. 79/80/82). Scoped it renders nothing (the
+R256 silently-inert trap); unscoped it injects off-context noise.
+
+**Arm 1 (built, default OFF):** `_render_grounding_text()` fetches the
+question-relevant **verbatim paragraphs of the CITED refs** via
+`provision_text.select_relevant_paragraphs` (R94.1-tuned). Env
+`REGENOLD_GROUNDING_TEXT` (default `0`) + `REGENOLD_GROUNDING_REF_CHARS`
+(default 1200, clamped 200-4000); both in `_engine_cache_key` per the
+R30/R56/R79/R263.2 doctrine. The question rides on the new
+`GraphContext.question` field so BOTH block call sites render identically —
+threading it as a parameter would let them diverge, which is exactly the
+guard/prompt parity bug R113 fixed.
+
+### 288-C — ⚠ the n=40 live A/B noise floor (the durable finding)
+
+Two `easyhard_ab --limit 40` runs with an **identical baseline arm** did not
+reproduce: **20/40 baseline rows changed their `pred_refs`**, baseline `ref_conc`
+drifted **+0.053**, and **all three reference axes sign-flipped**. The harness's
+"est. Overall uplift" read **+0.14 pp** then **−0.80 pp** on pure generation
+variance.
+
+| axis | run 1 delta | run 2 delta | |
+| --- | --- | --- | --- |
+| ref_loose | −0.0208 | +0.0167 | SIGN FLIP |
+| ref_strict | +0.0022 | −0.0165 | SIGN FLIP |
+| ref_conc | +0.0284 | −0.0592 | SIGN FLIP |
+| kw_recall | **+0.0750** | **+0.1083** | consistent |
+
+**Only `kw_recall` is stable**, and it is NOT a length artifact — it rose
+**+0.048 on the 14 rows whose answers got SHORTER**. So Arm 1's mechanism is
+validated (statutory wording in → statutory wording out) but **the instrument
+cannot resolve the reference axes at this n**, so Arm 1 is NOT shipped. A single
+run's `<-- GOLD LOSS (R142.1)` annotation may be noise: run 1 flagged −0.021 and
+run 2 reversed it to +0.017.
+
+**Rule this establishes:** never ship or reject a reference-axis change on one
+n=40 live run. Use full n **and** ≥3 repeats per arm (mean ± spread), or — for a
+PURE ref transform — the deterministic offline sims
+(`evals/bench/ref_precision_sim.py`, `evals/harness/nli_refprecision_sim.py`),
+which have zero generation variance. This does not weaken hard rule #6; it
+weakens confidence in small-n aggregate mean deltas on ANY live harness,
+`ab_judge` included (its position-swapped design controls JUDGE variance, not
+GENERATION variance).
+
+### Round 288 — gates (Arm 1 default OFF)
+
+| gate | result |
+| --- | --- |
+| davidath QA (gate OFF) | **byte-identical** — Ans Strict 0.4037 / Ans Loose 0.1404 / Ans Conc 0.196 / Ref Loose 0.8394 / Ref Strict 0.5543 / Ref Conc 0.4395 / Tone 1.0 |
+| `evals.regenold.runner` (276) | **255/255**, RISK_F1 macro 1.00 |
+| OOS probe | **21/21, 0 leaks** |
+| `tests/test_r288_grounding_text.py` | **24/24** |
+| touched-surface regression | **zero** — `git stash` A/B confirms the 12 `_when_wrapper_enabled` failures are identical on clean baseline (documented `provider=cli` artifact) |
+
+Handoff for the unfinished work (powered A/B + the never-yet-judged HARD batch):
+[`.planning/R288-CHECKPOINT.md`](.planning/R288-CHECKPOINT.md).
+
 ## Round 250 — Gemini multi-specialist findings triage: R72 reconcile restore + I1 dead-code fix + G3 live pairwise A/B (2026-06-24)
 
 A Gemini agent supplied 3 specialists' findings + proposed fixes (Antifragile /

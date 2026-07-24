@@ -1318,6 +1318,13 @@ def _engine_cache_key(
             # engine's parsed entities → surfaced obligations → refs, so it
             # must be in the cache key (R30/R56/R79/R263.2 doctrine).
             "REGENOLD_MULTI_ARTICLE_ENTITIES",
+            # R288 Arm-0 — rendering the verbatim grounding fields into the
+            # Stage-2 references block changes the polished answer, so both the
+            # master gate and the scope-ablation knob must be in the key. Without
+            # this an in-process OFF↔ON A/B would serve the OFF arm's cached
+            # engine output to the ON arm (the R263.2 cross-arm contamination).
+            "REGENOLD_GROUNDING_TEXT",
+            "REGENOLD_GROUNDING_SCOPE_ALL",
             # R283 — the reference-recovery keyword additions (Fix #4) extend
             # the engine's ``_KEYWORD_ENTITY_MAP`` → parsed entities → surfaced
             # obligations → refs, so the master + KW sub-flag must be in the

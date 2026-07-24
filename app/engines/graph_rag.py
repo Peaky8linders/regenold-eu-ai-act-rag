@@ -1178,6 +1178,14 @@ class GraphContext:
     xrefs: list[str] = field(default_factory=list)
     semantically_relevant_statements: list[str] = field(default_factory=list)
     referenced_annexes_and_recitals: list[dict] = field(default_factory=list)
+    # R288 — the raw user question, carried on the context purely so
+    # :func:`_build_context_references_block` can select QUESTION-RELEVANT
+    # verbatim paragraphs identically at BOTH of its call sites (the Stage-2
+    # user message and the R113 grounding-set miner). Threading it as a
+    # parameter instead would let those two diverge, which is exactly the
+    # guard/prompt parity bug R113 fixed. Empty string is a safe default:
+    # ``select_relevant_paragraphs`` falls back to the leading paragraph.
+    question: str = ""
     web_search_results: list[str] = field(default_factory=list)
     retrieval_path: str = "neo4j"
     # R117-review — LogicRAG's synthesised multi-hop rolling memory. Set only
@@ -5232,6 +5240,14 @@ def _retrieve_from_graph(
 
 def _populate_semantic_statements(context: GraphContext, question: str) -> None:
     """Populate semantically_relevant_statements in context from sentence embedding index and Graph Expansion Engine."""
+    # R288 — stash the question for the Stage-2 grounding render. Set here
+    # because this runs on every retrieval path (KB-primary :5116, graph
+    # :5228, :5515) and already receives it. Assignment only; no behaviour
+    # change when the R288 gate is off.
+    try:
+        context.question = question or ""
+    except Exception:  # noqa: BLE001 — never break retrieval on a stash
+        pass
     try:
         from app.engines.embeddings_index import (
             is_available as _emb_available,
@@ -5584,6 +5600,123 @@ def _needs_stage2_enhancement(
 
 
 
+def _grounding_text_enabled() -> bool:
+    """R288 Arm-0 — render the VERBATIM grounding fields into the Stage-2 block.
+
+    ``semantically_relevant_statements`` and ``referenced_annexes_and_recitals``
+    are computed on EVERY request (``_populate_semantic_statements`` /
+    ``_expand_referenced_annexes_and_recitals``) but were rendered ONLY by
+    :func:`_llm_generate_answer`, which has **zero callers** — so the verbatim
+    regulation text they carry never reached the model that writes the answer.
+    Measured on the real 110-row regenold easy batch: 215/322 (67%) of actually
+    cited refs have no paragraph-level text in the block at all, while prompt
+    rule 5b instructs the model to "use the EXACT terminology found in the
+    retrieved articles". That is the ``AnsLoose - RefLoose = -13.1`` signature —
+    right article, our paraphrase.
+
+    Default OFF so the arm can be A/B'd against the current wire.
+    """
+    return os.getenv("REGENOLD_GROUNDING_TEXT", "0").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+_GROUNDING_MAX_REFS = 3
+_GROUNDING_MAX_ANNEX_RECITALS = 4
+_GROUNDING_MAX_CHARS = 400
+_GROUNDING_REF_CHARS = 1200
+# Statements are pre-tagged by the producer as "[Art. 13] <sentence>".
+_GROUNDING_TAG_RE = re.compile(r"^\s*\[([^\]]+)\]\s*(.*)$", re.S)
+
+
+def _grounding_ref_budget() -> int:
+    """Per-reference verbatim char budget (env-tunable for the A/B sweep)."""
+    try:
+        return max(200, min(4000, int(os.getenv("REGENOLD_GROUNDING_REF_CHARS", ""))))
+    except (TypeError, ValueError):
+        return _GROUNDING_REF_CHARS
+
+
+def _clip_grounding(text: str, limit: int = _GROUNDING_MAX_CHARS) -> str:
+    """Clip to a sentence/clause boundary — never mid-word."""
+    t = " ".join(str(text or "").split())
+    if len(t) <= limit:
+        return t
+    cut = t[:limit]
+    for sep in (". ", "; ", ", "):
+        idx = cut.rfind(sep)
+        if idx > limit // 2:
+            return cut[: idx + 1].strip()
+    idx = cut.rfind(" ")
+    return (cut[:idx] if idx > limit // 2 else cut).strip()
+
+
+def _render_grounding_text(context: GraphContext) -> list[str]:
+    """R288 — the VERBATIM official wording of the provisions we are citing.
+
+    Measured motivation: on the real 110-row regenold easy batch, 215/322 (67%)
+    of actually-cited refs have NO paragraph-level text anywhere in the Stage-2
+    block (``article_requirements_full`` covers 19 of 131 KB entries and zero
+    annexes), so the model is asked to "use the EXACT terminology found in the
+    retrieved articles" while being shown only our paraphrase stubs.
+
+    NOTE — an earlier cut of this tried to reuse the already-computed
+    ``semantically_relevant_statements``. Measured dead: that field is an
+    embedding-index hit-list for OTHER articles (Article-13 question -> Art.
+    79/80/82 statements; zero overlap with the retrieved set on all four probe
+    questions), so scoping it to in-context refs rendered NOTHING and leaving it
+    un-scoped would inject off-context text. We therefore fetch the verbatim
+    paragraphs of the CITED refs directly, which is what the finding calls for.
+
+    Strictly SUPPORTING context: the label tells the model to use it for wording
+    and to cite nothing not already listed above, mirroring the non-citation
+    framing the bridging / synthesis / AST blocks already use.
+    """
+    parts: list[str] = []
+    question = str(getattr(context, "question", "") or "")
+    budget = _grounding_ref_budget()
+
+    rendered: list[str] = []
+    for ref in _context_article_refs(context)[:_GROUNDING_MAX_REFS]:
+        try:
+            from app.data.provision_text import (  # noqa: PLC0415
+                select_relevant_paragraphs,
+            )
+
+            body = select_relevant_paragraphs(ref, question, budget)
+        except Exception:  # noqa: BLE001 — a bad ref must not break the block
+            body = None
+        if not body:
+            continue
+        rendered.append(f"- [{ref}] {' '.join(str(body).split())}")
+    if rendered:
+        parts.append(
+            "\nVERBATIM PROVISION TEXT (supporting context — the official wording "
+            "of provisions already listed above. Use this exact statutory "
+            "terminology in the answer; do NOT cite anything not already listed "
+            "above, and do NOT quote at length — this is for wording accuracy):\n"
+            + "\n".join(rendered)
+        )
+
+    annex_recitals = getattr(context, "referenced_annexes_and_recitals", None) or []
+    rows: list[str] = []
+    for entry in annex_recitals[:_GROUNDING_MAX_ANNEX_RECITALS]:
+        if not isinstance(entry, dict):
+            continue
+        ref = str(entry.get("ref", "") or "").strip()
+        body = _clip_grounding(entry.get("text", ""))
+        if ref and body:
+            rows.append(f"- [{ref}] {body}")
+    if rows:
+        parts.append(
+            "\nREFERENCED ANNEXES AND RECITALS (supporting context — Recitals are "
+            "interpretive and are NEVER a wire citation; cite an Annex only if it "
+            "is already listed above):\n"
+            + "\n".join(rows)
+        )
+    return parts
+
+
 def _build_context_references_block(context: GraphContext) -> str:
     """Render the GraphContext as the ``EU AI ACT REFERENCES:`` block.
 
@@ -5654,6 +5787,14 @@ def _build_context_references_block(context: GraphContext) -> str:
             "\nLEGAL AST LOGICAL EVALUATIONS (supporting context — do not cite as an Article/Annex):\n"
             + "\n".join(f"- {eval_res}" for eval_res in context.ast_evaluations)
         )
+    # R288 Arm-0 — the verbatim grounding fields the dead ``_llm_generate_answer``
+    # rendered and this (live) mirror silently dropped. Fail-soft: a bad row can
+    # never break the block that Stage-2 depends on.
+    if _grounding_text_enabled():
+        try:
+            parts.extend(_render_grounding_text(context))
+        except Exception:  # noqa: BLE001 — grounding is additive, never load-bearing
+            logger.debug("grounding-text render failed", exc_info=True)
     return "\n".join(parts) if parts else "No EU AI Act references match this query."
 
 
