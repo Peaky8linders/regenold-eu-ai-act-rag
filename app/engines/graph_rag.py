@@ -5247,7 +5247,7 @@ def _populate_semantic_statements(context: GraphContext, question: str) -> None:
     try:
         context.question = question or ""
     except Exception:  # noqa: BLE001 — never break retrieval on a stash
-        pass
+        logger.debug("grounding: question stash failed", exc_info=True)
     try:
         from app.engines.embeddings_index import (
             is_available as _emb_available,
@@ -5601,12 +5601,22 @@ def _needs_stage2_enhancement(
 
 
 def _grounding_text_enabled() -> bool:
-    """R288 Arm-0 — render the VERBATIM grounding fields into the Stage-2 block.
+    """R288 Arm-1 — render the VERBATIM grounding fields into the Stage-2 block.
+
+    R288.1 — relabelled from "Arm-0". Arm 0 was the *abandoned* attempt to reuse
+    the already-computed ``semantically_relevant_statements``; it was measured
+    dead (that field is an embedding hit-list for OTHER articles — an Article-13
+    question yields Art. 79/80/82 statements, zero overlap with the retrieved
+    set on all four probe questions). What actually shipped is Arm 1: fetch the
+    verbatim paragraphs of the CITED refs directly. Three call sites carried the
+    wrong arm number, which would have sent the next session hunting for a
+    scope-ablation knob that does not exist.
 
     ``semantically_relevant_statements`` and ``referenced_annexes_and_recitals``
     are computed on EVERY request (``_populate_semantic_statements`` /
     ``_expand_referenced_annexes_and_recitals``) but were rendered ONLY by
-    :func:`_llm_generate_answer`, which has **zero callers** — so the verbatim
+    :func:`_llm_generate_answer`, which has **no production caller** (its only
+    caller anywhere is ``tests/test_gemini_routing.py``) — so the verbatim
     regulation text they carry never reached the model that writes the answer.
     Measured on the real 110-row regenold easy batch: 215/322 (67%) of actually
     cited refs have no paragraph-level text in the block at all, while prompt
@@ -5625,12 +5635,28 @@ _GROUNDING_MAX_REFS = 3
 _GROUNDING_MAX_ANNEX_RECITALS = 4
 _GROUNDING_MAX_CHARS = 400
 _GROUNDING_REF_CHARS = 1200
-# Statements are pre-tagged by the producer as "[Art. 13] <sentence>".
-_GROUNDING_TAG_RE = re.compile(r"^\s*\[([^\]]+)\]\s*(.*)$", re.S)
+# R288.1 — the ``[Art. N] <sentence>`` tag regex belonged to the abandoned Arm 0
+# (which parsed pre-tagged ``semantically_relevant_statements``). Arm 1 fetches
+# provisions by ref and never parses a tag, so the regex had zero readers.
+# Removed rather than left as a decoy.
+
+# R288.1 — the marker that opens the verbatim section. The R113 grounding-set
+# miner keys on it to cut the section back off before mining (see
+# :func:`_build_context_references_block`), so it must stay a single literal
+# used by both the renderer and the miner.
+_GROUNDING_SECTION_MARKER = "\nVERBATIM PROVISION TEXT (supporting context"
 
 
 def _grounding_ref_budget() -> int:
-    """Per-reference verbatim char budget (env-tunable for the A/B sweep)."""
+    """Per-reference verbatim char budget (env-tunable for the A/B sweep).
+
+    R288.1 — this var is now registered in ``_engine_cache_key``. It was not,
+    which made the budget sweep the R288 checkpoint prescribes (300/500/800)
+    unmeasurable: two arms differing ONLY in this value produced an identical
+    cache key, so ``easyhard_ab`` — which mutates ``os.environ`` in-process for
+    both arms — served arm A's cached engine output to arm B and the sweep would
+    have reported "no effect" for every budget.
+    """
     try:
         return max(200, min(4000, int(os.getenv("REGENOLD_GROUNDING_REF_CHARS", ""))))
     except (TypeError, ValueError):
@@ -5676,22 +5702,30 @@ def _render_grounding_text(context: GraphContext) -> list[str]:
     question = str(getattr(context, "question", "") or "")
     budget = _grounding_ref_budget()
 
+    # R288.1 — hoisted out of the per-ref loop; the import ran once per
+    # reference and the module is already resident after the first request.
+    try:
+        from app.data.provision_text import (  # noqa: PLC0415
+            select_relevant_paragraphs,
+        )
+    except Exception:  # noqa: BLE001 — no provision corpus ⇒ render nothing
+        logger.debug("grounding: provision_text unavailable", exc_info=True)
+        return parts
+
     rendered: list[str] = []
     for ref in _context_article_refs(context)[:_GROUNDING_MAX_REFS]:
         try:
-            from app.data.provision_text import (  # noqa: PLC0415
-                select_relevant_paragraphs,
-            )
-
             body = select_relevant_paragraphs(ref, question, budget)
         except Exception:  # noqa: BLE001 — a bad ref must not break the block
+            logger.debug("grounding: ref %s did not resolve", ref, exc_info=True)
             body = None
         if not body:
             continue
         rendered.append(f"- [{ref}] {' '.join(str(body).split())}")
     if rendered:
         parts.append(
-            "\nVERBATIM PROVISION TEXT (supporting context — the official wording "
+            _GROUNDING_SECTION_MARKER
+            + " — the official wording "
             "of provisions already listed above. Use this exact statutory "
             "terminology in the answer; do NOT cite anything not already listed "
             "above, and do NOT quote at length — this is for wording accuracy):\n"
@@ -5717,8 +5751,22 @@ def _render_grounding_text(context: GraphContext) -> list[str]:
     return parts
 
 
-def _build_context_references_block(context: GraphContext) -> str:
+def _build_context_references_block(
+    context: GraphContext, *, include_grounding: bool = True
+) -> str:
     """Render the GraphContext as the ``EU AI ACT REFERENCES:`` block.
+
+    R288.1 — ``include_grounding=False`` renders everything EXCEPT the R288
+    verbatim-provision section. It exists for exactly one caller: the R113
+    grounding-set miner (:func:`_grounded_refs_for_guard`), which treats every
+    ``Art. N`` it can see as a citation the polish is ALLOWED to emit. Verbatim
+    regulation text is saturated with cross-references, so feeding it to the
+    miner silently widens the hallucination allowlist to provisions that were
+    never retrieved. Measured on a 3-obligation context (Arts. 9/11/13): the
+    grounded set went 3 → 6, admitting Art. 60, Art. 72 and Annex IV purely
+    because the bodies of the cited articles name them. The block itself tells
+    the model "do NOT cite anything not already listed above" — the guard must
+    enforce that sentence, not be defeated by the text it introduces.
 
     Mirrors the structured block built by :func:`_llm_generate_answer` so
     Stage-2 polish operates against the SAME ground-truth surface the
@@ -5787,10 +5835,12 @@ def _build_context_references_block(context: GraphContext) -> str:
             "\nLEGAL AST LOGICAL EVALUATIONS (supporting context — do not cite as an Article/Annex):\n"
             + "\n".join(f"- {eval_res}" for eval_res in context.ast_evaluations)
         )
-    # R288 Arm-0 — the verbatim grounding fields the dead ``_llm_generate_answer``
+    # R288 Arm-1 — the verbatim grounding fields the dead ``_llm_generate_answer``
     # rendered and this (live) mirror silently dropped. Fail-soft: a bad row can
-    # never break the block that Stage-2 depends on.
-    if _grounding_text_enabled():
+    # never break the block that Stage-2 depends on. Suppressed for the R113
+    # miner (``include_grounding=False``) so verbatim cross-references cannot
+    # widen the citation allowlist — see this function's docstring.
+    if include_grounding and _grounding_text_enabled():
         try:
             parts.extend(_render_grounding_text(context))
         except Exception:  # noqa: BLE001 — grounding is additive, never load-bearing
@@ -6152,10 +6202,14 @@ def _extract_context_grounded_refs(context: GraphContext) -> set[str]:
         # the contradiction guard keys on it being non-empty.
         try:
             grounded |= _mine_refs_from_text(
-                _build_context_references_block(context)
+                # R288.1 — mine the block WITHOUT the R288 verbatim section.
+                # The regulation's own cross-references are not provisions we
+                # supplied, and admitting them turns the guard's allowlist into
+                # a superset of what was retrieved.
+                _build_context_references_block(context, include_grounding=False)
             )
         except Exception:  # noqa: BLE001 — parity mining is best-effort
-            pass
+            logger.debug("R113 parity mining failed", exc_info=True)
     except Exception:  # noqa: BLE001 — guard must never raise on malformed context
         return set()
     return grounded

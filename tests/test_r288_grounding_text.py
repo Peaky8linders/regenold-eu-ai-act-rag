@@ -150,3 +150,146 @@ class TestCacheKey:
         monkeypatch.setenv("REGENOLD_GROUNDING_TEXT", "1")
         b = R._engine_cache_key("q", None)
         assert a != b
+
+    def test_ref_char_budget_is_in_the_engine_cache_key(self, monkeypatch):
+        """R288.1 — the budget sweep the R288 checkpoint prescribes (300/500/800)
+        holds REGENOLD_GROUNDING_TEXT=1 on BOTH arms and varies only this value.
+        While it was absent from the key both arms hashed identically, so
+        easyhard_ab (which mutates os.environ in-process for both arms) served
+        arm A's cached engine output to arm B and every sweep read "no effect".
+        """
+        from app.routes import regenold as R
+
+        monkeypatch.setenv("REGENOLD_GROUNDING_TEXT", "1")
+        monkeypatch.setenv("REGENOLD_GROUNDING_REF_CHARS", "500")
+        a = R._engine_cache_key("q", None)
+        monkeypatch.setenv("REGENOLD_GROUNDING_REF_CHARS", "1200")
+        b = R._engine_cache_key("q", None)
+        assert a != b, "budget sweep arms collide in the cache — R263.2"
+
+
+class TestGuardAllowlistNotWidened:
+    """R288.1 — the R113 miner must not treat the regulation's own
+    cross-references as provisions we supplied.
+
+    ``_mine_refs_from_text`` feeds the drift guard's grounding set: "what the
+    polish is allowed to cite". Verbatim Act text names other provisions
+    constantly (the bodies of Arts. 9/11/13 name Art. 60, Art. 72 and Annex IV),
+    so mining the rendered grounding section turns the allowlist into a superset
+    of what was retrieved — while the block itself instructs the model to "do
+    NOT cite anything not already listed above".
+    """
+
+    @staticmethod
+    def _ctx3():
+        return _ctx(
+            obligations=[
+                {"id": "o1", "text": "stub for 13", "article": "Art. 13"},
+                {"id": "o2", "text": "stub for 11", "article": "Art. 11"},
+                {"id": "o3", "text": "stub for 9", "article": "Art. 9"},
+            ],
+            question="What does Article 13 require for transparency?",
+        )
+
+    def test_grounding_can_be_excluded_from_the_block(self, monkeypatch):
+        monkeypatch.setenv("REGENOLD_GROUNDING_TEXT", "1")
+        ctx = self._ctx3()
+        assert "VERBATIM PROVISION TEXT" in G._build_context_references_block(ctx)
+        assert "VERBATIM PROVISION TEXT" not in G._build_context_references_block(
+            ctx, include_grounding=False
+        )
+
+    def test_guard_set_is_identical_gate_on_and_off(self, monkeypatch):
+        """The point: turning R288 on must not change what may be cited.
+
+        Calls the REAL guard entry point, ``_extract_context_grounded_refs``.
+        An earlier cut of this test called ``_build_context_references_block``
+        with ``include_grounding=False`` directly and therefore asserted only
+        that the mechanism EXISTS — reverting the call site inside the guard
+        left it green. Exercising the guard itself is what makes it bite.
+        """
+        ctx = self._ctx3()
+        monkeypatch.delenv("REGENOLD_GROUNDING_TEXT", raising=False)
+        off = G._extract_context_grounded_refs(ctx)
+        monkeypatch.setenv("REGENOLD_GROUNDING_TEXT", "1")
+        on = G._extract_context_grounded_refs(ctx)
+        assert on == off, (
+            f"R288 widened the citation allowlist: {sorted(on - off)} became "
+            "citable purely because the verbatim text names them"
+        )
+
+    def test_verbatim_text_would_otherwise_leak_extra_refs(self, monkeypatch):
+        """Positive control — proves the test above is load-bearing, not vacuous.
+
+        If this stops finding extra refs, the guard test passes for the wrong
+        reason (e.g. the provision corpus stopped resolving) and the regression
+        it protects against would go unnoticed.
+        """
+        monkeypatch.setenv("REGENOLD_GROUNDING_TEXT", "1")
+        ctx = self._ctx3()
+        clean = G._mine_refs_from_text(
+            G._build_context_references_block(ctx, include_grounding=False)
+        )
+        leaked = G._mine_refs_from_text(
+            G._build_context_references_block(ctx, include_grounding=True)
+        )
+        assert leaked - clean, "verbatim text no longer introduces cross-refs"
+
+
+class TestLogicRagQuestionParity:
+    def test_execute_logic_rag_returns_a_context_carrying_the_question(
+        self, monkeypatch
+    ):
+        """R288.1 — the context LogicRAG RETURNS is what Stage-2 and the R113
+        guard render, so it must carry the question or R288's question-relevant
+        paragraph selection silently degrades to the leading-paragraph fallback.
+
+        Stubs the two LLM-dependent steps (DAG decomposition and retrieval) so
+        this stays a pure unit test; a single-rank DAG short-circuits the
+        pruning call, which is the only other LLM hop.
+        """
+        from app.engines import logic_rag as L
+
+        monkeypatch.setattr(
+            L, "_decompose_to_dag", lambda q, deadline=None: [
+                {"id": "n1", "query": q, "deps": []}
+            ]
+        )
+        monkeypatch.setattr(
+            L, "_topological_sort", lambda dag: [[dag[0]]]
+        )
+
+        def _fake_retrieve(parsed, risk_level=None, answers=None):
+            c = G.GraphContext()
+            c.obligations = [
+                {"id": "o1", "text": "stub", "article": "Art. 13"}
+            ]
+            return c
+
+        monkeypatch.setattr(L, "_retrieve_from_graph", _fake_retrieve)
+
+        out = L.execute_logic_rag("What does Article 13 require?")
+        assert out is not None
+        assert out.question, (
+            "LogicRAG returned a question-less context — R288 verbatim "
+            "selection falls back to the leading paragraph for every answer"
+        )
+        assert "Article 13" in out.question
+
+    def test_merge_contexts_still_does_not_carry_question(self):
+        """R288.1 — ``execute_logic_rag`` returns a BARE GraphContext that
+        ``_merge_contexts`` never gives a question, so R288's question-relevant
+        selection silently degraded to the leading-paragraph fallback whenever
+        REGENOLD_LOGIC_RAG=1. Pin that the merge still does not carry it, so the
+        explicit assignment in ``execute_logic_rag`` stays necessary.
+        """
+        from app.engines.logic_rag import _merge_contexts
+
+        base = G.GraphContext()
+        new = G.GraphContext()
+        new.question = "What does Article 13 require?"
+        _merge_contexts(base, new)
+        assert base.question == "", (
+            "_merge_contexts now carries question — reconcile with the explicit "
+            "assignment in execute_logic_rag rather than keeping both silently"
+        )

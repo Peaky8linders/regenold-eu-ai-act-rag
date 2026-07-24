@@ -1318,13 +1318,27 @@ def _engine_cache_key(
             # engine's parsed entities → surfaced obligations → refs, so it
             # must be in the cache key (R30/R56/R79/R263.2 doctrine).
             "REGENOLD_MULTI_ARTICLE_ENTITIES",
-            # R288 Arm-0 — rendering the verbatim grounding fields into the
-            # Stage-2 references block changes the polished answer, so both the
-            # master gate and the scope-ablation knob must be in the key. Without
-            # this an in-process OFF↔ON A/B would serve the OFF arm's cached
-            # engine output to the ON arm (the R263.2 cross-arm contamination).
+            # R288 Arm-1 — rendering the verbatim provision text into the
+            # Stage-2 references block changes the polished answer, so the gate
+            # must be in the key. Without this an in-process OFF↔ON A/B would
+            # serve the OFF arm's cached engine output to the ON arm (the
+            # R263.2 cross-arm contamination).
             "REGENOLD_GROUNDING_TEXT",
-            "REGENOLD_GROUNDING_SCOPE_ALL",
+            # R288.1 — the per-ref char budget was MISSING here while the R288
+            # checkpoint prescribed sweeping it (300/500/800) via --branch-env.
+            # It changes how much verbatim text Stage-2 sees ⇒ changes the
+            # answer, and two arms differing ONLY in this value hashed to the
+            # SAME key. ``easyhard_ab`` mutates os.environ in-process for both
+            # arms (evals/harness/easyhard_ab.py:140-141), so arm B would have
+            # been served arm A's cached output and the sweep would have
+            # reported a flat "no effect" for every budget. The doctrine is not
+            # "gates go in the key" — it is "anything that changes engine output
+            # goes in the key", and a numeric knob is not exempt.
+            "REGENOLD_GROUNDING_REF_CHARS",
+            # NOTE — R288 also listed "REGENOLD_GROUNDING_SCOPE_ALL" here. That
+            # var is read NOWHERE in the codebase; it was the scope-ablation
+            # knob of the ABANDONED Arm 0. Removed rather than left as a decoy
+            # implying an ablation that cannot be run.
             # R283 — the reference-recovery keyword additions (Fix #4) extend
             # the engine's ``_KEYWORD_ENTITY_MAP`` → parsed entities → surfaced
             # obligations → refs, so the master + KW sub-flag must be in the
