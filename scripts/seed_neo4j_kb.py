@@ -41,10 +41,30 @@ from typing import Any, Iterable
 
 from app.data.article_existence import ARTICLE_EXISTENCE
 from app.data.definitions import _DEFINITIONS
-from app.data.eu_ai_act_corpus import ARTICLE_FULL_TEXT, ARTICLE_TITLE, RECITALS
+from app.data.eu_ai_act_corpus import (
+    ARTICLE_FULL_TEXT,
+    ARTICLE_TITLE,
+    RECITALS,
+    ARTICLE_CHAPTER as _ARTICLE_CHAPTER,
+)
 from app.data.kb import EC_CHECKER_OBLIGATION_MAP, KB_VERSION, MATURITY_DIMENSIONS
 from app.data.article_requirements_full import DIMENSION_TO_ARTICLES
 from app.data.kb_xrefs import MANUAL_XREFS, _build_xref_graph
+# R291 — clean, SHA-pinned verbatim source (replaces the NBSP-laden Ansvar
+# corpus for node prose) + the nesting-aware hierarchy builder + the ontology
+# deontic layer.
+from app.data.official_eu_ai_act import (
+    OFFICIAL_ARTICLE_TITLES,
+    OFFICIAL_ANNEX_TITLES,
+    OFFICIAL_RECITAL_TEXT,
+)
+from app.data.provision_text import article_body as _article_body
+from app.data.provision_text import get_provision_text as _get_provision_text
+from app.data.provision_hierarchy import (
+    HierarchyPayload,
+    build_hierarchy_payload,
+)
+from app.data.ontology import PRACTICE_REGISTRY, PHASE_REGISTRY, ANNEX_III_REGISTRY
 
 # ── SEED-02 fix: reconcile MATURITY_DIMENSIONS ids vs DIMENSION_TO_ARTICLES keys ──
 # The upstream module uses 'conformity_assessment' but MATURITY_DIMENSIONS uses 'conformity'.
@@ -82,7 +102,6 @@ assert not _unmapped_dims, (
     f"{sorted(_unmapped_dims)}.  Add entries to DIMENSION_TO_ARTICLES or to "
     "_INTENTIONALLY_UNMAPPED_DIMENSIONS in scripts/seed_neo4j_kb.py."
 )
-from app.data.ontology import ANNEX_III_REGISTRY
 from app.data.role_obligations import ROLE_OBLIGATIONS
 from app.integrations.regenold.refs import to_user_facing as _ref_to_user_facing
 
@@ -95,7 +114,7 @@ logger = logging.getLogger(__name__)
 #: new edge type, removed source, etc.). Surfaces in the ``KBMetadata``
 #: node so consumers can detect a graph that's stale relative to the
 #: currently-running code.
-SEED_VERSION = "2026-06-23-legalast"
+SEED_VERSION = "2026-07-24-r291-fullseed"
 
 #: Cap on per-transaction batch size to stay well clear of the Neo4j
 #: 4194304-byte default transaction limit. The shape of our payloads
@@ -205,6 +224,19 @@ def _short_title(ref: str) -> str:
     return ref
 
 
+def _official_title(long_key: str) -> str:
+    """Clean official title for ``Article N`` / ``Annex X``, else ``""``.
+
+    Prefers the SHA-pinned ``OFFICIAL_*_TITLES``; strips the stray trailing
+    backtick a couple of pinned entries carry (e.g. ``"Subject matter`"``)
+    and NBSP runs so the node property is readable.
+    """
+    title = OFFICIAL_ARTICLE_TITLES.get(long_key) or OFFICIAL_ANNEX_TITLES.get(long_key)
+    if not title:
+        return ""
+    return title.replace("\xa0", " ").strip().rstrip("`").strip()
+
+
 def _classify_risk_for_article(num: str) -> str | None:
     """Return the RiskLevel ID an obligation under article ``num`` applies at.
 
@@ -263,9 +295,26 @@ class SeedPayload:
     question_nodes: list[dict] = dataclasses.field(default_factory=list)
     belongs_to_edges: list[dict] = dataclasses.field(default_factory=list)
     assesses_edges: list[dict] = dataclasses.field(default_factory=list)
+    # R291 — ontology deontic layer + provision hierarchy. All default-empty
+    # so pre-R291 direct SeedPayload() constructors keep working.
+    practice_nodes: list[dict] = dataclasses.field(default_factory=list)
+    phase_nodes: list[dict] = dataclasses.field(default_factory=list)
+    prohibited_under_edges: list[dict] = dataclasses.field(default_factory=list)
+    applies_to_phase_edges: list[dict] = dataclasses.field(default_factory=list)
+    has_obligation_article_edges: list[dict] = dataclasses.field(default_factory=list)
+    hierarchy: "HierarchyPayload | None" = None
+
+    def _hier_counts(self) -> dict[str, int]:
+        if self.hierarchy is None:
+            return {
+                "Paragraph": 0, "Point": 0, "SubPoint": 0,
+                "HAS_PARAGRAPH": 0, "HAS_POINT": 0, "HAS_SUBPOINT": 0,
+            }
+        return self.hierarchy.counts()
 
     @property
     def total_nodes(self) -> int:
+        h = self._hier_counts()
         return (
             len(self.article_nodes)
             + len(self.annex_nodes)
@@ -277,11 +326,15 @@ class SeedPayload:
             + len(self.operator_role_nodes)
             + len(self.dimension_nodes)
             + len(self.question_nodes)
+            + len(self.practice_nodes)
+            + len(self.phase_nodes)
+            + h["Paragraph"] + h["Point"] + h["SubPoint"]
             + 1  # metadata
         )
 
     @property
     def total_edges(self) -> int:
+        h = self._hier_counts()
         return (
             len(self.has_obligation_edges)
             + len(self.has_definition_edges)
@@ -291,10 +344,14 @@ class SeedPayload:
             + len(self.applies_at_edges)
             + len(self.belongs_to_edges)
             + len(self.assesses_edges)
+            + len(self.prohibited_under_edges)
+            + len(self.applies_to_phase_edges)
+            + len(self.has_obligation_article_edges)
+            + h["HAS_PARAGRAPH"] + h["HAS_POINT"] + h["HAS_SUBPOINT"]
         )
 
     def counts(self) -> dict[str, int]:
-        return {
+        out = {
             "Article": len(self.article_nodes),
             "Annex": len(self.annex_nodes),
             "Recital": len(self.recital_nodes),
@@ -305,6 +362,8 @@ class SeedPayload:
             "OperatorRole": len(self.operator_role_nodes),
             "Dimension": len(self.dimension_nodes),
             "Question": len(self.question_nodes),
+            "Practice": len(self.practice_nodes),
+            "LifecyclePhase": len(self.phase_nodes),
             "KBMetadata": 1,
             "HAS_OBLIGATION": len(self.has_obligation_edges),
             "HAS_DEFINITION": len(self.has_definition_edges),
@@ -314,7 +373,22 @@ class SeedPayload:
             "APPLIES_AT": len(self.applies_at_edges),
             "BELONGS_TO": len(self.belongs_to_edges),
             "ASSESSES": len(self.assesses_edges),
+            "PROHIBITED_UNDER": len(self.prohibited_under_edges),
+            "APPLIES_TO": len(self.applies_to_phase_edges),
+            "HAS_OBLIGATION_ARTICLE": len(self.has_obligation_article_edges),
         }
+        # NOTE: the Paragraph/Point/SubPoint hierarchy is intentionally NOT in
+        # ``counts()`` — that dict is the per-label write ledger ``seed_graph``
+        # returns and ``test_seed_graph_writes_every_payload_row`` pins to it.
+        # The hierarchy is written by the fail-soft ``_ingest_legal_ast_hierarchy``
+        # step (so a hierarchy hiccup can't abort the base seed) and is counted
+        # separately (see ``hierarchy_counts`` + the dry-run print). It IS folded
+        # into ``total_nodes`` / ``total_edges`` for the KBMetadata totals.
+        return out
+
+    def hierarchy_counts(self) -> dict[str, int]:
+        """Paragraph/Point/SubPoint counts — the separate hierarchy ledger."""
+        return self._hier_counts()
 
 
 def build_payload() -> SeedPayload:
@@ -336,13 +410,21 @@ def build_payload() -> SeedPayload:
         key=lambda r: int(_article_number(r)),
     ):
         num = _article_number(ref)
+        long_key = f"Article {num}"
+        # R291 — FULL, untruncated, CLEAN verbatim body from the SHA-pinned
+        # official source (was ``ARTICLE_FULL_TEXT[ref][:2000]`` — Ansvar
+        # NBSP-laden + truncated at 2000, dropping ~145K chars of statute).
+        full_text = _article_body(long_key) or ARTICLE_FULL_TEXT.get(ref, "")
         article_nodes.append(
             {
                 "id": _article_id(ref),
                 "number": num,
-                "title": _short_title(ref),
-                "description": ARTICLE_FULL_TEXT.get(ref, "")[:2000],
-                "chapter": "",
+                "title": _official_title(long_key) or _short_title(ref),
+                # ``text`` is the first-class full-body property; ``description``
+                # kept (now also full + clean) for any legacy reader.
+                "text": full_text,
+                "description": full_text,
+                "chapter": _ARTICLE_CHAPTER.get(ref) or "",
                 "vector_chunk_ids": [],
                 "legal_type": "Article",
                 "strict_citation": _ref_to_user_facing(f"Art. {num}"),
@@ -356,12 +438,15 @@ def build_payload() -> SeedPayload:
     annex_nodes: list[dict] = []
     for ref in sorted(r for r in ARTICLE_EXISTENCE if r.startswith("Annex ")):
         roman = _article_number(ref)
+        long_key = f"Annex {roman}"
+        full_text = _article_body(long_key) or ARTICLE_FULL_TEXT.get(ref, "")
         annex_nodes.append(
             {
                 "id": _article_id(ref),
                 "number": roman,
-                "title": _short_title(ref),
-                "description": ARTICLE_FULL_TEXT.get(ref, "")[:2000],
+                "title": _official_title(long_key) or _short_title(ref),
+                "text": full_text,
+                "description": full_text,
                 "legal_type": "Annex",
                 "strict_citation": _ref_to_user_facing(f"Annex {roman}"),
             }
@@ -370,12 +455,15 @@ def build_payload() -> SeedPayload:
     # ── Recitals (180) ────────────────────────────────────────────────
     recital_nodes: list[dict] = []
     for n in sorted(RECITALS.keys()):
-        text = RECITALS[n].replace("\xa0", " ").strip()
+        # R291 — full, untruncated recital from the SHA-pinned official source
+        # (was ``RECITALS[n][:3000]``). Fall back to the Ansvar corpus text.
+        raw = OFFICIAL_RECITAL_TEXT.get(n) or RECITALS[n]
+        text = raw.replace("\xa0", " ").strip()
         recital_nodes.append(
             {
                 "id": f"recital_{n}",
                 "number": str(n),
-                "text": text[:3000],
+                "text": text,
             }
         )
 
@@ -385,13 +473,18 @@ def build_payload() -> SeedPayload:
     for defn in _DEFINITIONS:
         slug = _slug_term(defn.term)
         def_id = f"def_{slug}"
+        # R291 — verbatim Art. 3 wording (matches the graph_aware
+        # ``lookup_definition_by_term`` "canonical Art. 3 wording verbatim"
+        # contract). ``defn.citation`` is ``Art. 3.N``; resolve it to the
+        # official text, falling back to the hand-curated description.
+        verbatim = _get_provision_text(defn.citation) or defn.description
         definition_nodes.append(
             {
                 "id": def_id,
                 "kind": "Definition",
                 "term": defn.term,
                 "citation": defn.citation,
-                "text": defn.description,
+                "text": verbatim,
             }
         )
         has_definition_edges.append(
@@ -577,6 +670,98 @@ def build_payload() -> SeedPayload:
                 }
             )
 
+    # ── Ontology deontic layer (R291) — the semantic-layer mirror ─────
+    #
+    # The high-risk half of the risk pyramid was already seeded
+    # (AnnexIIICategory -[:TRIGGERS_HIGH_RISK_UNDER]-> Art. 6). R291 adds the
+    # prohibited half + the operator-role obligation edges + the applicability
+    # timeline, so the graph is a faithful mirror of ``app/data/ontology.py``
+    # and ``app/data/role_obligations.py`` rather than a fraction of them.
+    # Every edge endpoint is a BASE Article node (never a sub-point) so
+    # ``validate_payload`` keeps a flat, checkable node set.
+
+    def _existing_article_id(short_ref: str) -> str | None:
+        base = short_ref.split("(")[0].strip()
+        if not base.startswith("Art. "):
+            return None
+        # Normalise ``Art. 5.1.a`` → ``Art. 5``.
+        base = "Art. " + base[len("Art. "):].split(".")[0].strip()
+        return _article_id(base) if base in ARTICLE_EXISTENCE else None
+
+    # Practice nodes (the 8 Art. 5 prohibited practices) + PROHIBITED_UNDER.
+    practice_nodes: list[dict] = []
+    prohibited_under_edges: list[dict] = []
+    for pid, practice in PRACTICE_REGISTRY.items():
+        node_id = f"practice_{pid}"
+        practice_nodes.append(
+            {
+                "id": node_id,
+                "short_name": getattr(practice, "short_name", pid),
+                "sub_paragraph": getattr(practice, "sub_paragraph", ""),
+                "description": (getattr(practice, "description", "") or ""),
+            }
+        )
+        # ``practice.citation`` is ``('Art. 5', 'Art. 5.1.a')`` — anchor the
+        # base article (Art. 5).
+        citation = getattr(practice, "citation", ()) or ()
+        base_ref = citation[0] if citation else "Art. 5"
+        target = _existing_article_id(base_ref)
+        if target is not None:
+            prohibited_under_edges.append(
+                {"source_id": node_id, "target_id": target}
+            )
+
+    # LifecyclePhase nodes (applicability timeline) + APPLIES_TO.
+    phase_nodes: list[dict] = []
+    applies_to_phase_edges: list[dict] = []
+    for pid, phase in PHASE_REGISTRY.items():
+        node_id = f"phase_{pid}" if not pid.startswith("phase_") else pid
+        eff = getattr(phase, "effective_date", None)
+        phase_nodes.append(
+            {
+                "id": node_id,
+                "label": getattr(phase, "label", pid),
+                "effective_date": eff.isoformat() if eff else "",
+                "superseded_by": getattr(phase, "superseded_by", None) or "",
+            }
+        )
+        for art_ref in getattr(phase, "articles", ()) or ():
+            target = _existing_article_id(art_ref)
+            if target is not None:
+                applies_to_phase_edges.append(
+                    {"source_id": node_id, "target_id": target}
+                )
+
+    # OperatorRole -[:HAS_OBLIGATION_ARTICLE {tier}]-> Article. Connects the
+    # currently-orphan role nodes to their obligation articles. Only the 5
+    # canonical roles were seeded as nodes (see above), so only those get
+    # edges.
+    seeded_role_ids = {n["id"] for n in operator_role_nodes}
+    has_obligation_article_edges: list[dict] = []
+    seen_role_edges: set[tuple[str, str, str]] = set()
+    for row in ROLE_OBLIGATIONS:
+        role_node = f"role_{row['id']}"
+        if role_node not in seeded_role_ids:
+            continue
+        for tier, key in (("primary", "primary_articles"), ("secondary", "secondary_articles")):
+            for art_ref in row.get(key, []) or []:
+                target = _existing_article_id(art_ref)
+                if target is None:
+                    continue
+                ek = (role_node, target, tier)
+                if ek in seen_role_edges:
+                    continue
+                seen_role_edges.add(ek)
+                has_obligation_article_edges.append(
+                    {"source_id": role_node, "target_id": target, "tier": tier}
+                )
+
+    # ── Provision hierarchy (Article/Annex → Paragraph → Point → SubPoint) ─
+    # Folded into the payload so ``--dry-run`` accounts for the FULL graph
+    # (the R290 audit's G4 gap: the hierarchy previously wrote ~⅓ of the
+    # nodes only in the live branch, so dry-run under-reported).
+    hierarchy = build_hierarchy_payload()
+
     # ── KBMetadata ────────────────────────────────────────────────────
     metadata_node = {
         "id": "kb_metadata",
@@ -600,6 +785,8 @@ def build_payload() -> SeedPayload:
         operator_role_nodes=operator_role_nodes,
         dimension_nodes=dimension_nodes,
         question_nodes=question_nodes,
+        practice_nodes=practice_nodes,
+        phase_nodes=phase_nodes,
         metadata_node=metadata_node,
         has_obligation_edges=has_obligation_edges,
         has_definition_edges=has_definition_edges,
@@ -609,6 +796,10 @@ def build_payload() -> SeedPayload:
         applies_at_edges=applies_at_edges,
         belongs_to_edges=belongs_to_edges,
         assesses_edges=assesses_edges,
+        prohibited_under_edges=prohibited_under_edges,
+        applies_to_phase_edges=applies_to_phase_edges,
+        has_obligation_article_edges=has_obligation_article_edges,
+        hierarchy=hierarchy,
     )
     # Backfill the counts now that everything else is settled.
     metadata_node["total_nodes"] = payload.total_nodes
@@ -628,6 +819,7 @@ _CYPHER_ARTICLE = """
 MERGE (a:Article {id: $id})
 SET a.number = $number,
     a.title = $title,
+    a.text = $text,
     a.description = $description,
     a.chapter = $chapter,
     a.vector_chunk_ids = $vector_chunk_ids,
@@ -639,6 +831,7 @@ _CYPHER_ANNEX = """
 MERGE (a:Annex {id: $id})
 SET a.number = $number,
     a.title = $title,
+    a.text = $text,
     a.description = $description,
     a.legal_type = $legal_type,
     a.strict_citation = $strict_citation
@@ -781,6 +974,41 @@ MATCH (o:Obligation {id: $target_id})
 MERGE (q)-[:ASSESSES]->(o)
 """
 
+# ── R291 ontology deontic layer ────────────────────────────────────────────
+
+_CYPHER_PRACTICE = """
+MERGE (p:Practice {id: $id})
+SET p.short_name = $short_name,
+    p.sub_paragraph = $sub_paragraph,
+    p.description = $description
+"""
+
+_CYPHER_PHASE = """
+MERGE (ph:LifecyclePhase {id: $id})
+SET ph.label = $label,
+    ph.effective_date = $effective_date,
+    ph.superseded_by = $superseded_by
+"""
+
+_CYPHER_PROHIBITED_UNDER = """
+MATCH (p:Practice {id: $source_id})
+MATCH (a:Article {id: $target_id})
+MERGE (p)-[:PROHIBITED_UNDER]->(a)
+"""
+
+_CYPHER_APPLIES_TO = """
+MATCH (ph:LifecyclePhase {id: $source_id})
+MATCH (a:Article {id: $target_id})
+MERGE (ph)-[:APPLIES_TO]->(a)
+"""
+
+_CYPHER_HAS_OBLIGATION_ARTICLE = """
+MATCH (role:OperatorRole {id: $source_id})
+MATCH (a:Article {id: $target_id})
+MERGE (role)-[r:HAS_OBLIGATION_ARTICLE]->(a)
+SET r.tier = $tier
+"""
+
 
 # ─── Runner ──────────────────────────────────────────────────────────────
 
@@ -876,6 +1104,15 @@ def seed_graph(
         client, _CYPHER_METADATA, [payload.metadata_node],
         batch_size=batch_size, label="KBMetadata", verbose=verbose,
     )
+    # R291 ontology nodes.
+    counts["Practice"] = _write_rows(
+        client, _CYPHER_PRACTICE, payload.practice_nodes,
+        batch_size=batch_size, label="Practice", verbose=verbose,
+    )
+    counts["LifecyclePhase"] = _write_rows(
+        client, _CYPHER_PHASE, payload.phase_nodes,
+        batch_size=batch_size, label="LifecyclePhase", verbose=verbose,
+    )
 
     # ── Edges ─────────────────────────────────────────────────────────
     counts["HAS_OBLIGATION"] = _write_rows(
@@ -910,6 +1147,19 @@ def seed_graph(
         client, _CYPHER_ASSESSES, payload.assesses_edges,
         batch_size=batch_size, label="ASSESSES", verbose=verbose,
     )
+    # R291 ontology-layer edges.
+    counts["PROHIBITED_UNDER"] = _write_rows(
+        client, _CYPHER_PROHIBITED_UNDER, payload.prohibited_under_edges,
+        batch_size=batch_size, label="PROHIBITED_UNDER", verbose=verbose,
+    )
+    counts["APPLIES_TO"] = _write_rows(
+        client, _CYPHER_APPLIES_TO, payload.applies_to_phase_edges,
+        batch_size=batch_size, label="APPLIES_TO", verbose=verbose,
+    )
+    counts["HAS_OBLIGATION_ARTICLE"] = _write_rows(
+        client, _CYPHER_HAS_OBLIGATION_ARTICLE, payload.has_obligation_article_edges,
+        batch_size=batch_size, label="HAS_OBLIGATION_ARTICLE", verbose=verbose,
+    )
 
     return counts
 
@@ -933,6 +1183,8 @@ def validate_payload(payload: SeedPayload) -> list[str]:
         payload.operator_role_nodes,
         payload.dimension_nodes,
         payload.question_nodes,
+        payload.practice_nodes,
+        payload.phase_nodes,
     ):
         for row in bucket:
             node_ids.add(row["id"])
@@ -948,6 +1200,9 @@ def validate_payload(payload: SeedPayload) -> list[str]:
         ("APPLIES_AT", payload.applies_at_edges),
         ("BELONGS_TO", payload.belongs_to_edges),
         ("ASSESSES", payload.assesses_edges),
+        ("PROHIBITED_UNDER", payload.prohibited_under_edges),
+        ("APPLIES_TO", payload.applies_to_phase_edges),
+        ("HAS_OBLIGATION_ARTICLE", payload.has_obligation_article_edges),
     )
     for name, edges in edge_buckets:
         for row in edges:
@@ -1030,6 +1285,130 @@ def _apply_env_overrides(args: argparse.Namespace) -> None:
         os.environ["NEO4J_DATABASE"] = args.neo4j_database
 
 
+# ── R291 schema (constraints + indexes + full-text + vector) ───────────────
+#
+# The seeder created ZERO constraints/indexes before R291 — MERGE-on-{id}
+# without a backing uniqueness constraint is not race-safe and is the
+# structural precondition for the R98 ~20x node duplication. These run FIRST,
+# before any MERGE. Every statement is ``IF NOT EXISTS`` (idempotent) and
+# fail-soft (a Community-edition graph without vector/full-text support logs
+# and continues rather than aborting the seed).
+
+#: Labels that carry embeddable verbatim prose (for the vector index).
+_EMBEDDING_LABELS: tuple[str, ...] = (
+    "Article", "Annex", "Paragraph", "Point", "SubPoint", "Definition", "Recital",
+)
+_EMBEDDING_DIM = 128  # matches app.engines.embeddings_index (TF-IDF -> SVD-128)
+
+
+def _schema_statements() -> list[str]:
+    """The ordered DDL: uniqueness constraints, range indexes, full-text, vector."""
+    from app.graph.schema import SEEDED_NODE_LABELS
+
+    stmts: list[str] = []
+    # Uniqueness constraints on {id} — driven off the single source of truth
+    # so the list can never drift from what the seeder writes.
+    for label in sorted(SEEDED_NODE_LABELS):
+        cname = "c_" + re.sub(r"[^a-z0-9]", "_", label.lower()) + "_id"
+        stmts.append(
+            f"CREATE CONSTRAINT {cname} IF NOT EXISTS "
+            f"FOR (n:{label}) REQUIRE n.id IS UNIQUE"
+        )
+    # Range indexes on the hot lookup keys the live consumers filter on.
+    stmts.extend([
+        "CREATE INDEX i_article_number IF NOT EXISTS FOR (n:Article) ON (n.number)",
+        "CREATE INDEX i_annex_number IF NOT EXISTS FOR (n:Annex) ON (n.number)",
+        "CREATE INDEX i_obligation_art IF NOT EXISTS FOR (n:Obligation) ON (n.article_ref)",
+        "CREATE INDEX i_recital_number IF NOT EXISTS FOR (n:Recital) ON (n.number)",
+    ])
+    # Full-text index over the verbatim prose (graph-native keyword search).
+    ft_labels = "|".join(("Article", "Annex", "Paragraph", "Point", "SubPoint", "Definition", "Recital"))
+    stmts.append(
+        "CREATE FULLTEXT INDEX ft_provision_prose IF NOT EXISTS "
+        f"FOR (n:{ft_labels}) ON EACH [n.text]"
+    )
+    # Vector index per embeddable label (Neo4j vector indexes are per-label).
+    for label in _EMBEDDING_LABELS:
+        idx = "v_" + label.lower() + "_embedding"
+        stmts.append(
+            f"CREATE VECTOR INDEX {idx} IF NOT EXISTS "
+            f"FOR (n:{label}) ON (n.embedding) "
+            f"OPTIONS {{indexConfig: {{`vector.dimensions`: {_EMBEDDING_DIM}, "
+            f"`vector.similarity_function`: 'cosine'}}}}"
+        )
+    return stmts
+
+
+def _ensure_schema(client, *, verbose: bool = False) -> dict[str, int]:
+    """Create constraints + indexes (idempotent, fail-soft). Returns a tally."""
+    logger = logging.getLogger(__name__)
+    ok = 0
+    failed = 0
+    for stmt in _schema_statements():
+        try:
+            client.execute_write_batch([(stmt, {})])
+            ok += 1
+            if verbose:
+                logger.info("schema ok: %s", stmt.split(" IF NOT EXISTS")[0])
+        except Exception as exc:  # pragma: no cover - edition-dependent
+            failed += 1
+            logger.warning("schema statement skipped (%s): %s", exc, stmt[:60])
+    return {"schema_ok": ok, "schema_failed": failed}
+
+
+def _embed_and_index(client, payload: SeedPayload, *, verbose: bool = False) -> int:
+    """Compute + write 128-D embeddings for the verbatim-prose nodes.
+
+    Reuses :func:`app.engines.embeddings_index._embed_query` (the same TF-IDF ->
+    SVD-128 projection the live retrieval uses), so the graph vectors live in
+    the SAME subspace as the in-process embeddings index. Fail-soft: returns 0
+    when the embeddings assets are unavailable (no numpy assets on disk) or on
+    any error — the seed's structure is unaffected.
+    """
+    logger = logging.getLogger(__name__)
+    try:
+        from app.engines.embeddings_index import _embed_query, is_available
+    except Exception:  # pragma: no cover - defensive
+        return 0
+    if not is_available():
+        logger.warning("embeddings assets unavailable; skipping vector embedding.")
+        return 0
+
+    # (label, {id: text}) for every embeddable node.
+    buckets: list[tuple[str, list[dict]]] = [
+        ("Article", payload.article_nodes),
+        ("Annex", payload.annex_nodes),
+        ("Definition", payload.definition_nodes),
+        ("Recital", payload.recital_nodes),
+    ]
+    if payload.hierarchy is not None:
+        buckets.append(("Paragraph", payload.hierarchy.paragraph_nodes))
+        buckets.append(("Point", payload.hierarchy.point_nodes))
+        buckets.append(("SubPoint", payload.hierarchy.subpoint_nodes))
+
+    written = 0
+    for label, nodes in buckets:
+        rows: list[tuple[str, dict]] = []
+        cypher = (
+            f"MATCH (n:{label} {{id: $id}}) SET n.embedding = $embedding"
+        )
+        for node in nodes:
+            text = node.get("text") or node.get("description") or ""
+            if not text:
+                continue
+            vec = _embed_query(text)
+            if vec is None:
+                continue
+            rows.append((cypher, {"id": node["id"], "embedding": [float(x) for x in vec]}))
+        for i in range(0, len(rows), 200):
+            client.execute_write_batch(rows[i:i + 200])
+        written += len(rows)
+        if verbose:
+            logger.info("embedded %d :%s nodes", len(rows), label)
+    logger.info("R291 vector embeddings: %d nodes embedded", written)
+    return written
+
+
 def _ingest_legal_ast_hierarchy(client) -> int:
     """Build the Article/Annex -> Paragraph -> Point hierarchy on ``client``.
 
@@ -1094,7 +1473,7 @@ def run_seed(
 
     if dry_run:
         result["status"] = "dry_run"
-        result["counts"] = payload.counts()
+        result["counts"] = {**payload.counts(), **payload.hierarchy_counts()}
         return result
 
     # Deferred import — keeps the offline / dry-run path free of the
@@ -1110,15 +1489,22 @@ def run_seed(
     try:
         if clear:
             client.clear_graph()
+        # R291 — constraints + range/full-text/vector indexes FIRST (idempotent,
+        # fail-soft) so every subsequent MERGE is index-backed + race-safe.
+        _ensure_schema(client, verbose=verbose)
         counts = seed_graph(
             client, payload, batch_size=batch_size, verbose=verbose
         )
-        # Ontology Leap — build the Article/Annex -> Paragraph -> Point
-        # hierarchy (full EU AI Act coverage) on top of the base seed so the
-        # deterministic Article 6(3) Cypher (and any future sub-point
-        # traversal) has nodes to traverse. Fail-soft: a hierarchy-ingest
-        # error must NOT abort an otherwise-successful base seed.
+        counts.update(payload.hierarchy_counts())
+        # Ontology Leap — build the Article/Annex -> Paragraph -> Point ->
+        # SubPoint hierarchy (full EU AI Act coverage) on top of the base seed
+        # so the deterministic Article 6(3) Cypher (and sub-point traversal)
+        # has nodes to traverse. Fail-soft: a hierarchy-ingest error must NOT
+        # abort an otherwise-successful base seed.
         counts["legal_ast_hierarchy"] = _ingest_legal_ast_hierarchy(client)
+        # R291 — 128-D vector embeddings for graph-native semantic search
+        # (fail-soft; no-op when the embeddings assets are unavailable).
+        counts["embeddings"] = _embed_and_index(client, payload, verbose=verbose)
     finally:
         client.close()
 
@@ -1151,7 +1537,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    counts = payload.counts()
+    counts = {**payload.counts(), **payload.hierarchy_counts()}
     print("---- Regenold KB seed payload ----")
     print(f"  seed_version : {SEED_VERSION}")
     print(f"  kb_version   : {KB_VERSION}")
@@ -1185,15 +1571,22 @@ def main(argv: list[str] | None = None) -> int:
         print("[--clear] Wiping graph (DETACH DELETE every node)...")
         client.clear_graph()
 
+    # R291 — constraints + range/full-text/vector indexes first (idempotent).
+    schema_tally = _ensure_schema(client, verbose=args.verbose)
     written = seed_graph(
         client, payload, batch_size=args.batch_size, verbose=args.verbose
     )
-    # Ontology Leap — Article/Annex -> Paragraph -> Point hierarchy.
+    written.update(payload.hierarchy_counts())
+    # Ontology Leap — Article/Annex -> Paragraph -> Point -> SubPoint hierarchy.
     _ingest_legal_ast_hierarchy(client)
+    # R291 — 128-D vector embeddings for graph-native semantic search.
+    n_embedded = _embed_and_index(client, payload, verbose=args.verbose)
     print("\n---- Seed complete ----")
     for label, count in written.items():
         print(f"    {label:<28} = {count}")
-    print("    legal_ast_hierarchy          = ingested (Article/Annex -> Paragraph -> Point)")
+    print(f"    legal_ast_hierarchy          = ingested (Article/Annex -> Paragraph -> Point -> SubPoint)")
+    print(f"    schema (constraints+indexes) = {schema_tally['schema_ok']} ok, {schema_tally['schema_failed']} skipped")
+    print(f"    vector_embeddings            = {n_embedded} nodes")
     client.close()
     return 0
 

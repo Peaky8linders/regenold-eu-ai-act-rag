@@ -162,6 +162,108 @@ def _annex_items(body: str) -> dict[int, str]:
     return out
 
 
+# ── Nesting-aware sub-point parser (graph ingest only) ─────────────────────
+#
+# ``_subpoints`` above FLATTENS a paragraph's list into a single ``{letter:
+# text}`` dict — which mislabels the nested roman carve-outs ``(i)(ii)(iii)``
+# (e.g. Art. 5(1)(c) social-scoring, Art. 5(1)(h) real-time RBI, Art. 13(3)(b)
+# instructions-for-use) as top-level "letters" AND COLLIDES the romans of two
+# different letters (5(1)(c)(i) and 5(1)(h)(i) both become key ``"i"``,
+# last-write-wins → data loss). That is fine for the wire (it only ever quotes
+# a single leaf), but WRONG for the graph, which must carry the faithful tree.
+#
+# ``subpoints_nested`` is the additive, nesting-aware parser used ONLY by the
+# Neo4j seed hierarchy. It is intentionally NOT wired into the wire path, so
+# the davidath bench + every ``_subpoints`` consumer stay byte-identical.
+#
+# Disambiguation rule (verified against the corpus): a roman-valued marker
+# introduced by ``:`` opens a nested list under the current letter; a marker
+# that continues the top-level ``a→b→c…`` letter sequence is a letter (so
+# Art. 16's real letter ``(i)`` — delimiter ``;``, continues h→i→j → stays a
+# letter, while Art. 5(1)(h)'s roman ``(i)`` — delimiter ``:`` after (h)'s
+# "…for one of the following objectives:" chapeau → nests under (h)).
+
+# Same shape as ``_SUBPOINT_RE`` but captures the leading ``: / ;`` delimiter
+# so the letter-vs-roman disambiguation can read it.
+_NESTED_SUBPOINT_RE = re.compile(r"([:;])\s+(?:or\s+|and\s+)?\(([a-z]{1,4})\)\s")
+
+# Roman-numeral markers that can be a NESTED sub-point under a letter. Limited
+# to the range the Act actually uses (Art. 5(1)(h) reaches (iii); no provision
+# nests past ~(vii)); ``x`` deliberately excluded so a genuine letter ``(x)``
+# is never mis-nested.
+_NESTED_ROMANS: tuple[str, ...] = (
+    "i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix",
+)
+
+
+def subpoints_nested(paragraph_text: str) -> dict[str, dict]:
+    """Parse a paragraph into ``{letter: {"text": str, "subs": {roman: str}}}``.
+
+    Verbatim throughout — only WHERE the split boundaries fall is decided; no
+    text is rewritten. Preserves insertion order (letters a→h, then each
+    letter's nested romans i→iii). Returns an empty dict for a paragraph with
+    no lettered list items.
+
+    See the module comment above for the letter-vs-roman disambiguation rule.
+    """
+    text = paragraph_text or ""
+    ms = list(_NESTED_SUBPOINT_RE.finditer(text))
+    if not ms:
+        return {}
+
+    out: dict[str, dict] = {}
+    cur_letter: str | None = None
+    expected_letter = "a"
+    in_nested = False
+    expected_roman_idx = 0  # index into _NESTED_ROMANS for the open nested list
+
+    for j, m in enumerate(ms):
+        key = m.group(2)
+        delim = m.group(1)
+        end = ms[j + 1].start() if j + 1 < len(ms) else len(text)
+        body = text[m.end():end].strip().rstrip(" ;.")
+
+        is_roman = key in _NESTED_ROMANS
+
+        # (a) continue an already-open nested roman sequence: i→ii→iii …
+        if (
+            in_nested
+            and cur_letter is not None
+            and is_roman
+            and expected_roman_idx < len(_NESTED_ROMANS)
+            and key == _NESTED_ROMANS[expected_roman_idx]
+        ):
+            out[cur_letter]["subs"][key] = body
+            expected_roman_idx += 1
+            continue
+
+        # (b) OPEN a nested roman list under the current letter: ``: (i) …``
+        if is_roman and delim == ":" and cur_letter is not None and key == "i":
+            in_nested = True
+            out[cur_letter]["subs"]["i"] = body
+            expected_roman_idx = 1  # next expected is "ii"
+            continue
+
+        # (c) a top-level letter that continues the a→b→c… sequence
+        if key == expected_letter:
+            cur_letter = key
+            out[key] = {"text": body, "subs": {}}
+            expected_letter = chr(ord(expected_letter) + 1)
+            in_nested = False
+            expected_roman_idx = 0
+            continue
+
+        # (d) fallback — treat as a fresh top-level letter (robustness for an
+        # out-of-sequence marker; keeps text rather than dropping it).
+        cur_letter = key
+        out[key] = {"text": body, "subs": {}}
+        expected_letter = chr(ord(key[:1]) + 1) if len(key) == 1 else expected_letter
+        in_nested = False
+        expected_roman_idx = 0
+
+    return out
+
+
 def _definitions(body: str) -> dict[int, str]:
     """Art. 3 definitions: ``{number: text}`` from ``(1)…(68)``."""
     ms = list(_DEF_RE.finditer(body))

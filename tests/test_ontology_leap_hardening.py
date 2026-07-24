@@ -155,8 +155,9 @@ def test_legal_ast_annexes_match_seeder_label_and_id():
         "MERGE (a:Article {id: $id})" in q[0] and str(q[1].get("id", "")).startswith("annex_")
         for q in queries
     )
-    # annex paragraphs attach to :Annex, not :Article
-    assert any("MATCH (a:Annex {id: $article_id})" in q[0] for q in queries)
+    # annex paragraphs attach to :Annex, not :Article (R291 label-qualified
+    # per parent kind; the id param is the shared writer's ``$source_id``).
+    assert any("MATCH (a:Annex {id: $source_id})" in q[0] for q in queries)
 
 
 def test_legal_ast_articles_still_match_seeder():

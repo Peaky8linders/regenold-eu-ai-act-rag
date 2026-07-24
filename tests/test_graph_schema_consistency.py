@@ -25,6 +25,10 @@ from app.graph.schema import (
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SEEDER = _REPO_ROOT / "scripts" / "seed_neo4j_kb.py"
+# R291 — the Paragraph/Point/SubPoint hierarchy MERGEs live in the shared
+# single-source writer, not inline in the seeder, so the schema scan must
+# cover both writer surfaces.
+_HIERARCHY = _REPO_ROOT / "app" / "data" / "provision_hierarchy.py"
 _SCHEMA_INIT = _REPO_ROOT / "app" / "graph" / "schema_initializer.py"
 
 # Matches a relationship type inside a Cypher edge pattern:
@@ -36,7 +40,12 @@ _NODE_MERGE_RE = re.compile(r"MERGE\s*\(\s*\w+\s*:\s*(\w+)\s*\{")
 
 
 def _seeder_src() -> str:
-    return _SEEDER.read_text(encoding="utf-8")
+    """The union of every module that MERGEs graph nodes/edges."""
+    return (
+        _SEEDER.read_text(encoding="utf-8")
+        + "\n"
+        + _HIERARCHY.read_text(encoding="utf-8")
+    )
 
 
 def test_seeder_edges_are_exactly_the_schema_rel_types() -> None:

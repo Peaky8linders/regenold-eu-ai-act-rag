@@ -46,6 +46,12 @@ NODE_OPERATOR_ROLE: Final = "OperatorRole"
 NODE_KB_METADATA: Final = "KBMetadata"
 NODE_PARAGRAPH: Final = "Paragraph"
 NODE_POINT: Final = "Point"
+# R291 — nested roman sub-points (Art. 5(1)(h)(iii)) + the ontology deontic
+# layer (the prohibited-practices + applicability-timeline half of the risk
+# pyramid that the high-risk half already mirrored).
+NODE_SUBPOINT: Final = "SubPoint"
+NODE_PRACTICE: Final = "Practice"
+NODE_LIFECYCLE_PHASE: Final = "LifecyclePhase"
 # Parent-CodexAI assessment schema (seeded but unused by the Regenold wire).
 NODE_DIMENSION: Final = "Dimension"
 NODE_QUESTION: Final = "Question"
@@ -64,6 +70,9 @@ SEEDED_NODE_LABELS: Final[frozenset[str]] = frozenset(
         NODE_KB_METADATA,
         NODE_PARAGRAPH,
         NODE_POINT,
+        NODE_SUBPOINT,
+        NODE_PRACTICE,
+        NODE_LIFECYCLE_PHASE,
         NODE_DIMENSION,
         NODE_QUESTION,
     }
@@ -80,8 +89,13 @@ REL_CROSS_REFERENCES: Final = "CROSS_REFERENCES"  # Article/Annex ↔ Article/An
 REL_HAS_RECITAL_ANCHOR: Final = "HAS_RECITAL_ANCHOR"  # Article → Recital
 REL_HAS_PARAGRAPH: Final = "HAS_PARAGRAPH"  # Article/Annex → Paragraph
 REL_HAS_POINT: Final = "HAS_POINT"  # Paragraph → Point
+REL_HAS_SUBPOINT: Final = "HAS_SUBPOINT"  # Point → SubPoint (R291)
 REL_TRIGGERS_HIGH_RISK_UNDER: Final = "TRIGGERS_HIGH_RISK_UNDER"  # AnnexIIICategory → Article
 REL_APPLIES_AT: Final = "APPLIES_AT"  # Obligation → RiskLevel
+# R291 ontology deontic layer.
+REL_PROHIBITED_UNDER: Final = "PROHIBITED_UNDER"  # Practice → Article (Art. 5)
+REL_APPLIES_TO: Final = "APPLIES_TO"  # LifecyclePhase → Article
+REL_HAS_OBLIGATION_ARTICLE: Final = "HAS_OBLIGATION_ARTICLE"  # OperatorRole → Article
 # Parent-CodexAI assessment schema (seeded but unused by the Regenold wire).
 REL_BELONGS_TO: Final = "BELONGS_TO"  # Question → Dimension
 REL_ASSESSES: Final = "ASSESSES"  # Question → Obligation
@@ -98,8 +112,12 @@ SEEDED_REL_TYPES: Final[frozenset[str]] = frozenset(
         REL_HAS_RECITAL_ANCHOR,
         REL_HAS_PARAGRAPH,
         REL_HAS_POINT,
+        REL_HAS_SUBPOINT,
         REL_TRIGGERS_HIGH_RISK_UNDER,
         REL_APPLIES_AT,
+        REL_PROHIBITED_UNDER,
+        REL_APPLIES_TO,
+        REL_HAS_OBLIGATION_ARTICLE,
         REL_BELONGS_TO,
         REL_ASSESSES,
     }
