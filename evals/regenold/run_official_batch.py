@@ -149,6 +149,11 @@ def _run_easy(rows, poster, url, api_key, timeout, ckpt) -> list[dict[str, Any]]
         rec: dict[str, Any] = {
             "id": row.id,
             "mode": "easy",
+            # R293 — official difficulty label. Distinct from `mode`: `mode` is
+            # HOW we replayed it, `difficulty` is the evaluator's own label. 59
+            # of the 111 single-turn rows are HARD by content.
+            "difficulty": row.difficulty,
+            "difficulty_category": row.difficulty_category,
             "question": row.question,
             "pred_answer": answer,
             "pred_refs": refs,
@@ -209,6 +214,12 @@ def _run_hard(rows, poster, url, api_key, timeout, ckpt) -> list[dict[str, Any]]
         rec: dict[str, Any] = {
             "id": row.id,
             "mode": "hard",
+            # R293 — in hard mode every row is HARD / Multi-Turn Context &
+            # Coreference by the official taxonomy, so the per-question label
+            # from the single-turn export is not the operative one here; keep it
+            # for cross-mode comparison of the SAME question.
+            "difficulty": row.difficulty,
+            "difficulty_category": row.difficulty_category,
             "question": row.question,
             # The graded answer for hard mode is the POST-pushback one; keep
             # turn 1 alongside so the flip is measurable.
@@ -283,6 +294,43 @@ def _run_hard(rows, poster, url, api_key, timeout, ckpt) -> list[dict[str, Any]]
     return out
 
 
+#: Axes worth breaking out per difficulty stratum. Deliberately NOT every axis —
+#: a 1-row stratum (Borderline Prohibition) makes most means meaningless, and a
+#: wall of noisy numbers is how a real signal gets missed.
+_STRATUM_AXES = ("n", "errors", "refusal_rate", "n_refs", "tone", "latency_p50_ms")
+
+
+def _stratify(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """R293 — aggregate per official difficulty label and per category.
+
+    The point: a single blended number hides which half of the batch is weak.
+    52 of the single-turn requests are EASY (direct statutory lookup) and 59 are
+    HARD by content, so a mediocre blended score can mean either "we are bad at
+    lookups" or "we are fine at lookups and bad at decision boundaries" — very
+    different problems with very different fixes.
+
+    Strata with n < 3 still report, but carry ``low_n: True`` so nobody reads a
+    mean over one row as a trend.
+    """
+    out: dict[str, Any] = {}
+    for key, field in (("by_difficulty", "difficulty"), ("by_category", "difficulty_category")):
+        buckets: dict[str, list[dict[str, Any]]] = {}
+        for r in rows:
+            label = str(r.get(field) or "")
+            if not label:
+                label = "(unlabelled)"
+            buckets.setdefault(label, []).append(r)
+        section: dict[str, Any] = {}
+        for label, brows in sorted(buckets.items(), key=lambda kv: -len(kv[1])):
+            agg = _aggregate(brows)
+            slim = {k: agg[k] for k in _STRATUM_AXES if k in agg}
+            if agg.get("n", 0) < 3:
+                slim["low_n"] = True
+            section[label] = slim
+        out[key] = section
+    return out
+
+
 def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
     ok = [r for r in rows if not r.get("error")]
     if not ok:
@@ -326,6 +374,27 @@ def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
             1 for v in vj if v["answer_changed"]
         ) / len(vj)
     return out
+
+
+def _print_strata(strata: dict[str, Any]) -> None:
+    """R293 — print the per-difficulty / per-category breakdown."""
+    for section, title in (
+        ("by_difficulty", "by OFFICIAL difficulty"),
+        ("by_category", "by difficulty category"),
+    ):
+        buckets = strata.get(section) or {}
+        if len(buckets) < 2:
+            continue  # nothing to compare against
+        print(f"\n  --- {title} ---")
+        for label, s in buckets.items():
+            flag = "  [low n]" if s.get("low_n") else ""
+            bits = [f"n={s.get('n', 0)}"]
+            for k in ("refusal_rate", "n_refs", "tone"):
+                if k in s:
+                    bits.append(f"{k}={s[k]:.3f}")
+            if "latency_p50_ms" in s:
+                bits.append(f"p50={s['latency_p50_ms'] / 1000:.1f}s")
+            print(f"    {label[:46]:<46} {'  '.join(bits)}{flag}")
 
 
 def _print_agg(title: str, agg: dict[str, Any]) -> None:
@@ -378,8 +447,10 @@ def _arm(
             with ckpt_path.open("w", encoding="utf-8") as ckpt:
                 runner = _run_easy if m == "easy" else _run_hard
                 got = runner(rows, poster, url, api_key, timeout, ckpt)
-            result[m] = {"rows": got, "agg": _aggregate(got)}
+            strata = _stratify(got)
+            result[m] = {"rows": got, "agg": _aggregate(got), "strata": strata}
             _print_agg(f"{label}{suffix} {m}", result[m]["agg"])
+            _print_strata(strata)
         return result
     finally:
         _restore_env(saved)

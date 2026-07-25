@@ -15,16 +15,36 @@ run. So this module is **the actual graded question set**, not a proxy.
 ===============  ===  ==========================================================
 group            n    what it is
 ===============  ===  ==========================================================
-``turns == 0``   111  **EASY mode** — each question asked cold, single-turn.
+``turns == 0``   111  **SINGLE-TURN mode** — each question asked cold, one turn.
                       110 unique (one question was sent twice). The stored
                       ``question`` is the RAW user turn: verbatim, warts and all
                       ("Does the EU AI Act explicitly *requires to use*...").
+                      NOT a synonym for "easy" — see the difficulty note below.
 ``turns == 18``  111  **HARD mode, turn 1** — the same questions asked inside a
                       growing multi-turn conversation.
 ``turns == 20``  111  **HARD mode, turn 2** — the judge PUSHES BACK on our
                       answer ("I don't think this is correct. Perhaps your
                       answer contains hallucinations.") and re-asks.
 ===============  ===  ==========================================================
+
+REPLAY MODE is not DIFFICULTY (R293 — corrects an earlier misreading)
+----------------------------------------------------------------------
+The table above groups by *how the request was sent*. The evaluator ALSO ships
+an explicit per-question ``difficulty`` label, and the two axes do not line up::
+
+    turns=0   EASY  ->  52      turns=18  HARD -> 111
+    turns=0   HARD  ->  59      turns=20  HARD -> 111
+
+So 59 of the 111 single-turn requests are HARD **by content** (decision-boundary,
+GPAI, cross-framework, two-article conflict, borderline-prohibition). Calling the
+whole ``turns == 0`` group "easy mode" — as this module previously did — blends
+those 59 into the easy number and hides exactly the difficulty signal the official
+report grades on.
+
+The labels live in :mod:`evals.regenold.july7_difficulty` and are attached to
+every :class:`OfficialRow`. They are for STRATIFIED SCORING only: all 111
+single-turn questions were asked the same way, so the replay protocol is
+unchanged — do not use difficulty to drop rows from a run.
 
 RECOVERY CAVEAT (read before trusting a hard-mode replay)
 ---------------------------------------------------------
@@ -97,6 +117,14 @@ class OfficialRow:
     jul07_confidence: float | None
     jul07_retrieval_path: str
     jul07_scope_reason: str
+    #: R293 — the OFFICIAL difficulty label from the evaluator batch export.
+    #: "" when unknown (never guessed — see july7_difficulty.classify).
+    #: NOTE this is NOT the same axis as the easy/hard REPLAY MODE below: the
+    #: evaluator asked all 111 single-turn questions cold, but only 52 of those
+    #: requests are labelled EASY; the other 59 are HARD by CONTENT. Use this for
+    #: stratified scoring, not to select which rows to run.
+    difficulty: str = ""
+    difficulty_category: str = ""
 
     def easy_messages(self) -> list[dict[str, str]]:
         """Byte-exact easy-mode request body: one cold user turn."""
@@ -115,26 +143,36 @@ class OfficialRow:
             "jul07_confidence": self.jul07_confidence,
             "jul07_retrieval_path": self.jul07_retrieval_path,
             "jul07_scope_reason": self.jul07_scope_reason,
+            "difficulty": self.difficulty,
+            "difficulty_category": self.difficulty_category,
         }
 
 
 @lru_cache(maxsize=1)
 def load_official_batch() -> tuple[OfficialRow, ...]:
     """The 110 unique questions of the 2026-07-07 official run, in send order."""
+    from evals.regenold.july7_difficulty import classify
+
     raw = json.loads(_SNAPSHOT.read_text(encoding="utf-8"))
-    return tuple(
-        OfficialRow(
-            id=str(r["id"]),
-            question=str(r["question"]),
-            question_hash=str(r.get("question_hash") or ""),
-            jul07_answer=str(r.get("jul07_answer") or ""),
-            jul07_refs=tuple(r.get("jul07_refs") or ()),
-            jul07_confidence=r.get("jul07_confidence"),
-            jul07_retrieval_path=str(r.get("jul07_retrieval_path") or ""),
-            jul07_scope_reason=str(r.get("jul07_scope_reason") or ""),
+    rows = []
+    for r in raw:
+        qh = str(r.get("question_hash") or "")
+        difficulty, category = classify(qh)
+        rows.append(
+            OfficialRow(
+                id=str(r["id"]),
+                question=str(r["question"]),
+                question_hash=qh,
+                jul07_answer=str(r.get("jul07_answer") or ""),
+                jul07_refs=tuple(r.get("jul07_refs") or ()),
+                jul07_confidence=r.get("jul07_confidence"),
+                jul07_retrieval_path=str(r.get("jul07_retrieval_path") or ""),
+                jul07_scope_reason=str(r.get("jul07_scope_reason") or ""),
+                difficulty=difficulty,
+                difficulty_category=category,
+            )
         )
-        for r in raw
-    )
+    return tuple(rows)
 
 
 def build_hard_messages(
