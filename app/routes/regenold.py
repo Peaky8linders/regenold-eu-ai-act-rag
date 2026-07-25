@@ -1330,6 +1330,18 @@ def _engine_cache_key(
             # R295 — the fusion slack decides whether 2-hop refs reach the
             # candidate list at all, so it changes engine output directly.
             "REGENOLD_GRAPH_FUSE_SLACK",
+            # R296 — the FOURTH knob of the same 2-hop family, missed by R295.
+            # ``graph_expand_2hop.is_enabled()`` reads REGENOLD_CAP_EXPANSION
+            # and, when a multi-turn trace is active without listing intent,
+            # returns False — disabling the whole 2-hop expansion. That is a
+            # strictly LARGER engine-output flip than the wall-clock budget
+            # R295 DID key, and it is read by
+            # ``kb_search.top_articles_by_relevance`` on the same call as
+            # REGENOLD_GRAPH_FUSE_SLACK. Every other member of the family
+            # (GRAPH_2HOP / _2HOP_FULL_CAP / _BACKEND / _PPR / MAX_HOP2) was
+            # already keyed; this one alone was not, so an in-process A/B
+            # toggling it hit the same R263.2 contamination R295 was fixing.
+            "REGENOLD_CAP_EXPANSION",
             # R288 Arm-1 — rendering the verbatim provision text into the
             # Stage-2 references block changes the polished answer, so the gate
             # must be in the key. Without this an in-process OFF↔ON A/B would
@@ -5053,6 +5065,7 @@ def _rewrite_multiturn_query(
     try:
         from app.llm.openai_wrapper_provider import (  # noqa: PLC0415
             OpenAIWrapperRequest,
+            default_groq_model,
             get_gemini_provider,
             get_groq_intent_provider,
             get_mistral_provider,

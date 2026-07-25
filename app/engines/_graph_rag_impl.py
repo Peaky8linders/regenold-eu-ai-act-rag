@@ -4983,6 +4983,63 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
 
 # ─── Graph Retrieval ─────────────────────────────────────────────────────────
 
+
+def _bounded_graph_read(client: Any, cypher: str, **params: Any) -> list[dict]:
+    """Run one read query under the R294 wall-clock budget + circuit breaker.
+
+    Every other live graph consumer (``graph_expand_2hop``,
+    ``graph_aware_retrieval``) has been bounded since R294; the Annex-III
+    Article 6(3) lookup was not, so a dead or slow graph stalled the request
+    ~1.6 s in-thread with nothing to cap it. This mirrors the established
+    convention exactly: breaker first, then the executor with
+    ``future.result(timeout=...)``.
+
+    Never raises. Every failure path returns ``[]``, which degrades to the
+    pre-graph behaviour (no Art. 6(3) sub-point injected).
+    """
+    try:
+        from app.graph.timeouts import (  # noqa: PLC0415 — lazy, mirrors expand_2hop
+            graph_circuit_open,
+            record_graph_failure,
+            record_graph_success,
+            resolve_graph_timeout_ms,
+        )
+    except Exception:  # noqa: BLE001 — timeouts module unavailable: run unbounded as before
+        try:
+            return list(client.execute_read(cypher, **params) or [])
+        except Exception:  # noqa: BLE001
+            return []
+
+    if graph_circuit_open():
+        logger.debug("annex_iii graph read skipped - circuit open")
+        return []
+
+    budget_ms = resolve_graph_timeout_ms()
+    try:
+        from concurrent.futures import TimeoutError as _FutTimeout  # noqa: PLC0415
+
+        # Reuse graph_expand_2hop's PERSISTENT pool. A local
+        # ``with ThreadPoolExecutor(...)`` does NOT bound wall-clock here:
+        # ``__exit__`` calls ``shutdown(wait=True)``, which blocks until the
+        # slow query finishes, so the budget is silently defeated (measured:
+        # 2.0 s against a 50 ms budget). The established convention is a
+        # module-level pool whose threads are simply abandoned on timeout.
+        from app.engines.graph_expand_2hop import _get_executor  # noqa: PLC0415
+
+        fut = _get_executor().submit(lambda: client.execute_read(cypher, **params))
+        rows = fut.result(timeout=max(budget_ms, 1) / 1000.0)
+        record_graph_success()
+        return list(rows or [])
+    except _FutTimeout:
+        record_graph_failure()
+        logger.info("annex_iii graph read timeout budget=%dms", budget_ms)
+        return []
+    except Exception:  # noqa: BLE001 — fail-soft; the deterministic path still answers
+        record_graph_failure()
+        logger.debug("annex_iii graph read failed", exc_info=True)
+        return []
+
+
 def _kb_primary_retrieval_enabled() -> bool:
     """R252 — when ON (default), the live engine uses the in-memory KB as the
     PRIMARY retrieval (the byte-identical bench path) and keeps the Neo4j graph
@@ -7510,7 +7567,16 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
                 MATCH (a:Article {id: 'article_6'})-[:HAS_PARAGRAPH]->(p:Paragraph {id: 'article_6_3'})-[:HAS_POINT]->(pt:Point)
                 RETURN pt.id AS point_id, pt.letter AS letter, pt.text AS text
                 """
-                results = client.execute_read(cypher)
+                # R296 — this call was UNBOUNDED: no wall-clock budget and no
+                # circuit breaker, unlike every other live graph consumer since
+                # R294 (``graph_expand_2hop`` / ``graph_aware_retrieval``). On a
+                # dead or slow graph ``execute_read`` stalls ~1.6 s IN-THREAD
+                # (R294 measured it), and this fires on the Annex-III path —
+                # a hot shape. It now honours the same budget + breaker as the
+                # rest, and fails soft to ``[]`` (the loop below then simply
+                # injects no Art. 6(3) citation, which is the pre-graph
+                # behaviour).
+                results = _bounded_graph_read(client, cypher)
                 for rec in results:
                     letter = rec.get("letter")
                     text = rec.get("text")
