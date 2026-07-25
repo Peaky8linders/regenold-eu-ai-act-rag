@@ -9961,6 +9961,150 @@ of liability with zero behaviour change. The proxy itself must stay while the
 file is named `_graph_rag_impl.py` — ~5200 tests patch `app.engines.graph_rag.X`
 and rely on it reaching the impl.
 
+## Round 294 — the three "remaining Neo4j gaps": one real, one false, one unfixable (2026-07-25)
+
+Operator ask: fix the three gaps the R290/R291 PRs left documented — (1) Article 3's
+68 definitions aren't decomposed into the graph, (2) 175/180 recitals are orphaned,
+(3) the 2-hop expander's 50 ms budget is marginal against hosted Aura. Each was
+**re-measured before any code was written**. The honest outcome is one shipped fix,
+one falsified premise, and one gap with no faithful data source.
+
+### Gap 1 — Article 3 decomposition: **the premise is FALSE, nothing to fix**
+
+Article 3 IS decomposed. Measured on this tree:
+
+```
+build_hierarchy_payload() -> 68 :Paragraph nodes  article_3_1 … article_3_68
+                             68 HAS_PARAGRAPH edges from article_3
+                             (plus the separate 68 :Definition + HAS_DEFINITION)
+```
+
+The special case is explicit at [`provision_hierarchy.py:170-172`](app/data/provision_hierarchy.py)
+(`if int(n_str) == 3: units = _definitions(body)`) — Article 3 has zero `N.` paragraph
+headings (it numbers definitions `(1)…(68)`), so the generic `_paragraphs()` correctly
+returns `{}` and `_definitions()` returns 68. `legal_ast.ingest_legal_ast` writes that
+same payload, so the graph gets the nodes.
+
+The "0 paragraphs" reading reproduces the **R286 measurement artifact**: `build_payload()
+--dry-run` does not include the separate `_ingest_legal_ast_hierarchy` path, and an
+id-filter for `art_3_` never matches `article_3_1`. Ids, verbatim text, `HAS_PARAGRAPH`
+parentage and `refs.to_user_facing("Art. 3.1") -> "Article 3.1"` are all already correct.
+**No fix — writing one against the stated premise would have duplicated the branch or,
+worse, swapped the working `_definitions` route for a `_paragraphs` route that returns
+`{}` and silently DELETED the 68 nodes.**
+
+Genuine (separate, non-defect) observation: Article 3 is double-represented — 68
+`:Paragraph` AND 68 `:Definition` nodes, byte-identical text, no edge linking them.
+Left as-is; the `:Definition` label is what `lookup_definition_by_term` reads.
+
+### Gap 2 — 175 orphaned recitals: **real, but no faithful fix exists**
+
+Orphan count confirmed (5 anchored: Art. 5 ×4, Art. 52 ×1; 175 orphaned). The only
+edge source is a regex for "Recital N" over `EC_CHECKER_OBLIGATION_MAP` summaries.
+
+The obvious fix — prose-mine `OFFICIAL_RECITAL_TEXT` for `Article N` — **does not
+work**, measured two independent ways:
+
+* only **31 of 180** recitals contain the word "Article" at all, so a perfect
+  extractor still leaves ~149 orphans;
+* essentially every one of those mentions points at **another instrument** —
+  direct inspection shows `Article 9(1) **of Regulation (EU) 2016/679**`, `Article
+  16(2) of Regulation (EU) 2017/745`, `Article 30 of Regulation (EU) 2019/1020`,
+  plus TEU / TFEU / Charter / Protocol No 21. After the repo's own cross-regulation
+  filter, ~4 of 32 candidate edges are genuine AI Act references, spanning 2
+  procedural (Ireland/Denmark opt-out) recitals.
+
+And the consumer splices recital prose **directly into `answer_text`**
+([`regenold.py:7259-7290`](app/routes/regenold.py)), so each false edge is a vector for
+injecting Charter/TFEU/GDPR prose into an EU AI Act answer — landing on
+answer-correctness, the weakest axis on both the R285 official scorecard and the R287
+grounded judge. Shipping ~28 hallucinated relationships to buy ~4 true low-value ones
+violates hard rule #4.
+
+**Closed as "not a defect".** Same call CLAUDE.md already recorded for the R47 xref
+orphans ("Adding speculative edges would be hallucination"). No authoritative
+recital→article map exists anywhere in the tree: `RECITALS` is `{int: str}`, and
+`eu_ai_act_tree` recital nodes carry `article_number=None, parent_id=None`. A trap to
+avoid: `euairagtest/provisions.json` has an `interprets_articles` field that looks
+curated but is byte-identical to `references_internal` on all 180 recitals.
+
+### Gap 3 — the 50 ms budget: **real, worse than stated, SHIPPED**
+
+Measured against the live Aura instance the R291 seed targets, running the production
+2-hop Cypher:
+
+```
+COLD = 702.9 ms          WARM min 49.3 / mean 64.0 / max 215.0 ms
+```
+
+So the budget was blown on every cold call and most warm ones. Blast radius was wider
+than "the 2-hop expander": **four** sites defaulted to 50 ms
+(`graph_expand_2hop.py`, plus all three `graph_aware_retrieval` helpers), with two live
+consumers on the hot path — `kb_search` -> `expand_2hop`, and `regenold.py:7266` ->
+`recitals_for_article` **twice per request**. Neither passes an explicit budget.
+
+Live A/B through the real entry points (same warmed process, same Aura):
+
+| | hop2 refs surfaced |
+| --- | --- |
+| old 50 ms | **0** (3 seeds, all empty) |
+| R294 default | **15** (5 per seed) |
+
+One of those calls took 215 ms — under any budget below that it stays dead. Precise
+characterisation: the 2-hop query (variable-length path + `shortestPath`) was
+reliably dead; the recital query (simple 1-hop, 41-54 ms) merely *straddled* the
+boundary and was flaky. Note the timeout never saved the work either — Python cannot
+cancel a future, so the query ran to completion and the result was discarded.
+
+**The counter-argument, and why the breaker ships with the raise.** A raise alone is a
+real latency regression, because the 50 ms budget was incidentally the only thing
+capping a *dead*-graph stall. Measured against the DNS-dead R290 host:
+`execute_read` = **1631 ms in-thread**; caller-observed 55 ms @50 ms vs 252 ms @250 ms.
+So `app/graph/timeouts.py` ships the budget **and** a circuit breaker (the convention
+`app/llm/intent_classifier.py` already uses: open after 3 consecutive failures, 60 s
+cooldown, then a single half-open probe). Dead-graph cost over 10 calls:
+
+| | total |
+| --- | --- |
+| status quo (50 ms, no breaker) | 1442 ms |
+| naive raise (250 ms, no breaker) | **2597 ms** — the regression |
+| **shipped (250 ms + breaker)** | **765 ms** — 47% better than today |
+
+So the shipped design is strictly better than the status quo on a dead graph AND
+un-blocks a healthy one. Plus `app/main.py` gains a `neo4j_graph` warm-up step (sibling
+of the R129 `embedded_graph` one) so the ~700 ms cold cost is paid at boot, not on a
+user request.
+
+Knobs: `REGENOLD_GRAPH_TIMEOUT_MS` (default 250, clamped [10, 5000], fail-soft) and
+`REGENOLD_GRAPH_BREAKER=0` to disable.
+
+**Scope**: the embedded backend is the default in BOTH code
+(`embedded_graph.py::_DEFAULT_BACKEND = "embedded"`) and `railway.toml` — and it
+bypasses the executor and the timeout entirely (sub-ms in-process SQL). So this round
+is **inert on a default deploy** and only changes an explicitly opted-in
+`REGENOLD_GRAPH_BACKEND=neo4j` deploy (which R290 documents the Railway dashboard as
+currently doing).
+
+**Wire-impact, stated honestly**: this IS a reference-affecting change on that opted-in
+deploy — `expand_2hop` feeds `kb_search` additive fill -> `query.entities` -> wire
+`references`. It is NOT the R142.1 gold-drop class, though: `fuse_with_kb_xrefs` is
+strictly additive-below-cap (`if budget <= len(out): return out[:budget]`, appends only
+into remaining slots), so it can never displace a BM25 winner — it can only add
+candidates the graph layer was always designed to add.
+
+### Round 294 — gates
+
+| Gate | Result |
+| ---- | ------ |
+| davidath QA (137) | **byte-identical** — Ans Strict 0.4037 / Ans Loose 0.1404 / Ans Conc 0.1960 / Ref Loose 0.8394 / Ref Strict 0.5543 / Ref Conc 0.4395 / Tone 1.0 |
+| `evals.regenold.runner` (276) | **0 failures, all 28 categories 100%**, RISK_F1 macro 1.00, ref_format 255/255 |
+| OOS probe (`--oos-suite all`, 51) | **49/51, 0 scope leaks** — and **0 differing verdicts** vs a pre-change baseline sidecar (the 2 soft-fails are pre-existing) |
+| new + touched suites | **161/161** (`test_r294_graph_timeouts.py` +21, plus the full 2-hop / graph-aware / embedded-graph / healthz-graph suites) |
+| live A/B | 0 -> 15 hop2 refs on a healthy graph; 1442 -> 765 ms on a dead one |
+
+davidath is byte-identical **by construction** — it runs with no graph client, so the
+timeout code is unreachable there.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

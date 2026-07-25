@@ -36,10 +36,13 @@ edges, each addressing a load-bearing question shape:
 * **Existence-gated outputs**: article refs flowing back to the wire are
   validated against :data:`app.data.article_existence.ARTICLE_EXISTENCE`.
   A malformed seed in Neo4j can't pollute the response.
-* **Sub-50 ms p50 target**: each call enforces a Python-side
-  ``concurrent.futures`` wall-clock timeout. Windows-aware
-  (``signal.alarm`` is POSIX-only — see the parent ``graph_expand_2hop``
-  docstring for the rationale).
+* **Bounded wall-clock**: each call enforces a Python-side
+  ``concurrent.futures`` timeout. Windows-aware (``signal.alarm`` is
+  POSIX-only — see the parent ``graph_expand_2hop`` docstring). The
+  budget comes from :func:`app.graph.timeouts.resolve_graph_timeout_ms`;
+  R294 replaced the original hard-coded 50 ms with a measured default
+  after finding it smaller than a hosted-Aura round-trip, which made
+  every one of these helpers return empty in production.
 
 ## Wiring (NOT done in this module)
 
@@ -374,7 +377,7 @@ def _resolve_client() -> GraphClient | None:
 def _with_timeout(
     fn: Any,
     *,
-    timeout_ms: int,
+    timeout_ms: int | None,
     label: str,
 ) -> list[dict] | None:
     """Run ``fn`` on the shared executor with a wall-clock cap.
@@ -383,19 +386,45 @@ def _with_timeout(
     any exception. Callers translate ``None`` into their empty / ``None``
     return value. Centralising the futures+timeout dance keeps each
     helper readable and ensures consistent error handling.
+
+    ``timeout_ms=None`` resolves the budget from
+    :func:`app.graph.timeouts.resolve_graph_timeout_ms`. This is the
+    single resolution point for all three helpers below — R294 measured
+    the old hard-coded 50 ms as smaller than a hosted-Aura round-trip
+    (cold 703 ms, warm mean 64 ms), so every call silently returned
+    empty and the graph-aware layer contributed nothing in production.
     """
     from concurrent.futures import TimeoutError as _FutTimeout
 
+    from app.graph.timeouts import (
+        graph_circuit_open,
+        record_graph_failure,
+        record_graph_success,
+        resolve_graph_timeout_ms,
+    )
+
+    # R294 — shared breaker with graph_expand_2hop: a sustained outage
+    # must not spend the budget on every call. Never opens on a healthy graph.
+    if graph_circuit_open():
+        logger.debug("graph_aware %s skipped — circuit open", label)
+        return None
+
+    budget_ms = resolve_graph_timeout_ms(timeout_ms)
+
     try:
         fut = _get_executor().submit(fn)
-        return fut.result(timeout=max(timeout_ms, 1) / 1000.0)
+        result = fut.result(timeout=max(budget_ms, 1) / 1000.0)
+        record_graph_success()
+        return result
     except _FutTimeout:
+        record_graph_failure()
         logger.info(
             "graph_aware cypher timeout label=%s budget=%dms",
-            label, timeout_ms,
+            label, budget_ms,
         )
         return None
     except Exception:  # noqa: BLE001
+        record_graph_failure()
         logger.debug("graph_aware %s submit/result failed", label, exc_info=True)
         return None
 
@@ -421,7 +450,7 @@ def is_enabled() -> bool:
 def lookup_definition_by_term(
     term: str,
     *,
-    timeout_ms: int = 50,
+    timeout_ms: int | None = None,
 ) -> str | None:
     """Return the Art. 3 definition text for a term, or ``None``.
 
@@ -438,8 +467,9 @@ def lookup_definition_by_term(
     Args:
         term: The term being defined. Free-form — punctuation and case
             are normalised by the slug helper.
-        timeout_ms: Wall-clock budget for the Cypher call. Defaults to
-            50 ms per the module's sub-50ms p50 target.
+        timeout_ms: Wall-clock budget for the Cypher call. ``None``
+            (the default) resolves via
+            :func:`app.graph.timeouts.resolve_graph_timeout_ms`.
 
     Returns:
         The verbatim definition text, or ``None`` on no-match / failure
@@ -487,7 +517,7 @@ def recitals_for_article(
     article_ref: str,
     *,
     max_recitals: int = 3,
-    timeout_ms: int = 50,
+    timeout_ms: int | None = None,
 ) -> list[RecitalGrounding]:
     """Return recitals anchored to an article, up to ``max_recitals``.
 
@@ -500,7 +530,9 @@ def recitals_for_article(
         max_recitals: Cap on returned recitals. Defaults to 3 — the
             route is space-constrained and the legislator typically
             anchors only a small handful of recitals per article.
-        timeout_ms: Wall-clock budget.
+        timeout_ms: Wall-clock budget. ``None`` (the default)
+            resolves via
+            :func:`app.graph.timeouts.resolve_graph_timeout_ms`.
 
     Returns:
         List of :class:`RecitalGrounding`. Empty when:
@@ -581,7 +613,7 @@ def obligations_for_role(
     risk_level: str,
     *,
     max_obligations: int = 10,
-    timeout_ms: int = 50,
+    timeout_ms: int | None = None,
 ) -> list[RoleObligation]:
     """Return obligations applicable to ``role`` at ``risk_level``.
 
@@ -602,7 +634,9 @@ def obligations_for_role(
             interchangeable). Unknown → ``[]``.
         max_obligations: Cap on returned list. Defaults to 10 — matches
             the davidath scenario-gold average citation count.
-        timeout_ms: Wall-clock budget.
+        timeout_ms: Wall-clock budget. ``None`` (the default)
+            resolves via
+            :func:`app.graph.timeouts.resolve_graph_timeout_ms`.
 
     Returns:
         List of :class:`RoleObligation`. Article refs are wire-form

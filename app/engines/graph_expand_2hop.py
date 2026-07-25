@@ -403,7 +403,7 @@ def expand_2hop(
     seed_articles: list[str],
     *,
     max_hop2: int = 5,
-    timeout_ms: int = 50,
+    timeout_ms: int | None = None,
 ) -> GraphExpansion:
     """Run a 2-hop Cypher expansion across the :Article CROSS_REFERENCES graph.
 
@@ -418,7 +418,14 @@ def expand_2hop(
             ``concurrent.futures``). Documented Windows-aware
             behaviour — ``signal.alarm`` is POSIX-only so we use the
             futures path uniformly across platforms. Any timeout
-            collapses to an empty expansion.
+            collapses to an empty expansion. ``None`` (the default)
+            resolves via
+            :func:`app.graph.timeouts.resolve_graph_timeout_ms` — R294
+            measured the old hard-coded 50 ms budget as too small for
+            hosted Aura (cold 703 ms, warm mean 64 ms), so it timed out
+            on every cold call and most warm ones. Only the hosted-Neo4j
+            path consults this; the embedded backend below never uses
+            the executor.
 
     Returns:
         :class:`GraphExpansion`. Never raises — every error path
@@ -484,16 +491,35 @@ def expand_2hop(
         # Defer the futures import to first use — see ``_get_executor`` docstring.
         from concurrent.futures import TimeoutError as _FutTimeout
 
+        from app.graph.timeouts import (
+            graph_circuit_open,
+            record_graph_failure,
+            record_graph_success,
+            resolve_graph_timeout_ms,
+        )
+
+        # R294 — a dead graph stalls ~1.6 s in-thread. The breaker keeps a
+        # sustained outage from spending the (now larger) budget on every
+        # request; on a healthy graph it never opens.
+        if graph_circuit_open():
+            logger.debug("graph_2hop skipped — circuit open")
+            return _empty_expansion(seed_articles)
+
+        budget_ms = resolve_graph_timeout_ms(timeout_ms)
+
         try:
             fut = _get_executor().submit(_call)
-            rows = fut.result(timeout=max(timeout_ms, 1) / 1000.0)
+            rows = fut.result(timeout=max(budget_ms, 1) / 1000.0)
+            record_graph_success()
         except _FutTimeout:
+            record_graph_failure()
             logger.info(
                 "graph_2hop cypher timeout seeds=%s budget=%dms",
-                seed_nums, timeout_ms,
+                seed_nums, budget_ms,
             )
             rows = []
         except Exception:  # noqa: BLE001
+            record_graph_failure()
             logger.debug("graph_2hop submit/result failed", exc_info=True)
             rows = []
 

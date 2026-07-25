@@ -636,12 +636,38 @@ def _run_index_warmup_in_thread() -> None:
         if embedded_backend_selected():
             get_embedded_graph()
 
+    def _warm_neo4j_graph() -> None:
+        # R294 — the hosted-Neo4j counterpart of ``_warm_embedded_graph``.
+        #
+        # Measured against the live Aura instance, the production 2-hop
+        # CROSS_REFERENCES Cypher costs ~703 ms COLD but only ~64 ms once
+        # the driver connection + query-plan cache are hot. Without this
+        # step the cold cost lands on the first user request, blows the
+        # per-query wall-clock budget, and that request silently loses the
+        # whole graph contribution.
+        #
+        # No-op unless the neo4j backend is actually selected AND the
+        # client is enabled, so an embedded / graph-less deploy pays
+        # nothing. Fail-soft: ``_step`` already logs and swallows.
+        from app.graph.embedded_graph import embedded_backend_selected
+
+        if embedded_backend_selected():
+            return
+        from app.graph.client import get_graph_client
+
+        client = get_graph_client()
+        if not client.enabled:
+            return
+        # Cheapest possible round-trip that still opens the pool.
+        client.execute_read("RETURN 1 AS ok", {})
+
     _step("kb_search_bm25", _warm_kb_search)
     _step("sentence_index", _warm_sentence_index)
     _step("embeddings_index", _warm_embeddings_index)
     _step("turboquant_dense", _warm_turboquant)
     _step("eu_ai_act_tree", _warm_tree)
     _step("embedded_graph", _warm_embedded_graph)
+    _step("neo4j_graph", _warm_neo4j_graph)
 
     logger.info(
         "regenold.startup index_warmup_completed elapsed_s=%.2f %s",
