@@ -1318,6 +1318,18 @@ def _engine_cache_key(
             # engine's parsed entities → surfaced obligations → refs, so it
             # must be in the cache key (R30/R56/R79/R263.2 doctrine).
             "REGENOLD_MULTI_ARTICLE_ENTITIES",
+            # R295 — the graph wall-clock budget and its circuit breaker both
+            # decide whether the 2-hop expansion returns rows at all, and those
+            # rows reach the wire via kb_search additive fill → query.entities
+            # → references. R294 measured 0 refs @50 ms vs 15 @250 ms on the
+            # same live graph, so this is squarely an engine-behaviour flag.
+            # Without it an in-process 50↔250 A/B serves the baseline arm's
+            # cached engine output to the branch arm — the exact R263.2 bug.
+            "REGENOLD_GRAPH_TIMEOUT_MS",
+            "REGENOLD_GRAPH_BREAKER",
+            # R295 — the fusion slack decides whether 2-hop refs reach the
+            # candidate list at all, so it changes engine output directly.
+            "REGENOLD_GRAPH_FUSE_SLACK",
             # R288 Arm-1 — rendering the verbatim provision text into the
             # Stage-2 references block changes the polished answer, so the gate
             # must be in the key. Without this an in-process OFF↔ON A/B would

@@ -15,6 +15,8 @@ budget itself.
 """
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from app.graph import timeouts as T
@@ -204,3 +206,123 @@ class TestCallSitesResolveTheBudget:
             T.record_graph_failure()
 
         assert gar._with_timeout(_boom, timeout_ms=None, label="probe") is None
+
+
+# ── R295: same-process A/B integrity (R263.2 cross-arm contamination) ──
+
+
+class TestAbGateIntegrity:
+    """Both flags flip engine output, so an in-process A/B must isolate them.
+
+    Without these two properties a 50↔250 A/B silently measures nothing:
+    the branch arm is served the baseline arm's cached answer, and/or the
+    baseline arm's timeouts latch the process-global breaker and suppress
+    the branch arm's graph calls.
+    """
+
+    def test_timeout_is_in_the_engine_cache_key(self, monkeypatch):
+        from app.routes.regenold import _engine_cache_key
+
+        q = "What must deployers of high-risk AI systems do?"
+        monkeypatch.setenv(T.GRAPH_TIMEOUT_ENV_VAR, "50")
+        k_baseline = _engine_cache_key(q, "")
+        monkeypatch.setenv(T.GRAPH_TIMEOUT_ENV_VAR, "250")
+        k_branch = _engine_cache_key(q, "")
+        assert k_baseline != k_branch, (
+            "R263.2: branch arm would be served the baseline arm's cached engine output"
+        )
+
+    def test_breaker_flag_is_in_the_engine_cache_key(self, monkeypatch):
+        from app.routes.regenold import _engine_cache_key
+
+        q = "What must deployers of high-risk AI systems do?"
+        monkeypatch.setenv("REGENOLD_GRAPH_BREAKER", "1")
+        k_on = _engine_cache_key(q, "")
+        monkeypatch.setenv("REGENOLD_GRAPH_BREAKER", "0")
+        k_off = _engine_cache_key(q, "")
+        assert k_on != k_off
+
+    def test_disabled_breaker_does_not_latch(self, monkeypatch):
+        """A disabled breaker must accumulate NO state.
+
+        Otherwise the pre-R294 baseline arm (50 ms, breaker off) times out,
+        latches ``_opened_at``, and the R294 branch arm is short-circuited.
+        """
+        monkeypatch.setenv("REGENOLD_GRAPH_BREAKER", "0")
+        for _ in range(T.GRAPH_BREAKER_THRESHOLD * 3):
+            T.record_graph_failure()
+
+        monkeypatch.delenv("REGENOLD_GRAPH_BREAKER", raising=False)
+        assert T.graph_circuit_open() is False, "disabled breaker leaked state"
+
+    def test_disabled_breaker_still_opens_once_re_enabled(self, monkeypatch):
+        """The off-switch must not permanently disarm the breaker."""
+        monkeypatch.setenv("REGENOLD_GRAPH_BREAKER", "0")
+        for _ in range(T.GRAPH_BREAKER_THRESHOLD * 2):
+            T.record_graph_failure()
+        monkeypatch.delenv("REGENOLD_GRAPH_BREAKER", raising=False)
+        for _ in range(T.GRAPH_BREAKER_THRESHOLD):
+            T.record_graph_failure()
+        assert T.graph_circuit_open() is True
+
+
+# ── R295: the fusion budget is the real gate; and its latent NameError ──
+
+
+class TestGraphFusionSlack:
+    def test_kb_search_defines_a_logger(self):
+        """Regression: ``logger.debug`` was called with no logger defined.
+
+        Both call sites fire ONLY when the graph contributes refs, which
+        measurement showed almost never happened (1/132 fusion calls had
+        slack) — so the NameError stayed dormant. The engine calls
+        ``top_articles_by_relevance`` unguarded, so once the graph does
+        contribute it would propagate into retrieval.
+        """
+        import logging
+
+        import app.data.kb_search as ks
+
+        assert isinstance(getattr(ks, "logger", None), logging.Logger)
+
+    def test_fusion_adding_refs_does_not_raise(self, monkeypatch):
+        """Directly exercise the previously-crashing branch."""
+        import app.data.kb_search as ks
+        import app.engines.graph_expand_2hop as g2
+
+        monkeypatch.setenv("REGENOLD_GRAPH_2HOP", "1")
+        monkeypatch.setattr(g2, "is_enabled", lambda: True)
+        monkeypatch.setattr(
+            g2, "expand_2hop",
+            lambda seeds, **kw: g2.GraphExpansion(hop2_articles=("Art. 99",)),
+        )
+        # Force the "fusion added a ref" path that used to NameError.
+        monkeypatch.setattr(
+            g2, "fuse_with_kb_xrefs",
+            lambda winners, exp, budget=10: list(winners) + ["Art. 99"],
+        )
+        ks.top_articles_by_relevance("What are the penalties?", k=5)
+
+    def test_slack_defaults_to_zero(self, monkeypatch):
+        """Default 0 keeps pre-R295 behaviour byte-identical.
+
+        MEASURED: slack>0 is rubric-NEGATIVE. On the 132-row probe set it
+        changes 99-100% of candidate sets (+261 refs at slack=2), but at the
+        WIRE only 1/40 rows change — and that row (paper_st_v4:st_v4_002,
+        gold ('Article 5',), a prohibited biometric-categorisation question)
+        goes from a perfect ['Article 5'] to ['Article 2','Article 27',
+        'Article 49'] — the gold is DESTROYED. Textbook R142.1 gold-drop,
+        and it compounds the R287 over-citation finding. Ships OFF.
+        """
+        monkeypatch.delenv("REGENOLD_GRAPH_FUSE_SLACK", raising=False)
+        assert os.getenv("REGENOLD_GRAPH_FUSE_SLACK") is None
+
+    def test_slack_is_in_the_engine_cache_key(self, monkeypatch):
+        from app.routes.regenold import _engine_cache_key
+
+        q = "Which article prohibits biometric categorisation?"
+        monkeypatch.setenv("REGENOLD_GRAPH_FUSE_SLACK", "0")
+        k0 = _engine_cache_key(q, "")
+        monkeypatch.setenv("REGENOLD_GRAPH_FUSE_SLACK", "3")
+        k3 = _engine_cache_key(q, "")
+        assert k0 != k3

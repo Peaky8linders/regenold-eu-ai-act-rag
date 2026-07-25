@@ -201,8 +201,19 @@ def graph_circuit_open() -> bool:
 
 
 def record_graph_failure() -> None:
-    """Record a timeout / error. Opens the breaker at the threshold."""
+    """Record a timeout / error. Opens the breaker at the threshold.
+
+    No-op when the breaker is disabled, so ``REGENOLD_GRAPH_BREAKER=0`` is a
+    TRUE off-switch rather than "still accumulates, just doesn't act on it".
+    That matters beyond tidiness: the breaker is process-global, so an
+    in-process A/B whose baseline arm runs the old 50 ms budget would
+    otherwise time out, latch ``_opened_at``, and silently suppress the
+    branch arm's graph calls — measuring nothing (the R263.2 cross-arm
+    contamination class).
+    """
     global _consecutive_failures, _opened_at
+    if not _breaker_enabled():
+        return
     with _BREAKER_LOCK:
         _consecutive_failures += 1
         if _consecutive_failures >= GRAPH_BREAKER_THRESHOLD and _opened_at is None:
@@ -211,6 +222,8 @@ def record_graph_failure() -> None:
 
 def record_graph_success() -> None:
     """Record a successful query — resets the failure streak."""
+    if not _breaker_enabled():
+        return
     with _BREAKER_LOCK:
         _reset_locked()
 

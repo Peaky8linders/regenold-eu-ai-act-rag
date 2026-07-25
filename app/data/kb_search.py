@@ -88,6 +88,7 @@ this small.
 """
 from __future__ import annotations
 
+import logging
 import math
 import os
 import re
@@ -113,6 +114,15 @@ from app.data.eu_ai_act_corpus import (
     ARTICLE_FULL_TEXT as _UPSTREAM_FULL_TEXT,
 )
 from app.data.kb import EC_CHECKER_OBLIGATION_MAP
+
+# R295 — this module used ``logger.debug`` at two sites (the 2-hop fusion and
+# the PPR fill) without ever defining or importing one: a latent NameError.
+# Both sites are reachable ONLY when the graph actually contributes refs,
+# which measurement showed essentially never happened (1/132 fusion calls had
+# budget slack), so it stayed dormant. The engine calls
+# ``top_articles_by_relevance`` unguarded (_graph_rag_impl.py:2051/2060), so
+# once the graph does contribute the NameError would propagate into retrieval.
+logger = logging.getLogger(__name__)
 from app.data.ontology import (
     ANNEX_III_REGISTRY,
     PHASE_REGISTRY,
@@ -944,9 +954,34 @@ def top_articles_by_relevance(
         # ``.hop2_articles``). A bare ``[]`` was only accidentally safe.
         expansion = _GraphExpansion()
     fused_before = list(fused)
+    # R295 — the fusion budget is the real gate on the 2-hop layer, NOT the
+    # wall-clock timeout R294 fixed.
+    #
+    # ``fuse_with_kb_xrefs`` is additive-below-cap: it appends only into
+    # ``budget - len(winners)`` slack. With ``budget=k`` and BM25 reliably
+    # returning k winners there is NO slack, so the expansion is discarded.
+    # Measured over the full 132-row ab_judge probe set with a healthy graph:
+    # 660 hop2 refs AVAILABLE, 1/132 calls with slack, **4 refs added**. So
+    # ~99.4% of the graph's contribution never reaches the wire — the
+    # BM25-saturation finding (R31/R69/R110) reproducing at the fusion step.
+    #
+    # ``REGENOLD_GRAPH_FUSE_SLACK`` grants the graph N extra slots beyond the
+    # BM25 winners. Default 0 = byte-identical to pre-R295. This is a genuine
+    # reference-affecting change (added candidates -> query.entities -> wire
+    # refs) and the R142.1 danger zone, so it ships OFF and is decided by a
+    # live pairwise ab_judge, per hard rule #6.
+    try:
+        _fuse_slack = int(os.getenv("REGENOLD_GRAPH_FUSE_SLACK", "0"))
+    except ValueError:
+        _fuse_slack = 0
+    _fuse_slack = max(0, min(10, _fuse_slack))
     # A GraphExpansion is always truthy, so test the field that carries the
     # fusion candidates (empty hop2 → nothing to fuse → leave ``fused``).
-    fused = _g2_fuse(fused, expansion, budget=k) if expansion.hop2_articles else fused
+    fused = (
+        _g2_fuse(fused, expansion, budget=k + _fuse_slack)
+        if expansion.hop2_articles
+        else fused
+    )
     if len(fused) > len(fused_before):
         logger.debug("Graph 2-hop surfaced new refs: %s", [x for x in fused if x not in fused_before])
 

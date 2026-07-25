@@ -10125,6 +10125,84 @@ R142.1 lost a pairwise 11-0 (p=0.001) precisely by moving references.
 davidath is byte-identical **by construction** — it runs with no graph client, so the
 timeout code is unreachable there.
 
+## Round 295 — the R294 A/B: a foregone null, and the two bugs found building it (2026-07-25)
+
+Operator ask: keep `REGENOLD_GRAPH_BACKEND=neo4j` and run the live `ab_judge` A/B that
+R294 flagged as its hard-rule-#6 merge gate (R294 raised the graph budget 50 ms -> 250 ms
++ added a circuit breaker; it moves `references` on an opted-in neo4j deploy, so it needs
+the pairwise gate).
+
+### The A/B is a null — measured, not assumed
+
+**Pre-flight through the real route** (deterministic `provider=cli`, so the graph delta is
+isolated from Opus sampling; both arms share `REGENOLD_GRAPH_BACKEND=neo4j` +
+`REGENOLD_GRAPH_2HOP=1`, arm A = 50 ms/no-breaker, arm B = R294's 250 ms + breaker):
+
+```
+rows whose references DIFFER between arms: 0/5  ->  then 0/40
+VERDICT: ARMS IDENTICAL - A/B would measure NOTHING; do not run
+```
+
+An `ab_judge` over identical answer pairs returns ~131 ties and burns ~90 minutes of
+wrapper budget for zero information. **Root cause found, not guessed** —
+`kb_search.fuse_with_kb_xrefs` is called with `winners == budget == 5`, so
+`remaining = budget - len(out)` is **0** and every hop2 ref is discarded before it can
+reach `query.entities`. Measured over the full 132-row probe set:
+
+| | |
+| --- | --- |
+| hop2 refs the graph made AVAILABLE | **660** |
+| fusion calls with any slack | **1 (1%)** |
+| refs actually ADDED (the only thing that can reach the wire) | **4** |
+
+So **~99.4% of the graph's contribution is discarded at the fusion cap**, and R294's
+budget raise — genuinely correct at the Cypher layer (0 -> 15 hop2 refs surfaced) — is
+**~inert at the wire**. This CORRECTS the R294 entry's "this IS a reference-affecting
+change" framing: it is reference-affecting *in principle*, and empirically a no-op at
+the current fusion budget.
+
+### `REGENOLD_GRAPH_FUSE_SLACK` — built, measured, ships **OFF**
+
+The lever that WOULD activate the graph: `fuse_with_kb_xrefs(budget=k + slack)`
+(`app/data/kb_search.py`, default `0`, clamped `[0,10]`). At the candidate layer it is
+dramatic — `slack=2` changes **131/132 rows** and adds **+261 refs**. At the **wire** it
+is not: only **1/40 rows** changed, and that row is a **gold destruction** —
+`paper_st_v4:st_v4_002` (gold `('Article 5',)`, a prohibited biometric-categorisation
+question) went from a perfect `['Article 5']` to `['Article 2','Article 27','Article 49']`.
+Textbook R142.1 (the positional clamp that lost a live pairwise 11-0, p=0.001), and it
+compounds the R287 over-citation finding. **Default OFF**; the knob exists so a future
+round can re-measure with a gold-protected fusion instead of a blind budget widening.
+
+### Two A/B-integrity bugs found while building the harness
+
+Both are the R263.2 cross-arm-contamination class — a same-process two-arm run silently
+measuring nothing:
+
+* **`_engine_cache_key` missed the R294 knobs.** `REGENOLD_GRAPH_TIMEOUT_MS` /
+  `REGENOLD_GRAPH_BREAKER` (and now `..._FUSE_SLACK`) flip the engine output but were
+  absent from the key, so arm B would be served arm A's cached `GraphRAGResponse`. Added
+  per the R30/R56/R79/R263.2 doctrine.
+* **`REGENOLD_GRAPH_BREAKER=0` was not a true off-switch.** `record_graph_failure` /
+  `record_graph_success` still mutated state when disabled, so a baseline arm running the
+  old 50 ms budget would time out, latch `_opened_at`, and **suppress the branch arm's
+  graph calls entirely**. Now both recorders no-op when the breaker is disabled.
+
+Plus a latent **`NameError`** fixed: `app/data/kb_search.py` called `logger.debug` at two
+sites with no `logging` import — reachable only once the graph actually contributes refs,
+i.e. exactly on the path R294 was trying to open.
+
+### Round 295 — gates
+
+| Gate | Result |
+| ---- | ------ |
+| davidath QA (137) | **byte-identical** — Ans Strict 0.4037 / Ans Loose 0.1404 / Ans Conc 0.1960 / Ref Loose 0.8394 / Ref Strict 0.5543 / Ref Conc 0.4395 / Tone 1.0 |
+| `evals.regenold.runner` (276) | **0 failures**, all categories 100% |
+| OOS probe (`--oos-suite all`, 51) | **49/51, 0 scope leaks** (the same 2 pre-existing wrong-reason soft fails as R290/R294) |
+| touched suites | **133/133** (`test_r294_graph_timeouts.py` + 2-hop + graph-aware + kb_search) |
+
+The slack knob defaults to `0` and the two integrity fixes are cache-identity /
+disabled-path only, so the wire is unchanged.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a
