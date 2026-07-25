@@ -9985,9 +9985,18 @@ headings (it numbers definitions `(1)…(68)`), so the generic `_paragraphs()` c
 returns `{}` and `_definitions()` returns 68. `legal_ast.ingest_legal_ast` writes that
 same payload, so the graph gets the nodes.
 
-The "0 paragraphs" reading reproduces the **R286 measurement artifact**: `build_payload()
---dry-run` does not include the separate `_ingest_legal_ast_hierarchy` path, and an
-id-filter for `art_3_` never matches `article_3_1`. Ids, verbatim text, `HAS_PARAGRAPH`
+The "0 paragraphs" reading is a **measurement artifact**. Two ways to produce it — and
+note the R286 one is now CLOSED, so don't re-diagnose it that way:
+
+* `SeedPayload.counts()` deliberately omits Paragraph/Point/SubPoint (explicit NOTE at
+  `scripts/seed_neo4j_kb.py:380-387`) — but the `--dry-run` **print** now reports them
+  separately: verified `Paragraph = 656 / Point = 416 / SubPoint = 37`. So the R286
+  "dry-run under-counts by ~1/3" gap no longer reproduces;
+* an id-filter for `art_3_` never matches `article_3_1` (this is the one that actually
+  bit — `eu_ai_act_tree` uses `art_3` / `def_*` ids, `provision_hierarchy` uses
+  `article_3_N`).
+
+Ids, verbatim text, `HAS_PARAGRAPH`
 parentage and `refs.to_user_facing("Art. 3.1") -> "Article 3.1"` are all already correct.
 **No fix — writing one against the stated premise would have duplicated the branch or,
 worse, swapped the working `_definitions` route for a `_paragraphs` route that returns
@@ -10087,10 +10096,21 @@ currently doing).
 
 **Wire-impact, stated honestly**: this IS a reference-affecting change on that opted-in
 deploy — `expand_2hop` feeds `kb_search` additive fill -> `query.entities` -> wire
-`references`. It is NOT the R142.1 gold-drop class, though: `fuse_with_kb_xrefs` is
-strictly additive-below-cap (`if budget <= len(out): return out[:budget]`, appends only
-into remaining slots), so it can never displace a BM25 winner — it can only add
-candidates the graph layer was always designed to add.
+`references`.
+
+Precisely what IS proven: at the fusion step `fuse_with_kb_xrefs` is strictly
+additive-below-cap (`if budget <= len(out): return out[:budget]`; it appends only into
+`remaining = budget - len(out)` slack, with the BM25 winners at the head of `out`), so
+it **cannot displace a BM25 winner there**.
+
+What is NOT proven, and is the honest caveat: the enlarged candidate set flows onward
+into `query.entities`, and the ROUTE applies its own budgets downstream
+(`_effective_max_refs`, the QA 3-ref budget, the R281 clamp). A larger entity list could
+in principle push a gold ref past one of those. That interaction is exactly what a live
+`ab_judge` pairwise measures, and per hard rule #6 it is the gate to run **if the
+neo4j backend is kept** rather than flipping to the recommended embedded default (on
+which this round is inert). Do not read "additive-below-cap" as a blanket safety proof —
+R142.1 lost a pairwise 11-0 (p=0.001) precisely by moving references.
 
 ### Round 294 — gates
 
