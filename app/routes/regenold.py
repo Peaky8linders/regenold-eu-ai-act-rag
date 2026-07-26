@@ -1305,6 +1305,12 @@ def _engine_cache_key(
             # system prompt ⇒ flips the polished answer AND its citations.
             # Same doctrine as the line above.
             "REGENOLD_REF_MINIMALITY",
+            # R298 — the same two rules on the Stage-2 USER channel (the only
+            # one the Claude-Max wrapper actually delivers; the system prompt
+            # above is inert there per R281/R282). Both flip the polished
+            # answer AND its citations, so same doctrine as the lines above.
+            "REGENOLD_USER_REF_MINIMALITY",
+            "REGENOLD_CHALLENGE_BREVITY",
             "REGENOLD_GRAPH_2HOP",
             "REGENOLD_GRAPH_AWARE",
             # R252 — KB-primary vs legacy Neo4j-primary retrieval flips the

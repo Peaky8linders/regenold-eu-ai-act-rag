@@ -699,17 +699,35 @@ def run(
         )
         concurrency = 1
     started_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    payload = json.loads(bench_sidecar.read_text(encoding="utf-8"))
+    text = bench_sidecar.read_text(encoding="utf-8")
 
     # Flatten rows from the V2 sidecar (tricky + multiturn) OR the davidath
     # sidecar (qa + scenarios) OR the GraphRAG-sidecar (ground_truth + no_ground_truth). We handle all shapes.
     rows: list[dict[str, Any]] = []
-    for bucket_key in ("tricky", "multiturn", "qa", "scenarios", "rows", "ground_truth", "no_ground_truth"):
-        bucket = payload.get(bucket_key)
-        if isinstance(bucket, dict):
-            rows.extend(bucket.get("rows") or [])
-        elif isinstance(bucket, list):
-            rows.extend(bucket)
+    if bench_sidecar.suffix == ".jsonl":
+        # R298 — the official-batch runner writes a per-row CHECKPOINT in JSONL
+        # (`official-<label>-<mode>.ckpt.jsonl`), which `json.loads` cannot
+        # parse ("Extra data: line 2"). `evals.judge.grounded` already accepts
+        # it; this judge did not, so pointing it at a batch run died with a
+        # traceback that a `grep`-filtered batch loop swallowed silently. Accept
+        # the same shape here.
+        rows = [json.loads(ln) for ln in text.splitlines() if ln.strip()]
+    else:
+        payload = json.loads(text)
+        for bucket_key in ("tricky", "multiturn", "qa", "scenarios", "rows", "ground_truth", "no_ground_truth"):
+            bucket = payload.get(bucket_key)
+            if isinstance(bucket, dict):
+                rows.extend(bucket.get("rows") or [])
+            elif isinstance(bucket, list):
+                rows.extend(bucket)
+
+    # Checkpoint rows name the prediction `pred_answer`/`pred_refs`; the judge's
+    # renderers expect `predicted_answer`/`pred_refs`. Normalise both ways.
+    for r in rows:
+        if "predicted_answer" not in r and "pred_answer" in r:
+            r["predicted_answer"] = r["pred_answer"]
+        if "pred_refs" not in r and "predicted_refs" in r:
+            r["pred_refs"] = r["predicted_refs"]
 
     if rows_limit:
         rows = rows[:rows_limit]

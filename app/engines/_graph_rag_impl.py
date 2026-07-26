@@ -6601,6 +6601,28 @@ def _claude_max_enhance_answer(
                 "the latest question, or when rule 12b closed-set completeness "
                 "requires naming every member of a set."
             )
+        # R298 — REFERENCE MINIMALITY on the channel that reaches the model.
+        # Appended to BOTH branches (classification and refine) because the
+        # over-citation is measured on both. Placed here, after the branch
+        # bodies, so the two branches can never drift apart (the R113
+        # guard/prompt-parity lesson). Purely subtractive guidance: it can only
+        # make the model cite FEWER provisions, so the R113 grounding guard
+        # (which checks cited ⊆ supplied) stays satisfied by construction.
+        try:
+            from app.data.graph_rag_prompts import (  # noqa: PLC0415
+                USER_CHALLENGE_BREVITY_CLAUSE,
+                USER_REF_MINIMALITY_CLAUSE,
+                challenge_brevity_enabled,
+                is_challenge_turn,
+                user_ref_minimality_enabled,
+            )
+
+            if user_ref_minimality_enabled():
+                user_message += USER_REF_MINIMALITY_CLAUSE
+            if challenge_brevity_enabled() and is_challenge_turn(question):
+                user_message += USER_CHALLENGE_BREVITY_CLAUSE
+        except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
+            pass
         if _answer_v2_enabled():
             # R284 H2 — canonical statutory TERMINOLOGY, in the LIVE Stage-2 USER
             # message (the system prompt is inert on the wrapper path — R282).

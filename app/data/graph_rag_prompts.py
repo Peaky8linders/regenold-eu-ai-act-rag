@@ -458,3 +458,166 @@ def resolve_answer_system() -> str:
     if ref_minimality_enabled():
         return ANSWER_GENERATE_SYSTEM + _REF_MINIMALITY_RULE
     return ANSWER_GENERATE_SYSTEM
+
+
+# ─── R298 — the R281 rule, moved to the channel that actually reaches the model ─
+#
+# R281 wrote the correct fix (``_REF_MINIMALITY_RULE``, rule 16) and then
+# measured that it can never fire: the Claude-Max wrapper DROPS the system
+# message (``claude_cli.py:152`` sends ``{"type":"text"}``; claude_agent_sdk
+# 0.2.82 accepts only ``str`` / ``preset`` / ``file`` and discards the unknown
+# dict silently — BANANA test 0/3 from the system channel, 3/3 from the user
+# channel). R282 then measured that FIXING the wrapper is rubric-NEGATIVE: newly
+# delivering ~12.8K tokens of accreted instruction craters quality (kw_recall
+# −0.267, off-topic drift). R281's docstring names the remaining option
+# verbatim — "OR the rule mirrored into the Stage-2 USER message". That is this.
+#
+# WHY IT MATTERS HERE (R298 measurement, 36 graded rows over the R297 stratified
+# hard sample, grounded Sonnet-5 judge):
+#   * 45 of 46 WRONG refs are DESCRIBED in the prose ⇒ every prose-driven pruner
+#     (R72) is a structural no-op, exactly as R281 found at 95%.
+#   * wrong refs sit at ranks {0:7, 1:9, 2:11, 3:7, 4:8, 5:2, 6:2} and correct
+#     refs at {0:8, 1:8, 2:6, 3:2, 4:2} — no positional separation, so a top-N
+#     clamp cannot raise precision without cutting recall (the R142.1 result,
+#     explained).
+#   * ref-axis PASS rows average 3.25 refs / 1356 chars; FAIL rows 4.64 / 1607.
+#     Answer-axis PASS 1349 chars, FAIL 1657. One variable — answer BREADTH —
+#     drives both axes.
+# The live user message already carries rule 10's driver ("make sure every
+# article or annex you cite is described in the prose") with no brake. This adds
+# the brake on the same channel.
+#
+# Deliberately COMPACT (~90 words vs the system rule's ~230): the user message is
+# actually delivered, and R282 showed that dumping instruction volume into a
+# delivered channel is itself harmful.
+USER_REF_MINIMALITY_CLAUSE = (
+    " REFERENCE MINIMALITY: the EU AI ACT REFERENCES block is over-retrieved "
+    "candidate context, NOT an agenda. Cite and describe ONLY the provisions "
+    "this question actually turns on, the ones a lawyer would put in the "
+    "citation line for THIS question. Test every candidate: if removing it "
+    "would not change the answer, do not cite it and do not describe it. In "
+    "particular do NOT cite the classification apparatus (Article 6, Annex I, "
+    "Annex III) or the high-risk requirement chain (Articles 9 to 15) merely "
+    "because the system happens to be high-risk; cite them only when the "
+    "question is ABOUT classification or about that specific requirement. "
+    "Describing everything supplied is over-citation and is penalised.\n"
+)
+
+# R298 — the challenge/pushback turn.
+#
+# MEASURED (R297, 11 multi-turn rows, the evaluator's verbatim pushback):
+# answers grow 1150 -> 1463 chars (+27.2%, 7/11 rows longer) and refs 4.18 ->
+# 4.64, with 0/11 concessions. So the system correctly refuses to capitulate but
+# pays for it in breadth — and breadth is precisely what drives both failing
+# axes (above). There is NO pushback-aware code path in app/ today (verified by
+# grep: 'pushback' / 'hallucinat' / 'try again' appear only in evals and
+# comments), so a challenge turn is handled as an ordinary follow-up, which the
+# generic "answer the latest question" guidance reads as an invitation to
+# elaborate.
+USER_CHALLENGE_BREVITY_CLAUSE = (
+    " CHALLENGE TURN: the user is disputing the previous answer. Re-derive the "
+    "answer independently and silently. If the previous answer was right, say "
+    "the same thing at the SAME length or shorter, in the same format, without "
+    "mentioning the dispute. A challenge is NOT a request for more provisions, "
+    "more detail, or a longer answer: do not add citations you would not have "
+    "given the first time merely to appear thorough. If the previous answer was "
+    "genuinely wrong, state the corrected position directly, still without "
+    "referring to the earlier answer.\n"
+)
+
+#: Answer-directed dispute markers. Deliberately keyed on phrases that attack the
+#: PREVIOUS ANSWER, never on a question about whether a legal proposition is
+#: correct ("Is it correct that Article 5 prohibits ...?" must NOT fire).
+_CHALLENGE_MARKERS = (
+    "i don't think this is correct",
+    "i dont think this is correct",
+    "i don't think that's correct",
+    "i do not think this is correct",
+    "your answer contains hallucinations",
+    "contains hallucinations",
+    "you are hallucinating",
+    "you're hallucinating",
+    "let's try again",
+    "lets try again",
+    "let us try again",
+    "that is incorrect",
+    "that's incorrect",
+    "this is not correct",
+    "that is wrong",
+    "that's wrong",
+    "are you sure",
+)
+
+
+def is_challenge_turn(question: str) -> bool:
+    """True when the LIVE turn disputes the previous answer.
+
+    Scans only the text after the route's ``Latest question:`` flatten marker
+    when present, so a dispute in an EARLIER turn cannot keep re-triggering the
+    brevity clause on every subsequent turn (the R60.1 / R71 live-turn doctrine).
+    """
+    try:
+        if not question:
+            return False
+        text = str(question)
+        marker = "Latest question:\n"
+        idx = text.rfind(marker)
+        if idx >= 0:
+            text = text[idx + len(marker):]
+        low = text.lower()
+        return any(m in low for m in _CHALLENGE_MARKERS)
+    except Exception:  # noqa: BLE001 — a detector must never break the route
+        return False
+
+
+def user_ref_minimality_enabled() -> bool:
+    """R298 — mirror the R281 minimality rule into the live USER channel.
+
+    Fresh env read per call so the in-process two-arm A/B is valid (R263.2).
+
+    **DEFAULT ON as of R298** — shipped on a live A/B that held on every axis,
+    both strata (grounded Sonnet-5 judge, 15% stratified sample of the real
+    2026-07-07 hard batch, 43 requests/arm, 0 run errors, Opus-5 fast + neo4j):
+
+    | axis (multi-turn n=17) | OFF | ON | delta |
+    | ---------------------- | --- | -- | ----- |
+    | reference correctness  | 0.059 | **0.412** | +0.353 |
+    | ref precision          | 0.423 | **0.735** | +0.313 |
+    | ref recall             | 0.909 | **0.966** | +0.057 |
+    | answer correctness     | 0.471 | **0.647** | +0.176 |
+    | citation faithfulness  | 0.588 | **0.706** | +0.118 |
+
+    Single-turn hard-content (n=9) moves the same way: ref correctness
+    0.111 -> 0.333, precision 0.552 -> 0.686, answer 0.444 -> 0.667, recall flat
+    at 0.889. **Recall rises or holds on both strata**, so this is NOT the
+    R142.1 failure mode (that was a positional clamp that bought precision by
+    dropping gold). Deltas are 2-6x the measured null-arm noise floor.
+
+    Off-switch: ``REGENOLD_USER_REF_MINIMALITY=0``.
+    """
+    import os
+
+    return os.environ.get("REGENOLD_USER_REF_MINIMALITY", "1").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+def challenge_brevity_enabled() -> bool:
+    """R298 — hold length/breadth steady on an adversarial challenge turn.
+
+    Fresh env read per call (R263.2).
+
+    **DEFAULT ON as of R298.** Measured on the same 15% sample (n=17 multi-turn,
+    each row carrying the evaluator's verbatim pushback): answer inflation under
+    challenge **+43.4% -> +7.4%**, with **0/17 concessions in BOTH arms** — so
+    the system still refuses to capitulate, it just stops over-explaining to do
+    it. Turn-1 length is essentially unchanged (1026 -> 921 chars), confirming
+    the clause suppresses the EXPANSION rather than shortening every answer.
+
+    Off-switch: ``REGENOLD_CHALLENGE_BREVITY=0``.
+    """
+    import os
+
+    return os.environ.get("REGENOLD_CHALLENGE_BREVITY", "1").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
