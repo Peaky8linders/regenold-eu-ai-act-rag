@@ -216,6 +216,14 @@ class TestR84MaxTokensDefault:
         assert settings.graph_rag.max_tokens == 1536
 
     def test_max_tokens_field_carries_r84_default(self) -> None:
+        """Field-level default (independent of any env-loaded override) is
+        1536 — guards against a future operator setting
+        ``P2P_GRAPH_RAG_MAX_TOKENS`` in tests masking a code revert.
+
+        R305: the value moved 384 -> 1536 (the R300 bump, which is BINDING on
+        the simple Stage-2 path), but the guard's INTENT is unchanged and the
+        rationale above was restored after an R304 edit deleted it.
+        """
         from app.config import GraphRAGSettings
         field = GraphRAGSettings.model_fields["max_tokens"]
         assert field.default == 1536

@@ -273,6 +273,19 @@ _KEYWORD_ENTITY_MAP: tuple[tuple[str, str], ...] = (
     ("health insurance", "Annex III"),
     ("emergency triage", "Annex III"),
     ("public healthcare", "Annex III"),
+    # R305 — Annex III point 7 (migration, asylum, border control). These
+    # anchors already existed in ``scope.KEYWORD_TO_ARTICLE`` but NOT in this
+    # engine map, so the route surfaced "Annex III" as a wire reference while
+    # the ENGINE never retrieved it: the deterministic answer and the Stage-2
+    # grounding both came from the Art. 3/Art. 5 fallback, producing a
+    # cite-and-mismatch (right citation, prose about Article 5 biometrics).
+    # Measured on the graded evaluator batch: "Is irregular migration a topic
+    # considered in the AI Act?..." shipped an Article 5 real-time-RBI answer.
+    # This is the engine↔scope keyword divergence documented in R117-FOLLOWUP.
+    ("irregular migration", "Annex III"),
+    ("migration control", "Annex III"),
+    ("asylum application", "Annex III"),
+    ("border control", "Annex III"),
     ("10^25", "Art. 51"),
     ("10²⁵", "Art. 51"),
     ("10^25 flops", "Art. 51"),
@@ -1190,6 +1203,14 @@ _CLASSIFICATION_TOPICS: list[dict] = [
                 r"[\w\s\-,]{0,30}?(application|assess|screen|risk|decision|process)",
                 re.IGNORECASE,
             ),
+            # R305 — "irregular migration" is a statutory term of art: it occurs
+            # in the Act ONLY in Annex III(7)(b) ("a risk of irregular migration"),
+            # so a standalone trigger cannot over-fire onto another topic. The
+            # windowed pattern above misses the natural question shape ("Is
+            # irregular migration a topic considered in the AI Act? If so, to
+            # what risk category does it belong?") because the `?` terminates
+            # its `[\w\s\-,]` window before any of the required nouns.
+            re.compile(r"\birregular\s+migration\b", re.IGNORECASE),
         ],
         "answer": (
             "AI systems used as polygraph-like tools to detect emotional state, assess "

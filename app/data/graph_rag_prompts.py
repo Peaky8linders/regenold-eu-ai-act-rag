@@ -531,8 +531,11 @@ USER_CHALLENGE_BREVITY_CLAUSE = (
 USER_SUBPARAGRAPH_ATTRIBUTION_CLAUSE = (
     " SUB-PARAGRAPH DISCIPLINE: Attribute legal claims to exact sub-paragraphs "
     "(e.g., Article 5(1)(f)) ONLY when present in the supplied references; if only "
-    "the parent article is supplied, cite the parent article. Do NOT fabricate sub-clauses "
-    "or lengthen the answer to enumerate sub-paragraphs.\n"
+    "the parent article is supplied, cite the parent article. Do NOT invent a "
+    "sub-clause number, and do not add a sub-paragraph walk-through that the "
+    "question did not ask for. This never overrides the closed-set completeness "
+    "rule above: when the question's subject IS an enumerated statutory set, name "
+    "every member of it.\n"
 )
 
 

@@ -416,6 +416,47 @@ _QTYPE_PATTERNS: tuple[tuple[str, re.Pattern[str], re.Pattern[str]], ...] = (
 _ANSWER_BEARING_QTYPES = frozenset({"duration", "date", "numeric"})
 
 
+# R305 — a DEFINITIONAL question that also mentions a time/number element in a
+# trailing clause was being classified by that trailing clause, because
+# ``duration``/``date``/``numeric`` are tested BEFORE ``definition`` in
+# ``_QTYPE_PATTERNS``. Measured failure on the graded evaluator batch:
+#
+#   "Under the EU AI Act, what is an 'AI regulatory sandbox'? Provide the
+#    definition elements (what it is, who sets it up, for whom it is
+#    intended, to do what, for how long)."
+#
+# classified as ``duration`` → ``select_answer_sentence`` hunted a duration
+# sentence inside Article 57 and returned "The AI Office shall make publicly
+# available a list of planned and existing sandboxes...", while
+# ``select_definition_sentence`` on the SAME question correctly resolved the
+# verbatim Article 3(55) definition. The wire shipped the wrong paragraph.
+#
+# The precedence rule is narrow by construction: it only overrides the
+# clause-driven types, and only when the question OPENS with a definitional
+# shape AND the module's own definitional resolver actually resolves the term
+# (the same high-precision gate R263.1 adopted after a `classify_question`-based
+# gate proved to mistag obligation/procedure questions). Env-reversible.
+_DEFINITIONAL_OPENER_RE = re.compile(
+    r"^\s*(?:under\s+[^,?]{0,60},?\s*)?(?:what\s+is|what\s+are|what\s+does|"
+    r"define|how\s+is)\b",
+    re.IGNORECASE,
+)
+#: qtypes that are decided by a trailing clause and so may be overridden.
+_CLAUSE_DRIVEN_QTYPES = frozenset({"duration", "date", "numeric", "purpose"})
+
+
+def _definitional_precedence_enabled() -> bool:
+    """R305 gate — default ON; ``REGENOLD_DEFINITION_QTYPE_PRECEDENCE=0`` disables."""
+    import os  # noqa: PLC0415 — local, keeps module import cheap
+
+    return os.getenv("REGENOLD_DEFINITION_QTYPE_PRECEDENCE", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
 @lru_cache(maxsize=2048)
 def classify_question(question: str) -> str:
     """Return the question type tag, or ``"description"`` as fallback.
@@ -424,12 +465,37 @@ def classify_question(question: str) -> str:
     request (extractive QA path, ref-budget block, answer-template
     block, sometimes inside ``select_answer_sentence``). Output is pure
     function of input.
+
+    R305: a definitional question whose trailing clause mentions a duration /
+    date / number is classified ``definition``, not by that clause — but only
+    when the definitional resolver actually resolves the term.
     """
     q = (question or "").strip().lower()
+    matched = "description"
     for name, q_pattern, _ in _QTYPE_PATTERNS:
         if q_pattern.search(q):
-            return name
-    return "description"
+            matched = name
+            break
+    if (
+        matched in _CLAUSE_DRIVEN_QTYPES
+        and _DEFINITIONAL_OPENER_RE.match(q)
+        and _definitional_precedence_enabled()
+    ):
+        # Only override when the clause-driven signal lives in a LATER clause.
+        # If it is already in the PRIMARY clause the question really is asking
+        # for that duration/date/number ("What is the deadline for reporting a
+        # serious incident?" stays ``date``), so leave the classification alone.
+        primary = re.split(r"[?(;]", q, maxsplit=1)[0]
+        primary_pattern = next(
+            (p for name, p, _ in _QTYPE_PATTERNS if name == matched), None
+        )
+        if primary_pattern is not None and not primary_pattern.search(primary):
+            try:
+                if select_definition_sentence(question):
+                    return "definition"
+            except Exception:  # noqa: BLE001 — never let the override break routing
+                return matched
+    return matched
 
 
 def _answer_affinity_pattern(qtype: str) -> re.Pattern[str] | None:

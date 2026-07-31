@@ -2175,6 +2175,25 @@ _CLASSIFICATION_FRAGMENT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# R305 — "which risk category does X belong to?" is a verdict ask, but neither
+# regex above recognises it: ``_CLASSIFICATION_QUESTION_RE`` anchors on a
+# leading is/are/does + a tier predicate, and the fragment regex requires the
+# clause to BE a bare tier word. Measured failure on the graded evaluator
+# batch: "Is irregular migration a topic considered in the AI Act? If so, to
+# what risk category does it belong?" split into a clause with no tier
+# predicate and a clause starting "If so", so the whole question was read as a
+# DESCRIPTION and fell through to the Article 3 QA-dump — shipping an Article 5
+# biometric-identification answer for a migration classification question.
+#
+# This is a general shape (what/which risk category|tier|class|level ...), not
+# a per-row pattern; it is deliberately restricted to an explicit risk-TIER
+# noun so a content lookup ("what category of documentation...") cannot match.
+_RISK_CATEGORY_ASK_RE = re.compile(
+    r"\b(?:to\s+)?(?:what|which)\s+risk\s+"
+    r"(?:categor(?:y|ies)|tier|class(?:ification)?|level)\b",
+    re.IGNORECASE,
+)
+
 # Narrow risk-tier verdict gate for the GENERAL classification fallback
 # (:func:`_general_classification_verdict`).
 #
@@ -2224,6 +2243,11 @@ def _is_classification_question(question: str) -> bool:
         clause = clause.strip()
         if _CLASSIFICATION_QUESTION_RE.match(clause) or _CLASSIFICATION_FRAGMENT_RE.match(clause):
             return True
+    # R305 — explicit "what/which risk category|tier|class|level" verdict ask.
+    # Searched over the whole live question (not per-clause) because the ask
+    # commonly trails a scope clause ("... If so, to what risk category ...").
+    if _RISK_CATEGORY_ASK_RE.search(live):
+        return True
     # R149 — also test the FULL un-split live question. The clause splitter
     # breaks on " or " inside a subject noun phrase ("Are subliminal OR
     # manipulative AI techniques prohibited?" -> ["Are subliminal",
@@ -3965,6 +3989,16 @@ def _detect_robotic_surgery_inquiry(question: str) -> bool:
     idx = raw_q.rfind(_FLATTEN_MARKER)
     if idx >= 0:
         raw_q = raw_q[idx + len(_FLATTEN_MARKER):]
+    # R305 — scenario shapes belong to ``scenario_classifier``, not to a
+    # curated QA verdict. Seven sibling detectors already carry this guard;
+    # this one did not, so a davidath SCENARIO row ("We are a provider,
+    # offering a real-time safety monitoring ai for medical robots ...
+    # autonomous surgical robots ...") hijacked the curated gate and skipped
+    # Stage-2, leaving the file-level davidath 0-hit guard in
+    # ``tests/test_r144_emotion_curated.py`` RED and falsifying the CLAUDE.md
+    # "curated intercepts fire on 0 davidath rows" invariant.
+    if _MINIMAL_RISK_SCENARIO_OPENER_RE.search(raw_q):
+        return False
     q = raw_q.strip().lower()
     if not ("robotic surgery" in q or "surgical robot" in q):
         return False
@@ -4045,9 +4079,6 @@ def _is_r265_reconcile_intercept(question: str) -> bool:
         or _detect_tech_doc_certificate_inquiry(question)
         or _detect_hardware_techdoc_inquiry(question)
         or _detect_deviation_detection_inquiry(question)
-        or _detect_annex_iii_amendment_inquiry(question)
-        or _detect_sandbox_definition_inquiry(question)
-        or _detect_irregular_migration_inquiry(question)
     )
 
 
@@ -4061,39 +4092,37 @@ def _curated_stage2_skip_enabled() -> bool:
     )
 
 
-def _detect_annex_iii_amendment_inquiry(question: str) -> bool:
-    """R304 — True when question asks if/how the European Commission can amend Annex III (Article 7).
-    Fires on 0 davidath rows."""
-    q = (question or "").lower()
-    return bool(
-        re.search(r"\b(commission|delegated\s+acts?)\b.*\b(amend|modify|update)\b.*\bannex\s+iii\b", q)
-        or re.search(r"\b(amend|modify|update)\b.*\bannex\s+iii\b.*\bcommission\b", q)
-    )
-
-
-def _detect_sandbox_definition_inquiry(question: str) -> bool:
-    """R304 — True when question asks for the definition/elements of an AI regulatory sandbox (Article 3(55) & Article 57).
-    Fires on 0 davidath rows."""
-    q = (question or "").lower().replace("'", "").replace('"', "")
-    if any(k in q for k in ("ai office", "role", "duration", "how long", "cost", "eligibility", "governance")):
-        return False
-    return bool(
-        re.search(r"\b(?:what\s+is|definition\s+of|define)\s+(?:an?\s+)?(?:ai\s+)?regulatory\s+sandbox\b", q)
-        or "elements of an ai regulatory sandbox" in q
-        or "definition elements of an ai regulatory sandbox" in q
-        or ("what is an ai regulatory sandbox" in q)
-    )
-
-
-def _detect_irregular_migration_inquiry(question: str) -> bool:
-    """R304 — True when question asks about irregular migration risk classification (Article 6(2) & Annex III.7).
-    Fires on 0 davidath rows."""
-    q = (question or "").lower()
-    return bool(
-        re.search(r"irregular\s+migration.*\b(risk|category|classification|high-risk|annex\s+iii)\b", q)
-        or re.search(r"\b(risk|category|classification|high-risk|annex\s+iii)\b.*irregular\s+migration", q)
-        or ("irregular migration" in q and ("risk" in q or "category" in q or "annex" in q))
-    )
+# ── R305 — the three R304 curated intercepts were REMOVED ────────────────
+#
+# R304 shipped three hardcoded verdicts (annex_iii_amendment /
+# sandbox_definition / irregular_migration), one per graded evaluator row.
+# The R305 review measured all three and removed them:
+#
+#   * ``_detect_sandbox_definition_inquiry`` returned **False** on the very
+#     question it was built for. Its negative guard rejected ``"how long"``,
+#     and the real evaluator question ends "...to do what, for how long)."
+#     The R304 unit test passed only because it asserted against a TRUNCATED
+#     copy of the question with that clause removed.
+#   * ``_detect_irregular_migration_inquiry`` fired on non-classification
+#     questions (e.g. "Which documentation must a provider keep for an AI
+#     system used in irregular migration control under Annex IV?"), and a
+#     curated intercept SKIPS Stage-2 — so an obligations question was
+#     answered with a classification verdict that no LLM could correct.
+#   * All three verdicts carried verbatim-text defects (hard rule #4). The
+#     worst: the amendment verdict said Article 7(3) "permits removing a
+#     use-case where it no longer presents a significant risk", but Art 7(3)
+#     requires BOTH (a) no significant risk AND (b) that the deletion does
+#     not decrease the overall level of protection under Union law.
+#
+# Measured on the live wire, the underlying failures were NOT answer-template
+# gaps and did not need a hardcode — two are ordinary retrieval/routing bugs,
+# now fixed generically (see ``_KEYWORD_ENTITY_MAP`` "irregular migration"
+# and ``sentence_index.classify_question`` definitional precedence), and the
+# third (Annex III amendment) production already answers correctly and more
+# completely than the hardcode did.
+#
+# Hard rule #3 (no per-example overfit) applies: one hardcoded answer per
+# graded question is exactly the pattern this project reverted once before.
 
 
 def _is_curated_authoritative_intercept(question: str) -> bool:
@@ -4150,9 +4179,6 @@ def _is_curated_authoritative_intercept(question: str) -> bool:
         or _detect_role_difference_inquiry(question)
         or _detect_user_information_inquiry(question)
         or _detect_robotic_surgery_inquiry(question)
-        or _detect_annex_iii_amendment_inquiry(question)
-        or _detect_sandbox_definition_inquiry(question)
-        or _detect_irregular_migration_inquiry(question)
     )
 
 
@@ -4268,60 +4294,12 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
 
-    # R304 — Commission amendment of Annex III (Article 7)
-    if _detect_annex_iii_amendment_inquiry(question):
-        verdict = {
-            "name": "annex_iii_amendment",
-            "answer": (
-                "Under Article 7(1), the European Commission is empowered to amend "
-                "Annex III by delegated acts to add or modify high-risk use-cases, "
-                "provided two cumulative conditions are met: (1) the use-case falls "
-                "within one of the eight area headings already listed in Annex III, and "
-                "(2) it poses a risk of harm to health, safety, or fundamental rights "
-                "equivalent to or greater than the use-cases already classified as high-risk. "
-                "Article 7(3) permits removing a use-case where it no longer presents "
-                "a significant risk. Adding new area headings requires the ordinary "
-                "legislative procedure."
-            ),
-            "refs": ["Art. 7", "Art. 6", "Annex III"],
-        }
-        _seed_classification_obligations(context, verdict, question)
-        return verdict["answer"]
-
-    # R304 — AI Regulatory Sandbox Definition (Article 3(55) & Article 57)
-    if _detect_sandbox_definition_inquiry(question):
-        verdict = {
-            "name": "sandbox_definition",
-            "answer": (
-                "Under Article 3(55) and Article 57, an AI regulatory sandbox is a "
-                "controlled environment established by national competent authorities "
-                "or the EDPS (optionally with the AI Office) that provides providers "
-                "or prospective providers with the possibility to develop, train, "
-                "validate, and test innovative AI systems for a limited period of "
-                "time before placing on the market or putting into service, under "
-                "regulatory supervision."
-            ),
-            "refs": ["Art. 3.55", "Art. 57"],
-        }
-        _seed_classification_obligations(context, verdict, question)
-        return verdict["answer"]
-
-    # R304 — Irregular Migration Risk Category (Article 6(2) & Annex III.7)
-    if _detect_irregular_migration_inquiry(question):
-        verdict = {
-            "name": "irregular_migration",
-            "answer": (
-                "Yes, irregular migration is explicitly addressed in the EU AI Act "
-                "under Annex III, point 7 (Migration, asylum and border control "
-                "management). AI systems intended to be used by competent public "
-                "authorities or Union institutions to detect, recognise, or assist in "
-                "managing irregular migration are classified as high-risk AI systems "
-                "under Article 6(2)."
-            ),
-            "refs": ["Art. 6.2", "Annex III"],
-        }
-        _seed_classification_obligations(context, verdict, question)
-        return verdict["answer"]
+    # R305 — the three R304 per-row curated verdicts were removed here.
+    # See the block comment above ``_is_curated_authoritative_intercept`` for
+    # the measured reasons (one never fired on its target question, one had a
+    # false-positive surface that hijacked obligations questions, and all
+    # three carried verbatim-text defects). The underlying failures are fixed
+    # generically instead.
 
     # R275 (Antifragile Q10) — provider-vs-deployer role-difference verdict.
     # The role-definition contrast + the Article 25 deployer->provider
@@ -7398,7 +7376,12 @@ def _two_stage_generate(
     # and complete here, so ship it. Env-reversible
     # (REGENOLD_CURATED_STAGE2_SKIP=0); fires on 0 davidath rows so the
     # deterministic bench is byte-identical.
-    if _curated_stage2_skip_enabled() and _is_curated_authoritative_intercept(question):
+    # R305 — gate on ``resolved_q`` (the LIVE turn), not the flattened
+    # ``question``. The sibling gate 20 lines below already does. Scanning the
+    # whole conversation lets a PRIOR turn's topic fire the curated gate and
+    # skip Stage-2 for an unrelated live question — the flattened-prompt bug
+    # class this project has fixed four times (R60.1, R64 [C1], R71, R133).
+    if _curated_stage2_skip_enabled() and _is_curated_authoritative_intercept(resolved_q):
         try:
             from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
                 record_note,

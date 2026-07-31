@@ -107,9 +107,18 @@ class TestR144DeterministicVerdictIsCrossTier:
         assert "article 50" in low or "art. 50" in low
         # must NOT be a bare prohibition-only answer
         assert "not categorically prohibited" in low or "not always" in low
-        assert any(r.startswith("Art. 5") for r in refs)
-        assert any(r.startswith("Annex III") for r in refs)
-        assert any(r.startswith("Art. 50") for r in refs)
+        # R305 — the refs are emitted at sub-point granularity
+        # (``Annex III.1.c`` / ``Art. 50.3``), so an exact-membership check no
+        # longer holds. Match exact-OR-subpoint, NOT a bare ``startswith``:
+        # ``"Art. 50".startswith("Art. 5")`` is True, so a bare prefix test
+        # would let the Article-50 transparency ref satisfy the Article-5
+        # PROHIBITION assertion and the cross-tier guarantee would be untested.
+        def _cites(refs_: list[str], head: str) -> bool:
+            return any(r == head or r.startswith(head + ".") for r in refs_)
+
+        assert _cites(refs, "Art. 5"), refs
+        assert _cites(refs, "Annex III"), refs
+        assert _cites(refs, "Art. 50"), refs
 
 
 class TestR144DavidathByteIdentical:

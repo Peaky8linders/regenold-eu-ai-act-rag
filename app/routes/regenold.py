@@ -1323,6 +1323,19 @@ def _engine_cache_key(
             # the A/B measures nothing. Same doctrine as every line above.
             "REGENOLD_REF_PARTITION",
             "REGENOLD_COMPLETENESS_VERIFIER",
+            # R305 — three flags R304/R305 shipped default-ON that each flip
+            # the engine output, and so must be in the key by the same
+            # R30/R56/R79/R263.2 doctrine as every line above:
+            #   * SUBPARAGRAPH_ATTRIBUTION appends a rule to the Stage-2 USER
+            #     message (the only channel the wrapper delivers, per R298) ⇒
+            #     flips the polished answer AND its citations. R304 shipped it
+            #     without a key entry, so an ab_judge A/B of it measured nothing.
+            #   * DEFINITION_QTYPE_PRECEDENCE changes classify_question ⇒ the
+            #     extractive answer sentence ⇒ the answer.
+            #   * REASK_FOCUS changes the question the engine is asked at all.
+            "REGENOLD_SUBPARAGRAPH_ATTRIBUTION",
+            "REGENOLD_DEFINITION_QTYPE_PRECEDENCE",
+            "REGENOLD_REASK_FOCUS",
             # R300 — the wrapper model alias decides WHICH model generates the
             # Stage-2 answer, so flipping it flips the answer.
             "REGENOLD_WRAPPER_MODEL_ALIAS",
@@ -5071,6 +5084,79 @@ def _is_denoise_salvage_enabled() -> bool:
     )
 
 
+# ── R305 — explicit RE-ASK instruction ("…here is my question again: X") ──
+#
+# A user who says "let's try again: <full question>" is explicitly telling us
+# to answer THAT question as a fresh ask. The trailing clause is the whole
+# query; the preceding turns are the thing being set aside.
+#
+# Measured on the graded 2026-07-07 evaluator batch, where the adversarial
+# challenge turn ends:
+#
+#     ... provide a clear answer with the same format as before, as if I had
+#     just asked the same question anew: without mentioning the previous
+#     answer or the pushback.)
+#
+#     Let's try again:
+#     <the original question, verbatim>
+#
+# 67/111 challenge turns carry that shape and the trailing question matched a
+# first-turn question EXACTLY 67/67. Yet the challenge turn shipped answers
+# +376 chars and +0.64 references longer than the identical stand-alone ask
+# (49/67 rows longer), because the whole flattened history still drove
+# retrieval, `scope.anchor_articles` and the R88-A assistant-anchor
+# inheritance. Honouring the instruction is both correct behaviour and the
+# conciseness-preserving one.
+#
+# Precision: the marker must be a genuine re-ask phrase, and the extracted
+# tail must independently pass ``_live_turn_is_self_contained`` — so an
+# elliptical tail ("let's try again: what about deployers?") is NOT taken and
+# the conversation keeps its history. Measured: fires on 0/111 first-turn and
+# 0/111 turn-1 rows, 62/111 challenge rows, and on none of a coreference /
+# out-of-scope negative probe set.
+_REASK_MARKER_RE = re.compile(
+    r"(?:^|\n)[^\S\n]*(?:"
+    r"let(?:'|’)?s\s+try\s+again|"
+    r"let\s+me\s+ask\s+(?:that\s+|this\s+|the\s+question\s+)?again|"
+    r"asking\s+(?:that\s+|this\s+)?again|"
+    r"(?:here\s+is|here(?:'|’)?s|repeating)\s+(?:the\s+|my\s+)?question\s+again|"
+    r"(?:the|my)\s+question\s+again"
+    r")[^\S\n]*[:\-–—][^\S\n]*\n?",
+    re.IGNORECASE,
+)
+
+_REASK_ENV = "REGENOLD_REASK_FOCUS"
+
+
+def _is_reask_focus_enabled() -> bool:
+    """R305 re-ask focus gate — default ON; ``REGENOLD_REASK_FOCUS=0`` disables."""
+    return os.environ.get(_REASK_ENV, "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
+def _extract_reask_tail(live_question: str) -> str | None:
+    """Return the re-asked question when the live turn explicitly re-asks it.
+
+    ``None`` when there is no re-ask marker, or when the text after the LAST
+    marker cannot stand alone (so an elliptical re-ask keeps its history).
+    """
+    if not live_question or not _is_reask_focus_enabled():
+        return None
+    last = None
+    for last in _REASK_MARKER_RE.finditer(live_question):
+        pass
+    if last is None:
+        return None
+    tail = (live_question[last.end() :] or "").strip()
+    if not tail or not _live_turn_is_self_contained(tail):
+        return None
+    return tail
+
+
 def _live_turn_is_self_contained(live_question: str) -> bool:
     """True iff the final user turn can stand alone as a search query.
 
@@ -5484,6 +5570,29 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
 
     _salvaged = False  # R131 — set when the deterministic de-noiser salvage fires
     _self_contained_focus = False  # R133.1 — focus scope + R88-A on the live turn
+
+    # R305 — an explicit re-ask ("let's try again: <question>") is answered as
+    # the fresh single-turn question it names. Deterministic (no LLM), so it
+    # runs BEFORE the de-noiser and works even when no provider is wired.
+    # See ``_extract_reask_tail`` for the precision gate + the measurement.
+    if history_turns:
+        _reask_tail = _extract_reask_tail(live_question)
+        if _reask_tail:
+            try:
+                _trace_note(
+                    f"reask_focus: live turn re-asks its own question "
+                    f"({len(_reask_tail)} chars)"
+                )
+            except Exception:  # noqa: BLE001 — tracing must never break the route
+                pass
+            return QuestionHistoryResult(
+                _reask_tail,
+                system_context,
+                _reask_tail,  # resolved live turn IS the re-asked question
+                False,
+                True,  # self_contained_focus — drop prior-turn scope + R88-A bleed
+            )
+
     if history_turns:
         # R86 — Query De-Noiser: attempt an LLM rewrite of the follow-up
         # into a standalone search query BEFORE flooding the retrieval

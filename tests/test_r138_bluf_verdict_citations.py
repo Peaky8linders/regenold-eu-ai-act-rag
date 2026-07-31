@@ -45,7 +45,12 @@ def test_thinking_tokens_adaptive_r139() -> None:
     # Supersedes the R261 "Sonnet 5 simple / Opus 4.8 complex" split.
     assert settings.graph_rag.thinking_tokens == 0
     assert settings.graph_rag.complex_thinking_tokens == 4000
-    assert settings.graph_rag.stage2_model in ("claude-opus-5", "claude-opus-4-8")
+    # R305 — pin the EXACT current default. An ``in (...)`` set that accepts
+    # either model cannot catch the class of bug R300 found (an ungated,
+    # undisclosed model swap that also made the reasoning trace report a
+    # model that was never sent). Update this line deliberately when the
+    # default changes; do not widen it.
+    assert settings.graph_rag.stage2_model == "claude-opus-5"
 
 
 # ── Change 1 — BLUF verdict-first prompt ──────────────────────────────────

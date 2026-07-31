@@ -77,7 +77,11 @@ class TestP1ScopeStickiness:
         ]
         cv = classify_conversation(msgs)
         assert cv.in_scope is False
-        assert cv.reason in (ScopeReason.CONVERSATIONAL, ScopeReason.GREETING)
+        # R305 — "Thanks!" is deterministically GREETING since the R256 split
+        # carved greeting/courtesy out of CONVERSATIONAL. Pin the one value it
+        # actually returns; an ``in (...)`` set here would pass either way and
+        # so would not notice the classifier regressing back.
+        assert cv.reason == ScopeReason.GREETING
 
     def test_sticky_rescue_does_not_fire_on_generic_knowledge(self, monkeypatch) -> None:
         monkeypatch.setenv("REGENOLD_SCOPE_STICKINESS", "1")
