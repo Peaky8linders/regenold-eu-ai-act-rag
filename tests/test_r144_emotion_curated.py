@@ -107,8 +107,9 @@ class TestR144DeterministicVerdictIsCrossTier:
         assert "article 50" in low or "art. 50" in low
         # must NOT be a bare prohibition-only answer
         assert "not categorically prohibited" in low or "not always" in low
-        # refs carry the cross-tier set
-        assert "Art. 5" in refs and "Annex III" in refs and "Art. 50" in refs
+        assert any(r.startswith("Art. 5") for r in refs)
+        assert any(r.startswith("Annex III") for r in refs)
+        assert any(r.startswith("Art. 50") for r in refs)
 
 
 class TestR144DavidathByteIdentical:

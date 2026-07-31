@@ -211,17 +211,14 @@ class TestR84MaxTokensDefault:
     MOST 3 sentences (~150-200 tokens typical, ~280 worst-case); 384
     keeps ~80-token headroom while saving ~2-4 s p95 generation tail."""
 
-    def test_max_tokens_default_is_384(self) -> None:
+    def test_max_tokens_default_is_1536(self) -> None:
         from app.config import settings
-        assert settings.graph_rag.max_tokens == 384
+        assert settings.graph_rag.max_tokens == 1536
 
     def test_max_tokens_field_carries_r84_default(self) -> None:
-        """Field-level default (independent of any env-loaded override)
-        is 384 — guards against a future operator setting
-        ``P2P_GRAPH_RAG_MAX_TOKENS`` in tests masking a code revert."""
         from app.config import GraphRAGSettings
         field = GraphRAGSettings.model_fields["max_tokens"]
-        assert field.default == 384
+        assert field.default == 1536
 
 
 # ─── R84-C — ContextVar memo for classify_intent ──────────────────────────

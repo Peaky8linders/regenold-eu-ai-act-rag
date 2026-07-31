@@ -525,6 +525,27 @@ USER_CHALLENGE_BREVITY_CLAUSE = (
     "referring to the earlier answer.\n"
 )
 
+# R304 — Sub-paragraph attribution discipline (anti-fabrication).
+# Target: 16 fabrication rows where sub-paragraphs/points are hallucinated
+# or misattributed when only the parent article is present in context.
+USER_SUBPARAGRAPH_ATTRIBUTION_CLAUSE = (
+    " SUB-PARAGRAPH DISCIPLINE: Attribute legal claims to exact sub-paragraphs "
+    "(e.g., Article 5(1)(f)) ONLY when present in the supplied references; if only "
+    "the parent article is supplied, cite the parent article. Do NOT fabricate sub-clauses "
+    "or lengthen the answer to enumerate sub-paragraphs.\n"
+)
+
+
+def subparagraph_attribution_enabled() -> bool:
+    """R304 — is the Stage-2 sub-paragraph attribution discipline enabled?
+    Default ON. Set ``REGENOLD_SUBPARAGRAPH_ATTRIBUTION=0`` to disable."""
+    import os
+
+    return os.getenv("REGENOLD_SUBPARAGRAPH_ATTRIBUTION", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
 #: Answer-directed dispute markers. Deliberately keyed on phrases that attack the
 #: PREVIOUS ANSWER, never on a question about whether a legal proposition is
 #: correct ("Is it correct that Article 5 prohibits ...?" must NOT fire).

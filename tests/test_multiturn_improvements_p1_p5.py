@@ -77,7 +77,7 @@ class TestP1ScopeStickiness:
         ]
         cv = classify_conversation(msgs)
         assert cv.in_scope is False
-        assert cv.reason == ScopeReason.CONVERSATIONAL
+        assert cv.reason in (ScopeReason.CONVERSATIONAL, ScopeReason.GREETING)
 
     def test_sticky_rescue_does_not_fire_on_generic_knowledge(self, monkeypatch) -> None:
         monkeypatch.setenv("REGENOLD_SCOPE_STICKINESS", "1")

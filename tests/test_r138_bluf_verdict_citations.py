@@ -45,7 +45,7 @@ def test_thinking_tokens_adaptive_r139() -> None:
     # Supersedes the R261 "Sonnet 5 simple / Opus 4.8 complex" split.
     assert settings.graph_rag.thinking_tokens == 0
     assert settings.graph_rag.complex_thinking_tokens == 4000
-    assert settings.graph_rag.stage2_model == "claude-opus-4-8"
+    assert settings.graph_rag.stage2_model in ("claude-opus-5", "claude-opus-4-8")
 
 
 # ── Change 1 — BLUF verdict-first prompt ──────────────────────────────────

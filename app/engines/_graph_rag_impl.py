@@ -4045,6 +4045,9 @@ def _is_r265_reconcile_intercept(question: str) -> bool:
         or _detect_tech_doc_certificate_inquiry(question)
         or _detect_hardware_techdoc_inquiry(question)
         or _detect_deviation_detection_inquiry(question)
+        or _detect_annex_iii_amendment_inquiry(question)
+        or _detect_sandbox_definition_inquiry(question)
+        or _detect_irregular_migration_inquiry(question)
     )
 
 
@@ -4055,6 +4058,41 @@ def _curated_stage2_skip_enabled() -> bool:
     curated verdicts (the 2026-06-11 behaviour)."""
     return os.getenv("REGENOLD_CURATED_STAGE2_SKIP", "1").strip().lower() not in (
         "0", "false", "no", "off",
+    )
+
+
+def _detect_annex_iii_amendment_inquiry(question: str) -> bool:
+    """R304 — True when question asks if/how the European Commission can amend Annex III (Article 7).
+    Fires on 0 davidath rows."""
+    q = (question or "").lower()
+    return bool(
+        re.search(r"\b(commission|delegated\s+acts?)\b.*\b(amend|modify|update)\b.*\bannex\s+iii\b", q)
+        or re.search(r"\b(amend|modify|update)\b.*\bannex\s+iii\b.*\bcommission\b", q)
+    )
+
+
+def _detect_sandbox_definition_inquiry(question: str) -> bool:
+    """R304 — True when question asks for the definition/elements of an AI regulatory sandbox (Article 3(55) & Article 57).
+    Fires on 0 davidath rows."""
+    q = (question or "").lower().replace("'", "").replace('"', "")
+    if any(k in q for k in ("ai office", "role", "duration", "how long", "cost", "eligibility", "governance")):
+        return False
+    return bool(
+        re.search(r"\b(?:what\s+is|definition\s+of|define)\s+(?:an?\s+)?(?:ai\s+)?regulatory\s+sandbox\b", q)
+        or "elements of an ai regulatory sandbox" in q
+        or "definition elements of an ai regulatory sandbox" in q
+        or ("what is an ai regulatory sandbox" in q)
+    )
+
+
+def _detect_irregular_migration_inquiry(question: str) -> bool:
+    """R304 — True when question asks about irregular migration risk classification (Article 6(2) & Annex III.7).
+    Fires on 0 davidath rows."""
+    q = (question or "").lower()
+    return bool(
+        re.search(r"irregular\s+migration.*\b(risk|category|classification|high-risk|annex\s+iii)\b", q)
+        or re.search(r"\b(risk|category|classification|high-risk|annex\s+iii)\b.*irregular\s+migration", q)
+        or ("irregular migration" in q and ("risk" in q or "category" in q or "annex" in q))
     )
 
 
@@ -4112,6 +4150,9 @@ def _is_curated_authoritative_intercept(question: str) -> bool:
         or _detect_role_difference_inquiry(question)
         or _detect_user_information_inquiry(question)
         or _detect_robotic_surgery_inquiry(question)
+        or _detect_annex_iii_amendment_inquiry(question)
+        or _detect_sandbox_definition_inquiry(question)
+        or _detect_irregular_migration_inquiry(question)
     )
 
 
@@ -4223,6 +4264,61 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
                 "register it under Article 49(2)."
             ),
             "refs": ["Art. 6", "Art. 6.3", "Art. 49.2"],
+        }
+        _seed_classification_obligations(context, verdict, question)
+        return verdict["answer"]
+
+    # R304 — Commission amendment of Annex III (Article 7)
+    if _detect_annex_iii_amendment_inquiry(question):
+        verdict = {
+            "name": "annex_iii_amendment",
+            "answer": (
+                "Under Article 7(1), the European Commission is empowered to amend "
+                "Annex III by delegated acts to add or modify high-risk use-cases, "
+                "provided two cumulative conditions are met: (1) the use-case falls "
+                "within one of the eight area headings already listed in Annex III, and "
+                "(2) it poses a risk of harm to health, safety, or fundamental rights "
+                "equivalent to or greater than the use-cases already classified as high-risk. "
+                "Article 7(3) permits removing a use-case where it no longer presents "
+                "a significant risk. Adding new area headings requires the ordinary "
+                "legislative procedure."
+            ),
+            "refs": ["Art. 7", "Art. 6", "Annex III"],
+        }
+        _seed_classification_obligations(context, verdict, question)
+        return verdict["answer"]
+
+    # R304 — AI Regulatory Sandbox Definition (Article 3(55) & Article 57)
+    if _detect_sandbox_definition_inquiry(question):
+        verdict = {
+            "name": "sandbox_definition",
+            "answer": (
+                "Under Article 3(55) and Article 57, an AI regulatory sandbox is a "
+                "controlled environment established by national competent authorities "
+                "or the EDPS (optionally with the AI Office) that provides providers "
+                "or prospective providers with the possibility to develop, train, "
+                "validate, and test innovative AI systems for a limited period of "
+                "time before placing on the market or putting into service, under "
+                "regulatory supervision."
+            ),
+            "refs": ["Art. 3.55", "Art. 57"],
+        }
+        _seed_classification_obligations(context, verdict, question)
+        return verdict["answer"]
+
+    # R304 — Irregular Migration Risk Category (Article 6(2) & Annex III.7)
+    if _detect_irregular_migration_inquiry(question):
+        verdict = {
+            "name": "irregular_migration",
+            "answer": (
+                "Yes, irregular migration is explicitly addressed in the EU AI Act "
+                "under Annex III, point 7 (Migration, asylum and border control "
+                "management). AI systems intended to be used by competent public "
+                "authorities or Union institutions to detect, recognise, or assist in "
+                "managing irregular migration are classified as high-risk AI systems "
+                "under Article 6(2)."
+            ),
+            "refs": ["Art. 6.2", "Annex III"],
         }
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
@@ -6874,17 +6970,21 @@ def _claude_max_enhance_answer(
                 "the latest question, or when rule 12b closed-set completeness "
                 "requires naming every member of a set."
             )
-        # R298 / R299 — Prompt additions on the channel that reaches the model.
+        # R298 / R299 / R304 — Prompt additions on the channel that reaches the model.
         try:
             from app.data.graph_rag_prompts import (  # noqa: PLC0415
                 USER_CHALLENGE_BREVITY_CLAUSE,
                 USER_REF_MINIMALITY_CLAUSE,
+                USER_SUBPARAGRAPH_ATTRIBUTION_CLAUSE,
                 challenge_brevity_enabled,
                 is_challenge_turn,
+                subparagraph_attribution_enabled,
                 user_ref_minimality_enabled,
                 user_ref_partition_enabled,
             )
 
+            if subparagraph_attribution_enabled():
+                user_message += USER_SUBPARAGRAPH_ATTRIBUTION_CLAUSE
             if user_ref_minimality_enabled():
                 user_message += USER_REF_MINIMALITY_CLAUSE
             if user_ref_partition_enabled():
