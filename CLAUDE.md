@@ -10517,6 +10517,164 @@ is to A/B the *supplementary-context restore alone*, with repeat runs per arm.
 * Sidecars: `hardsample-r301-postfix.json`, `official-r301-postfix-{mt-hard,st-easy}.ckpt.jsonl`,
   `grounded-r30{0,1}-{mt,st}.json`, `diff-r300-live-vs-r301-postfix.json`.
 
+## Round 305 — deep review of R304: three per-row hardcodes removed, three routing bugs fixed (2026-07-31)
+
+R304 shipped a hardcoded verdict per graded evaluator row plus a Stage-2
+sub-paragraph clause, documented in
+`.planning/R305-CHECKPOINT-SCORECARD-AND-JUDGE-REMARKS.md`. A 5-lane
+adversarial review (verifier default REFUTED) plus inline verification found
+the checkpoint unreliable and all three intercepts unsound. Full verdict,
+corrected scorecard and the judge-remark adjudication:
+[`.planning/R305-REVIEW-VERDICT-AND-CORRECTIONS.md`](.planning/R305-REVIEW-VERDICT-AND-CORRECTIONS.md).
+
+### What was wrong
+
+* **`_detect_sandbox_definition_inquiry` returned `False` on its own target
+  question.** Its guard rejects `"how long"`; the evaluator question ends
+  *"...to do what, for how long)."* **The R304 unit test asserted on a TRUNCATED
+  copy with that clause deleted** — 7/7 green while production was broken. This
+  is the failure mode to watch for: a test written against the code instead of
+  the requirement. Every R305 test uses the VERBATIM evaluator question.
+* **`_detect_irregular_migration_inquiry` fired on obligations questions.** A
+  curated intercept SKIPS Stage-2 *and* disables the QA ref budget,
+  `_prune_non_anchor_refs`, noise suppression and the R281 clamp — so one false
+  positive is unrecoverable.
+* **All three verdicts carried verbatim-text defects (hard rule #4).** Article
+  7(3) was stated as ONE condition; the Act requires **both** (a) no
+  significant risk **and** (b) no decrease in the overall level of protection
+  under Union law. *"Adding new area headings requires the ordinary legislative
+  procedure"* — that phrase appears in **0 of 126 articles**. The sandbox
+  verdict invented AI-Office co-establishment and dropped *"pursuant to a
+  sandbox plan"*. Annex III(7)(b) was rewritten as *"detect, recognise, or
+  assist in managing irregular migration"* — absent from the Act.
+* All three scanned the flattened conversation while **27 of their 30 sibling
+  detectors** slice on `"Latest question:\n"`.
+
+### The generalisable fixes that replaced them
+
+1. **engine↔scope keyword divergence** — `"irregular migration" → Annex III`
+   existed in `scope.KEYWORD_TO_ARTICLE` but NOT in `_KEYWORD_ENTITY_MAP`, so
+   the wire cited Annex III while the prose described Article 5 biometrics
+   (cite-and-mismatch). Fixed in the engine map + the `migration_asylum` topic
+   (`irregular migration` is a statutory term of art — it occurs in the Act
+   ONLY in Annex III(7)(b), so a standalone trigger cannot over-fire).
+2. **`classify_question` tests `duration` before `definition`** — a definitional
+   question with a trailing time clause routed to the duration picker and
+   returned an unrelated Article 57 paragraph (reproduced byte-identically to
+   the shipped wire answer). New precedence rule, gated on the module's OWN
+   definitional resolver AND on the clause signal living in a LATER clause.
+   Env `REGENOLD_DEFINITION_QTYPE_PRECEDENCE`. **0 of 476** davidath and
+   **exactly 1 of 333** evaluator questions change qtype.
+3. **`_is_classification_question` did not recognise the verdict ask** —
+   *"to what risk category does it belong"*. New `_RISK_CATEGORY_ASK_RE`,
+   restricted to an explicit risk-TIER noun. **0** davidath rows match.
+
+### R305 re-ask focus — the largest measured lever
+
+`REGENOLD_REASK_FOCUS` (default ON). The graded challenge turn ends
+`Let's try again:\n<the original question, verbatim>`, preceded by *"provide a
+clear answer with the same format as before, as if I had just asked the same
+question anew"*. **67/111** challenge turns carry that shape and the trailing
+question matched a first-turn question **exactly 67/67** — yet those rows
+shipped **+376 chars and +0.64 references** vs the identical stand-alone ask.
+We were ignoring an explicit instruction on the axis with zero headroom. The
+route now answers the question the user names. Fires **62/111** challenge
+turns, **0/111** easy, **0/111** turn-1, 0 false fires on a coreference / OOS
+probe set; an elliptical re-ask keeps its history.
+
+### Also fixed
+
+* Stage-2 curated skip gated on `resolved_q` (the LIVE turn), not the flattened
+  `question` — the sibling gate 20 lines below already was.
+* `_detect_robotic_surgery_inquiry` gained the scenario-opener guard its seven
+  siblings already had. The davidath curated-gate 0-hit test was **RED**, which
+  falsified this file's own "curated intercepts fire on 0 davidath rows"
+  invariant.
+* `REGENOLD_SUBPARAGRAPH_ATTRIBUTION` / `..._DEFINITION_QTYPE_PRECEDENCE` /
+  `..._REASK_FOCUS` added to `_engine_cache_key` (R263.2 eval integrity — R304
+  shipped the first flag default-ON without a key entry, so any in-process A/B
+  of it measured nothing).
+* The sub-paragraph clause no longer contradicts the closed-set completeness
+  rule it sits beside on the same delivered channel.
+* Four weakened test assertions tightened. `"Art. 50".startswith("Art. 5")` is
+  True, so the R304 form had made the Article-5 cross-tier assertion untestable.
+
+### Judge-remark adjudication — 3 of 13 are JUDGE FALSE POSITIVES
+
+* **Article 14 on explainability is NOT over-citation** — Art 14(4)(c) contains
+  *"the interpretation tools and methods available"*, the only such phrase in
+  the Regulation. Article 15 on the same question **is** real over-citation.
+* Annex XI/XII/Art 51 on the GPAI exception — Art 53(2) relieves 1(a)+(b),
+  whose objects ARE Annex XI/XII.
+* `rg_053` "truncated before Article 55(1)(d)" — 55(1)(d) is stated
+  near-verbatim followed by a complete closing sentence.
+* **The "token headroom" root cause is FALSIFIED**: 442-token answers against a
+  2048-token envelope, and 2 of the 3 named rows never invoked Stage-2. Do NOT
+  tune `REGENOLD_STAGE2_ANSWER_HEADROOM` for them — they are three different
+  defects (incompleteness / raw-KB-dump / misclassification).
+
+### Gates
+
+| Gate | Result |
+| --- | --- |
+| davidath 476 vs `main` a83bbcc | **byte-identical on every axis** (Ans Loose 0.1879 / Ans Strict 0.3526 / Ans Conc 0.615 / Ref Loose 0.5967 / Ref Strict 0.4744 / Ref Conc 0.4319 / Tone 1.0 / mt 20/20) |
+| davidath QA 137 | matches the documented baseline exactly |
+| `evals.regenold.runner` (276) | **255/255 (100%)**, RISK_F1 macro 1.00 |
+| OOS probe (`--oos-suite all`) | **0 scope leaks** |
+| full pytest, in-place A/B vs `main` | main **92** failed / branch **84** failed → **0 new, 8 fixed** |
+
+⚠ **Methodology note that cost this round an hour:** a `git worktree` baseline
+is NOT comparable to an in-place run — a worktree does not carry untracked
+files, so it has **no `.env`**, and the whole
+`test_r148_denoiser_groq_fallback` / `test_r87a_query_denoiser_trace` /
+`test_topic_filter` / `test_r271_safety_gate` cluster changes behaviour on the
+presence of `GROQ_API_KEY`. Measured: worktree baseline 63 failures vs in-place
+baseline **92** on the identical commit. **For a full-suite failure-set diff,
+check out the baseline commit IN PLACE** (the davidath bench is unaffected — it
+does not read those keys — so a worktree is fine there).
+
+### New evaluation surfaces
+
+* **`evals/regenold/evaluator_batch_july7.py`** + `run_evaluator_batch_july7.py`
+  — replays the RAW 333-request graded export (111 easy / 111 hard turn-1 /
+  111 challenge; the richer sibling of `run_official_batch`, which replays the
+  deduplicated 110-question Postgres snapshot). Records the 2026-07-07 shipped
+  answer for a then-vs-now diff plus pushback concession, writes a
+  judge-compatible sidecar. Note: only **67** of the 111 turn-2 rows are real
+  pushback challenges; the other 44 are ordinary follow-ups.
+* **`evals/judge/legal_v2.py`** — the upgraded judge. **Three-way** reference
+  classification (`GOVERNING` / `SUPPORTING` / `WRONG`; SUPPORTING can never
+  fail — the direct fix for the false-positive class above),
+  **quote-or-retract** substantiation (an adverse verdict without an ≥8-word
+  literal quote from the supplied verbatim text is downgraded and logged),
+  Chain-of-Verification with an omission-vs-fabrication split, optional
+  self-consistency (`--samples K`), a strict key allowlist so the judge never
+  sees the arm or the baseline, anti-sycophancy calibration, and a
+  **conciseness** axis the old judge lacked.
+
+### R305 live round (60 rows, R305 code + Claude Max wrapper) — then vs now
+
+| arm | refs/row | answer chars |
+| --- | --- | --- |
+| easy (n=30) | 3.43 → **2.53** (−26%) | 770 → 744 |
+| hard (n=30) | 4.77 → **2.67** (−44%) | 1235 → **782** (−37%) |
+
+Tone **1.0**, refusals **0**, **pushback concession 0.0000**, pushback ref-flip
+0.30 (was ~0.36 in R300), Stage-2 landed 0.77. 20/30 hard rows are both shorter
+and lower-citation than the graded July-7 output. Latency p50 37 s / p95 130 s
+on the hard arm — high, and the wrapper timed out on several rows.
+
+### Aura knowledge graph — used, or not?
+
+Healthy and fully seeded (`2026-07-24-r291-fullseed`, 113 Article / 656
+Paragraph / 416 Point / 248 CROSS_REFERENCES) and contributing **~nothing** to
+answers — **by measured design**. All 333 graded responses show
+`retrieval_path: "kb_fallback"`: that is the R252 decision (the blunt
+`obligations_for_risk_level` primary dump mis-anchored, so the graph was
+demoted to additive-only), and the additive path is then zeroed at the fusion
+cap (R295: 660 hop2 refs available, 4 added). Opening it is item 7 on the
+do-not-repropose list — `REGENOLD_GRAPH_FUSE_SLACK=2` destroyed gold refs.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a
