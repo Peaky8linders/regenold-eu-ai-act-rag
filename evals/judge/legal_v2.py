@@ -116,10 +116,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
+# R305 — do NOT call ``load_dotenv()`` at import time.
+#
+# ``grounded.py`` and ``runner.py`` do, which is harmless while only eval
+# CLIs import them. This module is imported by ``tests/test_legal_v2_judge.py``,
+# which runs EARLY in the alphabetical suite order, so an import-time
+# ``load_dotenv()`` injects the developer ``.env`` (``OPENAI_API_KEY``,
+# ``GROQ_API_KEY``, ...) into the process and flips the provider gates for
+# every test that runs afterwards. Measured: 8 downstream failures across
+# ``test_topic_filter`` / ``test_r87a_query_denoiser_trace`` that pass in
+# isolation. Load it in ``main()`` instead — the CLI is the only caller that
+# needs it, and a library module must not mutate process env on import.
 from evals.judge.runner import (  # reuse the battle-tested call plumbing
     _call_judge_with_retry,
     _resolve_caller,
@@ -924,6 +931,11 @@ def _fmt(s: dict[str, Any]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # R305 — deferred from module scope so importing this module (e.g. from a
+    # test) cannot mutate process env for everything that runs after it.
+    from dotenv import load_dotenv  # noqa: PLC0415
+
+    load_dotenv()
     for st in (sys.stdout, sys.stderr):
         if hasattr(st, "reconfigure"):
             try:

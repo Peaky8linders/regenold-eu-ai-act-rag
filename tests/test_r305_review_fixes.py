@@ -287,7 +287,12 @@ class TestReaskFocus:
 class TestSubparagraphAttributionDiscipline:
     def test_clause_content(self) -> None:
         assert "SUB-PARAGRAPH DISCIPLINE" in USER_SUBPARAGRAPH_ATTRIBUTION_CLAUSE
-        assert "Do NOT fabricate sub-clauses" in USER_SUBPARAGRAPH_ATTRIBUTION_CLAUSE
+        assert "Do NOT invent a sub-clause number" in USER_SUBPARAGRAPH_ATTRIBUTION_CLAUSE
+        # R305 — the clause must NOT contradict the closed-set completeness
+        # rule that precedes it on the same delivered channel.
+        assert "never overrides the closed-set completeness rule" in (
+            USER_SUBPARAGRAPH_ATTRIBUTION_CLAUSE
+        )
         assert subparagraph_attribution_enabled() is True
 
     def test_clause_is_on_the_stage2_user_channel(self, monkeypatch) -> None:
