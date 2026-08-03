@@ -10926,6 +10926,293 @@ band. The two real historical gaps are Ans Strict (the length artifact above) an
 Ref Conciseness 0.4779 (`r99-graphfix`), which came from the **verbatim** mode
 R100 replaced after measuring its judge answer-correctness at 0.25.
 
+## Round 308 — uncap the answer, deliver the content rules on the live channel, and actually run Stage-2 on Opus 5 (2026-08-03)
+
+Operator directive: *"no hard cap please, the stage 2 system prompts must be
+able to get to the right content and phrases to correctly answer"* +
+*"ensure Opus 5 is used for Stage 2, not Sonnet 4.6 or Opus 4.6"*. Shipped as
+`d5985e7` / PR [#318](https://github.com/Peaky8linders/regenold-eu-ai-act-rag/pull/318).
+
+### The finding that reframed the round — the Stage-2 SYSTEM prompt is dead
+
+Measured live, identical request, the instruction *"always answer exclusively
+in French"* placed in the **system slot** vs the **user slot**, on BOTH
+`claude-sonnet-4-6` and `claude-opus-4-6`:
+
+```
+system slot -> "Rome is the capital of Italy."          (byte-identical to
+                                                           the no-instruction
+                                                           control)
+user slot   -> "La capitale de l'Italie est Rome."       (obeyed)
+```
+
+The Claude Max wrapper **drops the system slot 100%**. So every rule in
+`ANSWER_GENERATE_SYSTEM` has been reaching the model on **zero** live
+requests — including all the prompt work from R122 / R143 / R145 / R147 /
+R265 / R266 / R275 that each round shipped under "prompt-only, the win lands
+live." It landed on nothing. Three places in the text that *is* delivered
+were pointing at that dead prompt as if it existed: the classification
+branch's *"the BLUF format from your system prompt,"* the refine branch's
+*"when rule 12b closed-set completeness requires...,"* and
+`USER_SUBPARAGRAPH_ATTRIBUTION_CLAUSE`'s *"never overrides the closed-set
+completeness rule above."* All three dangling pointers are repaired by Fix 2
+below.
+
+**Do NOT respond to this by forwarding the system prompt to the model** — R282
+already measured that path as rubric-negative (`kw_recall -0.267`, off-topic
+drift). The fix is to deliver the content on the channel that is actually
+read: the Stage-2 **user** message.
+
+### Fix 1 — `REGENOLD_ANSWER_NO_CAP` (default ON)
+
+[`app/routes/regenold.py:6351`](app/routes/regenold.py) calls
+`set_answer_no_cap(...)`, gated on
+`_stage2_landed_for_answer and os.getenv("REGENOLD_ANSWER_NO_CAP", "1")...`.
+It removes **both** the sentence cap and the soft char-cap loop from
+`normalise_answer_for_regenold` on the live Stage-2 path.
+
+* [`app/integrations/regenold/models.py:287-304`](app/integrations/regenold/models.py) —
+  `_ANSWER_NO_CAP: ContextVar[bool]` + `set_answer_no_cap()` / `answer_no_cap_active()`.
+  **Request-scoped ContextVar, not a kwarg threaded through call sites.**
+  `normalise_answer_for_regenold` has nine call sites in `regenold.py`;
+  threading a parameter through all nine is exactly how a change ends up
+  silently inert on the one path that matters — the R256 class of bug, and
+  the same failure mode as R72's own gate key never being set (fixed only at
+  R72.1). One set point, one read point, no call site can miss it. Mirrors
+  the `ReasoningTrace` ContextVar pattern already in the repo. The route sets
+  it unconditionally (True *or* False) on every request specifically so a
+  ContextVar can never leak a stale value from a previous request on a reused
+  worker thread.
+* Consumed at [`models.py:1374`](app/integrations/regenold/models.py) —
+  `if not _raw_ms and answer_no_cap_active(): _no_cap = True`. **Precedence,
+  verified by reading the branch order**: an explicit
+  `REGENOLD_MAX_ANSWER_SENTENCES=<n>` always wins (it makes `_raw_ms`
+  truthy, which short-circuits the ContextVar branch entirely and falls to
+  the `else` that parses the explicit integer). The ContextVar only fires
+  when the env is unset. The module constant `MAX_ANSWER_SENTENCES = 3` is
+  the floor when neither is set — which is the davidath bench's permanent
+  state.
+
+**Measured live failure this closes**: prod shipped 3 sentences / 298 chars
+announcing *"a defined set of obligations under Article 26"* and then
+delivering 2 of ~6:
+
+> *"Deployers of high-risk AI systems must comply with a defined set of
+> obligations under Article 26. They must use the system in accordance with
+> the provider's instructions of use. They must assign human oversight
+> functions to natural persons"*
+
+The R306 enumeration guard (`answer_normaliser.enumeration_run_end` /
+`_run_indices`) cannot catch this — it protects a labelled `(a) ... (b) ...`
+run, and this list is **prose**, not labelled clauses.
+
+**Correction made within this same round** (recorded here so it isn't
+re-litigated): an earlier draft of the round attributed the truncation to
+the sentence cap. On the REAL 30-row graded sample, only **2/30 rows are
+sentence-cap bound** — most trip `_is_multi_phrase` and already get a
+12-sentence budget under the pre-existing R119 multi-phrase carve-out. The
+constraint that actually bites on the graded set is the **char cap and its
+sentence-dropping loop**, which preferentially deletes the non-citation
+sentences — exactly the list members that don't name an article. The uncap
+disables both the sentence slice and the char-cap loop, so it closes the
+failure regardless of which of the two was the proximate cause on a given
+row.
+
+**Trade, stated plainly** (matches the commit's own framing, and R305's
+executive summary): Answer-Conciseness is the *only* axis the official
+regenold scorecard says we lead, so this spends the one axis with zero
+headroom to buy completeness. That is the operator's explicit call, made
+with the numbers on the table — see KNOWN, UNRESOLVED below.
+
+### Fix 2 — `REGENOLD_ANSWER_COVERAGE` (default ON)
+
+[`app/data/graph_rag_prompts.py:802-833`](app/data/graph_rag_prompts.py) —
+`USER_ANSWER_COVERAGE_CLAUSE` (1545 chars, byte-verified) +
+`answer_coverage_enabled()`. Wired at
+[`app/engines/_graph_rag_impl.py:~7033-7086`](app/engines/_graph_rag_impl.py)
+(`_claude_max_enhance_answer`): `if answer_coverage_enabled(): user_message +=
+USER_ANSWER_COVERAGE_CLAUSE`, wrapped in a bare `except Exception: pass` so a
+prompt add-on can never break Stage-2.
+
+**What it ports.** Five load-bearing CONTENT rules out of the dead system
+prompt, ranked by fit to the measured live failure signature (legal_v2: mean
+factual score 0.9647 against an answer pass rate of 0.48, `omission_rows 24`
+vs `fabrication_rows 5` — the model is accurate but incomplete):
+literal-question closure, closed-set completeness (rule 12b), canonical
+statutory terminology (the term-not-paraphrase half), the group-don't-drop
+device, and ANSWER-THE-HEADLINE's "name the members" half. The **~14 FORM
+rules are deliberately NOT ported** — they already have working
+deterministic backstops in `answer_normaliser.py` / `tone_guard.py`, and
+re-delivering them would be pure prompt bloat with no correctness payoff.
+
+**The anti-citation-inflation guard is load-bearing, not decoration.**
+`legal_v2` scores reference correctness as
+`governing / (governing + supporting + wrong)`; the system currently PASSES
+it at **0.8056** with recall **1.0** and `focus_precision` **0.6361** — so
+roughly 36% of what is cited is already non-governing, and every extra
+supporting ref cuts the score arithmetically. A completeness instruction that
+reads as licence to cite more is a net loss even when it fixes an omission,
+which is exactly why R284's own COMPLETENESS clause ships default OFF
+(`pred:gold 1.71 -> 1.75`, `ref_conc -0.042`) and why R142.1 lost a live
+pairwise judge 11-0 (p=0.001). The clause therefore:
+
+* is scoped to provisions **already being cited** — naming a member,
+  condition, exception or limb inside such a provision adds **no new
+  reference**;
+* pays for the extra room by instructing the model to **cut off-question
+  sentences**, never by adding length;
+* was adversarially reviewed before shipping — a "statutory-wording-first"
+  variant was **rejected outright** as fatally inflationary, because it
+  triggered on *"when the supplied text names..."* (scoped to the
+  over-retrieved context block, not to the question), which directly
+  contradicted the existing `USER_REF_MINIMALITY_CLAUSE`.
+
+### Fix 3 — `REGENOLD_WRAPPER_MODEL_ALIAS` default flipped ON → OFF
+
+[`app/llm/openai_wrapper_provider.py:86`](app/llm/openai_wrapper_provider.py) —
+`_model_alias_enabled()` default flipped `"1"` → `"0"`.
+`GraphRAGSettings.stage2_model` and `complex_model` have both said
+`claude-opus-5` since R292, but the transport was silently rewriting every
+Opus model name to `claude-opus-4-6` on the way to the wire — so **no
+production request had ever actually run on Opus 5**. That rewrite arrived
+ungated and unlogged in an undisclosed rider to `757f0cb`; R300's review made
+it loggable and env-gated but kept the default ON pending evidence that Opus
+5 genuinely worked.
+
+**The evidence, measured live (one probe each) against the wrapper:**
+
+```
+claude-opus-5                 -> HTTP 200, model echoed back
+claude-opus-4-6 / 4-8, sonnet-5 -> HTTP 200
+definitely-not-a-model-xyz    -> HTTP 500 "No response from Claude Code"
+```
+
+A bogus model name fails **loudly**, so the 200 on `claude-opus-5` is genuine
+acceptance, not silent coercion into something else. The wrapper's
+`/v1/models` list omits `opus-5` — but that list is **stale**: the model
+string passes through verbatim to the Claude Code CLI, which resolves it.
+Verified end-to-end through the real route: models sent to wire =
+`['claude-opus-5']`, `stage2_landed` True.
+
+**Operational footnote — the fix required a live wrapper-service restart,
+separate from this repo's own deploy.** The `claude-opus-5 -> "opus"` alias
+that used to sit inside the wrapper's own transport
+(`D:\Claude Projects\claude-code-openai-wrapper\src\claude_cli.py`) carried a
+comment claiming *"'opus' is the CLI alias for the latest Anthropic Opus
+model"* — which was false. On the CLI version then installed, `opus`
+resolved to `claude-opus-4-8`, not opus 5, so that in-wrapper alias was
+*also* silently downgrading every opus-5 request, on top of the
+`openai_wrapper_provider.py` alias fixed above. That in-wrapper alias has
+since been removed **on disk** (`git status` in the wrapper repo shows
+`src/claude_cli.py` modified, uncommitted), but the **running**
+`regenold-wrapper` Windows service is a long-lived process that only reads
+its source at startup — so the fix does not take effect until the service is
+restarted (`Restart-Service -Name regenold-wrapper -Force`, elevated). Until
+that restart, Stage-2 could still silently run on Opus 4.8 even with both
+repo-side aliases turned off. The wrapper's own source comment states the
+correct post-upgrade verification recipe: `claude -p --model claude-opus-5`
+should report `modelUsage ['claude-opus-5']` — **the OpenAI-shaped response's
+echoed `"model"` field is a bare echo of the request and is NOT proof of
+which model actually ran** (this is precisely the mechanism that made the
+original silent downgrade invisible to callers for however long it was in
+place).
+
+### The deliberate cache-key asymmetry
+
+[`app/routes/regenold.py:1341-1356`](app/routes/regenold.py) —
+`REGENOLD_ANSWER_COVERAGE` and `REGENOLD_WRAPPER_MODEL_ALIAS` are folded into
+`_engine_cache_key`; `REGENOLD_ANSWER_NO_CAP` deliberately is **not**. The
+in-code comment states the rationale verbatim:
+
+> *"NOTE the deliberate asymmetry with its sibling R308 flag:
+> REGENOLD_ANSWER_NO_CAP is NOT in this key and must not be. The uncap is
+> pure ROUTE post-processing that re-runs on every cache hit, so a flip
+> cannot serve a stale answer — and keeping it out is what makes the paired
+> same-process A/B possible at all (measured: arm B served from cache in
+> 0.1s vs arm A's 37.8s, giving a zero-generation-variance comparison)."*
+
+COVERAGE and the model alias both flip the *engine's* answer text (they
+change what Opus is asked to produce), so per the R30/R56/R79/R263.2
+cache-poisoning doctrine they must be in the key or a same-process two-arm
+A/B silently serves arm A's cached answer to arm B. NO_CAP only changes
+route-level *post-processing* of an already-cached engine answer, which
+re-runs identically on every cache hit regardless of the flag — so excluding
+it from the key is correct, not an oversight, and it is what turns the
+uncap's A/B into a clean, zero-generation-variance paired comparison (see
+KNOWN, UNRESOLVED).
+
+### Why davidath is byte-identical by construction
+
+All three switches gate on the live Stage-2 path. The deterministic bench
+runs `provider=cli` with no wrapper wired, so `_stage2_provider_enabled()` is
+False, Stage-2 never fires, `_stage2_landed_for_answer` is always False, the
+route never calls `set_answer_no_cap(True)`, `answer_coverage_enabled()`'s
+clause is never appended to a Stage-2 user message that never gets built, and
+the model-alias resolver is never invoked. The module constant
+`MAX_ANSWER_SENTENCES = 3` governs the bench exactly as before — this is the
+same gating discipline as R72 / R100 / R109 / R144 / R263.
+
+### Gates
+
+| Gate | Result |
+| ---- | ------ |
+| davidath QA bench | **byte-identical**, confirmed by stashing the R308 changes and re-running rather than trusting the documented figure (which was stale for this commit) — Ans Loose 0.1407 / Ans Strict 0.4079 / Ans Conc 0.1961 / Ref Loose 0.8394 / Ref Strict 0.5543 / Ref Conc 0.4395 / Tone 1.0. **Independently reproduced post-merge** (2026-08-04, clean re-run at HEAD under the documented neutralising env `OPENAI_API_BASE=http://127.0.0.1:1/v1 P2P_GRAPH_RAG_PROVIDER=cli REGENOLD_EXTERNAL_EMBEDDINGS=0`): all seven axes matched to the digit. ⚠ A re-run graded against the **R300-era pin** (Ans Loose 0.1402 / Ans Strict 0.4032 / Ans Conc 0.1980) instead shows a spurious ~0.005 Answer-axis "drift" — that pin predates R303/R305/R306/R307 and is stale for this commit. Grade R308 against the figures in its own commit body, not against that pin. |
+| `evals.regenold.runner` (276) | **255/255**, RISK_F1 macro 1.00 |
+| OOS probe (51 rows) | **0 scope leaks** — only the 2 documented `adjacent_eu` soft fails (pre-existing, unrelated to this round) |
+| new tests | `tests/test_r308_uncap_and_coverage.py` — **16 new tests** (`TestAnswerUncap`, `TestAnswerCoverageClause`, `TestClauseIsActuallyDelivered`, `TestCacheKeyAsymmetry`), pinning the byte-identical-by-default guarantee, full-content preservation under uncap, the char-cap-loop interaction, the anti-inflation scoping, and the cache-key asymmetry itself |
+| touched tests | `tests/test_r300_review_fixes.py` — 3 `TestWrapperModelAlias` tests rewritten for the flipped default (`test_default_sends_the_configured_model_verbatim` replaces `test_default_preserves_pre_r300_behaviour`; the `=1` rollback test now asserts the pre-R308 downgrade) |
+| `two_stage_pipeline` failures | 7 failures proven **pre-existing**, not a regression, by stash A/B: 40/40 pass under the clean wrapper-enabling env; the identical 7 fail on baseline HEAD under `provider=cli` |
+
+### KNOWN, UNRESOLVED
+
+The round shipped with an honestly-documented open question rather than a
+claimed win — this is what the checkpoint below tracks to closure:
+
+* The uncap **inflates references 2.33 → 3.50/row**, measured in a **paired,
+  zero-generation-variance A/B** made possible by the cache-key asymmetry
+  above (arm B served from cache in 0.1s vs arm A's 37.8s — both arms answer
+  from the identical underlying Opus generation, so the only variable is the
+  route-level cap).
+* On inspection, most added refs are **legally correct** — e.g. the provider
+  answer added `Article 43/47/48/49`, which is exactly what Article 16
+  enumerates as the provider's obligations — but **"correct" is not "gold" on
+  an axis the system currently passes** (`legal_v2` reference correctness at
+  0.8056; see Fix 2 above for why every added supporting ref cuts that score
+  arithmetically).
+* **Whether the anti-inflation guard inside `USER_ANSWER_COVERAGE_CLAUSE`
+  actually controls this is NOT established.** The n=7 comparison available
+  at ship time used independent (non-paired) generation, which is **inside
+  Opus's own sampling noise** — not a result you can act on. (The general
+  shape of that problem is already measured on this harness: two `easyhard_ab`
+  runs at n=40 with an **identical** baseline arm changed 20/40 rows'
+  `pred_refs` and sign-flipped all three reference axes on generation variance
+  alone. Never ship or reject a reference-axis change on one small-n live run.)
+* **The decisive gate is `evals.harness.easyhard_ab`, not `ab_judge`.**
+  Unlike `ab_judge`, `easyhard_ab` scores reference conciseness as a
+  **count-ratio** against gold — `ab_judge`'s refs axis has **no minimality
+  term**, which is precisely how R142.1's positional clamp lost a live
+  pairwise 11-0 while looking fine on `ab_judge` alone. This is a hard-rule-#6
+  situation: the merge gate for whether the uncap is net rubric-positive on
+  references has not yet run.
+
+See `.planning/R308-CHECKPOINT.md` for the pending verification plan and the
+exact blocking step (the wrapper-service restart above) that a fresh session
+must clear before that gate can run cleanly on genuine Opus 5 output.
+
+### Rollback
+
+Each switch is independently reversible with no code change:
+
+```bash
+REGENOLD_ANSWER_NO_CAP=0          # restore the 3-sentence / char-cap ceiling
+REGENOLD_ANSWER_COVERAGE=0        # revert to the pre-R308 delivered instruction set
+REGENOLD_WRAPPER_MODEL_ALIAS=1    # restore the pre-R308 Opus -> claude-opus-4-6 downgrade
+```
+
+An explicit `REGENOLD_MAX_ANSWER_SENTENCES=<n>` still wins over
+`REGENOLD_ANSWER_NO_CAP` on its own (see Fix 1), so an operator can pin a
+specific cap back on without touching the uncap switch at all.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a
