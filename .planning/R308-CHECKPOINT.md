@@ -16,8 +16,21 @@ matching CLAUDE.md section close that discipline gap.
 **Settled (deterministic gates, already re-verified by stash A/B, do not
 re-run these):**
 
-* davidath QA is byte-identical by construction (all three R308 switches gate
-  on `stage2_landed`, which is always False under the bench's `provider=cli`).
+* davidath QA is byte-identical — and this is now **measured, not merely
+  argued by construction**. Two per-row diffs over all 137 QA rows
+  (`pred_answer` + `pred_refs` + all 13 score axes, excluding `latency_ms`):
+  **(a)** HEAD with `REGENOLD_ANSWER_NO_CAP=0 REGENOLD_ANSWER_COVERAGE=0` vs
+  HEAD at code defaults → **0 rows differ**; **(b)** HEAD vs parent
+  `4c4a720` → **0 rows differ, identical in every digit**. This check was
+  worth running because R308 edits `app/integrations/regenold/models.py`,
+  the answer normaliser, which *does* sit on the deterministic path — a hole
+  in the `stage2_landed` gate would have changed every deterministic answer
+  silently. It has none.
+* ⚠ Do **not** grade this round against the R300-era pin
+  (Ans Loose 0.1402 / Ans Strict 0.4032 / Ans Conc 0.1980). It predates
+  R303/R305/R306/R307 and manufactures a spurious ~0.005 Answer-axis
+  "drift" that does not reproduce against R308's actual parent. The correct
+  figures are in R308's own commit body: 0.1407 / 0.4079 / 0.1961.
 * `evals.regenold.runner` 255/255, RISK_F1 macro 1.00.
 * OOS probe 0 scope leaks (2 pre-existing `adjacent_eu` soft fails only).
 * The `two_stage_pipeline` failures under `provider=cli` are pre-existing, not
