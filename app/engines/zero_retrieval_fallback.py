@@ -62,6 +62,7 @@ regulator would expect us to cite when we have no specific hook.
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 
 from app.data.article_existence import ARTICLE_EXISTENCE
@@ -271,6 +272,102 @@ def _build_prose(refs: list[str], question: str = "") -> str:
     )
 
 
+# R307 — role-duty rescue on the zero-retrieval path.
+#
+# Measured live (2026-08-03) against deployed production:
+#
+#   "What obligations does a provider have?"
+#     -> ['Article 1','Article 2','Article 3.3'],
+#        retrieval_path="zero_retrieval_fallback", engine_confidence 0.0
+#   "What obligations does a deployer have?"
+#     -> ['Article 1','Article 2','Article 3.4'], same path, same 0.0
+#
+# The two most canonical questions in the entire domain answer from the
+# purpose / scope / definitions floor at zero confidence, because
+# retrieval surfaces nothing and neither the intent seed nor a topic
+# keyword nor an explicit anchor fires — so the composition below lands
+# on ``_DEFAULT_FLOOR``.
+#
+# Note the existing ``_INTENT_SEED_MAP["role_obligations"]`` does not
+# cover this: it needs the LLM intent classifier to have produced that
+# label, and it is deployer-centric (Art. 26) so it would answer a
+# PROVIDER question with the deployer's article.
+#
+# This seed is deterministic, role-AWARE, and fires ONLY here — on the
+# path that by definition has no retrieval to damage. That is what makes
+# it davidath-safe where the general-candidate variant is not: the R93
+# ``REGENOLD_ROLE_DUTY_NOUN_SEED`` injects the role article into the
+# NORMAL candidate list too, and measured -0.0115 Ref Strict / -0.0137
+# Ref Conciseness at flat Ref Loose (it adds references without adding
+# gold — over-citation) so it is not the right lever.
+#
+# One article per role, not the obligation chain: Article 16 IS
+# "obligations of providers of high-risk AI systems" and itself
+# cross-references Articles 9-15/17/43/47-49 in its own prose. Citing the
+# chain here would re-create the over-citation the round above rejected.
+_ROLE_DUTY_SEED_MAP: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("authorised representative", "authorized representative"), "Art. 22"),
+    (("provider",), "Art. 16"),
+    (("deployer",), "Art. 26"),
+    (("importer",), "Art. 23"),
+    (("distributor",), "Art. 24"),
+)
+
+# A duty noun/verb must co-occur, or "What is a provider?" (gold: the
+# Article 3 definition) would be answered with Article 16.
+_ROLE_DUTY_MARKERS: tuple[str, ...] = (
+    "obligation",
+    "obligations",
+    "duty",
+    "duties",
+    "responsibility",
+    "responsibilities",
+    "requirement",
+    "requirements",
+    "must do",
+    "must comply",
+    "have to do",
+    "required to do",
+    "comply with",
+)
+
+
+def _role_duty_seed_enabled() -> bool:
+    """R307 gate, default ON. ``REGENOLD_ROLE_DUTY_ZRF=0`` reverts."""
+    import os  # noqa: PLC0415
+
+    return os.getenv("REGENOLD_ROLE_DUTY_ZRF", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
+def _role_duty_seeds(question: str) -> list[str]:
+    """Role-specific article for a role-DUTY question. ``[]`` otherwise.
+
+    Longest role phrase wins so "authorised representative" is not read
+    as a bare "representative". Pure, fail-soft, no LLM.
+    """
+    if not question or not _role_duty_seed_enabled():
+        return []
+    try:
+        low = question.lower()
+        marker = "latest question:\n"
+        if marker in low:
+            low = low.split(marker, 1)[-1]
+        if not any(re.search(rf"\b{re.escape(m)}\b", low) for m in _ROLE_DUTY_MARKERS):
+            return []
+        for phrases, ref in _ROLE_DUTY_SEED_MAP:
+            for phrase in phrases:
+                if re.search(rf"\b{re.escape(phrase)}s?\b", low):
+                    return [ref] if ref in ARTICLE_EXISTENCE else []
+    except Exception:  # noqa: BLE001 — the fallback must never raise
+        return []
+    return []
+
+
 def zero_retrieval_fallback(
     question: str,
     intent_label: str | None = None,
@@ -329,12 +426,19 @@ def zero_retrieval_fallback(
     #     without removing the floor for genuinely under-determined
     #     questions (third branch below).
     #   * No intent, no topic, no anchors → default floor (only signal).
+    # R307 — role-duty seed. Ranks with ``topic`` as a "specific signal",
+    # ahead of it because a named role is a stronger determinant than a
+    # substring keyword, and it suppresses the default floor for the same
+    # R80-F reason: the Art. 1/2/3 pad is precision pollution once we
+    # have something specific.
+    role = _role_duty_seeds(question)
+
     if intent_seed is not None:
         combined = _validate_refs(
-            list(anchors_normalised) + topic + list(intent_seed)
+            list(anchors_normalised) + role + topic + list(intent_seed)
         )
-    elif topic or anchors_normalised:
-        combined = _validate_refs(list(anchors_normalised) + topic)
+    elif topic or anchors_normalised or role:
+        combined = _validate_refs(list(anchors_normalised) + role + topic)
     else:
         combined = _validate_refs(list(_DEFAULT_FLOOR))
     refs = combined[:_MAX_FALLBACK_REFS]

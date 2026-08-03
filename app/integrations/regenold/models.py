@@ -926,11 +926,34 @@ def _strip_markdown(text: str) -> str:
 
 _ABBREVIATIONS = (
     "art",
+    # R307 — the PLURAL citation forms were missing, so every answer
+    # using them split mid-citation. Measured live: the Article 16 KB
+    # stub contains "keep the technical documentation (Arts. 11 and
+    # 18)"; the splitter accepted a boundary after "(Arts." and the
+    # 3-sentence cap then shipped an answer ending mid-citation:
+    #   "...operate a quality-management system (Art. 17), keep the
+    #    technical documentation (Arts."
+    # ``Art.`` was protected; ``Arts.``, ``Artt.``, ``Annexes`` and the
+    # rest below were not. Same class as the R59 tone-guard Annex
+    # lookbehind bug. Purely additive: adding an abbreviation can only
+    # SUPPRESS a false split, never create one.
+    "arts",
+    "artt",
     "annex",
+    "annexes",
     "recital",
+    "recitals",
     "sec",
+    "secs",
     "ch",
+    "chs",
     "para",
+    "paras",
+    "pt",
+    "pts",
+    "reg",
+    "regs",
+    "dir",
     "pp",
     "etc",
     "e.g",

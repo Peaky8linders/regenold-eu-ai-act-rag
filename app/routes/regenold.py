@@ -1985,6 +1985,59 @@ def _extract_qtypes_enabled() -> frozenset[str]:
     return _EXTRACT_HIGH_PRECISION_QTYPES
 
 
+def _extract_cited_only_enabled() -> bool:
+    """R307 — gate the cite-what-you-quote invariant. Default ON."""
+    return os.getenv("REGENOLD_EXTRACT_CITED_ONLY", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
+def _live_explicit_anchor_sets(question: str) -> tuple[set[str], set[str]]:
+    """Article numbers / annex romans the LIVE question names explicitly.
+
+    Deliberately mirrors the extraction in ``_prune_non_anchor_refs``
+    (same regexes, same ``Latest question:`` slicing) so the extractive
+    pass and the reference pruner agree on what "explicitly named"
+    means. If they drifted, the invariant this powers would be silently
+    void — the failure mode this codebase keeps rediscovering.
+    """
+    if not question:
+        return set(), set()
+    marker = "Latest question:\n"
+    live = question.split(marker, 1)[-1] if marker in question else question
+    try:
+        nums = {m.group(1) for m in _LIVE_ARTICLE_RE.finditer(live)}
+        annexes = {m.group(1).upper() for m in _LIVE_ANNEX_RE.finditer(live)}
+    except Exception:  # noqa: BLE001 — never break the route on a probe
+        return set(), set()
+    return nums, annexes
+
+
+def _ref_matches_anchor_sets(
+    ref: str, anchor_nums: set[str], anchor_annexes: set[str]
+) -> bool:
+    """True when an internal ref (``Art. 50`` / ``Annex IV.2``) is anchored.
+
+    Sub-points match on their PARENT: a question naming "Article 50"
+    licenses a sentence drawn from ``Art. 50(3)``.
+    """
+    if not ref:
+        return False
+    try:
+        m = re.match(r"\s*Art(?:icle)?\.?\s*(\d{1,3})", ref, re.IGNORECASE)
+        if m:
+            return m.group(1) in anchor_nums
+        m = re.match(r"\s*Annex\s+([IVXLC]+)", ref, re.IGNORECASE)
+        if m:
+            return m.group(1).upper() in anchor_annexes
+    except Exception:  # noqa: BLE001
+        return False
+    return False
+
+
 def _try_extractive_answer(
     *,
     question: str,
@@ -2181,9 +2234,48 @@ def _try_extractive_answer(
     except Exception:
         pass
 
-    for c in engine_citations[:3]:
+    # R307 — CITE-WHAT-YOU-QUOTE. The loop below walks the engine's top
+    # citations and returns the FIRST that yields a sentence, silently
+    # borrowing a later article's prose when the earlier ones produce
+    # nothing. Nothing then ties the provision that SOURCED the answer to
+    # the provisions that end up in ``references``: ``answer_text`` is
+    # frozen here while ``references`` keeps being rewritten by ~25 later
+    # passes. Measured live:
+    #
+    #   Q "What are the deployer obligations under Art 50"
+    #     select_answer_sentence(Q, 'Art. 50') -> None  (confidence gate)
+    #     select_answer_sentence(Q, 'Art. 26') -> "Where applicable,
+    #        deployers of high-risk AI systems shall use the information
+    #        provided under Article 13 ... data protection impact
+    #        assessment under Article 35 of Regulation (EU) 2016/679..."
+    #     -> shipped as the answer, while ``_prune_non_anchor_refs``
+    #        collapsed references to ['Article 50'].
+    #   The wire quoted Article 26(9) and cited Article 50: a
+    #   cite-and-mismatch, and a confidently-wrong attribution of one
+    #   provision's text to another (hard rule #4).
+    #
+    # The fix is at SELECTION, not at pruning. When the live question
+    # names specific provisions, ``_prune_non_anchor_refs`` will keep
+    # ONLY those, so the extractive sentence must come from one of them
+    # or it cannot survive as an honest citation. Restrict the walk to
+    # that set; if none of them yields a sentence, return None and let
+    # the engine's own prose answer — it is composed from the retrieved
+    # set, not from an unrelated article.
+    #
+    # This is a pure narrowing of an existing loop: it never adds,
+    # removes or reorders a reference, and it never drops a sentence
+    # outside the mismatch case. Env off-switch
+    # REGENOLD_EXTRACT_CITED_ONLY=0.
+    _anchor_nums, _anchor_annexes = _live_explicit_anchor_sets(question)
+    _restrict = bool(_anchor_nums or _anchor_annexes) and _extract_cited_only_enabled()
+
+    for c in engine_citations[:3] if not _restrict else engine_citations:
         ref = getattr(c, "article_ref", "") or ""
         if not ref or ref in seen_refs:
+            continue
+        if _restrict and not _ref_matches_anchor_sets(
+            ref, _anchor_nums, _anchor_annexes
+        ):
             continue
         seen_refs.add(ref)
         sentence = select_answer_sentence(question, ref)
