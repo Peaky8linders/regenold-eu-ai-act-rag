@@ -331,3 +331,73 @@ class TestPluralCitationAbbreviations:
         from app.integrations.regenold.models import _split_sentences
 
         assert len(_split_sentences("See Art. 16 and para. 3 for detail.")) == 1
+
+
+class TestBothSplittersAgreeOnPluralCitations:
+    """R307.1 — there are TWO independent sentence splitters.
+
+    R307 fixed ``models._split_sentences``. The live probe AFTER that
+    deployed still showed the mid-citation cut, because the per-reference
+    description augmenter uses ``sentence_index.split_legal_sentences``,
+    which has its own abbreviation table:
+
+        production: "...operate a quality-management system (Art. 17),
+                     keep the technical documentation (Arts."
+
+    Both tables must know the plural forms or an answer can still end
+    mid-citation. These tests pin the agreement so a future edit to one
+    table without the other is caught here rather than in production.
+    """
+
+    CASES = [
+        (
+            "Providers must ensure the system meets the requirements, "
+            "operate a quality-management system (Art. 17), keep the "
+            "technical documentation (Arts. 11 and 18), and affix the CE "
+            "marking (Art. 48).",
+            1,
+        ),
+        ("See Annexes IV and V. Also see Arts. 9 to 15.", 2),
+        ("Under Recitals 26 and 27 the principles apply.", 1),
+        ("This is one sentence. This is a second sentence.", 2),
+        (
+            "Article 5 prohibits eight practices. "
+            "Article 6 classifies high-risk systems.",
+            2,
+        ),
+    ]
+
+    @pytest.mark.parametrize("text,expected", CASES)
+    def test_legal_splitter_matches_expected(self, text, expected):
+        from app.engines.sentence_index import split_legal_sentences
+
+        assert len(split_legal_sentences(text)) == expected
+
+    @pytest.mark.parametrize("text,expected", CASES)
+    def test_both_splitters_agree(self, text, expected):
+        from app.engines.sentence_index import split_legal_sentences
+        from app.integrations.regenold.models import _split_sentences
+
+        assert len(split_legal_sentences(text)) == len(_split_sentences(text))
+
+    def test_no_split_ends_mid_citation(self):
+        from app.engines.sentence_index import split_legal_sentences
+        from app.integrations.regenold.models import _split_sentences
+
+        text = (
+            "Providers must operate a quality-management system (Art. 17), "
+            "keep the technical documentation (Arts. 11 and 18)."
+        )
+        for splitter in (split_legal_sentences, _split_sentences):
+            for sentence in splitter(text):
+                assert not sentence.rstrip().endswith(
+                    ("(Arts.", "(Art.", "(Annexes", "Arts.", "Annexes")
+                ), f"{splitter.__name__} ended mid-citation: {sentence!r}"
+
+    def test_plural_forms_present_in_both_tables(self):
+        from app.engines.sentence_index import _ABBREV_LEFTS
+        from app.integrations.regenold.models import _ABBREVIATIONS
+
+        for form in ("arts", "annexes", "recitals"):
+            assert form in _ABBREV_LEFTS, f"{form} missing from sentence_index"
+            assert form in _ABBREVIATIONS, f"{form} missing from models"

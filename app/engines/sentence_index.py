@@ -64,19 +64,51 @@ from app.data.kb_search import _tokenize
 
 _ABBREV_LEFTS = (
     "art",
+    # R307.1 — the PLURAL citation forms were missing here too. R307 added
+    # them to ``models._split_sentences``'s list but this is a SECOND,
+    # independent splitter with its own table, and it is the one the
+    # per-reference description augmenter uses. Caught by the live probe
+    # AFTER R307 deployed: production shipped
+    #   "...operate a quality-management system (Art. 17), keep the
+    #    technical documentation (Arts."
+    # because ``split_legal_sentences`` still broke after "(Arts." while
+    # ``models._split_sentences`` (fixed) did not.
+    #
+    # The two tables must stay in sync. Anything cited in the plural in a
+    # KB stub can end an answer mid-citation if only one of them knows the
+    # form. Adding an abbreviation can only SUPPRESS a false split, never
+    # create one, so this is safe to keep permissive.
+    "arts",
+    "artt",
     "article",
+    "articles",
     "annex",
     "annexe",
+    "annexes",
     "section",
+    "sections",
     "sec",
+    "secs",
     "para",
+    "paras",
     "paragraph",
+    "paragraphs",
     "subpara",
+    "subparas",
     "subparagraph",
+    "subparagraphs",
     "ch",
+    "chs",
     "chap",
+    "chaps",
     "chapter",
+    "chapters",
     "recital",
+    "recitals",
+    "pt",
+    "pts",
+    "reg",
+    "regs",
     "no",
     "nos",
     "fig",
