@@ -30,24 +30,39 @@ from app.llm.openai_wrapper_provider import resolve_wrapper_model
 # 1. Wrapper model alias — env-gated, honest, non-Opus untouched
 # --------------------------------------------------------------------------
 class TestWrapperModelAlias:
-    def test_default_preserves_pre_r300_behaviour(self, monkeypatch):
-        """Default ON => the 757f0cb rewrite still applies (zero answer change)."""
+    def test_default_sends_the_configured_model_verbatim(self, monkeypatch):
+        """R308 — DEFAULT FLIPPED OFF. Operator directive: Stage-2 runs on Opus 5.
+
+        Was ``test_default_preserves_pre_r300_behaviour``, which asserted the
+        757f0cb rewrite still downgraded every Opus name to ``claude-opus-4-6``.
+        R300 kept that default ON only because flipping it needed evidence.
+
+        The evidence (measured live 2026-08-03, one probe each):
+            claude-opus-5              -> HTTP 200, model echoed back
+            definitely-not-a-model-xyz -> HTTP 500 "No response from Claude Code"
+        A bogus name fails loudly, so the 200 is genuine acceptance. The
+        wrapper's ``/v1/models`` omits opus-5 but that list is stale - the model
+        string is passed through to the Claude Code CLI.
+
+        So the alias was silently downgrading a model that works, on every
+        request, while ``GraphRAGSettings.stage2_model`` had said
+        ``claude-opus-5`` since R292.
+        """
         monkeypatch.delenv("REGENOLD_WRAPPER_MODEL_ALIAS", raising=False)
         for requested in (
             "claude-opus-5",
             "claude-opus-4-8",
-            "opus",
             "claude-5-opus",
             "opus-5",
             "claude-opus-5.0",
         ):
-            assert resolve_wrapper_model(requested) == "claude-opus-4-6"
+            assert resolve_wrapper_model(requested) == requested
 
-    def test_env_gate_off_sends_requested_model_verbatim(self, monkeypatch):
-        """`=0` is the arm a future live ab_judge A/B measures."""
-        monkeypatch.setenv("REGENOLD_WRAPPER_MODEL_ALIAS", "0")
-        assert resolve_wrapper_model("claude-opus-5") == "claude-opus-5"
-        assert resolve_wrapper_model("claude-opus-4-8") == "claude-opus-4-8"
+    def test_env_gate_on_restores_the_pre_r308_downgrade(self, monkeypatch):
+        """`=1` is the one-env-var rollback if Opus 5 has to be backed out."""
+        monkeypatch.setenv("REGENOLD_WRAPPER_MODEL_ALIAS", "1")
+        assert resolve_wrapper_model("claude-opus-5") == "claude-opus-4-6"
+        assert resolve_wrapper_model("claude-opus-4-8") == "claude-opus-4-6"
 
     @pytest.mark.parametrize(
         "model",
@@ -68,7 +83,8 @@ class TestWrapperModelAlias:
         monkeypatch.delenv("REGENOLD_WRAPPER_MODEL_ALIAS", raising=False)
         assert resolve_wrapper_model("claude-opus-4-6") == "claude-opus-4-6"
         assert resolve_wrapper_model("") == ""
-        assert resolve_wrapper_model("  claude-opus-5  ") == "claude-opus-4-6"
+        # R308 — whitespace still trimmed, but no longer downgraded.
+        assert resolve_wrapper_model("  claude-opus-5  ") == "claude-opus-5"
 
     def test_complete_routes_through_the_gate_not_an_inline_literal(self):
         """`complete()` must call the resolver.

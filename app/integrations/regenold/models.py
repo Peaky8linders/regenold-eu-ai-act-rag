@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+from contextvars import ContextVar
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -266,6 +267,43 @@ MAX_ANSWER_SENTENCES = 3
 # adding regulatory substance). Iterate until ≤ 600 chars OR only 1
 # sentence remains.
 _MAX_ANSWER_CHARS_SOFT = 600
+
+
+# R308 — request-scoped "no hard cap" switch (operator-directed 2026-08-03:
+# "no hard cap please, the stage 2 system prompts must be able to get to the
+# right content and phrases to correctly answer").
+#
+# WHY A ContextVar AND NOT A PARAMETER: ``normalise_answer_for_regenold`` has
+# NINE call sites in ``app/routes/regenold.py``. Threading a keyword through
+# all nine is exactly how a change ends up silently inert on the one path that
+# mattered (the R256 class of bug, and R72's ``stage2_landed`` gate key that
+# was never set — R72.1). One set point, one read point, no call site can miss
+# it. Mirrors the ``ReasoningTrace`` ContextVar pattern already in the repo.
+#
+# SCOPE: set by the route when the LIVE Stage-2 answer path is in play. The
+# deterministic path (davidath bench, ``provider=cli``, no wrapper) never sets
+# it, so the module constant ``MAX_ANSWER_SENTENCES`` (3) still governs there
+# and the bench stays byte-identical BY CONSTRUCTION.
+_ANSWER_NO_CAP: ContextVar[bool] = ContextVar(
+    "regenold_answer_no_cap", default=False
+)
+
+
+def set_answer_no_cap(active: bool) -> None:
+    """Enable/disable the request-scoped answer-length uncap.
+
+    Fail-soft: a ContextVar set can only raise on a broken interpreter, but
+    the caller wraps it anyway so answer shaping can never break the route.
+    """
+    _ANSWER_NO_CAP.set(bool(active))
+
+
+def answer_no_cap_active() -> bool:
+    """True when this request must not have its answer length capped."""
+    try:
+        return bool(_ANSWER_NO_CAP.get())
+    except Exception:  # noqa: BLE001 — never break answer shaping on a probe
+        return False
 
 
 _QUESTION_HASH_SALT = "regenold_question_hash_v1"
@@ -1328,7 +1366,15 @@ def normalise_answer_for_regenold(
         # code constant MAX_ANSWER_SENTENCES (3) is the fallback when the env
         # is unset, so the davidath bench stays byte-identical.
         _raw_ms = os.getenv("REGENOLD_MAX_ANSWER_SENTENCES", "").strip().lower()
-        if _raw_ms in {"0", "off", "none", "unlimited", "-1"}:
+        # R308 — the request-scoped uncap (set by the route on the LIVE
+        # Stage-2 path) wins over the module constant. An explicit env value
+        # still wins over BOTH, so an operator can pin a cap back on without
+        # a code change. The deterministic bench sets neither, so it keeps
+        # MAX_ANSWER_SENTENCES=3 and stays byte-identical.
+        if not _raw_ms and answer_no_cap_active():
+            _no_cap = True
+            max_sentences = 12  # placeholder; unused on the no-cap path
+        elif _raw_ms in {"0", "off", "none", "unlimited", "-1"}:
             _no_cap = True
             max_sentences = 12  # placeholder; unused on the no-cap path
         else:

@@ -753,3 +753,87 @@ def completeness_verifier_enabled() -> bool:
         "1", "true", "yes", "on",
     }
 
+
+
+# ---------------------------------------------------------------------------
+# R308 — ANSWER COVERAGE (operator-directed, 2026-08-03)
+#
+# Directive: "no hard cap please, the stage 2 system prompts must be able to get
+# to the right content and phrases to correctly answer."
+#
+# THE MEASUREMENT THAT MOTIVATES THIS. On 2026-08-03 the Stage-2 SYSTEM prompt
+# was proven, live, to be dropped 100% by the wrapper. Identical request with
+# "always answer exclusively in French" in the system slot vs the user slot, on
+# claude-sonnet-4-6 AND claude-opus-4-6:
+#     system slot -> "Rome is the capital of Italy."  (byte-identical to the
+#                     no-instruction control)
+#     user slot   -> "La capitale de l'Italie est Rome."  (obeyed)
+# So ANSWER_GENERATE_SYSTEM above reaches the model on ZERO live requests.
+# Do NOT respond to that by forwarding it to the system slot: R282 measured that
+# as rubric-NEGATIVE (kw_recall -0.267, off-topic drift). This clause is the
+# supported route - the user channel.
+#
+# WHAT IT PORTS. The five load-bearing CONTENT rules from the dead prompt,
+# ranked by fit to the measured live failure (legal_v2: mean factual score
+# 0.9647 against answer pass 0.48, omission_rows 24 vs fabrication_rows 5 -
+# accurate but incomplete): LITERAL-QUESTION-CLOSURE, CLOSED-SET COMPLETENESS
+# (12b), CANONICAL TERMINOLOGY (statutory-term half), the GROUP-DON'T-DROP
+# device, and ANSWER-THE-HEADLINE's "name the members" half. The ~14 FORM rules
+# are deliberately NOT ported: they already have working deterministic backstops
+# in answer_normaliser.py / tone_guard.py, and re-delivering them would be pure
+# prompt bloat.
+#
+# THE CITATION GUARD IS LOAD-BEARING, NOT DECORATION. legal_v2 scores
+# reference_correctness as governing / (governing + supporting + wrong); we
+# currently PASS it at 0.8056 with recall 1.0 and focus_precision 0.6361, so
+# ~36% of what we cite is already non-governing and every added supporting ref
+# cuts the score arithmetically. A completeness instruction that reads as
+# licence to cite more is a net loss even when it fixes an omission - which is
+# why R284's own COMPLETENESS clause is default OFF (pred:gold 1.71 -> 1.75,
+# ref_conc -0.042) and why R142.1 lost a live pairwise judge 11-0 (p=0.001).
+# Hence: coverage is scoped to provisions ALREADY being cited, naming a member
+# inside one adds no new reference, and the room is paid for by CUTTING
+# off-question sentences rather than by adding length.
+#
+# Adversarially reviewed before shipping: a statutory-wording-first variant was
+# REJECTED as fatally inflationary because it triggered on "when the supplied
+# text names..." (scoped to the over-retrieved block, not to the question),
+# which directly contradicts USER_REF_MINIMALITY_CLAUSE above.
+USER_ANSWER_COVERAGE_CLAUSE = (
+    " ANSWER COVERAGE: cover the content the question actually asks for, in the "
+    "Act's own words. This is never a licence to cite or to describe more "
+    "provisions, and it does not relax the reference minimality rule. Draw every "
+    "point below from the supplied text of provisions you were already going to "
+    "cite. Naming a member, condition, exception or limb inside such a provision "
+    "adds no new reference. Close the literal question: a yes or no question "
+    "states Yes or No, a how many or how long question states the number, a "
+    "which or list question names them, and a question with a second limb "
+    "answers that limb too. Correct discussion of neighbouring law that never "
+    "states the thing asked is a failure. Do not announce a count, or say that "
+    "exceptions or further duties exist, and then leave them unnamed. Where the "
+    "question's subject IS an enumerated statutory set, name every member the "
+    "supplied text states, as short labels packed into ONE compact "
+    "comma-separated sentence, never as lettered or semicolon-separated items. "
+    "Where the supplied text qualifies something you assert with a proviso, "
+    "carve-out or exception, state that qualifier in the same sentence: an "
+    "unqualified statement of a qualified rule is wrong. Name obligations, roles "
+    "and risk tiers as the Act names them rather than paraphrasing. Find the "
+    "room by cutting: delete sentences about supplied provisions the question "
+    "did not ask about, and keep the whole answer as short as full coverage "
+    "allows. Assert only what the supplied text states. If it does not settle a "
+    "point, say so plainly.\n"
+)
+
+
+def answer_coverage_enabled() -> bool:
+    """R308 — deliver the ported CONTENT rules on the live user channel.
+
+    Fresh env read per call so an in-process two-arm A/B is valid (R263.2).
+    DEFAULT ON per the operator directive. Set ``REGENOLD_ANSWER_COVERAGE=0``
+    to revert to the pre-R308 delivered instruction set.
+    """
+    import os
+
+    return os.environ.get("REGENOLD_ANSWER_COVERAGE", "1").strip().lower() in {
+        "1", "true", "yes", "on",
+    }

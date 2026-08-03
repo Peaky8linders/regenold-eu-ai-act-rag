@@ -7033,6 +7033,60 @@ def _claude_max_enhance_answer(
                 "reclassify a legitimate high-risk (Annex III / Article 6) system as "
                 "prohibited; the Article 5 list is exhaustive.\n"
             )
+
+        # R308 — ANSWER COVERAGE, on the channel that actually reaches the model.
+        #
+        # MEASURED 2026-08-03, not inherited from notes: the Stage-2 SYSTEM prompt
+        # is dropped 100% by the wrapper. Identical request with the instruction
+        # "always answer exclusively in French" in the system slot vs the user
+        # slot, on claude-sonnet-4-6 AND claude-opus-4-6:
+        #     system slot -> "Rome is the capital of Italy."   (byte-identical to
+        #                     the no-instruction control)
+        #     user slot   -> "La capitale de l'Italie est Rome."  (obeyed)
+        # So every rule in ANSWER_GENERATE_SYSTEM reaches the model on ZERO live
+        # requests, including the prompt work from R122/R143/R145/R147/R265/R266/
+        # R275 that all shipped as "prompt-only, the win lands live". It landed on
+        # nothing. Do NOT "fix" this by forwarding the system prompt: R282 already
+        # measured that as rubric-NEGATIVE (kw_recall -0.267, off-topic drift).
+        # The channel is this user message.
+        #
+        # This also repairs three DANGLING POINTERS in the delivered text, which
+        # currently instruct the model to defer to rules it has never seen:
+        #   * the classification branch's "the BLUF format from your system prompt"
+        #   * the refine branch's "when rule 12b closed-set completeness requires..."
+        #   * USER_SUBPARAGRAPH_ATTRIBUTION_CLAUSE's "never overrides the closed-set
+        #     completeness rule above"
+        # Delivering the closed-set rule here gives all three something to point at.
+        #
+        # WHY IT IS WORDED AS COVERAGE-OF-CONTENT AND NEVER COVERAGE-OF-REFERENCES.
+        # legal_v2 (the instrument that grades this) scores reference_correctness
+        # as governing / (governing + supporting + wrong) and we currently PASS it
+        # at 0.8056 with recall 1.0 and focus_precision 0.6361. Every extra
+        # supporting ref cuts that arithmetically, so a completeness instruction
+        # that reads as licence to cite more is a net loss even when it fixes an
+        # omission. R284's own COMPLETENESS clause was defaulted OFF for exactly
+        # this (pred:gold 1.71->1.75, ref_conc -0.042), and R142.1 lost a live
+        # pairwise judge 11-0 (p=0.001) on a related change. Hence the explicit
+        # "never a licence to cite or describe more provisions", the "naming a
+        # member inside such a provision adds no new reference" carve-out, and the
+        # "find the room by cutting" instruction, which pays for coverage out of
+        # off-question sentences rather than out of length.
+        #
+        # Supersedes the default-OFF R284 H1 COMPLETENESS clause above; do not
+        # enable both. Env-reversible REGENOLD_ANSWER_COVERAGE=0. It changes the
+        # ENGINE output, so it is folded into _engine_cache_key (R263.2) - without
+        # that, a same-process A/B silently serves arm A's cache to arm B.
+        try:
+            from app.data.graph_rag_prompts import (  # noqa: PLC0415
+                USER_ANSWER_COVERAGE_CLAUSE,
+                answer_coverage_enabled,
+            )
+
+            if answer_coverage_enabled():
+                user_message += USER_ANSWER_COVERAGE_CLAUSE
+        except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
+            pass
+
         try:
             max_tokens = settings.graph_rag.max_tokens
         except Exception:  # noqa: BLE001

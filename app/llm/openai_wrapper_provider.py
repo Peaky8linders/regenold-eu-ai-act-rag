@@ -84,8 +84,43 @@ _ALIAS_LOGGED: set[str] = set()
 
 
 def _model_alias_enabled() -> bool:
-    """Fresh env read per call (R263.2). Default ON = pre-R300 behaviour."""
-    return os.environ.get("REGENOLD_WRAPPER_MODEL_ALIAS", "1").strip().lower() in {
+    """Fresh env read per call (R263.2).
+
+    **DEFAULT OFF as of R308** (was ON). Operator directive 2026-08-03: Stage-2
+    must run on Opus 5, not Sonnet 4.6 or Opus 4.6.
+
+    WHY THE DEFAULT FLIPPED. ``GraphRAGSettings.stage2_model`` and
+    ``complex_model`` have both been ``claude-opus-5`` since R292, but this
+    table silently rewrote it to ``claude-opus-4-6`` on the way to the wire, so
+    NO request has actually run on Opus 5. The rewrite arrived ungated and
+    unlogged in an undisclosed rider to commit 757f0cb; R300 caught it, made it
+    loggable and env-gated, but kept the default ON because flipping it needed
+    evidence. That evidence now exists.
+
+    MEASURED against the live wrapper 2026-08-03 (POST /v1/chat/completions,
+    one tiny probe each):
+        claude-opus-5              -> HTTP 200, model echoed 'claude-opus-5'
+        claude-opus-4-6            -> HTTP 200
+        claude-opus-4-8            -> HTTP 200
+        claude-sonnet-5            -> HTTP 200
+        definitely-not-a-model-xyz -> HTTP 500 "No response from Claude Code"
+    A bogus name fails loudly, so the 200 on ``claude-opus-5`` is real
+    acceptance and not silent coercion. The wrapper's ``/v1/models`` list stops
+    at ``claude-opus-4-6``, but that list is STALE: the model string is passed
+    through to the Claude Code CLI, which resolves it. Do not treat
+    ``/v1/models`` as the source of truth for what the wrapper accepts.
+
+    So the alias was downgrading a model that works. With it off, the model on
+    the wire is exactly the model in the config - which also makes the
+    ``?include_reasoning=true`` trace honest again (R300 found it reporting
+    ``claude-opus-5`` while ``claude-opus-4-6`` was actually being sent, which
+    would silently invalidate any model A/B read off the trace).
+
+    The table and the gate are kept, not deleted: ``REGENOLD_WRAPPER_MODEL_ALIAS=1``
+    restores the pre-R308 downgrade in one env var if an Opus 5 rollout has to
+    be backed out without a code revert.
+    """
+    return os.environ.get("REGENOLD_WRAPPER_MODEL_ALIAS", "0").strip().lower() in {
         "1",
         "true",
         "yes",
