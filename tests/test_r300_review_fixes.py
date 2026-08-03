@@ -108,7 +108,11 @@ _ANSWER_CITING_16_AND_17 = (
 
 class TestCompletenessVerifierAttribution:
     def test_supplement_attributes_points_to_their_own_article(self, monkeypatch):
-        monkeypatch.delenv("REGENOLD_COMPLETENESS_VERIFIER", raising=False)
+        # R306 — the verifier now defaults OFF (it shipped inverted law on
+        # ~2.6% of live answers). These tests exercise the R300 ATTRIBUTION
+        # fix, which is still the correct behaviour WHEN the feature runs, so
+        # they opt in explicitly rather than relying on the default.
+        monkeypatch.setenv("REGENOLD_COMPLETENESS_VERIFIER", "1")
         out = verify_and_enrich_enumerated_completeness(_Q, _ANSWER_CITING_16_AND_17, None)
         assert out != _ANSWER_CITING_16_AND_17, "verifier should fire on this shape"
         # Each cited article names ITSELF before listing its points.
@@ -119,7 +123,11 @@ class TestCompletenessVerifierAttribution:
 
     def test_article_16_points_never_claim_a_point_m(self, monkeypatch):
         """Article 16 has points (a)-(l). An (m) in its clause is a legal error."""
-        monkeypatch.delenv("REGENOLD_COMPLETENESS_VERIFIER", raising=False)
+        # R306 — the verifier now defaults OFF (it shipped inverted law on
+        # ~2.6% of live answers). These tests exercise the R300 ATTRIBUTION
+        # fix, which is still the correct behaviour WHEN the feature runs, so
+        # they opt in explicitly rather than relying on the default.
+        monkeypatch.setenv("REGENOLD_COMPLETENESS_VERIFIER", "1")
         out = verify_and_enrich_enumerated_completeness(_Q, _ANSWER_CITING_16_AND_17, None)
         a16 = out.split("Article 16 also requires", 1)[1]
         a16_clause = a16.split("Article 17 also requires", 1)[0]
@@ -129,7 +137,11 @@ class TestCompletenessVerifierAttribution:
         )
 
     def test_labels_are_prose_not_keyword_salad(self, monkeypatch):
-        monkeypatch.delenv("REGENOLD_COMPLETENESS_VERIFIER", raising=False)
+        # R306 — the verifier now defaults OFF (it shipped inverted law on
+        # ~2.6% of live answers). These tests exercise the R300 ATTRIBUTION
+        # fix, which is still the correct behaviour WHEN the feature runs, so
+        # they opt in explicitly rather than relying on the default.
+        monkeypatch.setenv("REGENOLD_COMPLETENESS_VERIFIER", "1")
         out = verify_and_enrich_enumerated_completeness(_Q, _ANSWER_CITING_16_AND_17, None)
         # Pre-R300 output for these exact points.
         for salad in (
@@ -146,7 +158,11 @@ class TestCompletenessVerifierAttribution:
         assert out == _ANSWER_CITING_16_AND_17
 
     def test_non_enumerated_question_is_a_noop(self, monkeypatch):
-        monkeypatch.delenv("REGENOLD_COMPLETENESS_VERIFIER", raising=False)
+        # R306 — the verifier now defaults OFF (it shipped inverted law on
+        # ~2.6% of live answers). These tests exercise the R300 ATTRIBUTION
+        # fix, which is still the correct behaviour WHEN the feature runs, so
+        # they opt in explicitly rather than relying on the default.
+        monkeypatch.setenv("REGENOLD_COMPLETENESS_VERIFIER", "1")
         ans = "Article 16 requires a quality management system."
         assert verify_and_enrich_enumerated_completeness(
             "Is a chatbot high-risk?", ans, None
@@ -337,7 +353,11 @@ class TestNestedRomanSubpoints:
     def test_article_5_answer_never_lists_the_carve_outs_as_requirements(
         self, monkeypatch
     ):
-        monkeypatch.delenv("REGENOLD_COMPLETENESS_VERIFIER", raising=False)
+        # R306 — the verifier now defaults OFF (it shipped inverted law on
+        # ~2.6% of live answers). These tests exercise the R300 ATTRIBUTION
+        # fix, which is still the correct behaviour WHEN the feature runs, so
+        # they opt in explicitly rather than relying on the default.
+        monkeypatch.setenv("REGENOLD_COMPLETENESS_VERIFIER", "1")
         answer = (
             "Article 5 prohibits eight practices outright, including subliminal "
             "manipulation and social scoring."

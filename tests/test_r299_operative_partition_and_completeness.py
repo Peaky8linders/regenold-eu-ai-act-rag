@@ -30,7 +30,7 @@ from app.engines.completeness_verifier import (
 
 
 def test_toggles_defaults(monkeypatch):
-    """R300 — REF_PARTITION flipped default ON -> OFF; the verifier stays ON.
+    """R300 — REF_PARTITION flipped default ON -> OFF. R306 — so did the verifier.
 
     R299 shipped the partition default-ON with no live ``ab_judge`` gate. The
     R300 review measured it demoting the GOVERNING provision to a "do NOT
@@ -40,12 +40,25 @@ def test_toggles_defaults(monkeypatch):
     A/B-validated state; ``REGENOLD_REF_PARTITION=1`` re-enables it for the
     A/B it still owes. See ``user_ref_partition_enabled`` for the full record.
 
-    Pinned so that re-enabling by default is a deliberate, visible act.
+    R306 applied the same judgement to the completeness verifier, which
+    R299 also shipped default-ON with no live ``ab_judge`` gate. Measured
+    over 1,134 distinct recorded live answers it fires on 29 (2.6%),
+    concentrated on the graded July-7 rows, and the supplement it appends
+    is routinely inverted law: Article 6(3) derogation conditions
+    presented as requirements (12 rows), Article 5 prohibitions presented
+    as requirements with degenerate duplicate labels (10 rows), Article 1
+    subject-matter and Article 99 fine-tier lists likewise. A
+    confidently-wrong legal claim is hard rule #4, the worst defect class
+    in this codebase. ``REGENOLD_COMPLETENESS_VERIFIER=1`` re-enables it
+    for the A/B it still owes.
+
+    Pinned so that re-enabling either by default is a deliberate,
+    visible act.
     """
     monkeypatch.delenv("REGENOLD_REF_PARTITION", raising=False)
     monkeypatch.delenv("REGENOLD_COMPLETENESS_VERIFIER", raising=False)
     assert user_ref_partition_enabled() is False
-    assert completeness_verifier_enabled() is True
+    assert completeness_verifier_enabled() is False
 
 
 def test_partition_opt_in_still_works(monkeypatch):

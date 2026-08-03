@@ -9,6 +9,10 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.data.article_existence import ARTICLE_EXISTENCE
 from app.integrations.regenold.answer_normaliser import (
+    enumeration_guard_enabled,
+    enumeration_run_end,
+    enumeration_run_indices,
+    inline_enumeration_length,
     repair_elided_citation_anchors,
     strip_dash_separators,
     strip_hedge_opener,
@@ -1380,7 +1384,32 @@ def normalise_answer_for_regenold(
     sentences = [s for s in sentences if s.strip()]
     while len(sentences) > 1 and _is_incomplete_trailing_sentence(sentences[-1]):
         sentences.pop()
-    capped = sentences if _no_cap else sentences[:max_sentences]
+    # R306 — enumeration-span guard. Neither cap below may cut inside a
+    # list the answer already started. ``enumeration_run_end`` reads the
+    # ANSWER's structure (a run of >= 2 consecutively-labelled items),
+    # not the question, so it catches the phrasings the question-side
+    # escapes (``_is_closed_set_enumeration_ask`` / ``_is_multi_phrase``
+    # / ``is_complex_question``) miss. It can only RAISE the effective
+    # cap, never lower it, and it is hard-ceilinged at 12.
+    _enum_floor = 0
+    # Protected by VALUE, not index: the soft char-cap loop below pops
+    # from ``capped``, so positional indices shift under it.
+    _enum_texts: set[str] = set()
+    try:
+        if enumeration_guard_enabled():
+            _enum_floor = enumeration_run_end(sentences)
+            if _enum_floor:
+                _enum_texts = {
+                    sentences[i] for i in enumeration_run_indices(sentences)
+                }
+    except Exception:
+        _enum_floor = 0
+        _enum_texts = set()
+
+    _effective_max = max_sentences
+    if not _no_cap and _enum_floor > max_sentences:
+        _effective_max = _enum_floor
+    capped = sentences if _no_cap else sentences[:_effective_max]
     # Soft char cap: prefer regulator-citation-bearing sentences when
     # we're over budget. Drop the longest sentence that does NOT cite
     # an article/annex; iterate until ≤ char_cap OR only
@@ -1411,6 +1440,14 @@ def normalise_answer_for_regenold(
         # stop (we'd rather ship a slightly over-budget answer than
         # drop the only citation prose).
         non_cite_idxs = [i for i, s in enumerate(capped) if not _has_cite_anchor(s)]
+        # R306 — never drop a member of an enumeration the answer
+        # started. The items most at risk here are exactly the ones
+        # that happen not to name an article ("(b) A failure of a
+        # high-risk AI system to meet the requirements set out in
+        # Chapter III, Section 2."), so without this the char-cap loop
+        # silently eats the middle of a list.
+        if _enum_texts:
+            non_cite_idxs = [i for i in non_cite_idxs if capped[i] not in _enum_texts]
         if not non_cite_idxs:
             break
         drop_idx = max(non_cite_idxs, key=lambda i: len(capped[i]))
@@ -1514,8 +1551,24 @@ def normalise_answer_for_regenold(
     # judge-conciseness win is real but unmeasurable locally (the R76
     # judge flagged exactly these rows); set REGENOLD_HARD_CHAR_CAP=1
     # for a live representative-100 + judge A/B before defaulting it ON.
+    # R306 — the hard cap truncates AT an "(x)" enumerator boundary, so
+    # on an enumerated answer it does precisely the damage this round
+    # exists to stop: it lops the tail members off a list the answer
+    # already opened. Skip it when an enumeration run is present. (The
+    # cap is default-OFF today; this keeps the guard honest if a future
+    # round flips it ON after the live A/B its comment calls for.)
+    # An INLINE "(a) …; (b) …; (c) …" list is ONE sentence, so the
+    # sentence-cap floor above never sees it; the hard cap truncates AT
+    # an enumerator boundary and would lop off its tail members.
+    _enum_present = bool(_enum_floor)
+    if not _enum_present:
+        try:
+            _enum_present = bool(inline_enumeration_length(result))
+        except Exception:
+            _enum_present = False
     if (
         len(result) > char_cap
+        and not _enum_present
         and os.getenv("REGENOLD_HARD_CHAR_CAP", "0").strip().lower()
         in ("1", "true", "yes", "on")
     ):

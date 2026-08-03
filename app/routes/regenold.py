@@ -98,6 +98,7 @@ from app.integrations.regenold.auth import (
     optional_regenold_api_key,
     validate_regenold_api_key,
 )
+from app.integrations.regenold.answer_normaliser import answer_has_enumeration
 from app.integrations.regenold.models import (
     MAX_REFERENCES,
     RegenoldAskRequest,
@@ -8185,7 +8186,21 @@ def regenold_eu_ai_act_ask(
         except Exception:
             pass
 
-        _relax_caps = _closed_set_ask or _is_multi
+        # R306 — the two escapes above are QUESTION-keyed, so they only
+        # relax the caps for phrasings someone thought to enumerate in
+        # advance. Measured on the live wire: "What are the deployer
+        # obligations under Art 50" and "what are the four grounds ... in
+        # Article 79(6)" trip NEITHER, and both shipped a list cut off
+        # mid-run. Add the ANSWER-keyed arm: if the model already wrote an
+        # enumeration — one item per sentence OR an inline "(a) …; (b) …"
+        # run — neither cap below may shred it. Structure-keyed, so it
+        # needs no phrase allowlist and carries no topic overfit.
+        _answer_enumerates = False
+        try:
+            _answer_enumerates = answer_has_enumeration(answer_text)
+        except Exception:  # noqa: BLE001 — never break the route on a probe
+            _answer_enumerates = False
+        _relax_caps = _closed_set_ask or _is_multi or _answer_enumerates
         if _relax_caps:
             _conc_limit = max(_conc_limit, 1500)
         try:

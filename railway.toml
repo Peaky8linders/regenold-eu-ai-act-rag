@@ -7,6 +7,53 @@ restartPolicyMaxRetries = 3
 
 # Defaults applied at deploy time — operators can override any of these
 # from the Railway dashboard or via ``railway variables --set KEY=VALUE``.
+# ============================================================================
+# R306 — ⚠ THIS ENTIRE BLOCK IS INERT. IT HAS NEVER BEEN APPLIED.
+# ============================================================================
+#
+# Railway's config-as-code `[deploy]` schema has NO `envs` key (it accepts
+# startCommand, preDeployCommand, multiRegionConfig, healthcheckPath,
+# healthcheckTimeout, restartPolicyType, restartPolicyMaxRetries,
+# cronSchedule, overlapSeconds, drainingSeconds). Environment variables
+# cannot be set from railway.toml at all; they must be set on the service.
+# So this block is not "overridden by the dashboard" (the R80.2 reading
+# recorded elsewhere in this file) — it was never read.
+#
+# CONFIRMED LIVE 2026-08-03 against the deployed endpoint. Discriminator:
+#   POST "What obligations does a provider have?"
+#     REGENOLD_ROLE_DUTY_NOUN_SEED=0 (code default) -> ['Article 1','Article 2']
+#     REGENOLD_ROLE_DUTY_NOUN_SEED=1 (toml intent)  -> ['Article 16','Article 11', ...]
+#   Production returned ['Article 1','Article 2'], retrieval_path
+#   "zero_retrieval_fallback", engine_confidence 0.0. The toml value is dead.
+#
+# Of the 34 assignments below, 29 are cosmetic (toml value == code default).
+# Only these FIVE ever differed, and none of them is in effect:
+#
+#   var                              toml     code default   reader
+#   REGENOLD_MAX_ANSWER_SENTENCES    "0"      unset -> 3     models.py
+#   REGENOLD_QA_LENGTH_CAP           "1200"   400            models.py
+#   REGENOLD_ROLE_DUTY_NOUN_SEED     "1"      0              routes/regenold.py
+#   REGENOLD_R89A_FORCE_APPEND       "1"      0              grounded_prose.py
+#   REGENOLD_INTENT_PROVIDER         "groq"   ""             openai_wrapper_provider.py
+#
+# The first of those is the root cause of the R306 truncation defect:
+# production runs the 3-sentence code default, so any answer whose
+# question does not trip a cap-escape gate is cut at three sentences —
+# mid-enumeration when the model wrote a list. R306 fixes the DAMAGE
+# structurally (`REGENOLD_ENUM_GUARD`, an answer-keyed floor that no cap
+# may cut through) rather than by chasing the env var, so the wire is
+# correct whatever the deployed cap turns out to be.
+#
+# Deliberately NOT deleted: it is the written record of operator intent,
+# and each entry's comment carries the round + measurement that motivated
+# it. To ACTUALLY apply any of the five, set it on the Railway service:
+#   railway variables --set REGENOLD_MAX_ANSWER_SENTENCES=0
+# Do not do that for MAX_ANSWER_SENTENCES without measuring first —
+# uncapping every answer swings Answer-Conciseness, the one rubric axis
+# this system leads (official scorecard), and the 77.5/73.0 scorecard was
+# measured with the cap at 3.
+# ============================================================================
+
 [deploy.envs]
 # Enable the Round-31.1 GraphRAG 2-hop expand path by default.
 # Lifts Ref Correctness Loose +0.087 / Strict +0.039 on the davidath

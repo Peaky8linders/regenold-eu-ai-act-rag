@@ -63,7 +63,255 @@ __all__ = [
     "strip_section_headers",
     "strip_meta_commentary",
     "repair_elided_citation_anchors",
+    "enumeration_guard_enabled",
+    "enumeration_run_end",
+    "enumeration_run_indices",
+    "inline_enumeration_length",
+    "answer_has_enumeration",
 ]
+
+
+# ── R306 — enumeration-span guard ────────────────────────────────────
+#
+# THE DEFECT. The answer normaliser caps an answer at
+# ``max_sentences`` sentences and, when over the char budget, drops the
+# longest NON-citation-bearing sentence. Both passes are blind to
+# whether the answer is in the middle of an ENUMERATION, so a list the
+# model already started gets guillotined mid-run. Measured on the live
+# wire (2026-08-03):
+#
+#   Q: "Under the EU AI Act, what are the four grounds on which
+#       non-compliance may be alleged (as listed in Article 79(6))?"
+#   Production shipped, on two independent runs:
+#     "...due to one or more of the following four grounds.
+#      (a) Non-compliance with the prohibition ... Article 5."   [277 chars]
+#   i.e. it ANNOUNCED four and DELIVERED one. The same question run
+#   in-process with the cap lifted returns all four grounds.
+#
+#   Q: "What are the deployer obligations under Art 50"
+#   Production: "...deployers have three transparency obligations.
+#      First, ... (Article 50(3)). Second, ... (Article 50(4))."  [464 chars]
+#   Announced three, delivered two; the in-process uncapped answer
+#   carries all three plus the two Article 50(4) carve-outs.
+#
+# WHY THE EXISTING ESCAPES MISS IT. ``normalise_answer_for_regenold``
+# already lifts the cap to 12 when ``_is_closed_set_enumeration_ask``,
+# ``_is_multi_phrase`` or ``is_complex_question`` fires — but all three
+# inspect the QUESTION. All three return False for both questions
+# above. Guarding a content-destroying cap behind a question-phrasing
+# allowlist is whack-a-mole: every new phrasing of "list the N X" has
+# to be enumerated in advance.
+#
+# THE FIX. Read the ANSWER instead. If the answer text already contains
+# a run of >= 2 consecutively-labelled items ("First, ... Second, ...",
+# "(a) ... (b) ...", "1. ... 2. ..."), the cap must not cut inside that
+# run. This is:
+#
+#   * GENERAL — keyed on answer STRUCTURE, never on a topic, an article
+#     number or an evaluator row (CLAUDE.md hard rule #3).
+#   * BOUNDED — it protects the enumeration run and what precedes it,
+#     and nothing else. Trailing commentary after the run stays
+#     trimmable, so Answer-Conciseness (the one rubric axis this system
+#     leads, i.e. the one with zero headroom) is not handed a blank
+#     cheque. Hard-ceilinged at ``_ENUM_MAX_SENTENCES``.
+#   * ADDITIVE-ONLY — it can only RAISE an effective cap, never lower
+#     one, and it never invents content: it preserves items the model
+#     already wrote. There is no fabrication surface.
+#   * CAP-VALUE-AGNOSTIC — it holds whether the deployed cap is 3, 4 or
+#     disabled, so it survives the railway.toml-vs-dashboard env drift
+#     (R80.2) that put production on the default 3 in the first place.
+#
+# Env off-switch ``REGENOLD_ENUM_GUARD=0``.
+
+# Hard ceiling on how far the guard may extend a cap. Matches the
+# existing ``max_sentences`` clamp in ``models.py`` so a pathological
+# answer cannot uncap the wire.
+_ENUM_MAX_SENTENCES = 12
+
+_ORDINAL_WORDS = (
+    "first",
+    "second",
+    "third",
+    "fourth",
+    "fifth",
+    "sixth",
+    "seventh",
+    "eighth",
+    "ninth",
+    "tenth",
+)
+
+# "First, ..." / "Secondly: ..." / "And third, ...". A trailing comma or
+# colon is REQUIRED so ordinary prose openers ("First-instance courts
+# ...", "Second-hand data ...", "First the provider must") never match.
+_ENUM_ORDINAL_RE = re.compile(
+    r"^\s*(?:and\s+|then\s+)?(%s)(?:ly)?\s*[,:]" % "|".join(_ORDINAL_WORDS),
+    re.IGNORECASE,
+)
+
+# "(a) text" / "a) text" / "(iv) text" is NOT matched here — roman
+# numerals are excluded on purpose because "(i)" is ambiguous with the
+# letter i and EU AI Act sub-points nest romans under letters.
+_ENUM_LETTER_RE = re.compile(r"^\s*[\(\[]?([a-j])[\)\.\]]\s+\S", re.IGNORECASE)
+
+# "1. text" / "(2) text". Single digit only: a sentence opening
+# "2024 saw ..." must not read as item 2.
+_ENUM_NUMBER_RE = re.compile(r"^\s*[\(\[]?([1-9])[\)\.\]]\s+\S")
+
+
+def enumeration_guard_enabled() -> bool:
+    """True unless ``REGENOLD_ENUM_GUARD`` is explicitly falsy."""
+    import os  # noqa: PLC0415 — local to keep the import surface lean
+
+    return os.getenv("REGENOLD_ENUM_GUARD", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
+def _enum_marker(sentence: str) -> tuple[str, int] | None:
+    """Classify a sentence's enumeration marker.
+
+    Returns ``(kind, ordinal_value)`` — e.g. ``("ord", 2)`` for
+    ``"Second, ..."``, ``("let", 3)`` for ``"(c) ..."`` — or ``None``
+    when the sentence carries no list marker.
+    """
+    if not sentence:
+        return None
+    match = _ENUM_ORDINAL_RE.match(sentence)
+    if match:
+        return ("ord", _ORDINAL_WORDS.index(match.group(1).lower()) + 1)
+    match = _ENUM_LETTER_RE.match(sentence)
+    if match:
+        return ("let", ord(match.group(1).lower()) - 96)
+    match = _ENUM_NUMBER_RE.match(sentence)
+    if match:
+        return ("num", int(match.group(1)))
+    return None
+
+
+def enumeration_run_indices(sentences: list[str]) -> set[int]:
+    """Indices of sentences that belong to a consecutive enumeration run.
+
+    A "run" is >= 2 sentences carrying the SAME marker kind with
+    CONSECUTIVELY INCREASING ordinals ("First," then "Second,"; "(a)"
+    then "(b)"). Requiring both consecutiveness and a length of two
+    keeps precision high: a lone "(a)" quoted as an illustration, or a
+    sentence that merely opens with "Finally,", is not a run.
+    """
+    hits: set[int] = set()
+    if not sentences:
+        return hits
+    i = 0
+    while i < len(sentences):
+        marker = _enum_marker(sentences[i])
+        if marker is None:
+            i += 1
+            continue
+        kind, value = marker
+        run = [i]
+        expect = value + 1
+        j = i + 1
+        while j < len(sentences):
+            nxt = _enum_marker(sentences[j])
+            if nxt is not None and nxt[0] == kind and nxt[1] == expect:
+                run.append(j)
+                expect += 1
+                j += 1
+                continue
+            break
+        if len(run) >= 2:
+            hits.update(run)
+            i = j
+        else:
+            i += 1
+    return hits
+
+
+def enumeration_run_end(sentences: list[str]) -> int:
+    """Minimum number of leading sentences that must survive a cap.
+
+    Returns ``last_run_index + 1`` (a 1-based sentence count) so the
+    caller can use it directly as a floor on ``max_sentences``, or 0
+    when the answer carries no enumeration run. Clamped to
+    ``_ENUM_MAX_SENTENCES``.
+
+    Note this deliberately returns the END of the run, not its size:
+    the items are meaningless without the lead-in sentence that
+    introduces them ("...one or more of the following four grounds.").
+    """
+    if not enumeration_guard_enabled():
+        return 0
+    try:
+        hits = enumeration_run_indices(sentences)
+    except Exception:
+        return 0
+    if not hits:
+        return 0
+    return min(max(hits) + 1, _ENUM_MAX_SENTENCES)
+
+
+# An INLINE run — "…: (a) foo; (b) bar; (c) baz." — is a single
+# sentence, so it sails past the sentence cap untouched and is instead
+# shredded by the route's readable-unit cap (which counts each ``(x)``
+# clause as a unit) and by ``_hard_truncate_at_clause`` (which truncates
+# AT an enumerator boundary). Detect it separately from the
+# one-item-per-sentence shape.
+_INLINE_MARKER_RE = re.compile(r"[\(\[]([a-j])[\)\]]\s+\S", re.IGNORECASE)
+
+
+def inline_enumeration_length(text: str) -> int:
+    """Length of the longest inline ``(a) … (b) … (c) …`` run in ``text``.
+
+    Returns 0 when there is no run of at least two consecutively
+    lettered inline markers. Requiring consecutiveness keeps a single
+    quoted "(g)" — or a stray "(a)" inside an unrelated citation — from
+    reading as a list.
+    """
+    if not text:
+        return 0
+    try:
+        seq = [
+            ord(m.group(1).lower()) - 96 for m in _INLINE_MARKER_RE.finditer(text)
+        ]
+    except Exception:
+        return 0
+    best = run = 0
+    prev: int | None = None
+    for value in seq:
+        if prev is not None and value == prev + 1:
+            run += 1
+        else:
+            run = 1
+        best = max(best, run)
+        prev = value
+    return best if best >= 2 else 0
+
+
+def answer_has_enumeration(text: str) -> bool:
+    """True when the answer already carries an enumeration, in EITHER shape.
+
+    This is the answer-keyed sibling of the question-keyed
+    ``_is_closed_set_enumeration_ask`` / ``_is_multi_phrase`` escapes.
+    Those ask "did the USER request a list?"; this asks "did the MODEL
+    already write one?" — which is the property that actually decides
+    whether a truncation will destroy content, and unlike the question
+    side it needs no phrase allowlist.
+    """
+    if not text or not enumeration_guard_enabled():
+        return False
+    try:
+        if inline_enumeration_length(text) >= 2:
+            return True
+        from app.integrations.regenold.models import (  # noqa: PLC0415
+            _split_sentences,
+        )
+
+        return bool(enumeration_run_indices(_split_sentences(text)))
+    except Exception:
+        return False
 
 
 # ── Dash-separator normalisation ─────────────────────────────────────

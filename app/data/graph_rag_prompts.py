@@ -707,12 +707,49 @@ def completeness_verifier_enabled() -> bool:
 
     Fresh env read per call (R263.2).
 
-    **DEFAULT ON as of R299.**
-    Off-switch: ``REGENOLD_COMPLETENESS_VERIFIER=0``.
+    **DEFAULT OFF as of R306** (was ON from R299; shipped default-ON with
+    no A/B). It appends ``"Article N also requires <labels>"`` for any
+    article with partially-omitted sub-points, and the supplement is
+    routinely **inverted law**. Measured over 1,134 distinct recorded
+    live answers: it fires on 29 (2.6%), concentrated on the graded
+    July-7 rows, and what it ships includes —
+
+      * ``"Article 6 also requires (a) the AI system is intended to
+        perform a narrow procedural task, (b) …"`` (12 rows). Article
+        6(3)(a)-(c) are the **derogation conditions under which a system
+        is NOT high-risk**. Presented as requirements they invert the
+        provision. This is the same defect class R300 fixed for Article
+        5(1)(h), resurfaced on 6(3) — the pattern, not the instance, is
+        the bug.
+      * ``"Article 5 also requires (e) the placing on the market, (f)
+        the placing on the market, (g) the placing on the market, …"``
+        (10 rows). Article 5 **prohibits**; and the label extractor cuts
+        each Art 5(1) point at its shared chapeau, so it emits several
+        identical strings — visibly broken output as well as wrong law.
+      * ``"Article 1 also requires (f) rules on market monitoring."``
+        Article 1 is subject-matter and requires nothing of anyone.
+      * ``"Article 99 also requires (d) obligations of distributors
+        pursuant to Article 24."`` Article 99(4) lists the provisions
+        whose **breach** attracts the EUR 15M / 3% tier.
+
+    A confidently-wrong legal claim is the worst defect class in this
+    codebase (CLAUDE.md hard rule #4) — this module's own comment above
+    ``missing_supplements.append`` says exactly that. The supplement is
+    additionally a non-responsive tail on the answer, landing on
+    Answer-Conciseness, the one rubric axis this system leads.
+
+    Defaulting OFF restores the last A/B-validated state, mirroring what
+    R300 did with ``REGENOLD_REF_PARTITION`` on an identical finding
+    (shipped default-ON, no A/B, destroys wire quality). Re-enable with
+    ``REGENOLD_COMPLETENESS_VERIFIER=1`` for the live pairwise A/B it
+    owes — and fix the verb and the label extractor first: the
+    supplement must be gated to articles whose sub-points genuinely
+    ARE obligations, and rejected when the extracted labels are not
+    distinct.
     """
     import os
 
-    return os.environ.get("REGENOLD_COMPLETENESS_VERIFIER", "1").strip().lower() in {
+    return os.environ.get("REGENOLD_COMPLETENESS_VERIFIER", "0").strip().lower() in {
         "1", "true", "yes", "on",
     }
 
