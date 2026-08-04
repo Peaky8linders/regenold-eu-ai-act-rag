@@ -743,6 +743,134 @@ _META_COMMENTARY_MARKERS: tuple[str, ...] = (
 
 _MIN_META_REMAINDER = 80
 
+# ── R310 — structural retrieval-meta strip ──────────────────────────────
+#
+# WHY A REGEX AND NOT MORE LITERALS. The R264 marker list above is literal
+# substrings, and on the r309 live batch it caught 0 of the 4 rows that
+# actually leaked. The misses were near-misses of the markers it already
+# has -- marker "references supplied above" vs live text "The references
+# supplied HERE contain ...". That is the same whack-a-mole this codebase
+# hit repeatedly with _STAGE2_REFUSAL_MARKERS (R49/R62/R65/R262): a literal
+# list never catches the next phrasing. These match the SHAPE instead: the
+# answer treating its own supplied source material as a subject.
+#
+# It is worth fixing because it is expensive out of proportion to its rate.
+# On july7-125 the judge called the legal conclusion CORRECT ("directly
+# states both operative holdings the question demands") yet failed the row
+# on answer_correctness -- scoring the self-referential sourcing claim as a
+# fabricated proposition -- AND on conciseness ("meta-commentary on source
+# completeness"). One sentence, two of four axes.
+#
+# The live shapes this was built from (verbatim):
+#   "The references supplied here contain Article 5 but not the
+#    classification provisions themselves, so ..."
+#   "Not as a standing entitlement on the provisions supplied here."
+#   "The references provided do not settle whether ..."
+#   "... and the provisions supplied here do not classify it as such."
+#   "The classification provisions themselves were not among the
+#    references supplied to me, so ..."
+#
+# FALSE-POSITIVE GUARD: the Regulation's own prose says things like "the
+# information provided under Article 13" and "instructions for use provided
+# by the provider", which are legitimate legal content. So every pattern
+# below anchors on the META noun (references / provisions / material) AND a
+# self-referential qualifier (supplied / provided / here / to me), never on
+# a bare "provided".
+_RETRIEVAL_META_CLAUSE_RES: tuple[re.Pattern[str], ...] = (
+    # trailing prepositional qualifier: "... on the provisions supplied here"
+    re.compile(
+        r"\s*,?\s*(?:based\s+)?on\s+(?:the\s+)?(?:provisions?|references?|material|text)"
+        r"\s+(?:supplied|provided)(?:\s+(?:here|above|to\s+me|to\s+us))?",
+        re.I,
+    ),
+    # conjoined clause: ", and the references supplied do not settle ..."
+    re.compile(
+        r"\s*[,;]\s*(?:and\s+|but\s+|so\s+)?(?:the\s+)?(?:references?|provisions?)"
+        r"\s+(?:supplied|provided)(?:\s+(?:here|above|to\s+me|to\s+us))?[^.;]*",
+        re.I,
+    ),
+    # "... were not among the references supplied to me"
+    re.compile(
+        r"\s*[,;]?\s*(?:were|was)\s+not\s+among\s+the\s+(?:references?|provisions?)"
+        r"[^.;]*",
+        re.I,
+    ),
+    # trailing "so that question cannot be answered on this material"
+    re.compile(r"\s*[,;]?\s*so\s+that\s+question\s+cannot\s+be\s+answered[^.;]*", re.I),
+)
+
+_RETRIEVAL_META_SENTENCE_RES: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\b(?:the\s+)?references?\s+(?:supplied|provided|listed|given)\b", re.I),
+    re.compile(r"\bprovisions?\s+supplied\b", re.I),
+    re.compile(r"\bnot\s+among\s+the\s+(?:references?|provisions?)\b", re.I),
+    re.compile(r"\bno\s+verbatim\s+text\b", re.I),
+    re.compile(r"\breferences?\s+block\b", re.I),
+    re.compile(r"\bon\s+this\s+material\b", re.I),
+)
+
+# A sentence whose substance falls below this after its meta clause is
+# excised is treated as wholly-meta and dropped. Deliberately LOW: the live
+# verdict "Not as a standing entitlement on the provisions supplied here."
+# reduces to "Not as a standing entitlement." (30 chars) and MUST survive --
+# it is the answer.
+_MIN_CLEANED_SENTENCE = 15
+
+
+def strip_retrieval_meta(text: str) -> str:
+    """R310 — remove commentary about the answer's own supplied references.
+
+    Excises the meta CLAUSE first so an entangled verdict survives, and only
+    drops a whole sentence when nothing substantive is left. Sentence 0 is
+    never dropped (the DIRECT-VERDICT rule puts the answer there). Keeps
+    >= 1 sentence and >= 80 chars of substance or returns the input
+    unchanged. Pure, idempotent, fail-soft.
+    Env-reversible ``REGENOLD_STRIP_RETRIEVAL_META=0``.
+    """
+    import os  # noqa: PLC0415 — local to keep the module import surface lean
+
+    if os.getenv("REGENOLD_STRIP_RETRIEVAL_META", "1").strip().lower() in (
+        "0", "false", "no", "off",
+    ):
+        return text
+    if not text or not text.strip():
+        return text
+    try:
+        if not any(p.search(text) for p in _RETRIEVAL_META_SENTENCE_RES):
+            return text
+        sentences = _SENTENCE_BOUNDARY_RE.split(text.strip())
+        if len(sentences) < 2:
+            return text
+        kept: list[str] = []
+        for idx, sent in enumerate(sentences):
+            s = sent.strip()
+            if not s:
+                continue
+            if not any(p.search(s) for p in _RETRIEVAL_META_SENTENCE_RES):
+                kept.append(s)
+                continue
+            cleaned = s
+            for pat in _RETRIEVAL_META_CLAUSE_RES:
+                cleaned = pat.sub("", cleaned)
+            cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
+            cleaned = re.sub(r"\s+([.,;:])", r"\1", cleaned)
+            # Still meta after clause excision, or nothing substantive left.
+            still_meta = any(p.search(cleaned) for p in _RETRIEVAL_META_SENTENCE_RES)
+            if still_meta or len(cleaned.rstrip(" .,;:")) < _MIN_CLEANED_SENTENCE:
+                if idx == 0:
+                    # Never drop the verdict sentence — keep the original.
+                    kept.append(s)
+                continue
+            if cleaned and cleaned[-1] not in ".!?":
+                cleaned += "."
+            kept.append(cleaned)
+        remainder = " ".join(kept).strip()
+        if not remainder or len(remainder) < _MIN_META_REMAINDER:
+            return text
+        out = _capitalise_first_letter(remainder)
+        return out if out and out.strip() else text
+    except Exception:  # noqa: BLE001 — a normaliser must never break the wire
+        return text
+
 
 def strip_meta_commentary(text: str) -> str:
     """R264 — drop sentences that leak internal retrieval/framing commentary.

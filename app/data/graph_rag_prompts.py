@@ -821,7 +821,12 @@ USER_ANSWER_COVERAGE_CLAUSE = (
     "room by cutting: delete sentences about supplied provisions the question "
     "did not ask about, and keep the whole answer as short as full coverage "
     "allows. Assert only what the supplied text states. If it does not settle a "
-    "point, say so plainly.\n"
+    "point, say so as a matter of LAW -- 'the Act does not specify X' -- and "
+    "NEVER as a matter of your own sources: do not mention the references, "
+    "provisions or material supplied to you, what was or was not retrieved, or "
+    "how complete your inputs are. The reader sees only the answer, so a remark "
+    "about your inputs is unanswerable to them, and it is self-contradictory "
+    "whenever the answer cites the very provision it claims to be missing.\n"
 )
 
 

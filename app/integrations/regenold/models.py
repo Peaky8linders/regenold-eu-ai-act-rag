@@ -18,6 +18,7 @@ from app.integrations.regenold.answer_normaliser import (
     strip_dash_separators,
     strip_hedge_opener,
     strip_meta_commentary,
+    strip_retrieval_meta,
     strip_preamble_templates,
     strip_section_headers,
 )
@@ -1582,6 +1583,11 @@ def normalise_answer_for_regenold(
     # REGENOLD_STRIP_META=0. davidath byte-identical (deterministic answers
     # carry no such internal language; bench runs provider=cli with no Stage-2).
     result = strip_meta_commentary(result)
+    # R310 — structural counterpart to the R264 literal-marker pass above.
+    # Runs AFTER it so the cheap literal hits are already gone and this only
+    # sees the phrasings the marker list misses (on the r309 live batch that
+    # was 4 rows out of 4 leaked -- the markers caught none of them).
+    result = strip_retrieval_meta(result)
 
     # R268 — repair a mid-sentence citation-anchor the Stage-2 model elided
     # ("...harmonisation legislation listed in which/here/such as ..." dropped
