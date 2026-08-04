@@ -11214,6 +11214,178 @@ An explicit `REGENOLD_MAX_ANSWER_SENTENCES=<n>` still wins over
 `REGENOLD_ANSWER_NO_CAP` on its own (see Fix 1), so an operator can pin a
 specific cap back on without touching the uncap switch at all.
 
+## Round 311 — the R309 levers, adversarially triaged: 3 of 5 are dead, the MedTech one is a route-exclusivity bug (2026-08-04)
+
+Deep-dive on the R309 handoff (`docs/reviews/R309-hard-batch-live-opus5-sonnet5-judge.md`
+§10). A 5-lane investigation + adversarial verification workflow, plus
+independent measurement against the judge's own structured fields. **The
+headline is a correction: the review's §6.2 clustering — and therefore its
+lever ranking — is not reproducible, and three of its five ranked levers are
+refuted by the data it was derived from.**
+
+### The review's own numbers do not reproduce
+
+§6.2 clusters `failure_mode` PROSE. Recomputed from the judge's structured
+fields (`redundant_sentence_count` / `unrequested_topic_count`):
+
+| | doc §6.2 | measured |
+| --- | --- | --- |
+| redundant restatement | 22 | **24** |
+| scope drift | 13 | **31** |
+
+The doc's two figures sum to 35 against **45** conciseness failures — exactly
+the size of the 10-row BOTH bucket, i.e. it assigned one theme per row and
+lost the second cause. Mechanical decomposition: redundancy-only 14 /
+drift-only 21 / BOTH 10 / **neither 0**. So **L4 (drift) is bigger than L1
+(redundancy)**, the doc inverts them, and fixing redundancy alone caps at the
+**14** redundancy-only rows (ceiling 0.569) because the BOTH rows still fail
+on drift.
+
+### Refuted — do not re-pay these
+
+* **L1's deterministic near-duplicate collapse: measured INERT.** 0 of the 27
+  flagged sentences are lexical near-duplicates (token-Jaccard AUC 0.634; the
+  single most similar sentence in the corpus is NOT flagged, and the top 6 by
+  Jaccard are all legitimate). **No threshold on any metric exceeds precision
+  0.278**; catching a majority means dropping 32-46% of every legitimate
+  sentence. R145 predicted this in its own rule text ("under different
+  framings" ⇒ low lexical overlap by construction).
+* **L1's "state the verdict once" USER rule: already shipped.** R145 put it on
+  the delivered channel in BOTH Stage-2 branches
+  (`_graph_rag_impl.py:6897` and `:6939`). It was live for R309 and redundancy
+  is still 24/72, on rows that all received it.
+* **L4's "answer only what was asked" USER rule: already shipped ×3** —
+  `USER_REF_MINIMALITY_CLAUSE` ("do not cite it **and do not describe it**"),
+  `USER_ANSWER_COVERAGE_CLAUSE` ("delete sentences about supplied provisions
+  the question did not ask about"), and `_graph_rag_impl.py:6946`. Drift is
+  still 31/72. A fourth overlapping rule is prompt accretion (R277: measured
+  quality-neutral; R282: volume on a delivered channel is itself harmful).
+* **L3's three proposed mechanisms, all refuted against the judge's labels:**
+  "drop refs the prose never describes" is a **no-op — 49/53 (92%) of wrong
+  refs ARE faithfully described** (the R298/R302 finding, third door);
+  "drop general provisions when a specific one is present" fires on **0/53**;
+  and "`Annex I` is the obvious first probe" is an identity blocklist, already
+  on the do-not-repropose list — every frequent wrong ref is MORE often
+  governing (Annex III wrong 9 / governing 12; Annex I 4 / 7; Article 6 3 /
+  20). A hypothesis of my own — that wrong refs are the citation footprint of
+  drift — explains only 23% and was dropped too.
+
+### Shipped — L5, root-caused and fixed
+
+L5 (MedTech, answer 0.80 / **references 0.00 on 5/5**) is the one lever that
+survived, and it is a single structural defect, not five. All five questions
+are Article 6(1)/Annex I product-safety-component asks (one is a **lift**, so
+this is not medtech-specific), and the wrong refs are exactly `Annex III` (3)
+and `Article 43` (2):
+
+* **`Annex III`** — Article 6(1) (Annex I product route) and Article 6(2)
+  (Annex III use-case list) are ALTERNATIVE routes, but
+  `kb_xrefs.cross_refs('Art. 6', limit=2)` returns `('Annex I', 'Annex III')`,
+  so pinning one drags the other along. Stage-2 then discusses it *negatively*
+  and `_add_prose_named_refs` counts the negative mention as "described".
+* **`Article 43`** — the conformity-assessment PROCEDURE, downstream of
+  classification. It arrives from `_KEYWORD_ENTITY_MAP`'s bare
+  `("conformity assessment", "Art. 43")`, and Article 6(1)'s own statutory
+  test literally contains "third-party conformity assessment", so every
+  question that states the Article 6(1) criterion trips it.
+
+**The rule was already written and delivered to nobody.** The dead
+`ANSWER_GENERATE_SYSTEM` says verbatim at line 117: *"Do NOT cite Article 16
+(provider obligations), Article 5 (prohibitions), or Annex III (the separate
+use-case route) for an Annex I product-conformity question."* Per R308 the
+wrapper drops the system slot 100%, so it has never been enforced. R311 is the
+deterministic enforcement.
+
+Four fixes, all measured before being written:
+
+1. **`_apply_annex_i_route_exclusivity`** (`app/routes/regenold.py`, env
+   `REGENOLD_ANNEX_I_ROUTE_EXCLUSIVITY`, default ON) — runs LAST among the
+   reference passes. Drops `Annex III`; drops `Article 43` only on a purely
+   classificatory ask (keep-by-default). The gate reuses the curated
+   `annex_i_safety_component` topic's own regexes as the single source of
+   truth, and scans only the LIVE turn (R71).
+2. **`_NOISE_HIGHRISK_SIGNALS` copular forms** — july7-008 asks "...considered
+   **to be** high-risk...", the interposed copula defeated the literal
+   `considered high-risk`, and `_suppress_noise_anchors` therefore dropped
+   **Article 6, the GOVERNING article**, shipping Article 43 + Annex I with no
+   Article 6 at all. Purely protective: a high-risk signal can only PRESERVE a
+   broad anchor.
+3. **`_CONTRAST_BEHIND_RE` widened** (24 → 60 chars, up to 4 intervening
+   words) — "the classification does **not** depend on **Annex III**" was
+   being read as a description. The gap cannot cross a sentence boundary.
+4. **R310 word-order near-miss** — `strip_retrieval_meta` matched
+   `provisions supplied` but not the participle→noun `supplied provisions` the
+   live july7-023 answer ships. One-line, same-shape extension.
+
+### Why this is not the R142.1 trap
+
+R142.1's positional `[:budget]` clamp lost a live pairwise judge **11-0
+(p=0.001)** by dropping gold. This pass is signal-driven, gold-protected and
+floor-protected, and was validated **with the production functions** against
+the judge's own GOVERNING / SUPPORTING / WRONG labels on all 72 rows:
+
+```
+rows where it fires    : 4
+GOVERNING refs dropped : 0
+WRONG refs removed     : 4
+reference_correctness  : 35/72 = 0.486  ->  39/72 = 0.542
+davidath               : gate fires on 18 rows, GOLD dropped on 0
+```
+
+A broader **co-occurrence** form ("drop Annex III whenever Annex I is also
+predicted") was tested and **REJECTED** — it hits GOVERNING 5 times, including
+`july7-093` which currently passes. The question-shape gate does not fire on
+`july7-093` or on `july7-086` (the genuinely multi-route drone question), and
+keeps Article 43 on `july7-110`, where the judge scored it GOVERNING.
+
+### Gates
+
+| Gate | Result |
+| ---- | ------ |
+| davidath QA (137) | **byte-identical** to the correct post-R308 baseline — Ans Loose **0.1407** / Ans Strict **0.4079** / Ans Conc **0.1961** / Ref Loose **0.8394** / Ref Strict **0.5543** / Ref Conc **0.4395** / Tone **1.0** |
+| `evals.regenold.runner` (276) | **255/255 (100%)**, RISK_F1 macro **1.00**, all 28 categories |
+| OOS probe (`--oos-suite all`) | **0 scope leaks**; only the 2 documented pre-existing `adjacent_eu` soft fails |
+| `tests/test_r311_route_exclusivity.py` | **32 new tests**, all pass — written against the evaluator's VERBATIM questions (R305 shipped a detector that returned False on its own target because its test used a truncated copy) |
+| touched-surface suites, in-place stash A/B | **0 new failures, 0 fixed** — the 18 are the documented pre-existing `provider=cli` / `GROQ_API_KEY` denoiser cluster, identical on both arms |
+
+⚠ The A/B **must** be run in place: a `git worktree` baseline carries no
+`.env`, and the denoiser / topic-filter / safety-gate cluster changes
+behaviour on the presence of `GROQ_API_KEY` (measured elsewhere: 63 vs 92
+failures on the same commit).
+
+### Live end-to-end
+
+Deterministic route probe on the five MedTech questions — july7-008 goes from
+`['Article 43', 'Annex I']` (governing Article 6 **missing**) to exactly
+`['Article 6', 'Annex I']`, the judge's governing set, with fixes 1 and 2
+composing; july7-071 sheds `Annex III`; july7-074 sheds `Article 43`. Trace
+note `annex_i_route_exclusivity_dropped=<refs>` makes it auditable on the wire
+via `?include_reasoning=true`.
+
+### Rollback
+
+```bash
+REGENOLD_ANNEX_I_ROUTE_EXCLUSIVITY=0   # disable the route-exclusivity pass
+REGENOLD_STRIP_RETRIEVAL_META=0        # disable the R310/R311 meta strip
+```
+
+Fixes 2 and 3 are unconditional (both are strictly protective — one preserves
+a governing anchor, the other refuses to treat a negation as a description).
+
+### What is left, honestly
+
+Drift (31 rows) remains the largest conciseness cluster and is **not** fixed
+here: the generic instruction is already delivered three times and still
+fails. The un-ported half of the dead system prompt is the untested candidate
+— its REFERENCE SELECTION rules name CONCRETE targets (`Article 49`, `Annex
+II`, `Article 27` …) where the delivered clause's negative list stops at
+"Article 6, Annex I, Annex III". That is a prompt change on the live Stage-2
+channel and therefore needs `evals.harness.ab_judge`, not davidath (hard rule
+#6). Also still open: the R308 `easyhard_ab` gate — note its documented
+invocation is missing `--endpoint`/`--local` and will `SystemExit` as written,
+and `--local` silently forces `?include_reasoning=true`, contradicting its own
+docstring.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

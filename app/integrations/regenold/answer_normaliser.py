@@ -802,6 +802,11 @@ _RETRIEVAL_META_CLAUSE_RES: tuple[re.Pattern[str], ...] = (
 _RETRIEVAL_META_SENTENCE_RES: tuple[re.Pattern[str], ...] = (
     re.compile(r"\b(?:the\s+)?references?\s+(?:supplied|provided|listed|given)\b", re.I),
     re.compile(r"\bprovisions?\s+supplied\b", re.I),
+    # R311 — the reversed word order. R310 matched only noun->participle
+    # ("provisions supplied"); the live july7-023 answer ships the
+    # participle->noun form: "The SUPPLIED PROVISIONS attach no systemic-risk
+    # category to AI systems...". Same shape, same intent, one missed ordering.
+    re.compile(r"\b(?:supplied|provided)\s+(?:provisions?|references?)\b", re.I),
     re.compile(r"\bnot\s+among\s+the\s+(?:references?|provisions?)\b", re.I),
     re.compile(r"\bno\s+verbatim\s+text\b", re.I),
     re.compile(r"\breferences?\s+block\b", re.I),

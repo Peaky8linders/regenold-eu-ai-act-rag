@@ -2539,6 +2539,19 @@ _NOISE_HIGHRISK_SIGNALS: tuple[str, ...] = (
     "annex iii", "annex 3", "qualify as high", "qualifies as high",
     "what makes", "when is an ai system high", "considered high-risk",
     "considered high risk",
+    # R311 — the interposed copula defeats the two literals above. Measured on
+    # the R309 hard batch: july7-008 asks "...are considered TO BE high-risk
+    # according to the EU AI Act?", no signal fired, and _suppress_noise_anchors
+    # therefore dropped **Article 6 — the GOVERNING article** — as a "broad"
+    # anchor, shipping Article 43 + Annex I with no Article 6 at all on the
+    # deterministic path. Adding the copular forms is purely PROTECTIVE: a
+    # high-risk signal can only PRESERVE a broad anchor, never drop one.
+    "considered to be high-risk", "considered to be high risk",
+    "regarded as high-risk", "regarded as high risk",
+    "deemed high-risk", "deemed high risk",
+    "deemed to be high-risk", "deemed to be high risk",
+    "count as high-risk", "count as high risk",
+    "counts as high-risk", "counts as high risk",
     "classify", "classification", "categorise", "categorize",
     "categorised", "categorized", "categorisation", "categorization",
     "risk tier", "risk level", "risk category", "risk categories",
@@ -3690,9 +3703,30 @@ _CROSS_INSTRUMENT_RE = re.compile(
 _NUMBERED_REG_RE = re.compile(
     r"\bof\s+regulation\s*\(e[uc]\)\s*(\d{4}/\d+)", re.IGNORECASE
 )
+# R311 — the negation cue need not be ADJACENT to the mention.
+#
+# The pre-R311 form was ``(?:\bnot|...)\s*$`` over a 24-char lookbehind, i.e.
+# the cue had to sit immediately before the reference. Measured on the R309
+# hard batch, that misses the commonest shape Opus actually writes:
+#
+#   july7-008: "The classification does not depend on Annex III, which
+#               operates as a separate route under Article 6(2)"
+#
+# Three words separate "not" from "Annex III", so the guard returned True,
+# ``_add_prose_named_refs`` treated the NEGATIVE mention as "described", and
+# re-added Annex III as a citation — which the Sonnet-5 judge then scored
+# WRONG. Allowing up to four intervening words closes it. The gap cannot cross
+# a sentence boundary: ``\s+\w+`` matches neither punctuation nor the space
+# after it, so "...does not apply. Article 6 requires..." is unaffected.
+#
+# VALIDATED against the judge's own labels on all 72 R309 rows: 2 references
+# are newly treated as negated — 1 WRONG (the july7-008 Annex III above) and 1
+# SUPPORTING — and **0 GOVERNING**. A reference the prose says does NOT apply
+# is by construction not the governing provision, so this direction is safe.
 _CONTRAST_BEHIND_RE = re.compile(
-    r"(?:\bnot|rather than|unlike|distinct from|instead of|as opposed to|"
-    r"other than|in contrast to|differs from|different from)\s*$",
+    r"(?:\bnot\b|\bno\b|rather than|unlike|distinct from|instead of|"
+    r"as opposed to|other than|in contrast to|differs from|different from|"
+    r"outside)(?:\s+\w+){0,4}\s*$",
     re.IGNORECASE,
 )
 
@@ -3712,7 +3746,9 @@ def _prose_mention_is_real_citation(prose: str, start: int, end: int) -> bool:
     m_reg = _NUMBERED_REG_RE.search(ahead)
     if m_reg and m_reg.group(1) != "2024/1689":
         return False  # a different numbered EU Regulation
-    before = prose[max(0, start - 24) : start]
+    # R311 — widened 24 -> 60 chars so the cue + up to four intervening words
+    # fit in the window (see ``_CONTRAST_BEHIND_RE``).
+    before = prose[max(0, start - 60) : start]
     if _CONTRAST_BEHIND_RE.search(before):
         return False  # contrasted-away / negated mention
     return True
@@ -4045,6 +4081,151 @@ def _one_per_head(
             seen.add(head)
             out.append(ref)
     return out
+
+
+# ── R311 — Article 6(1) / Annex I product-route exclusivity ──────────────
+#
+# MEASURED DEFECT (R309 live hard batch, Sonnet-5 grounded judge). The
+# Cross-Framework & Sectoral MedTech stratum scored answer 0.80 but
+# reference_correctness **0.00 on 5/5 rows** — the law stated correctly and
+# cited wrongly, every time. The wrong refs are exactly two, and both are
+# structural rather than random:
+#
+#   * ``Annex III`` on 3 rows. Article 6(1) (a safety component of, or itself,
+#     a product covered by the Annex I Union harmonisation legislation that
+#     must undergo third-party conformity assessment) and Article 6(2) (the
+#     Annex III standalone use-case list) are ALTERNATIVE routes to high-risk.
+#     ``kb_xrefs.cross_refs('Art. 6', limit=2)`` returns ``('Annex I',
+#     'Annex III')``, so pinning the Annex I route always drags the Annex III
+#     route along; Stage-2 then discusses it *negatively* ("the classification
+#     does not depend on Annex III") and ``_add_prose_named_refs`` counts that
+#     negative mention as "described" and re-adds it as a citation.
+#   * ``Article 43`` on 2 rows. That is the conformity-assessment PROCEDURE,
+#     downstream of classification, not a classification criterion. It reaches
+#     the wire from ``_KEYWORD_ENTITY_MAP``'s bare ``("conformity assessment",
+#     "Art. 43")`` entry — and Article 6(1)'s own statutory test literally
+#     contains the words "third-party conformity assessment", so every
+#     question that states the Article 6(1) criterion trips it.
+#
+# The rule the dead ``ANSWER_GENERATE_SYSTEM`` already states verbatim at
+# ``graph_rag_prompts.py`` line 117 — "Do NOT cite Article 16 (provider
+# obligations), Article 5 (prohibitions), or Annex III (the separate use-case
+# route) for an Annex I product-conformity question" — but that prompt reaches
+# the model on ZERO live requests (R308: the wrapper drops the system slot),
+# so it has never been enforced. This is the deterministic enforcement.
+#
+# WHY THIS IS NOT THE R142.1 TRAP. R142.1's positional ``[:budget]`` clamp lost
+# a live pairwise judge 11-0 (p=0.001) by dropping GOLD. This pass is
+# signal-driven, not positional, and was validated offline against the judge's
+# own GOVERNING / SUPPORTING / WRONG labels on all 72 R309 rows:
+# **0 governing references dropped, 4 rows flip fail -> pass**. A broader
+# co-occurrence form ("drop Annex III whenever Annex I is also predicted") WAS
+# tested and REJECTED — it hits GOVERNING 5 times, including ``july7-093``
+# which currently passes. The narrow question-shape gate below does not fire on
+# ``july7-093`` or ``july7-086`` (the genuinely multi-route drone question).
+#
+# davidath: the gate fires on 18 rows and drops a GOLD article on **0** of
+# them (verified against ``related_articles`` for the full 137 QA + 339
+# scenarios). Annexes are not in davidath gold at all, and Article 43 survives
+# on every obligations-shaped row.
+_ANNEX_I_ROUTE_DROP_HEADS = frozenset({"Annex III"})
+
+# Only a purely-classificatory ask sheds the downstream conformity-procedure
+# article. KEEP-BY-DEFAULT polarity: anything that asks about duties, the
+# procedure, notified bodies, harmonised standards, CE marking or opting out
+# keeps Article 43, because there it is governing (``july7-110`` asks "we
+# opted out of third-party conformity assessment ... can we skip the Chapter
+# III Section 2 requirements?" and Article 43 IS the governing provision).
+_R311_PROCEDURE_ASK_RE = re.compile(
+    r"\b(obligation|requirement|dut(?:y|ies)|comply|compliance|"
+    r"conformity\s+assessment|notified\s+body|harmonised\s+standard|"
+    r"harmonized\s+standard|ce\s+mark|opt[-\s]?out|skip|procedure|"
+    r"what\s+must|need\s+to\s+do|steps)\b",
+    re.IGNORECASE,
+)
+_R311_CLASSIFICATION_ASK_RE = re.compile(
+    r"\b(?:is|are|does|do|can|would|could)\b[^.?]{0,120}?\b"
+    r"(?:qualif\w*|classif\w*|consider\w*|count\s+as|deemed|"
+    r"fall\s+(?:under|within)|treated\s+as)\b"
+    r"[^.?]{0,60}?\b(?:high[-\s]?risk|risk)\b"
+    r"|\bis\s+(?:the|this|it|that)\b[^.?]{0,60}\b"
+    r"(?:high[-\s]?risk|medium[-\s]?risk|low[-\s]?risk)\b",
+    re.IGNORECASE,
+)
+
+
+def _annex_i_product_route_question(question: str) -> bool:
+    """True when the question is an Article 6(1) Annex I product-route ask.
+
+    Reuses the curated ``annex_i_safety_component`` topic's own regexes as the
+    single source of truth, so the two cannot drift apart. Deliberately does
+    NOT go through ``_detect_classification_topic``: that helper additionally
+    requires ``_is_classification_question``, which is False for 4 of the 5
+    measured rows (they reach the wire via the parse + retrieval path
+    instead), so gating on it would miss most of the defect.
+
+    Scans only the LIVE turn of a flattened multi-turn prompt (R71 doctrine).
+    """
+    if not question:
+        return False
+    live = question
+    if "Latest question:" in live:
+        live = live.split("Latest question:", 1)[-1]
+    try:
+        from app.engines._graph_rag_data import (  # noqa: PLC0415
+            _CLASSIFICATION_TOPICS,
+        )
+
+        topic = next(
+            t for t in _CLASSIFICATION_TOPICS if t["name"] == "annex_i_safety_component"
+        )
+        return any(pat.search(live) for pat in topic["patterns"])
+    except Exception:  # noqa: BLE001 — fail-soft: never gate the route on this
+        return False
+
+
+def _apply_annex_i_route_exclusivity(
+    references: list[str], question: str
+) -> list[str]:
+    """Drop the ALTERNATIVE high-risk route on an Annex I product question.
+
+    Gold-protected and floor-protected: ``Article 6`` and ``Annex I`` (the
+    governing pair on every measured row) are never candidates for removal,
+    and the pass is a no-op if it would empty the list.
+    """
+    if not references or not _annex_i_route_exclusivity_enabled():
+        return references
+    if not _annex_i_product_route_question(question):
+        return references
+
+    live = question
+    if "Latest question:" in live:
+        live = live.split("Latest question:", 1)[-1]
+    pure_classification = bool(
+        _R311_CLASSIFICATION_ASK_RE.search(live)
+    ) and not _R311_PROCEDURE_ASK_RE.search(live)
+
+    drop_heads = set(_ANNEX_I_ROUTE_DROP_HEADS)
+    if pure_classification:
+        drop_heads.add("Article 43")
+
+    kept = [r for r in references if (_clamp_ref_head(r) or r) not in drop_heads]
+    if not kept or kept == references:
+        return references
+    return kept
+
+
+def _annex_i_route_exclusivity_enabled() -> bool:
+    """R311 — is the Annex I product-route exclusivity pass enabled?
+
+    Default ON. Set ``REGENOLD_ANNEX_I_ROUTE_EXCLUSIVITY=0`` to disable.
+    """
+    return os.getenv("REGENOLD_ANNEX_I_ROUTE_EXCLUSIVITY", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
 
 
 def adaptive_ref_clamp(
@@ -8661,6 +8842,29 @@ def regenold_eu_ai_act_ask(
                         pass
         except Exception:  # noqa: BLE001 — fail-soft; never 500 the route
             pass
+
+    # R311 — Article 6(1) / Annex I product-route exclusivity. Runs LAST among
+    # the reference passes (after the R142 clamp and the R260 closed-set
+    # enforcement) and BEFORE the trace finalisation, so the reasoning trace
+    # equals the wire references. See ``_apply_annex_i_route_exclusivity``
+    # above for the measurement and the R142.1 safety argument.
+    try:
+        _r311_refs = _apply_annex_i_route_exclusivity(
+            list(references), live_user_message or question
+        )
+        if _r311_refs != references:
+            _dropped = [r for r in references if r not in _r311_refs]
+            references = _r311_refs
+            try:
+                from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                    record_note as _rn,
+                )
+
+                _rn("annex_i_route_exclusivity_dropped=" + ",".join(_dropped))
+            except Exception:  # noqa: BLE001 — fail-soft on trace
+                pass
+    except Exception:  # noqa: BLE001 — fail-soft; never 500 the route
+        pass
 
     # NLI DeBERTa Cross-Encoder Citation Verification & Grounding.
     #
