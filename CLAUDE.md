@@ -11443,6 +11443,129 @@ missing `--endpoint`/`--local` and will `SystemExit` as written, and
 `--local` silently forces `?include_reasoning=true`, contradicting its own
 docstring.
 
+## Round 312 — why RAG + Opus 5 is not better than Opus 5 alone (2026-08-04)
+
+The question: we run a frontier model AND a specialised retrieval system, so
+why is the combination not better than the model alone? It is measured, and
+the answer is uncomfortable: **it is better at references and worse at
+answers.**
+
+### The measurement (R280, the only valid frontier comparison)
+
+64 paired rows, same questions, same scorer. A = our RAG. B = a raw frontier
+model with **no retrieval and no web search**.
+
+| axis | ours | frontier | per-row |
+| --- | --- | --- | --- |
+| Ref Correctness Strict | **55.1** | 46.8 | ours 35 / theirs 25 |
+| Keyword recall (answer) | 78.6 | **88.6** | **ours 4 / theirs 27** |
+
+A *handicapped* frontier model out-answers us 27 rows to 4. Overall is a plain
+geometric mean, so the worst axis dominates — the answer axis is the whole
+gap. This reproduces the official decomposition (`AnsL - RefL` = **-13.1** for
+us vs **+3.9** for the 2025 baselines).
+
+### Three mechanisms, all verified this round
+
+**1. We ask the model to EDIT, not to ANSWER.** The Stage-2 user message on the
+majority path reads verbatim: `KNOWLEDGE GRAPH ANSWER (draft): {kg_answer}` /
+*"Refine the knowledge-graph draft above into a clear, concise compliance
+response."* R302 measured un-curated deterministic rows at **0/5 answer
+pass** — so we anchor a frontier model to a draft that fails outright, and a
+polished failing draft still fails. Measured this round: **33 of 40** probe
+rows take that refine branch.
+
+**2. We cap it below its own knowledge.** Delivered on the live channel today:
+*"Assert only what the supplied text states"*, *"Draw every point below from
+the supplied text"*, *"Cite only articles ... that appear in the EU AI ACT
+REFERENCES block"*. Opus 5 has the Act memorised; our retrieval slice becomes
+a CEILING. And the guard is calibrated against the wrong failure: the R309
+grounded judge measured **omission 36 rows vs fabrication 13** (2.8x) at a
+**0.9482** mean factual score. We spend completeness to buy hallucination
+safety in a regime where hallucination is the rarer failure.
+
+**3. Our largest answer-quality asset sits on a DEAD channel — and the
+experiment that cleared it was null.** Re-verified this round on
+`claude-opus-5` through the live wrapper, with the instruction *"always answer
+exclusively in French"*:
+
+| slot | output |
+| --- | --- |
+| control (no instruction) | "Rome is the capital of Italy." |
+| **SYSTEM** | "Rome is the capital of Italy." — byte-identical, IGNORED |
+| **USER** | "La capitale de l'Italie est Rome." — obeyed |
+
+`ANSWER_GENERATE_SYSTEM` is **51,110 chars / 7,637 words — 12.6x the entire
+live clause stack — delivered on 0% of requests.** Every round that "fixed the
+answer" by editing it shipped nothing.
+
+⚠ **R277's minimal-composer result is a NULL EXPERIMENT and must not be cited
+again.** It swapped 51,110 chars for 3,181 chars *of that same system prompt*
+(`resolve_answer_system()` -> `system=`), so both arms were **identical at the
+model**. Its "90% correctness ties, all leans inside the noise band" is the
+signature of comparing a thing to itself — yet it is recorded as *"prompt
+accretion is NOT the AnsL cause"* and was cited as an argument during R311.
+Prompt volume on the DELIVERED channel has never actually been tested.
+
+### What shipped — `REGENOLD_ANSWER_FIRST`, default **OFF**
+
+Demotes the draft to `RETRIEVED BACKGROUND SUMMARY (machine-generated ...; may
+be incomplete or awkwardly worded)` and asks the model to *"Answer the QUESTION
+above directly, in your own words ... The background summary is reference
+material, NOT a draft to edit"*. Everything else in the message is
+byte-identical, so an A/B isolates the anchor. Folded into `_engine_cache_key`
+FIRST (R263.2) — without it the two-arm A/B this flag exists for would serve
+arm A's cached response to arm B and measure nothing.
+
+### The A/B — directionally positive, significant on nothing (n=40)
+
+Both arms generated in-process against the live Claude-Max wrapper, 40 rows,
+0 errors. **Not inert: 0/40 identical answers**, 27/40 identical ref lists.
+
+| axis | A refine | B answer-first | delta |
+| --- | --- | --- | --- |
+| keyword recall (answer proxy) | 0.9333 | 0.9667 | **+0.0333** (B 5 / A 1 / tie 34, p=0.219) |
+| ref_conc | 0.4605 | 0.4882 | +0.0277 |
+| ref_strict | 0.6249 | 0.6289 | +0.0040 |
+| ref_loose | 0.8750 | 0.8750 | flat |
+| regulatory tone | 1.0000 | 1.0000 | held |
+| answer chars | 1377.6 | 1405.8 | +28 (+2%, no conciseness risk) |
+| latency p50 | 23.7 s | 27.8 s | +4.1 s |
+
+**Ships default OFF.** Per the R270 / R142.1 discipline this project does not
+flip a default on noise-level evidence. Two honest caveats on the instrument:
+`kw_recall` is **saturated** here (0.9333 baseline, 34/40 ties) and noisy in
+both directions — B's biggest "win" was using the Act's statutory term *deep
+fake* where A wrote *deepfake*, and its biggest "loss" was writing *the system*
+where A wrote *high-risk AI system* (anaphora, not a quality drop). The
+grounded judge is the sensitive instrument and that population is NOT
+saturated (arm A: answer 13 pass / 16 fail, refs 11 / 18).
+
+### Gates
+
+| Gate | Result |
+| --- | --- |
+| davidath QA (137), flag default OFF | **byte-identical** — 0.1407 / 0.4079 / 0.1961 / 0.8394 / 0.5543 / 0.4395 / Tone 1.0 |
+| `tests/test_r312_answer_first.py` | 14 tests — default-OFF, env parse, cache-key presence, both framings pinned, and an assertion that the framing lives on the USER channel |
+
+Stage-2-only + default OFF ⇒ zero production behaviour change on merge.
+
+### Next, in order
+
+1. Finish the grounded-judge A/B (answer correctness + omission/fabrication
+   decomposition) on the two arms already generated. That is the axis R312
+   targets; `kw_recall` cannot resolve it.
+2. If answer-first holds, re-run on a HARDER, unsaturated population (the R309
+   hard batch: 45/72 conciseness fails, 36 omission rows) before flipping.
+3. **Then** test mechanism 2 — relax the knowledge cap so the model may state
+   law it is confident of while citations stay bound to the verified block.
+   Gate on `fabrication_present`, which is the risk it creates.
+4. Mechanism 3 is a standing opportunity, not a fix: 7,637 words of tuned
+   answer guidance are undelivered. Porting is **not** mechanical — R311
+   measured that line 117's prescriptive half would entrench two MedTech
+   failures, and the concrete negative lists are identity blocklists where 9
+   of 11 named articles are governing somewhere.
+
 ## Non-goals / things to skip
 
 - ~~Vector embeddings / dense retrieval~~ → **Round 31 added a

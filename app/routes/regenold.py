@@ -1313,6 +1313,12 @@ def _engine_cache_key(
             # answer AND its citations, so same doctrine as the lines above.
             "REGENOLD_USER_REF_MINIMALITY",
             "REGENOLD_CHALLENGE_BREVITY",
+            # R312 — answer-first vs refine-the-draft. Swaps the Stage-2 USER
+            # framing (draft-to-edit -> background material) ⇒ flips the
+            # polished answer AND its citations. Same doctrine; and without it
+            # the in-process two-arm A/B this flag exists FOR would serve arm
+            # A's cached GraphRAGResponse to arm B and measure nothing.
+            "REGENOLD_ANSWER_FIRST",
             # R300 — the two R299 gates were shipped default-ON but never
             # added to this key. Both flip GraphRAGResponse.answer:
             #   * REF_PARTITION restructures the Stage-2 references block

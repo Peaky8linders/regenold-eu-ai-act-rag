@@ -6899,10 +6899,42 @@ def _claude_max_enhance_answer(
                 "Write in formal, neutral regulatory language. Cite only articles and annexes from the EU AI ACT REFERENCES block.\n"
             )
         else:
+            # R312 — ANSWER-FIRST vs REFINE-THE-DRAFT.
+            #
+            # The pre-R312 framing hands a frontier model our DETERMINISTIC
+            # KB-stub draft and asks it to *edit* rather than *answer*. Two
+            # measurements say that is the wrong ask:
+            #   * R280's frontier head-to-head (64 paired rows, same questions,
+            #     same scorer): our RAG BEATS a raw frontier model on references
+            #     (Ref Strict +8.3, 35 rows to 25) and LOSES to it on the answer
+            #     axis (keyword recall -10.0, **4 rows to 27**). Retrieval is
+            #     not the gap; answer composition is.
+            #   * R302: un-curated deterministic rows score **0/5 answer pass**.
+            #     So on the majority path we anchor Opus to a draft that fails
+            #     outright, and a refined failing draft is still a failing draft.
+            # This variant demotes the draft to background and asks for an
+            # answer. Everything else in the message is byte-identical, so an
+            # A/B isolates the anchor.
+            _answer_first = os.getenv(
+                "REGENOLD_ANSWER_FIRST", "0"
+            ).strip().lower() in ("1", "true", "yes", "on")
+            if _answer_first:
+                user_message += (
+                    "RETRIEVED BACKGROUND SUMMARY (machine-generated from a "
+                    f"knowledge base; may be incomplete or awkwardly worded):\n{kg_answer}\n\n"
+                    "Answer the QUESTION above directly, in your own words, as "
+                    "an EU AI Act specialist would. The background summary is "
+                    "reference material, NOT a draft to edit: do not copy its "
+                    "wording or its structure, and do not treat its omissions as "
+                    "gaps you must reproduce. ANSWER THE CURRENT QUESTION ONLY: when the "
+                )
+            else:
+                user_message += (
+                    f"KNOWLEDGE GRAPH ANSWER (draft):\n{kg_answer}\n\n"
+                    "Refine the knowledge-graph draft above into a clear, concise "
+                    "compliance response. ANSWER THE CURRENT QUESTION ONLY: when the "
+                )
             user_message += (
-                f"KNOWLEDGE GRAPH ANSWER (draft):\n{kg_answer}\n\n"
-                "Refine the knowledge-graph draft above into a clear, concise "
-                "compliance response. ANSWER THE CURRENT QUESTION ONLY: when the "
                 "QUESTION contains a conversation history (a 'Latest question:' "
                 "marker or earlier turns), answer the user's LATEST question. Do "
                 "NOT open with, or devote sentences to, provisions raised only in "
