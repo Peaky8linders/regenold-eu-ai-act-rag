@@ -805,6 +805,68 @@ def _openai_wrapper_complete_for_graph_rag(
     return response.text
 
 
+def _stage2_complete(
+    *, system: str, user: str, max_tokens: int, temperature: float = 0.0,
+    complex_question: bool = False, stage_name: str = "Stage",
+) -> str | None:
+    """R313 — one auxiliary LLM call on whichever Stage-2 provider is wired.
+
+    The Stage-2 answer dispatch inside :func:`_claude_max_enhance_answer` is
+    inline and carries a lot of answer-specific machinery (fusion panel, prompt
+    assembly, truncation guards). An auxiliary pass — the faithfulness verifier —
+    needs only the provider SELECTION, so this factors that decision out rather
+    than duplicating the branch or dragging the answer machinery along.
+
+    Provider precedence mirrors the answer path exactly: explicit
+    ``P2P_GRAPH_RAG_PROVIDER=anthropic`` (with a key) uses the SDK, ``=gemini``
+    uses Gemini, everything else uses the Claude Max wrapper.
+
+    Returns ``None`` on ANY failure so the caller keeps whatever it already had.
+    """
+    try:
+        env_provider = os.getenv("P2P_GRAPH_RAG_PROVIDER", "").strip().lower()
+        if env_provider == "anthropic":
+            try:
+                from app.config import settings as _s  # noqa: PLC0415
+                if _s.graph_rag.api_key is not None:
+                    return _anthropic_complete_for_graph_rag(
+                        system=system, user=user, max_tokens=max_tokens,
+                        temperature=temperature,
+                        complex_question=complex_question,
+                        stage_name=stage_name,
+                    )
+            except Exception:  # noqa: BLE001
+                return None
+        if env_provider == "gemini":
+            from app.llm.openai_wrapper_provider import (  # noqa: PLC0415
+                OpenAIWrapperRequest,
+                get_gemini_provider,
+                is_gemini_provider_enabled,
+            )
+            if is_gemini_provider_enabled():
+                resp = get_gemini_provider().complete(
+                    OpenAIWrapperRequest(
+                        system=system, user=user,
+                        model=os.getenv(
+                            "REGENOLD_STAGE2_MODEL_GEMINI", "gemini-2.5-flash"
+                        ),
+                        max_tokens=max_tokens, temperature=temperature,
+                    )
+                )
+                if resp.error or getattr(resp, "finish_reason", None) == "length":
+                    return None
+                return resp.text
+            return None
+        return _openai_wrapper_complete_for_graph_rag(
+            system=system, user=user, max_tokens=max_tokens,
+            temperature=temperature, complex_question=complex_question,
+            stage_name=stage_name,
+        )
+    except Exception:  # noqa: BLE001 — an auxiliary call must never break Stage-2
+        logger.debug("stage2_complete failed", exc_info=True)
+        return None
+
+
 def _anthropic_complete_for_graph_rag(
     *, system: str, user: str, max_tokens: int, temperature: float,
     complex_question: bool = False, stage_name: str = "Stage"
@@ -5772,6 +5834,30 @@ _GROUNDING_REF_CHARS = 1200
 _GROUNDING_SECTION_MARKER = "\nVERBATIM PROVISION TEXT (supporting context"
 
 
+def _grounding_max_refs() -> int:
+    """How many CITED provisions get verbatim text in the Stage-2 block.
+
+    R313 — an env knob over what was a bare module constant. It defaults to
+    ``_GROUNDING_MAX_REFS`` so the wire is byte-identical, but it makes the
+    breadth sweep measurable, which it previously was not: R286 measured live
+    answers citing a mean of 2.93 refs (easy) and 4.02 (hard) against a fixed
+    ceiling of 3, so on the hard split the 4th cited provision routinely has NO
+    verbatim text anywhere in the prompt — while the model is instructed to use
+    the exact statutory terminology of the provisions it cites.
+
+    Deliberately NOT raised here. Breadth changes what the model is shown and so
+    changes the answer AND its citations; that is a separate lever with its own
+    live A/B (hard rule #6), and bundling it into the R313 verification A/B
+    would make neither attributable. Registered in ``_engine_cache_key`` so a
+    two-arm in-process sweep is not silently served from one arm's cache
+    (R263.2).
+    """
+    try:
+        return max(1, min(12, int(os.getenv("REGENOLD_GROUNDING_MAX_REFS", ""))))
+    except (TypeError, ValueError):
+        return _GROUNDING_MAX_REFS
+
+
 def _grounding_ref_budget() -> int:
     """Per-reference verbatim char budget (env-tunable for the A/B sweep).
 
@@ -5838,7 +5924,7 @@ def _render_grounding_text(context: GraphContext) -> list[str]:
         return parts
 
     rendered: list[str] = []
-    for ref in _context_article_refs(context)[:_GROUNDING_MAX_REFS]:
+    for ref in _context_article_refs(context)[:_grounding_max_refs()]:
         try:
             body = select_relevant_paragraphs(ref, question, budget)
         except Exception:  # noqa: BLE001 — a bad ref must not break the block
@@ -7683,6 +7769,50 @@ def _two_stage_generate(
         enhanced = guarded
     except Exception:  # noqa: BLE001 — never break Stage-2 on a guard error
         pass
+
+    # R313 — bounded faithfulness verification (the decoupled second job).
+    #
+    # R312 measured the answer-first framing at +0.100 answer_correctness and
+    # -0.125 citation_faithfulness (0 wins to 5 losses, p=0.062, the strongest
+    # single signal in that round). All five losses are one class: a claim
+    # ATTRIBUTED to a cited provision that the provision's verbatim text does
+    # not support (Article 6(3) credited with Article 6(4)'s documentation duty;
+    # Article 6(2) mischaracterised; Article 3 cited for a definition Article
+    # 3(1) does not contain; Article 101 cited and never described). So the
+    # deterministic draft was doing TWO jobs — capping the answer AND tethering
+    # it to the supplied text — and removing it trades one for the other.
+    #
+    # This pass does the tethering job WITHOUT the cap: it re-checks the
+    # polished answer against the verbatim text of the provisions it actually
+    # cites, and may only re-attribute, qualify or delete. It can never add a
+    # citation (the R142.1 / legal_v2 arithmetic: an added supporting ref is a
+    # loss even when the prose is true) and never gut the answer (the R16/R49
+    # "an over-broad answer beats an empty one" floor). Every failure path keeps
+    # ``enhanced`` untouched.
+    #
+    # DEFAULT OFF pending the live A/B this owes (hard rule #6). Stage-2-only ⇒
+    # davidath is byte-identical BY CONSTRUCTION.
+    try:
+        from app.engines.faithfulness_verify import (  # noqa: PLC0415
+            faithfulness_verify_enabled,
+            verify_and_repair,
+        )
+
+        if faithfulness_verify_enabled():
+            verified, v_action = verify_and_repair(enhanced, resolved_q)
+            if v_action not in ("disabled", "no_citations", "no_ground_truth"):
+                try:
+                    from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                        record_note,
+                    )
+                    record_note(f"faithfulness_verify={v_action}"[:160])
+                except Exception:  # noqa: BLE001 — trace is best-effort
+                    pass
+            if v_action == "repaired":
+                logger.info("faithfulness_verify repaired the Stage-2 answer")
+                enhanced = verified
+    except Exception:  # noqa: BLE001 — a guard must never break Stage-2
+        logger.debug("faithfulness_verify wiring failed", exc_info=True)
 
     return enhanced, True
 

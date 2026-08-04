@@ -1319,6 +1319,22 @@ def _engine_cache_key(
             # the in-process two-arm A/B this flag exists FOR would serve arm
             # A's cached GraphRAGResponse to arm B and measure nothing.
             "REGENOLD_ANSWER_FIRST",
+            # R313 — the bounded faithfulness verification pass rewrites the
+            # Stage-2 answer text (re-attribute / qualify / delete), and the
+            # route derives the wire references FROM that prose, so it flips
+            # both the answer and its citations. Its two budget knobs change
+            # how much verbatim ground truth the verifier sees, which changes
+            # what it repairs — so all three belong in the key, and without
+            # them the in-process two-arm A/B this feature exists FOR would
+            # serve arm A's cached answer to arm B (the R263.2 failure mode).
+            "REGENOLD_ANSWER_VERIFY",
+            "REGENOLD_VERIFY_MAX_REFS",
+            "REGENOLD_VERIFY_REF_CHARS",
+            # R313 — grounding BREADTH (how many cited provisions get verbatim
+            # text). Defaults to the pre-R313 constant so the wire is unchanged,
+            # but it is in the key so the R288 breadth sweep is actually
+            # measurable rather than served from one arm's cache.
+            "REGENOLD_GROUNDING_MAX_REFS",
             # R300 — the two R299 gates were shipped default-ON but never
             # added to this key. Both flip GraphRAGResponse.answer:
             #   * REF_PARTITION restructures the Stage-2 references block
