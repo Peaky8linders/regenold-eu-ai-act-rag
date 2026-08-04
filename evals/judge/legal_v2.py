@@ -708,13 +708,37 @@ def _aggregate_samples(samples: list[dict[str, Any]], axis: str) -> dict[str, An
 # ── per-row / per-axis driver ─────────────────────────────────────────────
 
 
+_DEFAULT_MAX_RETRIES = 5
+"""R309 — retry budget per axis call.
+
+``runner._call_judge_with_retry`` defaults to ``max_retries=1``, which was
+tuned for ``claude-sonnet-4-6`` over a local wrapper. Over the Cloudflare
+tunnel to Claude Max the wrapper intermittently returns
+``api_status_500: "No response from Claude Code"`` — MEASURED transient, not
+deterministic: 5 sequential calls with a byte-identical prompt scored 2 OK /
+3 failed. That error IS already classified retryable (``api_status_5`` is in
+``_RETRYABLE_ERROR_SUBSTRINGS``), so the only gap was the budget: at a ~40%
+per-call success rate, 2 attempts still leaves 0.6**2 = 36% of axis calls
+unrecoverable, which is exactly the "?" (judge_error) rate observed on the
+r309 run — and every one of those is a PAID call whose output is discarded.
+
+6 attempts takes that to 0.6**6 ~= 4.7%. Retries only fire on a failure, so
+this costs nothing on the happy path; it converts already-spent tokens into
+a usable verdict instead of a "?".
+"""
+
+
 def _judge_axis(
     axis: str, r: dict[str, Any], caller: Callable[[str], dict[str, Any]], k: int,
+    retries: int = _DEFAULT_MAX_RETRIES,
 ) -> dict[str, Any]:
     prompt, ctx = _prepare(axis, r)
     samples: list[dict[str, Any]] = []
     for _ in range(max(1, k)):
-        raw, attempts, retried = _call_judge_with_retry(caller, prompt)
+        raw, attempts, retried = _call_judge_with_retry(
+            caller, prompt, max_retries=max(0, retries),
+            backoff_s=4.0, backoff_mult=2.0,   # 4s, 8s, 16s, 32s, 64s — ride out the burst
+        )
         if retried:
             raw = dict(raw)
             raw["_attempts"] = attempts
@@ -726,8 +750,11 @@ def _judge_axis(
     return _aggregate_samples(samples, axis)
 
 
-def _judge_row(r: dict[str, Any], caller: Callable[[str], dict[str, Any]], k: int) -> dict[str, Any]:
-    verdicts = {axis: _judge_axis(axis, r, caller, k) for axis in AXES}
+def _judge_row(
+    r: dict[str, Any], caller: Callable[[str], dict[str, Any]], k: int,
+    retries: int = _DEFAULT_MAX_RETRIES,
+) -> dict[str, Any]:
+    verdicts = {axis: _judge_axis(axis, r, caller, k, retries) for axis in AXES}
     return {"id": r["id"], "category": r["category"], "verdicts": verdicts}
 
 
@@ -820,12 +847,71 @@ def _aggregate(judged: list[dict[str, Any]]) -> dict[str, Any]:
     return agg
 
 
+def _assert_claude_max_transport(provider: str) -> None:
+    """Operator requirement (R309): the judge ALWAYS runs over the
+    Cloudflare tunnel on the Claude Max subscription — never per-token
+    Anthropic API billing.
+
+    This is enforced rather than documented because the failure is silent
+    and expensive in the wrong direction: an accidental
+    ``--provider anthropic`` run produced 4/4 ``judge_error`` rows reading
+    *"Your credit balance is too low to access the Anthropic API"* — every
+    axis lost, and it looked identical to a model failure in the scorecard.
+
+    Refuses to start on a billed provider (override with
+    ``REGENOLD_JUDGE_ALLOW_BILLED=1`` for a deliberate Pro-tier test), and
+    prints the resolved transport so the run's provenance is on the record.
+    """
+    import os
+
+    if provider != "wrapper":
+        if os.environ.get("REGENOLD_JUDGE_ALLOW_BILLED", "").strip().lower() not in (
+            "1", "true", "yes", "on",
+        ):
+            raise SystemExit(
+                f"[legal_v2] REFUSING to run on provider={provider!r}: this judge must "
+                "use the Claude Max subscription via the Cloudflare tunnel "
+                "(--provider wrapper), not per-token billing. Set "
+                "REGENOLD_JUDGE_ALLOW_BILLED=1 to override deliberately."
+            )
+        print(f"[legal_v2] !! BILLED provider={provider} (override active)", flush=True)
+        return
+
+    try:
+        from app.llm.openai_wrapper_provider import (  # noqa: PLC0415
+            get_openai_wrapper_provider,
+            is_openai_wrapper_enabled,
+        )
+        if not is_openai_wrapper_enabled():
+            raise SystemExit(
+                "[legal_v2] wrapper provider is NOT configured — set OPENAI_API_BASE "
+                "to the Cloudflare tunnel (https://.../v1) and OPENAI_API_KEY."
+            )
+        base = str(getattr(get_openai_wrapper_provider(), "_base_url", "") or "")
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001 — never let a provenance probe kill a run
+        print(f"[legal_v2] transport probe failed ({exc}); continuing", flush=True)
+        return
+
+    print(f"[legal_v2] transport: {base}  (Claude Max via wrapper)", flush=True)
+    if base.startswith("http://127.0.0.1") or base.startswith("http://localhost"):
+        print(
+            "[legal_v2] !! transport is LOCALHOST, not the Cloudflare tunnel. "
+            "Set OPENAI_API_BASE=https://wrapper.antifragile-ai.net/v1 to match "
+            "the production path.",
+            flush=True,
+        )
+
+
 def run(
     *, sidecar: Path, label: str, model: str, provider: str,
     timeout_s: float, concurrency: int, limit: int | None,
     samples: int = 1, out_dir: Path | None = None,
+    retries: int = _DEFAULT_MAX_RETRIES,
 ) -> dict[str, Any]:
     set_judge_model(model)
+    _assert_claude_max_transport(provider)
     caller = _resolve_caller(provider, timeout_s)
     all_rows = [_norm(r) for r in _load_rows(sidecar)]
     n_error_rows = sum(1 for r in all_rows if not r["answer"])
@@ -851,7 +937,7 @@ def run(
     t0 = time.monotonic()
 
     def _w(i: int, r: dict[str, Any]):
-        return i, _judge_row(r, caller, k)
+        return i, _judge_row(r, caller, k, retries)
 
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
         futs = [pool.submit(_w, i, r) for i, r in enumerate(rows)]
@@ -958,10 +1044,22 @@ def main(argv: list[str] | None = None) -> int:
             "recommended 3). Cost scales K×."
         ),
     )
+    p.add_argument(
+        "--max-retries", type=int, default=_DEFAULT_MAX_RETRIES,
+        help=(
+            "Retry budget per axis call on RETRYABLE failures only "
+            f"(default {_DEFAULT_MAX_RETRIES}). The Cloudflare-tunnel -> Claude "
+            "Max path returns a transient api_status_500 'No response from "
+            "Claude Code' on a measured ~60%% of calls under load; retries "
+            "only fire on failure, so raising this costs nothing on the happy "
+            "path and stops a paid call being discarded as '?'."
+        ),
+    )
     a = p.parse_args(argv)
     s = run(
         sidecar=a.sidecar, label=a.label, model=a.model, provider=a.provider,
         timeout_s=a.timeout, concurrency=a.concurrency, limit=a.limit, samples=a.samples,
+        retries=a.max_retries,
     )
     print(_fmt(s))
     return 0

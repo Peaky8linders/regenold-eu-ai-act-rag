@@ -478,6 +478,7 @@ def _call_judge_with_retry(
     *,
     max_retries: int = 1,
     backoff_s: float = 4.0,
+    backoff_mult: float = 1.0,
 ) -> tuple[dict[str, Any], int, list[str]]:
     """Invoke ``caller(prompt)`` and retry once on retryable failures.
 
@@ -523,9 +524,18 @@ def _call_judge_with_retry(
             retried_errors.append(str(err))
             return last_result, attempts, retried_errors
         # Retryable + budget remaining — record + back off + loop.
+        #
+        # R309 — ``backoff_mult`` makes the wait EXPONENTIAL when > 1.0.
+        # Default 1.0 keeps the historical fixed-delay behaviour for every
+        # existing caller. Measured motivation: the Cloudflare-tunnel ->
+        # Claude Max path fails in BURSTS, not at a flat rate — the same
+        # prompt scored 2/5 OK in one window and 4/5 in another, and one
+        # axis call lost all 6 attempts. A fixed 4s delay retries straight
+        # back into the same degraded window; widening the gap each time
+        # lets the burst pass instead of hammering through it.
         retried_errors.append(str(err))
         if backoff_s > 0:
-            time.sleep(backoff_s)
+            time.sleep(backoff_s * (max(1.0, backoff_mult) ** retry_idx))
 
     return last_result, attempts, retried_errors
 
