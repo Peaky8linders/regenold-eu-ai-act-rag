@@ -708,6 +708,15 @@ def _aggregate_samples(samples: list[dict[str, Any]], axis: str) -> dict[str, An
 # ── per-row / per-axis driver ─────────────────────────────────────────────
 
 
+_CKPT_EVERY = 10
+"""Rewrite the readable partial scorecard every N completed rows.
+
+Per-row verdicts are appended + flushed to the .ckpt.jsonl immediately (so
+nothing bought is ever lost); this is just how often the aggregated
+``legalv2-<label>.json`` is refreshed so a partial run is inspectable while
+it is still going.
+"""
+
 _DEFAULT_MAX_RETRIES = 5
 """R309 — retry budget per axis call.
 
@@ -908,7 +917,7 @@ def run(
     *, sidecar: Path, label: str, model: str, provider: str,
     timeout_s: float, concurrency: int, limit: int | None,
     samples: int = 1, out_dir: Path | None = None,
-    retries: int = _DEFAULT_MAX_RETRIES,
+    retries: int = _DEFAULT_MAX_RETRIES, resume: bool = False,
 ) -> dict[str, Any]:
     set_judge_model(model)
     _assert_claude_max_transport(provider)
@@ -931,44 +940,90 @@ def run(
             flush=True,
         )
 
+    # ── R309 checkpointing ────────────────────────────────────────────────
+    # A judge run is ~4 paid calls per row over a couple of hours. Before
+    # this, the sidecar was written ONCE at the end, so an interruption threw
+    # away every verdict bought so far — this actually happened: a 72-row run
+    # died at 64/72 and lost all of it. Each completed row is now appended to
+    # a .ckpt.jsonl and flushed immediately, and a readable partial scorecard
+    # is rewritten every _CKPT_EVERY rows. With --resume, already-judged rows
+    # are skipped, so an interrupted run costs only the rows still missing.
+    out_dir = out_dir or Path("evals/bench/results")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ckpt_path = out_dir / f"legalv2-{label}.ckpt.jsonl"
+    dest = out_dir / f"legalv2-{label}.json"
+
+    prior: list[dict[str, Any]] = []
+    if resume and ckpt_path.exists():
+        for line in ckpt_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                prior.append(json.loads(line))
+            except Exception:  # noqa: BLE001 — a torn final line must not kill a resume
+                continue
+        done_ids = {str(r.get("id")) for r in prior}
+        before = len(rows)
+        rows = [r for r in rows if str(r["id"]) not in done_ids]
+        print(
+            f"[legal_v2] resume: {len(prior)} row(s) already judged in {ckpt_path.name}; "
+            f"{len(rows)} of {before} still to do",
+            flush=True,
+        )
+
+    def _write_summary(judged_now: list[dict[str, Any]], *, partial: bool) -> None:
+        summary = {
+            "label": label, "source_sidecar": str(sidecar), "judge_model": model,
+            "provider": provider, "samples": k, "partial": partial,
+            "elapsed_s": round(time.monotonic() - t0, 1),
+            "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "axes": list(AXES), "rows": judged_now, "aggregate": _aggregate(judged_now),
+            "excluded_error_rows": n_error_rows,
+        }
+        dest.write_text(json.dumps(summary, indent=2, default=str), encoding="utf-8")
+
     out: list[dict[str, Any] | None] = [None] * len(rows)
     done = 0
     lock = threading.Lock()
     t0 = time.monotonic()
+    total = len(rows) + len(prior)
+    ckpt_fh = ckpt_path.open("a" if resume else "w", encoding="utf-8")
 
     def _w(i: int, r: dict[str, Any]):
         return i, _judge_row(r, caller, k, retries)
 
-    with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
-        futs = [pool.submit(_w, i, r) for i, r in enumerate(rows)]
-        for fut in as_completed(futs):
-            i, jr = fut.result()
-            out[i] = jr
-            with lock:
-                done += 1
-                vs = {a: (jr["verdicts"].get(a) or {}).get("verdict", "?") for a in AXES}
-                print(
-                    f"  [{done}/{len(rows)}] {str(jr['id'])[:34]:<34} "
-                    f"ans={vs['answer_correctness']} ref={vs['reference_correctness']} "
-                    f"cite={vs['citation_faithfulness']} concise={vs['answer_conciseness']}",
-                    flush=True,
-                )
-    judged = [r for r in out if r is not None]
-    agg = _aggregate(judged)
-    summary = {
-        "label": label, "source_sidecar": str(sidecar), "judge_model": model,
-        "provider": provider, "samples": k,
-        "elapsed_s": round(time.monotonic() - t0, 1),
-        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "axes": list(AXES), "rows": judged, "aggregate": agg,
-        "excluded_error_rows": n_error_rows,
-    }
-    out_dir = out_dir or Path("evals/bench/results")
-    out_dir.mkdir(parents=True, exist_ok=True)
-    dest = out_dir / f"legalv2-{label}.json"
-    dest.write_text(json.dumps(summary, indent=2, default=str), encoding="utf-8")
-    print(f"[legal_v2] sidecar -> {dest}", flush=True)
-    return summary
+    try:
+        with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
+            futs = [pool.submit(_w, i, r) for i, r in enumerate(rows)]
+            for fut in as_completed(futs):
+                i, jr = fut.result()
+                out[i] = jr
+                with lock:
+                    done += 1
+                    ckpt_fh.write(json.dumps(jr, default=str) + "\n")
+                    ckpt_fh.flush()
+                    vs = {a: (jr["verdicts"].get(a) or {}).get("verdict", "?") for a in AXES}
+                    print(
+                        f"  [{len(prior) + done}/{total}] {str(jr['id'])[:34]:<34} "
+                        f"ans={vs['answer_correctness']} ref={vs['reference_correctness']} "
+                        f"cite={vs['citation_faithfulness']} concise={vs['answer_conciseness']}",
+                        flush=True,
+                    )
+                    if done % _CKPT_EVERY == 0:
+                        _write_summary(prior + [r for r in out if r is not None], partial=True)
+                        print(
+                            f"  .. checkpoint: {len(prior) + done}/{total} rows -> "
+                            f"{dest.name} (partial)",
+                            flush=True,
+                        )
+    finally:
+        ckpt_fh.close()
+
+    judged = prior + [r for r in out if r is not None]
+    _write_summary(judged, partial=False)
+    print(f"[legal_v2] sidecar -> {dest}  (checkpoint: {ckpt_path.name})", flush=True)
+    return json.loads(dest.read_text(encoding="utf-8"))
 
 
 def _fmt(s: dict[str, Any]) -> str:
@@ -1055,11 +1110,19 @@ def main(argv: list[str] | None = None) -> int:
             "path and stops a paid call being discarded as '?'."
         ),
     )
+    p.add_argument(
+        "--resume", action="store_true",
+        help=(
+            "Skip rows already present in legalv2-<label>.ckpt.jsonl and append "
+            "to it. An interrupted run then costs only the rows still missing, "
+            "instead of re-buying every verdict."
+        ),
+    )
     a = p.parse_args(argv)
     s = run(
         sidecar=a.sidecar, label=a.label, model=a.model, provider=a.provider,
         timeout_s=a.timeout, concurrency=a.concurrency, limit=a.limit, samples=a.samples,
-        retries=a.max_retries,
+        retries=a.max_retries, resume=a.resume,
     )
     print(_fmt(s))
     return 0
