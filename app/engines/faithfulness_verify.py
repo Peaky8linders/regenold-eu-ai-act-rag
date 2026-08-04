@@ -276,6 +276,33 @@ def build_ground_truth(refs: list[str], *, max_refs: int | None = None,
     for ref in refs:
         _add(ref)
 
+    # R313.1 — the Neo4j Aura hierarchy as an ADDITIONAL evidence source.
+    #
+    # The graph holds 656 Paragraph + 416 Point nodes keyed at exactly the grain
+    # these failures live at, so when a cited ARTICLE is bare ("Article 6") the
+    # graph supplies its paragraph breakdown and the verifier can tell 6(2) from
+    # 6(3) from 6(4). Strictly additive and de-duplicated against what
+    # ``provision_text`` already resolved, and fail-soft: a disabled client or
+    # an unreachable instance simply contributes nothing.
+    try:
+        from app.engines.kg_context import fetch_provision_hierarchy  # noqa: PLC0415
+
+        bare = [r for r in refs if "(" not in r]
+        for row in fetch_provision_hierarchy(bare):
+            cite = str(row.get("cite") or "").strip()
+            m_num = re.search(r"(\d{1,3})", cite)
+            for unit in (row.get("units") or [])[:6]:
+                num = str((unit or {}).get("num") or "").strip()
+                body = " ".join(str((unit or {}).get("text") or "").split())
+                if not (num and body and m_num):
+                    continue
+                sub_ref = f"Art. {m_num.group(1)}({num})"
+                if sub_ref not in seen and len(out) < limit + 4:
+                    seen.add(sub_ref)
+                    out.append((sub_ref, body[:budget]))
+    except Exception:  # noqa: BLE001 — the graph must never break the verifier
+        logger.debug("faithfulness: kg hierarchy unavailable", exc_info=True)
+
     # Sibling paragraphs of any cited sub-provision, so a misattributed claim
     # can be re-pointed at the provision that actually carries it.
     for ref in list(refs):

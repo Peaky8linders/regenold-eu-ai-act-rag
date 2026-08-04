@@ -322,26 +322,46 @@ def _reset_embedded_graph_for_tests() -> None:
 # ── Backend selector ─────────────────────────────────────────────────────────
 
 _BACKEND_ENV = "REGENOLD_GRAPH_BACKEND"
-_DEFAULT_BACKEND = "embedded"
+_DEFAULT_BACKEND = "neo4j"
 
 
 def graph_backend() -> str:
     """Resolve the active graph backend.
 
-    R127 — the default is now ``embedded`` (this in-process SQLite property
-    graph), NOT the hosted Neo4j Aura. Aura kept incurring operational drag
-    (R98 ~20x duplicate nodes, R99.1 empty-graph zero-retrieval, boot
-    auto-seed, free-tier limits) for a ~126-node / ~216-edge static KB graph
-    that does not justify a hosted DB. The embedded backend serves the same
-    2-hop CROSS_REFERENCES neighbours in-process — sub-ms, $0, no network,
-    always in sync with ``KB_VERSION`` (rebuilt from the live registries, so
-    no duplicate-node drift).
+    **R313.1 — the default is ``neo4j`` (hosted Aura) again, per an explicit
+    operator directive: always use the knowledge graph and Neo4j Aura.**
 
-    Returns one of ``embedded`` (default), ``neo4j``, ``rushdb``. Unknown /
-    empty values resolve to the default. ``tests/conftest.py`` pins
-    ``neo4j`` so the historical Neo4j-path tests still exercise that path;
-    the davidath bench leaves ``REGENOLD_GRAPH_2HOP`` unset so the 2-hop is
-    off there regardless of backend → byte-identical.
+    This is a deliberate reversal of R127, and the reasoning that produced R127
+    is worth keeping straight rather than deleting. R127 chose ``embedded``
+    because Aura was pure operational drag (R98 ~20x duplicate nodes, R99.1
+    empty-graph zero-retrieval, boot auto-seed, free-tier limits) for a graph
+    whose only consumer was a 2-hop CROSS_REFERENCES walk over ~126 nodes —
+    something the in-process SQLite mirror does identically, sub-ms and for
+    free. Given that consumer, ``embedded`` was the right call.
+
+    What changed is the consumer, not the cost calculus. The seeded Aura
+    instance is no longer a ~126-node xref mirror: measured this round it holds
+    113 Article / 13 Annex / 656 Paragraph / 416 Point / 180 Recital / 68
+    Definition nodes and 1838 edges (seed ``2026-07-24-r291-fullseed``,
+    kb_version ``2024.1689.v18``). The HAS_PARAGRAPH / HAS_POINT / HAS_SUBPOINT
+    / HAS_RECITAL_ANCHOR hierarchy is real content the embedded mirror does not
+    carry, and :mod:`app.engines.kg_context` now consumes it on the answer path.
+    The R98/R99.1 hazards were duplicate-node drift and empty-graph
+    zero-retrieval; the instance is currently clean (counts verified above) and
+    the R99.1 empty-success KB fallback remains in place as the backstop.
+
+    NOTE the coupling that makes this flip load-bearing rather than cosmetic:
+    ``GraphClient._should_activate`` gates the driver on this selector, so with
+    ``embedded`` the Neo4j client is disabled outright and ``kg_context`` would
+    silently render nothing — the R256 inert-feature trap.
+
+    Returns one of ``neo4j`` (default), ``embedded``, ``rushdb``. Unknown /
+    empty values resolve to the default. Set
+    ``REGENOLD_GRAPH_BACKEND=embedded`` to restore the R127 behaviour (which is
+    also the correct choice for any deploy without Aura credentials — the
+    client simply stays disabled and every graph consumer fails soft to the
+    pre-R313.1 path). The davidath bench leaves ``REGENOLD_GRAPH_2HOP`` unset,
+    so the 2-hop is off there regardless of backend → byte-identical.
     """
     val = os.getenv(_BACKEND_ENV, _DEFAULT_BACKEND).strip().lower()
     return val or _DEFAULT_BACKEND

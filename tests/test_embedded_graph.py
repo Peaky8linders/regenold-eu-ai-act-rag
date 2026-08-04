@@ -180,9 +180,12 @@ class TestNeighbors:
 
 
 class TestBackendSelector:
-    def test_embedded_is_default(self, monkeypatch) -> None:
-        # R127 — embedded is now the default backend (Aura retired as
-        # default). Deleting the env var exercises the CODE default.
+    def test_neo4j_is_default(self, monkeypatch) -> None:
+        # R313.1 — the CODE default is ``neo4j`` again (operator directive:
+        # always use the knowledge graph and Neo4j Aura), reversing R127.
+        # This is load-bearing rather than cosmetic: GraphClient._should_activate
+        # gates the driver on this selector, so under ``embedded`` the
+        # kg_context provision-hierarchy consumer would silently render nothing.
         from app.graph.embedded_graph import (
             embedded_backend_selected,
             graph_backend,
@@ -190,6 +193,20 @@ class TestBackendSelector:
         )
 
         monkeypatch.delenv("REGENOLD_GRAPH_BACKEND", raising=False)
+        assert graph_backend() == "neo4j"
+        assert neo4j_backend_selected() is True
+        assert embedded_backend_selected() is False
+
+    def test_embedded_remains_available_as_an_explicit_opt_out(self, monkeypatch) -> None:
+        # The R127 path is preserved verbatim for any deploy without Aura
+        # credentials — the assertion R313.1 moved off the default, not deleted.
+        from app.graph.embedded_graph import (
+            embedded_backend_selected,
+            graph_backend,
+            neo4j_backend_selected,
+        )
+
+        monkeypatch.setenv("REGENOLD_GRAPH_BACKEND", "embedded")
         assert graph_backend() == "embedded"
         assert embedded_backend_selected() is True
         assert neo4j_backend_selected() is False
@@ -340,16 +357,28 @@ class TestExpand2hopEmbeddedWiring:
             assert ref != "Art. 6"
             assert ref not in exp.hop1_articles  # hop2-only
 
-    def test_default_backend_uses_embedded(self, monkeypatch) -> None:
-        # R127 — backend unset → embedded is the CODE default → the 2-hop
-        # uses the in-process graph (no Neo4j needed). With the env-gate on,
-        # is_enabled() is True via the embedded graph, NOT the Neo4j client.
+    def test_explicit_embedded_backend_uses_the_in_process_graph(self, monkeypatch) -> None:
+        # R127 behaviour, now reached via an explicit opt-out rather than the
+        # default (R313.1 flipped the CODE default to neo4j). With the env-gate
+        # on, is_enabled() is True via the embedded graph and needs no Neo4j.
+        monkeypatch.delenv("NEO4J_URI", raising=False)
+        monkeypatch.setenv("REGENOLD_GRAPH_BACKEND", "embedded")
+        monkeypatch.setenv("REGENOLD_GRAPH_2HOP", "1")
+        from app.engines import graph_expand_2hop as g2
+
+        assert g2.is_enabled() is True
+
+    def test_default_backend_without_aura_credentials_fails_soft(self, monkeypatch) -> None:
+        # R313.1 — the default is neo4j, so a deploy with NO Aura credentials
+        # must degrade quietly rather than error: the client stays disabled and
+        # the 2-hop is simply off. This is the fail-soft contract that makes the
+        # default flip safe for credential-less environments.
         monkeypatch.delenv("NEO4J_URI", raising=False)
         monkeypatch.delenv("REGENOLD_GRAPH_BACKEND", raising=False)
         monkeypatch.setenv("REGENOLD_GRAPH_2HOP", "1")
         from app.engines import graph_expand_2hop as g2
 
-        assert g2.is_enabled() is True
+        assert g2.is_enabled() is False
 
     def test_explicit_neo4j_without_uri_is_disabled(self, monkeypatch) -> None:
         # Explicit neo4j backend but no URI → the Neo4j client stays

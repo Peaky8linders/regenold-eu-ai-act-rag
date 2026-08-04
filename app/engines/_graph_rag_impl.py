@@ -6126,6 +6126,30 @@ def _render_supplementary_sections(context: GraphContext) -> list[str]:
             "\nLEGAL AST LOGICAL EVALUATIONS (supporting context — do not cite as an Article/Annex):\n"
             + "\n".join(f"- {eval_res}" for eval_res in context.ast_evaluations)
         )
+
+    # R313.1 — the Neo4j Aura knowledge graph, on the answer path at last.
+    #
+    # Operator directive: always use the knowledge graph. An audit this round
+    # found the graph healthy and fully seeded (113 Article / 656 Paragraph /
+    # 416 Point / 180 Recital, seed 2026-07-24-r291-fullseed) and contributing
+    # NOTHING, because (a) the backend default was "embedded", (b) R252's
+    # KB-primary gate short-circuits the Neo4j retrieval branch, and (c) the
+    # remaining graph populators need ``request.answers``, which this route
+    # never sets.
+    #
+    # This does NOT undo R252 — it deliberately does the opposite of what R252
+    # removed. It never ranks, never retrieves a candidate and never adds a wire
+    # citation; it walks the PROVISION HIERARCHY and RECITAL ANCHORS of the
+    # provisions already being cited, which is the one thing the flat KB cannot
+    # do, and renders it as explicitly non-citable context. That is also exactly
+    # the grain R312's citation failures live at (Article 6(3) credited with
+    # Article 6(4)'s duty).
+    try:
+        from app.engines.kg_context import render_kg_context  # noqa: PLC0415
+
+        parts.extend(render_kg_context(_context_article_refs(context)))
+    except Exception:  # noqa: BLE001 — the graph must never break an answer
+        logger.debug("kg_context render failed", exc_info=True)
     return parts
 
 
