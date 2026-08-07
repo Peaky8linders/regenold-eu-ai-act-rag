@@ -93,6 +93,29 @@ app/routes/regenold.py
 6. **A/B (`ab_judge`) IS THE MERGE GATE — davidath is NOT.** See the
    Validation policy below. Do not ship an answer-quality / Stage-2 /
    prompt / reference / scope change on "davidath byte-identical" alone.
+7. **`--qa-only` is NOT a gate for a reference change — use the FULL 476.**
+   davidath QA gold is single-article (measured: mean **1.00** refs/row)
+   and structurally cannot show a chain-dropping defect; scenarios carry
+   mean **9.88**. R317's tier-exclusivity rule was clean on five gates then
+   dropped **67 gold across 40 scenarios (0 on QA)**. R318 reproduced the
+   shape exactly: a top-5 reference cap measures **FREE** on the 132-row
+   probe set and on QA (0 gold lost at k=6), and destroys **421 gold on
+   davidath scenarios** (Ref Loose −0.1005). A probe set with small gold
+   sets will call a cap free; only the full 476 can falsify it.
+8. **RECALL GUARD — a reference change must drop ZERO gold.** R142.1's
+   positional clamp lost a live pairwise judge **11-0 (p=0.001)** by
+   dropping gold refs. Any candidate that removes references is measured
+   for `gold_dropped` FIRST; a non-zero count is a rejection, not a
+   trade-off to argue about. "Head-level recall is invariant" is NOT
+   sufficient — both the regenold gold and the grounded judge score at
+   SUB-POINT grain (R287.1).
+9. **ABSENT IS NOT ZERO.** Pre-R302 judged runs emit `wrong_refs: []` even
+   when the row's `failure_mode` prose names the over-citation. Reading
+   that as "no wrong refs" invented **67 phantom regressions** in R317.
+   R318 quantified the trap in the R317 head-table corpus: **349 of 547
+   rows (63.8%) lack the field entirely.** Filter to usable runs
+   (`grounded-r302-*`, `grounded-r304-*`, `grounded-lawstronaut-*`) before
+   computing any rate over judged data.
 
 ## Validation policy — A/B (`ab_judge`), not davidath, is the merge gate
 
@@ -4769,6 +4792,7 @@ post-deploy live re-judge confirms the lift.
 | **97** | 476 davidath (byte-identical to main) + V2 A/B LIVE | mt B 18.0s / QA 7.6ms | mt B 35.6s | — | davidath RefL **0.5502** / RefS **0.4766** / Ans Strict **0.2775** / Tone 1.0 / mt 20/20 / OOS 21/21 / +24 R97 tests | **Adaptive verbatim-vs-synthesis routing — re-engage Sonnet for multi-turn.** R94/R96 left production deterministic + verbatim with the Claude Max wrapper barely used; R96 blanket-disabled Stage-2 under verbatim. R97 decouples them via `app/engines/answer_router.py::select_answer_mode` → VERBATIM (simple QA, fast deterministic) vs SYNTHESIS (multi-turn / nuanced → Sonnet). Route keeps the synthesised answer (verbatim overwrite gated on `stage2_landed`); confidence floor router-aware (multi-turn 0.3). **Multi-turn A/B (V2, n=25, TestClient + live wrapper):** coherence **0.40 → 0.72 (+80% rel)**, kw 0.433 → 0.713, refL 0.587 → 0.747, tone held 1.0; tricky single-turn refL 0.661 → 0.726, kw 0.468 → 0.554. Latency 18 s p50 on the routed subset only (simple QA stays sub-10 ms). davidath 476/476 rows byte-identical to main (provider gate → router inert without wrapper). Harness: `evals/regenold/multiturn_ab.py`. Rollback: `REGENOLD_ANSWER_ROUTER=0`. |
 | **99** | 476 davidath + fresh paper-V4 (64 Q) LOCAL | st 14.2ms / tp 17.3ms / mt 13.5ms | st 469.8ms | — | davidath RefL **0.5502** / RefS **0.4766** / Ans Strict **0.277** / Tone 1.0 / mt 20/20 / OOS 21/21 / 3210 pass + 1 skip | **Semantic-layer rebuild verification + fresh paper-V4 eval set.** Re-ran turboquant + embeddings builders → **byte-identical** assets (R98 already current). Full-coverage audit: BM25 (347 docs), turboquant (279), embeddings (919 sentences), Neo4j seed (505 nodes) **each cover 113/113 articles + 13/13 annexes**; ontology Practice 8 / AnnexIII 8 / Phase 6 with zero dangling citations + Omnibus deferrals wired; definitions 68/68; tree 1412 nodes — **no fixes required**. Fresh paper-V4 set: `scenarios_paper_{singleturn,tricky,multiturn}_v4.py` (20 + 20 + 12 = 64 fresh Q, distinct from V3, all 69 refs resolve) + `run_paper_v4.py` + `validate_paper_v4.py`. Local paper-V4: single-turn refL **0.550** / refS 0.483 / kw 0.667, tricky refL **0.617** / refS 0.567, multi-turn coh 0.167 (live-only Stage-2 lift). davidath byte-identical to R98 (only eval modules + byte-identical assets added). Live paper-V4 + judge re-run queued post-deploy. |
 | **110** | 476 davidath A/B (gate OFF vs ON) + 276 det A/B + live-wire smoke | p50 12.4ms (OFF) / 17.0ms (ON) | 2.6s | — | davidath RefL **0.5965** / RefS **0.4558** / Ans Strict **0.3457** / Tone 1.0 / mt 20/20 / OOS 21/21 / 3412 pass + 1 skip (rebased on #190) | **FRAMES Sufficient-Context bounded multi-hop retrieval.** Deep-research of the FRAMES benchmark ([arXiv:2409.12941](https://arxiv.org/abs/2409.12941): single-step 0.45 → multi-step 0.66, oracle 0.73) + Google's Sufficient-Context Agentic RAG (FramesQA 58.68→93.61%; [arXiv:2411.06037](https://arxiv.org/abs/2411.06037)) → grafted the Sufficient-Context loop-gate in **bounded** form. New `app/engines/sufficient_context.py`: deterministic missing-pieces analysis (`assess_sufficiency`) fires ONE bounded hop (≤3 deterministic sub-query retrievals, NO LLM) when a complex/multi-part question's first pass missed a named anchor or a sub-part; `decompose_question` is verb+clause-initial-guarded (splits "importers AND what must distributors do", not noun-lists). `_merge_graph_context` additive-unions behind the first-pass anchors (never displaces a winner). Every sub-query + source logged to `ReasoningTrace.sub_queries` (glass-box audit lineage on the wire via `?include_reasoning=true`) — the direct rebuttal to the post's "black box" critique. Env-gated `REGENOLD_SUFFICIENT_CONTEXT` (railway.toml ON; bench never reads it → byte-identical). **davidath byte-identical gate ON vs OFF on every axis** (parse+BM25 saturation, the R31/R69 pattern); 276 deterministic 255/255 both arms (refs_within_max 221 vs 219 = noise); OOS 21/21; live smoke surfaced both Art 13+50 via Stage-2 with sub_query provenance on the wire, latency 12-15s = existing Sonnet cost not the gate. The win lands on the production Neo4j path + live judge multi-part axes (deferred: bounded CoVe verify behind a future `REGENOLD_ANSWER_VERIFY`). Analysis: `docs/AGENTIC_RAG_POST_ANALYSIS.md`. |
+| **318** | 476 davidath (byte-identical) + 132-row zero-variance attribution sweep + 12 adversarial validation lanes | 9.9ms | 14.0ms | — | davidath RefL **0.5971** / RefS **0.4748** / Ans Strict **0.3545** / AnsC 0.6143 / Tone **1.0** / mt 20/20 · 276 **255/255** RISK_F1 **1.00** · OOS **0 leaks** · suite **5753 collect, 0 errors** | **P0: the regression guard was DOWN.** Two orphaned R317 test files (whose `app/` implementation had been wiped by a checkout that removed tracked edits but kept untracked files) aborted pytest at collection — 5753 collected, **0 executed**, the R286 failure mode. Rule was measured actively harmful, so tests were retired to `.evalout/r317/orphaned_tests/`, not resurrected. **12 validation lanes falsified 5 of the plan's load-bearing numbers**: rank-0 is **78.3%** not 63.5% (the 63.5% is ALL-gold-top-3 = 0.6357, mislabelled); top-2 coverage **91.5%** not 86%; never-gold heads **11.2%** not 19%; the Annex III 30/52 + Art 5 10/28 table hits ABSENT-IS-NOT-ZERO on **349/547 rows**; kw-recall gap is **+0.021** not +0.051 under the canonical metric (the harness uses substring containment and our answers are 51% longer). **Step 2 (re-rank + clamp) is DEAD** — lead-rerank + top-2 moves gold 23 → 21 (legal splitter) or 23 → **24, worse** (naive); random reordering drops **25.9 ± 2.1**, so the naive variant is indistinguishable from chance (p=0.256). The real blocker is ALL-gold coverage (40.3% @ k=1, 51.2% @ k=2), which re-ranking cannot fix. **A k≥5 cap looked FREE on both recorded arms and destroys 422 gold on davidath** (scenario gold averages 9.88 refs/row) — rejected, hard rule #7. **SHIPPED: `REGENOLD_SUFFICIENT_CONTEXT` default ON → OFF** — the only strictly-dominant result in the first-ever additive-pass attribution sweep (24 passes, zero-variance): **+1 gold GAINED**, 19 fewer non-gold, RefL +0.0038 / RefS +0.0141 / RefC +0.0254, davidath byte-identical. R110.1 had baked it ON on "davidath byte-identical ON vs OFF" — true, and exactly the problem: davidath is BM25-saturated so the hop is a dedup no-op and **the bench is structurally blind to its cost**. Rejected with evidence: `ONTOLOGY_HOP=0` (QA RefL −0.0219, drops gold ⇒ hard rule #8), any global top-k cap, the lead-sentence re-rank. Hard rules **7-9 restored** (they were lost with the R317 wipe). |
 
  
 ## Round 97 — Adaptive verbatim-vs-synthesis routing: re-engage Sonnet for multi-turn (2026-05-30)
@@ -11762,6 +11786,130 @@ shape (signal-driven, gold-protected, floor-protected), not a top-N cut.
   though R70/R98 document adding them. That is **consistent** with the
   pre-Omnibus pin, so it was left alone rather than "fixed" into a
   contradiction — flag for a deliberate decision.
+
+## Round 317 — five over-citation rule families, ALL measured dead (recovered record, 2026-08-07)
+
+⚠ **This entry is a RECONSTRUCTION.** R317's own CLAUDE.md write-up and its
+`app/routes/regenold.py` implementation were **lost** — wiped by a
+`git checkout`/reset that removed *tracked* modifications while leaving
+*untracked* new files (the multi-agent auto-commit hazard). R318 found only the
+orphaned test files, which then **aborted the entire pytest run** (`Interrupted:
+2 errors during collection` — 5753 collected, **0 executed**, the R286 failure
+mode). The rule itself was measured ACTIVELY HARMFUL, so it was not resurrected;
+the tests were moved to `.evalout/r317/orphaned_tests/` and the durable value —
+the negative results below — recorded here instead.
+
+**The prize.** An oracle that drops every non-gold ref gains **Ref Strict
++0.2152 / Ref Conciseness +0.2287 at provably unchanged recall** (0/132 rows
+change Ref Loose) — 197 non-gold refs across 89 of 132 rows. On the FRESH arm
+the ceiling is **larger**: +0.2364 / **+0.3777** (202 refs / 98 rows). Nothing
+below captures any of it.
+
+| family | why it is dead |
+| --- | --- |
+| article-IDENTITY blocklist | the same head is gold on one question and wrong on another. `Article 6` wrong **21** / gold **22**; `Annex III` 23/17; `Article 5` 8/36. Only ~11% of non-gold refs are heads that are never gold |
+| positional / top-N clamp | top-2 drops **23 gold**, top-3 **6**, top-4 **1**. Reproduces R142.1 (lost a live pairwise **11-0, p=0.001**) |
+| prose-driven pruning | structural no-op — **86%** of wrong refs ARE described (R298/R302) |
+| ask-type × provision-role exclusivity | classifier-fragile: two competent implementations of the SAME rule disagree on **30%** of rows and flip the safety verdict from 0 to 11 governing destroyed |
+| Chapter III tier exclusivity | clean on FIVE gates, then falsified by the full 476: Ref Loose **−0.0160**, **67 gold dropped across 40 scenarios (0 on QA)** |
+
+**The generalisable lesson: trimming is a dead end.** No removal rule keyed on
+identity, position, or prose survives.
+
+## Round 318 — the plan's own premises, adversarially falsified; one dominant fix shipped (2026-08-07)
+
+Twelve validation lanes (6 independent re-derivations + 6 adversarial skeptics,
+each defaulting to REFUTED) re-computed every load-bearing R318 number from the
+recorded arms. **Confirmed exactly:** the over-citation ceiling, the entire
+frontier scorecard to 4 dp (132 rows, real pairing, no silent joins), `Article
+6` 21/22, the top-2 clamp cost, and "~25 additive passes" (**24**, all
+route-level). **Falsified:**
+
+| claim | measured |
+| --- | --- |
+| gold at rank 0 = **63.5%** | **78.3%**. Unreproducible under 14 variants × 3 arms. Provenance found: **ALL-gold-within-top-3 = 82/129 = 0.6357** — a top-3 figure mislabelled as rank-0 |
+| gold in top-2 = **86%** | **91.5%** (likely a transcription collision with the R298 "86% of wrong refs are described") |
+| never-gold heads = **19%** | **11.2%** on the named file (19.9% on a *different* arm — corpus mismatch) |
+| Annex III 30/52, Art 5 10/28 | **23/17** and **8/36**. Source corpus hits the ABSENT-IS-NOT-ZERO trap on **349/547 rows** and mixes two gold definitions across two populations |
+| kw-recall +0.0512 ⇒ "answer gap closed" | **+0.0212** under the repo's canonical metric. The harness uses naive substring containment and our answers are **51% longer** — the proxy structurally rewards verbosity |
+
+### Step 2 (re-rank, then clamp) is DEAD — do not re-propose
+
+The lead-sentence signal is real (gold **79%** vs 35%, 2.26× — confirmed) but
+worthless as a re-rank: lead-rerank + top-2 moves gold dropped 23 → **21** with
+the repo's legal sentence splitter and 23 → **24 (worse)** with a naive one.
+**The sign flips on an arbitrary implementation choice.** A null test the plan
+never ran settles it: **random reordering drops 25.9 ± 2.1 gold**, so the naive
+variant is statistically indistinguishable from chance (p=0.256).
+
+The premise was also wrong: rank-0 is already **78.3%**, past the plan's own
+"~85% and a clamp becomes nearly free" threshold, yet top-2 still drops 23 gold.
+The real constraint is **ALL**-gold coverage — **40.3%** at k=1, **51.2%** at
+k=2 — which re-ranking cannot fix, because a 2-slot budget mathematically
+cannot hold 3 gold refs. Plus **6.2%** of rows never surface gold at any rank.
+
+### The k≥5 "free" cap — a probe-set artifact, REJECTED (hard rule #7 in action)
+
+The full top-k curve shows Ref Strict positive at *every* k, with k∈{5,6,7}
+showing **zero** gold loss and flat Ref Loose on **both** recorded arms. It
+looks free. On davidath it destroys **422 gold refs** (scenarios alone: 421,
+Ref Loose **−0.1005**) because scenario gold averages **9.88** refs/row against
+the probe set's small sets. Caught before shipping. This is the R317 shape
+repeating: *clean on one probe set, falsified by the full 476.*
+
+### Step 1 — the ADDITIVE-PASS ATTRIBUTION MAP (measured for the first time)
+
+24 route passes add references; nobody had ever measured which one contributes
+the non-gold. Zero-variance deterministic sweep (`provider=cli`, no LLM), one
+env gate toggled per arm, 132 gold-bearing probe rows.
+
+⚠ **The first run was a broken harness, not a result** — it reported "all 24
+passes drop all gold" because the route's **60/min rate limiter** 429-ed
+everything after ~60 calls. `.evalout/r318/attribution.py` now resets the
+limiter per call (as `evals/regenold/runner.py:470` does) and **raises on any
+non-200** rather than silently scoring a degraded arm.
+
+| pass (OFF) | gold | non-gold cut | ΔLoose | ΔStrict | ΔConc |
+| --- | --- | --- | --- | --- | --- |
+| **`REGENOLD_SUFFICIENT_CONTEXT`** | **+1 GAINED** | **19** | **+0.0038** | **+0.0141** | **+0.0254** |
+| `REGENOLD_ONTOLOGY_HOP` | −1 | 41 | −0.0076 | +0.0188 | +0.0316 |
+| `REGENOLD_ENTITY_BOOST` | 0 | 4 | 0.0000 | +0.0015 | +0.0004 |
+| 10 further passes | 0 | 0 | — | — | inert here |
+
+### SHIPPED — `REGENOLD_SUFFICIENT_CONTEXT` default ON → **OFF**
+
+The only strictly-dominant result in the sweep: it *gains* a gold ref while
+cutting 19 non-gold and lifting all three reference axes. **Mechanism:** R110's
+bounded hop additively unions re-retrieved refs on multi-part questions; where
+BM25 already covers the anchors that union is a no-op, and where it fires for
+real the extra refs are mostly non-gold.
+
+**Why nobody caught this for 200 rounds:** R110.1 baked the default ON on the
+strength of *"davidath byte-identical, gate ON vs OFF"* — which is true and was
+exactly the problem. davidath is BM25-saturated, so the hop is a dedup no-op
+there and **the bench is structurally blind to the gate's cost.** It was shipped
+on the one instrument that could not measure it.
+
+Gates: davidath 476 **byte-identical** with the gate off (all seven axes
++0.0000 across overall/qa/scenarios) · 276-runner **255/255**, RISK_F1 macro
+1.00 · OOS **0 leaks** · `test_sufficient_context` + `test_kb_consistency`
+**100 passed**. Rollback: `REGENOLD_SUFFICIENT_CONTEXT=1`.
+
+### REJECTED with evidence
+
+* `REGENOLD_ONTOLOGY_HOP=0` — a recall-for-precision **trade**, not a win:
+  davidath QA Ref Loose **−0.0219**, Ans Strict −0.0041 (Strict +0.0316 / Conc
+  +0.0262). Drops gold ⇒ hard rule #8. This is the R142.1 shape.
+* Any global top-k cap (above).
+* The lead-sentence re-rank (above).
+
+### Housekeeping
+
+`railway.toml`'s `REGENOLD_SUFFICIENT_CONTEXT = "1"` is commented out and
+annotated **inert** — per R306, `[deploy.envs]` has never applied because
+Railway's `[deploy]` schema has no `envs` key, so it could not have re-enabled
+the gate anyway. `evals/harness/frontier_baseline.py` is now actually committed
+(the R318 plan claimed it was; it was untracked).
 
 ## Non-goals / things to skip
 

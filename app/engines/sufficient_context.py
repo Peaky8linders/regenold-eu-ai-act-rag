@@ -76,28 +76,51 @@ _TRUE = {"1", "true", "yes", "on"}
 
 
 def sufficient_context_enabled() -> bool:
-    """True when the Sufficient-Context gate is active. **Default ON.**
+    """True when the Sufficient-Context gate is active. **Default OFF (R318).**
 
-    R110.1 — baked the default ON in code. R110 first shipped default-OFF +
-    ``REGENOLD_SUFFICIENT_CONTEXT=1`` in ``railway.toml [deploy.envs]``, but a
-    live probe showed the var was NOT applied to the running service (the
-    documented R80.2 phenomenon: Railway can silently ignore a new
-    ``[deploy.envs]`` entry, and dashboard variables override it). The
-    project's R80.2 resolution is to bake the best config as a CODE default
-    rather than rely on ``[deploy.envs]`` — so a fresh deploy activates the
-    gate with no dashboard intervention.
+    HISTORY — and why the default flipped.
 
-    This is **davidath byte-identical** because the gate is ON==OFF on the
-    benchmark (the deterministic parse + BM25 already saturate the corpus →
-    the bounded hop is a dedup no-op locally; measured byte-identical on
-    every axis). The win lands on the production Neo4j path + the live judge.
+    R110 shipped this default-OFF behind ``railway.toml [deploy.envs]``; R110.1
+    baked it default-ON in code after a live probe showed the var never reached
+    the service (the R80.2 phenomenon — later established in R306 as
+    ``[deploy.envs]`` having *never* applied, because Railway's ``[deploy]``
+    schema has no ``envs`` key at all).
 
-    Operators disable explicitly: ``REGENOLD_SUFFICIENT_CONTEXT=0`` (or any
-    falsy value / empty string). Unset = ON.
+    The ON default rested on "davidath byte-identical, gate ON vs OFF" — which
+    is TRUE and was exactly the problem. davidath is BM25-saturated, so the
+    bounded hop is a dedup no-op there and **the benchmark is structurally
+    blind to this gate's cost**. It was shipped on a bench that could not
+    measure it, and nothing else ever did.
+
+    R318 measured it, on the 132-row gold-bearing probe set (V2 tricky +
+    multi-turn — precisely the complex multi-part shapes the gate targets and
+    the only place it actually fires), via a zero-variance deterministic sweep
+    (``provider=cli``, no LLM anywhere, so re-running is exact). Turning the
+    gate OFF is **strictly dominant** on every measured axis:
+
+        gold refs      +1 GAINED (not a recall trade)
+        non-gold refs  19 fewer
+        Ref Loose      +0.0038
+        Ref Strict     +0.0141
+        Ref Conciseness +0.0254
+
+    Mechanism: the hop additively unions re-retrieved refs on multi-part
+    questions. Where BM25 already covers the anchors (davidath) that union is a
+    no-op; where it fires for real, the extra refs are mostly non-gold, and
+    over-citation is the one axis a frontier model still beats us on
+    (Ref Strict −0.048 / Ref Conciseness −0.108 vs ``claude-opus-5``).
+
+    Re-confirmed davidath **byte-identical with the gate OFF** — all seven axes
+    +0.0000 across overall / qa / scenarios — so the regression guard is clean
+    and the probe-set gain is free.
+
+    Operators re-enable explicitly: ``REGENOLD_SUFFICIENT_CONTEXT=1``. Unset =
+    OFF. The decomposition machinery is untouched and still fully tested; only
+    the default changed, so re-enabling is a one-variable rollback.
     """
     val = os.getenv("REGENOLD_SUFFICIENT_CONTEXT")
     if val is None:
-        return True
+        return False
     return val.strip().lower() in _TRUE
 
 
