@@ -36,26 +36,36 @@ def trace():
 # ── Env gates ────────────────────────────────────────────────────────────
 
 
-def test_disabled_by_default_r318(monkeypatch) -> None:
-    """R318 flipped this default ON -> OFF. Pin it so a revert is LOUD.
+def test_enabled_by_default_r319(monkeypatch) -> None:
+    """R319 restored this default OFF -> ON. Pin it so a revert is LOUD.
 
-    R110.1 baked it ON on the strength of "davidath byte-identical, gate ON vs
-    OFF" — which is true and was exactly the problem: davidath is
-    BM25-saturated, so the bounded hop is a dedup no-op there and the bench is
-    structurally blind to the gate's cost.
+    R318 flipped it OFF on a DETERMINISTIC (`provider=cli`) sweep. The live
+    pairwise A/B that CLAUDE.md hard rule #6 names as the merge gate had never
+    been run for this gate — not by R110.1, not by R318. R319 ran it and OFF
+    fails:
 
-    R318 measured it on the 132-row gold-bearing probe set (the complex
-    multi-part shapes where the gate actually fires) with a zero-variance
-    deterministic sweep. Turning it OFF is strictly dominant: +1 gold GAINED,
-    19 fewer non-gold refs, Ref Loose +0.0038 / Strict +0.0141 / Conc +0.0254 —
-    and davidath stays byte-identical on all seven axes, so the regression
-    guard is clean and the gain is free.
+        paired, 35 treatment rows, 2 repeats, measured noise floor
+        ref_loose  A(ON) 0.8143  ->  B(OFF) 0.6786   delta -0.1357
+                   noise +-0.0500 (delta is 2.7x noise), 1 win / 8 losses, p=0.039
 
-    Do not flip this back without re-running that sweep
-    (`.evalout/r318/attribution.py`) and the full 476.
+    ref_loose is the only axis clearing its own noise floor. Turning the gate
+    OFF DROPS GOLD REFERENCES on the live path, which hard rule #8 makes a
+    rejection rather than a trade-off. Corroborated independently by the
+    frontier splice: Ref Loose 0.8636 -> 0.8371 across all 132 rows, moving us
+    from beating claude-opus-5 to a tie.
+
+    WHY THE DETERMINISTIC SWEEP DID NOT TRANSFER: under provider=cli the wire
+    references are pure retrieval; with Stage-2 live they are partly a function
+    of the ANSWER (`_add_prose_named_refs` adds refs the prose names, the R72
+    reconcile drops refs it doesn't describe). Shrinking the grounding context
+    changes the answer, which changes the references.
+
+    Do not flip this back on a deterministic measurement alone — that is
+    exactly the instrument that got this wrong twice. Re-run
+    `.evalout/r319/live_ab.py` (the live paired gate) first.
     """
     monkeypatch.delenv("REGENOLD_SUFFICIENT_CONTEXT", raising=False)
-    assert sc.sufficient_context_enabled() is False
+    assert sc.sufficient_context_enabled() is True
 
 
 @pytest.mark.parametrize("val", ["1", "true", "TRUE", "yes", "on"])

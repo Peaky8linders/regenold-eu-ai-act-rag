@@ -133,6 +133,7 @@ from evals.judge.runner import (  # reuse the battle-tested call plumbing
     set_judge_model,
 )
 from evals.judge.grounded import (  # reuse the sidecar-loading + row-norm plumbing
+    _ANSWER_TEXT_CAP,
     _GOLD_TEXT_CAP,
     _MAX_GOLD_REFS,
     _MAX_PRED_REFS,
@@ -296,7 +297,7 @@ def render_answer_correctness(r: dict[str, Any], union_map: dict[str, str]) -> s
         f"QUESTION: {r['question'][:600]}\n\n"
         "VERBATIM EU AI ACT TEXT (the provisions relevant to this question):\n"
         f"{union_block}\n\n"
-        f"PREDICTED ANSWER: {r['answer'][:1400]}\n\n"
+        f"PREDICTED ANSWER: {r['answer'][:_ANSWER_TEXT_CAP]}\n\n"
         "STEP 1 — decompose the PREDICTED ANSWER into discrete legal "
         "propositions (one assertion each).\n"
         "STEP 2 — for EACH proposition, using ONLY the verbatim text above "
@@ -367,7 +368,7 @@ def render_citation_faithfulness(r: dict[str, Any], pred_map: dict[str, str]) ->
     return (
         _ANTI_SYCOPHANCY + _CALIBRATION_CITE +
         f"QUESTION: {r['question'][:400]}\n\n"
-        f"PREDICTED ANSWER: {r['answer'][:1200]}\n\n"
+        f"PREDICTED ANSWER: {r['answer'][:_ANSWER_TEXT_CAP]}\n\n"
         "VERBATIM TEXT OF EACH CITED PROVISION:\n"
         f"{pred_block}\n\n"
         "For EACH cited provision, decide whether the answer's prose "
@@ -393,7 +394,7 @@ def render_answer_conciseness(r: dict[str, Any]) -> str:
     return (
         _ANTI_SYCOPHANCY + _CALIBRATION_CONCISE +
         f"QUESTION: {r['question'][:500]}\n\n"
-        f"PREDICTED ANSWER: {r['answer'][:1400]}\n\n"
+        f"PREDICTED ANSWER: {r['answer'][:_ANSWER_TEXT_CAP]}\n\n"
         "Judge ONLY what is PRESENT in the answer for load-bearing "
         "relevance to the question asked. Do NOT judge completeness here "
         "— a missing required element is scored on a different axis, not "

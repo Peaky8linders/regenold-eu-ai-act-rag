@@ -65,6 +65,27 @@ _PRED_TEXT_CAP = 6000
 _MAX_GOLD_REFS = 6
 _MAX_PRED_REFS = 8
 
+# R319 — the SAME reasoning as the two caps above, applied to the ANSWER.
+#
+# The answer was rendered as `r['answer'][:1400]` (and [:1200] on the citation
+# axis). Measured on the july7-r309 judged corpus: mean answer length 1413.3
+# chars, so the cap sat ON the median and 50% (36/72) of rows exceeded it, 58%
+# exceeded 1200. The judge was therefore shown a mid-sentence fragment and
+# correctly reported that ITS OWN VIEW looked unfinished / incomplete -- while
+# the wire answer was complete. Verified false failures:
+#   july7-327 failed "omits the decisive profiling-always-high-risk rule";
+#            that rule is present verbatim at char 2007.
+#   july7-249 failed for a missing obligor; "Article 25" is at char 3454.
+#   july7-095 failed on Annex XI/XII; "Article 53(2)" is at char 1595.
+# This contaminated 3 of the 4 axes (answer_correctness, citation_faithfulness,
+# answer_conciseness); reference_correctness never renders the answer and is
+# unaffected. It is the likely driver of the apparent post-R308 "omission"
+# regression: R308 uncapped answer length on the live path and pushed the corpus
+# straight through a judge cap that was never updated.
+#
+# 6000 matches _PRED_TEXT_CAP and clears the observed corpus max (4361) whole.
+_ANSWER_TEXT_CAP = 6000
+
 
 # ── provision-text grounding ────────────────────────────────────────────
 
@@ -125,7 +146,7 @@ def render_answer_correctness(r: dict[str, Any]) -> str:
         f"QUESTION: {r['question'][:600]}\n\n"
         "VERBATIM EU AI ACT TEXT (the provisions relevant to this question):\n"
         f"{gold_text}\n\n"
-        f"PREDICTED ANSWER: {r['answer'][:1400]}\n\n"
+        f"PREDICTED ANSWER: {r['answer'][:_ANSWER_TEXT_CAP]}\n\n"
         "Decompose the answer into atomic legal assertions (Legal Data Points). "
         "Using ONLY the verbatim text above plus well-established AI Act "
         "structure, tag each LDP: correct | incorrect | unsupported. Separately "
@@ -189,7 +210,7 @@ def render_citation_faithfulness(r: dict[str, Any]) -> str:
         "the content of a different provision — is a fail even if the article "
         "number happens to be right.\n\n"
         f"QUESTION: {r['question'][:400]}\n\n"
-        f"PREDICTED ANSWER: {r['answer'][:1200]}\n\n"
+        f"PREDICTED ANSWER: {r['answer'][:_ANSWER_TEXT_CAP]}\n\n"
         "VERBATIM TEXT OF EACH CITED PROVISION:\n"
         f"{pred_text}\n\n"
         "Verdict 'pass' iff EVERY cited provision is faithfully described by the "

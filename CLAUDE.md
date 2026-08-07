@@ -4793,6 +4793,7 @@ post-deploy live re-judge confirms the lift.
 | **99** | 476 davidath + fresh paper-V4 (64 Q) LOCAL | st 14.2ms / tp 17.3ms / mt 13.5ms | st 469.8ms | — | davidath RefL **0.5502** / RefS **0.4766** / Ans Strict **0.277** / Tone 1.0 / mt 20/20 / OOS 21/21 / 3210 pass + 1 skip | **Semantic-layer rebuild verification + fresh paper-V4 eval set.** Re-ran turboquant + embeddings builders → **byte-identical** assets (R98 already current). Full-coverage audit: BM25 (347 docs), turboquant (279), embeddings (919 sentences), Neo4j seed (505 nodes) **each cover 113/113 articles + 13/13 annexes**; ontology Practice 8 / AnnexIII 8 / Phase 6 with zero dangling citations + Omnibus deferrals wired; definitions 68/68; tree 1412 nodes — **no fixes required**. Fresh paper-V4 set: `scenarios_paper_{singleturn,tricky,multiturn}_v4.py` (20 + 20 + 12 = 64 fresh Q, distinct from V3, all 69 refs resolve) + `run_paper_v4.py` + `validate_paper_v4.py`. Local paper-V4: single-turn refL **0.550** / refS 0.483 / kw 0.667, tricky refL **0.617** / refS 0.567, multi-turn coh 0.167 (live-only Stage-2 lift). davidath byte-identical to R98 (only eval modules + byte-identical assets added). Live paper-V4 + judge re-run queued post-deploy. |
 | **110** | 476 davidath A/B (gate OFF vs ON) + 276 det A/B + live-wire smoke | p50 12.4ms (OFF) / 17.0ms (ON) | 2.6s | — | davidath RefL **0.5965** / RefS **0.4558** / Ans Strict **0.3457** / Tone 1.0 / mt 20/20 / OOS 21/21 / 3412 pass + 1 skip (rebased on #190) | **FRAMES Sufficient-Context bounded multi-hop retrieval.** Deep-research of the FRAMES benchmark ([arXiv:2409.12941](https://arxiv.org/abs/2409.12941): single-step 0.45 → multi-step 0.66, oracle 0.73) + Google's Sufficient-Context Agentic RAG (FramesQA 58.68→93.61%; [arXiv:2411.06037](https://arxiv.org/abs/2411.06037)) → grafted the Sufficient-Context loop-gate in **bounded** form. New `app/engines/sufficient_context.py`: deterministic missing-pieces analysis (`assess_sufficiency`) fires ONE bounded hop (≤3 deterministic sub-query retrievals, NO LLM) when a complex/multi-part question's first pass missed a named anchor or a sub-part; `decompose_question` is verb+clause-initial-guarded (splits "importers AND what must distributors do", not noun-lists). `_merge_graph_context` additive-unions behind the first-pass anchors (never displaces a winner). Every sub-query + source logged to `ReasoningTrace.sub_queries` (glass-box audit lineage on the wire via `?include_reasoning=true`) — the direct rebuttal to the post's "black box" critique. Env-gated `REGENOLD_SUFFICIENT_CONTEXT` (railway.toml ON; bench never reads it → byte-identical). **davidath byte-identical gate ON vs OFF on every axis** (parse+BM25 saturation, the R31/R69 pattern); 276 deterministic 255/255 both arms (refs_within_max 221 vs 219 = noise); OOS 21/21; live smoke surfaced both Art 13+50 via Stage-2 with sub_query provenance on the wire, latency 12-15s = existing Sonnet cost not the gate. The win lands on the production Neo4j path + live judge multi-part axes (deferred: bounded CoVe verify behind a future `REGENOLD_ANSWER_VERIFY`). Analysis: `docs/AGENTIC_RAG_POST_ANALYSIS.md`. |
 | **318** | 476 davidath (byte-identical) + 132-row zero-variance attribution sweep + 12 adversarial validation lanes | 9.9ms | 14.0ms | — | davidath RefL **0.5971** / RefS **0.4748** / Ans Strict **0.3545** / AnsC 0.6143 / Tone **1.0** / mt 20/20 · 276 **255/255** RISK_F1 **1.00** · OOS **0 leaks** · suite **5753 collect, 0 errors** | **P0: the regression guard was DOWN.** Two orphaned R317 test files (whose `app/` implementation had been wiped by a checkout that removed tracked edits but kept untracked files) aborted pytest at collection — 5753 collected, **0 executed**, the R286 failure mode. Rule was measured actively harmful, so tests were retired to `.evalout/r317/orphaned_tests/`, not resurrected. **12 validation lanes falsified 5 of the plan's load-bearing numbers**: rank-0 is **78.3%** not 63.5% (the 63.5% is ALL-gold-top-3 = 0.6357, mislabelled); top-2 coverage **91.5%** not 86%; never-gold heads **11.2%** not 19%; the Annex III 30/52 + Art 5 10/28 table hits ABSENT-IS-NOT-ZERO on **349/547 rows**; kw-recall gap is **+0.021** not +0.051 under the canonical metric (the harness uses substring containment and our answers are 51% longer). **Step 2 (re-rank + clamp) is DEAD** — lead-rerank + top-2 moves gold 23 → 21 (legal splitter) or 23 → **24, worse** (naive); random reordering drops **25.9 ± 2.1**, so the naive variant is indistinguishable from chance (p=0.256). The real blocker is ALL-gold coverage (40.3% @ k=1, 51.2% @ k=2), which re-ranking cannot fix. **A k≥5 cap looked FREE on both recorded arms and destroys 422 gold on davidath** (scenario gold averages 9.88 refs/row) — rejected, hard rule #7. **SHIPPED: `REGENOLD_SUFFICIENT_CONTEXT` default ON → OFF** — the only strictly-dominant result in the first-ever additive-pass attribution sweep (24 passes, zero-variance): **+1 gold GAINED**, 19 fewer non-gold, RefL +0.0038 / RefS +0.0141 / RefC +0.0254, davidath byte-identical. R110.1 had baked it ON on "davidath byte-identical ON vs OFF" — true, and exactly the problem: davidath is BM25-saturated so the hop is a dedup no-op and **the bench is structurally blind to its cost**. Rejected with evidence: `ONTOLOGY_HOP=0` (QA RefL −0.0219, drops gold ⇒ hard rule #8), any global top-k cap, the lead-sentence re-rank. Hard rules **7-9 restored** (they were lost with the R317 wipe). |
+| **319** | 476 davidath (identical ON vs OFF) + **live paired A/B, 35 treatment rows x 2 arms x 2 repeats, measured noise floor** + frontier splice (132 paired) | 34.4ms | 53.1ms | — | davidath RefL **0.5971** / RefS **0.4748** / Ans Strict **0.3545** / AnsC 0.6143 / Tone **1.0** / mt 20/20 · 276 **0 fails** · OOS **0 leaks** · suite **5773 collect, 0 errors** | **R318's merge gate finally run — and its flip is REVERTED.** R318 shipped `REGENOLD_SUFFICIENT_CONTEXT` ON→OFF on a DETERMINISTIC sweep; the live pairwise A/B that hard rule #6 names as the merge gate had never been run for this gate (not by R110.1, not by R318). **Powered by SAMPLING**: a zero-variance pre-pass found the flip changes the Stage-2 prompt on only **35 of 132 rows** (mean **11,187 chars** and 440 obligations removed; worst rows inflate obligations 1→19, 1→21, 5→40) — the other 97 get a byte-identical prompt and are guaranteed ties that dilute the effect (the R308 pooling error). So the A/B ran the treatment population only, 140 live calls instead of 264, with the freed budget buying **2 repeats per arm** (engine LRU cleared between them) = the measured noise floor every prior round lacked. Result: **ref_loose 0.8143 → 0.6786, delta −0.1357 at a ±0.0500 noise floor (2.7x), 1 win / 8 losses, p=0.039** — the ONLY axis clearing its own noise. Both answer proxies came in SMALLER than the noise ⇒ not a result either way. Dropping gold is a rejection under hard rule #8. Corroborated by the frontier splice: Ref Loose **0.8636 → 0.8371** across all 132, moving us from BEATING `claude-opus-5` (0.8396) to a tie; the two estimates agree once diluted 35/132. **Why the zero-variance sweep didn't transfer** (generalisable): with Stage-2 live the wire refs are partly a FUNCTION OF THE ANSWER (`_add_prose_named_refs` adds what the prose names, the R72 reconcile drops what it doesn't), so shrinking context changes the answer and hence the references — a deterministic reference measurement is NOT a valid proxy for the live reference axes. Does NOT vindicate the hop: added content measures **2.5% gold precision** (10/401 keys) with crowding-out demonstrated on `st_v4_013` (kw 1.0→0.0 on a gold article that WAS in the inflated context) — it is unfiltered, not good; a bounded redesign is the next lever. **Also fixed: the LLM judge could not see the answers it scored** — `answer[:1400]` against a corpus whose mean answer is **1413.3 chars** (50% over the cap); 3 false failures verified by reading the text (`july7-327` failed for omitting a rule present at char 2007). ⚠ The tempting overclaim is REFUTED: `reference_correctness` never renders the answer yet has the LARGEST long-row failure gap (+0.400 vs +0.250), so length is a proxy for difficulty and the "omission profile is an artifact" claim is NOT supported. **And `_article_key` was not idempotent for Annexes** (`annexiv`→`""`), silently dropping every Annex from the covered set. +20 tests, mutation-tested (11 fail under pre-R319 behaviour). |
 
  
 ## Round 97 — Adaptive verbatim-vs-synthesis routing: re-engage Sonnet for multi-turn (2026-05-30)
@@ -11910,6 +11911,129 @@ annotated **inert** — per R306, `[deploy.envs]` has never applied because
 Railway's `[deploy]` schema has no `envs` key, so it could not have re-enabled
 the gate anyway. `evals/harness/frontier_baseline.py` is now actually committed
 (the R318 plan claimed it was; it was untracked).
+
+## Round 319 — R318's merge gate, finally run: the flip is REVERTED; and the judge could not see the answers it was scoring (2026-08-07)
+
+R318 shipped its default flip on a **deterministic** sweep. The live pairwise
+A/B that hard rule #6 names as the merge gate had never been run for this gate —
+not by R110.1, not by R318. R319 ran it. **OFF fails, and the default is back ON.**
+
+### The gate — powered by SAMPLING, not by running everything
+
+A zero-variance pre-pass (`.evalout/r319/context_delta.py`) measured which rows
+the flip can move AT ALL: the hop mutates `context.obligations` in place and that
+same object feeds `_build_context_references_block` → the Stage-2 user message.
+Result: the Stage-2 prompt differs on **35 of 132 rows**, losing a mean of
+**11,187 chars** and 440 obligations (worst rows inflate obligations 1 → 19,
+1 → 21, 5 → 40). The other **97 rows get a byte-identical prompt** — guaranteed
+ties that can only dilute the effect, which is the pooling error that made
+R308's n=40 run unresolvable.
+
+So the A/B ran the 35-row TREATMENT population only, with **2 repeats per arm**
+(engine LRU cleared between them, else a repeat is a cache hit and the noise
+floor reads a fake zero). 140 live calls instead of 264 — 47% cheaper and
+strictly more powerful, with the freed budget buying the thing every prior round
+lacked: a **measured** noise floor to read the delta against.
+
+| axis | A (ON) | B (OFF) | delta | noise ± | B>A / A>B / tie | p |
+| --- | --- | --- | --- | --- | --- | --- |
+| **ref_loose** | **0.8143** | **0.6786** | **−0.1357** | 0.0500 | 1 / 8 / 26 | **0.039** |
+| ref_strict | 0.5804 | 0.5259 | −0.0546 | 0.0298 | 3 / 10 / 22 | 0.092 |
+| kw_canonical | 0.8007 | 0.7798 | −0.0210 | 0.0433 | 5 / 7 / 23 | 0.774 |
+| ref_conc | 0.4054 | 0.4487 | +0.0433 | 0.0509 | 6 / 5 / 24 | 1.000 |
+| tone | 1.0000 | 1.0000 | 0.0000 | 0.0000 | 0 / 0 / 35 | 1.000 |
+
+`ref_loose` is the **only** axis whose delta clears its own noise floor (2.7×),
+and the only significant result. Everything else — including both answer proxies
+— is smaller than the noise and is **not a result**. Turning the gate OFF drops
+gold references on the live path, which hard rule #8 makes a rejection, not a
+trade-off. Independently corroborated by the frontier splice: across all 132 rows
+Ref Loose falls **0.8636 → 0.8371**, moving us from BEATING `claude-opus-5`
+(0.8396) to a tie. The two estimates agree once the treatment-only effect is
+diluted 35/132.
+
+### Why R318's zero-variance measurement did not transfer — the generalisable lesson
+
+Under `provider=cli` the wire references are pure retrieval, so a deterministic
+sweep measures them exactly. With Stage-2 live they are partly a **function of
+the generated answer**: `_add_prose_named_refs` adds refs the prose names and the
+R72 reconcile drops refs the prose doesn't describe. Shrinking the grounding
+context changes the answer, which changes the references. **A deterministic
+reference measurement is not a valid proxy for the live reference axes** — a
+second blind spot in that instrument, beyond the answer-side one R318 
+acknowledged. This is now the third time an instrument that looked authoritative
+was structurally blind to the thing being decided (R110.1 davidath, R318
+provider=cli, R319 the judge below).
+
+This does **not** vindicate the hop as built. Its added content measures at
+**2.5% gold precision** (10 of 401 added article-keys; 106 distinct non-gold keys
+vs 5 distinct gold), and crowding-out is demonstrated on `st_v4_013`, where the
+correct Article 50 obligation was present in the inflated context and still got
+dropped (kw recall 1.0 → 0.0). The hop is **unfiltered, not good**. A bounded
+redesign — cap the merged obligations, require term overlap with the ORIGINAL
+question, fix the annex-key bug below — would plausibly beat both extremes. Until
+that exists, ON is the state the live gate supports.
+
+### The judge could not see the answers it was scoring
+
+`evals/judge/grounded.py` and `legal_v2.py` rendered `answer[:1400]` (and
+`[:1200]` on the citation axis). Measured on the july7-r309 judged corpus: mean
+answer length **1413.3 chars** — the cap sat exactly on the median — with **50%**
+(36/72) of rows over it and 58% over 1200. Three false failures verified by
+reading the text: `july7-327` was failed for *"omits the decisive
+profiling-always-high-risk rule"*, present verbatim at char 2007; `july7-249`
+("Article 25" at char 3454); `july7-095` ("Article 53(2)" at char 1595).
+
+Raised to `_ANSWER_TEXT_CAP = 6000`, matching the `_PRED_TEXT_CAP` convention
+already in the same file and clearing the corpus max (4361) whole. Affects
+`answer_correctness`, `citation_faithfulness` and `answer_conciseness`;
+`reference_correctness` never renders the answer.
+
+⚠ **The tempting overclaim is REFUTED — do not repeat it.** "62% of
+answer_correctness failures are on >1400-char rows, therefore contaminated" is
+confounded: `reference_correctness`, which never sees the answer, has the
+**largest** long-vs-short failure gap of any axis (+0.400 vs answer_correctness's
++0.250; all three answer-rendering axes show NEGATIVE excess against that
+control). Long answers are simply harder rows. So specific false failures are
+verified, but the "omission-dominant profile is an artifact" claim is **not**
+supported, and no prior conclusion should be revised until a re-judge runs. Note
+the fix may move axes in EITHER direction — on `citation_faithfulness` truncation
+likely caused false PASSES (fewer visible claims to fault), so that axis may get
+worse when the judge can see the whole answer.
+
+### `_article_key` was not idempotent for annexes
+
+`_ART_KEY_RE` uses `\s*` so `art6` survives a second pass; `_ANNEX_KEY_RE` uses
+`\s+` so `annexiv` → `""`. The engine double-normalises
+(`_covered_article_keys` → `assess_sufficiency`), so **every Annex silently
+dropped out of the covered set**, and the hop's high-precision
+`uncovered_explicit_refs` path fired on refs that were already covered (2 probe
+rows, both false positives that then re-fetched nothing). Fixed by matching the
+already-normalised shape rather than loosening the regex — the conservative
+option, which cannot create a new match on free prose.
+
+### Gates
+
+| gate | result |
+| --- | --- |
+| davidath FULL 476 | Ans Strict **0.3545** · Ans Loose 0.1884 · Ans Conc 0.6143 · Ref Loose **0.5971** · Ref Strict **0.4748** · Tone **1.0** · mt **20/20** — matches the documented baseline |
+| 276-runner | **0 failures**, all categories |
+| OOS probe (`--oos-suite all`) | **0 leaks** (only the 2 documented `adjacent_eu` wrong-reason soft fails) |
+| suite | **5773 collected, 0 errors**; +20 new tests, all mutation-tested (11 fail under pre-R319 behaviour) |
+
+The `_article_key` change was proven **unreachable** at the shipped default
+rather than argued: 0 calls across 4 route calls.
+
+### New instruments (reusable)
+
+* `.evalout/r319/context_delta.py` — zero-variance treatment-population finder.
+  **Run this before any live A/B of a context-affecting flag**: it tells you
+  which rows can move, so the live budget goes where the signal is.
+* `.evalout/r319/live_ab.py` — paired live A/B with repeats and a measured noise
+  floor. Clears the engine LRU between repeats.
+* `.evalout/r319/sota_compare.py` — frontier compare at zero extra live cost by
+  splicing fresh treatment rows into a recorded arm (valid only while the diff
+  under test touches nothing else — verify with `git show --stat`).
 
 ## Non-goals / things to skip
 
