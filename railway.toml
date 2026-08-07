@@ -225,7 +225,25 @@ REGENOLD_GRAPH_AWARE = "1"
 # the production Neo4j path + the live judge axes. Tune the hop cap with
 # ``REGENOLD_SUFFICIENT_CONTEXT_MAX_HOPS`` (default 3, clamp [1,5]).
 #
-# R318 — THE CODE DEFAULT IS NOW **OFF**, and this line is inert.
+# R319 — THE CODE DEFAULT IS BACK **ON**. This line remains inert either way
+# (see correction 1 below); the code default is what governs.
+#
+# R318 flipped the default OFF on a DETERMINISTIC (provider=cli) sweep. The
+# live pairwise A/B that hard rule #6 names as the merge gate had never been
+# run for this gate. R319 ran it (35 treatment rows, 2 repeats, measured noise
+# floor) and OFF FAILS: Ref Loose 0.8143 -> 0.6786, delta -0.1357 at a +-0.0500
+# noise floor, 1 win / 8 losses, p=0.039 — the only axis clearing its own
+# noise. Dropping gold refs is a rejection under hard rule #8, not a trade.
+#
+# The deterministic sweep did not transfer because with Stage-2 live the wire
+# references are partly a FUNCTION OF THE ANSWER (_add_prose_named_refs adds
+# refs the prose names; the R72 reconcile drops refs it doesn't describe), so
+# shrinking the grounding context changes the answer and hence the references.
+#
+# Disable explicitly (dashboard/service var, NOT this file):
+#   railway variables --set REGENOLD_SUFFICIENT_CONTEXT=0
+#
+# ---- superseded R318 note, kept for the record ----
 #
 # Two separate corrections to the R110.1 note that used to sit here:
 #   1. R306 established that ``[deploy.envs]`` has NEVER applied at all —

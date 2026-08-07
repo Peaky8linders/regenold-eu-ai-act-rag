@@ -76,7 +76,58 @@ _TRUE = {"1", "true", "yes", "on"}
 
 
 def sufficient_context_enabled() -> bool:
-    """True when the Sufficient-Context gate is active. **Default OFF (R318).**
+    """True when the Sufficient-Context gate is active. **Default ON (R319).**
+
+    R319 — THE DEFAULT IS BACK ON. R318 flipped it OFF on a DETERMINISTIC
+    sweep; the live pairwise A/B that CLAUDE.md hard rule #6 names as the merge
+    gate had never been run for it. R319 ran it, and OFF fails.
+
+    Paired live A/B, `provider=openai_wrapper` (Claude Max, Opus 5 Stage-2), on
+    the 35-row TREATMENT population -- the only rows whose Stage-2 grounding
+    context the flip actually changes, measured with zero variance beforehand
+    (`.evalout/r319/context_delta.py`). 2 repeats per arm with the engine LRU
+    cleared between them, so the delta is read against a MEASURED noise floor
+    rather than assumed:
+
+        axis            A(ON)    B(OFF)     delta    noise+-   B>A/A>B/tie    p
+        ref_loose      0.8143    0.6786   -0.1357     0.0500     1 / 8 / 26  0.039
+        ref_strict     0.5804    0.5259   -0.0546     0.0298     3 /10 / 22  0.092
+        kw_canonical   0.8007    0.7798   -0.0210     0.0433     5 / 7 / 23  0.774
+        ref_conc       0.4054    0.4487   +0.0433     0.0509     6 / 5 / 24  1.000
+        tone           1.0000    1.0000   +0.0000     0.0000     0 / 0 / 35  1.000
+
+    ``ref_loose`` is the ONLY axis whose delta clears its own noise floor
+    (2.7x), and it is the only significant result. **Turning the gate OFF drops
+    gold references on the live path** -- hard rule #8: "a reference change must
+    drop ZERO gold; a non-zero count is a rejection, not a trade-off to argue
+    about." Independently corroborated by the frontier splice
+    (`.evalout/r319/sota_compare.py`): across all 132 rows Ref Loose falls
+    0.8636 -> 0.8371, moving us from BEATING `claude-opus-5` (0.8396) to a tie.
+    The two estimates agree once the treatment-only effect is diluted 35/132.
+
+    WHY R318's ZERO-VARIANCE MEASUREMENT DID NOT TRANSFER -- the generalisable
+    lesson. Under ``provider=cli`` the wire references are pure retrieval, so a
+    deterministic sweep measures them exactly. With Stage-2 live they are partly
+    a FUNCTION OF THE GENERATED ANSWER: ``_add_prose_named_refs`` adds refs the
+    prose names and the R72 reconcile drops refs the prose does not describe. So
+    shrinking the grounding context changes the answer, which changes the
+    references. A deterministic reference measurement is therefore NOT a valid
+    proxy for the live reference axes -- a second blind spot in that instrument,
+    beyond the answer-side one R318 already acknowledged.
+
+    This does NOT vindicate the hop as built. R319's qualitative audit measured
+    what it adds at **2.5% gold precision** (10 of 401 added article-keys; 106
+    distinct non-gold keys vs 5 distinct gold), and demonstrated crowding-out on
+    `st_v4_013`, where the correct Article 50 obligation was present in the
+    inflated context and still got dropped (kw recall 1.0 -> 0.0). The honest
+    reading is that the hop is unfiltered, not that it is good: a bounded
+    redesign (cap the merged obligations, require term overlap with the ORIGINAL
+    question, fix the annex-key bug below) would plausibly beat both extremes.
+    Until that exists, ON is the state the live gate supports.
+
+    Operators disable explicitly: ``REGENOLD_SUFFICIENT_CONTEXT=0``.
+
+    ---- superseded R318 rationale, kept for the record ----
 
     HISTORY — and why the default flipped.
 
@@ -120,7 +171,7 @@ def sufficient_context_enabled() -> bool:
     """
     val = os.getenv("REGENOLD_SUFFICIENT_CONTEXT")
     if val is None:
-        return False
+        return True  # R319 — see the live A/B above; R318's OFF dropped gold.
     return val.strip().lower() in _TRUE
 
 
@@ -178,9 +229,30 @@ _ART_KEY_RE = re.compile(r"\bart(?:icle|\.)?\s*0*(\d{1,3})\b", re.IGNORECASE)
 # `annexiv` / `annex4`. Both forms are normalised lower-case.
 _ANNEX_KEY_RE = re.compile(r"\bannex\s+([ivxlcdm]+|\d{1,2})\b", re.IGNORECASE)
 
+# R319 — an ALREADY-normalised key is returned unchanged, so this function is
+# idempotent.
+#
+# It was not, and only for annexes: `_ANNEX_KEY_RE` requires whitespace between
+# "annex" and the numeral, which a normalised key (`annexiv`) does not have, so
+# `_article_key(_article_key("Annex IV")) == ""`. Article keys survived a second
+# pass purely because `_ART_KEY_RE` uses `\s*` (`art6` -> `art6`).
+#
+# That matters because the engine DOUBLE-normalises: `_graph_rag_impl.
+# _covered_article_keys` already returns keys, and `assess_sufficiency` then
+# re-keys them (`covered_keys = {_article_key(a) for a in covered_articles}`).
+# So every Annex in the covered set silently vanished, and the high-precision
+# `uncovered_explicit_refs` path fired on Annex refs that were ALREADY covered
+# — measured on 2 probe rows, both false positives that then re-fetched nothing.
+#
+# Matching the normalised shape (rather than loosening `_ANNEX_KEY_RE` to `\s*`)
+# is the conservative fix: it cannot introduce a new match on free prose.
+_NORMALISED_KEY_RE = re.compile(r"^(?:art\d{1,3}|annex(?:[ivxlcdm]+|\d{1,2}))$")
+
 
 def _article_key(ref: str) -> str:
     """Normalise an article / annex reference string to a comparison key.
+
+    Idempotent: ``_article_key(_article_key(x)) == _article_key(x)``.
 
     Returns ``""`` when no article/annex token is present — callers treat the
     empty key as "not an article reference" and skip it (so a bare obligation
@@ -188,6 +260,8 @@ def _article_key(ref: str) -> str:
     """
     if not ref:
         return ""
+    if _NORMALISED_KEY_RE.match(ref):
+        return ref
     m = _ART_KEY_RE.search(ref)
     if m:
         return f"art{int(m.group(1))}"
