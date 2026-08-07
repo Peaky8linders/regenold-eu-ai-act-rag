@@ -37,10 +37,18 @@ class TestScenarioClassifierFindings:
         assert "Art. 27" not in prohibited
 
     def test_art_6_3_narrow_non_profiling_derogation(self):
-        # Annex III recruitment/CV screening system doing narrow procedural task without profiling
+        # Annex III recruitment/CV screening system doing narrow procedural task without profiling.
+        # R321 — the fixture now asserts the Article 6(3) FIRST SUBPARAGRAPH too
+        # ("does not pose a significant risk of harm ... including by not
+        # materially influencing the outcome of decision making"). (a)-(d) gate
+        # WHEN subparagraph 1 is available; they do not replace its own test.
+        # Without this the detector derogated a candidate-RANKING system, which
+        # Annex III 4(a) covers expressly.
         q = (
             "We are a deployer using an AI system for CV screening that performs a narrow "
-            "procedural task of formatting and de-duplication without profiling natural persons."
+            "procedural task of formatting and de-duplication without profiling natural persons, "
+            "and that does not pose a significant risk of harm because it does not materially "
+            "influence the outcome of decision making."
         )
         v = classify_scenario_query(q)
         assert v is not None

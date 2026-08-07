@@ -182,7 +182,9 @@ class TestDerogationAndExemptionScope:
 
         v = classify_scenario_query(
             "We are a provider offering a system intended to perform a narrow "
-            "procedural task, to de-duplicate records, in the recruitment domain."
+            "procedural task, to de-duplicate records, that does not pose a "
+            "significant risk of harm and does not materially influence the "
+            "outcome of decision making, in the recruitment domain."
         )
         assert v is not None
         assert v.risk_level == "art6_3_derogated"
@@ -245,3 +247,83 @@ class TestDeploySafety:
 
         monkeypatch.setenv("REGENOLD_HEALTHZ_PROBE", val)
         assert _healthz_probe_enabled() is expected
+
+
+# ── Article 6(3) first-subparagraph limb + Art 49(2) addressee (Critical) ────
+
+
+class TestArticle63FirstSubparagraph:
+    """Art 6(3) needs BOTH limbs, not just one of (a)-(d).
+
+    Verbatim: "shall not be considered to be high-risk WHERE IT DOES NOT POSE
+    A SIGNIFICANT RISK OF HARM ... INCLUDING BY NOT MATERIALLY INFLUENCING THE
+    OUTCOME OF DECISION MAKING. The first subparagraph shall apply where any of
+    the following conditions is fulfilled: (a)...(d)".
+
+    REPRODUCED through the real route before the fix: a system that screens and
+    evaluates job applicants and RANKS candidates was answered with "Under
+    Article 6(3), this system is derogated from high-risk classification" —
+    while Annex III 4(a) covers exactly that ("to analyse and filter job
+    applications, and to evaluate candidates").
+    """
+
+    def test_a_candidate_ranking_system_is_not_derogated(self) -> None:
+        from app.engines.scenario_classifier import classify_scenario_query
+
+        v = classify_scenario_query(
+            "We are a provider offering an AI system intended to screen and "
+            "evaluate job applicants. It de-duplicates candidate records and "
+            "ranks candidates for the recruitment shortlist."
+        )
+        assert v is not None
+        assert v.risk_level != "art6_3_derogated"
+
+    def test_the_derogation_still_fires_when_both_limbs_are_present(self) -> None:
+        """The fix must not make the branch inert."""
+        from app.engines.scenario_classifier import classify_scenario_query
+
+        v = classify_scenario_query(
+            "We are a provider offering a system intended to perform a narrow "
+            "procedural task that does not pose a significant risk of harm and "
+            "does not materially influence the outcome of decision making, in "
+            "the recruitment domain."
+        )
+        assert v is not None
+        assert v.risk_level == "art6_3_derogated"
+
+
+class TestArticle492Addressee:
+    """Verbatim Art 49(2): "...THAT PROVIDER OR, WHERE APPLICABLE, THE
+    AUTHORISED REPRESENTATIVE shall register themselves and that system in the
+    EU database". Art 6(4) names the same addressee. A deployer / importer /
+    distributor is neither party.
+
+    REPRODUCED live before the fix: "The deployer must document the
+    self-assessment and register the system in the EU AI database pursuant to
+    Article 49(2)" — a fabricated obligation at a named sub-point.
+    """
+
+    def test_a_deployer_is_not_told_to_register_under_49_2(self) -> None:
+        from app.engines.scenario_classifier import classify_scenario_query
+
+        v = classify_scenario_query(
+            "We are a deployer using an AI system for recruitment that performs "
+            "a narrow procedural task that does not pose a significant risk of "
+            "harm in the hiring pipeline."
+        )
+        assert v is not None and v.risk_level == "art6_3_derogated"
+        low = v.answer.lower()
+        assert "the deployer must" not in low or "register" not in low.split("the deployer must")[1][:120]
+        assert "fall on the provider" in low
+
+    def test_a_provider_still_carries_the_49_2_duty(self) -> None:
+        from app.engines.scenario_classifier import classify_scenario_query
+
+        v = classify_scenario_query(
+            "We are a provider offering an AI system for recruitment that "
+            "performs a narrow procedural task that does not pose a significant "
+            "risk of harm, in the hiring domain."
+        )
+        assert v is not None and v.risk_level == "art6_3_derogated"
+        assert "The provider must document that assessment" in v.answer
+        assert "Article 49(2)" in v.answer

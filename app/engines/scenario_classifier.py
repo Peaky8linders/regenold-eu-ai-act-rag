@@ -1065,16 +1065,65 @@ _NEGATED_PROFILING_RE = re.compile(
 )
 
 
-def _detect_art_6_3_derogation(text: str) -> bool:
-    """Return True if text qualifies for Art 6(3) derogation (narrow non-profiling task).
+#: R321 — the Article 6(3) FIRST SUBPARAGRAPH test, which the original
+#: implementation omitted entirely. Verbatim: "an AI system referred to in
+#: Annex III shall not be considered to be high-risk WHERE IT DOES NOT POSE A
+#: SIGNIFICANT RISK OF HARM to the health, safety or fundamental rights of
+#: natural persons, INCLUDING BY NOT MATERIALLY INFLUENCING THE OUTCOME OF
+#: DECISION MAKING. The first subparagraph shall apply where any of the
+#: following conditions is fulfilled: (a)...(d)".
+#:
+#: (a)-(d) gate WHEN subparagraph 1 is available; they do not replace its own
+#: test. Requiring an affirmative signal is the conservative direction: wrongly
+#: asserting the derogation tells a deployer their high-risk system is not
+#: high-risk, which is the costly error.
+_ART_6_3_NO_SIGNIFICANT_RISK_MARKERS: tuple[str, ...] = (
+    "does not pose a significant risk",
+    "no significant risk of harm",
+    "not pose a significant risk",
+    "does not materially influence",
+    "not materially influencing",
+    "does not influence the outcome",
+    "without influencing the outcome",
+    "no material influence",
+    "purely preparatory",
+    "does not replace",
+    "not meant to replace",
+)
 
-    Art 6(3) derogation applies when an Annex III scenario performs a narrow
-    procedural task, improves human activity result, detects decision-making patterns,
-    or performs a preparatory task, AND DOES NOT perform profiling of natural persons.
+
+def _detect_art_6_3_derogation(text: str) -> bool:
+    """True only when Article 6(3) is actually satisfied.
+
+    Requires BOTH limbs, not just one of (a)-(d):
+
+    1. the first-subparagraph test — no significant risk of harm, including by
+       not materially influencing the outcome of decision making; AND
+    2. one of the conditions (a)-(d); AND
+    3. the profiling kill-switch is not tripped ("Notwithstanding the first
+       subparagraph, an AI system referred to in Annex III shall ALWAYS be
+       considered to be high-risk where the AI system performs profiling of
+       natural persons").
+
+    R321 — as shipped this tested only (2) and the ABSENCE of the token
+    "profiling", so it derogated systems the Act plainly makes high-risk.
+    Reproduced end-to-end through the real route: "an AI system intended to
+    screen and evaluate job applicants ... de-duplicates candidate records and
+    ranks candidates for the recruitment shortlist" was answered with "Under
+    Article 6(3), this system is derogated from high-risk classification" —
+    while Annex III 4(a) covers exactly that system ("to analyse and filter job
+    applications, and TO EVALUATE CANDIDATES"), and ranking candidates
+    materially influences the outcome of decision making.
+
+    Fires on 0 of 339 davidath scenarios (measured), so the bench is blind to
+    it and this was a live-only wrong legal claim.
     """
     low = _normalise(text).lower()
     has_narrow_task = _any_in(low, _ART_6_3_NARROW_TASK_MARKERS)
     if not has_narrow_task:
+        return False
+    # Limb 1 — must be asserted, not merely un-contradicted.
+    if not _any_in(low, _ART_6_3_NO_SIGNIFICANT_RISK_MARKERS):
         return False
     if _NEGATED_PROFILING_RE.search(low):
         has_profiling = False
@@ -1413,14 +1462,36 @@ def _build_answer(role: str, risk_level: str) -> str:
             "(Articles 9 to 15)."
         )
     if risk_level == "art6_3_derogated":
-        return (
+        # R321 — the Article 49(2) duty is ROLE-CONDITIONAL. Verbatim 49(2):
+        # "...THAT PROVIDER OR, WHERE APPLICABLE, THE AUTHORISED REPRESENTATIVE
+        # shall register themselves and that system in the EU database". Article
+        # 6(4) names the same addressee ("A PROVIDER who considers that an AI
+        # system referred to in Annex III is not high-risk shall document its
+        # assessment ... Such provider shall be subject to the registration
+        # obligation set out in Article 49(2)"). A deployer, importer or
+        # distributor is neither named party, and 49(2) is unusually explicit
+        # about its addressees — so attributing it to them is a fabricated
+        # obligation at a named sub-point, not an interpretive stretch.
+        # Reproduced live before this fix: "The deployer must document the
+        # self-assessment and register the system in the EU AI database
+        # pursuant to Article 49(2)".
+        _derog_lead = (
             "Under Article 6(3), this system is derogated from high-risk "
             "classification because it performs a narrow non-profiling task "
             "(such as a narrow procedural task, improving a previously completed "
             "human activity, detecting decision-making patterns without replacing "
             "human review, or a preparatory task) without profiling natural persons. "
-            f"{role_phrase} must document the self-assessment and register the system "
-            "in the EU AI database pursuant to Article 49(2) (Articles 6, 6(3), 49)."
+        )
+        if role in ("provider", "authorised_representative", "authorized_representative"):
+            return _derog_lead + (
+                f"{role_phrase} must document that assessment under Article 6(4) "
+                "and register itself and the system in the EU database pursuant "
+                "to Article 49(2) (Articles 6, 6.3, 49)."
+            )
+        return _derog_lead + (
+            "The documentation duty under Article 6(4) and the registration duty "
+            "under Article 49(2) fall on the provider that reached that "
+            "conclusion, not on this operator (Articles 6, 6.3, 49)."
         )
     if risk_level == "gpai-open-source":
         return (
