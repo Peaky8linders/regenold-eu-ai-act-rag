@@ -193,11 +193,15 @@ def _log_llm_provider_status() -> None:
                 _pool = _cf.ThreadPoolExecutor(max_workers=1)
                 try:
                     _hc = _pool.submit(_gc.health_check).result(timeout=_probe_budget_s)
-                except Exception as _to:  # noqa: BLE001 — incl. TimeoutError
+                except _cf.TimeoutError:
+                    # Same discipline as the auto-seed probe below: only the
+                    # BUDGET case is swallowed here. A driver exception falls
+                    # through to the outer handler, which already logs
+                    # "graph probe failed".
                     logger.warning(
-                        "regenold.startup graph_boot_probe_skipped budget_s=%s reason=%s",
+                        "regenold.startup graph_boot_probe_timeout budget_s=%s "
+                        "— skipping the boot graph line",
                         _probe_budget_s,
-                        type(_to).__name__,
                     )
                     _hc = {"status": "unknown"}
                 finally:
@@ -539,12 +543,16 @@ def _maybe_auto_seed_neo4j() -> None:
                 "MATCH (m:KBMetadata) "
                 "RETURN m.seed_version AS v, m.kb_version AS kv LIMIT 1",
             ).result(timeout=_meta_budget_s)
-        except Exception as _mexc:  # noqa: BLE001 — incl. TimeoutError
+        except _cf.TimeoutError:
+            # ONLY the budget case is swallowed here. A genuine exception from
+            # execute_read still propagates to the top-level handler below, so
+            # it is reported as ``auto_seed_check action=error`` exactly as
+            # before — a hung host and a broken query are different facts and
+            # must not be logged as the same one.
             logger.warning(
-                "regenold.startup auto_seed_check meta_probe_skipped "
-                "budget_s=%s reason=%s",
+                "regenold.startup auto_seed_check meta_probe_timeout "
+                "budget_s=%s — proceeding as if the seed were unknown",
                 _meta_budget_s,
-                type(_mexc).__name__,
             )
             meta_rows = []
         finally:
