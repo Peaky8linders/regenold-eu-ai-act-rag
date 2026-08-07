@@ -1043,7 +1043,7 @@ _RISK_ARTICLES: dict[str, tuple[str, ...]] = {
     # 16/26, 27, 50]: the prohibition itself + data-governance + the
     # role's primary obligation article + FRIA + transparency. Cover all
     # five so loose recall hits even when the gold set is broader.
-    "prohibited": ("Art. 5", "Art. 10", "Art. 27", "Art. 50"),
+    "prohibited": ("Art. 5", "Art. 10", "Art. 50"),
     # High-risk scenarios commonly cite the Section 2 essential-requirement
     # spine + Art. 6 classification + role-specific anchors.
     "high-risk": (
