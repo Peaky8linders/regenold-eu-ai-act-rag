@@ -7297,16 +7297,14 @@ def _claude_max_enhance_answer(
         except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
             pass
 
-        try:
-            from app.data.graph_rag_prompts import (  # noqa: PLC0415
-                USER_ANSWER_COVERAGE_CLAUSE,
-                answer_coverage_enabled,
-            )
-
-            if answer_coverage_enabled():
-                user_message += USER_ANSWER_COVERAGE_CLAUSE
-        except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
-            pass
+        # R320 — a byte-identical SECOND append of USER_ANSWER_COVERAGE_CLAUSE
+        # sat here (a copy-paste duplication, no `return` between the two
+        # blocks). At the default config the model received the same 1955-char
+        # completeness instruction TWICE, ~3910 chars of the delivered budget,
+        # doubling the pressure toward longer answers. That pushes directly
+        # against Answer-Conciseness, the ONE official axis this system leads
+        # (96.0 easy / 93.4 hard) and therefore the one with pure downside
+        # risk. Removed.
 
         try:
             max_tokens = settings.graph_rag.max_tokens
