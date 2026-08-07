@@ -12469,3 +12469,69 @@ topic-filter / safety-gate cluster changes behaviour on `GROQ_API_KEY` — 63 vs
   `TypeError` inside a swallowing `except`, the R256 pattern.
 * `GraphClient.health_check()` can still never return unhealthy, so a dead Neo4j
   reports `graph_ok=true` (R290 found this; still true).
+
+### R321 second pass — the review's own findings, after the round entry above
+
+Two further **Critical** legal fabrications were confirmed by the second review
+(both reproduced END-TO-END through the real route, both firing on **0 of 339**
+davidath scenarios, so the bench is blind to them):
+
+* **Article 6(3) tested only conditions (a)-(d)**, never the first
+  subparagraph's own test. Verbatim: "shall not be considered to be high-risk
+  WHERE IT DOES NOT POSE A SIGNIFICANT RISK OF HARM ... INCLUDING BY NOT
+  MATERIALLY INFLUENCING THE OUTCOME OF DECISION MAKING. The first subparagraph
+  shall apply where any of the following conditions is fulfilled: (a)...(d)".
+  (a)-(d) gate WHEN subparagraph 1 is available; they do not replace it.
+  Reproduced: a system that screens, evaluates and RANKS job applicants was
+  told "Under Article 6(3), this system is derogated from high-risk
+  classification" — while Annex III 4(a) covers exactly that. The limb must now
+  be ASSERTED, not merely un-contradicted, because wrongly telling a deployer
+  their high-risk system is not high-risk is the costly error.
+* **Article 49(2) registration was attributed to deployers, importers and
+  distributors.** Verbatim: "...THAT PROVIDER OR, WHERE APPLICABLE, THE
+  AUTHORISED REPRESENTATIVE shall register themselves and that system in the EU
+  database", and Article 6(4) names the same addressee. Now role-conditional.
+
+**The LogicRAG batch (d883b44) was DROPPED**, keeping only
+`app/llm/prompts_logic.py` (its six references verified legally correct and
+wire-legal). The review's evidence: the Jaccard>0.7 collapse deletes node 2 of
+the very worked example the same commit adds to the prompt (measured 0.750);
+the `[SUFFICIENT]` early-exit lets a non-deterministic LLM tag skip whole
+retrieval ranks — on the commit's own conditional-chain example a tag after
+rank 0 never retrieves Annex IV or Article 43, the two provisions the user
+named; the per-node retrieval rewrite reintroduces the R288.1 bug documented 15
+lines above it; and **zero tests** were added for any of the four features.
+Dropping was free: `REGENOLD_LOGIC_RAG` defaults OFF and a live probe confirmed
+no LogicRAG trace notes in production. `REGENOLD_LOGIC_RAG_SAMPLE_RATE` went
+with it — it could activate LogicRAG **while the master gate was UNSET**.
+
+### ⚠ A wire-citation leak class worth remembering
+
+`_add_prose_named_refs` promoted **foreign-instrument** article numbers onto the
+wire as AI Act citations. Measured:
+
+    prose: "...under EU Charter Art. 21 and on personal data under GDPR Art. 5,
+            complementing GDPR Art. 35 DPIA duties."
+    -> ['Article 27', 'Article 21', 'Article 5', 'Article 35']
+
+GDPR Article 5 became **AI Act Article 5**, the prohibited-practices article.
+The existing guard only looked AHEAD ("Article 50 of the GDPR") and never saw
+the PREFIX form — which is exactly what `kg_context` injects into the Stage-2
+grounding context on every request. Fixed with a 24-char lookbehind. The
+general lesson: a wrong citation in a WIRE-LEGAL shape passes every downstream
+validator, because Articles 5/21/35 all exist in the Act.
+
+### Still open after R321 (documented, not fixed)
+
+* **[C3] The Article 43 KB stub sends Annex III points 2-8 to a notified body.**
+  Art 43(1) scopes that conditionality to point 1 of Annex III; Art 43(2) is
+  categorical for points 2-8 ("internal control as referred to in Annex VI,
+  which does not provide for the involvement of a notified body"). PRE-EXISTING,
+  not introduced by the push, but live on six of eight Annex III categories.
+  Needs a `KB_VERSION` bump + the R56-A signature pin.
+* `apply_role_boosting` / the HyDE generator / `verify_context_entailment` /
+  `fria_evaluator` all have **zero production callers** — inert, but their
+  docstrings read as live.
+* The new `reference_correctness_exact_strict` / `_hierarchical` metrics are
+  **dead code**; the davidath guard is still head-collapsed.
+* `GraphClient.health_check()` still cannot return unhealthy (R290).
