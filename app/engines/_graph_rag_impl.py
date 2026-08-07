@@ -8123,8 +8123,21 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
 
     answer_dict = {k: v for k, v in request.answers.items()} if request.answers else {}
     
-    # LogicRAG Integration (env-gated REGENOLD_LOGIC_RAG, default ON via
-    # railway.toml). R117 hardening of the new LLM-driven retrieval engine:
+    # LogicRAG Integration — env-gated REGENOLD_LOGIC_RAG, CODE DEFAULT OFF.
+    #
+    # R321 — this comment used to say "default ON via railway.toml" and to
+    # assert below that "LogicRAG sits on the critical retrieval path and is
+    # default ON". Both are false, twice over: the getenv default is "" (OFF),
+    # and R306 established that railway.toml's [deploy.envs] block has NEVER
+    # been applied at all (Railway's [deploy] schema has no `envs` key). A live
+    # probe on 2026-08-07 confirmed it: a genuinely complex multi-part question
+    # against production produced no LogicRAG trace notes.
+    #
+    # ⚠ Do NOT set REGENOLD_LOGIC_RAG=1 on a service because railway.toml lists
+    # it. Turning it on puts the LogicRAG DAG decomposition on the critical
+    # retrieval path, and that code has not been through the review gate.
+    #
+    # R117 hardening of the LLM-driven retrieval engine:
     #   1. FAIL-SOFT — any LogicRAG error (LLM / parse / graph) falls back to
     #      the deterministic retrieval path, so the route never 500s. LogicRAG
     #      sits on the critical retrieval path and is default ON.
