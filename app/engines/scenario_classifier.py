@@ -1128,8 +1128,9 @@ def _detect_open_source_gpai_exemption(text: str) -> bool:
 _RISK_ARTICLES: dict[str, tuple[str, ...]] = {
     # Prohibited scenarios in the davidath dataset commonly cite [5, 10,
     # 16/26, 27, 50]: the prohibition itself + data-governance + the
-    # role's primary obligation article + FRIA + transparency. Cover all
-    # five so loose recall hits even when the gold set is broader.
+    # role's primary obligation article + FRIA + transparency. This tuple
+    # deliberately carries THREE of those, not five — see the R321 note
+    # directly below before "restoring" anything.
     # R321 — "Art. 27" was removed here by the CR audit and the removal is
     # KEPT, on measurement rather than on the argument either way. The comment
     # above still lists five refs, which reads like a gold-loss; it is not.
