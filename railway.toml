@@ -225,13 +225,27 @@ REGENOLD_GRAPH_AWARE = "1"
 # the production Neo4j path + the live judge axes. Tune the hop cap with
 # ``REGENOLD_SUFFICIENT_CONTEXT_MAX_HOPS`` (default 3, clamp [1,5]).
 #
-# R110.1 — the gate ALSO defaults ON in CODE
-# (``sufficient_context.sufficient_context_enabled``). A live probe after the
-# R110 deploy showed this ``[deploy.envs]`` entry was NOT applied to the
-# running service (the R80.2 phenomenon), so per the R80.2 doctrine the ON
-# default is baked into code. This entry is kept as belt-and-suspenders +
-# intent documentation. Disable explicitly with REGENOLD_SUFFICIENT_CONTEXT=0.
-REGENOLD_SUFFICIENT_CONTEXT = "1"
+# R318 — THE CODE DEFAULT IS NOW **OFF**, and this line is inert.
+#
+# Two separate corrections to the R110.1 note that used to sit here:
+#   1. R306 established that ``[deploy.envs]`` has NEVER applied at all —
+#      Railway's ``[deploy]`` schema has no ``envs`` key — so this assignment
+#      has never reached the service and cannot re-enable the gate.
+#   2. The "davidath byte-identical" justification for defaulting ON was true
+#      and was exactly the problem: davidath is BM25-saturated, the bounded hop
+#      is a dedup no-op there, and the bench is structurally BLIND to the
+#      gate's cost. It was shipped on a bench that could not measure it.
+#
+# R318 measured it where it actually fires (the 132-row gold-bearing probe set,
+# zero-variance deterministic sweep) and OFF is strictly dominant: +1 gold
+# GAINED, 19 fewer non-gold refs, Ref Loose +0.0038 / Strict +0.0141 /
+# Conciseness +0.0254, with davidath re-confirmed byte-identical on all seven
+# axes. Over-citation is the only axis a frontier model still beats us on, so
+# the precision gain is the one that matters.
+#
+# Re-enable explicitly (dashboard/service var, NOT this file):
+#   railway variables --set REGENOLD_SUFFICIENT_CONTEXT=1
+# REGENOLD_SUFFICIENT_CONTEXT = "1"   # <- inert; code default is OFF
 
 # R138 — SEMANTIC CONTRACT pre-generation validator (the ontology/KG/
 # semantic-layer architecture's genuine ~12% gap: enforce the semantic

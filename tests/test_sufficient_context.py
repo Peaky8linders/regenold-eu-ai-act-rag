@@ -36,11 +36,26 @@ def trace():
 # ── Env gates ────────────────────────────────────────────────────────────
 
 
-def test_enabled_by_default(monkeypatch) -> None:
-    # R110.1 — default ON in code (railway.toml [deploy.envs] proved
-    # unreliable on the live service; bake the default per the R80.2 doctrine).
+def test_disabled_by_default_r318(monkeypatch) -> None:
+    """R318 flipped this default ON -> OFF. Pin it so a revert is LOUD.
+
+    R110.1 baked it ON on the strength of "davidath byte-identical, gate ON vs
+    OFF" — which is true and was exactly the problem: davidath is
+    BM25-saturated, so the bounded hop is a dedup no-op there and the bench is
+    structurally blind to the gate's cost.
+
+    R318 measured it on the 132-row gold-bearing probe set (the complex
+    multi-part shapes where the gate actually fires) with a zero-variance
+    deterministic sweep. Turning it OFF is strictly dominant: +1 gold GAINED,
+    19 fewer non-gold refs, Ref Loose +0.0038 / Strict +0.0141 / Conc +0.0254 —
+    and davidath stays byte-identical on all seven axes, so the regression
+    guard is clean and the gain is free.
+
+    Do not flip this back without re-running that sweep
+    (`.evalout/r318/attribution.py`) and the full 476.
+    """
     monkeypatch.delenv("REGENOLD_SUFFICIENT_CONTEXT", raising=False)
-    assert sc.sufficient_context_enabled() is True
+    assert sc.sufficient_context_enabled() is False
 
 
 @pytest.mark.parametrize("val", ["1", "true", "TRUE", "yes", "on"])
