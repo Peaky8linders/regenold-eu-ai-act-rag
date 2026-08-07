@@ -5082,7 +5082,12 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     scenario_verdict = classify_scenario_query(question)
     if scenario_verdict is not None:
         _seed_scenario_obligations(context, scenario_verdict, question)
-        return scenario_verdict.answer
+        from app.engines.answer_router import select_answer_mode
+        history_turn_count = getattr(context, "history_turn_count", 1) if context else 1
+        query_obj = getattr(context, "query", None) if context else None
+        decision = select_answer_mode(question, history_turn_count=history_turn_count, query=query_obj)
+        if not decision.is_synthesis:
+            return scenario_verdict.answer
 
     # Classification-verdict short-circuit. For "is X prohibited / high-
     # risk?" style questions, dump-from-KB is not an answer — emit the

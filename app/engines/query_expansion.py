@@ -48,6 +48,16 @@ _CITATION_PATTERN = re.compile(
 )
 
 
+_HYDE_SYSTEM_PROMPT = (
+    "You generate a detailed, hypothetical compliance text from the EU AI Act "
+    "that directly answers the compliance question. Use formal regulatory language "
+    "and precise compliance terminology. Phrasing must be neutral, objective, and "
+    "in the third person. Do not address the reader as 'you'."
+)
+
+_HYDE_USER_TEMPLATE = "Question: {q}\n\nGenerate a hypothetical compliance passage answering this question:"
+
+
 def strip_citation_bias(text: str) -> str:
     """Remove explicit article/annex numbers from hypothetical expansion completions.
     
@@ -58,6 +68,45 @@ def strip_citation_bias(text: str) -> str:
         return ""
     cleaned = _CITATION_PATTERN.sub("", text)
     return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def generate_hyde_document(question: str) -> str:
+    """Generate a hypothetical EU AI Act compliance passage answering question.
+
+    Applies mandatory `strip_citation_bias(text)` to remove explicit article/annex
+    citations before embedding, preventing vector steering toward hallucinated statutory chapters.
+    Returns clean hypothetical text, or empty string on error or if wrapper disabled.
+    """
+    cleaned_q = (question or "").strip()
+    if not cleaned_q or not is_openai_wrapper_enabled():
+        return ""
+    try:
+        provider = get_openai_wrapper_provider()
+        start = time.perf_counter()
+        resp = provider.complete(OpenAIWrapperRequest(
+            system=_HYDE_SYSTEM_PROMPT,
+            user=_HYDE_USER_TEMPLATE.format(q=cleaned_q[:1000]),
+            model="claude-haiku-4-5-20251001",
+            max_tokens=300,
+            temperature=0.3,
+            timeout_seconds=3.0,
+        ))
+    except Exception as exc:  # noqa: BLE001 — fail-soft
+        logger.debug("generate_hyde_document_exception: %s", str(exc)[:160])
+        return ""
+    if resp.error:
+        logger.debug("generate_hyde_document_provider_error: %s", resp.error[:160])
+        return ""
+
+    text = (resp.text or "").strip()
+    if not text:
+        return ""
+
+    cleaned_text = strip_citation_bias(text)
+    elapsed_ms = int((time.perf_counter() - start) * 1000)
+    logger.debug("generate_hyde_document_ok: %d chars generated in %d ms", len(cleaned_text), elapsed_ms)
+    return cleaned_text
+
 
 
 def expand_query(question: str, *, intent_label: str = "") -> list[str]:

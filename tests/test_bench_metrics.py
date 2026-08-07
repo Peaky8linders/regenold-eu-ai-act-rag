@@ -74,6 +74,47 @@ class TestReferenceCorrectness:
         assert metrics.reference_correctness_loose([], 5) == 0.0
         assert metrics.reference_correctness_strict([], 5) == 0.0
 
+    def test_reference_correctness_exact_strict(self):
+        # Exact match with normalized citation forms
+        assert metrics.reference_correctness_exact_strict(["Article 5(1)(a)"], ["Article 5.1.a"]) == 1.0
+        assert metrics.reference_correctness_exact_strict(["Article 10"], ["Article 10"]) == 1.0
+        
+        # Sub-clause mismatch
+        assert metrics.reference_correctness_exact_strict(["Article 5.1.h"], ["Article 5.1.a"]) == 0.0
+        
+        # Over-citation: pred = {Art 5.1.a, Art 6}, gold = {Art 5.1.a} -> P=0.5, R=1.0 -> F1=2/3
+        s = metrics.reference_correctness_exact_strict(["Article 5.1.a", "Article 6"], ["Article 5.1.a"])
+        assert s == pytest_approx(2.0 / 3.0)
+        
+        # Empty sets
+        assert metrics.reference_correctness_exact_strict([], []) == 1.0
+        assert metrics.reference_correctness_exact_strict([], ["Article 5.1.a"]) == 0.0
+
+    def test_reference_correctness_hierarchical(self):
+        # Tier 1: Exact sub-clause match -> 1.0
+        assert metrics.reference_correctness_hierarchical(["Article 5.1.a"], ["Article 5(1)(a)"]) == 1.0
+        
+        # Tier 2: Sub-section match -> 0.7
+        s_sub = metrics.reference_correctness_hierarchical(["Article 5.1.b"], ["Article 5.1.a"])
+        assert s_sub == pytest_approx(0.7)
+        
+        s_dot = metrics.reference_correctness_hierarchical(["Article 5.1"], ["Article 5.1.a"])
+        assert s_dot == pytest_approx(0.7)
+        
+        # Tier 3: Macro head match -> 0.4
+        s_macro = metrics.reference_correctness_hierarchical(["Article 5"], ["Article 5.1.a"])
+        assert s_macro == pytest_approx(0.4)
+        
+        s_diff_sub = metrics.reference_correctness_hierarchical(["Article 5.2"], ["Article 5.1.a"])
+        assert s_diff_sub == pytest_approx(0.4)
+        
+        # Tier 4: Mismatch -> 0.0
+        assert metrics.reference_correctness_hierarchical(["Article 6"], ["Article 5.1.a"]) == 0.0
+        
+        # Empty sets
+        assert metrics.reference_correctness_hierarchical([], []) == 1.0
+        assert metrics.reference_correctness_hierarchical([], ["Article 5.1.a"]) == 0.0
+
 
 class TestRegulatoryTone:
     def test_clean_regulator_voice_scores_high(self):

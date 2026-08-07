@@ -1031,6 +1031,93 @@ def _detect_gpai_signal(text: str) -> bool:
     return _any_in(low, _GPAI_MODIFIER_MARKERS)
 
 
+# ── Art 6(3) Derogation & Art 53(2) Open-Source Exemption Detectors ────────
+
+_ART_6_3_NARROW_TASK_MARKERS: tuple[str, ...] = (
+    "narrow procedural task",
+    "narrow procedural",
+    "de-duplicate",
+    "deduplicate",
+    "de-duplication",
+    "deduplication",
+    "improve the result of a previously completed human activity",
+    "improving the result of a previously completed human activity",
+    "improves a previously completed human activity",
+    "improving a previously completed human activity",
+    "detecting decision-making patterns",
+    "detect decision-making patterns",
+    "detecting deviations from prior decision-making patterns",
+    "preparatory task",
+)
+
+_PROFILING_MARKERS: tuple[str, ...] = (
+    "profiling",
+    "profile natural persons",
+    "profiles natural persons",
+    "profiling of natural persons",
+)
+
+
+_NEGATED_PROFILING_RE = re.compile(
+    r"\b(?:without|no|not|non[\s\-]?|does\s+not\s+(?:involve|perform|use)?)\s+profiling\b"
+    r"|\bnon[\s\-]?profiling\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_art_6_3_derogation(text: str) -> bool:
+    """Return True if text qualifies for Art 6(3) derogation (narrow non-profiling task).
+
+    Art 6(3) derogation applies when an Annex III scenario performs a narrow
+    procedural task, improves human activity result, detects decision-making patterns,
+    or performs a preparatory task, AND DOES NOT perform profiling of natural persons.
+    """
+    low = _normalise(text).lower()
+    has_narrow_task = _any_in(low, _ART_6_3_NARROW_TASK_MARKERS)
+    if not has_narrow_task:
+        return False
+    if _NEGATED_PROFILING_RE.search(low):
+        has_profiling = False
+    else:
+        has_profiling = _any_in(low, _PROFILING_MARKERS)
+    return not has_profiling
+
+
+_OPEN_SOURCE_GPAI_MARKERS: tuple[str, ...] = (
+    "open-source",
+    "open source",
+    "open-weights",
+    "open weights",
+    "open-weight",
+    "open weight",
+    "free and open-source",
+    "free and open source",
+    "publicly available weights",
+)
+
+_SYSTEMIC_RISK_MARKERS: tuple[str, ...] = (
+    "systemic risk",
+    "systemic-risk",
+    "10^25",
+    "10²⁵",
+)
+
+
+def _detect_open_source_gpai_exemption(text: str) -> bool:
+    """Return True if text qualifies for Art 53(2) open-source GPAI exemption.
+
+    Art 53(2) exempts open-source GPAI providers from Art 53(1)(a) technical docs
+    and Art 53(1)(b) downstream info supply, provided the model does NOT present
+    systemic risk under Art 51.
+    """
+    low = _normalise(text).lower()
+    has_os = _any_in(low, _OPEN_SOURCE_GPAI_MARKERS)
+    if not has_os:
+        return False
+    has_systemic = _any_in(low, _SYSTEMIC_RISK_MARKERS)
+    return not has_systemic
+
+
 # ── Article packs per risk × role combination ───────────────────────────
 
 
@@ -1080,6 +1167,8 @@ _RISK_ARTICLES: dict[str, tuple[str, ...]] = {
         "Art. 6", "Annex I", "Art. 43", "Art. 48",
         "Art. 9", "Art. 14", "Art. 72", "Art. 73",
     ),
+    "art6_3_derogated": ("Art. 6", "Art. 6(3)", "Art. 49", "Art. 4"),
+    "gpai-open-source": ("Art. 25", "Art. 51", "Art. 53", "Art. 53(2)"),
 }
 
 
@@ -1155,12 +1244,17 @@ class ScenarioVerdict:
 
     role: str
     # "prohibited" | "high-risk" | "high-risk-annex-i" | "limited" |
-    # "minimal" | "gpai"
+    # "minimal" | "gpai" | "art6_3_derogated" | "gpai-open-source"
     risk_level: str
     articles: tuple[str, ...]  # internal refs ("Art. 5", "Art. 26", ...)
     answer: str  # plain-prose answer ready for normalise_answer_for_regenold
     compound_roles: tuple[str, ...] = field(default_factory=tuple)
     compound_role_strength: str = ""  # "" | "strong" | "weak"
+
+    def get_route_decision(self, question: str, history_turn_count: int = 1, query: object | None = None):
+        """Consult :func:`app.engines.answer_router.select_answer_mode` to check if synthesis is required."""
+        from app.engines.answer_router import select_answer_mode
+        return select_answer_mode(question, history_turn_count=history_turn_count, query=query)
 
 
 def _build_answer(role: str, risk_level: str) -> str:
@@ -1298,6 +1392,26 @@ def _build_answer(role: str, risk_level: str) -> str:
             "documentation, human oversight and post-market monitoring "
             "(Articles 9 to 15)."
         )
+    if risk_level == "art6_3_derogated":
+        return (
+            "Under Article 6(3), this system is derogated from high-risk "
+            "classification because it performs a narrow non-profiling task "
+            "(such as a narrow procedural task, improving a previously completed "
+            "human activity, detecting decision-making patterns without replacing "
+            "human review, or a preparatory task) without profiling natural persons. "
+            f"{role_phrase} must document the self-assessment and register the system "
+            "in the EU AI database pursuant to Article 49(2) (Articles 6, 6(3), 49)."
+        )
+    if risk_level == "gpai-open-source":
+        return (
+            "Under Article 53(2), providers of general-purpose AI models released "
+            "under a free and open-source license (whose parameters, weights, and "
+            "architecture are publicly available) are exempt from Article 53(1)(a) "
+            "technical documentation and Article 53(1)(b) downstream information supply, "
+            "provided the model does not present systemic risk. The provider remains "
+            "bound by Article 53(1)(c) copyright policy and Article 53(1)(d) training "
+            "content summary obligations (Articles 51, 53, 53(2))."
+        )
     # Fallback — neutral classification.
     return (
         "This system requires a risk classification "
@@ -1343,11 +1457,11 @@ def _build_article_pack(role: str, risk_level: str) -> tuple[str, ...]:
         # obligation set as Annex III high-risk systems (Art. 16/17/49
         # for providers, Art. 26/27 for deployers, etc.).
         bolt = _ROLE_HIGHRISK_ARTICLES.get(role, ())
-    elif risk_level == "limited":
+    elif risk_level in ("limited", "art6_3_derogated"):
         bolt = _ROLE_LIMITED_ARTICLES.get(role, ())
     elif risk_level == "minimal":
         bolt = _ROLE_MINIMAL_ARTICLES.get(role, ())
-    elif risk_level == "gpai":
+    elif risk_level in ("gpai", "gpai-open-source"):
         # R63-B — GPAI scenario role bolt-on.
         bolt = _ROLE_GPAI_ARTICLES.get(role, ())
     else:
@@ -1430,6 +1544,12 @@ def classify_scenario_query(question: str) -> ScenarioVerdict | None:
             risk_level = "gpai"
         else:
             risk_level = "limited"
+
+    # Check Art 6(3) narrow non-profiling task derogations and Art 53(2) open-source GPAI exemptions
+    if risk_level in ("high-risk", "high-risk-annex-i") and _detect_art_6_3_derogation(question):
+        risk_level = "art6_3_derogated"
+    elif (risk_level == "gpai" or _detect_gpai_signal(question)) and _detect_open_source_gpai_exemption(question):
+        risk_level = "gpai-open-source"
 
     # Pick the primary role: prefer the single-role hit when available
     # (the existing path is what drives the verdict prose), else the

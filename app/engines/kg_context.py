@@ -77,6 +77,8 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "kg_context_enabled",
     "fetch_provision_hierarchy",
+    "fetch_recital_anchors",
+    "fetch_cross_regulatory_context",
     "render_kg_context",
 ]
 
@@ -234,6 +236,99 @@ def fetch_recital_anchors(refs: list[str]) -> list[dict]:
         return []
 
 
+_CROSS_REGULATORY_CYPHER = """
+MATCH (a) WHERE a.id IN $ids AND (a:Article OR a:Annex)
+OPTIONAL MATCH (a)-[:CROSS_REFERENCES|RELATES_TO|HAS_EXTERNAL_REF]->(ext)
+WHERE ext.framework IN ['GDPR', 'EU_Charter', 'Charter'] OR ext.title CONTAINS 'GDPR' OR ext.title CONTAINS 'Charter'
+RETURN a.id AS source_id,
+       coalesce(a.strict_citation, a.id) AS source,
+       coalesce(ext.framework, 'GDPR') AS framework,
+       coalesce(ext.strict_citation, ext.id, ext.title) AS target,
+       coalesce(ext.relation, 'CROSS_REFERENCES') AS relation,
+       coalesce(ext.description, ext.text, '') AS description
+LIMIT $limit
+"""
+
+# Static mapping for cross-regulatory graph edges when Neo4j is offline or has no external nodes seeded
+_STATIC_CROSS_REGULATORY_MAP: dict[str, list[dict[str, str]]] = {
+    "article_2": [
+        {"framework": "GDPR", "target": "GDPR Art. 2(2)", "relation": "COMPLEMENTS", "description": "Scope alignment with personal/household data processing exemptions under GDPR."}
+    ],
+    "article_5": [
+        {"framework": "EU_Charter", "target": "EU Charter Art. 1", "relation": "PROTECTS", "description": "Prohibitions against subliminal manipulation protect human dignity."},
+        {"framework": "EU_Charter", "target": "EU Charter Art. 8", "relation": "PROTECTS", "description": "Prohibitions against untargeted biometric scraping protect personal data."},
+        {"framework": "EU_Charter", "target": "EU Charter Art. 21", "relation": "PROTECTS", "description": "Prohibitions against social scoring and biometric categorisation prevent discrimination."}
+    ],
+    "article_10": [
+        {"framework": "GDPR", "target": "GDPR Art. 5", "relation": "ALIGNS_WITH", "description": "Data governance requirements enforce data minimisation and data quality principles."},
+        {"framework": "GDPR", "target": "GDPR Art. 6", "relation": "REQUIRES", "description": "Processing of personal data for AI training requires a lawful basis under GDPR Article 6."},
+        {"framework": "GDPR", "target": "GDPR Art. 9", "relation": "EXCEPT_UNDER", "description": "Article 10(5) permits processing special category data strictly for bias detection and correction."}
+    ],
+    "article_13": [
+        {"framework": "GDPR", "target": "GDPR Art. 13", "relation": "ALIGNS_WITH", "description": "Transparency to deployers complements deployer data subject notification duties under GDPR."},
+        {"framework": "GDPR", "target": "GDPR Art. 22", "relation": "COMPLEMENTS", "description": "Provides technical transparency needed for human explanation under automated decision-making rules."}
+    ],
+    "article_14": [
+        {"framework": "GDPR", "target": "GDPR Art. 22(3)", "relation": "ENFORCES", "description": "Human oversight measures enable meaningful human intervention required under GDPR Article 22(3)."}
+    ],
+    "article_27": [
+        {"framework": "EU_Charter", "target": "EU Charter Art. 1", "relation": "ASSESSES_IMPACT_ON", "description": "FRIA evaluates impact on human dignity prior to putting high-risk system into service."},
+        {"framework": "EU_Charter", "target": "EU Charter Art. 7", "relation": "ASSESSES_IMPACT_ON", "description": "FRIA evaluates impact on privacy and private life."},
+        {"framework": "EU_Charter", "target": "EU Charter Art. 8", "relation": "ASSESSES_IMPACT_ON", "description": "FRIA evaluates impact on personal data protection."},
+        {"framework": "EU_Charter", "target": "EU Charter Art. 21", "relation": "ASSESSES_IMPACT_ON", "description": "FRIA evaluates impact on non-discrimination and equality."},
+        {"framework": "EU_Charter", "target": "EU Charter Art. 47", "relation": "ASSESSES_IMPACT_ON", "description": "FRIA evaluates impact on right to an effective remedy and fair trial."},
+        {"framework": "GDPR", "target": "GDPR Art. 35", "relation": "INTEGRATES_WITH", "description": "Article 27(4) allows combining the AI Act FRIA with the GDPR Data Protection Impact Assessment (DPIA)."}
+    ],
+    "article_50": [
+        {"framework": "GDPR", "target": "GDPR Art. 13", "relation": "COMPLEMENTS", "description": "Transparency notices for AI interaction complement GDPR personal data collection disclosures."},
+        {"framework": "EU_Charter", "target": "EU Charter Art. 11", "relation": "PROTECTS", "description": "Synthetic content labelling protects freedom of information and prevents deception."}
+    ]
+}
+
+
+def fetch_cross_regulatory_context(refs: list[str]) -> list[dict]:
+    """Fetch external regulation graph edges (GDPR, EU Charter) for cited provisions.
+
+    Returns a list of cross-regulatory dict records. Falls back to static statutory graph edges
+    when Neo4j is offline or contains no external nodes for the given provisions.
+    """
+    if not kg_context_enabled():
+        return []
+    ids = _node_ids(refs or [], _int_env("REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 10))
+    if not ids:
+        return []
+
+    results: list[dict] = []
+    try:
+        from app.graph.client import get_graph_client  # noqa: PLC0415
+        client = get_graph_client()
+        if getattr(client, "enabled", False):
+            rows = client.execute_read(_CROSS_REGULATORY_CYPHER, {"ids": ids, "limit": 15})
+            for r in rows or []:
+                if r and r.get("target"):
+                    results.append({
+                        "source": str(r.get("source") or r.get("source_id") or ""),
+                        "framework": str(r.get("framework") or "GDPR"),
+                        "target": str(r.get("target") or ""),
+                        "relation": str(r.get("relation") or "CROSS_REFERENCES"),
+                        "description": str(r.get("description") or ""),
+                    })
+    except Exception:  # noqa: BLE001
+        logger.debug("kg_context: cross-regulatory cypher failed", exc_info=True)
+
+    if not results:
+        for node_id in ids:
+            static_edges = _STATIC_CROSS_REGULATORY_MAP.get(node_id, [])
+            num_match = re.search(r"\d+", node_id)
+            source_cite = f"Art. {num_match.group(0)}" if num_match else node_id
+            for edge in static_edges:
+                rec = dict(edge)
+                rec["source"] = source_cite
+                results.append(rec)
+
+    return results
+
+
 def render_kg_context(refs: list[str]) -> list[str]:
     """Render the graph's contribution as NON-CITABLE Stage-2 context.
 
@@ -293,6 +388,24 @@ def render_kg_context(refs: list[str]) -> list[str]:
             "and must NEVER appear as an Article/Annex citation):\n"
             + "\n".join(rec_lines)
         )
+
+    try:
+        cross_reg = fetch_cross_regulatory_context(refs)
+    except Exception:  # noqa: BLE001
+        cross_reg = []
+    if cross_reg:
+        cross_lines = [
+            f"- {r.get('source')} -> {r.get('framework')} ({r.get('target')}): {r.get('description')}"
+            for r in cross_reg
+            if r.get("target")
+        ]
+        if cross_lines:
+            parts.append(
+                "\nKNOWLEDGE-GRAPH CROSS-REGULATORY EDGES "
+                "(preserves external regulation graph relationships linking EU AI Act provisions "
+                "to GDPR and the EU Charter of Fundamental Rights):\n"
+                + "\n".join(cross_lines)
+            )
 
     # ── Legal provenance (env-gated, default OFF) ────────────────────────
     #

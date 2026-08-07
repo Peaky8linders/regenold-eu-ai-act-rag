@@ -62,6 +62,7 @@ honouring the three production constraints:
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 import os
 import re
 from dataclasses import dataclass, field
@@ -69,6 +70,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
     from concurrent.futures import ThreadPoolExecutor
+    from app.engines.crag_nli_verifier import EntailmentScorer
 
 # ── Env gates ────────────────────────────────────────────────────────────
 
@@ -421,6 +423,48 @@ def _explicit_refs(text: str) -> list[str]:
     return refs
 
 
+# ── NLI Entailment Verification ─────────────────────────────────────────────
+
+
+def verify_context_entailment(
+    question: str,
+    context_passages: list[str] | Sequence[str],
+    scorer: EntailmentScorer | None = None,
+    threshold: float = 0.35,
+) -> tuple[bool, float]:
+    """Verify whether context_passages entail the question using an EntailmentScorer.
+
+    Prevents topically-related mention fallacies on negative controls where
+    passages mention query keywords but do not actually entail an answer to the question.
+
+    Returns (is_entailed, max_score).
+    """
+    if not question or not context_passages:
+        return False, 0.0
+
+    passages = [str(p).strip() for p in context_passages if str(p).strip()]
+    if not passages:
+        return False, 0.0
+
+    if scorer is None:
+        try:
+            from app.engines.crag_nli_verifier import NLIEntailmentScorer
+            scorer = NLIEntailmentScorer()
+        except Exception:
+            try:
+                from app.engines.crag_nli_verifier import LexicalEntailmentScorer
+                scorer = LexicalEntailmentScorer([{"text": p} for p in passages])
+            except Exception:
+                return True, 1.0
+
+    try:
+        scores = scorer.score_batch(question, passages)
+        max_s = max(scores) if scores else 0.0
+        return max_s >= threshold, max_s
+    except Exception:
+        return True, 1.0
+
+
 # ── Verdict ──────────────────────────────────────────────────────────────
 
 
@@ -435,7 +479,7 @@ class SufficiencyVerdict:
     * ``uncovered_anchors`` — explicit Article/Annex refs named in the question
       that the first-pass retrieval missed (the highest-precision gap signal).
     * ``reason`` — ``"uncovered_explicit_refs"`` / ``"multi_phrase_decompose"``
-      / ``"sufficient"`` / ``"not_complex"`` — recorded in the audit trace.
+      / ``"nli_entailment_failure"`` / ``"sufficient"`` / ``"not_complex"`` — recorded in the audit trace.
     """
 
     sufficient: bool
@@ -447,6 +491,9 @@ class SufficiencyVerdict:
 def assess_sufficiency(
     question: str,
     covered_articles: set[str] | frozenset[str],
+    context_passages: list[str] | Sequence[str] | None = None,
+    scorer: EntailmentScorer | None = None,
+    entailment_threshold: float = 0.35,
 ) -> SufficiencyVerdict:
     """Decide whether the first-pass context is sufficient, else what to fetch.
 
@@ -456,21 +503,21 @@ def assess_sufficiency(
        question names but the first-pass retrieval did NOT surface is an
        uncovered anchor — re-fetch it directly. If a user says "Articles 13 and
        50" and only Art. 13 came back, the answer is provably incomplete.
-    2. **Multi-part decomposition.** When the question genuinely decomposes into
+    2. **NLI Entailment verification.** Verify that retrieved context passages
+       actually entail the question (via EntailmentScorer), preventing topically-related
+       mention fallacies on negative controls.
+    3. **Multi-part decomposition.** When the question genuinely decomposes into
        ≥2 substantive sub-clauses (:func:`decompose_question` — verb-guarded,
        clause-initial-guarded, so a noun list does NOT split), re-retrieve each
        sub-clause so a multi-part ask isn't answered from a single sub-part's
-       anchor (the FRAMES failure mode — "obligations of importers AND
-       distributors" must surface BOTH Art. 23 and Art. 24, not just the one
-       BM25 ranked first).
-    3. Otherwise the context is sufficient — no hop.
-
-    The decomposition is itself the complexity signal (Adaptive-RAG routing):
-    a single-clause question never decomposes, so the bounded hop fires only on
-    the genuinely multi-part / multi-anchor questions — never on simple QA.
+       anchor.
+    4. Otherwise the context is sufficient — no hop.
 
     :param covered_articles: the set of article/annex reference strings already
         present in the first-pass context (any format; normalised internally).
+    :param context_passages: optional list of context text passages for NLI verification.
+    :param scorer: optional EntailmentScorer instance.
+    :param entailment_threshold: minimum NLI entailment score threshold (default 0.35).
     """
     live = _live_section(question)
     if not live.strip():
@@ -490,17 +537,30 @@ def assess_sufficiency(
             reason="uncovered_explicit_refs",
         )
 
-    # (2) Multi-part decomposition — the DETERMINISTIC decomposer is the
+    # (2) NLI Entailment verification — prevent topically-related mention fallacies on negative controls.
+    if context_passages:
+        is_entailed, _score = verify_context_entailment(
+            live,
+            context_passages,
+            scorer=scorer,
+            threshold=entailment_threshold,
+        )
+        if not is_entailed:
+            clauses = decompose_question(question)
+            return SufficiencyVerdict(
+                sufficient=False,
+                sub_queries=tuple(clauses[: max_sub_queries()]),
+                uncovered_anchors=tuple(),
+                reason="nli_entailment_failure",
+            )
+
+    # (3) Multi-part decomposition — the DETERMINISTIC decomposer is the
     # complexity gate. It is verb- + clause-initial-guarded, so a single-clause
     # prohibition / definitional / lookup question (e.g. "Is real-time RBI in
     # public spaces prohibited?") never decomposes. The LLM planner
     # (``decompose_question_llm``) is consulted ONLY to refine the sub-query
     # *phrasing* once this gate has already confirmed genuine multi-part
-    # structure. This closes the R125 live over-fire where the Stage-0 LLM
-    # ignored its "do not decompose single-topic questions" instruction and
-    # split a one-clause question into 2 sub-queries (a wasted hop + a wasted
-    # LLM round-trip, zero recall gain). The early return below also SKIPS the
-    # LLM call entirely on single-clause questions — a latency win.
+    # structure.
     deterministic_clauses = decompose_question(question)
     if len(deterministic_clauses) < 2:
         return SufficiencyVerdict(True, reason="sufficient")

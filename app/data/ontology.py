@@ -79,6 +79,7 @@ class ActorRole(str, Enum):
     IMPORTER = "importer"  # Art. 3(6)
     DISTRIBUTOR = "distributor"  # Art. 3(7)
     AUTHORISED_REPRESENTATIVE = "authorised_representative"  # Art. 3(5)
+    AUTHORIZED_REPRESENTATIVE = "authorized_representative"  # US spelling variant
     DOWNSTREAM_PROVIDER = "downstream_provider"  # Recital 85 + Art. 89
     NOTIFIED_BODY = "notified_body"  # Art. 29 + Annex VII
     AFFECTED_PERSON = "affected_person"  # Arts. 85-86 — not an obligation-bearer
@@ -745,6 +746,12 @@ ROLE_OBLIGATIONS: dict[ActorRole, dict[RiskClass, tuple[str, ...]]] = {
         RiskClass.GPAI: ("Art. 54",),
         RiskClass.GPAI_SYSTEMIC: ("Art. 54",),
     },
+    ActorRole.AUTHORIZED_REPRESENTATIVE: {
+        RiskClass.HIGH_RISK_ANNEX_I: ("Art. 22",),
+        RiskClass.HIGH_RISK_ANNEX_III: ("Art. 22",),
+        RiskClass.GPAI: ("Art. 54",),
+        RiskClass.GPAI_SYSTEMIC: ("Art. 54",),
+    },
     ActorRole.DOWNSTREAM_PROVIDER: {
         RiskClass.GPAI: ("Art. 53", "Art. 89", "Annex XII"),
         RiskClass.GPAI_SYSTEMIC: ("Art. 53", "Art. 55", "Art. 89", "Annex XII"),
@@ -766,7 +773,22 @@ ROLE_OBLIGATIONS: dict[ActorRole, dict[RiskClass, tuple[str, ...]]] = {
 }
 
 
-def obligations_for(role: ActorRole, risk_class: RiskClass) -> tuple[str, ...]:
+def normalize_role(role: str | ActorRole) -> str:
+    """Bi-directional spelling normalization for role identifiers (s vs z).
+    
+    Normalizes 'authorized_representative', 'authorised_representative',
+    'authorized_rep', and 'authorised_rep' into canonical role string.
+    """
+    if isinstance(role, ActorRole):
+        val = role.value
+    else:
+        val = str(role or "").strip().lower()
+    if val in ("authorised_representative", "authorized_representative", "authorised_rep", "authorized_rep"):
+        return "authorized_representative"
+    return val
+
+
+def obligations_for(role: ActorRole | str, risk_class: RiskClass | str) -> tuple[str, ...]:
     """Return the article/annex references that bind ``role`` when handling
     a system of ``risk_class``.
 
@@ -774,11 +796,24 @@ def obligations_for(role: ActorRole, risk_class: RiskClass) -> tuple[str, ...]:
     (e.g. deployer of GPAI — deployer obligations attach to the AI
     *system* built on top, not the underlying model).
     """
-    return ROLE_OBLIGATIONS.get(role, {}).get(risk_class, ())
+    role_key = role
+    if isinstance(role, str):
+        norm = normalize_role(role)
+        for r_enum in ActorRole:
+            if r_enum.value == norm or r_enum.value == role:
+                role_key = r_enum
+                break
+    rc_key = risk_class
+    if isinstance(risk_class, str):
+        for rc_enum in RiskClass:
+            if rc_enum.value == risk_class:
+                rc_key = rc_enum
+                break
+    return ROLE_OBLIGATIONS.get(role_key, {}).get(rc_key, ())
 
 
 def validate_legal_triple(
-    article: str, role: ActorRole, risk_class: RiskClass
+    article: str, role: ActorRole | str, risk_class: RiskClass | str
 ) -> bool:
     """Return True iff ``(article, role, risk_class)`` is a LEGAL triple.
 
@@ -786,17 +821,8 @@ def validate_legal_triple(
     layer" post calls for ("a triple that violates the schema is caught
     before it reaches the LLM"). A triple is legal iff ``article`` is in
     the obligation set the ontology binds to ``(role, risk_class)``.
-
-    This is the queryable form of :func:`obligations_for`. Its main job is
-    as a CI guardrail (see ``tests/test_kb_consistency.py``): it lets a
-    lint assert that no provider-only duty (conformity assessment Art. 43,
-    EU declaration Art. 47, CE marking Art. 48) is cross-wired onto a
-    non-provider role, and that the GPAI authorised-representative article
-    (Art. 54) sits only under :data:`ActorRole.AUTHORISED_REPRESENTATIVE`
-    — the exact class of silent bug the May-2026 ontology audit caught by
-    hand. Pure lookup; never raises.
     """
-    return article in ROLE_OBLIGATIONS.get(role, {}).get(risk_class, ())
+    return article in obligations_for(role, risk_class)
 
 
 # ── Public API ───────────────────────────────────────────────────────────
@@ -819,6 +845,7 @@ __all__ = [
     "practice_for_keyword",
     "category_for_keyword",
     "all_articles_referenced",
+    "normalize_role",
     "obligations_for",
     "validate_legal_triple",
 ]

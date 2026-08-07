@@ -376,21 +376,83 @@ def reference_correctness_strict(
     return 2 * precision * recall / (precision + recall)
 
 
+def _normalise_ref_str(ref: str | int | None) -> str:
+    """Normalize citation string to canonical wire form (e.g. Article 5(1)(a) -> Article 5.1.a)."""
+    if ref is None:
+        return ""
+    if isinstance(ref, int):
+        return f"Article {ref}"
+    s = str(ref).strip()
+    if not s:
+        return ""
+    try:
+        from app.integrations.regenold.refs import normalise
+        return normalise(s)
+    except Exception:
+        return s
+
+
+def _to_ref_list(refs: list[str] | set[str] | str | int | list[int] | None) -> list[str]:
+    """Convert flexible gold/pred reference representation into a list of normalized strings."""
+    if refs is None:
+        return []
+    if isinstance(refs, (str, int)):
+        n = _normalise_ref_str(refs)
+        return [n] if n else []
+    out: list[str] = []
+    for r in refs:
+        n = _normalise_ref_str(r)
+        if n:
+            out.append(n)
+    return out
+
+
+def _score_pair(p: str, g: str) -> float:
+    """Compute pairwise hierarchical match score between predicted and gold ref."""
+    p_norm = _normalise_ref_str(p)
+    g_norm = _normalise_ref_str(g)
+    if not p_norm or not g_norm:
+        return 0.0
+    if p_norm.lower() == g_norm.lower():
+        return 1.0
+
+    try:
+        from app.integrations.regenold.refs import parse
+        p_spec = parse(p_norm)
+        g_spec = parse(g_norm)
+        head_match = (
+            p_spec.is_annex == g_spec.is_annex and
+            (p_spec.annex_roman == g_spec.annex_roman if p_spec.is_annex else p_spec.article_number == g_spec.article_number)
+        )
+        if not head_match:
+            return 0.0
+        if p_spec.subpoints == g_spec.subpoints:
+            return 1.0
+        if len(p_spec.subpoints) >= 1 and len(g_spec.subpoints) >= 1 and p_spec.subpoints[0] == g_spec.subpoints[0]:
+            return 0.7
+        return 0.4
+    except Exception:
+        p_head = article_head(p_norm)
+        g_head = article_head(g_norm)
+        if p_head and g_head and p_head.lower() == g_head.lower():
+            p_clean = p_norm.lower().replace(" ", "").replace("(", ".").replace(")", "")
+            g_clean = g_norm.lower().replace(" ", "").replace("(", ".").replace(")", "")
+            if p_clean.startswith(g_clean) or g_clean.startswith(p_clean):
+                return 0.7
+            return 0.4
+        return 0.0
+
+
 def reference_correctness_exact_strict(
-    pred_refs: list[str], gold_refs: list[str] | set[str] | str | None
+    pred_refs: list[str], gold_refs: list[str] | set[str] | str | int | list[int] | None
 ) -> float:
     """Exact full-string citation set F1 without macro-head collapse.
     
     1.0 = exact match at sub-paragraph/annex-point level (e.g. 'Article 5(1)(a)', 'Annex III.5.a').
     Over-citation reduces precision, under-citation reduces recall.
     """
-    if not gold_refs:
-        return 1.0 if not pred_refs else 0.0
-    if isinstance(gold_refs, str):
-        gold_set = {gold_refs.strip()}
-    else:
-        gold_set = {str(r).strip() for r in gold_refs if r}
-    pred_set = {str(r).strip() for r in pred_refs if r}
+    gold_set = set(_to_ref_list(gold_refs))
+    pred_set = set(_to_ref_list(pred_refs))
     
     if not gold_set and not pred_set:
         return 1.0
@@ -405,7 +467,7 @@ def reference_correctness_exact_strict(
 
 
 def reference_correctness_hierarchical(
-    pred_refs: list[str], gold_refs: list[str] | set[str] | str | None
+    pred_refs: list[str], gold_refs: list[str] | set[str] | str | int | list[int] | None
 ) -> float:
     """Hierarchical partial-credit citation precision F1.
     
@@ -415,30 +477,12 @@ def reference_correctness_hierarchical(
     - Macro-article head match (e.g., Article 5 vs Article 5.1.a) -> 0.4
     - Mismatch -> 0.0
     """
-    if not gold_refs:
-        return 1.0 if not pred_refs else 0.0
-    if isinstance(gold_refs, str):
-        gold_list = [gold_refs.strip()]
-    else:
-        gold_list = [str(r).strip() for r in gold_refs if r]
-    pred_list = [str(r).strip() for r in pred_refs if r]
+    gold_list = _to_ref_list(gold_refs)
+    pred_list = _to_ref_list(pred_refs)
     
     if not gold_list and not pred_list:
         return 1.0
     if not gold_list or not pred_list:
-        return 0.0
-    
-    def _score_pair(p: str, g: str) -> float:
-        if p.lower() == g.lower():
-            return 1.0
-        p_head = article_head(p)
-        g_head = article_head(g)
-        if p_head and g_head and p_head.lower() == g_head.lower():
-            p_norm = p.lower().replace(" ", "").replace("(", ".").replace(")", "")
-            g_norm = g.lower().replace(" ", "").replace("(", ".").replace(")", "")
-            if p_norm.startswith(g_norm) or g_norm.startswith(p_norm):
-                return 0.7
-            return 0.4
         return 0.0
 
     total_p_score = 0.0

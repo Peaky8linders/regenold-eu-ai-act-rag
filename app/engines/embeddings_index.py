@@ -147,6 +147,7 @@ class EmbeddingHit:
     sent_idx: int
     text: str
     similarity: float
+    layer: str = "layer_1_binding"
 
 
 # ── Lazy asset cache ─────────────────────────────────────────────────────
@@ -365,13 +366,14 @@ def query(
     *,
     top_k: int = 10,
     threshold: float = 0.0,
+    layer: str | None = None,
 ) -> list[EmbeddingHit]:
     """Return the top-``top_k`` sentence-level hits above ``threshold``.
 
     The result is sorted by descending cosine similarity. Returns
     ``[]`` when assets are unavailable, the query has no in-vocab
-    tokens, or no sentence passes the threshold. NEVER raises — every
-    error path collapses to the empty list so retrieval callers can
+    tokens, or no sentence passes the threshold / layer filter. NEVER raises —
+    every error path collapses to the empty list so retrieval callers can
     treat this as a best-effort recall enhancer.
 
     Args:
@@ -383,6 +385,8 @@ def query(
         threshold: Inclusive cosine-similarity floor. Hits below this
             are filtered out. Default ``0.0`` keeps everything that
             isn't anti-correlated.
+        layer: Optional metadata layer filter ('layer_1_binding',
+            'layer_2_standards', 'layer_3_soft_law', 'layer_4_rights').
 
     Returns:
         ``list[EmbeddingHit]`` in descending-similarity order.
@@ -405,9 +409,6 @@ def query(
         return []
 
     # The embeddings are unit-norm float32 rows, so dot product == cosine.
-    # NB: ``emb`` is a numpy.memmap → the slice we ``@`` here is the only
-    # part of the file that gets paged in (small fraction of the ~460 KB
-    # file). For 919 rows the full scan is a sub-millisecond matmul.
     try:
         scores = emb @ q_vec  # shape (N,)
     except Exception as exc:  # noqa: BLE001 — defensive against bad data
@@ -416,25 +417,40 @@ def query(
     n = int(scores.shape[0])
     if n == 0:
         return []
-    kk = min(top_k, n)
-    # argpartition + sort over the top-kk indices — O(N) instead of O(N log N).
-    top_idx = np.argpartition(-scores, kk - 1)[:kk]
-    top_idx = top_idx[np.argsort(-scores[top_idx])]
+
+    top_idx = np.argsort(-scores)
     out: list[EmbeddingHit] = []
     for idx in top_idx:
         sim = float(scores[int(idx)])
         if sim < threshold:
-            continue
+            break
         entry = meta[int(idx)]
+        entry_layer = entry.get("layer")
+        if not entry_layer:
+            art = str(entry.get("article_ref", "")).lower()
+            if any(k in art for k in ("charter", "rights")):
+                entry_layer = "layer_4_rights"
+            elif any(k in art for k in ("iso", "iec", "cen", "etsi", "standard")):
+                entry_layer = "layer_2_standards"
+            elif any(k in art for k in ("guideline", "soft_law", "commission_notice")):
+                entry_layer = "layer_3_soft_law"
+            else:
+                entry_layer = "layer_1_binding"
+        if layer is not None and entry_layer != layer:
+            continue
         out.append(
             EmbeddingHit(
                 article_ref=str(entry["article_ref"]),
                 sent_idx=int(entry["sent_idx"]),
                 text=str(entry["text"]),
                 similarity=sim,
+                layer=entry_layer,
             )
         )
+        if len(out) >= top_k:
+            break
     return out
+
 
 
 __all__ = [

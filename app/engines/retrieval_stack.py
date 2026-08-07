@@ -40,6 +40,23 @@ def _l2_normalize(vec: dict[str, float]) -> dict[str, float]:
     return {t: w / norm for t, w in vec.items()}
 
 
+def apply_role_boosting(pid: str, score: float, role: str | None) -> float:
+    """Apply role-aware score boosting based on EU AI Act article assignments."""
+    if not role:
+        return score
+    role_lower = role.lower()
+    pid_lower = pid.lower()
+    if "provider" in role_lower and any(f"article_{i}" in pid_lower or f"article {i}" in pid_lower for i in range(16, 26)):
+        return score * 1.25
+    if "deployer" in role_lower and ("article_26" in pid_lower or "article 26" in pid_lower):
+        return score * 1.30
+    if "importer" in role_lower and ("article_23" in pid_lower or "article 23" in pid_lower):
+        return score * 1.25
+    if "distributor" in role_lower and ("article_24" in pid_lower or "article 24" in pid_lower):
+        return score * 1.25
+    return score
+
+
 class Retriever(ABC):
     """Abstract Retriever interface mapping query -> list[provision_id]."""
 
@@ -86,20 +103,11 @@ class TfidfRetriever(Retriever):
         if not qvec:
             return []
         scored: list[tuple[float, str]] = []
-        role_lower = (role or "").lower()
         for pid, dvec in zip(self._ids, self._doc_vecs):
             small, big = (qvec, dvec) if len(qvec) <= len(dvec) else (dvec, qvec)
             score = sum(w * big.get(t, 0.0) for t, w in small.items())
             if score > 0:
-                if role_lower:
-                    if "provider" in role_lower and any(f"article_{i}" in pid.lower() or f"article {i}" in pid.lower() for i in range(16, 26)):
-                        score *= 1.25
-                    elif "deployer" in role_lower and ("article_26" in pid.lower() or "article 26" in pid.lower()):
-                        score *= 1.30
-                    elif "importer" in role_lower and ("article_23" in pid.lower() or "article 23" in pid.lower()):
-                        score *= 1.25
-                    elif "distributor" in role_lower and ("article_24" in pid.lower() or "article 24" in pid.lower()):
-                        score *= 1.25
+                score = apply_role_boosting(pid, score, role)
                 scored.append((score, pid))
         scored.sort(key=lambda s: (-s[0], s[1]))
         return [(pid, score) for score, pid in scored[:k]]
@@ -190,21 +198,23 @@ class LsaRetriever(Retriever):
             return None
         return latent / norm
 
-    def search(self, query: str, k: int) -> list[str]:
-        return [pid for pid, _ in self.search_scored(query, k)]
+    def search(self, query: str, k: int, *, role: str | None = None) -> list[str]:
+        return [pid for pid, _ in self.search_scored(query, k, role=role)]
 
-    def search_scored(self, query: str, k: int) -> list[tuple[str, float]]:
+    def search_scored(self, query: str, k: int, *, role: str | None = None) -> list[tuple[str, float]]:
         q = self._embed_query(query)
         if q is None:
             return []
         sims = self._doc_emb @ q
         order = sorted(range(len(self._ids)), key=lambda i: (-float(sims[i]), self._ids[i]))
-        out: list[tuple[str, float]] = []
-        for i in order[:k]:
+        scored: list[tuple[float, str]] = []
+        for i in order:
             score = float(sims[i])
             if score > 0:
-                out.append((self._ids[i], score))
-        return out
+                score = apply_role_boosting(self._ids[i], score, role)
+                scored.append((score, self._ids[i]))
+        scored.sort(key=lambda s: (-s[0], s[1]))
+        return [(pid, score) for score, pid in scored[:k]]
 
 
 class ExternalEmbeddingRetriever(Retriever):
@@ -231,14 +241,14 @@ class ExternalEmbeddingRetriever(Retriever):
         self.embed_fn = embed_fn
         self._doc_embeddings: list[list[float]] | None = None
 
-    def search(self, query: str, k: int) -> list[str]:
-        return [pid for pid, _ in self.search_scored(query, k)]
+    def search(self, query: str, k: int, *, role: str | None = None) -> list[str]:
+        return [pid for pid, _ in self.search_scored(query, k, role=role)]
 
-    def search_scored(self, query: str, k: int) -> list[tuple[str, float]]:
+    def search_scored(self, query: str, k: int, *, role: str | None = None) -> list[tuple[str, float]]:
         if self.embed_fn is None:
             # Fall back to TF-IDF if no dense embedder is configured or available
             fallback = TfidfRetriever([{"provision_id": eid, "text": ""} for eid in self._ids])
-            return fallback.search_scored(query, k)
+            return fallback.search_scored(query, k, role=role)
 
         try:
             q_emb = self.embed_fn([query])[0]
@@ -252,7 +262,10 @@ class ExternalEmbeddingRetriever(Retriever):
         scored: list[tuple[float, str]] = []
         for eid, d_emb in zip(self._ids, self._doc_embeddings):
             dot = sum(q * d for q, d in zip(q_emb, d_emb))
-            scored.append((dot, eid))
+            if dot > 0:
+                dot = apply_role_boosting(eid, dot, role)
+                scored.append((dot, eid))
 
         scored.sort(key=lambda s: (-s[0], s[1]))
         return [(pid, score) for score, pid in scored[:k]]
+

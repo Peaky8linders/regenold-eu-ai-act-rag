@@ -20,9 +20,70 @@ class RiskLevel(str, Enum):
     HIGH_RISK_ANNEX_I = "high_risk_annex_i"
     HIGH_RISK_ANNEX_III = "high_risk_annex_iii"
     LIMITED = "limited"
+    LIMITED_RISK = "limited_risk"
     MINIMAL = "minimal"
+    MINIMAL_RISK = "minimal_risk"
     GPAI = "gpai"
     GPAI_SYSTEMIC = "gpai_systemic"
+
+
+class AnnexIVTechnicalFile(BaseModel):
+    """Annex IV Technical Documentation for High-Risk AI Systems (Art. 11)."""
+
+    system_name: str
+    system_description: str
+    intended_purpose: str
+    provider_name: str
+    version: str = "1.0"
+    risk_classification: RiskLevel | str = RiskLevel.HIGH_RISK_ANNEX_III
+    elements: list[str] = Field(default_factory=list)
+    standards_applied: list[str] = Field(default_factory=list)
+    is_compliant: bool = True
+
+
+class RiskManagementDossier(BaseModel):
+    """Risk Management System Dossier (Art. 9)."""
+
+    system_id: str
+    risk_management_plan: str
+    known_foreseeable_risks: list[str] = Field(default_factory=list)
+    mitigation_measures: list[str] = Field(default_factory=list)
+    residual_risks_acceptable: bool = True
+    testing_results_summary: str = ""
+
+
+class DataGovernanceDossier(BaseModel):
+    """Data & Data Governance Dossier (Art. 10)."""
+
+    dataset_name: str
+    data_provenance: str
+    bias_mitigation_measures: list[str] = Field(default_factory=list)
+    data_protection_assessment: str = ""
+    representativeness_checked: bool = True
+
+
+class LoggingSpecification(BaseModel):
+    """Automatic Record-Keeping & Logging Specification (Art. 12)."""
+
+    logging_enabled: bool = True
+    log_retention_period_days: int = 180
+    logged_events: list[str] = Field(default_factory=list)
+    traceability_guaranteed: bool = True
+
+
+class EUDeclarationOfConformity(BaseModel):
+    """EU Declaration of Conformity (Art. 47 & Annex V)."""
+
+    declaration_id: str
+    provider_name_address: str
+    authorized_representative: str | None = None
+    system_name_type: str
+    conformity_assessment_procedure: str
+    notified_body_info: str | None = None
+    harmonised_standards_referenced: list[str] = Field(default_factory=list)
+    place_date_of_issue: str
+    signatory_title: str
+
 
 
 
