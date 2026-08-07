@@ -103,16 +103,57 @@ def test_annex_i_pack_drops_redundant_subpoint() -> None:
     assert "Art. 6.1" not in pack, "redundant Art. 6.1 sub-point should be dropped"
 
 
+def _catalog_base(ref: str) -> str:
+    """Return the catalog base ("Art. 6" / "Annex III") for a possibly-sub-point ref.
+
+    R321 — the previous inline version was ``ref.split(".")[0]``, which yields
+    ``"Art"`` for BOTH ``"Art. 6"`` and ``"Art. 6.3"``. It only ever passed
+    because no pack contained a sub-point, so the first clause
+    (``ref in ARTICLE_EXISTENCE``) always carried the assertion. The moment a
+    sub-point was added the lint went red while its own docstring promised
+    sub-points would resolve. This derives the base for real, via the repo's
+    centralised converter, so the lint enforces what it documents.
+    """
+    from app.integrations.regenold.refs import parse  # noqa: PLC0415
+
+    try:
+        spec = parse(ref)
+    except Exception:  # noqa: BLE001 — unparseable is a failure, not a pass
+        return ref
+    if spec is None:
+        return ref
+    if spec.is_annex:
+        return f"Annex {spec.annex_roman}"
+    return f"Art. {spec.article_number}"
+
+
 def test_all_risk_packs_resolve_in_catalog() -> None:
     """R263 lint — every ref in EVERY _RISK_ARTICLES tier must resolve to a
     catalog entry (base article/annex; sub-points resolve via their base)."""
     for tier, pack in sc._RISK_ARTICLES.items():
         for ref in pack:
-            base = ref.split(".")[0] if ref.startswith(("Art.", "Annex")) else ref
+            base = _catalog_base(ref)
             # A sub-point like "Art. 5.1" -> base "Art. 5"; a base resolves directly.
             assert ref in ARTICLE_EXISTENCE or base in ARTICLE_EXISTENCE, (
                 f"_RISK_ARTICLES[{tier!r}] ref {ref!r} (base {base!r}) not in catalog"
             )
+
+
+def test_catalog_base_still_rejects_a_nonexistent_article() -> None:
+    """R321 mutation guard — fixing the base extraction must not turn the lint
+    into a rubber stamp. A sub-point of an article that does NOT exist, and a
+    bare nonexistent article, must both still fail to resolve."""
+    for bogus in ("Art. 200.3", "Art. 200", "Art. 999.1.a", "Annex XXV", "Annex XXV.2"):
+        base = _catalog_base(bogus)
+        assert bogus not in ARTICLE_EXISTENCE and base not in ARTICLE_EXISTENCE, (
+            f"{bogus!r} (base {base!r}) must NOT resolve — the lint would be inert"
+        )
+    # ...while a real sub-point DOES resolve via its base, which is the whole
+    # point of the fix.
+    for good in ("Art. 6.3", "Art. 53.2", "Art. 5.1.a", "Annex III.5"):
+        assert _catalog_base(good) in ARTICLE_EXISTENCE, (
+            f"{good!r} -> base {_catalog_base(good)!r} should resolve"
+        )
 
 
 # ---------------------------------------------------------------------------

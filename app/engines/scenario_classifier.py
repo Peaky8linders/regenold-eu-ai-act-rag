@@ -1130,6 +1130,18 @@ _RISK_ARTICLES: dict[str, tuple[str, ...]] = {
     # 16/26, 27, 50]: the prohibition itself + data-governance + the
     # role's primary obligation article + FRIA + transparency. Cover all
     # five so loose recall hits even when the gold set is broader.
+    # R321 — "Art. 27" was removed here by the CR audit and the removal is
+    # KEPT, on measurement rather than on the argument either way. The comment
+    # above still lists five refs, which reads like a gold-loss; it is not.
+    # Measured on the davidath scenarios (r321-baseline vs r321-fix1 sidecars):
+    # rows citing Article 27 are 65 WITH and 65 WITHOUT it in this pack, and
+    # 0 of 339 rows differ — Article 27 reaches those rows through the route's
+    # own anchor/obligation passes, not through this tuple. So the removal is
+    # benchmark-neutral, and it is legally tighter: Article 27 binds deployers
+    # of Annex III HIGH-RISK systems, not prohibited practices, which are
+    # banned outright. Given over-citation is this system's standing weakness,
+    # the narrower pack is right. Pinned by
+    # tests/test_cr_critical_fixes.py::test_c4_prohibited_risk_articles_exclusion_of_art27.
     "prohibited": ("Art. 5", "Art. 10", "Art. 50"),
     # High-risk scenarios commonly cite the Section 2 essential-requirement
     # spine + Art. 6 classification + role-specific anchors.
@@ -1167,8 +1179,15 @@ _RISK_ARTICLES: dict[str, tuple[str, ...]] = {
         "Art. 6", "Annex I", "Art. 43", "Art. 48",
         "Art. 9", "Art. 14", "Art. 72", "Art. 73",
     ),
-    "art6_3_derogated": ("Art. 6", "Art. 6(3)", "Art. 49", "Art. 4"),
-    "gpai-open-source": ("Art. 25", "Art. 51", "Art. 53", "Art. 53(2)"),
+    # R321 — these shipped as "Art. 6(3)" / "Art. 53(2)", which resolve in
+    # NEITHER ARTICLE_EXISTENCE nor the catalog-lint's base extraction, so
+    # tests/test_r263_medtech.py::test_all_risk_packs_resolve_in_catalog went
+    # red on main (hard rule #5: every emitted citation must resolve). The
+    # dominant internal sub-point convention in these ref lists is the dot
+    # form, and refs.to_user_facing() maps both to the same wire string
+    # ("Article 6.3"), so the dot form is used here.
+    "art6_3_derogated": ("Art. 6", "Art. 6.3", "Art. 49", "Art. 4"),
+    "gpai-open-source": ("Art. 25", "Art. 51", "Art. 53", "Art. 53.2"),
 }
 
 

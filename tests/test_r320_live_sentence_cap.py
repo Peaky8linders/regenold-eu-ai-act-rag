@@ -132,12 +132,35 @@ class TestReversibility:
         out = _norm(_ANSWER, live=True)
         assert len(M._split_sentences(out)) <= 2
 
-    @pytest.mark.parametrize("bad", ["abc", "   x"])
-    def test_malformed_cap_falls_back_to_four(self, monkeypatch, bad):
+    @pytest.mark.parametrize(
+        "bad", ["abc", "   x", "", "   ", "false", "no", "disabled", "4.0", "-2", "-3", "0"]
+    )
+    def test_unparseable_or_non_positive_cap_fails_CLOSED(self, monkeypatch, bad):
+        """R321 — anything we cannot read as a positive integer means OFF.
+
+        As shipped this failed OPEN: "" was absent from the disable-set,
+        ``int("")`` raised, and the handler ENABLED the cap. Measured: ''/'  '/
+        'false'/'no'/'disabled'/'four' all capped at 4, and '-2' clamped via
+        ``max(1, min(12, -2))`` to a ONE-sentence wire answer. So clearing the
+        Railway variable, or writing "false", silently switched on a mode whose
+        own A/B measured answer_correctness -0.143 (1 up / 4 DOWN).
+        """
         monkeypatch.delenv("REGENOLD_MAX_ANSWER_SENTENCES", raising=False)
         monkeypatch.setenv("REGENOLD_LIVE_SENTENCE_CAP", bad)
         out = _norm(_ANSWER, live=True)
-        assert len(M._split_sentences(out)) <= 4
+        uncapped = _norm(_ANSWER, live=True)  # same config; establishes the shape
+        assert len(M._split_sentences(out)) == len(M._split_sentences(uncapped))
+        assert len(M._split_sentences(out)) > 4, (
+            f"REGENOLD_LIVE_SENTENCE_CAP={bad!r} must NOT enable the cap"
+        )
+
+    @pytest.mark.parametrize("good,expect", [("4", 4), ("2", 2), ("1", 1)])
+    def test_explicit_positive_integer_still_enables_the_cap(self, monkeypatch, good, expect):
+        """The opt-in must still work — the fix must not make the flag inert."""
+        monkeypatch.delenv("REGENOLD_MAX_ANSWER_SENTENCES", raising=False)
+        monkeypatch.setenv("REGENOLD_LIVE_SENTENCE_CAP", good)
+        out = _norm(_ANSWER, live=True)
+        assert len(M._split_sentences(out)) <= expect
 
 
 class TestEnumerationStillProtected:

@@ -45,7 +45,9 @@ class TestScenarioClassifierFindings:
         v = classify_scenario_query(q)
         assert v is not None
         assert v.risk_level == "art6_3_derogated"
-        assert "Art. 6(3)" in v.articles
+        # R321 — dot form: "Art. 6(3)" resolved in NEITHER ARTICLE_EXISTENCE nor
+        # the catalog lint, so test_all_risk_packs_resolve_in_catalog was red.
+        assert "Art. 6.3" in v.articles
         assert "Art. 49" in v.articles
         assert "Article 6(3)" in v.answer
 
@@ -69,7 +71,8 @@ class TestScenarioClassifierFindings:
         v = classify_scenario_query(q)
         assert v is not None
         assert v.risk_level == "gpai-open-source"
-        assert "Art. 53(2)" in v.articles
+        # R321 — dot form, see test_art_6_3_narrow_non_profiling_derogation.
+        assert "Art. 53.2" in v.articles
         assert "Article 53(2)" in v.answer
 
     def test_art_53_2_systemic_risk_override(self):
@@ -99,23 +102,33 @@ class TestFRIAEvaluator:
         assert eval_result.annex_iii_category == "employment"
         assert eval_result.fria_required is True
         
+        # R321 — Charter ids are namespaced "Charter Art. N". Bare "Art. 1"/
+        # "Art. 7"/"Art. 8"/"Art. 21" are EU AI ACT articles in this repo and
+        # ALL resolve in ARTICLE_EXISTENCE, so the unprefixed ids would pass
+        # the citation lint and ship as wrong AI Act references.
         charter_ids = [art.article_id for art in eval_result.charter_articles]
-        assert "Art. 1" in charter_ids
-        assert "Art. 7" in charter_ids
-        assert "Art. 8" in charter_ids
-        assert "Art. 21" in charter_ids
+        assert "Charter Art. 1" in charter_ids
+        assert "Charter Art. 7" in charter_ids
+        assert "Charter Art. 8" in charter_ids
+        assert "Charter Art. 21" in charter_ids
+        # ...and none of them may look like an AI Act reference.
+        assert all(cid.startswith("Charter ") for cid in charter_ids)
 
     def test_fria_evaluation_law_enforcement(self):
         text = "Deploying an AI system for law enforcement risk assessment of reoffending."
         eval_result = evaluate_fria(text, role="deployer")
         assert eval_result.annex_iii_category == "law_enforcement"
         charter_ids = [art.article_id for art in eval_result.charter_articles]
-        assert "Art. 47" in charter_ids  # Fair Trial
+        # R321 — Charter ids are namespaced. A bare "Art. 47" is EU AI Act
+        # Article 47 (EU declaration of conformity) everywhere else in this
+        # repo, and it resolves in ARTICLE_EXISTENCE, so the unprefixed form
+        # would ship as a wrong AI Act citation once this module is wired.
+        assert "Charter Art. 47" in charter_ids  # Charter: Fair Trial
 
     def test_get_charter_mapping(self):
         mapping = get_charter_mapping("justice")
-        assert "Art. 47" in mapping
-        assert "Art. 21" in mapping
+        assert "Charter Art. 47" in mapping  # R321 — namespaced, see above
+        assert "Charter Art. 21" in mapping  # R321 — namespaced
 
 
 class TestKGContextCrossRegulatory:
