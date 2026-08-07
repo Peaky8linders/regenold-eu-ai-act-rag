@@ -12,12 +12,18 @@ from pydantic import BaseModel, Field
 
 
 class RiskLevel(str, Enum):
-    """EU AI Act risk classification (Art. 5/6)."""
+    """EU AI Act risk classification (Art. 5/6 & Title VIII)."""
 
     UNACCEPTABLE = "unacceptable"
+    PROHIBITED = "prohibited"
     HIGH = "high"
+    HIGH_RISK_ANNEX_I = "high_risk_annex_i"
+    HIGH_RISK_ANNEX_III = "high_risk_annex_iii"
     LIMITED = "limited"
     MINIMAL = "minimal"
+    GPAI = "gpai"
+    GPAI_SYSTEMIC = "gpai_systemic"
+
 
 
 class AssessmentAnswer(str, Enum):

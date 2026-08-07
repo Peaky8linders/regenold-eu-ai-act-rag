@@ -100,8 +100,9 @@ def _tokens(text: str) -> set[str]:
 
 
 # TODO(R47): migrate to app.integrations.regenold.refs (centralised converter).
-_ARTICLE_HEAD_RE = re.compile(r"^Article\s+(\d+)(?:\..*)?$")
-_ANNEX_HEAD_RE = re.compile(r"^Annex\s+([IVXLC]+)(?:\..*)?$")
+_ARTICLE_HEAD_RE = re.compile(r"^Article\s+(\d+)(?:[\.\(].*)?$", re.IGNORECASE)
+_ANNEX_HEAD_RE = re.compile(r"^Annex\s+([IVXLC]+)(?:[\.\(].*)?$", re.IGNORECASE)
+
 
 
 def article_head(ref: str) -> str | None:
@@ -373,6 +374,89 @@ def reference_correctness_strict(
     precision = tp / len(pred_heads)
     recall = tp / len(gold)
     return 2 * precision * recall / (precision + recall)
+
+
+def reference_correctness_exact_strict(
+    pred_refs: list[str], gold_refs: list[str] | set[str] | str | None
+) -> float:
+    """Exact full-string citation set F1 without macro-head collapse.
+    
+    1.0 = exact match at sub-paragraph/annex-point level (e.g. 'Article 5(1)(a)', 'Annex III.5.a').
+    Over-citation reduces precision, under-citation reduces recall.
+    """
+    if not gold_refs:
+        return 1.0 if not pred_refs else 0.0
+    if isinstance(gold_refs, str):
+        gold_set = {gold_refs.strip()}
+    else:
+        gold_set = {str(r).strip() for r in gold_refs if r}
+    pred_set = {str(r).strip() for r in pred_refs if r}
+    
+    if not gold_set and not pred_set:
+        return 1.0
+    if not gold_set or not pred_set:
+        return 0.0
+    tp = len(pred_set & gold_set)
+    if tp == 0:
+        return 0.0
+    precision = tp / len(pred_set)
+    recall = tp / len(gold_set)
+    return 2 * precision * recall / (precision + recall)
+
+
+def reference_correctness_hierarchical(
+    pred_refs: list[str], gold_refs: list[str] | set[str] | str | None
+) -> float:
+    """Hierarchical partial-credit citation precision F1.
+    
+    Match tiers:
+    - Exact sub-clause match (e.g., Article 5.1.a == Article 5.1.a) -> 1.0
+    - Sub-section match (e.g., Article 5.1 vs Article 5.1.a) -> 0.7
+    - Macro-article head match (e.g., Article 5 vs Article 5.1.a) -> 0.4
+    - Mismatch -> 0.0
+    """
+    if not gold_refs:
+        return 1.0 if not pred_refs else 0.0
+    if isinstance(gold_refs, str):
+        gold_list = [gold_refs.strip()]
+    else:
+        gold_list = [str(r).strip() for r in gold_refs if r]
+    pred_list = [str(r).strip() for r in pred_refs if r]
+    
+    if not gold_list and not pred_list:
+        return 1.0
+    if not gold_list or not pred_list:
+        return 0.0
+    
+    def _score_pair(p: str, g: str) -> float:
+        if p.lower() == g.lower():
+            return 1.0
+        p_head = article_head(p)
+        g_head = article_head(g)
+        if p_head and g_head and p_head.lower() == g_head.lower():
+            p_norm = p.lower().replace(" ", "").replace("(", ".").replace(")", "")
+            g_norm = g.lower().replace(" ", "").replace("(", ".").replace(")", "")
+            if p_norm.startswith(g_norm) or g_norm.startswith(p_norm):
+                return 0.7
+            return 0.4
+        return 0.0
+
+    total_p_score = 0.0
+    for p in pred_list:
+        best = max((_score_pair(p, g) for g in gold_list), default=0.0)
+        total_p_score += best
+    precision = total_p_score / len(pred_list)
+
+    total_g_score = 0.0
+    for g in gold_list:
+        best = max((_score_pair(p, g) for p in pred_list), default=0.0)
+        total_g_score += best
+    recall = total_g_score / len(gold_list)
+
+    if precision + recall == 0:
+        return 0.0
+    return 2 * precision * recall / (precision + recall)
+
 
 
 # ── 6: Reference conciseness ─────────────────────────────────────────────

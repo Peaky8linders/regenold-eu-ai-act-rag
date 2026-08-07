@@ -350,9 +350,21 @@ ROLE_OBLIGATION_BY_ID: dict[str, RoleObligation] = {
 }
 
 
+def normalize_role_id(role_id: str) -> str:
+    """Normalize role string handling spelling variants (e.g. authorized vs authorised)."""
+    if not role_id:
+        return ""
+    r = role_id.strip().lower()
+    if r in ("authorised_representative", "authorised_rep", "authorized_rep"):
+        return ROLE_AUTHORIZED_REPRESENTATIVE
+    return r
+
+
 def get_role_obligation(role_id: str) -> RoleObligation | None:
     """Return the obligation entry for ``role_id``, or ``None`` if unknown."""
-    return ROLE_OBLIGATION_BY_ID.get(role_id)
+    norm_id = normalize_role_id(role_id)
+    return ROLE_OBLIGATION_BY_ID.get(norm_id)
+
 
 
 def articles_for_role(role_id: str, *, include_secondary: bool = True) -> list[str]:

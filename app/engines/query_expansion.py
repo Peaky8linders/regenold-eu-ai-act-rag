@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from collections.abc import Iterable
 
@@ -39,6 +40,24 @@ _SYSTEM_PROMPT = (
 _USER_TEMPLATE = "Question: {q}\n\nReturn 2-3 paraphrases as JSON."
 
 _TIMEOUT = 2.0  # short budget — paraphrase is opportunistic
+
+# Regex matching explicit statutory citations (Article 12, Art. 10(2), Recital 45, Annex III)
+_CITATION_PATTERN = re.compile(
+    r"\b(?:Article|Art\.|Recital|Annex)\s+([IVXLCDM\d]+(?:\.\d+)*(?:\([a-z\d]+\))*)\b",
+    re.IGNORECASE,
+)
+
+
+def strip_citation_bias(text: str) -> str:
+    """Remove explicit article/annex numbers from hypothetical expansion completions.
+    
+    Prevents hallucinated or misattributed statutory citations (e.g., 'Article 112')
+    from biasing dense embedding vector lookups toward incorrect statutory chapters.
+    """
+    if not text:
+        return ""
+    cleaned = _CITATION_PATTERN.sub("", text)
+    return re.sub(r"\s+", " ", cleaned).strip()
 
 
 def expand_query(question: str, *, intent_label: str = "") -> list[str]:
@@ -79,13 +98,16 @@ def expand_query(question: str, *, intent_label: str = "") -> list[str]:
         data = json.loads(text[start_idx:end_idx + 1])
         for p in (data.get("paraphrases") or [])[:3]:
             p = (p or "").strip()
-            if p and p not in queries:
-                queries.append(p)
+            # Strip citation bias from paraphrases to prevent vector steering on fake/hallucinated citations
+            cleaned_p = strip_citation_bias(p) if p else p
+            if cleaned_p and cleaned_p not in queries:
+                queries.append(cleaned_p)
     except (json.JSONDecodeError, ValueError, AttributeError):
         return queries
     elapsed_ms = int((time.perf_counter() - start) * 1000)
     logger.debug("query_expansion_ok: %d paraphrases in %d ms", len(queries) - 1, elapsed_ms)
     return queries
+
 
 
 def reciprocal_rank_fusion(

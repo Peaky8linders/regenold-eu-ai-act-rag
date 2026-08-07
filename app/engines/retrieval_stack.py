@@ -44,12 +44,12 @@ class Retriever(ABC):
     """Abstract Retriever interface mapping query -> list[provision_id]."""
 
     @abstractmethod
-    def search(self, query: str, k: int) -> list[str]:
+    def search(self, query: str, k: int, *, role: str | None = None) -> list[str]:
         raise NotImplementedError
 
-    def search_scored(self, query: str, k: int) -> list[tuple[str, float]]:
+    def search_scored(self, query: str, k: int, *, role: str | None = None) -> list[tuple[str, float]]:
         """Ranked (provision_id, score) pairs."""
-        return [(pid, 1.0 / (i + 1)) for i, pid in enumerate(self.search(query, k))]
+        return [(pid, 1.0 / (i + 1)) for i, pid in enumerate(self.search(query, k, role=role))]
 
 
 class TfidfRetriever(Retriever):
@@ -78,21 +78,32 @@ class TfidfRetriever(Retriever):
         vec = {t: c * self._idf.get(t, 0.0) for t, c in tf.items() if self._idf.get(t, 0.0)}
         return _l2_normalize(vec)
 
-    def search(self, query: str, k: int) -> list[str]:
-        return [pid for pid, _ in self.search_scored(query, k)]
+    def search(self, query: str, k: int, *, role: str | None = None) -> list[str]:
+        return [pid for pid, _ in self.search_scored(query, k, role=role)]
 
-    def search_scored(self, query: str, k: int) -> list[tuple[str, float]]:
+    def search_scored(self, query: str, k: int, *, role: str | None = None) -> list[tuple[str, float]]:
         qvec = self._vectorize(tokenize(query))
         if not qvec:
             return []
         scored: list[tuple[float, str]] = []
+        role_lower = (role or "").lower()
         for pid, dvec in zip(self._ids, self._doc_vecs):
             small, big = (qvec, dvec) if len(qvec) <= len(dvec) else (dvec, qvec)
             score = sum(w * big.get(t, 0.0) for t, w in small.items())
             if score > 0:
+                if role_lower:
+                    if "provider" in role_lower and any(f"article_{i}" in pid.lower() or f"article {i}" in pid.lower() for i in range(16, 26)):
+                        score *= 1.25
+                    elif "deployer" in role_lower and ("article_26" in pid.lower() or "article 26" in pid.lower()):
+                        score *= 1.30
+                    elif "importer" in role_lower and ("article_23" in pid.lower() or "article 23" in pid.lower()):
+                        score *= 1.25
+                    elif "distributor" in role_lower and ("article_24" in pid.lower() or "article 24" in pid.lower()):
+                        score *= 1.25
                 scored.append((score, pid))
         scored.sort(key=lambda s: (-s[0], s[1]))
         return [(pid, score) for score, pid in scored[:k]]
+
 
 
 class LsaRetriever(Retriever):
