@@ -8148,18 +8148,14 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
     #   3. risk_level is threaded through (it was hardcoded to None).
     _risk_level = request.risk_level.value if request.risk_level else None
     context = None
+    # R321 — the REGENOLD_LOGIC_RAG_SAMPLE_RATE side-door was removed with the
+    # rest of the unfinished LogicRAG batch. It could turn LogicRAG ON while the
+    # master gate was UNSET, which is the opposite of what a master gate is for:
+    # an operator who had never enabled LogicRAG could have it running on a
+    # fraction of traffic. Re-add it, if wanted, with the master gate as a
+    # precondition and an A/B behind it.
     _logic_rag_env = os.environ.get("REGENOLD_LOGIC_RAG", "").strip().lower()
-    _logic_rag_sample_rate = os.environ.get("REGENOLD_LOGIC_RAG_SAMPLE_RATE", "").strip()
-    _logic_rag_active = _logic_rag_env == "1" or _logic_rag_env in ("true", "yes", "on")
-    if not _logic_rag_active and _logic_rag_sample_rate and _logic_rag_env not in ("0", "false", "no", "off"):
-        try:
-            _rate = float(_logic_rag_sample_rate)
-            if 0.0 <= _rate <= 1.0:
-                import zlib
-                _h = zlib.crc32(request.question.encode("utf-8")) & 0xFFFFFFFF
-                _logic_rag_active = (_h / 0xFFFFFFFF) < _rate
-        except (ValueError, TypeError):
-            pass
+    _logic_rag_active = _logic_rag_env in ("1", "true", "yes", "on")
 
     if _logic_rag_active:
         from app.engines.question_complexity import is_complex_question  # noqa: PLC0415
