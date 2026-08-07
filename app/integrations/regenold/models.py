@@ -1355,6 +1355,12 @@ def normalise_answer_for_regenold(
     _is_multi = False
     _is_enum = False
     _no_cap = False
+    # R320 — third mode: apply the SENTENCE cap but skip the soft CHAR cap.
+    # Only the live Stage-2 path sets this; the deterministic bench never
+    # does, so davidath keeps MAX_ANSWER_SENTENCES=3 + the char cap and stays
+    # byte-identical.
+    _skip_char_cap = False
+    _apply_shape_escalation = False
 
     if max_sentences is None:
         # Operator-directed (2026-06-18): REGENOLD_MAX_ANSWER_SENTENCES=0
@@ -1373,8 +1379,66 @@ def normalise_answer_for_regenold(
         # a code change. The deterministic bench sets neither, so it keeps
         # MAX_ANSWER_SENTENCES=3 and stays byte-identical.
         if not _raw_ms and answer_no_cap_active():
-            _no_cap = True
-            max_sentences = 12  # placeholder; unused on the no-cap path
+            # R320 — the live Stage-2 path gets a SENTENCE cap but NOT the
+            # char cap. Measured, zero generation variance, on the 72-row
+            # july7-r309 arm (.evalout/r320/cap_sweep2.py):
+            #
+            #   uncapped (R308, today) : 1.130x the July-7 graded length
+            #   sentence cap 4         : 1.086x, 0 enumerations cut,
+            #                            0 verdict-first leads dropped
+            #   + char cap (any value) : 16 verdict-first LEADS DROPPED
+            #
+            # The July-7 arm is the right length target because it is the arm
+            # whose official Answer-Conciseness we know (96.0 easy / 93.4
+            # hard, the only axis we lead) - a near-maximal score means its
+            # lengths already tracked the gold lengths closely.
+            #
+            # The char cap drops "the longest NON-CITE-ANCHORED sentence"
+            # first, and a crisp verdict-first opener ("No such list
+            # exists.") is exactly that shape - so it deletes the direct
+            # answer to the question. july7-287 is the worked example. Hence
+            # sentence cap ON, char cap OFF.
+            #
+            # _enum_floor still overrides max_sentences below, so an
+            # enumerated run longer than the cap is never truncated (R306).
+            #
+            # SHIPS DEFAULT **OFF** ("0" = R308 uncapped). The paired judge
+            # A/B on the 21 rows the cap actually changes (arm A = uncapped,
+            # arm B = this cap, SAME Opus generations so zero generation
+            # variance) came back a TRADE, not a win:
+            #
+            #   answer_conciseness    +0.095  (3 up / 1 down)
+            #   citation_faithfulness +0.095  (2 up / 0 down)
+            #   reference_correctness  0.000  (0/0/21 - inert, as designed)
+            #   answer_correctness    -0.143  (1 up / 4 DOWN)
+            #
+            # Neither delta is close to significant at n=21 (sign test
+            # p~0.375 / p~0.625), and the losing axis is the one with the
+            # larger official leverage. The judge's own conciseness failure
+            # reasons are REDUNDANCY and SCOPE CREEP ("verdict restated three
+            # times", "padding with tangential enumerations") - i.e. the
+            # defect is the model repeating itself, which a blunt sentence
+            # cap treats as length rather than as cause. Shipping this ON
+            # would repeat R308 (uncap shipped with its own gate un-run) and
+            # R299 (partition shipped with no A/B).
+            #
+            # Set REGENOLD_LIVE_SENTENCE_CAP=4 to enable, after a properly
+            # powered A/B. The measured-safe shape is SENTENCE cap only: the
+            # CHAR cap drops "the longest NON-CITE-ANCHORED sentence", which
+            # is exactly a crisp verdict-first opener, and deleted 16 of them
+            # on the recorded arm (july7-287 is the worked example).
+            _live_cap_raw = os.getenv("REGENOLD_LIVE_SENTENCE_CAP", "0").strip().lower()
+            if _live_cap_raw in {"0", "off", "none", "unlimited", "-1"}:
+                _no_cap = True
+                max_sentences = 12  # placeholder; unused on the no-cap path
+            else:
+                try:
+                    max_sentences = max(1, min(12, int(_live_cap_raw)))
+                except ValueError:
+                    max_sentences = 4
+                _no_cap = False
+                _skip_char_cap = True
+                _apply_shape_escalation = True
         elif _raw_ms in {"0", "off", "none", "unlimited", "-1"}:
             _no_cap = True
             max_sentences = 12  # placeholder; unused on the no-cap path
@@ -1383,7 +1447,14 @@ def normalise_answer_for_regenold(
                 max_sentences = int(_raw_ms or MAX_ANSWER_SENTENCES)
             except ValueError:
                 max_sentences = MAX_ANSWER_SENTENCES
+            _apply_shape_escalation = True
 
+        # Shape-based escalation, SHARED by the live-cap and env/default
+        # paths. R320 — the live path must run this too. A hard cap of 4 that
+        # skipped it truncated 3 inline enumerations on the july7-r309 arm
+        # (_enum_floor protects SENTENCE-level runs; an inline "(a) … (b) …"
+        # list inside a dropped sentence is not covered by it).
+        if _apply_shape_escalation:
             try:
                 from app.routes.regenold import _is_closed_set_enumeration_ask
                 from app.engines.question_complexity import is_complex_question, _is_multi_phrase
@@ -1503,6 +1574,7 @@ def normalise_answer_for_regenold(
 
     while (
         not _no_cap
+        and not _skip_char_cap  # R320 — see the live-path branch above
         and len(capped) > 1
         and sum(len(s) for s in capped) + (len(capped) - 1) > effective_cap
     ):

@@ -4867,7 +4867,146 @@ post-deploy live re-judge confirms the lift.
 | **318** | 476 davidath (byte-identical) + 132-row zero-variance attribution sweep + 12 adversarial validation lanes | 9.9ms | 14.0ms | — | davidath RefL **0.5971** / RefS **0.4748** / Ans Strict **0.3545** / AnsC 0.6143 / Tone **1.0** / mt 20/20 · 276 **255/255** RISK_F1 **1.00** · OOS **0 leaks** · suite **5753 collect, 0 errors** | **P0: the regression guard was DOWN.** Two orphaned R317 test files (whose `app/` implementation had been wiped by a checkout that removed tracked edits but kept untracked files) aborted pytest at collection — 5753 collected, **0 executed**, the R286 failure mode. Rule was measured actively harmful, so tests were retired to `.evalout/r317/orphaned_tests/`, not resurrected. **12 validation lanes falsified 5 of the plan's load-bearing numbers**: rank-0 is **78.3%** not 63.5% (the 63.5% is ALL-gold-top-3 = 0.6357, mislabelled); top-2 coverage **91.5%** not 86%; never-gold heads **11.2%** not 19%; the Annex III 30/52 + Art 5 10/28 table hits ABSENT-IS-NOT-ZERO on **349/547 rows**; kw-recall gap is **+0.021** not +0.051 under the canonical metric (the harness uses substring containment and our answers are 51% longer). **Step 2 (re-rank + clamp) is DEAD** — lead-rerank + top-2 moves gold 23 → 21 (legal splitter) or 23 → **24, worse** (naive); random reordering drops **25.9 ± 2.1**, so the naive variant is indistinguishable from chance (p=0.256). The real blocker is ALL-gold coverage (40.3% @ k=1, 51.2% @ k=2), which re-ranking cannot fix. **A k≥5 cap looked FREE on both recorded arms and destroys 422 gold on davidath** (scenario gold averages 9.88 refs/row) — rejected, hard rule #7. **SHIPPED: `REGENOLD_SUFFICIENT_CONTEXT` default ON → OFF** — the only strictly-dominant result in the first-ever additive-pass attribution sweep (24 passes, zero-variance): **+1 gold GAINED**, 19 fewer non-gold, RefL +0.0038 / RefS +0.0141 / RefC +0.0254, davidath byte-identical. R110.1 had baked it ON on "davidath byte-identical ON vs OFF" — true, and exactly the problem: davidath is BM25-saturated so the hop is a dedup no-op and **the bench is structurally blind to its cost**. Rejected with evidence: `ONTOLOGY_HOP=0` (QA RefL −0.0219, drops gold ⇒ hard rule #8), any global top-k cap, the lead-sentence re-rank. Hard rules **7-9 restored** (they were lost with the R317 wipe). |
 | **319** | 476 davidath (identical ON vs OFF) + **live paired A/B, 35 treatment rows x 2 arms x 2 repeats, measured noise floor** + frontier splice (132 paired) | 34.4ms | 53.1ms | — | davidath RefL **0.5971** / RefS **0.4748** / Ans Strict **0.3545** / AnsC 0.6143 / Tone **1.0** / mt 20/20 · 276 **0 fails** · OOS **0 leaks** · suite **5773 collect, 0 errors** | **R318's merge gate finally run — and its flip is REVERTED.** R318 shipped `REGENOLD_SUFFICIENT_CONTEXT` ON→OFF on a DETERMINISTIC sweep; the live pairwise A/B that hard rule #6 names as the merge gate had never been run for this gate (not by R110.1, not by R318). **Powered by SAMPLING**: a zero-variance pre-pass found the flip changes the Stage-2 prompt on only **35 of 132 rows** (mean **11,187 chars** and 440 obligations removed; worst rows inflate obligations 1→19, 1→21, 5→40) — the other 97 get a byte-identical prompt and are guaranteed ties that dilute the effect (the R308 pooling error). So the A/B ran the treatment population only, 140 live calls instead of 264, with the freed budget buying **2 repeats per arm** (engine LRU cleared between them) = the measured noise floor every prior round lacked. Result: **ref_loose 0.8143 → 0.6786, delta −0.1357 at a ±0.0500 noise floor (2.7x), 1 win / 8 losses, p=0.039** — the ONLY axis clearing its own noise. Both answer proxies came in SMALLER than the noise ⇒ not a result either way. Dropping gold is a rejection under hard rule #8. Corroborated by the frontier splice: Ref Loose **0.8636 → 0.8371** across all 132, moving us from BEATING `claude-opus-5` (0.8396) to a tie; the two estimates agree once diluted 35/132. **Why the zero-variance sweep didn't transfer** (generalisable): with Stage-2 live the wire refs are partly a FUNCTION OF THE ANSWER (`_add_prose_named_refs` adds what the prose names, the R72 reconcile drops what it doesn't), so shrinking context changes the answer and hence the references — a deterministic reference measurement is NOT a valid proxy for the live reference axes. Does NOT vindicate the hop: added content measures **2.5% gold precision** (10/401 keys) with crowding-out demonstrated on `st_v4_013` (kw 1.0→0.0 on a gold article that WAS in the inflated context) — it is unfiltered, not good; a bounded redesign is the next lever. **Also fixed: the LLM judge could not see the answers it scored** — `answer[:1400]` against a corpus whose mean answer is **1413.3 chars** (50% over the cap); 3 false failures verified by reading the text (`july7-327` failed for omitting a rule present at char 2007). ⚠ The tempting overclaim is REFUTED: `reference_correctness` never renders the answer yet has the LARGEST long-row failure gap (+0.400 vs +0.250), so length is a proxy for difficulty and the "omission profile is an artifact" claim is NOT supported. **And `_article_key` was not idempotent for Annexes** (`annexiv`→`""`), silently dropping every Annex from the covered set. +20 tests, mutation-tested (11 fail under pre-R319 behaviour). |
 
- 
+ | **320** | 476 davidath **byte-identical PER-ROW** (476/476, 0 diffs vs the `r319-gateon` sidecar) + Step-1 re-judge (72 rows, stratified/self-controlling) + paired cap A/B (21 treatment rows, zero generation variance) + fresh 25% hard-mode sample (56 requests, judged) | 68.6ms | 116.6ms | — | davidath RefL **0.5971** / RefS **0.4748** / Ans Strict **0.3545** / AnsC 0.6143 / **RefCon 0.4316** / Tone **1.0** / mt 20/20 · 276 **254/254**, RISK_F1 1.00 · OOS **49 pass, 0 leaks** · touched suites **153 pass** | **The judge could not see half the answers, and we had already broken the axis we lead.** **Step 1** — the window fix is stratified and self-controlling (mean answer 1413 chars, so exactly 36/72 rows were truncated and 36 were not): `answer_correctness` **+0.278** on long rows (0.333→0.611, 11 fail→pass vs 1) against a **0.000** control ⇒ **every pre-R319 judged answer-correctness number is understated**. The plan's prediction that `citation_faithfulness` would WORSEN is **not supported** (−0.029 vs a +0.028 control = inside noise). **Step 2** — Overall = geometric mean confirmed on all 6 rows to 0.06 pp and the **arithmetic mean actively REFUTED** (up to 1.40 pp off). July-7 per-request latency **recovered from the batch's timestamps** (it has no latency field): strictly monotonic over 252.5 min, ordering `111 easy` then `18,20,18,20…` ⇒ each hard conversation is **two back-to-back calls**, easy 35.8 s / hard conv **71.2 s**; cross-validated against R286/R305. That calibrates **Speed ≈ 100/(1+t/111.3)**, fitting BOTH official anchors inside **0.7 pp** (reciprocal beats exponential, T spread 6.7 vs 22.4). Local **Tone is a NEGATIVE calibration**: exactly 100.0 on all 333 answers vs official 98.2-98.5 ⇒ zero discriminating power. **THE REGRESSION**: R308 flipped `REGENOLD_ANSWER_NO_CAP` ON **27 days AFTER** the graded batch, and answers are now **1.130x** (72-row arm) to **1.356x** (fresh paired hard sample) the length of the arm that scored AnsCon 96.0/93.4 — costing **−1.1 to −2.2 pp Overall** (bounded under 3 formula hypotheses; direction robust, only magnitude formula-dependent), independently corroborated by the re-judged `answer_conciseness` **0.3056**, our worst axis, whose failure reasons are *"verdict restated three times"* / *"padding"* / *"scope creep"*. **Speed is an ARCHITECTURE problem, plan assumption REFUTED**: a **5-token** request costs **12-17 s on the LOCAL wrapper**, identical for Sonnet-5 and Opus-5 (prod `/healthz/llm` 13.5 s for 2 tokens) ⇒ ~half our latency is a fixed CLI-wrapper floor; Stage-2 ON p50 31.4 s vs OFF 5.1 s; and the **thinking budget is NOT the lever** (complex/4000 tokens p50 **26.9 s** vs simple/0 **41.8 s** — the "expensive" path is 15 s FASTER), contra the R280 note in `config.py`. Fourth independent line agreeing with the fast-mode and thinking-budget washes. **SHIPPED**: removal of a **duplicated** `USER_ANSWER_COVERAGE_CLAUSE` append (copy-paste bug — the model got the same 1955-char completeness instruction TWICE, doubling the pressure toward length on the one axis we lead). **NOT shipped (default OFF)**: the live sentence cap — its paired A/B (zero generation variance, treatment rows only) is a **TRADE**: conciseness +0.095 / citation +0.095 but **answer_correctness −0.143** (1 up / 4 down), nothing near significant at n=21. Shipping it ON would repeat R308/R299. Two instrument bugs caught en route, each a false PASS: an explicit `REGENOLD_MAX_ANSWER_SENTENCES` **overrides** the no-cap ContextVar, and `normalise_answer_for_regenold` is **not idempotent** (9/72 rows move with the cap OFF). The **char cap deletes verdict-first leads** (16 of them, incl. `"No such list exists."`) ⇒ any future cap must be SENTENCE-only. **Fresh hard-mode validation** (25% stratified of the **222 multi-turn**, 56 requests, 0 errors): tone **1.0**, refusals **0**, **pushback-concession 0.0000**, refs/row 2.96 (−18% vs July-7 paired); judged answer_corr **0.786** / ref_corr **0.607** (recall **1.0**, focus_precision 0.572) / citation_faith **1.000** / conciseness **0.571**. ⚠ NOT paired against the baseline (different row sets) and the 44.6 s latency is LOCAL (no tunnel) — two current-state readings, not a measured improvement. |
+
+## Round 320 — the judge was half-blind, and we had already broken the axis we lead (2026-08-07)
+
+Full record: [`.planning/R320-CHECKPOINT.md`](.planning/R320-CHECKPOINT.md).
+
+### Step 1 — the re-judge is self-controlling, and it is the round's biggest result
+
+R319 raised the judge's answer window 1400 → 6000. The corpus mean answer is
+**1413 chars**, so the old cap sat ON the median: **exactly 36 of 72 rows were
+truncated and 36 were not.** The untruncated half is therefore a built-in
+control whose prompt is byte-identical across the two runs.
+
+| stratum | answer_corr | reference_corr | citation_faith | answer_concise |
+| --- | --- | --- | --- | --- |
+| **UNDER 1400** (control, n=36) | +0.000 | −0.028 | +0.028 | −0.056 |
+| **OVER 1400** (treatment, n=36) | **+0.278** | +0.059 | −0.029 | −0.083 |
+
+`answer_correctness` **0.333 → 0.611** on long rows, 11 fail→pass vs 1
+pass→fail, against a **0.000** control. **Every pre-R319 judged
+answer-correctness number is understated.** The plan predicted
+`citation_faithfulness` would get WORSE (truncation hiding claims ⇒ false
+passes); measured −0.029 against a +0.028 control, i.e. **inside noise —
+prediction not supported**. `reference_correctness` never renders the answer,
+so it is a second control, and it behaved like one.
+
+New baseline (n=72): answer_corr **0.5972** · reference_corr **0.5000** ·
+citation_faith **0.8732** · answer_concise **0.3056**. ⚠ Compare all future
+judged numbers to THIS, never to `legalv2-r309-hard`.
+
+### Step 2 — calibration
+
+* **Overall = geometric mean, confirmed AND the alternative refuted.** All 6
+  published rows reproduce within **0.06 pp**; the arithmetic mean misses by
+  up to **1.40 pp**.
+* **July-7 latency recovered from `timestamp`** (the batch has no latency
+  field). Strictly monotonic across 333 rows over 252.5 min; ordering is 111
+  easy blocked, then hard strictly interleaved `18,20,18,20…` — which proves
+  **each hard conversation is two back-to-back calls**. Easy 35.8 s p50; hard
+  conversation **71.2 s**. Cross-validated against R286/R305.
+* **Speed axis calibrated: `Speed ≈ 100/(1 + t/111.3)`**, fitting BOTH
+  official anchors inside 0.7 pp; the reciprocal form clearly beats the
+  exponential (T spread 6.7 vs 22.4). Frontier's 85.2 needs **9.7 s/request**.
+* **Answer-Conciseness** = `(min/max charlen)²` locally; July-7's 96.0/93.4
+  implies its lengths were within **2.0% / 3.4%** of gold, which makes "match
+  July-7 length" a formula-independent target.
+* **Tone is a negative calibration result**: our local metric returns exactly
+  **100.0 on all 333** answers vs official 98.2-98.5 — a floor detector with no
+  discriminating power at the top. Worth +0.17 pp, so a confirmed dead end.
+
+### The regression: R308's uncap broke the one axis we lead
+
+`REGENOLD_ANSWER_NO_CAP` was flipped default ON on 2026-08-03 — **27 days
+after** the graded batch. So the arm that scored AnsCon 96.0/93.4 ran WITH
+caps and production has been uncapped since. Measured paired drift: **1.130x**
+(72-row arm) and **1.356x** mean / 1.264x median-of-ratios (fresh hard
+sample). Cost **−1.1 to −2.2 pp Overall**, bounded under three plausible
+AnsCon forms — direction robust, magnitude formula-dependent. Corroborated by
+a wholly different instrument: re-judged `answer_conciseness` is our worst
+axis at **0.3056**, failing on *"verdict restated three times"*, *"padding
+with tangential enumerations"*, *"scope creep"*.
+
+### Speed is architecture, not configuration — the plan's assumption is refuted
+
+The plan ranked Speed "+3.00 pp, pure engineering, the cheapest points on the
+board". Measured, no knob reaches it:
+
+* a **5-token** request costs **12-17 s on the LOCAL wrapper** (no tunnel),
+  **identical for `claude-sonnet-5` and `claude-opus-5`**; prod
+  `/healthz/llm` reports 13.5 s for a 2-token probe ⇒ ~half our latency is a
+  fixed per-call CLI-wrapper floor;
+* Stage-2 ON p50 **31.4 s** vs OFF **5.1 s**, so CLARA (3 s) and the de-noiser
+  chain (≤4 s) are noise;
+* **the thinking budget is NOT the lever** — complex rows (4000 thinking
+  tokens) run p50 **26.9 s** vs simple rows (0) at **41.8 s**, i.e. the
+  "expensive" path is 15 s FASTER, contra the R280 note in `config.py`
+  (observational, not an A/B);
+* answer-length↔latency correlation is only **0.347**.
+
+Fourth independent line agreeing with the recorded fast-mode and
+thinking-budget washes. **The real lever is replacing the CLI-wrapper
+transport with a direct API path (R56 built it) — an operator decision.**
+
+### Shipped, and deliberately not shipped
+
+**SHIPPED — duplicate prompt clause removed** (`_graph_rag_impl.py`). Two
+byte-identical `try/except` blocks appended `USER_ANSWER_COVERAGE_CLAUSE`
+back-to-back, so the model received the same **1955-char** completeness
+instruction **twice** (~3910 chars of the delivered budget), doubling the
+pressure toward longer answers. A copy-paste bug, not a trade.
+
+**NOT SHIPPED (default OFF) — the live sentence cap.** Paired A/B on the 21
+rows it actually changes (same Opus generations ⇒ zero generation variance;
+the other 51 are byte-identical and would only dilute — the R319 lesson):
+
+| axis | uncapped | capped | delta | B>A / A>B / tie |
+| --- | --- | --- | --- | --- |
+| answer_conciseness | 0.238 | 0.333 | +0.095 | 3 / 1 / 17 |
+| citation_faithfulness | 0.810 | 0.905 | +0.095 | 2 / 0 / 19 |
+| reference_correctness | 0.190 | 0.190 | 0.000 | 0 / 0 / 21 |
+| **answer_correctness** | 0.476 | 0.333 | **−0.143** | 1 / **4** / 16 |
+
+A trade, not a win; nothing near significance at n=21 (p≈0.375 / p≈0.625) and
+the losing axis has the larger leverage. `REGENOLD_LIVE_SENTENCE_CAP=4`
+enables it after a powered A/B.
+
+**Two instrument bugs caught en route, each of which produced a false PASS:**
+an explicit `REGENOLD_MAX_ANSWER_SENTENCES` **overrides** the no-cap
+ContextVar (`models.py:1375`), so a "baseline" computed with the sweep env set
+was itself capped and the enumeration check compared a thing to itself; and
+`normalise_answer_for_regenold` is **not idempotent** (9/72 rows move with the
+cap OFF), a floor that must be subtracted or a safe config is rejected for
+damage it did not cause. Also measured: **the char cap deletes verdict-first
+leads** — 16 of them, including `"No such list exists."`, the direct answer to
+an adversarial premise-check (`july7-287`). **Any future cap must be
+SENTENCE-only.**
+
+### Fresh hard-mode validation
+
+25% stratified sample of the **222 multi-turn** rows — regenold hard mode, NOT
+the 281 `HARD MODE`-labelled rows (that trap mixes in 59 regenold-easy rows).
+28 questions × 2 turns = **56 requests, 0 errors**, run locally against the
+wrapper so it exercises the shipped code.
+
+tone **1.0000** · refusals **0.0000** · **pushback_conceded_rate 0.0000** ·
+refs/row 2.96 (**−18%** vs July-7 paired) · answer chars 1064 (**+35.6%**) ·
+p50 44.6 s/question · stage2_landed 0.75.
+
+Judged with the same fixed-window judge: answer_corr **0.7857** (mean factual
+0.9884) · reference_corr **0.6071** (recall **1.0**, focus_precision 0.572,
+GOVERNING 38 / SUPPORTING 25 / WRONG 20 / **MISSING 0**) · citation_faith
+**1.0000** (28/28) · conciseness **0.5714**.
+
+⚠ **NOT a paired comparison** with the Step-1 baseline — different row sets
+(72 vs 28), so the deltas are confounded by sample composition; what is
+like-for-like is the judge. And **44.6 s is LOCAL** (no Cloudflare tunnel), so
+it is not comparable to July-7's 71.2 s through production. Reference
+precision remains the standing weakness: **WRONG 20 vs GOVERNING 38 at recall
+1.0** — over-citation, not under-retrieval (R287/R291/R302/R316).
+
 ## Round 97 — Adaptive verbatim-vs-synthesis routing: re-engage Sonnet for multi-turn (2026-05-30)
 
 User directive: production had gone effectively **deterministic + verbatim**
