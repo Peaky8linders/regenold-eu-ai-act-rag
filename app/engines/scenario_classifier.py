@@ -1564,10 +1564,33 @@ def classify_scenario_query(question: str) -> ScenarioVerdict | None:
         else:
             risk_level = "limited"
 
-    # Check Art 6(3) narrow non-profiling task derogations and Art 53(2) open-source GPAI exemptions
-    if risk_level in ("high-risk", "high-risk-annex-i") and _detect_art_6_3_derogation(question):
+    # Art 6(3) narrow non-profiling derogation, and the Art 53(2) open-source
+    # GPAI exemption. Both branches are narrowed here (R321) against verbatim
+    # text; each was over-applying and silently stripping the Chapter III
+    # Section 2 obligation chain out of the pack that grounds Stage-2.
+    #
+    # Art 6(3): "By derogation from PARAGRAPH 2, an AI system referred to in
+    # ANNEX III shall not be considered to be high-risk where it does not pose
+    # a significant risk of harm..." — paragraph 2 is the Annex III route.
+    # Annex I safety components come in under paragraph 1 and have NO
+    # derogation, so "high-risk-annex-i" must never be derogated. Measured
+    # before this fix: the MDR surgical-robot question flipped from
+    # high-risk-annex-i (Art. 6/9/10/11/13/14/15/16/17/43/49 + Annex III) to
+    # art6_3_derogated (Art. 6/6.3/49/4) — the whole Section 2 chain gone.
+    if risk_level == "high-risk" and _detect_art_6_3_derogation(question):
         risk_level = "art6_3_derogated"
-    elif (risk_level == "gpai" or _detect_gpai_signal(question)) and _detect_open_source_gpai_exemption(question):
+    # Art 53(2) relieves "PROVIDERS OF AI MODELS" of the paragraph 1 (a) and (b)
+    # duties only. It says nothing about whether a DEPLOYER's system is
+    # high-risk under Art. 6(2)/Annex III, so it must never overwrite an
+    # already-assigned high-risk or prohibited verdict. Measured before this
+    # fix: a CV-screening deployer question mentioning open weights flipped
+    # from high-risk (Section 2 chain + Art. 26 + Art. 27 FRIA) to
+    # gpai-open-source (Art. 25/51/53/53.2) — the FRIA duty destroyed.
+    elif (
+        risk_level not in ("high-risk", "high-risk-annex-i", "prohibited")
+        and (risk_level == "gpai" or _detect_gpai_signal(question))
+        and _detect_open_source_gpai_exemption(question)
+    ):
         risk_level = "gpai-open-source"
 
     # Pick the primary role: prefer the single-role hit when available
