@@ -151,24 +151,96 @@ davidath and merge anyway.
 
 ## Fresh session plug-in
 
-When you start a fresh Claude Code session on this repo, read this file
-first, then check these current handoff points:
+**Current as of R319 (2026-08-07).** ⚠ This section was ~300 rounds stale
+until R319 — it still described May-2026 rounds 19-23. If what follows does
+not match `git log`, trust the code and fix this section.
 
-1. The broad intent-classifier expansion bundle was rejected; the live
-   classifier stays coarse and calibrated, with import-time taxonomy
-   validation guarding against bad labels / anchors.
-2. The active regression fix is the transcription split: generic
-   doctor-patient transcription now routes to Article 50 / limited-risk
-   transparency, while the explicit Annex III doctor-patient-conversations
-   path remains covered by the separate Q3 wording.
-3. The last verified narrow checks were:
-   - `tests/test_regenold_scope.py` for the Article 50 transcription
-     scope split.
-   - `tests/test_classification_verdicts.py` for the Q3 verdict path.
-   - `tests/test_subpoint_emitter.py` for the transcription subpoint /
-     medical-device route.
-4. If you continue editing routing logic, re-run the narrow tests above
-   before widening scope.
+### Where we stand
+
+* **Three separate scorecards. Never conflate them.** (a) The OFFICIAL
+  regenold report — we beat 0 baselines, `Overall` is a geometric mean so the
+  worst axis dominates, `AnsLoose − RefLoose = −13.1` vs +3.9 for the 2025
+  baselines, and **Answer-Conciseness is the only axis we lead** (zero
+  headroom). No official formula is disclosed for any axis, so local `Ans`
+  numbers are NOT comparable to the report. (b) **davidath = the regression
+  guard, never a win-measure** — `provider=cli`, no Stage-2, token-overlap
+  metrics that R99.2/R100 proved diverge from the live judge. (c) The
+  **frontier head-to-head** = the "are we SOTA?" measure.
+* **Frontier standing (132 paired rows, `frontier-r317-frontier-opus5.ckpt.jsonl`
+  is committed and reusable).** We win Ref Loose and keyword recall; we lose
+  **Ref Strict and Ref Conciseness — which are the SAME defect, over-citation.**
+  That one fix would make us SOTA on this measurement. R319's revert restores
+  the Ref Loose win that R318's flip had turned into a tie.
+* **Over-citation ceiling:** an oracle dropping every non-gold ref gains Ref
+  Strict +0.215 / Ref Conciseness +0.229 at unchanged recall. Nothing has
+  captured any of it. **R317 killed five rule families; do not re-propose them**
+  (identity blocklist, positional/top-N clamp, prose-driven pruning, ask-type ×
+  role exclusivity, Chapter-III tier exclusivity). The lesson: the same article
+  head is gold on one question and wrong on another, so **no removal rule keyed
+  on identity, position, or prose survives — work the RANKER, not the trimmer.**
+
+### The instrument trap that keeps recurring — read before measuring anything
+
+Three times now an instrument that looked authoritative was structurally blind
+to the thing being decided:
+
+1. **R110.1** baked a gate ON on "davidath byte-identical" — true, and exactly
+   the problem: davidath is BM25-saturated, so the gate was a no-op *there*.
+2. **R318** flipped it OFF on a zero-variance `provider=cli` sweep — but with
+   Stage-2 live the wire references are partly a **function of the answer**
+   (`_add_prose_named_refs` adds what the prose names; the R72 reconcile drops
+   what it doesn't), so a deterministic reference measurement is **not** a valid
+   proxy for the live reference axes. R319's live A/B reversed the decision.
+3. **R319** found the LLM judge rendering `answer[:1400]` against a corpus whose
+   mean answer is 1413 chars — it could not see half of what it scored.
+
+Before trusting any measurement, ask: *can this instrument physically observe
+the thing I am deciding?* And **`--qa-only` is not a gate for a reference
+change** (hard rule #7); a probe set with small gold sets will call a cap free.
+
+### How to measure (in order, cheapest first)
+
+1. `evals.bench.runner` full 476 — deterministic regression guard.
+2. `.evalout/r319/context_delta.py` — **run before any live A/B of a
+   context-affecting flag.** It finds the TREATMENT population (rows the change
+   can actually move) with zero variance, so live budget goes where the signal
+   is. R319: only 35 of 132 rows; the other 97 were guaranteed ties.
+3. `.evalout/r319/live_ab.py` — paired live A/B **with repeats and a measured
+   noise floor**. A delta smaller than the noise is not a result. Repeats
+   require clearing the engine LRU or they are cache hits.
+4. `evals.harness.easyhard_ab` — gold-bearing live A/B (count-ratio conciseness;
+   `ab_judge`'s refs axis has no minimality term, which is how R142.1 slipped).
+5. `evals.harness.frontier_baseline --compare` — SOTA. Splice fresh treatment
+   rows into the recorded arm (`.evalout/r319/sota_compare.py`) instead of
+   re-running 132 — valid only while the diff under test touches nothing else
+   (`git show --stat`).
+6. `evals.regenold.runner` (276) + `runner_v2 --local --probe-oos --oos-suite all`.
+
+### Live-eval gotchas that have each cost a session
+
+* `/v1/auth/status` **lies** — verify the wrapper with a real POST.
+* `easyhard_ab --local` silently runs deterministic unless the wrapper env is
+  set (p50 0.1 s instead of ~25 s), and it forces `?include_reasoning=true`.
+* **git-worktree baselines have no `.env`** — full-suite failure diffs must be
+  run IN PLACE (a worktree baseline manufactured 30 phantom regressions on the
+  same commit). davidath is unaffected.
+* `railway.toml [deploy.envs]` **has never applied** — Railway's `[deploy]`
+  schema has no `envs` key. **Bake config as CODE defaults.**
+* Never run two wrapper-bound jobs concurrently.
+* Deterministic env: `OPENAI_API_BASE=http://127.0.0.1:1/v1
+  P2P_GRAPH_RAG_PROVIDER=cli REGENOLD_EXTERNAL_EMBEDDINGS=0`.
+
+### Open, ranked
+
+1. **Over-citation** — the whole remaining frontier gap. Work the ranker.
+2. **A bounded Sufficient-Context hop.** The gate is ON (R319) but its added
+   content is only **2.5% gold precision**, with crowding-out demonstrated. Cap
+   the merged obligations, require term overlap with the ORIGINAL question.
+3. **⚠ The judge changed in R319.** Any new judged run is NOT comparable to
+   `legalv2-r309-hard.json` or older `grounded-*` numbers. Re-judge a recorded
+   arm with the fixed judge first to get a like-for-like baseline.
+4. **The official answer-side gap** (`AnsL − RefL = −13.1`) is untouched and is
+   a different problem from the frontier keyword-recall win.
 
 ## Recent code changes (2026-05-15 — rounds 19–23 since 18.1)
 
