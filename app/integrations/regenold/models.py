@@ -260,6 +260,15 @@ INTENT_REF_BUDGET: dict[str, int] = {
 # sentence almost always added qualifying noise rather than substance.
 MAX_ANSWER_SENTENCES = 3
 
+#: Values that mean "no sentence cap" for REGENOLD_MAX_ANSWER_SENTENCES and
+#: REGENOLD_LIVE_SENTENCE_CAP. Shared so the two parses cannot drift — R321
+#: found them already drifted: the live parse omitted the empty string and
+#: then ENABLED the cap on any unparseable value, so clearing the Railway
+#: variable switched the feature ON rather than off.
+_CAP_DISABLE_VALUES: frozenset[str] = frozenset(
+    {"", "0", "off", "no", "false", "none", "disabled", "unlimited", "-1"}
+)
+
 # Soft character cap applied AFTER the sentence-count cap. If the
 # answer is still > this many chars AND has > 1 sentence, we drop the
 # longest sentence that does NOT contain ``Art.`` / ``Annex`` (cite-
@@ -1427,18 +1436,35 @@ def normalise_answer_for_regenold(
             # CHAR cap drops "the longest NON-CITE-ANCHORED sentence", which
             # is exactly a crisp verdict-first opener, and deleted 16 of them
             # on the recorded arm (july7-287 is the worked example).
+            # R321 — this parse FAILS CLOSED. As shipped it failed OPEN:
+            # "" was not in the disable-set, int("") raised, and the handler
+            # ENABLED the cap. Measured on an 8-sentence answer with the
+            # ContextVar active: unset/'0'/'off' -> 8 sentences (correct), but
+            # ''/' '/'false'/'no'/'disabled'/'four' -> 4 (cap ON), and '-2' ->
+            # max(1, min(12, -2)) == 1 sentence. So clearing the Railway
+            # variable to empty, or writing "false", silently switched on a
+            # mode whose own A/B measured answer_correctness -0.143 (1 up /
+            # 4 DOWN) — and '-2' shipped a one-sentence wire answer, worse
+            # than anything measured. Any value we cannot read as a positive
+            # integer now means OFF, matching the sibling parse below and
+            # every other flag in this repo.
             _live_cap_raw = os.getenv("REGENOLD_LIVE_SENTENCE_CAP", "0").strip().lower()
-            if _live_cap_raw in {"0", "off", "none", "unlimited", "-1"}:
+            if _live_cap_raw in _CAP_DISABLE_VALUES:
                 _no_cap = True
                 max_sentences = 12  # placeholder; unused on the no-cap path
             else:
                 try:
-                    max_sentences = max(1, min(12, int(_live_cap_raw)))
+                    _live_cap = int(_live_cap_raw)
                 except ValueError:
-                    max_sentences = 4
-                _no_cap = False
-                _skip_char_cap = True
-                _apply_shape_escalation = True
+                    _live_cap = 0  # unparseable => OFF, never a silent enable
+                if _live_cap < 1:
+                    _no_cap = True
+                    max_sentences = 12  # placeholder; unused on the no-cap path
+                else:
+                    max_sentences = min(12, _live_cap)
+                    _no_cap = False
+                    _skip_char_cap = True
+                    _apply_shape_escalation = True
         elif _raw_ms in {"0", "off", "none", "unlimited", "-1"}:
             _no_cap = True
             max_sentences = 12  # placeholder; unused on the no-cap path

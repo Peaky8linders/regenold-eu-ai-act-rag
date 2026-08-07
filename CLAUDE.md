@@ -12302,3 +12302,236 @@ Wrapper rate limit defaults to `RATE_LIMIT_CHAT_PER_MINUTE=10` — for a
 476-item bench run, either raise the wrapper limit or accept that the
 bundle will fall back to deterministic on each 429. Either way the
 route returns a valid answer.
+
+## Round 321 — review of a concurrent agent's push to main: the scenario verdict was discarded on 100% of scenarios (2026-08-07)
+
+A concurrent agent pushed three commits **straight to `origin/main`** during
+this session (`aab30f9` → `734d937` → `e98dd28`, +1460/−70 across 18 files) and
+Railway auto-deployed them, so the code was live and unreviewed. A further batch
+of in-flight LogicRAG edits sat uncommitted in the working tree; they were frozen
+as `d883b44` so the tree could be measured and so they stay droppable as a unit.
+
+⚠ **The agent re-applied the broken gate after it had been fixed.** If the tree
+moves under you mid-session, re-verify before shipping — a `git status` at the
+start of a session is not evidence about its state 40 minutes later.
+
+### The regression: one gate, 100% of scenarios
+
+`_deterministic_answer` made the scenario verdict conditional on
+`select_answer_mode(...).is_synthesis` being False. That router decides
+**verbatim-quote vs synthesis** (R97/R100), and since R100 it returns SYNTHESIS
+for everything except an explicit "quote me Article N" request. It was never a
+gate for the scenario classifier. Measured: **339/339 scenario verdicts
+discarded.** The question then fell through to the generic
+`risk_framework_overview` intercept, whose canonical set is Articles 51-56 +
+Annex I — so a prohibited-practice scenario stopped saying "prohibited under
+Article 5" and started reciting the four-tier framework.
+
+| davidath, scenarios n=339 | R320 | post-push | after fix |
+| --- | --- | --- | --- |
+| Ref Strict | 0.4430 | 0.2361 (−47%) | **0.4430** |
+| Ref Loose | 0.4992 | 0.3269 (−35%) | **0.4992** |
+| Ans Strict | 0.3332 | 0.1926 (−42%) | **0.3332** |
+
+Row-level: **339/339 scenario rows changed refs**; 269 gained Articles 51-56;
+gold lost on Article 4 (237 rows), Annex III (220), Articles 9/10/13/14/15/16
+(56-80 each) — hard rule #8. **The QA subset was byte-identical throughout,
+which is what localised it to the scenario path.** Restoring the unconditional
+return returned all seven axes to baseline exactly.
+
+### Legal fabrications fixed (hard rule #4), each against verbatim text
+
+* **FRIA trigger inverted.** `has_trigger = any(...) or is_deployer`, with role
+  defaulting to `"deployer"`, made the trigger unconditionally true. Measured: a
+  bank doing credit scoring — the case **Article 27(1) names explicitly** —
+  returned "no FRIA"; a private manufacturer screening its own applicants
+  returned "FRIA required". Rewritten to the verbatim rule (Annex III high-risk
+  AND deployer AND **not** Annex III point 2 AND (public-law body / private
+  provider of public services **or** Annex III 5(b)/(c))), with the
+  public-service areas taken from **Recital 96's own list** (education,
+  healthcare, social services, housing, administration of justice). Now 8/8.
+* **Wrong paragraph.** Notification cited as Article 27(2); verbatim it is
+  Article 27(**3**) — 27(2) is the first-use / reuse rule.
+* **Charter/AI-Act identifier collision.** Charter rights were keyed `"Art. 1"`,
+  `"Art. 7"`, `"Art. 8"`, `"Art. 21"`, `"Art. 47"`. In this repo a bare `Art. N`
+  is an **AI Act** reference and all five numbers exist in the Act, so they would
+  pass the `ARTICLE_EXISTENCE` lint (hard rule #5) and ship as wrong Act
+  citations. Namespaced to `"Charter Art. N"`.
+* **Article 6(3) applied to Annex I**, which has no derogation ("by derogation
+  from **paragraph 2**"). Measured: the MDR surgical-robot question flipped from
+  the full Annex I chain to `(6, 6.3, 49, 4)`.
+* **Article 53(2) overrode a high-risk deployer verdict**, destroying the
+  Article 27 FRIA duty. It relieves a **model provider** of two Article 53(1)
+  duties and says nothing about whether a deployer's system is high-risk.
+* `\bcredit\b` cannot match **"creditworthiness"** — the Act's own word in Annex
+  III 5(b) — so the credit case was not even detected as Annex III.
+
+The wire is byte-identical under `provider=cli` for the last two, because the
+verdict-return is not reached there — but `_seed_scenario_obligations()` runs
+**unconditionally**, so the mangled pack is what grounds Stage-2 in production.
+The bench cannot see this; that is why they were caught by reading, then
+confirmed by executing the classifier directly.
+
+### Deploy safety — both measured, both matter for a FRESH service
+
+* **`/healthz` is Railway's healthcheck path** (`healthcheckTimeout = 30`) and it
+  fired a live Groq completion with `max_tokens=1024` and no `timeout_seconds`,
+  so the budget fell to the 60 s singleton default — and the 429 arm adds a sleep
+  plus a second POST inside it. Observed live: it returned a real
+  `api_status_429 ... TPD Limit 200000, Used 199382`. Now opt-in via
+  `REGENOLD_HEALTHZ_PROBE=1`, bounded to 5 s / 16 tokens when on. Live provider
+  probing belongs on `/healthz/llm`, which exists for exactly that.
+* **Startup blocked on synchronous Neo4j I/O.** Against a blackholed host,
+  `health_check` + `get_stats` + the auto-seed `KBMetadata` read measured
+  **66.1 s** versus a 30 s healthcheck. All three are now bounded by
+  `REGENOLD_GRAPH_BOOT_PROBE_S` (default 3 s, clamped [0.5, 15]) with
+  `shutdown(wait=False)` — joining a hung driver call would reinstate the block.
+  A fast-failing host (DNS NXDOMAIN, ~1.6 s) was always inside the window; the
+  deploy-blocking case is the **hang**, i.e. a stale or paused Aura instance.
+
+```
+boot with a blackholed NEO4J_URI : 66.1 s -> 9.7 s   (healthcheckTimeout = 30)
+/healthz                          : 770 ms -> 351 ms
+```
+
+### Other
+
+* `REGENOLD_LIVE_SENTENCE_CAP` failed **OPEN**: `""` was absent from the
+  disable-set, `int("")` raised, and the handler ENABLED the cap. So clearing the
+  Railway variable — or writing `false` — switched ON a mode whose own A/B
+  measured answer_correctness −0.143, and `-2` clamped to a **one-sentence**
+  answer. Now fails closed via a shared `_CAP_DISABLE_VALUES`; only an explicit
+  positive integer enables it.
+* `_RISK_ARTICLES` carried `"Art. 6(3)"` / `"Art. 53(2)"`, which resolve in
+  neither `ARTICLE_EXISTENCE` nor the catalog lint — the one **new test failure**
+  the push introduced. Switched to the dot form, and the lint's base extraction
+  now derives the base via `refs.parse` instead of `ref.split(".")[0]` (which
+  returned `"Art"` for everything, so the lint only ever passed because no pack
+  had contained a sub-point). A mutation guard pins that `Art. 200.3` /
+  `Annex XXV` still FAIL, so the lint is corrected, not weakened.
+
+### Refuted by measurement — do not re-propose
+
+* **"Removing Art. 27 from the prohibited pack drops gold."** It reads that way
+  (the comment above the tuple still says "cover all five") and it is **wrong**:
+  rows citing Article 27 are **65 with and 65 without**, and **0 of 339 rows
+  differ** — Article 27 arrives via the route's own anchor passes, not that
+  tuple. The removal is KEPT: benchmark-neutral, and legally tighter, since
+  Article 27 binds Annex III high-risk deployers, not prohibited practices.
+* **The `evals/bench/metrics.py` regex widening does NOT break comparability.**
+  `_ARTICLE_HEAD_RE` / `_ANNEX_HEAD_RE` gained `[\.\(]` + `IGNORECASE`; measured
+  over all **196 distinct reference strings** in the 476 rows, **0 produce a
+  different head**. The two new functions
+  (`reference_correctness_exact_strict` / `reference_correctness_hierarchical`)
+  are **dead code** — only their own tests import them.
+
+### Corpus grounding — verified credential-free against the primary source
+
+The Lawstronaut API is alive but the stored credentials are stale (login →
+`{"status":false,"message":"User credentials not match!"}`, token → 401), and
+there is no `LAWSTRONAUT_EMAIL` in `.env` at all. The integration is
+**build-time only** (no importer on the request path — verified by grep), so
+production is unaffected. The pin was instead verified against the **EU
+Publications Office Cellar** (no auth, HTTP 200, 1.26 MB): all **126 provisions
+match at similarity 1.0000** (mean, median and min), and Article 113 reads
+"2 August 2026" / "2 August 2027" with zero Omnibus markers — confirming the
+corpus is the pre-Omnibus original and the CELEX `32024R1689` pin is correct.
+Note "2 August 2028" appears in the ORIGINAL Article 112 review clauses and is
+**not** an Omnibus discriminator; the discriminators are "2 December 2027",
+"small mid-cap" and `32026R1744`.
+
+### Gates
+
+| Gate | Result |
+| --- | --- |
+| davidath 476 | **byte-identical to R320**: AnsL 0.1884 / AnsS 0.3545 / AnsC 0.6143 / RefL 0.5971 / RefS 0.4748 / RefC 0.4316 / Tone 1.0 / MT 20/20 |
+| 276-runner | **0 FAIL**, all 28 categories 100%, RISK_F1 macro 1.00 |
+| OOS probe (51 rows) | 49 pass, **0 scope leaks** — the same 2 pre-existing `adjacent_eu` soft fails |
+| pytest, in-place A/B vs the pre-push base | **0 new failures** (87 vs 94 — 7 fixed, including the catalog lint the push broke) |
+| pytest collection | 5812 collected, 0 errors |
+
+⚠ The pytest A/B used a worktree **with `.env` copied in**, which neutralises the
+documented confound (a bare worktree has no `.env`, and the denoiser /
+topic-filter / safety-gate cluster changes behaviour on `GROQ_API_KEY` — 63 vs
+92 failures on the same commit).
+
+### Still open (documented, not fixed)
+
+* **[C3] The Article 43 KB stub sends Annex III points 2-8 to a notified body.**
+  Verbatim Art. 43(1) scopes that conditionality to **point 1 of Annex III**;
+  Art. 43(2) is categorical for points 2-8 — internal control under Annex VI,
+  "which does not provide for the involvement of a notified body". This is
+  **pre-existing** (`git diff 734d937..HEAD -- app/data/kb.py` is empty), not
+  introduced by the push, but it is live and grounds six of eight Annex III
+  categories. Fixing it needs a `KB_VERSION` bump plus the R56-A signature pin.
+* The role-aware retrieval boost added by the push is **inert**: no caller passes
+  `role`, and `GraphExpansionRetriever` drops the kwarg — passing it would raise
+  `TypeError` inside a swallowing `except`, the R256 pattern.
+* `GraphClient.health_check()` can still never return unhealthy, so a dead Neo4j
+  reports `graph_ok=true` (R290 found this; still true).
+
+### R321 second pass — the review's own findings, after the round entry above
+
+Two further **Critical** legal fabrications were confirmed by the second review
+(both reproduced END-TO-END through the real route, both firing on **0 of 339**
+davidath scenarios, so the bench is blind to them):
+
+* **Article 6(3) tested only conditions (a)-(d)**, never the first
+  subparagraph's own test. Verbatim: "shall not be considered to be high-risk
+  WHERE IT DOES NOT POSE A SIGNIFICANT RISK OF HARM ... INCLUDING BY NOT
+  MATERIALLY INFLUENCING THE OUTCOME OF DECISION MAKING. The first subparagraph
+  shall apply where any of the following conditions is fulfilled: (a)...(d)".
+  (a)-(d) gate WHEN subparagraph 1 is available; they do not replace it.
+  Reproduced: a system that screens, evaluates and RANKS job applicants was
+  told "Under Article 6(3), this system is derogated from high-risk
+  classification" — while Annex III 4(a) covers exactly that. The limb must now
+  be ASSERTED, not merely un-contradicted, because wrongly telling a deployer
+  their high-risk system is not high-risk is the costly error.
+* **Article 49(2) registration was attributed to deployers, importers and
+  distributors.** Verbatim: "...THAT PROVIDER OR, WHERE APPLICABLE, THE
+  AUTHORISED REPRESENTATIVE shall register themselves and that system in the EU
+  database", and Article 6(4) names the same addressee. Now role-conditional.
+
+**The LogicRAG batch (d883b44) was DROPPED**, keeping only
+`app/llm/prompts_logic.py` (its six references verified legally correct and
+wire-legal). The review's evidence: the Jaccard>0.7 collapse deletes node 2 of
+the very worked example the same commit adds to the prompt (measured 0.750);
+the `[SUFFICIENT]` early-exit lets a non-deterministic LLM tag skip whole
+retrieval ranks — on the commit's own conditional-chain example a tag after
+rank 0 never retrieves Annex IV or Article 43, the two provisions the user
+named; the per-node retrieval rewrite reintroduces the R288.1 bug documented 15
+lines above it; and **zero tests** were added for any of the four features.
+Dropping was free: `REGENOLD_LOGIC_RAG` defaults OFF and a live probe confirmed
+no LogicRAG trace notes in production. `REGENOLD_LOGIC_RAG_SAMPLE_RATE` went
+with it — it could activate LogicRAG **while the master gate was UNSET**.
+
+### ⚠ A wire-citation leak class worth remembering
+
+`_add_prose_named_refs` promoted **foreign-instrument** article numbers onto the
+wire as AI Act citations. Measured:
+
+    prose: "...under EU Charter Art. 21 and on personal data under GDPR Art. 5,
+            complementing GDPR Art. 35 DPIA duties."
+    -> ['Article 27', 'Article 21', 'Article 5', 'Article 35']
+
+GDPR Article 5 became **AI Act Article 5**, the prohibited-practices article.
+The existing guard only looked AHEAD ("Article 50 of the GDPR") and never saw
+the PREFIX form — which is exactly what `kg_context` injects into the Stage-2
+grounding context on every request. Fixed with a 24-char lookbehind. The
+general lesson: a wrong citation in a WIRE-LEGAL shape passes every downstream
+validator, because Articles 5/21/35 all exist in the Act.
+
+### Still open after R321 (documented, not fixed)
+
+* **[C3] The Article 43 KB stub sends Annex III points 2-8 to a notified body.**
+  Art 43(1) scopes that conditionality to point 1 of Annex III; Art 43(2) is
+  categorical for points 2-8 ("internal control as referred to in Annex VI,
+  which does not provide for the involvement of a notified body"). PRE-EXISTING,
+  not introduced by the push, but live on six of eight Annex III categories.
+  Needs a `KB_VERSION` bump + the R56-A signature pin.
+* `apply_role_boosting` / the HyDE generator / `verify_context_entailment` /
+  `fria_evaluator` all have **zero production callers** — inert, but their
+  docstrings read as live.
+* The new `reference_correctness_exact_strict` / `_hierarchical` metrics are
+  **dead code**; the davidath guard is still head-collapsed.
+* `GraphClient.health_check()` still cannot return unhealthy (R290).

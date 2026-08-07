@@ -1065,16 +1065,65 @@ _NEGATED_PROFILING_RE = re.compile(
 )
 
 
-def _detect_art_6_3_derogation(text: str) -> bool:
-    """Return True if text qualifies for Art 6(3) derogation (narrow non-profiling task).
+#: R321 — the Article 6(3) FIRST SUBPARAGRAPH test, which the original
+#: implementation omitted entirely. Verbatim: "an AI system referred to in
+#: Annex III shall not be considered to be high-risk WHERE IT DOES NOT POSE A
+#: SIGNIFICANT RISK OF HARM to the health, safety or fundamental rights of
+#: natural persons, INCLUDING BY NOT MATERIALLY INFLUENCING THE OUTCOME OF
+#: DECISION MAKING. The first subparagraph shall apply where any of the
+#: following conditions is fulfilled: (a)...(d)".
+#:
+#: (a)-(d) gate WHEN subparagraph 1 is available; they do not replace its own
+#: test. Requiring an affirmative signal is the conservative direction: wrongly
+#: asserting the derogation tells a deployer their high-risk system is not
+#: high-risk, which is the costly error.
+_ART_6_3_NO_SIGNIFICANT_RISK_MARKERS: tuple[str, ...] = (
+    "does not pose a significant risk",
+    "no significant risk of harm",
+    "not pose a significant risk",
+    "does not materially influence",
+    "not materially influencing",
+    "does not influence the outcome",
+    "without influencing the outcome",
+    "no material influence",
+    "purely preparatory",
+    "does not replace",
+    "not meant to replace",
+)
 
-    Art 6(3) derogation applies when an Annex III scenario performs a narrow
-    procedural task, improves human activity result, detects decision-making patterns,
-    or performs a preparatory task, AND DOES NOT perform profiling of natural persons.
+
+def _detect_art_6_3_derogation(text: str) -> bool:
+    """True only when Article 6(3) is actually satisfied.
+
+    Requires BOTH limbs, not just one of (a)-(d):
+
+    1. the first-subparagraph test — no significant risk of harm, including by
+       not materially influencing the outcome of decision making; AND
+    2. one of the conditions (a)-(d); AND
+    3. the profiling kill-switch is not tripped ("Notwithstanding the first
+       subparagraph, an AI system referred to in Annex III shall ALWAYS be
+       considered to be high-risk where the AI system performs profiling of
+       natural persons").
+
+    R321 — as shipped this tested only (2) and the ABSENCE of the token
+    "profiling", so it derogated systems the Act plainly makes high-risk.
+    Reproduced end-to-end through the real route: "an AI system intended to
+    screen and evaluate job applicants ... de-duplicates candidate records and
+    ranks candidates for the recruitment shortlist" was answered with "Under
+    Article 6(3), this system is derogated from high-risk classification" —
+    while Annex III 4(a) covers exactly that system ("to analyse and filter job
+    applications, and TO EVALUATE CANDIDATES"), and ranking candidates
+    materially influences the outcome of decision making.
+
+    Fires on 0 of 339 davidath scenarios (measured), so the bench is blind to
+    it and this was a live-only wrong legal claim.
     """
     low = _normalise(text).lower()
     has_narrow_task = _any_in(low, _ART_6_3_NARROW_TASK_MARKERS)
     if not has_narrow_task:
+        return False
+    # Limb 1 — must be asserted, not merely un-contradicted.
+    if not _any_in(low, _ART_6_3_NO_SIGNIFICANT_RISK_MARKERS):
         return False
     if _NEGATED_PROFILING_RE.search(low):
         has_profiling = False
@@ -1128,8 +1177,21 @@ def _detect_open_source_gpai_exemption(text: str) -> bool:
 _RISK_ARTICLES: dict[str, tuple[str, ...]] = {
     # Prohibited scenarios in the davidath dataset commonly cite [5, 10,
     # 16/26, 27, 50]: the prohibition itself + data-governance + the
-    # role's primary obligation article + FRIA + transparency. Cover all
-    # five so loose recall hits even when the gold set is broader.
+    # role's primary obligation article + FRIA + transparency. This tuple
+    # deliberately carries THREE of those, not five — see the R321 note
+    # directly below before "restoring" anything.
+    # R321 — "Art. 27" was removed here by the CR audit and the removal is
+    # KEPT, on measurement rather than on the argument either way. The comment
+    # above still lists five refs, which reads like a gold-loss; it is not.
+    # Measured on the davidath scenarios (r321-baseline vs r321-fix1 sidecars):
+    # rows citing Article 27 are 65 WITH and 65 WITHOUT it in this pack, and
+    # 0 of 339 rows differ — Article 27 reaches those rows through the route's
+    # own anchor/obligation passes, not through this tuple. So the removal is
+    # benchmark-neutral, and it is legally tighter: Article 27 binds deployers
+    # of Annex III HIGH-RISK systems, not prohibited practices, which are
+    # banned outright. Given over-citation is this system's standing weakness,
+    # the narrower pack is right. Pinned by
+    # tests/test_cr_critical_fixes.py::test_c4_prohibited_risk_articles_exclusion_of_art27.
     "prohibited": ("Art. 5", "Art. 10", "Art. 50"),
     # High-risk scenarios commonly cite the Section 2 essential-requirement
     # spine + Art. 6 classification + role-specific anchors.
@@ -1167,8 +1229,15 @@ _RISK_ARTICLES: dict[str, tuple[str, ...]] = {
         "Art. 6", "Annex I", "Art. 43", "Art. 48",
         "Art. 9", "Art. 14", "Art. 72", "Art. 73",
     ),
-    "art6_3_derogated": ("Art. 6", "Art. 6(3)", "Art. 49", "Art. 4"),
-    "gpai-open-source": ("Art. 25", "Art. 51", "Art. 53", "Art. 53(2)"),
+    # R321 — these shipped as "Art. 6(3)" / "Art. 53(2)", which resolve in
+    # NEITHER ARTICLE_EXISTENCE nor the catalog-lint's base extraction, so
+    # tests/test_r263_medtech.py::test_all_risk_packs_resolve_in_catalog went
+    # red on main (hard rule #5: every emitted citation must resolve). The
+    # dominant internal sub-point convention in these ref lists is the dot
+    # form, and refs.to_user_facing() maps both to the same wire string
+    # ("Article 6.3"), so the dot form is used here.
+    "art6_3_derogated": ("Art. 6", "Art. 6.3", "Art. 49", "Art. 4"),
+    "gpai-open-source": ("Art. 25", "Art. 51", "Art. 53", "Art. 53.2"),
 }
 
 
@@ -1393,14 +1462,36 @@ def _build_answer(role: str, risk_level: str) -> str:
             "(Articles 9 to 15)."
         )
     if risk_level == "art6_3_derogated":
-        return (
+        # R321 — the Article 49(2) duty is ROLE-CONDITIONAL. Verbatim 49(2):
+        # "...THAT PROVIDER OR, WHERE APPLICABLE, THE AUTHORISED REPRESENTATIVE
+        # shall register themselves and that system in the EU database". Article
+        # 6(4) names the same addressee ("A PROVIDER who considers that an AI
+        # system referred to in Annex III is not high-risk shall document its
+        # assessment ... Such provider shall be subject to the registration
+        # obligation set out in Article 49(2)"). A deployer, importer or
+        # distributor is neither named party, and 49(2) is unusually explicit
+        # about its addressees — so attributing it to them is a fabricated
+        # obligation at a named sub-point, not an interpretive stretch.
+        # Reproduced live before this fix: "The deployer must document the
+        # self-assessment and register the system in the EU AI database
+        # pursuant to Article 49(2)".
+        _derog_lead = (
             "Under Article 6(3), this system is derogated from high-risk "
             "classification because it performs a narrow non-profiling task "
             "(such as a narrow procedural task, improving a previously completed "
             "human activity, detecting decision-making patterns without replacing "
             "human review, or a preparatory task) without profiling natural persons. "
-            f"{role_phrase} must document the self-assessment and register the system "
-            "in the EU AI database pursuant to Article 49(2) (Articles 6, 6(3), 49)."
+        )
+        if role in ("provider", "authorised_representative", "authorized_representative"):
+            return _derog_lead + (
+                f"{role_phrase} must document that assessment under Article 6(4) "
+                "and register itself and the system in the EU database pursuant "
+                "to Article 49(2) (Articles 6, 6.3, 49)."
+            )
+        return _derog_lead + (
+            "The documentation duty under Article 6(4) and the registration duty "
+            "under Article 49(2) fall on the provider that reached that "
+            "conclusion, not on this operator (Articles 6, 6.3, 49)."
         )
     if risk_level == "gpai-open-source":
         return (
@@ -1545,10 +1636,33 @@ def classify_scenario_query(question: str) -> ScenarioVerdict | None:
         else:
             risk_level = "limited"
 
-    # Check Art 6(3) narrow non-profiling task derogations and Art 53(2) open-source GPAI exemptions
-    if risk_level in ("high-risk", "high-risk-annex-i") and _detect_art_6_3_derogation(question):
+    # Art 6(3) narrow non-profiling derogation, and the Art 53(2) open-source
+    # GPAI exemption. Both branches are narrowed here (R321) against verbatim
+    # text; each was over-applying and silently stripping the Chapter III
+    # Section 2 obligation chain out of the pack that grounds Stage-2.
+    #
+    # Art 6(3): "By derogation from PARAGRAPH 2, an AI system referred to in
+    # ANNEX III shall not be considered to be high-risk where it does not pose
+    # a significant risk of harm..." — paragraph 2 is the Annex III route.
+    # Annex I safety components come in under paragraph 1 and have NO
+    # derogation, so "high-risk-annex-i" must never be derogated. Measured
+    # before this fix: the MDR surgical-robot question flipped from
+    # high-risk-annex-i (Art. 6/9/10/11/13/14/15/16/17/43/49 + Annex III) to
+    # art6_3_derogated (Art. 6/6.3/49/4) — the whole Section 2 chain gone.
+    if risk_level == "high-risk" and _detect_art_6_3_derogation(question):
         risk_level = "art6_3_derogated"
-    elif (risk_level == "gpai" or _detect_gpai_signal(question)) and _detect_open_source_gpai_exemption(question):
+    # Art 53(2) relieves "PROVIDERS OF AI MODELS" of the paragraph 1 (a) and (b)
+    # duties only. It says nothing about whether a DEPLOYER's system is
+    # high-risk under Art. 6(2)/Annex III, so it must never overwrite an
+    # already-assigned high-risk or prohibited verdict. Measured before this
+    # fix: a CV-screening deployer question mentioning open weights flipped
+    # from high-risk (Section 2 chain + Art. 26 + Art. 27 FRIA) to
+    # gpai-open-source (Art. 25/51/53/53.2) — the FRIA duty destroyed.
+    elif (
+        risk_level not in ("high-risk", "high-risk-annex-i", "prohibited")
+        and (risk_level == "gpai" or _detect_gpai_signal(question))
+        and _detect_open_source_gpai_exemption(question)
+    ):
         risk_level = "gpai-open-source"
 
     # Pick the primary role: prefer the single-role hit when available

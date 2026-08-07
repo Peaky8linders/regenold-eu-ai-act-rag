@@ -518,6 +518,7 @@ class TestR138LegalTripleLint:
             ActorRole.IMPORTER,
             ActorRole.DISTRIBUTOR,
             ActorRole.AUTHORISED_REPRESENTATIVE,
+            ActorRole.AUTHORIZED_REPRESENTATIVE,
         )
         for role in non_provider:
             owed = {a for risk in RiskClass for a in obligations_for(role, risk)}
@@ -529,7 +530,7 @@ class TestR138LegalTripleLint:
         NOT appear under PROVIDER (the exact May-2026 audit bug)."""
         for role in ActorRole:
             owed = {a for risk in RiskClass for a in obligations_for(role, risk)}
-            if role is ActorRole.AUTHORISED_REPRESENTATIVE:
+            if role in (ActorRole.AUTHORISED_REPRESENTATIVE, ActorRole.AUTHORIZED_REPRESENTATIVE):
                 assert "Art. 54" in owed
             else:
                 assert "Art. 54" not in owed, (

@@ -5082,12 +5082,7 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     scenario_verdict = classify_scenario_query(question)
     if scenario_verdict is not None:
         _seed_scenario_obligations(context, scenario_verdict, question)
-        from app.engines.answer_router import select_answer_mode
-        history_turn_count = getattr(context, "history_turn_count", 1) if context else 1
-        query_obj = getattr(context, "query", None) if context else None
-        decision = select_answer_mode(question, history_turn_count=history_turn_count, query=query_obj)
-        if not decision.is_synthesis:
-            return scenario_verdict.answer
+        return scenario_verdict.answer
 
     # Classification-verdict short-circuit. For "is X prohibited / high-
     # risk?" style questions, dump-from-KB is not an answer — emit the
@@ -8128,8 +8123,21 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
 
     answer_dict = {k: v for k, v in request.answers.items()} if request.answers else {}
     
-    # LogicRAG Integration (env-gated REGENOLD_LOGIC_RAG, default ON via
-    # railway.toml). R117 hardening of the new LLM-driven retrieval engine:
+    # LogicRAG Integration — env-gated REGENOLD_LOGIC_RAG, CODE DEFAULT OFF.
+    #
+    # R321 — this comment used to say "default ON via railway.toml" and to
+    # assert below that "LogicRAG sits on the critical retrieval path and is
+    # default ON". Both are false, twice over: the getenv default is "" (OFF),
+    # and R306 established that railway.toml's [deploy.envs] block has NEVER
+    # been applied at all (Railway's [deploy] schema has no `envs` key). A live
+    # probe on 2026-08-07 confirmed it: a genuinely complex multi-part question
+    # against production produced no LogicRAG trace notes.
+    #
+    # ⚠ Do NOT set REGENOLD_LOGIC_RAG=1 on a service because railway.toml lists
+    # it. Turning it on puts the LogicRAG DAG decomposition on the critical
+    # retrieval path, and that code has not been through the review gate.
+    #
+    # R117 hardening of the LLM-driven retrieval engine:
     #   1. FAIL-SOFT — any LogicRAG error (LLM / parse / graph) falls back to
     #      the deterministic retrieval path, so the route never 500s. LogicRAG
     #      sits on the critical retrieval path and is default ON.
@@ -8140,7 +8148,16 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
     #   3. risk_level is threaded through (it was hardcoded to None).
     _risk_level = request.risk_level.value if request.risk_level else None
     context = None
-    if os.environ.get("REGENOLD_LOGIC_RAG", "").strip() == "1":
+    # R321 — the REGENOLD_LOGIC_RAG_SAMPLE_RATE side-door was removed with the
+    # rest of the unfinished LogicRAG batch. It could turn LogicRAG ON while the
+    # master gate was UNSET, which is the opposite of what a master gate is for:
+    # an operator who had never enabled LogicRAG could have it running on a
+    # fraction of traffic. Re-add it, if wanted, with the master gate as a
+    # precondition and an A/B behind it.
+    _logic_rag_env = os.environ.get("REGENOLD_LOGIC_RAG", "").strip().lower()
+    _logic_rag_active = _logic_rag_env in ("1", "true", "yes", "on")
+
+    if _logic_rag_active:
         from app.engines.question_complexity import is_complex_question  # noqa: PLC0415
 
         if is_complex_question(request.question, getattr(request, "history_turn_count", 1) or 1):

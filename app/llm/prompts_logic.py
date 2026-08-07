@@ -10,12 +10,31 @@ Output a JSON array of objects, where each object represents a subquery and has:
 - 'query': the subquery string
 - 'dependencies': a list of integer IDs representing subqueries that must be answered BEFORE this subquery can be answered.
 
-Example:
-User: What month did the discussions begin between Britain, France, and the country where the top-ranking Warsaw Pact operatives originated?
+Examples:
+
+Comparison:
+User: How do the obligations of a provider under Article 16 differ from those of a deployer under Article 26 for a high-risk AI system?
 Output:
 [
-  {"id": 1, "query": "Which country did the top-ranking Warsaw Pact operatives originate from?", "dependencies": []},
-  {"id": 2, "query": "What month did discussions begin between Britain, France, and [Answer to ID 1]?", "dependencies": [1]}
+  {"id": 1, "query": "What are the obligations of a provider under Article 16 for a high-risk AI system?", "dependencies": []},
+  {"id": 2, "query": "What are the obligations of a deployer under Article 26 for a high-risk AI system?", "dependencies": []},
+  {"id": 3, "query": "How do the provider obligations under Article 16 differ from the deployer obligations under Article 26?", "dependencies": [1, 2]}
+]
+
+Conditional chain:
+User: If an AI system is classified as high-risk under Annex III, what technical documentation must the provider prepare under Annex IV, and what conformity assessment procedure applies under Article 43?
+Output:
+[
+  {"id": 1, "query": "Under what conditions is an AI system classified as high-risk under Annex III?", "dependencies": []},
+  {"id": 2, "query": "What technical documentation must a provider prepare under Annex IV for a high-risk AI system?", "dependencies": [1]},
+  {"id": 3, "query": "What conformity assessment procedure applies under Article 43 for a high-risk AI system classified under Annex III?", "dependencies": [1]}
+]
+
+Simple (no decomposition needed):
+User: What does Article 13 require regarding transparency for high-risk AI systems?
+Output:
+[
+  {"id": 1, "query": "What does Article 13 require regarding transparency for high-risk AI systems?", "dependencies": []}
 ]
 
 Only output valid JSON array format. Do not include markdown formatting or extra text."""
@@ -31,7 +50,11 @@ Write in third-person regulator voice using official terminology (provider, depl
 Keep the summary concise and focused on facts relevant to answering the original complex question.
 Do not lose any specific entities, dates, or legal articles.
 
-Output the updated rolling memory as a single paragraph. Do not include any prefix like 'Updated Memory:'."""
+After the rolling memory paragraph, on a NEW LINE output exactly one of:
+[SUFFICIENT] — if the rolling memory now contains enough information to fully answer the original complex question.
+[INSUFFICIENT] — if critical information is still missing to answer the original complex question.
+
+Output the updated rolling memory as a single paragraph, followed by the sufficiency tag on a new line. Do not include any prefix like 'Updated Memory:'."""
 
 CONTEXT_PRUNING_USER_TEMPLATE = """Original Question: {q}
 Rolling Memory: {memory}

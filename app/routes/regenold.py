@@ -3757,6 +3757,38 @@ _CROSS_INSTRUMENT_RE = re.compile(
 _NUMBERED_REG_RE = re.compile(
     r"\bof\s+regulation\s*\(e[uc]\)\s*(\d{4}/\d+)", re.IGNORECASE
 )
+
+# R321 — the PREFIX form of a foreign-instrument citation.
+#
+# ``_CROSS_INSTRUMENT_RE`` only looks AHEAD ("Article 50 of the GDPR"), so it
+# never saw the far more common prefix shape — "GDPR Art. 5", "EU Charter
+# Art. 21", "MDR Article 10". MEASURED before this guard existed:
+#
+#   _add_prose_named_refs(["Article 27"],
+#       "...under EU Charter Art. 21 and on personal data under GDPR Art. 5,
+#        complementing GDPR Art. 35 DPIA duties.")
+#   -> ['Article 27', 'Article 21', 'Article 5', 'Article 35']
+#
+# i.e. GDPR Article 5 was promoted to **AI Act Article 5** — the
+# prohibited-practices article — on the wire. That is a confidently-wrong
+# legal citation (hard rule #4) in a wire-legal shape (hard rule #1), so
+# nothing downstream can catch it.
+#
+# This is live, not theoretical: ``kg_context`` injects a cross-regulatory map
+# written in exactly this prefix form ("GDPR Art. 35", "EU Charter Art. 47")
+# into the Stage-2 grounding context, so the model is actively encouraged to
+# write it. Only ~24 chars of lookbehind are used, so an AI Act mention that
+# merely follows a sentence about the GDPR is unaffected.
+_FOREIGN_INSTRUMENT_BEHIND_RE = re.compile(
+    r"(?:\bgdpr\b"
+    r"|\bcharter\b"
+    r"|\bmdr\b|\bivdr\b|\bnis\s*2\b|\bcra\b|\bdsa\b|\bdma\b|\bpld\b"
+    r"|\btfeu\b|\bteu\b"
+    r"|\bdirective\b"
+    r"|\bregulation\s*\(e[uc]\)\s*(?!2024/1689)\d{4}/\d+"
+    r")[\s,‑-]*$",
+    re.IGNORECASE,
+)
 # R311 — the negation cue need not be ADJACENT to the mention.
 #
 # The pre-R311 form was ``(?:\bnot|...)\s*$`` over a 24-char lookbehind, i.e.
@@ -3797,6 +3829,11 @@ def _prose_mention_is_real_citation(prose: str, start: int, end: int) -> bool:
     ahead = prose[end : end + 56]
     if _CROSS_INSTRUMENT_RE.search(ahead):
         return False  # GDPR / Directive / Treaty / Charter / Decision
+    # R321 — the PREFIX form: "GDPR Art. 5", "EU Charter Art. 21", "MDR
+    # Article 10". Measured: without this, GDPR Article 5 was promoted onto
+    # the wire as AI Act Article 5. See _FOREIGN_INSTRUMENT_BEHIND_RE.
+    if _FOREIGN_INSTRUMENT_BEHIND_RE.search(prose[max(0, start - 24) : start]):
+        return False
     m_reg = _NUMBERED_REG_RE.search(ahead)
     if m_reg and m_reg.group(1) != "2024/1689":
         return False  # a different numbered EU Regulation

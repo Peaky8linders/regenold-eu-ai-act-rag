@@ -161,15 +161,65 @@ def _log_llm_provider_status() -> None:
     # We deliberately keep the failure path quiet (one warning, no traceback)
     # so a misconfigured Neo4j never blocks startup — the engine just falls
     # back to its deterministic KB path.
+    # R321 — the probe below runs on a BOUNDED budget in a worker thread.
+    #
+    # This is a SYNC ``@app.on_event("startup")`` handler, so uvicorn finishes
+    # it before it serves anything. `config.py` sets connection_timeout=5.0 /
+    # max_retries=2 / retry_backoff=0.5, and client.py passes no
+    # ``connection_acquisition_timeout`` (driver default 60 s), so against a
+    # HUNG host — a paused or stale Aura instance, exactly the case that keeps
+    # recurring here — health_check + get_stats measured 16.5 s + 49.6 s =
+    # 66.1 s, versus railway.toml's healthcheckTimeout = 30. Boot would miss
+    # the window and the release would fail. A fast-failing host (DNS
+    # NXDOMAIN, ~1.6 s) was always fine; the hang is the deploy-blocking case.
+    #
+    # This is a LOG LINE. It must never be able to cost more than its own
+    # information is worth, so it is capped and the timeout is swallowed —
+    # the engine's deterministic KB path serves regardless (R99.1).
     if os.getenv("NEO4J_URI"):
         try:
+            import concurrent.futures as _cf  # noqa: PLC0415
+
             from app.graph.client import get_graph_client
             _gc = get_graph_client()
             if _gc.enabled:
-                _hc = _gc.health_check()
+                _probe_budget_s = 3.0
+                try:
+                    _probe_budget_s = max(
+                        0.5, min(15.0, float(os.getenv("REGENOLD_GRAPH_BOOT_PROBE_S", "3")))
+                    )
+                except ValueError:
+                    _probe_budget_s = 3.0
+                _pool = _cf.ThreadPoolExecutor(max_workers=1)
+                try:
+                    _hc = _pool.submit(_gc.health_check).result(timeout=_probe_budget_s)
+                except _cf.TimeoutError:
+                    # Same discipline as the auto-seed probe below: only the
+                    # BUDGET case is swallowed here. A driver exception falls
+                    # through to the outer handler, which already logs
+                    # "graph probe failed".
+                    logger.warning(
+                        "regenold.startup graph_boot_probe_timeout budget_s=%s "
+                        "— skipping the boot graph line",
+                        _probe_budget_s,
+                    )
+                    _hc = {"status": "unknown"}
+                finally:
+                    # Do NOT join a hung driver call — that would re-introduce
+                    # the block this fix exists to remove.
+                    _pool.shutdown(wait=False)
                 if _hc.get("status") == "healthy":
                     try:
-                        _stats = _gc.get_stats()
+                        # R321 — get_stats() measured 49.6 s alone against a
+                        # hung host; bound it on the same budget as the probe
+                        # above (it is the larger half of the 66 s).
+                        _spool = _cf.ThreadPoolExecutor(max_workers=1)
+                        try:
+                            _stats = _spool.submit(_gc.get_stats).result(
+                                timeout=_probe_budget_s
+                            )
+                        finally:
+                            _spool.shutdown(wait=False)
                         logger.info(
                             "regenold.startup graph_enabled=True "
                             "seed_version=%s node_count=%d edge_count=%d",
@@ -468,10 +518,45 @@ def _maybe_auto_seed_neo4j() -> None:
             )
             return
 
-        meta_rows = client.execute_read(
-            "MATCH (m:KBMetadata) "
-            "RETURN m.seed_version AS v, m.kb_version AS kv LIMIT 1"
-        )
+        # R321 — bounded, for the same reason as the boot probe above: this
+        # runs SYNCHRONOUSLY in the startup hook, BEFORE the seeder thread is
+        # spawned, so a hung NEO4J_URI blocks uvicorn from serving and the
+        # Railway healthcheck (30 s) fails the release. Measured 35 s of boot
+        # remaining after the probe fix until this call was bounded too.
+        # Timing out here is safe: it simply means we could not prove the seed
+        # is current, and the code below then does what it would do for any
+        # unknown seed — hand off to the daemon thread, which owns its own
+        # locking and never blocks boot.
+        import concurrent.futures as _cf  # noqa: PLC0415
+
+        _meta_budget_s = 3.0
+        try:
+            _meta_budget_s = max(
+                0.5, min(15.0, float(os.getenv("REGENOLD_GRAPH_BOOT_PROBE_S", "3")))
+            )
+        except ValueError:
+            _meta_budget_s = 3.0
+        _mpool = _cf.ThreadPoolExecutor(max_workers=1)
+        try:
+            meta_rows = _mpool.submit(
+                client.execute_read,
+                "MATCH (m:KBMetadata) "
+                "RETURN m.seed_version AS v, m.kb_version AS kv LIMIT 1",
+            ).result(timeout=_meta_budget_s)
+        except _cf.TimeoutError:
+            # ONLY the budget case is swallowed here. A genuine exception from
+            # execute_read still propagates to the top-level handler below, so
+            # it is reported as ``auto_seed_check action=error`` exactly as
+            # before — a hung host and a broken query are different facts and
+            # must not be logged as the same one.
+            logger.warning(
+                "regenold.startup auto_seed_check meta_probe_timeout "
+                "budget_s=%s — proceeding as if the seed were unknown",
+                _meta_budget_s,
+            )
+            meta_rows = []
+        finally:
+            _mpool.shutdown(wait=False)
         current_seed = (meta_rows[0].get("v") if meta_rows else "") or ""
         current_kb = (meta_rows[0].get("kv") if meta_rows else "") or ""
 
@@ -775,6 +860,35 @@ def _deploy_identity() -> dict[str, str]:
     }
 
 
+#: R321 — the live Groq probe on ``/healthz`` is OPT-IN and default OFF.
+#:
+#: ``railway.toml`` sets ``healthcheckPath = "/healthz"`` with
+#: ``healthcheckTimeout = 30``. As shipped this handler fired a real Groq
+#: completion with ``max_tokens=1024`` and NO ``timeout_seconds``, so the
+#: budget fell back to the provider singleton's ``GROQ_TIMEOUT_SECONDS``
+#: default of 60 s — twice the healthcheck budget — and the 429 arm adds a
+#: sleep plus a SECOND POST inside that same deadline. A slow or rate-limited
+#: Groq could therefore hold the deploy healthcheck past its timeout and fail
+#: the release. Observed live on 2026-08-07: ``/healthz`` returned
+#: ``fallback_test.error = "api_status_429 ... TPD Limit 200000, Used 199382"``,
+#: i.e. the probe was really running against a rate-limited account on the
+#: deploy path.
+#:
+#: A deploy healthcheck must answer one question — is this process serving? —
+#: cheaply and deterministically. Live provider probing already has a purpose
+#: -built endpoint (``/healthz/llm``), which is where it belongs. Set
+#: ``REGENOLD_HEALTHZ_PROBE=1`` to re-enable it here for debugging; even then
+#: it is bounded well inside the healthcheck budget.
+_HEALTHZ_PROBE_TIMEOUT_S = 5.0
+_HEALTHZ_PROBE_MAX_TOKENS = 16
+
+
+def _healthz_probe_enabled() -> bool:
+    return os.getenv("REGENOLD_HEALTHZ_PROBE", "0").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
 @app.get("/healthz")
 def healthz() -> dict[str, object]:
     from app.llm.openai_wrapper_provider import is_groq_provider_enabled, get_groq_provider, OpenAIWrapperRequest, default_groq_model
@@ -783,8 +897,8 @@ def healthz() -> dict[str, object]:
     fallback_text = None
     fallback_finish_reason = None
     fallback_model = None
-    
-    if is_groq_provider_enabled():
+
+    if _healthz_probe_enabled() and is_groq_provider_enabled():
         try:
             prov = get_groq_provider()
             resp = prov.complete(
@@ -792,8 +906,9 @@ def healthz() -> dict[str, object]:
                     system="You are a regulation expert. Answer concisely.",
                     user="What is a general purpose AI model under the AI Act?",
                     model=default_groq_model(),
-                    max_tokens=1024,
+                    max_tokens=_HEALTHZ_PROBE_MAX_TOKENS,
                     temperature=0.0,
+                    timeout_seconds=_HEALTHZ_PROBE_TIMEOUT_S,
                 )
             )
             fallback_model = resp.model
