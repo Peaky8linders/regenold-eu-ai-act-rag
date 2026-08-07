@@ -15,18 +15,10 @@ scratch/
 *.egg-info/
 dist/
 build/
-evals/regenold_results_local*.json
-evals/regenold_results_anthropic_wrapper*.json
-
-# Scratch dev artefacts from session-driven optimization
-_v1_scaffold/
-_competition_rules.txt
-_paper_methodology.txt
-evals/regenold_results_baseline_pre_optimization.json
-evals/regenold_results_round16_optimization.json
-.claude/
-evals/regenold_results_fixed.json
-evals/regenold_results_no_orphan.json
+evals/regenold_results_*.json
+evals/regenold/_official_batch*.json
+evals/regenold/*july7*
+evals/regenold/*evaluator_batch*
 *.pdf
 *.zip
 *.txt
