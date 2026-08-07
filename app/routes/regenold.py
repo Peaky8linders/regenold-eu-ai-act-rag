@@ -1601,6 +1601,7 @@ def _engine_cache_key(
             "REGENOLD_LOGIC_RAG_BUDGET",
             "REGENOLD_LOGIC_RAG_TIMEOUT",
             "REGENOLD_LOGIC_RAG_MAX_NODES",
+            "REGENOLD_LOGIC_RAG_SAMPLE_RATE",
             # R-Fusion — Mixture-of-Agents Stage-2 (app/engines/fusion.py):
             # when ON, a diverse panel + Opus 4.8 judge REPLACE the
             # single-provider Stage-2 polish, so the master gate + judge model

@@ -8140,7 +8140,20 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
     #   3. risk_level is threaded through (it was hardcoded to None).
     _risk_level = request.risk_level.value if request.risk_level else None
     context = None
-    if os.environ.get("REGENOLD_LOGIC_RAG", "").strip() == "1":
+    _logic_rag_env = os.environ.get("REGENOLD_LOGIC_RAG", "").strip().lower()
+    _logic_rag_sample_rate = os.environ.get("REGENOLD_LOGIC_RAG_SAMPLE_RATE", "").strip()
+    _logic_rag_active = _logic_rag_env == "1" or _logic_rag_env in ("true", "yes", "on")
+    if not _logic_rag_active and _logic_rag_sample_rate and _logic_rag_env not in ("0", "false", "no", "off"):
+        try:
+            _rate = float(_logic_rag_sample_rate)
+            if 0.0 <= _rate <= 1.0:
+                import zlib
+                _h = zlib.crc32(request.question.encode("utf-8")) & 0xFFFFFFFF
+                _logic_rag_active = (_h / 0xFFFFFFFF) < _rate
+        except (ValueError, TypeError):
+            pass
+
+    if _logic_rag_active:
         from app.engines.question_complexity import is_complex_question  # noqa: PLC0415
 
         if is_complex_question(request.question, getattr(request, "history_turn_count", 1) or 1):
