@@ -103,7 +103,30 @@ _ANNEX_III_CHARTER_MAP: dict[str, tuple[str, ...]] = {
 # Regex patterns for Annex III classification in FRIA evaluator
 _ANNEX_III_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\b(?:biometric|emotion recognition)\b", re.I), "biometrics"),
-    (re.compile(r"\b(?:critical infrastructure|safety component)\b", re.I), "critical_infrastructure"),
+    # R322 — a bare "safety component" is NOT Annex III. Verbatim Annex III
+    # point 2: "AI systems intended to be used as safety components in the
+    # management and operation of CRITICAL DIGITAL INFRASTRUCTURE, ROAD TRAFFIC,
+    # or in the supply of WATER, GAS, HEATING OR ELECTRICITY." A safety
+    # component of a regulated MEDICAL DEVICE is high-risk via Article 6(1) +
+    # ANNEX I, an entirely different route. Measured before the fix: "a hospital
+    # deploying an AI safety component of a Class IIb medical device" returned
+    # is_annex_iii=True, category='critical_infrastructure' — a fabricated
+    # classification (hard rule #4), which also mislabels the Charter mapping.
+    # ``fria_required`` happened to come out False only by accident, via the
+    # Article 27(1) point-2 carve-out.
+    #
+    # "safety component" now only classifies when an infrastructure term
+    # actually follows it in the same sentence.
+    (
+        re.compile(
+            r"\bcritical (?:digital )?infrastructure\b"
+            r"|\bsafety components?\b(?=[^.]{0,90}?\b(?:"
+            r"critical (?:digital )?infrastructure|road traffic|traffic management"
+            r"|water|gas|heating|electricity|power grid|utility|utilities)\b)",
+            re.I,
+        ),
+        "critical_infrastructure",
+    ),
     (re.compile(r"\b(?:education|school|exam|vocational)\b", re.I), "education"),
     (re.compile(r"\b(?:recruitment|cv screening|resume|worker|hiring|employment|promotion|termination)\b", re.I), "employment"),
     # R321 — "credit" with a trailing \b cannot match "creditworthiness", which

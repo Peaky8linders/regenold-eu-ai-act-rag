@@ -4788,6 +4788,119 @@ competition-relevant measure) is what R94.1 lifts: median sentence count
 4 (was a 4,000-char raw dump). Verified deterministically; the
 post-deploy live re-judge confirms the lift.
 
+## Round 322 — Cappelli et al. (2026) audit: annex sub-point resolution, the postpositive foreign-cite leak, and the inert-artifact purge (2026-08-08)
+
+A 19-agent audit of the Cappelli et al. (2026) *Discover Artificial Intelligence*
+6:458 compliance-checker paper and the seven optimisations derived from it.
+**None of the seven is buildable as stated** — four are already live, two are
+inert, one was measured-and-rejected (R306). The durable output is the negative
+result plus four defects the audit exposed. Do not re-propose the seven.
+
+### Why the paper does not transfer
+The authors **built no retrieval system** — verbatim: *"Although we did not
+implement a custom Retrieval-Augmented Generation (RAG) system, the Create My GPT
+platform provides a built-in document retrieval mechanism"* and *"we do not have
+access to the retrieval indexing process or search algorithm."* n=20 responses
+(4 cases × 5 prompts), n=2 raters who **authored the gold standard** and are
+co-authors — so the metric cannot express "beats the experts"; the experts define
+1.0 by construction. And **its failure mode is UNDER-citation** (*"tends to mention
+GDPR in a generic way, without precise references"*), the exact inverse of ours,
+so every recall-shaped proposal points the wrong way against our measured
+constraint (R316: reference recall 0.898-0.958, precision 0.743-0.781).
+
+⚠ **Do not inherit the paper's citations as gold** (hard rule #4). Verified wrong
+against the repo's pinned text: recruiting is **Annex III 4(a)**, not the paper's
+4(b); *"Articles 16-19"* for post-market monitoring (actually **72**/**73**/20);
+footnote 5's *"Article 52"* for transparency is a 2021-draft artifact (final =
+**50**/86); footnote 7's *"71-72"* for enforcement (actually **99**/74-79). Also
+§7.1.2 and §7.4.2 report byte-identical expert scores (3.93/4.00/3.86) with
+near-identical prose — a copy-paste across two case studies at opposite ends of
+the risk pyramid.
+
+### R322-A — annex lettered sub-point resolution (`provision_text.py`)
+`get_provision_text` drilled the lettered token on the ARTICLE path but silently
+ignored it on the ANNEX path, so a sub-point cite returned its whole numbered
+item. Measured: `Annex IV(1)(e)` **1080 → 73** chars (the hardware clause
+`subpoint_emitter` emits it for), `Annex IV(2)(c)` **2736 → 237**,
+`Annex III(5)(b)` **1045 → 198**. That over-wide text was spent against the
+per-ref grounding budget (`REGENOLD_GROUNDING_REF_CHARS`, default 1200), so one
+sub-point cite could consume the entire budget with mostly irrelevant prose.
+**Fails SAFE**, unlike the article path: an unresolvable letter falls back to the
+numbered item rather than to `None`, because `None` sends the caller to the FULL
+annex (Annex IV = 5710 chars), strictly worse. Removes no reference, so hard rule
+#8 is not engaged.
+
+### R322-B — the bare postpositive foreign-citation leak (`routes/regenold.py`)
+Every alternation in `_CROSS_INSTRUMENT_RE` requires a leading `of`, so
+*"Article 35 of the GDPR"* was caught but the preposition-less shorthand lawyers
+actually write — *"Article 35 GDPR"* — was promoted onto the wire as an **AI Act**
+article. The numbers collide with unrelated provisions: GDPR Art. 35 (DPIA) became
+AI Act Art. 35 (notified-body identification numbers); GDPR Art. 22 (automated
+decision-making) became AI Act Art. 22 (authorised representatives). New
+`_FOREIGN_INSTRUMENT_AHEAD_RE`, anchored at the start of the ahead window so the
+instrument must IMMEDIATELY follow the mention — which is what keeps *"Article 10
+of the AI Act requires…"* and *"Article 6 and the GDPR both apply"* allowed.
+Verified 6/6 foreign blocked, 0 new false positives.
+
+⚠ **Honest magnitude — this is a correctness fix, NOT a metric lever.** Measured
+across **3,927 unique recorded live rows: 3 hits (0.076%)**, and two of the three
+are from the *frontier baseline* arm, not our wire. It ships because hard rule #4
+forbids a confidently-wrong legal citation, not because it moves an axis. Anyone
+looking for the over-citation win should not expect it here.
+
+### R322-C — the inert Cappelli artifacts, deleted
+Commits `aab30f9` / `e98dd28` implemented the paper's recommendations. **All three
+were unreachable**, proven by execution rather than grep — absent from
+`sys.modules` after live HTTP-200 requests:
+
+* `app/engines/query_expansion.py` (HyDE + RRF) — zero `app/` importers, no env
+  gate. **DELETED** with its test.
+* `retrieval_stack.apply_role_boosting` — four independent deadnesses, and
+  **legally inverted where it did fire**: `apply_role_boosting('article_23', 1.0,
+  'provider')` returns **1.25**, identical to `'importer'`, because the provider
+  branch spans `range(16,26)` and swallows Arts. 22/23/24/25. It would have
+  *created* the role ambiguity the paper asks us to cure. **DELETED** with its
+  `role=` plumbing (also removing a TypeError landmine: `GraphExpansionRetriever.search`
+  never accepted the kwarg the ABC passed).
+* `tests/test_cr_critical_fixes.py` / `test_cr_c2_c3_i2_i7_findings.py` — green
+  against dead code, asserting a boost on fabricated ids (`article_16` /
+  `article_26`) that occur in **none of the 1318** corpus provisions. Repaired.
+
+### R322-D — FRIA Annex I misclassification (`fria_evaluator.py`)
+A bare `safety component` matched Annex III point 2 (critical infrastructure), so
+*"a hospital deploying an AI safety component of a Class IIb medical device"*
+returned `is_annex_iii=True, category='critical_infrastructure'` — a fabricated
+classification that also mislabels the Charter mapping. `fria_required=False` came
+out right only by accident, via the Article 27(1) point-2 carve-out. The pattern
+now requires an infrastructure term to follow in the same sentence. Verified:
+Annex I device → not Annex III; road-traffic and electricity still classify;
+5(a)/5(b) still `fria_required=True`. The module remains **un-wired** — fixed
+rather than deleted because R321 had just repaired its Article 27(1) closed-list
+logic, and hard rule #4 applies to inert code that is one wire away from shipping.
+
+### R322 — gates
+
+| Gate | Result |
+| ---- | ------ |
+| davidath 476 | **byte-identical to R319/R320** — Ans Loose 0.1884 / Ans Strict **0.3545** / Ans Conc 0.6143 / Ref Loose **0.5971** / Ref Strict **0.4748** / Ref Conc 0.4316 / Tone **1.0** / mt **20/20** |
+| `evals.regenold.runner` (276) | **all 28 categories 100%**, RISK_F1 macro **1.00** |
+| OOS probe (`--oos-suite all`) | **0 scope leaks** across 13 suites (2 pre-existing `adjacent_eu` soft fails) |
+| full suite, in-place A/B | baseline **94 failed** vs branch **87 failed** → **0 NEW failures**, 7 unrelated sampler tests recovered. 5855 collected, 0 collection errors. |
+
+The in-place A/B is load-bearing: a `git worktree` baseline carries no `.env`, and
+the denoiser / topic-filter / safety-gate cluster changes behaviour on the presence
+of `GROQ_API_KEY` (measured elsewhere: 63 vs 92 failures on the same commit).
+
+### Where this lands, honestly
+davidath is the regression guard, not the win surface. R322-A tightens delivered
+grounding text on sub-point cites (right direction for both axes — R319 measured
+inflated context crowding out gold); R322-B/D are hard-rule-#4 legal-correctness
+fixes with negligible metric impact; R322-C is dead-code removal with zero runtime
+change. **None of these is the over-citation lever.** That remains the open
+frontier gap (R317: oracle +0.215 Ref Strict / +0.229 Ref Conciseness at unchanged
+recall), and R317 already killed five trimmer families — work the RANKER, and gate
+any reference change on a gold-bearing `easyhard_ab` with `gold_dropped == 0`.
+
 ## Eval scorecard (deterministic-fallback, local 276-scenario suite)
 
 | Round  | Pass         | p50      | p95     | avg refs | Retrieval F1 | Notes |

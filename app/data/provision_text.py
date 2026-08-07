@@ -309,7 +309,26 @@ def get_provision_text(ref: str) -> str | None:
         first = spec.subpoints[0]
         if first.isdigit():
             item = _annex_items(body).get(int(first))
-            return item  # None → caller falls back to full annex
+            if item is None:
+                return None  # caller falls back to full annex
+            if len(spec.subpoints) == 1:
+                return item
+            # R322 — lettered sub-point INSIDE the annex item. The article path
+            # has always drilled this (see ``_subpoints(para).get(second)``
+            # below); the annex path silently ignored it, so ``Annex IV(1)(e)``
+            # returned all 1080 chars of item 1 rather than the 73-char hardware
+            # clause that ``subpoint_emitter`` emits it for. That over-wide text
+            # is spent against the per-ref grounding budget
+            # (``REGENOLD_GROUNDING_REF_CHARS``, default 1200), so a single
+            # sub-point cite could consume the whole budget with mostly
+            # irrelevant text.
+            #
+            # Fails SAFE, unlike the article path: an unresolvable letter falls
+            # back to the numbered item (previous behaviour) rather than to
+            # ``None``, because ``None`` sends the caller to the FULL annex
+            # (Annex IV = 5710 chars), which is strictly worse than the item.
+            second = spec.subpoints[1].lower()
+            return _subpoints(item).get(second) or item
         return None
 
     # Article path.

@@ -3758,6 +3758,29 @@ _NUMBERED_REG_RE = re.compile(
     r"\bof\s+regulation\s*\(e[uc]\)\s*(\d{4}/\d+)", re.IGNORECASE
 )
 
+# R322 — the bare POSTPOSITIVE form: "Article 35 GDPR", "Article 22 GDPR",
+# "Article 9 GDPR". Every alternation in ``_CROSS_INSTRUMENT_RE`` above requires
+# a leading ``of`` ("Article 35 OF THE GDPR"), so the preposition-less shorthand
+# that lawyers actually write slipped through and was promoted onto the wire as
+# an AI ACT article. Measured on 3,927 recorded live rows: rare (3 hits) but
+# always a hard-rule-#4 legal fabrication when it fires, because the numbers
+# collide with unrelated provisions — GDPR Art. 35 (DPIA) became AI Act Art. 35
+# (notified-body identification numbers); GDPR Art. 22 (automated decision
+# making) became AI Act Art. 22 (authorised representatives).
+#
+# Anchored at ``^`` of the AHEAD window so the instrument must IMMEDIATELY
+# follow the mention (after an optional sub-point paren and comma). That
+# anchoring is what keeps "Article 10 of the AI Act requires..." allowed — its
+# ahead window starts " of the AI Act", which cannot match — and likewise
+# "Article 6 and the GDPR ...", where the AI Act article is the real referent.
+_FOREIGN_INSTRUMENT_AHEAD_RE = re.compile(
+    r"^\s*(?:\([^)]*\)\s*)*(?:,\s*)?"
+    r"(?:\bgdpr\b"
+    r"|\bcharter\b"
+    r"|\bmdr\b|\bivdr\b|\bnis\s*2\b|\bcra\b|\bdsa\b|\bdma\b|\bpld\b"
+    r"|\btfeu\b|\bteu\b)",
+    re.IGNORECASE,
+)
 # R321 — the PREFIX form of a foreign-instrument citation.
 #
 # ``_CROSS_INSTRUMENT_RE`` only looks AHEAD ("Article 50 of the GDPR"), so it
@@ -3829,6 +3852,9 @@ def _prose_mention_is_real_citation(prose: str, start: int, end: int) -> bool:
     ahead = prose[end : end + 56]
     if _CROSS_INSTRUMENT_RE.search(ahead):
         return False  # GDPR / Directive / Treaty / Charter / Decision
+    # R322 — the same reference, written without the ``of`` ("Article 35 GDPR").
+    if _FOREIGN_INSTRUMENT_AHEAD_RE.search(ahead):
+        return False
     # R321 — the PREFIX form: "GDPR Art. 5", "EU Charter Art. 21", "MDR
     # Article 10". Measured: without this, GDPR Article 5 was promoted onto
     # the wire as AI Act Article 5. See _FOREIGN_INSTRUMENT_BEHIND_RE.
