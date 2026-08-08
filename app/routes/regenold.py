@@ -1338,6 +1338,14 @@ def _engine_cache_key(
             "REGENOLD_KG_MAX_UNITS",
             "REGENOLD_KG_UNIT_CHARS",
             "REGENOLD_KG_MAX_RECITALS",
+            # R324 — R323 added this ceiling and did not key it, while all five
+            # of its R315 siblings above are keyed. It bounds how much graph
+            # context reaches Stage-2, so it flips the answer and its citations.
+            # Unkeyed, an in-process two-arm A/B (easyhard_ab / ab_judge mutate
+            # os.environ between arms) hashes both arms identically and serves
+            # arm B from arm A's cache — so a sweep of this ceiling would report
+            # a flat "no effect" for the R263.2 reason, not a real one.
+            "REGENOLD_KG_MAX_CHARS",
             # R313 — grounding BREADTH (how many cited provisions get verbatim
             # text). Defaults to the pre-R313 constant so the wire is unchanged,
             # but it is in the key so the R288 breadth sweep is actually
@@ -3772,10 +3780,61 @@ _CROSS_INSTRUMENT_RE = re.compile(
 #
 # ``2024/1689`` still matches, so the self-reference exclusion below (which
 # lets a genuine AI Act mention through) is unaffected.
-_NUMBERED_REG_RE = re.compile(
-    r"\bof\s+regulation\s*\(e[uc]\)\s*(?:no\.?\s*)?(\d{1,4}/\d{2,4})",
-    re.IGNORECASE,
+# R324 — ONE definition of "a numbered EU Regulation id", shared by the AHEAD
+# guard below and the BEHIND guard further down. R323 widened only the ahead
+# copy, so the prefix form ("Regulation (EU) No 1025/2012, Article 10") kept
+# leaking: two regexes encoding one concept, one updated. Keeping the fragment
+# in a single constant is what stops the next widening from being half-applied.
+#
+# The ``\(e[uc]\)`` parenthetical is OPTIONAL — the AI Act's own prose writes
+# both "Regulation (EU) 2016/679" and the bare "Regulation 2016/679", and the
+# bare form was leaking Article 5 (prohibited practices) onto the wire.
+_REG_NUMBER_FRAGMENT = (
+    r"\bregulation\s*(?:\(e[uc]\)\s*)?(?:no\.?\s*)?(\d{1,4}/\d{2,4})"
 )
+
+_NUMBERED_REG_RE = re.compile(r"\bof\s+" + _REG_NUMBER_FRAGMENT, re.IGNORECASE)
+
+# R324 — where the AHEAD window ends.
+#
+# R323 fixed the id FORM but left the window at a flat 56 chars, so any
+# interposed clause pushed the regulation past the boundary and the citation
+# leaked anyway — and R323's own ``No `` particle costs 3 more characters, so
+# it made this strictly worse. MEASURED on HEAD before this change:
+#
+#   "Article 10, second subparagraph, point (b), of Regulation (EU) No 1025/2012"
+#       -> shipped AI Act **Article 10**
+#   "Article 6(1), point (a), second subparagraph, of Regulation (EU) 2016/679"
+#       -> shipped AI Act **Article 6**
+#
+# ⚠ Simply widening the window is WRONG and was measured as such: at a flat
+# 120 chars, "Article 13 requires transparency for high-risk systems. Article 35
+# of Regulation (EU) 2016/679 requires a DPIA." suppresses the GENUINE Article
+# 13, because the next sentence's foreign instrument falls inside its window.
+# Dropping a real citation is the R142.1 failure mode and costs more than the
+# leak does.
+#
+# So the window is BOUNDED FIRST, THEN widened: it stops at the end of the
+# sentence, or at the next Article/Annex mention, whichever comes first. A
+# citation can only be attributed to an instrument named in its OWN clause.
+# ``[.!?]\s+[A-Z]`` rather than ``[.!?]\s`` so that "e.g." and the "No. 1025"
+# particle do not terminate the window early (both are followed by lowercase or
+# a digit), which would re-open the leak from the other side.
+_AHEAD_STOP_RE = re.compile(
+    r"[.!?]\s+[A-Z]|;\s|\b(?:article|art\.|annex)\s", re.IGNORECASE
+)
+_AHEAD_MAX_CHARS = 160
+
+
+def _ahead_window(prose: str, end: int) -> str:
+    """The text after a mention that may legitimately qualify it.
+
+    Bounded at the clause/sentence that contains the mention — see
+    ``_AHEAD_STOP_RE`` for why an unbounded widening drops gold references.
+    """
+    seg = prose[end : end + _AHEAD_MAX_CHARS]
+    m = _AHEAD_STOP_RE.search(seg)
+    return seg[: m.start()] if m else seg
 
 # R322 — the bare POSTPOSITIVE form: "Article 35 GDPR", "Article 22 GDPR",
 # "Article 9 GDPR". Every alternation in ``_CROSS_INSTRUMENT_RE`` above requires
@@ -3827,10 +3886,22 @@ _FOREIGN_INSTRUMENT_BEHIND_RE = re.compile(
     r"|\bmdr\b|\bivdr\b|\bnis\s*2\b|\bcra\b|\bdsa\b|\bdma\b|\bpld\b"
     r"|\btfeu\b|\bteu\b"
     r"|\bdirective\b"
-    r"|\bregulation\s*\(e[uc]\)\s*(?!2024/1689)\d{4}/\d+"
-    r")[\s,‑-]*$",
+    # R324 — was ``\(e[uc]\)\s*(?!2024/1689)\d{4}/\d+``, i.e. the pre-R323 form,
+    # so every shape R323 taught the AHEAD guard about still leaked here. Now
+    # shares ``_REG_NUMBER_FRAGMENT`` with that guard. The AI Act self-reference
+    # exclusion is kept as a lookahead on the whole fragment.
+    r"|(?!regulation\s*(?:\(e[uc]\)\s*)?(?:no\.?\s*)?2024/1689)" + _REG_NUMBER_FRAGMENT
+    + r")[\s,‑-]*$",
     re.IGNORECASE,
 )
+# R324 — the behind window must fit the longest prefix form plus its separator:
+# "Regulation (EU) No 1025/2012, " is 30 chars, so the pre-R324 24-char window
+# made the numbered-regulation alternation UNREACHABLE at any numbering — it had
+# never fired. Widening is safe because the pattern is anchored at ``$`` with
+# only ``[\s,‑-]`` allowed between the instrument and the mention: a sentence
+# that merely mentions the GDPR earlier cannot match, since a full stop is not
+# in that separator class.
+_BEHIND_WINDOW_CHARS = 48
 # R311 — the negation cue need not be ADJACENT to the mention.
 #
 # The pre-R311 form was ``(?:\bnot|...)\s*$`` over a 24-char lookbehind, i.e.
@@ -3868,7 +3939,7 @@ def _prose_mention_is_real_citation(prose: str, start: int, end: int) -> bool:
 
     ``start`` / ``end`` bracket the matched mention in ``prose``.
     """
-    ahead = prose[end : end + 56]
+    ahead = _ahead_window(prose, end)
     if _CROSS_INSTRUMENT_RE.search(ahead):
         return False  # GDPR / Directive / Treaty / Charter / Decision
     # R322 — the same reference, written without the ``of`` ("Article 35 GDPR").
@@ -3877,7 +3948,9 @@ def _prose_mention_is_real_citation(prose: str, start: int, end: int) -> bool:
     # R321 — the PREFIX form: "GDPR Art. 5", "EU Charter Art. 21", "MDR
     # Article 10". Measured: without this, GDPR Article 5 was promoted onto
     # the wire as AI Act Article 5. See _FOREIGN_INSTRUMENT_BEHIND_RE.
-    if _FOREIGN_INSTRUMENT_BEHIND_RE.search(prose[max(0, start - 24) : start]):
+    if _FOREIGN_INSTRUMENT_BEHIND_RE.search(
+        prose[max(0, start - _BEHIND_WINDOW_CHARS) : start]
+    ):
         return False
     m_reg = _NUMBERED_REG_RE.search(ahead)
     if m_reg and m_reg.group(1) != "2024/1689":
@@ -6218,6 +6291,16 @@ def regenold_eu_ai_act_ask(
     # FastAPI workers / concurrent requests get distinct dicts.
     _request_intent_cache.set({})
 
+    # R324 — same treatment for the R323 kg_context render memo, whose docstring
+    # already claimed this reset existed. Unconditional and beside its sibling so
+    # the two cannot drift apart again.
+    try:
+        from app.engines.kg_context import reset_render_memo  # noqa: PLC0415
+
+        reset_render_memo()
+    except Exception:  # noqa: BLE001 — never break a request over a memo
+        logger.debug("kg_context render memo reset failed", exc_info=True)
+
     # Input contract:
     # - primary: request body is `[{role, content}, ...]` (OpenAI/LiteLLM style)
     # - compatibility: `{ "messages": [...] }` or legacy `{ "question": "...", ... }`
@@ -8511,9 +8594,27 @@ def regenold_eu_ai_act_ask(
 
             from app.data.article_existence import ARTICLE_EXISTENCE
 
-            # Extract cited articles/annexes in polished prose
+            # Extract cited articles/annexes in polished prose.
+            #
+            # R324 — this pass MUST apply the same foreign-instrument guard as
+            # ``_add_prose_named_refs``. It is the second prose-to-citation
+            # extraction path in the route, and it was entirely unguarded: a
+            # bare regex, then ``references.append`` for anything resolving in
+            # ARTICLE_EXISTENCE. So every foreign citation the guard correctly
+            # dropped upstream was silently re-added here, which is why the R323
+            # regex widening measured byte-identical on the wire — the fix was
+            # real and this path undid it.
+            #
+            # MEASURED before this call: "Article 30 of Regulation (EC) No
+            # 765/2008" shipped AI Act **Article 30** (notifying procedure) both
+            # pre-R323 and post-R323. Hard rule #4, in a wire-legal shape that
+            # the hard-rule-#5 lint cannot catch because Article 30 exists.
             prose_citations = set()
             for match in re.finditer(r"\b(Article|Art\.|Annex)\s+([IVXLCDM\d]+)\b", answer_text, re.IGNORECASE):
+                if not _prose_mention_is_real_citation(
+                    answer_text, match.start(), match.end()
+                ):
+                    continue
                 prefix = match.group(1).lower()
                 num = match.group(2).strip()
                 if prefix.startswith("art"):

@@ -159,10 +159,42 @@ def _node_ids(refs: list[str], limit: int) -> list[str]:
 # seeded hierarchy; HAS_RECITAL_ANCHOR is the interpretive anchor. Both verified
 # present on the live instance this round.
 
+# R324 — ``ORDER BY u.number`` sorted LEXICOGRAPHICALLY, because ``number`` is a
+# STRING property. Measured on Article 3 (68 units, ``$max_units`` 24): the kept
+# set was 1, 10-19, 2, 20-29, 3, 30 and the dropped set 4-9 and 31-68 — so 44 of
+# 68 definitions vanished, including 3(4) DEPLOYER, 3(5) authorised
+# representative, 3(6) importer and 3(7) distributor, while 3(10)-3(30)
+# survived. Any role question citing Article 3 was answered from a context
+# missing the role definitions.
+#
+# ``toIntegerOrNull`` (Neo4j 5) rather than ``toInteger``: annex point labels
+# are not always numeric, and the null sorts last, which is the right place for
+# a label we cannot order. The ``, u.number`` tiebreak keeps those stable.
 _HIERARCHY_CYPHER = """
 MATCH (a) WHERE a.id IN $ids AND (a:Article OR a:Annex)
 OPTIONAL MATCH (a)-[:HAS_PARAGRAPH|HAS_POINT]->(u)
-WITH a, u ORDER BY a.id, u.number
+WITH a, u ORDER BY a.id, toIntegerOrNull(u.number), u.number
+// ⚠ R324 KNOWN DEFECT — the ``|HAS_POINT`` leg above is DEAD, and deliberately
+// left in place rather than fixed blind. MEASURED: all 421 HAS_POINT edges have
+// a PARAGRAPH source, so with ``a`` bound to Article/Annex this alternation
+// reaches 0 of 421 Point nodes. It is absent from R323's inventory of unread
+// layers precisely because the query LOOKS like it already covers Point.
+//
+// Consequence: a paragraph is only ever available as one blob, so Article 5(1)
+// (4701 chars) must be truncated instead of delivered as its eight points.
+// The R324 ``_flat`` ceiling fix recovers this from 19% to 51%; the remaining
+// half needs the split below.
+//
+// THE FIX, for a session with a reachable graph (it needs a live smoke — a
+// wrong Cypher here fails soft to ``[]`` and silently deletes the whole
+// provision block, which is worse than the truncation it replaces):
+//   OPTIONAL MATCH (a)-[:HAS_PARAGRAPH]->(p)
+//   OPTIONAL MATCH (p)-[:HAS_POINT]->(pt)
+//   ... collect points per paragraph as ``{letter, text}``
+// then, Python-side, emit the chapeau plus each point INSTEAD of the paragraph
+// when the paragraph would be truncated. Note the paragraph text SUBSUMES its
+// points (verified: point (c)'s text is a substring of article_5_1), so the two
+// must be alternatives — emitting both duplicates content into the budget.
 WITH a, collect({num: u.number, text: u.text})[..$max_units] AS units
 RETURN a.id AS id,
        coalesce(a.strict_citation, a.id) AS cite,
@@ -174,7 +206,7 @@ _RECITAL_CYPHER = """
 MATCH (a)-[:HAS_RECITAL_ANCHOR]->(r:Recital)
 WHERE a.id IN $ids
 RETURN a.id AS id, r.number AS num, r.text AS text
-ORDER BY a.id, r.number
+ORDER BY a.id, toIntegerOrNull(r.number), r.number
 LIMIT $limit
 """
 
@@ -218,8 +250,27 @@ def _flat(text: object, limit: int) -> str:
 
     # An enumerated provision is delivered whole where it plausibly fits: the
     # list IS the obligation.
-    if _ENUM_OPENER_RE.search(t[:limit]) and len(t) <= _UNIT_HARD_CEILING:
-        return t
+    #
+    # R324 — ``_UNIT_HARD_CEILING`` was a SWITCH, not a ceiling: past it the code
+    # fell straight back to ``limit``, so a 2599-char enumeration was delivered
+    # whole and a 2601-char one was cut at 900. The cliff landed on the LONGEST
+    # enumerations, which are exactly the "duty defined by its list" cases this
+    # guard exists for. MEASURED: Article 5(1) is 4701 chars and was delivered at
+    # **905 — 19%**, cut mid-point-(b), so prohibitions (c) social scoring
+    # through (h) real-time RBI never reached the model, while the R323 sub-point
+    # block injected (h)'s own carve-outs. A prohibition shipped without its
+    # scope, alongside the exceptions that qualify it, states the law backwards.
+    #
+    # Seven units hit that cliff: article_5_1 (4701), annex_VII_4 (4520),
+    # article_66_1 (4507), article_60_4 (4479), article_59_1 (3320),
+    # article_58_2 (2938), annex_IV_2 (2736 — technical documentation).
+    #
+    # The ceiling now behaves as its name and the docstring above both say:
+    # deliver whole under it, otherwise cut AT it and mark the truncation.
+    if _ENUM_OPENER_RE.search(t[:limit]):
+        if len(t) <= _UNIT_HARD_CEILING:
+            return t
+        limit = _UNIT_HARD_CEILING
 
     cut = t[:limit]
     floor = (limit * 3) // 4
@@ -284,7 +335,7 @@ MATCH (a) WHERE a.id IN $ids AND (a:Article OR a:Annex)
 MATCH (a)-[:HAS_PARAGRAPH]->(p)-[:HAS_POINT]->(pt)-[:HAS_SUBPOINT]->(s:SubPoint)
 RETURN coalesce(a.strict_citation, a.id) AS cite,
        p.number AS para, pt.letter AS letter, s.id AS sid, s.text AS text
-ORDER BY a.id, p.number, pt.letter, s.id
+ORDER BY a.id, toIntegerOrNull(p.number), p.number, pt.letter, s.id
 LIMIT $limit
 """
 
@@ -462,12 +513,34 @@ def fetch_cross_regulatory_context(refs: list[str]) -> list[dict]:
 #:
 #: A ContextVar rather than an lru_cache: the graph can be re-seeded and the
 #: refs are per-request, so a process-lifetime cache would serve stale
-#: structure. This entry is reset per request by the route's trace setup and,
-#: failing that, is keyed on the exact ref tuple so a different question can
-#: never read another question's entry.
+#: structure.
+#:
+#: R324 — the R323 docstring claimed "this entry is reset per request by the
+#: route's trace setup". It was NOT: nothing in ``app/`` reset it, and the trace
+#: setup resets a different ContextVar in a different module, only when
+#: ``?include_reasoning=true``. Isolation held by accident, because the endpoint
+#: is a sync ``def`` and anyio runs each call in a fresh ``copy_context()`` — an
+#: implicit property of the transport, not a mechanism anyone maintains. Making
+#: the endpoint ``async def``, or moving prompt assembly behind one of the three
+#: module-level persistent executors, would silently turn this into a
+#: per-worker process-lifetime cache that survives a re-seed — the exact hazard
+#: the ContextVar was chosen to avoid. :func:`reset_render_memo` now makes the
+#: claim true; the ref-tuple key remains as the second line of defence.
 _RENDER_MEMO: ContextVar[tuple[tuple[str, ...], list[str]] | None] = ContextVar(
     "regenold_kg_render_memo", default=None
 )
+
+
+def reset_render_memo() -> None:
+    """Clear the per-request render memo. Called by the route on every request.
+
+    Unconditional, mirroring ``_request_intent_cache.set({})`` (R84) — a
+    conditional reset is what let the R323 claim be false in the first place.
+    """
+    try:
+        _RENDER_MEMO.set(None)
+    except Exception:  # noqa: BLE001 — a memo reset must never break a request
+        logger.debug("kg_context: render memo reset failed", exc_info=True)
 
 
 def render_kg_context(refs: list[str]) -> list[str]:
@@ -500,6 +573,30 @@ def render_kg_context(refs: list[str]) -> list[str]:
     # the pathological tail: typical 2-4 ref requests render 5-14k.
     max_chars = _int_env("REGENOLD_KG_MAX_CHARS", _DEFAULT_MAX_CHARS, 1200, 60000)
 
+    # R324 — RESERVE budget for the downstream blocks before the provision block
+    # is allowed to spend it.
+    #
+    # R323 budgeted ``used`` against the FULL ceiling for the provision block
+    # alone, then appended the sub-point, deontic, recital and cross-regulatory
+    # blocks with no accounting, and disposed of them wholesale in a tail-drop
+    # loop. Because the loop pops from the END, the two blocks R323 exists to
+    # add were the FIRST deleted. MEASURED at the default 16000:
+    #
+    #     Art 5,6            -> 4 blocks, sub-point block kept
+    #     Art 9-15 (HRAIS)   -> 1 block,  sub-point block DROPPED
+    #     8 refs (the module's own _DEFAULT_MAX_REFS) -> 1 block, DROPPED
+    #
+    # Per-article render is median 2,008 / p90 4,482 chars, so the cliff sat at
+    # ~4-5 refs — ordinary traffic, not the "pathological tail" the comment
+    # claimed. At the module's designed maximum the feature was entirely off,
+    # and the block being deleted is the one whose heading says "a prohibition
+    # stated without its exception is WRONG".
+    #
+    # The reserve is a FRACTION, not a constant, so it scales with an operator's
+    # ceiling; the tail-drop below still runs as the backstop for the case where
+    # the downstream blocks overrun their own share.
+    provision_budget = max(1200, (max_chars * 2) // 3)
+
     try:
         rows = fetch_provision_hierarchy(refs)
     except Exception:  # noqa: BLE001
@@ -519,6 +616,11 @@ def render_kg_context(refs: list[str]) -> list[str]:
         if not cite or not units:
             continue
         head = f"- {cite}" + (f" ({title})" if title else "") + ":"
+        # R324 — charge the heading BEFORE its units are budgeted. R323 added it
+        # to ``used`` afterwards, so every provision's heading was excluded from
+        # its own fit decision and the block could overrun by the sum of all
+        # headings. Rolled back below if no unit is admitted.
+        used += len(head)
         pending: list[str] = []
         for unit in units:
             num = str(unit.get("num") or "").strip()
@@ -528,7 +630,7 @@ def render_kg_context(refs: list[str]) -> list[str]:
             line = f"    ({num}) {body}" if num else f"    {body}"
             # Always admit the first unit of the first provision, so a single
             # oversized provision still yields context rather than nothing.
-            if used and used + len(line) > max_chars:
+            if used and used + len(line) > provision_budget:
                 over_cap += 1
                 continue
             pending.append(line)
@@ -536,7 +638,8 @@ def render_kg_context(refs: list[str]) -> list[str]:
         if pending:
             lines.append(head)
             lines.extend(pending)
-            used += len(head)
+        else:
+            used -= len(head)  # nothing admitted — refund the heading
     if lines:
         parts.append(
             "\nKNOWLEDGE-GRAPH PROVISION STRUCTURE "
@@ -681,15 +784,22 @@ def render_kg_context(refs: list[str]) -> list[str]:
         except Exception:  # noqa: BLE001
             pass
 
-    # R323 — enforce the total ceiling by dropping WHOLE trailing blocks. The
-    # blocks are appended in descending order of value (provision structure,
-    # then recitals, then cross-regulatory, then provenance), so trimming from
-    # the tail sheds the least useful context first. Never half-render a block:
-    # a truncated heading would misdescribe what follows it.
-    dropped = over_cap
+    # R323 — enforce the total ceiling by dropping WHOLE trailing blocks, never
+    # half-rendering one: a truncated heading would misdescribe what follows it.
+    #
+    # R324 corrected the ordering note here, which still described the R323
+    # first cut and omitted the two blocks the SAME commit inserted at positions
+    # 2 and 3. Actual append order, least-droppable first:
+    #   1 provision structure · 2 sub-point detail · 3 regulatory classification
+    #   4 recitals · 5 cross-regulatory · 6 provenance
+    # so the tail-drop sheds provenance and cross-regulatory before it reaches
+    # the deontic and carve-out layers. With the R324 provision reserve above,
+    # this loop is now the backstop it was meant to be rather than the primary
+    # mechanism deleting the new blocks.
+    dropped_blocks = 0
     while len(parts) > 1 and sum(len(p) for p in parts) > max_chars:
         parts.pop()
-        dropped += 1
+        dropped_blocks += 1
 
     if parts:
         try:
@@ -697,8 +807,13 @@ def render_kg_context(refs: list[str]) -> list[str]:
                 record_note,
             )
             note = f"kg_context sections={len(parts)} refs={len(refs or [])}"
-            if dropped:
-                note += f" dropped_over_cap={dropped}"
+            # R324 — R323 summed these into one ``dropped_over_cap``, so the
+            # trace could not distinguish "trimmed some units" (benign) from
+            # "deleted whole layers" (the C3 defect). Report them separately.
+            if over_cap:
+                note += f" dropped_units={over_cap}"
+            if dropped_blocks:
+                note += f" dropped_blocks={dropped_blocks}"
             record_note(note)
         except Exception:  # noqa: BLE001
             pass
