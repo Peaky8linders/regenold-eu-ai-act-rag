@@ -1,4 +1,7 @@
 .venv/
+# Throwaway virtualenvs a review/audit session builds to reproduce a gate
+# (e.g. .venv-audit/). Never part of a PR.
+.venv*/
 __pycache__/
 *.pyc
 *.pyo
