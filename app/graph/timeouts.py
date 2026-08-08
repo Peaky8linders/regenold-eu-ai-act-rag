@@ -101,7 +101,17 @@ GRAPH_TIMEOUT_ENV_VAR = "REGENOLD_GRAPH_TIMEOUT_MS"
 
 #: Default wall-clock budget for a single graph query (milliseconds).
 #: See the module docstring for the measurement this is derived from.
-DEFAULT_GRAPH_TIMEOUT_MS = 500
+#:
+#: R323 raised this 500 -> 750. Re-measured against the live Aura instance:
+#: the FIRST query of a connection lifetime costs 524-593 ms (TLS handshake +
+#: routing-table fetch + query-plan compile), so at 500 ms the cold call
+#: ALWAYS timed out and returned nothing — the graph contributed zero to the
+#: first request each worker served, and to every request after an idle
+#: connection was reaped. Warm calls measured 29-32 ms (median 31, max 32
+#: over 7 samples), i.e. ~16x under the old budget, so the raise cannot
+#: affect a warm request: it only stops discarding work already paid for.
+#: Latency is a scored axis, hence the modest headroom rather than a large one.
+DEFAULT_GRAPH_TIMEOUT_MS = 750
 
 #: Clamp bounds. The floor keeps a typo (``0`` / ``-1``) from disabling
 #: the graph outright; the ceiling keeps one from parking a request on a

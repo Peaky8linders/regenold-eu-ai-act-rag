@@ -243,7 +243,24 @@ class GraphClient:
             return {"status": "disabled", "message": "NEO4J_URI not set or neo4j driver missing"}
         try:
             result = self.execute_read("RETURN 1 AS ping")
-            return {"status": "healthy", "ping": result[0]["ping"] if result else None}
+            # R323 — an empty result IS the failure signal, and the only one
+            # available here. ``execute_read`` catches Exception on every path
+            # and returns [] so the engine can fall back, which means the
+            # ``except`` below is UNREACHABLE via that call: pre-R323 a totally
+            # dead instance reported {"status": "healthy", "ping": None} and
+            # /healthz/graph rendered graph_ok=true against it. That blind spot
+            # was found in R290, survived to R322, and is why an Aura outage
+            # showed a green probe with empty node counts.
+            #
+            # "RETURN 1 AS ping" returns exactly one row on any reachable
+            # instance, so no-rows can only mean the read failed.
+            if not result:
+                logger.warning("Neo4j health check: ping returned no rows")
+                return {
+                    "status": "unhealthy",
+                    "error": "ping returned no rows (instance unreachable or read failed)",
+                }
+            return {"status": "healthy", "ping": result[0].get("ping")}
         except Exception:  # noqa: BLE001
             logger.warning("Neo4j health check failed", exc_info=True)
             return {"status": "unhealthy", "error": "Graph database unavailable"}
