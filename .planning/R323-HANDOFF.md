@@ -68,11 +68,15 @@ fires on boot when `NEO4J_URI` is set and `NEO4J_AUTO_SEED` is not off. Local
    `grep -rn 'db.index.vector'` returns **nothing** repo-wide. Largest
    built-but-unwired capability and the strongest SOTA candidate. Wire it at
    the same non-citable context layer `kg_context` occupies — never as a ranker.
-2. **W2 — and wiring more layers makes it worse.** kg_context text feeds
-   `_extract_context_grounded_refs`, inflating the citation-drift allowlist
-   **23 vs 4 refs**; kg_context is 99.2% of that block. R288.1 excluded the
-   verbatim section for exactly this reason and kg_context never got the same
-   treatment. **Check this before adding more graph context.**
+2. ~~W2~~ **FIXED in `a4519ec`.** Confirmed real and measured properly: with
+   `REGENOLD_KG_CONTEXT` off vs on the drift allowlist went **21→27 / 17→24 /
+   13→14** and the mined block **7.9k→24.3k chars**, the added refs being the
+   regulation's own cross-references (Art. 35/46/74, Annex VIII/IX). Fixed by
+   threading `include_kg` from the existing `include_grounding` flag, so the
+   guard drops the graph blocks while the PROMPT keeps them. ⚠ The obvious test
+   (render kg_context, re-read the allowlist) **cannot detect this** —
+   `_extract_context_grounded_refs` renders kg_context itself, so both arms
+   already contain it. Compare `REGENOLD_KG_CONTEXT` off vs on.
 3. **Foreign instruments — groundwork done, seeding NOT written.** The operator
    chose "reference nodes + Annex I full text". Ready:
    `.evalout/celex_verified.json` (**67/67 CELEX empirically verified** — probe
