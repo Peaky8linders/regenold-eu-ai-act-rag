@@ -85,6 +85,8 @@ __all__ = [
 _DEFAULT_MAX_REFS = 8
 _DEFAULT_MAX_UNITS = 24
 _DEFAULT_UNIT_CHARS = 900
+#: Total ceiling across every block render_kg_context returns (R323).
+_DEFAULT_MAX_CHARS = 16000
 _DEFAULT_MAX_RECITALS = 5
 
 
@@ -176,17 +178,56 @@ LIMIT $limit
 """
 
 
+# R323 — an enumerated list opener, e.g. "consisting of: (a) a description".
+# A provision whose duty is DEFINED by its enumeration (Art. 27(1)'s FRIA
+# contents, Art. 11's technical documentation) is worse than useless when the
+# enumeration is amputated: the model is told a duty exists and not what it
+# requires.
+_ENUM_OPENER_RE = re.compile(r"\(a\)\s")
+
+#: Hard ceiling for a single unit once the enumeration guard has extended it.
+#: Bounds the worst case so one pathological provision cannot dominate the
+#: Stage-2 budget.
+_UNIT_HARD_CEILING = 2600
+
+
 def _flat(text: object, limit: int) -> str:
+    """Flatten a provision to at most ``limit`` chars, losing as little as possible.
+
+    R323 fixed two ways this silently amputated statutory text:
+
+    1. BACKTRACK COULD DISCARD HALF THE BUDGET. The sentence-boundary search
+       accepted any break past ``limit // 2``, so Article 27(1) (1421 chars, at
+       a 900 budget) was delivered at **470 chars — 33%**. The accepted break
+       must now be in the last quarter of the budget; a nearer sentence break
+       loses too much and we fall through to a clause, then a word boundary.
+
+    2. IT CUT MID-ENUMERATION WITHOUT SAYING SO. Article 27(1)'s lost remainder
+       began exactly at "For that purpose, deployers shall perform an
+       assessment consisting of: (a) a description ...", so the model received
+       the FRIA duty with none of its (a)-(f) contents, and no indication that
+       anything was missing. When an enumeration opens inside the budget, the
+       whole unit is now delivered up to ``_UNIT_HARD_CEILING``; beyond that
+       the text is explicitly marked truncated rather than ending mid-clause as
+       if it were complete.
+    """
     t = " ".join(str(text or "").split())
     if len(t) <= limit:
         return t
+
+    # An enumerated provision is delivered whole where it plausibly fits: the
+    # list IS the obligation.
+    if _ENUM_OPENER_RE.search(t[:limit]) and len(t) <= _UNIT_HARD_CEILING:
+        return t
+
     cut = t[:limit]
+    floor = (limit * 3) // 4
     for sep in (". ", "; ", ", "):
         idx = cut.rfind(sep)
-        if idx > limit // 2:
-            return cut[: idx + 1].strip()
+        if idx > floor:
+            return cut[: idx + 1].strip() + " [...]"
     idx = cut.rfind(" ")
-    return (cut[:idx] if idx > limit // 2 else cut).strip()
+    return ((cut[:idx] if idx > floor else cut).strip()) + " [...]"
 
 
 def fetch_provision_hierarchy(refs: list[str]) -> list[dict]:
@@ -341,12 +382,27 @@ def render_kg_context(refs: list[str]) -> list[str]:
         return []
     parts: list[str] = []
     unit_chars = _int_env("REGENOLD_KG_UNIT_CHARS", _DEFAULT_UNIT_CHARS, 80, 1200)
+    # R323 — a total ceiling on what the graph may inject. Measured before this
+    # existed: a 12-ref scenario rendered 30,559 chars into the Stage-2 prompt
+    # with no bound at all. R319 measured that added context runs at ~2.5% gold
+    # precision and demonstrated crowding-out (kw recall 1.0 -> 0.0 on a gold
+    # article that WAS present in the inflated context), so an unbounded block
+    # is a measured risk, not just a token cost. Set generously so it bites only
+    # the pathological tail: typical 2-4 ref requests render 5-14k.
+    max_chars = _int_env("REGENOLD_KG_MAX_CHARS", _DEFAULT_MAX_CHARS, 1200, 60000)
 
     try:
         rows = fetch_provision_hierarchy(refs)
     except Exception:  # noqa: BLE001
         rows = []
+    # R323 — the provision-structure block is by far the largest and is a
+    # SINGLE block, so a block-granular cap can never trim it. Budget it while
+    # building instead, dropping whole units (never half a unit) once the
+    # ceiling is reached. Measured before this: a 12-ref scenario produced one
+    # 29,623-char block.
     lines: list[str] = []
+    used = 0
+    over_cap = 0
     for row in rows:
         cite = str(row.get("cite") or row.get("id") or "").strip()
         title = str(row.get("title") or "").strip()
@@ -354,12 +410,24 @@ def render_kg_context(refs: list[str]) -> list[str]:
         if not cite or not units:
             continue
         head = f"- {cite}" + (f" ({title})" if title else "") + ":"
-        lines.append(head)
+        pending: list[str] = []
         for unit in units:
             num = str(unit.get("num") or "").strip()
             body = _flat(unit.get("text"), unit_chars)
-            if body:
-                lines.append(f"    ({num}) {body}" if num else f"    {body}")
+            if not body:
+                continue
+            line = f"    ({num}) {body}" if num else f"    {body}"
+            # Always admit the first unit of the first provision, so a single
+            # oversized provision still yields context rather than nothing.
+            if used and used + len(line) > max_chars:
+                over_cap += 1
+                continue
+            pending.append(line)
+            used += len(line)
+        if pending:
+            lines.append(head)
+            lines.extend(pending)
+            used += len(head)
     if lines:
         parts.append(
             "\nKNOWLEDGE-GRAPH PROVISION STRUCTURE "
@@ -444,12 +512,25 @@ def render_kg_context(refs: list[str]) -> list[str]:
         except Exception:  # noqa: BLE001
             pass
 
+    # R323 — enforce the total ceiling by dropping WHOLE trailing blocks. The
+    # blocks are appended in descending order of value (provision structure,
+    # then recitals, then cross-regulatory, then provenance), so trimming from
+    # the tail sheds the least useful context first. Never half-render a block:
+    # a truncated heading would misdescribe what follows it.
+    dropped = over_cap
+    while len(parts) > 1 and sum(len(p) for p in parts) > max_chars:
+        parts.pop()
+        dropped += 1
+
     if parts:
         try:
             from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
                 record_note,
             )
-            record_note(f"kg_context sections={len(parts)} refs={len(refs or [])}")
+            note = f"kg_context sections={len(parts)} refs={len(refs or [])}"
+            if dropped:
+                note += f" dropped_over_cap={dropped}"
+            record_note(note)
         except Exception:  # noqa: BLE001
             pass
     return parts
