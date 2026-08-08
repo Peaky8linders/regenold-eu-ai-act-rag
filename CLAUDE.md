@@ -270,6 +270,27 @@ underlying evidence is in `docs/ROUNDS.md`.
 * **Small-n live A/Bs cannot resolve reference axes.** Two runs with an
   IDENTICAL baseline arm changed 20/40 rows' refs and sign-flipped all three
   reference axes. Use full n with repeats, or a deterministic offline sim.
+* **"Byte-identical" is also what INERT looks like.** R323 widened a
+  foreign-citation guard, measured no wire change, and read that as *safe* — it
+  was also consistent with *not working*. A second, unguarded prose-to-citation
+  path (Component D) was re-adding whatever the guard dropped. Before concluding
+  a fix is safe-because-flat, prove it FIRES: assert the intended behaviour
+  directly, not just the absence of movement.
+* **One concept, one definition.** The same guard had TWO regexes for "a
+  numbered EU Regulation id"; R323 widened one. The other's window was also too
+  short to ever match, so that branch had never fired at all. When you widen a
+  pattern, grep for its siblings.
+* **A ceiling that falls back to a smaller limit is a switch, not a ceiling.**
+  `_UNIT_HARD_CEILING` delivered a 2,599-char enumeration whole and cut a
+  2,601-char one to 900 — Article 5(1) (4,701 chars) shipped at **19%**, cut
+  mid-point-(b), so social scoring through real-time RBI never reached the
+  model. Cut AT the ceiling and mark it.
+* **Budget the thing you just added.** A new context block competes with the
+  existing one; if the old block is budgeted against the full ceiling and the
+  tail-drop pops from the end, the new block is the first thing deleted — i.e.
+  the feature silently removes itself.
+* **`ORDER BY` on a string-typed number sorts lexicographically.** Article 3
+  ordered 1, 10-19, 2, 20-29, 3 … and dropped 44 of 68 definitions. Cast it.
 
 ## Env flags that matter
 
