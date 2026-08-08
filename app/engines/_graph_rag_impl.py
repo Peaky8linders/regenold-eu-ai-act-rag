@@ -6138,8 +6138,14 @@ def partition_context_references(
     return operative, background
 
 
-def _render_supplementary_sections(context: GraphContext) -> list[str]:
+def _render_supplementary_sections(
+    context: GraphContext, *, include_kg: bool = True
+) -> list[str]:
     """Render the NON-citable supporting-context sections of a GraphContext.
+
+    ``include_kg=False`` omits the knowledge-graph blocks. That is used ONLY
+    when the block is being mined for the citation-drift allowlist — see the
+    R323 note at the ``render_kg_context`` call below.
 
     R300 — extracted so BOTH renderers in
     :func:`_build_context_references_block` emit them. The R299 Move-1
@@ -6212,12 +6218,35 @@ def _render_supplementary_sections(context: GraphContext) -> list[str]:
     # do, and renders it as explicitly non-citable context. That is also exactly
     # the grain R312's citation failures live at (Article 6(3) credited with
     # Article 6(4)'s duty).
-    try:
-        from app.engines.kg_context import render_kg_context  # noqa: PLC0415
+    # R323 — ``include_kg=False`` is the guard-mining path.
+    #
+    # ``_extract_context_grounded_refs`` builds the citation-drift allowlist by
+    # mining this block. kg_context renders the regulation's OWN structure and
+    # cross-references, and every one of its headings tells the model "do NOT
+    # cite anything here that is not already listed above" — so a citation that
+    # appears ONLY in the graph blocks IS drift, and admitting it to the
+    # allowlist silently disarms the guard.
+    #
+    # MEASURED with kg_context OFF vs ON:
+    #     allowlist 21 -> 27 refs, mined block  7,923 ->  24,329 chars
+    #     allowlist 17 -> 24 refs, mined block  5,023 ->  21,234 chars
+    # the added refs being Art. 35 / 46 / 74 / Annex VIII / Annex IX — the
+    # regulation's own cross-references, not provisions we retrieved.
+    #
+    # This is exactly the R288.1 treatment already applied to the verbatim
+    # grounding section ("the regulation's own cross-references are not
+    # provisions we supplied, and admitting them turns the guard's allowlist
+    # into a superset of what was retrieved"); the graph blocks never got it,
+    # and wiring more layers in only widened the hole.
+    #
+    # The PROMPT is unaffected: only the guard passes include_grounding=False.
+    if include_kg:
+        try:
+            from app.engines.kg_context import render_kg_context  # noqa: PLC0415
 
-        parts.extend(render_kg_context(_context_article_refs(context)))
-    except Exception:  # noqa: BLE001 — the graph must never break an answer
-        logger.debug("kg_context render failed", exc_info=True)
+            parts.extend(render_kg_context(_context_article_refs(context)))
+        except Exception:  # noqa: BLE001 — the graph must never break an answer
+            logger.debug("kg_context render failed", exc_info=True)
     return parts
 
 
@@ -6283,7 +6312,9 @@ def _build_context_references_block(
                     for o in context.article_info[:15]
                 )
             )
-        parts.extend(_render_supplementary_sections(context))
+        parts.extend(
+            _render_supplementary_sections(context, include_kg=include_grounding)
+        )
         if include_grounding and _grounding_text_enabled():
             try:
                 parts.extend(_render_grounding_text(context))
@@ -6352,7 +6383,9 @@ def _build_context_references_block(
 
     # R300 — the supporting-context sections belong under BACKGROUND. Without
     # this the partitioned path (production default) dropped them entirely.
-    bg_parts.extend(_render_supplementary_sections(context))
+    bg_parts.extend(
+        _render_supplementary_sections(context, include_kg=include_grounding)
+    )
 
     out_sections: list[str] = []
     if op_parts:
