@@ -71,6 +71,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from contextvars import ContextVar
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +256,86 @@ def fetch_provision_hierarchy(refs: list[str]) -> list[dict]:
         return []
 
 
+# ── R323: the seeded layers nothing was reading ────────────────────────────
+#
+# Measured over live requests before this: the graph holds 18 node labels and
+# 16 relationship types, and a request issued only FOUR distinct Cypher shapes,
+# touching Article / Annex / Paragraph / Point / Recital and three edge types.
+# The whole deontic layer — the one that answers "is this prohibited?", "what
+# must a deployer do?", "is this Annex III?" — was seeded and never read:
+#
+#   SubPoint 37          HAS_SUBPOINT 37              <- Art 5(1)(h)(i)-(iii)
+#   Practice 8           PROHIBITED_UNDER 8
+#   AnnexIIICategory 8   TRIGGERS_HIGH_RISK_UNDER 8
+#   OperatorRole 5       HAS_OBLIGATION_ARTICLE 36    <- carries a tier property
+#   LifecyclePhase 4     APPLIES_TO 20
+#   RiskLevel 4          APPLIES_AT 47
+#
+# All of it is rendered as NON-CITABLE context, exactly like the hierarchy
+# block — additive, never a ranker, never a wire citation (the R252 line).
+
+#: Sub-point leaves of the cited provisions. The carve-outs live here:
+#: Article 5(1)(h)(i)-(iii) (the real-time RBI exceptions, incl. the 545-char
+#: 4-year-custodial clause) and Article 5(1)(c)(i)/(ii). A retrieval hop that
+#: surfaces the PROHIBITION while dropping its EXCEPTION states the law
+#: backwards, which is the failure this block exists to prevent.
+_SUBPOINT_CYPHER = """
+MATCH (a) WHERE a.id IN $ids AND (a:Article OR a:Annex)
+MATCH (a)-[:HAS_PARAGRAPH]->(p)-[:HAS_POINT]->(pt)-[:HAS_SUBPOINT]->(s:SubPoint)
+RETURN coalesce(a.strict_citation, a.id) AS cite,
+       p.number AS para, pt.letter AS letter, s.id AS sid, s.text AS text
+ORDER BY a.id, p.number, pt.letter, s.id
+LIMIT $limit
+"""
+
+#: The deontic layer attached to the cited provisions, in one round-trip.
+_DEONTIC_CYPHER = """
+MATCH (a:Article) WHERE a.id IN $ids
+OPTIONAL MATCH (pr:Practice)-[:PROHIBITED_UNDER]->(a)
+OPTIONAL MATCH (cat:AnnexIIICategory)-[:TRIGGERS_HIGH_RISK_UNDER]->(a)
+OPTIONAL MATCH (ro:OperatorRole)-[hoa:HAS_OBLIGATION_ARTICLE]->(a)
+OPTIONAL MATCH (ph:LifecyclePhase)-[:APPLIES_TO]->(a)
+RETURN coalesce(a.strict_citation, a.id) AS cite,
+       collect(DISTINCT coalesce(pr.short_name, pr.id))                AS practices,
+       collect(DISTINCT coalesce(cat.label, cat.id))                   AS annex_iii,
+       collect(DISTINCT coalesce(ro.label, ro.id) + ' (' + coalesce(hoa.tier,'') + ')') AS roles,
+       collect(DISTINCT coalesce(ph.label, ph.id) + ' from ' + coalesce(ph.effective_date,'')) AS phases
+LIMIT $limit
+"""
+
+
+def _graph_rows(cypher: str, params: dict) -> list[dict]:
+    """Run a read and return rows, or ``[]`` on ANY failure. Never raises."""
+    if not kg_context_enabled():
+        return []
+    try:
+        from app.graph.client import get_graph_client  # noqa: PLC0415
+
+        client = get_graph_client()
+        if not getattr(client, "enabled", False):
+            return []
+        return list(client.execute_read(cypher, params) or [])
+    except Exception:  # noqa: BLE001 — the graph must never break an answer
+        logger.debug("kg_context: graph read failed", exc_info=True)
+        return []
+
+
+def fetch_subpoint_detail(refs: list[str]) -> list[dict]:
+    """Sub-point leaves (conditions, exceptions, carve-outs) of cited provisions."""
+    ids = _node_ids(refs or [], _int_env("REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 10))
+    if not ids:
+        return []
+    return _graph_rows(_SUBPOINT_CYPHER, {"ids": ids, "limit": 24})
+
+
+def fetch_deontic_context(refs: list[str]) -> list[dict]:
+    """Prohibited practices / Annex III categories / role duties / phases."""
+    ids = _node_ids(refs or [], _int_env("REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 10))
+    if not ids:
+        return []
+    return _graph_rows(_DEONTIC_CYPHER, {"ids": ids, "limit": 12})
+
+
 def fetch_recital_anchors(refs: list[str]) -> list[dict]:
     """Recitals anchored to the cited provisions (interpretive context only)."""
     if not kg_context_enabled():
@@ -370,6 +451,25 @@ def fetch_cross_regulatory_context(refs: list[str]) -> list[dict]:
     return results
 
 
+#: R323 — request-scoped memo for :func:`render_kg_context`.
+#:
+#: MEASURED: the renderer is called THREE times per Stage-2 request with the
+#: identical ref list (the supplementary-section builder is reached from more
+#: than one assembly path), so every graph round-trip was paid three times for
+#: byte-identical output. Wiring the previously-unread deontic layer added more
+#: reads per call, which makes de-duplication a prerequisite rather than a
+#: nicety: 3 requests went 23 -> 53 queries before this.
+#:
+#: A ContextVar rather than an lru_cache: the graph can be re-seeded and the
+#: refs are per-request, so a process-lifetime cache would serve stale
+#: structure. This entry is reset per request by the route's trace setup and,
+#: failing that, is keyed on the exact ref tuple so a different question can
+#: never read another question's entry.
+_RENDER_MEMO: ContextVar[tuple[tuple[str, ...], list[str]] | None] = ContextVar(
+    "regenold_kg_render_memo", default=None
+)
+
+
 def render_kg_context(refs: list[str]) -> list[str]:
     """Render the graph's contribution as NON-CITABLE Stage-2 context.
 
@@ -380,6 +480,15 @@ def render_kg_context(refs: list[str]) -> list[str]:
     """
     if not kg_context_enabled():
         return []
+
+    memo_key = tuple(str(r) for r in (refs or []))
+    try:
+        cached = _RENDER_MEMO.get()
+        if cached is not None and cached[0] == memo_key:
+            return list(cached[1])
+    except Exception:  # noqa: BLE001 — a memo miss must never break an answer
+        pass
+
     parts: list[str] = []
     unit_chars = _int_env("REGENOLD_KG_UNIT_CHARS", _DEFAULT_UNIT_CHARS, 80, 1200)
     # R323 — a total ceiling on what the graph may inject. Measured before this
@@ -438,6 +547,66 @@ def render_kg_context(refs: list[str]) -> list[str]:
             "that is not already listed above, and do NOT cite a paragraph "
             "number as a separate provision):\n"
             + "\n".join(lines)
+        )
+
+    # R323 — sub-point leaves: the conditions, exceptions and carve-outs.
+    # Surfacing a prohibition without its exception states the law backwards,
+    # and Article 5(1)(h)(i)-(iii) (the real-time RBI exceptions) lived in the
+    # graph unread until now.
+    try:
+        subs = fetch_subpoint_detail(refs)
+    except Exception:  # noqa: BLE001
+        subs = []
+    sub_lines: list[str] = []
+    for row in subs:
+        body = _flat(row.get("text"), unit_chars)
+        if not body:
+            continue
+        cite = str(row.get("cite") or "").strip()
+        para = str(row.get("para") or "").strip()
+        letter = str(row.get("letter") or "").strip()
+        sub = str(row.get("sid") or "").rsplit("_", 1)[-1]
+        sub_lines.append(f"- {cite}({para})({letter})({sub}): {body}")
+    if sub_lines:
+        parts.append(
+            "\nKNOWLEDGE-GRAPH SUB-POINT DETAIL "
+            "(the conditions, exceptions and carve-outs nested under provisions "
+            "ALREADY listed above. A prohibition stated without its exception is "
+            "WRONG — use these to qualify a duty or a ban precisely. Cite the "
+            "parent provision, never a sub-point as a separate article):\n"
+            + "\n".join(sub_lines)
+        )
+
+    # R323 — the deontic layer: prohibited practices, Annex III trigger
+    # categories, role duties with their tier, and applicability phases.
+    try:
+        deontic = fetch_deontic_context(refs)
+    except Exception:  # noqa: BLE001
+        deontic = []
+    deo_lines: list[str] = []
+    for row in deontic:
+        cite = str(row.get("cite") or "").strip()
+        bits: list[str] = []
+        for key, label in (
+            ("practices", "prohibited practices"),
+            ("annex_iii", "Annex III high-risk categories"),
+            ("roles", "operator duties"),
+            ("phases", "applies from"),
+        ):
+            vals = [str(v).strip() for v in (row.get(key) or []) if v and str(v).strip(" ()")]
+            if vals:
+                bits.append(f"{label}: {', '.join(sorted(set(vals))[:8])}")
+        if bits:
+            deo_lines.append(f"- {cite} — " + "; ".join(bits))
+    if deo_lines:
+        parts.append(
+            "\nKNOWLEDGE-GRAPH REGULATORY CLASSIFICATION "
+            "(typed ontology attached to the provisions ALREADY listed above — "
+            "which practices a prohibition covers, which Annex III categories "
+            "trigger high-risk classification, which operator role owes a duty "
+            "and at what tier, and when the provision applies. Structure only: "
+            "do NOT cite anything here that is not already listed above):\n"
+            + "\n".join(deo_lines)
         )
 
     try:
@@ -533,4 +702,9 @@ def render_kg_context(refs: list[str]) -> list[str]:
             record_note(note)
         except Exception:  # noqa: BLE001
             pass
+
+    try:
+        _RENDER_MEMO.set((memo_key, list(parts)))
+    except Exception:  # noqa: BLE001
+        pass
     return parts

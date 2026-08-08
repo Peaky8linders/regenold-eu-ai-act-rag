@@ -123,7 +123,7 @@ logger = logging.getLogger(__name__)
 #: new edge type, removed source, etc.). Surfaces in the ``KBMetadata``
 #: node so consumers can detect a graph that's stale relative to the
 #: currently-running code.
-SEED_VERSION = "2026-07-24-r291-fullseed"
+SEED_VERSION = "2026-08-08-r323-annex-sections"
 
 #: Cap on per-transaction batch size to stay well clear of the Neo4j
 #: 4194304-byte default transaction limit. The shape of our payloads
