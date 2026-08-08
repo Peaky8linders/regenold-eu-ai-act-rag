@@ -27,7 +27,8 @@ app/routes/regenold.py
    ├── classify_conversation              — scope gate (refusal or in-scope)
    │      └── app/integrations/regenold/scope.py
    ├── ask_compliance_question            — engine entry
-   │      └── app/engines/graph_rag.py → _graph_rag_impl.py
+   │      └── app/engines/_graph_rag_impl.py  ← imported as `app.engines.graph_rag`
+   │           (`graph_rag` is a PACKAGE proxy, R290; there is no graph_rag.py file)
    │             ├── _deterministic_parse — keyword→entities + BM25 fallback
    │             ├── _retrieve_from_kb    — KB + ontology + xrefs
    │             ├── _deterministic_answer — verdict / role×risk / obligations
@@ -145,7 +146,7 @@ and keep the off-switch for instant rollback.
 
 ## Current baseline — the single authoritative source
 
-Measured at `8cd05a8` (2026-08-09), deterministic env
+Measured at `b47c259` (2026-08-09), deterministic env
 `OPENAI_API_BASE=http://127.0.0.1:1/v1 P2P_GRAPH_RAG_PROVIDER=cli REGENOLD_EXTERNAL_EMBEDDINGS=0`.
 
 **Grade every run against THIS block, never against a number in `docs/ROUNDS.md`.**
@@ -157,6 +158,10 @@ Measured at `8cd05a8` (2026-08-09), deterministic env
 | Scenarios (339) | 0.2076 | 0.3332 | 0.7833 | 0.4992 | 0.4430 | 0.4287 | 1.0 |
 
 Multi-turn **20/20 coherent**.
+
+Re-verified at `b47c259` after `f4cfdba` changed `kg_context.py` (+153) and
+`routes/regenold.py` (+117): all 22 figures byte-identical, because those
+surfaces are stage2-gated and execute 0 times under `provider=cli`.
 
 Other gates: `evals.regenold.runner` **255/255**, RISK_F1 macro **1.00** ·
 OOS probe (`--oos-suite all`, 51 rows) **49 pass, 0 scope leaks** (2 known

@@ -1,6 +1,6 @@
 # Round log - regenold-eu-ai-act-rag
 
-The per-round engineering log, moved out of  in R324. CLAUDE.md was
+The per-round engineering log, moved out of `CLAUDE.md` in R324. CLAUDE.md was
 12,760 lines / 114k words and is loaded into context on EVERY session; this log
 was **98.3% of it by word count** and is reference material, not standing
 instruction. Nothing was deleted - every round entry below is verbatim.
@@ -15,8 +15,12 @@ underlying measurement.
 
 Search it, do not read it end to end:
 
-20:grep -n "Round 317" docs/ROUNDS.md
-23996:## Round 317 — five over-citation rule families, ALL measured dead (recovered record, 2026-08-07)
+    grep -nE "REFUTED|do not re-propose|measured dead" docs/ROUNDS.md
+    grep -n  "^## Round 317" docs/ROUNDS.md
+
+Round 317 — the five over-citation rule families that were all measured dead —
+is the single most expensive lesson in the log. Line numbers are deliberately
+not cited anywhere here: this file is append-only, so any line reference rots.
 
 ## Reading a round entry
 
@@ -27,9 +31,10 @@ source. Two examples of that trap actually biting:
 
 * R316 had to warn that the R308 davidath pin (0.4079 / 0.5543) was stale and
   that runs should be graded against 0.4072 / 0.5536.
-* R47 recorded  as reading the CORE xref graph.
-  R57-C switched it to the FULL graph and the line was never updated, so it
-  falsified the safety premise of later xref arguments.
+* R47 recorded `kb_search._xref_in_degree()` as reading the CORE xref graph.
+  It has read the FULL graph since R57-C and the line was never updated, so it
+  falsified the safety premise of later xref arguments. The R47 entry now
+  carries a SUPERSEDED warning inline — `grep -n "SUPERSEDED BY R57-C"`.
 
 ---
 
@@ -12548,3 +12553,185 @@ validator, because Articles 5/21/35 all exist in the Act.
 * The new `reference_correctness_exact_strict` / `_hierarchical` metrics are
   **dead code**; the davidath guard is still head-collapsed.
 * `GraphClient.health_check()` still cannot return unhealthy (R290).
+
+## Round 323 — the graph was serving wrong law, and four defects in how it reached the answer (2026-08-08)
+
+Triggered by an operator directive to seed a NEW Aura instance properly and
+"make sure the knowledge graph and all layers are used". Eight commits,
+`0f1b3da` → `8cd05a8`. Every one davidath byte-identical.
+
+### The instance seeds itself — and was already correct
+
+New Aura `neo4j+s://0644b854…` (the R291 instance `151d4e69` is DNS-dead).
+**No manual seed step was needed**: `app/main.py::_maybe_auto_seed_neo4j` (R36)
+fires on boot whenever `NEO4J_URI` is set and `NEO4J_AUTO_SEED` is not off.
+Local `.env` has it off; the Railway dashboard does not, so production seeded
+it on its last restart. Verified: prod `/healthz/graph` returns byte-identical
+counts to a direct query.
+
+Coverage verified byte-for-byte across three surfaces — catalog, pinned text,
+resolver, KB map and the LIVE graph all carry **113/113 articles + 13/13
+annexes + 180 recitals + 68 definitions**, zero Omnibus contamination, zero
+U+FFFD, zero empty text. Independently re-confirmed against Lawstronaut's copy
+of the official act: **median similarity 1.0000, mean 0.9985, none below 0.90**.
+(Working credentials: `andreib@antifragile-ai.net`; the bearer is at
+`data.token.refresh_token`, not `access_token`, TTL 1800 s.)
+
+⚠ Two "missing surface" alarms in this round were **my own key-format errors**:
+annex node ids are `annex_IV` (uppercase Roman), and `ARTICLE_EXISTENCE` keys
+articles as `Art. N`, not `Article N`. Console `�` on Windows is cp1252
+rendering, never data — verify by codepoint.
+
+### The four defects
+
+**`0f1b3da` — foreign citations promoted onto the wire.** `_NUMBERED_REG_RE`
+required `\d{4}/` right after `(EU)`/`(EC)`, missing both the `No ` particle and
+3-digit ids. Measured end-to-end: *"Article 2(1) … of Regulation (EU) **No**
+1025/2012"* shipped **AI Act Article 2**; Reg 765/2008 Art 30 → AI Act Art 30;
+Reg 182/2011 Art 5 → AI Act **Article 5, prohibited practices**. Every
+fabricated number resolves in `ARTICLE_EXISTENCE`, so the hard-rule-#5 lint is
+structurally unable to catch them.
+
+**`e6ed727` — the wrong section's text under a correct-looking citation.**
+Annex VIII has three sections whose numbering restarts (A: 1-13 providers,
+B: 1-9, C: 1-5 deployers). The flat scan was last-writer-wins, so
+`Annex VIII(1)` returned *"contact details of the **deployer**"* and Section A
+was unreachable — 14 of 27 items lost. Annex XI lost one the same way. Separately,
+a section's FIRST item is introduced by the section's title WORDS rather than
+punctuation, so **Annex I(1) — the machinery Directive, the canonical Annex I
+example — and Annex I(13) both returned `''`**. Annex I now exposes all 20
+instruments. The section split is measured, not guessed: a real heading follows
+a clause end, every prose cross-reference follows a comma. A blanket permissive
+scan was tried and **REJECTED** — it deleted all of Annex I Section B (items
+start at 13) and invented items 6-7 in Annex VII from its `4.6`-style
+sub-numbering.
+
+**`5354b86` — incomplete statutory text delivered to the model.** `kg_context._flat`
+backtracked to any sentence break past `limit // 2`, so **Article 27(1) was
+delivered at 470 of 1421 chars — 33%** — and the lost remainder began exactly at
+*"For that purpose, deployers shall perform an assessment consisting of: (a) …"*.
+The model was told the FRIA duty exists and given none of its (a)-(f) contents,
+with nothing marking the omission. Also unbounded: a 12-ref scenario rendered a
+single **29,623-char** block. Fixed to 100% on enumerated provisions, `[...]` on
+genuine truncation, and `REGENOLD_KG_MAX_CHARS` (16000).
+
+**`bb3ea81` — the health probe could never fail, and the cold query always
+timed out.** `execute_read` catches `Exception` on every path and returns `[]`,
+so `health_check`'s `except` is unreachable — a dead instance returned
+`{"status": "healthy"}` and `/healthz/graph` rendered `graph_ok: true`. Found in
+R290, still live at R322. And `DEFAULT_GRAPH_TIMEOUT_MS` was 500 against a
+measured **524 ms cold** round-trip (warm 31 ms, max 32), so every first call
+per connection was computed and discarded. Raised to 750.
+
+### `a692ffb` — the layers nothing was reading
+
+Measured by spying on `execute_read` across live requests: the graph holds 18
+node labels and 16 relationship types, and a request issued only **4 distinct
+Cypher shapes** — one of which was dead. The whole deontic layer was seeded and
+never read: SubPoint 37 / `HAS_SUBPOINT`, Practice 8 / `PROHIBITED_UNDER`,
+AnnexIIICategory 8 / `TRIGGERS_HIGH_RISK_UNDER`, OperatorRole 5 /
+`HAS_OBLIGATION_ARTICLE` (with a tier), LifecyclePhase 4 / `APPLIES_TO`.
+
+Wired as non-citable Stage-2 context: **4 → 7 shapes**. Article 5's real-time
+RBI carve-outs (i)/(ii)/(iii) reach the answer path for the first time —
+surfacing that prohibition without them states the law backwards. Query volume
+held flat (**23 → 53 → 23** per 3 requests) because a request-scoped memo
+removed a 3× duplicate render that had been paying every round-trip three times.
+
+**The graph was also serving stale wrong law**: the annex fix was in code while
+the live graph still held the old parse. Re-seeded (`SEED_VERSION` →
+`2026-08-08-r323-annex-sections`) — `annex_VIII_1` now the provider,
+`annex_XI_2` now the Art 53(1)(a) duty owed by ALL GPAI providers rather than
+the systemic-risk-only red-teaming clause, Annex I items 1 and 13 present,
+Paragraph 656 → 658 / Point 416 → 421. ⚠ **A code fix to `provision_text` is not
+live until you re-seed AND bump `SEED_VERSION`** — otherwise the boot hook hits
+`skip-current`.
+
+### `a4519ec` / `8cd05a8` — W2: the graph was disarming the drift guard
+
+Found by asking whether the layer wiring made a known issue worse. It had.
+`_extract_context_grounded_refs` builds the citation-drift allowlist by MINING
+the rendered references block, and kg_context renders the regulation's own
+cross-references into it — while every kg_context heading tells the model *"do
+NOT cite anything here"*. So a citation appearing only in the graph blocks IS
+drift, and admitting it disarmed the guard. Measured, `REGENOLD_KG_CONTEXT` off
+vs on: allowlist **21→27 / 17→24 / 13→14**, mined block **7,923 → 24,329 chars**,
+the added refs being Art. 35/46/74 and Annex VIII/IX. Fixed with the same
+treatment R288.1 gave the verbatim section, threaded from `include_grounding`:
+the guard drops the graph blocks, the PROMPT keeps them.
+
+⚠ **The obvious test cannot detect this.** Rendering kg_context and re-reading
+the allowlist gives 27 → 27, which reads as a clean refutation — because
+`_extract_context_grounded_refs` renders kg_context ITSELF, so both arms already
+contain it. I published that wrong conclusion before catching it. Compare
+`REGENOLD_KG_CONTEXT` off vs on.
+
+### Gates
+
+davidath 476 byte-identical throughout (Ans 0.1884 / 0.3545 / 0.6143, Ref
+0.5971 / 0.4748 / 0.4316, Tone 1.0, mt 20/20) · full suite in-place A/B **87
+failed both arms, failure sets byte-identical → 0 new**, +38 passing ·
+276-runner **255/255**, RISK_F1 1.00 · OOS `--oos-suite all` **0 scope leaks**.
+
+Also fixed a live-eval trap: `scripts/seed_neo4j_kb.py` never calls
+`load_dotenv()` and exits 1 with its error at the TOP of stdout — a `tail` of a
+failed run shows a normal-looking payload dump and reads as success.
+
+---
+
+## Round 324 — deep review of R323, and the CLAUDE.md doctor pass (2026-08-09)
+
+Two independent workstreams.
+
+### The R323 review — three Critical defects in the preceding round
+
+A 7-lane deep review (`866bc73`, fixes in `f4cfdba` / `4059812`) found three
+Critical and four Important defects in R323's own work, each mutation-tested
+(15 of 21 new tests go red when the production changes are stashed).
+
+* **C1 — the foreign-citation guard shipped fabricated articles anyway.** R323
+  widened only the AHEAD copy of a regex that existed twice for one concept;
+  the BEHIND window was 24 chars against a 30-char prefix form, so that branch
+  had never fired. **And Component D was a second, entirely unguarded
+  prose-to-citation path that re-added whatever the guard dropped** — which is
+  why R323's fix measured byte-identical on the wire. The fix was real; this
+  path undid it. Generalisable: **"byte-identical" is also what INERT looks
+  like.**
+* **C2 — `_UNIT_HARD_CEILING` was a switch, not a ceiling.** Past it, `_flat`
+  fell back to `limit`, so a 2,599-char enumeration was delivered whole and a
+  2,601-char one was cut at 900. **Article 5(1) (4,701 chars) shipped at 905 —
+  19%** — cut mid-point-(b), so social scoring through real-time RBI never
+  reached the model while R323's new sub-point block injected (h)'s own
+  carve-outs. Now 52%, points (a)-(d) present.
+* **C3 — the budget deleted the blocks R323 exists to add.** The provision
+  block was budgeted against the full ceiling, the new blocks got none, and the
+  tail-drop pops from the end — so the feature silently removed itself.
+* Important: `REGENOLD_KG_MAX_CHARS` added to `_engine_cache_key`; and
+  `ORDER BY` on the string-typed `number` sorted lexicographically, so Article 3
+  ordered 1, 10-19, 2, 20-29 … and **dropped 44 of 68 definitions**.
+
+Documented, NOT fixed: the `|HAS_POINT` leg of `_HIERARCHY_CYPHER` is dead (all
+421 `HAS_POINT` edges have a Paragraph source, so it reaches 0 of 421 Points).
+A wrong Cypher fails soft to `[]` and would delete the whole provision block,
+so it needs a live-graph smoke first.
+
+### The doctor pass — CLAUDE.md was 81% stale
+
+CLAUDE.md was **12,760 lines / 114,134 words**, loaded into context every
+session. A 5-lane audit checked 70 load-bearing claims; **only 13 were
+accurate.** Corrected against measurement: `Practice ×9` → **8**, `Phase ×6` →
+**4**, BM25 `~165` / `348` / `347` → **345**, tree `1,426` → **1,412**, and
+`_xref_in_degree` documented as reading the CORE graph when it has read the FULL
+graph since R57-C — the stated safety premise for xref-backfill arguments.
+
+Added what was missing: a single authoritative **Current baseline** block (there
+wasn't one, which is how R316 ended up having to warn that an earlier pin was
+stale), and the fact that the wire validator is LAXER than hard rule #1 claims
+(`Annex III.foo.bar` passes; `Annex III.4.employment` has shipped).
+
+**Structural:** the round log was 98.3% of the file by word count. Moved
+verbatim to `docs/ROUNDS.md`; the durable negative results were distilled into a
+**"Do not re-propose"** section so the expensive lessons stay in the file that
+is actually read. **CLAUDE.md 12,760 → ~370 lines (−97%).** Verified nothing was
+lost: 121 round headings, 0 missing; hard-rule numbering preserved (code cites
+rules #1-#8 in 80 places); all 13 env defaults re-verified against the code.
