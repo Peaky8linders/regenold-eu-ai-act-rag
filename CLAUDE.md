@@ -4901,6 +4901,108 @@ frontier gap (R317: oracle +0.215 Ref Strict / +0.229 Ref Conciseness at unchang
 recall), and R317 already killed five trimmer families — work the RANKER, and gate
 any reference change on a gold-bearing `easyhard_ab` with `gold_dropped == 0`.
 
+## Round 322.1 — the Aura instance is GONE; `/healthz/graph` cannot tell you (2026-08-08)
+
+Operator asked whether the Neo4j Aura knowledge graph is on and carries the full
+EU AI Act surface. Measured answer: **no, and it holds nothing.** Neo4j remains
+the intended backend per operator directive — the restore runbook is below and
+needs only fresh credentials.
+
+### The instance is deleted, not paused
+
+```
+neo4j+s://151d4e69.databases.neo4j.io
+  -> ServiceUnavailable: Failed to DNS resolve address ...:7687
+     [Errno 11001] getaddrinfo failed
+```
+
+Reproduced from BOTH the local machine (after `load_dotenv()` — see the probing
+gotcha below) and from production. A **paused** Aura instance still resolves DNS
+and refuses the connection; losing the DNS record means the instance is **gone**
+(Aura Free deletes after ~30 days idle). Note the host also differs from the one
+R290 recorded (`293b4be4...`), so this has now been lost at least twice — treat a
+hosted free-tier graph as ephemeral infrastructure, not durable state.
+
+### ⚠ `/healthz/graph` reports `graph_ok: true` on a DEAD graph
+
+```json
+{"backend":"neo4j","graph_enabled":true,"graph_ok":true,"detail":"ok",
+ "elapsed_ms":6053,"seed_version":"","node_counts":{},"edge_counts":{}}
+```
+
+This is the R290 `[I6]` finding reproduced verbatim: `GraphClient.health_check()`
+can never return unhealthy, so **`graph_ok` is not evidence of life**. The real
+signals are `seed_version: ""`, the **empty** `node_counts`/`edge_counts`, and
+`elapsed_ms: 6053` — six seconds is a DNS-retry stall, not a query. Any future
+session that reads `graph_ok:true` and stops there will get this wrong. Read the
+counts.
+
+### Answer quality is NOT degraded — this is lost capability, not an outage
+
+R252 made KB-primary retrieval the default and R99.1 added the empty-success KB
+fallback, so the graph is **additive-only**. Verified live on 2026-08-08 against
+production with the graph dead: the tech-doc question answered verdict-first and
+correctly cited `['Article 11','Annex IV']`, naming Annex IV point 1(e). What is
+lost is the 2-hop expansion, the paragraph/point hierarchy, and recital anchors —
+not correctness. Do NOT treat this as a P0 outage, and do NOT "fix" it by undoing
+R252 (the blunt `obligations_for_risk_level` dump buried the operative article).
+
+### Restore runbook — one command once credentials exist
+
+The seeder payload is verified complete (`--dry-run`, 2026-08-08): **113 Article,
+13 Annex, 180 Recital, 68 Definition, 113 Obligation, 8 AnnexIIICategory, 4
+RiskLevel, 5 OperatorRole**, plus the legal-AST hierarchy **656 Paragraph / 416
+Point / 37 SubPoint** and edges **248 CROSS_REFERENCES, 113 HAS_OBLIGATION, 68
+HAS_DEFINITION, 656 HAS_PARAGRAPH, 416 HAS_POINT, 37 HAS_SUBPOINT, 126
+HAS_PROVENANCE, 8 INTERPRETS**. That is the `2026-07-24-r291-fullseed` shape.
+
+```bash
+# 1. Provision a new Aura instance, then set the creds on the Railway DASHBOARD
+#    (railway.toml [deploy.envs] has NEVER applied - Railway's [deploy] schema
+#    has no envs key, so it cannot carry these).
+railway variables --set NEO4J_URI=neo4j+s://<new-id>.databases.neo4j.io \
+                  --set NEO4J_USERNAME=neo4j \
+                  --set NEO4J_PASSWORD=<password> \
+                  --set REGENOLD_GRAPH_BACKEND=neo4j \
+                  --set REGENOLD_GRAPH_2HOP=1
+
+# 2. Mirror the same three creds into the local .env, then seed (idempotent MERGE):
+python -m scripts.seed_neo4j_kb            # --dry-run first to preview
+                                           # --clear to wipe duplicate-node drift
+
+# 3. Verify the COUNTS, never graph_ok:
+curl -s https://<app>.up.railway.app/healthz/graph
+#    expect seed_version non-empty and node_counts/edge_counts populated
+```
+
+⚠ Aura free instances idle-pause after ~3 days and delete after ~30. If the graph
+must survive, use a paid tier or accept re-seeding — the seed is cheap and
+idempotent, but the DNS record is not recoverable once deleted.
+
+### Probing gotchas that have each cost a session
+
+* **Always `load_dotenv()` before probing.** `GraphSettings()` without it shows a
+  STALE default URI (`6fc3fff5...`), which reads as "Aura is dead" even when it
+  is not. DNS-check the host from `.env`, never from the settings default.
+* **`retrieval_path: "kb_fallback"` is a RETRIEVAL LABEL, not proof the graph is
+  unused** — `render_kg_context` feeds hierarchy/recital text into Stage-2 on a
+  separate path. Misreading this reported the KG dead twice.
+* **`graph_ok: true` is meaningless** (above). Read `node_counts`.
+
+### Stopgap only — the embedded backend
+
+`REGENOLD_GRAPH_BACKEND=embedded` (the R121 in-process SQLite graph, and the CODE
+default) works today with zero external dependency: measured 126 nodes / 432
+edges, **113/113 articles + 13/13 annexes**, only `Art. 1` isolated (a legitimate
+R47 orphan — a purpose statement with no internal citations), 2-hop `Art. 26` →
+10 hop1 + 5 hop2 in **16 ms**, versus the neo4j path returning `enabled=False`
+after **711 ms** of DNS retry. 276-runner under `embedded` + `GRAPH_2HOP=1` is
+**255/255, RISK_F1 1.00** — identical to the neo4j arm. It carries articles,
+annexes and cross-references only, NOT the 180 recitals / 68 definitions /
+paragraph-point hierarchy, so it is a stopgap for the 2-hop layer, not a
+replacement for the seeded graph. Per standing operator directive the target
+backend is **neo4j**.
+
 ## Eval scorecard (deterministic-fallback, local 276-scenario suite)
 
 | Round  | Pass         | p50      | p95     | avg refs | Retrieval F1 | Notes |
