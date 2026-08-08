@@ -152,13 +152,119 @@ def _subpoints(paragraph_text: str) -> dict[str, str]:
     return out
 
 
-def _annex_items(body: str) -> dict[int, str]:
-    ms = list(_ANNEX_ITEM_RE.finditer(body))
+# R323 — a REAL annex section heading, as opposed to a prose cross-reference.
+#
+# Several annexes are divided into sections whose item numbering RESTARTS
+# (Annex VIII Sections A/B/C; Annex XI Sections 1/2). Parsing such a body as
+# one flat namespace loses items and, worse, serves the WRONG section's text
+# under a correct-looking citation.
+#
+# The discriminator is measured against the corpus, not guessed. A real
+# heading follows a clause end:
+#
+#   "...A URL for additional information (optional). Section B - Information..."
+#   "...about computational resources used. Section 2 Additional information..."
+#   "...(OJ L 117, 5.5.2017, p. 176). Section B. List of other Union..."
+#
+# whereas every prose cross-reference in Annexes IV / VI / VII follows a COMMA:
+#
+#   "...the requirements set out in Chapter III, Section 2; (c) the..."
+#
+# so the ``(?<=[.;:])`` lookbehind separates them exactly. Verified: it finds
+# headings in Annexes I / VIII / XI only, and zero in IV / VI / VII.
+_ANNEX_SECTION_RE = re.compile(r"(?:^|(?<=[.;:])\s+)Section\s+([A-Z]|\d{1,2})\b[.:\s–—-]*")
+
+
+def _annex_sections(body: str) -> list[tuple[str | None, str]]:
+    """Split an annex body into ``[(section_label, section_body), ...]``.
+
+    An annex with no section headings yields a single ``(None, body)`` entry,
+    so every caller can treat the sectioned and unsectioned cases uniformly.
+    """
+    ms = list(_ANNEX_SECTION_RE.finditer(body))
+    if not ms:
+        return [(None, body)]
+    out: list[tuple[str | None, str]] = []
+    # Text before the first heading is a preamble; keep it under ``None`` so
+    # nothing is silently discarded.
+    head = body[: ms[0].start()].strip()
+    if head:
+        out.append((None, head))
+    for j, m in enumerate(ms):
+        end = ms[j + 1].start() if j + 1 < len(ms) else len(body)
+        out.append((m.group(1), body[m.end():end].strip()))
+    return out
+
+
+def annex_items_sectioned(body: str) -> list[tuple[str | None, dict[int, str]]]:
+    """Section-aware annex items: ``[(section_label, {item_no: text}), ...]``.
+
+    Additive companion to :func:`_annex_items`. Because each section body is
+    parsed independently, an item that opens a section is anchored at ``^``
+    and is therefore matched even when the regulation's own prose puts a
+    section-title WORD immediately before it — which is why Annex I item 1
+    (Directive 2006/42/EC, machinery) and item 13 (Regulation (EC) 300/2008)
+    were previously unreachable.
+    """
+    return [(label, _items_in(seg)) for label, seg in _annex_sections(body)]
+
+
+# The first item of a section is introduced by the section's TITLE WORDS
+# rather than by clause-end punctuation, so ``_ANNEX_ITEM_RE`` (which demands
+# ``^`` or ``[.:;]\s``) cannot see it:
+#
+#   "Section A. List of ... based on the New Legislative Framework 1. Directive 2006/42/EC ..."
+#   "Section B. List of other Union harmonisation legislation 13. Regulation (EC) No 300/2008 ..."
+#
+# Both were unreachable, and item 1 is the machinery Directive — the canonical
+# Annex I product-route example.
+#
+# The recovery is deliberately MINIMAL: it accepts a permissive marker only
+# when its number is exactly one below the first strict match, i.e. it can
+# only ever prepend the single missing head of an already-ascending run. A
+# blanket permissive scan was measured and REJECTED: it deleted all of Annex I
+# Section B (items 14-20 do not start at 1) and invented items 6-7 in Annex VII
+# out of its ``4.6``-style sub-numbering.
+_ANNEX_ITEM_LOOSE_RE = re.compile(r"(?:^|(?<=[\s.:;]))(\d{1,2})\.\s+(?=[A-Z])")
+
+
+def _recover_leading_item(segment: str, ms: list[re.Match[str]]) -> list[re.Match[str]]:
+    if not ms:
+        return ms
+    want = int(ms[0].group(1)) - 1
+    if want < 1:
+        return ms
+    for m in _ANNEX_ITEM_LOOSE_RE.finditer(segment[: ms[0].start()]):
+        if int(m.group(1)) == want:
+            return [m, *ms]
+    return ms
+
+
+def _items_in(segment: str) -> dict[int, str]:
+    ms = _recover_leading_item(segment, list(_ANNEX_ITEM_RE.finditer(segment)))
     out: dict[int, str] = {}
     for j, m in enumerate(ms):
         n = int(m.group(1))
-        end = ms[j + 1].start() if j + 1 < len(ms) else len(body)
-        out[n] = body[m.end():end].strip()
+        end = ms[j + 1].start() if j + 1 < len(ms) else len(segment)
+        out[n] = segment[m.end():end].strip()
+    return out
+
+
+def _annex_items(body: str) -> dict[int, str]:
+    """Flat ``{item_no: text}`` for an annex body.
+
+    R323 — parsed per section, and on a numbering collision the FIRST section
+    in document order wins. The previous flat scan was last-writer-wins, so
+    ``Annex VIII(1)`` returned Section C's item 1 ("...contact details of the
+    DEPLOYER") while Section A's item 1 was unreachable: wrong text under a
+    correct-looking citation, which is the hard-rule-#4 defect class. Reading
+    a bare ``Annex VIII, point 1`` as the first section it appears in is both
+    the conventional legal reading and the safe one.
+    """
+    out: dict[int, str] = {}
+    for _label, items in annex_items_sectioned(body):
+        for n, text in items.items():
+            out.setdefault(n, text)
     return out
 
 
