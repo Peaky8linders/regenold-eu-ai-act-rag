@@ -3754,8 +3754,27 @@ _CROSS_INSTRUMENT_RE = re.compile(
 )
 # A NUMBERED EU Regulation reference; group(1) is the ``YYYY/NNN`` id. Only
 # a number that is NOT the AI Act (2024/1689) is a cross-Regulation ref.
+#
+# R323 — the pre-2015 OJ numbering form. The first cut required the id to be
+# ``\d{4}/`` immediately after the ``(EU)``/``(EC)``, which misses BOTH of the
+# shapes older instruments actually use: the ``No `` particle, and a 3-digit
+# sequence number. The AI Act cites such instruments constantly, so the miss is
+# reachable, and the collisions it produced are wire-legal — every fabricated
+# number resolves in ``ARTICLE_EXISTENCE``, so the hard-rule-#5 lint cannot
+# catch them. MEASURED end-to-end through ``_add_prose_named_refs``:
+#
+#   "Article 2(1), point (c), of Regulation (EU) No 1025/2012"
+#       -> shipped AI Act **Article 2** (Scope)
+#   "Article 30 of Regulation (EC) No 765/2008"
+#       -> shipped AI Act **Article 30** (notifying procedure)
+#   "Article 10 of Regulation (EU) No 1025/2012"
+#       -> shipped AI Act **Article 10** (data governance)
+#
+# ``2024/1689`` still matches, so the self-reference exclusion below (which
+# lets a genuine AI Act mention through) is unaffected.
 _NUMBERED_REG_RE = re.compile(
-    r"\bof\s+regulation\s*\(e[uc]\)\s*(\d{4}/\d+)", re.IGNORECASE
+    r"\bof\s+regulation\s*\(e[uc]\)\s*(?:no\.?\s*)?(\d{1,4}/\d{2,4})",
+    re.IGNORECASE,
 )
 
 # R322 — the bare POSTPOSITIVE form: "Article 35 GDPR", "Article 22 GDPR",
