@@ -2212,6 +2212,21 @@ def _deterministic_parse(question: str) -> GraphQuery:
         except Exception as exc:  # noqa: BLE001 — BM25 must never block parse
             logger.debug("bm25_fallback_failed: %s", exc)
 
+    # R326 — Additive vector recall behind REGENOLD_GRAPH_VECTOR_RECALL (default OFF).
+    # Fills unused budget slots if entities has fewer than fallback budget.
+    # Vector hits are appended strictly behind existing entities (never displacing).
+    try:
+        from app.engines.vector_recall import is_enabled as _vr_is_enabled, recall_articles as _vr_recall  # noqa: PLC0415
+        if _vr_is_enabled():
+            v_budget = _bm25_fallback_k()
+            if len(entities) < v_budget:
+                v_hits = _vr_recall(question, top_k=v_budget - len(entities))
+                for v_ref in v_hits:
+                    if v_ref not in entities:
+                        entities.append(v_ref)
+    except Exception as exc:  # noqa: BLE001 — vector recall must never block parse
+        logger.debug("vector_recall_failed: %s", exc)
+
     return GraphQuery(
         intent=intent,
         entities=entities,
