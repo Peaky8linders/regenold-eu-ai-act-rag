@@ -3915,6 +3915,14 @@ _ARABIC_ANNEX_TO_ROMAN = {
 }
 
 
+def _canonical_reference_base(ref: str) -> str | None:
+    """Return a strict wire head for an internal or wire reference."""
+    wire = reference_from_article_ref(str(ref))
+    if not wire:
+        return None
+    return _clamp_ref_head(wire) or wire
+
+
 def _prose_citation_bases(prose: str) -> list[str]:
     """Extract citation heads in first-mention order, excluding foreign refs."""
     out: list[str] = []
