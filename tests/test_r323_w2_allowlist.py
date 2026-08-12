@@ -70,16 +70,13 @@ def graphy(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(GC, "get_graph_client", lambda: _FakeClient())
     monkeypatch.setattr(K, "kg_context_enabled", lambda: True)
-    K._RENDER_MEMO.set(None)
+    K.reset_kg_context_memo()
     yield
-    K._RENDER_MEMO.set(None)
+    K.reset_kg_context_memo()
 
 
 def _context():
     return G._retrieve_from_kb(G._deterministic_parse("What must a deployer of a high-risk AI system do?"))
-
-
-# ── the guard-mined block excludes the graph blocks ─────────────────────────
 
 
 def test_guard_block_excludes_kg_context(graphy) -> None:
@@ -91,7 +88,7 @@ def test_guard_block_excludes_kg_context(graphy) -> None:
 
 def test_prompt_block_still_includes_kg_context(graphy) -> None:
     """The model must still SEE the graph context — this is the asymmetry."""
-    K._RENDER_MEMO.set(None)
+    K.reset_kg_context_memo()
     block = G._build_context_references_block(_context(), question="deployer duties?")
     assert any(m in block for m in _KG_MARKERS), (
         "the prompt must keep the graph context; only the guard drops it"
@@ -102,12 +99,12 @@ def test_allowlist_is_not_widened_by_the_graph(graphy) -> None:
     """Turning the graph on must not add refs to the allowlist."""
     ctx = _context()
 
-    K._RENDER_MEMO.set(None)
+    K.reset_kg_context_memo()
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(K, "kg_context_enabled", lambda: False)
         off = G._extract_context_grounded_refs(ctx)
 
-    K._RENDER_MEMO.set(None)
+    K.reset_kg_context_memo()
     on = G._extract_context_grounded_refs(ctx)
 
     assert on == off, f"the graph widened the allowlist by {sorted(on - off)}"
@@ -115,9 +112,9 @@ def test_allowlist_is_not_widened_by_the_graph(graphy) -> None:
 
 def test_render_supplementary_sections_honours_include_kg(graphy) -> None:
     ctx = _context()
-    K._RENDER_MEMO.set(None)
+    K.reset_kg_context_memo()
     with_kg = "\n".join(G._render_supplementary_sections(ctx, include_kg=True))
-    K._RENDER_MEMO.set(None)
+    K.reset_kg_context_memo()
     without = "\n".join(G._render_supplementary_sections(ctx, include_kg=False))
     assert any(m in with_kg for m in _KG_MARKERS)
     assert not any(m in without for m in _KG_MARKERS)
@@ -126,9 +123,9 @@ def test_render_supplementary_sections_honours_include_kg(graphy) -> None:
 def test_include_kg_defaults_true_so_the_prompt_path_is_unchanged(graphy) -> None:
     """Every caller except the guard relies on the default."""
     ctx = _context()
-    K._RENDER_MEMO.set(None)
+    K.reset_kg_context_memo()
     default = "\n".join(G._render_supplementary_sections(ctx))
-    K._RENDER_MEMO.set(None)
+    K.reset_kg_context_memo()
     explicit = "\n".join(G._render_supplementary_sections(ctx, include_kg=True))
     assert default == explicit
 
