@@ -1762,6 +1762,7 @@ def _multi_article_entities_enabled() -> bool:
 
 
 _BM25_FALLBACK_K = 8
+_VECTOR_RECALL_LANE = 2
 
 
 def _bm25_fallback_k() -> int:
@@ -1851,6 +1852,8 @@ def _deterministic_parse(question: str) -> GraphQuery:
         if ent not in seen:
             seen.add(ent)
             entities.append(ent)
+
+    has_explicit_provision_anchor = bool(article_nums or annex_romans)
 
     # Detect risk context
     risk_context = None
@@ -2212,18 +2215,53 @@ def _deterministic_parse(question: str) -> GraphQuery:
         except Exception as exc:  # noqa: BLE001 — BM25 must never block parse
             logger.debug("bm25_fallback_failed: %s", exc)
 
-    # R326 — Additive vector recall behind REGENOLD_GRAPH_VECTOR_RECALL (default OFF).
-    # Fills unused budget slots if entities has fewer than fallback budget.
-    # Vector hits are appended strictly behind existing entities (never displacing).
+    # R326 — additive vector recall behind REGENOLD_GRAPH_VECTOR_RECALL (OFF).
+    # It owns two slots after the BM25/curated lane, so a full BM25 result no
+    # longer makes the feature inert. Explicit Article/Annex anchors skip the
+    # semantic expansion: their target is already exact and extra recall only
+    # introduces citation drift.
     try:
-        from app.engines.vector_recall import is_enabled as _vr_is_enabled, recall_articles as _vr_recall  # noqa: PLC0415
-        if _vr_is_enabled():
-            v_budget = _bm25_fallback_k()
-            if len(entities) < v_budget:
-                v_hits = _vr_recall(question, top_k=v_budget - len(entities))
-                for v_ref in v_hits:
-                    if v_ref not in entities:
+        from app.engines.vector_recall import (  # noqa: PLC0415
+            is_enabled as _vr_is_enabled,
+        )
+        from app.engines.vector_recall import (
+            recall_articles_with_provenance as _vr_recall,
+        )
+        if _vr_is_enabled() and not has_explicit_provision_anchor:
+            max_total = _bm25_fallback_k() + _VECTOR_RECALL_LANE
+            needed = max(0, max_total - len(entities))
+            if needed > 0:
+                v_hits = _vr_recall(
+                    question,
+                    top_k=min(needed, _VECTOR_RECALL_LANE),
+                )
+                added_sources: list[str] = []
+                for hit in v_hits:
+                    v_ref = hit.ref
+                    if v_ref not in entities and len(entities) < max_total:
                         entities.append(v_ref)
+                        added_sources.append(
+                            "neo4j" if hit.source.startswith("neo4j:") else "svd"
+                        )
+                        logger.debug(
+                            "vector_recall_added ref=%s source=%s score=%.4f",
+                            v_ref,
+                            hit.source,
+                            hit.score,
+                        )
+                if added_sources:
+                    try:
+                        from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                            record_note,
+                        )
+
+                        source = "+".join(sorted(set(added_sources)))
+                        record_note(
+                            f"vector_recall source={source} "
+                            f"added={len(added_sources)}"
+                        )
+                    except Exception:  # noqa: BLE001 — tracing is fail-soft
+                        pass
     except Exception as exc:  # noqa: BLE001 — vector recall must never block parse
         logger.debug("vector_recall_failed: %s", exc)
 

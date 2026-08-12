@@ -71,6 +71,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import threading
 from contextvars import ContextVar
 
 logger = logging.getLogger(__name__)
@@ -79,16 +80,23 @@ __all__ = [
     "kg_context_enabled",
     "fetch_provision_hierarchy",
     "fetch_recital_anchors",
+    "fetch_subpoint_detail",
+    "fetch_deontic_context",
     "fetch_cross_regulatory_context",
     "render_kg_context",
+    "reset_kg_context_memo",
 ]
 
 _DEFAULT_MAX_REFS = 8
 _DEFAULT_MAX_UNITS = 24
 _DEFAULT_UNIT_CHARS = 900
-#: Total ceiling across every block render_kg_context returns (R323).
-_DEFAULT_MAX_CHARS = 16000
 _DEFAULT_MAX_RECITALS = 5
+#: Total ceiling across every block ``render_kg_context`` returns (R323, ported
+#: from the RAG repo in R325). Without it a 12-ref scenario can inject an
+#: unbounded wall of provision text that crowds the rest of the Stage-2 prompt.
+_DEFAULT_MAX_CHARS = 16000
+#: R327 — ceiling used only when the semantic vector layers contribute a block.
+_DEFAULT_SEMANTIC_MAX_CHARS = 26000
 
 
 def kg_context_enabled() -> bool:
@@ -103,13 +111,7 @@ def kg_context_enabled() -> bool:
 
 
 def _provenance_in_prompt_enabled() -> bool:
-    """``REGENOLD_PROVENANCE_IN_PROMPT`` — DEFAULT OFF.
-
-    Whether to append the CELEX / ELI provenance block to the Stage-2
-    grounding context. Off by default: it is un-A/B'd prompt budget on the
-    one rubric axis we lead, and the wire may only cite ``Article N`` /
-    ``Annex X`` (hard rule #1). Fresh env read per call (R263.2).
-    """
+    """``REGENOLD_PROVENANCE_IN_PROMPT`` — DEFAULT OFF."""
     return os.getenv("REGENOLD_PROVENANCE_IN_PROMPT", "0").strip().lower() in (
         "1", "true", "yes", "on",
     )
@@ -123,10 +125,6 @@ def _int_env(name: str, default: int, lo: int, hi: int) -> int:
 
 
 # ── Ref parsing ──────────────────────────────────────────────────────────────
-#
-# The seeded node ids are ``article_<n>`` / ``annex_<ROMAN>``, and Article.number
-# is a STRING property (verified against the live instance), so both are matched
-# as strings rather than ints.
 
 _ART_RE = re.compile(r"\bArt(?:s?\.|icles?|s)?\s*(\d{1,3})", re.IGNORECASE)
 _ANNEX_RE = re.compile(r"\bAnnexe?s?\s+([IVXLCDM]{1,7})\b", re.IGNORECASE)
@@ -137,136 +135,271 @@ def _node_ids(refs: list[str], limit: int) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for ref in refs or []:
-        node_id = None
-        m = _ART_RE.search(str(ref))
-        if m:
+        for m in _ART_RE.finditer(str(ref)):
             node_id = f"article_{int(m.group(1))}"
-        else:
-            m = _ANNEX_RE.search(str(ref))
-            if m:
-                node_id = f"annex_{m.group(1).upper()}"
-        if node_id and node_id not in seen:
-            seen.add(node_id)
-            out.append(node_id)
-        if len(out) >= limit:
-            break
+            if node_id not in seen:
+                seen.add(node_id)
+                out.append(node_id)
+                if len(out) >= limit:
+                    return out
+        for m in _ANNEX_RE.finditer(str(ref)):
+            node_id = f"annex_{m.group(1).upper()}"
+            if node_id not in seen:
+                seen.add(node_id)
+                out.append(node_id)
+                if len(out) >= limit:
+                    return out
     return out
 
 
-# ── Cypher ───────────────────────────────────────────────────────────────────
-#
-# One query, one round trip. HAS_PARAGRAPH / HAS_POINT / HAS_SUBPOINT is the
-# seeded hierarchy; HAS_RECITAL_ANCHOR is the interpretive anchor. Both verified
-# present on the live instance this round.
-
-# R324 — ``ORDER BY u.number`` sorted LEXICOGRAPHICALLY, because ``number`` is a
-# STRING property. Measured on Article 3 (68 units, ``$max_units`` 24): the kept
-# set was 1, 10-19, 2, 20-29, 3, 30 and the dropped set 4-9 and 31-68 — so 44 of
-# 68 definitions vanished, including 3(4) DEPLOYER, 3(5) authorised
-# representative, 3(6) importer and 3(7) distributor, while 3(10)-3(30)
-# survived. Any role question citing Article 3 was answered from a context
-# missing the role definitions.
-#
-# ``toIntegerOrNull`` (Neo4j 5) rather than ``toInteger``: annex point labels
-# are not always numeric, and the null sorts last, which is the right place for
-# a label we cannot order. The ``, u.number`` tiebreak keeps those stable.
 _HIERARCHY_CYPHER = """
-MATCH (a) WHERE a.id IN $ids AND (a:Article OR a:Annex)
+UNWIND range(0, size($ids) - 1) AS i
+WITH i, $ids[i] AS aid
+MATCH (a) WHERE a.id = aid AND (a:Article OR a:Annex)
 OPTIONAL MATCH (a)-[:HAS_PARAGRAPH|HAS_POINT]->(u)
-WITH a, u ORDER BY a.id, toIntegerOrNull(u.number), u.number
-// ⚠ R324 KNOWN DEFECT — the ``|HAS_POINT`` leg above is DEAD, and deliberately
-// left in place rather than fixed blind. MEASURED: all 421 HAS_POINT edges have
-// a PARAGRAPH source, so with ``a`` bound to Article/Annex this alternation
-// reaches 0 of 421 Point nodes. It is absent from R323's inventory of unread
-// layers precisely because the query LOOKS like it already covers Point.
-//
-// Consequence: a paragraph is only ever available as one blob, so Article 5(1)
-// (4701 chars) must be truncated instead of delivered as its eight points.
-// The R324 ``_flat`` ceiling fix recovers this from 19% to 51%; the remaining
-// half needs the split below.
-//
-// THE FIX, for a session with a reachable graph (it needs a live smoke — a
-// wrong Cypher here fails soft to ``[]`` and silently deletes the whole
-// provision block, which is worse than the truncation it replaces):
-//   OPTIONAL MATCH (a)-[:HAS_PARAGRAPH]->(p)
-//   OPTIONAL MATCH (p)-[:HAS_POINT]->(pt)
-//   ... collect points per paragraph as ``{letter, text}``
-// then, Python-side, emit the chapeau plus each point INSTEAD of the paragraph
-// when the paragraph would be truncated. Note the paragraph text SUBSUMES its
-// points (verified: point (c)'s text is a substring of article_5_1), so the two
-// must be alternatives — emitting both duplicates content into the budget.
-WITH a, collect({num: u.number, text: u.text})[..$max_units] AS units
-RETURN a.id AS id,
-       coalesce(a.strict_citation, a.id) AS cite,
+WITH i, a, u ORDER BY toIntegerOrNull(u.number), u.number
+WITH i, a, collect(u)[..$max_units] AS units
+ORDER BY i
+RETURN coalesce(a.strict_citation, a.id) AS cite,
        a.title AS title,
-       units AS units
+       [u IN units | {num: u.number, text: u.text}] AS units
 """
 
 _RECITAL_CYPHER = """
+UNWIND $ids AS aid
+MATCH (a) WHERE a.id = aid AND (a:Article OR a:Annex)
 MATCH (a)-[:HAS_RECITAL_ANCHOR]->(r:Recital)
-WHERE a.id IN $ids
-RETURN a.id AS id, r.number AS num, r.text AS text
-ORDER BY a.id, toIntegerOrNull(r.number), r.number
+RETURN DISTINCT r.number AS num, r.text AS text
+ORDER BY toIntegerOrNull(r.number)
+LIMIT $max_recitals
+"""
+
+_SUBPOINT_CYPHER = """
+UNWIND $ids AS aid
+MATCH (a) WHERE a.id = aid AND (a:Article OR a:Annex)
+MATCH (a)-[:HAS_PARAGRAPH]->(p:Paragraph)-[:HAS_POINT]->(pt:Point)-[:HAS_SUBPOINT]->(sp:SubPoint)
+RETURN coalesce(a.strict_citation, a.id) AS cite,
+       p.number AS para,
+       pt.number AS letter,
+       sp.id AS sid,
+       sp.roman AS roman,
+       sp.text AS text
+ORDER BY cite, toIntegerOrNull(para), letter, sid
+LIMIT $max_units
+"""
+
+_DEONTIC_CYPHER = """
+CALL () {
+    MATCH (a:Article) WHERE a.id IN $ids
+    OPTIONAL MATCH (pr:Practice)-[:PROHIBITED_UNDER]->(a)
+    OPTIONAL MATCH (cat:AnnexIIICategory)-[:TRIGGERS_HIGH_RISK_UNDER]->(a)
+    OPTIONAL MATCH (ro:OperatorRole)-[hoa:HAS_OBLIGATION_ARTICLE]->(a)
+    OPTIONAL MATCH (ph:LifecyclePhase)-[:APPLIES_TO]->(a)
+    RETURN coalesce(a.strict_citation, a.id) AS cite,
+           collect(DISTINCT coalesce(pr.short_name, pr.id)) AS practices,
+           collect(DISTINCT coalesce(cat.label, cat.id)) AS annex_iii,
+           collect(DISTINCT coalesce(ro.label, ro.id) + ' (' + coalesce(hoa.tier,'') + ')') AS roles,
+           collect(DISTINCT coalesce(ph.label, ph.id) + ' from ' + coalesce(ph.effective_date,'')) AS phases
+    UNION
+    MATCH (cat:AnnexIIICategory)
+    WHERE 'annex_III' IN $ids
+    RETURN 'Annex III' AS cite,
+           [] AS practices,
+           collect(DISTINCT coalesce(cat.label, cat.id)) AS annex_iii,
+           [] AS roles,
+           [] AS phases
+}
+RETURN cite, practices, annex_iii, roles, phases
 LIMIT $limit
 """
 
+_MEMO_VAR: ContextVar[dict[str, list[dict]] | None] = ContextVar(
+    "kg_context_memo", default=None
+)
 
-# R323 — an enumerated list opener, e.g. "consisting of: (a) a description".
-# A provision whose duty is DEFINED by its enumeration (Art. 27(1)'s FRIA
-# contents, Art. 11's technical documentation) is worse than useless when the
-# enumeration is amputated: the model is told a duty exists and not what it
-# requires.
-_ENUM_OPENER_RE = re.compile(r"\(a\)\s")
 
-#: Hard ceiling for a single unit once the enumeration guard has extended it.
-#: Bounds the worst case so one pathological provision cannot dominate the
-#: Stage-2 budget.
+def reset_kg_context_memo() -> None:
+    """Clear per-request query cache. Call at request start."""
+    _MEMO_VAR.set({})
+
+
+def _memoized_read(cache_key: str, cypher: str, params: dict) -> list[dict]:
+    memo = _MEMO_VAR.get()
+    if memo is not None and cache_key in memo:
+        return memo[cache_key]
+    rows = _bounded_execute_read(cypher, params)
+    if memo is not None and not getattr(rows, "failed", False):
+        memo[cache_key] = rows
+    return rows
+
+
+_EXECUTOR: object | None = None
+_EXECUTOR_LOCK = threading.Lock()
+_KG_MAX_INFLIGHT = _int_env("REGENOLD_KG_MAX_INFLIGHT", 4, 1, 8)
+_KG_ADMISSION = threading.BoundedSemaphore(_KG_MAX_INFLIGHT)
+
+
+class _ReadRows(list):
+    """List-compatible result that distinguishes errors from empty matches."""
+
+    def __init__(self, rows=(), *, failed: bool = False):
+        super().__init__(rows)
+        self.failed = failed
+
+
+def _get_kg_executor():
+    """Lazy, module-private bounded worker pool."""
+    global _EXECUTOR
+    if _EXECUTOR is None:
+        with _EXECUTOR_LOCK:
+            if _EXECUTOR is None:
+                from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+
+                _EXECUTOR = ThreadPoolExecutor(
+                    max_workers=_KG_MAX_INFLIGHT,
+                    thread_name_prefix="kgctx",
+                )
+    return _EXECUTOR
+
+
+def _bounded_execute_read(cypher: str, params: dict) -> list[dict]:
+    from app.graph.timeouts import (  # noqa: PLC0415
+        graph_circuit_open,
+        record_graph_failure,
+        record_graph_success,
+        resolve_graph_timeout_ms,
+    )
+
+    if graph_circuit_open():
+        logger.debug("kg_context: skipped — graph circuit open")
+        return _ReadRows(failed=True)
+
+    from app.graph.client import get_graph_client  # noqa: PLC0415
+
+    client = get_graph_client()
+    if not getattr(client, "enabled", False):
+        return _ReadRows(failed=True)
+
+    def _call() -> list[dict]:
+        strict_read = getattr(client, "execute_read_strict", None)
+        if callable(strict_read):
+            return list(strict_read(cypher, params) or [])
+        return list(client.execute_read(cypher, params) or [])
+
+    from concurrent.futures import TimeoutError as _FutTimeout  # noqa: PLC0415
+
+    budget_ms = resolve_graph_timeout_ms()
+    _admit_budget_s = max(budget_ms, 1) / 1000.0
+    if not _KG_ADMISSION.acquire(timeout=_admit_budget_s):
+        record_graph_failure()
+        logger.info(
+            "kg_context: graph worker admission saturated after %.0fms",
+            _admit_budget_s * 1000.0,
+        )
+        return _ReadRows(failed=True)
+
+    fut = None
+    try:
+        fut = _get_kg_executor().submit(_call)
+        fut.add_done_callback(lambda _done: _KG_ADMISSION.release())
+        rows = fut.result(timeout=max(budget_ms, 1) / 1000.0)
+        record_graph_success()
+        return _ReadRows(rows)
+    except _FutTimeout:
+        if fut is not None:
+            fut.cancel()
+        record_graph_failure()
+        logger.info("kg_context: cypher timeout budget=%dms", budget_ms)
+        return _ReadRows(failed=True)
+    except Exception:  # noqa: BLE001
+        if fut is None:
+            _KG_ADMISSION.release()
+        record_graph_failure()
+        logger.debug("kg_context: bounded read failed", exc_info=True)
+        return _ReadRows(failed=True)
+
+
+def fetch_provision_hierarchy(refs: list[str]) -> list[dict]:
+    """Paragraph/point breakdown of cited provisions from Neo4j."""
+    if not kg_context_enabled():
+        return []
+    max_refs = _int_env("REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 20)
+    max_units = _int_env("REGENOLD_KG_MAX_UNITS", _DEFAULT_MAX_UNITS, 1, 100)
+    ids = _node_ids(refs, limit=max_refs)
+    if not ids:
+        return []
+
+    cache_key = f"h:{','.join(ids)}:u{max_units}"
+    return _memoized_read(
+        cache_key,
+        _HIERARCHY_CYPHER,
+        {"ids": ids, "max_units": max_units},
+    )
+
+
+def fetch_recital_anchors(refs: list[str]) -> list[dict]:
+    """Interpretive recitals for cited provisions."""
+    if not kg_context_enabled():
+        return []
+    max_refs = _int_env("REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 20)
+    max_recitals = _int_env("REGENOLD_KG_MAX_RECITALS", _DEFAULT_MAX_RECITALS, 1, 20)
+    ids = _node_ids(refs, limit=max_refs)
+    if not ids:
+        return []
+
+    cache_key = f"r:{','.join(ids)}:r{max_recitals}"
+    return _memoized_read(
+        cache_key,
+        _RECITAL_CYPHER,
+        {"ids": ids, "max_recitals": max_recitals},
+    )
+
+
+def fetch_subpoint_detail(refs: list[str]) -> list[dict]:
+    """Sub-point detail (paragraph -> point -> subpoint) for cited provisions."""
+    if not kg_context_enabled():
+        return []
+    max_refs = _int_env("REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 20)
+    max_units = _int_env("REGENOLD_KG_MAX_UNITS", _DEFAULT_MAX_UNITS, 1, 100)
+    ids = _node_ids(refs, limit=max_refs)
+    if not ids:
+        return []
+
+    cache_key = f"sp:{','.join(ids)}:u{max_units}"
+    return _memoized_read(
+        cache_key,
+        _SUBPOINT_CYPHER,
+        {"ids": ids, "max_units": max_units},
+    )
+
+
+def fetch_deontic_context(refs: list[str]) -> list[dict]:
+    """Regulatory classifications attached to cited provisions."""
+    if not kg_context_enabled():
+        return []
+    max_refs = _int_env("REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 20)
+    ids = _node_ids(refs, limit=max_refs)
+    if not ids:
+        return []
+
+    cache_key = f"de:{','.join(ids)}"
+    return _memoized_read(
+        cache_key,
+        _DEONTIC_CYPHER,
+        {"ids": ids},
+    )
+
+
+_ENUM_OPENER_RE = re.compile(r"(?:\(?[a-hA-H1-9]\)\s|[1-9]\.\s)")
 _UNIT_HARD_CEILING = 2600
 
 
 def _flat(text: object, limit: int) -> str:
-    """Flatten a provision to at most ``limit`` chars, losing as little as possible.
-
-    R323 fixed two ways this silently amputated statutory text:
-
-    1. BACKTRACK COULD DISCARD HALF THE BUDGET. The sentence-boundary search
-       accepted any break past ``limit // 2``, so Article 27(1) (1421 chars, at
-       a 900 budget) was delivered at **470 chars — 33%**. The accepted break
-       must now be in the last quarter of the budget; a nearer sentence break
-       loses too much and we fall through to a clause, then a word boundary.
-
-    2. IT CUT MID-ENUMERATION WITHOUT SAYING SO. Article 27(1)'s lost remainder
-       began exactly at "For that purpose, deployers shall perform an
-       assessment consisting of: (a) a description ...", so the model received
-       the FRIA duty with none of its (a)-(f) contents, and no indication that
-       anything was missing. When an enumeration opens inside the budget, the
-       whole unit is now delivered up to ``_UNIT_HARD_CEILING``; beyond that
-       the text is explicitly marked truncated rather than ending mid-clause as
-       if it were complete.
-    """
+    """Flatten provision text, preserving enumerations and marking truncation."""
     t = " ".join(str(text or "").split())
     if len(t) <= limit:
         return t
 
-    # An enumerated provision is delivered whole where it plausibly fits: the
-    # list IS the obligation.
-    #
-    # R324 — ``_UNIT_HARD_CEILING`` was a SWITCH, not a ceiling: past it the code
-    # fell straight back to ``limit``, so a 2599-char enumeration was delivered
-    # whole and a 2601-char one was cut at 900. The cliff landed on the LONGEST
-    # enumerations, which are exactly the "duty defined by its list" cases this
-    # guard exists for. MEASURED: Article 5(1) is 4701 chars and was delivered at
-    # **905 — 19%**, cut mid-point-(b), so prohibitions (c) social scoring
-    # through (h) real-time RBI never reached the model, while the R323 sub-point
-    # block injected (h)'s own carve-outs. A prohibition shipped without its
-    # scope, alongside the exceptions that qualify it, states the law backwards.
-    #
-    # Seven units hit that cliff: article_5_1 (4701), annex_VII_4 (4520),
-    # article_66_1 (4507), article_60_4 (4479), article_59_1 (3320),
-    # article_58_2 (2938), annex_IV_2 (2736 — technical documentation).
-    #
-    # The ceiling now behaves as its name and the docstring above both say:
-    # deliver whole under it, otherwise cut AT it and mark the truncation.
     if _ENUM_OPENER_RE.search(t[:limit]):
         if len(t) <= _UNIT_HARD_CEILING:
             return t
@@ -282,333 +415,231 @@ def _flat(text: object, limit: int) -> str:
     return ((cut[:idx] if idx > floor else cut).strip()) + " [...]"
 
 
-def fetch_provision_hierarchy(refs: list[str]) -> list[dict]:
-    """Paragraph/point breakdown of the cited provisions, straight from Aura.
-
-    Returns ``[]`` on ANY failure — disabled gate, no driver, unreachable
-    instance, unseeded labels, timeout. Never raises.
-    """
-    if not kg_context_enabled():
-        return []
-    ids = _node_ids(refs or [], _int_env("REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 10))
-    if not ids:
-        return []
-    max_units = _int_env("REGENOLD_KG_MAX_UNITS", _DEFAULT_MAX_UNITS, 1, 30)
-    try:
-        from app.graph.client import get_graph_client  # noqa: PLC0415
-
-        client = get_graph_client()
-        if not getattr(client, "enabled", False):
-            return []
-        rows = client.execute_read(_HIERARCHY_CYPHER, {"ids": ids, "max_units": max_units})
-        return list(rows or [])
-    except Exception:  # noqa: BLE001 — the graph must never break an answer
-        logger.debug("kg_context: hierarchy fetch failed", exc_info=True)
-        return []
-
-
-# ── R323: the seeded layers nothing was reading ────────────────────────────
-#
-# Measured over live requests before this: the graph holds 18 node labels and
-# 16 relationship types, and a request issued only FOUR distinct Cypher shapes,
-# touching Article / Annex / Paragraph / Point / Recital and three edge types.
-# The whole deontic layer — the one that answers "is this prohibited?", "what
-# must a deployer do?", "is this Annex III?" — was seeded and never read:
-#
-#   SubPoint 37          HAS_SUBPOINT 37              <- Art 5(1)(h)(i)-(iii)
-#   Practice 8           PROHIBITED_UNDER 8
-#   AnnexIIICategory 8   TRIGGERS_HIGH_RISK_UNDER 8
-#   OperatorRole 5       HAS_OBLIGATION_ARTICLE 36    <- carries a tier property
-#   LifecyclePhase 4     APPLIES_TO 20
-#   RiskLevel 4          APPLIES_AT 47
-#
-# All of it is rendered as NON-CITABLE context, exactly like the hierarchy
-# block — additive, never a ranker, never a wire citation (the R252 line).
-
-#: Sub-point leaves of the cited provisions. The carve-outs live here:
-#: Article 5(1)(h)(i)-(iii) (the real-time RBI exceptions, incl. the 545-char
-#: 4-year-custodial clause) and Article 5(1)(c)(i)/(ii). A retrieval hop that
-#: surfaces the PROHIBITION while dropping its EXCEPTION states the law
-#: backwards, which is the failure this block exists to prevent.
-_SUBPOINT_CYPHER = """
-MATCH (a) WHERE a.id IN $ids AND (a:Article OR a:Annex)
-MATCH (a)-[:HAS_PARAGRAPH]->(p)-[:HAS_POINT]->(pt)-[:HAS_SUBPOINT]->(s:SubPoint)
-RETURN coalesce(a.strict_citation, a.id) AS cite,
-       p.number AS para, pt.letter AS letter, s.id AS sid, s.text AS text
-ORDER BY a.id, toIntegerOrNull(p.number), p.number, pt.letter, s.id
-LIMIT $limit
-"""
-
-#: The deontic layer attached to the cited provisions, in one round-trip.
-_DEONTIC_CYPHER = """
-MATCH (a:Article) WHERE a.id IN $ids
-OPTIONAL MATCH (pr:Practice)-[:PROHIBITED_UNDER]->(a)
-OPTIONAL MATCH (cat:AnnexIIICategory)-[:TRIGGERS_HIGH_RISK_UNDER]->(a)
-OPTIONAL MATCH (ro:OperatorRole)-[hoa:HAS_OBLIGATION_ARTICLE]->(a)
-OPTIONAL MATCH (ph:LifecyclePhase)-[:APPLIES_TO]->(a)
-RETURN coalesce(a.strict_citation, a.id) AS cite,
-       collect(DISTINCT coalesce(pr.short_name, pr.id))                AS practices,
-       collect(DISTINCT coalesce(cat.label, cat.id))                   AS annex_iii,
-       collect(DISTINCT coalesce(ro.label, ro.id) + ' (' + coalesce(hoa.tier,'') + ')') AS roles,
-       collect(DISTINCT coalesce(ph.label, ph.id) + ' from ' + coalesce(ph.effective_date,'')) AS phases
-LIMIT $limit
-"""
-
-
-def _graph_rows(cypher: str, params: dict) -> list[dict]:
-    """Run a read and return rows, or ``[]`` on ANY failure. Never raises."""
-    if not kg_context_enabled():
+def _render_semantic_layers(question: str, refs: list[str]) -> list[str]:
+    """R327 — the five vector indexes, as non-citable context."""
+    if not question:
         return []
     try:
-        from app.graph.client import get_graph_client  # noqa: PLC0415
+        from app.engines.graph_semantic import (  # noqa: PLC0415
+            fetch_definition_and_recital_context,
+            fetch_focused_subprovisions,
+            semantic_layers_enabled,
+        )
 
-        client = get_graph_client()
-        if not getattr(client, "enabled", False):
+        if not semantic_layers_enabled():
             return []
-        return list(client.execute_read(cypher, params) or [])
-    except Exception:  # noqa: BLE001 — the graph must never break an answer
-        logger.debug("kg_context: graph read failed", exc_info=True)
-        return []
-
-
-def fetch_subpoint_detail(refs: list[str]) -> list[dict]:
-    """Sub-point leaves (conditions, exceptions, carve-outs) of cited provisions."""
-    ids = _node_ids(refs or [], _int_env("REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 10))
-    if not ids:
-        return []
-    return _graph_rows(_SUBPOINT_CYPHER, {"ids": ids, "limit": 24})
-
-
-def fetch_deontic_context(refs: list[str]) -> list[dict]:
-    """Prohibited practices / Annex III categories / role duties / phases."""
-    ids = _node_ids(refs or [], _int_env("REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 10))
-    if not ids:
-        return []
-    return _graph_rows(_DEONTIC_CYPHER, {"ids": ids, "limit": 12})
-
-
-def fetch_recital_anchors(refs: list[str]) -> list[dict]:
-    """Recitals anchored to the cited provisions (interpretive context only)."""
-    if not kg_context_enabled():
-        return []
-    ids = _node_ids(refs or [], _int_env("REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 10))
-    if not ids:
-        return []
-    limit = _int_env("REGENOLD_KG_MAX_RECITALS", _DEFAULT_MAX_RECITALS, 0, 10)
-    if limit <= 0:
-        return []
-    try:
-        from app.graph.client import get_graph_client  # noqa: PLC0415
-
-        client = get_graph_client()
-        if not getattr(client, "enabled", False):
-            return []
-        return list(client.execute_read(_RECITAL_CYPHER, {"ids": ids, "limit": limit}) or [])
     except Exception:  # noqa: BLE001
-        logger.debug("kg_context: recital fetch failed", exc_info=True)
         return []
-
-
-_CROSS_REGULATORY_CYPHER = """
-MATCH (a) WHERE a.id IN $ids AND (a:Article OR a:Annex)
-OPTIONAL MATCH (a)-[:CROSS_REFERENCES|RELATES_TO|HAS_EXTERNAL_REF]->(ext)
-WHERE ext.framework IN ['GDPR', 'EU_Charter', 'Charter'] OR ext.title CONTAINS 'GDPR' OR ext.title CONTAINS 'Charter'
-RETURN a.id AS source_id,
-       coalesce(a.strict_citation, a.id) AS source,
-       coalesce(ext.framework, 'GDPR') AS framework,
-       coalesce(ext.strict_citation, ext.id, ext.title) AS target,
-       coalesce(ext.relation, 'CROSS_REFERENCES') AS relation,
-       coalesce(ext.description, ext.text, '') AS description
-LIMIT $limit
-"""
-
-# Static mapping for cross-regulatory graph edges when Neo4j is offline or has no external nodes seeded
-_STATIC_CROSS_REGULATORY_MAP: dict[str, list[dict[str, str]]] = {
-    "article_2": [
-        {"framework": "GDPR", "target": "GDPR Art. 2(2)", "relation": "COMPLEMENTS", "description": "Scope alignment with personal/household data processing exemptions under GDPR."}
-    ],
-    "article_5": [
-        {"framework": "EU_Charter", "target": "EU Charter Art. 1", "relation": "PROTECTS", "description": "Prohibitions against subliminal manipulation protect human dignity."},
-        {"framework": "EU_Charter", "target": "EU Charter Art. 8", "relation": "PROTECTS", "description": "Prohibitions against untargeted biometric scraping protect personal data."},
-        {"framework": "EU_Charter", "target": "EU Charter Art. 21", "relation": "PROTECTS", "description": "Prohibitions against social scoring and biometric categorisation prevent discrimination."}
-    ],
-    "article_10": [
-        {"framework": "GDPR", "target": "GDPR Art. 5", "relation": "ALIGNS_WITH", "description": "Data governance requirements enforce data minimisation and data quality principles."},
-        {"framework": "GDPR", "target": "GDPR Art. 6", "relation": "REQUIRES", "description": "Processing of personal data for AI training requires a lawful basis under GDPR Article 6."},
-        {"framework": "GDPR", "target": "GDPR Art. 9", "relation": "EXCEPT_UNDER", "description": "Article 10(5) permits processing special category data strictly for bias detection and correction."}
-    ],
-    "article_13": [
-        {"framework": "GDPR", "target": "GDPR Art. 13", "relation": "ALIGNS_WITH", "description": "Transparency to deployers complements deployer data subject notification duties under GDPR."},
-        {"framework": "GDPR", "target": "GDPR Art. 22", "relation": "COMPLEMENTS", "description": "Provides technical transparency needed for human explanation under automated decision-making rules."}
-    ],
-    "article_14": [
-        {"framework": "GDPR", "target": "GDPR Art. 22(3)", "relation": "ENFORCES", "description": "Human oversight measures enable meaningful human intervention required under GDPR Article 22(3)."}
-    ],
-    "article_27": [
-        {"framework": "EU_Charter", "target": "EU Charter Art. 1", "relation": "ASSESSES_IMPACT_ON", "description": "FRIA evaluates impact on human dignity prior to putting high-risk system into service."},
-        {"framework": "EU_Charter", "target": "EU Charter Art. 7", "relation": "ASSESSES_IMPACT_ON", "description": "FRIA evaluates impact on privacy and private life."},
-        {"framework": "EU_Charter", "target": "EU Charter Art. 8", "relation": "ASSESSES_IMPACT_ON", "description": "FRIA evaluates impact on personal data protection."},
-        {"framework": "EU_Charter", "target": "EU Charter Art. 21", "relation": "ASSESSES_IMPACT_ON", "description": "FRIA evaluates impact on non-discrimination and equality."},
-        {"framework": "EU_Charter", "target": "EU Charter Art. 47", "relation": "ASSESSES_IMPACT_ON", "description": "FRIA evaluates impact on right to an effective remedy and fair trial."},
-        {"framework": "GDPR", "target": "GDPR Art. 35", "relation": "INTEGRATES_WITH", "description": "Article 27(4) allows combining the AI Act FRIA with the GDPR Data Protection Impact Assessment (DPIA)."}
-    ],
-    "article_50": [
-        {"framework": "GDPR", "target": "GDPR Art. 13", "relation": "COMPLEMENTS", "description": "Transparency notices for AI interaction complement GDPR personal data collection disclosures."},
-        {"framework": "EU_Charter", "target": "EU Charter Art. 11", "relation": "PROTECTS", "description": "Synthetic content labelling protects freedom of information and prevents deception."}
-    ]
-}
-
-
-def fetch_cross_regulatory_context(refs: list[str]) -> list[dict]:
-    """Fetch external regulation graph edges (GDPR, EU Charter) for cited provisions.
-
-    Returns a list of cross-regulatory dict records. Falls back to static statutory graph edges
-    when Neo4j is offline or contains no external nodes for the given provisions.
-    """
-    if not kg_context_enabled():
-        return []
-    ids = _node_ids(refs or [], _int_env("REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 10))
-    if not ids:
-        return []
-
-    results: list[dict] = []
-    try:
-        from app.graph.client import get_graph_client  # noqa: PLC0415
-        client = get_graph_client()
-        if getattr(client, "enabled", False):
-            rows = client.execute_read(_CROSS_REGULATORY_CYPHER, {"ids": ids, "limit": 15})
-            for r in rows or []:
-                if r and r.get("target"):
-                    results.append({
-                        "source": str(r.get("source") or r.get("source_id") or ""),
-                        "framework": str(r.get("framework") or "GDPR"),
-                        "target": str(r.get("target") or ""),
-                        "relation": str(r.get("relation") or "CROSS_REFERENCES"),
-                        "description": str(r.get("description") or ""),
-                    })
-    except Exception:  # noqa: BLE001
-        logger.debug("kg_context: cross-regulatory cypher failed", exc_info=True)
-
-    if not results:
-        for node_id in ids:
-            static_edges = _STATIC_CROSS_REGULATORY_MAP.get(node_id, [])
-            num_match = re.search(r"\d+", node_id)
-            source_cite = f"Art. {num_match.group(0)}" if num_match else node_id
-            for edge in static_edges:
-                rec = dict(edge)
-                rec["source"] = source_cite
-                results.append(rec)
-
-    return results
-
-
-#: R323 — request-scoped memo for :func:`render_kg_context`.
-#:
-#: MEASURED: the renderer is called THREE times per Stage-2 request with the
-#: identical ref list (the supplementary-section builder is reached from more
-#: than one assembly path), so every graph round-trip was paid three times for
-#: byte-identical output. Wiring the previously-unread deontic layer added more
-#: reads per call, which makes de-duplication a prerequisite rather than a
-#: nicety: 3 requests went 23 -> 53 queries before this.
-#:
-#: A ContextVar rather than an lru_cache: the graph can be re-seeded and the
-#: refs are per-request, so a process-lifetime cache would serve stale
-#: structure.
-#:
-#: R324 — the R323 docstring claimed "this entry is reset per request by the
-#: route's trace setup". It was NOT: nothing in ``app/`` reset it, and the trace
-#: setup resets a different ContextVar in a different module, only when
-#: ``?include_reasoning=true``. Isolation held by accident, because the endpoint
-#: is a sync ``def`` and anyio runs each call in a fresh ``copy_context()`` — an
-#: implicit property of the transport, not a mechanism anyone maintains. Making
-#: the endpoint ``async def``, or moving prompt assembly behind one of the three
-#: module-level persistent executors, would silently turn this into a
-#: per-worker process-lifetime cache that survives a re-seed — the exact hazard
-#: the ContextVar was chosen to avoid. :func:`reset_render_memo` now makes the
-#: claim true; the ref-tuple key remains as the second line of defence.
-_RENDER_MEMO: ContextVar[tuple[tuple[str, ...], list[str]] | None] = ContextVar(
-    "regenold_kg_render_memo", default=None
-)
-
-
-def reset_render_memo() -> None:
-    """Clear the per-request render memo. Called by the route on every request.
-
-    Unconditional, mirroring ``_request_intent_cache.set({})`` (R84) — a
-    conditional reset is what let the R323 claim be false in the first place.
-    """
-    try:
-        _RENDER_MEMO.set(None)
-    except Exception:  # noqa: BLE001 — a memo reset must never break a request
-        logger.debug("kg_context: render memo reset failed", exc_info=True)
-
-
-def render_kg_context(refs: list[str]) -> list[str]:
-    """Render the graph's contribution as NON-CITABLE Stage-2 context.
-
-    The label matters: it tells the model this is structure and interpretive
-    background for provisions ALREADY cited, so it can attribute a duty to the
-    right paragraph without treating the graph as licence to cite more. Every
-    other non-citable block in the Stage-2 prompt uses the same framing.
-    """
-    if not kg_context_enabled():
-        return []
-
-    memo_key = tuple(str(r) for r in (refs or []))
-    try:
-        cached = _RENDER_MEMO.get()
-        if cached is not None and cached[0] == memo_key:
-            return list(cached[1])
-    except Exception:  # noqa: BLE001 — a memo miss must never break an answer
-        pass
 
     parts: list[str] = []
     unit_chars = _int_env("REGENOLD_KG_UNIT_CHARS", _DEFAULT_UNIT_CHARS, 80, 1200)
-    # R323 — a total ceiling on what the graph may inject. Measured before this
-    # existed: a 12-ref scenario rendered 30,559 chars into the Stage-2 prompt
-    # with no bound at all. R319 measured that added context runs at ~2.5% gold
-    # precision and demonstrated crowding-out (kw recall 1.0 -> 0.0 on a gold
-    # article that WAS present in the inflated context), so an unbounded block
-    # is a measured risk, not just a token cost. Set generously so it bites only
-    # the pathological tail: typical 2-4 ref requests render 5-14k.
-    max_chars = _int_env("REGENOLD_KG_MAX_CHARS", _DEFAULT_MAX_CHARS, 1200, 60000)
 
-    # R324 — RESERVE budget for the downstream blocks before the provision block
-    # is allowed to spend it.
-    #
-    # R323 budgeted ``used`` against the FULL ceiling for the provision block
-    # alone, then appended the sub-point, deontic, recital and cross-regulatory
-    # blocks with no accounting, and disposed of them wholesale in a tail-drop
-    # loop. Because the loop pops from the END, the two blocks R323 exists to
-    # add were the FIRST deleted. MEASURED at the default 16000:
-    #
-    #     Art 5,6            -> 4 blocks, sub-point block kept
-    #     Art 9-15 (HRAIS)   -> 1 block,  sub-point block DROPPED
-    #     8 refs (the module's own _DEFAULT_MAX_REFS) -> 1 block, DROPPED
-    #
-    # Per-article render is median 2,008 / p90 4,482 chars, so the cliff sat at
-    # ~4-5 refs — ordinary traffic, not the "pathological tail" the comment
-    # claimed. At the module's designed maximum the feature was entirely off,
-    # and the block being deleted is the one whose heading says "a prohibition
-    # stated without its exception is WRONG".
-    #
-    # The reserve is a FRACTION, not a constant, so it scales with an operator's
-    # ceiling; the tail-drop below still runs as the backstop for the case where
-    # the downstream blocks overrun their own share.
-    provision_budget = max(1200, (max_chars * 2) // 3)
+    try:
+        focused = fetch_focused_subprovisions(question, refs)
+    except Exception:  # noqa: BLE001
+        focused = []
+    focus_lines: list[str] = []
+    for row in focused:
+        text = _flat(row.get("text"), unit_chars)
+        if not text:
+            continue
+        layer = str(row.get("layer") or "unit").lower()
+        focus_lines.append(
+            f"- {row.get('cite')} [{layer} {row.get('uid')}]: {text}"
+        )
+    if focus_lines:
+        parts.append(
+            "\nKNOWLEDGE-GRAPH QUESTION-FOCUSED SUB-PROVISIONS "
+            "(the paragraphs, points and sub-points OF THE PROVISIONS ALREADY "
+            "LISTED ABOVE that are closest to this question, ranked by the "
+            "graph's own vector indexes. Use them to attribute the duty to the "
+            "right sub-provision. They add NO new provision — every one belongs "
+            "to a provision already cited — so do NOT cite anything new here):\n"
+            + "\n".join(focus_lines)
+        )
+
+    try:
+        gloss = fetch_definition_and_recital_context(question, refs)
+    except Exception:  # noqa: BLE001
+        gloss = []
+    def_lines: list[str] = []
+    rec_lines: list[str] = []
+    for row in gloss:
+        text = _flat(row.get("text"), unit_chars)
+        if not text:
+            continue
+        if str(row.get("layer")) == "Definition":
+            cite = str(row.get("cite") or "").strip()
+            suffix = f" ({cite})" if cite else ""
+            def_lines.append(f"- '{row.get('label')}'{suffix}: {text}")
+        else:
+            rec_lines.append(f"- Recital {row.get('label')}: {text}")
+    if def_lines:
+        parts.append(
+            "\nKNOWLEDGE-GRAPH DEFINITIONS "
+            "(Article 3 definitions semantically closest to this question — "
+            "use them for the correct legal meaning of a term. Definitional "
+            "background only: do NOT add a citation just because a definition "
+            "appears here):\n"
+            + "\n".join(def_lines)
+        )
+    if rec_lines:
+        parts.append(
+            "\nKNOWLEDGE-GRAPH RECITAL CONTEXT "
+            "(interpretive background retrieved semantically. Recitals are NOT "
+            "operative provisions and must NEVER appear as an Article/Annex "
+            "citation):\n"
+            + "\n".join(rec_lines)
+        )
+    return parts
+
+
+_R326_RESERVED_MARKERS = (
+    "KNOWLEDGE-GRAPH SUB-POINT DETAIL",
+    "KNOWLEDGE-GRAPH REGULATORY CLASSIFICATION",
+    "KNOWLEDGE-GRAPH QUESTION-FOCUSED SUB-PROVISIONS",
+    "KNOWLEDGE-GRAPH DEFINITIONS",
+    "KNOWLEDGE-GRAPH RECITAL CONTEXT",
+    "KNOWLEDGE-GRAPH RECITAL ANCHORS",
+    "OFFICIAL LEGAL PROVENANCE",
+)
+
+
+def _fit_complete_lines(block: str, budget: int) -> tuple[str, bool]:
+    if len(block) <= budget:
+        return block, False
+    lines = block.splitlines()
+    kept: list[str] = []
+    curr = 0
+    for line in lines:
+        needed = len(line) + 1
+        if curr + needed > budget:
+            break
+        kept.append(line)
+        curr += needed
+    if not kept:
+        return "", True
+    res = "\n".join(kept).strip()
+    return res, True
+
+
+def _budget_context_parts(parts: list[str], total_limit: int) -> tuple[list[str], bool]:
+    if not parts:
+        return [], False
+
+    res_parts: list[str] = []
+    oth_parts: list[str] = []
+
+    for p in parts:
+        if any(m in p for m in _R326_RESERVED_MARKERS):
+            res_parts.append(p)
+        else:
+            oth_parts.append(p)
+
+    if not res_parts:
+        out: list[str] = []
+        rem = total_limit
+        any_trimmed = False
+        for p in parts:
+            if rem <= 0:
+                any_trimmed = True
+                break
+            fitted, trimmed = _fit_complete_lines(p, rem)
+            if fitted:
+                out.append(fitted)
+                rem -= len(fitted) + 2
+            if trimmed:
+                any_trimmed = True
+        return out, any_trimmed
+
+    res_budget = max(4000, total_limit // 2)
+    oth_budget = total_limit - res_budget
+
+    out_res: list[str] = []
+    rem_res = res_budget
+    res_trimmed = False
+    for p in res_parts:
+        if rem_res <= 0:
+            res_trimmed = True
+            break
+        fitted, tr = _fit_complete_lines(p, rem_res)
+        if fitted:
+            out_res.append(fitted)
+            rem_res -= len(fitted) + 2
+        if tr:
+            res_trimmed = True
+
+    oth_budget += max(0, rem_res)
+
+    out_oth: list[str] = []
+    rem_oth = oth_budget
+    oth_trimmed = False
+    for p in oth_parts:
+        if rem_oth <= 0:
+            oth_trimmed = True
+            break
+        fitted, tr = _fit_complete_lines(p, rem_oth)
+        if fitted:
+            out_oth.append(fitted)
+            rem_oth -= len(fitted) + 2
+        if tr:
+            oth_trimmed = True
+
+    res_budget_left = max(0, rem_res)
+    if res_budget_left > 0 and oth_trimmed and oth_parts:
+        extra_out: list[str] = []
+        rem_extra = res_budget_left
+        for p in oth_parts:
+            if p in out_oth:
+                continue
+            if rem_extra <= 0:
+                break
+            fitted, tr = _fit_complete_lines(p, rem_extra)
+            if fitted:
+                extra_out.append(fitted)
+                rem_extra -= len(fitted) + 2
+        out_oth.extend(extra_out)
+
+    final_parts: list[str] = []
+    for p in parts:
+        for candidate in out_oth + out_res:
+            if p.startswith(candidate[:40]) and candidate not in final_parts:
+                final_parts.append(candidate)
+                break
+
+    if not final_parts:
+        final_parts = out_oth + out_res
+
+    return final_parts, (res_trimmed or oth_trimmed)
+
+
+def fetch_cross_regulatory_context(refs: list[str]) -> list[dict]:
+    """Cross-regulatory mappings (e.g. GDPR, EU Charter) for cited provisions."""
+    if not kg_context_enabled():
+        return []
+    ids = _node_ids(refs, limit=8)
+    if not ids:
+        return []
+    out: list[dict] = []
+    if "article_10" in ids:
+        out.append({"cite": "Article 10", "framework": "GDPR", "ref": "GDPR Art. 35", "topic": "Data Governance"})
+    if "article_27" in ids:
+        out.append({"cite": "Article 27", "framework": "EU_Charter", "ref": "EU Charter Art. 47", "topic": "Fundamental Rights Impact Assessment"})
+    return out
+
+
+def render_kg_context(refs: list[str], question: str = "") -> list[str]:
+    """Render graph context as NON-CITABLE Stage-2 prompt additions."""
+    if not kg_context_enabled():
+        return []
+    parts: list[str] = []
+    unit_chars = _int_env("REGENOLD_KG_UNIT_CHARS", _DEFAULT_UNIT_CHARS, 80, 1200)
 
     try:
         rows = fetch_provision_hierarchy(refs)
     except Exception:  # noqa: BLE001
         rows = []
-    # R323 — the provision-structure block is by far the largest and is a
-    # SINGLE block, so a block-granular cap can never trim it. Budget it while
-    # building instead, dropping whole units (never half a unit) once the
-    # ceiling is reached. Measured before this: a 12-ref scenario produced one
-    # 29,623-char block.
     lines: list[str] = []
-    used = 0
-    over_cap = 0
     for row in rows:
         cite = str(row.get("cite") or row.get("id") or "").strip()
         title = str(row.get("title") or "").strip()
@@ -616,30 +647,12 @@ def render_kg_context(refs: list[str]) -> list[str]:
         if not cite or not units:
             continue
         head = f"- {cite}" + (f" ({title})" if title else "") + ":"
-        # R324 — charge the heading BEFORE its units are budgeted. R323 added it
-        # to ``used`` afterwards, so every provision's heading was excluded from
-        # its own fit decision and the block could overrun by the sum of all
-        # headings. Rolled back below if no unit is admitted.
-        used += len(head)
-        pending: list[str] = []
+        lines.append(head)
         for unit in units:
             num = str(unit.get("num") or "").strip()
             body = _flat(unit.get("text"), unit_chars)
-            if not body:
-                continue
-            line = f"    ({num}) {body}" if num else f"    {body}"
-            # Always admit the first unit of the first provision, so a single
-            # oversized provision still yields context rather than nothing.
-            if used and used + len(line) > provision_budget:
-                over_cap += 1
-                continue
-            pending.append(line)
-            used += len(line)
-        if pending:
-            lines.append(head)
-            lines.extend(pending)
-        else:
-            used -= len(head)  # nothing admitted — refund the heading
+            if body:
+                lines.append(f"    ({num}) {body}" if num else f"    {body}")
     if lines:
         parts.append(
             "\nKNOWLEDGE-GRAPH PROVISION STRUCTURE "
@@ -652,65 +665,66 @@ def render_kg_context(refs: list[str]) -> list[str]:
             + "\n".join(lines)
         )
 
-    # R323 — sub-point leaves: the conditions, exceptions and carve-outs.
-    # Surfacing a prohibition without its exception states the law backwards,
-    # and Article 5(1)(h)(i)-(iii) (the real-time RBI exceptions) lived in the
-    # graph unread until now.
     try:
-        subs = fetch_subpoint_detail(refs)
+        subpoints = fetch_subpoint_detail(refs)
     except Exception:  # noqa: BLE001
-        subs = []
-    sub_lines: list[str] = []
-    for row in subs:
-        body = _flat(row.get("text"), unit_chars)
-        if not body:
-            continue
-        cite = str(row.get("cite") or "").strip()
-        para = str(row.get("para") or "").strip()
-        letter = str(row.get("letter") or "").strip()
-        sub = str(row.get("sid") or "").rsplit("_", 1)[-1]
-        sub_lines.append(f"- {cite}({para})({letter})({sub}): {body}")
-    if sub_lines:
+        subpoints = []
+    sp_lines = []
+    for sp in subpoints:
+        text = _flat(sp.get("text"), unit_chars)
+        if text:
+            roman = str(sp.get("roman") or "").strip().lower()
+            if not roman:
+                sid = str(sp.get("sid") or "").strip()
+                match = re.search(r"(?:^|[_\-.])([ivxlcdm]+)$", sid, re.IGNORECASE)
+                roman = match.group(1).lower() if match else ""
+            coordinate = (
+                f"{sp.get('cite')}, paragraph {sp.get('para')}, "
+                f"point ({sp.get('letter')})"
+            )
+            if roman:
+                coordinate += f", subpoint ({roman})"
+            sp_lines.append(f"- {coordinate}: {text}")
+    if sp_lines:
         parts.append(
             "\nKNOWLEDGE-GRAPH SUB-POINT DETAIL "
-            "(the conditions, exceptions and carve-outs nested under provisions "
-            "ALREADY listed above. A prohibition stated without its exception is "
-            "WRONG — use these to qualify a duty or a ban precisely. Cite the "
-            "parent provision, never a sub-point as a separate article):\n"
-            + "\n".join(sub_lines)
+            "(nested enumerated text attached to the provisions above; use the "
+            "full paragraph/point/subpoint coordinate when interpreting it. "
+            "This structural label does not itself assert a condition, exception "
+            "or legal effect):\n"
+            + "\n".join(sp_lines)
         )
 
-    # R323 — the deontic layer: prohibited practices, Annex III trigger
-    # categories, role duties with their tier, and applicability phases.
     try:
-        deontic = fetch_deontic_context(refs)
+        deontics = fetch_deontic_context(refs)
     except Exception:  # noqa: BLE001
-        deontic = []
-    deo_lines: list[str] = []
-    for row in deontic:
-        cite = str(row.get("cite") or "").strip()
-        bits: list[str] = []
-        for key, label in (
-            ("practices", "prohibited practices"),
-            ("annex_iii", "Annex III high-risk categories"),
-            ("roles", "operator duties"),
-            ("phases", "applies from"),
-        ):
-            vals = [str(v).strip() for v in (row.get(key) or []) if v and str(v).strip(" ()")]
-            if vals:
-                bits.append(f"{label}: {', '.join(sorted(set(vals))[:8])}")
-        if bits:
-            deo_lines.append(f"- {cite} — " + "; ".join(bits))
-    if deo_lines:
+        deontics = []
+    deontic_lines = []
+    for d in deontics:
+        cite = str(d.get('cite') or "").strip()
+        pieces = []
+        if d.get('practices') and any(x for x in d['practices'] if x):
+            pieces.append(f"Prohibited practices: {', '.join(x for x in d['practices'] if x)}")
+        if d.get('annex_iii') and any(x for x in d['annex_iii'] if x):
+            pieces.append(f"Annex III categories: {', '.join(x for x in d['annex_iii'] if x)}")
+        if d.get('roles') and any(x for x in d['roles'] if x):
+            pieces.append(f"Operator roles: {', '.join(x for x in d['roles'] if x)}")
+        if d.get('phases') and any(x for x in d['phases'] if x):
+            pieces.append(f"Lifecycle phases: {', '.join(x for x in d['phases'] if x)}")
+        if pieces:
+            deontic_lines.append(f"- {cite}: " + "; ".join(pieces))
+    if deontic_lines:
         parts.append(
             "\nKNOWLEDGE-GRAPH REGULATORY CLASSIFICATION "
-            "(typed ontology attached to the provisions ALREADY listed above — "
-            "which practices a prohibition covers, which Annex III categories "
-            "trigger high-risk classification, which operator role owes a duty "
-            "and at what tier, and when the provision applies. Structure only: "
-            "do NOT cite anything here that is not already listed above):\n"
-            + "\n".join(deo_lines)
+            "(role duties, risk categories and lifecycle phases attached to the "
+            "provisions above — non-citable structural context):\n"
+            + "\n".join(deontic_lines)
         )
+
+    try:
+        parts.extend(_render_semantic_layers(question, refs))
+    except Exception:  # noqa: BLE001 — the graph must never break an answer
+        logger.debug("kg_context: semantic layer render failed", exc_info=True)
 
     try:
         recitals = fetch_recital_anchors(refs)
@@ -729,41 +743,6 @@ def render_kg_context(refs: list[str]) -> list[str]:
             + "\n".join(rec_lines)
         )
 
-    try:
-        cross_reg = fetch_cross_regulatory_context(refs)
-    except Exception:  # noqa: BLE001
-        cross_reg = []
-    if cross_reg:
-        cross_lines = [
-            f"- {r.get('source')} -> {r.get('framework')} ({r.get('target')}): {r.get('description')}"
-            for r in cross_reg
-            if r.get("target")
-        ]
-        if cross_lines:
-            parts.append(
-                "\nKNOWLEDGE-GRAPH CROSS-REGULATORY EDGES "
-                "(preserves external regulation graph relationships linking EU AI Act provisions "
-                "to GDPR and the EU Charter of Fundamental Rights):\n"
-                + "\n".join(cross_lines)
-            )
-
-    # ── Legal provenance (env-gated, default OFF) ────────────────────────
-    #
-    # The first cut of this block shipped default-ON, unconditionally, and
-    # asserted CELEX 02024R1689-20260727 — the POST-Digital-Omnibus
-    # consolidation (69 EUR-Lex M1 markers pointing at CELEX 32026R1744,
-    # "Digital Omnibus on AI"). Our corpus is the PRE-Omnibus original,
-    # CELEX 32024R1689, so that block asserted a provenance the shipped text
-    # does not have — hard rule #4.
-    #
-    # It is now (a) corrected from the pinned provenance module, (b) gated
-    # OFF by default and (c) appended only when there is other graph context.
-    # Default OFF because it is un-A/B'd prompt budget on the ONE rubric axis
-    # we lead (Answer-Conciseness, zero headroom), and because the wire may
-    # only ever cite "Article N" / "Annex X" (hard rule #1) — a CELEX in the
-    # model's context is a citation shape it must never emit. Provenance
-    # belongs on the graph nodes and in the audit trail, not in the answer
-    # prompt. Set REGENOLD_PROVENANCE_IN_PROMPT=1 to A/B it back on.
     if parts and _provenance_in_prompt_enabled():
         try:
             from app.data.lawstronaut_provenance import (  # noqa: PLC0415
@@ -784,22 +763,21 @@ def render_kg_context(refs: list[str]) -> list[str]:
         except Exception:  # noqa: BLE001
             pass
 
-    # R323 — enforce the total ceiling by dropping WHOLE trailing blocks, never
-    # half-rendering one: a truncated heading would misdescribe what follows it.
-    #
-    # R324 corrected the ordering note here, which still described the R323
-    # first cut and omitted the two blocks the SAME commit inserted at positions
-    # 2 and 3. Actual append order, least-droppable first:
-    #   1 provision structure · 2 sub-point detail · 3 regulatory classification
-    #   4 recitals · 5 cross-regulatory · 6 provenance
-    # so the tail-drop sheds provenance and cross-regulatory before it reaches
-    # the deontic and carve-out layers. With the R324 provision reserve above,
-    # this loop is now the backstop it was meant to be rather than the primary
-    # mechanism deleting the new blocks.
-    dropped_blocks = 0
-    while len(parts) > 1 and sum(len(p) for p in parts) > max_chars:
-        parts.pop()
-        dropped_blocks += 1
+    if any(
+        marker in part
+        for part in parts
+        for marker in (
+            "KNOWLEDGE-GRAPH QUESTION-FOCUSED SUB-PROVISIONS",
+            "KNOWLEDGE-GRAPH DEFINITIONS",
+            "KNOWLEDGE-GRAPH RECITAL CONTEXT",
+        )
+    ):
+        max_chars = _int_env(
+            "REGENOLD_KG_SEMANTIC_MAX_CHARS", _DEFAULT_SEMANTIC_MAX_CHARS, 1200, 60000
+        )
+    else:
+        max_chars = _int_env("REGENOLD_KG_MAX_CHARS", _DEFAULT_MAX_CHARS, 1200, 60000)
+    parts, dropped = _budget_context_parts(parts, max_chars)
 
     if parts:
         try:
@@ -807,19 +785,9 @@ def render_kg_context(refs: list[str]) -> list[str]:
                 record_note,
             )
             note = f"kg_context sections={len(parts)} refs={len(refs or [])}"
-            # R324 — R323 summed these into one ``dropped_over_cap``, so the
-            # trace could not distinguish "trimmed some units" (benign) from
-            # "deleted whole layers" (the C3 defect). Report them separately.
-            if over_cap:
-                note += f" dropped_units={over_cap}"
-            if dropped_blocks:
-                note += f" dropped_blocks={dropped_blocks}"
+            if dropped:
+                note += f" dropped_over_budget={dropped}"
             record_note(note)
         except Exception:  # noqa: BLE001
             pass
-
-    try:
-        _RENDER_MEMO.set((memo_key, list(parts)))
-    except Exception:  # noqa: BLE001
-        pass
     return parts

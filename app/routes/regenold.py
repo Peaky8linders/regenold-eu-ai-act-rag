@@ -1725,6 +1725,11 @@ def _engine_cache_key(
             # is cached; without it in the identity a same-process A/B serves the
             # baseline arm's response to the branch arm (the R263.2 bug).
             "REGENOLD_GENERAL_VERDICT_V2",
+            # R327 — semantic layers & vector recall & parent collapse flags
+            "REGENOLD_GRAPH_SEMANTIC_LAYERS",
+            "REGENOLD_SEMANTIC_GLOSS",
+            "REGENOLD_GRAPH_VECTOR_RECALL",
+            "REGENOLD_PARENT_COLLAPSE",
         )
     )
     import json
@@ -2474,6 +2479,39 @@ def boost_for_intent(
     if max_budget is not None and max_budget > 0 and len(injected) > max_budget:
         injected = injected[:max_budget]
     return injected
+
+
+def _parent_collapse_enabled() -> bool:
+    """Drop a bare head when its own sub-point is cited. Default OFF."""
+    return os.getenv("REGENOLD_PARENT_COLLAPSE", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _collapse_parent_when_subpoint_cited(references: list[str]) -> list[str]:
+    """Drop Article 27 when Article 27.1 is already on the wire."""
+    if len(references) < 2:
+        return references
+
+    def _wire(ref: str) -> str:
+        return reference_from_article_ref(ref) or ref.strip()
+
+    def _head(ref: str) -> str:
+        wire = _wire(ref)
+        return _clamp_ref_head(wire) or wire
+
+    cited_heads_with_own_leaf = {
+        _head(r) for r in references if _head(r) != _wire(r)
+    }
+    kept = [
+        r
+        for r in references
+        if not (_wire(r) == _head(r) and _head(r) in cited_heads_with_own_leaf)
+    ]
+    return kept or references
 
 
 def _reemit_parents_for_subpoints(refs: list[str]) -> list[str]:
@@ -3738,90 +3776,43 @@ def _surface_prose_subpoints(answer: str, references: list[str]) -> list[str]:
         return references
 
 
-# R134 — context guards for ``_add_prose_named_refs``. A bare
-# ``Article N`` / ``Annex N`` mention in polished prose is NOT always an AI
-# Act citation worth promoting:
-#   * CROSS-REGULATION — "Article 50 of Regulation (EU) 2016/679" is GDPR
-#     Article 50, not AI-Act Article 50; "Article 7 of the GDPR"; "Article 5
-#     of Directive …". Only the AI Act's own self-reference (Regulation
-#     2024/1689 / "this Regulation" / "the AI Act") is a real citation.
-#   * CONTRAST / NEGATION — "…applies, NOT Article 5", "distinct from
-#     Article 5", "rather than Article 5": the named article is being
-#     contrasted AWAY, so citing it contradicts the answer.
-# Cross-instrument signal: GDPR / a Directive / a Decision / the Treaty /
-# the Charter — none of which is the AI Act. ``of the Regulation`` /
-# ``of this Regulation`` (the AI Act referring to itself) deliberately do
-# NOT match — only a SPECIFIC other instrument does.
+_FOREIGN_ACRONYM_FRAGMENT = (
+    r"(?:gdpr|mdr|ivdr|nis\s*2|cra|dsa|dma|pld|tfeu|teu)"
+)
+_FOREIGN_NAMED_FRAGMENT = r"(?:charter)"
+_FOREIGN_PREPOSITION_FRAGMENT = r"(?:of|under|pursuant\s+to)"
 _CROSS_INSTRUMENT_RE = re.compile(
-    r"\bof\s+(?:the\s+)?gdpr\b"
+    r"\b" + _FOREIGN_PREPOSITION_FRAGMENT + r"\s+(?:the\s+)?"
+    + _FOREIGN_ACRONYM_FRAGMENT + r"\b"
     r"|\bof\s+(?:council\s+)?directive\b"
     r"|\bof\s+decision\b"
     r"|\bof\s+(?:the\s+)?treaty\b"
     r"|\bof\s+(?:the\s+)?charter\b",
     re.IGNORECASE,
 )
-# A NUMBERED EU Regulation reference; group(1) is the ``YYYY/NNN`` id. Only
-# a number that is NOT the AI Act (2024/1689) is a cross-Regulation ref.
-#
-# R323 — the pre-2015 OJ numbering form. The first cut required the id to be
-# ``\d{4}/`` immediately after the ``(EU)``/``(EC)``, which misses BOTH of the
-# shapes older instruments actually use: the ``No `` particle, and a 3-digit
-# sequence number. The AI Act cites such instruments constantly, so the miss is
-# reachable, and the collisions it produced are wire-legal — every fabricated
-# number resolves in ``ARTICLE_EXISTENCE``, so the hard-rule-#5 lint cannot
-# catch them. MEASURED end-to-end through ``_add_prose_named_refs``:
-#
-#   "Article 2(1), point (c), of Regulation (EU) No 1025/2012"
-#       -> shipped AI Act **Article 2** (Scope)
-#   "Article 30 of Regulation (EC) No 765/2008"
-#       -> shipped AI Act **Article 30** (notifying procedure)
-#   "Article 10 of Regulation (EU) No 1025/2012"
-#       -> shipped AI Act **Article 10** (data governance)
-#
-# ``2024/1689`` still matches, so the self-reference exclusion below (which
-# lets a genuine AI Act mention through) is unaffected.
-# R324 — ONE definition of "a numbered EU Regulation id", shared by the AHEAD
-# guard below and the BEHIND guard further down. R323 widened only the ahead
-# copy, so the prefix form ("Regulation (EU) No 1025/2012, Article 10") kept
-# leaking: two regexes encoding one concept, one updated. Keeping the fragment
-# in a single constant is what stops the next widening from being half-applied.
-#
-# The ``\(e[uc]\)`` parenthetical is OPTIONAL — the AI Act's own prose writes
-# both "Regulation (EU) 2016/679" and the bare "Regulation 2016/679", and the
-# bare form was leaking Article 5 (prohibited practices) onto the wire.
+_FOREIGN_INSTRUMENT_AHEAD_RE = re.compile(
+    r"^\s*(?:\([^)]*\)\s*)*(?:,\s*)?"
+    r"(?:(?:e\.g\.\s*)?(?:"
+    + _FOREIGN_PREPOSITION_FRAGMENT
+    + r")\s+(?:the\s+)?)?\b(?:"
+    + _FOREIGN_ACRONYM_FRAGMENT + r"|" + _FOREIGN_NAMED_FRAGMENT
+    + r")\b",
+    re.IGNORECASE,
+)
 _REG_NUMBER_FRAGMENT = (
     r"\bregulation\s*(?:\(e[uc]\)\s*)?(?:no\.?\s*)?(\d{1,4}/\d{2,4})"
 )
-
-_NUMBERED_REG_RE = re.compile(r"\bof\s+" + _REG_NUMBER_FRAGMENT, re.IGNORECASE)
-
-# R324 — where the AHEAD window ends.
-#
-# R323 fixed the id FORM but left the window at a flat 56 chars, so any
-# interposed clause pushed the regulation past the boundary and the citation
-# leaked anyway — and R323's own ``No `` particle costs 3 more characters, so
-# it made this strictly worse. MEASURED on HEAD before this change:
-#
-#   "Article 10, second subparagraph, point (b), of Regulation (EU) No 1025/2012"
-#       -> shipped AI Act **Article 10**
-#   "Article 6(1), point (a), second subparagraph, of Regulation (EU) 2016/679"
-#       -> shipped AI Act **Article 6**
-#
-# ⚠ Simply widening the window is WRONG and was measured as such: at a flat
-# 120 chars, "Article 13 requires transparency for high-risk systems. Article 35
-# of Regulation (EU) 2016/679 requires a DPIA." suppresses the GENUINE Article
-# 13, because the next sentence's foreign instrument falls inside its window.
-# Dropping a real citation is the R142.1 failure mode and costs more than the
-# leak does.
-#
-# So the window is BOUNDED FIRST, THEN widened: it stops at the end of the
-# sentence, or at the next Article/Annex mention, whichever comes first. A
-# citation can only be attributed to an instrument named in its OWN clause.
-# ``[.!?]\s+[A-Z]`` rather than ``[.!?]\s`` so that "e.g." and the "No. 1025"
-# particle do not terminate the window early (both are followed by lowercase or
-# a digit), which would re-open the leak from the other side.
+_NUMBERED_REG_RE = re.compile(
+    r"\b" + _FOREIGN_PREPOSITION_FRAGMENT + r"\s+(?:the\s+)?"
+    + _REG_NUMBER_FRAGMENT,
+    re.IGNORECASE,
+)
 _AHEAD_STOP_RE = re.compile(
-    r"[.!?]\s+[A-Z]|;\s|\b(?:article|art\.|annex)\s", re.IGNORECASE
+    r"[.!?]\s+[A-Z]"
+    r"|(?<![Ee]\.[Gg])(?<![Ii]\.[Ee])(?<![Cc][Ff])(?<![Nn][Oo])(?<![Nn][Oo][Ss])"
+    r"(?<![Aa][Rr][Tt])(?<![Pp][Aa][Rr][Tt])[.!?]\s"
+    r"|;\s"
+    r"|(?i:\b(?:article|art\.|annex)\s)"
 )
 _AHEAD_MAX_CHARS = 160
 
@@ -3836,72 +3827,22 @@ def _ahead_window(prose: str, end: int) -> str:
     m = _AHEAD_STOP_RE.search(seg)
     return seg[: m.start()] if m else seg
 
-# R322 — the bare POSTPOSITIVE form: "Article 35 GDPR", "Article 22 GDPR",
-# "Article 9 GDPR". Every alternation in ``_CROSS_INSTRUMENT_RE`` above requires
-# a leading ``of`` ("Article 35 OF THE GDPR"), so the preposition-less shorthand
-# that lawyers actually write slipped through and was promoted onto the wire as
-# an AI ACT article. Measured on 3,927 recorded live rows: rare (3 hits) but
-# always a hard-rule-#4 legal fabrication when it fires, because the numbers
-# collide with unrelated provisions — GDPR Art. 35 (DPIA) became AI Act Art. 35
-# (notified-body identification numbers); GDPR Art. 22 (automated decision
-# making) became AI Act Art. 22 (authorised representatives).
-#
-# Anchored at ``^`` of the AHEAD window so the instrument must IMMEDIATELY
-# follow the mention (after an optional sub-point paren and comma). That
-# anchoring is what keeps "Article 10 of the AI Act requires..." allowed — its
-# ahead window starts " of the AI Act", which cannot match — and likewise
-# "Article 6 and the GDPR ...", where the AI Act article is the real referent.
-_FOREIGN_INSTRUMENT_AHEAD_RE = re.compile(
-    r"^\s*(?:\([^)]*\)\s*)*(?:,\s*)?"
-    r"(?:\bgdpr\b"
-    r"|\bcharter\b"
-    r"|\bmdr\b|\bivdr\b|\bnis\s*2\b|\bcra\b|\bdsa\b|\bdma\b|\bpld\b"
-    r"|\btfeu\b|\bteu\b)",
-    re.IGNORECASE,
+
+_DIRECTIVE_NUMBER_FRAGMENT = (
+    r"\bdirective\s*(?:\(e[uc]\)\s*)?(?:no\.?\s*)?"
+    r"\d{2,4}/\d{1,4}(?:/(?:eu|eec|ec))?"
 )
-# R321 — the PREFIX form of a foreign-instrument citation.
-#
-# ``_CROSS_INSTRUMENT_RE`` only looks AHEAD ("Article 50 of the GDPR"), so it
-# never saw the far more common prefix shape — "GDPR Art. 5", "EU Charter
-# Art. 21", "MDR Article 10". MEASURED before this guard existed:
-#
-#   _add_prose_named_refs(["Article 27"],
-#       "...under EU Charter Art. 21 and on personal data under GDPR Art. 5,
-#        complementing GDPR Art. 35 DPIA duties.")
-#   -> ['Article 27', 'Article 21', 'Article 5', 'Article 35']
-#
-# i.e. GDPR Article 5 was promoted to **AI Act Article 5** — the
-# prohibited-practices article — on the wire. That is a confidently-wrong
-# legal citation (hard rule #4) in a wire-legal shape (hard rule #1), so
-# nothing downstream can catch it.
-#
-# This is live, not theoretical: ``kg_context`` injects a cross-regulatory map
-# written in exactly this prefix form ("GDPR Art. 35", "EU Charter Art. 47")
-# into the Stage-2 grounding context, so the model is actively encouraged to
-# write it. Only ~24 chars of lookbehind are used, so an AI Act mention that
-# merely follows a sentence about the GDPR is unaffected.
 _FOREIGN_INSTRUMENT_BEHIND_RE = re.compile(
-    r"(?:\bgdpr\b"
-    r"|\bcharter\b"
-    r"|\bmdr\b|\bivdr\b|\bnis\s*2\b|\bcra\b|\bdsa\b|\bdma\b|\bpld\b"
-    r"|\btfeu\b|\bteu\b"
-    r"|\bdirective\b"
-    # R324 — was ``\(e[uc]\)\s*(?!2024/1689)\d{4}/\d+``, i.e. the pre-R323 form,
-    # so every shape R323 taught the AHEAD guard about still leaked here. Now
-    # shares ``_REG_NUMBER_FRAGMENT`` with that guard. The AI Act self-reference
-    # exclusion is kept as a lookahead on the whole fragment.
-    r"|(?!regulation\s*(?:\(e[uc]\)\s*)?(?:no\.?\s*)?2024/1689)" + _REG_NUMBER_FRAGMENT
-    + r")[\s,‑-]*$",
+    r"(?:\b" + _FOREIGN_ACRONYM_FRAGMENT + r"\b"
+    + r"|\bcharter\b"
+    + r"|" + _DIRECTIVE_NUMBER_FRAGMENT
+    + r"|\b(?:council\s+)?directive\b"
+    + r"|(?!regulation\s*(?:\(e[uc]\)\s*)?(?:no\.?\s*)?2024/1689)" + _REG_NUMBER_FRAGMENT
+    + r")(?:\s*\(\s*" + _FOREIGN_ACRONYM_FRAGMENT + r"\s*\))?"
+    + r"(?:['\u2019]s)?[\s,\-\u2011]*$",
     re.IGNORECASE,
 )
-# R324 — the behind window must fit the longest prefix form plus its separator:
-# "Regulation (EU) No 1025/2012, " is 30 chars, so the pre-R324 24-char window
-# made the numbered-regulation alternation UNREACHABLE at any numbering — it had
-# never fired. Widening is safe because the pattern is anchored at ``$`` with
-# only ``[\s,‑-]`` allowed between the instrument and the mention: a sentence
-# that merely mentions the GDPR earlier cannot match, since a full stop is not
-# in that separator class.
-_BEHIND_WINDOW_CHARS = 48
+_BEHIND_WINDOW_CHARS = 96
 # R311 — the negation cue need not be ADJACENT to the mention.
 #
 # The pre-R311 form was ``(?:\bnot|...)\s*$`` over a 24-char lookbehind, i.e.
@@ -3963,75 +3904,79 @@ def _prose_mention_is_real_citation(prose: str, start: int, end: int) -> bool:
     return True
 
 
+_PROSE_CITATION_RE = re.compile(
+    r"\b(?:(Article|Art\.?)\s+(\d{1,3})|Annex\s+([IVXLCDM]+|\d{1,2}))\b",
+    re.IGNORECASE,
+)
+_ARABIC_ANNEX_TO_ROMAN = {
+    "1": "I", "2": "II", "3": "III", "4": "IV", "5": "V",
+    "6": "VI", "7": "VII", "8": "VIII", "9": "IX", "10": "X",
+    "11": "XI", "12": "XII", "13": "XIII",
+}
+
+
+def _prose_citation_bases(prose: str) -> list[str]:
+    """Extract citation heads in first-mention order, excluding foreign refs."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for match in _PROSE_CITATION_RE.finditer(prose or ""):
+        if not _prose_mention_is_real_citation(prose, match.start(), match.end()):
+            continue
+        if match.group(2) is not None:
+            base = f"Article {int(match.group(2))}"
+        else:
+            annex = (match.group(3) or "").upper()
+            annex = _ARABIC_ANNEX_TO_ROMAN.get(annex, annex)
+            base = f"Annex {annex}"
+        if base not in seen:
+            out.append(base)
+            seen.add(base)
+    return out
+
+
 def _add_prose_named_refs(
-    references: list[str], prose: str, *, cap: int = 2
+    references: list[str],
+    prose: str,
+    *,
+    citable_bases: frozenset[str] | set[str] | None = None,
+    cap: int = 2,
 ) -> list[str]:
-    """Promote refs the answer prose explicitly names into the citations.
-
-    The INVERSE of :func:`_reconcile_references_to_prose` — that pass drops
-    cited refs the prose never names; this one ADDS the article / annex the
-    prose DOES name when it is missing from the wire ``references``, so the
-    citation list and the answer prose stay consistent (R134 — a live
-    Stage-2 answer that says "Article 6(1)" must cite Article 6, not leave
-    it uncited).
-
-    Conservative by design: existence-gated against ``ARTICLE_EXISTENCE``
-    (a Sonnet-named article that is not a real provision is never added),
-    context-guarded (``_prose_mention_is_real_citation`` skips
-    cross-Regulation references like "Article 50 of the GDPR" and
-    contrasted-away mentions like "not Article 5"), capped at ``cap``
-    additions, additions appended in first-mention order so the original
-    order + ranking is preserved. The drop (reconcile) and add passes run
-    reconcile-then-add and target near-disjoint sets — reconcile drops
-    refs not named in prose; this adds named-but-uncited refs — so a
-    reconcile-dropped ref is not re-added in practice. Fail-soft: returns
-    ``references`` unchanged on any error.
-    """
+    """Promote refs the answer prose explicitly names into the citations."""
     try:
         if not prose:
             return references
         from app.data.article_existence import ARTICLE_EXISTENCE  # noqa: PLC0415
 
-        present_nums: set[str] = set()
-        present_annex: set[str] = set()
-        for r in references:
-            m = _R72_ARTICLE_NUM_RE.match(r.strip())
-            if m:
-                present_nums.add(m.group(1))
-                continue
-            m = _R72_ANNEX_ROMAN_RE.match(r.strip())
-            if m:
-                present_annex.add(m.group(1).upper())
-
+        allowed_source = (
+            citable_bases
+            if citable_bases is not None
+            else set(references) | set(_prose_citation_bases(prose))
+        )
+        allowed = {
+            base
+            for ref in allowed_source
+            if (base := _canonical_reference_base(ref)) is not None
+        }
+        present = {
+            base
+            for ref in references
+            if (base := _canonical_reference_base(ref)) is not None
+        }
         additions: list[str] = []
-        seen: set[str] = set()
-        for m in _LIVE_ARTICLE_RE.finditer(prose):
-            num = m.group(1)
-            key = f"a:{num}"
-            if num in present_nums or key in seen:
+        for base in _prose_citation_bases(prose):
+            if base in present or base not in allowed:
                 continue
-            if f"Art. {num}" not in ARTICLE_EXISTENCE:
+            catalog_key = (
+                "Art. " + base[len("Article "):]
+                if base.startswith("Article ")
+                else base
+            )
+            if catalog_key not in ARTICLE_EXISTENCE:
                 continue
-            if not _prose_mention_is_real_citation(prose, m.start(), m.end()):
-                continue
-            additions.append(f"Article {num}")
-            seen.add(key)
+            additions.append(base)
+            present.add(base)
             if len(additions) >= cap:
                 break
-        if len(additions) < cap:
-            for m in _LIVE_ANNEX_RE.finditer(prose):
-                rn = m.group(1).upper()
-                key = f"x:{rn}"
-                if rn in present_annex or key in seen:
-                    continue
-                if f"Annex {rn}" not in ARTICLE_EXISTENCE:
-                    continue
-                if not _prose_mention_is_real_citation(prose, m.start(), m.end()):
-                    continue
-                additions.append(f"Annex {rn}")
-                seen.add(key)
-                if len(additions) >= cap:
-                    break
 
         if not additions:
             return references
