@@ -85,6 +85,8 @@ __all__ = [
     "fetch_cross_regulatory_context",
     "render_kg_context",
     "reset_kg_context_memo",
+    "reset_render_memo",
+    "_RENDER_MEMO",
 ]
 
 _DEFAULT_MAX_REFS = 8
@@ -184,7 +186,7 @@ RETURN coalesce(a.strict_citation, a.id) AS cite,
        sp.id AS sid,
        sp.roman AS roman,
        sp.text AS text
-ORDER BY cite, toIntegerOrNull(para), letter, sid
+ORDER BY cite, toIntegerOrNull(p.number), letter, sid
 LIMIT $max_units
 """
 
@@ -216,11 +218,17 @@ LIMIT $limit
 _MEMO_VAR: ContextVar[dict[str, list[dict]] | None] = ContextVar(
     "kg_context_memo", default=None
 )
+_RENDER_MEMO = _MEMO_VAR
 
 
 def reset_kg_context_memo() -> None:
     """Clear per-request query cache. Call at request start."""
     _MEMO_VAR.set({})
+
+
+def reset_render_memo() -> None:
+    """Alias for reset_kg_context_memo for test compatibility."""
+    reset_kg_context_memo()
 
 
 def _memoized_read(cache_key: str, cypher: str, params: dict) -> list[dict]:
