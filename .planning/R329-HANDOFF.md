@@ -56,6 +56,35 @@ run.** That is the LOCAL wrapper; it is a different path and measured ~88 s p50
 vs 6.6 s through the tunnel. A run started this round with the local base had to
 be discarded.
 
+⚠⚠ **`evals/regenold/run_evaluator_batch_july7.py` NEVER CALLS `load_dotenv()`.**
+Same trap class as `scripts/seed_neo4j_kb.py` (R323 trap #4). You MUST export
+the vars into the process or the run is silently worthless:
+
+```bash
+export OPENAI_API_BASE=$(sed -n 's/^OPENAI_API_BASE=//p' .env | tail -1 | tr -d '\r')
+export CF_ACCESS_CLIENT_ID=$(sed -n 's/^CF_ACCESS_CLIENT_ID=//p' .env | tail -1 | tr -d '\r')
+export CF_ACCESS_CLIENT_SECRET=$(sed -n 's/^CF_ACCESS_CLIENT_SECRET=//p' .env | tail -1 | tr -d '\r')
+export OPENAI_API_KEY=dummy P2P_GRAPH_RAG_PROVIDER=openai_wrapper
+```
+(`.env` has DUPLICATE keys — `tail -1`, last wins, matching dotenv semantics.)
+
+**The failure is silent and misattributed.** With `OPENAI_API_BASE` unset the
+provider falls back to `_DEFAULT_WRAPPER_BASE` — which IS the tunnel — so the
+request reaches Cloudflare and returns **HTTP 401** with an `aud` field. Every
+Stage-2 call then fails and the runner reports `errors=0`, `stage2_landed_rate
+0.0000`, `latency_p50 0.5s`, and a full set of plausible-looking deterministic
+numbers. The repo's own error text blames "an expired Claude-Max OAuth token"
+and tells you to run `login.bat` — **wrong**: an `aud` claim means Cloudflare
+Access rejected it, i.e. the CF service-token headers were missing.
+
+**Read `stage2_landed_rate` and `latency_p50` before reading any other number.**
+Live Stage-2 through the tunnel is ~**75 s p50** per hard row (2 turns);
+sub-second p50 means you measured the deterministic fallback.
+
+Production is NOT affected by this — `CF_ACCESS_CLIENT_ID` / `_SECRET` are set
+on the Railway dashboard, so the deployed service authenticates correctly. This
+is a local-harness-only defect.
+
 ⚠ **Correction to an earlier claim in this session.** "The Opus floor forces
 `claude-opus-4-8`" is WRONG in the default case. `app/config.py:33,163` set
 `stage2_model` and `complex_model` to **`claude-opus-5`**, and the floor
