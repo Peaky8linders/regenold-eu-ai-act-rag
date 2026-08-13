@@ -671,13 +671,13 @@ ROLE_OBLIGATIONS: dict[ActorRole, dict[RiskClass, tuple[str, ...]]] = {
         RiskClass.HIGH_RISK_ANNEX_I: (
             "Art. 6", "Art. 8", "Art. 9", "Art. 10", "Art. 11", "Art. 12",
             "Art. 13", "Art. 14", "Art. 15", "Art. 16", "Art. 17",
-            "Art. 43", "Art. 47", "Art. 48", "Art. 49", "Art. 72",
+            "Art. 43", "Art. 47", "Art. 48", "Art. 49", "Art. 72", "Art. 73",
             "Annex I", "Annex IV",
         ),
         RiskClass.HIGH_RISK_ANNEX_III: (
             "Art. 6", "Art. 8", "Art. 9", "Art. 10", "Art. 11", "Art. 12",
             "Art. 13", "Art. 14", "Art. 15", "Art. 16", "Art. 17",
-            "Art. 43", "Art. 47", "Art. 48", "Art. 49", "Art. 72",
+            "Art. 43", "Art. 47", "Art. 48", "Art. 49", "Art. 72", "Art. 73",
             "Annex III", "Annex IV",
         ),
         RiskClass.LIMITED_RISK: (
@@ -753,8 +753,8 @@ ROLE_OBLIGATIONS: dict[ActorRole, dict[RiskClass, tuple[str, ...]]] = {
         RiskClass.GPAI_SYSTEMIC: ("Art. 54",),
     },
     ActorRole.DOWNSTREAM_PROVIDER: {
-        RiskClass.GPAI: ("Art. 53", "Art. 89", "Annex XII"),
-        RiskClass.GPAI_SYSTEMIC: ("Art. 53", "Art. 55", "Art. 89", "Annex XII"),
+        RiskClass.GPAI: ("Art. 25", "Art. 53", "Annex XII"),
+        RiskClass.GPAI_SYSTEMIC: ("Art. 25", "Art. 53", "Art. 55", "Annex XII"),
     },
     # Notified-body obligations live across Arts. 31 (notification),
     # 33 (requirements relating to notified bodies), and 34 (operational
@@ -805,8 +805,17 @@ def obligations_for(role: ActorRole | str, risk_class: RiskClass | str) -> tuple
                 break
     rc_key = risk_class
     if isinstance(risk_class, str):
+        rc_str = risk_class.strip().lower().replace("-", "_")
+        if rc_str in ("high_risk", "high_risk_annex_3", "annex_iii"):
+            rc_str = "high_risk_annex_iii"
+        elif rc_str in ("high_risk_annex_1", "annex_i"):
+            rc_str = "high_risk_annex_i"
+        elif rc_str in ("limited", "limited_risk"):
+            rc_str = "limited_risk"
+        elif rc_str in ("minimal", "minimal_risk"):
+            rc_str = "minimal_risk"
         for rc_enum in RiskClass:
-            if rc_enum.value == risk_class:
+            if rc_enum.value == rc_str or rc_enum.value == risk_class:
                 rc_key = rc_enum
                 break
     return ROLE_OBLIGATIONS.get(role_key, {}).get(rc_key, ())

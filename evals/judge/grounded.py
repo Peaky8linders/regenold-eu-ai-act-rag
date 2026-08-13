@@ -438,7 +438,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--sidecar", required=True, type=Path)
     p.add_argument("--label", required=True)
     p.add_argument("--model", default=_DEFAULT_MODEL)
-    p.add_argument("--provider", choices=("wrapper", "anthropic", "groq", "gemini"), default="wrapper")
+    p.add_argument("--provider", choices=("wrapper", "anthropic", "groq", "gemini", "bedrock"), default="wrapper")
     p.add_argument("--timeout", type=float, default=90.0)
     p.add_argument("--concurrency", type=int, default=2)
     p.add_argument("--limit", type=int, default=None)

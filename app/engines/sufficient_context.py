@@ -184,7 +184,24 @@ def max_sub_queries() -> int:
     iterations = 25 retrievals; we cap the whole thing at ONE hop of ≤3
     deterministic retrievals to keep latency predictable). Env override
     ``REGENOLD_SUFFICIENT_CONTEXT_MAX_HOPS``; clamped to [1, 5].
+
+    R329 — this is the real consumer for the HyPA ``query_rewrites`` parameter
+    (the paper's ``r``, "number of sub-queries generated for the original
+    query"). When the adaptive router is on, the per-question class supplies the
+    value; an explicit env override still wins, and with the router off this is
+    byte-identical to the previous behaviour. Note these are DETERMINISTIC
+    sub-queries, not LLM query rewriting — this repo's LLM/HyDE expansion path
+    is documented as hallucinating article numbers, so it is deliberately not
+    wired here.
     """
+    try:
+        from app.engines.query_complexity_router import adaptive_int  # noqa: PLC0415
+
+        return adaptive_int(
+            "query_rewrites", "REGENOLD_SUFFICIENT_CONTEXT_MAX_HOPS", 3, 1, 5
+        )
+    except Exception:  # noqa: BLE001 — fall back to the historical env read
+        pass
     try:
         n = int(os.getenv("REGENOLD_SUFFICIENT_CONTEXT_MAX_HOPS", "3"))
     except ValueError:

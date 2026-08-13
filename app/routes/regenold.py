@@ -48,6 +48,8 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import threading
+
 import time
 
 # R84 — per-request memoise for ``classify_intent`` (2026-05-24).
@@ -202,14 +204,18 @@ def _classify_intent_cached(question: str):
 
 
 _NLI_SCORER = None
+_NLI_SCORER_LOCK = threading.Lock()
 
 
 def _get_nli_scorer():
     global _NLI_SCORER
     if _NLI_SCORER is None:
-        from app.engines.crag_nli_verifier import NLIEntailmentScorer  # noqa: PLC0415
-        _NLI_SCORER = NLIEntailmentScorer()
+        with _NLI_SCORER_LOCK:
+            if _NLI_SCORER is None:
+                from app.engines.crag_nli_verifier import NLIEntailmentScorer  # noqa: PLC0415
+                _NLI_SCORER = NLIEntailmentScorer()
     return _NLI_SCORER
+
 
 
 logger = structlog.get_logger(__name__)
@@ -1236,11 +1242,18 @@ def _engine_cache_key(
     """
     # Lazy import — keeps the cold-start dependency graph clean. Both
     # flags default OFF, so the resolved value is normally `"00"`.
+    from app.engines.query_complexity_router import (  # noqa: PLC0415
+        is_adaptive_router_enabled,
+    )
+    from app.engines.hybrid_rrf_retriever import (  # noqa: PLC0415
+        is_rrf_retrieval_enabled,
+    )
     from app.engines.turboquant_index import is_enabled as _dense_enabled  # noqa: PLC0415
     from app.integrations.regenold.citation_guard import (  # noqa: PLC0415
         is_enabled as _guard_enabled,
     )
-    flag_bits = f"{int(_dense_enabled())}{int(_guard_enabled())}"
+    hypa_bits = f"{int(is_adaptive_router_enabled())}{int(is_rrf_retrieval_enabled())}"
+    flag_bits = f"{int(_dense_enabled())}{int(_guard_enabled())}{hypa_bits}"
     # R56 — fold the resolved LLM provider into the cache key. Stage-2
     # polish produces provider-specific prose; without this bit, a
     # mid-deploy ``P2P_GRAPH_RAG_PROVIDER`` flip would silently serve
@@ -1285,7 +1298,14 @@ def _engine_cache_key(
         os.getenv(v, "").strip().lower()
         for v in (
             "P2P_GRAPH_RAG_ENABLE_STAGE2",
+            "REGENOLD_BEDROCK_MODEL",
+            "REGENOLD_BEDROCK_COMPLEX_MODEL",
+            "REGENOLD_BEDROCK_STAGE1_MODEL",
+            "REGENOLD_BEDROCK_STAGE2_MODEL",
+            "REGENOLD_STAGE2_VERDICT_GUARD",
+            "REGENOLD_STAGE2_ANSWER_HEADROOM",
             # R270 — opus-for-all flips the Stage-2 answer MODEL (Sonnet 5 vs
+
             # Opus 4.8) for standard questions → flips GraphRAGResponse.answer.
             "REGENOLD_OPUS_FOR_ALL",
             # R278 — the complex-tier Stage-2 model is now resolved with a
@@ -1293,6 +1313,7 @@ def _engine_cache_key(
             # (the fable-5 vs opus-4.8 A/B arms) flips the engine answer and
             # must be in the key (R30/R56/R79/R263.2 doctrine).
             "P2P_GRAPH_RAG_COMPLEX_MODEL",
+            "REGENOLD_COMPLEX_GATE_WIDE",
             # R276-D2 — the abbreviation-aware complexity scan changes
             # is_complex_question ⇒ the Stage-2 tier (complex_model +
             # complex_thinking_tokens vs stage2_model + thinking_tokens=0)
@@ -1338,6 +1359,8 @@ def _engine_cache_key(
             "REGENOLD_KG_MAX_UNITS",
             "REGENOLD_KG_UNIT_CHARS",
             "REGENOLD_KG_MAX_RECITALS",
+            "REGENOLD_VECTOR_MIN_SIM",
+            "REGENOLD_KG_SEMANTIC_MAX_CHARS",
             # R324 — R323 added this ceiling and did not key it, while all five
             # of its R315 siblings above are keyed. It bounds how much graph
             # context reaches Stage-2, so it flips the answer and its citations.
@@ -2558,7 +2581,7 @@ def _reemit_parents_for_subpoints(refs: list[str]) -> list[str]:
             if not ref.startswith(prefix):
                 continue
             body = ref[len(prefix):]
-            segments = body.split(".")
+            segments = re.split(r"[\.\(]", body)
             if len(segments) <= 1:
                 # Already a top-level ref — nothing to re-emit.
                 break
@@ -3010,7 +3033,7 @@ def _collapse_multi_leaf_clusters(refs: list[str]) -> list[str]:
     return out or list(refs)
 
 
-_REF_PARSE_RE = re.compile(r"^(Article|Annex)\s+([\dIVXLC]+)")
+_REF_PARSE_RE = re.compile(r"^(Article|Annex)\s+([\dIVXLCDM]+)", re.IGNORECASE)
 
 
 # Pattern for extracting explicit article / annex anchors from the LIVE
@@ -4169,7 +4192,7 @@ def _clamp_ref_head(ref: str) -> str | None:
             # string with an offset measured on the stripped/lowered copy shifts
             # by the leading-whitespace width and malforms the head
             # (" Article 50.1" -> " Articlee 50").
-            body = stripped[len(prefix):].split(".")[0].strip()
+            body = re.split(r"[\.\(\s]", stripped[len(prefix):])[0].strip()
             if not body:
                 return None
             return stripped[: len(prefix)] + body

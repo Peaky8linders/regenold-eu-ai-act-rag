@@ -580,20 +580,87 @@ class BedrockProvider:
                 error_str,
                 elapsed_ms,
             )
+            # Fail-soft fallback to OpenAI wrapper for transient/rate-limit client errors
+            if any(k in error_str for k in ("throttling", "quota", "timeout", "server_error")):
+                try:
+                    from app.llm.openai_wrapper_provider import (  # noqa: PLC0415
+                        OpenAIWrapperRequest,
+                        get_openai_wrapper_provider,
+                        is_openai_wrapper_enabled,
+                    )
+                    if is_openai_wrapper_enabled():
+                        target_model = req.model or "claude-sonnet-4-6"
+                        wrapper_resp = get_openai_wrapper_provider().complete(
+                            OpenAIWrapperRequest(
+                                user=req.user,
+                                system=req.system,
+                                model=target_model,
+                                max_tokens=req.max_tokens,
+                                temperature=req.temperature,
+                            )
+                        )
+                        if not wrapper_resp.error:
+                            return BedrockResponse(
+                                text=wrapper_resp.text,
+                                model=wrapper_resp.model,
+                                input_tokens=wrapper_resp.prompt_tokens,
+                                output_tokens=wrapper_resp.completion_tokens,
+                                elapsed_ms=wrapper_resp.elapsed_ms,
+                                finish_reason=wrapper_resp.finish_reason,
+                            )
+                except Exception:
+                    pass
             return BedrockResponse(
                 error=error_str,
                 model=model_id,
                 elapsed_ms=elapsed_ms,
             )
+
         except BotoCoreError as exc:
             elapsed_ms = int((time.monotonic() - t0) * 1000)
             error_str = f"botocore_error: {type(exc).__name__}"
-            logger.error(
-                "bedrock_converse_botocore_error model=%s error=%s elapsed_ms=%d",
+            logger.warning(
+                "bedrock_converse_botocore_error model=%s error=%s elapsed_ms=%d; trying wrapper proxy fallback",
                 model_id,
                 error_str,
                 elapsed_ms,
             )
+            # Fail-soft fallback to OpenAI wrapper proxy if available in environment
+            try:
+                from app.llm.openai_wrapper_provider import (  # noqa: PLC0415
+                    OpenAIWrapperRequest,
+                    get_openai_wrapper_provider,
+                )
+                wrapper = get_openai_wrapper_provider()
+                target_model = req.model or "claude-sonnet-4-6"
+                if "opus-4-6" in model_id.lower() or "opus-4.6" in model_id.lower():
+                    target_model = "claude-opus-4-6"
+                elif "sonnet-4-6" in model_id.lower() or "sonnet-4.6" in model_id.lower():
+                    target_model = "claude-sonnet-4-6"
+                elif "opus" in model_id.lower():
+                    target_model = "claude-opus-4-8"
+
+                wrapper_req = OpenAIWrapperRequest(
+                    user=req.user,
+                    system=req.system,
+                    model=target_model,
+                    max_tokens=req.max_tokens,
+                    temperature=req.temperature,
+                )
+                wrapper_resp = wrapper.complete(wrapper_req)
+                logger.info("wrapper_fallback_resp model=%s error=%s text_len=%d", target_model, wrapper_resp.error, len(wrapper_resp.text or ""))
+                if not wrapper_resp.error:
+                    return BedrockResponse(
+                        text=wrapper_resp.text,
+                        model=wrapper_resp.model,
+                        input_tokens=wrapper_resp.prompt_tokens,
+                        output_tokens=wrapper_resp.completion_tokens,
+                        elapsed_ms=wrapper_resp.elapsed_ms,
+                        finish_reason=wrapper_resp.finish_reason,
+                    )
+            except Exception as fallback_exc:  # noqa: BLE001
+                logger.debug("wrapper_fallback_failed: %s", fallback_exc)
+
             return BedrockResponse(
                 error=error_str,
                 model=model_id,
@@ -658,7 +725,11 @@ class BedrockProvider:
             raise
         finally:
             if hasattr(sync_gen, "close"):
-                sync_gen.close()
+                try:
+                    sync_gen.close()
+                except (ValueError, Exception):
+                    pass
+
 
     def _client_for_timeout(self, timeout_seconds: float | None) -> Any:
         """Return a client appropriate for the requested timeout.

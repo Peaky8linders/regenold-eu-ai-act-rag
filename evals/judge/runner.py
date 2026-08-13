@@ -225,6 +225,45 @@ def _call_judge_sonnet(prompt: str, timeout_s: float = 30.0) -> dict[str, Any]:
     return _parse_judge_json(resp.text or "")
 
 
+def _call_judge_bedrock(prompt: str, timeout_s: float = 30.0) -> dict[str, Any]:
+    """Send judge prompt through BedrockProvider and parse JSON response."""
+    try:
+        from app.llm.bedrock_client import (
+            BedrockRequest,
+            get_bedrock_provider,
+            is_bedrock_provider_enabled,
+            resolve_bedrock_model,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {"judge_error": f"bedrock_unavailable: {exc}"}
+    if not is_bedrock_provider_enabled():
+        return {"judge_error": "bedrock_not_configured"}
+
+    provider = get_bedrock_provider()
+    model_id = os.getenv("REGENOLD_BEDROCK_JUDGE_MODEL", "").strip()
+    if not model_id:
+        model_id = resolve_bedrock_model(_JUDGE_MODEL or "claude-sonnet-4-6")
+    max_tokens = int(os.getenv("REGENOLD_BEDROCK_JUDGE_MAX_TOKENS", "1600"))
+    req = BedrockRequest(
+        system=_JUDGE_SYSTEM,
+        user=prompt,
+        model=model_id,
+        max_tokens=max_tokens,
+        temperature=0.0,
+        timeout_seconds=timeout_s,
+    )
+    try:
+        resp = provider.complete(req)
+    except Exception as exc:  # noqa: BLE001
+        return {"judge_error": f"call_failed: {exc}"}
+    if resp is None:
+        return {"judge_error": "bedrock_returned_none"}
+    if resp.error:
+        return {"judge_error": f"bedrock_error: {resp.error[:160]}"}
+    return _parse_judge_json(resp.text or "")
+
+
+
 _groq_lock = threading.Lock()
 _groq_last_call_time = 0.0
 
@@ -559,10 +598,13 @@ def _resolve_caller(provider: str, timeout_s: float = 30.0) -> Callable[[str], d
         return lambda p: _call_judge_groq(p, timeout_s=timeout_s)
     if provider == "gemini":
         return lambda p: _call_judge_gemini(p, timeout_s=timeout_s)
+    if provider == "bedrock" or os.getenv("P2P_GRAPH_RAG_PROVIDER", "").strip().lower() == "bedrock":
+        return lambda p: _call_judge_bedrock(p, timeout_s=timeout_s)
     # "wrapper" or anything else falls back to the wrapper (historical
     # default) — runner_v2 / bench-runner sidecars produced pre-R66-C
     # all assume the wrapper path is active.
     return lambda p: _call_judge_sonnet(p, timeout_s=timeout_s)
+
 
 
 def _judge_row(
