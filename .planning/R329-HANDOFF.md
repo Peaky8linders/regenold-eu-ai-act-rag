@@ -38,6 +38,76 @@ included `Article 10.3` and `Annex III.2` (the sub-point collapse).
 
 Oxford-comma parsing verified intact (`"9, 10, and 15"`, `"XI, XII, or XIII"`).
 
+## PRODUCTION MODEL CONFIG — verified 2026-08-13, use this for every live eval
+
+Operator directive: **Opus 5, fast mode, cloudflared tunnel, Claude Max.**
+Verified end-to-end with a real POST (`/v1/auth/status` lies — never trust it):
+
+```
+OPENAI_API_BASE  https://wrapper.antifragile-ai.net/v1   (from .env — do NOT override)
+CF_ACCESS_CLIENT_ID / _SECRET   present; auto-attached for non-local hosts
+_model_alias_enabled()  False  -> "claude-opus-5" sent VERBATIM
+model echoed back       claude-opus-5
+round trip              6.6 s
+```
+
+**Do NOT set `OPENAI_API_BASE=http://127.0.0.1:8000/v1` for a production-config
+run.** That is the LOCAL wrapper; it is a different path and measured ~88 s p50
+vs 6.6 s through the tunnel. A run started this round with the local base had to
+be discarded.
+
+⚠ **Correction to an earlier claim in this session.** "The Opus floor forces
+`claude-opus-4-8`" is WRONG in the default case. `app/config.py:33,163` set
+`stage2_model` and `complex_model` to **`claude-opus-5`**, and the floor
+(`_graph_rag_impl.py:~631`) only rewrites when `"opus" not in model.lower()` —
+so it never fires for Opus 5. The floor only blocks NON-Opus overrides, which is
+why Sonnet 5 is unreachable for standard Stage-2 but Opus 5 is the default.
+
+⚠ `_WRAPPER_MODEL_ALIASES` (`openai_wrapper_provider.py:75`) rewrites
+`claude-opus-5 -> claude-opus-4-6`, but is **DEFAULT OFF since R308** per
+operator directive. If `REGENOLD_WRAPPER_MODEL_ALIAS=1` ever appears, Stage-2
+silently stops running on Opus 5 while the trace still claims it does.
+
+"Fast mode" in this repo = the thinking budgets, already the config defaults:
+`thinking_tokens = 0` (standard Stage-2, verdict-first) and
+`complex_thinking_tokens = 4000` (complex tier).
+
+## Port audit result (workflow `wf_e6270cea-c56`, 8 agents)
+
+Full output: `<scratchpad>/tasks/wgwx3arqw.output` (~167k chars, truncated in
+chat). Per-agent values in the run's `journal.jsonl`.
+
+**The upstream P0b implementation is DEFECTIVE — do not port it as-is.**
+
+* Probe gold is **100% head-form in BOTH repos** — measured, 132 rows / 208 gold
+  refs / **0 sub-point-grain refs**. The SOURCE plan's central premise ("
+  `ProbeRow.expected_refs` carries sub-point grain", plan line 199) is false.
+  This repo's own untouched docstring says so: `easyhard_ab.py:48-51` — "Our
+  probe gold is head-form ... Head-level scoring is therefore the honest
+  granularity here." R327 overwrote that docstring upstream with a claim the
+  data does not support.
+* Consequence, executed against the SOURCE's own `metrics.py` with
+  `gold=['Article 5','Annex III']`:
+  `pred=['Article 5.1.f','Annex III.2']` -> `gold_dropped_exact = 2`,
+  `ref_crag_fine = -1.0`. **A more precise, perfectly correct citation scores as
+  a total failure**, because the gold side is head-projected by
+  `_gold_exact_refs` while the predicted side keeps full coordinates.
+  Sub-point refs are this system's MOST accurate citation shape (85% correct).
+* `gold_dropped_head` is clean and ports with **zero** new dependencies
+  (`_gold_ref_set`, `article_head`/`article_heads` are byte-identical here).
+* `gold_dropped_exact` / `reference_crag_fine` need `_canonical_ref`,
+  `canonical_reference_diagnostics`, `_gold_exact_refs`, `METRICS_VERSION`,
+  `METRIC_PROVENANCE` — all absent here (our `metrics.py` is 739 lines vs 1355).
+
+⚠ **Never `git checkout eval-repo/main -- evals/harness/easyhard_ab.py`.** Ours
+is byte-identical to the divergence point (never received R327). A wholesale
+copy drags R327 in, which RENAMES the canonical axis
+`ref_loose -> ref_loose_head_recall_proxy` and re-points `ref_strict`/`ref_conc`
+to different formulas — breaking comparability with every recorded run here.
+
+**No conflict with this repo's `1db5e9e`.** That commit touches 19 files, none
+under `evals/harness/` and not `evals/bench/metrics.py`.
+
 ## Traps that cost real time this round
 
 1. **`stage2_landed_rate: 0.0` is a provider gate, not a bug in the feature.**
