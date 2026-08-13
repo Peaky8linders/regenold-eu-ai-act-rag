@@ -7,8 +7,78 @@ this file small so partners auditing the bundle can read it in one pass.
 """
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _load_dotenv_once() -> None:
+    """R329 — put the repo's ``.env`` into ``os.environ`` at import time.
+
+    NOTHING in ``app/`` loaded ``.env`` before this. Three independent readers
+    all missed it:
+
+    * ``app/graph/client.py:101`` reads ``os.environ.get("NEO4J_URI")``
+      directly, so an unset var silently disables the graph;
+    * the :class:`SettingsConfigDict` declarations below carry ``env_prefix``
+      but **no** ``env_file``, so pydantic-settings never read it either;
+    * and pydantic-settings would populate the Settings object, not
+      ``os.environ``, so it could not have fixed the direct readers anyway.
+
+    Symptom this fixes: running the app locally showed **"Knowledge Graph —
+    No Conn"** in the Lexy UI (``app/web_ui.py:1667`` renders that whenever
+    ``/healthz/graph`` reports ``graph_ok`` false). Aura was healthy the whole
+    time — production, whose vars come from the Railway dashboard, reports
+    ``graph_ok: true`` with full node counts. The local process simply never
+    had ``NEO4J_URI``. The same gap silently stripped ``OPENAI_API_BASE`` and
+    the ``CF_ACCESS_*`` service-token headers, which made live evals fall back
+    to deterministic answers behind a Cloudflare 401.
+
+    Two deliberate properties:
+
+    * ``override=False`` — a variable already in the environment ALWAYS wins.
+      Railway sets real env vars, so production behaviour is unchanged and a
+      stale local ``.env`` can never shadow a deployed value. This also keeps
+      the eval harnesses' explicit ``KEY=VAL`` prefixes authoritative, which
+      the in-process A/B arms depend on.
+    * The path is resolved from this file, not the process CWD. ``load_dotenv``
+      with no argument walks up from the *calling* directory, so it silently
+      finds nothing when the app is started from elsewhere (the gotcha already
+      recorded in CLAUDE.md under "Environment Loading Context").
+
+    Fail-soft: a missing ``python-dotenv`` or unreadable file must never stop
+    the app booting — deployments legitimately have no ``.env`` at all.
+    """
+    # NEVER under pytest. ``tests/conftest.py`` deliberately neutralises the
+    # integration-activating vars before the first ``app`` import, but its list
+    # is only nine names — GEMINI_API_KEY, MISTRAL_API_KEY, OPENROUTER_API_KEY,
+    # AWS_BEARER_TOKEN_BEDROCK and the CF_ACCESS_* pair are NOT among them.
+    # Loading ``.env`` here therefore leaked live provider keys into the suite
+    # and flipped provider-fallback behaviour: measured 9 tests changed to
+    # passing and 3 to failing purely from that leak, none of them related to
+    # this fix. It would also make the suite behave differently on a developer
+    # machine (``.env`` present) than in CI (no ``.env``) — the worst kind of
+    # test-environment drift. The app needs this at runtime; the suite builds
+    # its own environment on purpose.
+    import sys  # noqa: PLC0415
+
+    if "pytest" in sys.modules:
+        return
+
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if not env_path.is_file():
+        return
+    try:
+        from dotenv import load_dotenv  # noqa: PLC0415
+
+        load_dotenv(dotenv_path=env_path, override=False)
+    except Exception:  # noqa: BLE001 — never block boot on config sugar
+        pass
+
+
+_load_dotenv_once()
 
 
 class GraphRAGSettings(BaseSettings):
