@@ -125,6 +125,7 @@ def recall_articles_with_provenance(
     question: str,
     *,
     top_k: int = 3,
+    force: bool = False,
 ) -> list[RecallHit]:
     """Return validated article/annex hits with source and similarity.
 
@@ -134,9 +135,29 @@ def recall_articles_with_provenance(
     Returns `[]` on every error path (route-safe). Filters hits by the
     `REGENOLD_VECTOR_MIN_SIM` threshold and verifies the article exists
     in `ARTICLE_EXISTENCE`.
+
+    :param force: R329 — bypass the ``REGENOLD_GRAPH_VECTOR_RECALL`` env gate
+        while STILL requiring the embedding assets to be available. That gate
+        exists because this recall promotes hits toward wire references, i.e. it
+        behaves as a ranker, and a ranker can bury the operative article
+        (AGENTS.md invariant #3). The HyPA fusion path is confined to the
+        zero-anchor case, where by construction there is no anchor to bury, so
+        dense recall there is purely additive. Callers on an anchored path must
+        NOT pass this.
     """
-    if not is_enabled() or top_k <= 0:
+    if top_k <= 0:
         return []
+    if not is_enabled():
+        if not force:
+            return []
+        # Asset availability is a hard requirement even when forced.
+        try:
+            from app.engines import embeddings_index  # noqa: PLC0415
+
+            if not embeddings_index.is_available():
+                return []
+        except Exception:  # noqa: BLE001
+            return []
 
     try:
         from app.data import article_existence

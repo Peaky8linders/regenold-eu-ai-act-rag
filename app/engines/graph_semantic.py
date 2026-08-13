@@ -184,6 +184,40 @@ def _int_env(name: str, default: int, lo: int, hi: int) -> int:
         return default
 
 
+def _adaptive_int(field: str, name: str, default: int, lo: int, hi: int) -> int:
+    """R329 — HyPA per-question value for a knob, else the env/default.
+
+    Precedence: explicit env > adaptive > default. Byte-identical to
+    :func:`_int_env` when the router is off (the default).
+    """
+    try:
+        from app.engines.query_complexity_router import adaptive_int  # noqa: PLC0415
+
+        return adaptive_int(field, name, default, lo, hi)
+    except Exception:  # noqa: BLE001 — never let routing break a graph read
+        return _int_env(name, default, lo, hi)
+
+
+def _adaptive_fanout() -> int:
+    """ANN fanout, scaled by the HyPA ``kg_depth`` class when the router is on.
+
+    The paper's ``l`` (max knowledge-sequence length, Table 6: 1/2/3) has no
+    literal analogue here — this repo does not walk variable-length KG paths, it
+    does a single ANN probe over provision-unit embeddings. Traversal *breadth*
+    is the honest equivalent, so ``kg_depth`` scales the fanout around its
+    existing default: depth 1 -> 30, depth 2 -> 60, depth 3 -> 90. Class 1 maps
+    to depth 2, which reproduces ``_DEFAULT_ANN_FANOUT`` exactly, so
+    standard-tier traffic is unchanged by the wiring.
+
+    An explicit ``REGENOLD_SEMANTIC_ANN_FANOUT`` still wins outright.
+    """
+    raw = os.getenv("REGENOLD_SEMANTIC_ANN_FANOUT", "").strip()
+    if raw:
+        return _int_env("REGENOLD_SEMANTIC_ANN_FANOUT", _DEFAULT_ANN_FANOUT, 10, 200)
+    depth = _adaptive_int("kg_depth", "__unset__", 2, 1, 3)
+    return max(10, min(200, (_DEFAULT_ANN_FANOUT // 2) * depth))
+
+
 def _embed(question: str) -> list[float] | None:
     """Query vector in the SAME subspace the seeder wrote (TF-IDF -> SVD-128)."""
     try:
@@ -300,7 +334,9 @@ def fetch_focused_subprovisions(question: str, refs: list[str]) -> list[dict]:
 
         if not kg_context_enabled():
             return []
-        ids = _node_ids(refs or [], _int_env("REGENOLD_KG_MAX_REFS", 8, 1, 10))
+        ids = _node_ids(refs or [], _adaptive_int(
+            "kg_max_keywords", "REGENOLD_KG_MAX_REFS", 8, 1, 10
+        ))
         if not ids:
             return []
         emb = _embed(question)
@@ -311,9 +347,7 @@ def fetch_focused_subprovisions(question: str, refs: list[str]) -> list[dict]:
             {
                 "emb": emb,
                 "ids": ids,
-                "fanout": _int_env(
-                    "REGENOLD_SEMANTIC_ANN_FANOUT", _DEFAULT_ANN_FANOUT, 10, 200
-                ),
+                "fanout": _adaptive_fanout(),
                 "min_sim": _float_env(
                     "REGENOLD_SEMANTIC_MIN_SIM", _DEFAULT_MIN_SIM, 0.0, 1.0
                 ),

@@ -497,6 +497,79 @@ def _opus_for_all_enabled() -> bool:
     }
 
 
+BEDROCK_RAG_MODEL = "eu.anthropic.claude-sonnet-4-6"
+"""Main RAG tier (Stage-1 + Stage-2) when ``P2P_GRAPH_RAG_PROVIDER=bedrock``."""
+
+BEDROCK_COMPLEX_MODEL = "eu.anthropic.claude-opus-4-6-v1"
+"""Complex tier — the ~20% of questions ``complex_question`` flags."""
+
+
+
+def _bedrock_complete_for_graph_rag(
+    *, system: str, user: str, max_tokens: int, temperature: float,
+    complex_question: bool = False, stage_name: str = "Stage"
+) -> str | None:
+    """Execute GraphRAG Stage-1/2 completions via AWS Bedrock."""
+    try:
+        from app.llm.bedrock_client import (
+            BedrockRequest,
+            get_bedrock_provider,
+            is_bedrock_provider_enabled,
+            resolve_bedrock_model,
+        )
+    except Exception:
+        return None
+
+    if not is_bedrock_provider_enabled():
+        return None
+
+    is_stage2 = "stage 2" in (stage_name or "").lower()
+    default_model = os.getenv(
+        "REGENOLD_BEDROCK_MODEL", BEDROCK_RAG_MODEL
+    ).strip() or BEDROCK_RAG_MODEL
+
+    if complex_question:
+        model = (
+            os.getenv("REGENOLD_BEDROCK_COMPLEX_MODEL", "").strip()
+            or BEDROCK_COMPLEX_MODEL
+        )
+    elif is_stage2:
+        if _opus_for_all_enabled():
+            model = (
+                os.getenv("REGENOLD_BEDROCK_COMPLEX_MODEL", "").strip()
+                or BEDROCK_COMPLEX_MODEL
+            )
+        else:
+            model = os.getenv("REGENOLD_BEDROCK_STAGE2_MODEL", "").strip() or default_model
+
+    else:
+        model = os.getenv("REGENOLD_BEDROCK_STAGE1_MODEL", "").strip() or default_model
+
+    model_id = resolve_bedrock_model(model)
+
+    try:
+        provider = get_bedrock_provider()
+        resp = provider.complete(
+            BedrockRequest(
+                system=system,
+                user=user,
+                model=model_id,
+                max_tokens=max_tokens or 1024,
+                temperature=temperature,
+            )
+        )
+        if resp.error or not resp.text:
+            logger.warning("graph_rag.bedrock_call_failed: %s", resp.error)
+            return None
+        if _looks_structurally_truncated(resp.text):
+            logger.warning("graph_rag.bedrock_truncated_structural: falling back")
+            return None
+        return resp.text
+    except Exception as exc:
+        logger.warning("graph_rag.bedrock_exception: %s", exc)
+        return None
+
+
 def _openai_wrapper_complete_for_graph_rag(
 
     *, system: str, user: str, max_tokens: int, temperature: float,
@@ -911,11 +984,18 @@ def _stage2_complete(
                     return None
                 return resp.text
             return None
+        if env_provider == "bedrock":
+            return _bedrock_complete_for_graph_rag(
+                system=system, user=user, max_tokens=max_tokens,
+                temperature=temperature, complex_question=complex_question,
+                stage_name=stage_name,
+            )
         return _openai_wrapper_complete_for_graph_rag(
             system=system, user=user, max_tokens=max_tokens,
             temperature=temperature, complex_question=complex_question,
             stage_name=stage_name,
         )
+
     except Exception:  # noqa: BLE001 — an auxiliary call must never break Stage-2
         logger.debug("stage2_complete failed", exc_info=True)
         return None
@@ -1147,6 +1227,19 @@ def _stage2_provider_enabled() -> bool:
         result = is_gemini_provider_enabled()
         logger.debug("Stage2 gemini provider enabled: %s", result)
         return result
+    if env_value == "bedrock":
+        try:
+            from app.llm.bedrock_client import is_bedrock_provider_enabled
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "Stage2 bedrock selected but boto3 is not installed — "
+                "falling back to the deterministic path. Add boto3 to requirements."
+            )
+            return False
+        result = is_bedrock_provider_enabled()
+        logger.debug("Stage2 bedrock provider enabled: %s", result)
+        return result
+
     if env_value == "anthropic":
         try:
             from app.config import settings
@@ -1721,10 +1814,25 @@ def _is_role_contrast_obligation(text_lower: str) -> bool:
 # legal-list phrasing. davidath byte-identical (its lists never use an Oxford
 # comma); each ``(?:sep)+`` iteration consumes a required connector char, so the
 # bounded ``{0,8}`` stays ReDoS-safe.
+#
+# R329 SECURITY — the "ReDoS-safe" claim above was wrong. ``\s*`` appeared on
+# BOTH sides of the separator alternation, so the trailing ``\s*`` of iteration
+# k and the leading ``\s*`` of iteration k+1 competed for the same whitespace
+# run, giving 2^n ways to split it and exponential backtracking whenever the
+# tail failed to match. Measured over HTTP before the fix: a **73-byte** body
+# ("What does Art 1" + " , "*16 + "X require?") burned **25.6 s** of server CPU,
+# scaling ~9x per two extra separators; the route handler is sync, so a handful
+# of such requests exhausts the threadpool. The bounded ``{0,8}`` does not help
+# because the blowup is in the inner ``+`` run, not the outer repetition.
+#
+# Fix: hoist the trailing ``\s*`` OUT of the ``+``. Each iteration is now
+# ``\s*`` + a required connector token, so the whitespace split is determined
+# rather than ambiguous. Accepted language is unchanged — whitespace before the
+# number is still consumed, so the Oxford-comma form ", and 15" still matches.
 _MULTI_ARTICLE_MENTION_RE = re.compile(
     # Art / Art. / Arts / Arts. / Article / Articles / Artikel(s) / Artikeln.
     r"\bArt(?:icles?|ikels?|ikeln|s)?\.?\s*"
-    r"(\d{1,3}\b(?:(?:\s*(?:,|&|/|\band\b|\bor\b)\s*)+\d{1,3}\b){0,8})",
+    r"(\d{1,3}\b(?:(?:\s*(?:,|&|/|\band\b|\bor\b))+\s*\d{1,3}\b){0,8})",
     re.IGNORECASE,
 )
 
@@ -1742,9 +1850,12 @@ _MULTI_ARTICLE_MENTION_RE = re.compile(
 # word after a connector, e.g. "Annex III, CE marking" -> "III","C") is left
 # as-is: the bogus token yields no ``EC_CHECKER_OBLIGATION_MAP`` entry, so it
 # surfaces no obligation and is dropped by the wire's existence gate — inert.
+# R329 SECURITY — identical two-sided ``\s*`` ambiguity, identical measured
+# curve (28.6 s at 16 separators). Same fix: trailing ``\s*`` hoisted out of the
+# ``+``. Accepted language unchanged.
 _MULTI_ANNEX_MENTION_RE = re.compile(
     r"\bAnnex(?:es)?\s+"
-    r"([IVXLC]+(?:(?:\s*(?:,|&|/|\band\b|\bor\b)\s*)+[IVXLC]+){0,8})",
+    r"([IVXLC]+(?:(?:\s*(?:,|&|/|\band\b|\bor\b))+\s*[IVXLC]+){0,8})",
     re.IGNORECASE,
 )
 
@@ -5850,8 +5961,25 @@ def _needs_stage2_enhancement(
         if query.intent in ("gap_analysis", "cross_framework"):
             return True
         # Multiple referenced articles → comparison / multi-obligation scope.
+        #
+        # R329 — reverted an "explicit entity" narrowing that was structurally
+        # dead. It required ``e in question or e.startswith("Article ")``, but
+        # ``query.entities`` is ALWAYS internal short form (``Art. N`` /
+        # ``Annex X``, see ``_deterministic_parse``), so the second disjunct can
+        # never hold, and the first demands the user literally type "Art. 9".
+        # Measured over all 476 davidath questions: the old rule fired 346
+        # times (72.7%), the narrowed rule fired **0** times. That is not a
+        # narrowing, it is a removal.
+        #
+        # Currently reachable only when ``REGENOLD_STAGE2_SIMPLE_SKIP=1``
+        # (default OFF, and it must stay off — flipping it moved refs
+        # 0.75 -> 0.47), so the dead predicate was a latent landmine rather
+        # than a live regression: the moment that flag is flipped for the A/B
+        # its docstring contemplates, every multi-article synthesis question
+        # would silently lose Stage-2 polish.
         if len(query.entities) >= 3:
             return True
+
 
     # Isolate the live part of the question (drop history preamble if present)
     live_q = (
@@ -7435,7 +7563,14 @@ def _claude_max_enhance_answer(
         _env_provider = force_provider or os.getenv("P2P_GRAPH_RAG_PROVIDER", "").strip().lower()
         _use_anthropic_sdk = False
         _use_gemini = False
-        if _env_provider == "anthropic":
+        _use_bedrock = False
+        if _env_provider == "bedrock":
+            try:
+                from app.llm.bedrock_client import is_bedrock_provider_enabled
+                _use_bedrock = is_bedrock_provider_enabled()
+            except Exception:  # noqa: BLE001
+                _use_bedrock = False
+        elif _env_provider == "anthropic":
             try:
                 from app.config import settings as _s  # noqa: PLC0415
                 _use_anthropic_sdk = _s.graph_rag.api_key is not None
@@ -7444,6 +7579,7 @@ def _claude_max_enhance_answer(
         elif _env_provider == "gemini":
             from app.llm.openai_wrapper_provider import is_gemini_provider_enabled
             _use_gemini = is_gemini_provider_enabled()
+
 
         # R277 — arm-C minimal-composer variant (env REGENOLD_MINIMAL_COMPOSER,
         # default OFF → ANSWER_GENERATE_SYSTEM, byte-identical). Fresh env
@@ -7562,6 +7698,15 @@ def _claude_max_enhance_answer(
                 text_raw = None
             else:
                 text_raw = resp.text
+        elif _use_bedrock:
+            text_raw = _bedrock_complete_for_graph_rag(
+                system=system_prompt,
+                user=user_message,
+                max_tokens=max_tokens,
+                temperature=0.0,
+                complex_question=complex_q,
+                stage_name="Stage 2 (Polishing)"
+            )
         else:
             text_raw = _openai_wrapper_complete_for_graph_rag(
                 system=system_prompt,
@@ -7571,6 +7716,7 @@ def _claude_max_enhance_answer(
                 complex_question=complex_q,
                 stage_name="Stage 2 (Polishing)"
             )
+
 
         if text_raw is None and not _use_gemini and not _fusion_used:
             try:
@@ -8202,6 +8348,121 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
     """
     # Stage 1 — Parse: always deterministic (ontology/taxonomy/KB, no LLM cost)
     query = _deterministic_parse(request.question)
+
+    # HyPA-RAG Adaptive Router & Hybrid RRF Retrieval Integration
+    comp_params = None
+    try:
+        from app.engines.query_complexity_router import (  # noqa: PLC0415
+            classify_query_complexity,
+            is_adaptive_router_enabled,
+            set_active_parameters,
+        )
+        from app.engines.hybrid_rrf_retriever import (  # noqa: PLC0415
+            canonicalize_to_internal_ref,
+            fuse_sparse_dense_candidates,
+            is_rrf_retrieval_enabled,
+        )
+
+        # R329 — clear any binding left by a previous call on this context
+        # BEFORE reclassifying, so a stale classification can never be read by a
+        # request whose own classification failed. Unconditional, so the
+        # router-off path actively clears rather than merely not-setting.
+        set_active_parameters(None)
+
+        if is_adaptive_router_enabled():
+            h_turn = getattr(request, "history_turn_count", 1) or 1
+            comp_params = classify_query_complexity(request.question, h_turn)
+
+            # R329 — publish the classification for the rest of the request.
+            # Four of the five HyPA parameters (query_rewrites, kg_max_keywords,
+            # kg_depth, kg_max_units) are consumed far downstream — in
+            # kg_context, graph_semantic and sufficient_context — which read
+            # them from the environment. Binding them here is what makes the
+            # paper's actual claim (§7: the classifier tunes KG and rewriter
+            # parameters, not only top-k) real rather than decorative.
+            # ContextVar => per-request, no cross-request leakage.
+            set_active_parameters(comp_params)
+
+            # R329 — honour the ``if not entities:`` gate that
+            # ``_deterministic_parse`` applies to BM25 (see the comment at the
+            # keyword-fallback site). That gate is load-bearing: for a question
+            # like "Summarise EU AI Act Art. 13" the anchor is already
+            # extracted, but the literal tokens "eu"/"ai"/"act" score against
+            # many unrelated rows, so surfacing them pollutes the citation set.
+            # Running BM25 unconditionally reproduced exactly that failure
+            # (measured: engine citations 2.60 -> 9.00 mean, QA Ref Conciseness
+            # -0.2094). Fusion is therefore confined to the zero-anchor case,
+            # where BM25 is already the primary signal and adaptive ``top_k``
+            # is a genuinely untested slice.
+            if is_rrf_retrieval_enabled() and not query.entities:
+                # Perform sparse BM25 candidate lookup
+                from app.data.kb_search import top_articles_by_relevance  # noqa: PLC0415
+
+                bm25_candidates = top_articles_by_relevance(
+                    request.question, k=comp_params.top_k_dense
+                )
+                bm25_refs = [
+                    art for art in bm25_candidates
+                    if isinstance(art, str) and art.strip()
+                ]
+
+                # Perform dense vector recall lookup
+                vector_refs: list[str] = []
+                try:
+                    from app.engines.vector_recall import (  # noqa: PLC0415
+                        recall_articles_with_provenance,
+                    )
+
+                    # R329 — force the dense arm on. Without this the whole
+                    # "hybrid sparse+dense" claim degenerates to BM25 + role
+                    # seeds, because REGENOLD_GRAPH_VECTOR_RECALL defaults OFF.
+                    # Safe here and only here: this branch is gated on
+                    # ``not query.entities``, so there is no anchor for a dense
+                    # hit to bury. Assets are still required (see ``force``).
+                    v_hits = recall_articles_with_provenance(
+                        request.question,
+                        top_k=comp_params.top_k_dense,
+                        force=True,
+                    )
+                    vector_refs = [
+                        hit.ref for hit in v_hits if hasattr(hit, "ref") and hit.ref
+                    ]
+                except Exception:  # noqa: BLE001
+                    vector_refs = []
+
+                # Role seed candidates already in query.entities
+                role_seed_refs = list(query.entities)
+
+                # Fuse sparse, dense, and role seed candidates via RRF
+                fused_entities = fuse_sparse_dense_candidates(
+                    bm25_refs=bm25_refs,
+                    vector_refs=vector_refs,
+                    role_seed_refs=role_seed_refs,
+                    top_k=comp_params.top_k_dense,
+                )
+                if fused_entities:
+                    # R329 — originals stay FIRST and VERBATIM.
+                    #
+                    # The previous form canonicalised every pre-existing entity
+                    # to its head, which (a) destroyed sub-point grain that the
+                    # KB distinguishes -- EC_CHECKER_OBLIGATION_MAP holds
+                    # different text for "Art. 50" vs "Art. 50.1" vs "Art. 50.2"
+                    # -- and (b) put BM25 candidates ahead of anchors that
+                    # _deterministic_parse deliberately ordered (R63-A/R127/R137)
+                    # and that downstream top-N truncation reads positionally.
+                    # Measured cost of the old form on davidath QA: Ref
+                    # Conciseness -0.2094, one gold ref dropped.
+                    combined = list(query.entities)
+                    seen = {canonicalize_to_internal_ref(e) or e for e in combined}
+                    seen.update(combined)
+                    for e in fused_entities:
+                        norm_e = canonicalize_to_internal_ref(e) or e
+                        if norm_e not in seen:
+                            combined.append(norm_e)
+                            seen.add(norm_e)
+                    query.entities = combined
+    except Exception as exc:  # noqa: BLE001 — fail-soft: never block retrieval
+        logger.debug("hypa_rag_integration_failed: %s", exc)
 
     # Override risk context if provided in request
     if request.risk_level:

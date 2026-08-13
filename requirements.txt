@@ -34,6 +34,10 @@ psycopg[binary]>=3.2.0
 # so the wire contract never breaks.
 anthropic>=0.40.0
 
+# R328 — AWS SDK for the Bedrock EU cross-region inference path.
+boto3>=1.35.0
+
+
 # Round 35 — Neo4j Python driver for the optional graph-RAG path.
 # Activated only when ``NEO4J_URI`` is set on the deploy (Neo4j Aura
 # or self-hosted). ``app.graph.client`` lazily imports + soft-fails

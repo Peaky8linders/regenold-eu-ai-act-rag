@@ -1543,10 +1543,10 @@ def _build_article_pack(role: str, risk_level: str) -> tuple[str, ...]:
     base = _RISK_ARTICLES.get(risk_level, ())
     if risk_level == "prohibited":
         bolt = _ROLE_PROHIBITED_ARTICLES.get(role, ())
-    elif risk_level in ("high-risk", "high-risk-annex-i"):
-        # R124-MedTech — Annex I systems carry the same role-specific
-        # obligation set as Annex III high-risk systems (Art. 16/17/49
-        # for providers, Art. 26/27 for deployers, etc.).
+    elif risk_level == "high-risk-annex-i":
+        # Annex I medical device systems do NOT carry Art. 27 FRIA (Art 27(1) applies to Annex III)
+        bolt = tuple(a for a in _ROLE_HIGHRISK_ARTICLES.get(role, ()) if a != "Art. 27")
+    elif risk_level == "high-risk":
         bolt = _ROLE_HIGHRISK_ARTICLES.get(role, ())
     elif risk_level in ("limited", "art6_3_derogated"):
         bolt = _ROLE_LIMITED_ARTICLES.get(role, ())

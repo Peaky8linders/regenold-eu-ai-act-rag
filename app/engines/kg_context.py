@@ -126,6 +126,24 @@ def _int_env(name: str, default: int, lo: int, hi: int) -> int:
         return default
 
 
+def _adaptive_int(field: str, name: str, default: int, lo: int, hi: int) -> int:
+    """R329 — HyPA per-question value for a graph knob, else the env/default.
+
+    Precedence is explicit env > adaptive > default (see
+    :func:`app.engines.query_complexity_router.adaptive_int`). With the router
+    off — the default — this is byte-identical to :func:`_int_env`.
+
+    Soft-fails to :func:`_int_env` so a graph read can never break on an import
+    problem in an optional routing module.
+    """
+    try:
+        from app.engines.query_complexity_router import adaptive_int  # noqa: PLC0415
+
+        return adaptive_int(field, name, default, lo, hi)
+    except Exception:  # noqa: BLE001 — never let routing break graph context
+        return _int_env(name, default, lo, hi)
+
+
 # ── Ref parsing ──────────────────────────────────────────────────────────────
 
 _ART_RE = re.compile(r"\bArt(?:s?\.|icles?|s)?\s*(\d{1,3})", re.IGNORECASE)
@@ -331,8 +349,8 @@ def fetch_provision_hierarchy(refs: list[str]) -> list[dict]:
     """Paragraph/point breakdown of cited provisions from Neo4j."""
     if not kg_context_enabled():
         return []
-    max_refs = _int_env("REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 20)
-    max_units = _int_env("REGENOLD_KG_MAX_UNITS", _DEFAULT_MAX_UNITS, 1, 100)
+    max_refs = _adaptive_int("kg_max_keywords", "REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 20)
+    max_units = _adaptive_int("kg_max_units", "REGENOLD_KG_MAX_UNITS", _DEFAULT_MAX_UNITS, 1, 100)
     ids = _node_ids(refs, limit=max_refs)
     if not ids:
         return []
@@ -349,7 +367,7 @@ def fetch_recital_anchors(refs: list[str]) -> list[dict]:
     """Interpretive recitals for cited provisions."""
     if not kg_context_enabled():
         return []
-    max_refs = _int_env("REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 20)
+    max_refs = _adaptive_int("kg_max_keywords", "REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 20)
     max_recitals = _int_env("REGENOLD_KG_MAX_RECITALS", _DEFAULT_MAX_RECITALS, 1, 20)
     ids = _node_ids(refs, limit=max_refs)
     if not ids:
@@ -367,8 +385,8 @@ def fetch_subpoint_detail(refs: list[str]) -> list[dict]:
     """Sub-point detail (paragraph -> point -> subpoint) for cited provisions."""
     if not kg_context_enabled():
         return []
-    max_refs = _int_env("REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 20)
-    max_units = _int_env("REGENOLD_KG_MAX_UNITS", _DEFAULT_MAX_UNITS, 1, 100)
+    max_refs = _adaptive_int("kg_max_keywords", "REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 20)
+    max_units = _adaptive_int("kg_max_units", "REGENOLD_KG_MAX_UNITS", _DEFAULT_MAX_UNITS, 1, 100)
     ids = _node_ids(refs, limit=max_refs)
     if not ids:
         return []
@@ -385,7 +403,7 @@ def fetch_deontic_context(refs: list[str]) -> list[dict]:
     """Regulatory classifications attached to cited provisions."""
     if not kg_context_enabled():
         return []
-    max_refs = _int_env("REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 20)
+    max_refs = _adaptive_int("kg_max_keywords", "REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 20)
     ids = _node_ids(refs, limit=max_refs)
     if not ids:
         return []
@@ -622,7 +640,7 @@ def _budget_context_parts(parts: list[str], total_limit: int) -> tuple[list[str]
 
 
 def fetch_cross_regulatory_context(refs: list[str]) -> list[dict]:
-    """Cross-regulatory mappings (e.g. GDPR, EU Charter) for cited provisions."""
+    """Cross-regulatory mappings (e.g. GDPR, EU Charter, MDR/IVDR) for cited provisions."""
     if not kg_context_enabled():
         return []
     ids = _node_ids(refs, limit=8)
@@ -633,6 +651,8 @@ def fetch_cross_regulatory_context(refs: list[str]) -> list[dict]:
         out.append({"cite": "Article 10", "framework": "GDPR", "ref": "GDPR Art. 35", "topic": "Data Governance"})
     if "article_27" in ids:
         out.append({"cite": "Article 27", "framework": "EU_Charter", "ref": "EU Charter Art. 47", "topic": "Fundamental Rights Impact Assessment"})
+    if "article_6" in ids or "annex_I" in ids:
+        out.append({"cite": "Article 6(1)", "framework": "MDR_IVDR", "ref": "MDR (EU) 2017/745 / IVDR (EU) 2017/746", "topic": "Safety Components & Harmonised Sectoral Conformity Assessment"})
     return out
 
 
@@ -727,6 +747,20 @@ def render_kg_context(refs: list[str], question: str = "") -> list[str]:
             "(role duties, risk categories and lifecycle phases attached to the "
             "provisions above — non-citable structural context):\n"
             + "\n".join(deontic_lines)
+        )
+    try:
+        cross_reg = fetch_cross_regulatory_context(refs)
+    except Exception:  # noqa: BLE001
+        cross_reg = []
+    cr_lines = [
+        f"- {item.get('cite')}: {item.get('framework')} ({item.get('ref')}) — {item.get('topic')}"
+        for item in cross_reg if item.get('cite')
+    ]
+    if cr_lines:
+        parts.append(
+            "\nKNOWLEDGE-GRAPH CROSS-REGULATORY MAPPINGS "
+            "(framework mappings to GDPR, EU Charter, MDR/IVDR — non-citable context):\n"
+            + "\n".join(cr_lines)
         )
 
     try:
