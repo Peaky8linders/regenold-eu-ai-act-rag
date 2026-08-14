@@ -46,6 +46,26 @@ Verify live wrapper connectivity via `curl http://127.0.0.1:8000/healthz/llm`.
 
 ---
 
+## ⛔ The deterministic suites are OFF as gates (operator directive, R330)
+
+**Do not block a change on `evals.bench.runner` (davidath 476) or
+`evals.regenold.runner` (the 276 scenarios). Do not run them by default.**
+
+* **davidath** is a *regression guard*, never a win-measure, and costs ~9 min a run. Its
+  gold is article-ints-only, so sub-point and Annex-grain changes are invisible to it.
+* **the 276-scenario runner** is older still and largely superseded — treat its output as
+  stale unless you have first confirmed the specific scenarios you care about are current.
+
+**The merge gate is the live pairwise A/B** (`evals.harness.ab_judge` /
+`evals.harness.easyhard_ab`), scored by the grounded judge (`evals/judge/grounded.py`)
+against verbatim Act text. That is the only instrument that measures what the competition
+measures. Run a deterministic suite only when a change is *expected* to move deterministic
+retrieval and you specifically want the before/after — and say so explicitly.
+
+R330 ran davidath four times to isolate the `.env` coupling below; that job is done and the
+result was byte-identical to the reference table. The table is kept for provenance, not as
+a thing to reproduce on every change.
+
 ## Baseline Performance Reference (Commit `b47c259`)
 
 Deterministic environment: `OPENAI_API_BASE=http://127.0.0.1:1/v1 P2P_GRAPH_RAG_PROVIDER=cli REGENOLD_EXTERNAL_EMBEDDINGS=0`
@@ -57,6 +77,32 @@ Deterministic environment: `OPENAI_API_BASE=http://127.0.0.1:1/v1 P2P_GRAPH_RAG_
 | **Scenarios (339)** | 0.2076 | 0.3332 | 0.7833 | 0.4992 | 0.4430 | 0.4287 | 1.0 |
 
 Multi-turn coherence: **20/20 coherent**.
+
+> **R330 — the bench measures CODE DEFAULTS, never your `.env`.** R329's
+> `_load_dotenv_once()` (`app/config.py`, added to fix the "No Conn" UI bug) put the
+> repo `.env` into `os.environ` at **import time**. `.env` carries BEHAVIOURAL flags
+> (`REGENOLD_ROLE_DUTY_NOUN_SEED`, `REGENOLD_GRAPH_2HOP`, `REGENOLD_MAX_ANSWER_SENTENCES`
+> …) next to credentials, so from that commit on the guard silently scored whatever a
+> developer happened to have locally. Measured cost on the full 476:
+>
+> | arm | Ref Loose | Ref Strict | multi-turn |
+> | :--- | :--- | :--- | :--- |
+> | code defaults | 0.5971 | 0.4748 | 20/20 |
+> | `REGENOLD_ROLE_DUTY_NOUN_SEED=1` alone | 0.5971 | 0.4633 | 20/20 |
+> | the full local `.env` | 0.5735 | 0.4489 | 13/20 |
+>
+> This looked exactly like a **−0.026 Ref Strict / −45 pp coherence regression across 15
+> commits that are in fact behaviourally neutral.** 13 of the 14 flags are individually
+> inert; `ROLE_DUTY_NOUN_SEED` alone costs −0.0114 Ref Strict and the rest is interaction.
+> `evals/bench/runner.py` now sets `REGENOLD_SKIP_DOTENV=1` before the first `app` import,
+> which reproduces the table above byte-for-byte. Set `REGENOLD_SKIP_DOTENV=0` for a
+> deliberate `.env`-on arm. **Live harnesses are unaffected — they still need `.env` for
+> `OPENAI_API_BASE` + `CF_ACCESS_*`.** Production is unaffected either way (Railway sets
+> real env vars and `override=False` already makes those win).
+>
+> ⚠ **Open operator question:** does the Railway dashboard carry the same behavioural
+> flags? If yes, production pays this cost. If no, local evals do not predict production.
+> Neither is acceptable silently — reconcile the two flag sets.
 
 ---
 
