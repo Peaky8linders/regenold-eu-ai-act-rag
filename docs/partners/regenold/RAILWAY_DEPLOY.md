@@ -2,17 +2,33 @@
 
 Production URL: `https://regenold-eu-ai-act-rag-production.up.railway.app`
 
-## Always redeploy policy
+> ⚠ **THIS REPO IS NOT `api.antifragile-ai.net`.** That host serves a DIFFERENT
+> application — *"EU AI Act – Path to Production API"*, 456 routes — which happens to
+> expose its own `/api/v1/regenold/eu-ai-act/ask`. This standalone service has a handful
+> of routes and owns `/app` (the Lexy UI) and `/lexy_avatar.png`, which the other host
+> does not have. R330 verified `/app` on `api.antifragile-ai.net` returns 404 and briefly
+> misread that as the UI failing to register here; on the real host above it is 200. This
+> is the "TWO app copies" gotcha — **always confirm the host before diagnosing prod.**
 
-After every push to **`main`** that should reach production, a redeploy must run. This repo enforces that with:
+## Redeploy: it is automatic, on push to `main`
 
-1. **GitHub Actions** — `.github/workflows/railway-redeploy.yml` runs on every `push` to `main` (and manual `workflow_dispatch`).
-2. **Agents** — `.cursor/rules/railway-redeploy.mdc` (`alwaysApply: true`).
-3. **Manual fallback** — `scripts/redeploy-railway.ps1`.
+**Railway's GitHub integration auto-deploys this service on every push to `main`.** That is
+the mechanism. Merging a PR to `main` IS the deploy — verified R330: the merge of #339 was
+live on the production URL with no manual step.
 
-Railway may also auto-deploy from GitHub when the service is connected; the workflow is an explicit **second hook** so merges are never “forgotten” without a deploy attempt.
+⚠ **The GitHub Actions hook described here until R330 no longer exists.**
+`.github/workflows/railway-redeploy.yml` was **deleted in `bc63f86`** (R127) after failing
+on every `main` push for eight seconds apiece — `RAILWAY_TOKEN` was never added as a repo
+secret, so the job exited 1 at its own guard. There is no `.github/workflows/` directory in
+this repo at all. Do not go looking for a workflow run to confirm a deploy; check the
+production URL instead (see **Verify** below).
 
-## One-time GitHub setup
+`.cursor/rules/railway-redeploy.mdc` describes the same dead hook.
+
+## Optional: restore the explicit CI hook
+
+Only needed if you want a second, explicit deploy attempt rather than relying on Railway's
+own integration. It requires re-creating the workflow file AND adding the secret:
 
 1. Create a Railway account token: [railway.com/account/tokens](https://railway.com/account/tokens)
 2. In GitHub: **Settings → Secrets and variables → Actions**, add:
@@ -25,8 +41,6 @@ Railway may also auto-deploy from GitHub when the service is connected; the work
 | `RAILWAY_PROJECT_ID` | Optional | Disambiguate multi-project tokens |
 
 Find service/project IDs in the Railway dashboard URL or via `npx @railway/cli status` after `railway link`.
-
-Until `RAILWAY_TOKEN` is set, the workflow **fails on purpose** on each `main` push — configure secrets before relying on CI.
 
 ## Local redeploy (Windows)
 
@@ -50,13 +64,24 @@ npx @railway/cli redeploy --yes --from-source
 curl https://regenold-eu-ai-act-rag-production.up.railway.app/healthz
 curl https://regenold-eu-ai-act-rag-production.up.railway.app/healthz/llm
 curl https://regenold-eu-ai-act-rag-production.up.railway.app/healthz/graph
+curl https://regenold-eu-ai-act-rag-production.up.railway.app/app   # 200 = this service
 ```
+
+To confirm a *specific* commit is live, grep the deployed `/app` HTML for a string your
+change introduced — that is what settled R330 (the corrected Annex III tooltip, "eight
+high-risk use-case categories", was present on the production URL minutes after merge).
+`/healthz/graph` also returns `seed_version` + `kb_version` + live node counts.
 
 Boot log (Railway): `regenold.startup provider=...` unless `REGENOLD_SKIP_STARTUP_LOG=1`.
 
 ## `railway.toml`
 
-Root `railway.toml` sets start command, healthcheck path, and default `[deploy.envs]`. **Dashboard service variables override** `[deploy.envs]` — see R80.2 notes in `CLAUDE.md`.
+Root `railway.toml` sets start command and healthcheck path.
+
+⚠ **`[deploy.envs]` is INERT and always has been** — Railway's `[deploy]` schema has no
+`envs` key, so the block was never read (it is not "overridden by the dashboard", which was
+the R80.2 reading). All runtime defaults must be **code defaults** in Python. Set real
+values on the Railway service. See the R306 note in `railway.toml` itself.
 
 ## Graph backend (R98: Neo4j Aura is default again)
 
