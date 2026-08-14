@@ -24,12 +24,28 @@ that ran them.
 
 Live HARD, n=40, Claude Max wrapper, graded by the grounded Sonnet-5 judge vs verbatim Act text.
 
-| axis | R329 (before) | R330 (gates ON) | delta |
-| --- | --- | --- | --- |
-| **answer_correctness** | 0.6250 | **0.8750** | **+0.2500** |
-| mean factual score | 0.8807 | **0.9738** | +0.0931 |
-| reference_correctness | 0.2250 | **0.3250** | +0.1000 |
-| citation_faithfulness | 0.8000 | **0.8500** | +0.0500 |
+**TWO post-fix arms, same configuration** (R331's rerank ships OFF), so their spread is
+run-to-run variance. Error-adjusted (`pass_rate_over_non_error`):
+
+| axis | before | post-fix A | post-fix B | mean | spread | gain |
+| --- | --- | --- | --- | --- | --- | --- |
+| **answer_correctness** | 0.6250 | 0.8750 | 0.8205 | **0.8478** | 0.055 | **+0.223** |
+| reference_correctness | 0.2368 | 0.3333 | 0.2632 | 0.2983 | 0.070 | +0.062 |
+| citation_faithfulness | 0.8000 | 0.8500 | 0.8462 | 0.8481 | 0.004 | +0.048 |
+
+⚠ **The single-arm figures first reported (+0.2500 / +0.1000) were OPTIMISTIC.** The second
+arm revised them down. Read the three axes differently:
+
+* **answer_correctness +0.223 — SOLID.** Spread 0.055 sits well inside the gain; both arms
+  clear the baseline by a wide margin.
+* **citation_faithfulness +0.048 — SOLID.** Spread 0.004, the tightest axis.
+* **reference_correctness +0.062 — NOT RESOLVABLE.** The spread (0.070) EXCEEDS the gain and
+  arm B (0.2632) is barely above baseline (0.2368). This is the recorded n=40 noise floor:
+  identical arms have previously drifted 0.053 and sign-flipped all three ref axes. **Treat
+  the reference gain as unproven.**
+
+What survives variance is the deterministic part: july7-265 and july7-259 reproduce
+BYTE-IDENTICALLY across both arms, and max refs is 11 -> 5 in both.
 
 Wire metrics across three independent arms:
 
