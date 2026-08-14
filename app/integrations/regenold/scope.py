@@ -252,8 +252,8 @@ def find_nonexistent_provisions(text: str) -> tuple[str, ...]:
 # is a legitimate and common question.
 _FOREIGN_AI_LAW_RE = re.compile(
     r"\b("
-    r"colorado\s+ai\s+act|california\s+ai\s+(?:act|law)|texas\s+(?:ai|responsible\s+ai)"
-    r"|illinois\s+(?:ai|artificial\s+intelligence)\s+(?:act|law)"
+    r"colorado\s+(?:ai\s+act|sb\s*24-205|sb\s*205|ai\s+bill|ai\s+law)|california\s+(?:ai\s+(?:act|law|bill)|sb\s*1047|ab\s*2013|ab\s*3211)|texas\s+(?:ai|responsible\s+ai|hb\s*2060)"
+    r"|illinois\s+(?:ai|artificial\s+intelligence)\s+(?:act|law|hb\s*3773)"
     r"|new\s+york\s+city\s+local\s+law\s+144|nyc\s+local\s+law\s+144"
     r"|utah\s+artificial\s+intelligence"
     r"|executive\s+order\s+(?:on\s+)?(?:the\s+safe|ai\b)|white\s+house\s+executive\s+order"

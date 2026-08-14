@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Any, Iterable
 
 
 # ── Tokenisation ─────────────────────────────────────────────────────────
@@ -314,26 +314,45 @@ def answer_conciseness(pred: str, gold: str) -> float:
 # ── 4+5: Reference correctness ───────────────────────────────────────────
 
 
-def _gold_ref_set(relevant_article: int | list[int] | list[str] | None) -> set[str]:
+def _gold_ref_set(
+    relevant_article: int | str | list[int] | list[str] | tuple | set | None,
+) -> set[str]:
     """Normalise the gold reference field across QA + scenarios shapes.
 
     * qa_pairs.json: ``relevant_article`` is an int.
     * scenarios.json: ``related_articles`` is a list[int].
     * gemini-code-*.json: expected_refs is a list[str].
+    * bare strings, sets, tuples, and mixed lists are also supported.
     """
     if relevant_article is None:
         return set()
     if isinstance(relevant_article, int):
         return {f"Article {relevant_article}"}
-    if isinstance(relevant_article, list):
-        if len(relevant_article) > 0 and isinstance(relevant_article[0], str):
-            out = set()
-            for r in relevant_article:
-                if not r: continue
-                h = article_head(r)
-                if h: out.add(h)
-            return out
-        return {f"Article {int(a)}" for a in relevant_article if a is not None}
+    if isinstance(relevant_article, str):
+        h = article_head(relevant_article)
+        if h:
+            return {h}
+        try:
+            return {f"Article {int(relevant_article.strip())}"}
+        except (ValueError, TypeError):
+            return set()
+    if isinstance(relevant_article, (list, tuple, set)):
+        out: set[str] = set()
+        for a in relevant_article:
+            if a is None:
+                continue
+            if isinstance(a, int):
+                out.add(f"Article {a}")
+            elif isinstance(a, str):
+                h = article_head(a)
+                if h:
+                    out.add(h)
+                else:
+                    try:
+                        out.add(f"Article {int(a.strip())}")
+                    except (ValueError, TypeError):
+                        pass
+        return out
     return set()
 
 
@@ -527,6 +546,33 @@ def reference_conciseness(
     # conciseness so the rubric is internally consistent).
     ratio = min(lp, lg) / max(lp, lg)
     return ratio * ratio
+
+
+def gold_dropped_head(
+    pred_refs: list[str], gold_articles: int | list[int] | list[str] | None
+) -> dict[str, Any]:
+    """Gold article/annex HEADS the prediction failed to cite.
+
+    The coarse half of the hard-rule-#8 instrument. Both gold and predicted
+    references are folded onto their article/annex HEAD before comparison —
+    ``_gold_ref_set`` already head-projects, and predicted refs go through
+    ``article_heads``. So a MORE precise prediction than gold (gold
+    ``Article 5``, predicted ``Article 5.1.f``) does NOT count as a drop
+    here: the head is covered.
+
+    Returns ``gold_count`` (size of the head-level gold set), ``dropped_count``
+    (what a per-arm summary sums), and ``dropped_refs`` (the actual list, so
+    a regression is diagnosable from a stored sidecar without re-running the
+    probe).
+    """
+    gold = _gold_ref_set(gold_articles)
+    pred_heads = article_heads(pred_refs)
+    dropped = sorted(gold - pred_heads)
+    return {
+        "gold_count": len(gold),
+        "dropped_count": len(dropped),
+        "dropped_refs": dropped,
+    }
 
 
 # ── 8: Regulatory tone ───────────────────────────────────────────────────

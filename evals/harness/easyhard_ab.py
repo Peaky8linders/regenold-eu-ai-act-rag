@@ -90,14 +90,18 @@ def _keyword_recall(answer: str, expected: list[str]) -> float:
     return sum(1 for k in expected if k.lower() in low) / len(expected)
 
 
-def _score_row(row: ProbeRow, answer: str, refs: list[str]) -> dict[str, float]:
+def _score_row(row: ProbeRow, answer: str, refs: list[str]) -> dict[str, Any]:
     gold = list(row.expected_refs or [])
+    gd_head = bench_metrics.gold_dropped_head(refs, gold)
     return {
         "ref_loose": bench_metrics.reference_correctness_loose(refs, gold),
         "ref_strict": bench_metrics.reference_correctness_strict(refs, gold),
         "ref_conc": bench_metrics.reference_conciseness(refs, gold),
         "tone": bench_metrics.regulatory_tone(answer),
         "kw_recall": _keyword_recall(answer, list(row.expected_keywords or [])),
+        "gold_dropped_head": float(gd_head["dropped_count"]),
+        "gold_dropped_head_gold_count": float(gd_head["gold_count"]),
+        "gold_dropped_head_refs": gd_head["dropped_refs"],
     }
 
 
@@ -115,8 +119,16 @@ def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
     out["latency_p50_ms"] = lat[len(lat) // 2]
     out["latency_p90_ms"] = lat[int(len(lat) * 0.9)] if len(lat) > 1 else lat[0]
     n_pred = sum(len(bench_metrics.article_heads(r["pred_refs"])) for r in ok)
-    n_gold = sum(len(bench_metrics.article_heads(r["gold_refs"])) for r in ok)
+    n_gold = sum(len(bench_metrics._gold_ref_set(r.get("gold_refs"))) for r in ok)
     out["pred_gold_ratio"] = (n_pred / n_gold) if n_gold else 0.0
+    # R332 — gold_dropped_head is a SUM (not mean) so the gate is "drop ZERO".
+    # .get(..., 0) backward-compat: pre-R332 .ckpt.jsonl rows lack the key.
+    out["gold_dropped_head"] = sum(
+        int(r["scores"].get("gold_dropped_head", 0)) for r in ok
+    )
+    out["gold_dropped_head_gold_count"] = sum(
+        int(r["scores"].get("gold_dropped_head_gold_count", 0)) for r in ok
+    )
     return out
 
 
@@ -212,9 +224,18 @@ def _report(label: str, base: dict[str, Any], branch: dict[str, Any] | None) -> 
             for a in _AXES:
                 print(f"  {a:<12}{b[a]:>9.4f}")
             print(f"  {'pred:gold':<12}{b['pred_gold_ratio']:>9.2f}")
+            print(
+                f"  {'gold_drop_hd':<12}"
+                f"{int(b.get('gold_dropped_head', 0)):>4d} of "
+                f"{int(b.get('gold_dropped_head_gold_count', 0))} gold heads"
+            )
             print(f"  {'latency p50':<12}{b['latency_p50_ms']/1000:>9.1f}s")
             continue
         c = branch.get(split) or {}
+        if not c.get("n"):
+            print(f"\n=== {label} — {split} (baseline n={b['n']} | branch n=0 err={c.get('errors', 0)}) ===")
+            print("  [Branch arm produced 0 successful rows; skipping comparison]")
+            continue
         # Show BOTH arms' error counts (the R282 trap: printing only the
         # baseline's hides a branch arm that 429'd out half its rows).
         warn = ""
@@ -238,6 +259,13 @@ def _report(label: str, base: dict[str, Any], branch: dict[str, Any] | None) -> 
             f"  {'pred:gold':<12}{b['pred_gold_ratio']:>10.2f}"
             f"{c['pred_gold_ratio']:>10.2f}"
             f"{c['pred_gold_ratio']-b['pred_gold_ratio']:>+10.2f}"
+        )
+        gd_h_delta = c.get("gold_dropped_head", 0) - b.get("gold_dropped_head", 0)
+        gd_h_flag = "  <-- GOLD DROPPED (hard rule #8)" if gd_h_delta > 0 else ""
+        print(
+            f"  {'gold_drop_hd':<12}{int(b.get('gold_dropped_head', 0)):>10d}"
+            f"{int(c.get('gold_dropped_head', 0)):>10d}"
+            f"{gd_h_delta:>+10d}{gd_h_flag}"
         )
         print(
             f"  {'lat p50 s':<12}{b['latency_p50_ms']/1000:>10.1f}"
@@ -290,10 +318,19 @@ def _paired(
                 for pair in common
             )
             n_gold = sum(
-                len(bench_metrics.article_heads(pair[idx]["gold_refs"]))
+                len(bench_metrics._gold_ref_set(pair[idx].get("gold_refs")))
                 for pair in common
             )
             m["pred_gold_ratio"] = (n_pred / n_gold) if n_gold else 0.0
+            # R332 — paired-subset gold_dropped (SUM over common rows).
+            m["gold_dropped_head"] = sum(
+                int(pair[idx]["scores"].get("gold_dropped_head", 0))
+                for pair in common
+            )
+            m["gold_dropped_head_gold_count"] = sum(
+                int(pair[idx]["scores"].get("gold_dropped_head_gold_count", 0))
+                for pair in common
+            )
             agg[arm] = m
         agg["uplift_pp"] = sum(
             _LEVERAGE[a] * (agg["branch"][a] - agg["baseline"][a]) * 100.0
@@ -324,6 +361,13 @@ def _report_paired(label: str, paired: dict[str, Any]) -> None:
             f"  {'pred:gold':<12}{b['pred_gold_ratio']:>10.2f}"
             f"{c['pred_gold_ratio']:>10.2f}"
             f"{c['pred_gold_ratio'] - b['pred_gold_ratio']:>+10.2f}"
+        )
+        gd_h_delta = c.get("gold_dropped_head", 0) - b.get("gold_dropped_head", 0)
+        gd_h_flag = "  <-- GOLD DROPPED (hard rule #8)" if gd_h_delta > 0 else ""
+        print(
+            f"  {'gold_drop_hd':<12}{int(b.get('gold_dropped_head', 0)):>10d}"
+            f"{int(c.get('gold_dropped_head', 0)):>10d}"
+            f"{gd_h_delta:>+10d}{gd_h_flag}"
         )
         print(f"  => est. Overall uplift (leverage-weighted 3 ref axes): "
               f"{p['uplift_pp']:+.2f} pp")
