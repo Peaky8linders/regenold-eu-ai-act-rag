@@ -119,6 +119,33 @@ def _provenance_in_prompt_enabled() -> bool:
     )
 
 
+def _kg_deontic_enabled() -> bool:
+    """``REGENOLD_KG_DEONTIC`` — DEFAULT OFF (R330 Z3a).
+
+    :data:`_DEONTIC_CYPHER` ends ``LIMIT $limit`` but the caller bound only
+    ``{"ids": ids}``, so live Aura answered
+    ``Neo.ClientError.Statement.ParameterMissing``,
+    :meth:`GraphClient.execute_read` swallowed it and returned ``[]``, and
+    :func:`_bounded_execute_read` then took its **success** branch — the
+    failure was invisible to the circuit breaker and to telemetry, and the
+    empty result was memoized. The ``KNOWLEDGE-GRAPH REGULATORY
+    CLASSIFICATION`` block has therefore **never rendered in production**,
+    while still costing a measured **130-158 ms of Aura round-trip per
+    request**.
+
+    The missing parameter is bound below so the query is correct when someone
+    flips this on, but the flip is NOT zero-risk: it injects Annex III
+    category labels, operator roles and Art. 113 application dates (whose
+    prose names ``Annex I``, ``Article 4``, ``Article 5``) into the prompt on
+    rows that retrieved none of them — a live over-citation vector on Ref
+    Conciseness, the axis we are losing. So the call ships OFF: output is
+    byte-identical to today and the wasted round-trip disappears.
+    """
+    return os.getenv("REGENOLD_KG_DEONTIC", "0").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
 def _int_env(name: str, default: int, lo: int, hi: int) -> int:
     try:
         return max(lo, min(hi, int(os.getenv(name, ""))))
@@ -408,11 +435,16 @@ def fetch_deontic_context(refs: list[str]) -> list[dict]:
     if not ids:
         return []
 
-    cache_key = f"de:{','.join(ids)}"
+    # R330 Z3 — ``_DEONTIC_CYPHER`` ends ``LIMIT $limit``; binding only ``ids``
+    # made every live execution a ``ParameterMissing`` error. Reuse ``max_refs``
+    # (the query emits one row per article, so it is capped by refs — NOT by
+    # ``max_units``), and fold it into the cache key so a changed budget cannot
+    # be served from a memo taken under the old one.
+    cache_key = f"de:{','.join(ids)}:l{max_refs}"
     return _memoized_read(
         cache_key,
         _DEONTIC_CYPHER,
-        {"ids": ids},
+        {"ids": ids, "limit": max_refs},
     )
 
 
@@ -706,10 +738,16 @@ def render_kg_context(refs: list[str], question: str = "") -> list[str]:
                 sid = str(sp.get("sid") or "").strip()
                 match = re.search(r"(?:^|[_\-.])([ivxlcdm]+)$", sid, re.IGNORECASE)
                 roman = match.group(1).lower() if match else ""
-            coordinate = (
-                f"{sp.get('cite')}, paragraph {sp.get('para')}, "
-                f"point ({sp.get('letter')})"
-            )
+            # R330 Z2 — a SubPoint whose parent Point carries no letter used to
+            # render the literal string ``point (None)``: 39 occurrences across
+            # 7 of the 15 captured failing Stage-2 prompts, including
+            # july7-221's ``Article 5, paragraph 1, point (None), subpoint
+            # (ii)`` — exactly the coordinate the judge says that answer
+            # misstated. Emit the point segment only when there is a letter.
+            coordinate = f"{sp.get('cite')}, paragraph {sp.get('para')}"
+            letter = str(sp.get("letter") or "").strip()
+            if letter:
+                coordinate += f", point ({letter})"
             if roman:
                 coordinate += f", subpoint ({roman})"
             sp_lines.append(f"- {coordinate}: {text}")
@@ -724,7 +762,10 @@ def render_kg_context(refs: list[str], question: str = "") -> list[str]:
         )
 
     try:
-        deontics = fetch_deontic_context(refs)
+        # R330 Z3a — gated OFF by default. The block has never rendered (see
+        # `_kg_deontic_enabled`), so skipping the call is output-identical and
+        # removes 130-158 ms of Aura round-trip from every request.
+        deontics = fetch_deontic_context(refs) if _kg_deontic_enabled() else []
     except Exception:  # noqa: BLE001
         deontics = []
     deontic_lines = []

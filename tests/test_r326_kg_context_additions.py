@@ -38,6 +38,12 @@ def test_annex_iii_has_a_direct_category_query_path():
 
 
 def test_annex_iii_only_reference_fires_category_render(monkeypatch):
+    # R330 Z3 — the deontic fetch is now gated (REGENOLD_KG_DEONTIC, default
+    # OFF) because its Cypher could never execute: it ends ``LIMIT $limit`` and
+    # the caller never bound ``$limit``, so Aura returned ParameterMissing,
+    # ``execute_read`` swallowed it as ``[]``, and the block never rendered.
+    # This test asserts the render, so it must opt the gate ON explicitly.
+    monkeypatch.setenv("REGENOLD_KG_DEONTIC", "1")
     calls = []
 
     def _read(cypher, params):
@@ -88,6 +94,9 @@ def test_subpoint_renders_full_roman_coordinate_with_neutral_label(monkeypatch):
 
 
 def test_hard_cap_reserves_present_r326_sections(monkeypatch):
+    # R330 Z3 — see the note on the category-render test above: this asserts a
+    # reserve for the deontic section, so it needs the gate ON explicitly.
+    monkeypatch.setenv("REGENOLD_KG_DEONTIC", "1")
     monkeypatch.setenv("REGENOLD_KG_MAX_CHARS", "2000")
     monkeypatch.setattr(
         kg,
