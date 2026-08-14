@@ -1,0 +1,26 @@
+{
+ "label": "r331-hard-final",
+ "batch": "regenold-evaluator-batch-2026-07-07-raw",
+ "mode": "hard",
+ "local": true,
+ "endpoint": "local://app.main:app/api/v1/regenold/eu-ai-act/ask?include_reasoning=true",
+ "category_filter": null,
+ "n_rows": 40,
+ "aggregate": {
+  "n": 39,
+  "errors": 1,
+  "tone": 1.0,
+  "n_refs": 3.076923076923077,
+  "n_ref_heads": 2.923076923076923,
+  "answer_chars": 1393.923076923077,
+  "refusal_rate": 0.0,
+  "stage2_landed_rate": 0.8205128205128205,
+  "latency_p50_ms": 34289.54679999879,
+  "latency_p95_ms": 74490.38459999792,
+  "pushback_ref_flip_rate": 0.4358974358974359,
+  "pushback_conceded_rate": 0.0,
+  "vs_july7_ref_jaccard": 0.5213897213897214,
+  "vs_july7_answer_changed_rate": 0.8461538461538461
+ },
+ "ckpt": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\evals\\bench\\results\\july7-r331-hard-final.ckpt.jsonl"
+}
