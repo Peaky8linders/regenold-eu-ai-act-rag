@@ -1,0 +1,1601 @@
+{
+  "label": "r331-hard-final-grounded",
+  "source_sidecar": "evals\\bench\\results\\july7-r331-hard-final.ckpt.jsonl",
+  "judge_model": "claude-sonnet-5",
+  "provider": "wrapper",
+  "elapsed_s": 1652.2,
+  "generated_at": "2026-08-14T11:13:19.941293Z",
+  "axes": [
+    "answer_correctness",
+    "reference_correctness",
+    "citation_faithfulness"
+  ],
+  "rows": [
+    {
+      "id": "july7-113",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 3,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-119",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 9,
+          "incorrect": 0,
+          "unsupported": 1,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.667,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 43"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation: Art.43 governs conformity-assessment procedure mechanics, not the high-risk classification question actually asked"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-125",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 9,
+          "incorrect": 1,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "Article 6(1) high-risk test misstated as satisfied by Annex I safety-component status alone, omitting the conjunctive third-party conformity assessment requirement"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 4,
+          "correct": 3,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.75,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Annex I"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of irrelevant Annex I (product safety-component pathway not applicable to biometric verification)",
+          "_attempts": 2
+        },
+        "citation_faithfulness": {
+          "verdict": "fail",
+          "faithful": 8,
+          "mismatched": 1,
+          "failure_mode": "Article 6(1) is misdescribed as a single condition (safety component under Annex I) when the provision requires two cumulative conditions, including the product also being subject to third-party conformity assessment under Annex I legislation"
+        }
+      }
+    },
+    {
+      "id": "july7-129",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 7,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 5,
+          "correct": 4,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.8,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 19"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of unrelated log-retention provision"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 5,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-135",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 9,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 3,
+          "correct": 3,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none",
+          "_attempts": 2
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-141",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 5,
+          "incorrect": 0,
+          "unsupported": 1,
+          "missing": 1,
+          "failure_mode": "omits Article 50(3) obligations/exception for emotion recognition and biometric categorization systems"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 2,
+          "correct": 1,
+          "wrong": 1,
+          "missing": 1,
+          "precision": 0.5,
+          "recall": 0.5,
+          "wrong_refs": [
+            "Article 50.3"
+          ],
+          "missing_refs": [
+            "Article 50.5"
+          ],
+          "failure_mode": "over-citation of unrelated transparency provision (emotion recognition/biometric categorization, not direct-interaction systems) combined with omission of the manner/timing provision that actually governs how the Article 50.1 obligation must be fulfilled"
+        },
+        "citation_faithfulness": {
+          "verdict": "fail",
+          "faithful": 1,
+          "mismatched": 1,
+          "failure_mode": "Article 50(3) cited in source but its content (deployer disclosure duties for emotion recognition/biometric categorization systems) is entirely omitted from the answer's prose"
+        }
+      }
+    },
+    {
+      "id": "july7-147",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 3,
+          "incorrect": 2,
+          "unsupported": 3,
+          "missing": 1,
+          "failure_mode": "misattributes Annex III addition/modification power to Article 6 (which per verbatim text only lets the Commission amend the Art.6(3) derogation conditions), when that power actually resides in Article 7, not in the provided text"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 1,
+          "precision": 0.67,
+          "recall": 0.67,
+          "wrong_refs": [
+            "Article 6"
+          ],
+          "missing_refs": [
+            "Article 7"
+          ],
+          "failure_mode": "cited Article 6 (governs paragraph-3 exemption-condition amendments) instead of Article 7, which is the actual provision empowering the Commission to amend Annex III's high-risk use-case list",
+          "_attempts": 2
+        },
+        "citation_faithfulness": {
+          "verdict": "fail",
+          "faithful": 2,
+          "mismatched": 1,
+          "failure_mode": "cite-and-mismatch: Annex III addition/modification/deletion power (two-condition risk test) is attributed to Article 6, but that provision's verbatim text contains no such power \u2014 it belongs to Article 7, not Article 6"
+        }
+      }
+    },
+    {
+      "id": "july7-153",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 8,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 4,
+          "correct": 1,
+          "wrong": 3,
+          "missing": 0,
+          "precision": 0.25,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 13",
+            "Article 9",
+            "Article 17"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of tangential provisions not specific to ongoing accuracy/robustness/cybersecurity obligation"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-159",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 14,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.667,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 49"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of registration-obligation provision (Article 49) that does not govern the high-risk classification test itself"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-163",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.6667,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Annex I"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of irrelevant Annex I list (merely enumerates harmonisation legislation, does not address whether high-risk status persists based on prior use case/provenance)"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-169",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 1,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 6,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-175",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 1,
+          "wrong": 2,
+          "missing": 0,
+          "precision": 0.33,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 6",
+            "Annex III"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of redundant/background provisions"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-181",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 0,
+          "incorrect": 1,
+          "unsupported": 3,
+          "missing": 1,
+          "failure_mode": "answer relies on Art 20 (provider self-assessed non-conformity) instead of Art 80 (MSA reclassification of non-high-risk as high-risk), and wrongly denies that the MSA prescribes a corrective-action timeframe"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 2,
+          "correct": 0,
+          "wrong": 2,
+          "missing": 1,
+          "precision": 0.0,
+          "recall": 0.0,
+          "wrong_refs": [
+            "Article 20",
+            "Article 79"
+          ],
+          "missing_refs": [
+            "Article 80"
+          ],
+          "failure_mode": "cited provider self-initiated corrective-action (Art 20) and general market-surveillance-for-noncompliant-systems (Art 79) provisions instead of Article 80, which specifically governs the MSA-reclassification-of-non-high-risk-system scenario and its corrective-action timeframe"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-187",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 14,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 2,
+          "correct": 1,
+          "wrong": 1,
+          "missing": 1,
+          "precision": 0.5,
+          "recall": 0.5,
+          "wrong_refs": [
+            "Article 62"
+          ],
+          "missing_refs": [
+            "Article 3(1) \u2013 definition of 'AI regulatory sandbox'"
+          ],
+          "failure_mode": "cited SME-support provision instead of/alongside the actual definitions article",
+          "_attempts": 2
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-191",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-197",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 7,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 2,
+          "correct": 1,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.5,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 10"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of parent article beyond the minimal governing paragraph"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-203",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 16,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-209",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 7,
+          "incorrect": 1,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "overstates Art.95(2) duty as 'encourage and facilitate' when the text only imposes a duty to 'facilitate'"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "fail",
+          "faithful": 3,
+          "mismatched": 1,
+          "failure_mode": "Art. 95(2) only requires the AI Office/Member States to 'facilitate' (not 'encourage and facilitate') the drawing up of these codes, but the answer states both duties apply to 95(2) as well"
+        }
+      }
+    },
+    {
+      "id": "july7-215",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 22,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 4,
+          "correct": 1,
+          "wrong": 3,
+          "missing": 0,
+          "precision": 0.25,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 9",
+            "Article 72",
+            "Article 73"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of cross-referenced articles not needed to answer the QMS-elements-list question"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-221",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 11,
+          "incorrect": 1,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "Annex II offence list fabricates 'organised crime' as a standalone item, when Annex II actually lists 'organised or armed robbery' as one combined entry, not two separate offences"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 5,
+          "correct": 2,
+          "wrong": 3,
+          "missing": 0,
+          "precision": 0.4,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 27",
+            "Article 49",
+            "Annex III"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of unrelated high-risk-system obligations (impact assessment, registration, high-risk classification list) not tied to the RBI law-enforcement exception's objectives"
+        },
+        "citation_faithfulness": {
+          "verdict": "fail",
+          "faithful": 5,
+          "mismatched": 1,
+          "failure_mode": "Annex II mischaracterized: answer invents a standalone 'organised crime' category when the actual listed offense is 'organised or armed robbery' (a robbery qualifier, not a general organised-crime entry)"
+        }
+      }
+    },
+    {
+      "id": "july7-225",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-231",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 8,
+          "incorrect": 0,
+          "unsupported": 1,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 4,
+          "correct": 2,
+          "wrong": 2,
+          "missing": 0,
+          "precision": 0.5,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 61",
+            "Article 72"
+          ],
+          "failure_mode": "over-citation of adjacent-but-irrelevant provisions (informed consent, post-market monitoring)",
+          "missing_refs": [],
+          "_attempts": 2
+        },
+        "citation_faithfulness": {
+          "judge_error": "wrapper_error: network_error: The read operation timed out",
+          "_attempts": 2
+        }
+      }
+    },
+    {
+      "id": "july7-237",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 7,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 7,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-243",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 11,
+          "incorrect": 0,
+          "unsupported": 1,
+          "missing": 1,
+          "failure_mode": "omits Section C deployer-registration information category entirely"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 5,
+          "correct": 2,
+          "wrong": 3,
+          "missing": 0,
+          "precision": 0.4,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 49",
+            "Article 60",
+            "Article 6"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of tangential registration/scope/testing provisions not describing the database, its categories, or controller"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 5,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-249",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "judge_error": "wrapper_error: network_error: The read operation timed out",
+          "_attempts": 2
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 4,
+          "correct": 2,
+          "wrong": 2,
+          "missing": 2,
+          "precision": 0.5,
+          "recall": 0.5,
+          "wrong_refs": [
+            "Annex I",
+            "Annex III"
+          ],
+          "missing_refs": [
+            "Article 23",
+            "Article 26"
+          ],
+          "failure_mode": "over-cited cross-referenced annexes; omitted importer/deployer obligation articles named in the question itself"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-255",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 7,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 1,
+          "precision": 1.0,
+          "recall": 0.5,
+          "wrong_refs": [],
+          "missing_refs": [
+            "Annex I"
+          ],
+          "failure_mode": "Article 6(1) conditions hinge on the product (toy) being covered by Union harmonisation legislation listed in Annex I, but Annex I itself is not cited"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-259",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 5,
+          "correct": 3,
+          "wrong": 2,
+          "missing": 0,
+          "precision": 0.6,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 5",
+            "Article 50"
+          ],
+          "missing_refs": [],
+          "failure_mode": "redundant over-broad parent-article citations alongside their already-cited governing subparts"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-265",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 1,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-271",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 1,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.6667,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 79.2"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of MSA evaluation provision not governing provider's own duty"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-277",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "unsupported": 3,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 5,
+          "correct": 1,
+          "wrong": 4,
+          "missing": 0,
+          "precision": 0.2,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 16",
+            "Article 25",
+            "Article 47",
+            "Article 23"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-cited unrelated provider/requalification/declaration/importer articles; only Art.24(3) actually governs distributor transport-condition obligations"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 5,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-283",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 12,
+          "incorrect": 0,
+          "unsupported": 1,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-287",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 17,
+          "incorrect": 0,
+          "unsupported": 1,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 5,
+          "correct": 4,
+          "wrong": 1,
+          "missing": 1,
+          "precision": 0.8,
+          "recall": 0.8,
+          "wrong_refs": [
+            "Article 9"
+          ],
+          "missing_refs": [
+            "Article 51"
+          ],
+          "failure_mode": "false premise citation \u2014 Art 9 governs risk management for high-risk systems only (mentions health/safety/fundamental rights, not five harm categories mapped to five risk tiers), and systemic-risk GPAI classification (Art 51) is omitted"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 5,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-293",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 8,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 0,
+          "wrong": 3,
+          "missing": 1,
+          "precision": 0.0,
+          "recall": 0.0,
+          "wrong_refs": [
+            "Article 51",
+            "Article 25",
+            "Article 3.4"
+          ],
+          "missing_refs": [
+            "Article 26(6)"
+          ],
+          "failure_mode": "cited GPAI-classification/provider-role/definition articles instead of the deployer log-keeping obligation"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-299",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 1,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.667,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 49"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of registration provision not governing risk classification"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-305",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 7,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-311",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 19,
+          "incorrect": 0,
+          "unsupported": 1,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 5,
+          "correct": 2,
+          "wrong": 3,
+          "missing": 0,
+          "precision": 0.4,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 51",
+            "Article 50",
+            "Annex XIII"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-cited classification/unrelated provisions instead of minimal obligation-bearing articles"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 6,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-317",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 12,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 4,
+          "correct": 3,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.75,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 13"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of tangential provision (Article 13 is only referenced as an input within Article 27(1)(d)'s risk description, not itself a FRIA-triggering provision)"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-321",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none",
+          "_attempts": 2
+        },
+        "citation_faithfulness": {
+          "verdict": "fail",
+          "faithful": 1,
+          "mismatched": 1,
+          "failure_mode": "answer attributes the '2 February 2025' application date to Article 5(6), but that date is established by Article 113(3)(a), not by any text within Article 5 itself \u2014 Article 5's verbatim text (prohibited practices and RBI conditions) contains no application-date language, so citing Art. 5(6) for this claim is a cite-and-mismatch"
+        }
+      }
+    },
+    {
+      "id": "july7-327",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 10,
+          "incorrect": 0,
+          "unsupported": 1,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.667,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 5"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-cited inapplicable Article 5 (no subliminal manipulation, vulnerability exploitation, social scoring, biometric ID, or emotion inference present in this grade-based track-recommendation scenario)"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "july7-333",
+      "category": "Multi-Turn Context & Coreference",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 10,
+          "incorrect": 0,
+          "unsupported": 2,
+          "missing": 0,
+          "failure_mode": "none - unverifiable GPAI compute-threshold figures not grounded in supplied text, but no incorrect or missing holdings"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 5,
+          "correct": 3,
+          "wrong": 2,
+          "missing": 1,
+          "precision": 0.6,
+          "recall": 0.75,
+          "wrong_refs": [
+            "Article 11",
+            "Annex IV"
+          ],
+          "missing_refs": [
+            "Article 6"
+          ],
+          "failure_mode": "over-cited technical-documentation provisions unrelated to classification/FRIA question; omitted Article 6, the core classification provision that Annex III and Article 27 both reference"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 7,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    }
+  ],
+  "aggregate": {
+    "answer_correctness": {
+      "n": 40,
+      "pass": 32,
+      "fail": 7,
+      "error": 1,
+      "pass_rate": 0.8,
+      "pass_rate_over_non_error": 0.8205,
+      "top_failure_modes": [
+        [
+          "Article 6(1) high-risk test misstated as satisfied by Annex I safety-component s",
+          1
+        ],
+        [
+          "omits Article 50(3) obligations/exception for emotion recognition and biometric ",
+          1
+        ],
+        [
+          "misattributes Annex III addition/modification power to Article 6 (which per verb",
+          1
+        ],
+        [
+          "answer relies on Art 20 (provider self-assessed non-conformity) instead of Art 8",
+          1
+        ],
+        [
+          "overstates Art.95(2) duty as 'encourage and facilitate' when the text only impos",
+          1
+        ],
+        [
+          "Annex II offence list fabricates 'organised crime' as a standalone item, when An",
+          1
+        ],
+        [
+          "omits Section C deployer-registration information category entirely",
+          1
+        ]
+      ],
+      "mean_factual_score": 0.9472
+    },
+    "reference_correctness": {
+      "n": 40,
+      "pass": 10,
+      "fail": 28,
+      "error": 2,
+      "pass_rate": 0.25,
+      "pass_rate_over_non_error": 0.2632,
+      "top_failure_modes": [
+        [
+          "over-citation: Art.43 governs conformity-assessment procedure mechanics, not the",
+          1
+        ],
+        [
+          "over-citation of irrelevant Annex I (product safety-component pathway not applic",
+          1
+        ],
+        [
+          "over-citation of unrelated log-retention provision",
+          1
+        ],
+        [
+          "over-citation of unrelated transparency provision (emotion recognition/biometric",
+          1
+        ],
+        [
+          "cited Article 6 (governs paragraph-3 exemption-condition amendments) instead of ",
+          1
+        ],
+        [
+          "over-citation of tangential provisions not specific to ongoing accuracy/robustne",
+          1
+        ],
+        [
+          "over-citation of registration-obligation provision (Article 49) that does not go",
+          1
+        ],
+        [
+          "over-citation of irrelevant Annex I list (merely enumerates harmonisation legisl",
+          1
+        ]
+      ],
+      "mean_precision": 0.65,
+      "mean_recall": 0.8742,
+      "mean_f1": 0.7456,
+      "top_wrong_refs": [
+        [
+          "Article 49",
+          4
+        ],
+        [
+          "Annex I",
+          3
+        ],
+        [
+          "Article 6",
+          3
+        ],
+        [
+          "Article 9",
+          3
+        ],
+        [
+          "Annex III",
+          3
+        ],
+        [
+          "Article 13",
+          2
+        ],
+        [
+          "Article 72",
+          2
+        ],
+        [
+          "Article 5",
+          2
+        ],
+        [
+          "Article 50",
+          2
+        ],
+        [
+          "Article 25",
+          2
+        ],
+        [
+          "Article 51",
+          2
+        ],
+        [
+          "Article 43",
+          1
+        ],
+        [
+          "Article 19",
+          1
+        ],
+        [
+          "Article 50.3",
+          1
+        ],
+        [
+          "Article 17",
+          1
+        ]
+      ],
+      "top_missing_refs": [
+        [
+          "Article 50.5",
+          1
+        ],
+        [
+          "Article 7",
+          1
+        ],
+        [
+          "Article 80",
+          1
+        ],
+        [
+          "Article 3(1) \u2013 definition of 'AI regulatory sandbox'",
+          1
+        ],
+        [
+          "Article 23",
+          1
+        ],
+        [
+          "Article 26",
+          1
+        ],
+        [
+          "Annex I",
+          1
+        ],
+        [
+          "Article 51",
+          1
+        ],
+        [
+          "Article 26(6)",
+          1
+        ],
+        [
+          "Article 6",
+          1
+        ]
+      ]
+    },
+    "citation_faithfulness": {
+      "n": 40,
+      "pass": 33,
+      "fail": 6,
+      "error": 1,
+      "pass_rate": 0.825,
+      "pass_rate_over_non_error": 0.8462,
+      "top_failure_modes": [
+        [
+          "Article 6(1) is misdescribed as a single condition (safety component under Annex",
+          1
+        ],
+        [
+          "Article 50(3) cited in source but its content (deployer disclosure duties for em",
+          1
+        ],
+        [
+          "cite-and-mismatch: Annex III addition/modification/deletion power (two-condition",
+          1
+        ],
+        [
+          "Art. 95(2) only requires the AI Office/Member States to 'facilitate' (not 'encou",
+          1
+        ],
+        [
+          "Annex II mischaracterized: answer invents a standalone 'organised crime' categor",
+          1
+        ],
+        [
+          "answer attributes the '2 February 2025' application date to Article 5(6), but th",
+          1
+        ]
+      ]
+    }
+  },
+  "gold_coverage": 0.0,
+  "gold_rows": 0,
+  "excluded_error_rows": 0,
+  "recall_is_text_grounded": false
+}
