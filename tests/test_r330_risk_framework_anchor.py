@@ -42,9 +42,23 @@ TAXONOMY_ASKS = [
 
 
 class TestGateDefault:
-    def test_default_off(self, monkeypatch):
+    def test_default_on(self, monkeypatch):
+        """R330 — DEFAULT ON, after the gate was actually run.
+
+        Live HARD arm (n=40, Claude Max wrapper, stage2_landed 0.82) graded by
+        the grounded Sonnet-5 judge vs verbatim Act text, against the recorded
+        R329 arm: answer_correctness 0.6250 -> 0.8750, mean factual 0.8807 ->
+        0.9738, reference_correctness 0.2250 -> 0.3250, citation_faithfulness
+        0.8000 -> 0.8500, latency p50 57.3s -> 39.1s, max refs 11 -> 5.
+
+        Attribution kept conservative: the arm also carries the removal of
+        REGENOLD_MAX_ANSWER_SENTENCES=4 from the operator environment, and 8 of
+        11 answer improvements are on rows these gates do not touch. What is
+        attributable: EVERY gate-target row improved and none regressed, in the
+        direction predicted in advance by deterministic replay.
+        """
         monkeypatch.delenv("REGENOLD_RISK_FRAMEWORK_ANCHOR", raising=False)
-        assert _risk_framework_anchor_enabled() is False
+        assert _risk_framework_anchor_enabled() is True
 
     @pytest.mark.parametrize("val", ["1", "true", "yes", "on", "ON", "True"])
     def test_explicit_enable(self, monkeypatch, val):
@@ -71,7 +85,7 @@ class TestAnchoredPredicate:
 
     def test_july7_299_fires_today(self, monkeypatch):
         """Gate OFF reproduces main — this is the defect, and the gate's proof."""
-        monkeypatch.delenv("REGENOLD_RISK_FRAMEWORK_ANCHOR", raising=False)
+        monkeypatch.setenv("REGENOLD_RISK_FRAMEWORK_ANCHOR", "0")  # R330: default is now ON
         assert _detect_risk_framework_inquiry(JULY7_299) is True
 
     def test_regex_itself_is_unchanged(self):
@@ -119,7 +133,7 @@ class TestDavidathZeroFireBeforeAndAfter:
         return qa + sc
 
     def test_zero_fire_gate_off(self, monkeypatch):
-        monkeypatch.delenv("REGENOLD_RISK_FRAMEWORK_ANCHOR", raising=False)
+        monkeypatch.setenv("REGENOLD_RISK_FRAMEWORK_ANCHOR", "0")  # R330: default is now ON
         hits = [q for q in self._corpus() if _detect_risk_framework_inquiry(q)]
         assert hits == [], hits[:3]
 
@@ -133,7 +147,7 @@ class TestDavidathZeroFireBeforeAndAfter:
         can only REMOVE firings.  This is the property that makes the change
         davidath-neutral by construction rather than by measurement."""
         corpus = self._corpus() + TAXONOMY_ASKS + [JULY7_299]
-        monkeypatch.delenv("REGENOLD_RISK_FRAMEWORK_ANCHOR", raising=False)
+        monkeypatch.setenv("REGENOLD_RISK_FRAMEWORK_ANCHOR", "0")  # R330: default is now ON
         off = {q for q in corpus if _detect_risk_framework_inquiry(q)}
         monkeypatch.setenv("REGENOLD_RISK_FRAMEWORK_ANCHOR", "1")
         on = {q for q in corpus if _detect_risk_framework_inquiry(q)}

@@ -96,9 +96,23 @@ SUMMARY_FRAGMENT = "Defines 68 terms used in the Regulation"
 
 
 class TestGateDefaultOff:
-    def test_default_is_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_default_is_on(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """R330 — DEFAULT ON, after the gate was actually run.
+
+        Live HARD arm (n=40, Claude Max wrapper, stage2_landed 0.82) graded by
+        the grounded Sonnet-5 judge vs verbatim Act text, against the recorded
+        R329 arm: answer_correctness 0.6250 -> 0.8750, mean factual 0.8807 ->
+        0.9738, reference_correctness 0.2250 -> 0.3250, citation_faithfulness
+        0.8000 -> 0.8500, latency p50 57.3s -> 39.1s, max refs 11 -> 5.
+
+        Attribution kept conservative: the arm also carries the removal of
+        REGENOLD_MAX_ANSWER_SENTENCES=4 from the operator environment, and 8 of
+        11 answer improvements are on rows these gates do not touch. What is
+        attributable: EVERY gate-target row improved and none regressed, in the
+        direction predicted in advance by deterministic replay.
+        """
         monkeypatch.delenv("REGENOLD_DEFINITIONAL_MULTITURN_EMIT", raising=False)
-        assert _definitional_multiturn_emit_enabled() is False
+        assert _definitional_multiturn_emit_enabled() is True
 
     @pytest.mark.parametrize("v", ["1", "true", "yes", "on", "TRUE", "On", " 1 "])
     def test_opt_in_values(self, monkeypatch: pytest.MonkeyPatch, v: str) -> None:
@@ -278,7 +292,7 @@ class TestRiskFrameworkAnchorCacheKey:
     def test_flag_changes_the_engine_cache_key(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.delenv("REGENOLD_RISK_FRAMEWORK_ANCHOR", raising=False)
+        monkeypatch.setenv("REGENOLD_RISK_FRAMEWORK_ANCHOR", "0")  # R330: default is now ON
         off = self._key()
         monkeypatch.setenv("REGENOLD_RISK_FRAMEWORK_ANCHOR", "1")
         on = self._key()
@@ -305,7 +319,7 @@ class TestRiskFrameworkAnchorCacheKey:
         and keeping it out is what lets a same-process A/B reuse the cached
         engine response across both arms.
         """
-        monkeypatch.delenv("REGENOLD_DEFINITIONAL_MULTITURN_EMIT", raising=False)
+        monkeypatch.setenv("REGENOLD_DEFINITIONAL_MULTITURN_EMIT", "0")  # R330: default is now ON
         off = self._key()
         monkeypatch.setenv("REGENOLD_DEFINITIONAL_MULTITURN_EMIT", "1")
         assert self._key() == off
