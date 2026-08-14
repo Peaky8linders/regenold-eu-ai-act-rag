@@ -67,10 +67,18 @@ curl https://regenold-eu-ai-act-rag-production.up.railway.app/healthz/graph
 curl https://regenold-eu-ai-act-rag-production.up.railway.app/app   # 200 = this service
 ```
 
-To confirm a *specific* commit is live, grep the deployed `/app` HTML for a string your
-change introduced — that is what settled R330 (the corrected Annex III tooltip, "eight
-high-risk use-case categories", was present on the production URL minutes after merge).
-`/healthz/graph` also returns `seed_version` + `kb_version` + live node counts.
+**To confirm a specific commit is live, use `/healthz/llm` — it returns the deployed
+`commit` SHA and `deployment_id` directly:**
+
+```jsonc
+{"version":"1.2.3","commit":"4bb56847e210","deployment_id":"f810e6d0-…",
+ "provider":"openai_wrapper","llm_ok":true,"cf_access":{"client_id_set":true,…}}
+```
+
+Match `commit` against `git rev-parse HEAD`. That is the canonical check — no guessing
+from behaviour. `/healthz/graph` additionally returns `seed_version`, `kb_version` and
+live node counts, and `cf_access` above tells you whether the Cloudflare Access service
+token reached the service (without it, production serves ZERO Claude Max).
 
 Boot log (Railway): `regenold.startup provider=...` unless `REGENOLD_SKIP_STARTUP_LOG=1`.
 
