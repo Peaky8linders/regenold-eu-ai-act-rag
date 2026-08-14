@@ -119,7 +119,7 @@ def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
     out["latency_p50_ms"] = lat[len(lat) // 2]
     out["latency_p90_ms"] = lat[int(len(lat) * 0.9)] if len(lat) > 1 else lat[0]
     n_pred = sum(len(bench_metrics.article_heads(r["pred_refs"])) for r in ok)
-    n_gold = sum(len(bench_metrics._gold_ref_set(r.get("gold_refs"))) for r in ok)
+    n_gold = sum(len(bench_metrics.gold_ref_set(r.get("gold_refs"))) for r in ok)
     out["pred_gold_ratio"] = (n_pred / n_gold) if n_gold else 0.0
     # R332 — gold_dropped_head is a SUM (not mean) so the gate is "drop ZERO".
     # .get(..., 0) backward-compat: pre-R332 .ckpt.jsonl rows lack the key.
@@ -318,7 +318,7 @@ def _paired(
                 for pair in common
             )
             n_gold = sum(
-                len(bench_metrics._gold_ref_set(pair[idx].get("gold_refs")))
+                len(bench_metrics.gold_ref_set(pair[idx].get("gold_refs")))
                 for pair in common
             )
             m["pred_gold_ratio"] = (n_pred / n_gold) if n_gold else 0.0
