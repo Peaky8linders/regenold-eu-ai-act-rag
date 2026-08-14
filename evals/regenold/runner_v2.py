@@ -1090,14 +1090,34 @@ def main(argv: list[str] | None = None) -> int:
 
     # ── --probe-oos branch (R56-B) ─────────────────────────────────────
     if args.probe_oos:
-        # The EU AI Act subject-topic refusal is opt-in
-        # (``REGENOLD_TOPIC_FILTER``) — the production default answers
-        # every question. The OOS probe is the verification harness for
-        # that refusal feature, so enable it for the probe run unless the
-        # operator pinned it explicitly.
+        # R330 — this setdefault only affects a ``--local`` (in-process
+        # TestClient) run. Against a live ``--endpoint`` the flag lives in the
+        # SERVER's environment, so setting it here does nothing; what the probe
+        # measures then is whatever the deployment is configured with.
+        #
+        # The comment here used to say the refusal was "opt-in" and that "the
+        # production default answers every question". That is stale twice over:
+        # ``_topic_filter_enabled`` (app/routes/regenold.py:5010) reads
+        # ``os.getenv("REGENOLD_TOPIC_FILTER", "1")`` — default **ON** — and the
+        # live deployment refuses off-topic asks (verified R330 against
+        # regenold-eu-ai-act-rag-production.up.railway.app: the Digital Markets
+        # Act probe returns the scope refusal).
         import os  # noqa: PLC0415 — lazy; only the probe mode needs it
 
         os.environ.setdefault("REGENOLD_TOPIC_FILTER", "1")
+
+        # R330 — the deterministic probe must not read the repo ``.env``.
+        # ``app/config.py::_load_dotenv_once()`` runs at import time, and ``.env``
+        # carries provider CREDENTIALS; with them present the scope classifier
+        # can reach the R267.1 Groq->Gemini->Mistral fallback and make live
+        # third-party calls on a nominally deterministic run. Measured on this
+        # very suite (n=51, ``--local``): 0 scope leaks at code defaults, 3 with
+        # ``.env`` credentials only, 15 (29.4%) with the full ``.env``.
+        # ``setdefault`` so ``REGENOLD_SKIP_DOTENV=0`` still allows a deliberate
+        # .env-on arm. Live ``--endpoint`` runs are unaffected: the server holds
+        # its own configuration and this process only needs ``--api-key``.
+        if args.local:
+            os.environ.setdefault("REGENOLD_SKIP_DOTENV", "1")
         payload = run_probe_oos_only(
             endpoint=endpoint,
             api_key=args.api_key,
