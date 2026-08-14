@@ -66,6 +66,46 @@ R330 ran davidath four times to isolate the `.env` coupling below; that job is d
 result was byte-identical to the reference table. The table is kept for provenance, not as
 a thing to reproduce on every change.
 
+## Reranking (R329)
+
+**A cross-encoder reranker is standard in production RAG and is wired here** —
+`app/engines/cohere_rerank.py`, applied at the RETRIEVAL stage in
+`app/data/kb_search.py::top_articles_by_relevance` (retrieve wide with BM25 → rerank the
+pool → cut to `k`). Gate `REGENOLD_COHERE_RERANK`, default OFF pending the A/B; needs
+`COHERE_API_KEY`.
+
+Two things to keep straight, because they are different interventions and only one has
+been measured:
+
+* **Retrieval-stage rerank (wired, being measured).** The reranker sees the raw candidate
+  pool before anything is selected. Spot check: for *"must a deployer of an emotion
+  recognition system inform the people exposed"*, it lifts `Art. 50.3` — the exact
+  governing provision — from rank 2 to rank 1 and drops the irrelevant `Annex III` /
+  `Art. 5` out of the top-5. Gate on `easyhard_ab` (gold-bearing).
+* **Post-hoc reordering of the final emitted reference list (measured, does NOT help).**
+  Zero-variance replay of the live HARD run: mean normalised position of judged-wrong refs
+  0.582 → 0.562 (delta **−0.019**, i.e. slightly worse). By that point the wrong references
+  are already semantically plausible — that is *why* they were emitted — so a relevance
+  cross-encoder scores them high for the same reason the generator did. Do not re-propose
+  this variant; it is the one that is dead, not reranking in general.
+
+The wrong references on this corpus are **semantically plausible and legally inapposite**
+(e.g. `Article 43`, conformity assessment, cited on a risk-classification question). The
+signal that discriminates them is *legal applicability* — does this provision bind THIS
+role at THIS risk class — which already exists here as `ROLE_OBLIGATIONS` /
+`obligations_for` (`app/data/ontology.py`) and, unread, as the graph's
+`Obligation`/`HAS_OBLIGATION` (113) and `RiskLevel`/`APPLIES_AT` (47) layers. That is a
+grounding predicate, not a positional trimmer, so it sits outside the refuted trimmer
+families.
+
+⚠ **`gold_dropped` does not exist anywhere in this repo**, so the standing rule "a
+reference change must drop ZERO gold" is currently **unenforceable**. Port
+`gold_dropped_head` before gating any reference change. Do NOT port the upstream
+`ref_crag_fine` / `gold_dropped_exact` as-is — measured defective: gold is head-projected
+while predictions keep full coordinates, so `['Article 5.1.f','Annex III.2']` against gold
+`['Article 5','Annex III']` scores `gold_dropped_exact = 2` and `ref_crag_fine = -1.0`,
+penalising the most accurate citation shape the system emits.
+
 ## Baseline Performance Reference (Commit `b47c259`)
 
 Deterministic environment: `OPENAI_API_BASE=http://127.0.0.1:1/v1 P2P_GRAPH_RAG_PROVIDER=cli REGENOLD_EXTERNAL_EMBEDDINGS=0`
@@ -100,9 +140,27 @@ Multi-turn coherence: **20/20 coherent**.
 > `OPENAI_API_BASE` + `CF_ACCESS_*`.** Production is unaffected either way (Railway sets
 > real env vars and `override=False` already makes those win).
 >
+> **It also breaks the SCOPE gate.** `runner_v2 --local --probe-oos --oos-suite all`
+> (n=51), which still loads `.env`:
+>
+> | arm | pass | scope leaks | `hard_fail` |
+> | :--- | :--- | :--- | :--- |
+> | code defaults (`REGENOLD_SKIP_DOTENV=1`) | 49 | **0** | False |
+> | `.env` loaded, `REGENOLD_*` blanked | 46 | **3** | True |
+> | the full local `.env` | 35 | **15** (29.4%) | True |
+>
+> No single `REGENOLD_*` flag reproduces it (all measured individually at 0 leaks), and
+> neither does `GROQ_API_KEY` alone — so it is the CREDENTIALS reaching the R267.1
+> Groq→Gemini→Mistral fallback, plus interaction with the flags. **The "deterministic"
+> OOS probe is not deterministic when `.env` is present: the scope classifier can make
+> live third-party calls.** Run it as
+> `REGENOLD_SKIP_DOTENV=1 … -m evals.regenold.runner_v2 --local --probe-oos` until
+> `runner_v2` gets the same guard `evals/bench/runner.py` now has.
+>
 > ⚠ **Open operator question:** does the Railway dashboard carry the same behavioural
-> flags? If yes, production pays this cost. If no, local evals do not predict production.
-> Neither is acceptable silently — reconcile the two flag sets.
+> flags? If yes, production pays this cost — including, potentially, the scope leaks.
+> If no, local evals do not predict production. Neither is acceptable silently —
+> reconcile the two flag sets.
 
 ---
 
