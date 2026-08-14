@@ -1,0 +1,26 @@
+{
+ "label": "r330-hard-gateson",
+ "batch": "regenold-evaluator-batch-2026-07-07-raw",
+ "mode": "hard",
+ "local": true,
+ "endpoint": "local://app.main:app/api/v1/regenold/eu-ai-act/ask?include_reasoning=true",
+ "category_filter": null,
+ "n_rows": 40,
+ "aggregate": {
+  "n": 39,
+  "errors": 1,
+  "tone": 1.0,
+  "n_refs": 2.9743589743589745,
+  "n_ref_heads": 2.769230769230769,
+  "answer_chars": 1318.2307692307693,
+  "refusal_rate": 0.0,
+  "stage2_landed_rate": 0.8205128205128205,
+  "latency_p50_ms": 39121.22830000044,
+  "latency_p95_ms": 82041.72629999994,
+  "pushback_ref_flip_rate": 0.38461538461538464,
+  "pushback_conceded_rate": 0.0,
+  "vs_july7_ref_jaccard": 0.5471916971916971,
+  "vs_july7_answer_changed_rate": 0.8461538461538461
+ },
+ "ckpt": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\evals\\bench\\results\\july7-r330-hard-gateson.ckpt.jsonl"
+}
