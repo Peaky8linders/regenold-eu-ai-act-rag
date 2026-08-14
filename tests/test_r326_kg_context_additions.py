@@ -184,13 +184,39 @@ def test_executor_cold_initialization_is_singleton_under_concurrency():
         kg._EXECUTOR = previous
 
 
-def test_semantic_layers_default_on_constrained_only(monkeypatch):
+def test_semantic_layers_default_off_after_r330(monkeypatch):
+    """R330 — this default was flipped ON -> OFF, deliberately.
+
+    Was ``test_semantic_layers_default_on_constrained_only``, asserting ON. The
+    ON default was never real: R330 found the only ``render_kg_context`` call
+    site in ``app/`` omitted the ``question`` argument, and
+    ``kg_context._render_semantic_layers`` returns ``[]`` when it is empty — so
+    the layer emitted nothing on every request regardless of this flag.
+
+    R330 repairs the wiring AND flips the default to OFF in the same commit, so
+    production stays byte-identical to the behaviour the bug produced instead of
+    silently activating an unmeasured feature (live Neo4j vector queries on a
+    scored latency axis) the moment the wiring landed.
+
+    This is a deliberate contract change, not a weakened assertion: the flag
+    still has both states, and ``test_semantic_layers_have_an_off_switch`` plus
+    ``tests/test_r330_semantic_layers_wiring.py`` pin the ON path and the
+    fail-closed parse.
+    """
     from app.engines import graph_semantic as gs
 
     monkeypatch.delenv("REGENOLD_GRAPH_SEMANTIC_LAYERS", raising=False)
     monkeypatch.delenv("REGENOLD_SEMANTIC_GLOSS", raising=False)
-    assert gs.semantic_layers_enabled() is True
+    assert gs.semantic_layers_enabled() is False
     assert gs.gloss_layers_enabled() is False
+
+
+def test_semantic_layers_have_an_on_switch(monkeypatch):
+    """The repaired path must still be reachable — R330."""
+    from app.engines import graph_semantic as gs
+
+    monkeypatch.setenv("REGENOLD_GRAPH_SEMANTIC_LAYERS", "1")
+    assert gs.semantic_layers_enabled() is True
 
 
 def test_semantic_layers_have_an_off_switch(monkeypatch):
