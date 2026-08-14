@@ -662,6 +662,33 @@ class _ClaraBreaker:
 _BREAKER = _ClaraBreaker()
 
 
+def _clara_llm_wrapper_allowed() -> bool:
+    """``REGENOLD_CLARA_LLM`` — DEFAULT OFF (R330 §4.2).
+
+    ``_LLM_TIMEOUT_SECONDS`` (3.0 above) is budgeted against a measured
+    12-17 s Claude Max wrapper floor and ``_llm_cached`` goes through
+    ``get_openai_wrapper_provider()`` ONLY — no fast provider chain — so
+    the call essentially never lands and reliably burns its full 3.0 s.
+    Its sole production call site is :func:`analyse`, reached from
+    ``app/routes/regenold.py:7222`` **after** the engine has produced the
+    answer (engine at ``:6585``; no LLM call exists downstream), so the
+    cost is a pure SERIAL TAIL, fully additive to p50. Fires on 22 of the
+    38 R329 judged HARD rows; ~3.0 s against a measured 55.8 s p50.
+
+    Skipping is output-identical: :func:`analyse` already falls back to
+    :func:`extract_tags_deterministic` on ``None``, which is exactly what
+    every live timeout produces today. The only state the skipped failure
+    path would have mutated is ``_BREAKER.record_failure()``, whose sole
+    purpose is to suppress this very call — so suppressing it up front
+    cannot change a shipped tag, verdict, answer or reference.
+
+    Fresh env read per call (R263.2), fail-closed on any unparsed value.
+    """
+    return os.getenv("REGENOLD_CLARA_LLM", "0").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
 _LLM_SYSTEM_PROMPT = """You are a deterministic feature extractor for the EU AI Act.
 
 Read the user's question and emit a SINGLE JSON object (no prose, no
@@ -1400,7 +1427,12 @@ def analyse(
     the LLM is the *intended* path — bad LLM output never escapes as
     an answer.
     """
-    tags = extract_tags_llm(question, history)
+    # R330 §4.2 — the gate sits HERE, not inside ``extract_tags_llm``:
+    # ``analyse`` is the only production consumer (regenold.py:7222), so
+    # this suppresses the whole wasted serial-tail round-trip while the
+    # direct ``extract_tags_llm`` parse/breaker unit tests keep exercising
+    # the real path unchanged.
+    tags = extract_tags_llm(question, history) if _clara_llm_wrapper_allowed() else None
     if tags is None:
         tags = extract_tags_deterministic(question, history)
     verdict = compute_verdict(tags)

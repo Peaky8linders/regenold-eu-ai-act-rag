@@ -7,6 +7,7 @@ expands it using domain knowledge or context from the original question.
 from __future__ import annotations
 
 import logging
+import os
 import time
 
 from app.llm.openai_wrapper_provider import (
@@ -38,6 +39,33 @@ _USER_TEMPLATE = "Original Question: {original_question}\nSub-query: {sub_query}
 _TIMEOUT = 3.0  # Allow up to 3 seconds for rewrite
 
 
+def _frames_rewriter_wrapper_allowed() -> bool:
+    """``REGENOLD_FRAMES_REWRITER_ALLOW_WRAPPER`` — DEFAULT OFF (R330 §4.1).
+
+    The 3.0 s ``_TIMEOUT`` above is budgeted against a measured 12-17 s
+    Claude Max wrapper floor, and unlike its sibling
+    ``frames_planner.decompose_question_llm`` this call site was never
+    migrated to ``_resolve_intent_provider()`` — no fast provider chain,
+    no circuit breaker (grep ``_BREAKER`` across ``app/engines`` and
+    ``app/llm`` hits only ``clara_logic.py`` and ``intent_classifier.py``).
+    So the call essentially never lands: it burns 3.0 s once per firing
+    row (<= 18 of the 38 R329 HARD rows, parallel on the shared suffctx
+    executor) and then takes the ``resp.error`` branch below, which
+    returns ``sub_query`` unchanged. Skipping it is therefore
+    output-identical and retrieval-neutral BY CONSTRUCTION.
+
+    ⚠ Turning this ON without also fixing the provider chain restores the
+    waste. Routing it to the fast chain is a *different*, retrieval-MOVING
+    change (a rewrite that succeeds alters sub-query phrasing on the
+    14-18 firing rows) and is explicitly deferred to an ``easyhard_ab``.
+
+    Fresh env read per call (R263.2), fail-closed on any unparsed value.
+    """
+    return os.getenv("REGENOLD_FRAMES_REWRITER_ALLOW_WRAPPER", "0").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
 def rewrite_sub_query_llm(sub_query: str, original_question: str) -> str:
     """Rewrite a decomposed sub-query to be optimal for BM25/Vector search.
     
@@ -46,6 +74,11 @@ def rewrite_sub_query_llm(sub_query: str, original_question: str) -> str:
     """
     sub_query_clean = sub_query.strip()
     if not sub_query_clean:
+        return sub_query
+
+    # R330 §4.1 — skip the wasted wrapper round-trip. Identical return to
+    # the ``resp.error`` / exception branches below.
+    if not _frames_rewriter_wrapper_allowed():
         return sub_query
 
     if not is_openai_wrapper_enabled():
