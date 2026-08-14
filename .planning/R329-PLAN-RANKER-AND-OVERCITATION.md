@@ -173,6 +173,70 @@ candidates (engine rank)
    have changed 20/40 rows' refs here and sign-flipped all three reference axes.
 4. **Prove it FIRES.** Byte-identical is also what inert looks like.
 
+### 2.7 MEASURED — the reranker does NOT help. Negative result, 2026-08-13.
+
+A Cohere trial key was provisioned, so the fallback in §3.1 was built and
+measured instead of waiting on IAM. `app/engines/cohere_rerank.py`
+(`rerank-v3.5`, default OFF) + a **zero-variance** simulation replaying the
+RECORDED reference lists from the live HARD run, with the grounded judge's
+per-row `wrong_refs` as ground truth. Nothing is generated, so the reranker is
+the only variable.
+
+```
+rows usable (>=2 refs, judge ok)   32
+rows carrying >=1 WRONG ref        28
+permutation invariant held         32/32
+
+mean normalised position of WRONG refs (1.0 = last, higher is better)
+  emitted order   0.582
+  reranked        0.562
+  delta          -0.019          <- WORSE
+
+simulated "drop the last reference", rows with a wrong ref:
+  emitted order   wrong removed 16   good removed 12
+  reranked        wrong removed 15   good removed 13
+```
+
+**It does not clear the bar. Do not ship it.**
+
+### Why — and this is the useful part
+
+The wrong references are **semantically plausible and legally inapposite**. That
+is precisely why they were emitted, and a relevance cross-encoder scores them
+high for the same reason the generator did. Its signal is *redundant with the
+error*.
+
+```
+july7-119  wrong=['Article 43']
+  before ['Article 6', 'Article 43', 'Annex I']
+  after  ['Article 6', 'Article 43', 'Annex I']   <- unchanged
+```
+
+Article 43 (conformity assessment) is highly relevant to a risk-classification
+question *as text*; it is wrong as *law*. Same shape for `Annex I`,
+`Article 20`, `Article 62`. Meanwhile on a hand-built probe the same model
+separates cleanly — Article 50(3) 0.9244 vs Article 19 **0.0394** and
+Article 99 **0.0090** — so the model is not weak; the discriminator is simply
+the wrong one for this failure mode.
+
+This independently reproduces R325 ("nothing beats the engine's own `rank`,
+AUC 0.703") with a genuinely different instrument, which makes that conclusion
+much stronger: **the engine's existing order already puts wrong refs late**
+(0.582, and 16/28 rows already have the wrong ref last).
+
+**What this redirects the work toward.** The missing signal is *legal
+applicability*, not semantic relevance: does this provision actually bind THIS
+role at THIS risk class for THIS obligation type? That signal already exists in
+this repo — `ROLE_OBLIGATIONS` / `obligations_for` in `app/data/ontology.py`,
+and the graph's unread `Obligation`/`HAS_OBLIGATION` (113) and
+`RiskLevel`/`APPLIES_AT` (47) layers. An applicability filter is a *grounding
+predicate*, not a positional trimmer, so it is not a member of the five refuted
+families. That is the next arm worth building — and it needs `gold_dropped`
+first, exactly as §2.5 says.
+
+The module stays in the tree, default OFF, with its safety invariants pinned by
+`tests/test_r329_cohere_rerank.py` (permutation, never-drop, fail-open).
+
 ### 2.6 Expected value, stated honestly
 
 Ref Strict is −18.1 pp to frontier and Ref Loose −15.9 pp, and precision 0.653 is
