@@ -1581,16 +1581,34 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             try { localStorage.setItem(API_KEY_STORAGE, cfgApiKey.value.trim()); } catch (e) {}
         });
 
-        // References lookup for beautiful details
+        // References lookup for beautiful details.
+        // R330 Z1 — two entries contradicted the Act and were corrected against
+        // app/data/kb.py and the live Neo4j graph:
+        //   * "Article 52" carried the TRANSPARENCY blurb. That is 2021-draft
+        //     numbering. In Reg. (EU) 2024/1689 transparency is Art. 50
+        //     (kb.py:876); Art. 52 is the GPAI systemic-risk classification
+        //     procedure (kb.py:1269). Split into both keys.
+        //   * "Annex III" named 5 of the 8 use-case categories — points 1, 2, 3,
+        //     4 and 6 — omitting point 5 (essential private and public
+        //     services), point 7 (migration, asylum and border control) and
+        //     point 8 (administration of justice and democratic processes). The
+        //     live graph carries annex_III_1 … annex_III_8 and kb.py:1013 lists
+        //     all eight.
+        // That truncated five-category list is a DECOY: it is the same five, in
+        // the same order, as july7-147's shipped answer, and it cost one R329
+        // attribution pass a false lead. This map is browser-side JS, read only
+        // by the citation-card tooltip below — never on the answer path, never a
+        // wire citation, so no scored surface moves when it changes.
         const articlesSummary = {
             "Article 5": "Prohibited AI Practices — Catalogues systems presenting unacceptable risks such as cognitive behavioral manipulation, biometric categorization, and real-time biometric identification.",
             "Article 6": "Classification Rules for High-Risk AI Systems — Establishes criteria for systems requiring pre-market conformity assessment based on safety components and Annex III lists.",
             "Article 13": "Transparency and Provision of Information — Mandates high-risk systems to operate with sufficient transparency to enable deployers to interpret outputs and use the system appropriately.",
             "Article 16": "Obligations of Providers of High-Risk Systems — Details core duties including quality management systems, logging, conformity assessments, and CE marking.",
             "Article 26": "Obligations of Deployers of High-Risk Systems — Requires compliance with instructions for use, human oversight, logging, and monitoring of system operations.",
-            "Article 52": "Transparency Obligations for Certain AI Systems — Imposes specific notice duties for systems interacting with humans (chatbots), emotion recognition, biometric categorization, and deepfakes.",
+            "Article 50": "Transparency Obligations for Certain AI Systems — Imposes notice duties split by actor: providers must disclose AI interaction (50(1)) and mark synthetic content (50(2)); deployers must inform persons exposed to emotion recognition or biometric categorization (50(3)) and label deepfakes (50(4)).",
+            "Article 52": "Procedure for GPAI Systemic-Risk Classification — Providers must notify the Commission within two weeks of meeting the systemic-risk threshold, may submit arguments against designation, and the Commission publishes the list of designated models.",
             "Article 99": "Penalties and Administrative Fines — Establishes financial sanctions for infringements of prohibitions (up to €35M / 7% turnover) and general obligations.",
-            "Annex III": "High-Risk AI Systems — Explicit lists of applications deemed high-risk, including biometrics, critical infrastructure, education, employment, and law enforcement.",
+            "Annex III": "High-Risk AI Systems — The eight high-risk use-case categories: biometrics; critical infrastructure; education and vocational training; employment and worker management; access to essential private and public services; law enforcement; migration, asylum and border control; and administration of justice and democratic processes.",
             "Annex IV": "Technical Documentation — Details the required documentation for high-risk systems, including system architecture, risk management, data governance, and monitoring schemes."
         };
 

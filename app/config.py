@@ -28,7 +28,7 @@ def _load_dotenv_once() -> None:
       ``os.environ``, so it could not have fixed the direct readers anyway.
 
     Symptom this fixes: running the app locally showed **"Knowledge Graph —
-    No Conn"** in the Lexy UI (``app/web_ui.py:1667`` renders that whenever
+    No Conn"** in the Lexy UI (``app/web_ui.py:1685`` renders that whenever
     ``/healthz/graph`` reports ``graph_ok`` false). Aura was healthy the whole
     time — production, whose vars come from the Railway dashboard, reports
     ``graph_ok: true`` with full node counts. The local process simply never
@@ -51,6 +51,40 @@ def _load_dotenv_once() -> None:
     Fail-soft: a missing ``python-dotenv`` or unreadable file must never stop
     the app booting — deployments legitimately have no ``.env`` at all.
     """
+    # R330 — explicit opt-out, for the same reason as the pytest guard below.
+    #
+    # ``.env`` mixes CREDENTIALS (which the app genuinely needs at runtime) with
+    # BEHAVIOURAL FLAGS (``REGENOLD_ROLE_DUTY_NOUN_SEED``, ``REGENOLD_GRAPH_2HOP``,
+    # ``REGENOLD_MAX_ANSWER_SENTENCES`` …). Before R329 nothing loaded ``.env``, so
+    # the deterministic davidath guard measured CODE DEFAULTS. After R329 it
+    # measures whatever a developer happens to have in their local ``.env`` — which
+    # is exactly the "behaves differently on a developer machine than in CI" drift
+    # the pytest guard below was added to prevent, except aimed at the instrument
+    # this project uses to accept or reject changes.
+    #
+    # MEASURED (full davidath 476, ``provider=cli``, R330):
+    #
+    #   arm                                Ref Loose  Ref Strict  multi-turn
+    #   .env keys all blanked (defaults)      0.5971      0.4747      20/20
+    #   REGENOLD_ROLE_DUTY_NOUN_SEED=1        0.5971      0.4633      20/20
+    #   the full local .env, graph off        0.5735      0.4489      13/20
+    #   the full local .env, graph on         0.5878      0.4596      11/20
+    #
+    # The blanked arm reproduces the CLAUDE.md baseline table byte-for-byte, which
+    # is how the coupling was found: the guard appeared to have regressed by
+    # -0.026 Ref Strict and -45 pp multi-turn coherence across 15 commits that are
+    # in fact behaviourally neutral. Thirteen of the fourteen flags are individually
+    # inert on the guard; ``REGENOLD_ROLE_DUTY_NOUN_SEED`` alone costs -0.0114 Ref
+    # Strict, and the rest of the gap is interaction between them.
+    #
+    # ``evals/bench/runner.py`` sets this so the regression guard is zero-variance
+    # again. Production is unaffected either way: Railway supplies real env vars
+    # and ``override=False`` already makes those win.
+    if os.environ.get("REGENOLD_SKIP_DOTENV", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }:
+        return
+
     # NEVER under pytest. ``tests/conftest.py`` deliberately neutralises the
     # integration-activating vars before the first ``app`` import, but its list
     # is only nine names — GEMINI_API_KEY, MISTRAL_API_KEY, OPENROUTER_API_KEY,

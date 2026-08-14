@@ -17,21 +17,35 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi.testclient import TestClient
-from pydantic import SecretStr
+# R330 — the regression guard measures CODE DEFAULTS, never a developer's ``.env``.
+#
+# MUST run before the first ``app.*`` import: ``app/config.py`` calls
+# ``_load_dotenv_once()`` at import time (added R329 to fix the "Knowledge Graph:
+# No Conn" UI bug), and ``.env`` carries BEHAVIOURAL flags alongside credentials.
+# Measured cost of letting them through, full 476: Ref Strict 0.4747 -> 0.4489 and
+# multi-turn coherence 20/20 -> 13/20, entirely from configuration — the 15 commits
+# it was originally attributed to are byte-neutral. See ``app/config.py``.
+#
+# ``setdefault`` so an operator can still opt back in with an explicit
+# ``REGENOLD_SKIP_DOTENV=0`` for a deliberate .env-on arm.
+os.environ.setdefault("REGENOLD_SKIP_DOTENV", "1")
 
-from app.config import settings
-from app.main import app
-from app.rate_limit import limiter
+from fastapi.testclient import TestClient  # noqa: E402
+from pydantic import SecretStr  # noqa: E402
 
-from evals.bench import dataset as bench_dataset
-from evals.bench import metrics
-from evals.bench import storage
+from app.config import settings  # noqa: E402
+from app.main import app  # noqa: E402
+from app.rate_limit import limiter  # noqa: E402
+
+from evals.bench import dataset as bench_dataset  # noqa: E402
+from evals.bench import metrics  # noqa: E402
+from evals.bench import storage  # noqa: E402
 
 
 _EVAL_KEY = "regenold-bench-eval-key"
