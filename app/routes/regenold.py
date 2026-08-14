@@ -1252,8 +1252,23 @@ def _engine_cache_key(
     from app.integrations.regenold.citation_guard import (  # noqa: PLC0415
         is_enabled as _guard_enabled,
     )
+    # R331 — ``REGENOLD_COHERE_RERANK`` MUST be here. The rerank runs inside
+    # ``_render_supplementary_sections`` (engine-level), so it changes the
+    # Stage-2 prompt and therefore the CACHED ``GraphRAGResponse``. Omitted
+    # from the key, an in-process A/B has arm B replay arm A's cache and every
+    # axis reads exactly +0.0000 — which is also what a genuinely inert lever
+    # looks like, so the run is unfalsifiable rather than merely wrong. That
+    # already happened once in R329.
+    #
+    # Contrast ``adaptive_ref_clamp``, deliberately kept OUT of the key: it is
+    # route post-processing that re-runs on every cache hit. The rule is which
+    # side of the cache the code sits on, not how important the flag is.
+    from app.engines.cohere_rerank import rerank_enabled as _rerank_enabled  # noqa: PLC0415
     hypa_bits = f"{int(is_adaptive_router_enabled())}{int(is_rrf_retrieval_enabled())}"
-    flag_bits = f"{int(_dense_enabled())}{int(_guard_enabled())}{hypa_bits}"
+    flag_bits = (
+        f"{int(_dense_enabled())}{int(_guard_enabled())}{hypa_bits}"
+        f"{int(_rerank_enabled())}"
+    )
     # R56 — fold the resolved LLM provider into the cache key. Stage-2
     # polish produces provider-specific prose; without this bit, a
     # mid-deploy ``P2P_GRAPH_RAG_PROVIDER`` flip would silently serve
