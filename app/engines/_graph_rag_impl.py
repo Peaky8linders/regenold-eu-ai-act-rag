@@ -2662,8 +2662,25 @@ def _emotion_curated_emit_enabled() -> bool:
     rows are excluded by ``_MINIMAL_RISK_SCENARIO_OPENER_RE``), so the
     deterministic bench stays byte-identical. Measured on july7-259:
     1562 -> ~330 chars, 5 refs -> 3, precision 2/5 -> 3/3, 57 s -> 0.2 s.
+
+    **R330 — FLIPPED TO DEFAULT ON, gate run.** Live HARD n=40, grounded
+    Sonnet-5 judge vs the recorded R329 arm: answer_correctness 0.6250 ->
+    0.8750, faithfulness 0.8000 -> 0.8500. july7-259 landed at 321 chars and
+    dropped both refs the R329 judge marked WRONG (``Article 27``,
+    ``Article 49``); its answer and faithfulness verdicts both flipped to pass.
+
+    ⚠ Two honest limits, unchanged by the flip. (1) The ref-precision win does
+    NOT fully reach the wire: ``_surface_anchor_citations`` re-derives bare
+    ``Article 5`` / ``Article 50`` from the curated prose, so the shipped set is
+    5 refs, not 3. Do not read a 3/3 precision off production. (2) The gate also
+    flips ``_detect_classification_topic`` on the prompt-injection probe
+    ``tricky_injection_circumvent_art_5``. **Verified live before this flip:**
+    with all three R330 gates ON that question still returns the Lexy refusal
+    with zero references — the R271 safety gate refuses upstream.
+
+    Roll back with ``REGENOLD_EMOTION_CURATED_EMIT=0``.
     """
-    return _env_enabled("REGENOLD_EMOTION_CURATED_EMIT", default="0")
+    return _env_enabled("REGENOLD_EMOTION_CURATED_EMIT", default="1")
 
 
 def _detect_classification_topic(question: str) -> dict | None:
@@ -3461,11 +3478,34 @@ def _risk_framework_anchor_enabled() -> bool:
     never add one. Deterministic replay: refs [11] -> ['Annex III', 'Art. 6',
     'Art. 27'], both judge-CORRECT refs retained, answer 621 -> 373 chars.
 
-    Ships OFF anyway: the LIVE post-fix answer is unmeasured, and shipping
-    default-ON with the gate un-run is the R308/R299 mistake. Flip criterion
-    is ``easyhard_ab`` (after ``sim_gate`` gold_dropped == 0).
+    **R330 — FLIPPED TO DEFAULT ON. The gate has now been run.**
+
+    Live HARD arm (n=40, Claude Max wrapper, ``stage2_landed`` 0.82) graded by
+    the grounded Sonnet-5 judge against verbatim Act text, vs the recorded R329
+    arm:
+
+      answer_correctness    0.6250 -> 0.8750    mean factual 0.8807 -> 0.9738
+      reference_correctness 0.2250 -> 0.3250    faithfulness 0.8000 -> 0.8500
+      latency p50            57.3s -> 39.1s     refs 3.30/max 11 -> 2.97/max 5
+
+    Attribution is deliberately conservative — the same arm also carries the
+    removal of ``REGENOLD_MAX_ANSWER_SENTENCES=4`` from the operator
+    environment, and 8 of the 11 answer_correctness improvements land on rows
+    this gate does not touch. What IS attributable: **every gate-target row
+    improved and none regressed on any axis**, in the direction predicted in
+    advance by deterministic replay. This row went 11 refs -> 2
+    (``Article 6``, ``Annex III``) — both judge-CORRECT refs kept, all 9
+    judge-WRONG dropped — and it was the ``max 11 references`` row the
+    scorecard flagged against the rules PDF's "minimal set". Run-wide max refs
+    is now 5.
+
+    Known cost, accepted: the row leaves the 207 ms canned intercept for the
+    real Stage-2 path (~21.7 s live). One row of 40; the Ans-Strict and Ref
+    gains dominate on a geometric mean.
+
+    Roll back with ``REGENOLD_RISK_FRAMEWORK_ANCHOR=0``.
     """
-    return _env_enabled("REGENOLD_RISK_FRAMEWORK_ANCHOR", default="0")
+    return _env_enabled("REGENOLD_RISK_FRAMEWORK_ANCHOR", default="1")
 
 
 def _detect_risk_framework_inquiry(question: str) -> bool:

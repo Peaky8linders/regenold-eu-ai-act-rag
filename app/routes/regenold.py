@@ -2206,8 +2206,16 @@ def _definitional_multiturn_emit_enabled() -> bool:
     (This is why the ROUTE variant ships and the engine variant does not —
     ``_detect_pure_definitional_inquiry`` fires on 4 of the 137 davidath QA
     questions, so relaxing the engine-side skip WOULD move a bench row.)
+
+    **R330 — FLIPPED TO DEFAULT ON, gate run.** Live HARD n=40, grounded
+    Sonnet-5 judge vs the recorded R329 arm: answer_correctness 0.6250 ->
+    0.8750, faithfulness 0.8000 -> 0.8500. july7-265 specifically went from the
+    378-char "Defines 68 terms…" summary to the 103-char verbatim Art. 3
+    definition of 'risk', flipping BOTH its answer and faithfulness verdicts,
+    with refs unchanged as predicted. Every gate-target row improved; none
+    regressed. Roll back with ``REGENOLD_DEFINITIONAL_MULTITURN_EMIT=0``.
     """
-    return os.getenv("REGENOLD_DEFINITIONAL_MULTITURN_EMIT", "0").strip().lower() in (
+    return os.getenv("REGENOLD_DEFINITIONAL_MULTITURN_EMIT", "1").strip().lower() in (
         "1",
         "true",
         "yes",

@@ -56,9 +56,23 @@ def _general_topic() -> dict:
 
 
 class TestGateDefault:
-    def test_default_off(self, monkeypatch):
+    def test_default_on(self, monkeypatch):
+        """R330 — DEFAULT ON, after the gate was actually run.
+
+        Live HARD arm (n=40, Claude Max wrapper, stage2_landed 0.82) graded by
+        the grounded Sonnet-5 judge vs verbatim Act text, against the recorded
+        R329 arm: answer_correctness 0.6250 -> 0.8750, mean factual 0.8807 ->
+        0.9738, reference_correctness 0.2250 -> 0.3250, citation_faithfulness
+        0.8000 -> 0.8500, latency p50 57.3s -> 39.1s, max refs 11 -> 5.
+
+        Attribution kept conservative: the arm also carries the removal of
+        REGENOLD_MAX_ANSWER_SENTENCES=4 from the operator environment, and 8 of
+        11 answer improvements are on rows these gates do not touch. What is
+        attributable: EVERY gate-target row improved and none regressed, in the
+        direction predicted in advance by deterministic replay.
+        """
         monkeypatch.delenv("REGENOLD_EMOTION_CURATED_EMIT", raising=False)
-        assert _emotion_curated_emit_enabled() is False
+        assert _emotion_curated_emit_enabled() is True
 
     @pytest.mark.parametrize("val", ["1", "true", "yes", "on", "ON", "Yes"])
     def test_explicit_enable(self, monkeypatch, val):
@@ -74,7 +88,7 @@ class TestGateDefault:
 class TestDivergenceReproduced:
     def test_gate_true_emitter_none_today(self, monkeypatch):
         """The defect itself, reproduced with the flag OFF."""
-        monkeypatch.delenv("REGENOLD_EMOTION_CURATED_EMIT", raising=False)
+        monkeypatch.setenv("REGENOLD_EMOTION_CURATED_EMIT", "0")  # R330: default is now ON
         assert _detect_emotion_classification_inquiry(JULY7_259) is True
         assert _is_curated_authoritative_intercept(JULY7_259) is True
         assert _detect_classification_topic(JULY7_259) is None
@@ -82,7 +96,7 @@ class TestDivergenceReproduced:
     def test_falls_through_to_the_qa_dump_today(self, monkeypatch):
         """With the flag OFF the shipped prose never addresses the workplace /
         education scope — the judged failure mode."""
-        monkeypatch.delenv("REGENOLD_EMOTION_CURATED_EMIT", raising=False)
+        monkeypatch.setenv("REGENOLD_EMOTION_CURATED_EMIT", "0")  # R330: default is now ON
         ans = _deterministic_answer(JULY7_259, GraphContext())
         assert "workplaces and educational institutions" not in ans
 
@@ -132,7 +146,7 @@ class TestGateEmitterParity:
     @pytest.mark.parametrize("q", R144_PROBES)
     def test_r144_probes_are_unaffected(self, monkeypatch, q):
         """The R144 traffic already emitted; the gate must not move it."""
-        monkeypatch.delenv("REGENOLD_EMOTION_CURATED_EMIT", raising=False)
+        monkeypatch.setenv("REGENOLD_EMOTION_CURATED_EMIT", "0")  # R330: default is now ON
         before = _detect_classification_topic(q)
         monkeypatch.setenv("REGENOLD_EMOTION_CURATED_EMIT", "1")
         after = _detect_classification_topic(q)
@@ -208,7 +222,7 @@ class TestDavidathZeroFire:
 
     def test_topic_selection_identical_gate_off_vs_on(self, monkeypatch):
         corpus = self._corpus()
-        monkeypatch.delenv("REGENOLD_EMOTION_CURATED_EMIT", raising=False)
+        monkeypatch.setenv("REGENOLD_EMOTION_CURATED_EMIT", "0")  # R330: default is now ON
         off = [(_detect_classification_topic(q) or {}).get("name") for q in corpus]
         monkeypatch.setenv("REGENOLD_EMOTION_CURATED_EMIT", "1")
         on = [(_detect_classification_topic(q) or {}).get("name") for q in corpus]
