@@ -1775,6 +1775,12 @@ def _engine_cache_key(
             # R327 — semantic layers & vector recall & parent collapse flags
             "REGENOLD_GRAPH_SEMANTIC_LAYERS",
             "REGENOLD_SEMANTIC_GLOSS",
+            "REGENOLD_SEMANTIC_MIN_SIM",
+            "REGENOLD_SEMANTIC_UNITS",
+            "REGENOLD_SEMANTIC_UNITS_PER_PROVISION",
+            "REGENOLD_SEMANTIC_DEFINITIONS",
+            "REGENOLD_SEMANTIC_RECITALS",
+            "REGENOLD_SEMANTIC_ANN_FANOUT",
             "REGENOLD_GRAPH_VECTOR_RECALL",
             "REGENOLD_PARENT_COLLAPSE",
             # R330 §3.1 — the start-anchor narrowing of
