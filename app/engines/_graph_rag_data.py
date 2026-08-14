@@ -835,7 +835,14 @@ _CLASSIFICATION_TOPICS: list[dict] = [
             "is high-risk under Annex III.1(c) and triggers Article 50(3) transparency duties "
             "toward exposed persons."
         ),
-        "refs": ["Art. 5", "Annex III.1.c", "Art. 50.3"],
+        # R330 §3.3 — ``Art. 5`` -> ``Art. 5.1.f``. The R329 judge marked bare
+        # ``Article 5`` WRONG on july7-259 ("redundant/over-broad parent
+        # article") and ``Article 5.1.f`` CORRECT. The other two refs are
+        # already at sub-point grain; the prohibition ref was the odd one out,
+        # and the R330 gate fix would have shipped the over-broad parent in
+        # place of the judged-correct sub-point. With this edit the row goes
+        # 2/5 -> 3/3 precision.
+        "refs": ["Art. 5.1.f", "Annex III.1.c", "Art. 50.3"],
     },
     # ── Social scoring (Art. 5.1.c) ───────────────────────────────────
     {

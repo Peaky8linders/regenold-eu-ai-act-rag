@@ -1369,6 +1369,15 @@ def _engine_cache_key(
             # arm B from arm A's cache — so a sweep of this ceiling would report
             # a flat "no effect" for the R263.2 reason, not a real one.
             "REGENOLD_KG_MAX_CHARS",
+            # R330 Z3 — the deontic-context block. Its Cypher ends ``LIMIT
+            # $limit`` but the caller never bound ``$limit``, so live Aura
+            # answered ParameterMissing, ``execute_read`` swallowed it as ``[]``
+            # and ``_bounded_execute_read`` took its SUCCESS branch — the block
+            # has never rendered. Now gated (default OFF) so the wasted Aura
+            # round-trip is skipped; keyed for the same reason as its five R315
+            # siblings above, since flipping it ON changes the Stage-2 prompt
+            # built INSIDE the cached engine call.
+            "REGENOLD_KG_DEONTIC",
             # R313 — grounding BREADTH (how many cited provisions get verbatim
             # text). Defaults to the pre-R313 constant so the wire is unchanged,
             # but it is in the key so the R288 breadth sweep is actually
@@ -1753,6 +1762,25 @@ def _engine_cache_key(
             "REGENOLD_SEMANTIC_GLOSS",
             "REGENOLD_GRAPH_VECTOR_RECALL",
             "REGENOLD_PARENT_COLLAPSE",
+            # R330 §3.1 — the start-anchor narrowing of
+            # ``_detect_risk_framework_inquiry`` (_graph_rag_impl.py:3407).
+            # That predicate drives the ungated engine intercept at :4806,
+            # whose ``_seed_classification_obligations`` REPLACES
+            # ``context.obligations`` and clears ``context.article_info`` — so
+            # it flips both GraphRAGResponse.answer and its references (on
+            # july7-299, refs [11] → ['Annex III', 'Art. 6', 'Art. 27'] and the
+            # answer 621 → 373 chars). Engine behaviour ⇒ it must be in the
+            # cache identity per the R30/R56/R79/R263.2 doctrine, or the
+            # in-process easyhard_ab OFF↔ON A/B this gate exists FOR hashes
+            # both arms identically and serves arm A's response to arm B.
+            "REGENOLD_RISK_FRAMEWORK_ANCHOR",
+            # R330 §3.3 — the emotion-recognition gate/emitter divergence fix
+            # (_graph_rag_impl.py:4448). Same reasoning as the sibling above and
+            # required by the plan: with the gate ON the curated cross-tier
+            # verdict is actually emitted, so BOTH the answer (1562 → 321 chars)
+            # and the reference set change. Unkeyed, the OFF↔ON A/B this gate
+            # exists to enable would hash both arms identically.
+            "REGENOLD_EMOTION_CURATED_EMIT",
         )
     )
     import json
@@ -2140,6 +2168,51 @@ def _ref_matches_anchor_sets(
     except Exception:  # noqa: BLE001
         return False
     return False
+
+
+def _definitional_multiturn_emit_enabled() -> bool:
+    """R330 §3.2 — let the DEFINITION branch of the extractive pass run on a
+    multi-turn request. Default OFF.
+
+    ``_two_stage_generate`` (``_graph_rag_impl.py:7908``) skips Stage-2 whenever
+    ``_detect_pure_definitional_inquiry`` is True, and justifies the skip by the
+    claim that "the deterministic definitional path ships the FULL verbatim
+    Article 3 definition". The only code that ships that definition is
+    ``_try_extractive_answer``'s definition branch (:2212 below), whose call site
+    is guarded by ``not _is_multiturn``. Every HARD July-7 row is multi-turn by
+    construction (``pushback_messages()`` always emits ``[user, assistant,
+    user]``), so on that split the skip fires, the emitter does not, and the
+    Article-3 KB SUMMARY ships instead of the definition.
+
+    Measured on july7-265 ("risk"), 3 arms, provider=cli, zero LLM:
+      * turn-1 only          → emitter called  → 103 ch verbatim
+        "'risk' means the combination of the probability of an occurrence of
+        harm and the severity of that harm;"
+      * the runner's real 3-message pushback → emitter never invoked →
+        378 ch "Defines 68 terms used in the Regulation, including 'AI
+        system'…" — byte-identical to the shipped judged answer
+      * same content, first user turn removed → emitter called → the 103 ch
+        definition again
+    Arm 3 isolates ``not _is_multiturn`` as the SOLE blocking guard: the six
+    sibling guards (``_is_scenario``, ``_is_scenario_shape``,
+    ``_is_classification_topic``, ``_is_curated_intercept``,
+    ``_is_general_verdict``, ``_stage2_landed``) are all False there.
+    july7-265 is the R329 run's only zero-correct row and one of its 8
+    faithfulness failures; refs are ``['Article 3.2']`` in all three arms, so
+    no reference moves.
+
+    davidath-neutral BY CONSTRUCTION: every bench request is single-turn, so
+    ``_is_multiturn`` is always False and the new disjunct is never reached.
+    (This is why the ROUTE variant ships and the engine variant does not —
+    ``_detect_pure_definitional_inquiry`` fires on 4 of the 137 davidath QA
+    questions, so relaxing the engine-side skip WOULD move a bench row.)
+    """
+    return os.getenv("REGENOLD_DEFINITIONAL_MULTITURN_EMIT", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
 
 def _try_extractive_answer(
@@ -6785,10 +6858,27 @@ def regenold_eu_ai_act_ask(
     # the prose down to a single sentence, lopping off the regulatory
     # context the verdict carries (e.g. "Outside those settings it is
     # high-risk under Annex III...").
+    #
+    # R330 §3.2 — the multi-turn guard is relaxed for DEFINITION-shape questions
+    # only, under REGENOLD_DEFINITIONAL_MULTITURN_EMIT (default OFF). See the
+    # gate's docstring: the engine skips Stage-2 on a pure-definitional ask on
+    # the stated ground that this branch ships the verbatim Art. 3 definition,
+    # but on a multi-turn ask this branch never runs, so the 378-char Art. 3 KB
+    # summary ships instead of the 103-char definition (july7-265). The qtype
+    # test keeps the unlock inside the definition branch: without it the whole
+    # extractive pass AND its QA-trim else-branch would fire on every multi-turn
+    # request, which is a far larger change than the one that was measured.
     if (
         not _is_scenario
         and not _is_scenario_shape
-        and not _is_multiturn
+        and (
+            not _is_multiturn
+            or (
+                _definitional_multiturn_emit_enabled()
+                and classify_question_type(resolved_question or question)
+                == "definition"
+            )
+        )
         and not _is_classification_topic
         and not _is_curated_intercept
         and not _is_general_verdict
@@ -9009,9 +9099,13 @@ def regenold_eu_ai_act_ask(
     # practice — R142 stays default-OFF — by fixing its three measured defects:
     # question-named heads are rescued past the budget, the SCENARIO budget is
     # detected from the site that actually SETS it, and curated intercepts are
-    # exempt (R274). Default OFF (REGENOLD_ADAPTIVE_REF_CLAMP) so prod stays
-    # byte-identical until the gold-bearing A/B decides; stage2-gated so
-    # davidath is inert either way.
+    # exempt (R274). Default **ON** — ``_adaptive_clamp_enabled`` (:4114) reads
+    # ``os.getenv("REGENOLD_ADAPTIVE_REF_CLAMP", "1")``, so the env var is an
+    # instant OFF-switch, not an opt-in. (R330-Z4: this comment previously read
+    # "Default OFF" and two separate verification passes tripped over it.)
+    # Prod is not byte-identical to the pre-R281 wire; what IS byte-identical is
+    # davidath / 276 / OOS, because the clamp is stage2-gated and the
+    # deterministic bench runs ``provider=cli`` with no wrapper.
     #
     # R283 (Fix #3) — float the answer's lead-named ref to the HEAD first, so
     # the clamp's ``references[:budget]`` prefix keeps the operative gold the

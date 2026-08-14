@@ -2633,6 +2633,39 @@ def _verify_verdict_enabled() -> bool:
     return _env_enabled("REGENOLD_VERIFY_VERDICT", default="0")
 
 
+def _emotion_curated_emit_enabled() -> bool:
+    """R330 §3.3 — repair the emotion-recognition GATE/EMITTER divergence.
+    DEFAULT OFF.
+
+    ``_detect_emotion_classification_inquiry`` is a disjunct of
+    ``_is_curated_authoritative_intercept``, so ``_two_stage_generate`` skips
+    Stage-2 on the stated ground that the curated emotion cross-tier verdict
+    is "authoritative and complete". But the EMITTER of that verdict,
+    ``_detect_classification_topic``, short-circuits on
+    ``_is_classification_question``, whose ``(?:does|do)`` branch admits only
+    ``fall under|fall into|fall within|still apply|apply to|count as|
+    qualify as`` — no prohibition or risk-tier predicate. So R330 july7-259
+    ("Does the EU AI Act prohibit all AI systems for emotion recognition …?")
+    returns False there: the curated ``emotion_recognition_general`` text is
+    never emitted, Stage-2 is skipped anyway, and ``_deterministic_answer``
+    falls through to the generic QA dump about RBI (reproduced byte-identically
+    at 1562 chars). Judge: ans FAIL, faithfulness FAIL, 3 wrong refs.
+
+    The fix is SCOPED — it rescues only the case where
+    ``_is_classification_question`` is the sole blocker. Widening
+    ``_CLASSIFICATION_QUESTION_RE`` itself also works but that regex is a
+    GLOBALLY-used gate: not davidath-neutral by construction, and it would
+    need the full 476 plus the whole gate stack for a one-row win.
+
+    Fires on 0 davidath rows by the same R144 argument recorded at
+    ``_EMOTION_RECOGNITION_RE`` (0 QA emotion rows; the 24 emotion SCENARIO
+    rows are excluded by ``_MINIMAL_RISK_SCENARIO_OPENER_RE``), so the
+    deterministic bench stays byte-identical. Measured on july7-259:
+    1562 -> ~330 chars, 5 refs -> 3, precision 2/5 -> 3/3, 57 s -> 0.2 s.
+    """
+    return _env_enabled("REGENOLD_EMOTION_CURATED_EMIT", default="0")
+
+
 def _detect_classification_topic(question: str) -> dict | None:
     """Find the best-matching classification topic for ``question``.
 
@@ -2643,6 +2676,16 @@ def _detect_classification_topic(question: str) -> dict | None:
     """
     question = _normalise(question)
     if not _is_classification_question(question):
+        # R330 §3.3 — emotion gate/emitter parity. Placed INSIDE the
+        # not-classification-shaped branch so the rescue is a strict
+        # addition: every question that reaches the loop below is scored
+        # exactly as before (in particular the narrow
+        # ``emotion_recognition_workplace`` entry still wins over the
+        # general one on its own traffic).
+        if _emotion_curated_emit_enabled() and _detect_emotion_classification_inquiry(question):
+            for topic in _CLASSIFICATION_TOPICS:
+                if topic["name"] == "emotion_recognition_general":
+                    return topic
         return None
     live = question
     if "Latest question:" in live:
@@ -3393,6 +3436,38 @@ _RISK_FRAMEWORK_NEG_RE = re.compile(
 )
 
 
+def _risk_framework_anchor_enabled() -> bool:
+    """R330 §3.1 — require the taxonomy regex to match from the START of the
+    question, not merely somewhere inside it. DEFAULT OFF.
+
+    ``_RISK_FRAMEWORK_TAXONOMY_RE`` is END-anchored but has no start anchor,
+    and the predicate below applies ``.search()``. The end anchor only rules
+    out a TRAILING system noun; it does not rule out a specific-system
+    question whose FINAL CLAUSE happens to be a bare taxonomy ask. R330
+    july7-299 ("Does the EU AI Act classify AI systems used for irregular
+    migration, and if so, under which risk category?") matches at span
+    (86, 106) — a 20-char tail behind an 86-char prefix — and that single
+    predicate fires two default-ON consequences: the ungated engine intercept
+    seeds the canned 11-ref taxonomy pack (``_seed_classification_obligations``
+    REPLACES ``context.obligations`` and clears ``context.article_info``, so
+    the genuine Annex III point 7 migration retrieval is destroyed), and the
+    route's ``_enforce_risk_framework_refs`` re-instates canon members that
+    later lossy passes dropped. 9 of that row's 11 refs are judged wrong —
+    9 of the 55 wrong refs in the whole R329 run (16.4%) from one row.
+
+    The fix is the empty-prefix predicate, deliberately NOT a negative
+    lookahead over a use-case keyword list ("a hand-tuned classifier is not a
+    rule" — R318 §4). It is a pure narrowing: it can only remove firings,
+    never add one. Deterministic replay: refs [11] -> ['Annex III', 'Art. 6',
+    'Art. 27'], both judge-CORRECT refs retained, answer 621 -> 373 chars.
+
+    Ships OFF anyway: the LIVE post-fix answer is unmeasured, and shipping
+    default-ON with the gate un-run is the R308/R299 mistake. Flip criterion
+    is ``easyhard_ab`` (after ``sim_gate`` gold_dropped == 0).
+    """
+    return _env_enabled("REGENOLD_RISK_FRAMEWORK_ANCHOR", default="0")
+
+
 def _detect_risk_framework_inquiry(question: str) -> bool:
     """True iff the question is a general risk-tier TAXONOMY ask (not a
     verdict on a specific system). See ``_RISK_FRAMEWORK_TAXONOMY_RE``."""
@@ -3404,7 +3479,10 @@ def _detect_risk_framework_inquiry(question: str) -> bool:
     raw_q = raw_q.strip()
     if _RISK_FRAMEWORK_NEG_RE.search(raw_q):
         return False
-    return bool(_RISK_FRAMEWORK_TAXONOMY_RE.search(raw_q))
+    if not _risk_framework_anchor_enabled():
+        return bool(_RISK_FRAMEWORK_TAXONOMY_RE.search(raw_q))
+    m = _RISK_FRAMEWORK_TAXONOMY_RE.search(raw_q)
+    return bool(m) and not raw_q[: m.start()].strip()
 
 
 # R268 — prohibited-practices CLOSED-SET enumeration ("what practices are
