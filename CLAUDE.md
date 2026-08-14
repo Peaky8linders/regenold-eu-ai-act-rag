@@ -68,20 +68,47 @@ a thing to reproduce on every change.
 
 ## Reranking (R329)
 
-**A cross-encoder reranker is standard in production RAG and is wired here** —
-`app/engines/cohere_rerank.py`, applied at the RETRIEVAL stage in
-`app/data/kb_search.py::top_articles_by_relevance` (retrieve wide with BM25 → rerank the
-pool → cut to `k`). Gate `REGENOLD_COHERE_RERANK`, default OFF pending the A/B; needs
-`COHERE_API_KEY`.
+**⚠ CORRECTED R331 — the paragraph below previously claimed the reranker was
+"applied at the RETRIEVAL stage in `app/data/kb_search.py::top_articles_by_relevance`".
+It was not.** That placement was reverted after it measured **0 calls**, and until R331
+nothing outside `app/engines/cohere_rerank.py` and its test file imported the module at
+all. A fresh session that trusted this file went looking for a call site that did not
+exist. What follows is the wiring that is actually on `main`.
+
+**Where it is wired (R331):** `app/engines/_graph_rag_impl.py::_render_supplementary_sections`,
+reordering the graph-context ref list immediately before `render_kg_context`. Gate
+`REGENOLD_COHERE_RERANK`, default OFF pending the A/B; needs `COHERE_API_KEY` (present in
+`.env` and on Railway); registered in `_engine_cache_key`.
+
+**Why that placement and not retrieval.** Every `kg_context.fetch_*` reader truncates via
+`_node_ids(refs, limit=max_refs)`, `max_refs` default **8**. The cut is by list position,
+so when the context carries more than 8 refs the order decides *which* provisions' verbatim
+paragraph and sub-point text reaches Stage-2 — a content change, not a permutation of the
+output. It targets **Answer Correctness**, the largest gap to frontier. The graph blocks are
+non-citable (`AGENTS.md` invariant #3), so this **cannot** add, drop or reorder a wire
+citation — which is why it is not blocked on the missing `gold_dropped` guard. Gate it on
+`ab_judge` (it moves answers), **not** `easyhard_ab`.
+
+**Prove it fires before reading any number.** `cohere_rerank.rerank_stats()` returns
+`attempts / reordered / noop / failed`. R329 tried three placements; all three looked right
+in the diff and all three made zero calls, reading +0.0000 — indistinguishable from a lever
+that does not work. `tests/test_r331_rerank_placement.py` pins that the placement fires,
+that the surviving top-8 set actually changes, and that the flag reaches the cache key.
+
+⚠ **The "the model itself is good" probe is weaker than recorded.** The claim was that it
+separates `Art. 50.3` **0.9244** from `Art. 19` **0.0394** and `Art. 99` **0.0090**.
+Re-measured live against this repo's own `get_provision_text`: `Article 50.3` **0.8803** and
+`Article 19` **0.0286** reproduce, but **`Article 99` scores 0.4583 — 50× the recorded
+figure**, and it is the case that discriminates. Article 99 is *penalties*: legally
+inapposite to a transparency-duty question, semantically plausible because its text
+enumerates the very articles being asked about. That is exactly the failure class this
+corpus suffers from, and a relevance cross-encoder does **not** cleanly reject it. Expect a
+smaller effect than the probe implies, and prefer feeding sub-provision text over
+full-article text where the ref grain allows it.
 
 Two things to keep straight, because they are different interventions and only one has
 been measured:
 
-* **Retrieval-stage rerank (wired, being measured).** The reranker sees the raw candidate
-  pool before anything is selected. Spot check: for *"must a deployer of an emotion
-  recognition system inform the people exposed"*, it lifts `Art. 50.3` — the exact
-  governing provision — from rank 2 to rank 1 and drops the irrelevant `Annex III` /
-  `Art. 5` out of the top-5. Gate on `easyhard_ab` (gold-bearing).
 * **Post-hoc reordering of the final emitted reference list (measured, does NOT help).**
   Zero-variance replay of the live HARD run: mean normalised position of judged-wrong refs
   0.582 → 0.562 (delta **−0.019**, i.e. slightly worse). By that point the wrong references
@@ -154,13 +181,43 @@ Multi-turn coherence: **20/20 coherent**.
 > Groq→Gemini→Mistral fallback, plus interaction with the flags. **The "deterministic"
 > OOS probe is not deterministic when `.env` is present: the scope classifier can make
 > live third-party calls.** Run it as
-> `REGENOLD_SKIP_DOTENV=1 … -m evals.regenold.runner_v2 --local --probe-oos` until
-> `runner_v2` gets the same guard `evals/bench/runner.py` now has.
+> `REGENOLD_SKIP_DOTENV=1 … -m evals.regenold.runner_v2 --local --probe-oos` (as of R330
+> `runner_v2` sets this itself for `--local --probe-oos`).
 >
 > ⚠ **Open operator question:** does the Railway dashboard carry the same behavioural
-> flags? If yes, production pays this cost — including, potentially, the scope leaks.
-> If no, local evals do not predict production. Neither is acceptable silently —
-> reconcile the two flag sets.
+> flags? If yes, production pays the Ref-Strict cost. If no, local evals do not predict
+> production. Reconcile the two flag sets. **This is an eval-fidelity question, NOT a
+> production-safety one** — see the scope note below.
+
+### The OOS probe over-counts: "leak" ≠ the product requirement (R330)
+
+**Measured against LIVE production** (`--endpoint …up.railway.app`, n=51): 41 pass, 10
+"scope leaks", `hard_fail: True`. **That verdict is a harness artefact, not a defect.**
+
+The requirement is that the assistant **pushes back on ADVERSARIAL input**; answering an
+off-topic pleasantry is acceptable. Split that way, production is clean:
+
+| category | live result |
+| :--- | :--- |
+| `injection` ("ignore all previous instructions", "what is your system prompt", DAN) | **3/3 pass** |
+| `injection_obf` (base64 payload, translate-then-follow, roleplay-as-unrestricted) | **3/3 pass** |
+| `scope_drift_mt` (multi-turn pivot off a genuine Art. 9 / Annex III thread) | **3/3 pass** |
+| `nonsense`, `greeting`, `other_regulation`, `nonexistent`, `standards`, `non_eu_ai_law` | **all pass** |
+| `r34_p0` / `r47_e` (Netflix, restaurant, weather, a joke) | 7 "leaks" — **chit-chat, allowed** |
+| `adjacent_eu` (Product Liability Directive, MDR clinical evaluation) | 2 "leaks" — answers are **legally correct** |
+
+**12/12 on adversarial.** Do NOT "fix" this by setting `REGENOLD_TOPIC_FILTER=0/1` on
+Railway: R255 disabled the broad subject-topic filter precisely because the keyword
+classifier false-positived on genuine, keyword-less AI Act questions, and R256's design
+routes those to the LLM gate so real questions get rescued. Turning the blunt filter back
+on trades a non-problem for a real one.
+
+⚠ **What IS worth knowing:** an anchor-less question lands in the ambiguous
+`CONVERSATIONAL` bucket handed to the LLM scope gate, and `regenold.py:5002` records that
+"with no LLM wired it fails soft to the generic decline". So every `--local`
+deterministic OOS run **fails safe by construction** and cannot measure the live gate at
+all. If you want to test scope behaviour, run `--probe-oos` against the DEPLOYED endpoint.
+Judge it on the adversarial categories only.
 
 ---
 
