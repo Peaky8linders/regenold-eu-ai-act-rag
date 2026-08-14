@@ -6546,7 +6546,7 @@ def _render_supplementary_sections(
             # R330 — pass the QUESTION. Without it the entire R327 semantic
             # layer is dead code: this is the ONLY ``render_kg_context`` call
             # site in ``app/``, it omitted the argument, and
-            # ``_render_semantic_layers`` (kg_context.py) short-circuits on
+            # ``_render_semantic_layers`` (kg_context.py:476) short-circuits on
             # ``if not question: return []``. So BOTH R327 features —
             # ``REGENOLD_GRAPH_SEMANTIC_LAYERS`` (constrained sub-provision
             # vector search) and ``REGENOLD_SEMANTIC_GLOSS`` (definitions +
@@ -6554,8 +6554,8 @@ def _render_supplementary_sections(
             # despite the layers flag defaulting ON, being registered in
             # ``_engine_cache_key`` and being documented as active in CLAUDE.md.
             #
-            # ``GraphContext.question`` is populated in the retrieval path, so
-            # the value is available here.
+            # ``GraphContext.question`` is populated at :5708 (``context.question
+            # = question or ""``), so the value is available here.
             #
             # ⚠ The layers flag ships **default OFF** as of this commit
             # (graph_semantic.py). That is NOT a regression: it is byte-identical
@@ -6565,12 +6565,49 @@ def _render_supplementary_sections(
             # ON is now a real, measurable lever — gate it on ``ab_judge``, since
             # it moves Stage-2 grounding (Answer axes), and watch latency: it
             # issues live Neo4j vector queries per request.
-            parts.extend(
-                render_kg_context(
-                    _context_article_refs(context),
-                    getattr(context, "question", "") or "",
+            _kg_question = getattr(context, "question", "") or ""
+            _kg_refs = _context_article_refs(context)
+
+            # R331 — cross-encoder rerank of the GRAPH-CONTEXT ref list.
+            #
+            # WHY HERE, and not at any of the three R329 placements. Every
+            # ``kg_context.fetch_*`` reader truncates via
+            # ``_node_ids(refs, limit=max_refs)`` with ``max_refs`` defaulting
+            # to 8 (``kg_context.py`` 379 / 397 / 415 / 433). That cut is by
+            # LIST POSITION, so whenever the context carries more than 8 refs
+            # this list's order decides WHICH provisions' verbatim paragraph
+            # and sub-point text reaches Stage-2. That is a content change, not
+            # a permutation of the output — precisely the property the three
+            # R329 placements lacked. Two of them sat behind gates that never
+            # opened (BM25 is reached only under ``if not entities:`` at :2270)
+            # and one reordered a list already inside its budget, so all three
+            # were no-ops by construction and measured +0.0000. Assert
+            # ``cohere_rerank.rerank_stats()["attempts"] > 0`` before believing
+            # any number off this path.
+            #
+            # WHAT THIS CANNOT DO. The graph blocks are NON-CITABLE
+            # (``AGENTS.md`` invariant #3) and this function renders Stage-2
+            # prompt text only — the wire reference list is not on this path.
+            # So this cannot add, drop or reorder a citation; it cannot drop a
+            # gold reference, and is therefore NOT blocked on the missing
+            # ``gold_dropped`` guard. It targets Answer Correctness, never
+            # reference precision. Reordering the EMITTED reference list is a
+            # different, separately measured intervention and it is REFUTED
+            # (-0.019) — do not conflate the two.
+            #
+            # Ordering note: this runs AFTER the R330 question fix above and
+            # feeds the same list to the semantic layers, so with the rerank
+            # gate ON both features see the reranked order. With the gate OFF
+            # (the default) ``rerank_references`` returns its input unchanged,
+            # so this block is byte-identical to R330's behaviour.
+            if _kg_question.strip() and len(_kg_refs) > 1:
+                from app.engines.cohere_rerank import (  # noqa: PLC0415
+                    rerank_references,
                 )
-            )
+
+                _kg_refs = rerank_references(_kg_question, _kg_refs)
+
+            parts.extend(render_kg_context(_kg_refs, _kg_question))
         except Exception:  # noqa: BLE001 — the graph must never break an answer
             logger.debug("kg_context render failed", exc_info=True)
     return parts

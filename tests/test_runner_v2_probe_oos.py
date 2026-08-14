@@ -425,12 +425,29 @@ class TestLocalTransport:
             f"{[r['id'] for r in payload['probe_oos']['rows'] if r['verdict'] == 'FAIL_SCOPE_LEAK']}"
         )
 
-    def test_hard_fail_exit_path(self, _configured_key: str, tmp_path: Path) -> None:
+    def test_hard_fail_exit_path(
+        self, _configured_key: str, tmp_path: Path, monkeypatch
+    ) -> None:
         """Exit-code wiring: when summary.hard_fail is True the CLI
         ``main()`` exits non-zero. Forge a single scope-leak scenario
         and confirm.
+
+        R331 — the forged leak is now produced by stubbing
+        ``_looks_like_refusal``, not by trusting a live model to answer an
+        in-scope question substantively. Previously this test needed a
+        reachable LLM: offline, the R267.1 scope classifier cannot call out,
+        R330's "fail safe offline" correctly returns a REFUSAL, the forged row
+        therefore passes, and ``hard_fail`` is False. The test then failed for
+        the one reason it is not about — it asserts the ``leak -> hard_fail ->
+        exit code`` WIRING, and that wiring is independent of how any
+        particular question happens to be classified. Verified failing both
+        with and without ``.env`` before this change.
         """
         from evals.regenold import scenarios_oos as _so
+
+        # Force the leak deterministically: a substantive (non-refusal) answer
+        # is exactly what ``_classify_oos_row`` turns into FAIL_SCOPE_LEAK.
+        monkeypatch.setattr(runner_v2, "_looks_like_refusal", lambda _answer: False)
 
         # Save + restore so other tests are unaffected.
         original = _so.OOS_SCENARIOS
@@ -512,8 +529,15 @@ class TestCliEntrypoint:
     ) -> None:
         """CLI ``main()`` returns non-zero when any FAIL_SCOPE_LEAK
         fires. Forge a 1-row in-scope question that will leak.
+
+        R331 — same hermetic fix as ``test_hard_fail_exit_path``: the leak is
+        forced by stubbing ``_looks_like_refusal`` rather than by requiring a
+        reachable LLM to answer the question substantively. What is under test
+        is ``main()``'s exit code, not the scope classifier.
         """
         from evals.regenold import scenarios_oos as _so
+
+        monkeypatch.setattr(runner_v2, "_looks_like_refusal", lambda _answer: False)
 
         forged = (
             OOSScenario(

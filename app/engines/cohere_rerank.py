@@ -78,6 +78,8 @@ __all__ = [
     "rerank_enabled",
     "rerank_documents",
     "rerank_references",
+    "rerank_stats",
+    "reset_rerank_stats",
 ]
 
 COHERE_RERANK_URL = "https://api.cohere.com/v2/rerank"
@@ -93,6 +95,49 @@ _CLIENT_TIMEOUT = httpx.Timeout(6.0, connect=2.0)
 
 _CLIENT_LOCK = threading.Lock()
 _CLIENT: httpx.Client | None = None
+
+# ── Call instrumentation (R331) ──────────────────────────────────────────────
+#
+# R329 tried three placements for this reranker. All three looked correct in
+# the diff and all three made **ZERO calls**: two sat behind gates that never
+# opened (``kb_search.top_articles_by_relevance`` is reached only when
+# ``_deterministic_parse`` extracted no entities — see ``_graph_rag_impl.py``
+# ``if not entities:`` at :2270), and the "budget cut" the third was routed
+# through was already within budget. The A/B read +0.0000 on every axis, which
+# is indistinguishable from "the lever does not work".
+#
+# Byte-identical output is what an INERT feature looks like. A number read off
+# an unproven placement measures nothing, so every placement must assert
+# ``rerank_stats()["attempts"] > 0`` before any A/B result is believed.
+_STATS_LOCK = threading.Lock()
+_STATS: dict[str, int] = {"attempts": 0, "reordered": 0, "failed": 0, "noop": 0}
+
+
+def rerank_stats() -> dict[str, int]:
+    """Snapshot of the call counters.
+
+    ``attempts``  — network calls actually issued to Cohere.
+    ``reordered`` — :func:`rerank_references` calls that CHANGED the order.
+    ``failed``    — attempts that fell back to the input order.
+    ``noop``      — attempts that returned the input order unchanged.
+
+    ``attempts == 0`` means the feature never ran; treat any downstream metric
+    as UNMEASURED, not as evidence of no effect.
+    """
+    with _STATS_LOCK:
+        return dict(_STATS)
+
+
+def reset_rerank_stats() -> None:
+    """Zero the counters — per-arm reset for an A/B harness."""
+    with _STATS_LOCK:
+        for key in _STATS:
+            _STATS[key] = 0
+
+
+def _bump(field: str) -> None:
+    with _STATS_LOCK:
+        _STATS[field] = _STATS.get(field, 0) + 1
 
 
 def _get_client() -> httpx.Client:
@@ -156,6 +201,7 @@ def rerank_documents(
         "documents": list(docs),
         "top_n": int(top_n) if top_n else len(docs),
     }
+    _bump("attempts")
     try:
         resp = _get_client().post(
             COHERE_RERANK_URL,
@@ -169,10 +215,12 @@ def rerank_documents(
             logger.debug(
                 "cohere_rerank: http %s (%s)", resp.status_code, resp.text[:160]
             )
+            _bump("failed")
             return None
         body = resp.json()
     except Exception as exc:  # noqa: BLE001 — fail open, never break the answer
         logger.debug("cohere_rerank: call failed: %s", exc)
+        _bump("failed")
         return None
 
     try:
@@ -182,9 +230,13 @@ def rerank_documents(
             score = item.get("relevance_score")
             if isinstance(idx, int) and 0 <= idx < len(docs):
                 out.append((idx, float(score) if score is not None else 0.0))
-        return out or None
+        if not out:
+            _bump("failed")
+            return None
+        return out
     except Exception as exc:  # noqa: BLE001
         logger.debug("cohere_rerank: malformed response: %s", exc)
+        _bump("failed")
         return None
 
 
@@ -264,5 +316,7 @@ def rerank_references(
 
     if sorted(ordered) != sorted(refs):  # pragma: no cover — invariant guard
         logger.debug("cohere_rerank: permutation invariant violated, keeping input")
+        _bump("failed")
         return list(refs)
+    _bump("reordered" if ordered != list(refs) else "noop")
     return ordered
