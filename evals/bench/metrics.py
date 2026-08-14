@@ -314,7 +314,7 @@ def answer_conciseness(pred: str, gold: str) -> float:
 # ── 4+5: Reference correctness ───────────────────────────────────────────
 
 
-def _gold_ref_set(
+def gold_ref_set(
     relevant_article: int | str | list[int] | list[str] | tuple | set | None,
 ) -> set[str]:
     """Normalise the gold reference field across QA + scenarios shapes.
@@ -325,6 +325,8 @@ def _gold_ref_set(
     * bare strings, sets, tuples, and mixed lists are also supported.
     """
     if relevant_article is None:
+        return set()
+    if isinstance(relevant_article, bool):
         return set()
     if isinstance(relevant_article, int):
         return {f"Article {relevant_article}"}
@@ -340,6 +342,8 @@ def _gold_ref_set(
         out: set[str] = set()
         for a in relevant_article:
             if a is None:
+                continue
+            if isinstance(a, bool):
                 continue
             if isinstance(a, int):
                 out.add(f"Article {a}")
@@ -366,7 +370,7 @@ def reference_correctness_loose(
     article among 8 distractors still scores 1.0 here.
     """
     pred_heads = article_heads(pred_refs)
-    gold = _gold_ref_set(gold_articles)
+    gold = gold_ref_set(gold_articles)
     if not gold:
         return 1.0 if not pred_heads else 0.0
     overlap = len(pred_heads & gold)
@@ -382,7 +386,7 @@ def reference_correctness_strict(
     recall. Combined into F1 so the score is symmetric to both errors.
     """
     pred_heads = article_heads(pred_refs)
-    gold = _gold_ref_set(gold_articles)
+    gold = gold_ref_set(gold_articles)
     if not gold and not pred_heads:
         return 1.0
     if not gold or not pred_heads:
@@ -535,7 +539,7 @@ def reference_conciseness(
     the ideal length is the gold cardinality.
     """
     pred_heads = article_heads(pred_refs)
-    gold = _gold_ref_set(gold_articles)
+    gold = gold_ref_set(gold_articles)
     lp = len(pred_heads)
     lg = len(gold)
     if lg == 0:
@@ -555,7 +559,7 @@ def gold_dropped_head(
 
     The coarse half of the hard-rule-#8 instrument. Both gold and predicted
     references are folded onto their article/annex HEAD before comparison —
-    ``_gold_ref_set`` already head-projects, and predicted refs go through
+    ``gold_ref_set`` already head-projects, and predicted refs go through
     ``article_heads``. So a MORE precise prediction than gold (gold
     ``Article 5``, predicted ``Article 5.1.f``) does NOT count as a drop
     here: the head is covered.
@@ -565,7 +569,7 @@ def gold_dropped_head(
     a regression is diagnosable from a stored sidecar without re-running the
     probe).
     """
-    gold = _gold_ref_set(gold_articles)
+    gold = gold_ref_set(gold_articles)
     pred_heads = article_heads(pred_refs)
     dropped = sorted(gold - pred_heads)
     return {

@@ -254,7 +254,7 @@ def _deterministic_scores(rows: list[ProbeRow], arm: dict[str, ArmAnswer]) -> di
         ans = arm.get(row.id)
         if ans is None:
             continue
-        # reference_correctness_* accept a list[str] gold via _gold_ref_set.
+        # reference_correctness_* accept a list[str] gold via gold_ref_set.
         rl += metrics.reference_correctness_loose(ans.refs, list(row.expected_refs))
         rs += metrics.reference_correctness_strict(ans.refs, list(row.expected_refs))
         k = metrics.answer_keyword_recall(ans.answer, list(row.expected_keywords))

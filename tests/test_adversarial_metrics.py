@@ -33,7 +33,7 @@ from evals.harness.probe_set import ProbeRow
 
 
 class TestGoldDroppedHeadAdversarial:
-    """Stress tests for `gold_dropped_head` and `_gold_ref_set`."""
+    """Stress tests for `gold_dropped_head` and `gold_ref_set`."""
 
     def test_gold_dropped_head_standard_hit(self):
         res = metrics.gold_dropped_head(["Article 5"], ["Article 5"])
@@ -119,13 +119,13 @@ class TestGoldDroppedHeadAdversarial:
         res_float = metrics.gold_dropped_head(["Article 5"], 5.0)  # type: ignore[arg-type]
         assert res_float["gold_count"] == 0
 
-        # In Python bool is a subclass of int: isinstance(True, int) is True
+        # In Python bool is a subclass of int — guard rejects bools as invalid gold
         res_bool = metrics.gold_dropped_head(["Article 1"], True)  # type: ignore[arg-type]
-        assert res_bool["gold_count"] == 1
-        assert res_bool["dropped_refs"] == ["Article True"]
+        assert res_bool["gold_count"] == 0
+        assert res_bool["dropped_refs"] == []
 
     def test_gold_dropped_head_mixed_list_vulnerabilities(self):
-        """Heterogeneous list edge cases in _gold_ref_set."""
+        """Heterogeneous list edge cases in gold_ref_set."""
         # [None]
         res = metrics.gold_dropped_head(["Article 5"], [None])  # type: ignore[list-item]
         assert res["gold_count"] == 0
@@ -379,7 +379,7 @@ class TestEasyHardHarnessAdversarial:
         assert agg["pred_gold_ratio"] == 0.0
 
         # Case 2: Integer gold_refs vs string gold_refs in _aggregate
-        # _aggregate uses _gold_ref_set, so integer gold_refs correctly counts n_gold=1
+        # _aggregate uses gold_ref_set, so integer gold_refs correctly counts n_gold=1
         rows_int_gold = [
             {
                 "id": "r1",
