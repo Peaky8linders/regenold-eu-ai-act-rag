@@ -6503,7 +6503,34 @@ def _render_supplementary_sections(
         try:
             from app.engines.kg_context import render_kg_context  # noqa: PLC0415
 
-            parts.extend(render_kg_context(_context_article_refs(context)))
+            # R330 — pass the QUESTION. Without it the entire R327 semantic
+            # layer is dead code: this is the ONLY ``render_kg_context`` call
+            # site in ``app/``, it omitted the argument, and
+            # ``_render_semantic_layers`` (kg_context.py) short-circuits on
+            # ``if not question: return []``. So BOTH R327 features —
+            # ``REGENOLD_GRAPH_SEMANTIC_LAYERS`` (constrained sub-provision
+            # vector search) and ``REGENOLD_SEMANTIC_GLOSS`` (definitions +
+            # recitals) — have never emitted one line of Stage-2 context,
+            # despite the layers flag defaulting ON, being registered in
+            # ``_engine_cache_key`` and being documented as active in CLAUDE.md.
+            #
+            # ``GraphContext.question`` is populated in the retrieval path, so
+            # the value is available here.
+            #
+            # ⚠ The layers flag ships **default OFF** as of this commit
+            # (graph_semantic.py). That is NOT a regression: it is byte-identical
+            # to the behaviour this bug has produced all along, and it keeps an
+            # unmeasured feature from silently activating in production the
+            # moment the wiring is repaired (the R308/R299 mistake). Flipping it
+            # ON is now a real, measurable lever — gate it on ``ab_judge``, since
+            # it moves Stage-2 grounding (Answer axes), and watch latency: it
+            # issues live Neo4j vector queries per request.
+            parts.extend(
+                render_kg_context(
+                    _context_article_refs(context),
+                    getattr(context, "question", "") or "",
+                )
+            )
         except Exception:  # noqa: BLE001 — the graph must never break an answer
             logger.debug("kg_context render failed", exc_info=True)
     return parts

@@ -148,21 +148,48 @@ def gloss_layers_enabled() -> bool:
 
 
 def semantic_layers_enabled() -> bool:
-    """``REGENOLD_GRAPH_SEMANTIC_LAYERS`` — default **ON** (constrained half only).
+    """``REGENOLD_GRAPH_SEMANTIC_LAYERS`` — **R330: default flipped ON -> OFF.**
 
-    R327.1 — enabled on the gate result, by operator decision. With
-    ``REGENOLD_SEMANTIC_GLOSS`` OFF (its default) this reads
-    ``v_paragraph_embedding`` / ``v_point_embedding`` / ``v_subpoint_embedding``
-    constrained to already-cited provisions, which measured citation faithfulness
-    0.900 -> 0.960 at baseline reference precision. See
-    :func:`gloss_layers_enabled` for the full three-arm table.
+    ⚠ **This flag has never done anything.** R330 found the only
+    ``render_kg_context`` call site in ``app/``
+    (``_graph_rag_impl.py``, in ``_render_supplementary_sections``) omitted the
+    ``question`` argument, and ``kg_context._render_semantic_layers`` opens with
+    ``if not question: return []``. So the constrained vector search below — and
+    ``REGENOLD_SEMANTIC_GLOSS``, which lives inside the same function — emitted
+    **zero** Stage-2 context on every request since R327, while this flag read
+    ON, sat in ``_engine_cache_key``, and was documented as active in CLAUDE.md.
 
-    Set to ``0`` for instant rollback; the flag is in ``_engine_cache_key`` so an
-    in-process A/B of it is real and not a cache replay.
+    R330 repairs the wiring (the question is now passed) and flips this default
+    to **OFF in the same commit**. That pairing is deliberate:
 
-    Fresh env read per call (R263.2).
+    * Flipping to OFF is **byte-identical to the behaviour the bug produced**, so
+      production is unchanged by this commit and nothing needs re-measuring.
+    * Repairing the wiring WITHOUT flipping would silently activate an unmeasured
+      feature in production the moment it merged — live Neo4j vector queries per
+      request on a scored latency axis, plus extra Stage-2 grounding on the
+      answer axes. That is exactly the R308/R299 mistake this project has made
+      twice.
+
+    ⚠ **The R327.1 evidence below was collected through the broken path**, so
+    treat "faithfulness 0.900 -> 0.960" as UNVERIFIED, not as a reason to flip:
+    with the layer inert, both arms of that measurement were the same arm.
+
+    To flip it ON now: set ``REGENOLD_GRAPH_SEMANTIC_LAYERS=1`` and gate on
+    ``ab_judge`` (it moves Stage-2 grounding, i.e. the ANSWER axes — not
+    ``easyhard_ab``, which is the reference instrument), and watch p50: the graph
+    blocks are non-citable (AGENTS.md invariant #3) so this cannot change a wire
+    citation, but it can change the answer and it costs Aura round-trips.
+
+    Historical note (R327.1, measured through the dead path — see above): with
+    ``REGENOLD_SEMANTIC_GLOSS`` OFF this reads ``v_paragraph_embedding`` /
+    ``v_point_embedding`` / ``v_subpoint_embedding`` constrained to
+    already-cited provisions. See :func:`gloss_layers_enabled` for that
+    three-arm table.
+
+    The flag is in ``_engine_cache_key`` so an in-process A/B of it is real and
+    not a cache replay. Fresh env read per call (R263.2).
     """
-    return os.getenv("REGENOLD_GRAPH_SEMANTIC_LAYERS", "1").strip().lower() in (
+    return os.getenv("REGENOLD_GRAPH_SEMANTIC_LAYERS", "0").strip().lower() in (
         "1",
         "true",
         "yes",
