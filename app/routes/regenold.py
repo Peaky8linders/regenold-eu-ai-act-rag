@@ -1319,6 +1319,11 @@ def _engine_cache_key(
             "REGENOLD_BEDROCK_STAGE2_MODEL",
             "REGENOLD_STAGE2_VERDICT_GUARD",
             "REGENOLD_STAGE2_ANSWER_HEADROOM",
+            # R357 — the post-generation truncation guard flips
+            # GraphRAGResponse.answer (repair vs deterministic fallback), so a
+            # same-process A/B differing only here must not share a cache entry
+            # (R30/R56/R79/R263.2 doctrine).
+            "REGENOLD_STAGE2_TRUNCATION_GUARD",
             # R270 — opus-for-all flips the Stage-2 answer MODEL (Sonnet 5 vs
 
             # Opus 4.8) for standard questions → flips GraphRAGResponse.answer.
@@ -1436,6 +1441,10 @@ def _engine_cache_key(
             # (measured: arm B served from cache in 0.1s vs arm A's 37.8s,
             # giving a zero-generation-variance comparison).
             "REGENOLD_ANSWER_COVERAGE",
+            # R340 — the critical-rules clause appends to the Stage-2 USER
+            # message (same channel as the coverage clause above). It flips
+            # the polished answer AND its citations, so same doctrine.
+            "REGENOLD_USER_CRITICAL_RULES",
             # R300 — the wrapper model alias decides WHICH model generates the
             # Stage-2 answer, so flipping it flips the answer.
             "REGENOLD_WRAPPER_MODEL_ALIAS",
@@ -1866,6 +1875,33 @@ def _engine_cache_key(
             "REGENOLD_VERBATIM_MAX_CHARS",
             "REGENOLD_VERBATIM_MAX_PROVISIONS",
             "REGENOLD_VERBATIM_PARA_CHARS",
+            # R355.2 — R328-R354 engine port (2026-08-16): the eval worktree
+            # shipped query_expansion, risk_classification, the R340-R351
+            # parse-level KG-pool rerank, and the semantic-coordinate focus
+            # cypher. Each flag below is read inside the engine's ask path and
+            # flips the cached GraphRAGResponse; tests/test_r355_cache_key_complete.py
+            # enforces this accounting (same R30/R56/R79/R263.2 doctrine).
+            #   * REGENOLD_QUERY_EXPANSION — R341 multi-query expansion gate
+            #     (default OFF): appends paraphrase-union entities -> flips refs.
+            #   * REGENOLD_QUERY_EXPANSION_MODEL — picks the paraphrase model
+            #     -> flips the paraphrases -> flips entities.
+            #   * QUERY_EXPANSION_TIMEOUT / _BEDROCK_TIMEOUT — transport
+            #     budgets; keyed so the gate holds (they do not flip output).
+            #   * REGENOLD_RISK_CLASS_ANNEX — R353 gate (default OFF): appends
+            #     the Annex III anchor on yes/no high-risk shapes -> flips refs.
+            #   * REGENOLD_RERANK_KG_CANDIDATES / _KG_HOPS — R347/R348 KG-pool
+            #     rerank: neighbours inform entity order -> flips which refs
+            #     survive the 15-slot citation cap.
+            #   * REGENOLD_SEMANTIC_COORDINATES — R329 P2: swaps the focus
+            #     cypher -> flips sub-provision citation coordinates.
+            "REGENOLD_QUERY_EXPANSION",
+            "REGENOLD_QUERY_EXPANSION_MODEL",
+            "REGENOLD_QUERY_EXPANSION_TIMEOUT",
+            "REGENOLD_QUERY_EXPANSION_BEDROCK_TIMEOUT",
+            "REGENOLD_RISK_CLASS_ANNEX",
+            "REGENOLD_RERANK_KG_CANDIDATES",
+            "REGENOLD_RERANK_KG_HOPS",
+            "REGENOLD_SEMANTIC_COORDINATES",
         )
     )
     import json

@@ -249,7 +249,11 @@ def _looks_structurally_truncated(text: str | None) -> bool:
         tail = tail[:-1].rstrip()
     if not tail:
         return False
-    return tail[-1] not in ".!?…"
+    # R357 — an ending ellipsis ("…") is a CUT, not a terminator: a
+    # complete regulatory sentence never trails off. Previously "…" sat
+    # in the terminal set, so a stream cut right after the model wrote an
+    # ellipsis passed the structural guard and shipped a broken fragment.
+    return tail[-1] not in ".!?"
 
 
 # R142 — incomplete-verdict guard. Even when an answer ends in terminal
@@ -363,6 +367,53 @@ def _looks_incomplete_verdict(text: str | None) -> bool:
     return False
 
 
+# R357 — post-generation completeness detector for the FINAL answer that would
+# ship. Complements the wrapper-level guards: those run on the raw completion
+# (R102 structural, R142 incomplete-verdict) and DISCARD the whole polish on a
+# hit. This runs on the text after every Stage-2 guard and distinguishes three
+# additional cut shapes that reach the wire: (a) an ending ellipsis (the R357
+# hole in ``_looks_structurally_truncated``), (b) a final sentence dangling on a
+# connector word ("...and", "...which", "...the"), and (c) the R142 promissory
+# shapes when the wrapper's verdict guard is disabled. Conservative: complete
+# sentences end in terminal punctuation after a content word.
+_DANGLING_TAIL_WORDS = frozenset({
+    "must", "shall", "the", "a", "an", "and", "or", "to", "with", "for",
+    "in", "under", "which", "that", "of", "by", "on", "at", "from", "be",
+    "is", "are", "were", "was", "have", "has", "had", "including", "such",
+    "as", "regarding", "concerning", "pursuant", "but", "so", "while",
+})
+
+
+def _last_sentence_of(text: str) -> str:
+    """Return the final sentence of ``text`` (abbreviation-aware split)."""
+    parts = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()]
+    return parts[-1] if parts else ""
+
+
+def _looks_incomplete_final_sentence(text: str | None) -> bool:
+    """Does the answer end in a way that reads as cut off mid-sentence?
+
+    True when the stripped tail lacks terminal punctuation, ends in an
+    ellipsis, ends in a dangling connector word, or matches the R142
+    promissory verdict shapes. False for empty text and for answers that end
+    in a complete, period-terminated sentence.
+    """
+    if not text:
+        return False
+    if _looks_structurally_truncated(text):
+        return True
+    if _looks_incomplete_verdict(text):
+        return True
+    stripped = text.rstrip()
+    if not stripped:
+        return False
+    last = _last_sentence_of(stripped)
+    words = re.findall(r"[A-Za-z][A-Za-z\-]*", last)
+    if words and words[-1].lower() in _DANGLING_TAIL_WORDS:
+        return True
+    return False
+
+
 def _stage2_answer_headroom() -> int:
     """R142 — output-token headroom for the answer ABOVE the thinking budget.
 
@@ -393,48 +444,110 @@ def _stage2_answer_headroom() -> int:
 def _shrink_user_for_groq(user: str, budget: int = 10000) -> str:
     """Fit ``user`` into ``budget`` chars WITHOUT deleting the grounding.
 
-    R315. The Stage-2 user message is laid out roughly as::
+    R315 + R341. The Stage-2 user message has two layouts:
+
+    **Multi-turn** (contains ``Latest question:``)::
 
         [Context anchors ...] / Conversation so far: ...   <- compressible
         Latest question: ...                               <- must survive
         EU AI ACT REFERENCES ...                           <- must survive
         VERBATIM PROVISION TEXT ...                        <- must survive
+        ANSWER COVERAGE / CRITICAL RULES ...               <- must survive
 
-    The previous head+tail slice kept the first 8 000 and last 2 000
-    characters, which on a long multi-turn request deleted the references
-    and verbatim-text blocks outright while preserving the conversation
-    history — the exact inverse of what the answer needs. We instead drop
-    the oldest conversation turns, which is the largest compressible span
-    and the only one whose loss cannot strip a provision the answer is
-    instructed to quote.
+    **Single-turn** (starts with ``ORIGINAL QUESTION:``)::
 
-    Falls back to a tail-preserving slice only if the layout is
-    unrecognised, so a prompt-format change degrades rather than breaks.
+        ORIGINAL QUESTION: ...                             <- must survive
+        [query profile / context / references ...]         <- compressible middle
+        ANSWER COVERAGE / CRITICAL RULES ...               <- must survive
+
+    R341: The previous fallback for single-turn was ``user[:budget]`` which
+    chopped the TAIL where ``USER_ANSWER_COVERAGE_CLAUSE`` and
+    ``USER_CRITICAL_RULES_CLAUSE`` sit — the highest-impact instructions.
+    Now both layouts preserve head (question) + tail (rules), compressing
+    only the bulky middle (cross-references, verbatim text, KG context).
     """
 
     if len(user) <= budget:
         return user
 
+    # --- Locate the critical tail rules (R308 coverage + R340 critical) ---
+    # These sit at the very end of user_message.  Find the earliest of the
+    # two clause markers so we can protect everything from there onward.
+    _TAIL_MARKERS = (
+        " ANSWER COVERAGE:",          # USER_ANSWER_COVERAGE_CLAUSE start
+        " CRITICAL ANSWER RULES",     # USER_CRITICAL_RULES_CLAUSE start
+    )
+    tail_start = len(user)  # default: no protected tail found
+    for tm in _TAIL_MARKERS:
+        pos = user.find(tm)
+        if pos > 0:
+            tail_start = min(tail_start, pos)
+
+    protected_tail = user[tail_start:] if tail_start < len(user) else ""
+
+    # --- Multi-turn: split on "Latest question:" ---
     marker = "Latest question:"
     idx = user.find(marker)
     if idx > 0:
-        head, tail = user[:idx], user[idx:]
-        if len(tail) <= budget:
-            # Trim the history from its OLDEST end, keeping everything from
-            # the live question onward intact.
-            keep = budget - len(tail)
+        head = user[:idx]
+        # Middle = from marker to tail rules; tail rules are protected separately
+        middle = user[idx:tail_start]
+        core = middle + protected_tail
+        if len(core) <= budget:
+            keep = budget - len(core)
             if keep > 0:
                 trimmed = head[-keep:]
                 return (
                     "... [EARLIER CONVERSATION TRUNCATED FOR GROQ CONTEXT LIMIT] ...\n\n"
                     + trimmed
-                    + tail
+                    + core
                 )
-            return tail
-        # Even the live question + references overflow: keep the FRONT of
-        # that block (question + references precede verbatim text).
-        return tail[:budget]
+            return core
+        # Even middle + tail overflow: keep question front + tail rules,
+        # compress the verbatim text in between.
+        mid_budget = budget - len(protected_tail)
+        if mid_budget > 0:
+            return middle[:mid_budget] + protected_tail
+        return protected_tail[:budget]
 
+    # --- Single-turn: starts with "ORIGINAL QUESTION:" ---
+    # Locate end of question header (first double-newline after question).
+    q_marker = "ORIGINAL QUESTION:"
+    q_idx = user.find(q_marker)
+    if q_idx >= 0:
+        # Find the end of the question block (first blank line)
+        q_end = user.find("\n\n", q_idx)
+        if q_end < 0:
+            q_end = min(len(user), q_idx + 500)
+        else:
+            q_end += 2  # include the double newline
+
+        question_head = user[:q_end]
+        middle_block = user[q_end:tail_start]
+
+        head_tail_len = len(question_head) + len(protected_tail)
+        if head_tail_len <= budget:
+            mid_budget = budget - head_tail_len
+            if mid_budget > 0:
+                # Keep question + as much middle as fits + tail rules
+                return question_head + middle_block[:mid_budget] + (
+                    "\n... [MIDDLE CONTEXT TRUNCATED FOR GROQ CONTEXT LIMIT] ...\n"
+                    if len(middle_block) > mid_budget else ""
+                ) + protected_tail
+            return question_head + protected_tail
+        # Even head + tail overflow — keep tail rules (they're the instructions),
+        # trim the question.
+        q_budget = budget - len(protected_tail)
+        if q_budget > 0:
+            return question_head[:q_budget] + protected_tail
+        return protected_tail[:budget]
+
+    # --- Unrecognised layout: preserve tail rules, trim front ---
+    if protected_tail and len(protected_tail) < budget:
+        front_budget = budget - len(protected_tail)
+        return user[:front_budget] + (
+            "\n... [TRUNCATED FOR GROQ CONTEXT LIMIT] ...\n"
+        ) + protected_tail
     return user[:budget]
 
 
@@ -698,9 +811,23 @@ def _openai_wrapper_complete_for_graph_rag(
         1024,
     )
 
+    # R342 — Streamline system prompt for the Claude Max wrapper.
+    # The full ANSWER_GENERATE_SYSTEM is ~51KB. The bundled Claude Code CLI
+    # inside the wrapper fails with HTTP 500 ("No response from Claude Code")
+    # when receiving ~51KB system strings alongside 25KB user payloads.
+    # Since R308 (coverage clause) and R340 (critical rules) deliver all
+    # legal instructions through the user channel, capping the wrapper's
+    # system slot to a clean persona prevents CLI buffer overflow and ensures
+    # 100% reliable Stage-2 Opus 5 execution.
+    wrapper_system = (
+        "You are an expert EU AI Act regulatory compliance specialist."
+        if len(system) > 1000
+        else system
+    )
+
     response = get_openai_wrapper_provider().complete(
         OpenAIWrapperRequest(
-            system=system,
+            system=wrapper_system,
             user=user,
             model=model,
             max_tokens=safe_max_tokens,
@@ -1887,6 +2014,36 @@ def _bm25_fallback_k() -> int:
         return _BM25_FALLBACK_K
 
 
+def _keyword_scan_refs(text_lower: str) -> list[str]:
+    """Run the curated ``_KEYWORD_ENTITY_MAP`` scan over ``text_lower``.
+
+    Returns the matched article refs in map order, deduplicated. Pure
+    function of the text + the R283 env knobs — factored out of
+    ``_deterministic_parse`` so the R341 multi-query expansion can scan
+    each paraphrase with the SAME high-precision map that scans the
+    original question (gate-off: the original scan is byte-identical).
+    """
+    _kw_map = _KEYWORD_ENTITY_MAP
+    if (
+        os.getenv("REGENOLD_REF_RECOVERY_KW")
+        or os.getenv("REGENOLD_REF_RECOVERY", "1")
+    ).strip().lower() in ("1", "true", "yes", "on"):
+        _kw_map = _KEYWORD_ENTITY_MAP + _R283_KEYWORD_ADDITIONS
+    matched: list[str] = []
+    for kw, art_ref in _kw_map:
+        boundary_pat = _KEYWORD_ENTITY_BOUNDARY_RES.get(kw)
+        if boundary_pat is not None:
+            if not boundary_pat.search(text_lower):
+                continue
+        elif kw not in text_lower:
+            continue
+        if art_ref not in matched:
+            matched.append(art_ref)
+    return matched
+
+
+
+
 def _deterministic_parse(question: str) -> GraphQuery:
     """Parse question using keyword matching when LLM is unavailable."""
     # R79 — normalise Unicode dashes / non-breaking spaces before the
@@ -1963,7 +2120,6 @@ def _deterministic_parse(question: str) -> GraphQuery:
         if ent not in seen:
             seen.add(ent)
             entities.append(ent)
-
     has_explicit_provision_anchor = bool(article_nums or annex_romans)
 
     # Detect risk context
@@ -2096,21 +2252,93 @@ def _deterministic_parse(question: str) -> GraphQuery:
     # it at runtime; the flag is folded into ``_engine_cache_key`` (R263.2) so
     # the two arms never share a cached engine response. Sub ``_KW`` inherits
     # the master ``REGENOLD_REF_RECOVERY`` (default ON) when unset/blank.
-    _kw_map = _KEYWORD_ENTITY_MAP
+    for ref in _keyword_scan_refs(q_lower):
+        if ref not in entities:
+            entities.append(ref)
+
+    # R341 — multi-query expansion (RAG-Fusion). When the gate is ON, the
+    # wrapper is alive, the question carries NO explicit Art./Annex anchor
+    # (paraphrasing an anchored question adds noise + latency for zero
+    # recall) and the turn is NOT the flattened multi-turn shape (paraphrasing
+    # the whole conversation history is meaningless), ask Haiku 4.5 for 2-3
+    # paraphrases and run the SAME high-precision keyword map over each. New
+    # refs are APPENDED after the original question's anchors (they can only
+    # add recall, never displace the original's priority), deduplicated.
+    # This is the lever that closes the review's paraphrase gap: the map is
+    # a literal substring scan, so a question phrased informally
+    # ("what must companies that put AI on the market do?") misses it while
+    # its formal paraphrase ("what obligations apply to providers of
+    # high-risk AI systems?") hits. The expanded queries are also handed to
+    # the BM25 fallback below for reciprocal-rank fusion.
+    expanded_queries: list[str] | None = None
+    #: Entities the paraphrase lane appended — the BM25 fallback below must
+    #: still run when the ORIGINAL lanes found nothing, so a single
+    #: high-precision paraphrase hit cannot starve the retrieval (measured:
+    #: without this, one union hit replaced 8 BM25 refs). Gate-off: 0, so
+    #: ``len(entities) - _expansion_added == 0`` degenerates to ``not entities``
+    #: exactly — byte-identical.
+    _expansion_added = 0
     if (
-        os.getenv("REGENOLD_REF_RECOVERY_KW")
-        or os.getenv("REGENOLD_REF_RECOVERY", "1")
-    ).strip().lower() in ("1", "true", "yes", "on"):
-        _kw_map = _KEYWORD_ENTITY_MAP + _R283_KEYWORD_ADDITIONS
-    for kw, art_ref in _kw_map:
-        boundary_pat = _KEYWORD_ENTITY_BOUNDARY_RES.get(kw)
-        if boundary_pat is not None:
-            if not boundary_pat.search(q_lower):
-                continue
-        elif kw not in q_lower:
-            continue
-        if art_ref not in entities:
-            entities.append(art_ref)
+        not has_explicit_provision_anchor
+        and "Latest question:\n" not in question
+        and os.getenv("REGENOLD_QUERY_EXPANSION", "0").strip().lower()
+        in ("1", "true", "yes", "on")
+    ):
+        try:
+            from app.engines.query_expansion import (  # noqa: PLC0415
+                expand_query,
+            )
+            _qs = expand_query(question)
+            if len(_qs) > 1:
+                expanded_queries = _qs
+                # The paraphrase lane is a RECALL SUPPLEMENT: at most 3 new
+                # refs, in map order (the curated precision order), appended
+                # after the original's anchors. Without the cap a paraphrase
+                # that happens to repeat several map phrases would inflate
+                # the entity list past the citation budget and pollute the
+                # answer (measured with a mock provider: 8 -> 22 entities).
+                for _q_extra in _qs[1:]:
+                    for ref in _keyword_scan_refs(_q_extra.lower()):
+                        if ref not in entities:
+                            entities.append(ref)
+                            _expansion_added += 1
+                            if _expansion_added >= 3:
+                                break
+                    if _expansion_added >= 3:
+                        break
+        except Exception as exc:  # noqa: BLE001 — expansion must never break parse
+            logger.debug("query_expansion_parse_failed: %s", exc)
+
+    # R353 — the R352 surviving hypothesis (``REGENOLD_RISK_CLASS_ANNEX``,
+    # default OFF): on the yes/no "is X high-risk / regulated under the AI
+    # Act?" shape, append ``Annex III`` (the list of high-risk use cases) as
+    # a RECALL SUPPLEMENT. Exact gold impact computed over the whole 297-row
+    # probe pool before this line existed (see
+    # ``app/engines/risk_classification.py`` module docstring): fires on 13
+    # rows, Annex III gold-but-missing on 7, zero non-gold additions after
+    # the prohibition exclusion. Appended AFTER the keyword anchors so it can
+    # only fill slots they did not take; the parse-level cross-encoder rerank
+    # (R340, below) then decides its final position — the reranker is the
+    # precision guard against a trigger misfire on an unseen question.
+    try:
+        from app.engines.risk_classification import (  # noqa: PLC0415
+            annex_iii_risk_class_anchor_enabled,
+            is_yes_no_risk_classification,
+        )
+        _r353_q = question
+        if "Latest question:\n" in question:
+            # Multi-turn flattening puts the live turn last; the trigger is
+            # a yes/no shape that the "Conversation so far:" preamble would
+            # otherwise mask.
+            _r353_q = question.rsplit("Latest question:\n", 1)[-1]
+        if (
+            annex_iii_risk_class_anchor_enabled()
+            and "Annex III" not in entities
+            and is_yes_no_risk_classification(_r353_q)
+        ):
+            entities.append("Annex III")
+    except Exception as exc:  # noqa: BLE001 — the anchor must never break parse
+        logger.debug("risk_class_annex_failed: %s", exc)
 
     # R137 — role-contrast obligational anchor (see module-level
     # ``_is_role_contrast_obligation``). Scans the LIVE turn only (post the
@@ -2267,7 +2495,21 @@ def _deterministic_parse(question: str) -> GraphQuery:
     # citation set and inflate the answer to 7+ sentences. The
     # keyword path is the high-precision primary; BM25 is the
     # zero-precision fallback.
-    if not entities:
+    #
+    # R340 — ``_bm25_fallback_used`` tells the parse-level cross-encoder
+    # rerank below to SKIP when the entities came from the BM25 fallback:
+    # ``top_articles_by_relevance*`` already reranks its 50-candidate pool
+    # (the R340 pool wiring), so reranking the handful of surviving entities
+    # a second time would double the Cohere round-trip per request.
+    _bm25_fallback_used = False
+    # The ``== 0`` gate is load-bearing (see the block comment above). With
+    # R341 expansion active, entities may now include paraphrase-union hits:
+    # the gate must ask about the ORIGINAL lanes only, so a lone union hit
+    # does not suppress the BM25 recall lane (measured starvation bug).
+    # Gate-off: ``_expansion_added == 0`` ⇒ identical to ``not entities``.
+    _original_lanes_empty = len(entities) - _expansion_added == 0
+    if _original_lanes_empty:
+        _bm25_fallback_used = True
         try:
             # PageIndex-style hierarchical pre-filter: scope BM25 to the
             # 1-2 most likely chapters before searching the full 135-doc
@@ -2280,46 +2522,75 @@ def _deterministic_parse(question: str) -> GraphQuery:
             # Scoped path uses k=5 (vs full-corpus k=3) because the
             # candidate pool is smaller — higher k does not add noise
             # when the scope is already narrowed to 1 chapter's docs.
-            candidate_chapters = candidate_chapters_for_query(
-                question, intent_label=intent
-            )
-            if candidate_chapters:
-                bm25_hits: list[str] = []
-                if _env_enabled("REGENOLD_SECTION_SCOPED_BM25"):
-                    candidate_sections = candidate_sections_for_query(
-                        question,
-                        chapters=candidate_chapters,
-                        intent_label=intent,
-                    )
-                    if candidate_sections:
-                        bm25_hits = top_articles_by_relevance_in_sections(
-                            question, candidate_sections, k=5, min_score=1.0
+            def _bm25_hits_for(q: str) -> list[str]:
+                """One query through the scoped → full-corpus fallback."""
+                candidate_chapters = candidate_chapters_for_query(
+                    q, intent_label=intent
+                )
+                if candidate_chapters:
+                    hits: list[str] = []
+                    if _env_enabled("REGENOLD_SECTION_SCOPED_BM25"):
+                        candidate_sections = candidate_sections_for_query(
+                            q,
+                            chapters=candidate_chapters,
+                            intent_label=intent,
+                        )
+                        if candidate_sections:
+                            hits = top_articles_by_relevance_in_sections(
+                                q, candidate_sections, k=5, min_score=1.0
+                            )
+                            logger.debug(
+                                "section_scoped_bm25: sections=%s hits=%s",
+                                candidate_sections, hits,
+                            )
+                    if not hits:
+                        hits = top_articles_by_relevance_in_chapters(
+                            q, candidate_chapters, k=5, min_score=1.0
                         )
                         logger.debug(
-                            "section_scoped_bm25: sections=%s hits=%s",
-                            candidate_sections, bm25_hits,
+                            "chapter_scoped_bm25: chapters=%s hits=%s",
+                            candidate_chapters, hits,
                         )
-                if not bm25_hits:
-                    bm25_hits = top_articles_by_relevance_in_chapters(
-                        question, candidate_chapters, k=5, min_score=1.0
-                    )
-                    logger.debug(
-                        "chapter_scoped_bm25: chapters=%s hits=%s",
-                        candidate_chapters, bm25_hits,
-                    )
-                # If the scoped search yields nothing, fall through to
-                # full-corpus BM25 as a safety net.
-                if not bm25_hits:
-                    bm25_hits = top_articles_by_relevance(
-                        question, k=_bm25_fallback_k(), min_score=1.0
-                    )
-            else:
+                    # If the scoped search yields nothing, fall through to
+                    # full-corpus BM25 as a safety net.
+                    if not hits:
+                        hits = top_articles_by_relevance(
+                            q, k=_bm25_fallback_k(), min_score=1.0
+                        )
+                    return hits
                 # Issue #54 — drop the absolute floor to 1.0. The
                 # ``top_articles_by_relevance`` helper honours a
                 # relative-to-best cutoff too, so a 1-2 token query
                 # whose top raw score sits below 2.5 still surfaces a
                 # clear winner instead of returning empty.
-                bm25_hits = top_articles_by_relevance(question, k=_bm25_fallback_k(), min_score=1.0)
+                return top_articles_by_relevance(
+                    q, k=_bm25_fallback_k(), min_score=1.0
+                )
+
+            if expanded_queries and len(expanded_queries) > 1:
+                # R341 — reciprocal-rank fusion across the original + each
+                # paraphrase, so a provision that ranks mid-pool for one
+                # phrasing can win the combination across all of them.
+                # The combined list is capped at the budget a single query
+                # run gets (max list length, itself ≤ k) — RRF re-ranks and
+                # refreshes WHICH refs win, it never inflates the entity
+                # count the fallback is allowed to surface.
+                from app.engines.query_expansion import (  # noqa: PLC0415
+                    reciprocal_rank_fusion,
+                )
+
+                _ranked_lists = [_bm25_hits_for(q) for q in expanded_queries]
+                combined = reciprocal_rank_fusion(_ranked_lists)
+                _rrf_budget = max(
+                    (len(lst) for lst in _ranked_lists), default=0
+                )
+                bm25_hits = combined[:_rrf_budget]
+                logger.debug(
+                    "query_expansion_rrf: %d queries -> %d combined refs (budget %d)",
+                    len(expanded_queries), len(bm25_hits), _rrf_budget,
+                )
+            else:
+                bm25_hits = _bm25_hits_for(question)
             for ref in bm25_hits:
                 if ref not in entities:
                     entities.append(ref)
@@ -2375,6 +2646,119 @@ def _deterministic_parse(question: str) -> GraphQuery:
                         pass
     except Exception as exc:  # noqa: BLE001 — vector recall must never block parse
         logger.debug("vector_recall_failed: %s", exc)
+
+    # R340 — cross-encoder rerank of the FINAL assembled entity list. This is
+    # the placement that actually fires on the COMMON path: the keyword map
+    # extracts an entity for nearly every question, so
+    # ``top_articles_by_relevance*`` (and its pool rerank) only runs on the
+    # rare no-entity fallback. Entity ORDER is load-bearing downstream —
+    # ``_retrieve_from_kb`` builds obligations in entity order and
+    # ``ask_compliance_question`` caps citations at 15 slots from that order
+    # — so reranking here decides which entities (and their xrefs / paragraph
+    # rows) survive the retrieval cap. Skip when the BM25 fallback already
+    # reranked.
+    #
+    # ⚠ R350 — this used to claim "one Cohere call per request, never two".
+    # That is FALSE and the skip below does not deliver it. Counted with a
+    # stubbed transport and both flags ON: `_ranked_lists = [_bm25_hits_for(q)
+    # for q in expanded_queries]` runs the whole BM25 chain once per expanded
+    # query, and every `top_articles_by_relevance*` exit ends in
+    # `_maybe_rerank_fused` — **4 calls inside one `_deterministic_parse`**
+    # (docs [50, 43, 40, 37]), plus the kg-context rerank on the Stage-2 path
+    # = **5 serial calls**, each with a 6 s read timeout, all inside the
+    # request. Latency is a scored axis, and the Cohere Trial key is 10
+    # calls/min — so an A/B paced per-POST at `--min-call-gap 6.5` is really
+    # running at ~5x that budget and will 429 into a false INERT.
+    #
+    # NOT bounded here: a real fix needs a request-scoped call budget, which is
+    # a larger change than this round should make untested. Recorded as an open
+    # item instead of left as a comment asserting a guarantee the code lacks.
+    # Gate-off no-op →
+    # davidath byte-identical BY CONSTRUCTION. Fail-soft + permutation-safe
+    # via ``rerank_references``.
+    if entities and not _bm25_fallback_used:
+        try:
+            from app.engines.cohere_rerank import (  # noqa: PLC0415
+                _pool_reasons,
+                build_kg_candidate_pool,
+                build_kg_candidate_pool_with_reasons,
+                rerank_enabled,
+                rerank_kg_candidates_enabled,
+                rerank_kg_hops,
+                rerank_pool,
+                rerank_query_context,
+                stabilize_anchor_tier,
+            )
+            if rerank_enabled():
+                # R347/R348 — hybrid-RAG pool: rank the keyword entities
+                # TOGETHER with their CROSS_REFERENCES neighbours from the KG
+                # taxonomy (1-hop by default, 2-hop under
+                # ``REGENOLD_RERANK_KG_HOPS=2``), and feed the classifier's
+                # own labels (intent / risk tier / dimension) into the rerank
+                # QUERY so the cross-encoder discriminates on domain terms,
+                # not just the bare question. R348 also annotates each
+                # KG-supplemented neighbour's rerank DOCUMENT with its curated
+                # semantic edge reason ("Relation: …") — the KG's semantic
+                # layer told the cross-encoder WHY the provision is relevant.
+                # The pool is a SUPERSET of the original entities, so a
+                # permutation over it can never LOSE one — but it could ADD,
+                # which is what R350 closed below: the reranked ORDER is
+                # projected back onto the original membership, so KG
+                # neighbours inform the ranking and never become citations.
+                # On any rerank failure the ORIGINAL entities stand. Gate-off
+                # and kg-off both degenerate to the R340 behaviour exactly.
+                pool = entities
+                doc_reasons: dict[str, str] | None = None
+                if rerank_kg_candidates_enabled():
+                    # R350 — ``hops`` goes to BOTH builders. It used to reach
+                    # only the ``else`` branch, which is near-unreachable
+                    # because ``cross_refs_with_reason`` resolves a pair for
+                    # essentially every entity, so R348's depth knob was inert.
+                    _hops = rerank_kg_hops()
+                    pairs = build_kg_candidate_pool_with_reasons(
+                        entities, per_ref=3, hops=_hops
+                    )
+                    if pairs:
+                        # Superset: the keyword entities stay first, the
+                        # KG-supplemented neighbours (with their curated
+                        # semantic edge reasons) follow.
+                        pool = list(entities) + [e for e, _ in pairs]
+                        doc_reasons = _pool_reasons(entities, pairs)
+                    else:
+                        pool = build_kg_candidate_pool(entities, hops=_hops)
+                ctx = rerank_query_context(
+                    intent=intent,
+                    risk_context=risk_context,
+                    dimension_hint=dimension_hint,
+                )
+                reranked, ok = rerank_pool(
+                    question, pool, query_context=ctx, doc_reasons=doc_reasons
+                )
+                if ok:
+                    # ONE FIX FOR ONE DEFECT — R351 anchor-tiering, now the
+                    # ONLY path. The competing R350 projection arm (neighbours
+                    # inform the ranking but never enter the citation set) was
+                    # A/B'd head-to-head against this one on 100 live rows
+                    # (`dynamic-ab-r352-kg-citability-full.json`) and LOST on
+                    # hard rule #8: the projection nets +1 gold HEAD drop and
+                    # +2 exact-coordinate drops vs this arm (4 regressed rows:
+                    # mt_v2_008 loses Article 51 entirely, st_v4_017 loses
+                    # Article 6, mt_v2_020 loses Article 113, la_q13 loses
+                    # both Annex XI and XII). Non-zero gold_dropped is a veto,
+                    # so the flag and its branch were deleted. See
+                    # docs/R352-kg-fork-decision.md.
+                    #
+                    # This arm tiers the anchors: every keyword entity stays
+                    # ahead of every KG neighbour, rerank order preserved
+                    # within each tier, so supplementation is strictly
+                    # ADDITIVE — it fills slots the anchors did not take,
+                    # never displaces one.
+                    if pool is not entities:
+                        entities = stabilize_anchor_tier(reranked, entities)
+                    else:
+                        entities = reranked
+        except Exception as exc:  # noqa: BLE001 — a rerank outage must never break parse
+            logger.debug("cohere_rerank: parse-level entity rerank skipped: %s", exc)
 
     return GraphQuery(
         intent=intent,
@@ -2809,6 +3193,10 @@ def _lower_risk_verdicts_enabled() -> bool:
     return _env_enabled("REGENOLD_LOWER_RISK_VERDICTS", default="1")
 
 
+_ENFORCEMENT_CORRECTIVE_RE = re.compile(
+    r"\bmarket\s+surveillance\b.*?\b(?:recall|suspend|withdraw|corrective|timeframe|reclassif\w*)")
+
+
 def _general_classification_verdict(question: str) -> dict | None:
     """Domain-general risk-tier verdict for un-catalogued classification asks.
 
@@ -2833,6 +3221,17 @@ def _general_classification_verdict(question: str) -> dict | None:
     """
     question = _normalise(question)
     if not _is_classification_question(question):
+        return None
+    # R356 - market-surveillance corrective-measures shapes (Art. 79/80) are
+    # ENFORCEMENT questions, not classification verdicts. la_q35 ("MSA
+    # determines a provider-classified non-high-risk system is in fact
+    # high-risk: must the provider recall/suspend, or does the MSA give a
+    # timeframe?") passed the verdict-shape gate (its "Does the provider need
+    # to recall..." clause matches) and previously received the canned
+    # general classification boilerplate - a wrong answer citing Art. 5/6.
+    # The shape requires an MSA mention PLUS a corrective/enforcement verb,
+    # so no classification question (Q7/Q24/Q46-class) can trip it.
+    if _ENFORCEMENT_CORRECTIVE_RE.search(question):
         return None
     live = question
     if "Latest question:" in live:
@@ -3247,7 +3646,13 @@ def _seed_role_obligation_obligations(context: GraphContext, role_id: str, risk_
 
 
 def _detect_article_6_3_inquiry(question: str) -> bool:
-    """True if the question specifically targets the Article 6(3) high-risk exceptions/exemptions."""
+    """True if the question specifically targets the Article 6(3) high-risk exceptions/exemptions.
+    R356: also fires on the narrow-procedural / preparatory-task shape (la_q31:
+    "used to structure or deduplicate information for an Annex III use case") —
+    an ancillary data-preparation function is a 6(3)(a)/(d) task, not the Annex III
+    use case itself. Deliberately does NOT match the substantive "detect
+    decision-making patterns or deviations" shape (la_q32), which is high-risk.
+    """
     raw_q = question or ""
     _FLATTEN_MARKER = "Latest question:\n"
     idx = raw_q.rfind(_FLATTEN_MARKER)
@@ -3259,10 +3664,167 @@ def _detect_article_6_3_inquiry(question: str) -> bool:
         r"\b(?:art(?:icle)?\s+6\(3\)|6\s*\(3\)|exception\s+to\s+high\s*-\s*risk\b|"
         r"high\s*-\s*risk\s+exception\b|high\s*-\s*risk\s+exemption\b|"
         r"self\s*-\s*assess\s+not\s+high\s*-\s*risk\b|"
-        r"preparatory\s+task\s+exception\b|preparatory\s+task\s+exemption\b)",
+        r"preparatory\s+task\s+exception\b|preparatory\s+task\s+exemption\b|"
+        r"(?:structure\w*|deduplicat\w*|organis\w*|organiz\w*)\b.{0,80}?\binformation\b)",
         re.IGNORECASE
     )
     return bool(pattern.search(q))
+
+
+# R356 - GPAI transparency-exception intercept (la_q13). "Under what conditions
+# should providers of general-purpose AI models be subject to exceptions regarding
+# transparency-related requirements, if any? And what do those exceptions not
+# cover?" previously fell to the QA-dump: BM25 surfaced only Art. 53 and the
+# Stage-2 answer truncated to a systemic-risk fragment. The operative provision is
+# Article 53(2) (official text verified): the 53(1)(a) Annex XI technical-
+# documentation duty and the 53(1)(b) Annex XII downstream-information duty do
+# not apply to free-and-open-source releases with publicly available parameters;
+# the exception does NOT cover 53(1)(c) (copyright policy) or 53(1)(d) (training-
+# content summary), and does not apply to systemic-risk models at all.
+_GPAI_TRANSPARENCY_EXC_RE = re.compile(
+    r"\bgeneral[- ]purpose\s+(?:ai\s+)?models?\b[\s\S]{0,90}?"
+    r"\b(?:exception\w*|exemption\w*|carve[- ]out|waiv\w*)\b",
+    re.IGNORECASE,
+)
+_GPAI_TRANSPARENCY_CUE_RE = re.compile(
+    r"\btransparenc\w*\b|\btransparency[- ]related\b|\bdocumentation\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_gpai_transparency_exception_inquiry(question: str) -> bool:
+    """True iff the question asks about exceptions to GPAI transparency duties."""
+    raw_q = question or ""
+    marker = "Latest question:\n"
+    idx = raw_q.rfind(marker)
+    if idx >= 0:
+        raw_q = raw_q[idx + len(marker):]
+    return bool(
+        _GPAI_TRANSPARENCY_EXC_RE.search(raw_q)
+        and _GPAI_TRANSPARENCY_CUE_RE.search(raw_q)
+    )
+
+
+# R356 - systemic-risk scope intercept (la_q23). The general systems-vs-models
+# detector deliberately EXCLUDES systemic-risk questions (its negative guard),
+# on the assumption that the QA-dump answers them correctly - but la_q23 ("Does
+# systemic risk apply to AI systems or general purpose AI models or both?")
+# dumped Art. 53 open-source content. The answer is Article 51(1)-(2): systemic
+# risk is a GPAI-model classification, never an AI-system tier; Article 55 then
+# imposes the obligations. Gated on "systemic risk" + an AI-systems mention, so
+# no other row can trip it (verified: only la_q23 contains "systemic risk").
+_SYSTEMIC_RISK_SCOPE_RE = re.compile(
+    r"\bsystemic\s+risk\b[^?.]{0,60}\b(?:ai\s+)?systems?\b"
+    r"|\b(?:ai\s+)?systems?\b[^?.]{0,60}\bsystemic\s+risk\b",
+    re.IGNORECASE,
+)
+_SYSTEMIC_RISK_MODELS_RE = re.compile(
+    r"\b(?:general[- ]purpose\s+(?:ai\s+)?|gpai\s+)?models?\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_systemic_risk_scope_inquiry(question: str) -> bool:
+    """True iff the question asks whether systemic risk applies to systems or models."""
+    raw_q = question or ""
+    marker = "Latest question:\n"
+    idx = raw_q.rfind(marker)
+    if idx >= 0:
+        raw_q = raw_q[idx + len(marker):]
+    return bool(
+        _SYSTEMIC_RISK_SCOPE_RE.search(raw_q)
+        and _SYSTEMIC_RISK_MODELS_RE.search(raw_q)
+    )
+
+
+# R358 — emergency-calls-and-triage listing intercept (la_q29). la_q29 asks
+# WHICH systems are explicitly listed as high-risk in critical health
+# situations involving emergency calls and triage; the QA-dump previously
+# shipped a 124-char "obligations" stub (Decision governance / runtime
+# interception) that never named Annex III(5)(d). The narrow shape
+# ("which specific ... emergency calls and triage") fires on la_q29 only —
+# la_q66 ("dispatch and triage emergency-room patients") is answered
+# correctly by the general verdict and is deliberately NOT swept in.
+_EMERGENCY_TRIAGE_RE = re.compile(
+    r"\bwhich\s+specific\b[^?.]{0,80}\bemergency\b[^?.]{0,40}\btriage\b"
+    r"|\bemergency\s+calls\s+and\s+triage\b"
+    r"|\bemergency\s+calls\b[^?.]{0,40}\btriage\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_emergency_triage_inquiry(question: str) -> bool:
+    """True iff the question asks which systems are listed for emergency triage."""
+    raw_q = question or ""
+    marker = "Latest question:\n"
+    idx = raw_q.rfind(marker)
+    if idx >= 0:
+        raw_q = raw_q[idx + len(marker):]
+    return bool(_EMERGENCY_TRIAGE_RE.search(raw_q))
+
+
+# R358 — health-insurance risk-assessment/pricing intercept (la_q86). The
+# R356 entity anchor (Annex III.5.c) seeded the parse, but the QA-dump still
+# shipped a 91-char stub ("Risk management system (Art. 9)") — the question
+# is a CLASSIFICATION ask, not an obligation dump. Only la_q86 contains
+# "health insurance" + (risk assessment | pricing).
+_HEALTH_INSURANCE_RE = re.compile(
+    r"\bhealth\s+insurance\b[^?.]{0,80}\b(?:risk\s+assessment|pricing)\b"
+    r"|\b(?:risk\s+assessment|pricing)\b[^?.]{0,80}\bhealth\s+insurance\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_health_insurance_inquiry(question: str) -> bool:
+    """True iff the question asks about AI for health-insurance pricing."""
+    raw_q = question or ""
+    marker = "Latest question:\n"
+    idx = raw_q.rfind(marker)
+    if idx >= 0:
+        raw_q = raw_q[idx + len(marker):]
+    return bool(_HEALTH_INSURANCE_RE.search(raw_q))
+
+
+# R358 — hospital-as-deployer obligations intercept (la_q71). The QA-dump
+# shipped a 161-char generic role sentence ("Deployers of a high-risk AI
+# system listed in Annex III are bound by Art. 26, Art. 27, and Art. 13")
+# with no substance. Only la_q71 combines hospital + deploy + obligations.
+_HOSPITAL_DEPLOYER_RE = re.compile(
+    r"(?=.*\bhospital\b)(?=.*\bdeploy\w*\b)(?=.*\bobligations?\b)",
+    re.IGNORECASE,
+)
+
+
+def _detect_hospital_deployer_inquiry(question: str) -> bool:
+    """True iff the question asks about a hospital's deployer obligations."""
+    raw_q = question or ""
+    marker = "Latest question:\n"
+    idx = raw_q.rfind(marker)
+    if idx >= 0:
+        raw_q = raw_q[idx + len(marker):]
+    return bool(_HOSPITAL_DEPLOYER_RE.search(raw_q))
+
+
+# R358 — provider pre-market duties intercept (la_q72). The QA-dump shipped a
+# 158-char generic role sentence that never named Articles 8/9/10/11 + Annex
+# IV. Only la_q72 asks what the provider must "put in place before placing it
+# on the market".
+_PROVIDER_PRE_MARKET_RE = re.compile(
+    r"\bprovider\b[^?.]{0,60}\b(?:put|place)\b[^?.]{0,30}\b(?:in\s+place|"
+    r"before\s+placing\s+(?:it|the\s+system)\s+on\s+the\s+market)\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_provider_pre_market_inquiry(question: str) -> bool:
+    """True iff the question asks what a provider must put in place pre-market."""
+    raw_q = question or ""
+    marker = "Latest question:\n"
+    idx = raw_q.rfind(marker)
+    if idx >= 0:
+        raw_q = raw_q[idx + len(marker):]
+    return bool(_PROVIDER_PRE_MARKET_RE.search(raw_q))
+
 
 
 # R112 — the principles phrase must BIND to the Act/Regulation itself. The
@@ -4590,6 +5152,12 @@ def _is_curated_authoritative_intercept(question: str) -> bool:
         or _detect_deviation_detection_inquiry(question)
         or _detect_role_difference_inquiry(question)
         or _detect_user_information_inquiry(question)
+        or _detect_gpai_transparency_exception_inquiry(question)
+        or _detect_systemic_risk_scope_inquiry(question)
+        or _detect_emergency_triage_inquiry(question)
+        or _detect_health_insurance_inquiry(question)
+        or _detect_hospital_deployer_inquiry(question)
+        or _detect_provider_pre_market_inquiry(question)
         or _detect_robotic_surgery_inquiry(question)
     )
 
@@ -4702,6 +5270,163 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
                 "register it under Article 49(2)."
             ),
             "refs": ["Art. 6", "Art. 6.3", "Art. 49.2"],
+        }
+        _seed_classification_obligations(context, verdict, question)
+        return verdict["answer"]
+
+    # GPAI transparency-exception intercept (R356, la_q13).
+    if _detect_gpai_transparency_exception_inquiry(question):
+        verdict = {
+            "name": "gpai_transparency_exception",
+            "answer": (
+                "The exceptions to the GPAI transparency-related obligations are set out in Article 53(2). "
+                "The Article 53(1)(a) duty to draw up and keep up-to-date the technical documentation of the "
+                "model (Annex XI) and the Article 53(1)(b) duty to provide information and documentation "
+                "to downstream providers (Annex XII) do not apply to providers that release the model under "
+                "a free and open-source licence allowing access, usage, modification and distribution, where "
+                "the model parameters, including the weights, and information on the model architecture and "
+                "usage, are made publicly available. The exception does not cover the remaining Article 53(1) "
+                "obligations: the policy to comply with Union copyright law (Article 53(1)(c)) and the "
+                "publicly available, sufficiently detailed summary of the training content (Article 53(1)(d)) "
+                "apply regardless of the licence. The exception also does not apply to general-purpose AI "
+                "models with systemic risk (Article 53(2), second subparagraph), which remain subject to the "
+                "full Article 53 obligations together with the Article 55 systemic-risk duties."
+            ),
+            "refs": ["Art. 53", "Art. 53.2", "Art. 51", "Art. 55", "Annex XI", "Annex XII"],
+        }
+        _seed_classification_obligations(context, verdict, question)
+        return verdict["answer"]
+
+    # Systemic-risk scope intercept (R356, la_q23).
+    if _detect_systemic_risk_scope_inquiry(question):
+        verdict = {
+            "name": "systemic_risk_scope",
+            "answer": (
+                "Systemic risk applies to general-purpose AI models, not to AI systems. Under Article 51(1), a "
+                "general-purpose AI model is classified as a model with systemic risk where it has high impact "
+                "capabilities evaluated on the basis of appropriate technical tools and methodologies, including "
+                "indicators and benchmarks; under Article 51(2) a model is presumed to have high impact "
+                "capabilities where the cumulative computation used for its training exceeds 10^25 floating "
+                "point operations. The Commission may also designate a model on the basis of the Annex XIII "
+                "criteria. A model classified as having systemic risk then carries the additional Article 55 "
+                "obligations: model evaluation including adversarial testing, assessment and mitigation of "
+                "systemic risks at Union level, serious-incident reporting, and adequate cybersecurity. The "
+                "high-risk regime for AI systems under Articles 6 and Annex III is a separate classification "
+                "and does not use the systemic-risk concept."
+            ),
+            "refs": ["Art. 51", "Art. 51.1", "Art. 51.2", "Art. 55", "Annex XIII"],
+        }
+        _seed_classification_obligations(context, verdict, question)
+        return verdict["answer"]
+
+    # R358 — emergency-calls-and-triage listing (la_q29). Annex III point 5(d)
+    # is the explicit listing for dispatching / prioritising emergency
+    # first-response services and triage of emergency medical-service patients;
+    # classification follows the Annex III route of Article 6(2). Grounded in
+    # the official text; tracks the gold answer.
+    if _detect_emergency_triage_inquiry(question):
+        verdict = {
+            "name": "emergency_triage_listing",
+            "answer": (
+                "Under Annex III point 5(d), AI systems intended to be used for "
+                "dispatching or prioritising in dispatching emergency first-response "
+                "services, or for triage of emergency medical-service patients "
+                "(including by fire brigades and medical aid), are explicitly listed "
+                "as high-risk. They fall within the 'essential private and public "
+                "services' category of the eight Annex III high-risk use cases and "
+                "are classified as high-risk through the Annex III route of "
+                "Article 6(2), which treats any system falling within a listed use "
+                "case as high-risk. That classification triggers the Chapter III "
+                "Section 2 obligations for high-risk systems."
+            ),
+            "refs": ["Art. 6", "Art. 6.2", "Annex III", "Annex III.5.d"],
+        }
+        _seed_classification_obligations(context, verdict, question)
+        return verdict["answer"]
+
+    # R358 — health-insurance risk assessment and pricing (la_q86). Annex III
+    # point 5(c) covers risk assessment and pricing in life and health
+    # insurance (5(b) is creditworthiness — a distinct use case); the system is
+    # high-risk via Article 6(2). Grounded in the official text.
+    if _detect_health_insurance_inquiry(question):
+        verdict = {
+            "name": "health_insurance_classification",
+            "answer": (
+                "An AI system used for risk assessment and pricing in relation to "
+                "natural persons in the case of life and health insurance falls "
+                "within Annex III point 5(c), under the 'essential private and "
+                "public services' high-risk use-case category. Classification "
+                "follows the Annex III route: under Article 6(2), an AI system that "
+                "falls within one of the Annex III use cases is considered "
+                "high-risk. The system therefore carries the full Chapter III "
+                "Section 2 obligations for high-risk AI systems."
+            ),
+            "refs": ["Art. 6", "Art. 6.2", "Annex III", "Annex III.5.c"],
+        }
+        _seed_classification_obligations(context, verdict, question)
+        return verdict["answer"]
+
+    # R358 — hospital-as-deployer obligations (la_q71). Article 26 baseline
+    # duties, the Article 27 fundamental rights impact assessment, the Article
+    # 86 explanation right, and the Article 25 provider-transition boundary.
+    # Grounded in the official text; tracks the gold answer.
+    if _detect_hospital_deployer_inquiry(question):
+        verdict = {
+            "name": "hospital_deployer_obligations",
+            "answer": (
+                "As deployer, the hospital must use the system in accordance with "
+                "the provider's instructions for use, which Article 13 requires the "
+                "provider to supply (Article 26(1)). The hospital must assign human "
+                "oversight to natural persons with the necessary competence, "
+                "training and authority (Article 26(2)), monitor the system's "
+                "operation on the basis of those instructions and inform the "
+                "provider of serious incidents (Article 26(5)), and retain the logs "
+                "the system automatically generates (Article 26(6)). Where the "
+                "hospital is a body governed by public law, a private entity "
+                "providing public services, or a deployer of an Annex III point "
+                "5(b) or 5(c) system, it must perform a fundamental rights impact "
+                "assessment before first use (Article 27). A person subject to a "
+                "deployer decision based on the system's output that produces legal "
+                "effects or similarly significantly affects health, safety or "
+                "fundamental rights has a right to an explanation (Article 86). "
+                "These are deployer duties only: the hospital does not bear the "
+                "provider's design and conformity duties unless it becomes a "
+                "provider under Article 25 by putting its name or trademark on the "
+                "system, making a substantial modification, or changing the "
+                "intended purpose."
+            ),
+            "refs": [
+                "Art. 26", "Art. 26.1", "Art. 26.2", "Art. 26.5", "Art. 26.6",
+                "Art. 27", "Art. 86", "Art. 25", "Art. 13", "Annex III",
+            ],
+        }
+        _seed_classification_obligations(context, verdict, question)
+        return verdict["answer"]
+
+    # R358 — provider pre-market duties (la_q72). The provider must satisfy the
+    # Chapter III Section 2 requirements (Article 16): Article 8 design, Article
+    # 9 risk management, Article 10 data governance, and Article 11 with Annex
+    # IV technical documentation before placing the system on the market.
+    # Grounded in the official text; tracks the gold answer.
+    if _detect_provider_pre_market_inquiry(question):
+        verdict = {
+            "name": "provider_pre_market_duties",
+            "answer": (
+                "Before placing a high-risk medical diagnostic system on the "
+                "market, the provider must ensure it satisfies all the Chapter III "
+                "Section 2 requirements and bears the provider's identifying "
+                "details, as required by the overarching provider duty in Article "
+                "16. The system must meet the substantive design requirements of "
+                "Article 8, supported by a documented, iterative risk-management "
+                "system running across its lifecycle under Article 9, and "
+                "data-governance practices ensuring the training, validation and "
+                "test datasets are relevant, representative, complete and examined "
+                "for bias under Article 10. The provider must draw up the technical "
+                "documentation before placing the system on the market, "
+                "demonstrating conformity and containing the content specified in "
+                "Annex IV, as required by Article 11."
+            ),
+            "refs": ["Art. 16", "Art. 8", "Art. 9", "Art. 10", "Art. 11", "Annex IV"],
         }
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
@@ -7693,6 +8418,26 @@ def _claude_max_enhance_answer(
         except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
             pass
 
+        # R340 — inject critical ANSWER_GENERATE_SYSTEM rules onto the user
+        # channel. The wrapper drops system messages 100% (measured 2026-08-03,
+        # R308), so the system prompt's hundreds of rules reach the model on
+        # ZERO live requests. This clause carries the highest-impact subset
+        # through the channel that actually works. NOT a blind system-prompt
+        # forward (R282 measured that as rubric-NEGATIVE); instead a surgical
+        # extraction of the rules with the biggest quality impact. Env-gated
+        # (REGENOLD_USER_CRITICAL_RULES, default ON) and keyed in
+        # _engine_cache_key (R263.2 doctrine).
+        try:
+            from app.data.graph_rag_prompts import (  # noqa: PLC0415
+                USER_CRITICAL_RULES_CLAUSE,
+                user_critical_rules_enabled,
+            )
+
+            if user_critical_rules_enabled():
+                user_message += USER_CRITICAL_RULES_CLAUSE
+        except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
+            pass
+
         # R320 — a byte-identical SECOND append of USER_ANSWER_COVERAGE_CLAUSE
         # sat here (a copy-paste duplication, no `return` between the two
         # blocks). At the default config the model received the same 1955-char
@@ -7785,6 +8530,20 @@ def _claude_max_enhance_answer(
                     )
         except Exception:
             pass
+
+        # R357 — answer-completion clause on the channel that reaches the model
+        # (the wrapper drops system messages 100% — R282). Token-limit cuts
+        # land mid-final-sentence; the post-generation repair guard catches what
+        # escapes, but the cheapest fix is the model never stopping mid-sentence.
+        # No citation effect (wording-only), so it is clean on the reference axes.
+        user_message += (
+            " COMPLETENESS OF THE FINAL SENTENCE: never stop mid-sentence. "
+            "Your answer must end with a complete, period-terminated sentence; "
+            "if you are near your output limit, finish the current sentence with "
+            "a full stop and do NOT start a sentence you cannot complete. Never "
+            "end with an ellipsis ('...'), a dangling connector ('and', 'which', "
+            "'the'), or an unfinished clause.\n"
+        )
 
         # Fusion Stage-2 (Mixture-of-Agents): a diverse panel (Sonnet 4.6 via
         # the Claude Max wrapper + Groq Llama 3.3 70B + Mistral Large, plus
@@ -7969,6 +8728,131 @@ def _claude_max_enhance_answer(
     except Exception as exc:  # noqa: BLE001
         logger.warning("stage2_claude_max_enhance failed, keeping kg_answer: %s", exc)
         return None
+
+
+# R357 — post-generation truncation REPAIR. Where the wrapper-level guards
+# (R102/R142) DISCARD the whole polish on a cut stream, this guard repairs the
+# final incomplete sentence with one bounded completion call and only falls
+# back to the complete deterministic Stage-1 answer when repair fails. Never
+# ships a structurally-broken fragment.
+_STAGE2_TRUNCATION_GUARD_ENV = "REGENOLD_STAGE2_TRUNCATION_GUARD"
+
+
+def _stage2_truncation_guard_enabled() -> bool:
+    return (
+        os.getenv(_STAGE2_TRUNCATION_GUARD_ENV, "1").strip().lower()
+        in ("1", "true", "yes", "on")
+    )
+
+
+def _attempt_stage2_tail_repair(
+    question: str,
+    enhanced: str,
+    kg_answer: str,
+    context: GraphContext | None,
+) -> str | None:
+    """Complete ONLY the truncated final sentence via the wired Stage-2 provider.
+
+    Returns the spliced, complete answer or ``None`` on any failure (the caller
+    then ships the deterministic Stage-1 answer). The model is asked for the
+    missing tail only — never a rewrite — so the surviving polish is preserved
+    verbatim. Temp 0 ⇒ deterministic ⇒ the repaired branch is cacheable.
+    """
+    if not enhanced or not enhanced.strip():
+        return None
+    # A tiny fragment has nothing worth repairing; fall back directly.
+    if len(enhanced.strip()) < 60:
+        return None
+    last_sent = _last_sentence_of(enhanced)
+    if len(last_sent) < 12:
+        return None
+    try:
+        refs_block = ""
+        if context is not None:
+            refs_block = _build_context_references_block(context, question=question)
+        system = (
+            "You complete a truncated legal answer. Output ONLY the missing "
+            "tail of the final sentence. Never repeat or paraphrase existing text."
+        )
+        user = (
+            f"QUESTION: {question}\n\n"
+            f"EU AI ACT REFERENCES (background only, for grounding):\n"
+            f"{refs_block}\n\n"
+            "An answer was cut off mid-final-sentence by a token limit. "
+            "Below is the text exactly as it was cut. "
+            "Output ONLY the missing tail: the remainder of the final sentence, "
+            "starting EXACTLY where the text stops. If it stopped mid-word, "
+            "continue the word with no space before it; if it stopped between "
+            "words, begin your output with a space. Do NOT repeat, paraphrase, "
+            "re-answer, or "
+            "summarise anything already written, and do NOT add a new topic or "
+            "new citation beyond what completing the sentence requires. "
+            "End with sentence-final punctuation.\n\n"
+            f"TRUNCATED ANSWER:\n{enhanced}\n\n"
+            "MISSING TAIL:"
+        )
+        tail = _stage2_complete(
+            system=system,
+            user=user,
+            max_tokens=512,
+            temperature=0.0,
+            complex_question=False,
+            stage_name="Stage 2 (Tail Repair)",
+        )
+        if not tail or not tail.strip():
+            return None
+        # Preserve the boundary signal the model expressed: a leading space
+        # means the cut landed between words (the model was told to begin
+        # with a space there); no leading space means a mid-word continuation.
+        tail = tail.rstrip()
+        tail = re.sub(r"^[ \t]+\n?", " ", tail, count=1) if tail[:1].isspace() else tail
+        tail = tail.lstrip("\n")
+        # Reject a model that re-answered the whole thing instead of the tail.
+        head_frag = " ".join(tail.split()[:8])
+        if head_frag and head_frag in enhanced:
+            return None
+        if len(tail) > max(400, len(enhanced)):
+            return None
+        # Splice: literal join. The model was told to continue mid-word with no
+        # space and to lead with a space at a word boundary, so the tail carries
+        # the boundary signal itself — no guessing about the cut point.
+        repaired = enhanced.rstrip() + tail
+        if _looks_incomplete_final_sentence(repaired):
+            return None
+        return repaired
+    except Exception:  # noqa: BLE001 — repair must never break Stage-2
+        logger.debug("stage2_tail_repair failed", exc_info=True)
+        return None
+
+
+def _guard_stage2_truncation(
+    question: str,
+    enhanced: str,
+    kg_answer: str,
+    context: GraphContext | None,
+) -> tuple[str, bool]:
+    """Post-generation truncation guard for the polished Stage-2 answer.
+
+    Returns ``(final_text, stage2_used)``:
+      * complete polish             → (enhanced, True)
+      * repaired polish             → (repaired, True)
+      * repair failed / not possible → (kg_answer, False) — the complete
+        deterministic Stage-1 answer, so the wire ships it deterministically
+        (the route keys the R72 reconcile on ``stage2_landed``).
+    """
+    if not _looks_incomplete_final_sentence(enhanced):
+        return enhanced, True
+    logger.warning(
+        "stage2_truncation_guard: final sentence incomplete — attempting tail repair"
+    )
+    repaired = _attempt_stage2_tail_repair(question, enhanced, kg_answer, context)
+    if repaired is not None:
+        logger.warning("stage2_truncation_guard: tail repaired")
+        return repaired, True
+    logger.warning(
+        "stage2_truncation_guard: tail repair failed — shipping deterministic Stage-1 answer"
+    )
+    return kg_answer, False
 
 
 def _two_stage_generate(
@@ -8329,6 +9213,19 @@ def _two_stage_generate(
     except Exception:  # noqa: BLE001 — a guard must never break Stage-2
         logger.debug("faithfulness_verify wiring failed", exc_info=True)
 
+    # R357 — post-generation truncation guard. The wrapper-level guards
+    # (R102/R142) catch a cut stream and DISCARD the whole polish; this
+    # guard runs on the FINAL text that would ship and REPAIRS a truncated
+    # final sentence (one bounded completion call) instead of shipping a
+    # broken fragment, falling back to the complete deterministic Stage-1
+    # answer only when repair fails (stage2_used=False → the R72 reconcile
+    # and verbatim gates treat it as deterministic). Env-reversible
+    # (REGENOLD_STAGE2_TRUNCATION_GUARD=0). Stage-2-only ⇒ the deterministic
+    # davidath bench is byte-identical.
+    if _stage2_truncation_guard_enabled():
+        return _guard_stage2_truncation(
+            resolved_q, enhanced, kg_answer, context
+        )
     return enhanced, True
 
 

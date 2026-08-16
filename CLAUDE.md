@@ -76,9 +76,16 @@ all. A fresh session that trusted this file went looking for a call site that di
 exist. What follows is the wiring that is actually on `main`.
 
 **Where it is wired (R331):** `app/engines/_graph_rag_impl.py::_render_supplementary_sections`,
-reordering the graph-context ref list immediately before `render_kg_context`. Gate
-`REGENOLD_COHERE_RERANK`, default OFF pending the A/B; needs `COHERE_API_KEY` (present in
-`.env` and on Railway); registered in `_engine_cache_key`.
+reordering the graph-context ref list immediately before `render_kg_context`, using
+`context.question` as the query. Gate `REGENOLD_COHERE_RERANK`, default OFF pending the
+A/B; needs `COHERE_API_KEY` (present in `.env` and on Railway); registered in
+`_engine_cache_key`.
+
+It composes with R330's repair of the same call site (which passes `context.question` so
+the R327 semantic layers stop being dead code): the rerank sits between the two, so with
+the gate ON both the graph fetches and the semantic layers see the reranked order, and
+with the gate OFF the block is byte-identical to R330. `test_r330_question_still_reaches_the_graph`
+pins that R331 does not re-break R330's fix.
 
 **Why that placement and not retrieval.** Every `kg_context.fetch_*` reader truncates via
 `_node_ids(refs, limit=max_refs)`, `max_refs` default **8**. The cut is by list position,
@@ -128,10 +135,13 @@ families.
 ⚠ **`gold_dropped` does not exist anywhere in this repo**, so the standing rule "a
 reference change must drop ZERO gold" is currently **unenforceable**. Port
 `gold_dropped_head` before gating any reference change. Do NOT port the upstream
-`ref_crag_fine` / `gold_dropped_exact` as-is — measured defective: gold is head-projected
-while predictions keep full coordinates, so `['Article 5.1.f','Annex III.2']` against gold
-`['Article 5','Annex III']` scores `gold_dropped_exact = 2` and `ref_crag_fine = -1.0`,
-penalising the most accurate citation shape the system emits.
+`ref_crag_fine` / `gold_dropped_exact` as-is — the decision is right, but the reason
+recorded here was wrong. **Corrected R331:** `_gold_exact_refs` does *not* head-project.
+The real defect is that our probe gold carries **0/208 sub-point grain** — it is
+article-level throughout — so `['Article 5.1.f','Annex III.2']` scored against gold
+`['Article 5','Annex III']` yields `gold_dropped_exact = 2` and `ref_crag_fine = -1.0`,
+penalising the most accurate citation shape the system emits. Same conclusion, and the
+fix is gold that carries sub-point coordinates, not a change to the metric.
 
 ## Baseline Performance Reference (Commit `b47c259`)
 
@@ -221,6 +231,34 @@ Judge it on the adversarial categories only.
 
 ---
 
+## Recent Engine Fixes (R356–R359)
+
+Concise record of the applied fixes; full rationale in `docs/reviews/`:
+
+* **R356 — grounded judge-report fixes.** Entity-map anchors that were
+  missing (e.g. `human oversight → Art. 14`, `Art. 79/80`, `Annex III.5.c/d`),
+  the Article 6(3) derogation detector extended to the narrow-procedural
+  shape, and two new curated intercepts (GPAI transparency exceptions,
+  systemic-risk scope) — each verified against the official provision text
+  and false-positive-checked across all 81 live rows.
+* **R357 — Stage-2 truncation guard (default ON).** `_guard_stage2_truncation`
+  detects an incomplete final sentence (incl. trailing `…`) in the polish,
+  repairs it with one bounded completion call, and falls back to the complete
+  deterministic Stage-1 answer when repair fails. Never ships a fragment;
+  gate `REGENOLD_STAGE2_TRUNCATION_GUARD`.
+* **R358 — curated authoritative intercepts.** Four new curated answers
+  (emergency triage `Annex III.5.d`, health-insurance pricing `5(c)`, hospital
+  deployer duties, provider pre-market duties) that seed gold-head reference
+  sets and skip Stage-2 polish (`_is_curated_authoritative_intercept`).
+* **R359 — fine-grained CRAG answer judge (eval repo).** `answer_crag_fine`
+  axis ports the NICD paper's Appendix C.2.2 5-level truthfulness scale
+  (`+1 / +0.5 / 0 / −0.5 / −1`) to the ANSWER, with truthfulness = sum of
+  scores and hallucinated-row counts. Opt-in (not in default `AXES`); judged
+  via Bedrock sonnet, never the Claude-Max tunnel.
+* **R328–R354 ports** — `query_expansion.py` (LLM query rewrite, default OFF),
+  `risk_classification.py` (Annex-III risk-class anchor, default OFF),
+  rerank + graph-semantic upgrades; see the port review doc.
+
 ## Environment Flags Reference
 
 | Environment Variable | Code Default | Purpose |
@@ -231,5 +269,8 @@ Judge it on the adversarial categories only.
 | `REGENOLD_SEMANTIC_GLOSS` | `0` | Open-domain definitions/recitals gloss gate (R327) |
 | `REGENOLD_GRAPH_VECTOR_RECALL` | `0` | Additive Neo4j & local SVD vector recall path (R326) |
 | `REGENOLD_PARENT_COLLAPSE` | `0` | Collapse parent provisions when sub-points are cited (R325) |
+| `REGENOLD_STAGE2_TRUNCATION_GUARD` | `1` | R357 post-generation truncation repair on the Stage-2 polish |
+| `REGENOLD_QUERY_EXPANSION` | `0` | LLM query rewrite before retrieval (R328 port; latency+cost tradeoff) |
+| `REGENOLD_RISK_CLASS_ANNEX` | `0` | Annex-III risk-classification anchor (R328 port) |
 | `BEDROCK_REGION` | `eu-central-1` | AWS Bedrock cross-region inference profile geography (R328) |
 | `NEO4J_AUTO_SEED` | `0` (or `off`) | Boot graph seeder safety switch (Keep 0 in production) |

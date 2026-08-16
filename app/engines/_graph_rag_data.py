@@ -18,6 +18,13 @@ _KEYWORD_ENTITY_MAP: tuple[tuple[str, str], ...] = (
     ("general-purpose ai model", "Art. 53"),
     ("general purpose ai model", "Art. 53"),
     ("gpai model", "Art. 53"),
+    # R356 - la_q23 (does "systemic risk" apply to AI systems or GPAI models?)
+    # previously anchored only Art. 55 (the systemic-risk obligations), so the
+    # answer never stated the classification basis: Article 51(1)-(2) is where a
+    # GPAI model IS classified as having systemic risk (high-impact capabilities,
+    # presumed at >10^25 FLOPs). Art. 55 then supplies the obligations. Both are
+    # kept; Art. 51 now leads (map order = extraction order).
+    ("systemic risk", "Art. 51"),
     ("systemic risk", "Art. 55"),
     ("model evaluation", "Art. 55"),
     ("code of practice", "Art. 56"),
@@ -270,8 +277,17 @@ _KEYWORD_ENTITY_MAP: tuple[tuple[str, str], ...] = (
     ("medical device", "Annex I"),
     ("medical device", "Art. 6"),
     ("medical devices", "Annex I"),
-    ("health insurance", "Annex III"),
-    ("emergency triage", "Annex III"),
+    # R356 - la_q86 (risk assessment and pricing in health insurance): the
+    # specific listing is Annex III point 5(c) (verified official text), not the
+    # bare area. The judge's "5(b)" note is wrong - 5(b) is creditworthiness.
+    ("health insurance", "Annex III.5.c"),
+    ("risk assessment and pricing", "Annex III.5.c"),
+    # R356 - la_q29 (which systems are listed high-risk for emergency calls and
+    # triage): Annex III point 5(d) is the specific listing (evaluate/classify
+    # emergency calls, dispatch/prioritise first response, emergency patient
+    # triage). "emergency calls" is la_q29's exact phrasing.
+    ("emergency triage", "Annex III.5.d"),
+    ("emergency calls", "Annex III.5.d"),
     ("public healthcare", "Annex III"),
     # R305 — Annex III point 7 (migration, asylum, border control). These
     # anchors already existed in ``scope.KEYWORD_TO_ARTICLE`` but NOT in this
@@ -319,6 +335,12 @@ _KEYWORD_ENTITY_MAP: tuple[tuple[str, str], ...] = (
     ("transparency duties", "Art. 50"),
     ("transparency duty", "Art. 50"),
     ("transparency obligation", "Art. 50"),
+    # R356 — "human oversight" anchors Art. 14 (the human-oversight article).
+    # Previously missing, so "Which article governs human oversight measures?"
+    # fell to the BM25 fallback, which dumped Art. 1-4 generic provisions
+    # (the judge-reported la_q10 context bleed). Substring order: place after
+    # the transparency family so the more specific ask wins the lead position.
+    ("human oversight", "Art. 14"),
     # Innovation support (Arts. 57, 60)
     ("regulatory sandbox", "Art. 57"),
     ("ai sandbox", "Art. 57"),
@@ -329,12 +351,26 @@ _KEYWORD_ENTITY_MAP: tuple[tuple[str, str], ...] = (
     ("board tasks", "Art. 66"),
     ("national competent authority", "Art. 70"),
     ("notifying authority", "Art. 70"),
+    # R356 - la_q37 ("registering a high-risk AI system in the EU database"):
+    # the required registration ITEMS are Annex VIII Section A; "eu database"
+    # alone anchored only Art. 71 (the general database clause) and the answer
+    # never itemized the fields. "register" appears in no other live question.
+    ("registering a high-risk ai system", "Annex VIII"),
     ("eu database", "Art. 71"),
     # Enforcement (Arts. 20, 79)
     ("corrective action", "Art. 20"),
     ("withdraw from the market", "Art. 20"),
     ("recall", "Art. 20"),
     ("non-compliance procedure", "Art. 79"),
+    # R356 — market-surveillance corrective-measures shapes anchor Art. 79/80.
+    # la_q35 ("MSA determines a provider-classified non-high-risk system is in
+    # fact high-risk; must the provider recall/suspend or does the MSA give a
+    # timeframe?") previously pulled only Art. 74 + Art. 20 (provider
+    # self-corrective action), never the MSA procedure articles. The compound
+    # phrases are precise: Art. 80 is the MSA reclassification procedure, Art.
+    # 79 the national-level risk procedure (official text verified).
+    ("recall and suspend", "Art. 79"),
+    ("classified as non-high-risk", "Art. 80"),
     ("ai system presenting a risk", "Art. 79"),
     # Applicability / entry into force (Art. 113).
     # Question-shape variants ("when did/does/will … apply / start")

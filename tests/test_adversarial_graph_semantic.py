@@ -172,15 +172,32 @@ class TestEnvClamping:
     """Env vars controlling query limits must be strictly clamped."""
 
     def test_adaptive_fanout_bounds(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # R355.2 — `_adaptive_fanout` was inlined into
+        # `fetch_focused_subprovisions` by the R329-era port; the clamp bounds
+        # ([10, 200], default 60) are unchanged. Capture the param instead.
+        monkeypatch.setenv("REGENOLD_GRAPH_SEMANTIC_LAYERS", "1")
+        monkeypatch.setenv("REGENOLD_KG_CONTEXT", "1")
+        captured: dict = {}
+
+        def _mock_read(cypher, params):
+            captured.update(params)
+            return []
+
+        monkeypatch.setattr(kg, "_bounded_execute_read", _mock_read)
+        monkeypatch.setattr(gs, "_embed", lambda _q: [0.1] * 128)
+
         # Clamped to [10, 200]
         monkeypatch.setenv("REGENOLD_SEMANTIC_ANN_FANOUT", "-50")
-        assert gs._adaptive_fanout() == 10
+        gs.fetch_focused_subprovisions("test question", ["Art. 5"])
+        assert captured["fanout"] == 10
 
         monkeypatch.setenv("REGENOLD_SEMANTIC_ANN_FANOUT", "99999")
-        assert gs._adaptive_fanout() == 200
+        gs.fetch_focused_subprovisions("test question", ["Art. 5"])
+        assert captured["fanout"] == 200
 
         monkeypatch.setenv("REGENOLD_SEMANTIC_ANN_FANOUT", "invalid")
-        assert gs._adaptive_fanout() == 60  # Default
+        gs.fetch_focused_subprovisions("test question", ["Art. 5"])
+        assert captured["fanout"] == 60  # Default
 
     def test_query_limits_clamped_in_cypher_call(
         self, monkeypatch: pytest.MonkeyPatch
@@ -203,7 +220,7 @@ class TestEnvClamping:
         gs.fetch_focused_subprovisions("test question", ["Art. 5"])
 
         assert captured_params["min_sim"] == 0.0  # Clamped lo
-        assert captured_params["limit"] == 20  # Clamped hi
+        assert captured_params["limit"] == 60  # Clamped hi (R329 raised the cap 20 -> 60)
         assert captured_params["per_provision"] == 1  # Clamped lo
 
 
