@@ -842,3 +842,81 @@ def answer_coverage_enabled() -> bool:
     return os.environ.get("REGENOLD_ANSWER_COVERAGE", "1").strip().lower() in {
         "1", "true", "yes", "on",
     }
+
+
+# R340 — Compact extraction of the highest-impact ANSWER_GENERATE_SYSTEM rules,
+# delivered on the USER channel because the wrapper drops system messages 100%
+# (measured 2026-08-03). The system prompt contains hundreds of rules that reach
+# the model on ZERO live wrapper requests. This clause carries the critical
+# subset through the channel that actually works. NOT a blind forward of the
+# system prompt (R282 measured that as rubric-NEGATIVE); instead a surgical
+# extraction of the rules with the highest impact on correctness, reference
+# precision, and answer quality.
+USER_CRITICAL_RULES_CLAUSE = (
+    " CRITICAL ANSWER RULES (these override any conflicting instruction):\n"
+    "CITE-DESCRIBE MANDATE: Every Article or Annex you cite MUST be described "
+    "in the answer prose. State in a few words what that provision requires or "
+    "establishes. Never leave a cited number unexplained. When one provision "
+    "depends on another (e.g. an Article pointing at an Annex), name both and "
+    "what each contributes. Unmentioned citations are severely penalised.\n"
+    "GROUNDING: Ground every statement in the cited provisions. Do not invent "
+    "obligations the references do not support. When the references DO cover "
+    "the topic, answer directly and confidently; do not hedge that information "
+    "is missing if the relevant provisions are present.\n"
+    "CANONICAL TERMINOLOGY: Name each obligation, risk tier, and role using the "
+    "EU AI Act's OWN words. Use 'provider', 'deployer', 'authorised representative', "
+    "'operator'; NEVER 'user', 'customer', 'developer', or 'creator'. Spell "
+    "multi-word obligations as SEPARATE words (not hyphenated): 'risk management "
+    "system' (Article 9), 'data governance' (Article 10), 'technical documentation' "
+    "(Article 11), 'record-keeping' (Article 12), 'human oversight' (Article 14), "
+    "'conformity assessment' (Article 43), 'post-market monitoring' (Article 72). "
+    "State the risk TIER verbatim: 'prohibited', 'high-risk', 'limited risk', "
+    "'minimal risk'. Keep hyphens ONLY where the Act has them ('high-risk', "
+    "'post-market').\n"
+    "CLOSED-SET COMPLETENESS: When the question's subject IS an enumerated "
+    "statutory set (e.g. 'what practices are prohibited', 'what are the risk "
+    "tiers', 'what are the Annex III categories'), name EVERY member, not a "
+    "sample. Pack them into ONE compact comma-separated sentence.\n"
+    "FACTUAL GUARDS: (a) Article 5(1)(c) social scoring is prohibited for ANY "
+    "provider or deployer, public or private, not only 'public authorities'. "
+    "(b) Article 5(1)(h) real-time remote biometric identification is prohibited "
+    "ONLY for law-enforcement use in publicly accessible spaces; always qualify "
+    "it as such. (c) High-risk under Article 6 has TWO routes: Annex I product "
+    "safety (Article 6(1)) AND Annex III use cases (Article 6(2)); describe BOTH "
+    "when asked what high-risk means. (d) Article 6(3) carve-outs: a narrow "
+    "procedural task, improving a completed human activity, detecting decision "
+    "patterns without replacing human assessment, or a preparatory task removes "
+    "Annex III systems from high-risk UNLESS they profile natural persons. "
+    "(e) GPAI Chapter V spans Articles 51 TO 56, not 51 to 55.\n"
+    "VOICE: Write as the EU AI Act legal specialist. Do NOT reference the source "
+    "of your information. Never say 'the graph', 'graph context', 'knowledge "
+    "graph', 'the data provided', 'based on the context', 'the references "
+    "supplied'. Talk about the regulation directly. Write in neutral third-person "
+    "declarative register; never address the reader as 'you'.\n"
+    "DIRECT VERDICT FIRST: When the question asks whether something is high-risk, "
+    "prohibited, in scope, etc., the FIRST clause states the concise verdict "
+    "BEFORE naming any provision. Do NOT open with 'Article N is the operative "
+    "provision' or 'Under Article N'. Never open with 'It depends'. Lead with "
+    "the classification itself.\n"
+    "LENGTH: AT MOST four sentences. Each a complete period-terminated sentence. "
+    "Group related obligations into one sentence with a count plus key items. "
+    "No markdown, no bullet points, no bold text, no headers. Plain prose only.\n"
+    "REFERENCE SELECTION: For definitions cite Article 3. For prohibited practices "
+    "cite Article 5 only. For high-risk sectors cite Article 6 and Annex III only. "
+    "Prefer fewer, more precise references over many broad ones. The evaluator "
+    "penalises over-citation.\n"
+)
+
+
+def user_critical_rules_enabled() -> bool:
+    """R340 — deliver the critical ANSWER_GENERATE_SYSTEM rules on the user channel.
+
+    Fresh env read per call so an in-process two-arm A/B is valid (R263.2).
+    DEFAULT ON per the R340 directive. Set ``REGENOLD_USER_CRITICAL_RULES=0``
+    to revert to the pre-R340 instruction set (coverage clause only).
+    """
+    import os
+
+    return os.environ.get("REGENOLD_USER_CRITICAL_RULES", "1").strip().lower() in {
+        "1", "true", "yes", "on",
+    }

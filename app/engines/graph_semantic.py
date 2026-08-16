@@ -73,12 +73,16 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
     "semantic_layers_enabled",
     "gloss_layers_enabled",
+    "semantic_coordinates_enabled",
+    "coordinate_for_row",
     "fetch_focused_subprovisions",
     "fetch_definition_and_recital_context",
 ]
@@ -88,7 +92,7 @@ _DEFAULT_MIN_SIM = 0.30
 #: constraint is selective, so the fan-out has to be wide enough that units of a
 #: cited provision actually appear in the global top-k.
 _DEFAULT_ANN_FANOUT = 60
-_DEFAULT_UNITS_KEPT = 6
+_DEFAULT_UNITS_KEPT = 16
 #: Max units drawn from any ONE cited provision, so a single provision cannot
 #: consume the whole focused block (see the B.2 roll-up note on _FOCUS_CYPHER).
 _DEFAULT_UNITS_PER_PROVISION = 2
@@ -194,6 +198,57 @@ def semantic_layers_enabled() -> bool:
         "true",
         "yes",
         "on",
+    )
+
+
+def semantic_coordinates_enabled() -> bool:
+    """``REGENOLD_SEMANTIC_COORDINATES`` — default **ON**. R329 P2.
+
+    ⚠ DEFAULT FLIPPED ON by operator decision (2026-08-13), UNGATED. Railway's
+    ``[deploy.envs]`` has never applied, so a default-OFF flag is dead code in
+    production — the only way this reaches the deployment is as a code default.
+    Off-switch ``REGENOLD_SEMANTIC_COORDINATES=0`` for instant rollback, and the
+    flag stays so ``easyhard_ab`` can still A/B OFF↔ON. The measured baseline in
+    CLAUDE.md predates this and no longer describes the running system.
+
+    THE DEFECT THIS GATES. The constrained block exists to attribute a duty to
+    the right SUB-provision, yet it could not express a sub-provision citation.
+    ``_FOCUS_CYPHER`` walked ``(a)-[:HAS_PARAGRAPH|HAS_POINT|HAS_SUBPOINT*1..3]->
+    (node)`` — a path that BINDS every node needed to name the coordinate — and
+    then collected only ``{uid, layer, text, score}``, so the renderer emitted
+
+        - Article 12 [paragraph para_12_1]: <text>
+
+    i.e. sub-provision TEXT under a HEAD-level cite, with the legal coordinate
+    ``Article 12.1`` thrown away one hop before it was needed.
+
+    WHY IT IS WORTH A FLAG. ``routes/regenold.py:1190-1194`` measures, per
+    over-citation cause, what removing it wholesale would cost. The last row:
+    references that are THEMSELVES sub-points run 5 wrong : 28 correct — **85%**
+    — against an overall reference precision of 0.696. Sub-point grain is the
+    most accurate citation shape this system emits, and both the grounded judge
+    and easyhard's ``expected_refs`` score at that grain. The *instruction* also
+    already ships: ``REGENOLD_SUBPARAGRAPH_ATTRIBUTION`` is default ON, so the
+    model is asked for sub-paragraph attribution while the block holding the
+    sub-paragraph text withholds its coordinate.
+
+    ⚠ SCOPE — this changes the rendered LABEL only, never citability. The block's
+    framing stays "they add NO new provision … do NOT cite anything new here",
+    per hard rule #10 (the graph is additive context, never a wire citation).
+    Emitting a coordinate AND relaxing the framing would put the graph on the
+    wire; that is a separate flag and a separate gate.
+
+    Fresh env read per call (R263.2) — a module-level constant would make the
+    in-process A/B inert. NOTE for the orchestrator: this is an ENGINE-level
+    flag (it changes the Stage-2 grounding block), so it must also be listed in
+    ``_engine_cache_key`` in ``app/routes/regenold.py`` beside
+    ``REGENOLD_GRAPH_SEMANTIC_LAYERS``, or the paired A/B replays arm A's cache.
+    """
+    return os.getenv("REGENOLD_SEMANTIC_COORDINATES", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
     )
 
 
@@ -309,6 +364,70 @@ RETURN coalesce(a.strict_citation, a.id) AS cite,
 LIMIT $limit
 """
 
+# ── Read 1b: the SAME query, plus the path numbering (R329 P2) ───────────────
+#
+# ⚠ ``_FOCUS_CYPHER`` above is deliberately left BYTE-IDENTICAL. This variant is
+# selected only when ``REGENOLD_SEMANTIC_COORDINATES`` is on, so the default-OFF
+# path runs exactly the query R327 gated and a defect here cannot reach it.
+#
+# The only change is that the walk is bound as ``path`` and the intermediate
+# numbering is projected out of ``nodes(path)``. The graph shape is
+#   Article/Annex -HAS_PARAGRAPH-> Paragraph -HAS_POINT-> Point -HAS_SUBPOINT-> SubPoint
+# (``app/data/provision_hierarchy.py``), so ``nodes(path)`` is
+#   [a] | [a, para] | [a, para, point] | [a, para, point, subpoint]
+# and the properties are ``Paragraph.number`` / ``Point.letter`` /
+# ``SubPoint.roman`` — the same three ``kg_context._SUBPOINT_CYPHER`` reads.
+# No extra hop and no extra round trip: the path was already traversed.
+#
+# The projection is by LABEL (``[n IN chain WHERE n:Paragraph | n.number]``), not
+# by position (``chain[1].number``). Same result on the seeded shape, but it does
+# not assume the walk's depth ordering and it needs no ``size()``/``CASE`` guard:
+# ``head()`` of an empty list is null, so a shallower path simply yields nulls
+# for the levels it does not reach.
+#
+# ``toIntegerOrNull(para)`` in the tie-break is not decoration. ``Paragraph.number``
+# is a STRING in this graph (as is ``Article.number``), and a bare sort over it is
+# LEXICOGRAPHIC — the R318 defect that silently dropped Article 3's role
+# definitions by ordering '1','10','11',…,'2'. Score is a float so exact ties are
+# rare, but when they happen the cheap deterministic order must be the numeric one.
+_FOCUS_COORD_CYPHER = """
+CALL () {
+    CALL db.index.vector.queryNodes('v_paragraph_embedding', $fanout, $emb)
+    YIELD node, score RETURN node, score
+    UNION
+    CALL db.index.vector.queryNodes('v_point_embedding', $fanout, $emb)
+    YIELD node, score RETURN node, score
+    UNION
+    CALL db.index.vector.queryNodes('v_subpoint_embedding', $fanout, $emb)
+    YIELD node, score RETURN node, score
+}
+WITH node, score WHERE score >= $min_sim
+MATCH path = (a)-[:HAS_PARAGRAPH|HAS_POINT|HAS_SUBPOINT*1..3]->(node)
+WHERE a.id IN $ids AND (a:Article OR a:Annex)
+WITH a, node, score, nodes(path) AS chain
+WITH a, node, score,
+     head([n IN chain WHERE n:Paragraph | n.number]) AS para,
+     head([n IN chain WHERE n:Point | n.letter]) AS letter,
+     head([n IN chain WHERE n:SubPoint | n.roman]) AS roman
+ORDER BY score DESC, toIntegerOrNull(para), para
+WITH a,
+     collect({uid: node.id, layer: head(labels(node)), text: node.text,
+              score: score, para: para, letter: letter,
+              roman: roman})[..$per_provision] AS units,
+     max(score) AS best
+ORDER BY best DESC
+UNWIND units AS u
+RETURN coalesce(a.strict_citation, a.id) AS cite,
+       u.uid AS uid,
+       u.layer AS layer,
+       u.text AS text,
+       u.score AS score,
+       u.para AS para,
+       u.letter AS letter,
+       u.roman AS roman
+LIMIT $limit
+"""
+
 # ── Read 2: definitions + recitals, open-domain but NON-CITABLE ──────────────
 #
 # Per-branch ORDER BY + LIMIT gives each layer its own quota. With a single
@@ -344,11 +463,138 @@ RETURN layer, label, cite, text, score, anchored
 """
 
 
+# ── Coordinate reconstruction (R329 P2) ─────────────────────────────────────
+#
+# Hard rule #1 is the contract: ``Article N(.subpoint)*`` with an ARABIC article
+# number, ``Annex X(.subpoint)*`` with an UPPERCASE ROMAN annex. Never ``Art. 12``,
+# never ``Article 12(1)``, never ``Annex 3``.
+
+#: The head must already be in wire form before a tail is appended to it.
+_WIRE_HEAD_RE = re.compile(r"^(?:Article \d{1,3}|Annex [IVXLCDM]{1,7})$")
+
+#: ``head(labels(node))`` → how many dot-separated tokens the coordinate needs.
+#: A Point row that lost its letter must NOT degrade to the paragraph
+#: coordinate: that would silently relabel 12(1)(a)'s text as "Article 12.1".
+_LAYER_DEPTH = {"paragraph": 1, "point": 2, "subpoint": 3}
+
+
+def _clean(value: object) -> str:
+    return str(value).strip() if value is not None else ""
+
+
+def _wire_head(cite: object) -> str | None:
+    """``cite`` → ``Article 12`` / ``Annex III``, or ``None`` if it is neither.
+
+    The query returns ``coalesce(a.strict_citation, a.id)``. ``strict_citation``
+    is already the wire form (the seeder writes ``_ref_to_user_facing``), but the
+    coalesce can fall through to the node id on a partially-seeded node, and
+    ``article_12`` / ``annex_III`` are NOT wire-legal. Normalise those two known
+    id shapes; reject anything else rather than guess.
+    """
+    raw = _clean(cite)
+    if not raw:
+        return None
+    if raw.startswith("article_"):
+        tail = raw[len("article_"):].split("_")[0]
+        raw = f"Article {tail}" if tail.isdigit() else raw
+    elif raw.startswith("annex_"):
+        raw = f"Annex {raw[len('annex_'):].split('_')[0].upper()}"
+    return raw if _WIRE_HEAD_RE.match(raw) else None
+
+
+@lru_cache(maxsize=512)
+def _paragraph_coordinate_resolves(ref: str) -> bool:
+    """True iff ``ref`` (a head + ONE token) has verbatim text in the pinned Act.
+
+    ⚠ THIS GUARD IS NOT DEFENSIVE PADDING — it catches a real fabrication.
+    ``provision_hierarchy.build_hierarchy_payload`` synthesises a Paragraph
+    numbered ``"1"`` for a single-block article whose body carries a lettered
+    list, so the graph holds ``article_16 -> article_16_1 -> article_16_1_a``
+    even though Article 16 has no paragraph 1 — its list is ``16(a)…(n)``.
+    Reconstructing straight off the path would print ``Article 16.1.a``, a
+    coordinate that does not exist, in the one block whose entire purpose is
+    sub-provision precision. Measured against the pinned text: exactly 3 of 658
+    Paragraph nodes are synthetic this way (``Article 16.1``, ``Article 66.1``,
+    ``Annex XIII.1``). Those rows fall back to the head-level rendering.
+
+    ``provision_exists`` cannot be used here — it is head-level LAX
+    (``provision_exists("Article 3.999")`` is True). Only ``get_provision_text``
+    returning non-None validates a coordinate, and it resolves exactly one
+    sub-token deep (article paragraph / Art. 3 definition / annex item), which
+    is the level the synthetic node lives at.
+    """
+    try:
+        from app.data.provision_text import get_provision_text  # noqa: PLC0415
+
+        return get_provision_text(ref) is not None
+    except Exception:  # noqa: BLE001 — a failed guard must fall back, not raise
+        return False
+
+
+def coordinate_for_row(row: dict) -> str | None:
+    """Rebuild the wire-format legal coordinate for one focused row.
+
+    ``Article 12.1`` (paragraph) · ``Article 5.1.f`` (point) ·
+    ``Article 5.1.h.iii`` (sub-point) · ``Annex III.2`` (annex item).
+
+    Pure — no graph, no env read. Returns ``None`` whenever the coordinate
+    cannot be reconstructed IN FULL, so the caller falls back to the existing
+    head-level rendering rather than shipping a partial or guessed coordinate.
+    ``None`` is returned for: a head that is not wire-legal, a missing or
+    non-numeric paragraph number, a layer whose numbering is incomplete (a Point
+    with no letter, a SubPoint with no roman), an unknown layer, a synthetic
+    paragraph (see :func:`_paragraph_coordinate_resolves`), and anything
+    ``reference_from_article_ref`` refuses to format.
+    """
+    head = _wire_head(row.get("cite"))
+    if head is None:
+        return None
+
+    depth = _LAYER_DEPTH.get(_clean(row.get("layer")).lower())
+    if depth is None:
+        return None
+
+    para = _clean(row.get("para"))
+    if not para.isdigit():
+        return None
+    tokens = [para]
+    if depth >= 2:
+        letter = _clean(row.get("letter"))
+        if not letter:
+            return None
+        tokens.append(letter)
+    if depth >= 3:
+        roman = _clean(row.get("roman"))
+        if not roman:
+            return None
+        tokens.append(roman)
+
+    if not _paragraph_coordinate_resolves(f"{head}.{para}"):
+        return None
+
+    try:
+        from app.integrations.regenold.models import (  # noqa: PLC0415
+            reference_from_article_ref,
+        )
+
+        # One formatter, one shape check. ``reference_from_article_ref`` gates on
+        # ARTICLE_EXISTENCE, rejects an out-of-range or malformed sub-token
+        # all-or-nothing, and re-validates the emission against the Regenold
+        # output regex — so nothing malformed can leave this function.
+        return reference_from_article_ref(f"{head}.{'.'.join(tokens)}")
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def fetch_focused_subprovisions(question: str, refs: list[str]) -> list[dict]:
     """ANN over the three unit indexes, constrained to already-cited provisions.
 
     Returns ``[]`` unless the feature is on, the graph is reachable and there is
     at least one resolvable cited provision. Never raises.
+
+    With ``REGENOLD_SEMANTIC_COORDINATES`` on, each row additionally carries
+    ``para`` / ``letter`` / ``roman`` from the bound path, which
+    :func:`coordinate_for_row` turns into a wire-format coordinate.
     """
     if not semantic_layers_enabled():
         return []
@@ -361,16 +607,14 @@ def fetch_focused_subprovisions(question: str, refs: list[str]) -> list[dict]:
 
         if not kg_context_enabled():
             return []
-        ids = _node_ids(refs or [], _adaptive_int(
-            "kg_max_keywords", "REGENOLD_KG_MAX_REFS", 8, 1, 10
-        ))
+        ids = _node_ids(refs or [], _int_env("REGENOLD_KG_MAX_REFS", 8, 1, 10))
         if not ids:
             return []
         emb = _embed(question)
         if emb is None:
             return []
         rows = _bounded_execute_read(
-            _FOCUS_CYPHER,
+            _FOCUS_COORD_CYPHER if semantic_coordinates_enabled() else _FOCUS_CYPHER,
             {
                 "emb": emb,
                 "ids": ids,
@@ -379,7 +623,7 @@ def fetch_focused_subprovisions(question: str, refs: list[str]) -> list[dict]:
                     "REGENOLD_SEMANTIC_MIN_SIM", _DEFAULT_MIN_SIM, 0.0, 1.0
                 ),
                 "limit": _int_env(
-                    "REGENOLD_SEMANTIC_UNITS", _DEFAULT_UNITS_KEPT, 1, 20
+                    "REGENOLD_SEMANTIC_UNITS", _DEFAULT_UNITS_KEPT, 1, 60
                 ),
                 "per_provision": _int_env(
                     "REGENOLD_SEMANTIC_UNITS_PER_PROVISION",

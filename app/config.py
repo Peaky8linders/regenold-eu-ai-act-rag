@@ -161,23 +161,21 @@ class GraphRAGSettings(BaseSettings):
     ``P2P_GRAPH_RAG_STAGE2_MODEL``."""
 
     max_tokens: int = 1536
-    """Stage-1/2 polish output token cap.
+    """Stage-1/2 polish output token cap passed to the engine as the BASE
+    floor for ``safe_max_tokens`` (which may exceed this when extended thinking
+    is on — ``safe_max_tokens = max(max_tokens, thinking_budget + headroom)``).
 
-    R84 default 384 (was 512 in R80.2, was 1024 pre-R80.2). The
-    ``ANSWER_GENERATE_SYSTEM`` prompt mandates "AT MOST 3 sentences"
-    (since R80.1) — a wire-normalised 3-sentence answer is ~150-200
-    tokens typical, ~280 worst-case. 384 keeps ~80-token headroom for
-    a long 3rd sentence while saving ~2-4 s p95 generation tail vs the
-    R80.2 512 cap on the slow Sonnet generation path the R81-A1 live
-    rep-100 surfaced. Operators wanting larger answers can override
-    with ``P2P_GRAPH_RAG_MAX_TOKENS=512`` (R80.2) or ``=1024`` (pre-R80.2).
+    Current default 1536. Raised from 384 (R84) to give the answer envelope
+    comfortable room alongside the R340 standard-path thinking budget of 1024
+    (thinking counts inside max_tokens; at 384 only ~360 answer tokens
+    remained after thinking allocation). Override per-deploy with
+    ``P2P_GRAPH_RAG_MAX_TOKENS``.
 
     Prior values:
-      * pre-R80.2: 1024 (Sonnet default).
-      * R80.2: reduced 1024 → 512 (cuts worst-case generation tail).
-      * R84: reduced 512 → 384 (further latency trim; zero answer-quality
-        risk since the prompt's 3-sentence cap is well under the new
-        ceiling)."""
+      * pre-R80.2: 1024.
+      * R80.2: reduced 1024 → 512.
+      * R84: reduced 512 → 384.
+      * Current: raised to 1536 to accommodate R340 thinking_tokens=1024."""
 
     temperature: float = 0.0
 
@@ -324,8 +322,19 @@ class GraphRAGSettings(BaseSettings):
       * R80.2: reduced 2500 → 1024 (current).
     """
 
-    thinking_tokens: int = 0
-    """``max_thinking_tokens`` — thinking budget for the STANDARD Stage-2
+    thinking_tokens: int = 1024
+    """
+    **R340 — default 1024 (re-enable reasoning for Opus 5).** With the model
+    alias off since R308 (Stage-2 now actually runs on Opus 5 as configured),
+    the zero-thinking directive (which was tuned for Opus 4.8) leaves the
+    stronger model reasoning-free on 80% of questions. 1024 restores the
+    moderate budget: Opus 5 reasons before answering, improving answer quality
+    on the standard path without the latency outliers that the 8000/4000
+    budgets caused. The complex tier keeps its EXTENDED
+    ``complex_thinking_tokens`` (4000). Override per-deploy with
+    ``P2P_GRAPH_RAG_THINKING_TOKENS=0`` to restore the fast thinking-free path.
+
+    ``max_thinking_tokens`` — thinking budget for the STANDARD Stage-2
     synthesis path: the ~80% of questions the complexity gate does NOT flag.
     Complex questions use the larger EXTENDED :attr:`complex_thinking_tokens`
     instead.

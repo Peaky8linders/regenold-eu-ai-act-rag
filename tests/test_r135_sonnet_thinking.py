@@ -78,7 +78,8 @@ class TestStandardStage2Thinking:
 
     def test_complex_uses_complex_budget(self, _wrapper):
         """Complex Stage-2 uses ``complex_thinking_tokens`` (the Opus budget),
-        not the standard ``thinking_tokens``."""
+        not the standard ``thinking_tokens``. R340 default thinking_tokens=1024,
+        complex_thinking_tokens=4000."""
         orig = settings.graph_rag.thinking_tokens
         settings.graph_rag.thinking_tokens = 1024
         try:
@@ -110,9 +111,12 @@ class TestStandardStage2Thinking:
 
 class TestConfig:
     def test_thinking_tokens_default(self):
-        # 2026-07-04 operator directive — 0 (no thinking on the simple/Opus
-        # tier; reversible via P2P_GRAPH_RAG_THINKING_TOKENS=2048).
-        assert settings.graph_rag.thinking_tokens == 0
+        # R340 — default 1024 (re-enable reasoning for Opus 5). With the
+        # model alias off since R308 (Stage-2 now actually runs on Opus 5),
+        # the zero-thinking directive (tuned for Opus 4.8) left the stronger
+        # model reasoning-free on 80% of questions. Reversible per-deploy
+        # with P2P_GRAPH_RAG_THINKING_TOKENS=0.
+        assert settings.graph_rag.thinking_tokens == 1024
 
 
 class TestAnthropicParity:
