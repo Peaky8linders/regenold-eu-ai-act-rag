@@ -1802,6 +1802,70 @@ def _engine_cache_key(
             # and the reference set change. Unkeyed, the OFF↔ON A/B this gate
             # exists to enable would hash both arms identically.
             "REGENOLD_EMOTION_CURATED_EMIT",
+            # R355 — cache-key completeness audit (2026-08-16): engine-read flags
+            # that flip the cached GraphRAGResponse but were never added to
+            # this key (R30/R56/R79/R263.2 doctrine). Each was found by an
+            # AST scan of the engine for env reads not covered by this tuple;
+            # tests/test_r355_cache_key_complete.py now fails CI on any such
+            # regression, so this class cannot silently recur.
+            #   * REGENOLD_GRAPH_EXPANSION — appends provision text into the
+            #     Stage-2 grounding context; its own comment says it "can move
+            #     the answer and the citations" (_graph_rag_impl.py:5858).
+            #   * REGENOLD_CROSS_REF_CONTEXT — semantic_layer.py:330 injects
+            #     cross-reference context into generation (default ON).
+            #   * REGENOLD_VECTOR_RERANK — vector_rerank.py rerank stage; the
+            #     R331 class of flag (a rerank moves refs).
+            #   * REGENOLD_QA_LEAD_RANK — _graph_rag_impl.py:4703 gates
+            #     obligation lead-ranking -> flips answer assembly.
+            #   * REGENOLD_COMPLEX_SENTENCE_CAP — _graph_rag_impl.py:7871 caps
+            #     the complex-path answer -> flips answer text.
+            #   * REGENOLD_FUSION_MIN_CANDIDATES — fusion.py:233 gates how many
+            #     MoA panel drafts the judge sees -> flips the fused answer.
+            "REGENOLD_GRAPH_EXPANSION",
+            "REGENOLD_CROSS_REF_CONTEXT",
+            "REGENOLD_VECTOR_RERANK",
+            "REGENOLD_QA_LEAD_RANK",
+            "REGENOLD_COMPLEX_SENTENCE_CAP",
+            "REGENOLD_FUSION_MIN_CANDIDATES",
+            # R355.1 — the completeness test (tests/test_r355_cache_key_complete.py)
+            # surfaced these ENGINE-side siblings of the six above: each is a
+            # per-call env read in the engine's ask path that flips the cached
+            # GraphRAGResponse (same R30/R56/R79/R263.2 doctrine):
+            #   * COHERE_RERANK_MODEL — picks the reranker model -> moves refs.
+            #   * CURATED/DEFINITIONAL_STAGE2_SKIP — flip whether the Stage-2
+            #     polish runs for those question shapes -> flips answer.
+            #   * EXTERNAL_EMBEDDINGS — swaps the embedding provider -> moves
+            #     dense retrieval results.
+            #   * FRAMES_REWRITER_ALLOW_WRAPPER — gates wrapper use in the
+            #     frames rewriter -> flips rewritten context.
+            #   * FUSION_TIMEOUT — changes which MoA panel drafts land in time.
+            #   * PPR_DAMPING / PPR_MAX_ITER — Personalised PageRank knobs ->
+            #     move graph candidates.
+            #   * PROVENANCE_IN_PROMPT — injects provenance into the Stage-2
+            #     context -> flips the polished answer.
+            #   * ROLE_DUTY_ZRF — the zero-retrieval-fallback role-duty seed ->
+            #     flips fallback answer assembly.
+            #   * SEMANTIC_GLOSS_FANOUT — gloss breadth -> moves semantic
+            #     context.
+            #   * TREE_EXTRACT — paragraph-level extractive answers -> flips
+            #     the deterministic answer.
+            #   * VERBATIM_MAX_CHARS / MAX_PROVISIONS / PARA_CHARS — verbatim
+            #     answer shaping -> flips the deterministic answer.
+            "REGENOLD_COHERE_RERANK_MODEL",
+            "REGENOLD_CURATED_STAGE2_SKIP",
+            "REGENOLD_DEFINITIONAL_STAGE2_SKIP",
+            "REGENOLD_EXTERNAL_EMBEDDINGS",
+            "REGENOLD_FRAMES_REWRITER_ALLOW_WRAPPER",
+            "REGENOLD_FUSION_TIMEOUT",
+            "REGENOLD_PPR_DAMPING",
+            "REGENOLD_PPR_MAX_ITER",
+            "REGENOLD_PROVENANCE_IN_PROMPT",
+            "REGENOLD_ROLE_DUTY_ZRF",
+            "REGENOLD_SEMANTIC_GLOSS_FANOUT",
+            "REGENOLD_TREE_EXTRACT",
+            "REGENOLD_VERBATIM_MAX_CHARS",
+            "REGENOLD_VERBATIM_MAX_PROVISIONS",
+            "REGENOLD_VERBATIM_PARA_CHARS",
         )
     )
     import json
