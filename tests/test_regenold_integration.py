@@ -1308,3 +1308,89 @@ def test_r103_definition_question_cites_article_3() -> None:
         assert any(
             ref == "Article 3" or ref.startswith("Article 3.") for ref in refs
         ), f"definition q did not cite the Article 3 head: {q!r} -> {refs}"
+
+
+
+def test_competition_spec_reference_format_contract() -> None:
+    """Pin the competition rules PDF's EXACT reference format contract.
+
+    The official 2026 rules ("2026-eu-ai-act-competition-rules.pdf") state:
+
+      "Can only be 'Annex' or 'Articles', with a Roman or Arabic numeral
+       (respectively) and optionally a sub-point, after a dot symbol.
+       Example:
+       - Annex III or Annex III.2 – NOT Annex 3, Annex 3(2), Annex III . 2,
+         Annex III-2, etc.
+       - Article 3 or Article 3.2   – NOT Article III, Article III.2,
+         Article 3/2, etc."
+
+    Every reference the route can emit must match one of the two output
+    regexes — this test pins the accept/reject boundary so a future
+    formatting change cannot silently break the competition contract.
+    """
+    from app.integrations.regenold.models import (  # noqa: PLC0415
+        _ANNEX_OUTPUT_RE,
+        _ARTICLE_OUTPUT_RE,
+    )
+
+    def valid(ref: str) -> bool:
+        return bool(_ANNEX_OUTPUT_RE.match(ref) or _ARTICLE_OUTPUT_RE.match(ref))
+
+    must_accept = [
+        "Annex III", "Annex III.2", "Annex I", "Annex IV.2",
+        "Article 3", "Article 3.2", "Article 6.1", "Article 5.1.a",
+    ]
+    must_reject = [
+        "Annex 3", "Annex 3(2)", "Annex III . 2", "Annex III-2",
+        "Annex III.", "Article III", "Article III.2", "Article 3/2",
+        "Article 3 (2)", "Article 3.", "",
+    ]
+    for ref in must_accept:
+        assert valid(ref), f"spec-mandated ACCEPT failed for {ref!r}"
+    for ref in must_reject:
+        assert not valid(ref), f"spec-mandated REJECT failed for {ref!r}"
+
+
+def test_competition_spec_wire_shape_and_answer_cap() -> None:
+    """Pin the competition rules PDF's response contract end-to-end.
+
+    The rules specify a JSON response with exactly ``reasoning`` /
+    ``answer`` / ``references`` (telemetry gated behind a query flag), a
+    short 1-4-sentence answer, and refs that match the per-spec regex.
+    """
+    import re as _re  # noqa: PLC0415
+
+    settings.regenold.api_key = SecretStr("regenold-test-key")
+    c = _client()
+    r = c.post(
+        "/api/v1/regenold/eu-ai-act/ask",
+        headers={"X-Regenold-Api-Key": "regenold-test-key"},
+        json=_messages("What are the risk categories provided for AI systems?"),
+    )
+    assert r.status_code == 200, r.json()
+    body = r.json()
+    # Default (no telemetry flag): the three spec fields are always present.
+    # ``warning`` MAY additionally appear ONLY as the documented degraded-mode
+    # signal (deterministic fallback fired because the LLM transport is down
+    # in this hermetic test env) — on the healthy path it is None and excluded.
+    for field in ("answer", "reasoning", "references"):
+        assert field in body, f"missing spec field {field}: {body.keys()}"
+    assert set(body.keys()) <= {"answer", "reasoning", "references", "warning"}, (
+        f"unexpected wire fields: {body.keys()}"
+    )
+
+    from app.integrations.regenold.models import (  # noqa: PLC0415
+        _ANNEX_OUTPUT_RE,
+        _ARTICLE_OUTPUT_RE,
+    )
+    for ref in body["references"]:
+        assert (
+            _ANNEX_OUTPUT_RE.match(ref) or _ARTICLE_OUTPUT_RE.match(ref)
+        ), f"wire ref violates spec format: {ref!r}"
+
+    # 1-4 sentences encouraged; the route caps at MAX_ANSWER_SENTENCES=3.
+    sentences = [
+        s for s in _re.split(r"(?<=[.!?])\s+", (body["answer"] or "").strip())
+        if s
+    ]
+    assert 1 <= len(sentences) <= 3, f"answer sentence count {len(sentences)}"

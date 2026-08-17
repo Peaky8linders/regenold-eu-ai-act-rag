@@ -2288,7 +2288,11 @@ def _deterministic_parse(question: str) -> GraphQuery:
             from app.engines.query_expansion import (  # noqa: PLC0415
                 expand_query,
             )
-            _qs = expand_query(question)
+            # R364.1 — pass the question-grounded refs (keyword-map entities)
+            # as the paraphrase allowlist: a paraphrase may restate them but
+            # must not cite Annexes/Articles the question never grounded
+            # (la_q73 measured Annex VI/VII invention displacing Annex I).
+            _qs = expand_query(question, seed_refs=list(entities))
             if len(_qs) > 1:
                 expanded_queries = _qs
                 # The paraphrase lane is a RECALL SUPPLEMENT: at most 3 new
