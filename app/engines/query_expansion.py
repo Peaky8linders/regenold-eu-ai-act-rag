@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import threading
 import time
 from collections.abc import Iterable
@@ -42,7 +43,8 @@ _SYSTEM_PROMPT = (
     "1. Strictly respect and enforce the official professional tone and wording of the EU AI Act. Do not use informal or non-professional language.\n"
     "2. Always use official terminology: \"provider\" (never developer/creator), \"deployer\" (never user/customer), \"operator\", \"importer\", \"distributor\", \"authorised representative\".\n"
     "3. Use official risk-tier classifications: \"prohibited AI practices\" (unacceptable risk), \"high-risk AI systems\", \"limited-risk AI systems\", \"minimal-risk\", \"general-purpose AI models\" (GPAI models).\n"
-    "4. Phrasing must be neutral, objective, and in the third person. Do not address the reader as \"you\".\n\n"
+    "4. Phrasing must be neutral, objective, and in the third person. Do not address the reader as \"you\".\n"
+    "5. NEVER introduce article or annex references (e.g. 'Article 5', 'Art. 6(1)', 'Annex I') that are not already present in the question. Paraphrases may restate the question's own references verbatim but must not add new ones — adding a provision number the question never mentions is a factual error, not a paraphrase.\n\n"
     'Respond with STRICT JSON: {"paraphrases": ["...", "..."]}. No prose.'
 )
 
@@ -123,6 +125,13 @@ def _paraphrase_model() -> str:
 _STATS: dict[str, int] = {
     "attempts": 0, "expanded_calls": 0, "paraphrases": 0,
     "failed_transport": 0, "failed_parse": 0, "noop": 0, "no_provider": 0,
+    # R364.5 — Article/Annex refs STRIPPED from paraphrases by the
+    # reference-grounding guard (refs absent from the question and the seed
+    # refs). The phantom refs are removed and the rest of the paraphrase is
+    # kept; paraphrases stripped to nothing usable are dropped. Both are
+    # counted here. ``ref_filtered > 0`` proves the guard FIRED (the R341
+    # inert-lever discipline: a guard that never fires is dead code).
+    "ref_filtered": 0,
 }
 
 #: ⚠ R350 — the counters are mutated from FastAPI's anyio worker threadpool
@@ -147,6 +156,11 @@ def query_expansion_stats() -> dict[str, int]:
     ``failed_parse``      — provider answered, reply was not usable JSON.
     ``noop``              — provider answered cleanly with zero paraphrases.
     ``no_provider``       — gate on, but no paraphrase transport available.
+    ``ref_filtered``      — Article/Annex refs STRIPPED from paraphrases by the
+                  reference-grounding guard (refs absent from the question
+                  or the seed refs). The provider answered; the guard
+                  removed the phantom refs and kept the rest. Paraphrases
+                  stripped to nothing usable are dropped and counted here.
 
     ``attempts == 0`` means the feature never ran; treat any downstream
     metric as UNMEASURED, not as evidence of no effect.
@@ -303,11 +317,178 @@ def _complete_paraphrase(user: str) -> Any:
     ))
 
 
-def expand_query(question: str, *, intent_label: str = "") -> list[str]:
+# ── R364.1/R364.5 — reference-grounding guard (surgical strip) ─────────────
+#
+# la_q73 (live_answers) measured the failure this guard exists for: the
+# paraphrase LLM answered a medical-device conformity question with "Annex VI"
+# / "Annex VII" — the AI Act's OWN conformity-assessment-procedure annexes
+# (Annex VII = notified-body procedure, per the ontology's HIGH_RISK_ANNEX_I
+# registration) — even though the question's gold route is Annex I + Article 6
+# (the MDR route). The phantom annexes then surfaced as citations and displaced
+# the real Annex I (gold_dropped_head 0 -> 1 on la_q73). The expansion's job is
+# RE-PHRASING, never REFERENCE INVENTION.
+#
+# R364.5 — the R364.1 guard DROPPED the whole paraphrase when it cited any
+# Article/Annex absent from the question or the seed refs. The guarded A/B
+# (n=60, R364.2/R364.3, Bedrock judge) measured the cost: the expansion's
+# answer-quality upside collapsed (ans_corr +0.103 -> +0.018 full-pool) while
+# the gold-drop veto only halved (+3 -> +1). The guard is now SURGICAL: the
+# ungrounded Article/Annex tokens are STRIPPED from the paraphrase and the
+# rest of the text is kept — the expansion surface stays broad (recall) while
+# the phantom ref can never reach retrieval (precision). Market-research
+# grounding (R364.5): corpus-steered / retrieval-grounded query expansion
+# (EACL 2024 "Corpus-Steered Query Expansion with LLMs"; 2025
+# "Retrieval-Feedback-Grounded Multi-Query Expansion") beats free-form
+# expansion precisely because the expansion is kept grounded in what the
+# corpus/knowledge actually supports — the deterministic allowlist (question
+# or seed refs) is this system's grounding substrate, mirroring that
+# principle without an extra LLM pass.
+
+_ART_REF_RE = re.compile(r"\b(?:Art(?:icle|ikel)?s?\.?)\s+(\d{1,3})\b", re.IGNORECASE)
+_ANNEX_REF_RE = re.compile(r"\bAnnex(?:es)?\s+([IVXLC]+)\b", re.IGNORECASE)
+_AND_NUM_RE = re.compile(r"\s*(?:and|,)\s*(\d{1,3})\b")
+_AND_ROMAN_RE = re.compile(r"\s*(?:and|,)\s*([IVXLC]+)\b")
+
+#: R364.5 — span matchers for SURGICAL stripping: a head plus up to two
+#: members ("Annexes I and VI", "Articles 5 and 6"). "Annex VI or Annex VII"
+#: is two single-member spans (no and/comma), handled by the same pass.
+_ANNEX_SPAN_RE = re.compile(
+    r"\b(?P<head>Annex(?:es)?)\s+(?P<a>[IVXLC]+)"
+    r"(?:\s*(?:,|and)\s*(?P<b>[IVXLC]+))?",
+    re.IGNORECASE,
+)
+_ART_SPAN_RE = re.compile(
+    r"\b(?P<head>Art(?:icle|ikel)?s?\.?)\s+(?P<a>\d{1,3})"
+    r"(?:\s*(?:,|and)\s*(?P<b>\d{1,3}))?",
+    re.IGNORECASE,
+)
+
+#: Minimum word count for a stripped paraphrase to stay useful for retrieval.
+_MIN_KEPT_WORDS = 4
+
+
+def _refs_in_text(text: str) -> set[tuple[str, str]]:
+    """Base Article/Annex references named in ``text``.
+
+    Returns ``{("art", "6"), ("annex", "I")}`` — base level only, so
+    "Article 6(1)" / "Art. 6.1" both collapse to the base Article 6, and
+    "Annex I Section A" to Annex I. Handles the compound "Articles 5 and 6"
+    shape (both members captured) and plural "Annexes I and III".
+    """
+    refs: set[tuple[str, str]] = set()
+    for m in _ART_REF_RE.finditer(text):
+        refs.add(("art", m.group(1)))
+        tail = text[m.end():m.end() + 16]
+        t2 = _AND_NUM_RE.match(tail)
+        if t2:
+            refs.add(("art", t2.group(1)))
+    for m in _ANNEX_REF_RE.finditer(text):
+        refs.add(("annex", m.group(1).upper()))
+        tail = text[m.end():m.end() + 16]
+        t2 = _AND_ROMAN_RE.match(tail)
+        if t2 and t2.group(1).upper() in {"I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"}:
+            refs.add(("annex", t2.group(1).upper()))
+    return refs
+
+
+def _grounded_refs(question: str, seed_refs: Iterable[str] | None) -> set[tuple[str, str]]:
+    """The reference allowlist: refs the question itself cites + seed refs."""
+    allowed = _refs_in_text(question)
+    for ref in seed_refs or ():
+        allowed |= _refs_in_text(ref)
+    return allowed
+
+
+def _word_count(text: str) -> int:
+    return len(re.findall(r"[A-Za-z0-9]+", text))
+
+
+def _strip_once(text: str, bad: set[tuple[str, str]]) -> tuple[str, int]:
+    """One pass: remove every span whose members are all/partly in ``bad``."""
+    n = 0
+
+    def _fix(m: re.Match, kind: str) -> str:
+        nonlocal n
+        head = m.group("head")
+        a = m.group("a")
+        b = m.group("b")
+        norm = str.upper if kind == "annex" else (lambda x: x)
+        members = [x for x in (a, b) if x]
+        kept = [x for x in members if (kind, norm(x)) not in bad]
+        if len(kept) == len(members):
+            return m.group(0)
+        n += len(members) - len(kept)
+        if not kept:
+            return ""
+        return f"{head} {' and '.join(kept)}"
+
+    out = _ANNEX_SPAN_RE.sub(lambda m: _fix(m, "annex"), text)
+    out = _ART_SPAN_RE.sub(lambda m: _fix(m, "art"), out)
+    return out, n
+
+
+def _strip_bad_refs(text: str, bad: set[tuple[str, str]]) -> tuple[str, int]:
+    """Remove every Article/Annex ref in ``bad`` from ``text``, keep the rest.
+
+    Iterates because one pass can expose a second member of a longer compound
+    ("Annexes I, II and VI" strips "II and VI" over two passes).
+    """
+    if not bad:
+        return text, 0
+    current = text
+    total = 0
+    for _ in range(4):
+        current, removed = _strip_once(current, bad)
+        total += removed
+        if not removed or not (_refs_in_text(current) - bad):
+            break
+    return current, total
+
+
+def _strip_ungrounded_refs(
+    paraphrases: Iterable[str],
+    question: str,
+    seed_refs: Iterable[str] | None,
+) -> tuple[list[str], int]:
+    """Split paraphrases into kept / stripped by the grounding guard.
+
+    Returns ``(kept, stripped_count)`` where ``stripped_count`` counts the
+    Article/Annex REFS removed (not the paraphrases). A paraphrase citing an
+    Article/Annex absent from the question AND the seed refs has those refs
+    surgically removed; the remaining text is kept if it is still usable
+    (>= ``_MIN_KEPT_WORDS`` words), otherwise the paraphrase is dropped —
+    both the stripped refs and any lost paraphrase are counted via
+    ``ref_filtered``.
+    """
+    allowed = _grounded_refs(question, seed_refs)
+    kept: list[str] = []
+    stripped_total = 0
+    for p in paraphrases:
+        cleaned, n = _strip_bad_refs(p, _refs_in_text(p) - allowed)
+        stripped_total += n
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        if n and (not cleaned or _word_count(cleaned) < _MIN_KEPT_WORDS):
+            continue  # stripped to nothing usable — drop
+        if cleaned:
+            kept.append(cleaned)
+    return kept, stripped_total
+
+
+def expand_query(
+    question: str,
+    *,
+    intent_label: str = "",
+    seed_refs: Iterable[str] | None = None,
+) -> list[str]:
     """Return list of queries (original first, then paraphrases).
 
     Always includes the original. Returns [original] on any failure
     path (no provider, circuit open, parse error, timeout).
+
+    ``seed_refs`` — references already grounded for this question (the
+    engine's keyword-map entities, e.g. ``["Art. 6", "Annex I"]``). A
+    paraphrase that cites an Article/Annex NOT in the question nor the seed
+    is dropped (R364.1, counted in ``ref_filtered``).
     """
     queries = [question.strip()]
     if not queries[0]:
@@ -339,7 +520,12 @@ def expand_query(question: str, *, intent_label: str = "") -> list[str]:
             _bump("failed_parse")
             return queries
         data = json.loads(text[start_idx:end_idx + 1])
-        for p in (data.get("paraphrases") or [])[:3]:
+        kept, stripped = _strip_ungrounded_refs(
+            (data.get("paraphrases") or [])[:3], queries[0], seed_refs
+        )
+        if stripped:
+            _bump("ref_filtered", stripped)
+        for p in kept:
             p = (p or "").strip()
             if p and p not in queries:
                 queries.append(p)
