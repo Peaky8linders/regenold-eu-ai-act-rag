@@ -216,16 +216,17 @@ class TestIssue45RescueDoesNotFlipHardRefusals:
 
     def test_rescue_does_not_flip_other_regulation(self) -> None:
         """A short follow-up that the rescue would normally bite on, but
-        whose live verdict is OTHER_REGULATION, must NOT be flipped."""
+        whose live verdict is OTHER_REGULATION (non-EU law), must NOT be
+        flipped."""
         v = classify_conversation([
             {"role": "user", "content": "What does Article 13 require?"},
             {"role": "assistant", "content": "Article 13 requires transparency."},
             {
                 "role": "user",
-                "content": "tell me more about GDPR Article 17",
+                "content": "tell me more about the HIPAA privacy rule",
             },
         ])
-        # The live verdict is OTHER_REGULATION (GDPR Article 17). Rescue
+        # The live verdict is OTHER_REGULATION (HIPAA — non-EU). Rescue
         # would normally flip a "tell me more" follow-up — but security /
         # topic-block refusals must stick.
         assert not v.verdict.in_scope, (
@@ -240,35 +241,32 @@ class TestIssue45RescueDoesNotFlipHardRefusals:
 class TestIssue47RomanAnnexBypass:
     """``DMA Annex IV`` must be classified OTHER_REGULATION, not in-scope."""
 
-    def test_dma_annex_iv_other_regulation(self) -> None:
+    def test_dma_annex_iv_answered_on_ai_act_side(self) -> None:
+        """R364 — DMA is an EU instrument; the question is answered on
+        its EU AI Act side (the pre-scan still claims ``Annex IV`` so no
+        AI Act annex ref is fabricated)."""
         v = classify_scope("DMA Annex IV requires gatekeeper compliance.")
-        assert not v.in_scope, (
-            f"'DMA Annex IV' bypassed scope gate: {v.reason} / {v.evidence}"
+        assert v.in_scope, (
+            f"'DMA Annex IV' refused: {v.reason} / {v.evidence}"
         )
-        assert v.reason == ScopeReason.OTHER_REGULATION
+        assert v.reason == ScopeReason.IN_SCOPE
 
-    def test_gdpr_annex_i_other_regulation(self) -> None:
+    def test_gdpr_annex_i_answered_on_ai_act_side(self) -> None:
+        """R364 — GDPR is an EU instrument; answered on the AI Act side."""
         v = classify_scope("GDPR Annex I is what?")
-        assert not v.in_scope, (
-            f"'GDPR Annex I' bypassed scope gate: {v.reason} / {v.evidence}"
+        assert v.in_scope, (
+            f"'GDPR Annex I' refused: {v.reason} / {v.evidence}"
         )
-        assert v.reason == ScopeReason.OTHER_REGULATION
+        assert v.reason == ScopeReason.IN_SCOPE
 
-    def test_dsa_annex_iii_other_regulation(self) -> None:
-        """``DSA Annex III ... very large online platforms`` is out-of-
-        scope. Pre-R49-B this was ``OTHER_REGULATION``; post-R49-B the
-        more specific ``NEAR_OOS`` reason fires first because the
-        question carries a unique DSA fact-pattern (VLOP). Either
-        classification keeps the response refusal-shaped, which is the
-        invariant this test guards."""
+    def test_dsa_annex_iii_answered_on_ai_act_side(self) -> None:
+        """R364 — the DSA fact-pattern (VLOP) now answers on the EU AI
+        Act side, with the framework preserved."""
         v = classify_scope("DSA Annex III lists very large online platforms.")
-        assert not v.in_scope, (
-            f"'DSA Annex III' bypassed scope gate: {v.reason} / {v.evidence}"
+        assert v.in_scope, (
+            f"'DSA Annex III' refused: {v.reason} / {v.evidence}"
         )
-        assert v.reason in (
-            ScopeReason.OTHER_REGULATION,
-            ScopeReason.NEAR_OOS,
-        )
+        assert v.reason == ScopeReason.IN_SCOPE
 
     def test_dma_annex_iv_extract_no_known(self) -> None:
         """``DMA Annex IV`` must NOT add ``Annex IV`` to the known refs."""

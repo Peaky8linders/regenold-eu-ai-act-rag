@@ -62,7 +62,9 @@ class TestP1ScopeStickiness:
         msgs = [
             _msg("user", "What does Art. 13 require for transparency?"),
             _msg("assistant", "Art. 13 requires transparency mechanisms."),
-            _msg("user", "Does the GDPR require a DPO for this system?"),
+            # R364 — GDPR is now answered on the AI Act side; the
+            # hard-refusal guard is exercised with a NON-EU law.
+            _msg("user", "Does HIPAA require a privacy official for this system?"),
         ]
         cv = classify_conversation(msgs)
         assert cv.in_scope is False

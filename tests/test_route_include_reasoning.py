@@ -134,9 +134,10 @@ class TestIncludeReasoning:
     def test_near_oos_question_surfaces_framework_in_reasoning(
         self, _client: TestClient
     ) -> None:
-        """R49-B near_oos refusals must surface the framework name in
-        the reasoning trace so the judge can attribute the refusal to
-        the right cause."""
+        """R364 — the DSA/VLOP question is answered on its EU AI Act
+        side (in_scope) but the framework name is still surfaced in the
+        reasoning trace so the judge can attribute the answer to the
+        right adjacent-framework cause."""
         resp = _client.post(
             "/api/v1/regenold/eu-ai-act/ask?include_reasoning=true",
             json=[{
@@ -153,7 +154,7 @@ class TestIncludeReasoning:
         reasoning_str = body.get("reasoning") or ""
         parsed = json.loads(reasoning_str)
         scope = parsed.get("scope") or {}
-        assert scope.get("verdict") == "near_oos"
+        assert scope.get("verdict") == "in_scope"
         assert scope.get("near_oos_framework") == "Digital Services Act"
 
 

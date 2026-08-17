@@ -2670,9 +2670,11 @@ def _deterministic_parse(question: str) -> GraphQuery:
     # calls/min — so an A/B paced per-POST at `--min-call-gap 6.5` is really
     # running at ~5x that budget and will 429 into a false INERT.
     #
-    # NOT bounded here: a real fix needs a request-scoped call budget, which is
-    # a larger change than this round should make untested. Recorded as an open
-    # item instead of left as a comment asserting a guarantee the code lacks.
+    # R362 — the per-request call budget now bounds this: default 2 calls /
+    # request (``REGENOLD_RERANK_REQUEST_BUDGET``, reset by the route and
+    # ``ask_compliance_question`` entry points). The fallback's per-query
+    # reranks consume the budget first, so the cascade above is capped
+    # instead of 429-ing a Trial-key A/B into a false INERT.
     # Gate-off no-op →
     # davidath byte-identical BY CONSTRUCTION. Fail-soft + permutation-safe
     # via ``rerank_references``.
@@ -9425,6 +9427,19 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
     4. GENERATE Stage 2 (when Claude Max proxy wired): polish via openai_wrapper.
     5. Extract citations and compute confidence from the graph context.
     """
+    # R362 — start a fresh per-request Cohere rerank budget. The reranker can
+    # fire up to 5 serial calls inside one request (the R350-documented
+    # cascade); the budget caps them so a Trial key cannot 429 into a false
+    # INERT. Fail-soft: a reset failure must never break a request.
+    try:
+        from app.engines.cohere_rerank import (  # noqa: PLC0415
+            reset_request_budget,
+        )
+
+        reset_request_budget()
+    except Exception:  # noqa: BLE001 — a budget reset must never break a request
+        pass
+
     # Stage 1 — Parse: always deterministic (ontology/taxonomy/KB, no LLM cost)
     query = _deterministic_parse(request.question)
 

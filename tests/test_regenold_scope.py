@@ -144,50 +144,56 @@ class TestClassifyScopeSingleMessage:
         assert v.in_scope is True
         # No explicit Art. ref in the question, but FRIA anchors it.
 
-    def test_off_topic_gdpr(self) -> None:
+    def test_gdpr_question_in_scope(self) -> None:
+        """R364 — GDPR is an EU instrument adjacent to the AI Act; the
+        question is answered on its EU AI Act side."""
         v = classify_scope("What does GDPR Article 17 say about the right to be forgotten?")
-        assert v.in_scope is False
-        assert v.reason == ScopeReason.OTHER_REGULATION
+        assert v.in_scope is True
+        assert v.reason == ScopeReason.IN_SCOPE
 
     def test_off_topic_hipaa(self) -> None:
         v = classify_scope("Tell me about HIPAA breach notification rules.")
         assert v.in_scope is False
         assert v.reason == ScopeReason.OTHER_REGULATION
 
-    def test_off_topic_dma(self) -> None:
+    def test_dma_question_in_scope(self) -> None:
+        """R364 — DMA is an EU instrument; answered on the AI Act side."""
         v = classify_scope("What does the Digital Markets Act require for gatekeepers?")
-        assert v.in_scope is False
-        assert v.reason == ScopeReason.OTHER_REGULATION
+        assert v.in_scope is True
+        assert v.reason == ScopeReason.IN_SCOPE
 
-    def test_off_topic_lowercase_dsa_acronym(self) -> None:
+    def test_lowercase_dsa_acronym_in_scope(self) -> None:
+        """R364 — a DSA mention is answered on its EU AI Act side."""
         v = classify_scope("what about dsa?")
-        assert v.in_scope is False
-        assert v.reason == ScopeReason.OTHER_REGULATION
+        assert v.in_scope is True
+        assert v.reason == ScopeReason.IN_SCOPE
 
-    def test_off_topic_lowercase_dma_acronym(self) -> None:
+    def test_lowercase_dma_acronym_in_scope(self) -> None:
+        """R364 — a DMA mention is answered on its EU AI Act side."""
         v = classify_scope("what about dma?")
-        assert v.in_scope is False
-        assert v.reason == ScopeReason.OTHER_REGULATION
+        assert v.in_scope is True
+        assert v.reason == ScopeReason.IN_SCOPE
 
-    def test_off_topic_uppercase_dsa_acronym(self) -> None:
+    def test_uppercase_dsa_acronym_in_scope(self) -> None:
+        """R364 — a DSA mention is answered on its EU AI Act side."""
         v = classify_scope("What about DSA?")
-        assert v.in_scope is False
-        assert v.reason == ScopeReason.OTHER_REGULATION
+        assert v.in_scope is True
+        assert v.reason == ScopeReason.IN_SCOPE
 
-    def test_off_topic_uppercase_dma_acronym(self) -> None:
+    def test_uppercase_dma_acronym_in_scope(self) -> None:
+        """R364 — a DMA mention is answered on its EU AI Act side."""
         v = classify_scope("What about DMA?")
-        assert v.in_scope is False
-        assert v.reason == ScopeReason.OTHER_REGULATION
+        assert v.in_scope is True
+        assert v.reason == ScopeReason.IN_SCOPE
 
-    def test_multiturn_dsa_other_regulation_not_rescued(self) -> None:
-        """Prior AI Act context must not rescue a lowercase DSA follow-up."""
+    def test_multiturn_dsa_acronym_followup_in_scope(self) -> None:
+        """R364 — a DSA mention is answered on its EU AI Act side."""
         cv = classify_conversation([
             {"role": "user", "content": "What does Article 13 require for transparency?"},
             {"role": "assistant", "content": "Article 13 governs transparency for high-risk AI."},
             {"role": "user", "content": "what about dsa?"},
         ])
-        assert cv.in_scope is False
-        assert cv.verdict.reason == ScopeReason.OTHER_REGULATION
+        assert cv.in_scope is True
 
     def test_non_existent_article(self) -> None:
         v = classify_scope("What does Art. 200 say?")
@@ -520,12 +526,14 @@ class TestRouteScopeRefusal:
     def setup_method(self) -> None:
         settings.regenold.api_key = SecretStr("regenold-scope-test-key")
 
-    def test_off_topic_gdpr_refuses(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_off_topic_hipaa_refuses(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """R364 — GDPR is answered on the AI Act side; the topic-filter
+        refusal is exercised with a NON-EU law (HIPAA) instead."""
         monkeypatch.setenv("REGENOLD_TOPIC_FILTER", "1")
         c = _authed_client()
         r = c.post(
             "/api/v1/regenold/eu-ai-act/ask",
-            json=_msgs(("user", "What does GDPR Article 17 say about deletion?")),
+            json=_msgs(("user", "What does HIPAA require for health records?")),
         )
         assert r.status_code == 200
         body = r.json()
@@ -2238,21 +2246,21 @@ class TestR57AScopeLeakFixes:
         assert v.in_scope is False
         assert v.reason == ScopeReason.CONVERSATIONAL
 
-    def test_r57_a_bare_nis2_refuses_as_near_oos(self) -> None:
-        """oos_other_reg_03 — bare `NIS2` must hit NEAR_OOS.
-        Pre-R57-A: the multi-token NIS2 detector required `essential-
-        services entity` or similar phrasing.
-        """
+    def test_r57_a_bare_nis2_answered_on_ai_act_side(self) -> None:
+        """R364 — bare `NIS2` (adjacent EU framework) is answered on its
+        EU AI Act side, with the framework preserved for the trace."""
         v = classify_scope("What about NIS2 cybersecurity obligations?")
-        assert v.in_scope is False
-        assert v.reason == ScopeReason.NEAR_OOS
+        assert v.in_scope is True
+        assert v.reason == ScopeReason.IN_SCOPE
         assert "NIS2" in v.near_oos_framework or "NIS" in v.near_oos_framework
 
-    def test_r57_a_nis_dash_2_spelling_refuses(self) -> None:
-        """Alternative NIS spellings — `NIS-2`, `NIS 2`."""
+    def test_r57_a_nis_dash_2_spelling_answered(self) -> None:
+        """R364 — alternative NIS spellings (`NIS-2`, `NIS 2`) are
+        answered on the EU AI Act side."""
         for q in ("Tell me about NIS-2 reporting?", "What does NIS 2 require?"):
             v = classify_scope(q)
-            assert v.reason == ScopeReason.NEAR_OOS, q
+            assert v.in_scope is True, q
+            assert v.reason == ScopeReason.IN_SCOPE, q
 
     # ── R34 P0 OOS regression set MUST still refuse ──
 
@@ -3527,11 +3535,12 @@ class TestR71AssistantAnchorRescue:
         assert cv.reason == ScopeReason.PROMPT_INJECTION
 
     def test_assistant_anchor_does_not_overturn_other_regulation(self) -> None:
-        """Same hard-refusal gate for OTHER_REGULATION."""
+        """Same hard-refusal gate for OTHER_REGULATION — exercised with
+        a NON-EU law (GDPR is answered on the AI Act side since R364)."""
         cv = classify_conversation(_msgs(
             ("user", "We work with personal data for training."),
             ("assistant", "Article 10 covers data governance for high-risk AI."),
-            ("user", "tell me more about GDPR Article 17"),
+            ("user", "tell me more about the HIPAA privacy rule"),
         ))
         assert cv.in_scope is False
         assert cv.reason == ScopeReason.OTHER_REGULATION
@@ -3557,13 +3566,12 @@ class TestR71AssistantAnchorRescue:
 
 
 class TestR273NearOosGrounded:
-    """R273 — a ``near_oos`` / ``other_regulation`` question (primarily about
-    a DIFFERENT EU framework, e.g. the DSA) must NOT be answered by the
-    ungrounded general-assistant LLM. That path (R267, meant for benign
-    off-topic questions) hallucinated AI Act provisions for wrong-framework
-    questions — the live q054 VLOP answer cited a non-existent "Article 52a".
-    Wrong-framework verdicts get the grounded branded framework-pointer
-    refusal instead; genuinely benign off-topic questions still use the
+    """R273 + R364 — adjacent-EU-framework questions (DSA / GDPR / …) must
+    be answered by the GROUNDED RAG engine, never the ungrounded
+    general-assistant LLM (which hallucinated a non-existent "Article 52a"
+    on the live q054 VLOP question). Since R364 the wrong-framework
+    questions are no longer refused either — they are answered on their
+    EU AI Act side; genuinely benign off-topic questions still use the
     general assistant."""
 
     def setup_method(self) -> None:
@@ -3594,16 +3602,18 @@ class TestR273NearOosGrounded:
         "What are the algorithmic transparency obligations for a Very Large Online Platform content-moderation AI?",
         "What are the transparency rules for a Very Large Online Platform's content-moderation AI?",
     ])
-    def test_near_oos_vlop_not_general_assistant(self, q, monkeypatch) -> None:
+    def test_near_oos_vlop_answered_by_rag_not_general_assistant(self, q, monkeypatch) -> None:
+        """R364 — the DSA/VLOP question is answered by the grounded RAG
+        engine, NOT the ungrounded general assistant."""
         calls = self._patch(
             monkeypatch,
             "Under the EU AI Act (Art. 52a), VLOPs must publish transparency reports.",
         )
         body = self._ask(q)
         ans = body.get("answer", "")
+        assert ans, f"expected a grounded answer, got: {ans!r}"
         assert "52a" not in ans, f"hallucinated general-assistant answer leaked: {ans!r}"
-        assert "Digital Services Act" in ans, f"expected branded DSA refusal, got: {ans!r}"
-        assert calls["n"] == 0, "general assistant must NOT be called for near_oos"
+        assert calls["n"] == 0, "general assistant must NOT be called for the DSA/VLOP question"
 
     def test_benign_off_topic_still_uses_general_assistant(self, monkeypatch) -> None:
         calls = self._patch(monkeypatch, "Paris is the capital of France.")
