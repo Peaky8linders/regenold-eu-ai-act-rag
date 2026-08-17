@@ -105,6 +105,7 @@ __all__ = [
     "rerank_kg_candidates_enabled",
     "rerank_kg_hops",
     "rerank_stats",
+    "reset_request_budget",
     "reset_rerank_stats",
     "stabilize_anchor_tier",
 ]
@@ -178,16 +179,28 @@ _CLIENT: httpx.Client | None = None
 # an unproven placement measures nothing, so every placement must assert
 # ``rerank_stats()["attempts"] > 0`` before any A/B result is believed.
 _STATS_LOCK = threading.Lock()
-_STATS: dict[str, int] = {"attempts": 0, "reordered": 0, "failed": 0, "noop": 0}
+_STATS: dict[str, int] = {
+    "attempts": 0,
+    "reordered": 0,
+    "failed": 0,
+    "noop": 0,
+    # R362 — a call refused because the request-scoped budget was exhausted
+    # (see :func:`reset_request_budget`). Distinct from ``failed``: nothing
+    # went wrong, the call was simply not made.
+    "budget_skipped": 0,
+}
 
 
 def rerank_stats() -> dict[str, int]:
     """Snapshot of the call counters.
 
-    ``attempts``  — network calls actually issued to Cohere.
-    ``reordered`` — :func:`rerank_references` calls that CHANGED the order.
-    ``failed``    — attempts that fell back to the input order.
-    ``noop``      — attempts that returned the input order unchanged.
+    ``attempts``      — network calls actually issued to Cohere.
+    ``reordered``     — :func:`rerank_references` calls that CHANGED the order.
+    ``failed``        — attempts that fell back to the input order.
+    ``noop``          — attempts that returned the input order unchanged.
+    ``budget_skipped`` — calls refused by the per-request budget (R362) —
+        distinct from ``failed``: nothing went wrong, the wire was never
+        touched.
 
     ``attempts == 0`` means the feature never ran; treat any downstream metric
     as UNMEASURED, not as evidence of no effect.
@@ -206,6 +219,76 @@ def reset_rerank_stats() -> None:
 def _bump(field: str) -> None:
     with _STATS_LOCK:
         _STATS[field] = _STATS.get(field, 0) + 1
+
+
+# ── Request-scoped call budget (R362) ────────────────────────────────────────
+#
+# R350 counted the REAL per-request call profile: with query expansion on, the
+# no-entity BM25 fallback runs the retrieval chain once per expanded query and
+# every ``top_articles_by_relevance*`` exit ends in ``_maybe_rerank_fused`` —
+# up to 4 serial Cohere calls inside one ``_deterministic_parse`` (docs
+# [50, 43, 40, 37]), plus the Stage-2 kg-context rerank = **5 calls/request**,
+# each with a 6 s read timeout, all inside the request. The Cohere Trial key
+# is 10 calls/min, so an A/B paced at ``--min-call-gap 6.5`` runs at ~5x that
+# budget and 429s into a false INERT (latency is a scored axis, too).
+#
+# The fix is a per-REQUEST ceiling on the ACTUAL network calls, enforced at
+# the single choke point (:func:`rerank_documents`) and reset by the request
+# entry points (:func:`reset_request_budget` — the route handler and
+# ``ask_compliance_question``). Fail-open: a call beyond the budget returns
+# ``None`` (input order unchanged) without touching the wire. The common path
+# needs exactly 1 call, so the default of 2 changes nothing there and caps the
+# pathological cascade; the Stage-2 kg-context rerank (the R347 design goal)
+# still fits inside the default.
+_REQUEST_BUDGET_ENV = "REGENOLD_RERANK_REQUEST_BUDGET"
+_DEFAULT_REQUEST_BUDGET = 2
+
+#: Thread-scoped: FastAPI runs sync routes in a threadpool, so each request
+#: thread owns its budget — and a reused thread must not carry a spent budget
+#: into the next request, which is exactly why the entry points reset it
+#: every request.
+_request_budget_state = threading.local()
+
+
+def _request_budget_ceiling() -> int:
+    """Fresh-read per-request ceiling. ``<1`` clamps to 1 — a budget of 0
+    would silently disable the feature; ``REGENOLD_COHERE_RERANK`` is the
+    gate for that."""
+    raw = os.getenv(
+        _REQUEST_BUDGET_ENV, str(_DEFAULT_REQUEST_BUDGET)
+    ).strip()
+    try:
+        value = int(raw or str(_DEFAULT_REQUEST_BUDGET))
+    except (TypeError, ValueError):  # noqa: BLE001
+        return _DEFAULT_REQUEST_BUDGET
+    return max(1, value)
+
+
+def reset_request_budget() -> None:
+    """Start a fresh per-request rerank budget.
+
+    Call at EVERY request entry point (the route handler and
+    ``ask_compliance_question``) BEFORE any rerank call, so a threadpool-
+    reused thread never carries a spent budget into the next request. Direct
+    engine callers that skip the entry points get a fresh ceiling on first
+    use, so the budget is conservative — it caps, it never silently disables.
+    """
+    _request_budget_state.remaining = _request_budget_ceiling()
+
+
+def _budget_take() -> bool:
+    """``True`` iff a network call is still within this request's budget."""
+    remaining = getattr(_request_budget_state, "remaining", None)
+    if remaining is None:
+        # No entry-point reset observed (legacy / direct engine caller):
+        # grant a fresh ceiling rather than silently disabling the feature.
+        _request_budget_state.remaining = _request_budget_ceiling()
+        remaining = _request_budget_state.remaining
+    if remaining <= 0:
+        _bump("budget_skipped")
+        return False
+    _request_budget_state.remaining = remaining - 1
+    return True
 
 
 def _get_client() -> httpx.Client:
@@ -269,6 +352,11 @@ def rerank_documents(
         "documents": list(docs),
         "top_n": int(top_n) if top_n else len(docs),
     }
+    if not _budget_take():
+        logger.debug(
+            "cohere_rerank: request budget exhausted — call skipped"
+        )
+        return None
     _bump("attempts")
     try:
         resp = _get_client().post(

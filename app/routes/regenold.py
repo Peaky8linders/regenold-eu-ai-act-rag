@@ -1901,6 +1901,13 @@ def _engine_cache_key(
             "REGENOLD_RISK_CLASS_ANNEX",
             "REGENOLD_RERANK_KG_CANDIDATES",
             "REGENOLD_RERANK_KG_HOPS",
+            # R362 — the per-request Cohere call ceiling. It changes HOW MANY
+            # rerank calls fire (and therefore which refs survive the cut when
+            # rerank is ON), so it is engine-level like its master
+            # REGENOLD_COHERE_RERANK. Only meaningful with that gate on, but
+            # it must be keyed so an in-process A/B flipping it cannot serve
+            # arm A's cached response to arm B (the R263.2 doctrine).
+            "REGENOLD_RERANK_REQUEST_BUDGET",
             "REGENOLD_SEMANTIC_COORDINATES",
         )
     )
@@ -3383,9 +3390,30 @@ def _reference_described_in_prose(ref: str, prose: str) -> bool:
     m = _R72_ARTICLE_NUM_RE.match(ref.strip())
     if m:
         n = re.escape(m.group(1))
-        return re.search(
-            rf"\b(?:Article|Art\.?)\s*{n}\b", prose, re.IGNORECASE
-        ) is not None
+        # R363 — accept the plural forms too: the engine's deterministic
+        # answer template emits "Arts. 11 and 18" (compound plural) for
+        # multi-article references, and the engine's own tokenizer
+        # already handles Art / Art. / Arts / Arts. / Article /
+        # Articles — the route matcher lagged it, so a ref grounded in
+        # plural prose was treated as undescribed and could be pruned by
+        # the reconcile pass. Two-step check: direct prefix match first
+        # ("Arts. 11" / "Article 11"), then the compound member ("18" in
+        # "Arts. 11 and 18") — a plural construction elsewhere in the
+        # prose AND the number following "and" / "," / "-" / "–".
+        if re.search(
+            rf"\b(?:Articles?|Arts?\.?)\s*{n}\b", prose, re.IGNORECASE
+        ):
+            return True
+        return (
+            re.search(
+                rf"\b(?:Arts?\.?|Articles)\b", prose, re.IGNORECASE
+            )
+            is not None
+            and re.search(
+                rf"\b(?:and|[,–—-])\s*{n}\b", prose, re.IGNORECASE
+            )
+            is not None
+        )
     m = _R72_ANNEX_ROMAN_RE.match(ref.strip())
     if m:
         rn = re.escape(m.group(1))
@@ -6468,6 +6496,19 @@ def regenold_eu_ai_act_ask(
     # RTT within this request. The ContextVar is per-task so distinct
     # FastAPI workers / concurrent requests get distinct dicts.
     _request_intent_cache.set({})
+
+    # R362 — reset the per-request Cohere rerank budget. The engine entry
+    # (``ask_compliance_question``) also resets it; doing it here keeps the
+    # route the true request boundary even if a future path bypasses the
+    # engine entry. Fail-soft: a reset failure must never break a request.
+    try:
+        from app.engines.cohere_rerank import (  # noqa: PLC0415
+            reset_request_budget,
+        )
+
+        reset_request_budget()
+    except Exception:  # noqa: BLE001 — a budget reset must never break a request
+        pass
 
     # R324 — same treatment for the R323 kg_context render memo, whose docstring
     # already claimed this reset existed. Unconditional and beside its sibling so

@@ -105,3 +105,4 @@ Empirically measured failures in `docs/ROUNDS.md` — do not re-implement:
 - **Neural NLI citation verification**: 235x slower and lower accuracy (ROC-AUC 0.585) than lexical scoring.
 - **Graph-primary retrieval**: Buries operative articles under generic risk-tier dumps.
 - **Fast mode / thinking token budget tweaks for latency**: Latency is dominated by wrapper CLI floor, not model token flags.
+- **CLARA logical engine re-wiring** (`app/engines/clara_logic.py`): superseded by `prohibited_gatekeeper` — recorded wrong verdict (risk_tier=minimal) on the prohibited emotion-monitoring scenario; zero import sites; re-wiring regresses a currently-passing scenario (2026-08-17 architecture review).

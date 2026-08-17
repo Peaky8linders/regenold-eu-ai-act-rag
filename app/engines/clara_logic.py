@@ -1,5 +1,15 @@
 """CLARA Paradigm — Neuro-Symbolic Logic & Generation Engine (Layer F).
 
+WARNING SUPERSEDED (2026-08-17 architecture review) — do not re-wire this module
+into the live path. Zero import sites in app/; its successor is
+app/engines/prohibited_gatekeeper plus the curated intercepts in
+_graph_rag_impl._deterministic_answer. docs/ROUNDS.md records the
+reason: the deterministic extractor returned risk_tier=minimal for a
+prohibited practice ('monitor the emotions and stress levels of workers' —
+verb-first emotion phrasing), a gap prohibited_gatekeeper now covers
+explicitly (verb-stem x emotional-state-noun proximity). Re-wiring CLARA
+would be a regression on a scenario that currently passes.
+
 Implements the architecture spec's decouple of *semantic appraisal* from
 *verdict formulation*:
 

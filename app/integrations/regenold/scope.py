@@ -859,6 +859,30 @@ _OTHER_REGULATION_PATTERNS: tuple[re.Pattern, ...] = (
     re.compile(r"\bFERPA\b", re.IGNORECASE),
 )
 
+# R364 — EU legal instruments ADJACENT to the EU AI Act. A question
+# naming one is answered on its EU AI Act side instead of refused
+# (the domain-boundary directive): "GDPR Article 17 right to
+# erasure" is answered from the AI Act's data-governance side,
+# "VLOP content-moderation transparency" from Article 50. Everything
+# in ``_OTHER_REGULATION_PATTERNS`` NOT in this set (HIPAA / CCPA /
+# SOX / GLBA / FERPA) keeps the refusal — answering a non-EU law from
+# the EU AI Act corpus would fabricate a foreign-law answer.
+_EU_INSTRUMENT_PATTERNS: tuple[re.Pattern, ...] = (
+    re.compile(r"\bGDPR\b", re.IGNORECASE),
+    re.compile(r"\bgeneral\s+data\s+protection\s+regulation\b", re.IGNORECASE),
+    re.compile(r"\bDigital\s+Markets?\s+Act\b", re.IGNORECASE),
+    re.compile(r"\bDigital\s+Services?\s+Act\b", re.IGNORECASE),
+    re.compile(r"\bDMA\b", re.IGNORECASE),
+    re.compile(r"\bDSA\b", re.IGNORECASE),
+)
+
+
+def _is_eu_instrument_mention(text: str) -> bool:
+    """True when ``text`` names an EU legal instrument adjacent to the
+    AI Act (GDPR / DSA / DMA). Such a question is answerable on its
+    EU AI Act side."""
+    return _matches_any(text, _EU_INSTRUMENT_PATTERNS) is not None
+
 
 # AI Act anchor keywords. ANY of these flips a question into in-scope
 # even without an explicit Art./Annex reference. Drawn from the KB
@@ -3237,10 +3261,20 @@ def classify_scope(question: str) -> ScopeVerdict:
     # AI Act anchor and flow through to step 4b).
     near_oos_fw = _detect_near_oos_framework(cleaned_text)
     if near_oos_fw:
+        # R364 — domain-boundary directive: a question that belongs to
+        # an adjacent EU framework (DSA / PLD / NIS2 / CRA) is NOT
+        # refused. The EU AI Act side is answerable (e.g. the
+        # transparency obligations for a content-moderation AI are the
+        # Article 50 duties), so this is IN-SCOPE; the framework name is
+        # kept for the trace / UI.
         return ScopeVerdict(
-            in_scope=False,
-            reason=ScopeReason.NEAR_OOS,
-            evidence=f"Question belongs to {near_oos_fw}, not the EU AI Act.",
+            in_scope=True,
+            reason=ScopeReason.IN_SCOPE,
+            evidence=(
+                f"Question concerns {near_oos_fw} (adjacent EU framework); "
+                "answering the EU AI Act side."
+            ),
+            referenced_articles=known,
             near_oos_framework=near_oos_fw,
         )
     if _has_ai_act_anchor(cleaned_text):
@@ -3278,12 +3312,30 @@ def classify_scope(question: str) -> ScopeVerdict:
             referenced_articles=keyword_refs,
         )
 
-    # 5. Other regulation — only if no in-scope signal.
+    # 5. Other regulation — a question that names a non-AI-Act regulation.
+    # R364 — domain-boundary directive: EU instruments (GDPR / DSA / DMA /
+    # NIS2 / CRA / PLD / MDR / IVDR / …) are ADJACENT to the EU AI Act, so
+    # a question naming one is answered on its EU AI Act side instead of
+    # refused (e.g. "GDPR Article 17 right to erasure" → the AI Act's
+    # data-governance side; the engine's closed-world gate still no-matches
+    # a genuinely ungrounded question). Non-EU laws (HIPAA / CCPA / SOX /
+    # GLBA / FERPA) keep the refusal — answering them from the EU AI Act
+    # corpus would fabricate a foreign-law answer.
     if _has_other_regulation_mention(text):
+        if _is_eu_instrument_mention(text):
+            return ScopeVerdict(
+                in_scope=True,
+                reason=ScopeReason.IN_SCOPE,
+                evidence=(
+                    "Question names an adjacent EU instrument (GDPR / DSA / "
+                    "DMA); answering the EU AI Act side."
+                ),
+                referenced_articles=known,
+            )
         return ScopeVerdict(
             in_scope=False,
             reason=ScopeReason.OTHER_REGULATION,
-            evidence="Mentions a non-EU-AI-Act regulation without an AI Act anchor.",
+            evidence="Mentions a non-EU regulation without an AI Act anchor.",
         )
 
     # 5b. R93 — natural-language AI-use-case rescue. Runs AFTER the

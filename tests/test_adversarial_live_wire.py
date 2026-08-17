@@ -264,10 +264,10 @@ class TestOutOfScopeRefusals:
     @pytest.mark.parametrize(
         "q,domain",
         [
-            ("What does GDPR Article 17 require for right to erasure?", "GDPR"),
+            # R364 — GDPR / DMA rows removed: adjacent EU instruments are
+            # now ANSWERED on their EU AI Act side, not refused.
             ("What does HIPAA require for protected health information in cloud storage?", "HIPAA"),
             ("What are the requirements under the California Consumer Privacy Act CCPA?", "CCPA"),
-            ("Explain the gatekeeper obligations under the Digital Markets Act DMA.", "DMA"),
             ("What does the US Executive Order 14110 require for dual-use foundation models?", "US AI EO"),
             ("What are developer duties under Colorado SB 24-205 on AI discrimination?", "Colorado AI"),
             ("Explain the Cyberspace Administration of China interim measures on Generative AI.", "China AI"),

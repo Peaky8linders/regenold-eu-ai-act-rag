@@ -263,36 +263,35 @@ OOS_SCENARIOS: tuple[OOSScenario, ...] = (
     # ─── Other-regulation set (3) ──────────────────────────────────────────
     OOSScenario(
         id="oos_other_reg_01",
-        question="What does GDPR Article 32 require?",
+        question="What does HIPAA require for protected health information in cloud storage?",
         category="other_regulation",
         expected_reason="other_regulation",
         notes=(
-            "Explicit GDPR anchor — must route to OTHER_REGULATION, "
-            "not silently surface the AI Act's own Art. 32 (post-market "
-            "monitoring; structurally a different topic)."
+            "R364 — GDPR rows moved out of the OOS set (adjacent EU "
+            "instruments are now answered on their AI Act side); HIPAA "
+            "(non-EU) keeps the OTHER_REGULATION refusal."
         ),
     ),
     OOSScenario(
         id="oos_other_reg_02",
-        question="Explain DSA's VLOP transparency requirements.",
+        question="Under the California Consumer Privacy Act, what rights do consumers have to opt out of sale?",
         category="other_regulation",
-        expected_reason="near_oos",
+        expected_reason="other_regulation",
         notes=(
-            "R49-B near_oos — DSA / VLOP / 'transparency' is the DSA's "
-            "Art. 39, not the AI Act's. Must hit NEAR_OOS with a DSA "
-            "framework label."
+            "R364 — DSA rows moved out of the OOS set (adjacent EU "
+            "instruments are now answered on their AI Act side); CCPA "
+            "(non-EU) keeps the OTHER_REGULATION refusal."
         ),
     ),
     OOSScenario(
         id="oos_other_reg_03",
-        question="What about NIS2 cybersecurity obligations?",
+        question="What are the SOX internal-control documentation requirements?",
         category="other_regulation",
-        expected_reason=None,  # current build leaks IN_SCOPE on bare 'cybersecurity'
+        expected_reason="other_regulation",
         notes=(
-            "R49-B near_oos — bare 'NIS2 cybersecurity' should hit "
-            "NEAR_OOS. Current build LEAKS in-scope (generic anchor). "
-            "Kept as regression target — multi-token NIS2 pattern needs "
-            "tightening."
+            "R364 — NIS2 rows moved out of the OOS set (adjacent EU "
+            "instruments are now answered on their AI Act side); SOX "
+            "(non-EU) keeps the OTHER_REGULATION refusal."
         ),
     ),
 )

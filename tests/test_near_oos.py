@@ -28,45 +28,37 @@ from app.integrations.regenold.scope import (
 
 
 class TestNearOOSDetection:
-    """V2 tricky.near_oos rows must classify as NEAR_OOS with the
-    correct framework name in the refusal copy."""
+    """R364 — adjacent-EU-framework questions (DSA / PLD / NIS2 /
+    CRA) are answered on their EU AI Act side: IN_SCOPE, with the
+    framework name preserved for the trace / UI."""
 
-    def test_dsa_vlop_question_is_near_oos(self) -> None:
+    def test_dsa_vlop_question_answered_on_ai_act_side(self) -> None:
         v = classify_scope(
             "What are the algorithmic transparency obligations for a "
             "Very Large Online Platform's content-moderation AI?"
         )
-        assert not v.in_scope
-        assert v.reason == ScopeReason.NEAR_OOS
-        copy = refusal_copy_for(v)
-        assert "Digital Services Act" in copy or "DSA" in copy
-        assert "EU AI Act" in copy
-        assert "not the" in copy.lower()
+        assert v.in_scope
+        assert v.reason == ScopeReason.IN_SCOPE
+        assert v.near_oos_framework == "Digital Services Act"
 
-    def test_pld_property_damage_question_is_near_oos(self) -> None:
+    def test_pld_property_damage_question_answered_on_ai_act_side(self) -> None:
         v = classify_scope(
             "If a high-risk AI causes property damage to a customer, "
             "what AI-Act liability rules apply?"
         )
-        assert not v.in_scope
-        assert v.reason == ScopeReason.NEAR_OOS
-        copy = refusal_copy_for(v)
-        assert (
-            "Product Liability" in copy
-            or "PLD" in copy
-            or "Liability Directive" in copy
-        )
+        assert v.in_scope
+        assert v.reason == ScopeReason.IN_SCOPE
+        assert v.near_oos_framework == "Product Liability Directive"
 
-    def test_nis2_essential_services_question_is_near_oos(self) -> None:
+    def test_nis2_essential_services_question_answered_on_ai_act_side(self) -> None:
         v = classify_scope(
             "We're a designated essential-services entity using AI for "
             "SOC operations. What cyber-resilience obligations apply "
             "to the AI itself?"
         )
-        assert not v.in_scope
-        assert v.reason == ScopeReason.NEAR_OOS
-        copy = refusal_copy_for(v)
-        assert "NIS2" in copy or "Cyber Resilience" in copy
+        assert v.in_scope
+        assert v.reason == ScopeReason.IN_SCOPE
+        assert v.near_oos_framework == "NIS2 Directive"
 
 
 # ── False-positive guards ──────────────────────────────────────────────
@@ -123,21 +115,13 @@ class TestNoFalsePositives:
             f"refusal class"
         )
 
-    def test_gdpr_only_question_stays_other_regulation(self) -> None:
-        """Pure GDPR questions stayed OTHER_REGULATION pre-R49 —
-        must not flip to NEAR_OOS.
-
-        We use the canonical ``GDPR Article 17`` phrasing (regulation
-        name BEFORE the Article number) which the existing
-        ``_OTHER_REGULATION_BEFORE_ARTICLE_RE`` strips. The reverse
-        phrasing ``"Article 17 of the GDPR"`` is a pre-existing
-        scope-gate quirk and unrelated to R49.
+    def test_gdpr_only_question_answered_on_ai_act_side(self) -> None:
+        """R364 — GDPR is an EU instrument adjacent to the AI Act; a
+        question naming it is answered on its EU AI Act side.
         """
         v = classify_scope("What does GDPR Article 17 say?")
-        assert not v.in_scope
-        # GDPR is the canonical OTHER_REGULATION case; near_oos is for
-        # AI-flavoured adjacent frameworks (DSA / PLD / NIS2 / CRA).
-        assert v.reason == ScopeReason.OTHER_REGULATION
+        assert v.in_scope
+        assert v.reason == ScopeReason.IN_SCOPE
 
     def test_legitimate_transparency_question_stays_in_scope(self) -> None:
         """The DSA detection keys on 'algorithmic transparency' + VLOP

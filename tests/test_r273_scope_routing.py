@@ -1,12 +1,13 @@
-"""R273 — wrong-framework scope routing tests.
+"""R273 + R364 — wrong-framework scope routing tests.
 
-Pin the R273 routing invariant: queries about adjacent frameworks
-(NEAR_OOS = DSA / NIS2 / CRA / PLD) and OTHER_REGULATION (GDPR / HIPAA
-etc.) must NOT be routed to the ungrounded general assistant — doing so
-caused hallucinated AI Act provisions (live: "Article 52a" on a VLOP
-question).  These queries get the branded framework-pointer refusal instead.
+R273 pinned that wrong-framework queries must NOT be routed to the
+ungrounded general assistant (live: "Article 52a" on a VLOP question).
 
-Gap 1 from code_review_report_r268_r273.
+R364 extends the operator directive: adjacent-EU-instrument questions
+(DSA / GDPR / DMA / PLD / NIS2 / CRA) are answered by the GROUNDED RAG
+engine on their EU AI Act side — never the general assistant, and no
+longer refused. Only non-EU laws (HIPAA / CCPA / SOX) keep the
+OTHER_REGULATION refusal.
 """
 from __future__ import annotations
 
@@ -28,50 +29,49 @@ from app.integrations.regenold.scope import (
 
 
 @pytest.mark.parametrize(
-    "question,expected_reason,expected_framework",
+    "question,expected_framework",
     [
-        # DSA / VLOP → NEAR_OOS
+        # DSA / VLOP → answered on the AI Act side, framework preserved
         (
             "What are the transparency obligations for Very Large Online Platforms?",
-            ScopeReason.NEAR_OOS,
             "Digital Services Act",
         ),
-        # PLD → NEAR_OOS
+        # PLD → answered on the AI Act side, framework preserved
         (
             "If AI causes property damage to a consumer, what is the AI-Act liability?",
-            ScopeReason.NEAR_OOS,
             "Product Liability Directive",
         ),
-        # NIS2 → NEAR_OOS
+        # NIS2 → answered on the AI Act side, framework preserved
         (
             "What are the NIS2 cybersecurity obligations for essential entities?",
-            ScopeReason.NEAR_OOS,
             "NIS2 Directive",
         ),
     ],
     ids=["dsa_vlop", "pld_liability", "nis2_essential"],
 )
-def test_near_oos_classify(
+def test_near_oos_question_answered_on_ai_act_side(
     question: str,
-    expected_reason: ScopeReason,
     expected_framework: str,
 ) -> None:
+    """R364 — adjacent-EU-framework questions are IN-SCOPE: answered on
+    their EU AI Act side, framework name preserved for the trace."""
     v = classify_scope(question)
-    assert v.in_scope is False, f"Expected out-of-scope, got in_scope for: {question}"
-    assert v.reason == expected_reason
+    assert v.in_scope is True, f"Expected in-scope, got out-of-scope for: {question}"
+    assert v.reason == ScopeReason.IN_SCOPE
     assert v.near_oos_framework == expected_framework
 
 
-@pytest.mark.parametrize(
-    "question",
-    [
-        "What does GDPR Article 17 say about the right to be forgotten?",
-        "How does HIPAA apply to AI-powered medical devices?",
-    ],
-    ids=["gdpr", "hipaa"],
-)
-def test_other_regulation_classify(question: str) -> None:
-    v = classify_scope(question)
+def test_gdpr_question_answered_on_ai_act_side() -> None:
+    """R364 — GDPR is an EU instrument; answered on its EU AI Act side."""
+    v = classify_scope("What does GDPR Article 17 say about the right to be forgotten?")
+    assert v.in_scope is True
+    assert v.reason == ScopeReason.IN_SCOPE
+
+
+def test_non_eu_hipaa_still_other_regulation() -> None:
+    """Non-EU law (HIPAA) keeps the refusal — answering it from the EU
+    AI Act corpus would fabricate a foreign-law answer."""
+    v = classify_scope("How does HIPAA apply to AI-powered medical devices?")
     assert v.in_scope is False
     assert v.reason == ScopeReason.OTHER_REGULATION
 
@@ -146,14 +146,13 @@ def _ask(client, question: str) -> dict:
     return resp.json()
 
 
-def test_route_near_oos_gets_branded_refusal(client) -> None:
-    """A DSA/VLOP question must get the branded framework-pointer refusal,
-    NOT the general assistant answer (which would hallucinate AI Act articles)."""
+def test_route_dsa_vlop_answered_by_rag(client) -> None:
+    """R364 — a DSA/VLOP question is answered by the grounded RAG engine,
+    NOT the ungrounded general assistant (which hallucinated "Article 52a")."""
     body = _ask(client, "What are the transparency obligations for Very Large Online Platforms?")
     answer = body.get("answer", "")
-    # Must mention the correct framework, not hallucinate AI Act content.
-    assert "Digital Services Act" in answer
-    # Must NOT have been routed to the general assistant.
+    assert answer, "DSA/VLOP question must be answered, not refused"
+    # Must NOT have been routed to the general assistant or refused.
     reasoning = body.get("reasoning", "")
     rpath = ""
     if isinstance(reasoning, str):
@@ -161,17 +160,17 @@ def test_route_near_oos_gets_branded_refusal(client) -> None:
             rpath = json.loads(reasoning).get("retrieval_path", "")
         except (json.JSONDecodeError, TypeError):
             pass
-    assert rpath != "general_assistant", (
-        "NEAR_OOS query was routed to general_assistant — R273 routing block failed"
+    assert rpath not in ("general_assistant", "scope_refusal"), (
+        f"DSA/VLOP query routed to {rpath!r} — R364 answer-don't-refuse directive failed"
     )
 
 
-def test_route_other_regulation_gets_branded_refusal(client) -> None:
-    """A GDPR question must get the branded refusal, not the general assistant."""
+def test_route_gdpr_answered_by_rag(client) -> None:
+    """R364 — a GDPR question is answered on its EU AI Act side."""
     body = _ask(client, "What does GDPR Article 17 say about the right to be forgotten?")
     answer = body.get("answer", "")
-    assert "outside the EU AI Act" in answer or "regulation outside" in answer.lower()
-    # Must NOT have been routed to the general assistant.
+    assert answer, "GDPR question must be answered, not refused"
+    # Must NOT have been routed to the general assistant or refused.
     reasoning = body.get("reasoning", "")
     rpath = ""
     if isinstance(reasoning, str):
@@ -179,6 +178,6 @@ def test_route_other_regulation_gets_branded_refusal(client) -> None:
             rpath = json.loads(reasoning).get("retrieval_path", "")
         except (json.JSONDecodeError, TypeError):
             pass
-    assert rpath != "general_assistant", (
-        "OTHER_REGULATION query was routed to general_assistant — R273 routing block failed"
+    assert rpath not in ("general_assistant", "scope_refusal"), (
+        f"GDPR query routed to {rpath!r} — R364 answer-don't-refuse directive failed"
     )
