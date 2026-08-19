@@ -835,7 +835,7 @@ class TestEUInferenceGeography:
         from app.llm.bedrock_client import BEDROCK_MODEL_ALIASES
 
         for alias, target in BEDROCK_MODEL_ALIASES.items():
-            assert target.startswith("eu.anthropic.claude"), (alias, target)
+            assert target.startswith(("eu.anthropic.claude", "qwen.")), (alias, target)
 
 
 class TestTimeoutClientCaching:

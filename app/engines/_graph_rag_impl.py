@@ -610,22 +610,27 @@ def _opus_for_all_enabled() -> bool:
     }
 
 
-BEDROCK_RAG_MODEL = "eu.anthropic.claude-sonnet-4-6"
-"""Main RAG tier (Stage-1 + Stage-2) when ``P2P_GRAPH_RAG_PROVIDER=bedrock``."""
+BEDROCK_RAG_MODEL = "qwen.qwen3-32b-v1:0"
+"""Main RAG tier (Stage-1 + Stage-2) when ``P2P_GRAPH_RAG_PROVIDER=bedrock`` (Qwen 3 32B)."""
 
-BEDROCK_COMPLEX_MODEL = "eu.anthropic.claude-opus-4-6-v1"
-"""Complex tier — the ~20% of questions ``complex_question`` flags."""
-
+BEDROCK_COMPLEX_MODEL = "qwen.qwen3-235b-a22b-2507-v1:0"
+"""Complex tier — the ~20% of questions ``complex_question`` flags (Qwen 3 235B)."""
 
 
 def _bedrock_complete_for_graph_rag(
     *, system: str, user: str, max_tokens: int, temperature: float,
-    complex_question: bool = False, stage_name: str = "Stage"
+    complex_question: bool = False, stage_name: str = "Stage",
+    model_override: str | None = None,
 ) -> str | None:
-    """Execute GraphRAG Stage-1/2 completions via AWS Bedrock."""
+    """Execute GraphRAG Stage-1/2 completions via AWS Bedrock.
+
+    Routes complex questions to Qwen 3 235B and standard questions to Qwen 3 32B,
+    with an automated multi-tier rollover chain for throttling/quota resilience.
+    """
     try:
         from app.llm.bedrock_client import (
             BedrockRequest,
+            complete_with_fallback,
             get_bedrock_provider,
             is_bedrock_provider_enabled,
             resolve_bedrock_model,
@@ -641,7 +646,9 @@ def _bedrock_complete_for_graph_rag(
         "REGENOLD_BEDROCK_MODEL", BEDROCK_RAG_MODEL
     ).strip() or BEDROCK_RAG_MODEL
 
-    if complex_question:
+    if model_override:
+        model = model_override
+    elif complex_question:
         model = (
             os.getenv("REGENOLD_BEDROCK_COMPLEX_MODEL", "").strip()
             or BEDROCK_COMPLEX_MODEL
@@ -654,30 +661,90 @@ def _bedrock_complete_for_graph_rag(
             )
         else:
             model = os.getenv("REGENOLD_BEDROCK_STAGE2_MODEL", "").strip() or default_model
-
     else:
         model = os.getenv("REGENOLD_BEDROCK_STAGE1_MODEL", "").strip() or default_model
 
     model_id = resolve_bedrock_model(model)
 
+    # Multi-tier Bedrock rollover chain (Qwen 3 235B / 32B, Claude, open models)
     try:
-        provider = get_bedrock_provider()
-        resp = provider.complete(
-            BedrockRequest(
-                system=system,
-                user=user,
-                model=model_id,
-                max_tokens=max_tokens or 1024,
-                temperature=temperature,
+        _chain_env = os.getenv("REGENOLD_BEDROCK_FALLBACK_CHAIN", "").strip()
+        if _chain_env:
+            _chain = [resolve_bedrock_model(m.strip()) for m in _chain_env.split(",") if m.strip()]
+        else:
+            if complex_question:
+                _default_fallback_models = (
+                    "qwen.qwen3-235b-a22b-2507-v1:0",
+                    "qwen.qwen3-32b-v1:0",
+                    "claude-opus-4-6",
+                    "nvidia.nemotron-super-3-120b",
+                    "mistral.devstral-2-123b",
+                )
+            else:
+                _default_fallback_models = (
+                    "qwen.qwen3-32b-v1:0",
+                    "qwen.qwen3-235b-a22b-2507-v1:0",
+                    "claude-opus-4-6",
+                    "nvidia.nemotron-super-3-120b",
+                    "mistral.devstral-2-123b",
+                )
+            _chain = [resolve_bedrock_model(m) for m in _default_fallback_models]
+    except Exception:
+        _chain = []
+
+    ordered: list[str] = []
+    for _cand in (model_id, *_chain):
+        if _cand and _cand not in ordered:
+            ordered.append(_cand)
+
+    try:
+        _stage2_ceiling = int(os.getenv("REGENOLD_BEDROCK_MAX_TOKENS", "4096"))
+        _stage2_timeout = float(os.getenv("REGENOLD_BEDROCK_STAGE2_TIMEOUT_S", "180"))
+    except (TypeError, ValueError):
+        _stage2_ceiling = 4096
+        _stage2_timeout = 180.0
+
+    if is_stage2 and (max_tokens or 0) < _stage2_ceiling:
+        eff_max_tokens = _stage2_ceiling
+    else:
+        eff_max_tokens = max_tokens or 1024
+
+    try:
+        for _mid in ordered:
+            resp = complete_with_fallback(
+                BedrockRequest(
+                    system=system,
+                    user=user,
+                    model=_mid,
+                    max_tokens=eff_max_tokens,
+                    temperature=temperature,
+                    timeout_seconds=_stage2_timeout,
+                ),
+                fallbacks=(),
             )
-        )
-        if resp.error or not resp.text:
-            logger.warning("graph_rag.bedrock_call_failed: %s", resp.error)
-            return None
-        if _looks_structurally_truncated(resp.text):
-            logger.warning("graph_rag.bedrock_truncated_structural: falling back")
-            return None
-        return resp.text
+            if not resp.error and resp.text:
+                if _looks_structurally_truncated(resp.text):
+                    logger.warning("graph_rag.bedrock_truncated_structural: model=%s falling back", _mid)
+                    continue
+
+                try:
+                    from app.integrations.regenold.reasoning_trace import record_note
+                    record_note(f"stage2_model={resp.model} provider=bedrock complex={complex_question}")
+                except Exception:
+                    pass
+
+                if getattr(resp, "thinking", None):
+                    try:
+                        from app.integrations.regenold.reasoning_trace import record_llm_thinking
+                        record_llm_thinking(resp.thinking, stage=stage_name)
+                    except Exception:
+                        pass
+
+                return resp.text
+
+            logger.warning("graph_rag.bedrock_model_attempt_failed model=%s error=%s", _mid, resp.error)
+
+        return None
     except Exception as exc:
         logger.warning("graph_rag.bedrock_exception: %s", exc)
         return None
@@ -884,7 +951,45 @@ def _openai_wrapper_complete_for_graph_rag(
                 "graph_rag.openai_wrapper_call_failed: %s",
                 response.error[:200],
             )
-        # ── Groq GPT-OSS 120B automatic fallback ─────────────────────────────
+        # ── AWS Bedrock (Qwen 3 235B / 32B) automatic fallback ──────────────
+        # When the Claude Max wrapper fails for ANY reason (rate limit,
+        # quota exhaustion, 500/401/403 outage, network error, CLI error),
+        # attempt fallback to AWS Bedrock (Qwen 3 235B for complex, Qwen 3 32B for simple)
+        # before raising RuntimeError or falling back to deterministic.
+        try:
+            from app.llm.bedrock_client import is_bedrock_provider_enabled
+            if is_bedrock_provider_enabled():
+                logger.warning(
+                    "graph_rag.bedrock_auto_fallback — Cloudflare wrapper failed (%s). "
+                    "Attempting AWS Bedrock (Qwen 3 235B/32B) synthesis.",
+                    response.error[:80],
+                )
+                bedrock_text = _bedrock_complete_for_graph_rag(
+                    system=system,
+                    user=user,
+                    max_tokens=safe_max_tokens,
+                    temperature=temperature,
+                    complex_question=complex_question,
+                    stage_name=stage_name,
+                )
+                if bedrock_text:
+                    logger.info("graph_rag.bedrock_auto_fallback_success")
+                    try:
+                        from app.integrations.regenold.reasoning_trace import record_note
+                        record_note("bedrock_auto_fallback_success")
+                    except Exception:
+                        pass
+                    from app.security.prompt_guard import validate_llm_output
+                    return validate_llm_output(bedrock_text.strip())
+        except Exception as e:
+            logger.warning("graph_rag.bedrock_auto_fallback_exception: %s", e)
+            try:
+                from app.integrations.regenold.reasoning_trace import record_note
+                record_note(f"bedrock_fallback_exception: {str(e)[:100]}")
+            except Exception:
+                pass
+
+        # ── Groq GPT-OSS 120B secondary fallback ─────────────────────────────
         # When the Claude Max wrapper fails for ANY reason (rate limit,
         # quota exhaustion, 500/401/403 outage, network error, CLI error),
         # attempt a fallback to Groq GPT-OSS 120B before raising RuntimeError
@@ -8664,6 +8769,26 @@ def _claude_max_enhance_answer(
                 stage_name="Stage 2 (Polishing)"
             )
 
+
+        if text_raw is None and not _use_bedrock and not _fusion_used:
+            try:
+                from app.llm.bedrock_client import is_bedrock_provider_enabled
+                if is_bedrock_provider_enabled():
+                    try:
+                        from app.integrations.regenold.reasoning_trace import record_note
+                        record_note("stage2_primary_failed_fallback_bedrock")
+                    except Exception:
+                        pass
+                    text_raw = _bedrock_complete_for_graph_rag(
+                        system=system_prompt,
+                        user=user_message,
+                        max_tokens=max_tokens,
+                        temperature=0.0,
+                        complex_question=complex_q,
+                        stage_name="Stage 2 (Polishing Fallback)",
+                    )
+            except Exception as e:
+                logger.warning("graph_rag.bedrock_fallback_error: %s", str(e))
 
         if text_raw is None and not _use_gemini and not _fusion_used:
             try:

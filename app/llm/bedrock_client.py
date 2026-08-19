@@ -425,6 +425,15 @@ BEDROCK_MODEL_ALIASES: dict[str, str] = {
     "claude-haiku-4-5": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
     "claude-haiku": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
     "haiku": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+
+    # ── Qwen (Bedrock Synthesis & Fallback) ──────────────────────────────────
+    "qwen.qwen3-32b-v1:0": "qwen.qwen3-32b-v1:0",
+    "qwen3-32b": "qwen.qwen3-32b-v1:0",
+    "qwen-32b": "qwen.qwen3-32b-v1:0",
+    "qwen": "qwen.qwen3-32b-v1:0",
+    "qwen.qwen3-235b-a22b-2507-v1:0": "qwen.qwen3-235b-a22b-2507-v1:0",
+    "qwen3-235b": "qwen.qwen3-235b-a22b-2507-v1:0",
+    "qwen-235b": "qwen.qwen3-235b-a22b-2507-v1:0",
 }
 """Right-hand sides verified ACTIVE on 2026-08-11 via
 ``list_inference_profiles(typeEquals='SYSTEM_DEFINED')`` in eu-central-1.

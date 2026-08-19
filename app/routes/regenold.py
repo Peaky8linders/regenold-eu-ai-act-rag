@@ -1317,6 +1317,9 @@ def _engine_cache_key(
             "REGENOLD_BEDROCK_COMPLEX_MODEL",
             "REGENOLD_BEDROCK_STAGE1_MODEL",
             "REGENOLD_BEDROCK_STAGE2_MODEL",
+            "REGENOLD_BEDROCK_FALLBACK_CHAIN",
+            "REGENOLD_BEDROCK_MAX_TOKENS",
+            "REGENOLD_BEDROCK_STAGE2_TIMEOUT_S",
             "REGENOLD_STAGE2_VERDICT_GUARD",
             "REGENOLD_STAGE2_ANSWER_HEADROOM",
             # R357 — the post-generation truncation guard flips
