@@ -353,3 +353,27 @@ class TestCacheIdentity:
         off = _engine_cache_key("Is a chatbot high-risk?", None)
 
         assert on != off
+
+
+class TestHealthzSurfacesTheContract:
+    def test_healthz_llm_reports_chain_and_counters(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``llm_ok`` says the provider *can* answer; this says who *is* answering.
+
+        An operator debugging a degraded deploy needs the second question, and
+        a non-empty ``refused_by_provider`` is an alertable event in its own
+        right — it means something tried to answer Stage-2 off-contract.
+        """
+        monkeypatch.setenv("REGENOLD_SKIP_STARTUP_LOG", "1")
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+
+        pol.refuse("groq", where="unit-test")
+        body = TestClient(app).get("/healthz/llm").json()
+
+        transport = body["stage2_transport"]
+        assert transport["strict"] is True
+        assert transport["chain"] == ["openai_wrapper", "bedrock"]
+        assert transport["stats"]["refused_by_provider"]["groq"] == 1

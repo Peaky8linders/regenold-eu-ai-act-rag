@@ -996,6 +996,23 @@ def healthz_llm() -> dict[str, object]:
         "detail": "",
     }
 
+    # R360 — surface the Stage-2 transport contract and what has actually
+    # dialled. ``llm_ok`` above says the configured provider can answer; this
+    # says which leg is CARRYING the traffic, which is a different question and
+    # the one an operator needs when the tunnel degrades. A non-empty
+    # ``refused_by_provider`` means something in the process tried to answer
+    # Stage-2 off-contract and was blocked — worth an alert on its own.
+    try:
+        from app.llm import stage2_policy as _s2pol
+
+        base["stage2_transport"] = {
+            "strict": _s2pol.strict_transport_enabled(),
+            "chain": list(_s2pol.stage2_chain()),
+            "stats": _s2pol.transport_stats(),
+        }
+    except Exception as exc:  # noqa: BLE001 — a probe must never 500
+        base["stage2_transport"] = {"error": type(exc).__name__}
+
     # R277 — Cloudflare Access diagnostic. When an Access application fronts
     # the wrapper hostname, an unauthenticated backend gets an HTML login page
     # + HTTP 401 and the engine silently serves deterministic-only answers.

@@ -143,6 +143,51 @@ article-level throughout — so `['Article 5.1.f','Annex III.2']` scored against
 penalising the most accurate citation shape the system emits. Same conclusion, and the
 fix is gold that carries sub-point coordinates, not a change to the metric.
 
+## Stage-2 transport contract (R360)
+
+**Stage-2 rides the cloudflared tunnel (Claude Max) first and AWS Bedrock second.
+No third leg exists.** `app/llm/stage2_policy.py` is the single source of truth;
+`REGENOLD_STAGE2_STRICT_TRANSPORT` (default **ON**) enforces it and is registered
+in `_engine_cache_key`.
+
+Five paths used to break that contract, and the first two were armed by nothing
+more than an API key sitting in the environment — no flag, no deliberate opt-in:
+
+| path | how it opened | now |
+| :--- | :--- | :--- |
+| Groq tertiary fallback in `_openai_wrapper_complete_for_graph_rag` | any `GROQ_API_KEY` + one tunnel failure | refused |
+| Gemini secondary fallback in `_claude_max_enhance_answer` | any `GEMINI_API_KEY` + tunnel *and* Bedrock both empty | refused |
+| `P2P_GRAPH_RAG_PROVIDER=gemini\|anthropic` | explicit env | collapsed to the tunnel |
+| fusion panel (`REGENOLD_FUSION_STAGE2=1`) | default roster is `(sonnet, groq, mistral)` | off-contract members filtered out of the roster |
+| `P2P_GRAPH_RAG_PROVIDER=bedrock` | explicit env | collapsed to the tunnel — see below |
+
+That last row is not an escape but an **inversion**: honouring it makes the
+fallback the primary, so the Claude Max subscription is never dialled at all.
+
+⚠ **The Groq hatch was not hypothetical.** It swapped in a *compressed* system
+prompt (`_get_groq_compressed_system_prompt`) and, above ~11 kB, a shrunken user
+message. So a deploy carrying `GROQ_API_KEY` answered its first post-hiccup
+questions from a different model **on a prompt no eval has ever measured** —
+silently, and attributed to the tunnel arm in any A/B running at the time.
+
+**Prove it fires before reading any number.** `stage2_policy.transport_stats()`
+returns `primary_attempts / primary_ok / primary_failed / fallback_* / refused /
+refused_by_provider`, and `/healthz/llm` surfaces the same block under
+`stage2_transport`. This follows the R329 rule the hard way: three rerank
+placements all read correctly in the diff and all made **zero calls**, so
+`tests/test_r360_stage2_transport_policy.py` asserts on those counters, never on
+the shape of the code. It is also two-sided — it pins that
+`REGENOLD_STAGE2_STRICT_TRANSPORT=0` *really does* still reach Groq, because a
+guard whose OFF state behaves like its ON state is the inert-feature trap.
+
+Four existing test modules (`test_fusion_stage2`, `test_gemini_routing`,
+`test_anthropic_provider`, and the fusion half of `test_r127_trace_latency`)
+cover the legacy multi-provider call shapes. Their assertions are unchanged;
+they now declare `REGENOLD_STAGE2_STRICT_TRANSPORT=0`, the regime they were
+written for.
+
+---
+
 ## Baseline Performance Reference (Commit `b47c259`)
 
 Deterministic environment: `OPENAI_API_BASE=http://127.0.0.1:1/v1 P2P_GRAPH_RAG_PROVIDER=cli REGENOLD_EXTERNAL_EMBEDDINGS=0`
@@ -264,6 +309,7 @@ Concise record of the applied fixes; full rationale in `docs/reviews/`:
 | Environment Variable | Code Default | Purpose |
 | :--- | :--- | :--- |
 | `P2P_GRAPH_RAG_PROVIDER` | `auto` | Selected LLM backend (`cli`, `anthropic`, `openai_wrapper`, `bedrock`) |
+| `REGENOLD_STAGE2_STRICT_TRANSPORT` | `1` | R360 Stage-2 transport contract: cloudflared tunnel (Claude Max) primary → Bedrock fallback, everything else refused |
 | `P2P_GRAPH_RAG_ENABLE_STAGE2` | `1` | Stage-2 LLM polish master gate |
 | `REGENOLD_GRAPH_SEMANTIC_LAYERS` | `1` | Constrained sub-provision vector search across Neo4j indexes (R327) |
 | `REGENOLD_SEMANTIC_GLOSS` | `0` | Open-domain definitions/recitals gloss gate (R327) |

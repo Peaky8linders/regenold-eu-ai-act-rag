@@ -111,6 +111,11 @@ REGENOLD_GRAPH_2HOP_FULL_CAP = "1"
 # block (the R80.2 phenomenon) — verify the dashboard does not pin
 # P2P_GRAPH_RAG_PROVIDER / REGENOLD_INTENT_PROVIDER to stale values.
 P2P_GRAPH_RAG_PROVIDER = "openai_wrapper"
+# R360 — Stage-2 rides the cloudflared tunnel (Claude Max) then AWS Bedrock,
+# and nothing else. This is the CODE default too (app/llm/stage2_policy.py):
+# per CLAUDE.md the [deploy.envs] block here is inert on Railway's schema, so
+# the guarantee has to live in Python. Listed for operator visibility.
+REGENOLD_STAGE2_STRICT_TRANSPORT = "1"
 # Stage-2 polish + reasoning ALWAYS on (the Claude Max tunnel). The code default
 # is already ON (R80.2); pinned here explicitly per the operator directive.
 P2P_GRAPH_RAG_ENABLE_STAGE2 = "1"
