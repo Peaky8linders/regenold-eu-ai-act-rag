@@ -200,3 +200,77 @@ __all__ = [
     "strict_transport_enabled",
     "transport_stats",
 ]
+
+
+# ── destination pinning (R360.7) ────────────────────────────────────────────
+#
+# Everything above pins the provider *id*. That is not the same as pinning the
+# *destination*: ``openai_wrapper`` means "go through the OpenAI-compatible
+# client", and where that client points is whatever ``OPENAI_API_BASE`` says.
+# Measured on this repo before R360.7:
+#
+#     OPENAI_API_BASE=https://openrouter.ai/api/v1
+#       -> resolved Stage-2 base URL: https://openrouter.ai/api/v1
+#       -> is_stage2_provider_allowed("openai_wrapper"): True
+#
+# One env var sent every Stage-2 request to a third party while satisfying the
+# provider policy and every test written for it. The id says Claude Max; the
+# packet goes to OpenRouter. So the contract has to name hosts too.
+
+#: Hosts that ARE the Claude Max path: the cloudflared tunnel, and a wrapper
+#: running on the operator's own machine (what ``ab_judge`` drives locally).
+STAGE2_PRIMARY_HOSTS: tuple[str, ...] = (
+    "wrapper.antifragile-ai.net",
+    "127.0.0.1",
+    "localhost",
+    "::1",
+)
+
+
+def _host_of(base_url: str) -> str:
+    from urllib.parse import urlsplit
+
+    try:
+        return (urlsplit(base_url).hostname or "").strip().lower()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def allowed_primary_hosts() -> tuple[str, ...]:
+    """Hosts the Stage-2 primary may dial.
+
+    ``REGENOLD_STAGE2_PRIMARY_HOSTS`` (comma-separated) replaces the default —
+    the operator may rename their tunnel. It cannot be set to *empty*: a blank
+    value falls back to the defaults rather than disabling the check, so the
+    guard cannot be switched off by accident, only by turning strict mode off
+    deliberately.
+    """
+    raw = os.getenv("REGENOLD_STAGE2_PRIMARY_HOSTS", "").strip()
+    if not raw:
+        return STAGE2_PRIMARY_HOSTS
+    hosts = tuple(h.strip().lower() for h in raw.split(",") if h.strip())
+    return hosts or STAGE2_PRIMARY_HOSTS
+
+
+def is_primary_base_url_allowed(base_url: str) -> bool:
+    """Does ``base_url`` actually point at the Claude Max wrapper?"""
+    if not strict_transport_enabled():
+        return True
+    return _host_of(base_url) in allowed_primary_hosts()
+
+
+def check_primary_base_url(base_url: str) -> bool:
+    """Same, but records a refusal naming the host when it fails."""
+    if is_primary_base_url_allowed(base_url):
+        return True
+    refuse(f"base_url:{_host_of(base_url) or 'unparseable'}",
+           where="openai_wrapper_complete.base_url")
+    return False
+
+
+__all__ += [
+    "STAGE2_PRIMARY_HOSTS",
+    "allowed_primary_hosts",
+    "check_primary_base_url",
+    "is_primary_base_url_allowed",
+]

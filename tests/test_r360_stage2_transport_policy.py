@@ -771,3 +771,112 @@ class TestHealthzTellsTheTruthAboutBedrock:
         body = TestClient(app).get("/healthz/llm").json()
 
         assert body["provider"] == "bedrock" and body["llm_ok"] is True
+
+
+class TestDestinationIsPinnedNotJustTheProviderId:
+    """R360.7 — the last real hole: the id said Claude Max, the packet did not.
+
+    ``openai_wrapper`` only means "go through the OpenAI-compatible client".
+    Where that client points is whatever ``OPENAI_API_BASE`` says. Measured on
+    this repo before the fix::
+
+        OPENAI_API_BASE=https://openrouter.ai/api/v1
+          -> resolved Stage-2 base URL: https://openrouter.ai/api/v1
+          -> is_stage2_provider_allowed("openai_wrapper"): True
+
+    One env var sent every Stage-2 request to a third party while satisfying
+    the provider policy and every test written for it.
+    """
+
+    @pytest.mark.parametrize(
+        "base",
+        [
+            "https://wrapper.antifragile-ai.net/v1",
+            "http://127.0.0.1:8000/v1",
+            "http://localhost:8000/v1",
+            "http://127.0.0.1:1/v1",  # the deterministic-bench dead port
+        ],
+    )
+    def test_the_claude_max_path_is_allowed(self, base: str) -> None:
+        assert pol.is_primary_base_url_allowed(base) is True
+
+    @pytest.mark.parametrize(
+        "base",
+        [
+            "https://openrouter.ai/api/v1",
+            "https://api.groq.com/openai/v1",
+            "https://generativelanguage.googleapis.com/v1beta/openai/",
+            "https://api.mistral.ai/v1",
+            "https://evil-wrapper.antifragile-ai.net/v1",
+        ],
+    )
+    def test_foreign_destinations_are_refused(self, base: str) -> None:
+        assert pol.is_primary_base_url_allowed(base) is False
+        assert pol.check_primary_base_url(base) is False
+        assert pol.transport_stats()["refused"] == 1
+
+    def test_a_subdomain_lookalike_does_not_slip_through(self) -> None:
+        """Host equality, not substring — ``evil-wrapper.antifragile-ai.net``
+        contains the allowed host as a suffix of its own name."""
+        assert (
+            pol.is_primary_base_url_allowed(
+                "https://wrapper.antifragile-ai.net.attacker.test/v1"
+            )
+            is False
+        )
+
+    def test_operator_can_rename_the_tunnel(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("REGENOLD_STAGE2_PRIMARY_HOSTS", "tunnel.example.test")
+        assert pol.is_primary_base_url_allowed("https://tunnel.example.test/v1") is True
+        assert pol.is_primary_base_url_allowed("https://openrouter.ai/api/v1") is False
+
+    def test_the_allowlist_cannot_be_emptied_by_accident(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A blank value falls back to the defaults rather than disabling the
+        check. Turning the guard off must be a deliberate act (strict=0)."""
+        for blank in ("", "   ", ",,,"):
+            monkeypatch.setenv("REGENOLD_STAGE2_PRIMARY_HOSTS", blank)
+            assert pol.allowed_primary_hosts() == pol.STAGE2_PRIMARY_HOSTS
+            assert pol.is_primary_base_url_allowed("https://openrouter.ai/api/v1") is False
+
+    def test_legacy_regime_does_not_enforce_the_destination(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("REGENOLD_STAGE2_STRICT_TRANSPORT", "0")
+        assert pol.is_primary_base_url_allowed("https://openrouter.ai/api/v1") is True
+
+    def test_a_mispointed_base_goes_to_bedrock_not_to_the_foreign_host(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A mis-pointed base is a misconfiguration, not an outage — so serve
+        from leg 2 rather than degrading, but never dial the foreign host."""
+        monkeypatch.setenv("OPENAI_API_BASE", "https://openrouter.ai/api/v1")
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "fake")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "fake")
+        dialled: list[str] = []
+
+        class _MustNotBeCalled:
+            base_url = "https://openrouter.ai/api/v1"
+
+            def complete(self, req):  # pragma: no cover - the raise IS the assertion
+                raise AssertionError("Stage-2 dialled an off-contract destination")
+
+        with (
+            patch(
+                "app.llm.openai_wrapper_provider.get_openai_wrapper_provider",
+                return_value=_MustNotBeCalled(),
+            ),
+            patch(
+                "app.engines._graph_rag_impl._bedrock_complete_for_graph_rag",
+                side_effect=lambda **kw: dialled.append("bedrock") or "Bedrock answered.",
+            ),
+        ):
+            out = _openai_wrapper_complete_for_graph_rag(
+                system="s", user="u", max_tokens=256, temperature=0.0,
+                stage_name="Stage 2 (Polishing)",
+            )
+
+        assert out == "Bedrock answered." and dialled == ["bedrock"]
+        refusals = pol.transport_stats()["refused_by_provider"]
+        assert any(k.startswith("base_url:") for k in refusals), refusals

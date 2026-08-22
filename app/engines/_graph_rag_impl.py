@@ -958,8 +958,53 @@ def _openai_wrapper_complete_for_graph_rag(
                 pass
             return None
 
+    # R360.7 — pin the DESTINATION, not just the provider id. ``openai_wrapper``
+    # only says "go through the OpenAI-compatible client"; where that client
+    # points is whatever ``OPENAI_API_BASE`` says. Measured: setting it to
+    # ``https://openrouter.ai/api/v1`` sent every Stage-2 request to a third
+    # party while satisfying the provider policy and every test written for it.
+    # A mis-pointed base is a misconfiguration, not an outage, so go straight to
+    # leg 2 rather than degrading to deterministic — and make it loud.
+    _wrapper_provider = get_openai_wrapper_provider()
+    # Resolve in the same order the provider itself does, and fall back to the
+    # packaged default. An UNKNOWN base is not an off-contract base: a test
+    # double has no ``base_url``, and refusing on absence would fail closed on
+    # a configuration that is in fact correct. Only a positively-identified
+    # foreign host is refused.
+    from app.llm.openai_wrapper_provider import (  # noqa: PLC0415
+        _DEFAULT_WRAPPER_BASE as _DEF_BASE,
+    )
+    def _str_attr(obj: object, name: str) -> str:
+        # Only a real ``str`` counts. A ``MagicMock`` auto-creates every
+        # attribute as a truthy Mock, so ``str()`` of one yields
+        # "<MagicMock id=...>" — which parses to no host and would read as a
+        # foreign destination. Refusing on that would fail closed against test
+        # doubles and any provider that simply does not expose the attribute.
+        value = getattr(obj, name, None)
+        return value.strip() if isinstance(value, str) else ""
+
+    _resolved_base = (
+        _str_attr(_wrapper_provider, "base_url")
+        or _str_attr(_wrapper_provider, "_base_url")
+        or os.getenv("OPENAI_API_BASE", "").strip()
+        or _DEF_BASE
+    )
+    if not _s2pol.check_primary_base_url(_resolved_base):
+        logger.error(
+            "graph_rag.stage2_base_url_off_contract base=%s — the Stage-2 "
+            "primary must be the Claude Max wrapper (%s). Falling straight to "
+            "the Bedrock leg.",
+            _resolved_base[:120], ", ".join(_s2pol.allowed_primary_hosts()),
+        )
+        _bedrock_only = _try_bedrock_fallback(f"primary base off-contract: {_resolved_base[:60]}")
+        if _bedrock_only is not None:
+            return _bedrock_only
+        raise RuntimeError(
+            f"Stage-2 primary base URL is off-contract: {_resolved_base[:120]}"
+        )
+
     _s2pol.record_attempt(_s2pol.STAGE2_PRIMARY)
-    response = get_openai_wrapper_provider().complete(
+    response = _wrapper_provider.complete(
         OpenAIWrapperRequest(
             system=wrapper_system,
             user=user,
