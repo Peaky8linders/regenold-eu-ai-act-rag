@@ -549,12 +549,21 @@ def _maybe_auto_seed_neo4j() -> None:
             # it is reported as ``auto_seed_check action=error`` exactly as
             # before — a hung host and a broken query are different facts and
             # must not be logged as the same one.
+            # R360.6 — this used to set ``meta_rows = []`` and carry on. An
+            # unknown seed version is NOT an empty graph, but the code below
+            # reads it as one (``if not current_seed: reason = "graph_empty"``)
+            # and seeds. So a slow Aura response at boot — the single most
+            # likely transient there is — triggered a WRITE over a live,
+            # correctly-seeded production graph. AGENTS.md makes protecting
+            # those nodes a hard rule; "I could not read the metadata" must
+            # mean skip, not seed.
             logger.warning(
-                "regenold.startup auto_seed_check meta_probe_timeout "
-                "budget_s=%s — proceeding as if the seed were unknown",
+                "regenold.startup auto_seed_check action=skip-unverified "
+                "reason=meta_probe_timeout budget_s=%s — refusing to seed a "
+                "graph whose seed version could not be read",
                 _meta_budget_s,
             )
-            meta_rows = []
+            return
         finally:
             _mpool.shutdown(wait=False)
         current_seed = (meta_rows[0].get("v") if meta_rows else "") or ""
@@ -586,6 +595,34 @@ def _maybe_auto_seed_neo4j() -> None:
             _AUTO_SEED_STARTED = True
 
         if not current_seed:
+            # R360.6 — "no KBMetadata row" is not proof of an empty graph. A
+            # partially-seeded or hand-loaded Aura instance has nodes and no
+            # metadata, and seeding it duplicates or overwrites real data. Ask
+            # the graph how many nodes it holds and refuse if the answer is not
+            # zero; refuse too if the count itself cannot be read, since an
+            # unreadable count is the same class of ignorance as the timeout
+            # above. Only a graph verified EMPTY is safe to seed unprompted.
+            try:
+                _count_rows = client.execute_read(
+                    "MATCH (n) RETURN count(n) AS c"
+                )
+                _node_count = int((_count_rows or [{}])[0].get("c") or 0)
+            except Exception as _cexc:  # noqa: BLE001
+                logger.warning(
+                    "regenold.startup auto_seed_check action=skip-unverified "
+                    "reason=missing-node-count err=%s",
+                    _cexc,
+                )
+                return
+            if _node_count > 0:
+                logger.warning(
+                    "regenold.startup auto_seed_check action=skip-nonempty-drift "
+                    "node_count=%d — the graph has no KBMetadata row but is NOT "
+                    "empty. Refusing to seed over it. Seed deliberately with "
+                    "scripts/seed_neo4j_kb.py if this is intended.",
+                    _node_count,
+                )
+                return
             reason = "graph_empty"
         else:
             reason = (
@@ -963,6 +1000,35 @@ def healthz_email(
     return payload
 
 
+def _degraded_to_bedrock(base: dict[str, object], detail: str) -> dict[str, object]:
+    """R360.9 — a down tunnel is not a down service while Bedrock is armed.
+
+    ``llm_ok`` previously went ``false`` the moment the wrapper probe failed,
+    with the raw provider error as the whole story. But Stage-2's contract is
+    tunnel THEN Bedrock, so with credentials wired the deploy is still
+    answering from an LLM — just on leg 2. Reporting that as a flat outage
+    sends an operator chasing the tunnel while requests are being served, and
+    (worse) an uptime monitor alerting on ``llm_ok`` cannot tell the difference
+    between "degraded but serving" and "serving deterministic fallback only".
+    """
+    try:
+        from app.llm.bedrock_client import is_bedrock_provider_enabled
+        armed = is_bedrock_provider_enabled()
+    except Exception:  # noqa: BLE001 — a probe must never 500
+        armed = False
+    if armed:
+        base["llm_ok"] = True
+        base["provider"] = f"{base.get('provider', 'openai_wrapper')} (bedrock fallback)"
+        base["detail"] = f"primary offline ({detail[:120]}); bedrock fallback active"
+    else:
+        base["llm_ok"] = False
+        base["detail"] = (
+            f"{detail[:150]} — and NO bedrock credentials are wired, so Stage-2 "
+            "is serving deterministic fallback answers"
+        )
+    return base
+
+
 @app.get("/healthz/llm")
 def healthz_llm() -> dict[str, object]:
     """Live LLM-path probe — verifies the configured provider can actually answer.
@@ -995,6 +1061,23 @@ def healthz_llm() -> dict[str, object]:
         "llm_ok": False,
         "detail": "",
     }
+
+    # R360 — surface the Stage-2 transport contract and what has actually
+    # dialled. ``llm_ok`` above says the configured provider can answer; this
+    # says which leg is CARRYING the traffic, which is a different question and
+    # the one an operator needs when the tunnel degrades. A non-empty
+    # ``refused_by_provider`` means something in the process tried to answer
+    # Stage-2 off-contract and was blocked — worth an alert on its own.
+    try:
+        from app.llm import stage2_policy as _s2pol
+
+        base["stage2_transport"] = {
+            "strict": _s2pol.strict_transport_enabled(),
+            "chain": list(_s2pol.stage2_chain()),
+            "stats": _s2pol.transport_stats(),
+        }
+    except Exception as exc:  # noqa: BLE001 — a probe must never 500
+        base["stage2_transport"] = {"error": type(exc).__name__}
 
     # R277 — Cloudflare Access diagnostic. When an Access application fronts
     # the wrapper hostname, an unauthenticated backend gets an HTML login page
@@ -1073,12 +1156,10 @@ def healthz_llm() -> dict[str, object]:
                 )
             )
         except Exception as exc:  # noqa: BLE001 — health probe must never raise
-            base["detail"] = f"probe_exception: {exc!s}"[:200]
-            return base
+            return _degraded_to_bedrock(base, f"probe_exception: {exc!s}")
         if response.error:
-            base["detail"] = response.error[:200]
             base["elapsed_ms"] = response.elapsed_ms
-            return base
+            return _degraded_to_bedrock(base, response.error)
         base["llm_ok"] = bool((response.text or "").strip())
         base["detail"] = "ok" if base["llm_ok"] else "empty_response"
         base["elapsed_ms"] = response.elapsed_ms
@@ -1150,6 +1231,28 @@ def healthz_llm() -> dict[str, object]:
         base["detail"] = "ok"
         base["elapsed_ms"] = int((_time.perf_counter() - start) * 1000)
         base["model"] = settings.graph_rag.model
+        return base
+
+    if provider_label == "bedrock":
+        # R360.4 — Bedrock is a real LLM transport (it is Stage-2's fallback
+        # leg), but it fell through to the branch below and was reported as
+        # "deterministic-only path — no LLM call required" with llm_ok=True.
+        # An operator checking whether the fallback is armed got a green light
+        # that meant the opposite of what it said.
+        try:
+            from app.llm.bedrock_client import is_bedrock_provider_enabled
+            armed = is_bedrock_provider_enabled()
+        except Exception as exc:  # noqa: BLE001 — a probe must never 500
+            base["llm_ok"] = False
+            base["detail"] = f"bedrock probe unavailable: {type(exc).__name__}"
+            return base
+        base["llm_ok"] = armed
+        base["detail"] = (
+            "bedrock credentials present" if armed
+            else "bedrock selected but NO credentials are wired "
+                 "(AWS_BEARER_TOKEN_BEDROCK / AWS_BEDROCK_API_KEY / "
+                 "AWS_ACCESS_KEY_ID+AWS_SECRET_ACCESS_KEY)"
+        )
         return base
 
     # cli / deterministic path

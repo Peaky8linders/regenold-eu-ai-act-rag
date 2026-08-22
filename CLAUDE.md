@@ -49,11 +49,12 @@ Verify live wrapper connectivity via `curl http://127.0.0.1:8000/healthz/llm`.
 ## ⛔ The deterministic suites are OFF as gates (operator directive, R330)
 
 **Do not block a change on `evals.bench.runner` (davidath 476) or
-`evals.regenold.runner` (the 276 scenarios). Do not run them by default.**
+`evals.regenold.runner` (**255** scenarios — this file long said 276; `_build_full_scenarios`
+silently swallows a missing `scenarios_omnibus_extended`). Do not run them by default.**
 
 * **davidath** is a *regression guard*, never a win-measure, and costs ~9 min a run. Its
   gold is article-ints-only, so sub-point and Annex-grain changes are invisible to it.
-* **the 276-scenario runner** is older still and largely superseded — treat its output as
+* **the 255-scenario runner** is older still and largely superseded — treat its output as
   stale unless you have first confirmed the specific scenarios you care about are current.
 
 **The merge gate is the live pairwise A/B** (`evals.harness.ab_judge` /
@@ -132,9 +133,15 @@ role at THIS risk class — which already exists here as `ROLE_OBLIGATIONS` /
 grounding predicate, not a positional trimmer, so it sits outside the refuted trimmer
 families.
 
-⚠ **`gold_dropped` does not exist anywhere in this repo**, so the standing rule "a
-reference change must drop ZERO gold" is currently **unenforceable**. Port
-`gold_dropped_head` before gating any reference change. Do NOT port the upstream
+⚠ **CORRECTED R360 — `gold_dropped` DOES exist and the rule IS enforceable.**
+The paragraph below previously read "`gold_dropped` does not exist anywhere in this
+repo, so the standing rule … is currently **unenforceable**. Port `gold_dropped_head`
+before gating any reference change." That was false when written and it cost work:
+three separate reference-affecting changes were held back as ungateable. The
+instrument is `gold_dropped_head` at **`evals/bench/metrics.py:555`**, wired into
+`evals/harness/easyhard_ab.py:95-104` and gated at `:124` as a **SUM**, i.e. the gate
+is literally "drop ZERO". Only the *exact* (sub-point) grain is missing — which is the
+separate, still-correct point below. Do NOT port the upstream
 `ref_crag_fine` / `gold_dropped_exact` as-is — the decision is right, but the reason
 recorded here was wrong. **Corrected R331:** `_gold_exact_refs` does *not* head-project.
 The real defect is that our probe gold carries **0/208 sub-point grain** — it is
@@ -142,6 +149,51 @@ article-level throughout — so `['Article 5.1.f','Annex III.2']` scored against
 `['Article 5','Annex III']` yields `gold_dropped_exact = 2` and `ref_crag_fine = -1.0`,
 penalising the most accurate citation shape the system emits. Same conclusion, and the
 fix is gold that carries sub-point coordinates, not a change to the metric.
+
+## Stage-2 transport contract (R360)
+
+**Stage-2 rides the cloudflared tunnel (Claude Max) first and AWS Bedrock second.
+No third leg exists.** `app/llm/stage2_policy.py` is the single source of truth;
+`REGENOLD_STAGE2_STRICT_TRANSPORT` (default **ON**) enforces it and is registered
+in `_engine_cache_key`.
+
+Five paths used to break that contract, and the first two were armed by nothing
+more than an API key sitting in the environment — no flag, no deliberate opt-in:
+
+| path | how it opened | now |
+| :--- | :--- | :--- |
+| Groq tertiary fallback in `_openai_wrapper_complete_for_graph_rag` | any `GROQ_API_KEY` + one tunnel failure | refused |
+| Gemini secondary fallback in `_claude_max_enhance_answer` | any `GEMINI_API_KEY` + tunnel *and* Bedrock both empty | refused |
+| `P2P_GRAPH_RAG_PROVIDER=gemini\|anthropic` | explicit env | collapsed to the tunnel |
+| fusion panel (`REGENOLD_FUSION_STAGE2=1`) | default roster is `(sonnet, groq, mistral)` | off-contract members filtered out of the roster |
+| `P2P_GRAPH_RAG_PROVIDER=bedrock` | explicit env | collapsed to the tunnel — see below |
+
+That last row is not an escape but an **inversion**: honouring it makes the
+fallback the primary, so the Claude Max subscription is never dialled at all.
+
+⚠ **The Groq hatch was not hypothetical.** It swapped in a *compressed* system
+prompt (`_get_groq_compressed_system_prompt`) and, above ~11 kB, a shrunken user
+message. So a deploy carrying `GROQ_API_KEY` answered its first post-hiccup
+questions from a different model **on a prompt no eval has ever measured** —
+silently, and attributed to the tunnel arm in any A/B running at the time.
+
+**Prove it fires before reading any number.** `stage2_policy.transport_stats()`
+returns `primary_attempts / primary_ok / primary_failed / fallback_* / refused /
+refused_by_provider`, and `/healthz/llm` surfaces the same block under
+`stage2_transport`. This follows the R329 rule the hard way: three rerank
+placements all read correctly in the diff and all made **zero calls**, so
+`tests/test_r360_stage2_transport_policy.py` asserts on those counters, never on
+the shape of the code. It is also two-sided — it pins that
+`REGENOLD_STAGE2_STRICT_TRANSPORT=0` *really does* still reach Groq, because a
+guard whose OFF state behaves like its ON state is the inert-feature trap.
+
+Four existing test modules (`test_fusion_stage2`, `test_gemini_routing`,
+`test_anthropic_provider`, and the fusion half of `test_r127_trace_latency`)
+cover the legacy multi-provider call shapes. Their assertions are unchanged;
+they now declare `REGENOLD_STAGE2_STRICT_TRANSPORT=0`, the regime they were
+written for.
+
+---
 
 ## Baseline Performance Reference (Commit `b47c259`)
 
@@ -250,7 +302,9 @@ Concise record of the applied fixes; full rationale in `docs/reviews/`:
   (emergency triage `Annex III.5.d`, health-insurance pricing `5(c)`, hospital
   deployer duties, provider pre-market duties) that seed gold-head reference
   sets and skip Stage-2 polish (`_is_curated_authoritative_intercept`).
-* **R359 — fine-grained CRAG answer judge (eval repo).** `answer_crag_fine`
+* **R359 — fine-grained CRAG answer judge (⚠ NOT IN THIS REPO).** Corrected R360:
+  `answer_crag_fine` has **0 occurrences** here — it lives in the eval repo only.
+  The description below is of that repo's axis, kept for provenance. `answer_crag_fine`
   axis ports the NICD paper's Appendix C.2.2 5-level truthfulness scale
   (`+1 / +0.5 / 0 / −0.5 / −1`) to the ANSWER, with truthfulness = sum of
   scores and hallucinated-row counts. Opt-in (not in default `AXES`); judged
@@ -264,8 +318,9 @@ Concise record of the applied fixes; full rationale in `docs/reviews/`:
 | Environment Variable | Code Default | Purpose |
 | :--- | :--- | :--- |
 | `P2P_GRAPH_RAG_PROVIDER` | `auto` | Selected LLM backend (`cli`, `anthropic`, `openai_wrapper`, `bedrock`) |
+| `REGENOLD_STAGE2_STRICT_TRANSPORT` | `1` | R360 Stage-2 transport contract: cloudflared tunnel (Claude Max) primary → Bedrock fallback, everything else refused |
 | `P2P_GRAPH_RAG_ENABLE_STAGE2` | `1` | Stage-2 LLM polish master gate |
-| `REGENOLD_GRAPH_SEMANTIC_LAYERS` | `1` | Constrained sub-provision vector search across Neo4j indexes (R327) |
+| `REGENOLD_GRAPH_SEMANTIC_LAYERS` | `0` | Constrained sub-provision vector search across Neo4j indexes (R327). **Corrected R360** — this table said `1`; R330 flipped the code default ON → OFF (`app/engines/graph_semantic.py:155`) |
 | `REGENOLD_SEMANTIC_GLOSS` | `0` | Open-domain definitions/recitals gloss gate (R327) |
 | `REGENOLD_GRAPH_VECTOR_RECALL` | `0` | Additive Neo4j & local SVD vector recall path (R326) |
 | `REGENOLD_PARENT_COLLAPSE` | `0` | Collapse parent provisions when sub-points are cited (R325) |

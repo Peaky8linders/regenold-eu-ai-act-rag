@@ -874,7 +874,16 @@ def _assert_claude_max_transport(provider: str) -> None:
     """
     import os
 
-    if provider != "wrapper":
+    # R360.5 — ``bedrock`` is exempt from the billed-provider refusal. The rule
+    # exists to stop the judge quietly running on per-token billing, and Bedrock
+    # IS per-token — but this judge's alternative is the Claude Max tunnel, and
+    # judging there competes with Stage-2 for the single wrapper instance
+    # (CLAUDE.md: "No Parallel Wrapper Jobs"). Reserving the subscription for
+    # answering is worth Bedrock's judge tokens, and CLAUDE.md R359 already
+    # records the intent: judge "via Bedrock sonnet, never the Claude-Max
+    # tunnel". ``openrouter`` stays refused — this repo has no OpenRouter path
+    # and must not grow one.
+    if provider not in ("wrapper", "bedrock"):
         if os.environ.get("REGENOLD_JUDGE_ALLOW_BILLED", "").strip().lower() not in (
             "1", "true", "yes", "on",
         ):
@@ -885,6 +894,27 @@ def _assert_claude_max_transport(provider: str) -> None:
                 "REGENOLD_JUDGE_ALLOW_BILLED=1 to override deliberately."
             )
         print(f"[legal_v2] !! BILLED provider={provider} (override active)", flush=True)
+        return
+
+    if provider == "bedrock":
+        # Provenance on the record, same as the wrapper branch below.
+        try:
+            from app.llm.bedrock_client import is_bedrock_provider_enabled  # noqa: PLC0415
+            if not is_bedrock_provider_enabled():
+                raise SystemExit(
+                    "[legal_v2] provider=bedrock but NO credentials are wired "
+                    "(AWS_BEARER_TOKEN_BEDROCK / AWS_BEDROCK_API_KEY / "
+                    "AWS_ACCESS_KEY_ID+AWS_SECRET_ACCESS_KEY). Refusing rather "
+                    "than scoring every row as judge_error."
+                )
+        except ImportError as exc:
+            raise SystemExit(f"[legal_v2] provider=bedrock but boto3 is missing: {exc}") from exc
+        print(
+            f"[legal_v2] transport=bedrock region="
+            f"{os.environ.get('BEDROCK_REGION', 'eu-central-1')} "
+            "(Claude Max tunnel reserved for Stage-2)",
+            flush=True,
+        )
         return
 
     try:
@@ -1088,7 +1118,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--sidecar", required=True, type=Path)
     p.add_argument("--label", required=True)
     p.add_argument("--model", default=_DEFAULT_MODEL)
-    p.add_argument("--provider", choices=("wrapper", "anthropic", "groq", "gemini"), default="wrapper")
+    p.add_argument("--provider",
+                   choices=("wrapper", "anthropic", "groq", "gemini", "bedrock"),
+                   default="wrapper")
     p.add_argument("--timeout", type=float, default=90.0)
     p.add_argument("--concurrency", type=int, default=2)
     p.add_argument("--limit", type=int, default=None)

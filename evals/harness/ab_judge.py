@@ -15,7 +15,8 @@ judge's own variance is shared, not differenced), position-swaps to cancel
 position bias, and aggregates a win-rate whose CI shrinks with n.
 
 TWO TIERS
-* LIVE pairwise (default, needs the Claude Max wrapper at 127.0.0.1:8000):
+* LIVE pairwise (default, needs the Claude Max wrapper — local at
+  127.0.0.1:8000, or the cloudflared tunnel named by ``OPENAI_API_BASE``):
   both arms generated through the in-process TestClient + wrapper (Stage-2
   fires), pairwise-judged. The right tool for Stage-2 / prompt / synthesis
   changes.
@@ -49,6 +50,24 @@ _RESULTS = Path(__file__).resolve().parents[1] / "bench" / "results"
 _WRAPPER_AUTH_URL = "http://127.0.0.1:8000/v1/auth/status"
 
 
+def _wrapper_auth_url() -> str:
+    """Where to probe for a live Stage-2 wrapper — follow ``OPENAI_API_BASE``.
+
+    R360.2 — this was hardcoded to ``127.0.0.1:8000``. Run the merge gate
+    against the **cloudflared tunnel** (``OPENAI_API_BASE=
+    https://wrapper.antifragile-ai.net/v1``, the documented production shape and
+    the one the operator actually uses) and the probe hit localhost, found
+    nothing, printed "WRAPPER DOWN" and **silently downgraded the run to the
+    deterministic tier**. The operator gets a scorecard that looks like a live
+    pairwise A/B and is not one — the single worst failure mode for a merge
+    gate, because it is quiet and it reads as a result.
+    """
+    base = os.getenv("OPENAI_API_BASE", "").strip()
+    if not base:
+        return _WRAPPER_AUTH_URL
+    return base.rstrip("/").removesuffix("/v1") + "/v1/auth/status"
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # Env arm + cache helpers.
 # ──────────────────────────────────────────────────────────────────────────
@@ -76,8 +95,21 @@ def _clear_engine_cache() -> None:
 
 
 def _wrapper_up(timeout: float = 4.0) -> bool:
+    url = _wrapper_auth_url()
+    # A tunnel fronted by Cloudflare Access answers an unauthenticated probe
+    # with an HTML login page and HTTP 401, which is indistinguishable here
+    # from "the wrapper is down" — so send the service token when the host
+    # calls for one. ``_resolve_cf_access_headers`` is host-scoped, so the
+    # secret never leaves the Access-protected host.
+    headers: dict[str, str] = {}
     try:
-        with urllib.request.urlopen(_WRAPPER_AUTH_URL, timeout=timeout) as r:
+        from app.llm.openai_wrapper_provider import _resolve_cf_access_headers
+        headers = _resolve_cf_access_headers(url)
+    except Exception:  # noqa: BLE001 — a probe must never break the run
+        headers = {}
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.status == 200
     except Exception:  # noqa: BLE001
         return False
@@ -287,8 +319,8 @@ def run_ab(
 ) -> dict[str, Any]:
     live = not deterministic and _wrapper_up()
     if not deterministic and not live:
-        print("[ab_judge] WRAPPER DOWN at 127.0.0.1:8000 — skipping the live "
-              "pairwise tier; running the DETERMINISTIC tier only. (Never "
+        print(f"[ab_judge] WRAPPER DOWN at {_wrapper_auth_url()} — skipping the "
+              "live pairwise tier; running the DETERMINISTIC tier only. (Never "
               "substituting token-overlap as a live win proxy.)", file=sys.stderr)
         deterministic = True
 
@@ -419,7 +451,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--limit", type=int, default=None, help="cap probe rows (cheap smoke)")
     p.add_argument("--deterministic", action="store_true",
                    help="run both arms provider=cli + exact ref/keyword scoring (no Sonnet)")
-    p.add_argument("--judge-provider", default="wrapper", choices=["wrapper", "anthropic", "groq"])
+    # R360.2 — ``bedrock`` was already implemented in
+    # ``evals.judge.runner._resolve_caller``; only this choices list blocked it.
+    # It matters for the transport contract: judging over the tunnel competes
+    # with Stage-2 for the single Claude Max wrapper, and CLAUDE.md's own rule
+    # is "No Parallel Wrapper Jobs". Judging on Bedrock keeps the subscription
+    # for answering, which is what it is reserved for.
+    p.add_argument("--judge-provider", default="wrapper",
+                   choices=["wrapper", "anthropic", "groq", "gemini", "bedrock"])
     p.add_argument("--timeout", type=float, default=90.0)
     args = p.parse_args(argv)
 

@@ -463,11 +463,35 @@ ANNEX_III_REGISTRY: dict[str, AnnexIIICategory] = {
             "AI systems intended to be used for remote biometric identification "
             "of natural persons (post-incident or not in public spaces — "
             "real-time RBI in public spaces is PROHIBITED under Art. 5(1)(h)), "
-            "biometric categorisation by non-sensitive attributes, or emotion "
+            "biometric categorisation according to sensitive or protected "
+            "attributes or characteristics, or emotion "
             "recognition outside workplaces and educational institutions."
         ),
+        # ⚠ CORRECTED R360.11 — (1)(b) read "biometric categorisation by
+        # NON-SENSITIVE attributes", which negates the Act. Checked against this
+        # repo's own verbatim text (``get_provision_text("Annex III.1")``):
+        #
+        #   "(b) AI systems intended to be used for biometric categorisation,
+        #    according to sensitive or protected attributes or characteristics
+        #    based on the inference of those attributes or characteristics"
+        #
+        # This did not merely lose nuance — it inverted the test a reader
+        # applies. It implied that a system categorising on sensitive traits
+        # falls OUTSIDE Annex III(1)(b), when that is precisely what puts it in.
+        # The real boundary is against Art. 5(1)(g), which PROHIBITS inferring a
+        # narrower closed set (race, political opinions, trade-union membership,
+        # religious or philosophical beliefs, sex life, sexual orientation).
+        # Annex III(1)(b) is the broader high-risk tier beneath that
+        # prohibition, not its complement.
+        #
+        # It also mattered more than one wrong string usually does:
+        # ``kb_search._build_ontology_docs`` extends ``sub_points`` TWICE
+        # (``kb_search.py:269-270``), so the inverted phrase carried double
+        # weight in BM25 against exactly the questions it would mislead.
         sub_points=("(1)(a) Remote biometric ID (non-real-time / not public-space)",
-                    "(1)(b) Biometric categorisation by non-sensitive attributes",
+                    "(1)(b) Biometric categorisation according to sensitive or "
+                    "protected attributes (Art. 5(1)(g) prohibits the narrower "
+                    "inferred-trait set outright)",
                     "(1)(c) Emotion recognition outside workplace/education"),
         related_prohibitions=("real_time_rbi", "biometric_categorisation_sensitive",
                               "emotion_recognition_workplace"),

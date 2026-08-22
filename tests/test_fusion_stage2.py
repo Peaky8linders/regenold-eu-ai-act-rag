@@ -37,6 +37,15 @@ def _fusion_gate_all(monkeypatch):
     with their own ``setenv`` / ``delenv``."""
     monkeypatch.setenv("REGENOLD_FUSION_GATE", "all")
     monkeypatch.setenv("REGENOLD_FUSION_JUDGE", "llm")
+    # R360 — these tests exercise the MULTI-PROVIDER panel (the default roster
+    # is sonnet + groq + mistral). The R360 operator contract pins Stage-2 to
+    # the cloudflared tunnel with a Bedrock fallback and nothing else, so under
+    # the shipping default (``REGENOLD_STAGE2_STRICT_TRANSPORT=1``) the Groq
+    # and Mistral members are filtered out of the panel before it assembles.
+    # Declare the legacy regime these assertions were written for rather than
+    # weakening them; ``tests/test_r360_stage2_transport_policy.py`` pins what
+    # the panel does under the strict default.
+    monkeypatch.setenv("REGENOLD_STAGE2_STRICT_TRANSPORT", "0")
 
 
 # ── env gating ────────────────────────────────────────────────────────────────

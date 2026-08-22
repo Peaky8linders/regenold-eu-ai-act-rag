@@ -33,6 +33,20 @@ class FakeGeminiProvider:
         )
 
 
+
+@pytest.fixture(autouse=True)
+def _legacy_transport_regime(monkeypatch):
+    """R360 — this module covers the legacy Gemini Stage-2 call shape.
+
+    The shipping default pins Stage-2 to the cloudflared tunnel (Claude Max)
+    with a Bedrock fallback and refuses every other transport, so both the gate
+    (``_stage2_provider_enabled``) and the dispatch collapse away from Gemini.
+    Declare the regime these assertions were written for rather than weakening
+    them; ``tests/test_r360_stage2_transport_policy.py`` pins the strict default.
+    """
+    monkeypatch.setenv("REGENOLD_STAGE2_STRICT_TRANSPORT", "0")
+
+
 def test_stage2_gemini_enabled(monkeypatch):
     monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "gemini")
     
