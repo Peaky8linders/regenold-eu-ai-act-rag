@@ -1158,13 +1158,29 @@ _CLASSIFICATION_TOPICS: list[dict] = [
                 re.IGNORECASE,
             ),
         ],
+        # ⚠ CORRECTED R360.11 — the closing clause read "categorisation by
+        # NON-SENSITIVE attributes is high-risk under Annex III", which inverts
+        # Annex III(1)(b). Verbatim (``get_provision_text("Annex III.1")``):
+        # "(b) AI systems intended to be used for biometric categorisation,
+        # according to SENSITIVE OR PROTECTED attributes or characteristics
+        # based on the inference of those attributes or characteristics."
+        #
+        # Sensitive attributes are what put a system IN the high-risk tier, not
+        # what keeps it out. The two provisions are nested, not complementary:
+        # Art. 5(1)(g) prohibits inferring one closed list (race, political
+        # opinions, trade-union membership, religious or philosophical beliefs,
+        # sex life, sexual orientation); Annex III(1)(b) catches the wider band
+        # of sensitive or protected attributes outside that list. So the honest
+        # answer to "we infer age or disability from faces" is HIGH-RISK — the
+        # old text pointed a reader at "not high-risk" instead.
         "answer": (
             "Biometric categorisation systems that categorise natural persons based on "
             "their biometric data to deduce race, political opinion, trade-union membership, "
             "religious or philosophical beliefs, sex life, or sexual orientation are "
             "prohibited under Article 5. Labelling or filtering of lawfully acquired "
-            "biometric datasets remains permitted; categorisation by non-sensitive "
-            "attributes is high-risk under Annex III rather than prohibited."
+            "biometric datasets remains permitted. Biometric categorisation according to "
+            "other sensitive or protected attributes — those outside that prohibited list — "
+            "is high-risk under Annex III rather than prohibited."
         ),
         "refs": ["Art. 5", "Annex III"],
     },
