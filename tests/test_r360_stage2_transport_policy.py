@@ -943,3 +943,98 @@ class TestHealthzDegradesRatherThanLies:
         body = self._probe(monkeypatch, bedrock=False)
         assert body["llm_ok"] is False
         assert "deterministic fallback" in body["detail"]
+
+
+class TestFallbackModelIsALever:
+    """R360.10 — leg 2 serves Qwen 3, not Claude, and no caller said so.
+
+    Commit a65fa87 wired the Qwen tier on purpose, so this does not change the
+    default. But it is worth being able to state and to flip: the fallback for
+    a Claude Opus primary is a different model family, and an answer served
+    from leg 2 is not the answer any A/B measured.
+    """
+
+    def test_default_preserves_the_qwen_tier(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("REGENOLD_STAGE2_BEDROCK_MODEL", raising=False)
+        assert pol.stage2_fallback_model() == ""
+
+    def test_override_reaches_the_bedrock_call(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("REGENOLD_STAGE2_BEDROCK_MODEL", "eu.anthropic.claude-opus-4-6")
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "fake")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "fake")
+        seen: dict[str, object] = {}
+
+        class _Dead:
+            def complete(self, req):
+                return OpenAIWrapperResponse(
+                    text="", model="m", error="api_status_500",
+                    finish_reason=None, completion_tokens=0, elapsed_ms=1,
+                )
+
+        def _bedrock(**kwargs):
+            seen.update(kwargs)
+            return "Bedrock answered under Article 50."
+
+        with (
+            patch(
+                "app.llm.openai_wrapper_provider.get_openai_wrapper_provider",
+                return_value=_Dead(),
+            ),
+            patch(
+                "app.engines._graph_rag_impl._bedrock_complete_for_graph_rag",
+                side_effect=_bedrock,
+            ),
+        ):
+            _openai_wrapper_complete_for_graph_rag(
+                system="s", user="u", max_tokens=256, temperature=0.0,
+                stage_name="Stage 2 (Polishing)",
+            )
+
+        assert seen.get("model_override") == "eu.anthropic.claude-opus-4-6"
+
+    def test_default_passes_no_override_so_the_tier_logic_stands(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("REGENOLD_STAGE2_BEDROCK_MODEL", raising=False)
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "fake")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "fake")
+        seen: dict[str, object] = {}
+
+        class _Dead:
+            def complete(self, req):
+                return OpenAIWrapperResponse(
+                    text="", model="m", error="api_status_500",
+                    finish_reason=None, completion_tokens=0, elapsed_ms=1,
+                )
+
+        with (
+            patch(
+                "app.llm.openai_wrapper_provider.get_openai_wrapper_provider",
+                return_value=_Dead(),
+            ),
+            patch(
+                "app.engines._graph_rag_impl._bedrock_complete_for_graph_rag",
+                # A terminal-punctuated sentence: the R360.1 guard discards a
+                # mid-clause Bedrock answer, and a bare "ok" reads as one.
+                side_effect=lambda **kw: seen.update(kw) or "Bedrock answered.",
+            ),
+        ):
+            _openai_wrapper_complete_for_graph_rag(
+                system="s", user="u", max_tokens=256, temperature=0.0,
+                stage_name="Stage 2 (Polishing)",
+            )
+
+        assert seen.get("model_override") is None
+
+    def test_the_fallback_model_is_in_the_cache_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.routes.regenold import _engine_cache_key
+
+        monkeypatch.delenv("REGENOLD_STAGE2_BEDROCK_MODEL", raising=False)
+        a = _engine_cache_key("Is a chatbot high-risk?", None)
+        monkeypatch.setenv("REGENOLD_STAGE2_BEDROCK_MODEL", "eu.anthropic.claude-opus-4-6")
+        b = _engine_cache_key("Is a chatbot high-risk?", None)
+        monkeypatch.setenv("REGENOLD_STAGE2_BEDROCK_MODEL", "qwen.qwen3-235b-a22b-2507-v1:0")
+        c = _engine_cache_key("Is a chatbot high-risk?", None)
+        assert len({a, b, c}) == 3

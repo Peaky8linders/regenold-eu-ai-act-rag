@@ -1271,12 +1271,18 @@ def _engine_cache_key(
     # it would let an A/B of the flag replay the other arm's prose and read
     # +0.0000 on every axis — the R329 unfalsifiable-lever trap.
     from app.llm.stage2_policy import (  # noqa: PLC0415
+        stage2_fallback_model as _s2_fb_model,
         strict_transport_enabled as _s2_strict,
     )
     hypa_bits = f"{int(is_adaptive_router_enabled())}{int(is_rrf_retrieval_enabled())}"
     flag_bits = (
         f"{int(_dense_enabled())}{int(_guard_enabled())}{hypa_bits}"
         f"{int(_rerank_enabled())}{int(_s2_strict())}"
+        # R360.10 — the Bedrock fallback MODEL is answer-flipping whenever leg 2
+        # serves: Qwen 3 and Claude Opus write different prose from the same
+        # prompt. Keyed by value, not by a bit, so switching between two
+        # non-empty models also invalidates.
+        f"|fb={_s2_fb_model()}"
     )
     # R56 — fold the resolved LLM provider into the cache key. Stage-2
     # polish produces provider-specific prose; without this bit, a

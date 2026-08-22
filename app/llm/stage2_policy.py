@@ -274,3 +274,26 @@ __all__ += [
     "check_primary_base_url",
     "is_primary_base_url_allowed",
 ]
+
+
+def stage2_fallback_model() -> str:
+    """Model the Bedrock leg should serve, or ``""`` for the tier default.
+
+    R360.10 — the two Stage-2 fallback call sites pass no ``model_override``, so
+    leg 2 serves ``BEDROCK_RAG_MODEL`` / ``BEDROCK_COMPLEX_MODEL``: **Qwen 3 32B
+    / 235B**. That is a deliberate choice — commit ``a65fa87`` wired the Qwen
+    tier on purpose — but it is worth stating plainly, because the fallback for
+    a *Claude Opus* primary is then a different model family, and an answer
+    served from leg 2 is not the answer any A/B measured.
+
+    Default ``""`` keeps exactly that behaviour. Set
+    ``REGENOLD_STAGE2_BEDROCK_MODEL=eu.anthropic.claude-opus-4-8`` (or
+    ``claude-opus-4-6`` — ``CLAUDE.md`` R328.2 records the newer pins returning
+    ``AccessDenied`` on the current key vintage) to keep the fallback in the
+    same family as the primary. That is a quality decision for the operator and
+    it changes answer content, so it is a lever here, not a new default.
+    """
+    return os.getenv("REGENOLD_STAGE2_BEDROCK_MODEL", "").strip()
+
+
+__all__ += ["stage2_fallback_model"]

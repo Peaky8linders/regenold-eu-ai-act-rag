@@ -928,6 +928,7 @@ def _openai_wrapper_complete_for_graph_rag(
                 temperature=temperature,
                 complex_question=complex_question,
                 stage_name=stage_name,
+                model_override=_s2pol.stage2_fallback_model() or None,
             )
             _s2pol.record_result(_s2pol.STAGE2_FALLBACK, ok=bool(bedrock_text))
             if not bedrock_text:
@@ -8929,6 +8930,7 @@ def _claude_max_enhance_answer(
                         temperature=0.0,
                         complex_question=complex_q,
                         stage_name="Stage 2 (Polishing Fallback)",
+                        model_override=_s2pol.stage2_fallback_model() or None,
                     )
             except Exception as e:
                 logger.warning("graph_rag.bedrock_fallback_error: %s", str(e))
