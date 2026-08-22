@@ -549,12 +549,21 @@ def _maybe_auto_seed_neo4j() -> None:
             # it is reported as ``auto_seed_check action=error`` exactly as
             # before — a hung host and a broken query are different facts and
             # must not be logged as the same one.
+            # R360.6 — this used to set ``meta_rows = []`` and carry on. An
+            # unknown seed version is NOT an empty graph, but the code below
+            # reads it as one (``if not current_seed: reason = "graph_empty"``)
+            # and seeds. So a slow Aura response at boot — the single most
+            # likely transient there is — triggered a WRITE over a live,
+            # correctly-seeded production graph. AGENTS.md makes protecting
+            # those nodes a hard rule; "I could not read the metadata" must
+            # mean skip, not seed.
             logger.warning(
-                "regenold.startup auto_seed_check meta_probe_timeout "
-                "budget_s=%s — proceeding as if the seed were unknown",
+                "regenold.startup auto_seed_check action=skip-unverified "
+                "reason=meta_probe_timeout budget_s=%s — refusing to seed a "
+                "graph whose seed version could not be read",
                 _meta_budget_s,
             )
-            meta_rows = []
+            return
         finally:
             _mpool.shutdown(wait=False)
         current_seed = (meta_rows[0].get("v") if meta_rows else "") or ""
@@ -586,6 +595,34 @@ def _maybe_auto_seed_neo4j() -> None:
             _AUTO_SEED_STARTED = True
 
         if not current_seed:
+            # R360.6 — "no KBMetadata row" is not proof of an empty graph. A
+            # partially-seeded or hand-loaded Aura instance has nodes and no
+            # metadata, and seeding it duplicates or overwrites real data. Ask
+            # the graph how many nodes it holds and refuse if the answer is not
+            # zero; refuse too if the count itself cannot be read, since an
+            # unreadable count is the same class of ignorance as the timeout
+            # above. Only a graph verified EMPTY is safe to seed unprompted.
+            try:
+                _count_rows = client.execute_read(
+                    "MATCH (n) RETURN count(n) AS c"
+                )
+                _node_count = int((_count_rows or [{}])[0].get("c") or 0)
+            except Exception as _cexc:  # noqa: BLE001
+                logger.warning(
+                    "regenold.startup auto_seed_check action=skip-unverified "
+                    "reason=missing-node-count err=%s",
+                    _cexc,
+                )
+                return
+            if _node_count > 0:
+                logger.warning(
+                    "regenold.startup auto_seed_check action=skip-nonempty-drift "
+                    "node_count=%d — the graph has no KBMetadata row but is NOT "
+                    "empty. Refusing to seed over it. Seed deliberately with "
+                    "scripts/seed_neo4j_kb.py if this is intended.",
+                    _node_count,
+                )
+                return
             reason = "graph_empty"
         else:
             reason = (
