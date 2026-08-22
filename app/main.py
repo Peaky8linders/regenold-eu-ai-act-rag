@@ -1000,6 +1000,35 @@ def healthz_email(
     return payload
 
 
+def _degraded_to_bedrock(base: dict[str, object], detail: str) -> dict[str, object]:
+    """R360.9 — a down tunnel is not a down service while Bedrock is armed.
+
+    ``llm_ok`` previously went ``false`` the moment the wrapper probe failed,
+    with the raw provider error as the whole story. But Stage-2's contract is
+    tunnel THEN Bedrock, so with credentials wired the deploy is still
+    answering from an LLM — just on leg 2. Reporting that as a flat outage
+    sends an operator chasing the tunnel while requests are being served, and
+    (worse) an uptime monitor alerting on ``llm_ok`` cannot tell the difference
+    between "degraded but serving" and "serving deterministic fallback only".
+    """
+    try:
+        from app.llm.bedrock_client import is_bedrock_provider_enabled
+        armed = is_bedrock_provider_enabled()
+    except Exception:  # noqa: BLE001 — a probe must never 500
+        armed = False
+    if armed:
+        base["llm_ok"] = True
+        base["provider"] = f"{base.get('provider', 'openai_wrapper')} (bedrock fallback)"
+        base["detail"] = f"primary offline ({detail[:120]}); bedrock fallback active"
+    else:
+        base["llm_ok"] = False
+        base["detail"] = (
+            f"{detail[:150]} — and NO bedrock credentials are wired, so Stage-2 "
+            "is serving deterministic fallback answers"
+        )
+    return base
+
+
 @app.get("/healthz/llm")
 def healthz_llm() -> dict[str, object]:
     """Live LLM-path probe — verifies the configured provider can actually answer.
@@ -1127,12 +1156,10 @@ def healthz_llm() -> dict[str, object]:
                 )
             )
         except Exception as exc:  # noqa: BLE001 — health probe must never raise
-            base["detail"] = f"probe_exception: {exc!s}"[:200]
-            return base
+            return _degraded_to_bedrock(base, f"probe_exception: {exc!s}")
         if response.error:
-            base["detail"] = response.error[:200]
             base["elapsed_ms"] = response.elapsed_ms
-            return base
+            return _degraded_to_bedrock(base, response.error)
         base["llm_ok"] = bool((response.text or "").strip())
         base["detail"] = "ok" if base["llm_ok"] else "empty_response"
         base["elapsed_ms"] = response.elapsed_ms

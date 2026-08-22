@@ -642,7 +642,16 @@ def _resolve_caller(provider: str, timeout_s: float = 30.0) -> Callable[[str], d
         return lambda p: _call_judge_groq(p, timeout_s=timeout_s)
     if provider == "gemini":
         return lambda p: _call_judge_gemini(p, timeout_s=timeout_s)
-    if provider == "bedrock" or os.getenv("P2P_GRAPH_RAG_PROVIDER", "").strip().lower() == "bedrock":
+    # R360.8 — the env clause used to apply for ANY ``provider`` value, so
+    # ``P2P_GRAPH_RAG_PROVIDER=bedrock`` silently overrode an explicit
+    # ``--provider wrapper`` on the command line. That env var configures the
+    # APP's Stage-2 transport; it has no business redirecting the JUDGE, and an
+    # operator who typed a provider expects to get it. It now only fills in
+    # when no provider was chosen.
+    if provider == "bedrock" or (
+        provider in ("", "auto", None)
+        and os.getenv("P2P_GRAPH_RAG_PROVIDER", "").strip().lower() == "bedrock"
+    ):
         return lambda p: _call_judge_bedrock(p, timeout_s=timeout_s)
     # "wrapper" or anything else falls back to the wrapper (historical
     # default) — runner_v2 / bench-runner sidecars produced pre-R66-C
@@ -993,7 +1002,9 @@ def main(argv: list[str] | None = None) -> int:
     # local openai_wrapper bridge. Requires ``P2P_GRAPH_RAG_API_KEY``
     # or ``ANTHROPIC_API_KEY`` to be set.
     parser.add_argument(
-        "--provider", choices=("wrapper", "anthropic", "groq"), default="wrapper",
+        "--provider",
+        choices=("wrapper", "anthropic", "groq", "gemini", "bedrock"),
+        default="wrapper",
         help=(
             "Provider for the judge LLM. "
             "'wrapper' (default) routes through the local openai_wrapper bridge. "

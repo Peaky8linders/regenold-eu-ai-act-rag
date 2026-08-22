@@ -880,3 +880,66 @@ class TestDestinationIsPinnedNotJustTheProviderId:
         assert out == "Bedrock answered." and dialled == ["bedrock"]
         refusals = pol.transport_stats()["refused_by_provider"]
         assert any(k.startswith("base_url:") for k in refusals), refusals
+
+
+class TestHealthzDegradesRatherThanLies:
+    """R360.9 — a down tunnel is not a down service while Bedrock is armed.
+
+    ``llm_ok`` used to go false the moment the wrapper probe failed. But
+    Stage-2's contract is tunnel THEN Bedrock, so with credentials wired the
+    deploy is still answering from an LLM. Reporting a flat outage sends an
+    operator chasing the tunnel while requests are being served, and an uptime
+    monitor alerting on ``llm_ok`` cannot distinguish "degraded but serving"
+    from "serving deterministic fallback only" — which is the distinction that
+    actually matters.
+    """
+
+    @staticmethod
+    def _probe(monkeypatch, *, bedrock: bool) -> dict:
+        from fastapi.testclient import TestClient
+
+        from app.llm.openai_wrapper_provider import OpenAIWrapperResponse
+
+        monkeypatch.setenv("REGENOLD_SKIP_STARTUP_LOG", "1")
+        monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "openai_wrapper")
+        if bedrock:
+            monkeypatch.setenv("AWS_ACCESS_KEY_ID", "fake")
+            monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "fake")
+        else:
+            for k in (
+                "AWS_BEARER_TOKEN_BEDROCK", "AWS_BEDROCK_API_KEY",
+                "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
+            ):
+                monkeypatch.delenv(k, raising=False)
+
+        class _Dead:
+            base_url = "https://wrapper.antifragile-ai.net/v1"
+
+            def complete(self, req):
+                return OpenAIWrapperResponse(
+                    text="", model="m", error="api_status_500 no response",
+                    finish_reason=None, completion_tokens=0, elapsed_ms=1,
+                )
+
+        from app.main import app
+
+        with patch(
+            "app.llm.openai_wrapper_provider.get_openai_wrapper_provider",
+            return_value=_Dead(),
+        ):
+            return TestClient(app).get("/healthz/llm").json()
+
+    def test_tunnel_down_bedrock_armed_is_degraded_not_down(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        body = self._probe(monkeypatch, bedrock=True)
+        assert body["llm_ok"] is True
+        assert "bedrock fallback" in str(body["provider"])
+        assert "primary offline" in body["detail"]
+
+    def test_tunnel_down_and_no_bedrock_is_a_real_outage(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        body = self._probe(monkeypatch, bedrock=False)
+        assert body["llm_ok"] is False
+        assert "deterministic fallback" in body["detail"]

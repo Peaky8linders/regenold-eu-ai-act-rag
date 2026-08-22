@@ -37,6 +37,26 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     return TestClient(app)
 
 
+
+@pytest.fixture(autouse=True)
+def _no_bedrock_leg(monkeypatch):
+    """R360.9 — these tests predate the Bedrock fallback and assert that a down
+    wrapper means ``llm_ok: false``.
+
+    That is now only true when leg 2 is also unavailable: with credentials
+    wired, a down tunnel is a DEGRADED service, not an outage, and the endpoint
+    says so. Isolate the pure "no LLM at all" case these assertions describe;
+    ``TestHealthzDegradesToBedrock`` covers the other half.
+    """
+    for k in (
+        "AWS_BEARER_TOKEN_BEDROCK",
+        "AWS_BEDROCK_API_KEY",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+    ):
+        monkeypatch.delenv(k, raising=False)
+
+
 class TestHealthzLLMDeterministicPath:
     def test_cli_provider_reports_deterministic_ok(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
