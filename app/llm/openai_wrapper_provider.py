@@ -661,8 +661,14 @@ class _OpenAIWrapperProvider:
             text=text,
             thinking=thinking,
             model=payload.get("model", req.model),
-            prompt_tokens=int(usage.get("prompt_tokens", 0)),
-            completion_tokens=int(usage.get("completion_tokens", 0)),
+            # R360.12 — ``or 0``, not just a default. ``.get(k, 0)`` only
+            # covers a MISSING key; a provider that sends ``"prompt_tokens":
+            # null`` (several OpenAI-compatible facades do on a cache hit)
+            # returns None, and ``int(None)`` raises TypeError. This sits
+            # OUTSIDE the guarding try, so the exception killed the entire
+            # Stage-2 call over a telemetry field nothing downstream reads.
+            prompt_tokens=int(usage.get("prompt_tokens") or 0),
+            completion_tokens=int(usage.get("completion_tokens") or 0),
             elapsed_ms=int((time.perf_counter() - start) * 1000),
             finish_reason=finish_reason,
         )

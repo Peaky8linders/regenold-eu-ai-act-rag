@@ -207,6 +207,56 @@ class GraphClient:
         logger.warning("Neo4j execute_read exhausted retries: %s", last_exc)
         return []
 
+    def execute_read_strict(self, query: str, parameters: dict | None = None) -> list[dict]:
+        """Like :meth:`execute_read`, but RAISES instead of returning ``[]``.
+
+        R360.13 — ``kg_context._rows`` has probed for this method since R326
+        (``getattr(client, "execute_read_strict", None)``) and never found it,
+        because the only implementations in the tree were test doubles. So the
+        tests exercised a raising branch that production never took, while
+        every real graph read collapsed failure into an empty list — a failed
+        query and a genuinely empty result reported as the same fact.
+
+        That matters precisely because the graph is additive (AGENTS.md
+        invariant #3): a silent ``[]`` removes grounding context from the
+        Stage-2 prompt with nothing in the trace to say it happened, so the
+        answer degrades and the logs look healthy.
+
+        Retries the same transient class as :meth:`execute_read` with the same
+        backoff; on exhaustion, raises.
+        """
+        if self._driver is None:
+            raise RuntimeError("Neo4j strict read attempted with no driver")
+
+        unavailable = self._service_unavailable_class()
+        attempts = max(1, self._settings.max_retries + 1)
+        last_exc: BaseException | None = None
+
+        for attempt in range(attempts):
+            try:
+                return self._run_read(query, parameters)
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                if (
+                    unavailable is not None
+                    and isinstance(exc, unavailable)
+                    and attempt < attempts - 1
+                ):
+                    backoff = self._settings.retry_backoff_seconds * (attempt + 1)
+                    logger.info(
+                        "Neo4j strict read transient failure (attempt %d/%d), "
+                        "backing off %.2fs: %s",
+                        attempt + 1, attempts, backoff, exc,
+                    )
+                    time.sleep(backoff)
+                    continue
+                logger.warning("Neo4j execute_read_strict failed: %s", exc)
+                raise
+
+        raise RuntimeError(
+            f"Neo4j strict read exhausted retries: {last_exc}"
+        )
+
     def execute_write(self, query: str, parameters: dict | None = None) -> list[dict]:
         """Execute a write Cypher query within a managed transaction."""
         if self._driver is None:
