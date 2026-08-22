@@ -377,3 +377,98 @@ class TestHealthzSurfacesTheContract:
         assert transport["strict"] is True
         assert transport["chain"] == ["openai_wrapper", "bedrock"]
         assert transport["stats"]["refused_by_provider"]["groq"] == 1
+
+
+class TestWireLevelRouting:
+    """End-to-end through the real route — the unit tests prove the branches,
+    this proves the assembled request."""
+
+    def _seal_and_ask(self, monkeypatch: pytest.MonkeyPatch, wrapper):
+        from fastapi.testclient import TestClient
+
+        _seal_off_contract_providers(monkeypatch)
+        monkeypatch.setenv("REGENOLD_SKIP_STARTUP_LOG", "1")
+        monkeypatch.setenv("REGENOLD_FUSION_STAGE2", "0")
+        monkeypatch.delenv("P2P_GRAPH_RAG_PROVIDER", raising=False)
+
+        from app.main import app
+
+        with (
+            patch(
+                "app.llm.openai_wrapper_provider.get_openai_wrapper_provider",
+                return_value=wrapper,
+            ),
+            patch(
+                "app.llm.openai_wrapper_provider.is_openai_wrapper_enabled",
+                return_value=True,
+            ),
+        ):
+            return TestClient(app).post(
+                "/api/v1/regenold/eu-ai-act/ask",
+                json={
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": "Does an emotion-recognition system in a workplace fall under the AI Act?",
+                        }
+                    ]
+                },
+            )
+
+    def test_a_real_ask_only_ever_dials_the_tunnel(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[str] = []
+
+        class _Wrapper:
+            def complete(self, req):
+                seen.append(req.model)
+                return OpenAIWrapperResponse(
+                    text=(
+                        "Emotion recognition in the workplace is prohibited under "
+                        "Article 5. Deployers must also meet Article 26."
+                    ),
+                    model="claude-opus-4-8", finish_reason="stop",
+                    completion_tokens=40, elapsed_ms=9,
+                )
+
+        resp = self._seal_and_ask(monkeypatch, _Wrapper())
+
+        assert resp.status_code == 200
+        assert seen, "Stage-2 never dialled the tunnel at all"
+        stats = pol.transport_stats()
+        assert stats["primary_attempts"] >= 1
+        # The seal turns any off-contract dial into an AssertionError, and the
+        # engine swallows Stage-2 exceptions — so a silent leak would show up
+        # here as a refusal count or a failed primary, never as a raised test.
+        assert stats["refused_by_provider"] == {} or set(
+            stats["refused_by_provider"]
+        ) <= {"groq", "gemini", "mistral"}, "an unexpected provider was attempted"
+
+    def test_a_real_ask_survives_a_dead_tunnel_without_leaking(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Tunnel down, Bedrock unusable → deterministic answer, no third leg.
+
+        The response must still be a well-formed in-scope answer: degrading to
+        the deterministic Stage-1 draft is the designed behaviour, and it is
+        strictly preferable to a fluent answer from an unmeasured model.
+        """
+        class _DeadWrapper:
+            def complete(self, req):
+                return OpenAIWrapperResponse(
+                    text="", model="m", error="api_status_500",
+                    finish_reason=None, completion_tokens=0, elapsed_ms=1,
+                )
+
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "")
+        monkeypatch.delenv("AWS_BEARER_TOKEN_BEDROCK", raising=False)
+        monkeypatch.delenv("AWS_BEDROCK_API_KEY", raising=False)
+
+        resp = self._seal_and_ask(monkeypatch, _DeadWrapper())
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body.get("answer"), "degraded to an empty answer"
+        assert isinstance(body.get("references"), list)
