@@ -896,6 +896,68 @@ def _openai_wrapper_complete_for_graph_rag(
     # PROVABLE at runtime, not merely readable in the diff (see
     # ``app/llm/stage2_policy``).
     from app.llm import stage2_policy as _s2pol
+
+    def _try_bedrock_fallback(reason: str) -> str | None:
+        """Leg 2 of the contract. Returns the answer, or None to keep failing.
+
+        R360.1 — this used to live inline in the ``response.error`` branch
+        only, which made the Bedrock fallback **dead on the most common tunnel
+        failure**. The Claude-Max wrapper reports ``finish_reason="stop"`` even
+        on a stream cut mid-word (R102), so a truncated answer is not an
+        ``error`` — it is caught by the structural guards further down, which
+        ``raise`` straight past every fallback block in
+        ``_claude_max_enhance_answer``. Measured: a mid-word truncation
+        produced ZERO Bedrock calls and degraded to the deterministic draft,
+        while the operator believed a fallback was in place. Hoisting the leg
+        here lets all three failure modes — transport error, ``length``
+        truncation, structural truncation — actually reach it.
+        """
+        try:
+            from app.llm.bedrock_client import is_bedrock_provider_enabled
+            if not is_bedrock_provider_enabled():
+                return None
+            logger.warning(
+                "graph_rag.bedrock_auto_fallback — Cloudflare wrapper failed "
+                "(%s). Attempting AWS Bedrock synthesis.", reason,
+            )
+            _s2pol.record_attempt(_s2pol.STAGE2_FALLBACK)
+            bedrock_text = _bedrock_complete_for_graph_rag(
+                system=system,
+                user=user,
+                max_tokens=safe_max_tokens,
+                temperature=temperature,
+                complex_question=complex_question,
+                stage_name=stage_name,
+            )
+            _s2pol.record_result(_s2pol.STAGE2_FALLBACK, ok=bool(bedrock_text))
+            if not bedrock_text:
+                return None
+            # A truncated Bedrock answer is no better than a truncated tunnel
+            # answer: shipping it would set ``stage2_landed=True`` and let the
+            # R72 reconcile pass prune citations the cut prose never described.
+            if _looks_structurally_truncated(bedrock_text):
+                logger.warning(
+                    "graph_rag.bedrock_auto_fallback_truncated — discarding a "
+                    "mid-clause Bedrock answer.",
+                )
+                return None
+            logger.info("graph_rag.bedrock_auto_fallback_success")
+            try:
+                from app.integrations.regenold.reasoning_trace import record_note
+                record_note("bedrock_auto_fallback_success")
+            except Exception:
+                pass
+            from app.security.prompt_guard import validate_llm_output
+            return validate_llm_output(bedrock_text.strip())
+        except Exception as e:  # noqa: BLE001 — leg 2 must never raise
+            logger.warning("graph_rag.bedrock_auto_fallback_exception: %s", e)
+            try:
+                from app.integrations.regenold.reasoning_trace import record_note
+                record_note(f"bedrock_fallback_exception: {str(e)[:100]}")
+            except Exception:
+                pass
+            return None
+
     _s2pol.record_attempt(_s2pol.STAGE2_PRIMARY)
     response = get_openai_wrapper_provider().complete(
         OpenAIWrapperRequest(
@@ -957,45 +1019,9 @@ def _openai_wrapper_complete_for_graph_rag(
                 response.error[:200],
             )
         _s2pol.record_result(_s2pol.STAGE2_PRIMARY, ok=False)
-        # ── AWS Bedrock (Qwen 3 235B / 32B) automatic fallback ──────────────
-        # When the Claude Max wrapper fails for ANY reason (rate limit,
-        # quota exhaustion, 500/401/403 outage, network error, CLI error),
-        # attempt fallback to AWS Bedrock (Qwen 3 235B for complex, Qwen 3 32B for simple)
-        # before raising RuntimeError or falling back to deterministic.
-        try:
-            from app.llm.bedrock_client import is_bedrock_provider_enabled
-            if is_bedrock_provider_enabled():
-                logger.warning(
-                    "graph_rag.bedrock_auto_fallback — Cloudflare wrapper failed (%s). "
-                    "Attempting AWS Bedrock (Qwen 3 235B/32B) synthesis.",
-                    response.error[:80],
-                )
-                _s2pol.record_attempt(_s2pol.STAGE2_FALLBACK)
-                bedrock_text = _bedrock_complete_for_graph_rag(
-                    system=system,
-                    user=user,
-                    max_tokens=safe_max_tokens,
-                    temperature=temperature,
-                    complex_question=complex_question,
-                    stage_name=stage_name,
-                )
-                _s2pol.record_result(_s2pol.STAGE2_FALLBACK, ok=bool(bedrock_text))
-                if bedrock_text:
-                    logger.info("graph_rag.bedrock_auto_fallback_success")
-                    try:
-                        from app.integrations.regenold.reasoning_trace import record_note
-                        record_note("bedrock_auto_fallback_success")
-                    except Exception:
-                        pass
-                    from app.security.prompt_guard import validate_llm_output
-                    return validate_llm_output(bedrock_text.strip())
-        except Exception as e:
-            logger.warning("graph_rag.bedrock_auto_fallback_exception: %s", e)
-            try:
-                from app.integrations.regenold.reasoning_trace import record_note
-                record_note(f"bedrock_fallback_exception: {str(e)[:100]}")
-            except Exception:
-                pass
+        bedrock_answer = _try_bedrock_fallback(response.error[:80])
+        if bedrock_answer is not None:
+            return bedrock_answer
 
         # ── Groq GPT-OSS 120B secondary fallback ─────────────────────────────
         # When the Claude Max wrapper fails for ANY reason (rate limit,
@@ -1112,6 +1138,9 @@ def _openai_wrapper_complete_for_graph_rag(
             response.completion_tokens,
         )
         _s2pol.record_result(_s2pol.STAGE2_PRIMARY, ok=False)
+        bedrock_answer = _try_bedrock_fallback(f"finish_reason=length model={response.model}")
+        if bedrock_answer is not None:
+            return bedrock_answer
         raise RuntimeError(f"OpenAI wrapper truncated: finish_reason=length (model={response.model})")
     # R102 — STRUCTURAL truncation guard. The Claude-Max
     # ``claude-code-openai-wrapper`` (CLI subprocess behind cloudflared)
@@ -1148,6 +1177,9 @@ def _openai_wrapper_complete_for_graph_rag(
             response.completion_tokens,
         )
         _s2pol.record_result(_s2pol.STAGE2_PRIMARY, ok=False)
+        bedrock_answer = _try_bedrock_fallback(f"structural truncation model={response.model}")
+        if bedrock_answer is not None:
+            return bedrock_answer
         raise RuntimeError(f"OpenAI wrapper structurally truncated (model={response.model})")
         
     if getattr(response, "thinking", None):

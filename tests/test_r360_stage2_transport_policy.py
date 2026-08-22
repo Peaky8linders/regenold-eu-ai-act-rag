@@ -472,3 +472,132 @@ class TestWireLevelRouting:
         body = resp.json()
         assert body.get("answer"), "degraded to an empty answer"
         assert isinstance(body.get("references"), list)
+
+
+class TestFallbackIsReachableFromEveryFailureMode:
+    """R360.1 — the fallback that only fires on the failure that never happens.
+
+    The Claude Max wrapper reports ``finish_reason="stop"`` even on a stream cut
+    mid-word (R102), so a truncated Stage-2 answer is not a transport *error*.
+    Before this fix the Bedrock leg lived inside the ``response.error`` branch
+    alone, and the structural guard ``raise``d straight past every fallback
+    block in ``_claude_max_enhance_answer``. Measured on the real code path: a
+    mid-word truncation produced **zero** Bedrock calls and silently degraded to
+    the deterministic draft, while the operator believed a fallback was armed.
+    """
+
+    @staticmethod
+    def _run(monkeypatch, response):
+        from app.engines.graph_rag import GraphContext
+
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "fake")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "fake")
+        monkeypatch.setenv("REGENOLD_FUSION_STAGE2", "0")
+        monkeypatch.delenv("P2P_GRAPH_RAG_PROVIDER", raising=False)
+        calls: list[str] = []
+
+        class _Wrapper:
+            def complete(self, req):
+                return response
+
+        def _bedrock(**kwargs):
+            calls.append(kwargs.get("stage_name", ""))
+            return "Bedrock completed the answer under Article 50."
+
+        with (
+            patch(
+                "app.llm.openai_wrapper_provider.get_openai_wrapper_provider",
+                return_value=_Wrapper(),
+            ),
+            patch(
+                "app.engines._graph_rag_impl._bedrock_complete_for_graph_rag",
+                side_effect=_bedrock,
+            ),
+        ):
+            out = _claude_max_enhance_answer(
+                question="Is a chatbot high-risk?",
+                kg_answer="deterministic draft",
+                context=GraphContext(),
+            )
+        return out, calls
+
+    def test_structural_truncation_reaches_bedrock(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The regression that motivated R360.1 — note finish_reason='stop'."""
+        out, calls = self._run(
+            monkeypatch,
+            OpenAIWrapperResponse(
+                text="A chatbot is limited-risk under Article 50 and the provider mus",
+                model="claude-opus-4-8", finish_reason="stop",
+                completion_tokens=900, elapsed_ms=50,
+            ),
+        )
+        assert len(calls) == 1, "Bedrock never fired on a mid-word truncation"
+        assert out and "Bedrock completed" in out
+        assert pol.transport_stats()["fallback_ok"] == 1
+
+    def test_length_truncation_reaches_bedrock(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        out, calls = self._run(
+            monkeypatch,
+            OpenAIWrapperResponse(
+                text="partial", model="claude-opus-4-8", finish_reason="length",
+                completion_tokens=900, elapsed_ms=50,
+            ),
+        )
+        assert len(calls) == 1 and out and "Bedrock completed" in out
+
+    def test_transport_error_still_reaches_bedrock(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The one mode that already worked — pinned so the refactor kept it."""
+        out, calls = self._run(
+            monkeypatch,
+            OpenAIWrapperResponse(
+                text="", model="claude-opus-4-8", error="api_status_500",
+                finish_reason=None, completion_tokens=0, elapsed_ms=1,
+            ),
+        )
+        assert len(calls) == 1 and out and "Bedrock completed" in out
+
+    def test_a_truncated_bedrock_answer_is_discarded_too(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Leg 2 is held to leg 1's standard.
+
+        Shipping a mid-clause Bedrock answer would set ``stage2_landed=True``
+        and let the R72 reconcile pass prune citations the cut prose never
+        described — the exact harm the tunnel-side guard exists to prevent.
+        """
+        from app.engines.graph_rag import GraphContext
+
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "fake")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "fake")
+        monkeypatch.setenv("REGENOLD_FUSION_STAGE2", "0")
+
+        class _Wrapper:
+            def complete(self, req):
+                return OpenAIWrapperResponse(
+                    text="", model="m", error="api_status_500",
+                    finish_reason=None, completion_tokens=0, elapsed_ms=1,
+                )
+
+        with (
+            patch(
+                "app.llm.openai_wrapper_provider.get_openai_wrapper_provider",
+                return_value=_Wrapper(),
+            ),
+            patch(
+                "app.engines._graph_rag_impl._bedrock_complete_for_graph_rag",
+                return_value="Bedrock also stopped mid-clause and the provider mus",
+            ),
+        ):
+            out = _claude_max_enhance_answer(
+                question="Is a chatbot high-risk?",
+                kg_answer="deterministic draft",
+                context=GraphContext(),
+            )
+
+        assert out is None, "a mid-clause Bedrock answer must not ship"
