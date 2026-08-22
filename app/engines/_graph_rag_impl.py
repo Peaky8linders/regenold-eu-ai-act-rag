@@ -1236,6 +1236,15 @@ def _stage2_complete(
     """
     try:
         env_provider = os.getenv("P2P_GRAPH_RAG_PROVIDER", "").strip().lower()
+        # R360.4 — honour the ``cli`` contract. Every other Stage-2 entry point
+        # gates on ``_stage2_provider_enabled``, which returns False for
+        # ``=cli``; this auxiliary path never did, so the deterministic bench
+        # still attempted a wrapper connect from the faithfulness verifier and
+        # the truncation repair. Free on a healthy tunnel, a per-row dead-port
+        # timeout in the offline harness, and a violation of the documented
+        # "no LLM call, sub-10 ms" contract either way.
+        if env_provider == "cli":
+            return None
         # R360 — an auxiliary Stage-2 pass (the faithfulness verifier, the
         # truncation repair) is still a Stage-2 request and is held to the same
         # tunnel→Bedrock contract as the answer itself. Strict mode collapses

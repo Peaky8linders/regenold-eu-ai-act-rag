@@ -1169,6 +1169,28 @@ def healthz_llm() -> dict[str, object]:
         base["model"] = settings.graph_rag.model
         return base
 
+    if provider_label == "bedrock":
+        # R360.4 — Bedrock is a real LLM transport (it is Stage-2's fallback
+        # leg), but it fell through to the branch below and was reported as
+        # "deterministic-only path — no LLM call required" with llm_ok=True.
+        # An operator checking whether the fallback is armed got a green light
+        # that meant the opposite of what it said.
+        try:
+            from app.llm.bedrock_client import is_bedrock_provider_enabled
+            armed = is_bedrock_provider_enabled()
+        except Exception as exc:  # noqa: BLE001 — a probe must never 500
+            base["llm_ok"] = False
+            base["detail"] = f"bedrock probe unavailable: {type(exc).__name__}"
+            return base
+        base["llm_ok"] = armed
+        base["detail"] = (
+            "bedrock credentials present" if armed
+            else "bedrock selected but NO credentials are wired "
+                 "(AWS_BEARER_TOKEN_BEDROCK / AWS_BEDROCK_API_KEY / "
+                 "AWS_ACCESS_KEY_ID+AWS_SECRET_ACCESS_KEY)"
+        )
+        return base
+
     # cli / deterministic path
     base["llm_ok"] = True
     base["detail"] = "deterministic-only path — no LLM call required"

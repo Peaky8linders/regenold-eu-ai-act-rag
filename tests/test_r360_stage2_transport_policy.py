@@ -676,3 +676,98 @@ class TestStage2GateDescribesTheRealChain:
             return_value=True,
         ):
             assert _stage2_provider_enabled() is False
+
+
+class TestAuxiliaryPassHonoursTheCliContract:
+    """R360.4 — ``provider=cli`` means no LLM call, anywhere.
+
+    Every other Stage-2 entry point gates on ``_stage2_provider_enabled``,
+    which refuses ``cli``. ``_stage2_complete`` — the faithfulness verifier and
+    the truncation repair — never did, so the deterministic bench still opened
+    a wrapper connect per row. Free on a healthy tunnel; a dead-port timeout
+    per row offline, and a violation of the documented sub-10 ms contract
+    either way.
+    """
+
+    def test_cli_makes_no_call(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from app.engines._graph_rag_impl import _stage2_complete
+
+        monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "cli")
+        dialled: list[str] = []
+
+        with patch(
+            "app.engines._graph_rag_impl._openai_wrapper_complete_for_graph_rag",
+            side_effect=lambda **kw: dialled.append("wrapper") or "text",
+        ):
+            out = _stage2_complete(
+                system="s", user="u", max_tokens=128,
+                stage_name="Stage 2 (Faithfulness)",
+            )
+
+        assert out is None
+        assert dialled == [], "cli must not reach any provider"
+
+    def test_default_provider_still_reaches_the_tunnel(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The guard must be narrow — pin that it did not disable the path."""
+        from app.engines._graph_rag_impl import _stage2_complete
+
+        monkeypatch.delenv("P2P_GRAPH_RAG_PROVIDER", raising=False)
+        dialled: list[str] = []
+
+        def _fake(**kw):
+            dialled.append("wrapper")
+            return "polished"
+
+        with patch(
+            "app.engines._graph_rag_impl._openai_wrapper_complete_for_graph_rag",
+            side_effect=_fake,
+        ):
+            out = _stage2_complete(
+                system="s", user="u", max_tokens=128,
+                stage_name="Stage 2 (Faithfulness)",
+            )
+
+        assert out == "polished" and dialled == ["wrapper"]
+
+
+class TestHealthzTellsTheTruthAboutBedrock:
+    def test_bedrock_without_credentials_is_not_reported_healthy(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """It used to fall through to the deterministic branch and answer
+        ``llm_ok: true, "no LLM call required"`` — a green light meaning the
+        opposite of what an operator checking the fallback would read."""
+        from fastapi.testclient import TestClient
+
+        monkeypatch.setenv("REGENOLD_SKIP_STARTUP_LOG", "1")
+        monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "bedrock")
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "")
+        monkeypatch.delenv("AWS_BEARER_TOKEN_BEDROCK", raising=False)
+        monkeypatch.delenv("AWS_BEDROCK_API_KEY", raising=False)
+
+        from app.main import app
+
+        body = TestClient(app).get("/healthz/llm").json()
+
+        assert body["provider"] == "bedrock"
+        assert body["llm_ok"] is False
+        assert "no credentials" in body["detail"].lower()
+
+    def test_bedrock_with_credentials_reports_armed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from fastapi.testclient import TestClient
+
+        monkeypatch.setenv("REGENOLD_SKIP_STARTUP_LOG", "1")
+        monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "bedrock")
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "fake")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "fake")
+
+        from app.main import app
+
+        body = TestClient(app).get("/healthz/llm").json()
+
+        assert body["provider"] == "bedrock" and body["llm_ok"] is True
