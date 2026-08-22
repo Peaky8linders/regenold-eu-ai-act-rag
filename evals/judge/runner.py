@@ -172,6 +172,36 @@ _NON_RETRYABLE_ERROR_SUBSTRINGS: tuple[str, ...] = (
 )
 
 
+#: Ceiling for a judge reply. Below this a verdict listing several WRONG refs
+#: gets cut mid-JSON, ``_parse_judge_json`` returns ``unbalanced_json``, and the
+#: aggregator counts the axis 'unknown' — a silently thinned sample rather than
+#: a visible failure. 1600 matches the Bedrock judge path, which already read
+#: ``REGENOLD_BEDROCK_JUDGE_MAX_TOKENS`` with that default while the wrapper,
+#: Anthropic, Groq and Gemini paths were pinned at 400/400/800/1000.
+_JUDGE_MAX_TOKENS_DEFAULT = 1600
+
+
+def judge_max_tokens(default: int = _JUDGE_MAX_TOKENS_DEFAULT) -> int:
+    """Resolved judge reply ceiling — ``REGENOLD_JUDGE_MAX_TOKENS``, clamped.
+
+    Raising a ceiling cannot change a reply that was not hitting it: max_tokens
+    is a cap, not a target. So this can only remove truncation, never alter a
+    verdict the judge already finished writing.
+
+    ⚠ On the Claude Max tunnel it is close to inert either way — R102 records
+    the wrapper ignoring ``max_tokens`` outright (``max_tokens=24`` returned
+    1742 completion tokens). It is load-bearing on the Anthropic, Groq, Gemini
+    and Bedrock paths, which honour it.
+    """
+    raw = os.getenv("REGENOLD_JUDGE_MAX_TOKENS", "").strip()
+    if not raw:
+        return default
+    try:
+        return max(200, min(int(raw), 8000))
+    except ValueError:
+        return default
+
+
 def is_retryable_judge_error(error_message: str) -> bool:
     """Classify a ``judge_error`` string as retryable or not.
 
@@ -223,7 +253,7 @@ def _call_judge_sonnet(prompt: str, timeout_s: float = 30.0) -> dict[str, Any]:
         system=_JUDGE_SYSTEM,
         user=prompt,
         model=_JUDGE_MODEL,
-        max_tokens=400,
+        max_tokens=judge_max_tokens(),
         temperature=0.0,
         timeout_seconds=timeout_s,
     )
@@ -256,7 +286,8 @@ def _call_judge_bedrock(prompt: str, timeout_s: float = 30.0) -> dict[str, Any]:
     model_id = os.getenv("REGENOLD_BEDROCK_JUDGE_MODEL", "").strip()
     if not model_id:
         model_id = resolve_bedrock_model(_JUDGE_MODEL or "claude-sonnet-4-6")
-    max_tokens = int(os.getenv("REGENOLD_BEDROCK_JUDGE_MAX_TOKENS", "1600"))
+    _bedrock_cap = os.getenv("REGENOLD_BEDROCK_JUDGE_MAX_TOKENS", "").strip()
+    max_tokens = int(_bedrock_cap) if _bedrock_cap else judge_max_tokens()
     req = BedrockRequest(
         system=_JUDGE_SYSTEM,
         user=prompt,
@@ -335,7 +366,7 @@ def _call_judge_groq(prompt: str, timeout_s: float = 30.0) -> dict[str, Any]:
         system=_JUDGE_SYSTEM,
         user=prompt,
         model=model,
-        max_tokens=800,
+        max_tokens=judge_max_tokens(),
         temperature=0.0,
         timeout_seconds=timeout_s,
     )
@@ -394,7 +425,7 @@ def _call_judge_gemini(prompt: str, timeout_s: float = 30.0) -> dict[str, Any]:
         system=_JUDGE_SYSTEM,
         user=prompt,
         model=model,
-        max_tokens=1000,
+        max_tokens=judge_max_tokens(),
         temperature=0.0,
         timeout_seconds=timeout_s,
     )
@@ -454,7 +485,7 @@ def _call_judge_anthropic(prompt: str, timeout_s: float = 30.0) -> dict[str, Any
             model=_JUDGE_MODEL,
             system=_JUDGE_SYSTEM,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=400,
+            max_tokens=judge_max_tokens(),
             temperature=0.0,
         )
     except Exception as exc:  # noqa: BLE001 — fail-soft contract

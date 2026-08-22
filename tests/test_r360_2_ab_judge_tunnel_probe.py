@@ -200,3 +200,43 @@ class TestJudgeRetryCoversTheBedrockLeg:
         from evals.judge.runner import is_retryable_judge_error
 
         assert is_retryable_judge_error("judge parse failed after 1500 tokens") is False
+
+
+class TestJudgeReplyCeiling:
+    """R360.5 — a judge verdict cut mid-JSON is a silently thinned sample.
+
+    ``_parse_judge_json`` returns ``unbalanced_json`` on a truncated reply and
+    the aggregator counts that axis 'unknown'. That is honest — it is not
+    scored as a zero — but it shrinks n without shrinking the confidence the
+    scorecard projects. The wrapper, Anthropic, Groq and Gemini paths were
+    pinned at 400/400/800/1000 tokens while Bedrock already ran at 1600.
+    """
+
+    def test_default_matches_the_bedrock_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from evals.judge.runner import judge_max_tokens
+
+        monkeypatch.delenv("REGENOLD_JUDGE_MAX_TOKENS", raising=False)
+        assert judge_max_tokens() == 1600
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [("2400", 2400), ("10", 200), ("999999", 8000), ("not-a-number", 1600), ("", 1600)],
+    )
+    def test_env_override_is_clamped_and_fail_soft(
+        self, monkeypatch: pytest.MonkeyPatch, raw: str, expected: int
+    ) -> None:
+        from evals.judge.runner import judge_max_tokens
+
+        monkeypatch.setenv("REGENOLD_JUDGE_MAX_TOKENS", raw)
+        assert judge_max_tokens() == expected
+
+    def test_no_hardcoded_ceilings_remain_in_the_judge_calls(self) -> None:
+        """Pins the change itself: a future edit that re-hardcodes a cap on one
+        provider would silently reintroduce truncation on that path only."""
+        import inspect
+
+        from evals.judge import runner
+
+        src = inspect.getsource(runner)
+        for stale in ("max_tokens=400,", "max_tokens=800,", "max_tokens=1000,"):
+            assert stale not in src, f"hardcoded judge ceiling still present: {stale}"
