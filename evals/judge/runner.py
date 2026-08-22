@@ -126,6 +126,19 @@ def set_judge_model(model: str) -> None:
 # prompt mismatch — retrying would burn token budget for no recovery.
 _RETRYABLE_ERROR_SUBSTRINGS: tuple[str, ...] = (
     "wrapper_returned_none",          # provider returned None — usually transient
+    # R360.3 — the judge can now run on Bedrock (``--judge-provider bedrock``),
+    # which is the point: judging over the tunnel competes with Stage-2 for the
+    # single Claude Max wrapper. Its transient shapes need the same one-shot
+    # recovery, or a throttle window turns into ``judge_error`` rows that
+    # silently thin the scorecard instead of failing loudly.
+    "bedrock_returned_none",
+    "throttled",                       # api_throttled_429 — the window passes
+    "_429",
+    "rate limit",                      # spaced spelling; "rate_limit" is below
+    "overloaded",                      # Anthropic 529
+    "529",
+    "internalservererror",
+    "api_status_408",
     "timeout",                         # any "timeout" mention (call_failed, network_error)
     "timed out",
     "connect",                         # "connection refused", "connection reset", etc.

@@ -145,3 +145,58 @@ class TestBedrockJudgeIsSelectable:
         caller = _resolve_caller("bedrock")
         assert caller is not None
         assert "bedrock" in getattr(caller, "__qualname__", "").lower() or callable(caller)
+
+
+class TestJudgeRetryCoversTheBedrockLeg:
+    """R360.3 — the judge can now run on Bedrock, so its transient shapes need
+    the same one-shot recovery the wrapper's already had.
+
+    A throttle window that is not classified retryable becomes a ``judge_error``
+    row, and ``judge_error`` rows silently thin the scorecard rather than
+    failing loudly — the run still prints a result, computed over fewer rows.
+    """
+
+    @pytest.mark.parametrize(
+        "err",
+        [
+            "bedrock_returned_none",
+            "api_throttled_429: ThrottlingException",
+            "api_status_429 rate limit exceeded",
+            "overloaded_error",
+            "api_status_529",
+            "InternalServerError from the provider",
+            "api_status_408",
+        ],
+    )
+    def test_transient_bedrock_shapes_are_retryable(self, err: str) -> None:
+        from evals.judge.runner import is_retryable_judge_error
+
+        assert is_retryable_judge_error(err) is True, err
+
+    @pytest.mark.parametrize(
+        "err",
+        [
+            "wrapper_not_configured",
+            "no_json",
+            "wrapper_unavailable",
+        ],
+    )
+    def test_config_and_shape_failures_stay_non_retryable(self, err: str) -> None:
+        """Retrying a config bug burns judge budget for no benefit."""
+        from evals.judge.runner import is_retryable_judge_error
+
+        assert is_retryable_judge_error(err) is False, err
+
+    def test_bare_numeric_substrings_were_deliberately_not_ported(self) -> None:
+        """Upstream also lists bare "500"/"503"/"504"/"408"/"429".
+
+        Those match anywhere in the error string, so an elapsed_ms of 1504 or a
+        token count of 1500 would classify a deterministic failure as transient
+        and buy a pointless second judge call on every such row. The prefixed
+        forms (``api_status_5``, ``api_status_429``, ``_429``) already cover the
+        real shapes, so the bare numbers are omitted on purpose — this test
+        exists so a future sync does not "restore" them without reading why.
+        """
+        from evals.judge.runner import is_retryable_judge_error
+
+        assert is_retryable_judge_error("judge parse failed after 1500 tokens") is False
