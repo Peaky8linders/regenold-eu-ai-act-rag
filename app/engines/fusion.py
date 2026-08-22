@@ -243,9 +243,33 @@ def _timeout_seconds() -> float:
         return 60.0
 
 
+#: fusion transport key -> Stage-2 provider id, for the R360 policy check.
+_TRANSPORT_PROVIDER_IDS = {
+    "wrapper": "openai_wrapper",
+    "groq": "groq",
+    "mistral": "mistral",
+    "gemini": "gemini",
+}
+
+
 def _transport_available(transport: str) -> bool:
-    """True iff the pooled provider for ``transport`` has live transport."""
+    """True iff the pooled provider for ``transport`` has live transport.
+
+    R360 — the fusion panel runs *inside* Stage-2 (``fusion_complete`` is
+    called from ``_claude_max_enhance_answer``), and its default roster is
+    ``("sonnet", "groq", "mistral")``. So switching ``REGENOLD_FUSION_STAGE2``
+    on used to fan a Stage-2 question out to Groq and Mistral. Gating here —
+    at the roster filter rather than at the call — means an off-contract member
+    is never even assembled into the panel, so there is no call site left to
+    miss.
+    """
     from app.llm import openai_wrapper_provider as _p  # noqa: PLC0415
+    from app.llm import stage2_policy as _s2pol  # noqa: PLC0415
+
+    provider_id = _TRANSPORT_PROVIDER_IDS.get(transport, transport)
+    if not _s2pol.is_stage2_provider_allowed(provider_id):
+        _s2pol.refuse(provider_id, where="fusion._transport_available")
+        return False
 
     if transport == "wrapper":
         return _p.is_openai_wrapper_enabled()

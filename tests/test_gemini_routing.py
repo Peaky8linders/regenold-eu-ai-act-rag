@@ -78,6 +78,14 @@ def test_llm_generate_answer_gemini(monkeypatch):
 
 
 def test_claude_max_enhance_answer_gemini(monkeypatch):
+    # R360 — ``P2P_GRAPH_RAG_PROVIDER=gemini`` no longer reaches Stage-2 under
+    # the shipping default: the operator contract pins Stage-2 to the
+    # cloudflared tunnel (Claude Max) with a Bedrock fallback, and
+    # ``resolve_stage2_provider`` collapses every other value to the tunnel.
+    # This test covers the legacy Gemini call shape, so it declares that
+    # regime; the strict default is pinned by
+    # ``tests/test_r360_stage2_transport_policy.py``.
+    monkeypatch.setenv("REGENOLD_STAGE2_STRICT_TRANSPORT", "0")
     monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "gemini")
     monkeypatch.setenv("REGENOLD_STAGE2_MODEL_GEMINI", "gemini-test-enhance")
     

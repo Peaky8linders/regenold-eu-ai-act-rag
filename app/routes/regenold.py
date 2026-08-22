@@ -1264,10 +1264,19 @@ def _engine_cache_key(
     # route post-processing that re-runs on every cache hit. The rule is which
     # side of the cache the code sits on, not how important the flag is.
     from app.engines.cohere_rerank import rerank_enabled as _rerank_enabled  # noqa: PLC0415
+    # R360 — ``REGENOLD_STAGE2_STRICT_TRANSPORT`` MUST be here. It decides WHICH
+    # model writes the Stage-2 prose: strict-ON pins the tunnel (Claude Max
+    # Opus) with a Bedrock fallback, strict-OFF re-arms the legacy Groq / Gemini
+    # hatches. Two different models, two different answers, one cache. Omitting
+    # it would let an A/B of the flag replay the other arm's prose and read
+    # +0.0000 on every axis — the R329 unfalsifiable-lever trap.
+    from app.llm.stage2_policy import (  # noqa: PLC0415
+        strict_transport_enabled as _s2_strict,
+    )
     hypa_bits = f"{int(is_adaptive_router_enabled())}{int(is_rrf_retrieval_enabled())}"
     flag_bits = (
         f"{int(_dense_enabled())}{int(_guard_enabled())}{hypa_bits}"
-        f"{int(_rerank_enabled())}"
+        f"{int(_rerank_enabled())}{int(_s2_strict())}"
     )
     # R56 — fold the resolved LLM provider into the cache key. Stage-2
     # polish produces provider-specific prose; without this bit, a

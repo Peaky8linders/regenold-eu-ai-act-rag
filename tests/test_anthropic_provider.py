@@ -61,6 +61,13 @@ def reset_anthropic_env(monkeypatch: pytest.MonkeyPatch):
     ):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("REGENOLD_SKIP_STARTUP_LOG", "1")
+    # R360 — this module covers the Anthropic-SDK-direct call shape, which is
+    # reachable only in the LEGACY transport regime. The shipping default pins
+    # Stage-2 to the cloudflared tunnel (Claude Max) with a Bedrock fallback and
+    # collapses ``P2P_GRAPH_RAG_PROVIDER=anthropic`` to the tunnel, so declare
+    # the regime these assertions were written for instead of weakening them.
+    # ``tests/test_r360_stage2_transport_policy.py`` pins the strict default.
+    monkeypatch.setenv("REGENOLD_STAGE2_STRICT_TRANSPORT", "0")
     # Reset cached settings.graph_rag.api_key to None for a clean slate.
     from app.config import settings
     monkeypatch.setattr(settings.graph_rag, "api_key", None, raising=True)

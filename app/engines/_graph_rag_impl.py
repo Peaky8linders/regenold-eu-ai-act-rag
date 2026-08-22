@@ -892,6 +892,11 @@ def _openai_wrapper_complete_for_graph_rag(
         else system
     )
 
+    # R360 — count the primary dial so the tunnel→Bedrock contract is
+    # PROVABLE at runtime, not merely readable in the diff (see
+    # ``app/llm/stage2_policy``).
+    from app.llm import stage2_policy as _s2pol
+    _s2pol.record_attempt(_s2pol.STAGE2_PRIMARY)
     response = get_openai_wrapper_provider().complete(
         OpenAIWrapperRequest(
             system=wrapper_system,
@@ -951,6 +956,7 @@ def _openai_wrapper_complete_for_graph_rag(
                 "graph_rag.openai_wrapper_call_failed: %s",
                 response.error[:200],
             )
+        _s2pol.record_result(_s2pol.STAGE2_PRIMARY, ok=False)
         # ── AWS Bedrock (Qwen 3 235B / 32B) automatic fallback ──────────────
         # When the Claude Max wrapper fails for ANY reason (rate limit,
         # quota exhaustion, 500/401/403 outage, network error, CLI error),
@@ -964,6 +970,7 @@ def _openai_wrapper_complete_for_graph_rag(
                     "Attempting AWS Bedrock (Qwen 3 235B/32B) synthesis.",
                     response.error[:80],
                 )
+                _s2pol.record_attempt(_s2pol.STAGE2_FALLBACK)
                 bedrock_text = _bedrock_complete_for_graph_rag(
                     system=system,
                     user=user,
@@ -972,6 +979,7 @@ def _openai_wrapper_complete_for_graph_rag(
                     complex_question=complex_question,
                     stage_name=stage_name,
                 )
+                _s2pol.record_result(_s2pol.STAGE2_FALLBACK, ok=bool(bedrock_text))
                 if bedrock_text:
                     logger.info("graph_rag.bedrock_auto_fallback_success")
                     try:
@@ -998,7 +1006,15 @@ def _openai_wrapper_complete_for_graph_rag(
         # is maxxed out or the tunnel is down.
         try:
             from app.llm.openai_wrapper_provider import is_groq_provider_enabled
-            if is_groq_provider_enabled():
+            # R360 — the operator contract pins Stage-2 to tunnel→Bedrock. This
+            # hatch was armed by nothing but a ``GROQ_API_KEY`` in the
+            # environment, so a deploy carrying the key answered from Groq the
+            # first time the tunnel hiccuped — silently, and with a compressed
+            # system prompt (``_get_groq_compressed_system_prompt``) that is not
+            # the prompt any eval measured.
+            if not _s2pol.is_stage2_provider_allowed("groq"):
+                _s2pol.refuse("groq", where="openai_wrapper_complete.groq_fallback")
+            elif is_groq_provider_enabled():
                 logger.warning(
                     "graph_rag.groq_auto_fallback — Claude Max wrapper failed (%s). "
                     "Attempting Groq GPT-OSS 120B synthesis.",
@@ -1095,6 +1111,7 @@ def _openai_wrapper_complete_for_graph_rag(
             response.model,
             response.completion_tokens,
         )
+        _s2pol.record_result(_s2pol.STAGE2_PRIMARY, ok=False)
         raise RuntimeError(f"OpenAI wrapper truncated: finish_reason=length (model={response.model})")
     # R102 — STRUCTURAL truncation guard. The Claude-Max
     # ``claude-code-openai-wrapper`` (CLI subprocess behind cloudflared)
@@ -1130,6 +1147,7 @@ def _openai_wrapper_complete_for_graph_rag(
             response.model,
             response.completion_tokens,
         )
+        _s2pol.record_result(_s2pol.STAGE2_PRIMARY, ok=False)
         raise RuntimeError(f"OpenAI wrapper structurally truncated (model={response.model})")
         
     if getattr(response, "thinking", None):
@@ -1138,6 +1156,7 @@ def _openai_wrapper_complete_for_graph_rag(
             record_llm_thinking(response.thinking, stage=stage_name)
         except Exception:
             pass
+        _s2pol.record_result(_s2pol.STAGE2_PRIMARY, ok=True)
     else:
         # R135 — be honest about whether thinking was REQUESTED. When a budget
         # was sent (Sonnet standard path or Opus complex) but the wrapper
@@ -1160,7 +1179,8 @@ def _openai_wrapper_complete_for_graph_rag(
                 )
         except Exception:
             pass
-            
+        _s2pol.record_result(_s2pol.STAGE2_PRIMARY, ok=True)
+
     return response.text
 
 
@@ -1184,6 +1204,12 @@ def _stage2_complete(
     """
     try:
         env_provider = os.getenv("P2P_GRAPH_RAG_PROVIDER", "").strip().lower()
+        # R360 — an auxiliary Stage-2 pass (the faithfulness verifier, the
+        # truncation repair) is still a Stage-2 request and is held to the same
+        # tunnel→Bedrock contract as the answer itself. Strict mode collapses
+        # this to the wrapper, whose own Bedrock fallback supplies leg 2.
+        from app.llm.stage2_policy import resolve_stage2_provider  # noqa: PLC0415
+        env_provider = resolve_stage2_provider(env_provider)
         if env_provider == "anthropic":
             try:
                 from app.config import settings as _s  # noqa: PLC0415
@@ -8599,6 +8625,12 @@ def _claude_max_enhance_answer(
         # final on/off decision; this branch just picks WHICH call shape
         # to use when Stage-2 is on.
         _env_provider = force_provider or os.getenv("P2P_GRAPH_RAG_PROVIDER", "").strip().lower()
+        # R360 — the operator contract: cloudflared tunnel (Claude Max) is the
+        # Stage-2 PRIMARY, Bedrock the FALLBACK, nothing else reachable. Under
+        # strict mode this collapses every ``P2P_GRAPH_RAG_PROVIDER`` value to
+        # the tunnel and logs whatever it refused.
+        from app.llm import stage2_policy as _s2pol
+        _env_provider = _s2pol.resolve_stage2_provider(_env_provider)
         _use_anthropic_sdk = False
         _use_gemini = False
         _use_bedrock = False
@@ -8774,6 +8806,7 @@ def _claude_max_enhance_answer(
             try:
                 from app.llm.bedrock_client import is_bedrock_provider_enabled
                 if is_bedrock_provider_enabled():
+                    _s2pol.record_attempt(_s2pol.STAGE2_FALLBACK)
                     try:
                         from app.integrations.regenold.reasoning_trace import record_note
                         record_note("stage2_primary_failed_fallback_bedrock")
@@ -8790,7 +8823,15 @@ def _claude_max_enhance_answer(
             except Exception as e:
                 logger.warning("graph_rag.bedrock_fallback_error: %s", str(e))
 
-        if text_raw is None and not _use_gemini and not _fusion_used:
+        if (
+            text_raw is None
+            and not _use_gemini
+            and not _fusion_used
+            # R360 — armed by a bare ``GEMINI_API_KEY``, this hatch answered
+            # Stage-2 from Gemini Flash whenever the tunnel AND Bedrock both
+            # came back empty. Off-contract, so it is refused in strict mode.
+            and _s2pol.is_stage2_provider_allowed("gemini")
+        ):
             try:
                 from app.llm.openai_wrapper_provider import is_gemini_provider_enabled, get_gemini_provider, OpenAIWrapperRequest
                 if is_gemini_provider_enabled():
