@@ -601,3 +601,78 @@ class TestFallbackIsReachableFromEveryFailureMode:
             )
 
         assert out is None, "a mid-clause Bedrock answer must not ship"
+
+
+class TestStage2GateDescribesTheRealChain:
+    """The gate must answer "will Stage-2 actually run?", not "what does the
+    env var prefer?" — those diverge once dispatch is pinned."""
+
+    def test_bedrock_alone_keeps_stage2_alive(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Tunnel down, Bedrock configured — the fallback's whole reason to exist.
+
+        The old gate returned False here, so Stage-2 was skipped entirely and
+        "Bedrock is the secondary" was untrue in precisely the situation a
+        secondary is for.
+        """
+        from app.engines._graph_rag_impl import _stage2_provider_enabled
+
+        monkeypatch.delenv("P2P_GRAPH_RAG_PROVIDER", raising=False)
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "fake")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "fake")
+
+        with patch(
+            "app.llm.openai_wrapper_provider.is_openai_wrapper_enabled",
+            return_value=False,
+        ):
+            assert _stage2_provider_enabled() is True
+
+    def test_neither_leg_available_disables_stage2(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.engines._graph_rag_impl import _stage2_provider_enabled
+
+        monkeypatch.delenv("P2P_GRAPH_RAG_PROVIDER", raising=False)
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "")
+        monkeypatch.delenv("AWS_BEARER_TOKEN_BEDROCK", raising=False)
+        monkeypatch.delenv("AWS_BEDROCK_API_KEY", raising=False)
+
+        with patch(
+            "app.llm.openai_wrapper_provider.is_openai_wrapper_enabled",
+            return_value=False,
+        ):
+            assert _stage2_provider_enabled() is False
+
+    def test_a_groq_key_no_longer_opens_the_gate(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Stage-2 must not be declared live on the strength of a key belonging
+        to a provider it can no longer reach."""
+        from app.engines._graph_rag_impl import _stage2_provider_enabled
+
+        monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "groq")
+        monkeypatch.setenv("GROQ_API_KEY", "k")
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "")
+        monkeypatch.delenv("AWS_BEARER_TOKEN_BEDROCK", raising=False)
+        monkeypatch.delenv("AWS_BEDROCK_API_KEY", raising=False)
+
+        with patch(
+            "app.llm.openai_wrapper_provider.is_openai_wrapper_enabled",
+            return_value=False,
+        ):
+            assert _stage2_provider_enabled() is False
+
+    def test_cli_still_wins_over_everything(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """provider=cli is the deterministic bench contract — never Stage-2."""
+        from app.engines._graph_rag_impl import _stage2_provider_enabled
+
+        monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "cli")
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "fake")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "fake")
+
+        with patch(
+            "app.llm.openai_wrapper_provider.is_openai_wrapper_enabled",
+            return_value=True,
+        ):
+            assert _stage2_provider_enabled() is False

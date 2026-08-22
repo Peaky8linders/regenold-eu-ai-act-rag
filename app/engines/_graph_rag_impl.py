@@ -1507,6 +1507,30 @@ def _stage2_provider_enabled() -> bool:
     if env_value == "cli":
         logger.debug("Stage2 disabled: provider=cli")
         return False
+
+    # R360 — under the strict transport contract the gate must describe the
+    # chain that will ACTUALLY run, not the env var's stated preference.
+    # Two ways the old gate was wrong once dispatch is pinned to tunnel→Bedrock:
+    #   * ``=groq`` / ``=gemini`` + that provider's key opened the gate, then
+    #     dispatch collapsed to the tunnel — so Stage-2 was declared live on the
+    #     strength of a key belonging to a provider it can no longer reach;
+    #   * a deploy with the tunnel down but Bedrock configured had Stage-2 gated
+    #     OFF entirely, which makes "Bedrock is the fallback" untrue in exactly
+    #     the situation a fallback is for.
+    from app.llm.stage2_policy import strict_transport_enabled  # noqa: PLC0415
+
+    if strict_transport_enabled():
+        if is_openai_wrapper_enabled():
+            return True
+        try:
+            from app.llm.bedrock_client import is_bedrock_provider_enabled  # noqa: PLC0415
+            if is_bedrock_provider_enabled():
+                logger.debug("Stage2 enabled via the Bedrock fallback leg")
+                return True
+        except Exception:  # noqa: BLE001 — boto3 absent is a normal deploy shape
+            logger.debug("Stage2 bedrock leg unavailable", exc_info=True)
+        return False
+
     if env_value == "groq":
         from app.llm.openai_wrapper_provider import is_groq_provider_enabled
         result = is_groq_provider_enabled()
