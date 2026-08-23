@@ -74,6 +74,11 @@ class TestSeederRefusesWhatItCannotVerify:
             return []
 
         client.execute_read.side_effect = _read
+        # R361 — the seeder reads through the RAISING variant now, because
+        # ``execute_read`` swallows failures into ``[]`` and the guard cannot
+        # tell that from a genuinely empty graph. Same handler, so every
+        # assertion below is unchanged; only the method name moved.
+        client.execute_read_strict.side_effect = _read
         assert _run(monkeypatch, client) == [], "seeded over a non-empty graph"
 
     def test_a_verified_empty_graph_is_still_seeded(
@@ -92,6 +97,11 @@ class TestSeederRefusesWhatItCannotVerify:
             return []
 
         client.execute_read.side_effect = _read
+        # R361 — the seeder reads through the RAISING variant now, because
+        # ``execute_read`` swallows failures into ``[]`` and the guard cannot
+        # tell that from a genuinely empty graph. Same handler, so every
+        # assertion below is unchanged; only the method name moved.
+        client.execute_read_strict.side_effect = _read
         started = _run(monkeypatch, client)
         assert started and "graph_empty" in started[0]
 
@@ -107,6 +117,11 @@ class TestSeederRefusesWhatItCannotVerify:
             raise RuntimeError("connection reset")
 
         client.execute_read.side_effect = _read
+        # R361 — the seeder reads through the RAISING variant now, because
+        # ``execute_read`` swallows failures into ``[]`` and the guard cannot
+        # tell that from a genuinely empty graph. Same handler, so every
+        # assertion below is unchanged; only the method name moved.
+        client.execute_read_strict.side_effect = _read
         assert _run(monkeypatch, client) == []
 
     def test_a_slow_metadata_probe_does_not_seed(
@@ -132,4 +147,9 @@ class TestSeederRefusesWhatItCannotVerify:
             return []
 
         client.execute_read.side_effect = _read
+        # R361 — the seeder reads through the RAISING variant now, because
+        # ``execute_read`` swallows failures into ``[]`` and the guard cannot
+        # tell that from a genuinely empty graph. Same handler, so every
+        # assertion below is unchanged; only the method name moved.
+        client.execute_read_strict.side_effect = _read
         assert _run(monkeypatch, client) == []

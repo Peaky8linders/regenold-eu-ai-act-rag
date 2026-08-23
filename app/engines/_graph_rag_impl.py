@@ -930,18 +930,25 @@ def _openai_wrapper_complete_for_graph_rag(
                 stage_name=stage_name,
                 model_override=_s2pol.stage2_fallback_model() or None,
             )
-            _s2pol.record_result(_s2pol.STAGE2_FALLBACK, ok=bool(bedrock_text))
+            # R361 — record the result ONCE, and record what actually happened.
+            # Previously ``ok=bool(bedrock_text)`` fired here and a truncated
+            # answer was then discarded below WITHOUT correcting the counter, so
+            # ``fallback_ok`` counted answers that were never served. Defer the
+            # verdict until the answer has survived every guard.
             if not bedrock_text:
+                _s2pol.record_result(_s2pol.STAGE2_FALLBACK, ok=False)
                 return None
             # A truncated Bedrock answer is no better than a truncated tunnel
             # answer: shipping it would set ``stage2_landed=True`` and let the
             # R72 reconcile pass prune citations the cut prose never described.
             if _looks_structurally_truncated(bedrock_text):
+                _s2pol.record_result(_s2pol.STAGE2_FALLBACK, ok=False)
                 logger.warning(
                     "graph_rag.bedrock_auto_fallback_truncated — discarding a "
                     "mid-clause Bedrock answer.",
                 )
                 return None
+            _s2pol.record_result(_s2pol.STAGE2_FALLBACK, ok=True)
             logger.info("graph_rag.bedrock_auto_fallback_success")
             try:
                 from app.integrations.regenold.reasoning_trace import record_note
@@ -951,6 +958,14 @@ def _openai_wrapper_complete_for_graph_rag(
             from app.security.prompt_guard import validate_llm_output
             return validate_llm_output(bedrock_text.strip())
         except Exception as e:  # noqa: BLE001 — leg 2 must never raise
+            # R361 — a raising leg-2 call used to increment ``fallback_attempts``
+            # and record NO result, so ``attempts == ok + failed`` was not an
+            # invariant and an operator reading the counters could not tell a
+            # crashed fallback from one still in flight.
+            try:
+                _s2pol.record_result(_s2pol.STAGE2_FALLBACK, ok=False)
+            except Exception:  # noqa: BLE001
+                pass
             logger.warning("graph_rag.bedrock_auto_fallback_exception: %s", e)
             try:
                 from app.integrations.regenold.reasoning_trace import record_note
@@ -1015,6 +1030,31 @@ def _openai_wrapper_complete_for_graph_rag(
             extra_headers=extra_headers,
         )
     )
+    # R361 — an HTTP-200 completion with EMPTY content is a primary FAILURE,
+    # not a success. ``openai_wrapper_provider`` does ``msg.get("content") or ""``
+    # so an empty choice yields ``error=None``; every downstream guard then
+    # passes by construction (finish_reason is "stop" not "length";
+    # ``_looks_structurally_truncated("")`` and ``_looks_incomplete_verdict("")``
+    # both short-circuit on falsy text). Execution therefore reached
+    # ``record_result(PRIMARY, ok=True)`` and returned ``""`` — and because
+    # ``"" is not None``, the two fallback gates below (which test
+    # ``text_raw is None``) skipped the Bedrock leg ENTIRELY. So the fourth
+    # failure mode never reached the leg R360 hoisted for exactly this purpose,
+    # while /healthz/llm reported primary_ok:1, fallback_attempts:0.
+    # Issue #42 already recorded "empty / whitespace-only polish is a failure,
+    # not a success" — but that guard lives downstream of both fallback blocks.
+    if not response.error and not (response.text or "").strip():
+        logger.warning(
+            "graph_rag.wrapper_empty_completion — HTTP 200 with empty content; "
+            "treating as a primary failure so the Bedrock leg is reached."
+        )
+        try:
+            # pydantic v2 BaseModel — copy rather than mutate in place so a
+            # shared/cached response object is never rewritten under a caller.
+            response = response.model_copy(update={"error": "empty_completion"})
+        except AttributeError:  # pragma: no cover — pydantic v1 fallback
+            response = response.copy(update={"error": "empty_completion"})
+
     if response.error:
         # Loud surface for the auth-broken case so the eval operator
         # doesn't silently A/B Sonnet against deterministic-fallback
@@ -8932,7 +8972,18 @@ def _claude_max_enhance_answer(
                         stage_name="Stage 2 (Polishing Fallback)",
                         model_override=_s2pol.stage2_fallback_model() or None,
                     )
+                    # R361 — this site counted an ATTEMPT and never a RESULT, so
+                    # ``fallback_attempts`` could exceed ``ok + failed`` and the
+                    # counters silently stopped balancing.
+                    _s2pol.record_result(
+                        _s2pol.STAGE2_FALLBACK,
+                        ok=bool((text_raw or "").strip()),
+                    )
             except Exception as e:
+                try:
+                    _s2pol.record_result(_s2pol.STAGE2_FALLBACK, ok=False)
+                except Exception:  # noqa: BLE001
+                    pass
                 logger.warning("graph_rag.bedrock_fallback_error: %s", str(e))
 
         if (

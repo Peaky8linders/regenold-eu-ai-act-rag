@@ -49,7 +49,13 @@ from evals.judge.runner import (  # reuse the battle-tested call plumbing
     set_judge_model,
 )
 
-_DEFAULT_MODEL = "claude-sonnet-5"
+# R361 — was ``claude-sonnet-5``, which resolves to
+# ``eu.anthropic.claude-sonnet-5`` and returns api_access_denied_403 on the
+# current Bedrock key vintage (CLAUDE.md R328.2 records the same class of
+# failure for other newer pins). Measured 2026-08-23: 120/120 rows errored on
+# all three axes. ``claude-sonnet-4-6`` is verified working on Bedrock and over
+# the wrapper, so it is the safe default; override with ``--model``.
+_DEFAULT_MODEL = "claude-sonnet-4-6"
 GROUNDED_AXES: tuple[str, ...] = (
     "answer_correctness",
     "reference_correctness",
@@ -446,6 +452,31 @@ def main(argv: list[str] | None = None) -> int:
     s = run(sidecar=a.sidecar, label=a.label, model=a.model, provider=a.provider,
             timeout_s=a.timeout, concurrency=a.concurrency, limit=a.limit)
     print(_fmt(s))
+
+    # R361 — a judge that never ran must NOT exit 0 with a scorecard.
+    # Measured 2026-08-23: the default model resolved to
+    # ``eu.anthropic.claude-sonnet-5``, which returns api_access_denied_403 on
+    # the current key vintage. Every row errored, yet the process exited 0 and
+    # wrote ``pass_rate: 0.0000`` on all three axes — which reads as a total
+    # QUALITY COLLAPSE, not a dead judge. That is the same failure shape R360.2
+    # fixed one layer up in ab_judge (a silent downgrade that still prints a
+    # scorecard), so it gets the same treatment: fail loudly.
+    agg = s.get("aggregate", {}) if isinstance(s, dict) else {}
+    dead = [
+        ax for ax, v in agg.items()
+        if isinstance(v, dict) and v.get("n") and v.get("error") == v.get("n")
+    ]
+    if dead:
+        print(
+            f"[grounded] !! JUDGE DID NOT RUN — every row errored on: "
+            f"{', '.join(sorted(dead))}. The printed pass_rate values are "
+            f"ARTEFACTS OF FAILURE, not scores. Check the model id "
+            f"({a.model!r} via {a.provider!r}); newer Claude pins return "
+            f"AccessDenied on some key vintages — claude-sonnet-4-6 is known "
+            f"good on Bedrock.",
+            file=sys.stderr, flush=True,
+        )
+        return 2
     return 0
 
 

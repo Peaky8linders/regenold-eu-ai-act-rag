@@ -110,9 +110,63 @@ def _wrapper_up(timeout: float = 4.0) -> bool:
     try:
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.status == 200
+            if r.status != 200:
+                return False
     except Exception:  # noqa: BLE001
         return False
+
+    # R361 — HTTP 200 from ``/v1/auth/status`` is NOT proof Stage-2 can answer.
+    # That endpoint reports on token PRESENCE: this repo's own outage runbook
+    # records it answering ``{"valid": true}`` while every chat/completions call
+    # fails, and that was reproduced live on 2026-08-23 — an expired Claude Max
+    # OAuth session with no refresh token returned auth-status 200 / valid:true
+    # and api_status_500 "No response from Claude Code" on every completion.
+    #
+    # Trusting the 200 makes the MERGE GATE run a "live" pairwise tier in which
+    # Stage-2 is dead on BOTH arms: both emit the identical deterministic
+    # answer, every axis reads +0.0000, and the operator concludes "the lever is
+    # inert" from a run that measured nothing. That is strictly worse than the
+    # quiet deterministic downgrade R360.2 fixed, because the deterministic tier
+    # at least labels itself. So: dial a real completion and require real text.
+    return _wrapper_can_complete(url, headers, timeout)
+
+
+def _wrapper_can_complete(
+    auth_url: str, headers: dict[str, str], timeout: float
+) -> bool:
+    """Smallest possible real completion — the only honest liveness signal."""
+    base = auth_url.removesuffix("/v1/auth/status")
+    body = json.dumps({
+        "model": os.getenv("REGENOLD_WRAPPER_PROBE_MODEL", "claude-sonnet-4-6"),
+        "max_tokens": 8,
+        "messages": [{"role": "user", "content": "reply OK"}],
+    }).encode()
+    req = urllib.request.Request(
+        f"{base}/v1/chat/completions",
+        data=body,
+        headers={**headers, "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=max(timeout, 30.0)) as r:
+            if r.status != 200:
+                return False
+            payload = json.loads(r.read().decode("utf-8", "replace"))
+    except Exception as exc:  # noqa: BLE001
+        print(f"[ab_judge] wrapper completion probe failed: {str(exc)[:160]}",
+              flush=True)
+        return False
+    try:
+        text = (payload["choices"][0]["message"].get("content") or "").strip()
+    except Exception:  # noqa: BLE001
+        return False
+    if not text:
+        # An empty 200 is the same failure class as I2: it looks like success
+        # and carries no answer.
+        print("[ab_judge] wrapper completion probe returned EMPTY text — "
+              "treating the wrapper as DOWN", flush=True)
+        return False
+    return True
 
 
 # ──────────────────────────────────────────────────────────────────────────

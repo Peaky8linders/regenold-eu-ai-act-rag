@@ -538,8 +538,16 @@ def _maybe_auto_seed_neo4j() -> None:
             _meta_budget_s = 3.0
         _mpool = _cf.ThreadPoolExecutor(max_workers=1)
         try:
+            # R361 — MUST be the *strict* reader. ``execute_read`` swallows
+            # every failure and returns ``[]`` (client.py:203), so the comment
+            # below ("a genuine exception ... still propagates") was false for
+            # the method it named: a retry-exhausted read produced
+            # ``meta_rows = []`` -> ``current_seed = ""`` -> the seed-version
+            # match is never reached -> the ``not current_seed`` branch -> a
+            # full MERGE over a live graph. R360.6 closed the TIMEOUT hole and
+            # left the READ-FAILURE hole open while documenting it as closed.
             meta_rows = _mpool.submit(
-                client.execute_read,
+                client.execute_read_strict,
                 "MATCH (m:KBMetadata) "
                 "RETURN m.seed_version AS v, m.kb_version AS kv LIMIT 1",
             ).result(timeout=_meta_budget_s)
@@ -603,10 +611,21 @@ def _maybe_auto_seed_neo4j() -> None:
             # unreadable count is the same class of ignorance as the timeout
             # above. Only a graph verified EMPTY is safe to seed unprompted.
             try:
-                _count_rows = client.execute_read(
+                # R361 — strict reader, same reason as the metadata probe
+                # above. With the lenient reader a failed count returned ``[]``,
+                # which ``(_count_rows or [{}])[0].get("c") or 0`` turns into
+                # ``0`` — indistinguishable from a genuinely empty graph, and
+                # the ``> 0`` refusal below therefore never fires. An unreadable
+                # count must mean SKIP, never SEED.
+                _count_rows = client.execute_read_strict(
                     "MATCH (n) RETURN count(n) AS c"
                 )
-                _node_count = int((_count_rows or [{}])[0].get("c") or 0)
+                if not _count_rows:
+                    # A strict read that succeeds but returns no rows is still
+                    # ignorance, not proof of emptiness: ``count(n)`` on a live
+                    # graph always yields exactly one row.
+                    raise RuntimeError("node-count query returned no rows")
+                _node_count = int(_count_rows[0].get("c") or 0)
             except Exception as _cexc:  # noqa: BLE001
                 logger.warning(
                     "regenold.startup auto_seed_check action=skip-unverified "
@@ -1016,7 +1035,37 @@ def _degraded_to_bedrock(base: dict[str, object], detail: str) -> dict[str, obje
         armed = is_bedrock_provider_enabled()
     except Exception:  # noqa: BLE001 — a probe must never 500
         armed = False
-    if armed:
+    # R361 — ``armed`` answers "are credentials present", NOT "does Bedrock
+    # answer". Measured live on 1cab8f0: production reported llm_ok:true +
+    # "bedrock fallback active" while the counters in the SAME response body
+    # read fallback_ok:0 / fallback_failed:2 and users got deterministic
+    # answers. R360.9 fixed the false NEGATIVE and shipped the false POSITIVE.
+    #
+    # This matters more than a cosmetic status: the fallback leg is a measured
+    # −0.27 answer-correctness / −0.22 citation-faithfulness cliff vs the
+    # tunnel (n=120 paired, p<1e-6), so llm_ok is the one signal an operator
+    # pages on and it must not stay green through the largest quality
+    # regression the service can have.
+    _fb_dead = False
+    try:
+        from app.llm import stage2_policy as _s2pol
+        _st = _s2pol.transport_stats()
+        _fb_att = int(_st.get("fallback_attempts", 0) or 0)
+        _fb_ok = int(_st.get("fallback_ok", 0) or 0)
+        # Only a leg that was actually DIALLED can be judged. Zero attempts is
+        # "unknown", not "broken" — never flip green to red on no evidence.
+        _fb_dead = _fb_att > 0 and _fb_ok == 0
+    except Exception:  # noqa: BLE001 — a probe must never 500
+        _fb_dead = False
+    if armed and _fb_dead:
+        base["llm_ok"] = False
+        base["provider"] = f"{base.get('provider', 'openai_wrapper')} (bedrock fallback FAILING)"
+        base["detail"] = (
+            f"primary offline ({detail[:100]}); bedrock credentials ARE wired but "
+            f"the fallback leg has {_fb_att} attempt(s) and 0 successes — Stage-2 "
+            "is serving deterministic fallback answers"
+        )
+    elif armed:
         base["llm_ok"] = True
         base["provider"] = f"{base.get('provider', 'openai_wrapper')} (bedrock fallback)"
         base["detail"] = f"primary offline ({detail[:120]}); bedrock fallback active"

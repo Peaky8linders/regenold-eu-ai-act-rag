@@ -1271,6 +1271,7 @@ def _engine_cache_key(
     # it would let an A/B of the flag replay the other arm's prose and read
     # +0.0000 on every axis — the R329 unfalsifiable-lever trap.
     from app.llm.stage2_policy import (  # noqa: PLC0415
+        allowed_primary_hosts as _s2_hosts,
         stage2_fallback_model as _s2_fb_model,
         strict_transport_enabled as _s2_strict,
     )
@@ -1283,6 +1284,12 @@ def _engine_cache_key(
         # prompt. Keyed by value, not by a bit, so switching between two
         # non-empty models also invalidates.
         f"|fb={_s2_fb_model()}"
+        # R361 — ``REGENOLD_STAGE2_PRIMARY_HOSTS`` decides whether leg 1 is
+        # ALLOWED to serve at all. Widen or narrow it and the same question is
+        # answered by the tunnel (Claude Opus) or by Bedrock (Qwen) — a measured
+        # −0.27 answer-correctness gap, so it is emphatically answer-flipping.
+        # Its two R360 siblings were keyed and this one was not.
+        f"|hosts={','.join(_s2_hosts())}"
     )
     # R56 — fold the resolved LLM provider into the cache key. Stage-2
     # polish produces provider-specific prose; without this bit, a

@@ -53,6 +53,34 @@ class _FakeClient:
         self.execute_read_calls.append(query)
         if self._raise_on_read:
             raise RuntimeError("simulated neo4j read failure")
+        return self._rows_for(query)
+
+    def execute_read_strict(
+        self, query: str, parameters: dict | None = None
+    ) -> list[dict]:
+        """R361 — the seeder now reads through the RAISING variant.
+
+        The real ``GraphClient`` exposes both: ``execute_read`` swallows a
+        failure and returns ``[]`` (client.py:203), ``execute_read_strict``
+        raises. The seeder must use the strict one, because a swallowed ``[]``
+        is indistinguishable from "the graph is genuinely empty" and that is
+        what made a transient Neo4j error trigger a MERGE over live data.
+
+        This double must therefore model BOTH, or the tests exercise a client
+        that cannot exist.
+        """
+        self.execute_read_calls.append(query)
+        if self._raise_on_read:
+            raise RuntimeError("simulated neo4j read failure")
+        return self._rows_for(query)
+
+    def _rows_for(self, query: str) -> list[dict]:
+        # ``MATCH (n) RETURN count(n) AS c`` on a REAL graph always returns
+        # exactly one row, even when the graph is empty (c=0). Returning ``[]``
+        # here would model a client that cannot exist and would mask the very
+        # bug R361 fixes.
+        if "count(n)" in query:
+            return [{"c": 0 if self._seed_version is None else 1}]
         if self._seed_version is None:
             return []
         return [{"v": self._seed_version, "kv": self._kb_version or ""}]

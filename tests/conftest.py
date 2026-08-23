@@ -416,3 +416,77 @@ def _r94_pin_verbatim_off(request, monkeypatch):
     if any(name.endswith(m) for m in _R94_VERBATIM_OFF_MODULES):
         monkeypatch.setenv("REGENOLD_VERBATIM_ANSWER", "0")
     yield
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# R361 — global process-state isolation.
+#
+# MEASURED 2026-08-23: the full suite reported 95 failures while the same
+# files passed in isolation — e.g. tests/test_two_stage_pipeline.py fails 8
+# in-suite and passes 40/40 alone; tests/test_topic_filter.py fails 3
+# in-suite and passes 23/23 alone, both with a dead wrapper and a live one.
+# That is not a hermeticity problem and not a real defect: it is ORDER
+# DEPENDENCE. Whatever ran earlier left process-global state behind.
+#
+# The source: 48 raw ``os.environ[...] = ...`` writes across tests/ that never
+# restore, plus module-level caches that outlive the test that filled them.
+# The fixtures above reset seven specific singletons; nothing resets the
+# ENVIRONMENT, which is the widest channel of all — this repo's own CLAUDE.md
+# records that `REGENOLD_*` flags are behavioural, so a leaked one silently
+# reconfigures every later test.
+#
+# Fixing 37 files individually would be churn with a long tail. One snapshot
+# /restore closes the whole class, and keeps working for tests added later.
+# ══════════════════════════════════════════════════════════════════════════
+@pytest.fixture(autouse=True)
+def _restore_process_environment():
+    """Snapshot ``os.environ`` before each test; restore it exactly after.
+
+    ``monkeypatch.setenv`` already unwinds itself. This catches the raw
+    ``os.environ[...] =`` writes that do not, so one test can no longer
+    reconfigure the ones that follow it.
+
+    Restores by MUTATING the existing mapping rather than rebinding it —
+    ``os.environ`` is a live object other modules may hold a reference to.
+    """
+    import os as _os
+
+    snapshot = dict(_os.environ)
+    try:
+        yield
+    finally:
+        current = dict(_os.environ)
+        for key in current:
+            if key not in snapshot:
+                _os.environ.pop(key, None)
+        for key, value in snapshot.items():
+            if current.get(key) != value:
+                _os.environ[key] = value
+
+
+@pytest.fixture(autouse=True)
+def _reset_engine_and_transport_state():
+    """Clear the route engine cache and the Stage-2 transport counters.
+
+    The engine LRU stores FINAL polished prose keyed by an env fingerprint, so
+    a cached blob from an earlier test can be replayed into a later one whose
+    env differs only in a dimension the key does not cover — the same class of
+    bug AGENTS.md invariant #4 exists to prevent, arriving via the test suite.
+
+    The transport counters are process-global by design (R360), so without a
+    reset a test asserting ``primary_ok == 1`` passes or fails depending on how
+    many Stage-2 calls happened to run before it.
+    """
+    try:
+        from app.routes.regenold import _ENGINE_CACHE
+        clear = getattr(_ENGINE_CACHE, "clear", None)
+        if callable(clear):
+            clear()
+    except Exception:  # noqa: BLE001 — cleanup must never block a test
+        pass
+    try:
+        from app.llm import stage2_policy as _s2pol
+        _s2pol.reset_transport_stats()
+    except Exception:  # noqa: BLE001
+        pass
+    yield

@@ -49,10 +49,20 @@ class TestProbeFollowsTheConfiguredWrapper:
         monkeypatch.setenv("OPENAI_API_BASE", "https://wrapper.antifragile-ai.net/v1")
         monkeypatch.setenv("CF_ACCESS_CLIENT_ID", "id.access")
         monkeypatch.setenv("CF_ACCESS_CLIENT_SECRET", "secret")
-        seen: dict[str, object] = {}
+        # R361 — the probe now makes TWO calls: /v1/auth/status, then a real
+        # completion, because a 200 from auth/status only proves a token is
+        # PRESENT (measured 2026-08-23: it answered valid:true while every
+        # completion returned 500). Record every call rather than the last one.
+        calls: list[dict[str, object]] = []
 
         class _Resp:
             status = 200
+
+            def __init__(self, body: bytes = b"{}") -> None:
+                self._body = body
+
+            def read(self):
+                return self._body
 
             def __enter__(self):
                 return self
@@ -60,17 +70,31 @@ class TestProbeFollowsTheConfiguredWrapper:
             def __exit__(self, *a):
                 return False
 
+        import json as _json
+        _completion = _json.dumps(
+            {"choices": [{"message": {"content": "OK"}}]}
+        ).encode()
+
         def _fake_urlopen(req, timeout=None):
-            seen["url"] = req.full_url
-            seen["headers"] = dict(req.headers)
-            return _Resp()
+            calls.append({"url": req.full_url, "headers": dict(req.headers)})
+            if "auth/status" in req.full_url:
+                return _Resp()
+            return _Resp(_completion)
 
         with patch("urllib.request.urlopen", side_effect=_fake_urlopen):
             assert ab_judge._wrapper_up() is True
 
-        assert seen["url"] == "https://wrapper.antifragile-ai.net/v1/auth/status"
-        lowered = {k.lower() for k in seen["headers"]}
-        assert "cf-access-client-id" in lowered, seen["headers"]
+        auth = next(c for c in calls if "auth/status" in str(c["url"]))
+        assert auth["url"] == "https://wrapper.antifragile-ai.net/v1/auth/status"
+        lowered = {k.lower() for k in auth["headers"]}
+        assert "cf-access-client-id" in lowered, auth["headers"]
+
+        # The completion leg is Access-protected too — the token must ride it,
+        # or the probe 401s against its own tunnel and reports a false DOWN.
+        completion = next(c for c in calls if "chat/completions" in str(c["url"]))
+        assert {k.lower() for k in completion["headers"]} >= {"cf-access-client-id"}, (
+            completion["headers"]
+        )
 
     def test_no_service_token_leaks_to_a_foreign_host(
         self, monkeypatch: pytest.MonkeyPatch
