@@ -1032,7 +1032,29 @@ def _try_wrapper_fallback(
 
         if not is_openai_wrapper_enabled():
             return None
+
+        # R361 — this hop is the SIXTH Stage-2 escape hatch, and it was the one
+        # inside the fallback leg itself, so R360's five refusals never saw it.
+        # It dialled whatever ``OPENAI_API_BASE`` names with NO host allowlist
+        # check and NO transport counting, which defeated R360.7 on its own
+        # motivating input: with OPENAI_API_BASE=https://openrouter.ai/api/v1,
+        # leg 1 refuses via check_primary_base_url, Bedrock exhausts, and this
+        # line then dialled the same OpenRouter base unchecked — while
+        # transport_stats() showed nothing. It also drops the system prompt
+        # (SYSTEM_PROMPT_DROPPED=1 below), the identical harm R360 cites to
+        # condemn the Groq hatch.
+        from app.llm import stage2_policy as _s2pol  # noqa: PLC0415
+        _base = getattr(get_openai_wrapper_provider(), "_base_url", "") or \
+            os.getenv("OPENAI_API_BASE", "")
+        if not _s2pol.check_primary_base_url(_base):
+            logger.warning(
+                "bedrock_wrapper_fallback_refused base=%s — off-contract "
+                "destination; not hopping.", _base[:80],
+            )
+            return None
+
         target = wrapper_model_for(req.model or primary)
+        _s2pol.record_attempt(_s2pol.STAGE2_PRIMARY)
         resp = get_openai_wrapper_provider().complete(
             OpenAIWrapperRequest(
                 user=req.user,
@@ -1043,11 +1065,13 @@ def _try_wrapper_fallback(
             )
         )
         if resp.error or not resp.text:
+            _s2pol.record_result(_s2pol.STAGE2_PRIMARY, ok=False)
             logger.warning(
                 "bedrock_wrapper_fallback_failed primary=%s target=%s error=%s",
                 primary, target, resp.error,
             )
             return None
+        _s2pol.record_result(_s2pol.STAGE2_PRIMARY, ok=True)
         # LOUD, and greppable. `served_by=wrapper:` is the string to alert on:
         # its presence means the answer was NOT produced under the Bedrock
         # prompt contract, so the row is not comparable to a Bedrock-served one.
