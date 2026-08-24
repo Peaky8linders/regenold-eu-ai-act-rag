@@ -37,6 +37,28 @@ The R280 checkpoint's own hard-won lessons are built in:
   * NO ``?include_reasoning=true`` — it forces Stage-2 and distorts an eval
     comparison (R112).
 
+HARD RULE #8 IS AN EXIT CODE (R365)
+-----------------------------------
+``gold_dropped_head`` used to be a SUM that this module PRINTED with a
+``<-- GOLD DROPPED (hard rule #8)`` flag and then ignored: it is absent from
+``_AXES`` and ``_LEVERAGE``, the module had no assert and no ``hard_fail``, its
+only ``SystemExit``s were argparse errors, ``main()`` returned ``None``, and no
+CI consumes it. So ``python -m evals.harness.easyhard_ab`` exited **0** on a run
+whose branch arm deleted a gold reference, and every historical "it passed the
+gold gate" claim was a human reading stdout — the same reports-but-never-
+enforces defect this round found elsewhere.
+
+It is now enforced. ``main()`` returns ``1`` when the branch arm drops MORE gold
+heads than the baseline arm on ANY split, wired through
+``raise SystemExit(main())``. The delta is read from the PAIRED subset where one
+exists (the honest read when an arm loses rows) and from the full aggregate
+otherwise. ``--allow-gold-drop`` forces exit 0 for a deliberate exploratory arm
+and says so loudly; a run carrying that flag has NOT passed the gate. The
+per-row ``gold_dropped_head_refs`` are printed so a failure is actionable.
+
+The gate is comparative — a single-arm scorecard has nothing to compare against
+and always exits 0.
+
 HONESTY / SCOPE
 ---------------
 * Ref Correctness LOOSE (recall) is the GUARD. The R142.1 failure mode is
@@ -61,6 +83,10 @@ USAGE
 
     # single arm (a plain scorecard, e.g. to reproduce easyhard-r279-live)
     .venv/Scripts/python.exe -m evals.harness.easyhard_ab --local --label x
+
+    # exit code 1 when the branch drops gold the baseline kept; add
+    # --allow-gold-drop to let a deliberate exploratory arm finish anyway
+    echo $?
 """
 from __future__ import annotations
 
@@ -376,6 +402,174 @@ def _report_paired(label: str, paired: dict[str, Any]) -> None:
               "2nd arm runs on a warm shared cache, not a product signal]")
 
 
+# ---------------------------------------------------------------------------
+# R365 — hard rule #8 as an ENFORCED gate, not a printed flag.
+# ---------------------------------------------------------------------------
+
+_GOLD_GATE_BANNER = "!" * 72
+
+
+def _split_gold_dropped(agg: dict[str, Any] | None, split: str) -> int | None:
+    """``gold_dropped_head`` for one split, or None when the split has no rows.
+
+    None means "not comparable" — an arm that produced 0 successful rows for a
+    split cannot be said to have dropped gold; it dropped everything, and the
+    row-count warning in ``_report`` is the signal for that, not this gate.
+    """
+    if not agg:
+        return None
+    s = agg.get(split) or {}
+    if not s.get("n"):
+        return None
+    return int(s.get("gold_dropped_head", 0))
+
+
+def _gold_gate_verdict(
+    base_agg: dict[str, Any] | None,
+    branch_agg: dict[str, Any] | None,
+    allow: bool = False,
+    paired: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Decide hard rule #8 from aggregates alone — no live run required.
+
+    The rule is "drop ZERO **more** than the baseline". It is comparative, so a
+    single-arm scorecard (``branch_agg is None``) always passes: there is no
+    baseline to have regressed against.
+
+    Delta source, per split: the PAIRED subset when it exists (the honest read
+    when one arm loses rows — see ``_paired``), the full aggregate otherwise.
+
+    Failing on ANY split, rather than on the cross-split sum, is deliberate:
+    a sum lets an easy-split improvement mask a hard-split gold deletion, and
+    the rule is zero, not net-zero.
+    """
+    splits: dict[str, dict[str, Any]] = {}
+    for split in ("easy", "hard"):
+        p = (paired or {}).get(split) or {}
+        if p.get("n"):
+            b = int((p.get("baseline") or {}).get("gold_dropped_head", 0))
+            c = int((p.get("branch") or {}).get("gold_dropped_head", 0))
+            src, n = "paired", int(p["n"])
+        else:
+            b_val = _split_gold_dropped(base_agg, split)
+            c_val = _split_gold_dropped(branch_agg, split)
+            if b_val is None or c_val is None:
+                continue
+            b, c, src = b_val, c_val, "full"
+            n = int(((branch_agg or {}).get(split) or {}).get("n", 0))
+        splits[split] = {
+            "n": n, "baseline": b, "branch": c, "delta": c - b, "source": src,
+        }
+
+    comparable = bool(splits) and branch_agg is not None
+    offenders = [k for k in ("easy", "hard") if splits.get(k, {}).get("delta", 0) > 0]
+    failed = comparable and bool(offenders)
+    return {
+        "comparable": comparable,
+        "splits": splits,
+        "total_delta": sum(v["delta"] for v in splits.values()),
+        "offending_splits": offenders,
+        "failed": failed,
+        "allow_gold_drop": bool(allow),
+        "suppressed_by_flag": failed and bool(allow),
+        "exit_code": 1 if (failed and not allow) else 0,
+    }
+
+
+def _gold_drop_rows(
+    a_rows: list[dict[str, Any]], b_rows: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Per-row gold heads the branch dropped that the baseline kept.
+
+    Only rows scored OK in BOTH arms are compared: an errored row carries no
+    refs at all and would otherwise read as a total gold wipe-out.
+    """
+    bmap = {r.get("id"): r for r in b_rows}
+    out: list[dict[str, Any]] = []
+    for ra in a_rows:
+        rb = bmap.get(ra.get("id"))
+        if rb is None:
+            continue
+        sa, sb = ra.get("scores"), rb.get("scores")
+        if ra.get("error") or rb.get("error") or not sa or not sb:
+            continue
+        base_dropped = [str(x) for x in (sa.get("gold_dropped_head_refs") or [])]
+        branch_dropped = [str(x) for x in (sb.get("gold_dropped_head_refs") or [])]
+        newly = sorted(set(branch_dropped) - set(base_dropped))
+        if not newly and len(branch_dropped) <= len(base_dropped):
+            continue
+        out.append(
+            {
+                "id": ra.get("id"),
+                "split": "hard" if ra.get("is_multiturn") else "easy",
+                "gold_refs": list(ra.get("gold_refs") or []),
+                "baseline_refs": list(ra.get("pred_refs") or []),
+                "branch_refs": list(rb.get("pred_refs") or []),
+                "baseline_dropped": base_dropped,
+                "branch_dropped": branch_dropped,
+                "newly_dropped": newly,
+            }
+        )
+    return out
+
+
+def _report_gold_gate(
+    verdict: dict[str, Any],
+    offenders: list[dict[str, Any]],
+) -> None:
+    if not verdict.get("comparable"):
+        return
+    print("\n=== HARD RULE #8 GATE — gold heads dropped (branch vs baseline) ===")
+    for split in ("easy", "hard"):
+        v = verdict["splits"].get(split)
+        if not v:
+            continue
+        print(
+            f"  {split:<6} n={v['n']:<5} baseline={v['baseline']:<5}"
+            f" branch={v['branch']:<5} delta={v['delta']:+d}   [{v['source']}]"
+        )
+    if offenders:
+        print(
+            f"\n  {len(offenders)} row(s) where the branch dropped a gold head "
+            f"the baseline kept:"
+        )
+        for o in offenders:
+            print(f"    - {o['id']}  ({o['split']})")
+            print(f"        gold           : {o['gold_refs']}")
+            print(
+                f"        baseline refs  : {o['baseline_refs']}"
+                f"   dropped={o['baseline_dropped']}"
+            )
+            print(
+                f"        branch   refs  : {o['branch_refs']}"
+                f"   dropped={o['branch_dropped']}"
+            )
+            print(f"        NEWLY DROPPED  : {o['newly_dropped']}")
+    if not verdict["failed"]:
+        print("\n  PASS — the branch drops no more gold heads than the baseline.")
+        return
+    where = ", ".join(verdict["offending_splits"]) or "?"
+    if verdict["suppressed_by_flag"]:
+        print(f"\n  {_GOLD_GATE_BANNER}")
+        print(f"  !! HARD RULE #8 VIOLATED on split(s): {where}"
+              f"  (total delta {verdict['total_delta']:+d})")
+        print("  !! THIS RUN WOULD HAVE FAILED. Exit code forced to 0 by "
+              "--allow-gold-drop.")
+        print("  !! An --allow-gold-drop run is EXPLORATORY. Do NOT cite it as "
+              "having")
+        print("  !! passed the gold gate.")
+        print(f"  {_GOLD_GATE_BANNER}")
+        return
+    print(f"\n  {_GOLD_GATE_BANNER}")
+    print("  !! FAIL — HARD RULE #8: the branch arm dropped MORE gold heads "
+          "than the")
+    print(f"  !! baseline on split(s): {where}  "
+          f"(total delta {verdict['total_delta']:+d})")
+    print("  !! The gate is literally 'drop ZERO'. Exiting NON-ZERO (1).")
+    print("  !! Re-run with --allow-gold-drop for a deliberate exploratory arm.")
+    print(f"  {_GOLD_GATE_BANNER}")
+
+
 def _parse_env(pairs: list[str] | None) -> dict[str, str]:
     out: dict[str, str] = {}
     for p in pairs or []:
@@ -386,7 +580,7 @@ def _parse_env(pairs: list[str] | None) -> dict[str, str]:
     return out
 
 
-def main() -> None:
+def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--endpoint", help="live ask URL")
     ap.add_argument("--local", action="store_true", help="in-process TestClient")
@@ -397,6 +591,17 @@ def main() -> None:
     ap.add_argument("--multiturn", choices=("only", "skip"))
     ap.add_argument("--baseline-env", action="append")
     ap.add_argument("--branch-env", action="append")
+    ap.add_argument(
+        "--allow-gold-drop",
+        action="store_true",
+        help=(
+            "EXPLORATORY ONLY. Let the run exit 0 even when the branch arm "
+            "drops more gold heads than the baseline (hard rule #8). The "
+            "violation is still printed, loudly. A run carrying this flag has "
+            "NOT passed the gold gate and must not be reported as having done "
+            "so."
+        ),
+    )
     args = ap.parse_args()
 
     if not args.local and not args.endpoint:
@@ -443,6 +648,15 @@ def main() -> None:
     if paired:
         _report_paired(args.label, paired)
 
+    # R365 — hard rule #8. Decided BEFORE the sidecar is written so the verdict
+    # is persisted, and the sidecar is written even when the gate fails: a
+    # failing run's rows are exactly the ones worth keeping.
+    verdict = _gold_gate_verdict(
+        a_agg, b_agg, allow=bool(args.allow_gold_drop), paired=paired
+    )
+    offenders = _gold_drop_rows(a_rows, b_rows) if b_rows else []
+    _report_gold_gate(verdict, offenders)
+
     out = _RESULTS / f"easyhard-{args.label}.json"
     out.write_text(
         json.dumps(
@@ -455,6 +669,8 @@ def main() -> None:
                 "baseline": a_agg,
                 "branch": b_agg,
                 "paired": paired,
+                "gold_gate": verdict,
+                "gold_gate_rows": offenders,
                 "baseline_rows": a_rows,
                 "branch_rows": b_rows,
             },
@@ -464,7 +680,8 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"\nwrote {out}")
+    return int(verdict["exit_code"])
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
