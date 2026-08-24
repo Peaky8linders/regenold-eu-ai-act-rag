@@ -236,19 +236,66 @@ def _host_of(base_url: str) -> str:
         return ""
 
 
+def _normalise_host_entry(entry: str) -> str:
+    """Reduce one configured allowlist entry to the shape ``_host_of`` produces.
+
+    R365 — the two sides of this comparison used to speak different languages.
+    The candidate went through ``urlsplit(...).hostname``; the allowlist went
+    through nothing but ``strip().lower()``. So the single most likely thing an
+    operator pastes — **the URL they already have** — matched nothing. Measured
+    before the fix, against ``https://wrapper.antifragile-ai.net/v1``::
+
+        hosts="https://wrapper.antifragile-ai.net/v1"  -> allowed = False
+        hosts="wrapper.antifragile-ai.net:443"         -> False
+        hosts=" Wrapper.Antifragile-AI.net "           -> True
+
+    Only the bare-host shape worked. The other two refuse **every** primary
+    request, and ``_graph_rag_impl`` answers a refusal by falling straight to
+    leg 2 — so a typo-free, entirely plausible env value degrades 100% of
+    Stage-2 traffic to Bedrock/Qwen, which this repo measures at −0.27 answer
+    correctness. Silently, with the tunnel healthy the whole time.
+
+    Both sides now run through :func:`_host_of`, which is the point: not "a
+    normalisation that resembles the other one" but literally the same
+    function, so the two cannot drift apart again.
+    """
+    raw = entry.strip()
+    if not raw:
+        return ""
+    if "://" in raw or raw.startswith("//"):
+        candidate = raw
+    elif "[" not in raw and raw.count(":") >= 2:
+        # A bare IPv6 literal (``::1`` ships in the defaults, so the env parser
+        # has to read it too). ``urlsplit`` only yields a hostname for a
+        # BRACKETED literal; unbracketed it partitions on the last ``:``, calls
+        # the tail a port and returns ``None`` — dropping the entry entirely.
+        candidate = f"//[{raw}]"
+    else:
+        # No netloc means no ``hostname``, and a bare ``host:443`` is worse than
+        # that: ``wrapper.antifragile-ai.net`` is a syntactically valid URL
+        # SCHEME, so ``urlsplit`` reads the host as the scheme and leaves the
+        # netloc empty. Prepending ``//`` puts every shape on the URL path.
+        candidate = f"//{raw}"
+    return _host_of(candidate)
+
+
 def allowed_primary_hosts() -> tuple[str, ...]:
     """Hosts the Stage-2 primary may dial.
 
     ``REGENOLD_STAGE2_PRIMARY_HOSTS`` (comma-separated) replaces the default —
-    the operator may rename their tunnel. It cannot be set to *empty*: a blank
-    value falls back to the defaults rather than disabling the check, so the
-    guard cannot be switched off by accident, only by turning strict mode off
-    deliberately.
+    the operator may rename their tunnel. Entries are normalised the same way
+    the candidate URL is (see :func:`_normalise_host_entry`), so a bare host, a
+    full URL, a ``host:port`` and any casing all name the same destination.
+
+    It cannot be set to *empty*: a blank value — or one whose every entry
+    normalises away — falls back to the defaults rather than disabling the
+    check, so the guard cannot be switched off by accident, only by turning
+    strict mode off deliberately.
     """
     raw = os.getenv("REGENOLD_STAGE2_PRIMARY_HOSTS", "").strip()
     if not raw:
         return STAGE2_PRIMARY_HOSTS
-    hosts = tuple(h.strip().lower() for h in raw.split(",") if h.strip())
+    hosts = tuple(h for h in map(_normalise_host_entry, raw.split(",")) if h)
     return hosts or STAGE2_PRIMARY_HOSTS
 
 
