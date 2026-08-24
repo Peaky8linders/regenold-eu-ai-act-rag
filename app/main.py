@@ -1095,6 +1095,22 @@ def _probe_bedrock_leg() -> dict[str, object]:
             "api_key_invalid_403 is a dead credential."
         )
     out.setdefault("hint", None)
+    # R365 — forward the per-model chain. The probe walks
+    # ``BEDROCK_FALLBACK_PROBE_MODELS`` and this is the only place an operator
+    # can see WHICH chain models answered: a partial entitlement (235b denied,
+    # 32b ok) is a very different situation from a dead credential, and the
+    # top-level status alone cannot distinguish them. Redacted per entry, and
+    # defensively typed because it comes from the same dict as everything else.
+    _chain = raw.get("chain")
+    if isinstance(_chain, list):
+        out["chain"] = [
+            {
+                k: (redact_credential_like(v) if isinstance(v, str) else v)
+                for k, v in entry.items()
+            }
+            for entry in _chain
+            if isinstance(entry, dict)
+        ]
     return out
 
 
