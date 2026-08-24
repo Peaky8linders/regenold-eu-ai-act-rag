@@ -1020,16 +1020,55 @@ def _openai_wrapper_complete_for_graph_rag(
         )
 
     _s2pol.record_attempt(_s2pol.STAGE2_PRIMARY)
-    response = _wrapper_provider.complete(
-        OpenAIWrapperRequest(
-            system=wrapper_system,
-            user=user,
-            model=model,
-            max_tokens=safe_max_tokens,
-            temperature=temperature,
-            extra_headers=extra_headers,
+    try:
+        response = _wrapper_provider.complete(
+            OpenAIWrapperRequest(
+                system=wrapper_system,
+                user=user,
+                model=model,
+                max_tokens=safe_max_tokens,
+                temperature=temperature,
+                extra_headers=extra_headers,
+            )
         )
-    )
+    except Exception as exc:  # noqa: BLE001 — a RAISE is a primary failure too
+        # R365 — this dial had no ``try``, so R361's "attempts == ok + failed on
+        # every exit path" was false: a raising provider measured
+        # ``primary_attempts:1, primary_ok:0, primary_failed:0`` and left
+        # /healthz/llm reporting a counter set that cannot be reconciled — the
+        # exact thing ``stage2_policy`` says the counters exist to prevent.
+        #
+        # The worse half is that the raise propagated past ``_try_bedrock_fallback``
+        # AND past the duplicate inline leg-2 block in
+        # ``_claude_max_enhance_answer`` (whose entire body sits inside one
+        # ``try``), so on the most ORDINARY transport failure the Bedrock leg
+        # R360.1 hoisted for exactly this purpose was unreachable. Not
+        # hypothetical: ``int(usage.get(...))`` raised out of this very call
+        # (R360.12), and the provider only catches ``httpx.HTTPError`` — decode
+        # errors, ``InvalidURL`` and closed-client ``RuntimeError``\s escape.
+        #
+        # Route it through the SAME failure path an ``.error`` response takes:
+        # count the failure, offer leg 2, and — when there is genuinely no
+        # fallback — re-raise the ORIGINAL exception so the caller degrades to
+        # the deterministic Stage-1 answer exactly as it did before. No third
+        # leg is added; the Groq/Gemini hatches stay closed per R360.
+        _s2pol.record_result(_s2pol.STAGE2_PRIMARY, ok=False)
+        logger.warning(
+            "graph_rag.openai_wrapper_call_raised %s: %s — treating as a primary "
+            "failure so the Bedrock leg is reached.",
+            type(exc).__name__, str(exc)[:200],
+        )
+        try:
+            from app.integrations.regenold.reasoning_trace import record_note
+            record_note(f"stage2_primary_raised: {type(exc).__name__}")
+        except Exception:  # noqa: BLE001 — tracing must never break Stage-2
+            pass
+        bedrock_answer = _try_bedrock_fallback(
+            f"primary raised {type(exc).__name__}: {str(exc)[:60]}"
+        )
+        if bedrock_answer is not None:
+            return bedrock_answer
+        raise
     # R361 — an HTTP-200 completion with EMPTY content is a primary FAILURE,
     # not a success. ``openai_wrapper_provider`` does ``msg.get("content") or ""``
     # so an empty choice yields ``error=None``; every downstream guard then

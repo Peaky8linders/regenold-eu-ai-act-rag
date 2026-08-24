@@ -260,6 +260,21 @@ _CONNECT_TIMEOUT_SECONDS = 5.0
 # Cloudflare service-token SECRET to api.groq.com, api.mistral.ai and
 # generativelanguage.googleapis.com. So the headers are attached only when
 # the instance's base_url host matches the Access-protected host.
+#
+# ⚠ R365 — that scoping was SELF-REFERENTIAL and did not hold. With
+# ``CF_ACCESS_HOSTNAME`` unset, the "Access-protected host" was derived from
+# ``OPENAI_API_BASE``, i.e. from the destination itself, so the comparison
+# always agreed with itself. Measured on main before this round:
+#
+#     OPENAI_API_BASE=https://openrouter.ai/api/v1, CF_ACCESS_HOSTNAME unset
+#     _resolve_cf_access_headers("https://openrouter.ai/api/v1")
+#       -> {'CF-Access-Client-Id': 'ID', 'CF-Access-Client-Secret': 'SECRET'}
+#
+# One env var shipped the org's Zero Trust service-token SECRET to a third
+# party — the same env var R360.7 exists to defend against, and the exact class
+# AGENTS.md's prohibited list names. The trust anchor must be a DECLARATION, so
+# R365 replaces the ``OPENAI_API_BASE`` leg with the allowlist that already owns
+# "which hosts are the Claude Max path": ``stage2_policy.allowed_primary_hosts``.
 _CF_ACCESS_CLIENT_ID_ENV = "CF_ACCESS_CLIENT_ID"
 _CF_ACCESS_CLIENT_SECRET_ENV = "CF_ACCESS_CLIENT_SECRET"
 _CF_ACCESS_HOSTNAME_ENV = "CF_ACCESS_HOSTNAME"
@@ -276,6 +291,51 @@ def _host_of(url: str) -> str:
         return ""
 
 
+def _cf_access_trusted_hosts() -> frozenset[str]:
+    """Hosts the Access service token may be presented to (R365).
+
+    ``CF_ACCESS_HOSTNAME``, when set, is the operator's explicit pin and is the
+    ONLY trusted host — it narrows, it never widens.
+
+    Otherwise the anchor is ``stage2_policy.allowed_primary_hosts()``: the
+    R360.7 allowlist that already answers "which hosts ARE the Claude Max
+    path", overridable by the operator via ``REGENOLD_STAGE2_PRIMARY_HOSTS``.
+    Reused rather than re-declared so a renamed tunnel is one edit, not two
+    that can drift.
+
+    Two deliberate departures from that allowlist:
+
+      * ``allowed_primary_hosts`` is read directly, NOT through
+        ``is_primary_base_url_allowed`` — the latter short-circuits ``True``
+        when ``REGENOLD_STAGE2_STRICT_TRANSPORT=0``, which would hand the
+        exfiltration hatch straight back to anyone who turns strict mode off.
+        Secret scoping and the transport contract share the host list; they do
+        not share the off-switch.
+      * ``_DEFAULT_WRAPPER_BASE``'s host is unioned in unconditionally. It is a
+        hardcoded constant in this repo naming the Access-protected edge, so it
+        can never be a third party, and keeping it means a typo'd
+        ``REGENOLD_STAGE2_PRIMARY_HOSTS`` cannot take Stage-2 down — without
+        ``CF_ACCESS_*`` on the wire the edge answers 401 and production serves
+        ZERO Claude Max.
+
+    The local hosts on that allowlist (``127.0.0.1`` et al., there because
+    ``ab_judge`` drives a wrapper on the operator's own machine) are filtered
+    out by the ``_LOCAL_HOSTS`` check in the caller, which runs first.
+    """
+    pinned = _host_of(f"https://{os.getenv(_CF_ACCESS_HOSTNAME_ENV, '').strip()}")
+    if pinned:
+        return frozenset({pinned})
+
+    try:
+        from app.llm.stage2_policy import allowed_primary_hosts
+
+        allowed = set(allowed_primary_hosts())
+    except Exception:  # noqa: BLE001 — never let policy import break provider init
+        allowed = set()
+    allowed.add(_host_of(_DEFAULT_WRAPPER_BASE))
+    return frozenset(h for h in allowed if h)
+
+
 def _resolve_cf_access_headers(base_url: str) -> dict[str, str]:
     """Cloudflare Access service-token headers for ``base_url``, or ``{}``.
 
@@ -284,10 +344,10 @@ def _resolve_cf_access_headers(base_url: str) -> dict[str, str]:
       * ``base_url`` is not a local host (a local wrapper has no Cloudflare
         edge in front of it, so the token would be pointless and would leak
         into a local process);
-      * ``base_url``'s host equals the Access-protected host — taken from
-        ``CF_ACCESS_HOSTNAME`` when set, else the host of ``OPENAI_API_BASE``
-        (else the default wrapper host). This is what keeps the secret off
-        the Groq / Gemini / Mistral endpoints.
+      * ``base_url``'s host is in ``_cf_access_trusted_hosts()`` — an exact,
+        case-folded match against a declared allowlist. R365: it is NOT
+        derived from ``OPENAI_API_BASE`` any more, so pointing the base at a
+        third party no longer arms that third party.
 
     Fail-soft by construction: any missing/mismatched value yields ``{}``.
     """
@@ -300,12 +360,7 @@ def _resolve_cf_access_headers(base_url: str) -> dict[str, str]:
     if not host or host in _LOCAL_HOSTS:
         return {}
 
-    protected = _host_of(
-        f"https://{os.getenv(_CF_ACCESS_HOSTNAME_ENV, '').strip()}"
-    ) or _host_of(
-        os.getenv("OPENAI_API_BASE", "").strip() or _DEFAULT_WRAPPER_BASE
-    )
-    if not protected or host != protected:
+    if host not in _cf_access_trusted_hosts():
         return {}
 
     return {
