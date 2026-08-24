@@ -1019,6 +1019,85 @@ def healthz_email(
     return payload
 
 
+_HEALTHZ_TRUTHY = ("1", "true", "yes", "on")
+
+
+def _probe_bedrock_leg() -> dict[str, object]:
+    """R365 — call the purpose-built Bedrock diagnostic and return it, redacted.
+
+    ``check_connectivity_and_permissions`` has existed since the Bedrock port
+    and answers exactly the question an operator has when leg 2 is dark — it
+    returns the AWS status (``key_invalid`` / ``error`` / ``ok``), the
+    classified error (``api_access_denied_403``, ``api_validation_400``, …)
+    and, for the expired-key case, the remediation hint. It had **zero call
+    sites in ``app/``**: the only caller was ``scripts/test_bedrock_client.py``,
+    which requires shell access to the container. This is its first wiring
+    into a surface reachable from outside.
+
+    Never raises — a health probe that 500s is worse than one that reports a
+    failure, so every path returns a dict.
+    """
+    try:
+        from app.llm.bedrock_client import (
+            check_connectivity_and_permissions,
+            is_bedrock_provider_enabled,
+            redact_credential_like,
+        )
+    except Exception as exc:  # noqa: BLE001 — a probe must never 500
+        return {
+            "status": "unavailable",
+            "error": f"import_failed: {type(exc).__name__}",
+            "hint": "app.llm.bedrock_client could not be imported (boto3 missing?)",
+        }
+
+    try:
+        if not is_bedrock_provider_enabled():
+            return {
+                "status": "no_credentials",
+                "error": None,
+                "hint": (
+                    "no Bedrock credential is wired — set AWS_BEARER_TOKEN_BEDROCK "
+                    "or AWS_BEDROCK_API_KEY or AWS_ACCESS_KEY_ID+AWS_SECRET_ACCESS_KEY. "
+                    "Stage-2 has no fallback leg until one is present."
+                ),
+            }
+        raw = check_connectivity_and_permissions()
+    except Exception as exc:  # noqa: BLE001 — a probe must never 500
+        return {
+            "status": "probe_raised",
+            "error": redact_credential_like(f"{type(exc).__name__}: {exc}"),
+            "hint": "check_connectivity_and_permissions raised; see container logs",
+        }
+
+    if not isinstance(raw, dict):
+        return {
+            "status": "probe_malformed",
+            "error": f"expected dict, got {type(raw).__name__}",
+            "hint": None,
+        }
+
+    out: dict[str, object] = {}
+    for key in (
+        "status", "model", "error", "hint", "elapsed_ms",
+        "response_text", "input_tokens", "output_tokens",
+    ):
+        if key in raw:
+            value = raw[key]
+            out[key] = redact_credential_like(value) if isinstance(value, str) else value
+    # ``status`` / ``error`` are surfaced VERBATIM (post-redaction) — that is
+    # the whole point. Only supply a hint when AWS gave us none.
+    out.setdefault("error", None)
+    if not out.get("hint") and str(out.get("status", "")) not in {"ok", ""}:
+        out["hint"] = (
+            "Bedrock refused the call. Compare the error code against the "
+            "account's model entitlements and BEDROCK_REGION — "
+            "api_access_denied_403 is an entitlement/region problem, "
+            "api_key_invalid_403 is a dead credential."
+        )
+    out.setdefault("hint", None)
+    return out
+
+
 def _degraded_to_bedrock(base: dict[str, object], detail: str) -> dict[str, object]:
     """R360.9 — a down tunnel is not a down service while Bedrock is armed.
 
@@ -1079,7 +1158,7 @@ def _degraded_to_bedrock(base: dict[str, object], detail: str) -> dict[str, obje
 
 
 @app.get("/healthz/llm")
-def healthz_llm() -> dict[str, object]:
+def healthz_llm(probe_bedrock: str = "0") -> dict[str, object]:
     """Live LLM-path probe — verifies the configured provider can actually answer.
 
     Without this, an operator who sets ``P2P_GRAPH_RAG_PROVIDER=openai_wrapper``
@@ -1091,6 +1170,22 @@ def healthz_llm() -> dict[str, object]:
     Always returns HTTP 200 (so an uptime monitor on /healthz/llm doesn't
     flap when the wrapper is down). The shape includes a ``llm_ok`` bool —
     consumers can alert on that instead.
+
+    **R365 — ``?probe_bedrock=1`` (OPT-IN, default OFF).** Adds a
+    ``bedrock_probe`` block carrying the AWS ``status`` / ``error`` / ``hint``
+    from ``check_connectivity_and_permissions`` verbatim (credential-shaped
+    text redacted). It is opt-in because it costs one billable Bedrock call
+    and this handler ALREADY fires a billable wrapper completion on every hit;
+    making the default probe two paid round-trips would tax every uptime
+    check. Without the flag no AWS call is made.
+
+    **R365 — the counters are PER WORKER.** Production runs ``--workers 2``
+    (``Procfile`` / ``railway.toml``) and ``stage2_policy._STATS`` is a plain
+    process-local dict, so ``stage2_transport.stats`` is a 1-in-N sample of
+    the deployment: two consecutive probes of the SAME deployment legitimately
+    return different counters. ``pid`` is echoed so a reader can tell which
+    worker answered, and ``counters_scope`` says so in the body. Never alert
+    on a single read of these counters.
     """
     from app.llm.openai_wrapper_provider import (
         OpenAIWrapperRequest,
@@ -1106,10 +1201,27 @@ def healthz_llm() -> dict[str, object]:
     base: dict[str, object] = {
         "version": settings.version,
         **_deploy_identity(),
+        # R365 — WHICH worker answered. ``--workers 2`` means every
+        # process-local counter below is a 1-in-N sample; without the pid an
+        # operator diffing two probes of the same deployment sees the counters
+        # move backwards and concludes the deploy rolled. It did not.
+        "pid": os.getpid(),
+        "counters_scope": (
+            "per-worker — stage2_transport.stats is process-local and the "
+            "service runs --workers 2, so a single read samples ONE worker. "
+            "Do not alert on one read; poll until the same pid repeats."
+        ),
         "provider": provider_label,
         "llm_ok": False,
         "detail": "",
     }
+
+    # R365 — OPT-IN live Bedrock probe. Placed BEFORE the provider branches so
+    # it survives every return path below (including ``_degraded_to_bedrock``,
+    # which mutates and returns this same dict). Default OFF: no AWS call is
+    # made unless the caller asks for one.
+    if str(probe_bedrock).strip().lower() in _HEALTHZ_TRUTHY:
+        base["bedrock_probe"] = _probe_bedrock_leg()
 
     # R360 — surface the Stage-2 transport contract and what has actually
     # dialled. ``llm_ok`` above says the configured provider can answer; this

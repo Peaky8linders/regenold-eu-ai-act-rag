@@ -742,10 +742,39 @@ def _bedrock_complete_for_graph_rag(
 
                 return resp.text
 
+            # R365 — do NOT let the classified AWS error die in stdout. It is
+            # the ONLY thing that distinguishes "the ABSK key expired" from
+            # "this account has no entitlement for this model id" from "wrong
+            # region", and outside the container the Railway log is not
+            # reachable: the string reached neither the wire response, nor the
+            # reasoning trace, nor /healthz/llm. Recording it as a trace note
+            # makes leg 2's failure mode visible via
+            # ``?include_reasoning=true`` on any real request. Redacted,
+            # because ``unexpected_error: …`` carries an arbitrary repr.
+            try:
+                from app.integrations.regenold.reasoning_trace import record_note
+                from app.llm.bedrock_client import redact_credential_like
+                record_note(
+                    "stage2_bedrock_attempt_failed "
+                    f"model={_mid} error={redact_credential_like(resp.error, limit=200)}"
+                )
+            except Exception:
+                pass
             logger.warning("graph_rag.bedrock_model_attempt_failed model=%s error=%s", _mid, resp.error)
 
+        # Contract unchanged: ``None`` means "no Bedrock answer" and callers
+        # fall through to the deterministic path. Only the DIAGNOSTIC is new.
         return None
     except Exception as exc:
+        try:
+            from app.integrations.regenold.reasoning_trace import record_note
+            from app.llm.bedrock_client import redact_credential_like
+            record_note(
+                "stage2_bedrock_exception="
+                + redact_credential_like(f"{type(exc).__name__}: {exc}", limit=200)
+            )
+        except Exception:
+            pass
         logger.warning("graph_rag.bedrock_exception: %s", exc)
         return None
 

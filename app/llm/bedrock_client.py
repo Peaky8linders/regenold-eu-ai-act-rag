@@ -37,6 +37,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import threading
 import time
 from collections.abc import AsyncGenerator, Iterator
@@ -780,6 +781,66 @@ class BedrockProvider:
         except Exception:  # noqa: BLE001 — a repr must never raise
             region = _resolve_region()
         return f"<BedrockProvider model={self._default_model!r} region={region!r}>"
+
+
+# ── Credential redaction ─────────────────────────────────────────────────────
+#
+# R365 — the Bedrock diagnostic is only useful if its text can be put on the
+# wire (``/healthz/llm?probe_bedrock=1``) and into the reasoning trace. Both
+# surfaces are reachable by a partner, so anything credential-shaped in an AWS
+# error string or in an exception repr has to be scrubbed on the way out.
+#
+# The patterns are ordered specific-first; the last one is a deliberate
+# catch-all for a 40+ character run of the base64 alphabet, which is what an
+# AWS secret access key (exactly 40) or an opaque bearer blob looks like and
+# which never occurs in English prose, an AWS error code, an ARN segment or a
+# Bedrock model id (all of those carry ``.``, ``-`` or ``:`` well before 40).
+
+_CREDENTIAL_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # Long-term Bedrock API key — the "ABSK…" blob, shown once at creation.
+    (re.compile(r"\bABSK[A-Za-z0-9+/=_-]{6,}"), "[REDACTED_BEDROCK_API_KEY]"),
+    # ``Authorization: Bearer <blob>`` / ``bearer <blob>``.
+    (re.compile(r"(?i)\b(bearer)\s+[A-Za-z0-9._~+/=-]{8,}"), r"\1 [REDACTED]"),
+    # AWS access-key ids (AKIA/ASIA/… + at least 8 uppercase alnum).
+    (
+        re.compile(r"\b(?:AKIA|ASIA|AIDA|AROA|AIPA|ANPA|ANVA|ABIA|ACCA)[0-9A-Z]{8,}\b"),
+        "[REDACTED_AWS_KEY_ID]",
+    ),
+    # ``name=value`` / ``name: value`` where the NAME reads like a secret.
+    (
+        re.compile(
+            r"(?i)\b(aws_secret_access_key|aws_session_token|aws_access_key_id|"
+            r"aws_bearer_token_bedrock|aws_bedrock_api_key|secret_?key|api[_-]?key|"
+            r"access[_-]?token|authorization|password|passwd|secret|token)\b"
+            r"\s*[=:]\s*[\"']?[^\s\"',;]{4,}"
+        ),
+        r"\1=[REDACTED]",
+    ),
+    # Catch-all: a long base64-alphabet run is a credential, not a message.
+    (re.compile(r"\b[A-Za-z0-9+/]{40,}={0,2}"), "[REDACTED]"),
+)
+
+#: Hard cap on any redacted string put on the wire — an AWS message can be
+#: kilobytes long and ``/healthz/llm`` is not a log drain.
+_REDACT_LIMIT = 600
+
+
+def redact_credential_like(value: Any, *, limit: int = _REDACT_LIMIT) -> str:
+    """Return ``value`` as text with anything credential-shaped masked.
+
+    Never raises: a diagnostic that can blow up is worse than no diagnostic.
+    A non-string is coerced via ``str`` so callers can pass an exception or a
+    ``None`` straight through.
+    """
+    try:
+        text = value if isinstance(value, str) else str(value)
+        for pattern, replacement in _CREDENTIAL_PATTERNS:
+            text = pattern.sub(replacement, text)
+        if limit and len(text) > limit:
+            text = text[:limit] + "…"
+        return text
+    except Exception:  # noqa: BLE001 — redaction must never raise
+        return "[REDACTION_FAILED]"
 
 
 # ── Connectivity check ───────────────────────────────────────────────────────
