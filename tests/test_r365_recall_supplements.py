@@ -28,6 +28,8 @@ from app.integrations.regenold.models import reference_from_article_ref
 from app.main import app
 from app.routes.regenold import _engine_cache_key, _r365_wire_guard_enabled
 
+_TEST_API_KEY = "r365-test-key"
+
 _ANNEXIII_FLAG = "REGENOLD_ANNEXIII_RECALL_SUPPLEMENTS"
 _ART50_FLAG = "REGENOLD_ART50_RECALL_SUPPLEMENTS"
 _GUARD_FLAG = "REGENOLD_R368_WIRE_GUARD"
@@ -474,10 +476,34 @@ def test_wire_guard_flag_is_deliberately_not_in_the_engine_cache_key(
 # ══════════════════════════════════════════════════════════════════════════
 # 7. THE WIRE. The engine append alone is INERT here — pin that, both ways.
 # ══════════════════════════════════════════════════════════════════════════
+@pytest.fixture(autouse=True)
+def _pin_the_auth_key():
+    """R365 — pin the key these tests SEND on the settings singleton.
+
+    These tests used to send ``r365-test-key`` and configure nothing, so they
+    passed only while NO key was configured (the route is anonymous-friendly
+    in that state). Any earlier suite that pinned a key — e.g.
+    ``test_r100_synthesis_default._client`` (:204) — turned every request here
+    into ``403 regenold_api_key_invalid``: green file-scoped, red in-suite.
+    Configuring the key we actually send makes the file independent of test
+    order in BOTH directions.
+    """
+    from pydantic import SecretStr  # noqa: PLC0415
+
+    from app.config import settings as _cfg  # noqa: PLC0415
+
+    _saved = _cfg.regenold.api_key
+    _cfg.regenold.api_key = SecretStr(_TEST_API_KEY)
+    try:
+        yield
+    finally:
+        _cfg.regenold.api_key = _saved
+
+
 def _wire_refs(client: TestClient, question: str) -> list[str]:
     r = client.post(
         "/api/v1/regenold/eu-ai-act/ask",
-        headers={"X-Regenold-Api-Key": "r365-test-key"},
+        headers={"X-Regenold-Api-Key": _TEST_API_KEY},
         json=[{"role": "user", "content": question}],
     )
     assert r.status_code == 200, r.text
