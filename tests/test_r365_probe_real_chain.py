@@ -130,3 +130,57 @@ class TestPolicy:
         assert "fallback" in preamble
         assert "judge" in preamble
         assert "never the primary" in preamble or "not the primary" in preamble
+
+
+class TestChainReachesTheOperator:
+    """The chain is only useful if `/healthz/llm?probe_bedrock=1` forwards it.
+
+    R365 — `_probe_bedrock_leg` forwards an explicit key allow-list, and
+    `chain` was not on it, so the per-model detail died inside the process.
+    A partial entitlement (235b denied, 32b ok) is a very different situation
+    from a dead credential and the top-level status cannot distinguish them.
+    """
+
+    def test_probe_endpoint_forwards_the_per_model_chain(self, monkeypatch) -> None:
+        from fastapi.testclient import TestClient
+
+        import app.main as m
+
+        fake = {
+            "status": "ok",
+            "model": "qwen.qwen3-32b-v1:0",
+            "error": None,
+            "elapsed_ms": 7,
+            "chain": [
+                {"model": "qwen.qwen3-235b-a22b-2507-v1:0",
+                 "status": "error", "error": "api_access_denied_403"},
+                {"model": "qwen.qwen3-32b-v1:0", "status": "ok", "error": None},
+            ],
+        }
+        monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "FAKE-TOKEN-FOR-TEST")
+        monkeypatch.setattr(
+            bc, "check_connectivity_and_permissions", lambda model_id=None: fake
+        )
+        r = TestClient(m.app).get("/healthz/llm?probe_bedrock=1")
+        assert r.status_code == 200
+        probe = r.json()["bedrock_probe"]
+        assert "chain" in probe, "the per-model chain must reach the operator"
+        assert [c["status"] for c in probe["chain"]] == ["error", "ok"]
+        assert probe["status"] == "ok", "one ok model means the leg is up"
+
+    def test_a_probe_without_a_chain_still_works(self, monkeypatch) -> None:
+        """Two-sided: an explicit single-model probe has no chain, and that
+        must not become an empty-list lie or a KeyError."""
+        from fastapi.testclient import TestClient
+
+        import app.main as m
+
+        monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "FAKE-TOKEN-FOR-TEST")
+        monkeypatch.setattr(
+            bc,
+            "check_connectivity_and_permissions",
+            lambda model_id=None: {"status": "ok", "model": "x", "error": None},
+        )
+        r = TestClient(m.app).get("/healthz/llm?probe_bedrock=1")
+        assert r.status_code == 200
+        assert "chain" not in r.json()["bedrock_probe"]
