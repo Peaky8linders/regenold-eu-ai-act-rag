@@ -31,12 +31,21 @@ Thread-safety design (addresses CR-01 through CR-10 from adversarial review):
   * Stream iterators wrapped in ``try...finally: stream.close()`` for pool safety.
   * Async wrappers use ``asyncio.to_thread`` — never block the event loop.
   * Credentials are never logged in ``__repr__``, ``__str__``, or log messages.
+  * R365 — the bearer token is resolved per REQUEST inside the ``before-send``
+    handler, not captured when the client is built. The clients are singletons,
+    so closing over a build-time value pinned a rotated key for the life of the
+    process. Reading ``os.environ`` into a local is lock-free and re-entrant;
+    rebuilding the client instead would tear down a pool other threads are
+    using. Note this makes the key hot-swappable **in-process only** — see
+    :data:`KEY_INVALID_HINT` for why ``.env`` and the Railway dashboard still
+    need a restart.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
 import os
+import re
 import threading
 import time
 from collections.abc import AsyncGenerator, Iterator
@@ -284,8 +293,40 @@ def _create_client_with_auth(
         session = boto3.Session(region_name=region)
         client = session.client(service_name, config=config)
 
+        # R365 — resolve the bearer token at REQUEST time, not at client-build
+        # time.
+        #
+        # This handler used to close over ``bearer_token``, the value read when
+        # the client was built. The clients are process-wide singletons
+        # (``_RUNTIME_CLIENT``, ``_CATALOG_CLIENT``, ``_TIMEOUT_CLIENTS``), so a
+        # rotated credential was PINNED for the life of the process: setting
+        # ``AWS_BEARER_TOKEN_BEDROCK`` to a fresh key left every subsequent
+        # request still sending the dead one, and ``check_connectivity_and_
+        # permissions`` told the operator the opposite.
+        #
+        # Chosen over invalidating the singleton because rebuilding the client
+        # tears down a botocore connection pool that other threads may be
+        # mid-request on (the app is multi-worker and uses a ThreadPoolExecutor),
+        # which needs cross-thread coordination this does not. Here there is no
+        # shared mutable state at all: the handler reads ``os.environ`` (an
+        # atomic dict lookup under the GIL) into a local, so it is re-entrant by
+        # construction. Cost is a few microseconds against a network round-trip.
+        #
+        # ``_resolve_bearer_token`` is the SAME resolver used at build time, so
+        # which source wins is unchanged — only WHEN it is read. ``build_token``
+        # is the fallback for the variable being unset after the client was
+        # built: behaviour in that case is exactly as it was before this fix.
+        build_token = bearer_token
+
         def _add_bearer_header(request: Any, **_kwargs: Any) -> None:
-            request.headers["Authorization"] = f"Bearer {bearer_token}"
+            # NEVER log, format or re-raise the token — see the module docstring
+            # ("Credentials are never logged"). The except clause below swallows
+            # the exception object rather than chaining it for that reason.
+            try:
+                current = _resolve_bearer_token()
+            except Exception:  # noqa: BLE001 — auth lookup must never break a send
+                current = None
+            request.headers["Authorization"] = f"Bearer {current or build_token}"
 
         client.meta.events.register(f"before-send.{service_name}.*", _add_bearer_header)
         return client
@@ -782,7 +823,92 @@ class BedrockProvider:
         return f"<BedrockProvider model={self._default_model!r} region={region!r}>"
 
 
+# ── Credential redaction ─────────────────────────────────────────────────────
+#
+# R365 — the Bedrock diagnostic is only useful if its text can be put on the
+# wire (``/healthz/llm?probe_bedrock=1``) and into the reasoning trace. Both
+# surfaces are reachable by a partner, so anything credential-shaped in an AWS
+# error string or in an exception repr has to be scrubbed on the way out.
+#
+# The patterns are ordered specific-first; the last one is a deliberate
+# catch-all for a 40+ character run of the base64 alphabet, which is what an
+# AWS secret access key (exactly 40) or an opaque bearer blob looks like and
+# which never occurs in English prose, an AWS error code, an ARN segment or a
+# Bedrock model id (all of those carry ``.``, ``-`` or ``:`` well before 40).
+
+_CREDENTIAL_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # Long-term Bedrock API key — the "ABSK…" blob, shown once at creation.
+    (re.compile(r"\bABSK[A-Za-z0-9+/=_-]{6,}"), "[REDACTED_BEDROCK_API_KEY]"),
+    # ``Authorization: Bearer <blob>`` / ``bearer <blob>``.
+    (re.compile(r"(?i)\b(bearer)\s+[A-Za-z0-9._~+/=-]{8,}"), r"\1 [REDACTED]"),
+    # AWS access-key ids (AKIA/ASIA/… + at least 8 uppercase alnum).
+    (
+        re.compile(r"\b(?:AKIA|ASIA|AIDA|AROA|AIPA|ANPA|ANVA|ABIA|ACCA)[0-9A-Z]{8,}\b"),
+        "[REDACTED_AWS_KEY_ID]",
+    ),
+    # ``name=value`` / ``name: value`` where the NAME reads like a secret.
+    (
+        re.compile(
+            r"(?i)\b(aws_secret_access_key|aws_session_token|aws_access_key_id|"
+            r"aws_bearer_token_bedrock|aws_bedrock_api_key|secret_?key|api[_-]?key|"
+            r"access[_-]?token|authorization|password|passwd|secret|token)\b"
+            r"\s*[=:]\s*[\"']?[^\s\"',;]{4,}"
+        ),
+        r"\1=[REDACTED]",
+    ),
+    # Catch-all: a long base64-alphabet run is a credential, not a message.
+    (re.compile(r"\b[A-Za-z0-9+/]{40,}={0,2}"), "[REDACTED]"),
+)
+
+#: Hard cap on any redacted string put on the wire — an AWS message can be
+#: kilobytes long and ``/healthz/llm`` is not a log drain.
+_REDACT_LIMIT = 600
+
+
+def redact_credential_like(value: Any, *, limit: int = _REDACT_LIMIT) -> str:
+    """Return ``value`` as text with anything credential-shaped masked.
+
+    Never raises: a diagnostic that can blow up is worse than no diagnostic.
+    A non-string is coerced via ``str`` so callers can pass an exception or a
+    ``None`` straight through.
+    """
+    try:
+        text = value if isinstance(value, str) else str(value)
+        for pattern, replacement in _CREDENTIAL_PATTERNS:
+            text = pattern.sub(replacement, text)
+        if limit and len(text) > limit:
+            text = text[:limit] + "…"
+        return text
+    except Exception:  # noqa: BLE001 — redaction must never raise
+        return "[REDACTION_FAILED]"
+
+
 # ── Connectivity check ───────────────────────────────────────────────────────
+
+KEY_INVALID_HINT = (
+    "AWS rejects the ABSK credential itself, not a model entitlement. "
+    "Long-term Bedrock API keys expire after 30 days and are shown once at "
+    "creation. Regenerate in the Bedrock console (API keys), update "
+    "AWS_BEARER_TOKEN_BEDROCK, then RESTART the process (on Railway: redeploy; "
+    "do NOT rotate with --skip-deploys). The Authorization header is re-read "
+    "from os.environ on every request (R365), so no client rebuild or "
+    "singleton reset is needed; but a new value written to .env or typed into "
+    "the Railway dashboard is NOT in os.environ until the process restarts. "
+    ".env is read once at import (app/config.py::_load_dotenv_once, "
+    "override=False), and a dashboard variable set with --skip-deploys leaves "
+    "the running container on the old value. Only an in-process update (a test "
+    "or an operator setting os.environ directly) takes effect without a restart."
+)
+"""Operator-facing hint for ``api_key_invalid_403``.
+
+⚠ Module-level, not inlined, so ``tests/test_r365_bearer_token_refresh.py`` can
+assert the text against the measured behaviour without a network call. Before
+R365 this string promised the key was picked up "on the next request with no
+restart" while ``_add_bearer_header`` closed over a build-time value on a
+process-wide singleton, so a restart was in fact mandatory. Keep the text and
+the behaviour in step — the test fails if they drift apart.
+"""
+
 
 def check_connectivity_and_permissions(
     model_id: str | None = None,
@@ -810,14 +936,7 @@ def check_connectivity_and_permissions(
                     "model": target,
                     "error": result.error,
                     "elapsed_ms": elapsed_ms,
-                    "hint": (
-                        "AWS rejects the ABSK credential itself, not a model "
-                        "entitlement. Long-term Bedrock API keys expire after "
-                        "30 days and are shown once at creation. Regenerate in "
-                        "the Bedrock console (API keys) and update "
-                        "AWS_BEARER_TOKEN_BEDROCK in .env — the code picks the "
-                        "new key up on the next request with no restart."
-                    ),
+                    "hint": KEY_INVALID_HINT,
                 }
             return {
                 "status": "error",
