@@ -1934,6 +1934,21 @@ def _engine_cache_key(
             # arm A's cached response to arm B (the R263.2 doctrine).
             "REGENOLD_RERANK_REQUEST_BUDGET",
             "REGENOLD_SEMANTIC_COORDINATES",
+            # R365 — the retrieval-grounding guard on the prose-promotion
+            # passes (``_add_prose_named_refs``). Registered per AGENTS.md
+            # invariant #4: EVERY runtime flag that can change output must be
+            # in this key.
+            #
+            # NOTE the deliberate conservatism. This one is ROUTE
+            # post-processing, so on the letter of the docstring above it sits
+            # with REGENOLD_REFS_RECONCILE / the R281 clamp — flipping it
+            # cannot serve a stale ENGINE response, because the route re-runs
+            # on every cache hit. It is keyed anyway because the invariant is
+            # written without that exemption, and because a shared-cache
+            # easyhard_ab A/B of THIS flag is the intended gate: keying it
+            # costs one extra Stage-2 generation per arm and removes any
+            # argument about cross-arm contamination when the number is read.
+            "REGENOLD_CITABLE_BASE_GUARD",
         )
     )
     import json
@@ -4220,6 +4235,119 @@ def _prose_citation_bases(prose: str) -> list[str]:
     return out
 
 
+# ── R365 — retrieval-grounding guard for the prose-promotion passes ──────
+#
+# ``_add_prose_named_refs`` has ALWAYS accepted a ``citable_bases`` keyword and
+# NEITHER call site (the R134 pass and the R138 final consistency pass) ever
+# passed it. The parameter was therefore inert: ``allowed_source`` fell through
+# to ``set(references) | set(_prose_citation_bases(prose))``, whose right-hand
+# term CONTAINS every prose-named base by construction — so the "allowed" test
+# was vacuously true and the pass promoted ANY existing, non-foreign,
+# non-negated provision the Stage-2 prose happened to name, including ones
+# retrieval never surfaced.
+#
+# WHAT THE GUARD CONSTRAINS: ``citable_bases`` is the route's own
+# RETRIEVAL-DERIVED citation universe — the engine's returned citations plus
+# whatever the route's deterministic candidate passes (anchor injection,
+# intent boost, ontology hop) produced, frozen BEFORE any prose-driven pass
+# runs. With it supplied, a prose-named base is promoted only when retrieval
+# actually saw that provision. It is a GROUNDING predicate ("did retrieval
+# surface this at all?"), not a positional / top-K trimmer, so it sits outside
+# every over-citation family docs/ROUNDS.md records as refuted.
+#
+# It can only ever REMOVE an ungrounded promotion — it never invents a
+# reference — but note the one non-monotonicity: the pass is capped, so
+# blocking an early base frees a cap slot for a later grounded one. The
+# EMITTED set is therefore not guaranteed to be a strict subset of the OFF
+# state; only the candidate POOL is.
+#
+# Default OFF (new flag) and fully reversible: with the flag off the call
+# sites pass ``citable_bases=None`` and the function is byte-identical to
+# pre-R365.
+#
+# THE OBSERVABILITY REQUIREMENT (R329 / R331 doctrine): three Cohere-rerank
+# placements each read correctly in the diff and each made ZERO calls, reading
+# +0.0000 — indistinguishable from a lever that does not work. So the guard
+# carries its own counters and ``tests/test_r365_citable_base_guard.py``
+# asserts on THOSE, never on the shape of the code.
+_CITABLE_BASE_GUARD_STATS_LOCK = threading.Lock()
+_CITABLE_BASE_GUARD_STATS: dict[str, int] = {
+    "attempts": 0,
+    "blocked": 0,
+    "noop": 0,
+    # The Component-D promotion path (the third prose-to-citation site, which
+    # sits BETWEEN the two ``_add_prose_named_refs`` call sites). Counted
+    # separately because it is the one that decides the WIRE: with only the
+    # two call sites guarded, ``blocked`` went positive while the emitted
+    # references stayed byte-identical.
+    "component_d_attempts": 0,
+    "component_d_blocked": 0,
+}
+
+
+def citable_base_guard_stats() -> dict[str, int]:
+    """Snapshot of the R365 guard counters.
+
+    ``attempts`` — :func:`_add_prose_named_refs` calls that ran WITH a
+        ``citable_bases`` universe supplied (i.e. the guard was consulted).
+    ``blocked``  — individual prose-named, catalog-resolving, not-yet-cited
+        bases the guard refused to promote because retrieval never surfaced
+        them. Counted only while the ``cap`` still had room, so it measures
+        promotions actually prevented.
+    ``noop``     — guarded calls that blocked nothing.
+
+    ``component_d_attempts`` / ``component_d_blocked`` — the same predicate
+        applied at the Component-D post-polish promotion path. THIS is the pair
+        that proves a WIRE effect: Component D re-adds any catalog-valid
+        prose citation, so with only the two ``_add_prose_named_refs`` sites
+        guarded, ``blocked`` goes positive while the emitted references stay
+        byte-identical.
+
+    ``attempts == 0`` means the lever never ran; treat any downstream A/B
+    number as UNMEASURED, not as evidence of no effect.
+    """
+    with _CITABLE_BASE_GUARD_STATS_LOCK:
+        return dict(_CITABLE_BASE_GUARD_STATS)
+
+
+def reset_citable_base_guard_stats() -> None:
+    """Zero the R365 counters — per-arm reset for an A/B harness."""
+    with _CITABLE_BASE_GUARD_STATS_LOCK:
+        for key in _CITABLE_BASE_GUARD_STATS:
+            _CITABLE_BASE_GUARD_STATS[key] = 0
+
+
+def _bump_citable_base_guard(field: str, amount: int = 1) -> None:
+    with _CITABLE_BASE_GUARD_STATS_LOCK:
+        _CITABLE_BASE_GUARD_STATS[field] = (
+            _CITABLE_BASE_GUARD_STATS.get(field, 0) + amount
+        )
+
+
+def _citable_base_guard_enabled() -> bool:
+    """R365 — restrict prose-promotion to the retrieved citation universe?
+    **Default OFF.**
+
+    Gates passing ``citable_bases`` into :func:`_add_prose_named_refs`. New
+    levers ship OFF here; flipping the default is a separate, A/B-gated,
+    confirmation-required decision. The sibling evaluation fork ships the same
+    predicate default ON — that default is NOT ported (see the R365 notes at
+    the call sites).
+
+    The gate is the gold-bearing ``evals.harness.easyhard_ab`` (Ref Strict /
+    Ref Conciseness, with ``gold_dropped_head`` as the zero-drop guard), NOT
+    ``ab_judge``: this is a reference-precision change, and ab_judge's refs
+    axis has no minimality term so it prefers the superset by construction.
+
+    Fresh env read per call — the R263.2 in-process A/B idiom: ``easyhard_ab``
+    mutates ``os.environ`` between arms in the SAME process, so a value
+    snapshot at import time would make both arms read the baseline.
+    """
+    return os.getenv("REGENOLD_CITABLE_BASE_GUARD", "0").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
 def _add_prose_named_refs(
     references: list[str],
     prose: str,
@@ -4227,12 +4355,21 @@ def _add_prose_named_refs(
     citable_bases: frozenset[str] | set[str] | None = None,
     cap: int = 2,
 ) -> list[str]:
-    """Promote refs the answer prose explicitly names into the citations."""
+    """Promote refs the answer prose explicitly names into the citations.
+
+    ``citable_bases`` (R365) — when supplied, the retrieval-derived citation
+    universe a prose-named base must already belong to before it may be
+    promoted. ``None`` (the pre-R365 behaviour, and what both call sites pass
+    while ``REGENOLD_CITABLE_BASE_GUARD`` is off) falls back to
+    ``references | prose bases``, which admits every prose base — i.e. the
+    guard is disabled.
+    """
     try:
         if not prose:
             return references
         from app.data.article_existence import ARTICLE_EXISTENCE  # noqa: PLC0415
 
+        guard_active = citable_bases is not None
         allowed_source = (
             citable_bases
             if citable_bases is not None
@@ -4248,10 +4385,15 @@ def _add_prose_named_refs(
             for ref in references
             if (base := _canonical_reference_base(ref)) is not None
         }
+        blocked = 0
         additions: list[str] = []
         for base in _prose_citation_bases(prose):
-            if base in present or base not in allowed:
+            if base in present:
                 continue
+            # R365 — the existence check moved AHEAD of the ``allowed`` check so
+            # ``blocked`` counts only bases that WOULD have been promoted.
+            # Both branches are bare ``continue``s, so the resulting additions
+            # are identical to the pre-R365 ordering.
             catalog_key = (
                 "Art. " + base[len("Article "):]
                 if base.startswith("Article ")
@@ -4259,10 +4401,22 @@ def _add_prose_named_refs(
             )
             if catalog_key not in ARTICLE_EXISTENCE:
                 continue
+            if base not in allowed:
+                blocked += 1
+                continue
             additions.append(base)
             present.add(base)
             if len(additions) >= cap:
                 break
+
+        # Counters are bumped ONLY on the guarded path, so the unguarded
+        # (default) path is observably as well as behaviourally unchanged.
+        if guard_active:
+            _bump_citable_base_guard("attempts")
+            if blocked:
+                _bump_citable_base_guard("blocked", blocked)
+            else:
+                _bump_citable_base_guard("noop")
 
         if not additions:
             return references
@@ -7163,6 +7317,17 @@ def regenold_eu_ai_act_ask(
             continue
         seen_refs.add(formatted)
         candidates.append(formatted)
+    # R365 — freeze the ENGINE-derived citation universe here, before any
+    # route pass touches ``candidates``. Several downstream passes REPLACE the
+    # list with a filtered subset (the Article-50 / Annex-I narrowings), so the
+    # post-pass ``candidates`` alone is not a faithful record of what retrieval
+    # actually surfaced. Consumed only by the default-OFF
+    # ``REGENOLD_CITABLE_BASE_GUARD``; unread when the flag is off.
+    _retrieved_citable_reference_bases = frozenset(
+        base
+        for candidate in candidates
+        if (base := _canonical_reference_base(candidate)) is not None
+    )
 
     # Resolve the live user message — used as a topic hint by the
     # anchor-injection helper to suppress broad-anchor overmatch when
@@ -8052,6 +8217,20 @@ def regenold_eu_ai_act_ask(
             min(7, _effective_max_refs + _ontology_hop_injected),
         )
 
+    # R365 — Stage-2 may read non-citable KG expansion blocks (AGENTS.md
+    # invariant #3). Freeze the independent route/retrieval-derived citation
+    # universe HERE, before any prose-driven pass, so a coordinate that only
+    # ever reached Stage-2 as graph CONTEXT can never migrate onto the wire via
+    # the prose-promotion passes. Consumed only by the default-OFF
+    # ``REGENOLD_CITABLE_BASE_GUARD``.
+    _stage2_citable_reference_bases = frozenset(
+        set(_retrieved_citable_reference_bases)
+        | {
+            base
+            for candidate in candidates
+            if (base := _canonical_reference_base(candidate)) is not None
+        }
+    )
     references: list[str] = candidates[:_effective_max_refs]
 
     # R115 (Antifragile q11 follow-up) — subpoint-aware budget rescue.
@@ -8816,7 +8995,31 @@ def regenold_eu_ai_act_ask(
         and not _looks_like_scenario_shape(question)
         and references
     ):
-        references = _add_prose_named_refs(references, answer_text)
+        # R365 — widen the frozen universe with whatever the route's own
+        # deterministic passes have SINCE put on the wire, then carry that
+        # widened set forward to the R138 pass below. Refs already in
+        # ``references`` are skipped by the function's ``present`` set anyway,
+        # so this is a no-op HERE; it matters at the second call site, where a
+        # ref the R105 reconcile has since dropped stays promotable and the
+        # guard cannot silently become stricter than "retrieval OR already
+        # emitted".
+        _stage2_citable_reference_bases = frozenset(
+            set(_stage2_citable_reference_bases)
+            | {
+                base
+                for ref in references
+                if (base := _canonical_reference_base(ref)) is not None
+            }
+        )
+        references = _add_prose_named_refs(
+            references,
+            answer_text,
+            citable_bases=(
+                _stage2_citable_reference_bases
+                if _citable_base_guard_enabled()
+                else None
+            ),
+        )
 
     # R94 — verbatim exact-text answer mode (default ON).
     #
@@ -8906,6 +9109,45 @@ def regenold_eu_ai_act_ask(
                         catalog_key = "Art. " + cite[len("Article "):]
 
                     if catalog_key in ARTICLE_EXISTENCE:
+                        # R365 — this is the THIRD prose-to-citation promotion
+                        # path in the route, and it sits BETWEEN the R134 and
+                        # R138 ``_add_prose_named_refs`` call sites. MEASURED
+                        # 2026-08-24 through the real route (Stage-2 stubbed,
+                        # deployer-duties question, polish naming Article 111):
+                        # with the guard wired at BOTH _add_prose_named_refs
+                        # call sites and nothing else, the counters read
+                        # attempts=2 / blocked=1 — the lever fired — and the
+                        # WIRE WAS BYTE-IDENTICAL, because this branch re-added
+                        # Article 111 unconditionally and the R138 pass then
+                        # saw it as already ``present``.
+                        #
+                        # That is precisely the repo's signature failure (a
+                        # lever that reads right in the diff and changes
+                        # nothing), and it is the same defect R324 recorded for
+                        # the foreign-instrument guard: "every foreign citation
+                        # the guard correctly dropped upstream was silently
+                        # re-added here". So the retrieval-grounding predicate
+                        # is applied here too, under the SAME gate.
+                        #
+                        # The remedy is scoped to the REFERENCE: do not promote
+                        # the coordinate, and KEEP the Stage-2 answer. It is
+                        # deliberately NOT routed into ``has_hallucination``,
+                        # which discards the entire polished answer — far too
+                        # large a blast radius for a reference-scoped problem.
+                        if (
+                            _citable_base_guard_enabled()
+                            and cite not in _stage2_citable_reference_bases
+                        ):
+                            _bump_citable_base_guard("component_d_attempts")
+                            _bump_citable_base_guard("component_d_blocked")
+                            logger.info(
+                                "Component D Grounding Guard: prose cited %s — "
+                                "catalog-valid but not retrieval-grounded; not "
+                                "promoting it, answer retained.", cite
+                            )
+                            continue
+                        if _citable_base_guard_enabled():
+                            _bump_citable_base_guard("component_d_attempts")
                         logger.info(
                             "Component D Grounding Guard: Prose cited %s which was missing "
                             "from reference_bases, but exists in ARTICLE_EXISTENCE. Dynamically "
@@ -9111,8 +9353,19 @@ def regenold_eu_ai_act_ask(
         and os.getenv("REGENOLD_CITE_CONSISTENCY", "1").strip().lower()
         in ("1", "true", "yes", "on")
     ):
+        # R365 — same retrieval-grounding guard as the R134 call site above,
+        # default OFF. This pass is the uncapped-in-spirit one
+        # (``_CITE_CONSISTENCY_CAP`` = 8), so it is where an ungrounded
+        # prose-named coordinate is most likely to reach the wire.
         references = _add_prose_named_refs(
-            references, answer_text, cap=_CITE_CONSISTENCY_CAP
+            references,
+            answer_text,
+            citable_bases=(
+                _stage2_citable_reference_bases
+                if _citable_base_guard_enabled()
+                else None
+            ),
+            cap=_CITE_CONSISTENCY_CAP,
         )
 
     # R130 — Article 3 definitional sub-point. The Regenold rules PDF allows a
