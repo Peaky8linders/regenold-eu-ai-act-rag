@@ -3001,6 +3001,89 @@ def _deterministic_parse(question: str) -> GraphQuery:
     except Exception as exc:  # noqa: BLE001 — vector recall must never block parse
         logger.debug("vector_recall_failed: %s", exc)
 
+    # R365 — Annex III recall supplements
+    # (``REGENOLD_ANNEXIII_RECALL_SUPPLEMENTS``, default OFF). Port of the
+    # sibling fork's R368 lever; the exact gold impact was computed BEFORE the
+    # code existed — see the R365 section of
+    # ``app/engines/risk_classification.py`` for the table, the two caveats,
+    # and what was deliberately NOT ported. Four narrow shapes fire:
+    # medical/Annex-I-route classification (the dual-route counterpart the
+    # expert gold expects), MSA reclassification (also adds Art. 79 + Art. 80,
+    # the reclassification procedure), EU-database registration, and
+    # operator-becomes-provider. All append in canonical KB form.
+    #
+    # PLACEMENT IS LOAD-BEARING and follows the sibling's R353.1/R365.1
+    # finding: this MUST run AFTER the BM25 fallback and the vector-recall
+    # lane (both guarded by ``if not entities:``), so an append can only fill
+    # slots the earlier lanes did not take and can never flip the BM25 gate
+    # to non-empty and starve it — the measured failure of the pre-BM25
+    # placement. It runs BEFORE the R340 cross-encoder rerank, which is the
+    # precision guard against a trigger misfire on an unseen question.
+    #
+    # ADD-only: nothing is dropped, so this cannot trip ``gold_dropped_head``.
+    try:
+        from app.engines.risk_classification import (  # noqa: PLC0415
+            annexiii_recall_supplements_enabled,
+            is_eu_database_registration_question,
+            is_medical_annex_i_classification,
+            is_msa_reclassification_question,
+            is_operator_becomes_provider_question,
+            record_supplement_append,
+        )
+        if annexiii_recall_supplements_enabled():
+            _r365_q = question
+            if "Latest question:\n" in question:
+                # Multi-turn flattening puts the live turn last; the triggers
+                # are live-turn shapes the "Conversation so far:" preamble
+                # would otherwise mask.
+                _r365_q = question.rsplit("Latest question:\n", 1)[-1]
+            _r365_msa = is_msa_reclassification_question(_r365_q)
+            if "Annex III" not in entities and (
+                _r365_msa
+                or is_medical_annex_i_classification(_r365_q)
+                or is_eu_database_registration_question(_r365_q)
+                or is_operator_becomes_provider_question(_r365_q)
+            ):
+                entities.append("Annex III")
+                record_supplement_append("engine_annexiii_appended")
+            if _r365_msa:
+                for _r365_art in ("Art. 79", "Art. 80"):
+                    if _r365_art not in entities:
+                        entities.append(_r365_art)
+                        record_supplement_append("engine_msa_articles_appended")
+    except Exception as exc:  # noqa: BLE001 — the anchor must never break parse
+        logger.debug("annexiii_recall_supplements_failed: %s", exc)
+
+    # R365 — Article 50 recall supplements
+    # (``REGENOLD_ART50_RECALL_SUPPLEMENTS``, default OFF). Three narrow
+    # shapes: VLOP / content-moderation AI transparency (already IN_SCOPE
+    # here via R364's domain-boundary rescue, so unlike the sibling this is a
+    # pure retrieval anchor), fines + prohibited practices (the Art. 99(4)
+    # tier enumerates the Art. 50 duties), and biometric/patient interaction
+    # with natural persons. Appends ``Art. 50`` in canonical short form.
+    # Same load-bearing placement + ADD-only contract as the block above.
+    try:
+        from app.engines.risk_classification import (  # noqa: PLC0415
+            art50_recall_supplements_enabled,
+            is_biometric_patient_interaction_question,
+            is_fines_prohibited_question,
+            is_vlop_transparency_question,
+            record_supplement_append,
+        )
+        if art50_recall_supplements_enabled() and "Art. 50" not in entities:
+            _r365_q50 = question
+            if "Latest question:\n" in question:
+                _r365_q50 = question.rsplit("Latest question:\n", 1)[-1]
+            if (
+                is_vlop_transparency_question(_r365_q50)
+                or is_fines_prohibited_question(_r365_q50)
+                or is_biometric_patient_interaction_question(_r365_q50)
+            ):
+                entities.append("Art. 50")
+                record_supplement_append("engine_art50_appended")
+    except Exception as exc:  # noqa: BLE001 — the anchor must never break parse
+        logger.debug("art50_recall_supplements_failed: %s", exc)
+
     # R340 — cross-encoder rerank of the FINAL assembled entity list. This is
     # the placement that actually fires on the COMMON path: the keyword map
     # extracts an entity for nearly every question, so
