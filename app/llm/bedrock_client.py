@@ -50,7 +50,7 @@ import threading
 import time
 from collections.abc import AsyncGenerator, Iterator
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Any, Final
 
 import boto3
 from botocore import UNSIGNED
@@ -243,6 +243,27 @@ def _resolve_region() -> str:
         or os.getenv("AWS_REGION", "").strip()
         or DEFAULT_REGION
     )
+
+
+#: R365 — the models the Stage-2 FALLBACK leg actually dials, in order.
+#: Mirrors ``_default_fallback_models`` in
+#: ``app/engines/_graph_rag_impl.py`` (:676-690).
+#:
+#: The diagnostic below used to probe ``_resolve_default_model()`` —
+#: ``eu.anthropic.claude-opus-4-8`` — which is **not in that chain**. Measured
+#: 2026-08-24 against a healthy credential: opus-4-8 returns
+#: ``api_access_denied_403`` (no entitlement) while all three chain models
+#: return ``ok``. So the old default could report leg 2 BROKEN on a deployment
+#: whose fallback was in fact fully working — a false alarm in the one
+#: instrument an operator reaches for during an outage.
+#:
+#: Policy (operator directive): these Qwen models are for TESTS, the Stage-2
+#: FALLBACK, and JUDGES — and only when the cloudflared tunnel is down or out
+#: of quota. They are never the primary. See ``app/llm/stage2_policy.py``.
+BEDROCK_FALLBACK_PROBE_MODELS: Final = (
+    "qwen.qwen3-235b-a22b-2507-v1:0",
+    "qwen.qwen3-32b-v1:0",
+)
 
 
 def _resolve_default_model() -> str:
@@ -913,8 +934,42 @@ the behaviour in step — the test fails if they drift apart.
 def check_connectivity_and_permissions(
     model_id: str | None = None,
 ) -> dict[str, Any]:
-    """Diagnostic: verify Bedrock credentials and model access."""
-    target = model_id or _resolve_default_model()
+    """Diagnostic: verify Bedrock credentials and model access.
+
+    With no ``model_id`` this walks :data:`BEDROCK_FALLBACK_PROBE_MODELS` —
+    the models the Stage-2 fallback leg actually dials — and reports ``ok``
+    as soon as one answers, because "the fallback leg works" means *some*
+    chain model answers, not that a particular one does. The per-model
+    outcomes are returned under ``chain`` so a partial entitlement is still
+    visible. R365: it used to probe ``eu.anthropic.claude-opus-4-8``, which
+    is not in the chain and returns ``api_access_denied_403`` even on a
+    healthy credential.
+    """
+    if model_id is None:
+        chain: list[dict[str, Any]] = []
+        first: dict[str, Any] | None = None
+        for _m in BEDROCK_FALLBACK_PROBE_MODELS:
+            _r = check_connectivity_and_permissions(model_id=_m)
+            if first is None:
+                first = _r
+            chain.append(
+                {
+                    "model": _r.get("model"),
+                    "status": _r.get("status"),
+                    "error": _r.get("error"),
+                    "elapsed_ms": _r.get("elapsed_ms"),
+                }
+            )
+            # SHORT-CIRCUIT. The leg is up the moment one model answers, and a
+            # health probe must not spend an extra billable Converse call — nor
+            # an extra round-trip — proving something it already knows.
+            if _r.get("status") == "ok":
+                return {**_r, "chain": chain}
+        # Nothing answered. Surface the FIRST failure — the model the engine
+        # would have dialled first — with every attempt attached.
+        return {**(first or {"status": "error", "model": None}), "chain": chain}
+
+    target = model_id
     provider = BedrockProvider()
 
     t0 = time.monotonic()

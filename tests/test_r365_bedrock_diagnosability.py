@@ -161,7 +161,13 @@ class TestProbeBedrockOptIn:
         assert probe["hint"], "an operator hint must accompany a failure"
         assert "elapsed_ms" in probe
         # And it really dialled AWS (the R329 lesson: prove the lever fires).
-        assert boto.converse_calls == 1, "probe_bedrock=1 must make exactly one call"
+        # R365 — on FAILURE the probe walks the whole fallback chain, because
+        # "leg 2 is down" is only true once every model the engine would dial
+        # has been tried. (On SUCCESS it short-circuits at the first ok — see
+        # test_probe_reports_ok_when_bedrock_answers, still exactly 1 call.)
+        assert boto.converse_calls == len(bc.BEDROCK_FALLBACK_PROBE_MODELS), (
+            "a failing probe must try every chain model, and no more"
+        )
 
     def test_probe_surfaces_the_expired_key_hint(
         self, client: TestClient, boto: _BotoSpy, creds: None
