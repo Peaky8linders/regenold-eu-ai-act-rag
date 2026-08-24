@@ -92,10 +92,42 @@ pins that R331 does not re-break R330's fix.
 `_node_ids(refs, limit=max_refs)`, `max_refs` default **8**. The cut is by list position,
 so when the context carries more than 8 refs the order decides *which* provisions' verbatim
 paragraph and sub-point text reaches Stage-2 — a content change, not a permutation of the
-output. It targets **Answer Correctness**, the largest gap to frontier. The graph blocks are
-non-citable (`AGENTS.md` invariant #3), so this **cannot** add, drop or reorder a wire
-citation — which is why it is not blocked on the missing `gold_dropped` guard. Gate it on
-`ab_judge` (it moves answers), **not** `easyhard_ab`.
+output. It targets **Answer Correctness**, the largest gap to frontier.
+
+⚠ **CORRECTED R365 — the two sentences that used to follow here were FALSE and they
+excused this lever from the gold gate.** They read: *"The graph blocks are non-citable
+(`AGENTS.md` invariant #3), so this **cannot** add, drop or reorder a wire citation —
+which is why it is not blocked on the missing `gold_dropped` guard. Gate it on `ab_judge`
+(it moves answers), **not** `easyhard_ab`."*
+
+**The Stage-2 prompt is not a sink.** The emitted wire `references` list is *recomputed
+from the final Stage-2 prose* by three default-ON, `stage2_landed`-gated passes:
+
+* `_reconcile_references_to_prose` (`app/routes/regenold.py:3921`, live at `:8791` / `:9073`,
+  `REGENOLD_REFS_RECONCILE` default `1`) — **DROPS** wire refs the prose does not describe;
+* R138 `_add_prose_named_refs` (`:4223`, final pass at `:9114`, `REGENOLD_CITE_CONSISTENCY`
+  default `1`) — **ADDS** every provision the prose names, uncapped;
+* `_surface_prose_subpoints` (`:3990`, at `:9179`) — **ADDS** sub-points the prose names.
+
+So **any lever that changes the Stage-2 prompt can add, drop and reorder wire citations.**
+Executed proof: `_reconcile_references_to_prose` returns two *disjoint* reference lists from
+the *same* input refs under two different prose bodies. Measured proof from the sibling fork's
+own n=140 paired run of a prompt-only lever (`REGENOLD_ROLE_OBLIGATION_CONTEXT`): the wire ref
+list changed on **68/140 rows**, `gold_dropped_head` rose **30 → 34**, and it was vetoed on
+exactly that.
+
+Invariant #3 still holds in its true, narrow form: the graph cannot be a citation **source**.
+It is **not** a statement of reference-neutrality.
+
+⚠ **The trap that hides this.** The sibling's unit test `test_lever_does_not_change_the_wire`
+asserts `on["references"] == off["references"]` and *passes* — because its fixture sets
+`P2P_GRAPH_RAG_PROVIDER=cli` and a dead `OPENAI_API_BASE`, so `stage2_landed` is False and all
+three prose→refs passes are, in this repo's own words, a "strict no-op". **A deterministic
+fixture pins reference-neutrality in exactly the regime where the coupling is switched off.**
+Never conclude reference-neutrality from a `provider=cli` test.
+
+**Therefore: gate this on `ab_judge` for answers AND on `easyhard_ab`/`gold_dropped_head` for
+references.** Both, not either.
 
 **Prove it fires before reading any number.** `cohere_rerank.rerank_stats()` returns
 `attempts / reordered / noop / failed`. R329 tried three placements; all three looked right
@@ -126,12 +158,61 @@ been measured:
 
 The wrong references on this corpus are **semantically plausible and legally inapposite**
 (e.g. `Article 43`, conformity assessment, cited on a risk-classification question). The
-signal that discriminates them is *legal applicability* — does this provision bind THIS
-role at THIS risk class — which already exists here as `ROLE_OBLIGATIONS` /
-`obligations_for` (`app/data/ontology.py`) and, unread, as the graph's
-`Obligation`/`HAS_OBLIGATION` (113) and `RiskLevel`/`APPLIES_AT` (47) layers. That is a
-grounding predicate, not a positional trimmer, so it sits outside the refuted trimmer
-families.
+signal that *looks* like it discriminates them is *legal applicability* — does this provision
+bind THIS role at THIS risk class — available as `ROLE_OBLIGATIONS` / `obligations_for`
+(`app/data/ontology.py:684` / `:815`) and as the graph's `Obligation`/`HAS_OBLIGATION` (113)
+and `RiskLevel`/`APPLIES_AT` (47) layers.
+
+⛔ **MEASURED AND REFUTED (R365). Do not build the applicability filter.** The sentence that
+used to close this paragraph — *"That is a grounding predicate, not a positional trimmer, so
+it sits outside the refuted trimmer families"* — is **half right and it cost real work.** It is
+outside families #1/#2/#3/#6/#7; it is **squarely inside #4 (ask-type × provision-role
+exclusivity)** and overlaps #5. Three independent measurements, none of them a live A/B:
+
+| instrument | result |
+| :--- | :--- |
+| 120 judged rows, per-row **ORACLE** (role,risk) — an upper bound no detector can reach | catches 104/118 wrong refs, **also drops 44/233 judged-RIGHT refs (19%)**, precision 0.70 |
+| this repo's probe gold, real `_detect_role_and_risk_class` | **10 of 23 gold heads dropped (43%)** on the rows where it fires |
+| sibling fork, `REGENOLD_ROLE_OBLIGATION_CONTEXT`, n=140 paired | vetoed: `gold_dropped_head` 30 → 34, `reference_correctness` exactly flat |
+
+Three further facts close it — and note the “gate” itself is aspirational, see the correction below:
+
+1. **It is inert on ~88% of traffic.** Both `role` and `risk_class` are extractable on
+   **16 of 132** probe rows (12.1%); the sibling measured 11/297. A lever evaluable on 12% of
+   rows will read UNDERPOWERED on any n=60–140 A/B — which is exactly what happened to R371.4/.5.
+2. **The table is a SEED list, not a completeness list.** `obligations_for("deployer",
+   "limited_risk")` returns **one** ref; `deployer × high_risk_annex_iii` returns four. Gold
+   also cites the **governing / classifying / enforcing** provision (Art. 51 classification,
+   Art. 101 penalties, Art. 50 cumulative across tiers), and no role×tier duty table contains
+   those. Using a seed list as a drop-filter is a whitelist-completeness fallacy.
+3. **The sibling already measured this ontology AS a citation oracle at 0% precision** —
+   two statute-verified correct bindings added 8 non-gold refs and 0 gold. Recorded verbatim
+   there: *"Legally correct is not gold-correct."*
+
+⚠ Note the direction of use: `obligations_for` is **already a reference GENERATOR here**
+(`_build_role_obligation_answer` → `_seed_role_obligation_obligations`,
+`app/engines/_graph_rag_impl.py:3848-3900`) — which is the direction measured at 0% precision.
+This repo's `ROLE_OBLIGATIONS` is also legally wrong in ~16 places the sibling fixed at R371.6
+(e.g. `Art. 13` bound to DEPLOYER — Art. 13(1) binds the provider; `Art. 85`/`Art. 86` listed
+as obligations when they are **rights**).
+
+**What to do instead** — both outside all seven refuted families, and both ADD/GROUND rather
+than DROP:
+* **the citable-base guard** — `_add_prose_named_refs` already takes a `citable_bases`
+  parameter (`app/routes/regenold.py:4223`) and **neither call site passes it**. Constraining
+  prose-promotion to the retrieval-derived universe can only ever *remove an ungrounded
+  promotion*; it can never invent a reference.
+* **R368/R369 recall supplements** — the best-measured reference change in either repo
+  (12 gold heads recovered, **0 false positives**, ref_loose 0.764 → 0.833). ADD-only, so it
+  cannot trip `gold_dropped_head`.
+
+**And the reason a ref-list transform is the wrong altitude at all:** on the 120 judged rows,
+**73/118 (61.9%) of the judged-wrong references are NAMED IN THE SHIPPED ANSWER PROSE**, so
+R274 ("never drop a ref the prose describes") makes them undroppable. The ceiling for *any*
+reference-list transform is **+0.133** reference correctness and that assumes *perfect*
+discrimination. There is also no head-identity rule to be had: `Article 26` is judged wrong
+10× / right 2×, but `Annex III` is wrong 8× / **right 34×** and `Article 6` is wrong 3× /
+**right 40×**. The signal is row-conditional, not head-conditional.
 
 ⚠ **CORRECTED R360 — `gold_dropped` DOES exist and the rule IS enforceable.**
 The paragraph below previously read "`gold_dropped` does not exist anywhere in this
@@ -355,4 +436,4 @@ Concise record of the applied fixes; full rationale in `docs/reviews/`:
 | `REGENOLD_QUERY_EXPANSION` | `0` | LLM query rewrite before retrieval (R328 port; latency+cost tradeoff) |
 | `REGENOLD_RISK_CLASS_ANNEX` | `0` | Annex-III risk-classification anchor (R328 port) |
 | `BEDROCK_REGION` | `eu-central-1` | AWS Bedrock cross-region inference profile geography (R328) |
-| `NEO4J_AUTO_SEED` | `0` (or `off`) | Boot graph seeder safety switch (Keep 0 in production) |
+| `NEO4J_AUTO_SEED` | ⚠ **ON when unset** (given `NEO4J_URI`) | Boot graph seeder safety switch. **Corrected R365 — this table said `0 (or off)` and that is FALSE.** `_auto_seed_disabled_by_env()` (`app/main.py:276-290`) returns `False` when the var is unset, i.e. *not disabled*; its own docstring says “Default is ON when `NEO4J_URI` is set — operators have to opt OUT rather than opt in.” This contradicts `AGENTS.md` (“NEVER set `NEO4J_AUTO_SEED=1` by default”) and `.env.example`. Currently **latent** because production’s `seed_version` matches the code exactly, and R361 hardened the emptiness probe (`app/main.py:550`, `:620-627`) so a swallowed Neo4j failure no longer reads as “graph is empty”. Set it explicitly on Railway: `railway variables --set NEO4J_AUTO_SEED=0`. Flipping the *code* default is confirmation-gated (`AGENTS.md` § Requires Confirmation). |
