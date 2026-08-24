@@ -1949,6 +1949,18 @@ def _engine_cache_key(
             # costs one extra Stage-2 generation per arm and removes any
             # argument about cross-arm contamination when the number is read.
             "REGENOLD_CITABLE_BASE_GUARD",
+            # R365 — Annex III / Article 50 deterministic recall supplements
+            # (siblings of REGENOLD_RISK_CLASS_ANNEX, both default OFF). The
+            # medical / MSA / EU-database / operator shapes append Annex III
+            # (and Art. 79 + Art. 80 for the MSA shape); the VLOP-transparency
+            # / fines+prohibited / biometric shapes append Art. 50. Both flip
+            # the parse entity list and therefore GraphRAGResponse.references,
+            # so both are engine-level and must be keyed — an unkeyed flip
+            # serves arm A's cached response to arm B and the A/B reads a
+            # false "+0.0000, inert" (R263.2). test_r355_cache_key_complete
+            # enforces their presence here.
+            "REGENOLD_ANNEXIII_RECALL_SUPPLEMENTS",
+            "REGENOLD_ART50_RECALL_SUPPLEMENTS",
         )
     )
     import json
@@ -2751,6 +2763,68 @@ def boost_for_intent(
     if max_budget is not None and max_budget > 0 and len(injected) > max_budget:
         injected = injected[:max_budget]
     return injected
+
+
+def _r365_wire_guard_enabled() -> bool:
+    """``REGENOLD_R368_WIRE_GUARD`` — R365 recall-supplement wire guard.
+
+    **Default OFF** (the sibling fork ships it ON; here every new flag starts
+    OFF). The flag name keeps the sibling's ``R368`` spelling so an operator
+    can run the same arm across both repos.
+
+    Why it exists: the supplements append their canonical heads to the ENGINE
+    entity list, but the route's lossy passes (the fines filter, the
+    positional budget cut, the prose reconcile) can still drop them before
+    the wire — measured live in the sibling: la_q16 lost Art. 50, la_q64 and
+    la_q8 lost Annex III, la_q35 lost Annex III. This guard re-instates the
+    trigger-canonical heads as the LAST reference pass.
+
+    ⚠ REPRODUCED HERE, and it is not a corner case — it is the DEFAULT.
+    Measured on this repo at HEAD via ``TestClient`` (see
+    ``tests/test_r365_recall_supplements.py``): with the supplements ON and
+    this guard OFF, the wire for the two headline rows is byte-identical to
+    baseline —
+
+        "What are the administrative fines … prohibition of the AI
+        practices?"        supplements ON -> ['Article 99']   (Art. 50 eaten)
+        "Is AI software that detects melanoma …?"
+                           supplements ON -> ['Article 6', 'Article 43',
+                                              'Annex I']      (Annex III eaten)
+
+    …and with the guard ON they become ``['Article 99', 'Article 50']`` and
+    ``[…, 'Annex III']``. So the ENGINE half of this lever is INERT AT THE
+    WIRE for its own head on exactly the rows it was measured on — the R329
+    "reads right in the diff, makes zero calls" failure, one layer further
+    down. Read
+    ``risk_classification.recall_supplement_stats()['wire_guard_added']``
+    before attributing any A/B delta to the supplements.
+
+    ⚠ And "inert for its own head" is NOT "inert". On the la_q35 MSA row the
+    appended entities re-order retrieval, so the supplements-ON wire goes
+    ``['Article 74', 'Article 20', 'Article 79', 'Article 80', 'Article 81']``
+    -> ``[… , 'Article 73', 'Article 6']`` — two extra heads, still no
+    ``Annex III``. An A/B of the engine half alone measures that noise, not
+    the recall lever. Both halves ship together or neither does.
+
+    ⚠ KNOWN TRADEOFF: the guard re-adds a head the prose reconcile removed
+    precisely because the answer text does not name it. That is a
+    cited-but-undescribed reference, which the grounded judge penalises (the
+    sibling's own R369 rule R3). It buys reference RECALL at some cost to
+    reference PRECISION; only a live pairwise A/B settles the sign.
+
+    ADD-only by construction: it appends, never drops, so it cannot trip
+    ``gold_dropped_head``. Route-side, so it re-runs on every engine-cache
+    hit and therefore does NOT belong in ``_engine_cache_key`` (the R79
+    doctrine); it is also outside the directories
+    ``tests/test_r355_cache_key_complete.py`` scans, so no exclusion entry is
+    needed.
+    """
+    return os.getenv("REGENOLD_R368_WIRE_GUARD", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
 
 def _parent_collapse_enabled() -> bool:
@@ -9726,6 +9800,98 @@ def regenold_eu_ai_act_ask(
                         pass
                     references = _frozen
         except Exception:  # noqa: BLE001 — fail-soft; never 500 the route
+            pass
+
+    # R365 — recall-supplement WIRE GUARD (``REGENOLD_R368_WIRE_GUARD``,
+    # default OFF). LAST reference pass, after every lossy pass, so a head the
+    # supplements anchored in the engine cannot be silently dropped on the way
+    # to the wire (measured in the sibling: the fines filter, the positional
+    # budget cut and the prose reconcile each ate one). Re-instates ONLY the
+    # trigger-canonical heads, in user-facing form, and only when the trigger
+    # for that head actually fired on THIS question.
+    #
+    # ADD-only: it appends and never drops, so ``gold_dropped_head`` cannot
+    # move. Existence-gated: ``reference_from_article_ref`` validates against
+    # ``ARTICLE_EXISTENCE`` before formatting, so AGENTS.md invariants #1 and
+    # #2 hold by construction. Fail-soft: never 500s the route.
+    #
+    # ⚠ It runs after the R302 pushback freeze, matching the sibling's
+    # ordering — on a challenge turn a fired trigger can therefore re-add a
+    # head the freeze removed. That is the sibling's accepted behaviour and
+    # is inert here while the gate is OFF.
+    if _r365_wire_guard_enabled():
+        try:
+            from app.engines.risk_classification import (  # noqa: PLC0415
+                annexiii_recall_supplements_enabled,
+                art50_recall_supplements_enabled,
+                is_biometric_patient_interaction_question,
+                is_eu_database_registration_question,
+                is_fines_prohibited_question,
+                is_medical_annex_i_classification,
+                is_msa_reclassification_question,
+                is_operator_becomes_provider_question,
+                is_vlop_transparency_question,
+                record_supplement_append,
+            )
+
+            _r365_wq = live_user_message or question or ""
+            if "Latest question:\n" in _r365_wq:
+                _r365_wq = _r365_wq.rsplit("Latest question:\n", 1)[-1]
+            _r365_want: list[str] = []
+            # DEVIATION FROM THE SIBLING (deliberate): the guard is coupled
+            # per-family to the corresponding supplement gate. The sibling's
+            # guard is independent, which admits a "guard ON, supplements OFF"
+            # arm that emits heads the ENGINE never anchored — a strictly
+            # stronger lever than the one that was measured, and one whose
+            # heads have no retrieval backing in the answer prose. Coupling
+            # keeps the guard meaning exactly what its name says: do not LOSE
+            # a head the supplements anchored.
+            _r365_wg_msa = annexiii_recall_supplements_enabled() and (
+                is_msa_reclassification_question(_r365_wq)
+            )
+            if annexiii_recall_supplements_enabled() and (
+                _r365_wg_msa
+                or is_medical_annex_i_classification(_r365_wq)
+                or is_eu_database_registration_question(_r365_wq)
+                or is_operator_becomes_provider_question(_r365_wq)
+            ):
+                _r365_want.append("Annex III")
+            if _r365_wg_msa:
+                _r365_want += ["Article 79", "Article 80"]
+            if art50_recall_supplements_enabled() and (
+                is_vlop_transparency_question(_r365_wq)
+                or is_fines_prohibited_question(_r365_wq)
+                or is_biometric_patient_interaction_question(_r365_wq)
+            ):
+                _r365_want.append("Article 50")
+            if _r365_want:
+                _r365_have = {
+                    _canonical_reference_base(r) or str(r).strip()
+                    for r in references
+                }
+                _r365_wire = [
+                    w
+                    for w in (
+                        reference_from_article_ref(x)
+                        for x in _r365_want
+                        if x not in _r365_have
+                    )
+                    if w
+                ]
+                _r365_wire = [w for w in _r365_wire if w not in references]
+                if _r365_wire:
+                    references = list(references) + _r365_wire
+                    for _ in _r365_wire:
+                        record_supplement_append("wire_guard_added")
+                    try:
+                        from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                            record_note as _rn,
+                        )
+
+                        _rn("r365_wire_guard_added=" + ",".join(_r365_wire))
+                    except Exception:  # noqa: BLE001 — fail-soft on trace
+                        pass
+        except Exception:  # noqa: BLE001 — never 500 the route on a guard
             pass
 
     # R50 / R131 — finalise the reasoning trace AFTER every reference pass
