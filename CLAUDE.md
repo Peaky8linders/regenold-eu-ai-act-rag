@@ -139,9 +139,36 @@ repo, so the standing rule … is currently **unenforceable**. Port `gold_droppe
 before gating any reference change." That was false when written and it cost work:
 three separate reference-affecting changes were held back as ungateable. The
 instrument is `gold_dropped_head` at **`evals/bench/metrics.py:555`**, wired into
-`evals/harness/easyhard_ab.py:95-104` and gated at `:124` as a **SUM**, i.e. the gate
+`evals/harness/easyhard_ab.py::_score_row` and aggregated as a **SUM**, i.e. the gate
 is literally "drop ZERO". Only the *exact* (sub-point) grain is missing — which is the
-separate, still-correct point below. Do NOT port the upstream
+separate, still-correct point below.
+
+⚠ **CORRECTED R365 — "gated" was the wrong word; until R365 it was only PRINTED.**
+The SUM existed and the `<-- GOLD DROPPED (hard rule #8)` flag string was emitted,
+but nothing enforced it: `gold_dropped_head` is absent from `_AXES` and `_LEVERAGE`,
+the module had no `assert` and no `hard_fail`, its only `SystemExit`s were argparse
+errors, `main()` returned `None` under a bare `main()` call in `__main__`, and the
+repo has no `.github/` to consume it. A replay of the real `easyhard-r332-smoke-A`
+checkpoint with one gold head deleted from the branch arm printed
+`gold_drop_hd  0  1  +1  <-- GOLD DROPPED (hard rule #8)` and **exited 0**. Every
+historical "it passed the gold gate" claim was a human reading stdout.
+
+**R365 makes it an exit code.** `main() -> int` returns **1** when the branch arm
+drops more gold heads than the baseline on ANY split, wired through
+`raise SystemExit(main())`; the delta is read from the PAIRED subset where one exists
+and from the full aggregate otherwise; the per-row `gold_dropped_head_refs` are
+printed so a failure is actionable. The decision is the pure
+`_gold_gate_verdict(base_agg, branch_agg, allow, paired=…)`, pinned two-sided and
+offline by `tests/test_r365_gold_gate_enforced.py`. `--allow-gold-drop` forces exit 0
+for a deliberate exploratory arm and says loudly that the run did **not** pass —
+never cite an `--allow-gold-drop` run as having cleared the gate. A single-arm
+scorecard is not gated; the rule is comparative.
+
+⚠ **The sibling `evals/harness/ab_judge.py` still has the reports-but-never-enforces
+shape** — it already has the plumbing (`main() -> int`, `raise SystemExit(main())`)
+but returns 0 unconditionally on any completed run, so a `BASELINE wins (sig)`
+verdict — the merge-blocking outcome the harness exists to detect — exits 0 exactly
+as before. Deliberately left unchanged by R365 to keep that PR one concern. Do NOT port the upstream
 `ref_crag_fine` / `gold_dropped_exact` as-is — the decision is right, but the reason
 recorded here was wrong. **Corrected R331:** `_gold_exact_refs` does *not* head-project.
 The real defect is that our probe gold carries **0/208 sub-point grain** — it is
