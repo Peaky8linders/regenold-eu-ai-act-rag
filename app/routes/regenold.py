@@ -9936,8 +9936,8 @@ def regenold_eu_ai_act_ask(
     # failure mode that lost a live pairwise judge 11-0 (p=0.001), so it ships
     # only behind an ``evals.harness.easyhard_ab`` win (gold-bearing — NOT
     # ``ab_judge``). It also knowingly overrides the R274 curated-intercept
-    # protection: ``["Article 6.3", "Article 6", "Annex III"]`` collapses to
-    # ``["Article 6.3", "Annex III"]``, dropping the general-rule head that
+    # protection: ``['Article 6.3', 'Article 6', 'Annex III']`` collapses to
+    # ``['Article 6.3', 'Annex III']``, dropping the general-rule head that
     # R274 deliberately pairs with its carve-out. That trade is test-pinned in
     # ``tests/test_r325_parent_collapse.py::TestKnownTradeIsPinned``.
     #
