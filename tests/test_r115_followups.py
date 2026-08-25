@@ -43,10 +43,22 @@ def _wire(question: str):
 
     from app.config import settings as _settings
 
+    _saved_api_key = _settings.regenold.api_key
     _settings.regenold.api_key = SecretStr("r115-test-key")
+    # R365 — restore EVERY global this helper writes. Both the env var and the
+    # settings singleton used to leak for the rest of the session, and because
+    # "settings wins over env at the route" (above) the leak is authoritative:
+    # any later suite posting with its OWN key got 403 regenold_api_key_invalid.
+    # Reproduced as `pytest tests/test_r115_followups.py
+    # tests/test_r365_recall_supplements.py` -> 8 failures, where the second
+    # file alone is 50/50 green.
     _saved = {
         k: os.environ.get(k)
-        for k in ("P2P_GRAPH_RAG_PROVIDER", "OPENAI_API_BASE")
+        for k in (
+            "P2P_GRAPH_RAG_PROVIDER",
+            "OPENAI_API_BASE",
+            "P2P_REGENOLD_API_KEY",
+        )
     }
     os.environ["P2P_GRAPH_RAG_PROVIDER"] = "cli"
     os.environ["OPENAI_API_BASE"] = "http://127.0.0.1:1/v1"
@@ -74,6 +86,7 @@ def _wire(question: str):
                 os.environ.pop(k, None)
             else:
                 os.environ[k] = v
+        _settings.regenold.api_key = _saved_api_key
 
 
 # ── 1. subpoint-aware budget rescue ──────────────────────────────────────

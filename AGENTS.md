@@ -25,7 +25,7 @@ pytest tests/ -v (run all unit tests)
 
 # Run deterministic evaluation benchmarks
 python -m evals.bench.runner (run davidath 476 benchmark - regression guard)
-python -m evals.regenold.runner (run 276 scenario evaluation)
+python -m evals.regenold.runner (run 255 scenario evaluation - NOT 276; `_build_full_scenarios` silently swallows a missing `scenarios_omnibus_extended`. Also OFF as a merge gate, see CLAUDE.md)
 python -m evals.regenold.runner_v2 --local --probe-oos --oos-suite all (run 51 out-of-scope probes)
 
 # THE MERGE GATE: Live pairwise A/B judge
@@ -94,7 +94,10 @@ app/routes/regenold.py
 1. **Strict Reference Format**: Emitted citations MUST strictly follow `Article N(.subpoint)*` or `Annex X(.subpoint)*` (uppercase Roman for Annexes, Arabic for Articles). Never emit `Art. 13` or `Annex 3` on the wire.
 2. **Lint Floor**: Every emitted reference must resolve in `app/data/article_existence.py` (**126 canonical references**).
 3. **Graph is Additive Only**: `app/engines/kg_context.py` provides non-citable Stage-2 context. It is never a ranker or wire citation.
-4. **Cache Key Identity**: All runtime flags (`REGENOLD_GRAPH_SEMANTIC_LAYERS`, `REGENOLD_SEMANTIC_GLOSS`, `REGENOLD_GRAPH_VECTOR_RECALL`, `REGENOLD_PARENT_COLLAPSE`) must be registered in `_engine_cache_key` in `app/routes/regenold.py`.
+4. **Cache Key Identity**: **EVERY** runtime flag that can change the response must be registered in `_engine_cache_key` (`app/routes/regenold.py:1207`). This is enforced by an AST gate, `tests/test_r355_cache_key_complete.py` - run it after adding any flag. The four flags this line used to enumerate (`REGENOLD_GRAPH_SEMANTIC_LAYERS`, `REGENOLD_SEMANTIC_GLOSS`, `REGENOLD_GRAPH_VECTOR_RECALL`, `REGENOLD_PARENT_COLLAPSE`) are a stale R325-R327 subset; the register now carries 21+, including the rerank and `REGENOLD_STAGE2_*` families. **Corrected R365** - do not read that list as exhaustive.
+   ⚠ The AST gate scans `app/engines` and `app/integrations/regenold` only (`tests/test_r355_cache_key_complete.py:32`), so flags living in **`app/llm/`** - every `REGENOLD_STAGE2_*` and `REGENOLD_BEDROCK_WRAPPER_FALLBACK` - are invisible to it and must be checked by hand.
+
+5. **The Stage-2 prompt is NOT a sink** (R365). The wire `references` list is recomputed from the final Stage-2 prose by three default-ON, `stage2_landed`-gated passes - `_reconcile_references_to_prose` (drops), `_add_prose_named_refs` (adds), `_surface_prose_subpoints` (adds sub-points). So invariant #3 ("graph is additive only") means the graph cannot be a citation **SOURCE**; it does **not** mean a prompt-side change is reference-neutral. Any lever that changes the Stage-2 prompt must be gated on `gold_dropped_head`. A `provider=cli` test cannot show otherwise - it pins the property in the one regime where all three passes are documented no-ops.
 
 ---
 

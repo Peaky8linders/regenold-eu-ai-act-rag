@@ -31,8 +31,11 @@ R64 (2026-05-19) — distinguish import failures from runtime failures:
 """
 from __future__ import annotations
 
+import errno as _errno
+import ipaddress as _ipaddress
 import logging
 import os
+import socket as _socket
 
 # ── R105 — deterministic offline test environment ────────────────────────
 #
@@ -218,6 +221,36 @@ try:
     from app.rate_limit import limiter as _route_limiter
 except ImportError:  # pragma: no cover — tested env always has this
     _route_limiter = None
+
+
+@pytest.fixture(autouse=True)
+def _restore_regenold_api_key_setting():
+    """R365 — restore ``settings.regenold.api_key`` after every test.
+
+    Several suites pin the auth key on the GLOBAL settings singleton and never
+    put it back — ``test_r100_synthesis_default._client`` (:204) and
+    ``test_r115_followups._wire`` (:37) both do. Settings wins over env at the
+    route, so the leak is AUTHORITATIVE: any later suite that posts with its own
+    key gets ``403 regenold_api_key_invalid``. That is what broke seven R365
+    tests in-suite while they were 50/50 green file-scoped.
+
+    Restoring here fixes the whole family at once rather than chasing each
+    writer, and it is a no-op for any test that does not touch the singleton.
+    """
+    try:
+        from app.config import settings as _cfg  # noqa: PLC0415
+
+        _saved = _cfg.regenold.api_key
+    except Exception:  # noqa: BLE001 — never block a test on cleanup
+        yield
+        return
+    try:
+        yield
+    finally:
+        try:
+            _cfg.regenold.api_key = _saved
+        except Exception:  # noqa: BLE001
+            pass
 
 
 @pytest.fixture(autouse=True)
@@ -490,3 +523,375 @@ def _reset_engine_and_transport_state():
     except Exception:  # noqa: BLE001
         pass
     yield
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# R365 — the suite is OFFLINE BY DEFAULT, and fast about it.
+#
+# TWO measured defects, both fixed here at the socket layer.
+#
+# (1) EGRESS. The import-time block at the top of this file points
+#     ``OPENAI_API_BASE`` at a dead loopback port, which covers MOST of the
+#     suite. It does not cover the 14 sites that ``monkeypatch.delenv`` that
+#     very variable: with the var gone, ``OpenAIWrapperProvider.__init__``
+#     (app/llm/openai_wrapper_provider.py:403-406) falls back to a hard-coded
+#     PRODUCTION host. MEASURED 2026-08-24 — 5 tests in 3 files issued 8 real
+#     HTTPS POSTs to the production wrapper on every ``pytest`` run:
+#       test_clara_logic::test_extract_tags_llm_returns_none_when_wrapper_disabled  1
+#       test_r86_query_denoiser_and_deployer_hop::test_denoiser_no_provider_returns_none  1
+#       test_r100_synthesis_default::TestRouteSynthesisDefault (3 tests)            2 each
+#     They "pass" because Cloudflare Access answers 401 and every caller has a
+#     deterministic fallback — i.e. the round-trip buys nothing but latency,
+#     non-determinism and quota. An env var is the wrong lever (a ``delenv``
+#     defeats it); the socket is the right one.
+#
+# (2) LATENCY. The R105 block above claims a dead-base connect "fail[s]-fast
+#     (connection refused, ~1 ms)". MEASURED on this Windows box: a TCP
+#     connect to ANY closed loopback port costs **2.03 s** before
+#     WSAECONNREFUSED (127.0.0.1:1 → 2.0351 s, :9 → 2.0457 s, :47111 →
+#     2.0346 s). Not ~1 ms — ~2000 ms, paid per LLM call.
+#     ``tests/test_topic_filter.py`` spent ~16 s of its 19.6 s in 8 such
+#     connects.
+#
+# MECHANISM — one patch over ``socket.socket.connect`` / ``connect_ex``:
+#
+#   * NON-LOOPBACK destination → refused before the syscall, naming the test
+#     and the destination. Nothing leaves the box.
+#   * LOOPBACK destination → still attempted for real, but under a 0.25 s
+#     ceiling, and a ``(host, port)`` that refuses once is remembered so later
+#     connects short-circuit with no syscall at all. MEASURED: a live loopback
+#     listener accepts in **0.00037 s**, so 0.25 s is a ~680× margin — this
+#     cannot turn a working local server into a failure. ``bind()`` drops the
+#     matching entry, so a test that starts a server on a port an earlier test
+#     found closed still connects.
+#   * ``@pytest.mark.allow_network`` disables the guard for one test.
+#
+# WHY ``ConnectionRefusedError`` AND NOT A HARD FAIL BY DEFAULT: a refusal is
+# exactly what the caller sees with the network truly unplugged, so the
+# offline path under test is the REAL offline path and the five tests above
+# keep asserting the fallback they were written to assert. Loudness is not
+# sacrificed — every blocked attempt is logged, an end-of-session report names
+# each offender, and ``REGENOLD_TEST_EGRESS_STRICT=1`` escalates any blocked
+# egress to a test failure.
+#
+# NOT PATCHED: ``socket.getaddrinfo``. ``tests/test_r136_dns_retry.py``
+# installs its own TTL cache there and asserts the identity of the installed
+# function; patching it would break a currently-passing test.
+# ══════════════════════════════════════════════════════════════════════════
+#: Marker that opts a single test out of the guard entirely.
+ALLOW_NETWORK_MARKER = "allow_network"
+
+#: Ceiling on a LOOPBACK connect attempt. A live local listener accepts in
+#: ~0.4 ms (measured); a closed port would otherwise burn 2.03 s.
+LOOPBACK_CONNECT_BUDGET_SECONDS = 0.25
+
+_LOOPBACK_HOSTNAMES = frozenset({"localhost", "localhost.localdomain", ""})
+
+# Session state. Single-element lists so the patched functions can mutate them
+# without ``global``.
+_egress_current_test: list[str] = ["<session>"]
+_egress_allowed: list[bool] = [False]
+#: ``(nodeid, "host:port")`` for every connect the guard refused.
+BLOCKED_EGRESS: list[tuple[str, str]] = []
+#: ``(host, port)`` pairs on loopback that have already refused once.
+_DEAD_LOOPBACK: set[tuple[str, int]] = set()
+
+# Stashed on the ``socket`` MODULE, not just here, so that a second import of
+# this conftest under a different module name cannot capture an already-guarded
+# function as the "original" and wrap the guard in itself.
+_real_socket_connect = getattr(_socket, "_r365_real_connect", None) or _socket.socket.connect
+_real_socket_connect_ex = (
+    getattr(_socket, "_r365_real_connect_ex", None) or _socket.socket.connect_ex
+)
+_real_socket_bind = getattr(_socket, "_r365_real_bind", None) or _socket.socket.bind
+_socket._r365_real_connect = _real_socket_connect
+_socket._r365_real_connect_ex = _real_socket_connect_ex
+_socket._r365_real_bind = _real_socket_bind
+
+
+class NetworkEgressBlocked(ConnectionRefusedError):
+    """A test tried to open a TCP connection to a non-loopback address.
+
+    Subclasses ``ConnectionRefusedError`` on purpose — see the R365 note
+    above. The connection is never attempted, so no request is sent and no
+    provider quota is consumed.
+    """
+
+
+def _egress_inet_target(address) -> tuple[str, int] | None:
+    """``(host, port)`` for an AF_INET/AF_INET6 target, else ``None``.
+
+    ``None`` means "not an IP socket" (an AF_UNIX path, bytes, an odd tuple);
+    those pass through untouched.
+    """
+    if not isinstance(address, tuple) or len(address) < 2:
+        return None
+    host, port = address[0], address[1]
+    if not isinstance(host, str) or not isinstance(port, int):
+        return None
+    return host, port
+
+
+def _egress_is_loopback(host: str) -> bool:
+    """True when a connect to ``host`` cannot leave the machine."""
+    candidate = host.strip().lower()
+    if candidate in _LOOPBACK_HOSTNAMES:
+        return True
+    if candidate in ("0.0.0.0", "::"):  # wildcard → resolves local
+        return True
+    try:
+        parsed = _ipaddress.ip_address(candidate.split("%", 1)[0])
+    except ValueError:
+        # Not a literal IP and not a known local alias. DNS has not resolved
+        # it here, so treat it as remote — the safe side.
+        return False
+    if parsed.is_loopback or parsed.is_unspecified:
+        return True
+    if isinstance(parsed, _ipaddress.IPv6Address) and parsed.ipv4_mapped is not None:
+        return parsed.ipv4_mapped.is_loopback
+    return False
+
+
+def _egress_dead_keys(host: str, port: int) -> tuple[tuple[str, int], ...]:
+    """Negative-cache keys for one endpoint, folding the loopback aliases.
+
+    ``localhost`` / ``127.0.0.1`` / ``::1`` are the same listener as far as a
+    test is concerned, so one refusal should silence all three spellings.
+    """
+    canonical = host.strip().lower()
+    if _egress_is_loopback(canonical):
+        return tuple(
+            (alias, port) for alias in ("localhost", "127.0.0.1", "::1", canonical)
+        )
+    return ((canonical, port),)
+
+
+def _egress_refuse_remote(host: str, port: int) -> NetworkEgressBlocked:
+    """Record the violation and build the error that names it."""
+    destination = f"{host}:{port}"
+    nodeid = _egress_current_test[0]
+    BLOCKED_EGRESS.append((nodeid, destination))
+    logger.warning(
+        "R365 socket guard BLOCKED network egress: test=%s destination=%s",
+        nodeid,
+        destination,
+    )
+    return NetworkEgressBlocked(
+        _errno.ECONNREFUSED,
+        (
+            f"R365 offline test suite: {nodeid} attempted a TCP connect to "
+            f"{destination}, which is not loopback. The connection was refused "
+            f"before any bytes were sent — no request reached that host and no "
+            f"provider quota was spent. "
+            f"If this is accidental (the usual cause is a monkeypatch.delenv of "
+            f"OPENAI_API_BASE, which lets OpenAIWrapperProvider fall back to "
+            f"the hard-coded production host at "
+            f"app/llm/openai_wrapper_provider.py:405), point the provider at a "
+            f"stub or patch the transport. If this test genuinely needs the "
+            f"network, mark it @pytest.mark.{ALLOW_NETWORK_MARKER}."
+        ),
+    )
+
+
+def _egress_connect_budget(sock, address, real_call):
+    """Run ``real_call`` against a loopback endpoint under a time ceiling.
+
+    Raises ``TimeoutError`` when the ceiling is hit; the caller turns that
+    into a refusal and remembers the endpoint.
+    """
+    original_timeout = sock.gettimeout()
+    # A non-blocking socket (0) or one already on a tighter budget needs no
+    # help, and overriding it would CHANGE that socket's semantics.
+    if (
+        original_timeout is not None
+        and original_timeout <= LOOPBACK_CONNECT_BUDGET_SECONDS
+    ):
+        return real_call(sock, address)
+    try:
+        sock.settimeout(LOOPBACK_CONNECT_BUDGET_SECONDS)
+    except OSError:  # pragma: no cover — closed / exotic socket
+        return real_call(sock, address)
+    try:
+        return real_call(sock, address)
+    finally:
+        try:
+            sock.settimeout(original_timeout)
+        except OSError:  # pragma: no cover
+            pass
+
+
+def _egress_guarded_connect(self, address):
+    """``socket.socket.connect`` under the R365 guard."""
+    if _egress_allowed[0]:
+        return _real_socket_connect(self, address)
+    target = _egress_inet_target(address)
+    if target is None:
+        return _real_socket_connect(self, address)
+    host, port = target
+    if not _egress_is_loopback(host):
+        raise _egress_refuse_remote(host, port)
+    keys = _egress_dead_keys(host, port)
+    if any(key in _DEAD_LOOPBACK for key in keys):
+        # Already proven closed this session — skip the syscall entirely.
+        raise ConnectionRefusedError(
+            _errno.ECONNREFUSED,
+            f"R365: {host}:{port} refused earlier in this session (cached)",
+        )
+    try:
+        return _egress_connect_budget(self, address, _real_socket_connect)
+    except (TimeoutError, ConnectionRefusedError):
+        _DEAD_LOOPBACK.update(keys)
+        raise
+
+
+def _egress_guarded_connect_ex(self, address):
+    """``socket.socket.connect_ex`` under the R365 guard.
+
+    A remote destination RAISES rather than returning an errno: a silent
+    errno is precisely the failure mode this guard exists to end.
+    """
+    if _egress_allowed[0]:
+        return _real_socket_connect_ex(self, address)
+    target = _egress_inet_target(address)
+    if target is None:
+        return _real_socket_connect_ex(self, address)
+    host, port = target
+    if not _egress_is_loopback(host):
+        raise _egress_refuse_remote(host, port)
+    keys = _egress_dead_keys(host, port)
+    if any(key in _DEAD_LOOPBACK for key in keys):
+        return _errno.ECONNREFUSED
+    try:
+        result = _egress_connect_budget(self, address, _real_socket_connect_ex)
+    except (TimeoutError, ConnectionRefusedError):
+        _DEAD_LOOPBACK.update(keys)
+        return _errno.ECONNREFUSED
+    # ``connect_ex`` reports the budget expiry as a return code, not a raise.
+    # 10035 WSAEWOULDBLOCK / 10060 WSAETIMEDOUT / 10061 WSAECONNREFUSED.
+    if result in (_errno.ECONNREFUSED, _errno.ETIMEDOUT, 10035, 10060, 10061):
+        _DEAD_LOOPBACK.update(keys)
+        if result in (10035, 10060):
+            return _errno.ECONNREFUSED
+    return result
+
+
+def _egress_guarded_bind(self, address):
+    """``socket.socket.bind`` — un-blacklists the port about to be served.
+
+    Without this, a test that starts a local server on a port some earlier
+    test found closed would be refused straight out of the negative cache.
+    """
+    result = _real_socket_bind(self, address)
+    try:
+        target = _egress_inet_target(address)
+        port = target[1] if target is not None else None
+        if not port:  # bind(('127.0.0.1', 0)) — the OS chose the port
+            port = self.getsockname()[1]
+        for alias in ("localhost", "127.0.0.1", "::1"):
+            _DEAD_LOOPBACK.discard((alias, port))
+    except Exception:  # noqa: BLE001 — bookkeeping must never break a bind
+        pass
+    return result
+
+
+def _egress_install() -> None:
+    _socket.socket.connect = _egress_guarded_connect
+    _socket.socket.connect_ex = _egress_guarded_connect_ex
+    _socket.socket.bind = _egress_guarded_bind
+
+
+def _egress_uninstall() -> None:
+    _socket.socket.connect = _real_socket_connect
+    _socket.socket.connect_ex = _real_socket_connect_ex
+    _socket.socket.bind = _real_socket_bind
+
+
+# Installed at conftest IMPORT time, not inside the session fixture: test
+# modules are imported during collection, before any fixture runs, so a module
+# that dials out at import would otherwise slip past.
+_egress_install()
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        f"{ALLOW_NETWORK_MARKER}: R365 — allow this test real network egress "
+        "(the suite is offline by default).",
+    )
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item):
+    """Arm the guard for this test before its fixtures run."""
+    _egress_current_test[0] = item.nodeid
+    _egress_allowed[0] = item.get_closest_marker(ALLOW_NETWORK_MARKER) is not None
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_runtest_teardown(item, nextitem):
+    _egress_allowed[0] = False
+
+
+def _egress_strict_enabled() -> bool:
+    return os.getenv("REGENOLD_TEST_EGRESS_STRICT", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _fail_on_blocked_egress(request):
+    """Under ``REGENOLD_TEST_EGRESS_STRICT=1``, blocked egress fails the test.
+
+    Default OFF: refusing the connect already delivers the safety property
+    (nothing is sent), and the five tests that currently trip the guard are
+    asserting their offline fallback — which is exactly what a refusal
+    produces. Strict mode exists so CI can demand a suite that does not even
+    ATTEMPT to dial out.
+    """
+    before = len(BLOCKED_EGRESS)
+    yield
+    if not _egress_strict_enabled():
+        return
+    new = BLOCKED_EGRESS[before:]
+    if new:
+        destinations = sorted({dest for _nodeid, dest in new})
+        pytest.fail(
+            "R365 strict mode: this test attempted network egress to "
+            f"{', '.join(destinations)}. Mark it "
+            f"@pytest.mark.{ALLOW_NETWORK_MARKER} or stop it dialling out.",
+            pytrace=False,
+        )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _r365_socket_guard():
+    """Session-scoped owner of the guard: verify, then report, then restore."""
+    assert _socket.socket.connect is _egress_guarded_connect, (
+        "R365 socket guard is not installed — the suite would be free to dial "
+        "the production wrapper."
+    )
+    try:
+        yield
+    finally:
+        _egress_uninstall()
+        if BLOCKED_EGRESS:
+            offenders: dict[str, set[str]] = {}
+            for nodeid, dest in BLOCKED_EGRESS:
+                offenders.setdefault(nodeid, set()).add(dest)
+            print(
+                "\n"
+                + "=" * 74
+                + f"\nR365 socket guard: BLOCKED {len(BLOCKED_EGRESS)} network "
+                f"connect(s) from {len(offenders)} test(s).\n"
+                "Nothing was sent. Each of these would have dialled out on a "
+                "developer machine:\n"
+            )
+            for nodeid in sorted(offenders):
+                print(f"  {nodeid}\n      -> {', '.join(sorted(offenders[nodeid]))}")
+            print(
+                "Set REGENOLD_TEST_EGRESS_STRICT=1 to turn these into test "
+                "failures.\n" + "=" * 74
+            )

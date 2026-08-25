@@ -742,10 +742,39 @@ def _bedrock_complete_for_graph_rag(
 
                 return resp.text
 
+            # R365 — do NOT let the classified AWS error die in stdout. It is
+            # the ONLY thing that distinguishes "the ABSK key expired" from
+            # "this account has no entitlement for this model id" from "wrong
+            # region", and outside the container the Railway log is not
+            # reachable: the string reached neither the wire response, nor the
+            # reasoning trace, nor /healthz/llm. Recording it as a trace note
+            # makes leg 2's failure mode visible via
+            # ``?include_reasoning=true`` on any real request. Redacted,
+            # because ``unexpected_error: …`` carries an arbitrary repr.
+            try:
+                from app.integrations.regenold.reasoning_trace import record_note
+                from app.llm.bedrock_client import redact_credential_like
+                record_note(
+                    "stage2_bedrock_attempt_failed "
+                    f"model={_mid} error={redact_credential_like(resp.error, limit=200)}"
+                )
+            except Exception:
+                pass
             logger.warning("graph_rag.bedrock_model_attempt_failed model=%s error=%s", _mid, resp.error)
 
+        # Contract unchanged: ``None`` means "no Bedrock answer" and callers
+        # fall through to the deterministic path. Only the DIAGNOSTIC is new.
         return None
     except Exception as exc:
+        try:
+            from app.integrations.regenold.reasoning_trace import record_note
+            from app.llm.bedrock_client import redact_credential_like
+            record_note(
+                "stage2_bedrock_exception="
+                + redact_credential_like(f"{type(exc).__name__}: {exc}", limit=200)
+            )
+        except Exception:
+            pass
         logger.warning("graph_rag.bedrock_exception: %s", exc)
         return None
 
@@ -1020,16 +1049,55 @@ def _openai_wrapper_complete_for_graph_rag(
         )
 
     _s2pol.record_attempt(_s2pol.STAGE2_PRIMARY)
-    response = _wrapper_provider.complete(
-        OpenAIWrapperRequest(
-            system=wrapper_system,
-            user=user,
-            model=model,
-            max_tokens=safe_max_tokens,
-            temperature=temperature,
-            extra_headers=extra_headers,
+    try:
+        response = _wrapper_provider.complete(
+            OpenAIWrapperRequest(
+                system=wrapper_system,
+                user=user,
+                model=model,
+                max_tokens=safe_max_tokens,
+                temperature=temperature,
+                extra_headers=extra_headers,
+            )
         )
-    )
+    except Exception as exc:  # noqa: BLE001 — a RAISE is a primary failure too
+        # R365 — this dial had no ``try``, so R361's "attempts == ok + failed on
+        # every exit path" was false: a raising provider measured
+        # ``primary_attempts:1, primary_ok:0, primary_failed:0`` and left
+        # /healthz/llm reporting a counter set that cannot be reconciled — the
+        # exact thing ``stage2_policy`` says the counters exist to prevent.
+        #
+        # The worse half is that the raise propagated past ``_try_bedrock_fallback``
+        # AND past the duplicate inline leg-2 block in
+        # ``_claude_max_enhance_answer`` (whose entire body sits inside one
+        # ``try``), so on the most ORDINARY transport failure the Bedrock leg
+        # R360.1 hoisted for exactly this purpose was unreachable. Not
+        # hypothetical: ``int(usage.get(...))`` raised out of this very call
+        # (R360.12), and the provider only catches ``httpx.HTTPError`` — decode
+        # errors, ``InvalidURL`` and closed-client ``RuntimeError``\s escape.
+        #
+        # Route it through the SAME failure path an ``.error`` response takes:
+        # count the failure, offer leg 2, and — when there is genuinely no
+        # fallback — re-raise the ORIGINAL exception so the caller degrades to
+        # the deterministic Stage-1 answer exactly as it did before. No third
+        # leg is added; the Groq/Gemini hatches stay closed per R360.
+        _s2pol.record_result(_s2pol.STAGE2_PRIMARY, ok=False)
+        logger.warning(
+            "graph_rag.openai_wrapper_call_raised %s: %s — treating as a primary "
+            "failure so the Bedrock leg is reached.",
+            type(exc).__name__, str(exc)[:200],
+        )
+        try:
+            from app.integrations.regenold.reasoning_trace import record_note
+            record_note(f"stage2_primary_raised: {type(exc).__name__}")
+        except Exception:  # noqa: BLE001 — tracing must never break Stage-2
+            pass
+        bedrock_answer = _try_bedrock_fallback(
+            f"primary raised {type(exc).__name__}: {str(exc)[:60]}"
+        )
+        if bedrock_answer is not None:
+            return bedrock_answer
+        raise
     # R361 — an HTTP-200 completion with EMPTY content is a primary FAILURE,
     # not a success. ``openai_wrapper_provider`` does ``msg.get("content") or ""``
     # so an empty choice yields ``error=None``; every downstream guard then
@@ -2932,6 +3000,89 @@ def _deterministic_parse(question: str) -> GraphQuery:
                         pass
     except Exception as exc:  # noqa: BLE001 — vector recall must never block parse
         logger.debug("vector_recall_failed: %s", exc)
+
+    # R365 — Annex III recall supplements
+    # (``REGENOLD_ANNEXIII_RECALL_SUPPLEMENTS``, default OFF). Port of the
+    # sibling fork's R368 lever; the exact gold impact was computed BEFORE the
+    # code existed — see the R365 section of
+    # ``app/engines/risk_classification.py`` for the table, the two caveats,
+    # and what was deliberately NOT ported. Four narrow shapes fire:
+    # medical/Annex-I-route classification (the dual-route counterpart the
+    # expert gold expects), MSA reclassification (also adds Art. 79 + Art. 80,
+    # the reclassification procedure), EU-database registration, and
+    # operator-becomes-provider. All append in canonical KB form.
+    #
+    # PLACEMENT IS LOAD-BEARING and follows the sibling's R353.1/R365.1
+    # finding: this MUST run AFTER the BM25 fallback and the vector-recall
+    # lane (both guarded by ``if not entities:``), so an append can only fill
+    # slots the earlier lanes did not take and can never flip the BM25 gate
+    # to non-empty and starve it — the measured failure of the pre-BM25
+    # placement. It runs BEFORE the R340 cross-encoder rerank, which is the
+    # precision guard against a trigger misfire on an unseen question.
+    #
+    # ADD-only: nothing is dropped, so this cannot trip ``gold_dropped_head``.
+    try:
+        from app.engines.risk_classification import (  # noqa: PLC0415
+            annexiii_recall_supplements_enabled,
+            is_eu_database_registration_question,
+            is_medical_annex_i_classification,
+            is_msa_reclassification_question,
+            is_operator_becomes_provider_question,
+            record_supplement_append,
+        )
+        if annexiii_recall_supplements_enabled():
+            _r365_q = question
+            if "Latest question:\n" in question:
+                # Multi-turn flattening puts the live turn last; the triggers
+                # are live-turn shapes the "Conversation so far:" preamble
+                # would otherwise mask.
+                _r365_q = question.rsplit("Latest question:\n", 1)[-1]
+            _r365_msa = is_msa_reclassification_question(_r365_q)
+            if "Annex III" not in entities and (
+                _r365_msa
+                or is_medical_annex_i_classification(_r365_q)
+                or is_eu_database_registration_question(_r365_q)
+                or is_operator_becomes_provider_question(_r365_q)
+            ):
+                entities.append("Annex III")
+                record_supplement_append("engine_annexiii_appended")
+            if _r365_msa:
+                for _r365_art in ("Art. 79", "Art. 80"):
+                    if _r365_art not in entities:
+                        entities.append(_r365_art)
+                        record_supplement_append("engine_msa_articles_appended")
+    except Exception as exc:  # noqa: BLE001 — the anchor must never break parse
+        logger.debug("annexiii_recall_supplements_failed: %s", exc)
+
+    # R365 — Article 50 recall supplements
+    # (``REGENOLD_ART50_RECALL_SUPPLEMENTS``, default OFF). Three narrow
+    # shapes: VLOP / content-moderation AI transparency (already IN_SCOPE
+    # here via R364's domain-boundary rescue, so unlike the sibling this is a
+    # pure retrieval anchor), fines + prohibited practices (the Art. 99(4)
+    # tier enumerates the Art. 50 duties), and biometric/patient interaction
+    # with natural persons. Appends ``Art. 50`` in canonical short form.
+    # Same load-bearing placement + ADD-only contract as the block above.
+    try:
+        from app.engines.risk_classification import (  # noqa: PLC0415
+            art50_recall_supplements_enabled,
+            is_biometric_patient_interaction_question,
+            is_fines_prohibited_question,
+            is_vlop_transparency_question,
+            record_supplement_append,
+        )
+        if art50_recall_supplements_enabled() and "Art. 50" not in entities:
+            _r365_q50 = question
+            if "Latest question:\n" in question:
+                _r365_q50 = question.rsplit("Latest question:\n", 1)[-1]
+            if (
+                is_vlop_transparency_question(_r365_q50)
+                or is_fines_prohibited_question(_r365_q50)
+                or is_biometric_patient_interaction_question(_r365_q50)
+            ):
+                entities.append("Art. 50")
+                record_supplement_append("engine_art50_appended")
+    except Exception as exc:  # noqa: BLE001 — the anchor must never break parse
+        logger.debug("art50_recall_supplements_failed: %s", exc)
 
     # R340 — cross-encoder rerank of the FINAL assembled entity list. This is
     # the placement that actually fires on the COMMON path: the keyword map
