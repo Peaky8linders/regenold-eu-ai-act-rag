@@ -87,9 +87,29 @@ app/routes/regenold.py
    │     ├── _deterministic_answer        — verdict / role x risk / obligations
    │     └── _two_stage_generate          — Stage-2 LLM polish (live only)
    ├── _surface_anchor_citations          — keyword-derived anchors
-   ├── _collapse_parent_when_subpoint_cited — parent collapse (R325)
+   ├── _collapse_parent_when_subpoint_cited — parent collapse (R325), default OFF
    └── normalise_answer_for_regenold      — sentence & char caps
 ```
+
+⚠ **CORRECTED R366 — this diagram was ASPIRATIONAL for the parent-collapse
+row until R366.** `a659849` (the R320-R328 port) brought
+`_parent_collapse_enabled` / `_collapse_parent_when_subpoint_cited` across
+with their unit tests, their `.env.example` row, the `_engine_cache_key`
+entry and this line — but **not** the upstream call site.
+`git log -S "_collapse_parent_when_subpoint_cited" -- app/routes/regenold.py`
+returns exactly that one commit and it adds only the two `def` lines, so
+`REGENOLD_PARENT_COLLAPSE` was a **dead flag** for the whole life of the
+branch while this diagram and the CLAUDE.md flag table both described it as
+live. R366 wired it as the LAST reference pass (after the R365 recall wire
+guard, before the R50/R131 trace finalisation). It is now accurate — but it is
+**default OFF**, and it is a strict **no-op offline**, so every
+deterministic instrument reads +0.0000 with it ON. See
+`tests/test_r366_parent_collapse_wired.py`.
+
+**The general lesson, third time paid for** (R329's three rerank placements
+made zero calls; R330's entire R327 semantic layer never executed): a step
+drawn in this diagram is a CLAIM, not evidence. Before relying on any row,
+grep for the call site.
 
 1. **Strict Reference Format**: Emitted citations MUST strictly follow `Article N(.subpoint)*` or `Annex X(.subpoint)*` (uppercase Roman for Annexes, Arabic for Articles). Never emit `Art. 13` or `Annex 3` on the wire.
 2. **Lint Floor**: Every emitted reference must resolve in `app/data/article_existence.py` (**126 canonical references**).
