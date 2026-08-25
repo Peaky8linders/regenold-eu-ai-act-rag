@@ -87,6 +87,10 @@ class _BotoSpy:
         return self.client_constructions + self.converse_calls
 
 
+#: R370 — the operator key these probe tests authenticate with.
+_R370_OPS_KEY = "r365-bedrock-diag-ops-key"
+
+
 def _client_error(code: str, status: int, message: str) -> ClientError:
     return ClientError(
         {
@@ -136,7 +140,17 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("REGENOLD_SKIP_STARTUP_LOG", "1")
     from app.main import app
 
-    return TestClient(app)
+    # R370 — ``?probe_bedrock=1`` issues billable AWS Converse calls, so it is
+    # operator-only now (401 anonymous / 403 on a bad key). These tests are
+    # exercising the OPERATOR diagnostic, so they authenticate as one. The
+    # singleton write is safe: conftest's ``_restore_regenold_api_key_setting``
+    # autouse fixture puts it back after every test (R365/#363).
+    from pydantic import SecretStr
+
+    from app.config import settings
+
+    settings.regenold.api_key = SecretStr(_R370_OPS_KEY)
+    return TestClient(app, headers={"X-Regenold-Api-Key": _R370_OPS_KEY})
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -368,9 +382,16 @@ class TestProbeFailsSoft:
         boto.behaviour = lambda kwargs: (_ for _ in ()).throw(
             _client_error("AccessDeniedException", 403, "no entitlement")
         )
+        from pydantic import SecretStr
+
+        from app.config import settings
         from app.main import app
 
-        with TestClient(app) as c:
+        # R370 — operator-only probe; this test builds its own client.
+        settings.regenold.api_key = SecretStr(_R370_OPS_KEY)
+        with TestClient(
+            app, headers={"X-Regenold-Api-Key": _R370_OPS_KEY}
+        ) as c:
             body = c.get("/healthz/llm?probe_bedrock=1").json()
 
         # The pre-R365 false green, still reported the same way …

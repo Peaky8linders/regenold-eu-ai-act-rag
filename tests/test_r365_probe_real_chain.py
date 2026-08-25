@@ -132,6 +132,23 @@ class TestPolicy:
         assert "never the primary" in preamble or "not the primary" in preamble
 
 
+#: R370 — ``?probe_bedrock=1`` is operator-only now (it issues billable AWS
+#: Converse calls). These tests exercise the OPERATOR diagnostic, so they
+#: authenticate as one. The settings singleton is restored after every test by
+#: conftest's ``_restore_regenold_api_key_setting`` autouse fixture.
+_R370_OPS_KEY = "r365-probe-chain-ops-key"
+
+
+def _ops_client(m):
+    from fastapi.testclient import TestClient
+    from pydantic import SecretStr
+
+    from app.config import settings
+
+    settings.regenold.api_key = SecretStr(_R370_OPS_KEY)
+    return TestClient(m.app, headers={"X-Regenold-Api-Key": _R370_OPS_KEY})
+
+
 class TestChainReachesTheOperator:
     """The chain is only useful if `/healthz/llm?probe_bedrock=1` forwards it.
 
@@ -161,7 +178,7 @@ class TestChainReachesTheOperator:
         monkeypatch.setattr(
             bc, "check_connectivity_and_permissions", lambda model_id=None: fake
         )
-        r = TestClient(m.app).get("/healthz/llm?probe_bedrock=1")
+        r = _ops_client(m).get("/healthz/llm?probe_bedrock=1")
         assert r.status_code == 200
         probe = r.json()["bedrock_probe"]
         assert "chain" in probe, "the per-model chain must reach the operator"
@@ -181,6 +198,6 @@ class TestChainReachesTheOperator:
             "check_connectivity_and_permissions",
             lambda model_id=None: {"status": "ok", "model": "x", "error": None},
         )
-        r = TestClient(m.app).get("/healthz/llm?probe_bedrock=1")
+        r = _ops_client(m).get("/healthz/llm?probe_bedrock=1")
         assert r.status_code == 200
         assert "chain" not in r.json()["bedrock_probe"]
