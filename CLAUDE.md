@@ -431,9 +431,75 @@ Concise record of the applied fixes; full rationale in `docs/reviews/`:
 | `REGENOLD_GRAPH_SEMANTIC_LAYERS` | `0` | Constrained sub-provision vector search across Neo4j indexes (R327). **Corrected R360** — this table said `1`; R330 flipped the code default ON → OFF (`app/engines/graph_semantic.py:155`) |
 | `REGENOLD_SEMANTIC_GLOSS` | `0` | Open-domain definitions/recitals gloss gate (R327) |
 | `REGENOLD_GRAPH_VECTOR_RECALL` | `0` | Additive Neo4j & local SVD vector recall path (R326) |
-| `REGENOLD_PARENT_COLLAPSE` | `0` | Collapse parent provisions when sub-points are cited (R325) |
+| `REGENOLD_PARENT_COLLAPSE` | `0` | Collapse parent provisions when sub-points are cited (R325). **Corrected R366 — this row described a DEAD FLAG.** The helpers shipped in `a659849` with no call site; R366 wired it as the last reference pass. Still default OFF, and a strict **no-op offline** — see below |
 | `REGENOLD_STAGE2_TRUNCATION_GUARD` | `1` | R357 post-generation truncation repair on the Stage-2 polish |
 | `REGENOLD_QUERY_EXPANSION` | `0` | LLM query rewrite before retrieval (R328 port; latency+cost tradeoff) |
 | `REGENOLD_RISK_CLASS_ANNEX` | `0` | Annex-III risk-classification anchor (R328 port) |
 | `BEDROCK_REGION` | `eu-central-1` | AWS Bedrock cross-region inference profile geography (R328) |
 | `NEO4J_AUTO_SEED` | ⚠ **ON when unset** (given `NEO4J_URI`) | Boot graph seeder safety switch. **Corrected R365 — this table said `0 (or off)` and that is FALSE.** `_auto_seed_disabled_by_env()` (`app/main.py:276-290`) returns `False` when the var is unset, i.e. *not disabled*; its own docstring says “Default is ON when `NEO4J_URI` is set — operators have to opt OUT rather than opt in.” This contradicts `AGENTS.md` (“NEVER set `NEO4J_AUTO_SEED=1` by default”) and `.env.example`. Currently **latent** because production’s `seed_version` matches the code exactly, and R361 hardened the emptiness probe (`app/main.py:550`, `:620-627`) so a swallowed Neo4j failure no longer reads as “graph is empty”. Set it explicitly on Railway: `railway variables --set NEO4J_AUTO_SEED=0`. Flipping the *code* default is confirmation-gated (`AGENTS.md` § Requires Confirmation). |
+
+---
+
+## Parent collapse (R325) — wired in R366, and why it reads +0.0000
+
+⚠ **CORRECTED R366 — `REGENOLD_PARENT_COLLAPSE` was a DEAD FLAG until R366.**
+`app/routes/regenold.py` defined `_parent_collapse_enabled()` and
+`_collapse_parent_when_subpoint_cited()`, but **nothing in `app/` called
+them** — the only importer was `tests/test_r325_parent_collapse.py`, which
+exercised the helpers in isolation. Meanwhile the flag table above described
+the behaviour as live and `AGENTS.md` drew it as a step in the request
+pipeline. Both were false.
+
+**Lost in the port, not intentionally removed.**
+`git log -S "_collapse_parent_when_subpoint_cited" -- app/routes/regenold.py`
+returns exactly **one** commit — `a659849` ("feat(r328): integrate R320-R328
+optimizations") — and that commit adds only the two `def` lines. No commit
+ever removed a call site, because one was never added. The sibling repo
+`antifragileai-regenold-evaluation` **does** have it, as the last reference
+pass. The same port also added
+`tests/test_evaluator_batch_july7.py` and `tests/test_r293_july7_difficulty.py`,
+which import `evals.regenold` modules it never brought across — those two
+still abort `pytest tests/` at collection, so the port was lossy in at least
+three places.
+
+**This is the third time.** R329's three rerank placements all read correctly
+in the diff and all made zero calls; R330's entire R327 semantic layer never
+executed because one call site dropped one argument. The standing rule stays:
+default-ON + cache-keyed + unit-tested + documented is **not** evidence a flag
+runs. Grep the call site.
+
+**Where it is wired now.** `app/routes/regenold.py`, the LAST reference pass —
+after the R276-D1 granularity pass, both clamps, the R260/R311 enforcement, the
+R302 pushback freeze and the R365 recall wire guard, and immediately BEFORE the
+R50/R131 trace finalisation so the trace still equals the wire refs. That
+position is load-bearing: `_collapse_parent_refs` already implements the same
+rule mid-pipeline, but it runs immediately BEFORE `_reemit_parents_for_subpoints`
+(R87-C, default ON), which re-ADDS the parent — the ordering defect that lets
+the wire ship `[Article 50.1, Article 50, Article 50.2]`.
+
+**Order vs the R365 wire guard.** Guard first, collapse second. They do not
+fight: the guard is ADD-only and appends a head only when
+`_canonical_reference_base` finds no reference carrying that base, so a head
+this pass drops (which still has its own leaf, and therefore its base, on the
+list) is never re-added. Collapse-second is the safer of the two equivalents.
+Both are default OFF, so no interaction ships today.
+
+⚠ **Prove it fires, and expect +0.0000 offline.** The pass is a strict no-op on
+the deterministic path: head+leaf clusters are minted live by
+`_surface_prose_subpoints` (`_stage2_landed`-gated), and offline the R276-D1
+`auto` mode has already resolved every mixed cluster before control reaches the
+collapse. Measured across 20 offline questions spanning the sub-point-emitting
+topics: **zero collapsible pairs**. So a deterministic +0.0000 is the EXPECTED
+reading and is **not** evidence of a broken lever — that misreading is what
+killed three R329 rerank placements. `tests/test_r366_parent_collapse_wired.py`
+asserts on the wire (call site reached ON, not reached OFF, return value
+reaches `response.references`, drop recorded in the trace) and pins the offline
+no-op as a **tripwire**: if it fails, the offline path started minting
+collapsible pairs and davidath neutrality must be re-measured.
+
+**Gate before flipping it.** It DROPS references — the R142.1 failure mode that
+lost a live pairwise judge 11-0 (p=0.001) — and it knowingly overrides the R274
+curated-intercept protection (`["Article 6.3", "Article 6", "Annex III"]` →
+`["Article 6.3", "Annex III"]`, pinned in
+`test_r325_parent_collapse.py::TestKnownTradeIsPinned`). Ship only behind an
+`evals.harness.easyhard_ab` win — the gold-bearing harness, **not** `ab_judge`.
