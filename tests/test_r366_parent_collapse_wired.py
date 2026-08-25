@@ -251,58 +251,30 @@ _OFFLINE_QUESTIONS = [
 ]
 
 
-class TestDoesNotPolluteTheR365GuardScan:
-    """The R366 comment must not read as code to a neighbouring source scanner.
+# R367 — ``TestDoesNotPolluteTheR365GuardScan`` lived here and is now REMOVED,
+# because the defect it guarded was fixed at its source rather than worked
+# around here.
+#
+# The history is worth keeping. ``test_r365_recall_supplements.py::
+# test_supplement_head_table_covers_every_head_the_code_can_append`` used to
+# regex-scan a RAW TEXT WINDOW of ``app/routes/regenold.py`` running from the
+# R365 wire-guard marker to the R50/R131 trace-finalisation marker. The R366
+# block sits inside that window by construction — it is the last reference
+# pass — so this block's comment, which quoted the R274 trade as
+# ``["Article 6.3", "Article 6", "Annex III"]``, was read as a head the R365
+# guard can emit and failed an assertion about code it has nothing to do with.
+# Invisible to every file-scoped run; it surfaced only as a one-test delta in a
+# full suite that is already red.
+#
+# R367 replaced that scan with an AST walk scoped to each lever's own
+# statement. Comments are not AST nodes, so the trap cannot recur, and the
+# comment-hygiene rule this class enforced no longer has a failure mode —
+# keeping it would pin an obsolete constraint and mislead the next reader.
+# The scoping itself is now pinned on the R365 side, where it belongs:
+# ``test_the_head_scan_is_scoped_to_the_blocks_and_ignores_comments`` asserts
+# that ``Article 6`` — which appears ONLY in this block's comment — never
+# reaches the wire-guard scan.
 
-    `test_r365_recall_supplements.py::test_supplement_head_table_covers_every_head_the_code_can_append`
-    regex-scans a SOURCE-TEXT slice of `app/routes/regenold.py` — everything
-    between the R365 wire-guard marker and the R50/R131 trace-finalisation
-    marker — for double-quoted `"Article N"` / `"Annex X"` literals, and
-    asserts they are a subset of `RECALL_SUPPLEMENT_WIRE_HEADS`.
-
-    The R366 block sits inside that window by construction (it is the last
-    reference pass, and the window ends at the trace finalisation). So an
-    illustrative ref list written with DOUBLE quotes in this block's comment is
-    read as a head the R365 guard can emit. That actually happened: the comment
-    quoted the R274 trade as `["Article 6.3", "Article 6", "Annex III"]` and
-    the scan reported `Article 6` as an undeclared wire head. It is invisible
-    to every file-scoped run of this module and only surfaces in a full-suite
-    run, which is exactly how it nearly shipped.
-
-    The fix is comment hygiene — single quotes for illustrative output — not a
-    change to the R365 assertion, which is a real safety guard for a lever that
-    can move wire citations. This test pins the hygiene so the trap cannot
-    return via a future edit to the R366 comment.
-
-    ⚠ The underlying brittleness is NOT fixed here and is worth fixing at the
-    source: that scan treats comments as code, and its window will absorb any
-    future block inserted before the trace finalisation.
-    """
-
-    def test_r366_block_adds_no_provision_literals_to_the_scan_window(self) -> None:
-        import re
-        from pathlib import Path
-
-        route = (
-            Path(__file__).resolve().parents[1] / "app" / "routes" / "regenold.py"
-        ).read_text(encoding="utf-8")
-
-        # The exact window the R365 test scans.
-        window = route.split("# R365 — recall-supplement WIRE GUARD", 1)[1]
-        window = window.split("# R50 / R131 — finalise the reasoning trace", 1)[0]
-        assert "# R366 — R325 parent collapse" in window, (
-            "the R366 block is no longer inside the R365 scan window — if it "
-            "moved, re-check which scanner now covers it"
-        )
-
-        r366 = window.split("# R366 — R325 parent collapse", 1)[1]
-        found = sorted(set(re.findall(r'"((?:Article \d+|Annex [IVX]+))"', r366)))
-        assert not found, (
-            "the R366 block contributes double-quoted provision literals "
-            f"{found} to the R365 wire-guard scan window, which will be "
-            "misread as heads the R365 guard can emit. Use single quotes for "
-            "illustrative reference lists in this block's comment."
-        )
 
 
 class TestOfflineNoOpIsPinnedNotAssumed:

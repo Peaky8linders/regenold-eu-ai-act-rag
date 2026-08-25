@@ -18,6 +18,10 @@ state is the same trap wearing a different hat.
 
 from __future__ import annotations
 
+import ast
+import re
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -407,38 +411,157 @@ def test_every_supplement_head_has_a_valid_wire_form() -> None:
     )
 
 
+#: Head shapes as they appear as STRING LITERALS in each half. The engine
+#: appends canonical KB short form (``Art. 50``); the route emits user-facing
+#: wire form (``Article 50``).
+_ENGINE_HEAD_SHAPE = re.compile(r"Art\. \d+|Annex [IVX]+")
+_WIRE_HEAD_SHAPE = re.compile(r"Article \d+|Annex [IVX]+")
+
+
+def _r365_block_literals(
+    path: Path, marker: str, shape: re.Pattern[str]
+) -> set[str]:
+    """Provision-shaped string literals inside the statement following ``marker``.
+
+    R367 — this used to be a regex over a RAW TEXT WINDOW delimited by the
+    marker comment and an unrelated downstream marker. That had two defects,
+    and the second one is the dangerous half:
+
+    1. **It read comments as code.** Any double-quoted provision literal in a
+       comment inside the window counted as a head the block can append. It
+       fired: R366's parent-collapse block sits after the wire guard and its
+       comment quoted the R274 trade as ``["Article 6.3", "Article 6",
+       "Annex III"]``, so the scan reported ``Article 6`` as an undeclared
+       wire head. Invisible to every file-scoped run — it only showed up as a
+       one-test delta in a full suite that is already red.
+    2. **The window absorbed unrelated blocks.** It ended at a downstream
+       marker rather than at the block's own dedent, so every statement added
+       in between was folded in and attributed to this lever. That was not
+       hypothetical: the engine window spanned BOTH the Annex III block and
+       the separate Article 50 block, so ``Art. 50`` was being checked against
+       ``RECALL_SUPPLEMENT_HEADS`` as if the Annex III lever emitted it. A
+       future block would be mis-attributed the same way — a failure pointing
+       at innocent code, or worse, a real violation masked because the head
+       already happens to be in the table.
+
+    Walking the AST fixes both: comments are not nodes, and the statement's
+    own extent is the window. Each lever is now scoped by its own marker and
+    the two are unioned, so coverage is unchanged — no head that was checked
+    before goes unchecked now.
+    """
+    src = path.read_text(encoding="utf-8")
+    hits = [i for i, line in enumerate(src.splitlines(), 1) if marker in line]
+    assert len(hits) == 1, (
+        f"marker {marker!r} must appear exactly once in {path.name}; found "
+        f"{len(hits)} — the scan cannot scope itself without a unique anchor"
+    )
+    marker_line = hits[0]
+
+    # The block is the OUTERMOST statement starting on the first line after
+    # the marker comment: smallest lineno greater than the marker, and on ties
+    # the one that extends furthest (an outer ``try`` over its first child).
+    block: ast.stmt | None = None
+    for node in ast.walk(ast.parse(src)):
+        if not isinstance(node, ast.stmt) or node.lineno <= marker_line:
+            continue
+        if (
+            block is None
+            or node.lineno < block.lineno
+            or (
+                node.lineno == block.lineno
+                and (node.end_lineno or 0) > (block.end_lineno or 0)
+            )
+        ):
+            block = node
+    assert block is not None, f"no statement follows {marker!r} in {path.name}"
+
+    return {
+        node.value
+        for node in ast.walk(block)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and shape.fullmatch(node.value)
+    }
+
+
 def test_supplement_head_table_covers_every_head_the_code_can_append() -> None:
     """Guard against a new trigger appending an unlisted head: the literals
     in the engine + route blocks must be a subset of the declared table."""
-    import re as _re
-    from pathlib import Path
-
     repo = Path(__file__).resolve().parents[1]
-    engine = (repo / "app" / "engines" / "_graph_rag_impl.py").read_text(
-        encoding="utf-8"
-    )
-    block = engine.split("# R365 — Annex III recall supplements", 1)[1]
-    block = block.split("# R340 — cross-encoder rerank", 1)[0]
+    engine_path = repo / "app" / "engines" / "_graph_rag_impl.py"
+    route_path = repo / "app" / "routes" / "regenold.py"
 
-    # Every string literal in the block that looks like a provision head.
-    heads = set(_re.findall(r'"((?:Art\. \d+|Annex [IVX]+))"', block))
-    assert heads, "no provision literals found in the R365 engine block"
+    # Both engine levers, each scoped to its own block. Previously one text
+    # window covered both by accident; naming them keeps the coverage while
+    # making the attribution correct.
+    heads: set[str] = set()
+    for marker in (
+        "# R365 — Annex III recall supplements",
+        "# R365 — Article 50 recall supplements",
+    ):
+        heads |= _r365_block_literals(engine_path, marker, _ENGINE_HEAD_SHAPE)
+
+    assert heads, "no provision literals found in the R365 engine blocks"
     assert heads <= set(rc.RECALL_SUPPLEMENT_HEADS), (
-        "the R365 engine block references heads outside the declared table "
+        "the R365 engine blocks reference heads outside the declared table "
         f"(add them to RECALL_SUPPLEMENT_HEADS): "
         f"{sorted(heads - set(rc.RECALL_SUPPLEMENT_HEADS))}"
     )
 
-    route = (repo / "app" / "routes" / "regenold.py").read_text(encoding="utf-8")
-    guard = route.split("# R365 — recall-supplement WIRE GUARD", 1)[1]
-    guard = guard.split("# R50 / R131 — finalise the reasoning trace", 1)[0]
-    wire_heads = set(
-        _re.findall(r'"((?:Article \d+|Annex [IVX]+))"', guard)
+    wire_heads = _r365_block_literals(
+        route_path, "# R365 — recall-supplement WIRE GUARD", _WIRE_HEAD_SHAPE
     )
     assert wire_heads, "no provision literals found in the R365 wire guard"
     assert wire_heads <= set(rc.RECALL_SUPPLEMENT_WIRE_HEADS), (
         "the R365 wire guard emits heads outside the declared wire table: "
         f"{sorted(wire_heads - set(rc.RECALL_SUPPLEMENT_WIRE_HEADS))}"
+    )
+
+
+def test_the_head_scan_is_scoped_to_the_blocks_and_ignores_comments() -> None:
+    """The scoping itself, pinned — otherwise R367 could silently regress.
+
+    Two properties that the old text-window scan did NOT have. If either
+    breaks, the head-table guard above is measuring the wrong region and its
+    green is meaningless.
+    """
+    repo = Path(__file__).resolve().parents[1]
+    engine_path = repo / "app" / "engines" / "_graph_rag_impl.py"
+    route_path = repo / "app" / "routes" / "regenold.py"
+
+    # 1. ATTRIBUTION. The Annex III lever must not be credited with the
+    #    Article 50 lever's head, and vice versa. The old shared text window
+    #    conflated exactly these two.
+    annexiii = _r365_block_literals(
+        engine_path, "# R365 — Annex III recall supplements", _ENGINE_HEAD_SHAPE
+    )
+    art50 = _r365_block_literals(
+        engine_path, "# R365 — Article 50 recall supplements", _ENGINE_HEAD_SHAPE
+    )
+    assert "Art. 50" in art50, art50
+    assert "Art. 50" not in annexiii, (
+        "the Annex III block is being credited with the Article 50 lever's "
+        f"head — the scan is not scoped to one block: {sorted(annexiii)}"
+    )
+    assert "Annex III" in annexiii, annexiii
+
+    # 2. COMMENTS ARE NOT CODE. The R366 parent-collapse block sits after the
+    #    wire guard and before the trace finalisation, i.e. inside the region
+    #    the OLD text window covered. Its comment names ``Article 6``, which
+    #    the wire guard can never emit and which is absent from
+    #    RECALL_SUPPLEMENT_WIRE_HEADS — so it is the unambiguous canary for
+    #    comment text bleeding into the scan.
+    route_src = route_path.read_text(encoding="utf-8")
+    assert "# R366 — R325 parent collapse" in route_src, (
+        "the R366 block moved; re-check what the old text window would cover"
+    )
+    wire_heads = _r365_block_literals(
+        route_path, "# R365 — recall-supplement WIRE GUARD", _WIRE_HEAD_SHAPE
+    )
+    assert "Article 6" not in wire_heads, (
+        "'Article 6' leaked into the wire-guard scan — it appears only in the "
+        "R366 block's COMMENT, so the scan is reading comments or has "
+        f"over-wide scope: {sorted(wire_heads)}"
     )
 
 
