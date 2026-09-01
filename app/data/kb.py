@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 # (Art. 25(2) cooperation-duty re-anchor + real 25(4) written-agreement
 # clause, Art. 99(4) closed enumeration, Art. 79/109 Reg-2019/1020
 # Art. 3(19) qualification).
-KB_VERSION = "2024.1689.v18"
+KB_VERSION = "2024.1689.v19"
 
 
 @dataclass(frozen=True)
@@ -751,7 +751,9 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "product covered by the Union harmonisation legislation listed in Annex I "
             "AND that product must undergo a third-party conformity assessment under "
             "that sectoral legislation. Annex III route (Article 6(2)): the system "
-            "falls within one of the eight Annex III use cases. Article 6(3) "
+            "falls within one of the use-cases listed under the eight AREAS of "
+            "Annex III (an area is a numbered heading; a use case is a "
+            "lettered entry under it). Article 6(3) "
             "derogation: an Annex III system is NOT high-risk where it poses no "
             "significant risk of harm and meets one of four conditions (a narrow "
             "procedural task; improving the result of a previously completed human "
@@ -1013,7 +1015,10 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     "Annex III": {
         "dimension": "risk_mgmt",
         "summary": (
-            "Eight high-risk use-case categories: biometrics, critical infrastructure, "
+            "Eight high-risk AREAS (Annex III numbered headings; each area "
+            "contains one or more lettered use-cases, and only a listed "
+            "use-case makes a system high-risk under Art. 6(2)): "
+            "biometrics, critical infrastructure, "
             "education + vocational training, employment + worker management "
             "(recruitment, task allocation, promotion and termination decisions, and "
             "performance evaluation affecting workers' fundamental rights), "
@@ -1067,11 +1072,22 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     "Art. 7": {
         "dimension": "risk_mgmt",
         "summary": (
-            "Empowers the Commission to add, modify, or remove high-risk "
-            "use-cases in Annex III by delegated act, based on criteria including "
-            "intended purpose, extent of use, impact on health/safety/fundamental-"
-            "rights, severity + reversibility of harm, and availability of "
-            "redress."
+            "Art. 7(1) empowers the Commission to adopt delegated acts in "
+            "accordance with Art. 97 to amend Annex III by ADDING or "
+            "MODIFYING use-cases of high-risk AI systems, where BOTH of the "
+            "following conditions are fulfilled CUMULATIVELY: (a) the AI "
+            "systems are intended to be used in any of the AREAS already "
+            "listed in Annex III; AND (b) the AI systems pose a risk of harm "
+            "to health and safety, or an adverse impact on fundamental "
+            "rights, and that risk is EQUIVALENT TO OR GREATER THAN the risk "
+            "of harm or adverse impact posed by the high-risk AI systems "
+            "already referred to in Annex III. Both limbs must apply; either "
+            "one alone is insufficient. Art. 7(2) then lists the criteria "
+            "the Commission must weigh when assessing condition (b) "
+            "(intended purpose, extent of use, nature and amount of data "
+            "processed, autonomy, severity and reversibility of harm, "
+            "availability of redress, and others). Art. 7(3) governs "
+            "REMOVING a use-case from Annex III."
         ),
     },
     "Art. 8": {
@@ -2000,38 +2016,39 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     "Annex IX": {
         "dimension": "governance",
         "summary": (
-            "Annex IX lists the Union legislative acts on large-scale IT "
-            "systems in the area of freedom, security and justice referred "
-            "to in Art. 6(1) and Art. 111: the Schengen Information System "
-            "(SIS), the Visa Information System (VIS), Eurodac, the Entry/"
-            "Exit System (EES), the European Travel Information and "
-            "Authorisation System (ETIAS), the regulations on "
-            "interoperability between EU information systems, and the "
-            "European Criminal Records Information System for third-country "
-            "nationals (ECRIS-TCN). AI systems intended to be used as safety "
-            "components of, or by Union institutions in the management of, "
-            "the IT systems listed in Annex IX fall under the high-risk "
-            "regime with transitional dates set by Art. 111(1)."
+            "Annex IX sets the information to be submitted upon the "
+            "registration of the TESTING IN REAL WORLD CONDITIONS of "
+            "high-risk AI systems "
+            "listed in Annex III, in accordance with Art. 60: a Union-wide "
+            "unique single identification number for the testing; the name "
+            "and contact details of the provider or prospective provider "
+            "and of the deployers involved; a brief description of the AI "
+            "system, its intended purpose, and other information needed to "
+            "identify the system; a summary of the main characteristics of "
+            "the testing plan; and information on the suspension or "
+            "termination of the testing. Distinct from Annex VIII, which "
+            "covers registration of the system itself under Art. 49."
         ),
     },
     "Annex X": {
-        "dimension": "tech_docs",
+        "dimension": "governance",
         "summary": (
-            "Annex X sets the information that providers (and, where "
-            "applicable, authorised representatives) and public-authority "
-            "deployers must enter in the EU database when registering "
-            "high-risk AI systems referred to in Art. 49: provider / "
-            "authorised-representative / deployer identity + contact "
-            "details, system name + trade name + additional unambiguous "
-            "reference, intended purpose, status of the system (on the "
-            "market / in service / no longer placed on the market / "
-            "recalled), type + number of the conformity-assessment "
-            "certificate + identity of the issuing notified body where "
-            "applicable, Member States in which the system is placed on "
-            "the market or put into service, and a copy of the EU "
-            "declaration of conformity (Art. 47) + the instructions for "
-            "use. Public-access carve-outs in Annex X apply to law-"
-            "enforcement, migration, asylum, and border-control systems."
+            "Annex X is a LIST OF UNION LEGISLATIVE ACTS on large-scale IT "
+            "systems in the area of Freedom, Security and Justice. It "
+            "contains no obligations of its own; it identifies seven "
+            "systems: the Schengen Information System (SIS), the Visa "
+            "Information System (VIS), Eurodac, the Entry/Exit System "
+            "(EES), the European Travel Information and Authorisation "
+            "System (ETIAS), the European Criminal Records Information "
+            "System on third-country nationals (ECRIS-TCN), and the "
+            "interoperability Regulations. Its function is to fix the "
+            "TRANSITION AND COMPLIANCE TIMELINE in Art. 111(1): AI systems "
+            "that are components of the large-scale IT systems established "
+            "by the acts listed in Annex X and placed on the market or put "
+            "into service before 2 August 2027 must be brought into "
+            "compliance only by 31 December 2030, rather than on the "
+            "Regulation's general dates. NOT the EU-database registration "
+            "annex - that is Annex VIII (Art. 49)."
         ),
     },
     # ─── Title III Ch. 4: Notified-body lifecycle gap-fill (Arts. 30, 32) ────

@@ -926,6 +926,23 @@ _AI_ACT_ANCHORS: frozenset[str] = frozenset(
         "high-risk criteria",
         "considered high-risk",
         "high-risk under",
+        # R367 — the official 2026-08-25 benchmark refused Q96 ("Name the
+        # areas of high-risk use cases. Is healthcare decision making one
+        # of them?") outright with LEXY_OOS_GENERIC, losing both of its
+        # correctness criteria. Reproduced: the R54.1 note above claims the
+        # longer variants "cover all legit AI-Act-shaped usage", but the
+        # Act's OWN nouns for the Annex III taxonomy — "area" and "use
+        # case" (Annex III: "listed in any of the following areas") — were
+        # missing, so the question carried no anchor and fell to the
+        # ambiguous CONVERSATIONAL bucket and the flaky LLM gate. These
+        # keep the R54.1 property (each is a two-word pairing, never bare
+        # "high risk", so "Best high-risk hike in the Alps?" stays out).
+        "high-risk use case",
+        "high risk use case",
+        "high-risk use cases",
+        "high risk use cases",
+        "high-risk use-case",
+        "high-risk use-cases",
         "system of artificial intelligence",
         "artificial intelligence",
         "limited-risk",
@@ -1620,6 +1637,31 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "definition of general-purpose": "Art. 3",
     "definition of a gpai": "Art. 3",
     "definition of high-risk": "Art. 6",
+    # R367 — Article 7 (the Commission's delegated power to amend Annex III)
+    # had ZERO keyword anchors anywhere in the repo, so the official
+    # 2026-08-25 benchmark Q17 ("Can the European Commission amend Annex III
+    # ... under what conditions?", gold ref Article 7.1) could never
+    # retrieve it: the live answer cited Art. 6(6)'s parallel power instead
+    # and lost 3 of its 4 correctness criteria. These phrases all name the
+    # amend-Annex-III power specifically, so they cannot fire on a generic
+    # Annex III classification question.
+    "amend annex iii": "Art. 7",
+    "amending annex iii": "Art. 7",
+    "amend the annex iii": "Art. 7",
+    "modify annex iii": "Art. 7",
+    "modifying annex iii": "Art. 7",
+    "update annex iii": "Art. 7",
+    "change annex iii": "Art. 7",
+    "add to annex iii": "Art. 7",
+    "adding to annex iii": "Art. 7",
+    "add new use-cases": "Art. 7",
+    "add new use cases": "Art. 7",
+    "add or modify use-cases": "Art. 7",
+    "add or modify use cases": "Art. 7",
+    "new high-risk use-cases": "Art. 7",
+    "new high-risk use cases": "Art. 7",
+    "remove a use-case": "Art. 7",
+    "remove use-cases from annex iii": "Art. 7",
     "research-only": "Art. 2",
     "research only ai": "Art. 2",
     "scientific research": "Art. 2",
@@ -2408,6 +2450,16 @@ def derive_anchor_articles_from_keywords(text: str) -> tuple[str, ...]:
 _SCOPE_WEAK_KEYWORDS: frozenset[str] = frozenset({
     "high risk",  # bare "high-risk" / "high risk" — covered now by
                   # "high risk ai" / "high risk system" in _AI_ACT_ANCHORS
+    # R367 — "area"/"areas" is the Act's own noun for the eight Annex III
+    # headings, but it is ordinary English too: measured leaks on "high
+    # risk area for avalanches this winter" and "high-risk areas ... South
+    # America". Weak, so it anchors Annex III for RETRIEVAL when something
+    # else already carries scope, without flipping the gate on its own.
+    "high risk area",
+    "high risk areas",
+    "high risk uses",
+    "high risk practice",
+    "high risk practices",
     "individualised risk assessment",
     "individualized risk assessment",
     "designating authority",

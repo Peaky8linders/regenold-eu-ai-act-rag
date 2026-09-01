@@ -3636,6 +3636,37 @@ _ENFORCEMENT_CORRECTIVE_RE = re.compile(
     r"\bmarket\s+surveillance\b.*?\b(?:recall|suspend|withdraw|corrective|timeframe|reclassif\w*)")
 
 
+# R367 - AMENDMENT-POWER shapes are questions about how the Act's own lists are
+# CHANGED (Art. 7 for Annex III, Art. 6(6) for the Art. 6(3) conditions,
+# Art. 97 for the delegation itself), not verdicts about where a given system
+# sits. The official 2026-08-25 benchmark Q17 ("Can the European Commission
+# amend Annex III ... to add or modify use-cases classified as high-risk AI
+# systems? Under what conditions?", gold ref Article 7.1) tripped the verdict
+# gate on its "classified as high-risk" clause and received the canned
+# general-classification roster - Art. 5 (prohibitions), Art. 6, Annex III,
+# Annex I, Art. 50 (transparency) - which EVICTED the Art. 7 the retriever had
+# already surfaced in ``ctx.obligations``. Three of its four correctness
+# criteria failed. Same defect class and same remedy shape as R356 above.
+#
+# Both limbs are required: an amendment VERB reaching an amendment OBJECT (an
+# Annex, the high-risk list, or the delegated-act machinery), AND an amending
+# ACTOR. A question that merely says "modify"/"update" about a SYSTEM cannot
+# match, and neither can a plain "what does the Commission do?".
+_AMENDMENT_POWER_RE = re.compile(
+    r"\b(?:amend\w*|modif\w*|updat\w*|add|adds|adding|remov\w*|delet\w*"
+    r"|revis\w*|chang\w*|extend\w*)\b"
+    r"[^.?!]{0,80}?"
+    r"\b(?:annex\s+(?:i{1,3}v?|vi{0,3}|ix|xi{0,3}|x)\b"
+    r"|the\s+high[-\s]?risk\s+list\b|list\s+of\s+high[-\s]?risk\b"
+    r"|delegated\s+acts?\b)",
+    re.IGNORECASE,
+)
+_AMENDMENT_ACTOR_RE = re.compile(
+    r"\b(?:commission|delegated\s+acts?|article\s*97|art\.?\s*97)\b",
+    re.IGNORECASE,
+)
+
+
 def _general_classification_verdict(question: str) -> dict | None:
     """Domain-general risk-tier verdict for un-catalogued classification asks.
 
@@ -3671,6 +3702,14 @@ def _general_classification_verdict(question: str) -> dict | None:
     # The shape requires an MSA mention PLUS a corrective/enforcement verb,
     # so no classification question (Q7/Q24/Q46-class) can trip it.
     if _ENFORCEMENT_CORRECTIVE_RE.search(question):
+        return None
+    # R367 - see _AMENDMENT_POWER_RE. Requires BOTH an amendment
+    # verb+object AND an amending actor, so "can I modify my Annex III
+    # system?" (no actor) and "what does the Commission do?" (no
+    # amendment object) both stay on the classification path.
+    if _AMENDMENT_POWER_RE.search(question) and _AMENDMENT_ACTOR_RE.search(
+        question
+    ):
         return None
     live = question
     if "Latest question:" in live:
