@@ -908,6 +908,78 @@ USER_CRITICAL_RULES_CLAUSE = (
 )
 
 
+# R367 - the SCOPE STOP RULE.
+#
+# The official 2026-08-25 report measures Answer Conciseness as an "inverted
+# measure of answer verbosity relative to the reference answers". Between the
+# 2026-07-14 and 2026-08-25 scorecards it collapsed 96.0 -> 51.9 (easy) and
+# 93.4 -> 45.2 (hard), while Reference Conciseness fell 79.3 -> 50.4 and
+# 72.1 -> 49.8. Every OTHER axis improved sharply over the same window
+# (AnsCorrectness Loose +17.6, Strict +17.6, RefStrict +9.5, Speed +12.5) --
+# and because Overall is a plain GEOMETRIC MEAN, the two conciseness
+# collapses ate the whole gain: easy Overall went 77.5 -> 75.1, i.e. DOWN.
+#
+# Holding the 2026-08-25 correctness numbers and restoring only the July
+# conciseness numbers yields easy 85.8 / hard 84.2, which BEATS the 2026
+# frontier baseline (80.9 / 81.7) in both modes. These two axes now also
+# carry the highest marginal GM leverage of the eight (0.179 / 0.185 pp of
+# Overall per pp, vs 0.104 for AnsLoose).
+#
+# The defect is NOT length as such, and a blunt cap is the refuted remedy
+# (R320's own A/B: answer_conciseness +0.095 but answer_correctness -0.143;
+# R142.1 lost a pairwise judge 11-0 on positional trimming). MEASURED shape
+# of the fat, on the six report questions replayed live: each answer states
+# the answer in its first one or two sentences and then appends two to four
+# sentences of ADJACENT-BUT-UNASKED law -- Art. 97's delegation mechanics on
+# an Art. 7 question, the Art. 6(3) derogation on a definitional one,
+# Art. 26 deployer duties on an Art. 13 one, the Annex I product route on an
+# Annex III one. That trailing material is also what drags the extra
+# provisions into the wire refs, because `_add_prose_named_refs` promotes
+# every provision the prose names, uncapped. ONE root cause, BOTH axes.
+#
+# So this clause targets the cause (writing the unasked sentence) rather
+# than the symptom (the answer being long). It never licenses dropping a
+# member of a set the question asked for -- that would trade into
+# AnsCorrectness, which is the trade R320 measured and rejected.
+USER_SCOPE_STOP_CLAUSE = (
+    " SCOPE STOP RULE (this governs where the answer ENDS): answer the "
+    "question asked, completely, and then STOP. Do not add a further "
+    "sentence about a neighbouring provision, a related power, a procedural "
+    "or institutional mechanism, an exception, a derogation, a transitional "
+    "rule, or another actor's duties, when the question did not raise it. "
+    "Before writing each sentence after the first, ask which words of the "
+    "question it answers; if none, delete it. Correct law that answers a "
+    "question nobody asked is a DEFECT here, not added value: it costs "
+    "conciseness directly, and it costs reference precision too, because "
+    "every provision your prose names is promoted into the citation list. "
+    "This rule NEVER licenses dropping something the question did ask for: "
+    "where the question names an enumerated set, a count, a second limb, or "
+    "a yes/no, deliver all of it -- completeness of what was asked always "
+    "beats brevity, and only material outside the question is cut. Where a "
+    "qualifier, exception or condition is part of the rule you are stating, "
+    "it is IN scope and stays.\n"
+)
+
+
+def scope_stop_rule_enabled() -> bool:
+    """R367 - the scope stop rule, delivered on the USER channel.
+
+    Fresh env read per call so an in-process two-arm A/B is valid (R263.2).
+
+    DEFAULT **OFF**. It changes the Stage-2 prompt, and per AGENTS.md
+    invariant #5 a prompt-side change is NOT reference-neutral: three
+    default-ON, ``stage2_landed``-gated passes recompute the wire refs from
+    the final prose. So it must clear ``easyhard_ab``/``gold_dropped_head``
+    for references AND ``ab_judge`` for answers before it flips. Shipping it
+    ON with its gate un-run is exactly what R308 and R299 did.
+    """
+    import os
+
+    return os.environ.get("REGENOLD_SCOPE_STOP_RULE", "0").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
 def user_critical_rules_enabled() -> bool:
     """R340 — deliver the critical ANSWER_GENERATE_SYSTEM rules on the user channel.
 

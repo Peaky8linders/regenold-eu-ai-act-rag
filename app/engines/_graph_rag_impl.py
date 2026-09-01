@@ -476,6 +476,7 @@ def _shrink_user_for_groq(user: str, budget: int = 10000) -> str:
     _TAIL_MARKERS = (
         " ANSWER COVERAGE:",          # USER_ANSWER_COVERAGE_CLAUSE start
         " CRITICAL ANSWER RULES",     # USER_CRITICAL_RULES_CLAUSE start
+        " SCOPE STOP RULE",           # R367 USER_SCOPE_STOP_CLAUSE start
     )
     tail_start = len(user)  # default: no protected tail found
     for tm in _TAIL_MARKERS:
@@ -8913,6 +8914,25 @@ def _claude_max_enhance_answer(
 
             if user_critical_rules_enabled():
                 user_message += USER_CRITICAL_RULES_CLAUSE
+        except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
+            pass
+
+        # R367 — the SCOPE STOP RULE. Appended LAST so it is the final
+        # instruction the model reads, and so the R336 tail-preserving
+        # truncation (see ``_TAIL_MARKERS``) keeps it. Default OFF: it
+        # changes the Stage-2 prompt, and per AGENTS.md invariant #5 that is
+        # NOT reference-neutral, so it needs both gates before it flips.
+        # Keyed in ``_engine_cache_key`` (R263.2) — without that a
+        # same-process two-arm A/B serves arm A's cache to arm B, which is
+        # exactly how a lever reads +0.0000 while doing nothing.
+        try:
+            from app.data.graph_rag_prompts import (  # noqa: PLC0415
+                USER_SCOPE_STOP_CLAUSE,
+                scope_stop_rule_enabled,
+            )
+
+            if scope_stop_rule_enabled():
+                user_message += USER_SCOPE_STOP_CLAUSE
         except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
             pass
 

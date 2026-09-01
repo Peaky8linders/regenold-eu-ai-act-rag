@@ -1470,6 +1470,10 @@ def _engine_cache_key(
             # message (same channel as the coverage clause above). It flips
             # the polished answer AND its citations, so same doctrine.
             "REGENOLD_USER_CRITICAL_RULES",
+            # R367 — the scope stop rule appends to the same Stage-2 USER
+            # message, so it flips the polished answer AND (via the three
+            # prose->refs passes) the wire citations. Same doctrine.
+            "REGENOLD_SCOPE_STOP_RULE",
             # R300 — the wrapper model alias decides WHICH model generates the
             # Stage-2 answer, so flipping it flips the answer.
             "REGENOLD_WRAPPER_MODEL_ALIAS",
