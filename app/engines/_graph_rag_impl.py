@@ -218,6 +218,13 @@ def _graph_rag_provider() -> str:
     )
 
 
+#: R377 — a well-formed closing XML channel tag at the very end of a model
+#: reply (the closing tag of the ``answer`` or ``reasoning_scratchpad``
+#: channel). Anchored to the end of the string and requiring a real tag
+#: name, so a bare ">" is never peeled.
+_CLOSING_XML_CHANNEL_RE = re.compile(r"</[A-Za-z][A-Za-z0-9_.-]*>\s*$")
+
+
 def _looks_structurally_truncated(text: str | None) -> bool:
     """Heuristic: does ``text`` look cut mid-clause (no natural ending)?
 
@@ -244,10 +251,27 @@ def _looks_structurally_truncated(text: str | None) -> bool:
     # its terminator: e.g. ``(see Annex IV).`` ends ``).`` → peel ``)``
     # is unnecessary because the terminator is already last; but ``…IV.)``
     # ends ``)`` → peel to reach the ``.``. Quotes/brackets likewise.
+    # R328.3: markdown emphasis/code markers (``*`` ``_`` backtick ``~``)
+    # belong in the peel set for exactly the same reason — they WRAP text.
     tail = stripped
-    while tail and tail[-1] in ")]}\"”’'":
-        tail = tail[:-1].rstrip()
+    # R377 — a trailing XML CHANNEL tag is a WRAPPER, not a terminator.
+    while True:
+        _before_peel = tail
+        while tail and tail[-1] in ")]}\"”’'*_`~":
+            tail = tail[:-1].rstrip()
+        _closing = _CLOSING_XML_CHANNEL_RE.search(tail)
+        if _closing:
+            tail = tail[: _closing.start()].rstrip()
+        if tail == _before_peel:
+            break
     if not tail:
+        return False
+    # R328.3 / R377 — a MARKDOWN TABLE ROW is a structurally complete ending. Long
+    # enumerative answers (role × obligation matrices) legitimately end on one,
+    # and its terminal ``|`` is a row close, not a mid-clause stop. Evaluated on
+    # ``tail`` so a table enclosed within ``</answer>`` is recognised.
+    last_line = tail.splitlines()[-1].strip()
+    if last_line.startswith("|") and last_line.endswith("|") and len(last_line) > 2:
         return False
     # R357 — an ending ellipsis ("…") is a CUT, not a terminator: a
     # complete regulatory sentence never trails off. Previously "…" sat
@@ -8761,20 +8785,20 @@ def _claude_max_enhance_answer(
         # R298 / R299 / R304 — Prompt additions on the channel that reaches the model.
         try:
             from app.data.graph_rag_prompts import (  # noqa: PLC0415
-                USER_CHALLENGE_BREVITY_CLAUSE,
-                USER_REF_MINIMALITY_CLAUSE,
-                USER_SUBPARAGRAPH_ATTRIBUTION_CLAUSE,
                 challenge_brevity_enabled,
                 is_challenge_turn,
                 subparagraph_attribution_enabled,
+                user_challenge_brevity_clause,
+                user_ref_minimality_clause,
                 user_ref_minimality_enabled,
                 user_ref_partition_enabled,
+                user_subparagraph_attribution_clause,
             )
 
             if subparagraph_attribution_enabled():
-                user_message += USER_SUBPARAGRAPH_ATTRIBUTION_CLAUSE
+                user_message += user_subparagraph_attribution_clause()
             if user_ref_minimality_enabled():
-                user_message += USER_REF_MINIMALITY_CLAUSE
+                user_message += user_ref_minimality_clause()
             if user_ref_partition_enabled():
                 user_message += (
                     " OPERATIVE VS BACKGROUND PARTITION: CITE ONLY the provisions "
@@ -8784,7 +8808,7 @@ def _claude_max_enhance_answer(
                     "latest question explicitly asks for them.\n"
                 )
             if challenge_brevity_enabled() and is_challenge_turn(question):
-                user_message += USER_CHALLENGE_BREVITY_CLAUSE
+                user_message += user_challenge_brevity_clause()
         except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
             pass
         if _answer_v2_enabled():
@@ -8888,12 +8912,12 @@ def _claude_max_enhance_answer(
         # that, a same-process A/B silently serves arm A's cache to arm B.
         try:
             from app.data.graph_rag_prompts import (  # noqa: PLC0415
-                USER_ANSWER_COVERAGE_CLAUSE,
                 answer_coverage_enabled,
+                user_answer_coverage_clause,
             )
 
             if answer_coverage_enabled():
-                user_message += USER_ANSWER_COVERAGE_CLAUSE
+                user_message += user_answer_coverage_clause()
         except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
             pass
 

@@ -39,15 +39,26 @@ class TestHubSeedHop2:
 
     def test_fix_surfaces_hop2_for_hub_seed_was_empty(self, monkeypatch):
         # A/B on the SAME hub seed: OFF reproduces the crowd-out bug
-        # (Art. 6 has ≥10 one-hop neighbours → cap=10 leaves no room), ON
+        # (the seed has ≥10 one-hop neighbours → cap=10 leaves no room), ON
         # surfaces hop2-only neighbours.
+        #
+        # R367 — the seed moved from ``Art. 6`` to ``Art. 5``. Art. 6 had
+        # exactly 10 one-hop neighbours and one of them, ``Annex IX``, was an
+        # artefact of the two-annex mislabelling this round fixed: the old
+        # Annex IX summary opened "referred to in Art. 6(1) and Art. 111",
+        # which is Annex X's cross-reference, not Annex IX's (Annex IX is
+        # Art. 60 real-world-testing registration and has nothing to do with
+        # Art. 6). Dropping that spurious edge leaves Art. 6 with 9
+        # neighbours, so it no longer crowds out hop2 and cannot demonstrate
+        # the bug. Art. 5 still has 10 and still reproduces it exactly.
+        # Every assertion below is unchanged.
         self._setup(monkeypatch)
         from app.engines import graph_expand_2hop as g2
 
         monkeypatch.setenv("REGENOLD_GRAPH_2HOP_FULL_CAP", "0")
-        off = g2.expand_2hop(["Art. 6"], max_hop2=5)
+        off = g2.expand_2hop(["Art. 5"], max_hop2=5)
         monkeypatch.setenv("REGENOLD_GRAPH_2HOP_FULL_CAP", "1")
-        on = g2.expand_2hop(["Art. 6"], max_hop2=5)
+        on = g2.expand_2hop(["Art. 5"], max_hop2=5)
 
         assert off.hop2_articles == (), "pre-fix: hub seed crowd-out → empty hop2"
         assert on.hop2_articles, "post-fix: hub seed must surface hop2"
@@ -55,7 +66,7 @@ class TestHubSeedHop2:
         assert len(on.hop2_articles) <= 5  # still bounded by max_hop2
         for ref in on.hop2_articles:
             assert ref in ARTICLE_EXISTENCE  # existence-gated
-            assert ref != "Art. 6"  # excludes the seed
+            assert ref != "Art. 5"  # excludes the seed
             assert ref not in on.hop1_articles  # hop2-only
 
     def test_non_hub_seed_same_hop2_content_on_off(self, monkeypatch):

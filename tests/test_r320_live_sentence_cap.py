@@ -198,4 +198,7 @@ class TestCoverageClauseNotDuplicated:
 
         src = Path(__file__).resolve().parents[1] / "app/engines/_graph_rag_impl.py"
         text = src.read_text(encoding="utf-8")
-        assert text.count("user_message += USER_ANSWER_COVERAGE_CLAUSE") == 1
+        # R377 — the clause is now delivered via a selector function, not a
+        # constant, but the duplication guard still applies.
+        assert text.count("user_message += user_answer_coverage_clause()") == 1
+

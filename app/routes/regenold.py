@@ -1470,6 +1470,10 @@ def _engine_cache_key(
             # message (same channel as the coverage clause above). It flips
             # the polished answer AND its citations, so same doctrine.
             "REGENOLD_USER_CRITICAL_RULES",
+            # R340 — the rebuilt V2 prompt family selector.
+            "REGENOLD_PROMPT_V2",
+            # R377 — tier denial in fidelity guard cross-tier contract.
+            "REGENOLD_FIDELITY_TIER_NEGATION",
             # R367 — the scope stop rule appends to the same Stage-2 USER
             # message, so it flips the polished answer AND (via the three
             # prose->refs passes) the wire citations. Same doctrine.

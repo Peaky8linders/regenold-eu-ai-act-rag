@@ -378,8 +378,16 @@ _EXPECTED_BM25_ONLY: dict[str, list[str]] = {
     "What technical documentation must providers maintain?": [
         "Art. 16", "Art. 11", "Art. 53", "Annex VII", "Art. 18",
     ],
+    # R367 re-capture after the KB_VERSION v18 -> v19 content bump. The old
+    # ``Annex X`` summary was Annex VIII's text (EU-database registration:
+    # "provider", "system name", "intended purpose"), which is why a
+    # chatbot-PROVIDER question ranked it third. With Annex X now carrying
+    # its real content (the large-scale IT systems list) that spurious match
+    # is gone and ``Art. 50.3`` (chatbot transparency) enters the top-5.
+    # Same documented refactor-equivalence pin reacting to a deliberate
+    # content edit, not a regression in the refactor it guards.
     "We are a provider of an AI chatbot for customer service.": [
-        "Art. 16", "Art. 49", "Annex X", "Art. 3", "Art. 1",
+        "Art. 16", "Art. 49", "Art. 3", "Art. 1", "Art. 50.3",
     ],
     # R263 Fix 3 lengthened the bare ``Art. 50`` KB stub's summary (new
     # public-interest text-generation duty + exceptions sentence). BM25's
@@ -397,8 +405,12 @@ _EXPECTED_BM25_ONLY: dict[str, list[str]] = {
     "Who must register the system in the EU database?": [
         "Art. 49", "Art. 16", "Art. 22", "Art. 71", "Art. 83",
     ],
+    # R367 — the old ``Annex IX`` summary was Annex X's text ("transitional
+    # dates set by Art. 111(1)"); with Annex IX now describing Art. 60
+    # real-world-testing registration it no longer scores on a retention
+    # question and drops out, leaving four docs above threshold.
     "What records must deployers retain and for how long?": [
-        "Art. 26", "Art. 61", "Annex IX", "Annex X", "Art. 10",
+        "Art. 26", "Art. 61", "Annex X", "Art. 10",
     ],
     # R263 Fix 3 — see the matching comment above; the lengthened bare
     # ``Art. 50`` doc's diluted BM25 score now drops it out of this row's
@@ -423,8 +435,11 @@ _EXPECTED_DEFAULT_ENV: dict[str, list[str]] = {
     "Are emotion recognition systems prohibited in the workplace?": [
         "Annex III", "Art. 5", "Art. 50.3", "Art. 13", "Art. 50",
     ],
+    # R367 — see the matching comment in ``_EXPECTED_BM25_ONLY``; on the
+    # fused path the dense layers keep Annex IX in the top-5 but below the
+    # two docs it used to outrank.
     "What records must deployers retain and for how long?": [
-        "Art. 26", "Art. 61", "Annex IX", "Annex X", "Art. 10",
+        "Art. 26", "Art. 61", "Annex X", "Art. 10", "Annex IX",
     ],
 }
 
