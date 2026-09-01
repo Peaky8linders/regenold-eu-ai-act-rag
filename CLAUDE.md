@@ -67,6 +67,127 @@ R330 ran davidath four times to isolate the `.env` coupling below; that job is d
 result was byte-identical to the reference table. The table is kept for provenance, not as
 a thing to reproduce on every change.
 
+## ⛔ R367 — the OFFICIAL 2026-08-25 report: we fixed correctness and lost the round on CONCISENESS
+
+`report_antifragile_ai.pdf` (2026-08-25, 110 questions, easy + hard). **Overall is a plain
+geometric mean of the 8 axes** — reproduced here to <0.1 pp on all six reported rows, so the
+scoring function is known exactly.
+
+| axis | Jul-14 easy | **Aug-25 easy** | Δ | Jul-14 hard | **Aug-25 hard** | Δ |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Ans Correctness Loose | 72.1 | **89.7** | **+17.6** | 74.0 | **89.9** | **+15.9** |
+| Ans Correctness Strict | 63.6 | **81.2** | **+17.6** | 60.6 | **80.0** | **+19.4** |
+| **Ans CONCISENESS** | **96.0** | **51.9** | **−44.1** | **93.4** | **45.2** | **−48.2** |
+| Ref Correctness Loose | 85.2 | 89.4 | +4.2 | 78.7 | 89.5 | +10.8 |
+| Ref Correctness Strict | 58.8 | 68.3 | +9.5 | 56.0 | 70.7 | +14.7 |
+| **Ref CONCISENESS** | **79.3** | **50.4** | **−28.9** | **72.1** | **49.8** | **−22.3** |
+| Tone | 98.5 | 99.1 | +0.6 | 98.2 | 96.1 | −2.1 |
+| Speed | 75.1 | 87.6 | +12.5 | 61.7 | 85.7 | +24.0 |
+| **OVERALL** | **77.5** | **75.1** | **−2.4** | **73.0** | **73.4** | +0.4 |
+
+**Every axis improved except the two conciseness axes, and because Overall is a GEOMETRIC
+MEAN the two collapses ate the entire gain — easy Overall went DOWN.** We now beat 1 baseline
+in easy and **0 in hard** (we lost to the 2025 baseline in hard, which we used to beat).
+
+**The counterfactual is the whole roadmap.** Hold the Aug-25 correctness numbers, restore only
+the July conciseness numbers:
+
+| arm | easy | hard |
+| :--- | ---: | ---: |
+| as measured | 75.1 | 73.4 |
+| **+ July conciseness** | **85.8** | **84.2** |
+| 2026 frontier baseline | 80.9 | 81.7 |
+
+That **BEATS the frontier baseline in BOTH modes.** These two axes also now carry the highest
+marginal GM leverage of the eight — **0.179 (AnsCon) and 0.185 (RefCon) pp of Overall per pp**,
+versus 0.104 for Ans Loose and 0.137 for Ref Strict.
+
+⚠ **This RETIRES the standing "AnsCon is the only axis we lead / it has ZERO headroom / do NOT
+shorten answers" reading** (recorded in `project_regenold_official_scorecard` and quoted inside
+`app/integrations/regenold/models.py`'s R320 comment as "96.0 easy / 93.4 hard, the only axis we
+lead"). That was true of the July scorecard and is **inverted** on this one. It is now the
+largest single gap to the frontier baseline in easy mode (−16.0 pp).
+
+**MEASURED shape of the fat** — the six report questions replayed live over the cloudflared
+tunnel: each answer states the answer in its first one or two sentences, then appends **two to
+four sentences of adjacent-but-UNASKED law**. Art. 97's delegation mechanics on an Art. 7
+question; the Art. 6(3) derogation on a definitional one; Art. 26 deployer duties on an Art. 13
+one; the Annex I product route on an Annex III one. That trailing material is also what drags
+the extra provisions onto the wire, because `_add_prose_named_refs` promotes every provision the
+prose names, **uncapped**. **ONE root cause, BOTH conciseness axes.**
+
+**It is NOT a Stage-1 length regression.** Two-arm offline replay, HEAD vs the July snapshot
+(`231c1d5`), same 111 questions, `REGENOLD_SKIP_DOTENV=1` in both arms: **byte-identical, all
+111 rows, mean 1251.8 chars each way.** The growth is entirely on the live Stage-2 path.
+
+**The refuted remedies — do not re-propose.** A blunt sentence cap is R320's own measured trade
+(answer_conciseness +0.095, **answer_correctness −0.143**); positional trimming is R142.1, which
+lost a live pairwise judge **11-0, p=0.001**. The lever that is *not* in those families is to
+stop the model WRITING the unasked sentence, on the USER channel (the system prompt is 0%
+delivered) — shipped as `REGENOLD_SCOPE_STOP_RULE`, **default OFF**, see the flag table.
+
+### `REGENOLD_SCOPE_STOP_RULE` — MEASURED, and it does NOT clear its gate
+
+Paired live A/B over the **cloudflared tunnel** (`wrapper.antifragile-ai.net`), arms
+interleaved per row so wrapper drift hits both, n=48 single-turn gold-bearing probe rows:
+
+| axis | baseline (OFF) | branch (ON) | delta |
+| :--- | ---: | ---: | ---: |
+| answer chars (mean) | 1186.3 | 1074.4 | **−112.0 (0.906x)** |
+| answer chars (median) | 1192.0 | 1064.5 | −127.5 |
+| rows shorter / longer | — | — | **36 / 12**, sign test **p = 7.2e-04** |
+| refs per row | 2.60 | 2.54 | −0.06 |
+| head precision | 0.5507 | 0.5559 | +0.0052 |
+| latency (s) | 14.8 | 13.6 | −1.2 |
+| **`gold_dropped_head` (SUM)** | **10** | **11** | **+1 → GATE FAILS** |
+
+**So it ships DEFAULT OFF.** The conciseness effect is real and significant, but hard rule #8
+is literally "drop ZERO more" and this arm drops one. Per R365 that is now an exit code, not a
+printed flag, and an `--allow-gold-drop` run does not count as having cleared it.
+
+⚠ **Read the failing rows before re-running this.** The +1 is a net of 2 drops and 1 recovery,
+and **both dropped rows are rows where the ON arm's answer got LONGER** (1091→1133 and
+1726→2015 chars). That is generation variance on the rows the lever did not act on, not the
+clause cutting a gold provision. It is also exactly what the documented noise floor predicts:
+`project_easyhard_ab_noise_floor_n40` records identical arms drifting 0.053 and **sign-flipping
+all three ref axes** at n=40.
+
+**The generalisable methodology point:** answer LENGTH is near-deterministic and resolves at
+n=48 (p=7.2e-04); the REFERENCE axes do not resolve until n≥120. So a conciseness lever can be
+screened cheaply on length, but it can never be *cleared* on the same run — the gold gate needs
+its own properly-powered pass. Do not read this table as "the lever loses"; read it as
+"the answer axis is measured, the reference axis is not yet."
+
+### The six appendix failures — all reproduced, four root causes fixed (R367)
+
+Three of the six reproduce **OFFLINE**, where the deterministic Stage-1 answer is near
+byte-identical to the shipped one. These were data and routing defects, not model behaviour.
+
+| Q | judged | root cause | status |
+| :--- | :--- | :--- | :--- |
+| 104 | 2/2 FAIL | `kb.py` had Annex VIII's content under `"Annex X"` and Annex X's under `"Annex IX"` — a two-annex SHIFT. `eu_ai_act_corpus` was right all along | **fixed** |
+| 96 | 2/2 FAIL (total refusal) | `"high-risk use case"` was not a scope anchor → CONVERSATIONAL bucket → `LEXY_OOS_GENERIC` | **fixed** |
+| 95 | 2/2 FAIL | the `Art. 6` summary said "eight Annex III **use cases**"; Annex III lists eight **AREAS** | **fixed** |
+| 17 | 3/4 FAIL | Article 7 had **zero** keyword anchors anywhere, AND the question tripped the canned `_general_classification_verdict` roster which evicted it. **Both** halves needed | **fixed** |
+| 45 | 5/5 FAIL | abstention ("the materials available here do not permit…") on content that was in the corpus the whole time | content now correct live; ref grain open |
+| 74 | 2/2 FAIL | framing: leads "Yes, marking is required" where the judge wanted "not that kind of marking, but some disclosure is still required" | **open** |
+
+⚠ **Q96 is FLAKY, not dead.** The deterministic classifier returns `in_scope=False`, but live
+the LLM scope gate *rescues* it — which is exactly how a question that is 100% in scope survived
+to a graded run and then refused. Never conclude a scope path is safe from one live pass.
+
+⚠ **A scope anchor is not enough on its own.** Verified live: after adding `Art. 7` to
+`scope.py`'s `KEYWORD_TO_ARTICLE`, Article 7 reached `ctx.obligations` and was **still absent
+from the Stage-2 prompt and from the wire refs**. The route only **FRONTS** an anchor already in
+`candidates` (`app/routes/regenold.py` ~8155) — it never **adds** one. Retrieval is seeded by
+the *engine's* separate map, `app/engines/_graph_rag_data.py::_KEYWORD_ENTITY_MAP`. Add to both.
+
+⚠ **The meta-commentary ban is instructed but NOT enforced.** `USER_ANSWER_COVERAGE_CLAUSE`
+already forbids mentioning "the references, provisions or material supplied to you"; Q45 and
+Q17 both violated it in the graded run ("the materials available here do not permit a
+citation-supported enumeration", "the Act does not settle within the text supplied here").
+There is no post-generation guard for this, unlike R357's truncation guard. Open lever.
+
 ## Reranking (R329)
 
 **⚠ CORRECTED R331 — the paragraph below previously claimed the reranker was
@@ -433,6 +554,7 @@ Concise record of the applied fixes; full rationale in `docs/reviews/`:
 | `REGENOLD_GRAPH_VECTOR_RECALL` | `0` | Additive Neo4j & local SVD vector recall path (R326) |
 | `REGENOLD_PARENT_COLLAPSE` | `0` | Collapse parent provisions when sub-points are cited (R325). **Corrected R366 — this row described a DEAD FLAG.** The helpers shipped in `a659849` with no call site; R366 wired it as the last reference pass. Still default OFF, and a strict **no-op offline** — see below |
 | `REGENOLD_STAGE2_TRUNCATION_GUARD` | `1` | R357 post-generation truncation repair on the Stage-2 polish |
+| `REGENOLD_SCOPE_STOP_RULE` | `0` | R367 scope stop rule on the Stage-2 USER channel: answer the question, then STOP; never append a neighbouring provision/power/mechanism/derogation the question did not raise. Targets BOTH conciseness axes (combined leverage 0.364 pp/pp). **Prompt-side ⇒ NOT reference-neutral** (AGENTS.md invariant #5), so it needs `easyhard_ab`/`gold_dropped_head` AND `ab_judge` before flipping |
 | `REGENOLD_QUERY_EXPANSION` | `0` | LLM query rewrite before retrieval (R328 port; latency+cost tradeoff) |
 | `REGENOLD_RISK_CLASS_ANNEX` | `0` | Annex-III risk-classification anchor (R328 port) |
 | `BEDROCK_REGION` | `eu-central-1` | AWS Bedrock cross-region inference profile geography (R328) |

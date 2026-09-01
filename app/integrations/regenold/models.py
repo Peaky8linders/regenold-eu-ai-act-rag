@@ -1399,8 +1399,22 @@ def normalise_answer_for_regenold(
             #
             # The July-7 arm is the right length target because it is the arm
             # whose official Answer-Conciseness we know (96.0 easy / 93.4
-            # hard, the only axis we lead) - a near-maximal score means its
-            # lengths already tracked the gold lengths closely.
+            # hard) - a near-maximal score means its lengths already tracked
+            # the gold lengths closely.
+            #
+            # R367 CORRECTION - the parenthetical here used to read "the only
+            # axis we lead", and the whole R320 decision below rests on that
+            # framing (conciseness as "pure downside risk"). The OFFICIAL
+            # 2026-08-25 report INVERTS it: Answer Conciseness fell 96.0 ->
+            # 51.9 easy and 93.4 -> 45.2 hard, and Reference Conciseness fell
+            # 79.3 -> 50.4 / 72.1 -> 49.8, while every other axis rose. Those
+            # two are now the LARGEST gap to the frontier baseline and carry
+            # the highest marginal geometric-mean leverage of the eight. The
+            # R320 measurement below still stands on its own terms - a blunt
+            # sentence cap traded answer_correctness -0.143 for
+            # answer_conciseness +0.095 - so the cap stays OFF; what changed
+            # is that conciseness is no longer a "leave it alone" axis. See
+            # CLAUDE.md 'R367' and REGENOLD_SCOPE_STOP_RULE.
             #
             # The char cap drops "the longest NON-CITE-ANCHORED sentence"
             # first, and a crisp verdict-first opener ("No such list

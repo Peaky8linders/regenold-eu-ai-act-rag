@@ -218,6 +218,13 @@ def _graph_rag_provider() -> str:
     )
 
 
+#: R377 — a well-formed closing XML channel tag at the very end of a model
+#: reply (the closing tag of the ``answer`` or ``reasoning_scratchpad``
+#: channel). Anchored to the end of the string and requiring a real tag
+#: name, so a bare ">" is never peeled.
+_CLOSING_XML_CHANNEL_RE = re.compile(r"</[A-Za-z][A-Za-z0-9_.-]*>\s*$")
+
+
 def _looks_structurally_truncated(text: str | None) -> bool:
     """Heuristic: does ``text`` look cut mid-clause (no natural ending)?
 
@@ -244,10 +251,27 @@ def _looks_structurally_truncated(text: str | None) -> bool:
     # its terminator: e.g. ``(see Annex IV).`` ends ``).`` → peel ``)``
     # is unnecessary because the terminator is already last; but ``…IV.)``
     # ends ``)`` → peel to reach the ``.``. Quotes/brackets likewise.
+    # R328.3: markdown emphasis/code markers (``*`` ``_`` backtick ``~``)
+    # belong in the peel set for exactly the same reason — they WRAP text.
     tail = stripped
-    while tail and tail[-1] in ")]}\"”’'":
-        tail = tail[:-1].rstrip()
+    # R377 — a trailing XML CHANNEL tag is a WRAPPER, not a terminator.
+    while True:
+        _before_peel = tail
+        while tail and tail[-1] in ")]}\"”’'*_`~":
+            tail = tail[:-1].rstrip()
+        _closing = _CLOSING_XML_CHANNEL_RE.search(tail)
+        if _closing:
+            tail = tail[: _closing.start()].rstrip()
+        if tail == _before_peel:
+            break
     if not tail:
+        return False
+    # R328.3 / R377 — a MARKDOWN TABLE ROW is a structurally complete ending. Long
+    # enumerative answers (role × obligation matrices) legitimately end on one,
+    # and its terminal ``|`` is a row close, not a mid-clause stop. Evaluated on
+    # ``tail`` so a table enclosed within ``</answer>`` is recognised.
+    last_line = tail.splitlines()[-1].strip()
+    if last_line.startswith("|") and last_line.endswith("|") and len(last_line) > 2:
         return False
     # R357 — an ending ellipsis ("…") is a CUT, not a terminator: a
     # complete regulatory sentence never trails off. Previously "…" sat
@@ -476,6 +500,7 @@ def _shrink_user_for_groq(user: str, budget: int = 10000) -> str:
     _TAIL_MARKERS = (
         " ANSWER COVERAGE:",          # USER_ANSWER_COVERAGE_CLAUSE start
         " CRITICAL ANSWER RULES",     # USER_CRITICAL_RULES_CLAUSE start
+        " SCOPE STOP RULE",           # R367 USER_SCOPE_STOP_CLAUSE start
     )
     tail_start = len(user)  # default: no protected tail found
     for tm in _TAIL_MARKERS:
@@ -3636,6 +3661,37 @@ _ENFORCEMENT_CORRECTIVE_RE = re.compile(
     r"\bmarket\s+surveillance\b.*?\b(?:recall|suspend|withdraw|corrective|timeframe|reclassif\w*)")
 
 
+# R367 - AMENDMENT-POWER shapes are questions about how the Act's own lists are
+# CHANGED (Art. 7 for Annex III, Art. 6(6) for the Art. 6(3) conditions,
+# Art. 97 for the delegation itself), not verdicts about where a given system
+# sits. The official 2026-08-25 benchmark Q17 ("Can the European Commission
+# amend Annex III ... to add or modify use-cases classified as high-risk AI
+# systems? Under what conditions?", gold ref Article 7.1) tripped the verdict
+# gate on its "classified as high-risk" clause and received the canned
+# general-classification roster - Art. 5 (prohibitions), Art. 6, Annex III,
+# Annex I, Art. 50 (transparency) - which EVICTED the Art. 7 the retriever had
+# already surfaced in ``ctx.obligations``. Three of its four correctness
+# criteria failed. Same defect class and same remedy shape as R356 above.
+#
+# Both limbs are required: an amendment VERB reaching an amendment OBJECT (an
+# Annex, the high-risk list, or the delegated-act machinery), AND an amending
+# ACTOR. A question that merely says "modify"/"update" about a SYSTEM cannot
+# match, and neither can a plain "what does the Commission do?".
+_AMENDMENT_POWER_RE = re.compile(
+    r"\b(?:amend\w*|modif\w*|updat\w*|add|adds|adding|remov\w*|delet\w*"
+    r"|revis\w*|chang\w*|extend\w*)\b"
+    r"[^.?!]{0,80}?"
+    r"\b(?:annex\s+(?:i{1,3}v?|vi{0,3}|ix|xi{0,3}|x)\b"
+    r"|the\s+high[-\s]?risk\s+list\b|list\s+of\s+high[-\s]?risk\b"
+    r"|delegated\s+acts?\b)",
+    re.IGNORECASE,
+)
+_AMENDMENT_ACTOR_RE = re.compile(
+    r"\b(?:commission|delegated\s+acts?|article\s*97|art\.?\s*97)\b",
+    re.IGNORECASE,
+)
+
+
 def _general_classification_verdict(question: str) -> dict | None:
     """Domain-general risk-tier verdict for un-catalogued classification asks.
 
@@ -3671,6 +3727,14 @@ def _general_classification_verdict(question: str) -> dict | None:
     # The shape requires an MSA mention PLUS a corrective/enforcement verb,
     # so no classification question (Q7/Q24/Q46-class) can trip it.
     if _ENFORCEMENT_CORRECTIVE_RE.search(question):
+        return None
+    # R367 - see _AMENDMENT_POWER_RE. Requires BOTH an amendment
+    # verb+object AND an amending actor, so "can I modify my Annex III
+    # system?" (no actor) and "what does the Commission do?" (no
+    # amendment object) both stay on the classification path.
+    if _AMENDMENT_POWER_RE.search(question) and _AMENDMENT_ACTOR_RE.search(
+        question
+    ):
         return None
     live = question
     if "Latest question:" in live:
@@ -8721,20 +8785,20 @@ def _claude_max_enhance_answer(
         # R298 / R299 / R304 — Prompt additions on the channel that reaches the model.
         try:
             from app.data.graph_rag_prompts import (  # noqa: PLC0415
-                USER_CHALLENGE_BREVITY_CLAUSE,
-                USER_REF_MINIMALITY_CLAUSE,
-                USER_SUBPARAGRAPH_ATTRIBUTION_CLAUSE,
                 challenge_brevity_enabled,
                 is_challenge_turn,
                 subparagraph_attribution_enabled,
+                user_challenge_brevity_clause,
+                user_ref_minimality_clause,
                 user_ref_minimality_enabled,
                 user_ref_partition_enabled,
+                user_subparagraph_attribution_clause,
             )
 
             if subparagraph_attribution_enabled():
-                user_message += USER_SUBPARAGRAPH_ATTRIBUTION_CLAUSE
+                user_message += user_subparagraph_attribution_clause()
             if user_ref_minimality_enabled():
-                user_message += USER_REF_MINIMALITY_CLAUSE
+                user_message += user_ref_minimality_clause()
             if user_ref_partition_enabled():
                 user_message += (
                     " OPERATIVE VS BACKGROUND PARTITION: CITE ONLY the provisions "
@@ -8744,7 +8808,7 @@ def _claude_max_enhance_answer(
                     "latest question explicitly asks for them.\n"
                 )
             if challenge_brevity_enabled() and is_challenge_turn(question):
-                user_message += USER_CHALLENGE_BREVITY_CLAUSE
+                user_message += user_challenge_brevity_clause()
         except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
             pass
         if _answer_v2_enabled():
@@ -8848,12 +8912,12 @@ def _claude_max_enhance_answer(
         # that, a same-process A/B silently serves arm A's cache to arm B.
         try:
             from app.data.graph_rag_prompts import (  # noqa: PLC0415
-                USER_ANSWER_COVERAGE_CLAUSE,
                 answer_coverage_enabled,
+                user_answer_coverage_clause,
             )
 
             if answer_coverage_enabled():
-                user_message += USER_ANSWER_COVERAGE_CLAUSE
+                user_message += user_answer_coverage_clause()
         except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
             pass
 
@@ -8874,6 +8938,25 @@ def _claude_max_enhance_answer(
 
             if user_critical_rules_enabled():
                 user_message += USER_CRITICAL_RULES_CLAUSE
+        except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
+            pass
+
+        # R367 — the SCOPE STOP RULE. Appended LAST so it is the final
+        # instruction the model reads, and so the R336 tail-preserving
+        # truncation (see ``_TAIL_MARKERS``) keeps it. Default OFF: it
+        # changes the Stage-2 prompt, and per AGENTS.md invariant #5 that is
+        # NOT reference-neutral, so it needs both gates before it flips.
+        # Keyed in ``_engine_cache_key`` (R263.2) — without that a
+        # same-process two-arm A/B serves arm A's cache to arm B, which is
+        # exactly how a lever reads +0.0000 while doing nothing.
+        try:
+            from app.data.graph_rag_prompts import (  # noqa: PLC0415
+                USER_SCOPE_STOP_CLAUSE,
+                scope_stop_rule_enabled,
+            )
+
+            if scope_stop_rule_enabled():
+                user_message += USER_SCOPE_STOP_CLAUSE
         except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
             pass
 

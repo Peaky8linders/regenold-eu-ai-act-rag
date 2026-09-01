@@ -143,6 +143,34 @@ _KEYWORD_ENTITY_MAP: tuple[tuple[str, str], ...] = (
     # Annex III description as if it applied.
     ("high-risk classification", "Art. 6"),
     ("classified as high-risk", "Art. 6"),
+    # R367 — Article 7 (the Commission's Art. 97 delegated power to AMEND
+    # Annex III, and the two CUMULATIVE Art. 7(1) conditions) had no entry
+    # in this map, so the official 2026-08-25 benchmark Q17 could not
+    # retrieve it and answered from Art. 6(6)'s parallel-but-different
+    # power, losing 3 of 4 correctness criteria. scope.py's
+    # KEYWORD_TO_ARTICLE anchor alone is not enough: the route only FRONTS
+    # an anchor that is already in `candidates` (regenold.py:8155), it
+    # never adds one. Every phrase names the amend power specifically, so
+    # none fires on a plain Annex III classification question.
+    ("amend annex iii", "Art. 7"),
+    ("amending annex iii", "Art. 7"),
+    ("amend the annex iii", "Art. 7"),
+    ("amendment of annex iii", "Art. 7"),
+    ("amendments to annex iii", "Art. 7"),
+    ("modify annex iii", "Art. 7"),
+    ("modifying annex iii", "Art. 7"),
+    ("update annex iii", "Art. 7"),
+    ("updating annex iii", "Art. 7"),
+    ("change annex iii", "Art. 7"),
+    ("add to annex iii", "Art. 7"),
+    ("adding to annex iii", "Art. 7"),
+    ("add new use-cases", "Art. 7"),
+    ("add new use cases", "Art. 7"),
+    ("add or modify use-cases", "Art. 7"),
+    ("add or modify use cases", "Art. 7"),
+    ("new high-risk use-cases", "Art. 7"),
+    ("new high-risk use cases", "Art. 7"),
+    ("remove a use-case", "Art. 7"),
     # Data governance / bias / special categories (Art. 10)
     ("special categories of personal data", "Art. 10"),
     ("special categories", "Art. 10"),
