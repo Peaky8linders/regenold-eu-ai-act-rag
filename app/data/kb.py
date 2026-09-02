@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 # (Art. 25(2) cooperation-duty re-anchor + real 25(4) written-agreement
 # clause, Art. 99(4) closed enumeration, Art. 79/109 Reg-2019/1020
 # Art. 3(19) qualification).
-KB_VERSION = "2024.1689.v20"
+KB_VERSION = "2024.1689.v21"
 
 
 @dataclass(frozen=True)
@@ -761,7 +761,7 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "replacing or influencing the human assessment; or a preparatory task), "
             "unless it profiles natural persons, in which case it is always high-risk; "
             "the provider must document this self-assessment before placing the system "
-            "on the market and still register it under Article 49(2)."
+            "on the market."
         ),
     },
     "Art. 9": {
@@ -853,17 +853,18 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
         "summary": (
             "Deployer obligations: use the system per the instructions, assign "
             "human oversight to competent + trained natural persons, monitor "
-            "operation, retain automatically generated logs, inform affected workers "
-            "(for workplace use), and cooperate with market-surveillance authorities. "
-            "Art. 26 carve-outs: deployers that are financial institutions subject "
-            "to Union financial-services internal-governance requirements fulfil "
-            "the Art. 26(5) monitoring obligation and the Art. 26(6) log-retention "
-            "obligation by complying with the governance arrangements under that "
-            "financial-services law (Art. 26(5) second subparagraph; Art. 26(6) "
-            "second subparagraph). Workplace deployers who are employers must "
-            "inform workers' representatives and the affected workers BEFORE "
-            "putting the high-risk system into service (Art. 26(7)); applicable "
-            "Union and national worker-information rules continue to apply."
+            "operation, and under Art. 26(6) retain the logs automatically generated "
+            "by the high-risk AI system (to the extent under deployer control) for "
+            "at least six months. Inform affected workers for workplace use (Art. 26(7)), "
+            "and cooperate with market-surveillance authorities. Art. 26 carve-outs: "
+            "deployers that are financial institutions subject to Union financial-services "
+            "internal-governance requirements fulfil the Art. 26(5) monitoring obligation "
+            "and the Art. 26(6) log-retention obligation by complying with the governance "
+            "arrangements under that financial-services law (Art. 26(5) second subparagraph; "
+            "Art. 26(6) second subparagraph). Workplace deployers who are employers must "
+            "inform workers' representatives and the affected workers BEFORE putting the "
+            "high-risk system into service (Art. 26(7)); applicable Union and national "
+            "worker-information rules continue to apply."
         ),
     },
     "Art. 27": {
@@ -872,23 +873,15 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "Deployers of certain high-risk AI systems (Annex III + public-sector "
             "deployers) must perform a Fundamental Rights Impact Assessment before "
             "first use, covering deployment process, affected persons, specific risks, "
-            "human-oversight measures, and complaints workflows."
+            "human-oversight measures, and complaints workflows. Crucially, Article 27(1) "
+            "explicitly EXCLUDES high-risk AI systems intended to be used in the area listed "
+            "in point 2 of Annex III (critical infrastructure, including management and operation "
+            "of road traffic, and supply of water, gas, heating or electricity) from the FRIA "
+            "obligation."
         ),
     },
     "Art. 50": {
         "dimension": "transparency",
-        # R114 (Antifragile Q5): per-paragraph ACTOR attribution. The old
-        # actor-less stub ("emotion-recognition systems must inform exposed
-        # persons") invited "providers" as the default subject in polished
-        # prose — Art. 50(3) and 50(4) are DEPLOYER duties.
-        # R263 Fix 3: Art. 50(4) has TWO disclosure duties, not one — the
-        # deepfake (image/audio/video) duty AND a separate text-generation
-        # duty for content published on matters of public interest, each
-        # with its own exceptions. The stub previously named only the
-        # deepfake duty, so a question about the public-interest text duty
-        # and its two exceptions (law-enforcement-authorised use; human
-        # review/editorial control) got a verdict that named the exceptions
-        # existed without naming what they were.
         "summary": (
             "Art. 50: Transparency obligations split by actor: providers "
             "must ensure AI systems interacting with natural persons "
@@ -897,15 +890,18 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "(Art. 50(2)); deployers must inform exposed persons when "
             "operating emotion-recognition or biometric-categorisation "
             "systems (Art. 50(3)) and must label deepfakes as artificially "
-            "generated or manipulated (Art. 50(4)). Art. 50(4) also requires "
-            "deployers who use an AI system to generate or manipulate text "
-            "published to inform the public on matters of public interest "
-            "to disclose that the text was artificially generated or "
-            "manipulated; this disclosure duty does not apply where the use "
-            "is authorised by law to detect, prevent, investigate or "
-            "prosecute criminal offences, or where the content has "
-            "undergone human review or editorial control and a natural or "
-            "legal person holds editorial responsibility for publishing it."
+            "generated or manipulated (Art. 50(4)). For deepfakes forming part "
+            "of an evidently artistic, creative, satirical, fictional or analogous "
+            "work, transparency is limited to disclosure in an appropriate manner "
+            "that does not hamper display or enjoyment of the work (Art. 50(4) third "
+            "subparagraph). Art. 50(4) fourth subparagraph also requires deployers who use "
+            "an AI system to generate or manipulate text published to inform the public "
+            "on matters of public interest to disclose that the text was artificially "
+            "generated or manipulated; this text disclosure duty does not apply where the "
+            "use is authorised by law to detect, prevent, investigate or prosecute criminal "
+            "offences, or where the content has undergone human review or editorial control "
+            "and a natural or legal person holds editorial responsibility for publishing it "
+            "(human review does NOT excuse deepfakes)."
         ),
     },
     "Art. 53": _KBEntry(
@@ -1006,8 +1002,10 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     "Annex IV": {
         "dimension": "tech_docs",
         "summary": (
-            "Technical documentation contents covering system description, design "
-            "specifications, system architecture, data + training methodology, "
+            "Technical documentation contents: general system description including "
+            "hardware specifications on which the AI system is intended to run (point 1(e)), "
+            "design specifications, system architecture and computational resources used "
+            "to develop, train, test and validate the AI system (point 2(c)), data governance, "
             "human oversight, risk-management measures, validation + testing "
             "procedures, and post-market monitoring system."
         ),

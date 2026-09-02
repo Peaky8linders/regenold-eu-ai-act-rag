@@ -4077,13 +4077,17 @@ def _reconcile_references_to_prose(
         return references
 
 
-# R133 — parenthetical sub-point citations the prose names (``Article 6(1)``,
-# ``Article 5(1)(a)``, ``Annex IV(2)``). group(1) = bare parent prefix,
-# group(2) = the ``(N)`` / ``(N)(x)`` chain. No ``\s*`` between them so a
-# spaced cross-Regulation paren ("Article 50 of Regulation (EU) 2024/…") never
-# matches; the chain must attach directly to the number / Roman id.
+# R133/R380 — parenthetical and statutory sub-point citations the prose
+# names (``Article 6(1)``, ``Article 5(1)(a)``, ``Annex IV point 1(e)``,
+# ``Article 26 paragraph 6``). group(1) = bare parent prefix,
+# group(2) = point/paragraph number, group(3) = sub-letter, group(4) = direct paren chain.
 _PROSE_SUBPOINT_RE = re.compile(
-    r"((?:Article\s+\d+)|(?:Annex\s+[IVXLC]+))((?:\((?:\d+|[A-Za-z]+)\))+)",
+    r"((?:Article\s+\d+)|(?:Annex\s+[IVXLC]+))"
+    r"(?:"
+    r"(?:\s+(?:point|paragraph)\s+(\d+)(?:\(([A-Za-z\d]+)\))?)"
+    r"|"
+    r"((?:\((?:\d+|[A-Za-z]+)\))+)"
+    r")",
     re.IGNORECASE,
 )
 
@@ -4119,7 +4123,14 @@ def _surface_prose_subpoints(answer: str, references: list[str]) -> list[str]:
         # parent (user-facing) -> ordered sub-point forms named in prose
         wanted: dict[str, list[str]] = {}
         for m in _PROSE_SUBPOINT_RE.finditer(answer):
-            parent_tok, chain = m.group(1), m.group(2)
+            parent_tok = m.group(1)
+            pt = m.group(2)
+            sub_letter = m.group(3)
+            direct_paren = m.group(4)
+            if pt:
+                chain = f"({pt})({sub_letter})" if sub_letter else f"({pt})"
+            else:
+                chain = direct_paren or ""
             try:
                 parent_uf = _refs.to_user_facing(parent_tok)
                 sub_uf = _refs.to_user_facing(parent_tok + chain)
