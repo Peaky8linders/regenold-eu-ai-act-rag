@@ -2255,7 +2255,10 @@ from app.engines._graph_rag_data import (  # R117 GR-01 — extracted pure data
 # davidath questions.
 _KEYWORD_ENTITY_BOUNDARY_RES: dict[str, re.Pattern[str]] = {
     kw: re.compile(r"\b" + re.escape(kw) + r"\b")
-    for kw in ("fines", "fine for", "fines for")
+    # R380 — "annex ix" / "annex x" are substrings of "annex xi/xii/xiii", so
+    # the bare-substring scan would anchor Annex X on every GPAI-annex
+    # question. Word-bounded, like the penalties cluster.
+    for kw in ("fines", "fine for", "fines for", "annex ix", "annex x")
 }
 
 
