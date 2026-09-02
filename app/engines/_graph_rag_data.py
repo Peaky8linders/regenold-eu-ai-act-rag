@@ -774,6 +774,16 @@ _KEYWORD_ENTITY_MAP: tuple[tuple[str, str], ...] = (
     ("annex x", "Annex X"),
     ("large-scale it system", "Annex X"),
     ("large scale it system", "Annex X"),
+    # R380 — emotion recognition described by its INPUT rather than its name
+    # (a probe follow-up: "reads employees' facial expressions ... to score
+    # their engagement" had no anchor at all). Mirrors the "emotion
+    # recognition" pair above: Art. 5 (workplace / education prohibition) and
+    # Art. 50 (deployer transparency, Art. 50(3)). 0 davidath hits.
+    ("facial expression", "Art. 5"),
+    ("facial expression", "Art. 50"),
+    ("infer emotions", "Art. 5"),
+    ("inferring emotions", "Art. 5"),
+    ("emotional state", "Art. 5"),
 )
 
 

@@ -80,7 +80,7 @@ class TestV3ReachesTheWire:
         # final-sentence completeness reminder may follow (it is 364 chars and
         # length-neutral), never another rule set.
         assert "6. GROUNDING" in msg[pos:]
-        end = msg.find("Articles 51 to 56.") + len("Articles 51 to 56.")
+        end = msg.find("lettered articles.") + len("lettered articles.")
         after = msg[end:].strip()
         assert after == "" or after.startswith("COMPLETENESS OF THE FINAL SENTENCE"), after[:120]
         assert " ANSWER COVERAGE:" not in msg[pos:]
@@ -160,4 +160,4 @@ class TestCacheKeyAndTailPreservation:
         user = body + USER_V3_DISCIPLINE_CLAUSE
         shrunk = impl._shrink_user_for_groq(user, budget=10000)
         assert " ANSWER DISCIPLINE (V3" in shrunk
-        assert shrunk.rstrip().endswith("51 to 56.")
+        assert shrunk.rstrip().endswith("lettered articles.")

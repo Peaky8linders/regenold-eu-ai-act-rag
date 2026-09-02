@@ -208,3 +208,26 @@ class TestSelfContainedSkip:
         monkeypatch.setenv("REGENOLD_DENOISE_SELF_CONTAINED_SKIP", "1")
         k1 = R._engine_cache_key(_ANCHORED_Q, None, history_turn_count=2)
         assert k0 != k1
+
+
+class TestConjunctionLedFollowUpKeepsHistory:
+    @pytest.mark.parametrize(
+        "turn",
+        [
+            "And the reporting duties for those providers?",
+            "But we built it, so are we provider or deployer? We're both.",
+            "So does the conformity assessment apply to our medical device too?",
+        ],
+    )
+    def test_conjunction_led_turn_is_not_self_contained(self, turn):
+        from app.routes import regenold as R
+
+        assert R._live_turn_is_self_contained(turn) is False
+
+    def test_official_questions_are_unaffected(self):
+        pytest.importorskip("evals.regenold.july7_difficulty")
+        from evals.regenold.official_batch import load_official_batch
+        from app.routes import regenold as R
+
+        rows = load_official_batch()
+        assert sum(1 for r in rows if R._live_turn_is_self_contained(r.question)) == 100

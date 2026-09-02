@@ -77,3 +77,28 @@ def test_scope_map_mirrors_the_two_provisions_that_had_no_anchor_anywhere():
     assert KEYWORD_TO_ARTICLE["exercise of the delegation"] == "Art. 97"
     assert KEYWORD_TO_ARTICLE["committee procedure"] == "Art. 98"
     assert KEYWORD_TO_ARTICLE["large-scale it systems"] == "Annex X"
+
+
+class TestEmotionRecognitionByInput:
+    """R380 — a probe follow-up described emotion recognition by its input
+    ("reads employees' facial expressions ... to score their engagement") and
+    reached neither map nor the prohibited gatekeeper."""
+
+    _Q = ("We're adding a feature that reads employees' facial expressions during "
+          "the meeting to score their engagement. Does anything change?")
+
+    def test_engine_anchor(self):
+        hits = _scan(self._Q)
+        assert "Art. 5" in hits and "Art. 50" in hits, hits
+
+    def test_scope_anchor(self):
+        from app.integrations.regenold.scope import _has_ai_act_anchor
+
+        assert _has_ai_act_anchor(self._Q)
+
+    def test_gatekeeper_flags_the_workplace_prohibition(self):
+        from app.engines import prohibited_gatekeeper as pg
+
+        pats = pg._VERB_OBJECT_PATTERNS
+        import re
+        assert any(re.search(p[0], self._Q.lower()) for p in pats), "verb-object pattern did not fire"

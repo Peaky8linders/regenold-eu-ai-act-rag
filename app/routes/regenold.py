@@ -6061,6 +6061,8 @@ _DENOISE_LEADING_COREF_RE = re.compile(
 )
 
 # Mid-turn markers that signal dependence on a previously-established entity.
+_DENOISE_LEADING_CONJUNCTION_RE = re.compile(r"^(?:and|but|so|also|then|or)\b", re.IGNORECASE)
+
 _DENOISE_COREF_MARKERS: tuple[str, ...] = (
     "this system", "that system", "the system you", "the regulator you",
     "you mentioned", "as we discussed", "as discussed", "carry over",
@@ -6228,6 +6230,17 @@ def _live_turn_is_self_contained(
     if len(q.split()) < 6:
         return False  # short → likely elliptical / coreferent
     if _DENOISE_LEADING_COREF_RE.match(low):
+        return False
+    # R380 — a turn that OPENS with a conjunction continues the previous one
+    # ("And the reporting duties for those providers?", "But we built it, so
+    # are we provider or deployer?"). The leading-coreference regex strips
+    # "and " as an optional prefix and then only matches a closed list of
+    # openers, so these slipped through. Since R380 this predicate decides
+    # the PRIMARY hard-mode path (the self-contained skip), not only the
+    # provider-failure salvage, so a false positive drops history a genuine
+    # follow-up needs. Measured: rejects 0/110 official questions and the
+    # one conjunction-led follow-up among the 37 multi-turn probe rows.
+    if _DENOISE_LEADING_CONJUNCTION_RE.match(low):
         return False
     if any(marker in low for marker in _DENOISE_COREF_MARKERS):
         return False
