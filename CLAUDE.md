@@ -370,8 +370,12 @@ gold rows: chars **0.815x** (21 shorter / 7 longer, p = 0.0125), sentences 3.83 
 answer got LONGER. Keyword recall −0.089 on five rows: two tokenizer artefacts
 ("minimal-risk"), one legally better answer, two real (a negative verdict replaced by a
 hypothetical GPAI variant; an emotion-recognition webcam in education called high-risk not
-prohibited) — the block was rewritten against exactly those two before the gate run. Hard-mode
-and gate numbers: see the review doc § 2.2 / § 2.3.
+prohibited) — the block was rewritten against exactly those two before the gate run.
+Combined paired gate (n = 127: 90 ST + 37 MT, 125 wrapper-served, 0 Bedrock fallback):
+chars **0.794x** (105 shorter / 19 longer, p = 1.31e-15), refs −0.29 (p = 9.85e-05),
+`gold_dropped_head` SUM 34 → 41 (+7). Per Hard Rule #8, `REGENOLD_PROMPT_V3` ships
+**default OFF** (`0`). Non-prompt hard-mode and retrieval fixes ship default ON.
+See `docs/reviews/r380-sota-audit-2026-09-02.md` § 2.2 / § 2.3.
 
 ## Reranking (R329)
 
