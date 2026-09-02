@@ -46,26 +46,17 @@ Verify live wrapper connectivity via `curl http://127.0.0.1:8000/healthz/llm`.
 
 ---
 
-## ⛔ The deterministic suites are OFF as gates (operator directive, R330)
+## ⛔ The merge gate is ALWAYS the live pairwise A/B (operator directive, R330+)
 
-**Do not block a change on `evals.bench.runner` (davidath 476) or
-`evals.regenold.runner` (**255** scenarios — this file long said 276; `_build_full_scenarios`
-silently swallows a missing `scenarios_omnibus_extended`). Do not run them by default.**
+**Do not run `evals.bench.runner` (davidath 476) or `evals.regenold.runner` (255 scenarios).
+They are retired. The ONLY evaluation instrument is the live pairwise A/B judge.**
 
-* **davidath** is a *regression guard*, never a win-measure, and costs ~9 min a run. Its
-  gold is article-ints-only, so sub-point and Annex-grain changes are invisible to it.
-* **the 255-scenario runner** is older still and largely superseded — treat its output as
-  stale unless you have first confirmed the specific scenarios you care about are current.
+* `evals.harness.ab_judge` — position-swapped live pairwise A/B evaluation.
+* `evals.harness.easyhard_ab` — reference conciseness & strict recall pairwise evaluation.
 
-**The merge gate is the live pairwise A/B** (`evals.harness.ab_judge` /
-`evals.harness.easyhard_ab`), scored by the grounded judge (`evals/judge/grounded.py`)
-against verbatim Act text. That is the only instrument that measures what the competition
-measures. Run a deterministic suite only when a change is *expected* to move deterministic
-retrieval and you specifically want the before/after — and say so explicitly.
-
-R330 ran davidath four times to isolate the `.env` coupling below; that job is done and the
-result was byte-identical to the reference table. The table is kept for provenance, not as
-a thing to reproduce on every change.
+Both are scored by the grounded judge (`evals/judge/grounded.py`) against verbatim Act text.
+That is the only instrument that measures what the competition measures. Use `claude-sonnet-4-6`
+(or `claude-sonnet-5`) for the LLM judge via the cloudflared tunnel, with Bedrock fallback.
 
 ## ⛔ R367 — the OFFICIAL 2026-08-25 report: we fixed correctness and lost the round on CONCISENESS
 

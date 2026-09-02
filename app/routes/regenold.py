@@ -1334,6 +1334,7 @@ def _engine_cache_key(
     engine_flags = ":".join(
         os.getenv(v, "").strip().lower()
         for v in (
+            "REGENOLD_DUAL_PASS_RETRIEVAL",
             "P2P_GRAPH_RAG_ENABLE_STAGE2",
             "REGENOLD_BEDROCK_MODEL",
             "REGENOLD_BEDROCK_COMPLEX_MODEL",
@@ -6317,6 +6318,19 @@ def _rewrite_multiturn_query(
         record_query_denoiser,
     )
 
+    # Simplification B — when this retrieval path is enabled, Stage-0 must
+    # make no provider-selection or client-initialisation attempt.  The route
+    # preserves the full dialogue for Stage-2, while the engine separately
+    # parses the live turn and clean prior-user context.
+    try:
+        from app.engines.dual_pass_retriever import is_dual_pass_retrieval_enabled
+
+        if is_dual_pass_retrieval_enabled() and history_turns:
+            record_query_denoiser(fired=False, fallback_reason="dual_pass_retrieval")
+            return None
+    except Exception:  # noqa: BLE001 — retain the established Stage-0 fallback
+        pass
+
     if not _is_query_denoiser_enabled():
         record_query_denoiser(fired=False, fallback_reason="disabled")
         return None
@@ -6341,7 +6355,6 @@ def _rewrite_multiturn_query(
     try:
         from app.llm.openai_wrapper_provider import (  # noqa: PLC0415
             OpenAIWrapperRequest,
-            default_groq_model,
             get_gemini_provider,
             get_groq_intent_provider,
             get_mistral_provider,
@@ -6375,10 +6388,10 @@ def _rewrite_multiturn_query(
             any_configured = True
             candidates.append((
                 get_groq_intent_provider(),
-                # openai/gpt-oss-120b is the Stage-0 model for multi-turn
-                # query rewriting. Override via REGENOLD_DENOISER_MODEL_GROQ.
+                # llama-3.3-70b-versatile is the fast, non-reasoning default Stage-0 model
+                # for multi-turn query rewriting (replaces openai/gpt-oss-120b).
                 os.environ.get(
-                    "REGENOLD_DENOISER_MODEL_GROQ", default_groq_model()
+                    "REGENOLD_DENOISER_MODEL_GROQ", "llama-3.3-70b-versatile"
                 ),
                 "groq",
             ))
@@ -6496,6 +6509,7 @@ def _rewrite_multiturn_query(
                 # R91 truncation guard below is unchanged.
                 max_tokens=_denoiser_max_tokens(),
                 temperature=0.0,
+                reasoning_effort="none",  # Passed so reasoning models (gpt-oss-120b, qwen) do not burn max_tokens
                 # R267.1 — 3.0 s (was R264's 2.0 s). Qwen 3.6 27B via Groq is
                 # ~500-750 ms typical and Gemini flash ~2.1 s, so the extra
                 # second of headroom lets the Gemini fallback complete under the
@@ -6577,6 +6591,7 @@ class QuestionHistoryResult(tuple):
     resolved_question: str | None
     salvaged: bool
     self_contained_focus: bool
+    context_retrieval_text: str | None
 
     def __new__(
         cls,
@@ -6585,6 +6600,7 @@ class QuestionHistoryResult(tuple):
         resolved_question: str | None,
         salvaged: bool = False,
         self_contained_focus: bool = False,
+        context_retrieval_text: str | None = None,
     ):
         obj = super().__new__(cls, (question, system_context))
         obj.resolved_question = resolved_question
@@ -6603,6 +6619,7 @@ class QuestionHistoryResult(tuple):
         # the full conversation). Always False in cli/no-provider (the davidath
         # bench) → byte-identical by construction.
         obj.self_contained_focus = bool(self_contained_focus)
+        obj.context_retrieval_text = context_retrieval_text
         return obj
 
 
@@ -6685,6 +6702,19 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
     # which scans the full question string — so any article ref in the
     # anchor line will carry forward as a scope anchor too.
     anchor_line = _extract_conversation_anchors(all_prior_turns) if all_prior_turns else ""
+    # Simplification B uses a separate, clean retrieval input.  Keep the
+    # complete formatted dialogue in ``question`` for Stage-2 synthesis, but
+    # never let assistant prose participate in deterministic retrieval.
+    context_retrieval_text: str | None = None
+    if all_prior_turns:
+        try:
+            from app.engines.dual_pass_retriever import build_context_retrieval_text
+
+            context_retrieval_text = build_context_retrieval_text(
+                anchor_line, all_prior_turns
+            )
+        except Exception:  # noqa: BLE001 — formatted history remains a safe fallback
+            context_retrieval_text = anchor_line or None
 
     _salvaged = False  # R131 — set when the deterministic de-noiser salvage fires
     _self_contained_focus = False  # R133.1 — focus scope + R88-A on the live turn
@@ -6844,7 +6874,12 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
         system_context = system_context[:1000]
 
     return QuestionHistoryResult(
-        question, system_context, resolved_turn, _salvaged, _self_contained_focus
+        question,
+        system_context,
+        resolved_turn,
+        _salvaged,
+        _self_contained_focus,
+        context_retrieval_text,
     )
 
 
@@ -7202,6 +7237,7 @@ def regenold_eu_ai_act_ask(
         system_description=system_context,
         history_turn_count=_history_turn_count,
         resolved_question=resolved_question,
+        context_retrieval_text=history_res.context_retrieval_text,
         bridging_context=list(intent_res.bridging_context) if intent_res else [],
     )
 

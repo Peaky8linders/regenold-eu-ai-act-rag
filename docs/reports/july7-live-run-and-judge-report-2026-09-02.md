@@ -564,3 +564,42 @@ Does modifying capabilities, intended use, or introducing guardrails in a high-r
 
 
 ========================================
+
+## 5. Post-Run Validation and Current-Code Correction
+
+This report records the September 2 live-run artifact; its aggregate scores
+and row verdicts remain historical observations. A subsequent code audit
+confirmed that several *root-cause locations* in the narrative no longer
+describe the current checkout and must not be treated as unresolved defects:
+
+- The operational KB entry for `Art. 26` now states the deployer's
+  Article 26(6) log-retention duty, including the six-month minimum.
+- The operational KB entry for `Art. 27` now includes the Article 27(1)
+  exclusion for Annex III point 2 critical infrastructure, including gas
+  supply; the operational `Art. 50` entry separates the deepfake artistic
+  qualification from the public-interest-text human-review exception.
+- `role_obligations.py` now includes logging in the deployer dimensions, and
+  `_graph_rag_data.py` now has Article 88 anchors for Chapter V exclusive
+  supervision and enforcement questions.
+- `_PROSE_SUBPOINT_RE` now accepts both parenthesised notation and prose such
+  as `Annex IV point 1(e)`. The July 7 leaf-collapse diagnosis is therefore
+  not evidence that the current parser still drops those exact references.
+
+One live data defect did remain in the additive paragraph-requirements source
+and was corrected with regression coverage: it labelled deployer logging as
+Article 26(7), rather than Article 26(6), and omitted the Article 27(1)
+Annex III point 2 exception and the separated Article 50(4) regimes. This
+source is included in engine context, so it must remain legally accurate even
+where a curated intercept supplies the main answer.
+
+The scope-stop rule is confirmed default-off. That is an intentional rollout
+state, not a safe default change: it changes the Stage-2 prompt and may change
+the final prose-derived wire references. It should be enabled only after the
+specified live A/B gates establish that it does not drop governing references.
+
+The current Dual-Pass implementation also now passes a bounded, prior-user-only
+context input to retrieval. It prevents assistant-prose contamination while
+retaining semantic topics that a compact formal anchor line cannot express
+(for example, workplace emotion recognition when no earlier turn names
+Article 5). The full formatted dialogue remains available exclusively to
+Stage-2 for multi-turn synthesis.

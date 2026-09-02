@@ -10120,7 +10120,35 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
         pass
 
     # Stage 1 — Parse: always deterministic (ontology/taxonomy/KB, no LLM cost)
-    query = _deterministic_parse(request.question)
+    resolved_q = getattr(request, "resolved_question", None)
+    history_depth = getattr(request, "history_turn_count", 0) or 0
+    context_retrieval_text = getattr(request, "context_retrieval_text", None)
+    dual_pass_active = False
+    try:
+        from app.engines.dual_pass_retriever import (  # noqa: PLC0415
+            dual_pass_parse,
+            extract_context_anchors_text,
+            is_dual_pass_retrieval_enabled,
+        )
+
+        dual_pass_active = bool(
+            is_dual_pass_retrieval_enabled()
+            and resolved_q
+            and history_depth > 0
+            and resolved_q != request.question
+        )
+        if dual_pass_active:
+            query = dual_pass_parse(
+                resolved_question=resolved_q,
+                context_question=request.question,
+                deterministic_parse_fn=_deterministic_parse,
+                context_retrieval_text=context_retrieval_text,
+            )
+        else:
+            query = _deterministic_parse(request.question)
+    except Exception as exc:  # noqa: BLE001 — fail-soft to standard parse
+        logger.debug("dual_pass_retrieval_failed: %s", exc)
+        query = _deterministic_parse(request.question)
 
     # HyPA-RAG Adaptive Router & Hybrid RRF Retrieval Integration
     comp_params = None
@@ -10171,8 +10199,21 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
                 # Perform sparse BM25 candidate lookup
                 from app.data.kb_search import top_articles_by_relevance  # noqa: PLC0415
 
+                search_retrieval_q = request.question
+                try:
+                    if dual_pass_active:
+                        ctx_anchors = (
+                            context_retrieval_text
+                            or extract_context_anchors_text(request.question)
+                        )
+                        search_retrieval_q = (
+                            f"{ctx_anchors} {resolved_q}".strip() if ctx_anchors else resolved_q
+                        )
+                except Exception:
+                    search_retrieval_q = request.question
+
                 bm25_candidates = top_articles_by_relevance(
-                    request.question, k=comp_params.top_k_dense
+                    search_retrieval_q, k=comp_params.top_k_dense
                 )
                 bm25_refs = [
                     art for art in bm25_candidates
@@ -10193,7 +10234,7 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
                     # ``not query.entities``, so there is no anchor for a dense
                     # hit to bury. Assets are still required (see ``force``).
                     v_hits = recall_articles_with_provenance(
-                        request.question,
+                        search_retrieval_q,
                         top_k=comp_params.top_k_dense,
                         force=True,
                     )
