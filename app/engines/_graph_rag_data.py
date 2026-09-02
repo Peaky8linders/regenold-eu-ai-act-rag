@@ -66,6 +66,12 @@ _KEYWORD_ENTITY_MAP: tuple[tuple[str, str], ...] = (
     ("ai office's tasks", "Art. 64"),
     ("ai office tasks", "Art. 64"),
     ("ai office structure", "Art. 64"),
+    ("exclusive powers", "Art. 88"),
+    ("exclusive power", "Art. 88"),
+    ("supervise and enforce chapter v", "Art. 88"),
+    ("supervise and enforce gpai", "Art. 88"),
+    ("supervise and enforce the obligations for providers of general-purpose", "Art. 88"),
+    ("entrusted with implementing those tasks", "Art. 88"),
     ("european ai board", "Art. 65"),
     ("ai board tasks", "Art. 65"),
     ("ai board composition", "Art. 65"),
@@ -109,12 +115,11 @@ _KEYWORD_ENTITY_MAP: tuple[tuple[str, str], ...] = (
     ("emotion recognition", "Art. 5"),
     ("emotion recognition", "Art. 50"),
     # Technical documentation / hardware specs (Art. 11 — Annex IV is the *contents*)
-    # NB: bare "hardware" / "system architecture" / "training methodology"
-    # used to route to Annex IV. Removed because (a) "hardware" is a
-    # generic English word that fires on any GPU/device question, and
-    # (b) the Annex IV reference is a SUB-bullet of the tech-doc
-    # requirement — Art. 11 is the actual obligation. "System
-    # architecture" / "training methodology" now route to Art. 11.
+    # Specific hardware / resource queries anchor Annex IV directly
+    ("required hardware", "Annex IV"),
+    ("hardware specifications", "Annex IV"),
+    ("hardware required", "Annex IV"),
+    ("computational resources used", "Annex IV"),
     ("technical documentation", "Art. 11"),
     ("system architecture", "Art. 11"),
     ("training methodology", "Art. 11"),
