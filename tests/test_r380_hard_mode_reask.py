@@ -131,3 +131,80 @@ class TestCacheKey:
         monkeypatch.setenv(flag, on)
         k1 = R._engine_cache_key(_ANCHORED_Q, None, history_turn_count=2)
         assert k0 != k1, flag
+
+
+class TestSelfContainedSkip:
+    """R380 — a self-contained live turn is returned verbatim BEFORE any
+    provider is dialled; offline (no provider) the path is unchanged."""
+
+    @staticmethod
+    def _wire_stub(monkeypatch, *, calls: list):
+        import app.llm.openai_wrapper_provider as owp
+
+        class _Stub:
+            def complete(self, req):  # noqa: D401 — provider stub
+                calls.append(req)
+                raise RuntimeError("provider must not be dialled for a self-contained turn")
+
+        monkeypatch.setattr(owp, "is_groq_intent_provider_enabled", lambda: False)
+        monkeypatch.setattr(owp, "is_gemini_provider_enabled", lambda: False)
+        monkeypatch.setattr(owp, "is_mistral_provider_enabled", lambda: False)
+        monkeypatch.setattr(owp, "is_openai_wrapper_enabled", lambda: True)
+        monkeypatch.setattr(owp, "get_openai_wrapper_provider", lambda: _Stub())
+
+    def test_self_contained_turn_skips_the_rewrite(self, monkeypatch):
+        from app.routes import regenold as R
+
+        calls: list = []
+        self._wire_stub(monkeypatch, calls=calls)
+        monkeypatch.setenv("REGENOLD_DENOISE_SELF_CONTAINED_SKIP", "1")
+        monkeypatch.setenv("REGENOLD_QUERY_DENOISER", "1")
+        hist = [type("M", (), {"role": "user", "content": "What is Annex III about?"})(),
+                type("M", (), {"role": "assistant", "content": "It lists the high-risk areas."})()]
+        out = R._rewrite_multiturn_query(_ANCHORED_Q, hist)
+        assert out == _ANCHORED_Q
+        assert calls == [], "the provider was dialled for a self-contained turn"
+
+    def test_off_dials_the_provider(self, monkeypatch):
+        from app.routes import regenold as R
+
+        calls: list = []
+        self._wire_stub(monkeypatch, calls=calls)
+        monkeypatch.setenv("REGENOLD_DENOISE_SELF_CONTAINED_SKIP", "0")
+        monkeypatch.setenv("REGENOLD_QUERY_DENOISER", "1")
+        hist = [type("M", (), {"role": "user", "content": "What is Annex III about?"})()]
+        R._rewrite_multiturn_query(_ANCHORED_Q, hist)
+        assert len(calls) == 1, "with the skip OFF the rewrite must still be attempted"
+
+    def test_coreferent_follow_up_still_dials_the_provider(self, monkeypatch):
+        from app.routes import regenold as R
+
+        calls: list = []
+        self._wire_stub(monkeypatch, calls=calls)
+        monkeypatch.setenv("REGENOLD_DENOISE_SELF_CONTAINED_SKIP", "1")
+        monkeypatch.setenv("REGENOLD_QUERY_DENOISER", "1")
+        hist = [type("M", (), {"role": "user", "content": "What does Article 13 require?"})()]
+        R._rewrite_multiturn_query("what about deployers?", hist)
+        assert len(calls) == 1
+
+    def test_offline_no_provider_is_unchanged(self, monkeypatch):
+        """No provider configured => None, exactly as before R380 (the bench)."""
+        import app.llm.openai_wrapper_provider as owp
+        from app.routes import regenold as R
+
+        for name in ("is_groq_intent_provider_enabled", "is_gemini_provider_enabled",
+                     "is_mistral_provider_enabled", "is_openai_wrapper_enabled"):
+            monkeypatch.setattr(owp, name, lambda: False)
+        monkeypatch.setenv("REGENOLD_DENOISE_SELF_CONTAINED_SKIP", "1")
+        monkeypatch.setenv("REGENOLD_QUERY_DENOISER", "1")
+        hist = [type("M", (), {"role": "user", "content": "What is Annex III about?"})()]
+        assert R._rewrite_multiturn_query(_ANCHORED_Q, hist) is None
+
+    def test_flag_changes_the_engine_cache_key(self, monkeypatch):
+        from app.routes import regenold as R
+
+        monkeypatch.setenv("REGENOLD_DENOISE_SELF_CONTAINED_SKIP", "0")
+        k0 = R._engine_cache_key(_ANCHORED_Q, None, history_turn_count=2)
+        monkeypatch.setenv("REGENOLD_DENOISE_SELF_CONTAINED_SKIP", "1")
+        k1 = R._engine_cache_key(_ANCHORED_Q, None, history_turn_count=2)
+        assert k0 != k1

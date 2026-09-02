@@ -1588,6 +1588,9 @@ def _engine_cache_key(
             # R380 — the rewrite budget decides whether the de-noiser output
             # survives the R91 truncation guard, i.e. which query is retrieved.
             "REGENOLD_DENOISER_MAX_TOKENS",
+            # R380 — skipping the rewrite for a self-contained turn changes
+            # which query is retrieved on hard-mode turn 1.
+            "REGENOLD_DENOISE_SELF_CONTAINED_SKIP",
             "REGENOLD_DENOISER_MODEL",
             "REGENOLD_DENOISER_MODEL_GROQ",
             "REGENOLD_ONTOLOGY_HOP",
@@ -6066,6 +6069,21 @@ _DENOISE_COREF_MARKERS: tuple[str, ...] = (
 )
 
 
+_DENOISE_SELF_CONTAINED_SKIP_ENV = "REGENOLD_DENOISE_SELF_CONTAINED_SKIP"
+
+
+def _is_denoise_self_contained_skip_enabled() -> bool:
+    """R380 — skip the LLM rewrite when the live turn stands alone. Default ON.
+
+    Live-only by construction (the branch sits after the no-provider exit in
+    ``_rewrite_multiturn_query``), so the deterministic bench is unchanged.
+    Keyed in ``_engine_cache_key``; ``=0`` restores the always-rewrite path.
+    """
+    return os.environ.get(_DENOISE_SELF_CONTAINED_SKIP_ENV, "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
 def _is_denoise_salvage_enabled() -> bool:
     """R131 deterministic salvage gate — default ON; set ``=0`` to disable."""
     return os.environ.get(_DENOISE_SALVAGE_ENV, "1").strip().lower() not in (
@@ -6393,6 +6411,33 @@ def _rewrite_multiturn_query(
             return _salvage_on_provider_failure("provider_init_error")
         record_query_denoiser(fired=False, fallback_reason="no_provider")
         return None
+
+    # R380 — a SELF-CONTAINED live turn needs no rewrite. The rewrite exists
+    # to resolve a coreferent follow-up ("what about deployers?") into a
+    # standalone query; for a turn that already stands alone (>= 6 words, no
+    # coreference, its own AI-Act anchor) the best standalone query is the
+    # turn itself, byte for byte. Measured on the official hard mode: with the
+    # R380 400-token budget the rewrite SUCCEEDS and returns a PARAPHRASE, and
+    # the paraphrase then misses the curated intercepts and the exact-match
+    # retrieval paths the verbatim question hits (two of fourteen rows went
+    # from a deterministic Annex III.8 answer to a Stage-2 answer citing
+    # Article 6). Returning the live turn here makes hard-mode turn 1
+    # identical to easy mode for every self-contained question (100/110
+    # official rows), drops the 0.5-3 s rewrite from the critical path, and
+    # is byte-identical offline: this branch sits AFTER the no-provider exit,
+    # so the cli bench still concatenates exactly as before (R131's own
+    # neutrality argument). The caller treats it as the R131 salvage
+    # (``denoised == live_question``) and focuses scope on the live turn.
+    if _is_denoise_self_contained_skip_enabled() and _live_turn_is_self_contained(
+        live_question
+    ):
+        record_query_denoiser(
+            fired=False,
+            rewritten_chars=len(live_question),
+            fallback_reason="self_contained_skip",
+            salvaged_deterministic=True,
+        )
+        return live_question
 
     # Try each provider in preference order. A provider FAILURE (transport
     # error, api_status_429/4xx/5xx surfaced as resp.error, or an empty
