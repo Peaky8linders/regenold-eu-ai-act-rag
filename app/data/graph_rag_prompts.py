@@ -596,6 +596,18 @@ _CHALLENGE_MARKERS = (
 )
 
 #: R377 — THE LEADING-CONFIRMATION FAMILY.
+#:
+#: R379 review (executed, not read): as ported these fired on 10 of 12
+#: ordinary in-scope questions and on the Act's OWN wording — "biometric
+#: verification solely to confirm that a specific natural person is the
+#: person he or she claims to be" is Art. 3(36) / Annex III(1)(a) verbatim and
+#: matched the ``confirm (that|this|…)`` pattern. A hit appends a clause that
+#: tells the model "the user is disputing the previous answer … say the same
+#: thing at the SAME length" — on a FIRST turn with no previous answer. Two
+#: repairs: the family is applied only where the flattened text carries a
+#: prior turn (see ``is_challenge_turn``), and the ratification pattern must
+#: be the HEAD of the live turn, never mid-sentence. ``annex``/``recital``
+#: join the contradiction alternation (a real pushback that was missed).
 _CHALLENGE_PATTERNS: tuple[re.Pattern[str], ...] = (
     # A trailing confirmation tag AFTER an asserted conclusion.
     re.compile(
@@ -615,11 +627,17 @@ _CHALLENGE_PATTERNS: tuple[re.Pattern[str], ...] = (
     ),
     re.compile(r"\bwe\s+(?:are|'re)\s+(?:therefore\s+)?exempt\b", re.IGNORECASE),
     re.compile(r"\bwe\s+have\s+no\s+obligations?\b", re.IGNORECASE),
-    # A demand to ratify the user's own conclusion.
-    re.compile(r"\b(?:just\s+)?confirm\s+(?:that|this|there|it|we|our)\b", re.IGNORECASE),
+    # A demand to ratify the user's own conclusion — only as the HEAD of the
+    # live turn ("Confirm that we …"). Mid-sentence "confirm that" is the
+    # Act's own verb (biometric verification "… to confirm that a specific
+    # natural person …") and must never read as a dispute.
+    re.compile(
+        r"^\s*(?:please\s+|just\s+)?confirm\s+(?:that|this|there|it|we|our)\b",
+        re.IGNORECASE,
+    ),
     # Direct contradiction of the previous answer's substance.
     re.compile(
-        r"\bthat\s+is\s+not\s+what\s+(?:the\s+)?(?:act|regulation|article)\b",
+        r"\bthat\s+is\s+not\s+what\s+(?:the\s+)?(?:act|regulation|article|annex|recital)\b",
         re.IGNORECASE,
     ),
 )
@@ -644,6 +662,12 @@ def is_challenge_turn(question: str) -> bool:
         if any(m in low for m in _CHALLENGE_MARKERS):
             return True
         # R377 — the leading-confirmation family (see _CHALLENGE_PATTERNS).
+        # R379 — only where a prior turn exists. The route flattens history
+        # with the ``Latest question:`` marker, so its absence means turn 1,
+        # and a "challenge" to a previous answer is undefined there. The
+        # explicit dispute markers above stay unconditional.
+        if idx < 0:
+            return False
         return any(p.search(text) for p in _CHALLENGE_PATTERNS)
     except Exception:  # noqa: BLE001 — a detector must never break the route
         return False
@@ -1027,15 +1051,31 @@ USER_CHALLENGE_BREVITY_CLAUSE_V2 = ' CHALLENGE TURN: the user is disputing the p
 
 
 def _prompt_v2_enabled() -> bool:
-    """R340 — select the rebuilt prompt set. Default ON.
+    """R340 port — select the rebuilt prompt set. **Default OFF as of R379.**
+
+    PR #368 shipped this ON on the claim "gold_dropped_head == 0, delta +0 on
+    paired A/B". No record of that run exists. R379 ran the gate on the
+    Bedrock leg (``evals.harness.easyhard_ab --local``, both arms on Opus 4.8,
+    label ``r379-promptv2-bedrock``, sidecar in ``evals/bench/results/``):
+
+        easy  n=95  ref_loose +0.0035  ref_strict +0.0142  ref_conc +0.0250
+                    kw_recall -0.0155  gold_dropped_head 21 -> 22  (+1)
+        hard  n=37  ref_loose +0.0811  ref_strict +0.0680  ref_conc -0.0001
+                    kw_recall +0.0631  gold_dropped_head 18 -> 16  (-2)
+
+    Hard rule #8 is "drop ZERO more on ANY split"; the easy split drops one
+    more and the harness exits 1. So it ships OFF, exactly as the R367 scope
+    stop rule did on the same rule. The hard-split gains are real-looking and
+    are the case for a powered re-run (n >= 120 per split), not for a default.
 
     Read fresh per call so a paired in-process A/B can flip between arms;
     registered in ``_engine_cache_key`` so the arms cannot share a cached
-    response.
+    response. Allow-list truthiness, like every default-OFF gate here: a
+    value we cannot read as ON means OFF (R321 fail-closed).
     """
     import os
 
-    return os.getenv("REGENOLD_PROMPT_V2", "1").strip().lower() in (
+    return os.getenv("REGENOLD_PROMPT_V2", "0").strip().lower() in (
         "1", "true", "yes", "on",
     )
 

@@ -213,13 +213,35 @@ _TIER_DENIAL_RE: dict[str, re.Pattern[str]] = {
 
 
 def tier_negation_enabled() -> bool:
-    """R377-B env gate. Default ON; ``REGENOLD_FIDELITY_TIER_NEGATION=0``
-    restores the pre-R377 reading in which the CONTRACT was anchor-only."""
-    return os.getenv("REGENOLD_FIDELITY_TIER_NEGATION", "1").strip().lower() not in (
-        "0",
-        "false",
-        "no",
-        "off",
+    """R377-B env gate. **Default OFF as of R379**; ``=1`` opts in.
+
+    The port shipped it ON. The R379 review executed it and found three
+    defects, none of which the port's own tests reach:
+
+    * the ``elif label`` fallback in :func:`extract_asserted_tier_set` puts a
+      tier into the CONTRACT on a bare English word ("the provider is
+      prohibited from placing … without a CE marking") while the POLISH side
+      stays anchor-only, so the contract is no longer a subset of the draft's
+      anchors (this module's own documented invariant) and a correct concise
+      polish is discarded as ``fallback_tier_drop`` — the R142.1 conciseness
+      regression the guard exists to avoid;
+    * the denial filter drops the whole SENTENCE, so "not high-risk under
+      Annex I, but high-risk under Annex III" deletes ``high_risk`` from the
+      contract, ``len(contract) < 2`` short-circuits, and a genuinely
+      tier-dropping polish ships — the guard switches itself off;
+    * on the deterministic drafts the engine actually emits for a cross-tier
+      ask ("… not among the practices prohibited under Article 5 …") the
+      denial regex does not match at all, so the lever is a no-op on the
+      class it was built for, while still carrying the two regressions above.
+
+    OFF restores the pre-R377 anchor-only contract. Re-enable only behind a
+    clause-scoped denial that is measured on real drafts.
+    """
+    return os.getenv("REGENOLD_FIDELITY_TIER_NEGATION", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
     )
 
 

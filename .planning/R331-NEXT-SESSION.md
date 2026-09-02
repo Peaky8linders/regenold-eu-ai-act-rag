@@ -5,6 +5,104 @@ Written at `e8e037c`. Read `CLAUDE.md` § Reranking (R329) and
 
 ---
 
+> ## ⚠ CORRECTIONS APPLIED (R331, post-audit)
+>
+> Three defects in this document were found by auditing it against the tree.
+> The TL;DR below is left intact for provenance; read these first.
+>
+> **C1 — the line number is wrong, and probably the function is too.** The
+> Component D gate is `regenold.py:8713`, the append `:8719`. Line **8752 is
+> inside the unrelated verbatim block**. More importantly, Component D is *not*
+> the first prose→citation path: `_add_prose_named_refs` runs before it at
+> `:8624` (and again at `:8919`) doing the same job, and Component D only fires
+> for prose citations that pass did **not** already add. The repo's own measured
+> comment at `regenold.py:4106` names the re-inflation sources — R138
+> `_add_prose_named_refs` (cap 8), R133 `_surface_prose_subpoints` (+3), R260 —
+> and **Component D is not among them.** Before gating Component D (S1),
+> instrument which pass actually mints the wrong refs. The 79-wrong/145-right
+> table is upstream's, not measured here.
+>
+> **C2 — the central inference rests on a number this repo marks invalid.**
+> `docs/R329-SCORECARD-VS-FRONTIER.md:25` states it outright: *"recall 0.879 is
+> not a measurement; precision 0.653 is"* — `gold_coverage 0/40`, so recall is
+> judge memory. Trap #4 below says the same thing and the TL;DR then uses the
+> number anyway. **Precision 0.653 is real and the over-citation is real.** What
+> is *not* established is the localisation: "retrieval is doing its job" is
+> derived solely from the invalid recall figure. Do not treat retrieval as
+> exonerated.
+>
+> **C3 — `CLAUDE.md § Reranking` was stale and has been corrected.** It claimed
+> the reranker was wired at `kb_search::top_articles_by_relevance`; nothing
+> imported the module at all. It is now wired at Stage-2 graph-context selection
+> (S2) with a call counter — see `CLAUDE.md` and
+> `tests/test_r331_rerank_placement.py`.
+>
+> **C4 — R327 semantic layers were default-ON and inert; FIXED by R330.**
+> `kg_context._render_semantic_layers` returns `[]` when `question` is falsy
+> (`kg_context.py:478`) and the only call site never passed one, so a feature
+> documented as active had never emitted a line. Found independently by R331
+> and by a concurrent R330 session; **R330's fix landed** — it passes
+> `context.question` (populated at `_graph_rag_impl.py:5708`) and flips
+> `REGENOLD_GRAPH_SEMANTIC_LAYERS` to default **OFF**, so repairing the wiring
+> does not silently activate an unmeasured feature. Turning it ON is now a real
+> lever: gate on `ab_judge`, watch latency (live Neo4j vector queries per
+> request). R331's rerank sits between that fix and `render_kg_context` and is
+> pinned not to re-break it.
+>
+> **C5 — S1's prerequisite does not exist here.** S1 says to gate Component D
+> on "the retrieval-derived set". Upstream implements that with
+> `_stage2_citable_reference_bases`, which has **zero occurrences** in this
+> repo (`.planning/R329-PORT-AUDIT-RAW.md:224`). The set S1 names is undefined
+> in this codebase — S1 is not implementable as written.
+>
+> **C6 — S1 is an arm this repo has already refuted.**
+> `.planning/R330-PLAN.md:842-846`, filed under *do not resurrect*: Component D
+> is "counterfactually **inert**" — the R138 pass subsumes it, simulating both
+> arms on all 10 evidence rows loses **0** of the claimed 13 refs, and
+> `_looks_like_scenario_shape` returns 0 scenario rows across all 38, so
+> Component D is never uniquely reachable. Expect +0.0000 and do not misread it
+> as "grounding does not help".
+>
+> **C7 — flipping the Component D gate discards the whole Stage-2 answer.**
+> The `else` branch at `regenold.py:8721-8724` falls through to `:8726-8742`
+> and sets `_stage2_landed = False`. S1 does not mention this; upstream's
+> shipped version uses a bare `continue`. As written, S1 would tank the answer
+> axes while trying to fix references.
+>
+> **C8 — S3's driver number is backwards, and the closed direction stands.**
+> `AGENTS.md:107` closes thinking-budget latency tweaks.
+> `docs/ROUNDS.md:4961-4968`: complex/4000 runs **p50 26.9 s** vs simple/0 at
+> **41.8 s** — the opposite of S3's premise. `.planning/R330-PLAN.md:63-64`
+> calls the −23.5 pp gap a **transport floor**. And "shortening is free" is a
+> measured trade, not free: `app/integrations/regenold/models.py:1418-1426`,
+> paired A/B, answer_conciseness **+0.095** but answer_correctness **−0.143**,
+> worth ~+0.36 Speed pp of a 23.5 pp gap. AnsCon is also *peaked* (`ratio²`,
+> symmetric — `evals/bench/metrics.py:295-310`): the arm that scored 93.4 had
+> MORE sentences and FEWER chars than today's, so "1-4 sentences" is the wrong
+> target.
+>
+> **C9 — the 79-wrong/145-right table is not ours.** It is upstream, EASY-mode,
+> n=100, baseline 0.6960. Arithmetically impossible against our HARD run
+> (55 wrong / 73 correct / 132 refs), and its four causes sum to 110 > 97
+> judged-wrong — overlapping counterfactuals, not a partition. `Article 34`
+> appears nowhere in any `.evalout/r330/*.json`.
+>
+> **C10 — "instrumented with a call counter, not inferred" was not true.**
+> `git show 942404d:app/engines/cohere_rerank.py` has no counter; only the
+> post-hoc-reorder row has a committed artifact. R331 adds the counter
+> (`rerank_stats()`).
+>
+> **⚠ C11 — the central diagnosis is INVERTED for its own worked example.**
+> `Article 43` is emitted by DETERMINISTIC retrieval, not by prose. R330's own
+> instrumentation records `det_refs = ["Article 6","Article 43","Annex I",
+> "Annex VI","Annex VII"]` for `july7-119` (`.evalout/r330/attribution_v3.json`),
+> attributed `ENGINE:kb`. Reproduced under code defaults with Stage-2 off: still
+> emitted, provenance `kb-conformity-Art. 43`, minted at
+> `_graph_rag_impl.py:5886-5897` from `EC_CHECKER_OBLIGATION_MAP`. So the claim
+> "these were never candidates, there is nothing for a reranker to reorder" is
+> false — they ARE retrieval output. **The ranker lever is alive; R329 simply
+> seated it wrong.** This reverses the handoff's headline conclusion.
+
 ## TL;DR — the one finding that changes the plan
 
 **A reranker cannot fix this over-citation, because the wrong references never
@@ -24,6 +122,12 @@ nothing for a reranker to reorder.
 This also explains the otherwise-puzzling shape of the measurement: reference
 **precision 0.653** against **recall 0.879** at a mean of only **3.30 refs**.
 Retrieval is doing its job; a post-hoc pass appends unretrieved articles.
+
+> **⚠ C2 — this paragraph is the defect.** `recall 0.879` is not a measurement
+> (`gold_coverage 0/40`; see Trap #4 and `docs/R329-SCORECARD-VS-FRONTIER.md:25`),
+> so "retrieval is doing its job" does not follow from it. Precision 0.653 is
+> text-grounded and stands: we emit wrong references. Where they are minted is
+> still open — see C1.
 
 ### Proven dead ends — do not repeat these three
 

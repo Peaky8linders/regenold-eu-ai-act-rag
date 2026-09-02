@@ -29,7 +29,9 @@ from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _KEY_FILE = _REPO_ROOT / "app" / "routes" / "regenold.py"
-_ENGINE_DIRS = (_REPO_ROOT / "app" / "engines", _REPO_ROOT / "app" / "integrations" / "regenold")
+_ENGINE_DIRS = (_REPO_ROOT / "app" / "engines", _REPO_ROOT / "app" / "integrations" / "regenold",
+    _REPO_ROOT / "app" / "data"  # R379 — REGENOLD_PROMPT_V2 lives here; was a blind spot
+)
 _FLAG_RE = re.compile(r"^(?:REGENOLD|P2P)_[A-Z0-9_]+$")
 _KEY_TUPLE_LINE_RE = re.compile(r'^[ \t]*"((?:REGENOLD|P2P)_[A-Z0-9_]+)",[ \t]*$', re.M)
 

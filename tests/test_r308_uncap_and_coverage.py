@@ -193,13 +193,18 @@ class TestAnswerCoverageClause:
         os.environ["REGENOLD_ANSWER_COVERAGE"] = "0"
         assert answer_coverage_enabled() is False
 
+    @staticmethod
+    def _live() -> str:
+        from app.data.graph_rag_prompts import user_answer_coverage_clause
+        return user_answer_coverage_clause()
+
     def test_no_forbidden_punctuation(self):
         """R108 — the wire forbids em/en dashes and ellipses, so the PROMPT
         must not model them to the model."""
-        assert "—" not in USER_ANSWER_COVERAGE_CLAUSE  # em dash
-        assert "–" not in USER_ANSWER_COVERAGE_CLAUSE  # en dash
-        assert "…" not in USER_ANSWER_COVERAGE_CLAUSE  # ellipsis
-        assert "..." not in USER_ANSWER_COVERAGE_CLAUSE
+        assert "—" not in self._live()  # em dash
+        assert "–" not in self._live()  # en dash
+        assert "…" not in self._live()  # ellipsis
+        assert "..." not in self._live()
 
     def test_carries_the_anti_citation_inflation_guard(self):
         """THE load-bearing sentence. legal_v2 scores reference correctness as
@@ -209,14 +214,14 @@ class TestAnswerCoverageClause:
         (pred:gold 1.71 -> 1.75) and R142.1 lost a live pairwise judge 11-0.
         If a future edit drops this guard, the clause must not ship.
         """
-        low = USER_ANSWER_COVERAGE_CLAUSE.lower()
+        low = self._live().lower()
         assert "never a licence to cite" in low
         assert "adds no new reference" in low
         # coverage is paid for by CUTTING, not by adding length
         assert "cutting" in low
 
     def test_covers_the_measured_omission_modes(self):
-        low = USER_ANSWER_COVERAGE_CLAUSE.lower()
+        low = self._live().lower()
         # literal-question closure (the top undelivered rule)
         assert "yes or no" in low
         # closed-set completeness (repairs the dangling "rule 12b" pointer)
@@ -232,7 +237,12 @@ class TestAnswerCoverageClause:
         # discuss the reference block itself), taking it to ~1955 chars.
         # Still bounded, and still an order of magnitude under the 3.2K/51K
         # prompts R277 measured as quality-neutral.
+        # R379 - the V1 clause is 1955 chars and inside the R315 bound; the V2
+        # clause the selector delivers by default is 2466 chars (the "either or
+        # both limbs" rule and the LEGAL VERSION Omnibus exclusion). Pinned at
+        # the measured size so further growth trips this; see CLAUDE.md § R379.
         assert 900 <= len(USER_ANSWER_COVERAGE_CLAUSE) <= 2200
+        assert 900 <= len(self._live()) <= 2500
 
 
 class TestClauseIsActuallyDelivered:

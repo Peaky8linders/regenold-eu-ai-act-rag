@@ -129,7 +129,9 @@ def _norm(row: dict[str, Any]) -> dict[str, Any]:
         "answer": (row.get("pred_answer") or row.get("predicted_answer")
                    or row.get("answer_preview") or "").strip(),
         "pred_refs": list(row.get("pred_refs") or row.get("predicted_refs") or []),
-        "gold_refs": list(row.get("gold_refs") or row.get("expected_refs") or []),
+        "gold_refs": list(
+            row.get("gold_refs") or row.get("expected_refs") or row.get("july7_refs") or []
+        ),
     }
 
 

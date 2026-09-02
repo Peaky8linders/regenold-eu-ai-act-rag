@@ -227,4 +227,4 @@ class TestR115Art43IntegratedProcedure:
         # R263 Fix 3 bumped KB_VERSION v17 -> v18 for an unrelated Art. 50
         # stub edit; the Art. 43(3)/MDR content this test guards is
         # untouched by that bump, so re-pin to the new value.
-        assert KB_VERSION == "2024.1689.v19"  # R367 KB content bump
+        assert KB_VERSION == "2024.1689.v20"  # R367/R379 KB content bumps

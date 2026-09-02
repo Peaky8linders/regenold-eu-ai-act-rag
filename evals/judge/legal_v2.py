@@ -143,7 +143,9 @@ from evals.judge.grounded import (  # reuse the sidecar-loading + row-norm plumb
     _num,
 )
 
-_DEFAULT_MODEL = "claude-sonnet-5"
+# R361/R379 — was claude-sonnet-5, which returns 403 on current Bedrock key vintage.
+# claude-sonnet-4-6 is verified working on Bedrock and wrapper; override with --model.
+_DEFAULT_MODEL = "claude-sonnet-4-6"
 
 AXES: tuple[str, ...] = (
     "answer_correctness",

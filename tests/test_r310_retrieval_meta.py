@@ -153,9 +153,9 @@ class TestPromptNoLongerInvitesIt:
     whether ...'). The clause must now direct that limitation to the LAW."""
 
     def test_clause_forbids_source_commentary(self) -> None:
-        from app.data.graph_rag_prompts import USER_ANSWER_COVERAGE_CLAUSE
+        from app.data.graph_rag_prompts import user_answer_coverage_clause
 
-        low = USER_ANSWER_COVERAGE_CLAUSE.lower()
+        low = user_answer_coverage_clause().lower()  # R379 live selector
         assert "as a matter of law" in low
         assert "do not mention the references" in low
         assert "say so plainly." not in low

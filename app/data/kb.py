@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 # (Art. 25(2) cooperation-duty re-anchor + real 25(4) written-agreement
 # clause, Art. 99(4) closed enumeration, Art. 79/109 Reg-2019/1020
 # Art. 3(19) qualification).
-KB_VERSION = "2024.1689.v19"
+KB_VERSION = "2024.1689.v20"
 
 
 @dataclass(frozen=True)
@@ -2047,8 +2047,9 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "by the acts listed in Annex X and placed on the market or put "
             "into service before 2 August 2027 must be brought into "
             "compliance only by 31 December 2030, rather than on the "
-            "Regulation's general dates. NOT the EU-database registration "
-            "annex - that is Annex VIII (Art. 49)."
+            "Regulation's general dates. It is not the annex that lists the "
+            "EU-database registration fields; that is a separate annex on "
+            "registration."
         ),
     },
     # ─── Title III Ch. 4: Notified-body lifecycle gap-fill (Arts. 30, 32) ────

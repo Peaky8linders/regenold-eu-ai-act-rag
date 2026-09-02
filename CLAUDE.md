@@ -188,6 +188,134 @@ Q17 both violated it in the graded run ("the materials available here do not per
 citation-supported enumeration", "the Act does not settle within the text supplied here").
 There is no post-generation guard for this, unlike R357's truncation guard. Open lever.
 
+## ⛔ R379 — PR #368's "V2 prompt family" shipped default-ON on a gate claim that has NO record
+
+PR #368 (`0033b88`, live in production) bundled the R367 fixes above with a port of the sibling
+repo's R377 work: `REGENOLD_PROMPT_V2` (**default ON**) selects four rebuilt USER-channel clauses
+(`USER_ANSWER_COVERAGE_CLAUSE_V2`, `USER_REF_MINIMALITY_CLAUSE_V2`,
+`USER_SUBPARAGRAPH_ATTRIBUTION_CLAUSE_V2`, `USER_CHALLENGE_BREVITY_CLAUSE_V2`), plus
+`REGENOLD_FIDELITY_TIER_NEGATION` (default ON) in `stage2_fidelity.py`, 18 new pushback markers and
+7 leading-confirmation regexes in `is_challenge_turn`, and the R377-A XML-channel peel in
+`_looks_structurally_truncated`. **Prove-it-fires: verified on the wire** — with the flag ON the
+Stage-2 user message carries `LEGAL VERSION:` and the V2 minimality text, and on a pushback turn it
+carries the CHALLENGE clause with the tag instruction; with the flag OFF none of them do.
+
+**The PR body says: "Live AWS Bedrock evaluation: Hard Rule #8 satisfied (gold_dropped_head == 0,
+delta = +0 on paired A/B gate)." There is no record of that run anywhere.** Not in this repo
+(no sidecar, no `.evalout`, no results file since 2026-08-30), not in the sibling repo (its
+`R378.1: live Bedrock verification` is a verification of the *denoiser truncation guard*, and
+`R378.2` is a single-arm tunnel scorecard — neither is a paired A/B of `PROMPT_V2`), and not in the
+Antigravity session that planned it (`0c933efb…`, 2026-09-01: the plan lists the A/B as a step; its
+`scratch/` is empty and it has no walkthrough). A prompt-side, default-ON change is exactly what
+AGENTS.md invariant #5 says must clear `gold_dropped_head` first. So this round runs that gate.
+
+### The extractor the port dropped (R366 class, fourth instance)
+
+`USER_CHALLENGE_BREVITY_CLAUSE_V2` instructs the model to put its reasoning inside
+`<reasoning_scratchpad>` and its answer inside `<answer>`. **The benchmark's exact hard-mode
+pushback text fires `is_challenge_turn`** (verified: "I don't think this is correct. Perhaps your
+answer contains hallucinations… Let's try again:" → `True`), so every hard-mode row receives that
+instruction. Upstream pairs the clause with `prompt_guard.extract_xml_channels` at the Stage-2
+return; the port brought the clause and the truncation-guard *peel* (which only decides "is it
+truncated") but **not the extractor**, and the local `app/security/prompt_guard.py` was the older
+version without it. A model that obeys the instruction would have shipped the scratchpad and both
+tags on the wire, and the three prose→refs passes would have promoted whatever the scratchpad
+named into the citations. `tests/test_r377_live_fixes.py` was itself written against live replies
+ending `…</answer>
+</reasoning_scratchpad>`, and upstream records the leak live on Sonnet 5 and
+Opus 5.
+
+**Measured here: 0/4 leaks** — two pushback turns each over the tunnel and over Bedrock
+(Opus 4.8) shipped clean, because the *system-side* `ANSWER_GENERATE_SYSTEM_V2` output contract
+that makes upstream's models emit the channels was not ported either. So the exposure is latent,
+not observed — and the fix is a strict no-op when no tags are present. R379 ports
+`extract_xml_channels` verbatim (the local guard is a subset of upstream's) and calls it at the
+same point upstream does, before `validate_llm_output`; the scratchpad goes to
+`record_llm_thinking`. `tests/test_r379_xml_channel_extraction.py` pins both properties on the wire.
+
+⚠ Also fixed in passing: the R367 Annex X summary closed with "NOT the EU-database registration
+annex — that is Annex VIII (Art. 49)". Live, the model echoed that contrast and the grounding guard
+promoted **Annex VIII and Article 49 onto the wire** on a question whose gold is `Annex X;
+Article 111.1` (5 refs shipped vs 2 gold). A number you write into a KB summary is a citation
+whether the answer affirms or rules out the provision — the V2 minimality clause says exactly this
+to the model, and it applies to us. Reworded without provision numbers; `KB_VERSION` v19 → v20.
+
+### The R379 review of the port — nine executed findings, five fixed, one flag flipped OFF
+
+A specialised review subagent executed (not read) the Gemini delta `2fe18ce..0033b88`. Probe
+scripts under the session scratchpad; every claim below reproduced on `0033b88`.
+
+| # | sev | finding | disposition |
+| :--- | :--- | :--- | :--- |
+| P1-3 | P1 | `_CHALLENGE_PATTERNS` fired on **10 of 12** ordinary questions and on the Act's own wording (`… biometric verification solely to confirm that a specific natural person …`, Art. 3(36)/Annex III(1)(a), which sits verbatim in this repo's own probe corpus). A hit appends "the user is disputing the previous answer … say the same thing at the SAME length" to a **first-turn** question. `annex` was also missing from the contradiction alternation, so a real pushback ("that is not what Annex III says") was missed. The port's negative test used "confirm **whether**", dodging the pattern by one word | **fixed**: the family applies only where the `Latest question:` marker proves a prior turn; the ratification pattern must be the HEAD of the live turn; `annex`/`recital` added. Explicit dispute markers stay unconditional, so the benchmark's own pushback still fires. davidath re-verified 0/476 |
+| P1-1 | P1 | `extract_asserted_tier_set`'s label fallback puts a tier in the CONTRACT on a bare English word ("prohibited from placing … without a CE marking") while the polish side stays anchor-only → contract ⊄ anchors (the module's own invariant) → a correct concise polish is discarded as `fallback_tier_drop` — the R142.1 regression the guard exists to avoid | **`REGENOLD_FIDELITY_TIER_NEGATION` flipped to default OFF** (anchor-only contract restored); the three defects are recorded in its docstring |
+| P1-2 | P1 | the denial filter drops the whole SENTENCE, so "not high-risk under Annex I, but high-risk under Annex III" deletes `high_risk`, `len(contract) < 2` short-circuits, and a tier-dropping polish ships — the guard switches itself off | same flip; pinned as a tripwire so a future fix re-measures before re-enabling |
+| P2-4 | P2 | on the deterministic drafts the engine actually emits for a cross-tier ask ("not among the practices prohibited under Article 5") the denial regex does not match — the lever was a **no-op** on its own class while carrying P1-1/P1-2 | same flip |
+| P2-7 | P2 | `REGENOLD_PROMPT_V2` used allow-list truthiness in a file whose other default-ON gates use deny-list: `=` (blank), `=Y`, `=enabled` silently reverted prod to V1 while the cache key still recorded the variable, so an A/B would compare V1 to V1 | **fixed**: deny-list form |
+| P2-8 | P2 | the markdown-table rule excused a stream cut right after a cell separator (`\| Deployer \|`) | **fixed**: a row needs ≥ 3 pipes |
+| P2-9 | P2 | the R355 AST cache-key gate scans `app/engines` + `app/integrations/regenold` only; `REGENOLD_PROMPT_V2` lives in `app/data/` and would not have been caught if missing | **fixed**: `app/data` added to the scan; it passes with no new registrations |
+| P2-6 | P2 | four test modules pinned the dead V1 constants; replayed on the live V2 text two budgets FAIL (`ref_minimality` 701→**1464** chars vs `< 1000`; `coverage` 1955→**2466** vs `≤ 2200`). Net **+1,553 chars per Stage-2 call**, undocumented, on the axis that collapsed | **fixed**: re-pointed at the selectors; budgets pinned at the measured V2 sizes so further growth trips them. Whether V2 earns that cost is the A/B below |
+| P2-5 | P2 | `_SENTENCE_SPLIT` cuts `Art. 50` into `Art.` + `50.`, erasing the anchor from the contract; engine drafts contain 0 `Art. N` forms, so exposure is curated/graph prose only | **open** (documented; low frequency) |
+
+Clean: the peel loop (16 cases), the selector migration, the tail markers for the Groq shrinker,
+`is_challenge_turn`'s `Latest question:` slicing, `_verdict_flip`/`_sentences_for_tier`.
+
+### The biggest lever measured in this repo: Stage-2 on Bedrock DELIVERS the system prompt
+
+Paired, same 48 gold-bearing probe rows, same prompt (`REGENOLD_PROMPT_V2` default ON in both arms),
+arms interleaved per row: **A = the cloudflared tunnel (production primary)**, **B = Bedrock
+`eu.anthropic.claude-opus-4-8`** (`P2P_GRAPH_RAG_PROVIDER=bedrock` + `REGENOLD_STAGE2_STRICT_TRANSPORT=0`).
+
+| axis | tunnel (A) | Bedrock (B) | delta |
+| :--- | ---: | ---: | ---: |
+| answer chars (mean / median) | 1233 / 1170 | **621 / 617** | **−612 (0.504x)** |
+| rows shorter / longer under B | — | — | **46 / 1**, sign test **p = 6.8e-13** |
+| refs per row | 2.69 | 2.42 | −0.27 |
+| head precision | 0.5047 | **0.5993** | **+0.0946** |
+| **`gold_dropped_head` (SUM)** | 15 | **12** | **−3 → PASS (recovers gold)** |
+| latency (s) | 15.7 | **3.6** | **4.4× faster** |
+| XML channel tags on the wire | 0 | 0 | — |
+
+**Mechanism.** The Claude Max wrapper drops the system prompt on 100% of requests (R298/R340) —
+the 51 kB `ANSWER_GENERATE_SYSTEM` with its cohesion, no-restatement and brevity rules never
+reaches the tunnel model. Bedrock delivers it. Every axis that moved is an axis those rules
+address. This is the same conclusion R277/R340 reached from the other side ("the system prompt
+is 0% delivered, put the rules on the USER channel"), now measured as the *delivered* system
+prompt's effect: **answer length halves, the collapsed conciseness axis's whole gap
+(−16.0 pp easy / −26.6 pp hard vs frontier) is inside this one switch, and Speed (−7.7 pp) too.**
+
+⚠ **Not flipped.** Production Stage-2 transport is an operator decision: the R360 contract pins
+the tunnel as primary, and Bedrock is per-token billing against a flat Claude Max subscription.
+Two confounds to close before flipping: (1) the tunnel arm's model is whatever the wrapper routes
+(Sonnet/Opus by complexity) while B is Opus 4.8 fixed — a model change as well as a
+delivery change; (2) n=48 is under the ref-axis noise floor, though −3 gold is in the safe
+direction and length/latency are ~13 orders of magnitude past noise. The cheapest next
+measurement is B vs B' where B' = Bedrock with the system prompt deliberately blanked, which
+isolates delivery from model. **Recommendation: run that, then flip `STAGE2_PRIMARY` to Bedrock
+for the benchmark window.** The harness for both is `scratchpad/ab_transport.py` (session f631a795).
+
+### `REGENOLD_PROMPT_V2` — paired A/B on the Bedrock leg (R379)
+
+Both arms forced onto Bedrock (`P2P_GRAPH_RAG_PROVIDER=bedrock` + `REGENOLD_STAGE2_STRICT_TRANSPORT=0`,
+model `eu.anthropic.claude-opus-4-8`), `evals.harness.easyhard_ab --local`, label
+`r379-promptv2-bedrock`. Bedrock was chosen because it is parallelisable and does not compete with
+the single Claude Max wrapper (CLAUDE.md: "No Parallel Wrapper Jobs"); note that it is the
+**fallback** leg, so this characterises the family on Opus 4.8 with the system prompt *delivered*,
+not on the tunnel where the system prompt is dropped.
+
+```
+easy  n=95  ref_loose +0.0035  ref_strict +0.0142  ref_conc +0.0250
+            kw_recall -0.0155  gold_dropped_head 21 -> 22  (+1)  <-- HARD RULE #8 EXITS 1
+hard  n=37  ref_loose +0.0811  ref_strict +0.0680  ref_conc -0.0001
+            kw_recall +0.0631  gold_dropped_head 18 -> 16  (-2)
+```
+
+**Disposition:** Hard rule #8 mandates "drop ZERO more gold heads on ANY split". Because the easy
+split dropped one more gold reference head (21 -> 22), the harness exited 1 and `REGENOLD_PROMPT_V2`
+is defaulted to **OFF** (`=0`). The hard-split gains are substantial (+0.0811 ref_loose, -2 gold
+dropped), but require a powered run (n >= 120 per split) before considering promotion.
+
+
 ## Reranking (R329)
 
 **⚠ CORRECTED R331 — the paragraph below previously claimed the reranker was
@@ -555,6 +683,8 @@ Concise record of the applied fixes; full rationale in `docs/reviews/`:
 | `REGENOLD_PARENT_COLLAPSE` | `0` | Collapse parent provisions when sub-points are cited (R325). **Corrected R366 — this row described a DEAD FLAG.** The helpers shipped in `a659849` with no call site; R366 wired it as the last reference pass. Still default OFF, and a strict **no-op offline** — see below |
 | `REGENOLD_STAGE2_TRUNCATION_GUARD` | `1` | R357 post-generation truncation repair on the Stage-2 polish |
 | `REGENOLD_SCOPE_STOP_RULE` | `0` | R367 scope stop rule on the Stage-2 USER channel: answer the question, then STOP; never append a neighbouring provision/power/mechanism/derogation the question did not raise. Targets BOTH conciseness axes (combined leverage 0.364 pp/pp). **Prompt-side ⇒ NOT reference-neutral** (AGENTS.md invariant #5), so it needs `easyhard_ab`/`gold_dropped_head` AND `ab_judge` before flipping |
+| `REGENOLD_PROMPT_V2` | `1` | R377 port (PR #368): selects the four rebuilt V2 USER-channel clauses (coverage incl. `LEGAL VERSION` Omnibus exclusion, reference minimality, sub-paragraph discipline, and the CHALLENGE clause that instructs `<reasoning_scratchpad>`/`<answer>` channels on pushback turns). Shipped default ON on a gate claim with no record — see § R379 for the Bedrock A/B. Lives in `app/data/`, which the R355 AST gate does NOT scan; registered in `_engine_cache_key` by hand |
+| `REGENOLD_FIDELITY_TIER_NEGATION` | `1` | R377-B port: the cross-tier fidelity CONTRACT is what the deterministic draft ASSERTS, not what it mentions — a sentence-local denial ("not high-risk") no longer counts as an asserted tier. `=0` restores the anchor-only reading |
 | `REGENOLD_QUERY_EXPANSION` | `0` | LLM query rewrite before retrieval (R328 port; latency+cost tradeoff) |
 | `REGENOLD_RISK_CLASS_ANNEX` | `0` | Annex-III risk-classification anchor (R328 port) |
 | `BEDROCK_REGION` | `eu-central-1` | AWS Bedrock cross-region inference profile geography (R328) |
