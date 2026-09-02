@@ -221,13 +221,21 @@ ORDER BY toIntegerOrNull(r.number)
 LIMIT $max_recitals
 """
 
+# R380 — Point nodes carry ``.letter`` (421/421 on the live graph, per the
+# seeder's ``_MERGE_POINT``/``pt.letter``), never ``.number``. Selecting bare
+# ``pt.number AS letter`` always returned null, so the R330 "Z2" renderer
+# guard (below, in ``render_kg_context``) silently omitted the point segment
+# on every sub-point coordinate instead of restoring it. ``coalesce(...,
+# pt.number)`` keeps the query defensive if a future seed ever sets the other
+# property. ``sp.roman AS roman`` was already correct — SubPoint carries
+# ``.roman`` (``_MERGE_SUBPOINT``), never ``.number``.
 _SUBPOINT_CYPHER = """
 UNWIND $ids AS aid
 MATCH (a) WHERE a.id = aid AND (a:Article OR a:Annex)
 MATCH (a)-[:HAS_PARAGRAPH]->(p:Paragraph)-[:HAS_POINT]->(pt:Point)-[:HAS_SUBPOINT]->(sp:SubPoint)
 RETURN coalesce(a.strict_citation, a.id) AS cite,
        p.number AS para,
-       pt.number AS letter,
+       coalesce(pt.letter, pt.number) AS letter,
        sp.id AS sid,
        sp.roman AS roman,
        sp.text AS text
