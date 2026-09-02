@@ -80,7 +80,7 @@ class TestV3ReachesTheWire:
         # final-sentence completeness reminder may follow (it is 364 chars and
         # length-neutral), never another rule set.
         assert "6. GROUNDING" in msg[pos:]
-        end = msg.find("lettered articles.") + len("lettered articles.")
+        end = msg.find("Articles 51 to 56.") + len("Articles 51 to 56.")
         after = msg[end:].strip()
         assert after == "" or after.startswith("COMPLETENESS OF THE FINAL SENTENCE"), after[:120]
         assert " ANSWER COVERAGE:" not in msg[pos:]
@@ -111,7 +111,10 @@ class TestV3ReachesTheWire:
         _assemble(monkeypatch, "1")
         on = captured_user_messages[-1]
         # Same grounding both arms; the instruction stack is what shrinks.
-        assert len(on) < len(off) - 3000, (len(on), len(off))
+        # (~2.9k against the V1 stack that R379 restored as default, ~7k
+        # against the V2 stack; the block itself is 6k because it carries the
+        # Article 5 verdict roster and the factual guards.)
+        assert len(on) < len(off) - 2000, (len(on), len(off))
 
 
 class TestOffIsAStrictNoOp:
@@ -157,4 +160,4 @@ class TestCacheKeyAndTailPreservation:
         user = body + USER_V3_DISCIPLINE_CLAUSE
         shrunk = impl._shrink_user_for_groq(user, budget=10000)
         assert " ANSWER DISCIPLINE (V3" in shrunk
-        assert shrunk.rstrip().endswith("lettered articles.")
+        assert shrunk.rstrip().endswith("51 to 56.")
