@@ -65,7 +65,12 @@ _VERB_OBJECT_PATTERNS: tuple[tuple[str, str, str], ...] = (
         r"\b(?:monitor|track|read|detect|infer|recognis|recogniz|assess|"
         r"analys|analyz|measur|identif)\w*\s+(?:\w+[''’]?\w*\s+){0,3}?"
         r"(?:emotions?\b|emotional\s+states?\b|stress\s+levels?\b|"
-        r"mental\s+states?\b)",
+        # R380 — "reads employees' facial expressions during the meeting to
+        # score their engagement" is emotion recognition described by its
+        # input, not by its name. Measured: the deterministic path answered
+        # it with the FRIA roster (history bleed) or refused it (no scope
+        # anchor), and the live V3 arm called it limited-risk. 0 davidath hits.
+        r"mental\s+states?\b|facial\s+expressions?\b)",
         "Art. 5",
         "Art. 5.1.f",
     ),

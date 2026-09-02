@@ -1504,6 +1504,18 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     "record-keeping": "Art. 12",
     "record keeping": "Art. 12",
     "logging": "Art. 12",
+    # R380 — mirrors of the engine-map anchors added for the provisions that
+    # had zero anchors in BOTH maps (Art. 97 / Art. 98) or in the engine map
+    # only. The scope gate fronts an anchor; retrieval must seed it first.
+    "exercise of the delegation": "Art. 97",
+    "delegation of power": "Art. 97",
+    "power to adopt delegated acts": "Art. 97",
+    "revoke the delegation": "Art. 97",
+    "committee procedure": "Art. 98",
+    "comitology": "Art. 98",
+    "examination procedure": "Art. 98",
+    "large-scale it system": "Annex X",
+    "large-scale it systems": "Annex X",
     "robustness": "Art. 15",
     "cybersecurity": "Art. 15",
     "accuracy and robustness": "Art. 15",
@@ -2564,6 +2576,11 @@ _ANCHOR_RE: re.Pattern[str] = re.compile(
 _ART5_SENSITIVE_ATTRIBUTE_ANCHORS: tuple[str, ...] = (
     "emotional state",
     "facial analysis",
+    # R380 — emotion recognition described by its input ("an AI feature that
+    # reads employees' facial expressions ... to score their engagement").
+    # Conditional like the rest: the bare phrase ("what facial expressions
+    # convey anger?") stays out of scope (the R112 principle).
+    "facial expression",
     "protected characteristics",
     "political affiliation",
     "physical appearance",

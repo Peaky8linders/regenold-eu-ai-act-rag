@@ -509,6 +509,7 @@ def _shrink_user_for_groq(user: str, budget: int = 10000) -> str:
         " ANSWER COVERAGE:",          # USER_ANSWER_COVERAGE_CLAUSE start
         " CRITICAL ANSWER RULES",     # USER_CRITICAL_RULES_CLAUSE start
         " SCOPE STOP RULE",           # R367 USER_SCOPE_STOP_CLAUSE start
+        " ANSWER DISCIPLINE (V3",     # R380 USER_V3_DISCIPLINE_CLAUSE start
     )
     tail_start = len(user)  # default: no protected tail found
     for tm in _TAIL_MARKERS:
@@ -2254,7 +2255,10 @@ from app.engines._graph_rag_data import (  # R117 GR-01 — extracted pure data
 # davidath questions.
 _KEYWORD_ENTITY_BOUNDARY_RES: dict[str, re.Pattern[str]] = {
     kw: re.compile(r"\b" + re.escape(kw) + r"\b")
-    for kw in ("fines", "fine for", "fines for")
+    # R380 — "annex ix" / "annex x" are substrings of "annex xi/xii/xiii", so
+    # the bare-substring scan would anchor Annex X on every GPAI-annex
+    # question. Word-bounded, like the penalties cluster.
+    for kw in ("fines", "fine for", "fines for", "annex ix", "annex x")
 }
 
 
@@ -3425,6 +3429,22 @@ def _is_classification_question(question: str) -> bool:
 # match, so ``emotion_recognition_workplace`` (which requires a
 # workplace/education context word) must precede the bare
 # ``emotion_recognition_general`` entry.
+
+
+def _prompt_v3_enabled() -> bool:
+    """R380 — the V3 ANSWER DISCIPLINE block on the Stage-2 USER channel.
+
+    Fresh env read per call (R263.2) so an in-process paired A/B can flip
+    arms; registered in ``_engine_cache_key``. Fails CLOSED (False) if the
+    prompt module cannot be imported, so a packaging fault can never
+    silently ship the unmeasured arm.
+    """
+    try:
+        from app.data.graph_rag_prompts import prompt_v3_enabled  # noqa: PLC0415
+
+        return prompt_v3_enabled()
+    except Exception:  # noqa: BLE001 — fail closed
+        return False
 
 
 def _answer_v2_enabled() -> bool:
@@ -8646,6 +8666,12 @@ def _claude_max_enhance_answer(
                 )
                 if _xrefs:
                     context.xrefs = _xrefs
+                # R380 — under the V3 discipline block the xref list is NOT
+                # handed to the model: it is 0.5-1.5k chars of neighbouring
+                # provisions labelled "background only", i.e. exactly the
+                # adjacent-but-unasked law the official judge scores as
+                # verbosity (R367). Still recorded on the context for tracing.
+                if _xrefs and not _prompt_v3_enabled():
                     user_message += (
                         "CROSS-REFERENCED PROVISIONS (background only, "
                         "cite only if directly relevant to the question):\n"
@@ -8738,6 +8764,20 @@ def _claude_max_enhance_answer(
                     "wording or its structure, and do not treat its omissions as "
                     "gaps you must reproduce. ANSWER THE CURRENT QUESTION ONLY: when the "
                 )
+            elif _prompt_v3_enabled():
+                # R380 — V3: the draft is retrieved MATERIAL, not an outline to
+                # refine. Measured (R380 audit, offline): the deterministic
+                # draft already carries the adjacent-but-unasked law (the eight
+                # Annex III areas on an Article 7 question, the Article 6(3)
+                # derogation on a definitional one, Article 38 on an Article 50
+                # one), and "refine the draft" asks the model to keep all of it.
+                user_message += (
+                    f"RETRIEVED DRAFT (machine-generated; over-inclusive):\n{kg_answer}\n\n"
+                    "Answer the QUESTION above directly. The draft and the "
+                    "references are source material, NOT an outline: use only "
+                    "the parts that answer the question and ignore the rest. "
+                    "ANSWER THE CURRENT QUESTION ONLY: when the "
+                )
             else:
                 user_message += (
                     f"KNOWLEDGE GRAPH ANSWER (draft):\n{kg_answer}\n\n"
@@ -8770,6 +8810,14 @@ def _claude_max_enhance_answer(
                 "citations; never open with 'Article N is the operative "
                 "provision' and bury the verdict, and never with the colloquial "
                 "'It depends'. "
+            )
+            # R380 — the breadth tail. Under V3 it is NOT sent: "state both
+            # the prohibited context AND its treatment elsewhere", "use
+            # additional sentences for another risk tier, a carve-out, or a
+            # cross-reference" and the dangling "rule 12b" pointer (into the
+            # undelivered system prompt) are the instructions that invite the
+            # unasked trailing sentences the 2026-08-25 report scored down.
+            _breadth_tail = (
                 "For a practice restricted only in certain contexts, state both "
                 "the prohibited context AND its treatment elsewhere (high-risk "
                 "under Article 6 / Annex III, or Article 50 transparency), and "
@@ -8790,6 +8838,8 @@ def _claude_max_enhance_answer(
                 "the latest question, or when rule 12b closed-set completeness "
                 "requires naming every member of a set."
             )
+            if not _prompt_v3_enabled():
+                user_message += _breadth_tail
         # R298 / R299 / R304 — Prompt additions on the channel that reaches the model.
         try:
             from app.data.graph_rag_prompts import (  # noqa: PLC0415
@@ -8803,9 +8853,14 @@ def _claude_max_enhance_answer(
                 user_subparagraph_attribution_clause,
             )
 
-            if subparagraph_attribution_enabled():
+            # R380 — V3 folds sub-paragraph discipline and reference
+            # minimality into one compact block appended last (see
+            # USER_V3_DISCIPLINE_CLAUSE); the V2 clauses are skipped so the
+            # model is not given two overlapping rule sets.
+            _v3 = _prompt_v3_enabled()
+            if subparagraph_attribution_enabled() and not _v3:
                 user_message += user_subparagraph_attribution_clause()
-            if user_ref_minimality_enabled():
+            if user_ref_minimality_enabled() and not _v3:
                 user_message += user_ref_minimality_clause()
             if user_ref_partition_enabled():
                 user_message += (
@@ -8819,7 +8874,7 @@ def _claude_max_enhance_answer(
                 user_message += user_challenge_brevity_clause()
         except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
             pass
-        if _answer_v2_enabled():
+        if _answer_v2_enabled() and not _prompt_v3_enabled():
             # R284 H2 — canonical statutory TERMINOLOGY, in the LIVE Stage-2 USER
             # message (the system prompt is inert on the wrapper path — R282).
             # Wording-only: it never adds a citation, so it is clean on the
@@ -8924,7 +8979,7 @@ def _claude_max_enhance_answer(
                 user_answer_coverage_clause,
             )
 
-            if answer_coverage_enabled():
+            if answer_coverage_enabled() and not _prompt_v3_enabled():
                 user_message += user_answer_coverage_clause()
         except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
             pass
@@ -8944,7 +8999,7 @@ def _claude_max_enhance_answer(
                 user_critical_rules_enabled,
             )
 
-            if user_critical_rules_enabled():
+            if user_critical_rules_enabled() and not _prompt_v3_enabled():
                 user_message += USER_CRITICAL_RULES_CLAUSE
         except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
             pass
@@ -8963,8 +9018,28 @@ def _claude_max_enhance_answer(
                 scope_stop_rule_enabled,
             )
 
-            if scope_stop_rule_enabled():
+            if scope_stop_rule_enabled() and not _prompt_v3_enabled():
                 user_message += USER_SCOPE_STOP_CLAUSE
+        except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
+            pass
+
+        # R380 — the V3 ANSWER DISCIPLINE block. ONE compact rule set on the
+        # USER channel (the only channel the wrapper delivers), replacing the
+        # overlapping V2 coverage / critical-rules / minimality / sub-paragraph
+        # / terminology clauses and the R367 scope stop rule, which together
+        # carried ~11.7k chars of instructions including three that explicitly
+        # invite adjacent law. Appended LAST so it is the final instruction the
+        # model reads and so the R336 tail-preserving truncation keeps it (see
+        # ``_TAIL_MARKERS``). Default OFF until it clears easyhard_ab
+        # (gold_dropped_head) AND ab_judge; keyed in ``_engine_cache_key``.
+        try:
+            from app.data.graph_rag_prompts import (  # noqa: PLC0415
+                USER_V3_DISCIPLINE_CLAUSE,
+                prompt_v3_enabled,
+            )
+
+            if prompt_v3_enabled():
+                user_message += USER_V3_DISCIPLINE_CLAUSE
         except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
             pass
 

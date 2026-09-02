@@ -1453,6 +1453,9 @@ def _engine_cache_key(
             "REGENOLD_SUBPARAGRAPH_ATTRIBUTION",
             "REGENOLD_DEFINITION_QTYPE_PRECEDENCE",
             "REGENOLD_REASK_FOCUS",
+            # R380 — the anchor-less re-ask tail changes which query is
+            # retrieved on a pushback turn, hence the answer.
+            "REGENOLD_REASK_ANCHORLESS",
             # R308 — ANSWER COVERAGE appends the ported CONTENT rules to the
             # Stage-2 USER message (the only channel the wrapper delivers —
             # measured 2026-08-03: the system slot is dropped 100%). It flips
@@ -1478,6 +1481,10 @@ def _engine_cache_key(
             # message, so it flips the polished answer AND (via the three
             # prose->refs passes) the wire citations. Same doctrine.
             "REGENOLD_SCOPE_STOP_RULE",
+            # R380 — the V3 user-channel discipline block replaces the V2
+            # clause stack on the Stage-2 USER message. Same doctrine: it flips
+            # the polished answer AND, via the prose->refs passes, the wire.
+            "REGENOLD_PROMPT_V3",
             # R300 — the wrapper model alias decides WHICH model generates the
             # Stage-2 answer, so flipping it flips the answer.
             "REGENOLD_WRAPPER_MODEL_ALIAS",
@@ -1578,6 +1585,12 @@ def _engine_cache_key(
             "REGENOLD_EXTERNAL_EMBEDDING_MODEL",
             # R86 — Phase 2 benchmark optimisation env gates
             "REGENOLD_QUERY_DENOISER",
+            # R380 — the rewrite budget decides whether the de-noiser output
+            # survives the R91 truncation guard, i.e. which query is retrieved.
+            "REGENOLD_DENOISER_MAX_TOKENS",
+            # R380 — skipping the rewrite for a self-contained turn changes
+            # which query is retrieved on hard-mode turn 1.
+            "REGENOLD_DENOISE_SELF_CONTAINED_SKIP",
             "REGENOLD_DENOISER_MODEL",
             "REGENOLD_DENOISER_MODEL_GROQ",
             "REGENOLD_ONTOLOGY_HOP",
@@ -5988,6 +6001,24 @@ def _extract_conversation_anchors(turns: list[Any]) -> str:
 _QUERY_DENOISER_ENV = "REGENOLD_QUERY_DENOISER"
 
 
+_DENOISER_MAX_TOKENS_ENV = "REGENOLD_DENOISER_MAX_TOKENS"
+_DENOISER_MAX_TOKENS_DEFAULT = 400
+
+
+def _denoiser_max_tokens() -> int:
+    """R380 — completion budget for the multi-turn query rewrite (default 400).
+
+    Clamped to [100, 2000]; an unparseable value means the default. Keyed in
+    ``_engine_cache_key`` because the rewrite IS the retrieval query.
+    """
+    raw = os.environ.get(_DENOISER_MAX_TOKENS_ENV, "").strip()
+    try:
+        val = int(raw) if raw else _DENOISER_MAX_TOKENS_DEFAULT
+    except ValueError:
+        val = _DENOISER_MAX_TOKENS_DEFAULT
+    return max(100, min(2000, val))
+
+
 def _is_query_denoiser_enabled() -> bool:
     """Default ON — set ``REGENOLD_QUERY_DENOISER=0`` to disable."""
     return os.environ.get(_QUERY_DENOISER_ENV, "1") != "0"
@@ -6041,12 +6072,29 @@ _DENOISE_LEADING_COREF_RE = re.compile(
 )
 
 # Mid-turn markers that signal dependence on a previously-established entity.
+_DENOISE_LEADING_CONJUNCTION_RE = re.compile(r"^(?:and|but|so|also|then|or)\b", re.IGNORECASE)
+
 _DENOISE_COREF_MARKERS: tuple[str, ...] = (
     "this system", "that system", "the system you", "the regulator you",
     "you mentioned", "as we discussed", "as discussed", "carry over",
     "carries over", "still apply", "those checks", "these checks",
     "the same", "as above", "like i said", "as i said",
 )
+
+
+_DENOISE_SELF_CONTAINED_SKIP_ENV = "REGENOLD_DENOISE_SELF_CONTAINED_SKIP"
+
+
+def _is_denoise_self_contained_skip_enabled() -> bool:
+    """R380 — skip the LLM rewrite when the live turn stands alone. Default ON.
+
+    Live-only by construction (the branch sits after the no-provider exit in
+    ``_rewrite_multiturn_query``), so the deterministic bench is unchanged.
+    Keyed in ``_engine_cache_key``; ``=0`` restores the always-rewrite path.
+    """
+    return os.environ.get(_DENOISE_SELF_CONTAINED_SKIP_ENV, "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
 
 
 def _is_denoise_salvage_enabled() -> bool:
@@ -6089,6 +6137,27 @@ def _is_denoise_salvage_enabled() -> bool:
 # the conversation keeps its history. Measured: fires on 0/111 first-turn and
 # 0/111 turn-1 rows, 62/111 challenge rows, and on none of a coreference /
 # out-of-scope negative probe set.
+_REASK_ANCHORLESS_ENV = "REGENOLD_REASK_ANCHORLESS"
+
+
+def _reask_anchorless_enabled() -> bool:
+    """R380 — accept a re-ask tail that carries no AI-Act anchor. Default ON.
+
+    Measured on the 110 official questions with the evaluator's verbatim
+    pushback template: the R305 re-ask focus fired on 100/110; the 10 misses
+    were the anchor-less questions, which then went through the de-noiser
+    (truncating on gpt-oss-120b at 100 tokens) into the 40-turn concatenation
+    WITH the disputed answer and the pushback text — the path on which the
+    pushback answers measured 1.2x to 2.3x the easy-mode length. The length
+    and coreference gates still apply, so an elliptical re-ask ("let's try
+    again: what about deployers?") keeps its history. Keyed in
+    ``_engine_cache_key``; ``REGENOLD_REASK_ANCHORLESS=0`` restores R305.
+    """
+    return os.environ.get(_REASK_ANCHORLESS_ENV, "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
 _REASK_MARKER_RE = re.compile(
     r"(?:^|\n)[^\S\n]*(?:"
     r"let(?:'|’)?s\s+try\s+again|"
@@ -6127,13 +6196,26 @@ def _extract_reask_tail(live_question: str) -> str | None:
     if last is None:
         return None
     tail = (live_question[last.end() :] or "").strip()
-    if not tail or not _live_turn_is_self_contained(tail):
+    if not tail or not _live_turn_is_self_contained(
+        tail, require_anchor=not _reask_anchorless_enabled()
+    ):
         return None
     return tail
 
 
-def _live_turn_is_self_contained(live_question: str) -> bool:
+def _live_turn_is_self_contained(
+    live_question: str, *, require_anchor: bool = True
+) -> bool:
     """True iff the final user turn can stand alone as a search query.
+
+    ``require_anchor=False`` (R380) keeps the length and coreference gates
+    but waives the AI-Act-anchor gate. It is passed ONLY from the R305
+    re-ask path, where the tail after "let's try again:" is the question
+    the user wants answered anew BY CONSTRUCTION, so the anchor gate was
+    rejecting 10 of the 110 official pushbacks (7 anchor-less questions
+    such as "Who is entitled to lodge a complaint ...") and sending them
+    down the de-noiser -> concatenation path with the disputed answer and
+    the pushback text in the retrieval query.
 
     High-precision: requires a substantive AI-Act anchor (so a generic
     fragment is never treated as standalone) AND the absence of coreference
@@ -6142,10 +6224,34 @@ def _live_turn_is_self_contained(live_question: str) -> bool:
     keeps the existing concatenation path.
     """
     q = (live_question or "").strip()
+    low = q.lower()
+    if not require_anchor:
+        # R380 re-ask tail: the text after "let's try again:" IS the question
+        # by construction, so only the gates that catch an ELLIPTICAL re-ask
+        # apply — a leading coreference ("what about deployers?") or a
+        # fragment. The marker list is deliberately not applied: "can the
+        # same AI system be subject to both..." and "do all need to be met at
+        # the same time?" are the question's own wording, not a pointer at a
+        # prior turn, and "What is Article 50(4) about?" is 5 words. Measured:
+        # 110/110 official pushbacks now re-ask their own question (was
+        # 100/110 under the anchor gate, 106/110 with only the anchor waived).
+        if len(q.split()) < 4:
+            return False
+        return not _DENOISE_LEADING_COREF_RE.match(low)
     if len(q.split()) < 6:
         return False  # short → likely elliptical / coreferent
-    low = q.lower()
     if _DENOISE_LEADING_COREF_RE.match(low):
+        return False
+    # R380 — a turn that OPENS with a conjunction continues the previous one
+    # ("And the reporting duties for those providers?", "But we built it, so
+    # are we provider or deployer?"). The leading-coreference regex strips
+    # "and " as an optional prefix and then only matches a closed list of
+    # openers, so these slipped through. Since R380 this predicate decides
+    # the PRIMARY hard-mode path (the self-contained skip), not only the
+    # provider-failure salvage, so a false positive drops history a genuine
+    # follow-up needs. Measured: rejects 0/110 official questions and the
+    # one conjunction-led follow-up among the 37 multi-turn probe rows.
+    if _DENOISE_LEADING_CONJUNCTION_RE.match(low):
         return False
     if any(marker in low for marker in _DENOISE_COREF_MARKERS):
         return False
@@ -6330,6 +6436,33 @@ def _rewrite_multiturn_query(
         record_query_denoiser(fired=False, fallback_reason="no_provider")
         return None
 
+    # R380 — a SELF-CONTAINED live turn needs no rewrite. The rewrite exists
+    # to resolve a coreferent follow-up ("what about deployers?") into a
+    # standalone query; for a turn that already stands alone (>= 6 words, no
+    # coreference, its own AI-Act anchor) the best standalone query is the
+    # turn itself, byte for byte. Measured on the official hard mode: with the
+    # R380 400-token budget the rewrite SUCCEEDS and returns a PARAPHRASE, and
+    # the paraphrase then misses the curated intercepts and the exact-match
+    # retrieval paths the verbatim question hits (two of fourteen rows went
+    # from a deterministic Annex III.8 answer to a Stage-2 answer citing
+    # Article 6). Returning the live turn here makes hard-mode turn 1
+    # identical to easy mode for every self-contained question (100/110
+    # official rows), drops the 0.5-3 s rewrite from the critical path, and
+    # is byte-identical offline: this branch sits AFTER the no-provider exit,
+    # so the cli bench still concatenates exactly as before (R131's own
+    # neutrality argument). The caller treats it as the R131 salvage
+    # (``denoised == live_question``) and focuses scope on the live turn.
+    if _is_denoise_self_contained_skip_enabled() and _live_turn_is_self_contained(
+        live_question
+    ):
+        record_query_denoiser(
+            fired=False,
+            rewritten_chars=len(live_question),
+            fallback_reason="self_contained_skip",
+            salvaged_deterministic=True,
+        )
+        return live_question
+
     # Try each provider in preference order. A provider FAILURE (transport
     # error, api_status_429/4xx/5xx surfaced as resp.error, or an empty
     # completion) falls through to the next. Content-quality bails on a
@@ -6351,7 +6484,17 @@ def _rewrite_multiturn_query(
                 # so a 200 ms Groq RTT is rounding error, but a hung call
                 # must not add a multi-second tail to the critical path. The
                 # fallback chain is at most two such calls.
-                max_tokens=100,
+                # R380 — was a hard 100. The Stage-0 model on Groq is now
+                # openai/gpt-oss-120b, a REASONING model whose hidden reasoning
+                # counts against max_tokens, so the visible rewrite hit
+                # finish_reason=length on 5 of 9 multi-turn calls in a live
+                # probe ("fallback_reason": "truncated"), every provider in the
+                # chain truncated the same way, and the caller fell through to
+                # the 40-turn concatenation: turn-1 answers gained history
+                # provisions (Art. 26, Art. 49, Annex I) and one answered a
+                # different topic entirely. 400 leaves the rewrite room; the
+                # R91 truncation guard below is unchanged.
+                max_tokens=_denoiser_max_tokens(),
                 temperature=0.0,
                 # R267.1 — 3.0 s (was R264's 2.0 s). Qwen 3.6 27B via Groq is
                 # ~500-750 ms typical and Gemini flash ~2.1 s, so the extra

@@ -751,6 +751,44 @@ _KEYWORD_ENTITY_MAP: tuple[tuple[str, str], ...] = (
     ("commission guidelines on the practical implementation", "Art. 96"),
     ("guidelines on the practical implementation", "Art. 96"),
     ("practical implementation guidelines", "Art. 96"),
+    # R380 — gold-cited provisions that had ZERO engine anchors (the R367
+    # Article 7 defect class: retrieval is seeded by THIS map; the scope map
+    # only FRONTS an anchor that is already a candidate). Phrases are chosen
+    # to be distinctive of the provision, not of its topic, so they cannot
+    # over-cite: "annex ix"/"annex x" are word-bounded in
+    # _KEYWORD_ENTITY_BOUNDARY_RES because "annex x" is a substring of
+    # "annex xi/xii/xiii". Measured 0 hits across all 476 davidath questions
+    # for every phrase below except "logging capabilit" (1 hit, an Article 12
+    # question, which the anchor makes MORE right); see tests/test_r380_anchor_gaps.py.
+    ("quality management system", "Art. 17"),
+    ("annex iv", "Annex IV"),
+    ("content of the technical documentation", "Annex IV"),
+    ("technical documentation shall contain", "Annex IV"),
+    ("record-keeping", "Art. 12"),
+    ("record keeping", "Art. 12"),
+    ("automatic recording of events", "Art. 12"),
+    ("logging capabilit", "Art. 12"),
+    ("exercise of the delegation", "Art. 97"),
+    ("delegation of power", "Art. 97"),
+    ("power to adopt delegated acts", "Art. 97"),
+    ("revoke the delegation", "Art. 97"),
+    ("committee procedure", "Art. 98"),
+    ("comitology", "Art. 98"),
+    ("examination procedure", "Art. 98"),
+    ("annex ix", "Annex IX"),
+    ("annex x", "Annex X"),
+    ("large-scale it system", "Annex X"),
+    ("large scale it system", "Annex X"),
+    # R380 — emotion recognition described by its INPUT rather than its name
+    # (a probe follow-up: "reads employees' facial expressions ... to score
+    # their engagement" had no anchor at all). Mirrors the "emotion
+    # recognition" pair above: Art. 5 (workplace / education prohibition) and
+    # Art. 50 (deployer transparency, Art. 50(3)). 0 davidath hits.
+    ("facial expression", "Art. 5"),
+    ("facial expression", "Art. 50"),
+    ("infer emotions", "Art. 5"),
+    ("inferring emotions", "Art. 5"),
+    ("emotional state", "Art. 5"),
 )
 
 

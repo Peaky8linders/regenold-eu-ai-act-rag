@@ -1134,3 +1134,150 @@ def user_critical_rules_enabled() -> bool:
     return os.environ.get("REGENOLD_USER_CRITICAL_RULES", "1").strip().lower() in {
         "1", "true", "yes", "on",
     }
+
+
+# ---------------------------------------------------------------------------
+# R380 — the V3 ANSWER DISCIPLINE block (one compact rule set on the USER
+# channel, replacing the V2 coverage / critical-rules / minimality /
+# sub-paragraph / terminology clauses and the R367 scope stop rule).
+#
+# WHY. The official 2026-08-25 report collapsed BOTH conciseness axes
+# (AnsCon 96 -> 52 easy / 93 -> 45 hard; RefCon 79 -> 50 / 72 -> 50) while
+# every other axis improved, and Overall is a geometric mean, so the two
+# collapses ate the whole gain. The July answers that scored 96 averaged 915
+# chars and 4.2 sentences, so the official axis is judging UNASKED CONTENT
+# relative to the reference answer, not raw length. The R380 audit of the
+# live user message found the instructions that invite that content: "state
+# both the prohibited context AND its treatment elsewhere", "when one
+# provision depends on another name both and what each contributes", "use
+# additional sentences for another risk tier, a carve-out, or a
+# cross-reference", a dangling "rule 12b" pointer into the undelivered system
+# prompt, a CROSS-REFERENCED PROVISIONS block of neighbouring law, and
+# "refine the draft" over a deterministic draft that already carries the
+# adjacent rosters. V3 removes all of them and states the scope rule once.
+#
+# It is NOT a cap: rule 2 protects everything the question asked for (the
+# R320 sentence cap lost answer_correctness -0.143 by cutting asked content).
+# Default OFF until it clears easyhard_ab (gold_dropped_head) AND ab_judge;
+# keyed in _engine_cache_key. Delivered on the USER channel only (R308: the
+# wrapper drops the system prompt on 100% of requests).
+# ---------------------------------------------------------------------------
+USER_V3_DISCIPLINE_CLAUSE = (
+    " ANSWER DISCIPLINE (V3; these rules override any conflicting instruction "
+    "above):\n"
+    "0. TIER VERDICT, DECIDED BY YOU: for any question about how the Act "
+    "treats a described system, decide the tier from the facts BEFORE writing "
+    "and state it in the first words. The draft's tier is a retrieved "
+    "heuristic that can misclassify a practice that is described rather than "
+    "named, and this test overrides it. Test the described system against the "
+    "exhaustive Article 5 list: predicting a person's risk of committing a "
+    "crime solely from profiling or personality traits; inferring race, "
+    "political opinion, religion, trade union membership, sex life or sexual "
+    "orientation from biometric data; untargeted scraping of facial images; "
+    "social scoring across unrelated contexts, by any public or private "
+    "provider or deployer; subliminal or manipulative techniques causing "
+    "significant harm; exploiting age or disability vulnerabilities; "
+    "real-time remote biometric identification in publicly accessible "
+    "spaces for law enforcement; and emotion recognition in the workplace or "
+    "in education and training institutions, except for medical or safety "
+    "reasons. If the described system clearly matches one, the verdict is "
+    "'Prohibited' under Article 5 even if the draft says otherwise; never "
+    "reclassify a legitimate Annex III system as prohibited. High-risk under "
+    "Article 6 has two routes, Annex I product safety with third-party "
+    "conformity assessment and the Annex III areas; the Article 6(3) "
+    "derogation (narrow procedural task, improving a completed human "
+    "activity, detecting decision patterns without replacing human "
+    "assessment, or a preparatory task) never applies where the system "
+    "profiles natural persons. The general-purpose AI chapter spans Articles "
+    "51 to 56.\n"
+    "1. SCOPE: answer the words of the question, completely, and then STOP. "
+    "Before writing any sentence after the first, ask which words of the "
+    "question it answers; if none, do not write it. Do not add a sentence "
+    "about anything the question did not raise: a neighbouring provision, a "
+    "related power or procedure, an exception or derogation, a transitional "
+    "rule, another actor's duties, the surrounding classification framework, "
+    "or what something should not be confused with. Answer for the system, "
+    "role and facts the question describes, never for a hypothetical variant "
+    "of them (a different role, a different product, an added component, a "
+    "model the provider might also have built). The supplied references and the "
+    "draft are over-retrieved source material, NOT an outline: use only the "
+    "parts that answer the question and ignore the rest. Correct law that "
+    "answers a question nobody asked is a defect here: it is scored as "
+    "verbosity, and every provision you name is promoted into the citation "
+    "list, where an unasked provision is scored as a wrong reference.\n"
+    "2. COMPLETENESS OF WHAT WAS ASKED: a yes or no question states Yes or No "
+    "in its first words, including a negative verdict such as 'No specific "
+    "obligations apply' or 'Not high-risk' when the supplied provisions do "
+    "not reach the described system; a question about how the Act treats or "
+    "classifies a system names its tier (prohibited, high-risk, limited risk "
+    "transparency duty, or minimal risk); a how many or how long question states the number; "
+    "a which or list question names every member the supplied text states, "
+    "packed into one compact comma-separated sentence; a question with a "
+    "second limb answers that limb too, and a question that lists several "
+    "things (three procedures, two articles, provider and deployer) answers "
+    "each of them in one short sentence before adding any detail to any of "
+    "them. A qualifier, condition, exception or "
+    "alternative limb that is part of the rule you are stating stays, in the "
+    "same sentence. This rule never licenses an extra topic.\n"
+    "3. LENGTH: as short as full coverage of the question allows. Typically "
+    "two to four short declarative sentences; one sentence is enough for a "
+    "definition or a yes or no with its condition. No preamble, no "
+    "restatement of the question, no closing summary, no headings, no "
+    "bullet or lettered lists, no semicolon chains, no em-dashes, en-dashes "
+    "or ellipses.\n"
+    "4. CITATIONS: cite only the provisions this answer turns on, each named "
+    "in the same clause as what it requires, in the wording of the supplied "
+    "text; a bare number is not a citation. Cite a sub-paragraph, written as "
+    "Article 5(1)(f) or Annex III(5)(d), only where the supplied references "
+    "carry it, and never invent one. When the question asks how the Act "
+    "classifies or treats a described system, cite the provision that "
+    "decides the tier, whether you rule the system in or out of it: Article "
+    "5 for a prohibited practice or for ruling one out, Article 6 together "
+    "with Annex I or Annex III for high-risk or for ruling it out, Article "
+    "50 for a transparency duty. Otherwise do not cite or describe the "
+    "classification apparatus (Article 6, Annex I, Annex III) or the Chapter "
+    "III requirement chain merely because a system is high-risk; cite them "
+    "only when the question is about classification or about that specific "
+    "requirement. A number you write is a citation even when you reject the "
+    "provision, so outside a classification question rule things out in "
+    "words unless the question named the provision itself.\n"
+    "5. TERMINOLOGY AND TONE: use the Act's own terms verbatim: provider, "
+    "deployer, authorised representative, importer, distributor, operator "
+    "(never user, customer, developer or creator); prohibited, high-risk, "
+    "limited risk, minimal risk; risk management system, data governance, "
+    "technical documentation, record-keeping, human oversight, conformity "
+    "assessment, post-market monitoring, emotion recognition, biometric "
+    "categorisation, social scoring, deep fake. Write 'minimal risk' and "
+    "'limited risk' without a hyphen; hyphenate only where the Act does "
+    "(high-risk, post-market, real-time, general-purpose). Formal, neutral "
+    "regulatory prose; never the voice of an assistant, never 'I' or 'we'.\n"
+    "6. GROUNDING: ground every statement of what the Act requires, prohibits "
+    "or classifies in the supplied text. A negative verdict (that no "
+    "obligation, prohibition or high-risk classification applies to the "
+    "described system) follows from the supplied provisions not reaching it "
+    "and is stated directly; never replace it with a conditional about a "
+    "different system or role. If the text does not "
+    "settle a point, say so as a matter of law ('the Act does not specify "
+    "X'), never as a remark about your sources: do not mention references, "
+    "provisions or material supplied to you, what was retrieved, or how "
+    "complete your inputs are. Apply Regulation (EU) 2024/1689 as adopted; "
+    "the Digital Omnibus (2026/1744) is out of scope, so never adopt its "
+    "deferred dates, small mid-cap category or lettered articles.\n"
+)
+
+
+def prompt_v3_enabled() -> bool:
+    """R380 — select the V3 ANSWER DISCIPLINE block. DEFAULT OFF.
+
+    Fresh env read per call so a paired in-process A/B can flip between arms
+    (R263.2); registered in ``_engine_cache_key`` so the arms cannot share a
+    cached response. When ON, the V2 coverage / critical-rules / minimality /
+    sub-paragraph / terminology clauses, the breadth tail of the draft
+    paragraph, the CROSS-REFERENCED PROVISIONS block and the R367 scope stop
+    rule are all withheld and this single block is appended last instead.
+    """
+    import os
+
+    return os.getenv("REGENOLD_PROMPT_V3", "0").strip().lower() in (
+        "1", "true", "yes", "on",
+    )

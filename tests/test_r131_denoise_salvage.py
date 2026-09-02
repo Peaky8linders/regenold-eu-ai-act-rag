@@ -151,6 +151,11 @@ def test_provider_failure_coreferent_does_not_salvage(
 def test_provider_failure_salvage_disabled_returns_none(
     monkeypatch, force_failing_wrapper
 ) -> None:
+    # R380 — this pin exercises a provider FAILURE on a self-contained turn.
+    # With the R380 self-contained skip ON the provider is never dialled for
+    # such a turn (the live question is returned verbatim before the chain),
+    # so the regime this test was written for needs the skip OFF.
+    monkeypatch.setenv("REGENOLD_DENOISE_SELF_CONTAINED_SKIP", "0")
     monkeypatch.setenv("REGENOLD_DENOISE_SALVAGE", "0")
     out = r._rewrite_multiturn_query(
         _SELF_CONTAINED, [_mk_msg("user", "We deploy a high-risk AI system.")]
