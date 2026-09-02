@@ -160,6 +160,7 @@ ROLE_OBLIGATIONS: list[RoleObligation] = [
             "transparency",
             "human_oversight",
             "decision_governance",
+            "logging",
         ],
         "flips_provider_under": [
             "Art. 25(1) — putting own name/trademark on a high-risk system.",

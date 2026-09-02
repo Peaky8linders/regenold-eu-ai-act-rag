@@ -147,7 +147,7 @@ CHAPTER_PRIMARY_ANCHORS: dict[str, tuple[str, ...]] = {
     "VI":   ("Art. 57", "Art. 62"),
     "VII":  ("Art. 64", "Art. 65", "Art. 70"),
     "VIII": ("Art. 71",),
-    "IX":   ("Art. 72", "Art. 73", "Art. 79"),
+    "IX":   ("Art. 72", "Art. 73", "Art. 79", "Art. 88"),
     "X":    ("Art. 95", "Art. 96"),
     "XI":   ("Art. 97", "Art. 98"),
     "XII":  ("Art. 99", "Art. 101"),
