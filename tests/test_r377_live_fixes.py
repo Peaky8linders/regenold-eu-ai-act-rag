@@ -114,6 +114,16 @@ _CROSS_TIER_DRAFT = (
 
 
 class TestR377BDeniedTierIsNotAssertedTier:
+    """R379 - the lever now ships DEFAULT OFF (see tier_negation_enabled).
+    These cases pin the ON behaviour, which is unchanged, so they opt in.
+    The two env-gate tests below set the flag themselves and win over this.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _opt_in(self, monkeypatch):
+        monkeypatch.setenv("REGENOLD_FIDELITY_TIER_NEGATION", "1")
+        yield
+
     def test_denied_tier_excluded_from_contract(self) -> None:
         assert extract_asserted_tier_set(_LIVE_DETERMINISTIC_DRAFT) == {"limited"}
 

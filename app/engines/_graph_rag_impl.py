@@ -271,7 +271,15 @@ def _looks_structurally_truncated(text: str | None) -> bool:
     # and its terminal ``|`` is a row close, not a mid-clause stop. Evaluated on
     # ``tail`` so a table enclosed within ``</answer>`` is recognised.
     last_line = tail.splitlines()[-1].strip()
-    if last_line.startswith("|") and last_line.endswith("|") and len(last_line) > 2:
+    # R379 — a row needs at least two cells to be a complete row. A stream
+    # cut right after a cell separator leaves ``| Deployer |``, which starts
+    # and ends with a pipe exactly like a finished row and was excused as
+    # one; requiring three pipes (two interior cells) closes that.
+    if (
+        last_line.startswith("|")
+        and last_line.endswith("|")
+        and last_line.count("|") >= 3
+    ):
         return False
     # R357 — an ending ellipsis ("…") is a CUT, not a terminator: a
     # complete regulatory sentence never trails off. Previously "…" sat
@@ -9270,7 +9278,36 @@ def _claude_max_enhance_answer(
 
         if text_raw is None:
             return None
-        validated = validate_llm_output(text_raw.strip())
+        # R379 — unwrap the XML CHANNELS before anything reads the text.
+        #
+        # ``USER_CHALLENGE_BREVITY_CLAUSE_V2`` (R377 port, default ON) tells
+        # the model to put its reasoning inside ``<reasoning_scratchpad>`` and
+        # its answer inside ``<answer>`` on a pushback turn — the benchmark's
+        # entire HARD mode. Upstream pairs that clause with
+        # ``prompt_guard.extract_xml_channels`` at exactly this point; the
+        # R377 port brought the clause and the truncation-guard peel but NOT
+        # the extractor, so a model that obeys the instruction would have
+        # shipped the scratchpad and both tags on the wire, and the three
+        # prose->refs passes would have recomputed the citations from the
+        # scratchpad too. Measured 0/4 leaks on the two shipped models
+        # (Opus 4.8 via Bedrock, the tunnel model) — the exposure is latent,
+        # and upstream measured it live on Sonnet 5 / Opus 5. Strict no-op
+        # when no channel tags are present (pinned by
+        # tests/test_r379_xml_channel_extraction.py). Same R366 port-drift
+        # class, fourth instance.
+        from app.security.prompt_guard import extract_xml_channels  # noqa: PLC0415
+
+        clean_answer, extracted_reasoning = extract_xml_channels(text_raw.strip())
+        if extracted_reasoning:
+            try:
+                from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                    record_llm_thinking,
+                )
+
+                record_llm_thinking(extracted_reasoning, stage="Stage 2 Reasoning")
+            except Exception:  # noqa: BLE001 — trace capture must never break Stage-2
+                pass
+        validated = validate_llm_output(clean_answer)
         # Issue #42 — empty / whitespace-only polish is a failure, not a
         # success. ``validate_llm_output`` is null-safe (returns "" on
         # both None and ""), so an empty Stage-2 response would

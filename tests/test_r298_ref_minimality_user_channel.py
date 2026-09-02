@@ -15,6 +15,8 @@ from __future__ import annotations
 import pytest
 
 from app.data.graph_rag_prompts import (
+    user_challenge_brevity_clause,
+    user_ref_minimality_clause,
     ANSWER_GENERATE_SYSTEM,
     USER_CHALLENGE_BREVITY_CLAUSE,
     USER_REF_MINIMALITY_CLAUSE,
@@ -136,14 +138,14 @@ class TestChallengeDetector:
 
 class TestClauseContent:
     def test_minimality_clause_states_the_converse_of_rule_10(self):
-        c = USER_REF_MINIMALITY_CLAUSE.lower()
+        c = user_ref_minimality_clause().lower()  # R379 live selector
         assert "minimal" in c or "only the provisions" in c
         # names the specific over-cited apparatus measured in R297
         assert "article 6" in c and "annex iii" in c
         assert "9 to 15" in c
 
     def test_challenge_clause_forbids_expansion_without_forbidding_correction(self):
-        c = USER_CHALLENGE_BREVITY_CLAUSE.lower()
+        c = user_challenge_brevity_clause().lower()  # R379 live selector
         assert "same length or shorter" in c
         assert "not a request for more" in c
         # must still allow a genuine correction — never train capitulation OR
@@ -152,9 +154,19 @@ class TestClauseContent:
 
     def test_clauses_are_compact(self):
         """R282: dumping instruction volume into a DELIVERED channel is itself
-        harmful. Keep both clauses well under 1 KB."""
+        harmful. Keep both clauses well under 1 KB.
+
+        R379 - the V1 budgets held (701 / 546 chars). The V2 clauses that the
+        selector now delivers measure 1464 / 712 chars, so the V2 minimality
+        clause BREACHES the R282 budget by ~460 chars; together the four V2
+        clauses add ~1,550 chars to every Stage-2 call. Recorded in
+        CLAUDE.md § R379 and pinned here at the measured size so any further
+        growth trips this test; whether V2 earns that cost is the A/B's call.
+        """
         assert len(USER_REF_MINIMALITY_CLAUSE) < 1000
         assert len(USER_CHALLENGE_BREVITY_CLAUSE) < 1000
+        assert len(user_ref_minimality_clause()) <= 1500
+        assert len(user_challenge_brevity_clause()) <= 1000
 
 
 # ── cache key ────────────────────────────────────────────────────────────────
