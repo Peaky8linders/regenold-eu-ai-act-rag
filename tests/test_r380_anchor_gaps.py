@@ -91,10 +91,15 @@ class TestEmotionRecognitionByInput:
         hits = _scan(self._Q)
         assert "Art. 5" in hits and "Art. 50" in hits, hits
 
-    def test_scope_anchor(self):
+    def test_scope_anchor_is_conditional_on_an_ai_marker(self):
+        """R112 principle: a sensitive human-attribute phrase anchors only
+        next to an AI marker; the bare phrase stays out of scope."""
         from app.integrations.regenold.scope import _has_ai_act_anchor
 
-        assert _has_ai_act_anchor(self._Q)
+        assert _has_ai_act_anchor(
+            "Our AI system reads employees' facial expressions to score engagement. Is that allowed?"
+        )
+        assert not _has_ai_act_anchor("Which facial expressions convey anger?")
 
     def test_gatekeeper_flags_the_workplace_prohibition(self):
         from app.engines import prohibited_gatekeeper as pg

@@ -992,12 +992,6 @@ _AI_ACT_ANCHORS: frozenset[str] = frozenset(
         "remote biometric",
         "social scoring",
         "emotion recognition",
-        # R380 — emotion recognition described by its input ("reads
-        # employees' facial expressions ... to score their engagement"): the
-        # live turn had no anchor at all, so offline it was refused and live
-        # it depended on the LLM gate. 0 davidath hits, 0 OOS-probe hits.
-        "facial expression",
-        "emotional state",
         # R112 (finding #2) — the aaf6739 "expand prohibited anchor
         # scope" pass added nine bare GDPR / anti-discrimination
         # phrases here ("emotional state", "facial analysis",
@@ -1547,9 +1541,6 @@ KEYWORD_TO_ARTICLE: dict[str, str] = {
     # specific anchor for verdict-style questions.
     "biometric identification": "Art. 5",
     "emotion recognition": "Art. 5",
-    # R380 — emotion recognition described by its input (see _graph_rag_data).
-    "facial expression": "Art. 5",
-    "emotional state": "Art. 5",
     "prohibited practice": "Art. 5",
     # ── Round-10 anchor surfacing (stress-test gap closers) ──────────
     # Each phrase is a real stress-test failure where the question was
@@ -2585,6 +2576,11 @@ _ANCHOR_RE: re.Pattern[str] = re.compile(
 _ART5_SENSITIVE_ATTRIBUTE_ANCHORS: tuple[str, ...] = (
     "emotional state",
     "facial analysis",
+    # R380 — emotion recognition described by its input ("an AI feature that
+    # reads employees' facial expressions ... to score their engagement").
+    # Conditional like the rest: the bare phrase ("what facial expressions
+    # convey anger?") stays out of scope (the R112 principle).
+    "facial expression",
     "protected characteristics",
     "political affiliation",
     "physical appearance",
