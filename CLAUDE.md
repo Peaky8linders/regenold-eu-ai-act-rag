@@ -316,6 +316,63 @@ is defaulted to **OFF** (`=0`). The hard-split gains are substantial (+0.0811 re
 dropped), but require a powered run (n >= 120 per split) before considering promotion.
 
 
+## R380 — the end-to-end audit, and where the conciseness fat actually comes from
+
+Full write-up with evidence: `docs/reviews/r380-sota-audit-2026-09-02.md`. Five read-only
+audits (Aura graph, both anchor maps + ontology, retrieval stack, Stage-2 user message,
+MUVERA) plus a live hard-mode probe. The short version:
+
+* **Calibration first.** The July answers that scored AnsCon **96** averaged **915 chars /
+  4.2 sentences** (`jul07_answer`). The official axis judges *unasked content* against the
+  reference answer, not length. Length is a screening proxy only; the lever is scope.
+* **The user message invites the fat, by instruction.** The live path is uncapped
+  (`REGENOLD_ANSWER_NO_CAP=1` / `REGENOLD_LIVE_SENTENCE_CAP=0`; offline keeps the 3-sentence
+  cap, which is why the offline July-vs-HEAD replay was byte-identical). The only length rule
+  is on the undelivered SYSTEM channel. Three default-ON user-channel clauses say "state both
+  the prohibited context AND its treatment elsewhere", "name both and what each contributes",
+  "use additional sentences for another risk tier, a carve-out, or a cross-reference … or when
+  rule 12b" (a pointer into the undelivered system prompt); a CROSS-REFERENCED PROVISIONS block
+  hands over 0.5–1.5k chars of neighbouring law; the draft already carries the adjacent
+  rosters and the instruction is "Refine the draft". ~11.7k chars of overlapping clauses; the
+  REFERENCES block is 10–30k, 4–15x the draft. **`REGENOLD_PROMPT_V3`** replaces all of it with
+  one 6k block appended last (default OFF pending the gate; see the flag table).
+* **Hard mode had two mechanical defects.** The Stage-0 de-noiser truncated on 5/9 live
+  multi-turn calls (`max_tokens=100` on `openai/gpt-oss-120b`, a reasoning model) and every
+  provider fell through to the 40-turn concatenation: turn-1 answers gained history provisions
+  and one Article 111 question shipped `['Article 6','Article 5']`. And the R305 re-ask focus,
+  checked against the evaluator's VERBATIM pushback template, fired on 100/110 official
+  questions — the anchor-less ten took the truncating path with the disputed answer in the
+  query and measured 1.2–2.3x the easy length. Fixed: `REGENOLD_DENOISER_MAX_TOKENS=400`,
+  `REGENOLD_REASK_ANCHORLESS=1` (110/110).
+* **Graph:** healthy and complete (1,789 nodes, 7 vector indexes at 100% coverage, verbatim
+  text, 52–94 ms), but `_SUBPOINT_CYPHER` read `pt.number` where Point nodes carry `.letter`
+  (0/421 vs 421/421) — every sub-point coordinate fed to Stage-2 lost its point letter. Fixed.
+  The vectors are 128-D TF-IDF/SVD, not neural; the default-ON dense fill flips between Cohere
+  and SVD on a 429, so retrieval is nondeterministic under Cohere rate limits.
+* **Anchor maps:** Art. 17, Annex IV (both gold-cited), Art. 12, Annex IX, Annex X had zero
+  engine anchors; Art. 97/98 zero in both maps. Fixed, 0 davidath hits.
+* **Ontology:** `ROLE_OBLIGATIONS` binds Art. 13 to DEPLOYER, lists Art. 85/86 as
+  AFFECTED_PERSON obligations (rights), `role_obligations.py` binds Art. 72 to DEPLOYER,
+  DOWNSTREAM_PROVIDER lists Art. 53/55. Recorded, NOT changed — it is a reference GENERATOR
+  measured at 0% precision as a citation oracle, and a wrong binding is still what gold cites
+  on rights questions.
+* **MUVERA:** do not build. At ~1,800 provisions exact Chamfer is one matmul (tens of ms);
+  FDE only approximates the same score faster and cannot touch the "semantically plausible,
+  legally inapposite" reference class; no keyed provider returns token-level vectors without
+  torch. The cheap sub-point max-sim variant is a probe, gated on the distractor rows.
+* ⚠ **The wrapper shares the operator session's Claude Max quota.** When this session hit its
+  usage limit, a 40-row live screen was silently **66/80 Bedrock** (`transport_stats`). Every
+  wrapper-bound runner must attribute rows to `wrapper|bedrock|failed` and abort on fallback.
+
+**Measured (paired, interleaved, every row wrapper-served).** V3 screen, 30 single-turn
+gold rows: chars **0.815x** (21 shorter / 7 longer, p = 0.0125), sentences 3.83 → 3.03, refs
+−0.27, head precision +0.02, latency −1.5 s, `gold_dropped_head` 10 → 11 on a row whose V3
+answer got LONGER. Keyword recall −0.089 on five rows: two tokenizer artefacts
+("minimal-risk"), one legally better answer, two real (a negative verdict replaced by a
+hypothetical GPAI variant; an emotion-recognition webcam in education called high-risk not
+prohibited) — the block was rewritten against exactly those two before the gate run. Hard-mode
+and gate numbers: see the review doc § 2.2 / § 2.3.
+
 ## Reranking (R329)
 
 **⚠ CORRECTED R331 — the paragraph below previously claimed the reranker was
@@ -685,6 +742,10 @@ Concise record of the applied fixes; full rationale in `docs/reviews/`:
 | `REGENOLD_SCOPE_STOP_RULE` | `0` | R367 scope stop rule on the Stage-2 USER channel: answer the question, then STOP; never append a neighbouring provision/power/mechanism/derogation the question did not raise. Targets BOTH conciseness axes (combined leverage 0.364 pp/pp). **Prompt-side ⇒ NOT reference-neutral** (AGENTS.md invariant #5), so it needs `easyhard_ab`/`gold_dropped_head` AND `ab_judge` before flipping |
 | `REGENOLD_PROMPT_V2` | `1` | R377 port (PR #368): selects the four rebuilt V2 USER-channel clauses (coverage incl. `LEGAL VERSION` Omnibus exclusion, reference minimality, sub-paragraph discipline, and the CHALLENGE clause that instructs `<reasoning_scratchpad>`/`<answer>` channels on pushback turns). Shipped default ON on a gate claim with no record — see § R379 for the Bedrock A/B. Lives in `app/data/`, which the R355 AST gate does NOT scan; registered in `_engine_cache_key` by hand |
 | `REGENOLD_FIDELITY_TIER_NEGATION` | `1` | R377-B port: the cross-tier fidelity CONTRACT is what the deterministic draft ASSERTS, not what it mentions — a sentence-local denial ("not high-risk") no longer counts as an asserted tier. `=0` restores the anchor-only reading |
+| `REGENOLD_PROMPT_V3` | `0` | R380 — ONE compact ANSWER DISCIPLINE block (scope, completeness of what was asked, length, citations, terminology, grounding, Article 5 verdict check) appended LAST on the Stage-2 USER channel; withholds the V1/V2 coverage / critical-rules / minimality / sub-paragraph / terminology clauses, the breadth tail ("state both the prohibited context AND its treatment elsewhere", "rule 12b"), the CROSS-REFERENCED PROVISIONS block and the R367 scope stop rule, and relabels the draft as over-inclusive source material. Prompt-side ⇒ NOT reference-neutral; see § R380 for the measured arms |
+| `REGENOLD_REASK_ANCHORLESS` | `1` | R380 — the R305 re-ask focus accepts a "let's try again:" tail without an AI-Act anchor (length + leading-coreference gates still apply). The evaluator's verbatim pushback fired the focus on 100/110 official questions; the 10 misses went through the de-noiser into the 40-turn concatenation. `0` restores R305 |
+| `REGENOLD_DENOISER_MAX_TOKENS` | `400` | R380 — completion budget of the multi-turn query rewrite (was a hard 100). The Groq slot runs `openai/gpt-oss-120b`, a reasoning model whose hidden reasoning counts against `max_tokens`, so the rewrite truncated on 5/9 multi-turn calls live and every provider in the chain fell through to concatenation |
+| `REGENOLD_DENOISE_SELF_CONTAINED_SKIP` | `1` | R380 — a self-contained live turn (≥6 words, no coreference, its own anchor) is used VERBATIM as the retrieval query instead of being paraphrased by the Stage-0 rewrite: hard-mode turn 1 becomes identical to easy mode for 100/110 official questions and the rewrite leaves the critical path. Live-only (sits after the no-provider exit), so the cli bench is byte-identical |
 | `REGENOLD_QUERY_EXPANSION` | `0` | LLM query rewrite before retrieval (R328 port; latency+cost tradeoff) |
 | `REGENOLD_RISK_CLASS_ANNEX` | `0` | Annex-III risk-classification anchor (R328 port) |
 | `BEDROCK_REGION` | `eu-central-1` | AWS Bedrock cross-region inference profile geography (R328) |
