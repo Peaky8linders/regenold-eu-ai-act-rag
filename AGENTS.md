@@ -87,7 +87,8 @@ app/routes/regenold.py
    ├── _try_extractive_answer             — R93 extractive QA; R381 shape guard
    │     └── _extractive_shape_ok / _enumerated_categories (default ON)
    ├── _surface_anchor_citations          — keyword-derived anchors
-   ├── _collapse_parent_when_subpoint_cited — parent collapse (R325), default OFF
+   ├── _collapse_parent_when_subpoint_cited — parent collapse (R325), default ON (R381)
+   ├── _apply_wire_ref_cap                — terminal reference cap (R381), default OFF
    └── normalise_answer_for_regenold      — sentence & char caps
 ```
 
@@ -101,10 +102,10 @@ returns exactly that one commit and it adds only the two `def` lines, so
 `REGENOLD_PARENT_COLLAPSE` was a **dead flag** for the whole life of the
 branch while this diagram and the CLAUDE.md flag table both described it as
 live. R366 wired it as the LAST reference pass (after the R365 recall wire
-guard, before the R50/R131 trace finalisation). It is now accurate — but it is
-**default OFF**, and it is a strict **no-op offline**, so every
-deterministic instrument reads +0.0000 with it ON. See
-`tests/test_r366_parent_collapse_wired.py`.
+guard, before the R50/R131 trace finalisation). R381 gated it live (0 gold dropped,
++5.0 pp RefConc) and flipped it to **default ON**. Offline it remains a strict
+**no-op**, so deterministic instruments read +0.0000 with it ON. See
+`tests/test_r366_parent_collapse_wired.py` and `tests/test_r325_parent_collapse.py`.
 
 **The general lesson, third time paid for** (R329's three rerank placements
 made zero calls; R330's entire R327 semantic layer never executed): a step

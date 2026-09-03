@@ -1275,6 +1275,17 @@ def _engine_cache_key(
         stage2_fallback_model as _s2_fb_model,
         strict_transport_enabled as _s2_strict,
     )
+    # ``REGENOLD_BEDROCK_WRAPPER_FALLBACK`` is consumed in
+    # ``app.llm.bedrock_client.complete_with_fallback`` after every Bedrock
+    # candidate has failed.  It therefore decides whether that failure ships a
+    # wrapper-polished Stage-2 answer or falls through to the deterministic
+    # answer, both of which are cached here.  Keep the resolved deny-list
+    # semantics in sync with ``wrapper_fallback_enabled`` without importing the
+    # heavyweight boto3 client merely to calculate a cache key.
+    _bedrock_wrapper_fallback = (
+        os.getenv("REGENOLD_BEDROCK_WRAPPER_FALLBACK", "1").strip().lower()
+        not in {"0", "false", "no", "off"}
+    )
     hypa_bits = f"{int(is_adaptive_router_enabled())}{int(is_rrf_retrieval_enabled())}"
     flag_bits = (
         f"{int(_dense_enabled())}{int(_guard_enabled())}{hypa_bits}"
@@ -1290,6 +1301,12 @@ def _engine_cache_key(
         # −0.27 answer-correctness gap, so it is emphatically answer-flipping.
         # Its two R360 siblings were keyed and this one was not.
         f"|hosts={','.join(_s2_hosts())}"
+        # The cross-provider last resort is answer-affecting only when Bedrock
+        # is exhausted, but that is precisely when a stale cached response is
+        # most costly: ON may contain wrapper prose while OFF contains the
+        # deterministic fallback.  Key the resolved boolean, not raw spelling,
+        # so equivalent deny-list values share an entry.
+        f"|bedrock_wrapper_fallback={int(_bedrock_wrapper_fallback)}"
     )
     # R56 — fold the resolved LLM provider into the cache key. Stage-2
     # polish produces provider-specific prose; without this bit, a
@@ -1340,6 +1357,10 @@ def _engine_cache_key(
             # the lettered enumeration and the engine prose, so a same-process
             # A/B differing only here must not share a cache entry.
             "REGENOLD_EXTRACT_SHAPE_GUARD",
+            # R381 — the terminal wire reference cap changes the emitted
+            # `references` list, so a same-process A/B differing only here must
+            # not share a cache entry.
+            "REGENOLD_WIRE_REF_CAP",
             "P2P_GRAPH_RAG_ENABLE_STAGE2",
             "REGENOLD_BEDROCK_MODEL",
             "REGENOLD_BEDROCK_COMPLEX_MODEL",
@@ -3193,6 +3214,94 @@ def _collapse_parent_when_subpoint_cited(references: list[str]) -> list[str]:
         if not (_wire(r) == _head(r) and _head(r) in cited_heads_with_own_leaf)
     ]
     return kept or references
+
+
+def _wire_ref_cap() -> int:
+    """R381 — terminal cap on the emitted reference list. ``0`` = unlimited.
+
+    The official Ref. Conciseness axis is ``min(1, |expected| / |provided|)``
+    — a PURE COUNT ratio, recovered from the report's five worked examples to
+    1.4 pp (§ R381 in CLAUDE.md). Expected sets are minimal (mean 1.4 refs/row)
+    and we ship ~3.2, so the axis is decided by how many references we emit and
+    by nothing else. It carries the highest marginal geometric-mean leverage of
+    the eight axes in easy mode (0.186 pp Overall per pp).
+
+    Default **0 (off)**: unlike parent collapse, this drops references the list
+    carries only ONCE, which is squarely the R142.1 family. Gate it before
+    flipping — see :func:`_rank_refs_for_cap` for why it is not a positional
+    clamp, and the R381 review doc for the measured trade at each value.
+    """
+    try:
+        return max(0, int(os.getenv("REGENOLD_WIRE_REF_CAP", "0").strip() or "0"))
+    except ValueError:
+        return 0
+
+
+def _rank_refs_for_cap(
+    references: list[str], question: str, answer: str
+) -> list[str]:
+    """Promote the provisions the QUESTION itself names; otherwise preserve the
+    emitted (= retrieval-rank) order exactly.
+
+    **This deliberately does almost nothing, and that is the measured result.**
+    The first version of this function ranked on three grounding signals —
+    question-anchored, then named in the answer's opening sentences, then named
+    anywhere in the prose, then the rest. It was WORSE. Zero-variance simulation
+    over a live capture of the gold-bearing probe corpus, ``gold_dropped_head``
+    at cap=3:
+
+        emission order (positional)   21 -> 21   PASS
+        three-tier grounding rank     21 -> 23   FAILS +2
+        anchor-first (this function)  21 -> 21   PASS
+
+    The mechanism, read off the two rows that regressed: on ``mt_v4_003`` the
+    gold ``Article 51`` is emitted FIRST, but the answer says "presumed to be a
+    general-purpose AI model with systemic risk" and never writes the string
+    "Article 51" — and ``_reference_described_in_prose`` is number-anchored, so
+    it scored tier 3 and the cap ate it. **Prose mention is a proxy for "the
+    answer is about this provision" and it fails exactly on paraphrase.**
+    Retrieval rank does not: CLAUDE.md records gold at rank 0 on 63.5 % of rows.
+    On ``tr_v2_006`` the same shape — a non-gold ``Annex XI`` named in the
+    opening two sentences outranked the gold ``Article 51`` named later.
+
+    So the only signal kept is the one that is near-certainly gold and that
+    retrieval order can genuinely miss: **the question naming the provision
+    outright** ("...as per Article 6(2)?"). Everything else keeps its emitted
+    position. For Q95 that is the difference between the cap keeping
+    ``Article 6.2`` (the report's expected reference) and keeping ``Article 99``.
+
+    Never raises, and only PERMUTES — it never adds, drops or rewrites — so with
+    no cap in force it is a wire no-op.
+    """
+    if len(references) < 2:
+        return references
+    try:
+        anchor_nums, anchor_annexes = _live_explicit_anchor_sets(question or "")
+        if not (anchor_nums or anchor_annexes):
+            return references
+
+        def rank(ref: str) -> int:
+            try:
+                return 0 if _ref_matches_anchor_sets(
+                    ref, anchor_nums, anchor_annexes
+                ) else 1
+            except Exception:  # noqa: BLE001
+                return 1
+
+        return sorted(references, key=rank)  # stable: emission order preserved
+    except Exception:  # noqa: BLE001 — never let an ordering heuristic 500
+        return references
+
+
+def _apply_wire_ref_cap(
+    references: list[str], question: str, answer: str
+) -> list[str]:
+    """Rank, then truncate to :func:`_wire_ref_cap`. No-op when the cap is 0 or
+    the list is already within it."""
+    cap = _wire_ref_cap()
+    if cap <= 0 or len(references) <= cap:
+        return references
+    return _rank_refs_for_cap(references, question, answer)[:cap]
 
 
 def _reemit_parents_for_subpoints(refs: list[str]) -> list[str]:
@@ -10500,6 +10609,26 @@ def regenold_eu_ai_act_ask(
                     pass
         except Exception:  # noqa: BLE001 — never 500 the route on a guard
             pass
+
+    # R381 — the terminal reference cap, LAST of all reference passes and
+    # immediately before the trace finalisation, so the trace still equals the
+    # wire. Ordered by grounding signal first and emission position last (see
+    # ``_rank_refs_for_cap``); a strict no-op at the default ``0``.
+    try:
+        _cap_refs = _apply_wire_ref_cap(references, question, answer_text)
+        if _cap_refs != references:
+            _cap_dropped = [r for r in references if r not in _cap_refs]
+            references = _cap_refs
+            try:
+                from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                    record_note as _rn2,
+                )
+
+                _rn2("wire_ref_cap dropped=" + ",".join(_cap_dropped))
+            except Exception:  # noqa: BLE001 — fail-soft on trace
+                pass
+    except Exception:  # noqa: BLE001 — never 500 the route on a guard
+        pass
 
     # R50 / R131 — finalise the reasoning trace AFTER every reference pass
     # so ``?include_reasoning=true`` surfaces the exact wire ``references``

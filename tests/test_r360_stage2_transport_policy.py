@@ -354,6 +354,31 @@ class TestCacheIdentity:
 
         assert on != off
 
+    def test_bedrock_wrapper_last_resort_is_in_the_engine_cache_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The exhausted-Bedrock escape hatch changes cached Stage-2 prose.
+
+        ``wrapper_fallback_enabled`` is intentionally read fresh on each
+        Bedrock completion.  Without this cache dimension, an in-process A/B
+        could replay a wrapper-polished response after switching the last
+        resort off (or replay the deterministic fallback after switching it
+        on).  This test also pins its default-ON deny-list semantics without
+        changing that default.
+        """
+        from app.routes.regenold import _engine_cache_key
+
+        args = ("Is a chatbot high-risk?", None)
+        monkeypatch.setenv("REGENOLD_BEDROCK_WRAPPER_FALLBACK", "0")
+        off = _engine_cache_key(*args)
+        monkeypatch.setenv("REGENOLD_BEDROCK_WRAPPER_FALLBACK", "1")
+        on = _engine_cache_key(*args)
+        monkeypatch.delenv("REGENOLD_BEDROCK_WRAPPER_FALLBACK", raising=False)
+        default = _engine_cache_key(*args)
+
+        assert off != on
+        assert on == default
+
 
 class TestHealthzSurfacesTheContract:
     def test_healthz_llm_reports_chain_and_counters(

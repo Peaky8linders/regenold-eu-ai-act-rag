@@ -101,12 +101,17 @@ def _wrapper_up(timeout: float = 4.0) -> bool:
     # from "the wrapper is down" — so send the service token when the host
     # calls for one. ``_resolve_cf_access_headers`` is host-scoped, so the
     # secret never leaves the Access-protected host.
-    headers: dict[str, str] = {}
+    headers: dict[str, str] = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ),
+    }
     try:
         from app.llm.openai_wrapper_provider import _resolve_cf_access_headers
-        headers = _resolve_cf_access_headers(url)
+        headers.update(_resolve_cf_access_headers(url))
     except Exception:  # noqa: BLE001 — a probe must never break the run
-        headers = {}
+        pass
     try:
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -144,7 +149,14 @@ def _wrapper_can_complete(
     req = urllib.request.Request(
         f"{base}/v1/chat/completions",
         data=body,
-        headers={**headers, "Content-Type": "application/json"},
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ),
+            **headers,
+            "Content-Type": "application/json",
+        },
         method="POST",
     )
     try:
