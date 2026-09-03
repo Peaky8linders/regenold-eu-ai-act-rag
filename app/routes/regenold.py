@@ -3223,54 +3223,55 @@ def _wire_ref_cap() -> int:
 def _rank_refs_for_cap(
     references: list[str], question: str, answer: str
 ) -> list[str]:
-    """Order references by how likely each is to be in the evaluator's MINIMAL
-    expected set, so a cap keeps the right ones.
+    """Promote the provisions the QUESTION itself names; otherwise preserve the
+    emitted (= retrieval-rank) order exactly.
 
-    **This is what makes the cap not-R142.1.** R142.1's clamp was
-    ``references[:budget]`` — pure emission position, which lost a live pairwise
-    judge 11-0 (p=0.001) because emission order is retrieval order and gold is
-    not always first. Here position is the LAST tiebreak, after three grounding
-    signals, and the sort is STABLE so within a tier the existing order is
-    preserved exactly:
+    **This deliberately does almost nothing, and that is the measured result.**
+    The first version of this function ranked on three grounding signals —
+    question-anchored, then named in the answer's opening sentences, then named
+    anywhere in the prose, then the rest. It was WORSE. Zero-variance simulation
+    over a live capture of the gold-bearing probe corpus, ``gold_dropped_head``
+    at cap=3:
 
-      tier 0 — the question NAMES the provision ("...as per Article 6(2)?").
-               Near-certain gold; the R19 explicit-anchor pruner already treats
-               these as authoritative.
-      tier 1 — the provision is named in the answer's OPENING sentences. On a
-               BLUF answer that is the operative provision — the one the verdict
-               rests on.
-      tier 2 — the provision is named anywhere in the answer prose. R274's rule
-               ("never drop a ref the prose describes") becomes an ORDERING here
-               rather than a veto: a described ref always outranks an
-               undescribed one, so the cap eats the undescribed tail first.
-      tier 3 — everything else: emitted but neither asked for nor described.
+        emission order (positional)   21 -> 21   PASS
+        three-tier grounding rank     21 -> 23   FAILS +2
+        anchor-first (this function)  21 -> 21   PASS
 
-    Never raises and never adds, drops or rewrites a reference — it only
-    permutes, so calling it with no cap in force is a no-op on the wire.
+    The mechanism, read off the two rows that regressed: on ``mt_v4_003`` the
+    gold ``Article 51`` is emitted FIRST, but the answer says "presumed to be a
+    general-purpose AI model with systemic risk" and never writes the string
+    "Article 51" — and ``_reference_described_in_prose`` is number-anchored, so
+    it scored tier 3 and the cap ate it. **Prose mention is a proxy for "the
+    answer is about this provision" and it fails exactly on paraphrase.**
+    Retrieval rank does not: CLAUDE.md records gold at rank 0 on 63.5 % of rows.
+    On ``tr_v2_006`` the same shape — a non-gold ``Annex XI`` named in the
+    opening two sentences outranked the gold ``Article 51`` named later.
+
+    So the only signal kept is the one that is near-certainly gold and that
+    retrieval order can genuinely miss: **the question naming the provision
+    outright** ("...as per Article 6(2)?"). Everything else keeps its emitted
+    position. For Q95 that is the difference between the cap keeping
+    ``Article 6.2`` (the report's expected reference) and keeping ``Article 99``.
+
+    Never raises, and only PERMUTES — it never adds, drops or rewrites — so with
+    no cap in force it is a wire no-op.
     """
     if len(references) < 2:
         return references
     try:
         anchor_nums, anchor_annexes = _live_explicit_anchor_sets(question or "")
-        # The BLUF window: the first two sentences carry the verdict and its
-        # governing provision on this system's answer shape.
-        head = " ".join(re.split(r"(?<=[.!?])\s+", (answer or "").strip())[:2])
+        if not (anchor_nums or anchor_annexes):
+            return references
 
-        def tier(ref: str) -> int:
+        def rank(ref: str) -> int:
             try:
-                if (anchor_nums or anchor_annexes) and _ref_matches_anchor_sets(
+                return 0 if _ref_matches_anchor_sets(
                     ref, anchor_nums, anchor_annexes
-                ):
-                    return 0
+                ) else 1
             except Exception:  # noqa: BLE001
-                pass
-            if head and _reference_described_in_prose(ref, head):
                 return 1
-            if answer and _reference_described_in_prose(ref, answer):
-                return 2
-            return 3
 
-        return sorted(references, key=tier)  # stable: position is the tiebreak
+        return sorted(references, key=rank)  # stable: emission order preserved
     except Exception:  # noqa: BLE001 — never let an ordering heuristic 500
         return references
 
