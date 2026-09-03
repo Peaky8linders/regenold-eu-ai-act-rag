@@ -241,6 +241,41 @@ difference **empty. Zero new failures.** The 21 new tests in
 
 ---
 
+## 3.1 The one free lever: `REGENOLD_PARENT_COLLAPSE` clears Hard Rule #8 *by construction*
+
+The sonnet-5 judge's most-cited reference failure is verbatim **"over-citation: redundant parent
+provisions (Article 6 full text, Annex III full text)"**. That is exactly what
+`REGENOLD_PARENT_COLLAPSE` removes — it drops a bare parent only when the citation list already
+carries one of its own sub-points. It was wired at R366 and is still **default OFF**.
+
+Measured on the live 24-row run: it touches **4 of 24 rows** and takes refs/row **3.46 → 3.21**:
+
+```
+rg_013  [Article 53.2, Article 53, Article 51, Article 55, Annex XI] -> [Article 53.2, Article 51, Article 55, Annex XI]
+rg_025  [Article 25.1, Article 25, Article 16]                      -> [Article 25.1, Article 16]
+rg_029  [Article 6.2, Article 6, Annex III.5.d, Annex III]          -> [Article 6.2, Annex III.5.d]
+rg_041  [Article 11.1, Article 11, Annex IV, Annex IV.2]            -> [Article 11.1, Annex IV.2]
+```
+
+**RefConc 50.0 → 54.2, `ΔOverall = +0.68 pp`** — and it costs nothing on the other two reference
+axes, which is provable rather than measured:
+
+* **Ref. Correctness (Loose)** is scored *"at the level of Article and Annex numbers"*. Dropping
+  the bare `Article 6` while keeping `Article 6.2` does not lose the head.
+* **Ref. Correctness (Strict)** *"includes subpoints"*, so the surviving leaf is strictly better
+  than the parent it replaces.
+* **Hard Rule #8** is `gold_dropped_head`, whose own docstring says it *"folds both gold and
+  predicted references onto their article/annex HEAD before comparison"* (`metrics.py:572-574`).
+  Executed on the live rows: collapse touched 4 rows and **changed zero head sets**, so the metric
+  is mathematically unchanged. **`Δgold_dropped_head = +0`, by construction, not by sampling.**
+
+This is the one reference-count reduction that is not a recall/precision trade. **It is still not
+flipped here** — CLAUDE.md pins the flip behind an `easyhard_ab` win and it knowingly overrides
+the R274 curated-intercept protection (pinned in
+`test_r325_parent_collapse.py::TestKnownTradeIsPinned`), and changing a default is a
+confirmation-gated action. **Recommended as the first thing to flip**, with the R274 pin re-read
+first.
+
 ## 4. What is NOT done, and what to do next
 
 * **The 110-question live batch was not run in full.** A 24-row stratified live sample was, and it
