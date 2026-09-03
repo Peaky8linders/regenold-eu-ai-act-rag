@@ -33,12 +33,33 @@ class TestR112SensitiveAttributeAnchorsRefuseWithoutAI:
     """Each aaf6739 bare anchor: the plain GDPR / anti-discrimination
     shape must refuse (no AI marker present)."""
 
+    #: R364 (commit ``1f4dc20``, "answer adjacent-EU-instrument and MedTech
+    #: questions") moved two of the original nine probes out of this table.
+    #: Both of them named GDPR, and ``scope.py`` (§ "R364 — domain-boundary
+    #: directive", the ``_is_eu_instrument_mention`` branch) now says a
+    #: question naming an EU instrument *"is answered on its EU AI Act side
+    #: instead of refused"*. So their refusal is no longer the contract —
+    #: but the R112 property they were written to pin (the bare
+    #: sensitive-attribute anchor must not, on its own, flip an off-topic
+    #: question in-scope) is untouched, and is re-pinned strictly more
+    #: precisely in ``ADJACENT_EU_PROBES`` below: the GDPR-free form of each
+    #: probe must still refuse, AND the in-scope verdict on the GDPR form
+    #: must be attributed to the adjacent instrument rather than to the
+    #: anchor. That distinguishes the deliberate R364 answer from the
+    #: anchor regression this class exists to catch — which the bare
+    #: ``in_scope is False`` it replaces could not do.
+    ADJACENT_EU_PROBES = (
+        # anchor phrase → (GDPR-naming probe, same probe with GDPR removed)
+        ("sexual orientation",
+         "My dating app asks for sexual orientation. Is that allowed under GDPR?",
+         "My dating app asks for sexual orientation. Is that allowed?"),
+        ("biometric data",
+         "Does GDPR treat biometric data as a special category?",
+         "Is biometric data a special category of personal data?"),
+    )
+
     OOS_PROBES = (
         # anchor phrase → off-topic probe carrying it
-        ("sexual orientation",
-         "My dating app asks for sexual orientation. Is that allowed under GDPR?"),
-        ("biometric data",
-         "Does GDPR treat biometric data as a special category?"),
         ("political affiliation",
          "Can my employer ask about my political affiliation?"),
         ("physical appearance",
@@ -62,6 +83,49 @@ class TestR112SensitiveAttributeAnchorsRefuseWithoutAI:
         assert verdict.in_scope is False, (
             f"bare anchor {anchor!r} flipped an off-topic question "
             f"in-scope: {question!r} → {verdict.reason} / {verdict.evidence}"
+        )
+
+    @pytest.mark.parametrize("anchor,eu_probe,bare_probe", ADJACENT_EU_PROBES,
+                             ids=[a for a, _, _ in ADJACENT_EU_PROBES])
+    def test_anchor_is_still_conditional_under_r364(
+        self, anchor: str, eu_probe: str, bare_probe: str
+    ) -> None:
+        """R364 re-pin — the anchor is still conditional; only GDPR flips it.
+
+        These two rows sat in ``OOS_PROBES`` when R112 was written and
+        ``classify_scope`` refused them. R364 (``1f4dc20``) deliberately
+        changed the contract for questions that NAME an EU instrument, and
+        ``app/integrations/regenold/scope.py`` carries the directive as a
+        comment: *"EU instruments (GDPR / DSA / DMA / NIS2 / CRA / PLD /
+        MDR / IVDR / …) are ADJACENT to the EU AI Act, so a question naming
+        one is answered on its EU AI Act side instead of refused"*.
+
+        This is a two-sided, STRONGER replacement for the bare
+        ``in_scope is False`` it supersedes:
+
+        1. strip the instrument name and the probe must STILL refuse — that
+           is the exact R112 finding-#2 property (a bare sensitive-attribute
+           anchor cannot flip an off-topic question in-scope), now isolated
+           from the R364 confound instead of being masked by it;
+        2. the GDPR form must be in-scope *and* attributed to the adjacent
+           instrument. A genuine anchor regression carries no such
+           attribution (it reads "AI Act anchor keyword(s) present."), so it
+           still fails here.
+        """
+        bare = classify_scope(bare_probe)
+        assert bare.in_scope is False, (
+            f"bare anchor {anchor!r} flipped an off-topic question in-scope "
+            f"with no EU instrument named: {bare_probe!r} → "
+            f"{bare.reason} / {bare.evidence}"
+        )
+        eu = classify_scope(eu_probe)
+        assert eu.in_scope is True, (
+            f"R364 adjacent-EU-instrument question refused: {eu_probe!r}"
+        )
+        assert "adjacent EU instrument" in eu.evidence, (
+            f"{eu_probe!r} is in-scope but NOT attributed to the adjacent "
+            f"instrument — this is the anchor leak R112 pins, not R364: "
+            f"{eu.evidence!r}"
         )
 
     def test_r34_p0_oos_regression_set_still_refuses(self) -> None:

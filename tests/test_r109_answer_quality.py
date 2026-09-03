@@ -77,13 +77,39 @@ class TestR109SocialScoringFactualError:
 
 class TestR109RiskFrameworkOverview:
     def test_names_all_four_tiers_plus_gpai(self):
+        """R109 four-tier + GPAI completeness, RE-PINNED at R268 to the
+        correct Chapter V span.
+
+        R109 originally pinned ``articles 51 to 55``. R268 (``76df813``,
+        "R268: curated Stage-2 skips + elision backstop for r267 submission
+        failures") deliberately changed the curated verdict on the strength
+        of a live Sonnet-5 judge failure: *"q006 GPAI Chapter V 'Articles 51
+        to 55' -> '51 to 56' (Art 56 codes of practice) in the risk-framework
+        + systems-or-models curated verdicts."* R264 (``ec6fb3a``) had
+        already written the rule into the Stage-2 prompt
+        (``app/data/graph_rag_prompts.py:129``): *"Chapter V (general-purpose
+        AI models) spans Articles 51 TO 56 - it does NOT end at Article 55.
+        Article 56 (codes of practice) is the final Chapter V article. Never
+        write that the GPAI chapter runs 'Articles 51 to 55'."*
+
+        Chapter V of Regulation (EU) 2024/1689 runs Article 51 (classification
+        as GPAI with systemic risk) through Article 56 (codes of practice), so
+        the old pin asserted a legally WRONG span. The new assertion is
+        strictly stronger than the one it replaces: it pins the correct span
+        AND forbids the superseded one, which the bare ``in`` check could not.
+        """
         answer = _topic("risk_framework_overview")["answer"].lower()
         # all four tiers present
         for token in ("prohibited", "high-risk", "limited-risk", "minimal-risk"):
             assert token in answer, f"risk framework missing tier label {token!r}"
         # parallel GPAI regime
         assert "general-purpose ai" in answer
-        assert "articles 51 to 55" in answer
+        assert "articles 51 to 56" in answer, (
+            "Chapter V spans Articles 51 TO 56 (Art. 56 = codes of practice); "
+            f"got: {answer!r}"
+        )
+        # R264/R268 — the superseded, legally wrong span must never come back.
+        assert "articles 51 to 55" not in answer
         # high-risk dual route surfaced
         assert "annex i" in answer
         assert "annex iii" in answer
@@ -119,8 +145,9 @@ class TestR109HighRiskDefinitionCompleteness:
         assert "6(3)" in summary
         assert "preparatory task" in summary
         assert "profiles natural persons" in summary
-        # Art. 49(2) registration duty.
-        assert "article 49(2)" in summary
+        # R380 (commit a9fb598) removed the unasked Art. 49(2) registration duty from this stub
+        # to enforce reference minimality, asserting documentation of self-assessment instead.
+        assert "document this self-assessment" in summary
 
     def test_article_6_3_describer_states_profiling_killswitch_not_support(self):
         src = inspect.getsource(graph_rag._deterministic_answer).lower()

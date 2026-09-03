@@ -100,14 +100,72 @@ def test_benign_offtopic_answered_by_groq(monkeypatch: pytest.MonkeyPatch) -> No
     assert "Lexy" in fake.calls[0].system
 
 
-def test_other_regulation_answered_by_groq(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_other_regulation_answered_on_ai_act_side_not_by_groq(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R273 + R364 re-pin — a named EU instrument is NOT the general assistant's.
+
+    This test used to be ``test_other_regulation_answered_by_groq`` and asserted
+    that "What does GDPR Article 17 say about the right to erasure?" came back
+    from the ungrounded Groq general assistant. Two deliberate contract changes
+    superseded that, in order:
+
+    * **R273** made wrong-framework scope reasons ineligible for the general
+      assistant — ``_general_answer_reason_ok`` (``app/routes/regenold.py:5980``):
+      *"may the ungrounded general assistant answer this out-of-scope reason?
+      Yes for benign off-topic; NO for wrong-framework reasons (it hallucinates
+      AI Act articles there)"*, with ``OTHER_REGULATION`` in
+      ``_WRONG_FRAMEWORK_SCOPE_REASONS``.
+    * **R364** (``1f4dc20``, PR #352, the domain-boundary directive) then made
+      the question IN-SCOPE rather than refused. ``scope.py:3384-3392`` names
+      this very question: *"a question naming one is answered on its EU AI Act
+      side instead of refused (e.g. 'GDPR Article 17 right to erasure' → the AI
+      Act's data-governance side)"*, while non-EU laws (HIPAA / CCPA / SOX) keep
+      the refusal. Sibling modules already re-pinned to this contract —
+      ``test_r273_scope_routing.py::test_route_gdpr_answered_by_rag``,
+      ``test_near_oos.py``, ``test_r364_domain_boundary_scope.py``,
+      ``test_r93_scope_rescue.py``.
+
+    The re-pin is strictly stronger than the ``"erasure" in answer`` /
+    ``len(fake.calls) == 1`` pair it replaces: it pins the scope verdict, the
+    routing (grounded engine, not ``general_assistant`` and not a refusal) AND
+    the negative that the old assertion inverted — the mocked Groq general
+    assistant is never consulted at all.
+    """
+    import json
+
+    from app.integrations.regenold.scope import ScopeReason, classify_scope
+
+    question = "What does GDPR Article 17 say about the right to erasure?"
+
+    # R364 at the gate: the EU-instrument mention is in-scope, not refused.
+    verdict = classify_scope(question)
+    assert verdict.in_scope is True
+    assert verdict.reason == ScopeReason.IN_SCOPE
+
     monkeypatch.delenv("REGENOLD_GENERAL_ANSWER", raising=False)
     _mock_safety(monkeypatch, "safe")
     monkeypatch.setattr(route, "decide_ambiguous_oos", lambda q: (False, ""))
     fake = _enable_groq(monkeypatch, "GDPR Article 17 is the right to erasure.")
-    b = _ask(_client(), "What does GDPR Article 17 say about the right to erasure?")
-    assert "erasure" in b["answer"].lower()
-    assert len(fake.calls) == 1
+    b = _ask(_client(), question)
+
+    assert b["answer"], "R364: a named EU instrument must be answered, not refused"
+    assert b["answer"] not in (LEXY_OOS_GENERIC, LEXY_ADVERSARIAL, LEXY_GREETING)
+    # R273: the ungrounded general assistant is never reached for this class,
+    # so its canned text cannot appear on the wire.
+    assert fake.calls == []
+    assert "GDPR Article 17 is the right to erasure." not in b["answer"]
+
+    rpath = ""
+    reasoning = b.get("reasoning", "")
+    if isinstance(reasoning, str):
+        try:
+            rpath = json.loads(reasoning).get("retrieval_path", "") or ""
+        except (json.JSONDecodeError, TypeError):
+            rpath = ""
+    assert rpath not in ("general_assistant", "scope_refusal"), (
+        f"GDPR query routed to {rpath!r} — R364 answer-don't-refuse directive failed"
+    )
 
 
 def test_injection_never_reaches_groq(monkeypatch: pytest.MonkeyPatch) -> None:

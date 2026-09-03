@@ -413,10 +413,29 @@ _EXPECTED_BM25_ONLY: dict[str, list[str]] = {
         "Art. 26", "Art. 61", "Annex X", "Art. 10",
     ],
     # R263 Fix 3 — see the matching comment above; the lengthened bare
-    # ``Art. 50`` doc's diluted BM25 score now drops it out of this row's
+    # ``Art. 50`` doc's diluted BM25 score dropped it out of this row's
     # top-5, replaced by ``Art. 96`` (Right to lodge a complaint).
+    #
+    # R380 re-capture (commit ``a9fb598``, KB_VERSION v20 -> v21, item 3 of the
+    # commit message: "Article 50(4): Add artistic/satirical display standard
+    # (subparagraph 3)"). The new sentence reads "…transparency is limited to
+    # disclosure in an appropriate manner that does not hamper display or
+    # enjoyment of the work", which adds a second ``transparency`` term AND a
+    # ``limited`` term to the ``Art. 50`` doc — two of this query's three
+    # content terms. ``Art. 50`` therefore climbs from outside the top-5 to
+    # RANK 2, pushing every survivor down one slot and evicting ``Art. 96``.
+    # Verified causal, not incidental: restoring the pre-``a9fb598`` ``Art. 50``
+    # summary in ``app/data/kb.py::EC_CHECKER_OBLIGATION_MAP`` and clearing
+    # ``kb_search._build_index`` reproduces the OLD list byte-for-byte, with
+    # every other row in both tables unchanged. Same documented class as the
+    # R263 / R367 re-captures above: this pin reacting to a deliberate KB
+    # content edit, not a regression in the entity-extraction refactor it
+    # guards (which stays pinned by ``test_boost_helper_matches_boosted_articles``
+    # and ``test_extract_entities_runs_exactly_once``). Legally the new order is
+    # the better one — Art. 50 IS the transparency-obligations article for the
+    # limited-risk tier this query names.
     "transparency obligations for limited-risk systems": [
-        "Art. 13", "Art. 6", "Art. 1", "Art. 2", "Art. 96",
+        "Art. 13", "Art. 50", "Art. 6", "Art. 1", "Art. 2",
     ],
     "What is the definition of a general-purpose AI model?": [
         "Art. 53", "Art. 3", "Art. 51", "Art. 90", "Art. 92",
@@ -430,10 +449,23 @@ _EXPECTED_DEFAULT_ENV: dict[str, list[str]] = {
         "Art. 23", "Art. 20", "Art. 6", "Art. 95", "Art. 13",
     ],
     # R263 Fix 3 — see the matching comment in ``_EXPECTED_BM25_ONLY``
-    # above; same re-rank, different tail slot (the dense paths fill the
-    # 5th slot with ``Art. 50`` here instead of BM25's ``Art. 3``).
+    # above; same re-rank, and the dense paths used to fill the 5th slot
+    # with ``Art. 50`` here instead of BM25's ``Art. 3``.
+    #
+    # R380 re-capture, SAME single cause as the ``transparency…`` row in
+    # ``_EXPECTED_BM25_ONLY`` (commit ``a9fb598`` lengthened the bare
+    # ``Art. 50`` summary by ~330 chars for the Art. 50(4) third-subparagraph
+    # artistic/satirical standard). None of the added text matches this
+    # emotion-recognition query, so here the edit is pure BM25 length
+    # normalisation: the longer doc's score dilutes and ``Art. 50`` finally
+    # loses the marginal 5th slot to ``Art. 3`` on the fused path too — the
+    # exact mechanism the R263 comment above describes, now applied on the
+    # dense side as well. The two tables therefore agree on this row.
+    # Verified causal by the same revert probe described above: restoring the
+    # pre-``a9fb598`` summary puts ``Art. 50`` back in slot 5 here while the
+    # other two rows of this table stay byte-identical.
     "Are emotion recognition systems prohibited in the workplace?": [
-        "Annex III", "Art. 5", "Art. 50.3", "Art. 13", "Art. 50",
+        "Annex III", "Art. 5", "Art. 50.3", "Art. 13", "Art. 3",
     ],
     # R367 — see the matching comment in ``_EXPECTED_BM25_ONLY``; on the
     # fused path the dense layers keep Annex IX in the top-5 but below the
@@ -461,12 +493,30 @@ class TestEntityExtractionDedupe:
             assert top_articles_by_relevance(q, k=5) == expected, q
 
     def test_ranking_identical_default_env(self, monkeypatch) -> None:
+        """Fused-path (turboquant dense + embeddings index ON) ranking pin.
+
+        R380 strengthening: after the ``a9fb598`` ``Art. 50`` content edit the
+        emotion row of this table converged on the BM25-only value, so a pure
+        table comparison would now also pass with the dense layers completely
+        inert — which is exactly the "reads +0.0000 because the lever never
+        fires" trap R329/R330 paid for three times. The ``records`` row is the
+        one that still separates the two paths (BM25-only stops at four docs
+        above threshold; the dense layers keep ``Annex IX`` in the top-5), so
+        assert that separation explicitly before trusting the table.
+        """
         monkeypatch.delenv("REGENOLD_TURBOQUANT_DENSE", raising=False)
         monkeypatch.delenv("REGENOLD_EMBEDDINGS_INDEX", raising=False)
         from app.data.kb_search import top_articles_by_relevance
 
         for q, expected in _EXPECTED_DEFAULT_ENV.items():
             assert top_articles_by_relevance(q, k=5) == expected, q
+
+        # Prove the fused path really fired: this row must NOT equal the
+        # BM25-only capture for the same question.
+        separator = "What records must deployers retain and for how long?"
+        assert (
+            _EXPECTED_DEFAULT_ENV[separator] != _EXPECTED_BM25_ONLY[separator]
+        ), "dense layers no longer change any pinned row — the fused path is inert"
 
     def test_extract_entities_runs_exactly_once(self, monkeypatch) -> None:
         """The R112 point: ONE regex sweep per ranking call (was two —

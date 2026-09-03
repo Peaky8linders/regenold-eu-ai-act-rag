@@ -13,6 +13,14 @@ bare parent is already cited but the sub-point form is not, inserts the
 sub-point (``Article 6.1``) immediately after the parent. The parent is
 kept (the prose cites it standalone too); a parent the answer never
 cites is never fabricated. Bounded, deduped, fail-soft.
+
+⚠ The "parent is kept" half is a property of the PURE FUNCTION only.
+Two later, measured rounds decide the wire's granularity downstream of
+it - R276-D1 ``_apply_ref_granularity`` (default ``auto``) and R381's
+default-ON ``REGENOLD_PARENT_COLLAPSE`` - so parent and leaf are no
+longer both emitted end-to-end. The unit tests below still pin the pure
+function; the route tests were re-pinned to the composed contract (see
+their docstrings).
 """
 
 from __future__ import annotations
@@ -115,9 +123,9 @@ _STUB_ANSWER = (
 )
 
 
-def test_route_surfaces_article_6_1_when_stage2_lands(monkeypatch) -> None:
-    """End-to-end: a Stage-2-landed answer naming Article 6(1)/(2) makes
-    the wire references carry Article 6.1 alongside the bare Article 6."""
+def _wire_refs(monkeypatch, question: str, **extra_env: str) -> list[str]:
+    """POST ``question`` through the real route with Stage-2 stubbed to
+    ``_STUB_ANSWER`` and return the wire ``references``."""
     from unittest.mock import patch
 
     from fastapi.testclient import TestClient
@@ -138,11 +146,9 @@ def test_route_surfaces_article_6_1_when_stage2_lands(monkeypatch) -> None:
     monkeypatch.setenv("REGENOLD_QUERY_DENOISER", "0")
     monkeypatch.setenv("REGENOLD_FUSION_STAGE2", "0")
     monkeypatch.setenv("REGENOLD_SURFACE_PROSE_SUBPOINTS", "1")
+    for k, v in extra_env.items():
+        monkeypatch.setenv(k, v)
 
-    q = (
-        "Is an AI that transcribes doctor-patient conversations prohibited? "
-        "Or is it high-risk as per the use cases of Annex III of the AI Act?"
-    )
     with (
         patch(
             "app.llm.openai_wrapper_provider.is_openai_wrapper_enabled",
@@ -161,11 +167,95 @@ def test_route_surfaces_article_6_1_when_stage2_lands(monkeypatch) -> None:
         r = client.post(
             "/api/v1/regenold/eu-ai-act/ask",
             headers={"X-Regenold-Api-Key": "regenold-test-key"},
-            json={"messages": [{"role": "user", "content": q}]},
+            json={"messages": [{"role": "user", "content": question}]},
         )
     assert r.status_code == 200
-    body = r.json()
-    refs = body["references"]
-    # The reported defect: prose says "Article 6(1)" — wire must surface it.
+    return r.json()["references"]
+
+
+_Q_NO_SUBPOINT = (
+    "Is an AI that transcribes doctor-patient conversations prohibited? "
+    "Or is it high-risk as per the use cases of Annex III of the AI Act?"
+)
+_Q_NAMES_SUBPOINT = (
+    "Under Article 6(1), is an AI that transcribes doctor-patient "
+    "conversations prohibited? Or is it high-risk as per the use cases of "
+    "Annex III of the AI Act?"
+)
+
+
+def test_route_ships_prose_subpoint_when_question_names_it(monkeypatch) -> None:
+    """R133's defect END-TO-END, under the R276-D1 ``auto`` contract.
+
+    RE-PIN RATIONALE. The original assertion here was ``"Article 6.1" in
+    refs AND "Article 6" in refs`` — parent *and* leaf on the same wire.
+    Two later rounds deliberately made that conjunction unreachable, and
+    both carry their measurement in the code:
+
+    * **R276-D1** (``8b29c4b``, default ``auto``) emits ONE granularity
+      level per parent+leaf cluster. ``_ref_granularity_mode``'s docstring
+      states the evidence ("official precision ~45% names duplication as
+      the defect"; medtech-v124 F1 .646 -> .693) and ``_apply_ref_granularity``
+      records that the arbiter is the QUESTION signal only, because "the
+      prose-named-leaf signal was measured counterproductive". So when the
+      question does not name the sub-point, the leaves R133 minted are
+      dropped and the head ships.
+    * **R381** flipped ``REGENOLD_PARENT_COLLAPSE`` to default ON, which
+      drops the bare head once one of its own leaves survives
+      (``_parent_collapse_enabled``: 6 drops over 4 zero-variance paired
+      rows, no provision leaving the citation set, Ref. Conciseness
+      51.3 -> 56.3).
+
+    So the two levels are now mutually exclusive on the wire, and this test
+    pins the DISTINGUISHING property instead: when the question names
+    ``Article 6(1)``, the sub-point the PROSE names reaches the wire — which
+    is exactly the defect R133 exists to close — and the redundant bare head
+    does not. Strictly stronger than the original, which never checked that
+    the head/leaf choice was principled.
+    """
+    refs = _wire_refs(monkeypatch, _Q_NAMES_SUBPOINT)
+    # R133: both sub-points the Stage-2 prose names reach the wire.
     assert "Article 6.1" in refs, refs
+    assert "Article 6.2" in refs, refs
+    # R276-D1 auto / R381 parent collapse: the redundant bare head does not.
+    assert "Article 6" not in refs, refs
+    # Nothing else the answer cites is lost.
+    for r in ("Article 5", "Annex III", "Annex I", "Article 50"):
+        assert r in refs, refs
+
+
+def test_route_keeps_head_when_question_does_not_name_the_subpoint(
+    monkeypatch,
+) -> None:
+    """The other side of the R276-D1 ``auto`` arbiter (same rationale as
+    above): the prose names ``Article 6(1)``/``6(2)`` but the QUESTION does
+    not, so ``_apply_ref_granularity`` keeps the head and drops the leaves.
+
+    Pinned two-sided deliberately — a granularity pass whose two branches
+    behave alike would be the inert-lever trap R329/R330 paid for twice.
+    """
+    refs = _wire_refs(monkeypatch, _Q_NO_SUBPOINT)
     assert "Article 6" in refs, refs
+    assert not [r for r in refs if r.startswith("Article 6.")], refs
+
+
+def test_route_surfaces_article_6_1_under_pre_r276_granularity(
+    monkeypatch,
+) -> None:
+    """R133's ORIGINAL contract, preserved in its own regime.
+
+    ``REGENOLD_REF_GRANULARITY=both`` is the documented exact rollback to
+    the pre-R276 wire (``_ref_granularity_mode``: "Rollback:
+    ``REGENOLD_REF_GRANULARITY=both`` restores the pre-R276 wire exactly").
+    With the granularity pass disabled, ``_surface_prose_subpoints`` must
+    still mint BOTH prose-named sub-points onto the wire even though the
+    question never names them — the R133 mechanism itself, unchanged.
+
+    The bare ``Article 6`` is still absent here, but for the OTHER reason:
+    R381's default-ON parent collapse. Asserting that keeps this test
+    honest about which pass did what.
+    """
+    refs = _wire_refs(monkeypatch, _Q_NO_SUBPOINT, REGENOLD_REF_GRANULARITY="both")
+    assert "Article 6.1" in refs, refs
+    assert "Article 6.2" in refs, refs
+    assert "Article 6" not in refs, refs
