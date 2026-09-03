@@ -521,3 +521,38 @@ class TestArticle63Routing:
         # Verify references seeded
         articles = [o.get("article") for o in context.obligations]
         assert "Art. 6" in articles
+
+
+class TestRiskFrameworkOverviewStartAnchoring:
+    """R382: risk_framework_overview must match taxonomy inquiries but NOT hijack scenario questions."""
+
+    def test_matches_pure_taxonomy_questions(self) -> None:
+        from app.engines.graph_rag import _detect_classification_topic
+
+        taxonomy_qs = [
+            "What risk categories exist under the EU AI Act?",
+            "What are the risk levels?",
+            "What risk tiers does the regulation establish?",
+            "What's the risk classification framework?",
+        ]
+        for q in taxonomy_qs:
+            topic = _detect_classification_topic(q)
+            assert topic is not None and topic["name"] == "risk_framework_overview", (
+                f"Expected risk_framework_overview on {q!r}, got {topic}"
+            )
+
+    def test_does_not_hijack_scenario_questions(self) -> None:
+        from app.engines.graph_rag import _detect_classification_topic
+
+        scenario_qs = [
+            "A warehouse uses an AI system for inventory forecasting. What risk level applies under the EU AI Act?",
+            "Our hospital uses an AI tool to schedule patient appointments. What risk level does it fall under?",
+            "A bank uses machine learning to detect fraud. What risk category applies?",
+        ]
+        for q in scenario_qs:
+            topic = _detect_classification_topic(q)
+            topic_name = topic["name"] if topic else None
+            assert topic_name != "risk_framework_overview", (
+                f"Scenario question hijacked by risk_framework_overview: {q!r}"
+            )
+
