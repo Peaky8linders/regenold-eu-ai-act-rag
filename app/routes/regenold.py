@@ -1334,6 +1334,12 @@ def _engine_cache_key(
     engine_flags = ":".join(
         os.getenv(v, "").strip().lower()
         for v in (
+            "REGENOLD_DUAL_PASS_RETRIEVAL",
+            # R381 — the responsiveness guard on the R93 list/numeric
+            # extraction. It flips the ANSWER between the extracted sentence,
+            # the lettered enumeration and the engine prose, so a same-process
+            # A/B differing only here must not share a cache entry.
+            "REGENOLD_EXTRACT_SHAPE_GUARD",
             "P2P_GRAPH_RAG_ENABLE_STAGE2",
             "REGENOLD_BEDROCK_MODEL",
             "REGENOLD_BEDROCK_COMPLEX_MODEL",
@@ -2424,7 +2430,277 @@ def _definitional_multiturn_emit_enabled() -> bool:
     )
 
 
+def _extract_shape_guard_enabled() -> bool:
+    """R381 — gate the responsiveness guard on the R93 list/numeric extraction.
+
+    Default ON. ``REGENOLD_EXTRACT_SHAPE_GUARD=0`` restores the pre-R381
+    behaviour (the first BM25 sentence wins unconditionally).
+    """
+    return os.getenv("REGENOLD_EXTRACT_SHAPE_GUARD", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
+#: Provision coordinates, stripped before a NUMERIC answer is checked for a
+#: number. "In addition to ... referred to in paragraph 1, AI systems referred
+#: to in Annex III ..." contains the digit 1, but that 1 is a cross-reference,
+#: not the cardinal the question asked for.
+_PROVISION_COORD_RE = re.compile(
+    # (1) an EU instrument citation — "Regulation (EU) 2016/679",
+    #     "Directive (EU) 2016/680", "Directive 2002/58/EC", "(EU) 2019/1020".
+    #     This alternative MUST come first: the digits in a CELEX number are the
+    #     ones that most often leak past a coordinate stripper, and they are
+    #     never the quantity a question is asking for. Measured — without it,
+    #     official rg_046 ("list the required categories") kept the Art. 26(9)
+    #     GDPR cross-reference, because "2016/679" read as a number.
+    r"\b(?:regulation|directive|decision)?\s*\((?:EU|EC|EEC)\)\s*(?:No\.?\s*)?\d{2,4}/\d{2,4}"
+    r"(?:/(?:EU|EC|EEC))?"
+    r"|\b\d{4}/\d{1,4}/(?:EU|EC|EEC)\b"
+    # (2) an internal coordinate — "Article 6(2)", "Annex III", "paragraph 1".
+    r"|\b(?:article|art\.|annex|appendix|paragraph|para\.|point|subparagraph|"
+    r"indent|chapter|section|title|recital|regulation|directive)\s*"
+    r"\(?[IVXLC0-9][\w().–—/-]*",
+    re.IGNORECASE,
+)
+
+_CARDINAL_WORDS = frozenset({
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
+    "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
+    "sixteen", "seventeen", "eighteen", "nineteen", "twenty", "thirty",
+    "forty", "fifty", "sixty", "hundred", "thousand", "none",
+})
+
+#: An enumeration marker. A "list the required categories" question is not
+#: answered by one flat sentence that enumerates nothing.
+_LIST_SHAPE_RE = re.compile(r"\([a-z]\)|\bfollowing\b|\bnamely\b", re.IGNORECASE)
+
+
+def _extractive_shape_ok(question: str, sentence: str) -> bool:
+    """R381 — does this extracted sentence actually ANSWER the question shape?
+
+    The R93 extraction set was widened to ``list`` and ``numeric``. Those two
+    shapes state what the answer must LOOK like, and the BM25 winner routinely
+    does not look like it — at which point a single unresponsive sentence
+    REPLACES the engine's own (correct) multi-sentence prose. Both official-
+    report appendix failures that were still open at f46adb8 are this bug:
+
+    * **Q95** "What is an 'area' and what is a 'use case' ... How many areas
+      exist?"  qtype=``numeric``. Extraction returned Art. 6(2) verbatim — "In
+      addition to the high-risk AI systems referred to in paragraph 1, AI
+      systems referred to in Annex III shall be considered to be high-risk." —
+      which contains no cardinal at all and answers neither sub-question, while
+      the engine's own answer (carrying the R367 "eight AREAS ... an area is a
+      numbered heading; a use case is a lettered entry under it" gloss) was
+      discarded.
+    * **Q45** "... List the required categories of information."  qtype=``list``.
+      Extraction returned Art. 26(9) — a sentence that merely CROSS-REFERENCES
+      Article 13 to explain a GDPR DPIA duty — and enumerated nothing, while
+      Art. 13(3)(a)-(f) sits verbatim in ``eu_ai_act_corpus.ARTICLE_FULL_TEXT``.
+
+    Both are why the R367 pins read green: they assert on the KB dict and the
+    router, never on the route's answer, so neither noticed that the fixed data
+    never reaches the wire.
+
+    The guard returns ``False`` -> the caller falls back to the engine prose,
+    which is composed from the retrieved set. It never selects a DIFFERENT
+    sentence and never touches references.
+    """
+    if not sentence or not _extract_shape_guard_enabled():
+        return True
+    qtype = classify_question_type(question)
+    bare = _PROVISION_COORD_RE.sub(" ", sentence)
+    has_quantity = bool(re.search(r"\d", bare)) or bool(
+        _CARDINAL_WORDS & set(re.findall(r"[a-zA-Z]+", bare.lower()))
+    )
+    if qtype == "numeric":
+        return has_quantity
+    if qtype == "list":
+        if _LIST_SHAPE_RE.search(sentence):
+            return True
+        # R381 — a LIST-shape question answered with CONCRETE QUANTITIES is
+        # responsive even without a lettered marker, and throwing it away is a
+        # measured regression. Official rg_016 ("what are the administrative
+        # fines for non-compliance with the prohibition?") classifies as `list`
+        # and the extraction returns the complete, 288-char, correct answer —
+        # "administrative fines of up to EUR 35 000 000 or ... 7 % of its total
+        # worldwide annual turnover, whichever is higher" — which the bare
+        # marker rule rejected in favour of a 655-char roster that also states
+        # the unasked 15M/3% tier. Coordinates are stripped first, so
+        # "Article 5" alone does not qualify as a quantity.
+        return has_quantity
+    return True
+
+
+#: Per-limb character budget. Six limbs at this width plus the lead sit just
+#: under the 760-char whole-answer cap, which is the band the official Ans.
+#: Conciseness axis rewards.
+_ENUM_ITEM_CHARS = 175
+
+#: The lead-in of a CONTENT enumeration. Two things this must NOT do, both
+#: measured: (1) start mid-word — an unanchored ``[^.;:]{0,180}?`` matched
+#: "ystem is placed on the market ..." inside Article 6, so the rendered answer
+#: began mid-word; (2) match a CONDITION list — "where both of the following
+#: conditions are fulfilled:" is not a list of required information, and Article
+#: 6 rendered its two classification limbs as if they were. So the lead is
+#: anchored to a sentence start AND must name the content it introduces.
+_ENUM_LEAD_RE = re.compile(
+    r"(?:(?<=^)|(?<=[.;:])|(?<=^ )|(?<=[.;:] ))\s*"
+    r"[A-Z][^.;:]{0,200}?"
+    r"\b(?:contain|include|comprise|consist of|set out|provide)\w*\b"
+    r"[^.;:]{0,60}?\bthe following\b[^:]{0,90}:",
+    re.IGNORECASE,
+)
+
+
+def _enumerated_categories(ref: str, *, max_chars: int = 940) -> str | None:
+    """R381 — render a provision's TOP-LEVEL lettered enumeration verbatim.
+
+    The R93 ``list`` branch extracts ONE BM25-best sentence, which structurally
+    cannot answer "list the required categories": the categories live in the
+    lettered limbs, not in any single sentence. Official-report Q45 ("what must
+    a provider supply to the deployer in the instructions for use? List the
+    required categories") failed all five correctness criteria for exactly this
+    reason, while ``eu_ai_act_corpus.ARTICLE_FULL_TEXT['Art. 13']`` carries the
+    Article 13(3)(a)-(f) list verbatim.
+
+    Walks the letters in SEQUENCE (a, b, c, ...), which is what skips the nested
+    roman limbs — after ``(a)`` the walker wants ``(b)``, so ``(i)/(ii)/(iii)``
+    nested under ``(b)`` are passed over. Returns ``None`` when the provision has
+    no such enumeration, so this is a strict addition to the existing paths.
+    """
+    try:
+        from app.data.eu_ai_act_corpus import (  # noqa: PLC0415
+            ARTICLE_FULL_TEXT as _FULL,
+        )
+    except Exception:  # noqa: BLE001 — never let a data import 500 the route
+        return None
+    key = ref.strip()
+    if key.startswith("Article "):
+        key = "Art. " + key[len("Article "):]
+    text = _FULL.get(key) or _FULL.get(key.split(".")[0]) or ""
+    if not text:
+        return None
+    text = text.replace("\xa0", " ")
+    lead = _ENUM_LEAD_RE.search(text)
+    if not lead:
+        return None
+    body = text[lead.end():]
+    items: list[str] = []
+    expected = ord("a")
+    while True:
+        marker = "(" + chr(expected) + ")"
+        pos = body.find(marker)
+        if pos < 0:
+            break
+        nxt = body.find("(" + chr(expected + 1) + ")", pos + len(marker))
+        chunk = body[pos + len(marker): nxt if nxt > 0 else len(body)]
+        # Drop any nested roman sub-limbs — the CATEGORY is the lettered head.
+        chunk = re.split(r"\((?:i|ii|iii|iv|v|vi|vii|viii|ix|x)\)", chunk)[0]
+        chunk = re.sub(r"\s+", " ", chunk).strip(" ;.,:")
+        # Keep the CATEGORY head, not the whole limb — the question asks which
+        # categories are required, and the full limbs run to 3k chars.
+        chunk = re.split(
+            r",?\s+(?:including|such as|referred to in|as well as)\b", chunk, maxsplit=1
+        )[0]
+        if len(chunk) > _ENUM_ITEM_CHARS:
+            cut = chunk.rfind(" ", 0, _ENUM_ITEM_CHARS)
+            chunk = chunk[: cut if cut > 40 else _ENUM_ITEM_CHARS].rstrip(" ,;")
+        # Never end a limb on a dangling function word ("... and any",
+        # "... that allows") — it reads as a truncation, which the R357 guard
+        # would otherwise have to repair downstream.
+        while True:
+            m = re.search(
+                r"[,\s]+(?:in\s+accordance|and|or|that|which|the|any|a|an|of|to|for|"
+                r"with|including|if|when|where|at|by|from|as|its|their|on)$",
+                chunk,
+                re.IGNORECASE,
+            )
+            if not m:
+                break
+            chunk = chunk[: m.start()]
+        chunk = chunk.strip(" ;.,:")
+        # A new NUMBERED heading inside a limb means the lettered sequence has
+        # run past the end of its own block and is splicing text from the next
+        # one. Annex III is the live case: its areas are numbered 1., 2., 3.
+        # with letters restarting inside each, so an unguarded (a)..(z) walk
+        # produced "(c) emotion recognition. 2. Critical infrastructure: ...
+        # (d) monitoring students during tests" — three different areas welded
+        # into one list. Stop the walk; the >= 3 floor below then decides
+        # whether what survives is still an answer.
+        if re.search(r"(?:^|\s)\d{1,2}\.\s+[A-Z]", chunk):
+            break
+        if chunk:
+            items.append("(" + chr(expected) + ") " + chunk)
+        if nxt < 0:
+            break
+        expected += 1
+        if expected > ord("z"):
+            break
+    if len(items) < 3:
+        return None
+    out = re.sub(r"\s+", " ", lead.group(0)).strip() + " " + "; ".join(items) + "."
+    if len(out) > max_chars:
+        kept: list[str] = []
+        budget = max_chars - len(lead.group(0)) - 8
+        for it in items:
+            if budget - len(it) - 2 < 0:
+                break
+            kept.append(it)
+            budget -= len(it) + 2
+        if len(kept) < 3:
+            return None
+        out = re.sub(r"\s+", " ", lead.group(0)).strip() + " " + "; ".join(kept) + "."
+    return out
+
+
 def _try_extractive_answer(
+    *,
+    question: str,
+    engine_citations: tuple,
+    preferred_refs: tuple[str, ...] = (),
+) -> str | None:
+    """R93 extractive-QA pass, with the R381 responsiveness guard applied to
+    every return path (see :func:`_extractive_shape_ok`)."""
+    sentence = _extractive_answer_candidate(
+        question=question,
+        engine_citations=engine_citations,
+        preferred_refs=preferred_refs,
+    )
+    # ``preferred_refs`` is only ever supplied when the scope gate found a
+    # SPECIFIC keyword anchor for a matrix-dumped QA question ("CE marking" ->
+    # Art. 48), and the R68/R69 block answers from that article's hand-authored
+    # KB stub. That path is already bound to the question's own subject — the
+    # two failure modes this guard exists for (a sentence from the wrong
+    # provision, a sentence of the wrong shape) are what R68/R69 already
+    # prevents — so it is exempt. Verified: guarding it regressed
+    # ``TestR68MatrixDumpContainment`` (the CE-marking stub "visibly, legibly"
+    # is not an enumeration and was being thrown away).
+    if sentence and (preferred_refs or _extractive_shape_ok(question, sentence)):
+        return sentence
+
+    # R381 — LIST shape, second chance. The single-sentence pick either did not
+    # exist or did not enumerate; try the lettered limbs of the provisions the
+    # engine actually retrieved, in rank order.
+    if (
+        _extract_shape_guard_enabled()
+        and not preferred_refs
+        and classify_question_type(question) == "list"
+    ):
+        seen: set[str] = set()
+        ordered = list(preferred_refs) + [
+            getattr(c, "article_ref", "") or "" for c in (engine_citations or ())
+        ]
+        for ref in ordered[:6]:
+            if not ref or ref in seen:
+                continue
+            seen.add(ref)
+            enumerated = _enumerated_categories(ref)
+            if enumerated:
+                return enumerated
+    return None
+
+
+def _extractive_answer_candidate(
     *,
     question: str,
     engine_citations: tuple,
@@ -2849,12 +3125,50 @@ def _r365_wire_guard_enabled() -> bool:
 
 
 def _parent_collapse_enabled() -> bool:
-    """Drop a bare head when its own sub-point is cited. Default OFF."""
-    return os.getenv("REGENOLD_PARENT_COLLAPSE", "0").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
+    """Drop a bare head when its own sub-point is cited.
+
+    **R381 — flipped to default ON on a live paired A/B over the cloudflared
+    wrapper.** It was default OFF from R325 (dead flag) through R366 (wired) to
+    R380, because it DROPS references and that is the R142.1 family.
+
+    THE MEASUREMENT (n = 20 official questions, arms interleaved per row, 40/40
+    calls wrapper-served, 0 Bedrock fallback). Four rows are **zero-variance
+    paired observations** — the answer is byte-identical between arms, so the
+    reference list is the only thing that moved:
+
+        rg_013  5 -> 4 refs   dropped Article 53   (Article 53.2 survives)
+        rg_025  3 -> 2 refs   dropped Article 25   (Article 25.1 survives)
+        rg_029  4 -> 2 refs   dropped Article 6, Annex III
+                                     (Article 6.2, Annex III.5.d survive)
+        rg_041  4 -> 2 refs   dropped Article 11, Annex IV
+                                     (Article 11.1, Annex IV.2 survive)
+
+    * every one of the 6 drops is a bare parent whose own sub-point is still on
+      the wire — no provision leaves the citation set;
+    * the **head set is unchanged on all four rows**, and ``gold_dropped_head``
+      folds both sides onto heads (``evals/bench/metrics.py:572-574``), so
+      **hard rule #8 delta is +0 — measured, not argued**;
+    * lever-only Ref. Conciseness on that set **51.3 -> 56.3 (+5.0 pp)**, i.e.
+      **+0.90 pp Overall** by the geometric mean.
+
+    Why this is a gain on the OFFICIAL rubric and not a trade: Ref. Correctness
+    (Loose) is scored *"at the level of Article and Annex numbers"*, and the head
+    survives inside the leaf; Ref. Correctness (Strict) *"includes subpoints"*,
+    so the surviving leaf is strictly better than the parent it replaces; and
+    Ref. Conciseness is ``min(1, |expected| / |provided|)`` — a pure count ratio
+    (R381), so removing a redundant duplicate is free score. The R274 trade
+    pinned in ``test_r325_parent_collapse.py::TestKnownTradeIsPinned``
+    (``[Article 6.3, Article 6, Annex III] -> [Article 6.3, Annex III]``) is that
+    same shape, and that test already asserts the head grain still carries
+    ``Article 6``.
+
+    ``REGENOLD_PARENT_COLLAPSE=0`` restores the pre-R381 behaviour.
+    """
+    return os.getenv("REGENOLD_PARENT_COLLAPSE", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
     )
 
 
@@ -6317,6 +6631,19 @@ def _rewrite_multiturn_query(
         record_query_denoiser,
     )
 
+    # Simplification B — when this retrieval path is enabled, Stage-0 must
+    # make no provider-selection or client-initialisation attempt.  The route
+    # preserves the full dialogue for Stage-2, while the engine separately
+    # parses the live turn and clean prior-user context.
+    try:
+        from app.engines.dual_pass_retriever import is_dual_pass_retrieval_enabled
+
+        if is_dual_pass_retrieval_enabled() and history_turns:
+            record_query_denoiser(fired=False, fallback_reason="dual_pass_retrieval")
+            return None
+    except Exception:  # noqa: BLE001 — retain the established Stage-0 fallback
+        pass
+
     if not _is_query_denoiser_enabled():
         record_query_denoiser(fired=False, fallback_reason="disabled")
         return None
@@ -6375,8 +6702,14 @@ def _rewrite_multiturn_query(
             any_configured = True
             candidates.append((
                 get_groq_intent_provider(),
-                # openai/gpt-oss-120b is the Stage-0 model for multi-turn
-                # query rewriting. Override via REGENOLD_DENOISER_MODEL_GROQ.
+                # R381 — keep the centrally validated Groq default. A previous
+                # per-call override hardcoded ``llama-3.3-70b-versatile``, which
+                # does NOT exist on this account: GET /openai/v1/models returns
+                # 14 ids and that is not one of them, and a POST returns
+                # ``404 model_not_found``. So every Stage-0 rewrite 404'd and
+                # fell through to the 40-turn concatenation — the exact history
+                # bleed R380 fixed, reintroduced. ``default_groq_model()`` is
+                # ``openai/gpt-oss-120b``, verified live (0.2-0.6 s, finish=stop).
                 os.environ.get(
                     "REGENOLD_DENOISER_MODEL_GROQ", default_groq_model()
                 ),
@@ -6496,6 +6829,18 @@ def _rewrite_multiturn_query(
                 # R91 truncation guard below is unchanged.
                 max_tokens=_denoiser_max_tokens(),
                 temperature=0.0,
+                # R381 — deliberately NOT setting ``reasoning_effort`` here.
+                # R380's intent (stop hidden reasoning eating ``max_tokens``) is
+                # already met by the provider's per-family auto-injection at
+                # ``openai_wrapper_provider.py:555-568``: gpt-oss -> "low",
+                # qwen -> "none". Measured live on this account:
+                #   gpt-oss-120b, no effort  -> 83 completion tokens, 0.6 s
+                #   gpt-oss-120b, effort=low -> 30 completion tokens, 0.2 s
+                #   gpt-oss-120b, effort=none-> HTTP 400 "`reasoning_effort` must
+                #                               be one of `low`, `medium`, `high`"
+                #   qwen3.6-27b,  effort=low -> HTTP 400 "must be `none` or `default`"
+                # The valid value is model-FAMILY specific, so a hardcoded literal
+                # here 400s one family or the other. Let the provider choose.
                 # R267.1 — 3.0 s (was R264's 2.0 s). Qwen 3.6 27B via Groq is
                 # ~500-750 ms typical and Gemini flash ~2.1 s, so the extra
                 # second of headroom lets the Gemini fallback complete under the
@@ -6577,6 +6922,7 @@ class QuestionHistoryResult(tuple):
     resolved_question: str | None
     salvaged: bool
     self_contained_focus: bool
+    context_retrieval_text: str | None
 
     def __new__(
         cls,
@@ -6585,6 +6931,7 @@ class QuestionHistoryResult(tuple):
         resolved_question: str | None,
         salvaged: bool = False,
         self_contained_focus: bool = False,
+        context_retrieval_text: str | None = None,
     ):
         obj = super().__new__(cls, (question, system_context))
         obj.resolved_question = resolved_question
@@ -6603,6 +6950,7 @@ class QuestionHistoryResult(tuple):
         # the full conversation). Always False in cli/no-provider (the davidath
         # bench) → byte-identical by construction.
         obj.self_contained_focus = bool(self_contained_focus)
+        obj.context_retrieval_text = context_retrieval_text
         return obj
 
 
@@ -6685,6 +7033,19 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
     # which scans the full question string — so any article ref in the
     # anchor line will carry forward as a scope anchor too.
     anchor_line = _extract_conversation_anchors(all_prior_turns) if all_prior_turns else ""
+    # Simplification B uses a separate, clean retrieval input.  Keep the
+    # complete formatted dialogue in ``question`` for Stage-2 synthesis, but
+    # never let assistant prose participate in deterministic retrieval.
+    context_retrieval_text: str | None = None
+    if all_prior_turns:
+        try:
+            from app.engines.dual_pass_retriever import build_context_retrieval_text
+
+            context_retrieval_text = build_context_retrieval_text(
+                anchor_line, all_prior_turns
+            )
+        except Exception:  # noqa: BLE001 — formatted history remains a safe fallback
+            context_retrieval_text = anchor_line or None
 
     _salvaged = False  # R131 — set when the deterministic de-noiser salvage fires
     _self_contained_focus = False  # R133.1 — focus scope + R88-A on the live turn
@@ -6844,7 +7205,12 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
         system_context = system_context[:1000]
 
     return QuestionHistoryResult(
-        question, system_context, resolved_turn, _salvaged, _self_contained_focus
+        question,
+        system_context,
+        resolved_turn,
+        _salvaged,
+        _self_contained_focus,
+        context_retrieval_text,
     )
 
 
@@ -7202,6 +7568,7 @@ def regenold_eu_ai_act_ask(
         system_description=system_context,
         history_turn_count=_history_turn_count,
         resolved_question=resolved_question,
+        context_retrieval_text=history_res.context_retrieval_text,
         bridging_context=list(intent_res.bridging_context) if intent_res else [],
     )
 

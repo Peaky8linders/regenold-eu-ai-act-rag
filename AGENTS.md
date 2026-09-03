@@ -23,12 +23,10 @@ pytest tests/test_vector_recall.py -v (run vector recall unit tests)
 # Run full project unit test suite
 pytest tests/ -v (run all unit tests)
 
-# Run deterministic evaluation benchmarks
-python -m evals.bench.runner (run davidath 476 benchmark - regression guard)
-python -m evals.regenold.runner (run 255 scenario evaluation - NOT 276; `_build_full_scenarios` silently swallows a missing `scenarios_omnibus_extended`. Also OFF as a merge gate, see CLAUDE.md)
+# Out-of-scope probes (optional, lightweight)
 python -m evals.regenold.runner_v2 --local --probe-oos --oos-suite all (run 51 out-of-scope probes)
 
-# THE MERGE GATE: Live pairwise A/B judge
+# THE MERGE GATE: Live pairwise A/B judge (the ONLY evaluation instrument)
 python -m evals.harness.ab_judge (run position-swapped live pairwise A/B evaluation)
 python -m evals.harness.easyhard_ab (run ref conciseness & strict recall pairwise evaluation)
 ```
@@ -86,6 +84,8 @@ app/routes/regenold.py
    │     ├── _retrieve_from_kb            — KB + ontology + xrefs + graph semantic layers (R327)
    │     ├── _deterministic_answer        — verdict / role x risk / obligations
    │     └── _two_stage_generate          — Stage-2 LLM polish (live only)
+   ├── _try_extractive_answer             — R93 extractive QA; R381 shape guard
+   │     └── _extractive_shape_ok / _enumerated_categories (default ON)
    ├── _surface_anchor_citations          — keyword-derived anchors
    ├── _collapse_parent_when_subpoint_cited — parent collapse (R325), default OFF
    └── normalise_answer_for_regenold      — sentence & char caps

@@ -135,6 +135,14 @@ class GraphRAGRequest(BaseModel):
     short coreferent). Default 1 keeps single-turn callers unaffected.
     """
     resolved_question: str | None = Field(default=None, max_length=_MAX_QUESTION_CHARS)
+    context_retrieval_text: str | None = Field(default=None, max_length=4_000)
+    """Clean prior-user context used only for deterministic dual-pass retrieval.
+
+    The formatted ``question`` still carries the complete conversation to
+    Stage-2.  This field deliberately excludes assistant turns from retrieval
+    candidate extraction, preventing cited-but-nonoperative assistant prose
+    from changing the retrieved provision set.
+    """
     bridging_context: list[str] = Field(default_factory=list)
 
 

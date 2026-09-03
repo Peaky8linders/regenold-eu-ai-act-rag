@@ -129,8 +129,24 @@ def _norm(row: dict[str, Any]) -> dict[str, Any]:
         "answer": (row.get("pred_answer") or row.get("predicted_answer")
                    or row.get("answer_preview") or "").strip(),
         "pred_refs": list(row.get("pred_refs") or row.get("predicted_refs") or []),
+        # R381 — ``july7_refs`` is DELIBERATELY absent from this chain.
+        #
+        # The R292 banner below documents the intent in words: "``run_official_batch``
+        # writes ``jul07_refs`` — which is OUR OWN prior output, NOT gold. Mapping it
+        # into ``gold_refs`` would make the judge grade 'did we match our past self',
+        # which is circular, so we deliberately do NOT."  The guard named
+        # ``jul07_refs``; the sidecar key is ``july7_refs``. One character, and the
+        # fallback fired on every row.
+        #
+        # MEASURED on ``evals/bench/results/july7-july7-live-r379.ckpt.jsonl``: 24/24
+        # rows had ``gold_refs`` populated and 24/24 were byte-identical to our own
+        # 2026-07-07 output, the prompt shipped them as "GOLD CITATIONS", and the run
+        # wrote ``gold_coverage: 1.0`` / ``recall_is_text_grounded: True`` — so the
+        # <50% warning never fired and the scorecard asserted it was trustworthy while
+        # measuring self-similarity. Every July-7 judged scorecard before this commit
+        # rewards reverting toward the July arm. Both spellings stay out.
         "gold_refs": list(
-            row.get("gold_refs") or row.get("expected_refs") or row.get("july7_refs") or []
+            row.get("gold_refs") or row.get("expected_refs") or []
         ),
     }
 
@@ -450,6 +466,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--timeout", type=float, default=90.0)
     p.add_argument("--concurrency", type=int, default=2)
     p.add_argument("--limit", type=int, default=None)
+    p.add_argument(
+        "--allow-judge-errors",
+        action="store_true",
+        help="R381 — accept a run in which SOME rows errored. Without this a "
+             "partial judge failure exits 3, because pass_rate counts an "
+             "errored row as a failed row.",
+    )
     a = p.parse_args(argv)
     s = run(sidecar=a.sidecar, label=a.label, model=a.model, provider=a.provider,
             timeout_s=a.timeout, concurrency=a.concurrency, limit=a.limit)
@@ -479,6 +502,32 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr, flush=True,
         )
         return 2
+
+    # R381 — the R361 guard above only catches TOTAL failure (error == n). A
+    # PARTIAL failure still exits 0 and silently deflates the headline number,
+    # because ``pass_rate`` (:322) divides passes by ALL rows and an errored row
+    # is counted as a non-pass. Measured with 50% of calls forced to the same
+    # 403: pass_rate fell to 0.25 on two axes and 0.0 on the third, ``dead`` was
+    # empty, and main() returned 0 — a throttled window or a half-revoked key
+    # reads as a quality collapse. 403 is not retryable
+    # (``is_retryable_judge_error`` -> False), so the retry loop cannot save it.
+    # ``pass_rate_over_non_error`` (:323) is the honest number and is written to
+    # the sidecar; the gate is on the ERROR FRACTION, not on it.
+    partial = sorted(
+        f"{ax} {v.get('error')}/{v.get('n')}"
+        for ax, v in agg.items()
+        if isinstance(v, dict) and v.get("n") and v.get("error")
+    )
+    if partial and not a.allow_judge_errors:
+        print(
+            f"[grounded] !! PARTIAL JUDGE FAILURE on: {', '.join(partial)}. The "
+            f"printed pass_rate DIVIDES BY ALL ROWS, so each errored row reads as "
+            f"a failed row — the scorecard understates quality by exactly the "
+            f"error rate. Read pass_rate_over_non_error, fix the transport, or "
+            f"pass --allow-judge-errors to accept a partial run deliberately.",
+            file=sys.stderr, flush=True,
+        )
+        return 3
     return 0
 
 
