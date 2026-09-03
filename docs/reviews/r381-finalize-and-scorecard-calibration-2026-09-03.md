@@ -422,60 +422,78 @@ reference delta. Instead the live wire was captured **once** over the gold-beari
 (every row wrapper-served), and every cap value and ranking strategy was then replayed against
 gold at zero variance and zero extra quota.
 
-### Why it is not R142.1
+### The gate — full corpus, and it FAILS at every useful value
 
-R142.1's clamp was `references[:budget]` — pure emission position — and it lost a live pairwise
-judge 11-0 (p=0.001), because emission order is retrieval order and gold is not always first.
-Here position is the **last** tiebreak behind three grounding signals, stable-sorted:
+`gold_dropped_head` over the complete gold-bearing probe capture (**n=129**; 126 wrapper-served,
+2 deterministic intercepts, **1 Bedrock row** — 0.8 %, noted rather than swept under):
 
-| tier | signal | rationale |
+| cap | refs/row | RefConc | Ref recall | gold dropped | verdict | ΔOverall |
+| ---: | ---: | ---: | ---: | ---: | :--- | ---: |
+| off | 2.92 | 64.2 | 82.2 | 37 | — | — |
+| 5 | 2.89 | 64.4 | 82.2 | 37 | pass | **+0.03** |
+| 4 | 2.72 | 66.0 | 82.2 | 37 | pass | **+0.33** |
+| 3 | 2.41 | 70.8 | 80.3 | **41** | **FAILS +4** | (+1.14 on the official corpus) |
+| 2 | 1.81 | 84.1 | 68.8 | **65** | FAILS +28 | |
+| 1 | 1.00 | 100.0 | 45.7 | **113** | FAILS +76 | |
+
+**Every cap value worth having fails Hard Rule #8, and every value that passes is worth nothing.**
+cap=4 is the tightest passing setting and buys +0.33 pp; cap=3 — the one worth +1.14 pp on the
+official corpus — drops 4 more gold heads.
+
+⚠ **And the verdict REVERSED as the capture grew, in the unsafe direction:**
+
+| n | cap=3 gold dropped | reading |
 | ---: | :--- | :--- |
-| 0 | the question NAMES the provision | near-certain gold; the R19 anchor pruner already treats these as authoritative |
-| 1 | named in the answer's OPENING sentences | on a BLUF answer that is the provision the verdict rests on |
-| 2 | named anywhere in the prose | R274's "never drop a described ref" becomes an ORDERING, so the cap eats the undescribed tail first |
-| 3 | neither asked for nor described | |
+| 17 | 2 → 2 | pass |
+| 30 | 8 → 8 | pass |
+| 34 | 8 → 8 | pass |
+| 72 | 18 → 20 | **fails +2** |
+| 77 | 21 → 23 | fails +2 |
+| **129** | **37 → 41** | **fails +4** |
 
-`_rank_refs_for_cap` only **permutes** — it never adds, drops or rewrites — so with no cap in force
-it is a wire no-op. The simulation carries the refuted positional clamp as a baseline arm precisely
-so the ranking has to earn its place: **at the tightest cap the ranked arm loses 16 gold heads where
-positional loses 20, with reference recall 64.4 vs 55.6 and head precision 85.3 vs 73.5** (n=34).
-At looser caps the two coincide, which is the honest reading — the ranking buys safety exactly
-where the cap is tight enough to need it.
+Monotonically worse with more data. This is the trap already recorded in
+`project_r367_length_resolves_refs_dont` — *"answer LENGTH resolves at n=48; the ref axes and the
+gold gate do NOT"* — and I walked straight into it, reporting cap=3 as passing at n=34. The
+zero-variance simulation removes GENERATION variance; it does not remove SAMPLING variance, and
+those are different things. A deterministic transform measured on too few rows is still an
+underpowered measurement.
+
+### The ranker was worse than doing nothing
+
+The first version ranked on three grounding tiers (question-anchored → named in the answer's
+opening sentences → named anywhere in the prose → rest), on the reasoning that grounding is what
+separates this from R142.1's positional clamp. **Ablated against the do-nothing arm, it was
+strictly worse** at the only value that then looked viable:
+
+| ordering, cap=3 (n=77) | gold dropped |
+| :--- | ---: |
+| emission order (= retrieval rank) | 21 → 21 |
+| three-tier grounding rank | 21 → **23** |
+| anchor-only (shipped) | 21 → 21 |
+
+Reading the two regressing rows gave the mechanism: on `mt_v4_003` the gold `Article 51` is emitted
+**first**, but the answer says *"presumed to be a general-purpose AI model with systemic risk"* and
+never writes the string "Article 51" — and `_reference_described_in_prose` is number-anchored, so
+it scored bottom tier and the cap ate it. **Prose mention proxies "the answer is about this
+provision" and fails exactly on paraphrase**, which is what a good legal answer does. Retrieval
+rank has no such failure mode (gold at rank 0 on 63.5 % of rows). The shipped ranker therefore
+keeps only the one signal that is near-certainly gold *and* that retrieval order can genuinely
+miss: the question naming the provision outright.
 
 Prove-it-fires (offline, five official rows): the call site is reached 5/5, wire lists truncate
-11/10/7/10/9 → 3, and the order visibly changes (`rg_088` promotes `Annex I` to first, `rg_003`
-promotes `Article 10` over `Article 7`). For Q95, whose report-stated expected set is
-`Article 6.2; Annex III`, cap=2 lands exactly there.
+11/10/7/10/9 → 3.
 
-### The gate
+### Decision: **default OFF, and not recommended at any value**
 
-`gold_dropped_head` on the gold-bearing probe capture, zero variance:
+`REGENOLD_WIRE_REF_CAP=0`. This is a negative result and it is the honest one. The flag stays in
+the tree — gated, cache-keyed, tested, and documented — so the measurement does not have to be
+rebuilt if the evaluator's expected-reference sets ever become available (against *real* gold
+rather than our non-minimal probe gold, the trade could look different). A malformed value fails
+OPEN (unlimited), never closed.
 
-| cap | refs/row | RefConc | Ref recall | gold dropped | verdict |
-| ---: | ---: | ---: | ---: | ---: | :--- |
-| off | 2.65 | 64.9 | 82.2 | 8 | — |
-| 5 | 2.59 | 65.0 | 82.2 | 8 | **pass** |
-| 4 | 2.44 | 65.9 | 82.2 | 8 | **pass** |
-| **3** | **2.24** | **68.1** | **82.2** | **8** | **pass** |
-| 2 | 1.74 | 79.4 | 77.8 | 10 | **FAILS +2** |
-| 1 | 1.00 | 100.0 | 64.4 | 16 | FAILS +8 |
-
-The verdict is stable as the capture grew (n=17 → 30 → 34): **cap ≤ 3 never drops a gold head;
-cap=2 always does.** A "protected" variant that refuses to cap away a tier-0/tier-1 reference was
-also simulated — it helps at cap=1 (11 vs 16) but does not rescue cap=2.
-
-On the **official** corpus, where rows carry more references than the probe set, cap=3 is worth
-more than the probe measurement suggests: refs/row **3.17 → 2.42**, RefConc **54.7 → 61.1**,
-projected **+1.14 pp Overall** (8 of 24 rows cut).
-
-### Decision
-
-**Ships default OFF (`REGENOLD_WIRE_REF_CAP=0`).** cap=3 clears Hard Rule #8 on every gold-bearing
-row measured and is worth ~+1.1 pp — but the gate evidence is on the probe corpus, where cap=3
-bites ~25 % of rows, and the +1.1 pp is claimed on the official corpus, where it bites 33 %. That
-extrapolation is an assumption, not a measurement, and this is a lever that removes information
-rather than duplication. `REGENOLD_WIRE_REF_CAP=3` is the recommended value if the operator wants
-it; a malformed value fails OPEN (unlimited), never closed.
+**What this closes:** the reference-count opportunity is not "cap the list". Parent collapse
+already took the part that was free — the duplicates. The remainder is not excess, it is recall,
+and our own gold says so.
 
 ## 4. What is NOT done, and what to do next
 
@@ -487,10 +505,11 @@ it; a malformed value fails OPEN (unlimited), never closed.
   `--provider wrapper --model claude-sonnet-5` is the first thing to do on top of this branch, and
   it will now honestly report **zero gold coverage** — recall becomes judge recall, precision
   stays text-grounded. Read the two asymmetrically.
-* **The broader reference-count lever is sized but not pulled** (§ 1.2). Parent collapse (§ 3.1)
-  took the free part of it — the redundant duplicates. Going further (a terminal cap of 3, or 2)
-  means dropping references the list carries only once, which IS the R142.1 family and needs its
-  own powered gate. Sizes: cap 3 = +1.36 pp, cap 2 = +3.66 pp.
+* **The broader reference-count lever was built, gated and REJECTED** (§ 3.3). Parent collapse
+  (§ 3.1) took the free part — the duplicates. The rest is recall, not excess: at n=129 every cap
+  value worth having fails Hard Rule #8 (cap=3 drops 4 more gold heads) and every passing value is
+  worth ≤ +0.33 pp. Do not re-propose a flat cap; the flag remains in the tree at `0` so the
+  measurement can be re-run against the evaluator's real expected sets if they ever land.
 * **The live A/B noise floor is now measured and should be reused**: at n≈13, **8 of 13 control
   rows changed their answer with the lever inert**, and 3 of 13 changed references. Any live A/B
   of a Stage-2-affecting lever at that scale is measuring drift. The way through is not more rows
