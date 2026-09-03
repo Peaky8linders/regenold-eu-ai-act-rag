@@ -1432,7 +1432,7 @@ _CLASSIFICATION_TOPICS: list[dict] = [
     {
         "name": "risk_framework_overview",
         "patterns": [
-            re.compile(r"(?:what(?:'s|\s+is|\s+are)(?:\s+the)?|what)\s+risk\s+(?:categor|tier|level|class)", re.IGNORECASE)
+            re.compile(r"^\s*(?:what(?:'s|\s+is|\s+are)(?:\s+the)?|what)\s+risk\s+(?:categor|tier|level|class)", re.IGNORECASE)
         ],
         "answer": (
             "The EU AI Act applies a risk-based framework with four tiers plus a "
