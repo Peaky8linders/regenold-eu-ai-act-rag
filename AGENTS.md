@@ -125,7 +125,7 @@ grep for the call site.
 ## Closed Directions (Do Not Re-propose)
 
 Empirically measured failures in `docs/ROUNDS.md` — do not re-implement:
-- **Global top-K clamps or positional reference trimming**: Drops gold references and loses pairwise A/B evals.
+- **Global top-K clamps or positional reference trimming**: Drops gold references and loses pairwise A/B evals. **Re-confirmed R381 with a properly powered gate** — a terminal wire cap was built with a grounded ranker (so it would not be a naive positional clamp), then rejected: zero-variance simulation over a full live capture of the gold-bearing probe corpus (n=129) gives cap 3 → `gold_dropped_head` 37→41 FAIL, cap 2 → 65 FAIL, cap 1 → 113 FAIL, while the values that pass (4, 5) are worth ≤ +0.33 pp Overall. ⚠ The verdict REVERSED with n (cap=3 read "pass" at n=17/30/34); a zero-variance simulation removes GENERATION variance, not SAMPLING variance. And the grounded ranker itself measured WORSE than plain emission order — `_reference_described_in_prose` is number-anchored, so a gold provision the answer PARAPHRASES scores bottom tier and gets cut. `REGENOLD_WIRE_REF_CAP` stays at `0`. **Parent collapse is the part of this that IS free** (it removes a duplicate, not a provision) and ships default ON.
 - **Neural NLI citation verification**: 235x slower and lower accuracy (ROC-AUC 0.585) than lexical scoring.
 - **Graph-primary retrieval**: Buries operative articles under generic risk-tier dumps.
 - **Fast mode / thinking token budget tweaks for latency**: Latency is dominated by wrapper CLI floor, not model token flags.
