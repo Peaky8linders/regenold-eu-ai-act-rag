@@ -133,6 +133,41 @@ def test_dual_pass_parse_fuses_operative_and_contextual() -> None:
     assert query.risk_context == "unacceptable"
 
 
+@pytest.mark.parametrize(
+    ("live_question", "prior_user_context", "expected_anchors"),
+    [
+        (
+            "Before we put it on the market, what procedure must we pass and how is conformity demonstrated?",
+            "User: We provide a high-risk AI system for sorting CVs in hiring.",
+            {"Art. 43"},
+        ),
+        (
+            "We are extending it to score students' final exams and decide who passes the course. Does the classification change?",
+            "User: We offer an AI tutoring chatbot that helps students study.",
+            {"Annex III", "Art. 6"},
+        ),
+        (
+            "We are adding a feature that reads employees' facial expressions to score engagement.",
+            "User: We run an internal AI tool for our staff.",
+            {"Art. 5"},
+        ),
+    ],
+)
+def test_dual_pass_recovers_narrow_semantic_followup_anchors(
+    live_question: str,
+    prior_user_context: str,
+    expected_anchors: set[str],
+) -> None:
+    query = dual_pass_parse(
+        resolved_question=live_question,
+        context_question="ignored when clean context is supplied",
+        context_retrieval_text=prior_user_context,
+        deterministic_parse_fn=_deterministic_parse,
+    )
+
+    assert expected_anchors <= set(query.entities)
+
+
 def test_dual_pass_in_ask_compliance_question(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REGENOLD_DUAL_PASS_RETRIEVAL", "1")
     req = GraphRAGRequest(

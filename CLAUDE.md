@@ -54,11 +54,109 @@ They are retired. The ONLY evaluation instrument is the live pairwise A/B judge.
 * `evals.harness.ab_judge` — position-swapped live pairwise A/B evaluation.
 * `evals.harness.easyhard_ab` — reference conciseness & strict recall pairwise evaluation.
 
-Both are scored by the grounded judge (`evals/judge/grounded.py`) against verbatim Act text.
-That is the only instrument that measures what the competition measures. Use `claude-sonnet-4-6`
-(or `claude-sonnet-5`) for the LLM judge via the cloudflared tunnel, with Bedrock fallback.
+⚠ **CORRECTED R381 — the three sentences that stood here were wrong on all three counts.**
+They read: *"Both are scored by the grounded judge (`evals/judge/grounded.py`) against verbatim
+Act text. That is the only instrument that measures what the competition measures. Use
+`claude-sonnet-4-6` (or `claude-sonnet-5`) for the LLM judge via the cloudflared tunnel, with
+Bedrock fallback."* Executed:
+
+* **Neither harness calls the grounded judge.** `easyhard_ab` scores with `evals.bench.metrics`
+  only (lexical, deterministic); `ab_judge` runs a pairwise judge grounded on **KB summaries**,
+  not verbatim Act text. `evals/judge/grounded.py` is a SEPARATE, post-hoc pass you point at a
+  sidecar. Run it explicitly or it does not run.
+* **There is no Bedrock fallback.** `--provider` is an explicit choice
+  (`wrapper|anthropic|groq|gemini|bedrock`); nothing chains. A wrapper outage yields
+  `judge_error` rows, not a Bedrock retry.
+* **`claude-sonnet-5` is reachable — but only over the wrapper/tunnel.** Verified 2026-09-03:
+  a real single-row grounded-judge call with `--model claude-sonnet-5 --provider wrapper`
+  scored 0 errors, and a bogus id (`claude-bogus-9-9`) 500s, so the id is genuinely resolved
+  rather than silently defaulted. On **Bedrock** it resolves to `eu.anthropic.claude-sonnet-5`
+  and returns `api_access_denied_403` (so do `claude-opus-5` and `claude-opus-4-8` — which
+  means **the R379/R380 Bedrock A/B legs cannot be reproduced on today's key**). The in-code
+  `_DEFAULT_MODEL` is `claude-sonnet-4-6` for exactly that reason.
+  **Judge over the wrapper with `--model claude-sonnet-5 --provider wrapper`.**
+
+⚠ **And it does not measure what the competition measures.** The judge prompt interpolates
+question + verbatim provision text + our answer + our citations — and **nothing else**. The
+official benchmark grades Ans Correctness against *per-question criteria* and BOTH conciseness
+axes against a *reference answer*; the July-7 batch carries neither (`_official_batch_20260707.json`
+has 8 fields, none of them criteria or a reference answer, because regenold never published
+them). Treat every local judged number as a PROXY. See § R381.
+
+## ⛔ R381 — the "conciseness collapse" is a METRIC REDEFINITION. The R367 section below is half wrong.
+
+**Executed 2026-09-03.** Diff the two reports axis-by-axis **for the two BASELINES**, whose
+systems did not change between them (`docs/Antifragile-Regenold-benchmark-report-preview.pdf`
+2026-07-14 vs `report_antifragile_ai.pdf` 2026-08-25):
+
+| split / baseline | AnsL | AnsS | **AnsConc** | RefL | RefS | **RefConc** | Tone | Speed |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| easy, 2026 frontier | +0.0 | +0.0 | **−21.2** | +0.0 | +0.0 | **−28.8** | +0.0 | +2.1 |
+| easy, 2025 baseline | +0.0 | +0.0 | **−39.2** | +0.0 | +0.0 | **−38.2** | +0.0 | −0.2 |
+| hard, 2026 frontier | +0.0 | +0.0 | **−20.4** | +0.0 | +0.0 | **−20.6** | +0.0 | +1.5 |
+| hard, 2025 baseline | +0.0 | +0.0 | **−31.5** | +0.0 | +0.0 | **−28.2** | +0.0 | −1.4 |
+
+**Every correctness and tone axis is identical to 0.0 pp; only the two conciseness axes moved,
+by −20 to −39 pp, on systems that did not change.** Two unchanged systems cannot change their
+scores unless the metric changed. All **twelve** printed Overalls reproduce as the plain
+geometric mean to ≤0.06 pp, so the aggregation is untouched — only the two axis definitions are.
+The July preview says so itself: *"More details will be provided in the final report."*
+
+**Consequences, and they invert the roadmap the R367 section states:**
+
+1. **Our conciseness did not collapse 44 points.** Using the baselines as the metric-only
+   control, of our −44.1 AnsConc roughly **−35 pp is the metric** and only **~−9 pp** is a real
+   verbosity regression; on RefConc we slightly *improved*. The six candidate answers printed
+   verbatim in the Aug-25 appendix average **923 chars** — the July run averaged **914.9**
+   (measured from `official_batch.jul07_answer`, n=110). Length barely moved.
+2. **⛔ The R367 counterfactual is void.** "Hold Aug-25 correctness + restore July conciseness →
+   85.8 easy / 84.2 hard" mixes new-metric correctness with old-metric conciseness. Never quote
+   the `96.0`, the `−44.1`, or the 85.8/84.2 row again. **Only ever compare within one report.**
+3. **The real trajectory is GOOD.** Gap to the 2026 frontier baseline: easy **−10.7 → −5.8**
+   (closed 4.9 pp), hard **−14.4 → −8.3** (closed 6.1 pp). Against the 2025 baseline easy went
+   from **losing −3.4 to winning +5.0**. The last round was a large real gain, not a loss.
+4. **The true remaining gaps (Aug-25, easy, vs frontier):** AnsConc **−16.0**, RefStrict
+   **−10.2**, AnsStrict −7.9, RefLoose −6.7, AnsLoose −4.7, RefConc **−1.5** (near parity),
+   Tone −0.9 — and **Speed +5.8, we BEAT frontier.** Under the new harsh metric nobody scores
+   high (frontier 67.9 / 51.9).
+
+### The scoring function is now known exactly — use it before spending a live batch
+
+`Overall = geometric mean of the 8 axes` (≤0.06 pp on all twelve rows). Marginal GM leverage at
+our Aug-25 point, pp Overall per pp axis — easy: `ref_conc 0.186 > ans_conc 0.181 >
+ref_strict 0.137 > ans_strict 0.116 > speed 0.107 ≈ ref_loose 0.105 ≈ ans_loose 0.105 >
+tone 0.095`; hard: `ans_conc 0.203 > ref_conc 0.184 > …`.
+
+**Ref. Conciseness = `min(1, |expected| / |provided|)` — a PURE COUNT ratio.** Recovered from
+the five appendix cases that print both sets, against the printed 50.4:
+
+| candidate formula | mean over the 5 cases | err |
+| :--- | ---: | ---: |
+| exact-string precision | 39.0 | 11.4 pp |
+| hierarchical precision | 63.0 | 12.6 pp |
+| head-collapsed precision | 65.0 | 14.6 pp |
+| **pure count excess `min(1, E/P)`** | **49.0** | **1.4 pp** |
+
+Per case: Q45 1/2, Q17 1/5, Q95 2/4, Q104 min(1,2/1), Q74 1/4. **WHICH provisions you cite does
+not affect this axis at all — only HOW MANY.** The expected sets are MINIMAL: **1.4 refs/row**.
+We ship **3.27/row** offline on the official 110 (measured R381; ~3.1 live per R380). Arithmetic:
+2.5 refs → RefConc ~56 (+1.0 pp Overall); **2.0 → ~70 (+3.6 pp)**; 1.5 → ~93 (+7.9 pp). Even a
+−10 pp hit to BOTH ref-correctness axes only costs −2.4 pp. R282's live measurement of the R281
+`adaptive_ref_clamp` independently confirms the direction (RefS +0.060, RefConc +0.144,
+recall −0.034, **est. Overall +2.34 pp**). Ready-made knobs, no code change:
+`REGENOLD_REF_CLAMP_SCENARIO_BUDGET` (default `5`) and the R77 QA budget.
+
+⚠ **This is in direct tension with Hard Rule #8.** `gold_dropped_head` is computed against our
+own hand-built probe gold, which is NOT minimal, so the internal gate actively fights the
+official RefConc axis (leverage 0.186, the highest of the eight in easy mode). Do not veto a
+trimming lever by reflex — run the arithmetic and put the table in front of the operator.
+Instrument: `scratchpad/official_calibration.py` + `refconc_formula.py` (session 09e208c3).
 
 ## ⛔ R367 — the OFFICIAL 2026-08-25 report: we fixed correctness and lost the round on CONCISENESS
+
+⚠ **READ THE R381 SECTION ABOVE FIRST.** The correctness half of this section is sound and is
+our own measured movement. The CONCISENESS half — the −44.1 / −28.9 deltas, "the geometric mean
+ate the gain", and the whole counterfactual table — compares two different metrics and is void.
 
 `report_antifragile_ai.pdf` (2026-08-25, 110 questions, easy + hard). **Overall is a plain
 geometric mean of the 8 axes** — reproduced here to <0.1 pp on all six reported rows, so the
@@ -739,7 +837,10 @@ Concise record of the applied fixes; full rationale in `docs/reviews/`:
 | `REGENOLD_FIDELITY_TIER_NEGATION` | `1` | R377-B port: the cross-tier fidelity CONTRACT is what the deterministic draft ASSERTS, not what it mentions — a sentence-local denial ("not high-risk") no longer counts as an asserted tier. `=0` restores the anchor-only reading |
 | `REGENOLD_PROMPT_V3` | `0` | R380 — ONE compact ANSWER DISCIPLINE block (scope, completeness of what was asked, length, citations, terminology, grounding, Article 5 verdict check) appended LAST on the Stage-2 USER channel; withholds the V1/V2 coverage / critical-rules / minimality / sub-paragraph / terminology clauses, the breadth tail ("state both the prohibited context AND its treatment elsewhere", "rule 12b"), the CROSS-REFERENCED PROVISIONS block and the R367 scope stop rule, and relabels the draft as over-inclusive source material. Prompt-side ⇒ NOT reference-neutral; see § R380 for the measured arms |
 | `REGENOLD_REASK_ANCHORLESS` | `1` | R380 — the R305 re-ask focus accepts a "let's try again:" tail without an AI-Act anchor (length + leading-coreference gates still apply). The evaluator's verbatim pushback fired the focus on 100/110 official questions; the 10 misses went through the de-noiser into the 40-turn concatenation. `0` restores R305 |
-| `REGENOLD_DENOISER_MAX_TOKENS` | `400` | R380 — completion budget of the multi-turn query rewrite (was a hard 100). The Groq slot runs `openai/gpt-oss-120b`, a reasoning model whose hidden reasoning counts against `max_tokens`, so the rewrite truncated on 5/9 multi-turn calls live and every provider in the chain fell through to concatenation |
+| `REGENOLD_DENOISER_MAX_TOKENS` | `400` | R380 — completion budget of the multi-turn query rewrite (was a hard 100). The Groq slot runs `openai/gpt-oss-120b`, a reasoning model whose hidden reasoning counts against `max_tokens`, so the rewrite truncated on 5/9 multi-turn calls live and every provider in the chain fell through to concatenation. **R381: still accurate — the model is `openai/gpt-oss-120b` again**, see the row below |
+| `REGENOLD_DENOISER_MODEL_GROQ` | `default_groq_model()` = `openai/gpt-oss-120b` | **R381 — a P0 was shipped and reverted here.** `f46adb8` hardcoded `llama-3.3-70b-versatile`, which **does not exist on this Groq account**: `GET /openai/v1/models` returns 14 ids and that is not one of them; a POST returns `404 model_not_found`. So every Stage-0 rewrite 404'd and fell through to the 40-turn concatenation — the exact history bleed R380 had just fixed. The same commit also passed `reasoning_effort="none"` explicitly, which **400s** on gpt-oss (`must be one of low, medium, or high`) and is *unnecessary*: `openai_wrapper_provider.py:555-568` already auto-injects the right value per family (gpt-oss → `low`, qwen → `none`). Measured live: no effort 83 completion tokens / 0.6 s; `low` **30 tokens / 0.2 s**. The valid value is family-specific, so never hardcode one at the call site |
+| `REGENOLD_DUAL_PASS_RETRIEVAL` | `0` | R380/`f46adb8` — replaces the Stage-0 LLM rewrite with deterministic dual-pass retrieval: pass 1 parses the live user turn (operative provision), pass 2 the prior USER turns only (context anchors, R91: assistant text never reaches entity extraction or BM25), then an ordered dedup fusion. **Default OFF**, and verified so by execution (unset ⇒ 0 `dual_pass_parse` calls; `=1` ⇒ it fires and the fused entity list differs). Registered in `_engine_cache_key`; single-turn is a strict no-op (10/10 byte-identical). ⚠ **Known P0 while ON:** it pre-empts R380's `REGENOLD_DENOISE_SELF_CONTAINED_SKIP`, which re-opens assistant-turn bleed on the wire and drops gold refs — do not flip it on without re-gating |
+| `REGENOLD_EXTRACT_SHAPE_GUARD` | `1` | R381 — the R93 `list`/`numeric` extractive pass must produce an answer of the SHAPE the question asks for: a `numeric` answer must contain a cardinal that is not a provision coordinate, a `list` answer must enumerate. On failure it falls back to the lettered limbs of a retrieved provision (`_enumerated_categories`, 29 provisions render cleanly; Annex III correctly renders `None` because its letters restart inside each numbered area) and then to the engine prose. **Closes official-report Q45 (5/5 criteria FAIL) and Q95 (2/2 FAIL)** — both were data fixes that shipped correctly and were then overwritten on the way to the wire by one unresponsive BM25 sentence |
 | `REGENOLD_DENOISE_SELF_CONTAINED_SKIP` | `1` | R380 — a self-contained live turn (≥6 words, no coreference, its own anchor) is used VERBATIM as the retrieval query instead of being paraphrased by the Stage-0 rewrite: hard-mode turn 1 becomes identical to easy mode for 100/110 official questions and the rewrite leaves the critical path. Live-only (sits after the no-provider exit), so the cli bench is byte-identical |
 | `REGENOLD_QUERY_EXPANSION` | `0` | LLM query rewrite before retrieval (R328 port; latency+cost tradeoff) |
 | `REGENOLD_RISK_CLASS_ANNEX` | `0` | Annex-III risk-classification anchor (R328 port) |

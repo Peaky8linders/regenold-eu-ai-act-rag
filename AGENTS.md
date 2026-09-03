@@ -84,6 +84,8 @@ app/routes/regenold.py
    │     ├── _retrieve_from_kb            — KB + ontology + xrefs + graph semantic layers (R327)
    │     ├── _deterministic_answer        — verdict / role x risk / obligations
    │     └── _two_stage_generate          — Stage-2 LLM polish (live only)
+   ├── _try_extractive_answer             — R93 extractive QA; R381 shape guard
+   │     └── _extractive_shape_ok / _enumerated_categories (default ON)
    ├── _surface_anchor_citations          — keyword-derived anchors
    ├── _collapse_parent_when_subpoint_cited — parent collapse (R325), default OFF
    └── normalise_answer_for_regenold      — sentence & char caps

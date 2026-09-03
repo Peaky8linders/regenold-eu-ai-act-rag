@@ -302,7 +302,22 @@ ARTICLE_REQUIREMENTS: dict[str, dict] = {
         "kb_dimensions": ["deployer_obligations"],
         "paragraphs": {
             "27(1)": {
-                "text": "Before deploying a high-risk AI system referred to in Article 6(2), deployers that are bodies governed by public law or private entities providing public services shall perform a fundamental rights impact assessment, except where the system is intended for the Annex III point 2 critical-infrastructure area.",
+                # R381 — the third statutory class was missing. Art. 27(1)
+                # binds THREE kinds of deployer: bodies governed by public law,
+                # private entities providing public services, AND deployers of
+                # the Annex III point 5(b) (creditworthiness / credit scoring)
+                # and 5(c) (risk assessment and pricing for life and health
+                # insurance) systems. Verified against this repo's own verbatim
+                # oracle, ``provision_text.get_provision_text('Article 27.1')``
+                # and ``official_eu_ai_act.OFFICIAL_ARTICLE_TEXT['Article 27']``,
+                # which both carry "and deployers of high-risk AI systems
+                # referred to in points 5 (b) and (c) of Annex III". Without it
+                # the curated layer answers "public bodies only" for a bank or
+                # insurer and contradicts the verbatim text rendered beside it
+                # in the same Stage-2 block. (Note the key form: the oracle
+                # writes "5 (b)" WITH a space — a grep for "5(b)" alone returns
+                # a false zero.)
+                "text": "Before deploying a high-risk AI system referred to in Article 6(2), deployers that are bodies governed by public law or private entities providing public services, and deployers of the Annex III point 5(b) creditworthiness or credit-scoring systems and the Annex III point 5(c) life and health insurance risk-assessment and pricing systems, shall perform a fundamental rights impact assessment, except where the system is intended for the Annex III point 2 critical-infrastructure area.",
                 "remediation": "Conduct FRIA covering affected rights, risk to groups, mitigation, and oversight measures.",
                 "effort_hours": 12,
             },
