@@ -232,12 +232,16 @@ Bedrock fallback) — every one of the six is now substantively correct:
 | Q104 | 2/2 FAIL (described Annex VIII) | correct large-scale-IT-systems content; **both** gold heads cited |
 | Q74 | 2/2 FAIL (led "Yes, marking required") | leads on the artistic limit, states the machine-readable marking does not intrude, and that the deep-fake disclosure duty is relaxed but not removed |
 
-**Test suite:** 7 193 collected, 0 collection errors. 67 failed / 7 125 passed. Attribution by an
-**in-place two-arm run** (one env var differing, per the standing rule — never a second worktree):
-`REGENOLD_EXTRACT_SHAPE_GUARD=1` → 23 failures across the affected files; `=0` → 23; set
-difference **empty. Zero new failures.** The 21 new tests in
-`tests/test_r381_report_answers_end_to_end.py` and `tests/test_r381_judge_gold_and_exit.py` are
-**two-sided**: with the guard off, exactly the six Q45/Q95 pins flip to FAIL.
+**Test suite:** 7 195 collected, 0 collection errors, **65 failed / 7 129 passed** at the final
+state. Attribution by an **in-place two-arm run** (one env var differing, per the standing rule —
+never a second worktree): `REGENOLD_EXTRACT_SHAPE_GUARD=1` → 23 failures across the affected files;
+`=0` → 23; set difference **empty**. And the sorted full-suite failure sets before vs after give
+**zero new failures**, with two *removed* — the pair this round briefly introduced
+(`TestR68MatrixDumpContainment`) and then fixed by exempting the R68/R69 `preferred_refs` path.
+
+The 24 new tests in `tests/test_r381_report_answers_end_to_end.py` and
+`tests/test_r381_judge_gold_and_exit.py` are **two-sided**: with the guard off, exactly the six
+Q45/Q95 pins flip to FAIL.
 
 ---
 
@@ -361,6 +365,49 @@ failure; `TestKnownTradeIsPinned` is untouched and still asserts the head grain 
 blank-value semantics are pinned explicitly, because the opposite choice is R379's recorded P2-7
 trap (allow-list truthiness on a default-ON flag silently reverted production and made an A/B
 compare an arm to itself).
+
+## 3.2 End-to-end measurement of the SHIPPED state
+
+The same 24 official questions, re-run live over the wrapper after everything in this round landed
+(24/24 answered, 16 wrapper-served, **0 Bedrock**), paired row-by-row against the run taken at the
+start of the round:
+
+| | before | after |
+| :--- | ---: | ---: |
+| refs / row | 3.46 | **3.17** |
+| Ref. Conciseness (`min(1, 1.4/P)`) | 50.0 | **54.7** |
+| answer chars | 1025 | 1045 |
+| latency (mean) | 12.3 s | **9.9 s** |
+| Bedrock fallback | 0 | 0 |
+
+**Eight rows came back byte-identical across the two independent runs** — the deterministic
+intercepts — and on those the reference list is the only thing that could move. Four of them are
+exactly the parent-collapse rows (`rg_013` 5→4, `rg_025` 3→2, `rg_029` 4→2, `rg_041` 4→2, refs
+3.38 → 2.62); a fifth (`rg_009`) changed reference ORDER only, not count.
+
+Projected onto the official scorecard on the Ref. Conciseness axis alone, holding everything else:
+**Overall 75.08 → 75.92 (+0.84 pp)** — a third independent arrival at the same number as the A/B's
++0.90 pp.
+
+### Sonnet-5 grounded judge, same 24 rows, before vs after
+
+`--model claude-sonnet-5 --provider wrapper`, 0 errors in both runs, `gold_coverage: 0.0` in both
+(so recall is judge recall, not text-grounded; precision IS text-grounded — read them
+asymmetrically):
+
+| axis | before | after |
+| :--- | ---: | ---: |
+| answer_correctness | 0.9167 | 0.8750 |
+| mean factual score | 0.9802 | 0.9759 |
+| **reference precision** | 0.7271 | **0.7768** |
+| reference_correctness (pass rate) | 0.4167 | **0.5000** |
+| citation_faithfulness | 0.9167 | **0.9583** |
+
+Reference precision **+0.050** and citation faithfulness **+0.042**, both in the direction the
+mechanism predicts (a redundant parent counted as an extra citation is now gone). The answer axis
+moved by **one row** and the factual score by 0.004 — that is inside the recorded live noise floor
+(12–17 % of rows flip verdict between two live runs even at n=120), so **it is not reported as a
+regression, and it is not reported as flat either: at n=24 the answer axis is simply unresolved.**
 
 ## 4. What is NOT done, and what to do next
 
