@@ -124,6 +124,94 @@ import pytest
 
 logger = logging.getLogger(__name__)
 
+# ══════════════════════════════════════════════════════════════════════════
+# R382 — COLLECTION-TIME environment pollution.
+#
+# The R361 ``_restore_process_environment`` fixture below snapshots
+# ``os.environ`` at the start of each TEST and restores it afterwards. It
+# cannot see the widest leak of all, because that one happens BEFORE the
+# first test runs: pytest imports EVERY test module during collection, and
+# a dozen modules write ``os.environ[...] = ...`` /
+# ``os.environ.setdefault(...)`` at module scope, above their first
+# ``from app... import``. By the time the per-test snapshot is taken the
+# environment is ALREADY poisoned, so the fixture faithfully restores the
+# poisoned value for the whole session.
+#
+# MEASURED 2026-09-03 — two collection-time writes account for 28 of the
+# ~43 "passes alone, fails in-suite" failures:
+#
+#   * ``P2P_GRAPH_RAG_PROVIDER=cli`` — written at module scope by
+#     ``tests/test_r270_opus_for_all.py:16``,
+#     ``tests/test_r367_report_findings.py:38``,
+#     ``tests/test_r379_review_fixes.py:28`` and
+#     ``tests/test_r380_hard_mode_reask.py:20``. The R105 block at the top
+#     of this file states in so many words that this variable is
+#     "deliberately NOT forced to ``cli``" because the R97/R100/R56 Stage-2
+#     tests patch ``is_openai_wrapper_enabled`` and rely on default provider
+#     routing — ``cli`` makes ``_stage2_provider_enabled()`` short-circuit
+#     BEFORE their patch, so the mocked wrapper is never called.
+#     Reproducer (8 failures, all "Expected
+#     '_openai_wrapper_complete_for_graph_rag' to have been called once.
+#     Called 0 times."):
+#         pytest tests/test_r270_opus_for_all.py \
+#                tests/test_r97_answer_router.py -q -p no:randomly
+#
+#   * ``REGENOLD_EXTERNAL_EMBEDDINGS=0`` — written at module scope by
+#     ``tests/test_r367_scope_stop_rule.py:27`` and four sibling
+#     ``test_r367_*`` / ``test_r379_*`` / ``test_r380_*`` modules. It turns
+#     the external-embedding provider OFF process-wide, so the tests that
+#     exist to assert the provider is available fail.
+#     Reproducer (3 failures):
+#         pytest tests/test_external_embeddings.py \
+#                tests/test_turboquant_index.py \
+#                tests/test_r367_scope_stop_rule.py -q -p no:randomly
+#
+# THE FIX — snapshot the environment here, at the END of this conftest's
+# import-time setup (i.e. after the R105 neutralisation block above, which
+# IS the intended baseline), and restore that exact baseline once collection
+# has finished and before the first test runs. Anything a test module wrote
+# at import scope is undone; anything this conftest established is kept.
+# The per-test R361 fixture then snapshots a CLEAN baseline.
+#
+# ``NEO4J_AUTO_SEED`` is the one deliberate exception. Five modules set it
+# to ``"0"`` at import scope purely as a SAFETY interlock (AGENTS.md:
+# "NEVER set NEO4J_AUTO_SEED=1 by default … to protect live Aura graph
+# nodes"). Restoring the baseline would DELETE that ``0`` and
+# ``_auto_seed_disabled_by_env`` reads an unset value as "not disabled".
+# Keeping a leaked ``0`` is strictly safer than dropping it and it is not a
+# behavioural flag for any test — every auto-seed test sets it with
+# ``monkeypatch.setenv``.
+# ══════════════════════════════════════════════════════════════════════════
+_COLLECTION_ENV_KEEP = frozenset({"NEO4J_AUTO_SEED"})
+_CONFTEST_ENV_BASELINE = dict(os.environ)
+
+
+def pytest_collection_finish(session):  # noqa: ARG001 — pytest hook signature
+    """Undo module-scope ``os.environ`` writes made while collecting (R382).
+
+    Runs once, after every test module has been imported and before the
+    first test executes, so the per-test snapshot taken by
+    ``_restore_process_environment`` sees the conftest baseline rather than
+    whatever the collected modules left behind.
+    """
+    baseline = _CONFTEST_ENV_BASELINE
+    for key in list(os.environ):
+        if key in _COLLECTION_ENV_KEEP:
+            continue
+        if key not in baseline:
+            leaked = os.environ.pop(key, None)
+            logger.debug("R382 — dropped collection-time env %s=%r", key, leaked)
+    for key, value in baseline.items():
+        if os.environ.get(key) != value:
+            logger.debug(
+                "R382 — restored collection-time env %s (%r -> %r)",
+                key,
+                os.environ.get(key),
+                value,
+            )
+            os.environ[key] = value
+
+
 # R64 — module-level import. If this fails, every test loses isolation
 # and the R63-E flake returns invisibly; raise loudly at collection time
 # so the regression is caught immediately in CI. AttributeError is NOT

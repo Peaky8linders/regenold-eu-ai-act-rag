@@ -372,23 +372,73 @@ def _sonnet_script(*, panel_text, judge_text):
     return _fn
 
 
+def _model_ids() -> dict[str, str]:
+    """Live model ids, read from the fusion module's OWN registry.
+
+    R297 made exactly this fix in ``tests/test_fusion_stage2.py`` and did not
+    reach this module, so the fixture below kept the two literals R297 names as
+    the stale ones: ``"claude-sonnet-4-6"`` for the JUDGE seat (R289 moved the
+    judge to ``claude-opus-4-8``) and ``"qwen/qwen3.6-27b"`` for groq (the groq
+    default is now ``openai/gpt-oss-120b``). ``_FakeProvider`` answers an
+    unknown model with ``no_script``, so the judge call failed and
+    ``fusion_complete`` returned ``None``. Resolving the ids from the registry
+    means a future model bump can no longer silently hollow this test out.
+    """
+    reg = fusion._panel_registry()
+    return {
+        "sonnet": reg["sonnet"][0],
+        "opus": reg["opus"][0],
+        "groq": reg["groq"][0],
+        "mistral": reg["mistral"][0],
+        "judge": fusion._judge_model(),
+    }
+
+
 class TestR127FusionObservability:
     def test_fusion_records_thinking_on_success(self, monkeypatch):
+        """R127 #5 — the LLM fusion judge populates ``Stage 2 (Fusion judge)``.
+
+        R360 (``app/llm/stage2_policy.py``, ``REGENOLD_STAGE2_STRICT_TRANSPORT``
+        default **ON**) pins Stage-2 to the cloudflared tunnel (primary) with a
+        Bedrock fallback and refuses every other transport, and it filters the
+        off-contract panel members out of ``fusion._enabled_panel()``. The
+        default roster is ``(sonnet, groq, mistral)``, so under the shipping
+        default two of the three members are refused
+        (``stage2_policy.refused provider=groq at=fusion._transport_available``)
+        and ``fusion_complete`` returns ``None`` before any judge call — this
+        test used to fail on ``assert out is not None``.
+
+        The R360 behaviour change is deliberate and already pinned two-sided by
+        ``tests/test_r360_stage2_transport_policy.py`` (``transports <=
+        {"wrapper"}`` under the strict default). This test is about the *judge
+        thinking capture*, so — exactly as ``tests/test_fusion_stage2.py:48``,
+        ``tests/test_gemini_routing.py:47`` and the other legacy multi-provider
+        modules already do — it declares the legacy regime it was written for
+        rather than weakening its assertions. The assertions are unchanged, plus
+        a new one pinning that the multi-provider panel really did assemble, so
+        this can no longer pass on a silently single-member panel.
+        """
         from app.integrations.regenold import reasoning_trace as rt
 
+        ids = _model_ids()
+        # One handler serves every wrapper-backed seat (sonnet panel member and
+        # the Opus judge); the judge call is the one carrying "FUSION JUDGE".
+        _wrapper_fn = _sonnet_script(
+            panel_text="Article 50 applies to the deployer.",
+            judge_text="Article 50 requires the deployer to inform exposed persons.",
+        )
         wrapper = _FakeProvider({
-            "claude-sonnet-4-6": _sonnet_script(
-                panel_text="Article 50 applies to the deployer.",
-                judge_text="Article 50 requires the deployer to inform exposed persons.",
-            ),
+            ids["sonnet"]: _wrapper_fn,
+            ids["opus"]: _wrapper_fn,
+            ids["judge"]: _wrapper_fn,
         })
         groq = _FakeProvider({
-            "qwen/qwen3.6-27b": lambda r: OpenAIWrapperResponse(
+            ids["groq"]: lambda r: OpenAIWrapperResponse(
                 text="Deployers must inform people under Article 50."
             )
         })
         mistral = _FakeProvider({
-            "mistral-large-latest": lambda r: OpenAIWrapperResponse(
+            ids["mistral"]: lambda r: OpenAIWrapperResponse(
                 text="Article 50 transparency applies."
             )
         })
@@ -397,6 +447,9 @@ class TestR127FusionObservability:
         # llm_thinking to record). This test verifies the LLM-judge thinking
         # capture, so opt into the llm judge mode.
         monkeypatch.setenv("REGENOLD_FUSION_JUDGE", "llm")
+        # R360 — restore the legacy multi-provider transport chain (see the
+        # docstring); the strict default refuses the Groq + Mistral members.
+        monkeypatch.setenv("REGENOLD_STAGE2_STRICT_TRANSPORT", "0")
         monkeypatch.delenv("REGENOLD_FUSION_PANEL", raising=False)
         monkeypatch.setattr(owp, "is_openai_wrapper_enabled", lambda: True)
         monkeypatch.setattr(owp, "is_groq_provider_enabled", lambda: True)
@@ -405,6 +458,16 @@ class TestR127FusionObservability:
         monkeypatch.setattr(owp, "get_groq_provider", lambda: groq)
         monkeypatch.setattr(owp, "get_mistral_provider", lambda: mistral)
         monkeypatch.setattr(fusion, "_looks_truncated", lambda _t: False)
+
+        # Strengthening pin (R360): prove the three-member panel this test
+        # scripts actually assembles. Without this the test would still pass on
+        # a silently degraded single-wrapper panel, which is precisely the
+        # regression the strict-transport default introduced here.
+        assert {t for _, _, t in fusion._enabled_panel()} == {
+            "wrapper",
+            "groq",
+            "mistral",
+        }
 
         trace = rt.activate()
         try:

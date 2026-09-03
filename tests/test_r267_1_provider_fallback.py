@@ -101,11 +101,41 @@ def test_no_provider_wired_returns_none(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_candidate_order_is_groq_then_gemini_then_mistral(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R289 re-pin — the Groq slot reads ``default_groq_model()``, not a literal.
+
+    This assertion used to hard-code ``"qwen/qwen3.6-27b"``. R289
+    (``029dcb0``, PR #301, "one Groq knob instead of nine") replaced the nine
+    copies of the Groq model id with a single source of truth,
+    ``openai_wrapper_provider.default_groq_model()``, whose comment records the
+    deliberate change and why: *"This value has now been changed twice by
+    editing NINE separate literals, and the first of those swaps took
+    production down … openai/gpt-oss-120b is the value verified live on
+    production at 5869eec."* R381 independently re-confirmed that the old
+    ``qwen``-era ids are not resolvable on this Groq account.
+
+    The re-pin is strictly stronger than the literal it replaces: it pins the
+    provider ORDER as well as the model ids (the old assertion could not tell
+    Groq-first from Gemini-first), and it pins the R289 contract itself by
+    moving ``default_groq_model()`` and asserting the Groq slot follows — a
+    re-introduced hard-coded literal in ``_general_llm_candidates`` now fails
+    here, which the old string comparison could never detect.
+    """
+    from app.llm.openai_wrapper_provider import default_groq_model
+
     g, ge, mi = _Prov(), _Prov(), _Prov()
     _wire(monkeypatch, groq=g, gemini=ge, mistral=mi)
+    monkeypatch.delenv("REGENOLD_GENERAL_MODEL_GROQ", raising=False)
+    monkeypatch.delenv("REGENOLD_GROQ_DEFAULT_MODEL", raising=False)
+
     cands = route._general_llm_candidates()
+    assert [p for p, _ in cands] == [g, ge, mi]  # Groq -> Gemini -> Mistral
     models = [m for _, m in cands]
-    assert models == ["qwen/qwen3.6-27b", "gemini-2.5-flash", "mistral-large-latest"]
+    assert models == [default_groq_model(), "gemini-2.5-flash", "mistral-large-latest"]
+    assert models[0] == "openai/gpt-oss-120b"  # the live-validated default
+
+    # R289: the Groq slot must TRACK the single source of truth, not copy it.
+    monkeypatch.setenv("REGENOLD_GROQ_DEFAULT_MODEL", "groq/sentinel-model")
+    assert [m for _, m in route._general_llm_candidates()][0] == "groq/sentinel-model"
 
 
 def test_think_block_stripped_then_still_answers(monkeypatch: pytest.MonkeyPatch) -> None:
