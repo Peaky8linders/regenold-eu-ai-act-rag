@@ -29,20 +29,53 @@ from app.routes.regenold import (
 )
 
 
-class TestDefaultOff:
-    def test_default_is_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
+class TestDefaultOn:
+    """R381 — the default was flipped OFF -> ON on a live paired A/B.
+
+    Measured over the cloudflared wrapper, n=20 official questions, 40/40 calls
+    wrapper-served, 0 Bedrock fallback. Four rows are zero-variance paired
+    observations (answer byte-identical between arms, so the reference list is
+    the only thing that moved): rg_013 5->4, rg_025 3->2, rg_029 4->2,
+    rg_041 4->2. All six dropped refs are bare parents whose own sub-point is
+    still on the wire, the HEAD SET is unchanged on all four rows — so
+    ``gold_dropped_head`` (which folds both sides onto heads) is +0 — and
+    lever-only Ref. Conciseness went 51.3 -> 56.3, i.e. +0.90 pp Overall.
+
+    These tests previously pinned the OFF default; they are re-pinned, not
+    suppressed. ``TestKnownTradeIsPinned`` below is unchanged and still asserts
+    the head grain survives the collapse.
+    """
+
+    def test_default_is_on(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("REGENOLD_PARENT_COLLAPSE", raising=False)
-        assert _parent_collapse_enabled() is False
+        assert _parent_collapse_enabled() is True
 
     @pytest.mark.parametrize("v", ["1", "true", "yes", "on", "TRUE", "On"])
     def test_opt_in_values(self, monkeypatch: pytest.MonkeyPatch, v: str) -> None:
         monkeypatch.setenv("REGENOLD_PARENT_COLLAPSE", v)
         assert _parent_collapse_enabled() is True
 
-    @pytest.mark.parametrize("v", ["0", "false", "no", "off", ""])
-    def test_off_values(self, monkeypatch: pytest.MonkeyPatch, v: str) -> None:
+    @pytest.mark.parametrize("v", ["0", "false", "no", "off", "OFF", "False"])
+    def test_off_switch_values(self, monkeypatch: pytest.MonkeyPatch, v: str) -> None:
         monkeypatch.setenv("REGENOLD_PARENT_COLLAPSE", v)
         assert _parent_collapse_enabled() is False
+
+    def test_blank_means_ON_under_the_deny_list_convention(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A default-ON gate in this repo reads its env var as a DENY list.
+
+        Pinned deliberately, because the opposite choice is a recorded trap:
+        R379's P2-7 found ``REGENOLD_PROMPT_V2`` using ALLOW-list truthiness on
+        a default-ON flag, so ``=`` (blank), ``=Y`` and ``=enabled`` silently
+        reverted production to V1 while the cache key still recorded the
+        variable — an A/B that compared V1 to V1. Deny-list form makes an
+        unrecognised value keep the default instead of silently inverting it.
+        """
+        monkeypatch.setenv("REGENOLD_PARENT_COLLAPSE", "")
+        assert _parent_collapse_enabled() is True
+        monkeypatch.setenv("REGENOLD_PARENT_COLLAPSE", "enabled")
+        assert _parent_collapse_enabled() is True
 
     def test_parent_reemission_is_default_on(
         self, monkeypatch: pytest.MonkeyPatch

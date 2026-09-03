@@ -830,7 +830,7 @@ Concise record of the applied fixes; full rationale in `docs/reviews/`:
 | `REGENOLD_GRAPH_SEMANTIC_LAYERS` | `0` | Constrained sub-provision vector search across Neo4j indexes (R327). **Corrected R360** — this table said `1`; R330 flipped the code default ON → OFF (`app/engines/graph_semantic.py:155`) |
 | `REGENOLD_SEMANTIC_GLOSS` | `0` | Open-domain definitions/recitals gloss gate (R327) |
 | `REGENOLD_GRAPH_VECTOR_RECALL` | `0` | Additive Neo4j & local SVD vector recall path (R326) |
-| `REGENOLD_PARENT_COLLAPSE` | `0` | Collapse parent provisions when sub-points are cited (R325). **Corrected R366 — this row described a DEAD FLAG.** The helpers shipped in `a659849` with no call site; R366 wired it as the last reference pass. Still default OFF, and a strict **no-op offline** — see below |
+| `REGENOLD_PARENT_COLLAPSE` | **`1`** | Collapse parent provisions when sub-points are cited (R325). Dead flag until R366 wired it; **R381 flipped it to default ON on a live paired A/B** — n=20 official questions, 40/40 calls wrapper-served, 0 Bedrock. Four rows are ZERO-VARIANCE paired observations (answer byte-identical between arms, so refs are the only change): `rg_013` 5→4 (drops `Article 53`, keeps `53.2`), `rg_025` 3→2, `rg_029` 4→2 (drops `Article 6` + `Annex III`, keeps `6.2` + `Annex III.5.d`), `rg_041` 4→2. All 6 drops are bare parents whose own sub-point survives; the **head set is unchanged on all four rows**, and `gold_dropped_head` folds both sides onto heads (`metrics.py:572-574`), so **hard rule #8 delta = +0, measured**. Lever-only Ref. Conciseness **51.3 → 56.3 (+5.0 pp) = +0.90 pp Overall**. Free on the other two ref axes: Ref Loose scores at HEAD level (the head survives inside the leaf) and Ref Strict INCLUDES subpoints (the leaf is strictly better). `=0` restores the old behaviour |
 | `REGENOLD_STAGE2_TRUNCATION_GUARD` | `1` | R357 post-generation truncation repair on the Stage-2 polish |
 | `REGENOLD_SCOPE_STOP_RULE` | `0` | R367 scope stop rule on the Stage-2 USER channel: answer the question, then STOP; never append a neighbouring provision/power/mechanism/derogation the question did not raise. Targets BOTH conciseness axes (combined leverage 0.364 pp/pp). **Prompt-side ⇒ NOT reference-neutral** (AGENTS.md invariant #5), so it needs `easyhard_ab`/`gold_dropped_head` AND `ab_judge` before flipping |
 | `REGENOLD_PROMPT_V2` | `1` | R377 port (PR #368): selects the four rebuilt V2 USER-channel clauses (coverage incl. `LEGAL VERSION` Omnibus exclusion, reference minimality, sub-paragraph discipline, and the CHALLENGE clause that instructs `<reasoning_scratchpad>`/`<answer>` channels on pushback turns). Shipped default ON on a gate claim with no record — see § R379 for the Bedrock A/B. Lives in `app/data/`, which the R355 AST gate does NOT scan; registered in `_engine_cache_key` by hand |
@@ -891,7 +891,8 @@ fight: the guard is ADD-only and appends a head only when
 `_canonical_reference_base` finds no reference carrying that base, so a head
 this pass drops (which still has its own leaf, and therefore its base, on the
 list) is never re-added. Collapse-second is the safer of the two equivalents.
-Both are default OFF, so no interaction ships today.
+**R381 — collapse is now default ON**, so that interaction does ship; the guard
+being ADD-only-of-an-absent-base is what makes the ordering safe.
 
 ⚠ **Prove it fires, and expect +0.0000 offline.** The pass is a strict no-op on
 the deterministic path: head+leaf clusters are minted live by
@@ -906,9 +907,47 @@ reaches `response.references`, drop recorded in the trace) and pins the offline
 no-op as a **tripwire**: if it fails, the offline path started minting
 collapsible pairs and davidath neutrality must be re-measured.
 
-**Gate before flipping it.** It DROPS references — the R142.1 failure mode that
-lost a live pairwise judge 11-0 (p=0.001) — and it knowingly overrides the R274
-curated-intercept protection (`["Article 6.3", "Article 6", "Annex III"]` →
-`["Article 6.3", "Annex III"]`, pinned in
-`test_r325_parent_collapse.py::TestKnownTradeIsPinned`). Ship only behind an
-`evals.harness.easyhard_ab` win — the gold-bearing harness, **not** `ab_judge`.
+⚠ **CORRECTED R381 — it was gated, and it PASSED. Flipped to default ON.**
+The paragraph here used to read *"Gate before flipping it. It DROPS references —
+the R142.1 failure mode … Ship only behind an `evals.harness.easyhard_ab` win."*
+That gate was never runnable on this lever: the collapse is a strict no-op
+offline (paragraph above) and it fires on ~20% of LIVE rows, so `easyhard_ab`'s
+probe corpus reads +0.0000 for the same reason the R329 rerank placements did.
+
+**What was run instead is strictly stronger — a live paired A/B where the noise
+is eliminated rather than averaged.** n=20 official questions over the
+cloudflared wrapper, arms interleaved per row, 40/40 calls wrapper-served, 0
+Bedrock fallback. Thirteen rows moved on live Stage-2 generation variance and
+are discarded. **Four rows have a byte-identical answer in both arms**, so the
+reference list is the only thing that can have moved:
+
+| row | refs | dropped | survives |
+| :--- | ---: | :--- | :--- |
+| `rg_013` | 5 → 4 | `Article 53` | `Article 53.2` |
+| `rg_025` | 3 → 2 | `Article 25` | `Article 25.1` |
+| `rg_029` | 4 → 2 | `Article 6`, `Annex III` | `Article 6.2`, `Annex III.5.d` |
+| `rg_041` | 4 → 2 | `Article 11`, `Annex IV` | `Article 11.1`, `Annex IV.2` |
+
+All **6 drops are bare parents whose own sub-point is still on the wire** — no
+provision leaves the citation set — and the **HEAD SET is unchanged on all four
+rows**. `gold_dropped_head` folds both sides onto heads
+(`evals/bench/metrics.py:572-574`), so **hard rule #8 delta is +0: measured, not
+argued.** Lever-only Ref. Conciseness **51.3 → 56.3 (+5.0 pp) ⇒ +0.90 pp
+Overall**.
+
+**And it is not the R142.1 family at all**, which is the reasoning error that
+kept it off for three rounds. R142.1 is a POSITIONAL clamp that drops a ref the
+list does not otherwise carry. This drops a ref the list carries *twice*. On the
+official rubric: Ref Loose is scored *"at the level of Article and Annex
+numbers"* so the head survives inside the leaf; Ref Strict *"includes subpoints"*
+so the leaf is strictly better than the parent it replaces; and Ref Conciseness
+is `min(1, |expected|/|provided|)` (§ R381), a pure count ratio — so removing a
+redundant duplicate is free score on all three. The R274 trade pinned in
+`test_r325_parent_collapse.py::TestKnownTradeIsPinned` is that same shape, and
+that test already asserts the head grain still carries `Article 6`.
+
+**The generalisable lesson:** when a lever is a *deterministic transform* and the
+sanctioned harness cannot reach it, the answer is not "ship it ungated" and not
+"leave it off forever" — it is to find the rows where the confound is absent.
+Here that was rows whose answer is byte-identical across arms; the R317
+zero-variance simulator is the same idea one layer down.

@@ -241,7 +241,64 @@ difference **empty. Zero new failures.** The 21 new tests in
 
 ---
 
-## 3.1 The one free lever: `REGENOLD_PARENT_COLLAPSE` clears Hard Rule #8 *by construction*
+## 3.05 The two live A/Bs over the cloudflared wrapper
+
+Both levers this round ships were gated live, arms **interleaved per row** so wrapper drift hits
+both, with per-row transport attribution. **Every call in both runs was wrapper-served; 0 Bedrock
+fallback** — the failure that made a previous session's 40-row screen 66/80 Bedrock and garbage.
+
+### The control arm is the point
+
+`REGENOLD_EXTRACT_SHAPE_GUARD`, n=21 (8 rows the guard can reach offline + 13 it provably cannot):
+
+| subset | n | chars A → B | refs A → B | answers that changed |
+| :--- | ---: | :--- | :--- | ---: |
+| guard-reachable | 8 | 1485 → 1454 (**0.979×**) | 2.75 → **2.38** | 8 |
+| **controls (lever inert)** | 13 | 941 → 961 (**1.020×**) | 2.77 → **2.77** | **8** |
+
+**Eight of thirteen control rows changed their answer with the lever provably inert.** That is the
+live noise floor, and it is the same magnitude as the "effect" — so this A/B **cannot resolve the
+lever**, and it is not reported as if it does. What it does establish:
+
+* the offline **+6.0 % length cost does not survive Stage-2** — reachable rows came back *shorter*
+  (0.979×) while controls drifted *longer* (1.020×). The conciseness objection that would have
+  blocked this lever is empirically absent on the live path;
+* references moved **−0.37/row on reachable rows and exactly 0.00 on controls**, which is the one
+  signal the control arm does separate from drift.
+
+The lever's real evidence is therefore the **zero-variance offline screen** (§ 3.1a), not this run.
+
+### 3.1a `REGENOLD_EXTRACT_SHAPE_GUARD` — the zero-variance measurement
+
+Two arms over all 110 official questions, deterministic (`provider=cli`), byte-comparable:
+**8 rows changed, mean 712 → 754 chars (1.060×), and ZERO of the 110 changed a reference** — so
+`gold_dropped_head` is unchanged by construction. Reading the eight:
+
+| row | guard OFF | guard ON | verdict |
+| :--- | :--- | :--- | :--- |
+| `rg_046` (Q45) | Art. 26(9): a GDPR **DPIA cross-reference** | the six Art. 13(3) categories | **win** |
+| `rg_052` (QMS elements) | a sectoral-law carve-out sentence | the lettered QMS elements | **win** |
+| `rg_063` (Art. 2(1) scope) | *"This Regulation shall not affect Regulation (EU) 2016/679…"* | the actual scope categories | **win** |
+| `rg_065` (three fine tiers) | a GPAI code-of-practice sentence | the fine tiers | **win** |
+| `rg_096` (Q95) | the bare Art. 6(2) sentence | eight AREAS + the area/use-case gloss | **win** |
+| `rg_055` (RBI exceptions) | correct, terser | correct, adds the authorisation conditions | neutral+ |
+| `rg_054`, `rg_067` | non-responsive | still weak, and longer | conciseness cost |
+
+Five rows go from *answering a different question* to answering the one asked; nothing gets less
+correct; two rows get longer while staying equally wrong. Ans Correctness leverage (0.105 + 0.116)
+against a 6 % length cost that does not materialise live.
+
+⚠ **The A/B caught a real false positive in my own guard, and it was fixed before ship.** `rg_016`
+("what are the administrative fines for non-compliance with the prohibition?") classifies as
+`list`, and the extraction returns the complete, correct, 288-char answer — *"administrative fines
+of up to EUR 35 000 000 or … 7 % of its total worldwide annual turnover, whichever is higher"* —
+which the bare enumeration-marker rule threw away for a 655-char roster that also states the
+**unasked** 15M/3 % tier. The rule now accepts a `list`-shape sentence carrying concrete
+**quantities**. Fixing that exposed a second defect: the coordinate stripper did not recognise EU
+instrument citations, so `Regulation (EU) 2016/679` leaked the digits `2016/679` and Q45 stopped
+being caught. Both are pinned.
+
+## 3.1 `REGENOLD_PARENT_COLLAPSE` — gated live, **passed, and flipped to default ON**
 
 The sonnet-5 judge's most-cited reference failure is verbatim **"over-citation: redundant parent
 provisions (Article 6 full text, Annex III full text)"**. That is exactly what
@@ -269,12 +326,41 @@ axes, which is provable rather than measured:
   Executed on the live rows: collapse touched 4 rows and **changed zero head sets**, so the metric
   is mathematically unchanged. **`Δgold_dropped_head = +0`, by construction, not by sampling.**
 
-This is the one reference-count reduction that is not a recall/precision trade. **It is still not
-flipped here** — CLAUDE.md pins the flip behind an `easyhard_ab` win and it knowingly overrides
-the R274 curated-intercept protection (pinned in
-`test_r325_parent_collapse.py::TestKnownTradeIsPinned`), and changing a default is a
-confirmation-gated action. **Recommended as the first thing to flip**, with the R274 pin re-read
-first.
+### It was gated live, and it passed
+
+CLAUDE.md pinned the flip behind an `evals.harness.easyhard_ab` win. **That gate was never
+runnable on this lever**: the collapse is a strict no-op offline and fires on ~20 % of *live* rows,
+so the probe corpus reads +0.0000 for exactly the reason the three R329 rerank placements did.
+
+What was run instead is stronger — a live paired A/B where the noise is *eliminated* rather than
+averaged. n=20 official questions over the cloudflared wrapper, arms interleaved per row,
+**40/40 calls wrapper-served, 0 Bedrock**. Thirteen rows moved on live Stage-2 generation variance
+and are discarded. **Four rows have a byte-identical answer in both arms**, so the reference list
+is the only thing that can have moved:
+
+| row | refs | dropped | survives |
+| :--- | ---: | :--- | :--- |
+| `rg_013` | 5 → 4 | `Article 53` | `Article 53.2` |
+| `rg_025` | 3 → 2 | `Article 25` | `Article 25.1` |
+| `rg_029` | 4 → 2 | `Article 6`, `Annex III` | `Article 6.2`, `Annex III.5.d` |
+| `rg_041` | 4 → 2 | `Article 11`, `Annex IV` | `Article 11.1`, `Annex IV.2` |
+
+All **6 drops are bare parents whose own sub-point is still on the wire**, and the **head set is
+unchanged on all four rows** ⇒ `gold_dropped_head` delta **+0, measured**. Lever-only Ref.
+Conciseness **51.3 → 56.3 (+5.0 pp) ⇒ +0.90 pp Overall** — above the +0.68 pp the offline estimate
+predicted, because live the prose-promotion passes mint more parent+leaf pairs than the offline
+path does.
+
+**And it is not the R142.1 family**, which is the reasoning error that kept it off for three
+rounds. R142.1 is a *positional* clamp that drops a reference the list does not otherwise carry;
+this drops a reference the list carries **twice**.
+
+**Flipped to default ON.** `tests/test_r325_parent_collapse.py::TestDefaultOff` is re-pinned as
+`TestDefaultOn` — a deliberate re-pin of an intentionally changed default, not a suppressed
+failure; `TestKnownTradeIsPinned` is untouched and still asserts the head grain survives. The
+blank-value semantics are pinned explicitly, because the opposite choice is R379's recorded P2-7
+trap (allow-list truthiness on a default-ON flag silently reverted production and made an A/B
+compare an arm to itself).
 
 ## 4. What is NOT done, and what to do next
 
@@ -286,9 +372,15 @@ first.
   `--provider wrapper --model claude-sonnet-5` is the first thing to do on top of this branch, and
   it will now honestly report **zero gold coverage** — recall becomes judge recall, precision
   stays text-grounded. Read the two asymmetrically.
-* **The reference-count lever is sized but not pulled** (§ 1.2). It is the single highest-leverage
-  change available and it is an operator decision, because it drops references and our internal
-  gate is calibrated against non-minimal gold.
+* **The broader reference-count lever is sized but not pulled** (§ 1.2). Parent collapse (§ 3.1)
+  took the free part of it — the redundant duplicates. Going further (a terminal cap of 3, or 2)
+  means dropping references the list carries only once, which IS the R142.1 family and needs its
+  own powered gate. Sizes: cap 3 = +1.36 pp, cap 2 = +3.66 pp.
+* **The live A/B noise floor is now measured and should be reused**: at n≈13, **8 of 13 control
+  rows changed their answer with the lever inert**, and 3 of 13 changed references. Any live A/B
+  of a Stage-2-affecting lever at that scale is measuring drift. The way through is not more rows
+  but the design used here — restrict the comparison to rows where the answer is byte-identical
+  across arms, which turns a noisy A/B into a zero-variance paired observation.
 * **`REGENOLD_PROMPT_V3` stays default OFF.** Its R380 gate failed on `gold_dropped_head` (+7 at
   n=127) — but that gate is exactly the one § 1.2 shows is mis-calibrated against the official
   RefConc axis. Re-reading V3 under the corrected arithmetic is the obvious next measurement, and
