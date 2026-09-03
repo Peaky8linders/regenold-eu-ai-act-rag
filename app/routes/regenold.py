@@ -1275,6 +1275,17 @@ def _engine_cache_key(
         stage2_fallback_model as _s2_fb_model,
         strict_transport_enabled as _s2_strict,
     )
+    # ``REGENOLD_BEDROCK_WRAPPER_FALLBACK`` is consumed in
+    # ``app.llm.bedrock_client.complete_with_fallback`` after every Bedrock
+    # candidate has failed.  It therefore decides whether that failure ships a
+    # wrapper-polished Stage-2 answer or falls through to the deterministic
+    # answer, both of which are cached here.  Keep the resolved deny-list
+    # semantics in sync with ``wrapper_fallback_enabled`` without importing the
+    # heavyweight boto3 client merely to calculate a cache key.
+    _bedrock_wrapper_fallback = (
+        os.getenv("REGENOLD_BEDROCK_WRAPPER_FALLBACK", "1").strip().lower()
+        not in {"0", "false", "no", "off"}
+    )
     hypa_bits = f"{int(is_adaptive_router_enabled())}{int(is_rrf_retrieval_enabled())}"
     flag_bits = (
         f"{int(_dense_enabled())}{int(_guard_enabled())}{hypa_bits}"
@@ -1290,6 +1301,12 @@ def _engine_cache_key(
         # −0.27 answer-correctness gap, so it is emphatically answer-flipping.
         # Its two R360 siblings were keyed and this one was not.
         f"|hosts={','.join(_s2_hosts())}"
+        # The cross-provider last resort is answer-affecting only when Bedrock
+        # is exhausted, but that is precisely when a stale cached response is
+        # most costly: ON may contain wrapper prose while OFF contains the
+        # deterministic fallback.  Key the resolved boolean, not raw spelling,
+        # so equivalent deny-list values share an entry.
+        f"|bedrock_wrapper_fallback={int(_bedrock_wrapper_fallback)}"
     )
     # R56 — fold the resolved LLM provider into the cache key. Stage-2
     # polish produces provider-specific prose; without this bit, a

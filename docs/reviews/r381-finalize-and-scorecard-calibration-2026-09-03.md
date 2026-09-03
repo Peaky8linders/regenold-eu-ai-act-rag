@@ -409,6 +409,74 @@ moved by **one row** and the factual score by 0.004 — that is inside the recor
 (12–17 % of rows flip verdict between two live runs even at n=120), so **it is not reported as a
 regression, and it is not reported as flat either: at n=24 the answer axis is simply unresolved.**
 
+## 3.3 The terminal reference cap — built, simulated against gold, **default OFF**
+
+Parent collapse took the free part of the reference-count problem: the duplicates. The rest of it
+means dropping provisions the list carries only **once**, which is genuinely the R142.1 family. So
+this one is built, measured, and left off.
+
+**It is a pure post-processing transform on the reference list, so it does not get a live A/B.**
+CLAUDE.md's R317 rule is explicit — *"never live-A/B a pure ref transform"* — and § 3.05 measured
+exactly why: 8 of 13 control rows change their answer between two live calls, which swamps any
+reference delta. Instead the live wire was captured **once** over the gold-bearing probe corpus
+(every row wrapper-served), and every cap value and ranking strategy was then replayed against
+gold at zero variance and zero extra quota.
+
+### Why it is not R142.1
+
+R142.1's clamp was `references[:budget]` — pure emission position — and it lost a live pairwise
+judge 11-0 (p=0.001), because emission order is retrieval order and gold is not always first.
+Here position is the **last** tiebreak behind three grounding signals, stable-sorted:
+
+| tier | signal | rationale |
+| ---: | :--- | :--- |
+| 0 | the question NAMES the provision | near-certain gold; the R19 anchor pruner already treats these as authoritative |
+| 1 | named in the answer's OPENING sentences | on a BLUF answer that is the provision the verdict rests on |
+| 2 | named anywhere in the prose | R274's "never drop a described ref" becomes an ORDERING, so the cap eats the undescribed tail first |
+| 3 | neither asked for nor described | |
+
+`_rank_refs_for_cap` only **permutes** — it never adds, drops or rewrites — so with no cap in force
+it is a wire no-op. The simulation carries the refuted positional clamp as a baseline arm precisely
+so the ranking has to earn its place: **at the tightest cap the ranked arm loses 16 gold heads where
+positional loses 20, with reference recall 64.4 vs 55.6 and head precision 85.3 vs 73.5** (n=34).
+At looser caps the two coincide, which is the honest reading — the ranking buys safety exactly
+where the cap is tight enough to need it.
+
+Prove-it-fires (offline, five official rows): the call site is reached 5/5, wire lists truncate
+11/10/7/10/9 → 3, and the order visibly changes (`rg_088` promotes `Annex I` to first, `rg_003`
+promotes `Article 10` over `Article 7`). For Q95, whose report-stated expected set is
+`Article 6.2; Annex III`, cap=2 lands exactly there.
+
+### The gate
+
+`gold_dropped_head` on the gold-bearing probe capture, zero variance:
+
+| cap | refs/row | RefConc | Ref recall | gold dropped | verdict |
+| ---: | ---: | ---: | ---: | ---: | :--- |
+| off | 2.65 | 64.9 | 82.2 | 8 | — |
+| 5 | 2.59 | 65.0 | 82.2 | 8 | **pass** |
+| 4 | 2.44 | 65.9 | 82.2 | 8 | **pass** |
+| **3** | **2.24** | **68.1** | **82.2** | **8** | **pass** |
+| 2 | 1.74 | 79.4 | 77.8 | 10 | **FAILS +2** |
+| 1 | 1.00 | 100.0 | 64.4 | 16 | FAILS +8 |
+
+The verdict is stable as the capture grew (n=17 → 30 → 34): **cap ≤ 3 never drops a gold head;
+cap=2 always does.** A "protected" variant that refuses to cap away a tier-0/tier-1 reference was
+also simulated — it helps at cap=1 (11 vs 16) but does not rescue cap=2.
+
+On the **official** corpus, where rows carry more references than the probe set, cap=3 is worth
+more than the probe measurement suggests: refs/row **3.17 → 2.42**, RefConc **54.7 → 61.1**,
+projected **+1.14 pp Overall** (8 of 24 rows cut).
+
+### Decision
+
+**Ships default OFF (`REGENOLD_WIRE_REF_CAP=0`).** cap=3 clears Hard Rule #8 on every gold-bearing
+row measured and is worth ~+1.1 pp — but the gate evidence is on the probe corpus, where cap=3
+bites ~25 % of rows, and the +1.1 pp is claimed on the official corpus, where it bites 33 %. That
+extrapolation is an assumption, not a measurement, and this is a lever that removes information
+rather than duplication. `REGENOLD_WIRE_REF_CAP=3` is the recommended value if the operator wants
+it; a malformed value fails OPEN (unlimited), never closed.
+
 ## 4. What is NOT done, and what to do next
 
 * **The 110-question live batch was not run in full.** A 24-row stratified live sample was, and it
