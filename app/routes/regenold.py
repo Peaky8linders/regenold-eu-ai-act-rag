@@ -1340,6 +1340,10 @@ def _engine_cache_key(
             # the lettered enumeration and the engine prose, so a same-process
             # A/B differing only here must not share a cache entry.
             "REGENOLD_EXTRACT_SHAPE_GUARD",
+            # R381 — the terminal wire reference cap changes the emitted
+            # `references` list, so a same-process A/B differing only here must
+            # not share a cache entry.
+            "REGENOLD_WIRE_REF_CAP",
             "P2P_GRAPH_RAG_ENABLE_STAGE2",
             "REGENOLD_BEDROCK_MODEL",
             "REGENOLD_BEDROCK_COMPLEX_MODEL",
@@ -3193,6 +3197,93 @@ def _collapse_parent_when_subpoint_cited(references: list[str]) -> list[str]:
         if not (_wire(r) == _head(r) and _head(r) in cited_heads_with_own_leaf)
     ]
     return kept or references
+
+
+def _wire_ref_cap() -> int:
+    """R381 — terminal cap on the emitted reference list. ``0`` = unlimited.
+
+    The official Ref. Conciseness axis is ``min(1, |expected| / |provided|)``
+    — a PURE COUNT ratio, recovered from the report's five worked examples to
+    1.4 pp (§ R381 in CLAUDE.md). Expected sets are minimal (mean 1.4 refs/row)
+    and we ship ~3.2, so the axis is decided by how many references we emit and
+    by nothing else. It carries the highest marginal geometric-mean leverage of
+    the eight axes in easy mode (0.186 pp Overall per pp).
+
+    Default **0 (off)**: unlike parent collapse, this drops references the list
+    carries only ONCE, which is squarely the R142.1 family. Gate it before
+    flipping — see :func:`_rank_refs_for_cap` for why it is not a positional
+    clamp, and the R381 review doc for the measured trade at each value.
+    """
+    try:
+        return max(0, int(os.getenv("REGENOLD_WIRE_REF_CAP", "0").strip() or "0"))
+    except ValueError:
+        return 0
+
+
+def _rank_refs_for_cap(
+    references: list[str], question: str, answer: str
+) -> list[str]:
+    """Order references by how likely each is to be in the evaluator's MINIMAL
+    expected set, so a cap keeps the right ones.
+
+    **This is what makes the cap not-R142.1.** R142.1's clamp was
+    ``references[:budget]`` — pure emission position, which lost a live pairwise
+    judge 11-0 (p=0.001) because emission order is retrieval order and gold is
+    not always first. Here position is the LAST tiebreak, after three grounding
+    signals, and the sort is STABLE so within a tier the existing order is
+    preserved exactly:
+
+      tier 0 — the question NAMES the provision ("...as per Article 6(2)?").
+               Near-certain gold; the R19 explicit-anchor pruner already treats
+               these as authoritative.
+      tier 1 — the provision is named in the answer's OPENING sentences. On a
+               BLUF answer that is the operative provision — the one the verdict
+               rests on.
+      tier 2 — the provision is named anywhere in the answer prose. R274's rule
+               ("never drop a ref the prose describes") becomes an ORDERING here
+               rather than a veto: a described ref always outranks an
+               undescribed one, so the cap eats the undescribed tail first.
+      tier 3 — everything else: emitted but neither asked for nor described.
+
+    Never raises and never adds, drops or rewrites a reference — it only
+    permutes, so calling it with no cap in force is a no-op on the wire.
+    """
+    if len(references) < 2:
+        return references
+    try:
+        anchor_nums, anchor_annexes = _live_explicit_anchor_sets(question or "")
+        # The BLUF window: the first two sentences carry the verdict and its
+        # governing provision on this system's answer shape.
+        head = " ".join(re.split(r"(?<=[.!?])\s+", (answer or "").strip())[:2])
+
+        def tier(ref: str) -> int:
+            try:
+                if (anchor_nums or anchor_annexes) and _ref_matches_anchor_sets(
+                    ref, anchor_nums, anchor_annexes
+                ):
+                    return 0
+            except Exception:  # noqa: BLE001
+                pass
+            if head and _reference_described_in_prose(ref, head):
+                return 1
+            if answer and _reference_described_in_prose(ref, answer):
+                return 2
+            return 3
+
+        return sorted(references, key=tier)  # stable: position is the tiebreak
+    except Exception:  # noqa: BLE001 — never let an ordering heuristic 500
+        return references
+
+
+def _apply_wire_ref_cap(
+    references: list[str], question: str, answer: str
+) -> list[str]:
+    """Rank, then truncate to :func:`_wire_ref_cap`. No-op when the cap is 0 or
+    the list is already within it."""
+    cap = _wire_ref_cap()
+    if cap <= 0 or len(references) <= cap:
+        return references
+    return _rank_refs_for_cap(references, question, answer)[:cap]
 
 
 def _reemit_parents_for_subpoints(refs: list[str]) -> list[str]:
@@ -10500,6 +10591,26 @@ def regenold_eu_ai_act_ask(
                     pass
         except Exception:  # noqa: BLE001 — never 500 the route on a guard
             pass
+
+    # R381 — the terminal reference cap, LAST of all reference passes and
+    # immediately before the trace finalisation, so the trace still equals the
+    # wire. Ordered by grounding signal first and emission position last (see
+    # ``_rank_refs_for_cap``); a strict no-op at the default ``0``.
+    try:
+        _cap_refs = _apply_wire_ref_cap(references, question, answer_text)
+        if _cap_refs != references:
+            _cap_dropped = [r for r in references if r not in _cap_refs]
+            references = _cap_refs
+            try:
+                from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                    record_note as _rn2,
+                )
+
+                _rn2("wire_ref_cap dropped=" + ",".join(_cap_dropped))
+            except Exception:  # noqa: BLE001 — fail-soft on trace
+                pass
+    except Exception:  # noqa: BLE001 — never 500 the route on a guard
+        pass
 
     # R50 / R131 — finalise the reasoning trace AFTER every reference pass
     # so ``?include_reasoning=true`` surfaces the exact wire ``references``
