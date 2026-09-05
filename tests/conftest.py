@@ -983,3 +983,70 @@ def _r365_socket_guard():
                 "Set REGENOLD_TEST_EGRESS_STRICT=1 to turn these into test "
                 "failures.\n" + "=" * 74
             )
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# R382 — the GLOBAL SETTINGS singleton leaks the same way ``os.environ`` did.
+#
+# ``_restore_process_environment`` above closed the env class. It cannot see
+# the other shared mutable: ``app.config.settings``. Thirty-plus test modules
+# do a bare
+#
+#     settings.regenold.api_key = SecretStr("some-test-key")
+#
+# to authenticate their TestClient, and never put the old value back. This is
+# strictly worse than an env leak, because — as the R365 note in
+# ``test_r115_followups`` puts it — "settings wins over env at the route", so
+# the leaked key is AUTHORITATIVE: every later suite posting with its own key
+# gets 403 ``regenold_api_key_invalid``, or (worse) silently authenticates
+# under a key it never set and takes a different route branch.
+#
+# MEASURED 2026-09-03 — the last failure left in the suite after the R382
+# collection-time and fixture-scope fixes:
+#
+#     pytest tests/test_r138_bluf_verdict_citations.py \
+#            tests/test_r365_citable_base_guard.py -q -p no:randomly
+#     -> FAILED test_r365_citable_base_guard.py::TestRouteWireEffect
+#               ::test_default_wire_is_byte_identical_to_pre_r365
+#
+#   test_r138's ``_stage2_env`` helper (line 137) sets
+#   ``settings.regenold.api_key`` and returns; r365 then posts with its own key
+#   and gets a different wire than the one it is pinning.
+#
+# Fixing 30+ call sites individually would be churn with a long tail, and the
+# next test to add one would reopen the hole. One snapshot/restore closes the
+# class — same reasoning, and same shape, as the env fixture above.
+# ══════════════════════════════════════════════════════════════════════════
+@pytest.fixture(autouse=True)
+def _restore_global_settings():
+    """Snapshot the mutable ``settings`` leaves each test may write; restore.
+
+    Deliberately narrow: only the fields tests are observed to mutate, so this
+    cannot mask a genuine production default change the way a blanket
+    deep-copy/restore of the whole settings tree would.
+    """
+    try:
+        from app.config import settings as _settings
+    except Exception:  # noqa: BLE001 — never let this fixture break collection
+        yield
+        return
+
+    _targets = (
+        (_settings.regenold, "api_key"),
+        (_settings.graph_rag, "api_key"),
+    )
+    snapshot = []
+    for obj, attr in _targets:
+        try:
+            snapshot.append((obj, attr, getattr(obj, attr)))
+        except Exception:  # noqa: BLE001 — a field that does not exist is fine
+            continue
+    try:
+        yield
+    finally:
+        for obj, attr, value in snapshot:
+            try:
+                if getattr(obj, attr) is not value:
+                    setattr(obj, attr, value)
+            except Exception:  # noqa: BLE001 — restoration is best-effort
+                pass

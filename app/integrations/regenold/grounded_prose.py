@@ -1116,7 +1116,39 @@ def stitch_grounded_prose(
         out = " ".join(substance_sentences).strip()
         sentence_count = len(split_legal_sentences(out))
 
-    return out
+    return _to_user_facing_ref_form(out)
+
+
+#: R382 — the internal ``Art. N`` / ``Ann. N`` abbreviations, as they appear
+#: INSIDE prose. Requires a digit or Roman numeral after the dot so ordinary
+#: sentence-ending abbreviations are untouched, and keeps any sub-point tail
+#: (``Art. 26(6)`` -> ``Article 26(6)``) by only rewriting the prefix.
+_INTERNAL_REF_FORM_RE = re.compile(r"\bArt\.\s*(?=[0-9])|\bAnn\.\s*(?=[IVXLC])")
+
+
+def _to_user_facing_ref_form(text: str) -> str:
+    """Rewrite internal ``Art. N`` prose into the wire form ``Article N``.
+
+    AGENTS.md invariant #1: *"Emitted citations MUST strictly follow
+    ``Article N(.subpoint)*`` or ``Annex X(.subpoint)*`` ... Never emit
+    ``Art. 13`` or ``Annex 3`` on the wire."*  The stitcher already converted
+    the reference LABEL it generates, but the KB stub BODIES it splices in are
+    written in the repo's internal convention — ``app/data/kb.py`` alone carries
+    362 ``Art. N`` occurrences — so any stub whose prose names a sub-point
+    leaked the internal form into the user-facing answer.
+
+    Surfaced by R380 (``a9fb598``), which added Art. 26(6)/(7) sub-point text to
+    the Article 26 stub; ``stitch_grounded_prose(["Art. 26"])`` then returned
+    prose containing ``Art. 26(6)`` and ``Art. 26(7)``.
+
+    Normalising HERE rather than in ``kb.py`` is deliberate: ``Art. N`` is the
+    internal key form that the KB, the ontology and the engine all index on, and
+    rewriting 362 source strings would break those lookups. This is the single
+    boundary where internal prose becomes user-facing prose.
+    """
+    return _INTERNAL_REF_FORM_RE.sub(
+        lambda m: "Article " if m.group(0).startswith("Art") else "Annex ", text
+    )
 
 
 # ── R77 — always-on per-ref description augmenter ───────────────────────

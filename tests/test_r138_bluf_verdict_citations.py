@@ -39,11 +39,29 @@ _ANNEX_RE = re.compile(r"\bAnnex\s+([IVXLC]+)\b")
 
 
 def test_thinking_tokens_adaptive_r139() -> None:
-    # 2026-07-04 operator directive — Opus 4.8 answers BOTH tiers ("fast mode").
-    # The SIMPLE tier is thinking-FREE (thinking_tokens 0 — Opus single-pass);
-    # the COMPLEX tier keeps the EXTENDED budget (complex_thinking_tokens 4000).
-    # Supersedes the R261 "Sonnet 5 simple / Opus 4.8 complex" split.
-    assert settings.graph_rag.thinking_tokens == 0
+    # R340 SUPERSEDED the R139 directive this test was written for, and the
+    # config docstring records why (app/config.py:325-333):
+    #
+    #   "**R340 — default 1024 (re-enable reasoning for Opus 5).** With the
+    #    model alias off since R308 (Stage-2 now actually runs on Opus 5 as
+    #    configured), the zero-thinking directive (which was tuned for Opus 4.8)
+    #    leaves the stronger model reasoning-free on 80% of questions. 1024
+    #    restores the moderate budget: Opus 5 reasons before answering,
+    #    improving answer quality on the standard path without the latency
+    #    outliers that the 8000/4000 budgets caused."
+    #
+    # The prior comment here — "2026-07-04 operator directive ... the SIMPLE
+    # tier is thinking-FREE (thinking_tokens 0 — Opus single-pass)" — was
+    # correct for Opus 4.8 and is dead once the alias no longer redirects the
+    # model. ``max_tokens`` was raised 1024 -> 1536 in the same round precisely
+    # "to accommodate R340 thinking_tokens=1024" (app/config.py:178), so the two
+    # defaults are pinned together here: if only one of them moves, that is the
+    # bug this assertion should catch.
+    #
+    # Re-pinned to the EXACT current defaults per this test's own standing
+    # instruction below — deliberately, and NOT widened to an ``in (...)`` set.
+    assert settings.graph_rag.thinking_tokens == 1024
+    assert settings.graph_rag.max_tokens == 1536
     assert settings.graph_rag.complex_thinking_tokens == 4000
     # R305 — pin the EXACT current default. An ``in (...)`` set that accepts
     # either model cannot catch the class of bug R300 found (an ungated,
