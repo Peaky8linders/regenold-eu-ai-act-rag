@@ -949,10 +949,42 @@ def _openai_wrapper_complete_for_graph_rag(
     # legal instructions through the user channel, capping the wrapper's
     # system slot to a clean persona prevents CLI buffer overflow and ensures
     # 100% reliable Stage-2 Opus 5 execution.
+    # R383 — the R342 premise above is FALSIFIED on today's wrapper, and the cap
+    # it justifies is why every rule in ANSWER_GENERATE_SYSTEM reaches the model
+    # on zero primary-path requests.
+    #
+    # R342 says the bundled CLI "fails with HTTP 500 (No response from Claude
+    # Code) when receiving ~51KB system strings alongside 25KB user payloads".
+    # Measured 2026-09-04 over the cloudflared wrapper, 53,601-char system +
+    # 18-21 kB user payload, model claude-opus-4-6, six official questions:
+    # **0 errors**. Not one 500.
+    #
+    # And the cap is expensive. Same model, same transport, same user payload —
+    # the ONLY variable is whether the system prompt is delivered:
+    #
+    #     answer length   562 chars (full system) vs 2832 (capped)  = 0.199x
+    #     latency          12.4 s                 vs 29.4 s         = 2.38x faster
+    #     shorter under the full system: 6 of 6 rows
+    #
+    # That is the same effect R379 attributed to BEDROCK ("the tunnel drops the
+    # system prompt, Bedrock delivers it", 0.504x length, 4.4x faster). The
+    # mechanism was never the wrapper dropping anything and never the model: it
+    # is THIS cap, in our own code. Bedrock looked better because
+    # ``_try_bedrock_fallback`` passes ``system=system`` — the full 53 kB — while
+    # the primary leg passes ``wrapper_system``, a 62-character persona.
+    #
+    # Ships DEFAULT OFF because it is prompt-side and therefore NOT
+    # reference-neutral (AGENTS.md invariant #5): the three prose->refs passes
+    # recompute the wire citations from the Stage-2 prose, so this must clear
+    # ``gold_dropped_head`` at n >= 100 before it is flipped. Registered in
+    # ``_engine_cache_key``.
+    _full_system = os.getenv(
+        "REGENOLD_STAGE2_FULL_SYSTEM", "0"
+    ).strip().lower() in ("1", "true", "yes", "on")
     wrapper_system = (
-        "You are an expert EU AI Act regulatory compliance specialist."
-        if len(system) > 1000
-        else system
+        system
+        if (_full_system or len(system) <= 1000)
+        else "You are an expert EU AI Act regulatory compliance specialist."
     )
 
     # R360 — count the primary dial so the tunnel→Bedrock contract is

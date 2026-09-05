@@ -1361,6 +1361,11 @@ def _engine_cache_key(
             # `references` list, so a same-process A/B differing only here must
             # not share a cache entry.
             "REGENOLD_WIRE_REF_CAP",
+            # R383 — delivers the full ANSWER_GENERATE_SYSTEM on the wrapper's
+            # system slot instead of the R342 62-char persona. Measured 0.199x
+            # answer length and 2.38x faster, so it is emphatically
+            # answer-flipping and must not share a cache entry.
+            "REGENOLD_STAGE2_FULL_SYSTEM",
             "P2P_GRAPH_RAG_ENABLE_STAGE2",
             "REGENOLD_BEDROCK_MODEL",
             "REGENOLD_BEDROCK_COMPLEX_MODEL",
