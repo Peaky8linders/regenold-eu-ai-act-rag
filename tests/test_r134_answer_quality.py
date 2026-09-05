@@ -222,19 +222,54 @@ def _passthrough(answer, *_a, **_k):
     return answer
 
 
+#: R382 — a question that is NOT a curated authoritative intercept.
+#:
+#: ``_Q`` became one. R358 added ``_is_curated_authoritative_intercept``, whose
+#: whole purpose is to SKIP the Stage-2 polish for curated answers, and
+#: ``_is_curated_authoritative_intercept(_Q)`` is now ``True``. With Stage-2
+#: skipped the augmenter can never be called, which broke this pair in two
+#: different ways:
+#:
+#:   * ``test_stage2_augmenter_called_when_enabled`` FAILED — the off-switch
+#:     proof could not fire.
+#:   * ``test_stage2_augmenter_not_called_by_default`` passed VACUOUSLY, which
+#:     is worse: it asserts ``call_count == 0``, and that is trivially true when
+#:     Stage-2 never runs at all. Its guard (``"Article" in answer``) does not
+#:     detect the skip, because the curated answer also cites Articles.
+#:
+#: Both now use a question that genuinely reaches Stage-2, and both assert the
+#: mocked Stage-2 prose actually landed BEFORE asserting anything about the
+#: augmenter — so neither can silently go vacuous again.
+_Q_STAGE2 = (
+    "What obligations does a deployer of a high-risk AI system have "
+    "under the EU AI Act?"
+)
+
+
+def _assert_stage2_landed(body: dict) -> None:
+    """The mocked Stage-2 completion must be what shipped.
+
+    ``_SONNET`` is the patched ``_openai_wrapper_complete_for_graph_rag``
+    return value, so its prose on the wire is positive proof that the Stage-2
+    path executed rather than a deterministic, curated or refusal answer.
+    """
+    answer = body.get("answer") or ""
+    assert answer, "empty answer — Stage-2 assertions would be vacuous"
+    assert answer.startswith(_SONNET[:30]), (
+        "Stage-2 did not land, so any augmenter assertion below is vacuous. "
+        f"Got: {answer[:160]!r}"
+    )
+
+
 def test_stage2_augmenter_not_called_by_default(monkeypatch) -> None:
     """Fix A — with the default (REGENOLD_STAGE2_REF_AUGMENT unset), the
     Stage-2 describe-append augmenter is NOT invoked, so no clunky
     ``Under <ref>, <stub>`` clause is bolted onto the polished prose."""
     monkeypatch.delenv("REGENOLD_STAGE2_REF_AUGMENT", raising=False)
     _stage2_env(monkeypatch)
-    body, spy = _post(_Q, _passthrough)
-    # Confirm we exercised the Stage-2 path (not a deterministic / verbatim
-    # / refusal answer) — else the gate assertion is vacuous.
-    if body.get("retrieval_path") not in {"no_match"} and "Article" in body.get(
-        "answer", ""
-    ):
-        assert spy.call_count == 0, "Stage-2 augmenter must be OFF by default"
+    body, spy = _post(_Q_STAGE2, _passthrough)
+    _assert_stage2_landed(body)
+    assert spy.call_count == 0, "Stage-2 augmenter must be OFF by default"
     # And no clunky describer fragment ever reaches the wire.
     assert "Under Annex" not in body.get("answer", "")
     assert "cumulatively with Article 13" not in body.get("answer", "")
@@ -245,8 +280,21 @@ def test_stage2_augmenter_called_when_enabled(monkeypatch) -> None:
     augmenter invocation (the gate is real, the change is reversible)."""
     monkeypatch.setenv("REGENOLD_STAGE2_REF_AUGMENT", "1")
     _stage2_env(monkeypatch)
-    body, spy = _post(_Q + " (augment-on variant)", _passthrough)
-    if body.get("retrieval_path") not in {"no_match"} and "Article" in body.get(
-        "answer", ""
-    ):
-        assert spy.call_count >= 1, "augmenter must fire when explicitly enabled"
+    body, spy = _post(_Q_STAGE2 + " (augment-on variant)", _passthrough)
+    _assert_stage2_landed(body)
+    assert spy.call_count >= 1, "augmenter must fire when explicitly enabled"
+
+
+def test_the_stage2_question_is_not_a_curated_intercept() -> None:
+    """Tripwire for the defect above.
+
+    If a future curated intercept starts matching ``_Q_STAGE2``, Stage-2 is
+    skipped again and the two tests above go quiet rather than red. Fail here
+    instead, where the cause is obvious.
+    """
+    from app.routes.regenold import _is_curated_authoritative_intercept
+
+    assert not _is_curated_authoritative_intercept(_Q_STAGE2), (
+        "_Q_STAGE2 now hits a curated authoritative intercept, which skips "
+        "Stage-2 — pick a different question or the augmenter tests are vacuous"
+    )
