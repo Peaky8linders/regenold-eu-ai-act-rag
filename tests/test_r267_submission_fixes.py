@@ -166,15 +166,52 @@ class TestLooksIncompleteVerdict:
 
 @pytest.fixture(scope="module")
 def client():
-    os.environ["P2P_GRAPH_RAG_PROVIDER"] = "cli"
-    os.environ["REGENOLD_SKIP_STARTUP_LOG"] = "1"
+    """R382 — this fixture used to leak, and it cost 8 failures in another module.
+
+    It wrote ``os.environ["P2P_GRAPH_RAG_PROVIDER"] = "cli"`` with a bare
+    assignment. A MODULE-scoped fixture is instantiated during the setup of the
+    module's first test, and pytest runs higher-scoped fixtures BEFORE
+    function-scoped ones — so it ran before conftest's per-test
+    ``_restore_process_environment`` snapshot. The snapshot therefore captured
+    the already-poisoned value and faithfully restored the poison for the rest
+    of the session. The R382 collection-time guard in conftest cannot see this
+    either: this write happens at FIXTURE time, after collection.
+
+    ``P2P_GRAPH_RAG_PROVIDER`` is the worst variable to leak. The R105 block at
+    the top of conftest.py states it is "deliberately NOT forced to ``cli``"
+    because the R97/R100/R56 Stage-2 tests patch ``is_openai_wrapper_enabled``
+    and rely on default provider routing — ``cli`` makes
+    ``_stage2_provider_enabled()`` short-circuit BEFORE their patch, so the
+    mocked wrapper is never called.
+
+    Minimal reproducer, before this fix::
+
+        pytest tests/test_r267_submission_fixes.py \\
+               tests/test_r97_answer_router.py -q -p no:randomly
+        -> 8 failures in test_r97_answer_router, all
+           "Expected '_openai_wrapper_complete_for_graph_rag' to have been
+            called once. Called 0 times."
+
+    ``MonkeyPatch.context()`` gives a module-scoped fixture the same
+    revert-on-teardown guarantee the function-scoped ``monkeypatch`` fixture
+    has. ``settings.regenold.api_key`` is a global singleton mutation and is
+    restored explicitly for the same reason.
+    """
     from app.config import settings
     from fastapi.testclient import TestClient
 
-    from app.main import app
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("P2P_GRAPH_RAG_PROVIDER", "cli")
+        mp.setenv("REGENOLD_SKIP_STARTUP_LOG", "1")
 
-    settings.regenold.api_key = SecretStr("r267-test-key")
-    return TestClient(app)
+        from app.main import app
+
+        _saved_key = settings.regenold.api_key
+        settings.regenold.api_key = SecretStr("r267-test-key")
+        try:
+            yield TestClient(app)
+        finally:
+            settings.regenold.api_key = _saved_key
 
 
 def _ask(client, q):
