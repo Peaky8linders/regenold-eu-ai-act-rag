@@ -278,6 +278,12 @@ class _BoundedLRUCache:
             if len(self._data) > self._capacity:
                 self._data.popitem(last=False)
 
+    def clear(self) -> None:
+        with self._lock:
+            self._data.clear()
+            self.hits = 0
+            self.misses = 0
+
 
 _ENGINE_CACHE = _BoundedLRUCache(capacity=512)
 
@@ -3325,10 +3331,10 @@ def _ref_grain_deepen_enabled() -> bool:
     gets masked. Default OFF keeps every existing contract byte-identical, and
     the measured gain is one environment variable away.
 
-    ``=1`` enables it.
+    ``=0`` / ``=false`` disables it (deny-list default ON).
     """
-    return os.getenv("REGENOLD_REF_GRAIN_DEEPEN", "0").strip().lower() in (
-        "1", "true", "yes", "on",
+    return os.getenv("REGENOLD_REF_GRAIN_DEEPEN", "1").strip().lower() not in (
+        "0", "false", "no", "off",
     )
 
 
@@ -3353,10 +3359,11 @@ _GRAIN_LEAF_RE = re.compile(r"^(Article\s+\d{1,3}|Annex\s+[IVXL]+)\.")
 #: head from 4 to 1. A reference-count cap was tried for the same job and is
 #: strictly worse (refs>=6 reads 36.1 and still leaves 3).
 _GRAIN_OVERVIEW_RE = re.compile(
-    r"\ball\b.{0,25}(categor|type|kind|level|tier|risk)"
+    r"\ball\b.{0,25}(categor|type|kind|level|tier|risk|area)"
     r"|what is .{0,30}\babout\b"
     r"|\boverview\b"
-    r"|list (all|the) (categor|type)",
+    r"|list (all|the) (categor|type|tier|risk|area)"
+    r"|(?:explain|describe|outline|name|what (?:are|is)) (?:all |the )?(?:different |various |main |four )?(?:risk[- ]?(?:tier|categor|level)|areas? of high[- ]risk|high[- ]risk (?:use cases?|areas?))",
     re.I,
 )
 
@@ -3389,16 +3396,25 @@ def _deepen_one_ref(ref: str, question: str, answer: str) -> str:
         # thing that drifted in the first place (citation faithfulness 0.960
         # alongside reference correctness 0.480 — the citations faithfully
         # follow an answer that wandered off the question).
+        #
+        # Audit Finding 1: A candidate paragraph MUST have question token
+        # overlap. If no paragraph overlaps the question, the deepener abstains
+        # rather than allowing answer drift to select an ungrounded coordinate.
+        q_units = {
+            n: t for n, t in units.items() if len(q_tok & _pt._tokens(t)) > 0
+        }
+        if not q_units:
+            return ref
         scored = sorted(
             (
                 (n, 2 * len(q_tok & _pt._tokens(t)) + len(a_tok & _pt._tokens(t)))
-                for n, t in units.items()
+                for n, t in q_units.items()
             ),
             key=lambda x: (-x[1], x[0]),
         )
         top = scored[0]
         second_score = scored[1][1] if len(scored) > 1 else 0
-        if top[1] < _GRAIN_MIN_TOP or top[1] - second_score < _GRAIN_MIN_MARGIN:
+        if top[1] < _GRAIN_MIN_TOP or (len(scored) > 1 and top[1] - second_score < _GRAIN_MIN_MARGIN):
             return ref
         return "%s.%d" % (ref.strip(), top[0])
     except Exception:  # noqa: BLE001 — never break the route on a grain guess
@@ -3406,7 +3422,10 @@ def _deepen_one_ref(ref: str, question: str, answer: str) -> str:
 
 
 def _deepen_ref_grain(
-    references: list[str], question: str, answer: str
+    references: list[str],
+    question: str,
+    answer: str,
+    exempt_heads: set[str] | None = None,
 ) -> list[str]:
     """Apply :func:`_deepen_one_ref` across the list, with two list-level guards.
 
@@ -3432,9 +3451,14 @@ def _deepen_ref_grain(
             for m in (_GRAIN_LEAF_RE.match(r.strip()) for r in references)
             if m
         }
+        exempt = set(exempt_heads or ())
         out: list[str] = []
         for r in references:
-            deep = r if r.strip() in pinned else _deepen_one_ref(r, question, answer)
+            deep = (
+                r
+                if (r.strip() in pinned or r.strip() in exempt)
+                else _deepen_one_ref(r, question, answer)
+            )
             if deep not in out:
                 out.append(deep)
         return out or list(references)
@@ -10527,6 +10551,7 @@ def regenold_eu_ai_act_ask(
     # D1 ref-precision arms. CURATED authoritative intercepts are EXEMPT from
     # THIS pass (the R274 doctrine) — but see the R287 multi-leaf collapse
     # immediately below, which gives them a narrower, recall-safe variant.
+    _collapsed_to_heads: set[str] = set()
     if _ref_granularity_mode() != "both" and not _is_curated_intercept:
         _gran_refs = _apply_ref_granularity(
             references,
@@ -10534,6 +10559,10 @@ def regenold_eu_ai_act_ask(
             answer_text=answer_text or "",
         )
         if _gran_refs != references:
+            for _d in set(references) - set(_gran_refs):
+                _h = _ref_head_of(_d)
+                if _h and _h in _gran_refs:
+                    _collapsed_to_heads.add(_h)
             references = _gran_refs
             try:
                 from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
@@ -10569,6 +10598,10 @@ def regenold_eu_ai_act_ask(
     ):
         _leaf_refs = _collapse_multi_leaf_clusters(references)
         if _leaf_refs != references:
+            for _d in set(references) - set(_leaf_refs):
+                _h = _ref_head_of(_d)
+                if _h and _h in _leaf_refs:
+                    _collapsed_to_heads.add(_h)
             references = _leaf_refs
             try:
                 from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
@@ -10968,7 +11001,9 @@ def regenold_eu_ai_act_ask(
         # list with the head+leaf duplicates already resolved, and before every
         # pass that can DROP, so a dropped reference is never a deepened one.
         # It is not a filter: it changes a coordinate, never the provision set.
-        _gd_refs = _deepen_ref_grain(references, question, answer_text)
+        _gd_refs = _deepen_ref_grain(
+            references, question, answer_text, exempt_heads=_collapsed_to_heads
+        )
         if _gd_refs != references:
             _gd_changed = [
                 "%s->%s" % (a, b)

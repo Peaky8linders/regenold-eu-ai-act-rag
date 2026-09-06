@@ -89,30 +89,41 @@ def on(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("REGENOLD_EXTERNAL_EMBEDDINGS", "0")
 
 
-class TestDefaultOff:
-    """It ships default OFF, and NOT for lack of evidence: it clears both gates
-    and the live A/B. Flipping it breaks 27 wire-contract tests, all of them
-    GRAIN-FORM assertions rather than real violations (they compare full
-    reference strings where the head is what they mean). Migrating those 27
-    contracts is a reviewed change of its own; doing it in the commit that
-    introduces the lever is how a real regression gets masked."""
+class TestDefaultOn:
+    """The reference grain deepener is DEFAULT ON.
+    It clears both gates, zero-variance simulation, and live paired A/B (+7.9 pp Ref Strict).
+    Opt-out via deny-list: '0', 'false', 'no', 'off', 'OFF'.
+    """
 
-    def test_disabled_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_default_on(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("REGENOLD_REF_GRAIN_DEEPEN", raising=False)
         from app.routes.regenold import _ref_grain_deepen_enabled
 
-        assert _ref_grain_deepen_enabled() is False
+        assert _ref_grain_deepen_enabled() is True
 
     def test_strict_no_op_when_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("REGENOLD_REF_GRAIN_DEEPEN", raising=False)
+        monkeypatch.setenv("REGENOLD_REF_GRAIN_DEEPEN", "0")
         from app.routes.regenold import _deepen_ref_grain
 
         refs = ["Article 13", "Annex IV"]
         assert _deepen_ref_grain(list(refs), Q, A) == refs
 
-    @pytest.mark.parametrize("v", ["1", "true", "yes", "on"])
-    def test_opt_in_values(self, monkeypatch: pytest.MonkeyPatch, v: str) -> None:
+    @pytest.mark.parametrize("v", ["0", "false", "no", "off", "OFF"])
+    def test_deny_list_values_disable(self, monkeypatch: pytest.MonkeyPatch, v: str) -> None:
         monkeypatch.setenv("REGENOLD_REF_GRAIN_DEEPEN", v)
+        from app.routes.regenold import _ref_grain_deepen_enabled
+
+        assert _ref_grain_deepen_enabled() is False
+
+    @pytest.mark.parametrize("v", ["1", "true", "yes", "on", ""])
+    def test_enabled_values(self, monkeypatch: pytest.MonkeyPatch, v: str) -> None:
+        monkeypatch.setenv("REGENOLD_REF_GRAIN_DEEPEN", v)
+        from app.routes.regenold import _ref_grain_deepen_enabled
+
+        assert _ref_grain_deepen_enabled() is True
+
+    def test_unset_leaves_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("REGENOLD_REF_GRAIN_DEEPEN", raising=False)
         from app.routes.regenold import _ref_grain_deepen_enabled
 
         assert _ref_grain_deepen_enabled() is True
@@ -255,6 +266,39 @@ class TestTheConfidenceGate:
         assert _deepen_ref_grain(["Recital 27"], Q, A) == ["Recital 27"]
 
 
+class TestAuditFinding1PenaltyRegression:
+    """Audit Finding 1: A candidate paragraph MUST have question token overlap.
+    Without question overlap, answer drift could select an ungrounded coordinate,
+    such as Article 99.7 instead of 99.3 for prohibited AI penalties.
+    """
+
+    def test_article_99_penalty_inquiry_does_not_return_wrong_coordinate(self) -> None:
+        from app.routes.regenold import _deepen_one_ref
+
+        question = "What's the maximum penalty for using prohibited AI?"
+
+        # Prohibited practice penalty matched in answer -> Article 99.3 (not 99.7)
+        answer_prohibited = (
+            "Infringements of the prohibition of AI practices under Article 5 are "
+            "subject to administrative fines of up to 35 000 000 EUR or up to 7 % of "
+            "total worldwide annual turnover."
+        )
+        res1 = _deepen_one_ref("Article 99", question, answer_prohibited)
+        assert res1 != "Article 99.7", "Article 99.7 is the wrong coordinate for prohibited AI penalties"
+        assert res1 in ("Article 99.3", "Article 99")
+        assert res1 == "Article 99.3"
+
+        # Answer with drift / generic context must not pick 99.7 without question overlap
+        answer_drift = (
+            "When deciding whether to impose an administrative fine and when deciding on "
+            "the amount of the administrative fine in each individual case, all relevant "
+            "circumstances shall be taken into account."
+        )
+        res2 = _deepen_one_ref("Article 99", question, answer_drift)
+        assert res2 != "Article 99.7", "Must not select 99.7 via answer drift without question overlap"
+        assert res2 in ("Article 99.3", "Article 99")
+
+
 class TestRegisteredAndWired:
     def test_flag_is_in_the_engine_cache_key(self) -> None:
         import inspect
@@ -332,9 +376,9 @@ class TestRegisteredAndWired:
         from app.routes import regenold as R
 
         src = inspect.getsource(R)
-        assert src.index("_deepen_ref_grain(references") < src.index(
-            "_qrel_prune_references(references"
+        assert src.rindex("_deepen_ref_grain(") < src.rindex(
+            "_qrel_prune_references("
         )
-        assert src.index("_deepen_ref_grain(references") < src.index(
-            "_apply_wire_ref_cap(references"
+        assert src.rindex("_deepen_ref_grain(") < src.rindex(
+            "_apply_wire_ref_cap("
         )

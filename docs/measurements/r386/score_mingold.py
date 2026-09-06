@@ -28,13 +28,15 @@ import re
 import statistics
 import sys
 
-REPO = r"D:\Claude Projects\regenold-eu-ai-act-rag"
+from pathlib import Path
+DIR = Path(__file__).resolve().parent
+REPO = str(DIR.parents[2])
 os.environ.setdefault("REGENOLD_SKIP_DOTENV", "1")
 os.environ.setdefault("REGENOLD_EXTERNAL_EMBEDDINGS", "0")
 os.environ.setdefault("OPENAI_API_BASE", "http://127.0.0.1:1/v1")
 os.environ.setdefault("P2P_GRAPH_RAG_PROVIDER", "cli")
 sys.path.insert(0, REPO)
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, str(DIR))
 
 from deepen_probe import deepen_list  # noqa: E402
 
@@ -68,7 +70,7 @@ def f1(pred: set, gold: set) -> float:
 
 
 gold_rows = {}
-for line in open("mingold_rows.jsonl", encoding="utf-8"):
+for line in open(DIR / "minimal-gold-probe-set-n110.jsonl", encoding="utf-8"):
     r = json.loads(line)
     if r.get("expected"):
         gold_rows[r["id"]] = [norm(x) for x in r["expected"]]

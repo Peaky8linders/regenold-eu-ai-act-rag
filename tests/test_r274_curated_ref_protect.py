@@ -148,7 +148,7 @@ class TestR274RetentionRefs:
         assert _is_curated_authoritative_intercept(q)
         refs = _wire_refs(q)
         expected = ["Article 18", "Article 11", "Article 17", "Article 47", "Article 19"]
-        assert refs == expected, refs
+        assert [r.split(".")[0] for r in refs] == expected, refs
 
 
 # ── q022 risk-framework check ──────────────────────────────────────────────

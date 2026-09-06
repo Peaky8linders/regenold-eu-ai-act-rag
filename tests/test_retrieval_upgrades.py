@@ -242,7 +242,7 @@ class TestRoleObligationWireContract:
         refs = body.get("references", [])
         # Matrix verdict should mention "deployer" + reference Art. 26
         assert "deployer" in answer
-        assert "Article 26" in refs
+        assert any(r == "Article 26" or r.startswith("Article 26.") for r in refs)
 
     def test_importer_annex_iii_surfaces_art_23_in_answer(self, client) -> None:
         """User names "Annex III" — the citations list ships Annex III
@@ -314,9 +314,10 @@ class TestBM25FallbackWireContract:
         assert r.status_code == 200
         body = r.json()
         # Art. 19 sets the 6-month log retention floor
-        assert "Article 19" in body.get("references", []) or (
-            "6 months" in body.get("answer", "")
-        )
+        assert any(
+            r == "Article 19" or r.startswith("Article 19.")
+            for r in body.get("references", [])
+        ) or ("6 months" in body.get("answer", ""))
 
 
 class TestRoleObligationNegativeCases:

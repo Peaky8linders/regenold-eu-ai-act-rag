@@ -3562,9 +3562,9 @@ class TestR68MatrixDumpContainment:
             "provision of a CE marking for high‑risk AI systems?"
         )
         refs = body.get("references") or []
-        assert "Article 48" in refs, f"gold Art. 48 missing: {refs}"
+        assert any(r == "Article 48" or r.startswith("Article 48.") for r in refs)
         # The generic risk-tier anchor must NOT crowd the specific one.
-        assert "Article 6" not in refs, f"bare Art. 6 not dropped: {refs}"
+        assert not any(r == "Article 6" or r.startswith("Article 6.") for r in refs)
         assert len(refs) <= 2, f"matrix not contained: {refs}"
 
     def test_post_market_monitoring_qa_contained(self) -> None:
@@ -3574,7 +3574,7 @@ class TestR68MatrixDumpContainment:
             "template to be adopted by the Commission?"
         )
         refs = body.get("references") or []
-        assert "Article 72" in refs, f"gold Art. 72 missing: {refs}"
+        assert any(r == "Article 72" or r.startswith("Article 72.") for r in refs)
         assert len(refs) <= 2, f"matrix not contained: {refs}"
 
     def test_contained_qa_prose_describes_cited_article(self) -> None:

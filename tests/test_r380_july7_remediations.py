@@ -22,7 +22,7 @@ from app.routes.regenold import _surface_prose_subpoints, _PROSE_SUBPOINT_RE
 
 
 def test_kb_version_is_v21() -> None:
-    assert KB_VERSION == "2024.1689.v21"
+    assert KB_VERSION == "2024.1689.v22"
 
 
 def test_art27_critical_infrastructure_carveout() -> None:

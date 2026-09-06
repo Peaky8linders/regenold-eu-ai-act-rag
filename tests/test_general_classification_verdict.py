@@ -188,9 +188,9 @@ class TestRouteEndToEnd:
         assert not answer.startswith("Prohibits eight categories")
         # The user named "Article 5"; the R19 pruner must NOT collapse the
         # verdict's high-risk-classification refs to just Article 5.
-        assert "Article 5" in refs
-        assert "Article 6" in refs
-        assert "Annex III" in refs
+        assert any(r == "Article 5" or r.startswith("Article 5.") for r in refs)
+        assert any(r == "Article 6" or r.startswith("Article 6.") for r in refs)
+        assert any(r == "Annex III" or r.startswith("Annex III.") for r in refs)
 
     def test_scope_question_not_swept_into_verdict(
         self, det_client: TestClient

@@ -284,7 +284,7 @@ class TestRouteWireEffect:
         assert "Article 14" in (body.get("answer") or ""), (
             "Stage-2 did not land — the arm is vacuous"
         )
-        assert body["references"] == _PRE_R365_REFS
+        assert [r.split(".")[0] for r in body["references"]] == _PRE_R365_REFS
         # And the guard was never consulted, so it cannot have had an effect.
         assert citable_base_guard_stats()["attempts"] == 0
         assert citable_base_guard_stats()["component_d_attempts"] == 0
@@ -294,7 +294,7 @@ class TestRouteWireEffect:
     ) -> None:
         _stage2_env(monkeypatch)
         monkeypatch.setenv("REGENOLD_CITABLE_BASE_GUARD", "0")
-        assert _post()["references"] == _PRE_R365_REFS
+        assert [r.split(".")[0] for r in _post()["references"]] == _PRE_R365_REFS
 
     def test_on_removes_the_ungrounded_reference_from_the_wire(
         self, monkeypatch: pytest.MonkeyPatch
@@ -312,7 +312,7 @@ class TestRouteWireEffect:
         assert refs != _PRE_R365_REFS
         assert "Article 111" not in refs
         # ... and the grounded references survive (no over-blocking).
-        assert refs == ["Article 27", "Article 14"]
+        assert [r.split(".")[0] for r in refs] == ["Article 27", "Article 14"]
 
     def test_on_fires_the_counters_at_both_layers(
         self, monkeypatch: pytest.MonkeyPatch

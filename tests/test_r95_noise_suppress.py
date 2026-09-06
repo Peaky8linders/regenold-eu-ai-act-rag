@@ -257,7 +257,7 @@ def test_route_chatbot_disclosure_surfaces_art50(client):
         "Do we have to tell users they are interacting with an AI chatbot?",
     )
     refs = body.get("references", [])
-    assert "Article 50" in refs, refs
+    assert any(r == "Article 50" or r.startswith("Article 50.") for r in refs), refs
     # The Art. 5 RBI prohibition must NOT lead a transparency question.
     if refs:
-        assert refs[0] != "Article 5"
+        assert not (refs[0] == "Article 5" or refs[0].startswith("Article 5."))
