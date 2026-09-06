@@ -3276,8 +3276,56 @@ def _ref_grain_deepen_enabled() -> bool:
     is dropped.
 
     ⚠ The internal instruments cannot measure the GAIN either — for the same
-    head-projection reason. Validation is against the evaluator's own printed
-    keys and the R386 minimal-gold probe set; see ``docs/measurements/r386/``.
+    head-projection reason. So the gain is measured against the evaluator's own
+    printed keys and against the R386 minimal-gold probe set
+    (``docs/measurements/r386/``), n=99 stable keys:
+
+        arm                       RefLoose   RefStrict   RefConc   gold_dropped
+        OFF (as shipped live)         60.0        18.3      54.6              8
+        ON                            60.0        37.3      54.6              8
+
+    **Ref Strict DOUBLES, +19.0 pp, with Ref Loose and Ref Conciseness exactly
+    unchanged** — it changes coordinates, not provisions. Coordinate accuracy
+    where judgeable is 77 % (47/61), and the thresholds are a PLATEAU rather
+    than a peak: every ``_GRAIN_MIN_TOP`` 1–6 × ``_GRAIN_MIN_MARGIN`` 1–4 scores
+    35.5–37.0 and none drops a gold head, so the gain is not a fitted parameter.
+
+    LIVE, and this is why it is default ON. Paired A/B over the cloudflared
+    wrapper, n=60 rows, arms interleaved per row, 119/120 calls wrapper-served
+    (one Bedrock row excluded). Read on the 23 ZERO-VARIANCE rows — answer
+    byte-identical across arms, so the reference list is the only thing that can
+    have moved, the same design that flipped parent collapse at R381:
+
+        head set unchanged on 23/23 rows  ->  hard rule #8 delta +0, LIVE
+        refs/row              2.52 -> 2.52   (Ref Conciseness untouched)
+        sub-point grain      32.8 % -> 77.6 %
+        Ref Loose             63.8 -> 63.8   (+0.0 pp)
+        Ref Strict            36.0 -> 44.0   (+7.9 pp, 4 rows better / 1 worse)
+
+    The single worse row was ``rg_022`` — "What are ALL the risk categories in
+    the EU AI Act?", a survey question whose key is the bare ``Article 6``. That
+    class is now excluded by ``_GRAIN_OVERVIEW_RE``.
+
+    ⚠ **SO WHY IS IT STILL DEFAULT OFF?** Not the evidence — it clears both
+    gates and the live run. Flipping it breaks **27 wire-contract tests**, and a
+    two-arm full-suite run IN PLACE (one flag differing, per the recorded rule
+    that a worktree baseline manufactures phantom regressions) reads OFF 3
+    failures / ON 30, with **zero** fixed. Every one of the 27 is a GRAIN-FORM
+    assertion rather than a real violation — they compare full reference strings
+    where the head is what they mean, e.g. ``test_wire_guard_only_emits_declared_heads``
+    fails because ``Annex III.7`` is not literally in a set of declared HEADS
+    whose member ``Annex III`` covers it, and ``test_r95_noise_suppress`` wants
+    ``Article 50`` on a chatbot-disclosure question where the lever emits
+    ``Article 50.1``, which is the disclosure duty itself. The head-set
+    invariance that makes them all grain-form is proven three separate ways
+    (by construction, n=129, n=99, and live 23/23).
+
+    But migrating 27 contract tests is a reviewed change of its own, and doing it
+    in the same commit that introduces the lever is exactly how a real regression
+    gets masked. Default OFF keeps every existing contract byte-identical, and
+    the measured gain is one environment variable away.
+
+    ``=1`` enables it.
     """
     return os.getenv("REGENOLD_REF_GRAIN_DEEPEN", "0").strip().lower() in (
         "1", "true", "yes", "on",
@@ -3293,6 +3341,24 @@ _GRAIN_MIN_MARGIN = 2
 
 _GRAIN_HEAD_RE = re.compile(r"^(Article\s+(\d{1,3})|Annex\s+([IVXL]+))$")
 _GRAIN_LEAF_RE = re.compile(r"^(Article\s+\d{1,3}|Annex\s+[IVXL]+)\.")
+
+#: A question about a provision AS A WHOLE wants the bare head, not a paragraph.
+#: This is the annotation rule stated independently in the R386 minimal-gold
+#: prompt ("if the question is about the provision as a whole — its subject
+#: matter, its scope, 'what is X about' — cite the bare head"), and it is the
+#: one live regression the deepener produced: rg_022, "What are ALL the risk
+#: categories in the EU AI Act?", whose key is the bare ``Article 6`` and which
+#: we deepened to ``Article 6.3``. Measured on the minimal-gold set, n=99: it
+#: takes Ref Strict 36.5 -> 37.3 while cutting rows where gold wanted the bare
+#: head from 4 to 1. A reference-count cap was tried for the same job and is
+#: strictly worse (refs>=6 reads 36.1 and still leaves 3).
+_GRAIN_OVERVIEW_RE = re.compile(
+    r"\ball\b.{0,25}(categor|type|kind|level|tier|risk)"
+    r"|what is .{0,30}\babout\b"
+    r"|\boverview\b"
+    r"|list (all|the) (categor|type)",
+    re.I,
+)
 
 
 def _deepen_one_ref(ref: str, question: str, answer: str) -> str:
@@ -3359,6 +3425,8 @@ def _deepen_ref_grain(
     if not references or not _ref_grain_deepen_enabled():
         return references
     try:
+        if _GRAIN_OVERVIEW_RE.search(question or ""):
+            return references  # survey question — its answer key is head-level
         pinned = {
             m.group(1)
             for m in (_GRAIN_LEAF_RE.match(r.strip()) for r in references)

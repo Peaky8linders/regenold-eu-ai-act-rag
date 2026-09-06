@@ -90,6 +90,13 @@ def on(monkeypatch: pytest.MonkeyPatch):
 
 
 class TestDefaultOff:
+    """It ships default OFF, and NOT for lack of evidence: it clears both gates
+    and the live A/B. Flipping it breaks 27 wire-contract tests, all of them
+    GRAIN-FORM assertions rather than real violations (they compare full
+    reference strings where the head is what they mean). Migrating those 27
+    contracts is a reviewed change of its own; doing it in the commit that
+    introduces the lever is how a real regression gets masked."""
+
     def test_disabled_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("REGENOLD_REF_GRAIN_DEEPEN", raising=False)
         from app.routes.regenold import _ref_grain_deepen_enabled
@@ -109,6 +116,28 @@ class TestDefaultOff:
         from app.routes.regenold import _ref_grain_deepen_enabled
 
         assert _ref_grain_deepen_enabled() is True
+
+
+class TestTheOverviewGuard:
+    """A question about a provision AS A WHOLE wants the bare head. This is the
+    one regression the live A/B produced: rg_022, "What are ALL the risk
+    categories in the EU AI Act?", whose key is the bare ``Article 6`` and
+    which we deepened to ``Article 6.3``."""
+
+    def test_a_survey_question_is_left_at_head_grain(self, on) -> None:
+        from app.routes.regenold import _deepen_ref_grain
+
+        refs = ["Article 6", "Article 5", "Annex III"]
+        q = "What are all the risk categories in the EU AI Act?"
+        assert _deepen_ref_grain(list(refs), q, "Some answer.") == refs
+
+    def test_a_specific_question_is_still_deepened(self, on) -> None:
+        """The guard must not swallow the ordinary case — a guard whose ON
+        state behaves like its OFF state is the R360 inert-feature trap, and
+        here the failure mode is the reverse: a guard that disables the lever."""
+        from app.routes.regenold import _deepen_ref_grain
+
+        assert _deepen_ref_grain(["Article 13"], Q, A) == ["Article 13.3"]
 
 
 class TestItActuallyFires:
