@@ -77,6 +77,33 @@ _KEYWORD_ENTITY_MAP: tuple[tuple[str, str], ...] = (
     ("ai board composition", "Art. 65"),
     # Market surveillance / penalties (Arts. 74/99)
     ("market surveillance", "Art. 74"),
+    # R384 — the single-L misspelling, which the SCOPE map has carried since
+    # R268 ("market surveilance", scope.py:1764) and this ENGINE map did not.
+    # That asymmetry is the R367 rule paid for a second time: a scope anchor is
+    # NOT enough on its own, because the route only FRONTS an anchor already in
+    # candidates — retrieval is seeded from THIS map. Add to both.
+    #
+    # MEASURED on official row rg_020, whose question misspells it verbatim
+    # ("Should market surveilance authorities be provided with remote access to
+    # documentations and data sets..."). Matching here is ASCII-literal
+    # substring, so before this line ``_deterministic_parse`` returned
+    # ['Annex IV','Art. 6','Art. 26','Art. 10','Art. 46'] and Art. 74 never
+    # entered retrieval. The Stage-2 user message was 36,459 chars containing
+    # ZERO occurrences of "Article 74", so the model answered from 36k chars of
+    # Annex IV / Art. 6 technical-documentation material and shipped the
+    # OPPOSITE of the statute — "the Act does not oblige providers to give
+    # market surveillance authorities open remote access to those data sets" —
+    # against Art. 74(12), which grants "full access ... to the documentation as
+    # well as the training, validation and testing data sets ... including ...
+    # through application programming interfaces (API) or other relevant
+    # technical means and tools enabling remote access."
+    #
+    # With this line: prompt 36,459 -> 13,283 chars (-63%), "Article 74" appears
+    # 3x, and the grounding block renders the verbatim 74(12) text the answer
+    # currently contradicts. Blast radius is one row — rg_020 is the only one of
+    # the 110 official questions carrying the typo; rg_030/035/079 spell it
+    # correctly and are byte-unaffected.
+    ("market surveilance", "Art. 74"),
     # R76 — davidath qa_080 ("confidentiality obligations for market-
     # surveillance authorities") has no engine keyword anchor; Art. 78
     # (Confidentiality) is the operative article. Without this the

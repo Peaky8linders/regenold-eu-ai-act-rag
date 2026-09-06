@@ -1,0 +1,3774 @@
+{
+  "label": "r384-now-sonnet5",
+  "source_sidecar": "C:\\Users\\th3un\\AppData\\Local\\Temp\\claude\\D--Claude-Projects-regenold-eu-ai-act-rag\\09e208c3-5610-4b26-b636-cddc99c35ce1\\scratchpad\\sidecar_now.jsonl",
+  "judge_model": "claude-sonnet-5",
+  "provider": "wrapper",
+  "elapsed_s": 2104.2,
+  "generated_at": "2026-09-06T07:17:59.812524Z",
+  "axes": [
+    "answer_correctness",
+    "reference_correctness",
+    "citation_faithfulness"
+  ],
+  "rows": [
+    {
+      "id": "rg_001",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 3,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_002",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 2,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_003",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 8,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_004",
+      "category": "Cross-Framework & Sectoral MedTech Integration",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.6667,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 43"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of conformity-assessment-procedure article not needed for risk-classification question"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_005",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.6667,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 15"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of unrelated accuracy/robustness/cybersecurity provision"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_006",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 8,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 1,
+          "wrong": 2,
+          "missing": 0,
+          "precision": 0.33,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 3.1",
+            "Article 51"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of unrelated definition/systemic-risk provisions"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_007",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 4,
+          "correct": 3,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.75,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Annex I"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of inapplicable Annex I (product-based high-risk route not implicated)"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_008",
+      "category": "Cross-Framework & Sectoral MedTech Integration",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_009",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 7,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 5,
+          "correct": 4,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.8,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 19"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation: Article 19 governs log retention (6 months), not documentation kept at disposal of national competent authorities"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 5,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_010",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 9,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 2,
+          "correct": 1,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.5,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Annex III"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of unrelated high-risk classification annex"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_011",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 1,
+          "incorrect": 0,
+          "unsupported": 2,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_012",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_013",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 10,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 4,
+          "correct": 1,
+          "wrong": 3,
+          "missing": 0,
+          "precision": 0.25,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 51",
+            "Article 55",
+            "Annex XI"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of unrelated systemic-risk provisions not governing the transparency exception itself"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_014",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 9,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 3,
+          "correct": 3,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 5,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_015",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 7,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 2,
+          "correct": 1,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.5,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 50.3"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of unrelated emotion-recognition/biometric-categorization disclosure duty"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_016",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_017",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_018",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 11,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 3,
+          "correct": 3,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_019",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 1,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_020",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 5,
+          "incorrect": 2,
+          "unsupported": 0,
+          "missing": 1,
+          "failure_mode": "omits Article 74 mandate granting market surveillance authorities remote access to training/testing datasets and documentation"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 0,
+          "wrong": 3,
+          "missing": 1,
+          "precision": 0.0,
+          "recall": 0.0,
+          "wrong_refs": [
+            "Article 26",
+            "Article 11",
+            "Annex IV"
+          ],
+          "missing_refs": [
+            "Article 74"
+          ],
+          "failure_mode": "cited documentation-content provisions instead of the market surveillance remote-access provision"
+        },
+        "citation_faithfulness": {
+          "verdict": "fail",
+          "faithful": 2,
+          "mismatched": 1,
+          "failure_mode": "Article 26 mischaracterized as imposing a general duty to cooperate with authorities on any action taken re the system; verbatim Art. 26 covers human oversight, input data, monitoring/incident reporting, logs, worker info, and biometric ID authorization\u2014no such general cooperation clause"
+        }
+      }
+    },
+    {
+      "id": "rg_021",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "unsupported": 1,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 1,
+          "wrong": 2,
+          "missing": 0,
+          "precision": 0.33,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 17",
+            "Article 13"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of tangential provisions not addressing the lifecycle-continuity issue"
+        },
+        "citation_faithfulness": {
+          "verdict": "fail",
+          "faithful": 3,
+          "mismatched": 2,
+          "failure_mode": "paragraph misattribution: accuracy-declaration content is Art.15(3) but answer cites Art.15(2), and Art.15(3)-(5) range wrongly bundles resilience content into paragraph 3 which actually only covers declared accuracy metrics"
+        }
+      }
+    },
+    {
+      "id": "rg_022",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 8,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 11,
+          "correct": 6,
+          "wrong": 5,
+          "missing": 0,
+          "precision": 0.5455,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 52",
+            "Article 53",
+            "Article 54",
+            "Article 55",
+            "Article 56"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of GPAI procedural/obligation articles that don't define a risk category"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 8,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_023",
+      "category": "GPAI & Systemic Risk Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.667,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 53"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of general GPAI obligations provision not specific to systemic risk"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_024",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 7,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.67,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Annex I"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of irrelevant Annex I (Art 6(1) product-safety pathway, not the Annex III use-case question)"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_025",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 6,
+          "incorrect": 1,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "overgeneralizes Art.25(2) provider-relief to all three Art.25(1) circumstances instead of just the substantial-modification case"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_026",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 7,
+          "incorrect": 0,
+          "unsupported": 1,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 3,
+          "correct": 3,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_027",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 3,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_028",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 9,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_029",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 6,
+          "incorrect": 1,
+          "unsupported": 0,
+          "missing": 1,
+          "failure_mode": "omits 'evaluate and classify emergency calls' system and drops 'police' from the example list"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_030",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 3,
+          "incorrect": 3,
+          "unsupported": 1,
+          "missing": 1,
+          "failure_mode": "misattributes sandbox competent-authority duties to market surveillance authority; never identifies the specific Article verified"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 2,
+          "correct": 1,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.5,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 74"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of general market-surveillance article unrelated to sandbox supervision"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_031",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 8,
+          "incorrect": 0,
+          "unsupported": 1,
+          "missing": 1,
+          "failure_mode": "never applies framework to conclude structuring/deduplication is a narrow procedural task exemption"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 1,
+          "wrong": 2,
+          "missing": 0,
+          "precision": 0.33,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 49.2",
+            "Annex III"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation: cited downstream registration duty and the base Annex III list rather than confining to the governing derogation provision"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_032",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 3,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_033",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_034",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 2,
+          "correct": 1,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.5,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 99"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of irrelevant Member State penalty provision"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_035",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 4,
+          "correct": 2,
+          "wrong": 2,
+          "missing": 0,
+          "precision": 0.5,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 20",
+            "Article 6"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of tangential/definitional provisions not governing the MSA-timeframe question",
+          "_attempts": 2
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_036",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.67,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 15"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of unrelated cybersecurity presumption provision"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_037",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 19,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 6,
+          "correct": 3,
+          "wrong": 3,
+          "missing": 0,
+          "precision": 0.5,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 6",
+            "Article 47",
+            "Annex III"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of background/tangential provisions not specifying registration content"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 7,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_038",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_039",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_040",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_041",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_042",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 3,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_043",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 8,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 6,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_044",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 1,
+          "missing": 1,
+          "failure_mode": "omits Article 60 real-world-testing-outside-sandbox disclosure/registration requirements"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 1,
+          "correct": 0,
+          "wrong": 1,
+          "missing": 1,
+          "precision": 0.0,
+          "recall": 0.0,
+          "wrong_refs": [
+            "Article 57"
+          ],
+          "missing_refs": [
+            "Article 60"
+          ],
+          "failure_mode": "cited sandbox provision instead of the article governing real-world testing outside sandboxes"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_045",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 9,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 4,
+          "correct": 2,
+          "wrong": 2,
+          "missing": 0,
+          "precision": 0.5,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 79",
+            "Article 72"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-cited definitional/unrelated cross-references (Art 79 defines 'risk' but doesn't govern deployer duty; Art 72 covers a distinct general-monitoring informing duty, not the 'reason to believe risk' scenario)"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_046",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 14,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_047",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 1,
+          "wrong": 2,
+          "missing": 0,
+          "precision": 0.33,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 16",
+            "Article 79"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of adjacent/related provisions not directly governing provider's required corrective actions"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_048",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 1,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 1,
+          "wrong": 2,
+          "missing": 1,
+          "precision": 0.333,
+          "recall": 0.5,
+          "wrong_refs": [
+            "Article 43",
+            "Annex VI"
+          ],
+          "missing_refs": [
+            "Article 3.19 (definition of 'conformity assessment')"
+          ],
+          "failure_mode": "cited procedural provisions instead of the Article 3 definitional clause for 'conformity assessment'"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_049",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_050",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_051",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 9,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_052",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 21,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 1,
+          "wrong": 2,
+          "missing": 0,
+          "precision": 0.33,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 9",
+            "Article 72"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of non-minimal supporting provisions"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_053",
+      "category": "GPAI & Systemic Risk Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 9,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 1,
+          "failure_mode": "omits Annex XI Section 2 additional technical-documentation requirements specific to systemic-risk models"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 3,
+          "correct": 3,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_054",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 1,
+          "wrong": 2,
+          "missing": 0,
+          "precision": 0.333,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 79.5",
+            "Article 5"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of unrelated/referenced provisions"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_055",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 11,
+          "incorrect": 0,
+          "unsupported": 2,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.6667,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 6"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of irrelevant high-risk classification provision"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_056",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_057",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_058",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_059",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 14,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 5,
+          "failure_mode": "omitted Art 68(2) member selection/independence criteria and gender/geographic balance, and omitted tasks (b)-(d) supporting market surveillance and safeguard procedure"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 1,
+          "wrong": 2,
+          "missing": 0,
+          "precision": 0.33,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 98",
+            "Article 65"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of unrelated/procedural provisions (Board formation, comitology) not governing the scientific panel"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 6,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_060",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 8,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 2,
+          "correct": 1,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.5,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 73"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation: Article 60(6) alone specifies the three actions (report per Art. 73, adopt mitigation/suspend/terminate, establish recall procedure); Article 73 is only incorporated by reference for reporting mechanics and is not independently load-bearing for this question"
+        },
+        "citation_faithfulness": {
+          "verdict": "fail",
+          "faithful": 1,
+          "mismatched": 1,
+          "failure_mode": "Article 60 cited for mitigation/suspension/termination/recall duties not found in its verbatim text (only testing-plan/sandbox conditions shown)"
+        }
+      }
+    },
+    {
+      "id": "rg_061",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 9,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 7,
+          "correct": 1,
+          "wrong": 6,
+          "missing": 0,
+          "precision": 0.14,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 94",
+            "Article 53",
+            "Article 51",
+            "Article 55",
+            "Article 74",
+            "Annex XI"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of unrelated Chapter V obligation/classification provisions instead of minimal Article 88 answer"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 6,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_062",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_063",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 11,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_064",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 2,
+          "incorrect": 1,
+          "unsupported": 2,
+          "missing": 0,
+          "failure_mode": "overgeneralized unrelated conditions (deletion, establishment) as part of transfer safeguard"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 2,
+          "correct": 1,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.5,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 23"
+          ],
+          "missing_refs": [],
+          "failure_mode": "irrelevant citation (importer obligations, not testing data transfer)"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_065",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 12,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 3,
+          "correct": 3,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_066",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 8,
+          "incorrect": 1,
+          "unsupported": 1,
+          "missing": 1,
+          "failure_mode": "omits Annex VIII Section C deployer-entered data and misstates Article 60 data as publicly accessible"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 1,
+          "wrong": 2,
+          "missing": 1,
+          "precision": 0.33,
+          "recall": 0.5,
+          "wrong_refs": [
+            "Article 49",
+            "Article 60"
+          ],
+          "missing_refs": [
+            "Annex VIII"
+          ],
+          "failure_mode": "over-citation of registration/testing procedure articles; missing Annex VIII for information categories"
+        },
+        "citation_faithfulness": {
+          "verdict": "fail",
+          "faithful": 2,
+          "mismatched": 1,
+          "failure_mode": "Article 71 description omits Section C data (entered by deployers per Art 71(3)), incompletely stating the database only contains Sections A and B"
+        }
+      }
+    },
+    {
+      "id": "rg_067",
+      "category": "GPAI & Systemic Risk Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 11,
+          "incorrect": 1,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "misstates Art.55 as additional only to Art.53, omitting Art.54"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 3,
+          "correct": 3,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_068",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_069",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 8,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.6667,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 79"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation: Article 79 (market-surveillance risk procedure) irrelevant to the distributor/importer 'do not jeopardise conformity' obligation, which is governed solely by Article 24(3) and Article 23(4)"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 5,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_070",
+      "category": "Cross-Framework & Sectoral MedTech Integration",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_071",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_072",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "unsupported": 1,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_073",
+      "category": "Cross-Framework & Sectoral MedTech Integration",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_074",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 1,
+          "precision": 0.6667,
+          "recall": 0.6667,
+          "wrong_refs": [
+            "Article 50.3"
+          ],
+          "missing_refs": [
+            "Article 6.2"
+          ],
+          "failure_mode": "cited transparency-duty provision instead of the Art.6(2) high-risk classification trigger"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_075",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 1,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_076",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 1,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_077",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 9,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 5,
+          "correct": 5,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 5,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_078",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 9,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 2,
+          "correct": 2,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_079",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.6667,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 73"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of unrelated serious-incident reporting provision"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_080",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 8,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 2,
+          "correct": 1,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.5,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 50.5"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of adjacent procedural provision"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_081",
+      "category": "GPAI & Systemic Risk Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 4,
+          "correct": 3,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.75,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 50"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of irrelevant transparency provision (Art 50 governs disclosure obligations, not high-risk classification criteria)"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_082",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_083",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 3,
+          "wrong": 0,
+          "missing": 1,
+          "precision": 1.0,
+          "recall": 0.75,
+          "wrong_refs": [],
+          "missing_refs": [
+            "Article 49"
+          ],
+          "failure_mode": "missing provision governing EU database registration obligation"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_084",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 7,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.6667,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Annex I"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of inapplicable Annex I product-safety pathway"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_085",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 8,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 1,
+          "failure_mode": "omits Annex III(1)(a) high-risk classification for non-law-enforcement remote biometric identification via drone"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 5,
+          "correct": 4,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.8,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 50"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of transparency obligation irrelevant to prohibition/high-risk classification question"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 5,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_086",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 2,
+          "correct": 0,
+          "wrong": 2,
+          "missing": 0,
+          "precision": 0.0,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 1",
+            "Article 112"
+          ],
+          "missing_refs": [],
+          "failure_mode": "cited provisions do not establish the claimed 'proportionality of need' model-selection requirement"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_087",
+      "category": "GPAI & Systemic Risk Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 5,
+          "correct": 4,
+          "wrong": 1,
+          "missing": 1,
+          "precision": 0.8,
+          "recall": 0.8,
+          "wrong_refs": [
+            "Article 9"
+          ],
+          "missing_refs": [
+            "Article 51"
+          ],
+          "failure_mode": "cited Article 9 (risk management duties, not a risk-taxonomy provision) while omitting Article 51 (systemic-risk classification)"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 5,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_088",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 8,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 5,
+          "correct": 3,
+          "wrong": 2,
+          "missing": 1,
+          "precision": 0.6,
+          "recall": 0.75,
+          "wrong_refs": [
+            "Article 5",
+            "Article 50"
+          ],
+          "missing_refs": [
+            "Article 26"
+          ],
+          "failure_mode": "over-cited unrelated prohibited-practices/transparency articles; omitted deployer log-retention obligation"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 5,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_089",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 5,
+          "correct": 3,
+          "wrong": 2,
+          "missing": 0,
+          "precision": 0.6,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Annex I",
+            "Article 50"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of inapplicable product-safety and transparency provisions"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 5,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_090",
+      "category": "GPAI & Systemic Risk Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 0,
+          "wrong": 3,
+          "missing": 1,
+          "precision": 0.0,
+          "recall": 0.0,
+          "wrong_refs": [
+            "Article 51",
+            "Article 3.4",
+            "Article 25"
+          ],
+          "missing_refs": [
+            "Article 26(6)"
+          ],
+          "failure_mode": "cited GPAI systemic-risk classification, deployer definition, and provider-reallocation rules instead of the actual deployer log-keeping obligation for high-risk AI systems"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_091",
+      "category": "Cross-Framework & Sectoral MedTech Integration",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "unsupported": 1,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 4,
+          "correct": 1,
+          "wrong": 3,
+          "missing": 1,
+          "precision": 0.25,
+          "recall": 0.5,
+          "wrong_refs": [
+            "Article 50",
+            "Annex III",
+            "Article 5"
+          ],
+          "missing_refs": [
+            "Annex I"
+          ],
+          "failure_mode": "cited Annex III/Art5/Art50 (irrelevant) instead of Annex I which governs medical-device AI classification under Article 6(1)"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_092",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 9,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 3,
+          "correct": 3,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_093",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.667,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 27"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of unrelated downstream obligation (fundamental rights impact assessment) not needed to establish topic/risk category"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_094",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 8,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.67,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 51"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of irrelevant systemic-risk classification provision"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_095",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "pass",
+          "n_predicted": 1,
+          "correct": 1,
+          "wrong": 0,
+          "missing": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "wrong_refs": [],
+          "missing_refs": [],
+          "failure_mode": "none"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_096",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 8,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.6667,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 6.3"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of irrelevant derogation provision"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_097",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 8,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.67,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Annex I"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of unrelated product-safety legislation list not defining use-case areas"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_098",
+      "category": "Two-Article Conflict & Reconciliation",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 1,
+          "wrong": 2,
+          "missing": 0,
+          "precision": 0.33,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 7",
+            "Annex III"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of irrelevant provisions explicitly flagged by the question as distractors"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_099",
+      "category": "GPAI & Systemic Risk Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "fail",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 2,
+          "failure_mode": "fails to address adversarial images and prompt injection sub-questions"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 3,
+          "correct": 2,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.67,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Article 51"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of irrelevant classification provision"
+        },
+        "citation_faithfulness": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        }
+      }
+    },
+    {
+      "id": "rg_100",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "unsupported": 0,
+          "missing": 0,
+          "failure_mode": "none"
+        },
+        "reference_correctness": {
+          "verdict": "fail",
+          "n_predicted": 5,
+          "correct": 4,
+          "wrong": 1,
+          "missing": 0,
+          "precision": 0.8,
+          "recall": 1.0,
+          "wrong_refs": [
+            "Annex I"
+          ],
+          "missing_refs": [],
+          "failure_mode": "over-citation of inapplicable Annex I (product-safety pathway, not relevant to a generic agentic AI system risk-classification/guardrails question)"
+        },
+        "citation_faithfulness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        }
+      }
+    },
+    {
+      "id": "rg_101",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "reference_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "citation_faithfulness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        }
+      }
+    },
+    {
+      "id": "rg_102",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "reference_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "citation_faithfulness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        }
+      }
+    },
+    {
+      "id": "rg_103",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "reference_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "citation_faithfulness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        }
+      }
+    },
+    {
+      "id": "rg_104",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "reference_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "citation_faithfulness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        }
+      }
+    },
+    {
+      "id": "rg_105",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "reference_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "citation_faithfulness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        }
+      }
+    },
+    {
+      "id": "rg_106",
+      "category": "Borderline Prohibition & Exception",
+      "verdicts": {
+        "answer_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "reference_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "citation_faithfulness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        }
+      }
+    },
+    {
+      "id": "rg_107",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "reference_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "citation_faithfulness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        }
+      }
+    },
+    {
+      "id": "rg_108",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "reference_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "citation_faithfulness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        }
+      }
+    },
+    {
+      "id": "rg_109",
+      "category": "Two-Article Conflict & Reconciliation",
+      "verdicts": {
+        "answer_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "reference_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "citation_faithfulness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        }
+      }
+    },
+    {
+      "id": "rg_110",
+      "category": "Complex Decision Boundary",
+      "verdicts": {
+        "answer_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "reference_correctness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        },
+        "citation_faithfulness": {
+          "judge_error": "wrapper_error: api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}",
+          "_attempts": 2
+        }
+      }
+    }
+  ],
+  "aggregate": {
+    "answer_correctness": {
+      "n": 110,
+      "pass": 87,
+      "fail": 13,
+      "error": 10,
+      "pass_rate": 0.7909,
+      "pass_rate_over_non_error": 0.87,
+      "top_failure_modes": [
+        [
+          "omits Article 74 mandate granting market surveillance authorities remote access ",
+          1
+        ],
+        [
+          "overgeneralizes Art.25(2) provider-relief to all three Art.25(1) circumstances i",
+          1
+        ],
+        [
+          "omits 'evaluate and classify emergency calls' system and drops 'police' from the",
+          1
+        ],
+        [
+          "misattributes sandbox competent-authority duties to market surveillance authorit",
+          1
+        ],
+        [
+          "never applies framework to conclude structuring/deduplication is a narrow proced",
+          1
+        ],
+        [
+          "omits Article 60 real-world-testing-outside-sandbox disclosure/registration requ",
+          1
+        ],
+        [
+          "omits Annex XI Section 2 additional technical-documentation requirements specifi",
+          1
+        ],
+        [
+          "omitted Art 68(2) member selection/independence criteria and gender/geographic b",
+          1
+        ]
+      ],
+      "mean_factual_score": 0.9707
+    },
+    "reference_correctness": {
+      "n": 110,
+      "pass": 48,
+      "fail": 52,
+      "error": 10,
+      "pass_rate": 0.4364,
+      "pass_rate_over_non_error": 0.48,
+      "top_failure_modes": [
+        [
+          "over-citation of conformity-assessment-procedure article not needed for risk-cla",
+          1
+        ],
+        [
+          "over-citation of unrelated accuracy/robustness/cybersecurity provision",
+          1
+        ],
+        [
+          "over-citation of unrelated definition/systemic-risk provisions",
+          1
+        ],
+        [
+          "over-citation of inapplicable Annex I (product-based high-risk route not implica",
+          1
+        ],
+        [
+          "over-citation: Article 19 governs log retention (6 months), not documentation ke",
+          1
+        ],
+        [
+          "over-citation of unrelated high-risk classification annex",
+          1
+        ],
+        [
+          "over-citation of unrelated systemic-risk provisions not governing the transparen",
+          1
+        ],
+        [
+          "over-citation of unrelated emotion-recognition/biometric-categorization disclosu",
+          1
+        ]
+      ],
+      "mean_precision": 0.7441,
+      "mean_recall": 0.9447,
+      "mean_f1": 0.8325,
+      "top_wrong_refs": [
+        [
+          "Article 51",
+          6
+        ],
+        [
+          "Annex I",
+          6
+        ],
+        [
+          "Annex III",
+          5
+        ],
+        [
+          "Article 50",
+          5
+        ],
+        [
+          "Article 55",
+          3
+        ],
+        [
+          "Article 53",
+          3
+        ],
+        [
+          "Article 6",
+          3
+        ],
+        [
+          "Article 79",
+          3
+        ],
+        [
+          "Article 5",
+          3
+        ],
+        [
+          "Article 43",
+          2
+        ],
+        [
+          "Article 15",
+          2
+        ],
+        [
+          "Annex XI",
+          2
+        ],
+        [
+          "Article 50.3",
+          2
+        ],
+        [
+          "Article 74",
+          2
+        ],
+        [
+          "Article 72",
+          2
+        ]
+      ],
+      "top_missing_refs": [
+        [
+          "Article 74",
+          1
+        ],
+        [
+          "Article 60",
+          1
+        ],
+        [
+          "Article 3.19 (definition of 'conformity assessment')",
+          1
+        ],
+        [
+          "Annex VIII",
+          1
+        ],
+        [
+          "Article 6.2",
+          1
+        ],
+        [
+          "Article 49",
+          1
+        ],
+        [
+          "Article 51",
+          1
+        ],
+        [
+          "Article 26",
+          1
+        ],
+        [
+          "Article 26(6)",
+          1
+        ],
+        [
+          "Annex I",
+          1
+        ]
+      ]
+    },
+    "citation_faithfulness": {
+      "n": 110,
+      "pass": 95,
+      "fail": 4,
+      "error": 11,
+      "pass_rate": 0.8636,
+      "pass_rate_over_non_error": 0.9596,
+      "top_failure_modes": [
+        [
+          "Article 26 mischaracterized as imposing a general duty to cooperate with authori",
+          1
+        ],
+        [
+          "paragraph misattribution: accuracy-declaration content is Art.15(3) but answer c",
+          1
+        ],
+        [
+          "Article 60 cited for mitigation/suspension/termination/recall duties not found i",
+          1
+        ],
+        [
+          "Article 71 description omits Section C data (entered by deployers per Art 71(3))",
+          1
+        ]
+      ]
+    }
+  },
+  "gold_coverage": 0.0,
+  "gold_rows": 0,
+  "excluded_error_rows": 0,
+  "recall_is_text_grounded": false
+}
