@@ -141,9 +141,19 @@ class TestTheCallSiteIsReached:
     def test_helper_receives_the_final_reference_list(
         self, _client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """It must see the refs the route is about to ship, not an early draft."""
+        """It must see the refs the route is about to ship, not an early draft.
+
+        R386 added ``_deepen_ref_grain`` AFTER this pass, which rewrites
+        reference COORDINATES (``Article 6`` -> ``Article 6.2``). That is a
+        deliberate ordering — collapse resolves head+leaf duplicates first, so
+        the deepener never guesses a second coordinate for a provision the
+        answer already pinned. This test therefore pins the original property
+        with the later pass disabled, and the R386 interaction is pinned
+        separately below.
+        """
         seen, spy = _spy_factory()
         monkeypatch.setenv("REGENOLD_PARENT_COLLAPSE", "1")
+        monkeypatch.setenv("REGENOLD_REF_GRAIN_DEEPEN", "0")
         monkeypatch.setattr(
             "app.routes.regenold._collapse_parent_when_subpoint_cited", spy
         )
@@ -151,6 +161,28 @@ class TestTheCallSiteIsReached:
         assert seen
         # No-op spy → the wire equals exactly what the helper was handed.
         assert seen[-1] == (body.get("references") or [])
+
+    def test_r386_deepener_changes_grain_after_collapse_but_not_the_provisions(
+        self, _client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With the R386 deepener ON, the wire may differ from what collapse was
+        handed — but ONLY in grain. The provision set must be identical, which
+        is the whole hard-rule-#8 argument, asserted here on the live wire
+        rather than argued from the code."""
+        seen, spy = _spy_factory()
+        monkeypatch.setenv("REGENOLD_PARENT_COLLAPSE", "1")
+        monkeypatch.setenv("REGENOLD_REF_GRAIN_DEEPEN", "1")
+        monkeypatch.setattr(
+            "app.routes.regenold._collapse_parent_when_subpoint_cited", spy
+        )
+        body = _ask(_client, _MULTI_REF_Q)
+        assert seen
+        wire = body.get("references") or []
+        heads = lambda rs: {r.split(".")[0].strip() for r in rs}  # noqa: E731
+        assert heads(seen[-1]) == heads(wire), (
+            "the deepener changed WHICH provisions are cited, not just how "
+            "precisely — that would break hard rule #8"
+        )
 
 
 class TestTheResultReachesTheWire:

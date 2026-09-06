@@ -1433,11 +1433,44 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     },
     "Art. 74": {
         "dimension": "governance",
+        # R384 — the summary previously described ONLY the paragraph-13
+        # source-code power and never mentioned paragraph 12. Because a KB
+        # summary is the ARTICLE-SPECIFIC OBLIGATIONS row Stage-2 is grounded
+        # on, that omission was load-bearing: on official row rg_020 ("Should
+        # market surveilance authorities be provided with remote access to
+        # documentations and data sets...") the shipped answer said "the Act
+        # does not oblige providers to give market surveillance authorities
+        # open remote access to those data sets" — the OPPOSITE of the statute.
+        # Verbatim Art. 74(12), via provision_text.get_provision_text:
+        #   "...the market surveillance authorities shall be granted full access
+        #    by providers to the documentation as well as the training,
+        #    validation and testing data sets used for the development of
+        #    high-risk AI systems, including, where appropriate and subject to
+        #    security safeguards, through application programming interfaces
+        #    (API) or other relevant technical means and tools enabling remote
+        #    access."
+        # Source-code access (74(13)) is the NARROWER power and was the only one
+        # described here, which is why the model generalised to "no standing
+        # entitlement". Same class as the R379 Annex X finding: what a summary
+        # omits is as load-bearing as what it asserts.
+        # Sentence ORDER is load-bearing here, not just content. The offline
+        # composer selects a sentence from this summary, and with the operative
+        # rule buried mid-paragraph it picked the trailing source-code carve-out
+        # instead — answering a narrower question than the one asked. The
+        # operative duty therefore leads, in its own self-contained sentence.
         "summary": (
-            "Designates market-surveillance authorities and integrates AI-Act "
-            "enforcement with Regulation (EU) 2019/1020; authorities have full "
-            "investigation + corrective-measure powers, including access to "
-            "source code where strictly necessary."
+            "Providers must grant market-surveillance authorities full access "
+            "to the technical documentation AND to the training, validation and "
+            "testing data sets used to develop a high-risk AI system, "
+            "including, where appropriate and subject to security safeguards, "
+            "through APIs or other technical means enabling REMOTE access, "
+            "where relevant and limited to what is necessary for their tasks. "
+            "Access to the source code is a separate and narrower power, "
+            "available on reasoned request only and only once data- and "
+            "documentation-based verification has been exhausted. The Article "
+            "also designates those authorities and integrates AI-Act "
+            "enforcement with Regulation (EU) 2019/1020, giving them full "
+            "investigation and corrective-measure powers."
         ),
     },
     "Art. 79": {
