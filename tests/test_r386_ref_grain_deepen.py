@@ -245,6 +245,55 @@ class TestRegisteredAndWired:
 
         assert inspect.getsource(R).count("_deepen_ref_grain(") >= 2
 
+    def test_the_deepened_grain_actually_reaches_response_references(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The strongest form of prove-it-fires: drive the real route and read
+        the WIRE. Asserting on the helper, on the diff, or on a call-site grep
+        is what let three separate levers ship making zero calls.
+
+        This also proves the flag reaches ``_engine_cache_key`` — both arms run
+        in the SAME process against the same question, so a missing cache-key
+        registration would serve the first arm's answer to the second.
+        """
+        from fastapi.testclient import TestClient
+
+        for var, val in (
+            ("REGENOLD_SKIP_DOTENV", "1"),
+            ("OPENAI_API_BASE", "http://127.0.0.1:1/v1"),
+            ("P2P_GRAPH_RAG_PROVIDER", "cli"),
+            ("REGENOLD_EXTERNAL_EMBEDDINGS", "0"),
+        ):
+            monkeypatch.setenv(var, val)
+        from app.main import app
+
+        client = TestClient(app)
+        key = os.environ.get("P2P_REGENOLD_API_KEY", "")
+
+        def refs() -> list[str]:
+            r = client.post(
+                "/api/v1/regenold/eu-ai-act/ask",
+                json={"messages": [{"role": "user", "content": Q}]},
+                headers={"X-API-Key": key, "Authorization": "Bearer " + key},
+            )
+            assert r.status_code == 200, r.text[:300]
+            return list(r.json().get("references") or [])
+
+        monkeypatch.setenv("REGENOLD_REF_GRAIN_DEEPEN", "0")
+        off = refs()
+        monkeypatch.setenv("REGENOLD_REF_GRAIN_DEEPEN", "1")
+        on = refs()
+
+        assert off != on, (
+            "the deepener made NO difference on the wire — either the call site "
+            "is not reached or the flag is missing from the cache key"
+        )
+        assert any("." in r for r in on), "the ON arm shipped no sub-point grain"
+        assert {r.split(".")[0] for r in off} == {r.split(".")[0] for r in on}, (
+            "the HEAD SET moved — deepening must never change which provisions "
+            "are cited, only how precisely"
+        )
+
     def test_it_runs_before_every_pass_that_can_drop(self) -> None:
         """Ordering is load-bearing: a dropped reference must never be a
         deepened one, or a drop and a grain change become indistinguishable in
