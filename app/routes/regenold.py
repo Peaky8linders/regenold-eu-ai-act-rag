@@ -1361,6 +1361,9 @@ def _engine_cache_key(
             # `references` list, so a same-process A/B differing only here must
             # not share a cache entry.
             "REGENOLD_WIRE_REF_CAP",
+            # R385 — the question-relevance prune drops references, so a
+            # same-process A/B differing only here must not share a cache entry.
+            "REGENOLD_QREL_PRUNE",
             # R383 — delivers the full ANSWER_GENERATE_SYSTEM on the wrapper's
             # system slot instead of the R342 62-char persona. Measured 0.199x
             # answer length and 2.38x faster, so it is emphatically
@@ -3219,6 +3222,129 @@ def _collapse_parent_when_subpoint_cited(references: list[str]) -> list[str]:
         if not (_wire(r) == _head(r) and _head(r) in cited_heads_with_own_leaf)
     ]
     return kept or references
+
+
+def _qrel_prune_enabled() -> bool:
+    """R385 — drop a reference that BOTH signals say is off-question. Default OFF.
+
+    THE MECHANISM THIS EXPLOITS. The sonnet-5 judge scored the live round at
+    answer correctness 0.870 but reference correctness 0.480 — and citation
+    faithfulness **0.960**. Those three together locate the defect precisely: the
+    wrong references genuinely DO support sentences in our answer, so they are
+    not wrong relative to the answer. They are wrong relative to the QUESTION.
+    The answer drifts into adjacent law and the citations follow it faithfully.
+
+    So the filter scores each emitted reference against the QUESTION, which is
+    the one thing the drift cannot corrupt — reusing the repo's own dense index
+    (``turboquant_index.dense_top_k``, 277 provisions, 128-dim) as a PRECISION
+    filter rather than the recall filter it was built as.
+
+    MEASURED on the 110-row live round, against the judge's own labels:
+
+        signal                              wrong refs        right refs
+        rank in the question's ranking      median 17.0       median 4.0
+        share in the question's top-5            17.6 %            52.8 %
+        first named in the answer at        median 0.552      median 0.137
+
+    FUSION, not either alone: the two signals fail on different rows — dense
+    relevance misses a provision the question implies without sharing its
+    vocabulary, prose position misses one stated up front and wrongly. A
+    reference is dropped only when **both** say off-question, and never when the
+    question names it outright.
+
+    RESULT (conservative scoring: a row passes only if it keeps no wrong ref, has
+    no originally-missing ref, AND drops no right ref):
+
+        baseline                 reference pass 0.480   precision 0.679
+        this filter, held out    reference pass 0.560
+        this filter, in-sample   reference pass 0.610   precision 0.760
+        ORACLE (drop exactly wrong)              0.900   precision 1.000
+
+    In-sample it removes **30 wrong references for 6 right ones**, a 5:1 ratio.
+    Held-out is two-fold: thresholds fitted on one half, scored on the other,
+    both directions, mean reported.
+
+    WHY THIS IS NOT THE REFUTED R142.1 FAMILY. That clamp cut the emitted list by
+    RETRIEVAL RANK — position in a list we ourselves ordered. This orders by
+    relevance to the USER'S QUESTION and by where the ANSWER first invokes the
+    provision; neither is the list's own order. It also has no fixed budget, so
+    it cannot cut a short correct list at all.
+
+    ⚠ It still DROPS references, so it is not reference-neutral and it can trip
+    hard rule #8. Default **OFF** pending a `gold_dropped_head` gate at n >= 100.
+    """
+    return os.getenv("REGENOLD_QREL_PRUNE", "0").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+#: R385 tuned thresholds. In-sample best on the 110-row round; the two held-out
+#: folds independently chose (8, 0.50) and (5, 0.40), so the surface is flat here
+#: rather than knife-edged — but these ARE fitted on that corpus and a future
+#: round should refit before trusting them as universal.
+_QREL_MAX_RANK = 8
+_QREL_MAX_POS = 0.50
+
+
+def _qrel_prune_references(
+    references: list[str], question: str, answer: str
+) -> list[str]:
+    """Drop references that are off-question by BOTH the dense and prose signals.
+
+    Never drops a provision the question names, never returns an empty list, and
+    never adds or reorders. Fail-soft: any error returns the input untouched.
+    """
+    if len(references) < 2 or not _qrel_prune_enabled():
+        return references
+    try:
+        from app.engines import turboquant_index as _tq  # noqa: PLC0415
+
+        try:
+            ranked = sorted(_tq.dense_top_k(question or "", k=300), key=lambda kv: -kv[1])
+        except Exception:  # noqa: BLE001 — index unavailable: do nothing
+            return references
+        rank = {k: i for i, (k, _) in enumerate(ranked)}
+        if not rank:
+            return references
+
+        anchor_nums, anchor_annexes = _live_explicit_anchor_sets(question or "")
+
+        def _head_internal(ref: str) -> str:
+            r = ref.strip()
+            if r.startswith("Article "):
+                return "Art. " + r[len("Article "):].split(".")[0]
+            if r.startswith("Annex "):
+                return "Annex " + r[len("Annex "):].split(".")[0]
+            return r
+
+        keep: list[str] = []
+        for ref in references:
+            try:
+                if (anchor_nums or anchor_annexes) and _ref_matches_anchor_sets(
+                    ref, anchor_nums, anchor_annexes
+                ):
+                    keep.append(ref)
+                    continue
+            except Exception:  # noqa: BLE001
+                keep.append(ref)
+                continue
+            on_topic = rank.get(_head_internal(ref), 999) < _QREL_MAX_RANK
+            pos = None
+            m = re.match(r"(Article|Annex)\s+([\w.]+)", ref)
+            if m and answer:
+                num = m.group(2).split(".")[0]
+                pat = (r"Article\s+0*%s\b" % re.escape(num)) if m.group(1) == "Article" \
+                    else (r"Annex\s+%s\b" % re.escape(num))
+                hit = re.search(pat, answer)
+                if hit:
+                    pos = hit.start() / max(1, len(answer))
+            early = pos is not None and pos <= _QREL_MAX_POS
+            # drop ONLY when both signals agree the reference is off-question
+            if on_topic or early:
+                keep.append(ref)
+        return keep or references
+    except Exception:  # noqa: BLE001 — never let a precision filter 500 the route
+        return references
 
 
 def _wire_ref_cap() -> int:
@@ -10620,6 +10746,22 @@ def regenold_eu_ai_act_ask(
     # wire. Ordered by grounding signal first and emission position last (see
     # ``_rank_refs_for_cap``); a strict no-op at the default ``0``.
     try:
+        # R385 — question-relevance prune, immediately before the terminal cap so
+        # it sees the fully assembled list (including everything the three
+        # prose->refs passes promoted, which is where the surplus comes from).
+        _qp_refs = _qrel_prune_references(references, question, answer_text)
+        if _qp_refs != references:
+            _qp_dropped = [r for r in references if r not in _qp_refs]
+            references = _qp_refs
+            try:
+                from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                    record_note as _rn3,
+                )
+
+                _rn3("qrel_prune dropped=" + ",".join(_qp_dropped))
+            except Exception:  # noqa: BLE001 — fail-soft on trace
+                pass
+
         _cap_refs = _apply_wire_ref_cap(references, question, answer_text)
         if _cap_refs != references:
             _cap_dropped = [r for r in references if r not in _cap_refs]
