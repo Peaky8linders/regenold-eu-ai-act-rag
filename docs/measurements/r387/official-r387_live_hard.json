@@ -1,0 +1,32 @@
+{
+ "label": "r387_live_hard",
+ "batch": "regenold-official-2026-07-07",
+ "n_questions": 110,
+ "mode": "hard",
+ "endpoint": "local://app.main:app/api/v1/regenold/eu-ai-act/ask?include_reasoning=true",
+ "baseline_env": {},
+ "branch_env": {},
+ "baseline": {
+  "hard": {
+   "n": 110,
+   "errors": 0,
+   "tone": 1.0,
+   "n_refs": 2.6363636363636362,
+   "n_ref_heads": 2.618181818181818,
+   "answer_chars": 710.9727272727273,
+   "refusal_rate": 0.0,
+   "stage2_landed_rate": 0.7454545454545455,
+   "stage2_models": [
+    "claude-opus-5"
+   ],
+   "retrieval_paths": {
+    "kb_fallback": 110
+   },
+   "latency_p50_ms": 14594.324500001676,
+   "latency_p90_ms": 21791.60270000284,
+   "pushback_ref_flip_rate": 0.2545454545454545,
+   "pushback_ref_jaccard": 0.8968398268398269,
+   "pushback_conceded_rate": 0.0
+  }
+ }
+}

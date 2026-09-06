@@ -1,0 +1,251 @@
+{
+  "Easy": {
+    "aggregate": {
+      "ans_loose": 41.17996199992366,
+      "ans_strict": 53.08637215535644,
+      "ans_conc": 51.579086884514545,
+      "ref_loose": 58.82251082251082,
+      "ref_strict": 25.432900432900432,
+      "ref_conc": 57.07615112160567,
+      "tone": 100.0,
+      "speed": 93.11044548000011,
+      "latency_s": 6.889554519999894,
+      "overall": 55.47111511384719,
+      "count": 110
+    },
+    "count": 110,
+    "by_difficulty": {
+      "EASY": {
+        "ans_loose": 47.67436834855408,
+        "ans_strict": 64.26908215960711,
+        "ans_conc": 58.901152062302145,
+        "ref_loose": 61.01307189542484,
+        "ref_strict": 28.15592903828198,
+        "ref_conc": 62.661913250148544,
+        "tone": 100.0,
+        "speed": 94.68523308039214,
+        "latency_s": 5.314766919607862,
+        "overall": 60.685674938111866,
+        "count": 51
+      },
+      "HARD": {
+        "ans_loose": 35.566153122293976,
+        "ans_strict": 43.41996181269908,
+        "ans_conc": 45.2498441037151,
+        "ref_loose": 56.928974979822435,
+        "ref_strict": 23.07909604519774,
+        "ref_conc": 52.24778046811945,
+        "tone": 100.0,
+        "speed": 91.74918840169514,
+        "latency_s": 8.250811598304871,
+        "overall": 50.751128868323235,
+        "count": 59
+      }
+    },
+    "by_category": {
+      "Easy Mode (Direct Statutory Lookup)": {
+        "ans_loose": 47.67436834855408,
+        "ans_strict": 64.26908215960711,
+        "ans_conc": 58.901152062302145,
+        "ref_loose": 61.01307189542484,
+        "ref_strict": 28.15592903828198,
+        "ref_conc": 62.661913250148544,
+        "tone": 100.0,
+        "speed": 94.68523308039214,
+        "latency_s": 5.314766919607862,
+        "overall": 60.685674938111866,
+        "count": 51
+      },
+      "Complex Decision Boundary": {
+        "ans_loose": 37.42322667195653,
+        "ans_strict": 44.73807363409501,
+        "ans_conc": 46.108584020415144,
+        "ref_loose": 58.00324675324675,
+        "ref_strict": 25.71969696969697,
+        "ref_conc": 55.0974025974026,
+        "tone": 100.0,
+        "speed": 91.57937499090944,
+        "latency_s": 8.420625009090559,
+        "overall": 52.544940670027415,
+        "count": 44
+      },
+      "Cross-Framework & Sectoral MedTech Integration": {
+        "ans_loose": 35.329893081013985,
+        "ans_strict": 44.420775303128245,
+        "ans_conc": 26.56126288804064,
+        "ref_loose": 63.99999999999999,
+        "ref_strict": 0.0,
+        "ref_conc": 48.33333333333333,
+        "tone": 100.0,
+        "speed": 91.8099853599997,
+        "latency_s": 8.1900146400003,
+        "overall": 10.213197427281127,
+        "count": 5
+      },
+      "GPAI & Systemic Risk Boundary": {
+        "ans_loose": 29.56204519037467,
+        "ans_strict": 40.250570648587946,
+        "ans_conc": 57.78965688534658,
+        "ref_loose": 38.57142857142857,
+        "ref_strict": 18.571428571428573,
+        "ref_conc": 33.33333333333333,
+        "tone": 100.0,
+        "speed": 93.06819867142829,
+        "latency_s": 6.931801328571704,
+        "overall": 44.46501729221598,
+        "count": 7
+      },
+      "Two-Article Conflict & Reconciliation": {
+        "ans_loose": 23.113790970933827,
+        "ans_strict": 30.075853350189632,
+        "ans_conc": 34.987446071206435,
+        "ref_loose": 75.0,
+        "ref_strict": 16.666666666666664,
+        "ref_conc": 66.66666666666666,
+        "tone": 100.0,
+        "speed": 90.1607573500005,
+        "latency_s": 9.839242649999505,
+        "overall": 45.470498020542735,
+        "count": 2
+      },
+      "Borderline Prohibition & Exception": {
+        "ans_loose": 21.96969696969697,
+        "ans_strict": 29.292929292929294,
+        "ans_conc": 33.654300440882146,
+        "ref_loose": 66.66666666666666,
+        "ref_strict": 66.66666666666666,
+        "ref_conc": 50.0,
+        "tone": 100.0,
+        "speed": 92.86078389999966,
+        "latency_s": 7.13921610000034,
+        "overall": 50.84882345777745,
+        "count": 1
+      }
+    }
+  },
+  "Hard": {
+    "aggregate": {
+      "ans_loose": 42.06671917873754,
+      "ans_strict": 54.32146980492282,
+      "ans_conc": 52.29095242086958,
+      "ref_loose": 59.94372294372294,
+      "ref_strict": 22.387445887445885,
+      "ref_conc": 59.03719008264463,
+      "tone": 100.0,
+      "speed": 86.49684715000016,
+      "latency_s": 13.503152849999838,
+      "overall": 54.84680903384287,
+      "count": 110
+    },
+    "count": 110,
+    "by_difficulty": {
+      "EASY": {
+        "ans_loose": 47.99384797089223,
+        "ans_strict": 65.48772179412423,
+        "ans_conc": 58.44091721707838,
+        "ref_loose": 62.069716775599126,
+        "ref_strict": 27.012138188608777,
+        "ref_conc": 64.16518122400475,
+        "tone": 100.0,
+        "speed": 89.19569410588255,
+        "latency_s": 10.804305894117444,
+        "overall": 60.362617640534744,
+        "count": 51
+      },
+      "HARD": {
+        "ans_loose": 36.94326886687501,
+        "ans_strict": 44.66928588205381,
+        "ans_conc": 46.97488115635011,
+        "ref_loose": 58.10599946193166,
+        "ref_strict": 18.389830508474574,
+        "ref_conc": 54.6045197740113,
+        "tone": 100.0,
+        "speed": 84.16394554406793,
+        "latency_s": 15.836054455932075,
+        "overall": 49.83912685023261,
+        "count": 59
+      }
+    },
+    "by_category": {
+      "Easy Mode (Direct Statutory Lookup)": {
+        "ans_loose": 47.99384797089223,
+        "ans_strict": 65.48772179412423,
+        "ans_conc": 58.44091721707838,
+        "ref_loose": 62.069716775599126,
+        "ref_strict": 27.012138188608777,
+        "ref_conc": 64.16518122400475,
+        "tone": 100.0,
+        "speed": 89.19569410588255,
+        "latency_s": 10.804305894117444,
+        "overall": 60.362617640534744,
+        "count": 51
+      },
+      "Complex Decision Boundary": {
+        "ans_loose": 37.204656777343956,
+        "ans_strict": 44.07629793676895,
+        "ans_conc": 45.138868064460745,
+        "ref_loose": 61.3997113997114,
+        "ref_strict": 21.098484848484848,
+        "ref_conc": 56.78030303030303,
+        "tone": 100.0,
+        "speed": 84.53276254772746,
+        "latency_s": 15.46723745227254,
+        "overall": 51.03571227604922,
+        "count": 44
+      },
+      "Cross-Framework & Sectoral MedTech Integration": {
+        "ans_loose": 33.19302644616559,
+        "ans_strict": 42.17016253828398,
+        "ans_conc": 24.28099786229616,
+        "ref_loose": 62.666666666666664,
+        "ref_strict": 0.0,
+        "ref_conc": 47.33333333333333,
+        "tone": 100.0,
+        "speed": 80.97681125999952,
+        "latency_s": 19.023188740000478,
+        "overall": 9.749568087742077,
+        "count": 5
+      },
+      "GPAI & Systemic Risk Boundary": {
+        "ans_loose": 33.613595996342674,
+        "ans_strict": 45.69961347872007,
+        "ans_conc": 65.86340622335557,
+        "ref_loose": 44.76190476190476,
+        "ref_strict": 12.857142857142858,
+        "ref_conc": 33.8095238095238,
+        "tone": 100.0,
+        "speed": 84.497733642857,
+        "latency_s": 15.502266357143005,
+        "overall": 44.9392793870909,
+        "count": 7
+      },
+      "Two-Article Conflict & Reconciliation": {
+        "ans_loose": 59.65934761001174,
+        "ans_strict": 66.52970922882427,
+        "ans_conc": 69.19533919341407,
+        "ref_loose": 50.0,
+        "ref_strict": 33.33333333333333,
+        "ref_conc": 75.0,
+        "tone": 100.0,
+        "speed": 82.62389790000088,
+        "latency_s": 17.376102099999116,
+        "overall": 64.06168130158672,
+        "count": 2
+      },
+      "Borderline Prohibition & Exception": {
+        "ans_loose": 22.06896551724138,
+        "ans_strict": 32.323232323232325,
+        "ans_conc": 64.56828212658566,
+        "ref_loose": 0.0,
+        "ref_strict": 0.0,
+        "ref_conc": 100.0,
+        "tone": 100.0,
+        "speed": 84.61524740000095,
+        "latency_s": 15.384752599999047,
+        "overall": 2.107878516498975,
+        "count": 1
+      }
+    }
+  },
+  "robustness_drop_pp": -0.6243060800043239
+}
