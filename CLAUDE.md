@@ -83,6 +83,104 @@ axes against a *reference answer*; the July-7 batch carries neither (`_official_
 has 8 fields, none of them criteria or a reference answer, because regenold never published
 them). Treat every local judged number as a PROXY. See § R381.
 
+## ⛔ R386 — the reference gap is GRAIN, not precision. And the gate's gold was the blocker.
+
+**Executed 2026-09-06.** Two findings, and the second one retires a whole line of work.
+
+### 1. Ref Loose is ALREADY at parity. It is Ref STRICT that lags — and strict means sub-points.
+
+Read the Aug-25 easy column against itself rather than against frontier:
+
+| | Loose | Strict | spread |
+| :--- | ---: | ---: | ---: |
+| Answer correctness | 89.7 | 81.2 | −8.5 |
+| **Reference correctness** | **89.4** | **68.3** | **−21.1** |
+
+Reference Loose (89.4) is already level with Answer Loose (89.7). The operator ask —
+"get ref correctness close to ans correctness" — is therefore **entirely** a Ref Strict ask,
+and the rubric defines the two axes as Loose *"at the level of Article and Annex numbers"*
+versus Strict *"includes subpoints"*. A 21-point loose/strict spread with a head-level
+citation habit is a **grain deficit**, not a precision deficit.
+
+Confirmed from the evaluator's own data. The report appendix prints expected sets for five
+questions — seven expected references, and **five carry sub-point grain** (`Article 13.3`,
+`Article 7.1`, `Article 6.2`, `Article 111.1`, `Article 50.4`) against two bare heads
+(`Annex III`, `Annex X`). **The answer key is ~71 % sub-point. We ship 14.3 %.**
+
+⚠ **Two blind spots hid this, both verified by execution.** Our probe gold carries **0/208
+sub-point grain** (R331), and `evals.bench.metrics.reference_correctness_strict` calls
+`article_heads` on the *prediction* (`metrics.py:388`) — so **the internal "strict" axis
+head-projects and is structurally blind to the axis the official strict measures.** No
+instrument in this repo could see the largest reference gap we have.
+
+**`REGENOLD_REF_GRAIN_DEEPEN`** replaces a bare head with its question-and-answer-relevant
+paragraph. It is **free by construction, then verified**: `gold_dropped_head` folds both sides
+onto heads and says so in its own docstring (*"a MORE precise prediction than gold … does NOT
+count as a drop here: the head is covered"*); RefConc is a pure COUNT ratio and the count is
+unchanged; Ref Loose is head-level and the head survives inside the leaf. Gate replay over the
+full live capture of the gold-bearing probe corpus, n=129, scored with `evals.bench.metrics`:
+
+```
+arm                    gold_dropped_head   ref_loose   ref_strict   refs/row
+OFF                                  37      0.8346       0.6144       3.03
+ON  (284 refs changed)               37      0.8346       0.6144       3.03
+```
+
+**Every axis byte-identical while 284 references change** — the signature of a transform that
+adds precision without moving a provision. Same shape as parent collapse (R381), **not** the
+refuted positional-trimmer family. Thresholds are a **plateau, not a peak**: every setting in
+`MIN_TOP` 1–6 × `MIN_MARGIN` 1–4 scores 35.5–37.0 and none drops a gold head, so the gain is
+not a fitted parameter (`MIN_TOP` measured entirely inert; kept as a degenerate-case floor).
+Coordinate accuracy where judgeable: **77 % (47/61)**, against **4** rows where gold wanted the
+bare head — 11.75:1. A wrong coordinate costs nothing, because a bare head misses strict too.
+
+### 2. The minimal-gold probe set — the instrument fix, and the R385 verdict it overturns
+
+R385 closed on a structural claim: *"until the gate's gold is minimal, every reference-precision
+lever fails hard rule #8 BY CONSTRUCTION — that is a statement about the instrument, not the
+lever."* Four independent detectors (applicability, question-role, discourse cohesion,
+retrieval-provenance) then hit the same wall, at head-level gold-drop counts of 14 / 16 / 27 / 10
+against a baseline of 0. **So build the instrument, not a fifth detector.**
+
+`docs/measurements/r386/mingold.py` — sonnet-5 over the tunnel, **question-only** (it never sees
+our answer, our references, the July-7 references or any judge output, so it cannot rediscover
+our own citations), two passes: locate the head against the 126-provision title index, then pin
+the paragraph against that provision's verbatim text. Pass 2 is **double-sampled and
+INTERSECTED**, because single draws are unstable — three draws of rg_018 gave `['Article 7.1']`,
+`['Article 7.1','Annex III']` and `['Article 7.1','Article 7.2']`, and one draw of rg_075 drifted
+`50.4 → 50.2`. 11 of 110 rows have no stable key and are recorded as **unstable** rather than
+given an invented one.
+
+**Validated against the evaluator's five printed keys**: `rg_046`, `rg_018`, `rg_075` EXACT;
+`rg_024`, `rg_105` a subset (it misses a second ref). **Precision 7/7, grain 5/5, recall 5/7** —
+it never over-cites, and its bias is toward minimality, which is the right bias for measuring
+over-citation.
+
+```
+minimal gold   1.20 refs/row    92 % sub-point grain
+what we ship   2.69 refs/row    14 % sub-point grain
+
+arm                       RefLoose  RefStrict  RefConc  gold_dropped_head   (n=99)
+OFF (as shipped live)         60.0       18.3     54.6                  8
+R386 grain deepener           60.0       36.5     54.6                  8   (+0)
+R385 qrel prune (REJECTED)    64.7       19.4     61.8                  9   (+1)
+deepen + prune                64.7       38.5     61.8                  9   (+1)
+```
+
+**The deepener DOUBLES Ref Strict, +18.2 pp, at zero gold cost.** And the R385 prune — rejected
+because it dropped **nineteen** gold heads against our non-minimal probe gold — costs **ONE**
+against a minimal key, while gaining +4.7 RefLoose and +7.2 RefConc. **The instrument really was
+the problem.** That still does not clear hard rule #8, which is literally "drop ZERO more", so
+`REGENOLD_QREL_PRUNE` stays default OFF — but it is now an operator decision with a price tag
+rather than a lever that fails by construction.
+
+⚠ **Do NOT quote this probe's absolute numbers as official-scale.** Scored on the same run the
+report graded (`jul07_refs`), its RefConc reads **38.5 against the printed 50.4** — an 11.9 pp
+under-read, because it under-recalls the second expected reference and because the report
+excludes unannotated questions. It is a **relative** instrument for comparing arms, which is how
+every number above uses it. Its refs/row (1.20) does independently corroborate R381's 1.4
+recovered from the appendix.
+
 ## ⛔ R381 — the "conciseness collapse" is a METRIC REDEFINITION. The R367 section below is half wrong.
 
 **Executed 2026-09-03.** Diff the two reports axis-by-axis **for the two BASELINES**, whose
@@ -840,6 +938,7 @@ Concise record of the applied fixes; full rationale in `docs/reviews/`:
 | `REGENOLD_DENOISER_MAX_TOKENS` | `400` | R380 — completion budget of the multi-turn query rewrite (was a hard 100). The Groq slot runs `openai/gpt-oss-120b`, a reasoning model whose hidden reasoning counts against `max_tokens`, so the rewrite truncated on 5/9 multi-turn calls live and every provider in the chain fell through to concatenation. **R381: still accurate — the model is `openai/gpt-oss-120b` again**, see the row below |
 | `REGENOLD_DENOISER_MODEL_GROQ` | `default_groq_model()` = `openai/gpt-oss-120b` | **R381 — a P0 was shipped and reverted here.** `f46adb8` hardcoded `llama-3.3-70b-versatile`, which **does not exist on this Groq account**: `GET /openai/v1/models` returns 14 ids and that is not one of them; a POST returns `404 model_not_found`. So every Stage-0 rewrite 404'd and fell through to the 40-turn concatenation — the exact history bleed R380 had just fixed. The same commit also passed `reasoning_effort="none"` explicitly, which **400s** on gpt-oss (`must be one of low, medium, or high`) and is *unnecessary*: `openai_wrapper_provider.py:555-568` already auto-injects the right value per family (gpt-oss → `low`, qwen → `none`). Measured live: no effort 83 completion tokens / 0.6 s; `low` **30 tokens / 0.2 s**. The valid value is family-specific, so never hardcode one at the call site |
 | `REGENOLD_DUAL_PASS_RETRIEVAL` | `0` | R380/`f46adb8` — replaces the Stage-0 LLM rewrite with deterministic dual-pass retrieval: pass 1 parses the live user turn (operative provision), pass 2 the prior USER turns only (context anchors, R91: assistant text never reaches entity extraction or BM25), then an ordered dedup fusion. **Default OFF**, and verified so by execution (unset ⇒ 0 `dual_pass_parse` calls; `=1` ⇒ it fires and the fused entity list differs). Registered in `_engine_cache_key`; single-turn is a strict no-op (10/10 byte-identical). ⚠ **Known P0 while ON:** it pre-empts R380's `REGENOLD_DENOISE_SELF_CONTAINED_SKIP`, which re-opens assistant-turn bleed on the wire and drops gold refs — do not flip it on without re-gating |
+| `REGENOLD_REF_GRAIN_DEEPEN` | `0` | **R386 — the reference gap is GRAIN, not precision.** Replaces a bare head with its question-and-answer-relevant paragraph (`Article 13` -> `Article 13.3`). The evaluator's own printed answer keys are **~71 % sub-point**; we ship **14.3 %**, and Ref Loose (89.4) is ALREADY level with Ans Loose (89.7) while Ref Strict (68.3) lags Ans Strict (81.2) — a 21-point loose/strict spread that is a grain deficit. **Free by construction, then verified**: `gold_dropped_head` folds onto heads (its own docstring: *"a MORE precise prediction than gold ... does NOT count as a drop here"*), RefConc is a pure COUNT ratio and the count is unchanged, Ref Loose is head-level and the head survives inside the leaf. Gate replay n=129: **gold 37 -> 37 (+0) with every axis byte-identical while 284 references change.** On the R386 minimal-gold set, n=99: **Ref Strict 18.3 -> 36.5 (+18.2 pp)**, RefLoose and RefConc untouched. Coordinate accuracy 77 % (47/61) against 4 rows where gold wanted the bare head; thresholds are a PLATEAU (every `MIN_TOP` 1-6 x `MIN_MARGIN` 1-4 scores 35.5-37.0, none drops a gold head), so the gain is not a fitted parameter. Ordered AFTER parent collapse and BEFORE every pass that can drop, so a dropped ref is never a deepened one. See § R386 |
 | `REGENOLD_WIRE_REF_CAP` | `0` (unlimited) | R381 — terminal cap on the emitted reference list, the LAST reference pass. Built to attack the highest-leverage axis (RefConc is `min(1, \|expected\|/\|provided\|)`, a pure COUNT ratio) and **GATED, THEN REJECTED**. Zero-variance simulation over a full live capture of the gold-bearing probe corpus, n=129: cap 5 → gold 37→37 (+0.03 pp), cap 4 → 37→37 (+0.33 pp), **cap 3 → 37→41 FAILS**, cap 2 → 65 FAILS, cap 1 → 113 FAILS. **Every value worth having fails hard rule #8; every value that passes is worth nothing.** ⚠ The verdict REVERSED as n grew — cap=3 read "pass" at n=17/30/34 and fails by 4 at n=129, monotonically worse. Zero-variance removes GENERATION variance, not SAMPLING variance. Kept in the tree at `0`, cache-keyed and tested, so the measurement can be re-run if the evaluator's real expected sets ever land. Malformed value fails OPEN. See § R381 and `docs/reviews/r381-…` |
 | `REGENOLD_EXTRACT_SHAPE_GUARD` | `1` | R381 — the R93 `list`/`numeric` extractive pass must produce an answer of the SHAPE the question asks for: a `numeric` answer must contain a cardinal that is not a provision coordinate, a `list` answer must enumerate. On failure it falls back to the lettered limbs of a retrieved provision (`_enumerated_categories`, 29 provisions render cleanly; Annex III correctly renders `None` because its letters restart inside each numbered area) and then to the engine prose. **Closes official-report Q45 (5/5 criteria FAIL) and Q95 (2/2 FAIL)** — both were data fixes that shipped correctly and were then overwritten on the way to the wire by one unresponsive BM25 sentence |
 | `REGENOLD_DENOISE_SELF_CONTAINED_SKIP` | `1` | R380 — a self-contained live turn (≥6 words, no coreference, its own anchor) is used VERBATIM as the retrieval query instead of being paraphrased by the Stage-0 rewrite: hard-mode turn 1 becomes identical to easy mode for 100/110 official questions and the rewrite leaves the critical path. Live-only (sits after the no-provider exit), so the cli bench is byte-identical |
