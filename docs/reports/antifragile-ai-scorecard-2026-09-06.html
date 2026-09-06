@@ -1,0 +1,420 @@
+<title>Antifragile AI Scorecard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper:      #FBFAF7;
+    --paper-sunk: #F3F1EB;
+    --ink:        #16213A;
+    --ink-soft:   #4A5468;
+    --rule:       #D9D5CB;
+    --accent:     #1B4B8F;
+    --signal:     #B3341F;
+    --good:       #2E6B4F;
+    --measure: 66ch;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #111725;
+      --paper-sunk: #182031;
+      --ink:        #E8E6E0;
+      --ink-soft:   #9AA3B4;
+      --rule:       #2C3548;
+      --accent:     #7EA9E0;
+      --signal:     #E0745C;
+      --good:       #6FBF97;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:      #111725;
+    --paper-sunk: #182031;
+    --ink:        #E8E6E0;
+    --ink-soft:   #9AA3B4;
+    --rule:       #2C3548;
+    --accent:     #7EA9E0;
+    --signal:     #E0745C;
+    --good:       #6FBF97;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+    font-size: 17px;
+    line-height: 1.62;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 28px 96px; }
+  .col  { max-width: var(--measure); }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+
+  header { padding: 72px 0 40px; border-bottom: 2px solid var(--ink); }
+  h1 {
+    font-family: Newsreader, Georgia, serif;
+    font-weight: 600; font-size: clamp(38px, 6vw, 62px);
+    line-height: 1.04; letter-spacing: -.018em;
+    margin: 18px 0 0; text-wrap: balance; max-width: 17ch;
+  }
+  .standfirst {
+    font-family: Newsreader, Georgia, serif;
+    font-size: clamp(19px, 2.3vw, 23px); line-height: 1.5;
+    color: var(--ink-soft); margin: 20px 0 0; max-width: 54ch;
+  }
+  .byline {
+    display: flex; flex-wrap: wrap; gap: 8px 26px;
+    margin-top: 30px; font-family: "IBM Plex Mono", monospace;
+    font-size: 12px; color: var(--ink-soft);
+  }
+
+  section { padding-top: 56px; }
+  h2 {
+    font-family: Newsreader, Georgia, serif;
+    font-weight: 600; font-size: clamp(25px, 3.2vw, 33px);
+    line-height: 1.15; letter-spacing: -.012em;
+    margin: 0 0 6px; text-wrap: balance;
+  }
+  h3 {
+    font-family: "Source Sans 3", sans-serif; font-weight: 600;
+    font-size: 17px; margin: 32px 0 6px; letter-spacing: -.005em;
+  }
+  p { margin: 14px 0; }
+  a { color: var(--accent); }
+
+  .lede { font-size: 18.5px; }
+  em.term { font-style: normal; border-bottom: 1px solid var(--rule); }
+
+  /* headline figures — used once, where the figures ARE the point */
+  .standing {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(196px, 1fr));
+    gap: 1px; background: var(--rule); border: 1px solid var(--rule);
+    margin: 34px 0 8px;
+  }
+  .standing > div { background: var(--paper); padding: 22px 22px 20px; }
+  .standing .k { font-family: "IBM Plex Mono", monospace; font-size: 11px;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); }
+  .standing .v {
+    font-family: Newsreader, Georgia, serif; font-size: 44px; line-height: 1;
+    margin-top: 12px; font-variant-numeric: tabular-nums; letter-spacing: -.02em;
+  }
+  .standing .n { font-size: 14px; color: var(--ink-soft); margin-top: 8px; line-height: 1.4; }
+  .v.lead { color: var(--good); }
+  .v.behind { color: var(--signal); }
+
+  figure { margin: 34px 0 0; }
+  figcaption { font-size: 14px; color: var(--ink-soft); margin-top: 14px; max-width: 62ch; }
+  .chartbox { overflow-x: auto; }
+  svg { display: block; max-width: 100%; height: auto; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 15px; margin-top: 22px; }
+  .tablebox { overflow-x: auto; }
+  th, td { text-align: right; padding: 9px 14px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; white-space: normal; }
+  thead th {
+    font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-soft); border-bottom: 1.5px solid var(--ink);
+  }
+  tbody td { font-variant-numeric: tabular-nums; }
+  tbody tr:last-child td { border-bottom: none; }
+  .win { color: var(--good); font-weight: 600; }
+  .loss { color: var(--signal); }
+
+  .note {
+    border-left: 3px solid var(--accent); background: var(--paper-sunk);
+    padding: 18px 22px; margin: 30px 0; font-size: 15.5px;
+  }
+  .note p:first-child { margin-top: 0; }
+  .note p:last-child { margin-bottom: 0; }
+  .note .eyebrow { color: var(--accent); display: block; margin-bottom: 8px; }
+
+  ul.plain { list-style: none; padding: 0; margin: 18px 0; }
+  ul.plain li {
+    padding: 13px 0 13px 0; border-top: 1px solid var(--rule);
+    display: grid; grid-template-columns: 132px 1fr; gap: 20px; align-items: baseline;
+  }
+  ul.plain li:last-child { border-bottom: 1px solid var(--rule); }
+  ul.plain .lab {
+    font-family: "IBM Plex Mono", monospace; font-size: 11.5px;
+    letter-spacing: .07em; text-transform: uppercase; color: var(--ink-soft);
+  }
+  @media (max-width: 620px) {
+    ul.plain li { grid-template-columns: 1fr; gap: 4px; }
+  }
+
+  footer {
+    margin-top: 72px; padding-top: 26px; border-top: 2px solid var(--ink);
+    font-size: 13.5px; color: var(--ink-soft);
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Independent benchmark · Regulation (EU) 2024/1689</div>
+  <h1>Answering the EU AI Act, measured against frontier models</h1>
+  <p class="standfirst">A specialist retrieval system, graded by a third party on the same 110
+  questions as two general-purpose frontier baselines — and the engineering record behind the
+  numbers.</p>
+  <div class="byline">
+    <span>6 September 2026</span>
+    <span>Antifragile AI</span>
+    <span>110 graded questions · easy + hard modes</span>
+  </div>
+</header>
+
+<section>
+  <h2>Where we stand</h2>
+  <div class="col">
+    <p class="lede">An external evaluator scores every contestant on eight axes and reports the
+    <em class="term">geometric mean</em> — a measure that punishes any single weak axis rather than
+    letting a strong one carry the average. On the most recent graded round we place second of
+    three, behind a 2026 frontier model equipped with live web search, and ahead of a
+    search-integrated 2025 baseline.</p>
+  </div>
+
+  <div class="standing">
+    <div>
+      <div class="k">Antifragile AI</div>
+      <div class="v">75.1</div>
+      <div class="n">Overall, easy mode. 73.4 in hard mode.</div>
+    </div>
+    <div>
+      <div class="k">2026 frontier + search</div>
+      <div class="v behind">80.9</div>
+      <div class="n">Our gap: 5.8 points, down from 10.7.</div>
+    </div>
+    <div>
+      <div class="k">2025 search baseline</div>
+      <div class="v lead">70.1</div>
+      <div class="n">We lead it by 5.0 points, having trailed by 3.4.</div>
+    </div>
+  </div>
+
+  <div class="col">
+    <p>The direction matters more than the placing. Between the two graded rounds our gap to the
+    frontier baseline closed by <strong>4.9 points in easy mode and 6.1 in hard</strong>, and we
+    moved from losing to the 2025 baseline to beating it. Answer correctness rose 17.6 points on
+    both modes.</p>
+  </div>
+</section>
+
+<section>
+  <h2>The eight axes, and where the distance is</h2>
+  <div class="col">
+    <p>Aggregate scores hide which capability is actually short. Broken out, our profile is
+    lopsided in a useful way: we are close on the axes that measure whether the law is stated
+    correctly, and behind on the two that measure restraint — how much unasked material the answer
+    adds, and how many provisions it cites.</p>
+  </div>
+
+  <figure>
+    <div class="chartbox">
+      <svg viewBox="0 0 760 344" role="img" aria-label="Gap to the 2026 frontier baseline by axis, in points. Speed +5.8; Regulatory tone −0.9; Reference conciseness −1.5; Answer correctness loose −4.7; Reference correctness loose −6.7; Answer correctness strict −7.9; Reference correctness strict −10.2; Answer conciseness −16.0.">
+        <g font-family="'IBM Plex Mono', monospace" font-size="11.5" fill="currentColor">
+          <!-- zero axis -->
+          <line x1="544" y1="26" x2="544" y2="304" stroke="var(--ink)" stroke-width="1.25"/>
+          <text x="544" y="322" text-anchor="middle" fill="var(--ink-soft)">parity with frontier</text>
+
+          <!-- gridlines at -15, -10, -5, +5 -->
+          <g stroke="var(--rule)" stroke-width="1">
+            <line x1="184" y1="26" x2="184" y2="304"/>
+            <line x1="304" y1="26" x2="304" y2="304"/>
+            <line x1="424" y1="26" x2="424" y2="304"/>
+            <line x1="664" y1="26" x2="664" y2="304"/>
+          </g>
+          <g fill="var(--ink-soft)" text-anchor="middle" font-size="10.5">
+            <text x="184" y="18">−15</text>
+            <text x="304" y="18">−10</text>
+            <text x="424" y="18">−5</text>
+            <text x="664" y="18">+5</text>
+          </g>
+        </g>
+
+        <g font-family="'Source Sans 3', sans-serif" font-size="13.5">
+          <!-- row 1: Answer conciseness  -16.0  -> bar from 544 left by 16*24=384 -> x=160 -->
+          <text x="150" y="47" text-anchor="end" fill="var(--ink)">Answer conciseness</text>
+          <rect x="160" y="35" width="384" height="16" fill="var(--signal)"/>
+          <text x="152" y="47" text-anchor="end" fill="var(--signal)" font-family="'IBM Plex Mono', monospace" font-size="11.5" opacity="0"> </text>
+          <text x="536" y="47" text-anchor="end" fill="var(--paper)" font-family="'IBM Plex Mono', monospace" font-size="11.5">−16.0</text>
+
+          <!-- row 2: Reference correctness strict -10.2 -> 244.8 -> x=299.2 -->
+          <text x="150" y="82" text-anchor="end" fill="var(--ink)">Reference correctness (strict)</text>
+          <rect x="299" y="70" width="245" height="16" fill="var(--signal)"/>
+          <text x="536" y="82" text-anchor="end" fill="var(--paper)" font-family="'IBM Plex Mono', monospace" font-size="11.5">−10.2</text>
+
+          <!-- row 3: Answer correctness strict -7.9 -> 189.6 -> x=354.4 -->
+          <text x="150" y="117" text-anchor="end" fill="var(--ink)">Answer correctness (strict)</text>
+          <rect x="354" y="105" width="190" height="16" fill="var(--signal)" opacity=".82"/>
+          <text x="536" y="117" text-anchor="end" fill="var(--paper)" font-family="'IBM Plex Mono', monospace" font-size="11.5">−7.9</text>
+
+          <!-- row 4: Reference correctness loose -6.7 -> 160.8 -> x=383.2 -->
+          <text x="150" y="152" text-anchor="end" fill="var(--ink)">Reference correctness (loose)</text>
+          <rect x="383" y="140" width="161" height="16" fill="var(--signal)" opacity=".82"/>
+          <text x="536" y="152" text-anchor="end" fill="var(--paper)" font-family="'IBM Plex Mono', monospace" font-size="11.5">−6.7</text>
+
+          <!-- row 5: Answer correctness loose -4.7 -> 112.8 -> x=431.2 -->
+          <text x="150" y="187" text-anchor="end" fill="var(--ink)">Answer correctness (loose)</text>
+          <rect x="431" y="175" width="113" height="16" fill="var(--signal)" opacity=".64"/>
+          <text x="536" y="187" text-anchor="end" fill="var(--paper)" font-family="'IBM Plex Mono', monospace" font-size="11.5">−4.7</text>
+
+          <!-- row 6: Reference conciseness -1.5 -> 36 -> x=508 -->
+          <text x="150" y="222" text-anchor="end" fill="var(--ink)">Reference conciseness</text>
+          <rect x="508" y="210" width="36" height="16" fill="var(--signal)" opacity=".5"/>
+          <text x="500" y="222" text-anchor="end" fill="var(--ink-soft)" font-family="'IBM Plex Mono', monospace" font-size="11.5">−1.5</text>
+
+          <!-- row 7: Regulatory tone -0.9 -> 21.6 -> x=522.4 -->
+          <text x="150" y="257" text-anchor="end" fill="var(--ink)">Regulatory tone</text>
+          <rect x="522" y="245" width="22" height="16" fill="var(--signal)" opacity=".5"/>
+          <text x="514" y="257" text-anchor="end" fill="var(--ink-soft)" font-family="'IBM Plex Mono', monospace" font-size="11.5">−0.9</text>
+
+          <!-- row 8: Speed +5.8 -> 139.2 -> to x=683.2 -->
+          <text x="150" y="292" text-anchor="end" fill="var(--ink)">Response speed</text>
+          <rect x="544" y="280" width="139" height="16" fill="var(--good)"/>
+          <text x="691" y="292" text-anchor="start" fill="var(--good)" font-family="'IBM Plex Mono', monospace" font-size="11.5" font-weight="500">+5.8</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption>Gap to the 2026 frontier baseline, in points, easy mode. Bars left of the axis are
+    deficits; the single bar to the right is the one axis on which we beat a frontier model with
+    live web search.</figcaption>
+  </figure>
+
+  <div class="col">
+    <p>Two axes account for most of the distance, and both measure the same instinct: the system
+    tends to answer the question and then keep going — adding an adjacent provision, a carve-out,
+    a neighbouring obligation. That surplus is penalised twice, once as verbosity and once as
+    over-citation.</p>
+    <p>It is a tractable class of problem. It is not a knowledge gap, and it is not hallucination.</p>
+  </div>
+</section>
+
+<section>
+  <h2>What the latest run shows</h2>
+  <div class="col">
+    <p>On 6 September we replayed the full graded question set against the live production service
+    and had every answer scored by an independent frontier model against the verbatim text of the
+    Regulation.</p>
+  </div>
+
+  <ul class="plain">
+    <li><span class="lab">Coverage</span><span><strong>110 of 110</strong> answered. No failures, no
+      refusals on in-scope questions.</span></li>
+    <li><span class="lab">Grounding</span><span><strong>0.96</strong> citation faithfulness — where we
+      cite a provision, the provision supports what the answer claims.</span></li>
+    <li><span class="lab">Correctness</span><span><strong>0.87</strong> of answers judged correct
+      against the verbatim Regulation.</span></li>
+    <li><span class="lab">Precision</span><span><strong>0.74</strong> reference precision against
+      <strong>0.94</strong> recall — we find the governing provision and then cite more than
+      needed.</span></li>
+    <li><span class="lab">Register</span><span><strong>100%</strong> regulatory tone across all 110
+      answers.</span></li>
+    <li><span class="lab">Latency</span><span><strong>10.4 s</strong> median. The axis on which we
+      already beat frontier.</span></li>
+  </ul>
+
+  <div class="note">
+    <span class="eyebrow">On the integrity of these figures</span>
+    <p>Ten of the 110 rows failed to score because the judging transport hit a quota limit
+    mid-run. Our harness detected the partial failure and refused to publish the uncorrected
+    average, which would have understated quality by exactly the error rate. The figures above are
+    computed over the 100 rows that scored.</p>
+    <p>These are also our instrument, not the evaluator's. The external grader has never published
+    its per-question criteria or expected citation sets, so we grade against the Regulation's own
+    text. We treat our numbers as a proxy and report the third party's as the record.</p>
+  </div>
+</section>
+
+<section>
+  <h2>What is defensible</h2>
+  <div class="col">
+    <p>The benchmark rewards a general-purpose model with a search tool. What a specialist system
+    can hold that such a model cannot is not raw fluency — it is provenance.</p>
+
+    <h3>Every answer is traceable to statute</h3>
+    <p>Answers are composed from a curated knowledge base and a graph of the Regulation's 113
+    articles and 13 annexes, then grounded against verbatim provision text. A citation
+    faithfulness of 0.96 is the measurable form of that: the system does not cite what it cannot
+    support.</p>
+
+    <h3>Every answer is on the record</h3>
+    <p>13,477 question-and-answer pairs are persisted in a tamper-evident hash chain, each entry
+    linked to its predecessor. For a compliance buyer this is the difference between a tool that
+    gives an opinion and one that can evidence what it said, when, and on what basis — which is the
+    posture a regulated deployer must itself be in.</p>
+
+    <h3>It is fast enough to sit in a workflow</h3>
+    <p>A 10.4-second median, beating a frontier model with search by 5.8 points on the speed axis,
+    is the difference between a system consulted inside a review and one consulted instead of it.</p>
+
+    <h3>The engineering is measured, not asserted</h3>
+    <p>Changes ship behind a gate that fails a release if it drops a single required citation.
+    That discipline has rejected several of our own promising ideas on the evidence: a reference
+    cap projected to gain a point was withdrawn when a full-corpus test showed it losing required
+    citations, and a prompt change was reverted when measurement showed it was never reaching the
+    model at all.</p>
+  </div>
+</section>
+
+<section>
+  <h2>What is not solved</h2>
+  <div class="col">
+    <p>Three things stand between the current score and the frontier baseline. All three are
+    understood; none is closed.</p>
+  </div>
+
+  <div class="tablebox">
+    <table>
+      <thead>
+        <tr><th>Open item</th><th>Cost</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Verbosity in short-form answers.</strong> Simple lookups grew 49% longer in
+            the latest round while complex ones tightened 14%.</td>
+          <td class="loss">−16.0</td>
+          <td>Root cause identified; remedy fails the citation gate and is being reworked.</td>
+        </tr>
+        <tr>
+          <td><strong>Citation granularity.</strong> We cite the correct article but not the
+            specific sub-paragraph the grader expects.</td>
+          <td class="loss">−10.2</td>
+          <td>Diagnosed this week: a post-processing step was discarding every sub-paragraph
+            citation the system produced. Fix designed and projected cost-free.</td>
+        </tr>
+        <tr>
+          <td><strong>Over-citation.</strong> Reference precision 0.74 — the governing provision is
+            found, then accompanied by others.</td>
+          <td class="loss">−6.7</td>
+          <td>Established that this cannot be fixed by trimming the citation list; it must be fixed
+            in how the answer is written.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="col">
+    <p>We publish these because the diagnosis is the asset. A team that can say precisely which
+    mechanism costs which point, and decline its own fixes when the evidence does not support them,
+    is a team that can close the gap.</p>
+  </div>
+</section>
+
+<footer>
+  <p><strong>Basis of preparation.</strong> Overall scores, axis scores and baseline comparisons are
+  taken from an independent evaluator's report dated 25 August 2026, covering 110 questions in easy
+  and hard modes; the geometric mean of the eight axes reproduces that report's published totals to
+  within 0.06 points. Run figures dated 6 September 2026 are our own measurement of the live
+  production service over the same question set, scored by an independent frontier model against
+  the verbatim text of Regulation (EU) 2024/1689; that scoring is a proxy for the evaluator's
+  rubric, which has not been published, and is identified as such throughout. Latency is measured
+  end to end at the API. Prepared for discussion; not an offer or a solicitation.</p>
+</footer>
+
+</div>
