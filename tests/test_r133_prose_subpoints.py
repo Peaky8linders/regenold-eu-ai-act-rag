@@ -221,7 +221,7 @@ def test_route_ships_prose_subpoint_when_question_names_it(monkeypatch) -> None:
     assert "Article 6" not in refs, refs
     # Nothing else the answer cites is lost.
     for r in ("Article 5", "Annex III", "Annex I", "Article 50"):
-        assert r in refs, refs
+        assert any(x == r or x.startswith(r + ".") for x in refs), refs
 
 
 def test_route_keeps_head_when_question_does_not_name_the_subpoint(

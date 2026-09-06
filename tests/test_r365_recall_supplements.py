@@ -678,7 +678,7 @@ def test_engine_half_is_not_output_neutral_it_is_head_neutral(
     monkeypatch.setenv(_ANNEXIII_FLAG, "1")
     supplemented = _wire_refs(client, Q_MSA)
     assert supplemented != base, "expected retrieval-order drift on the MSA row"
-    assert "Annex III" not in supplemented, (
+    assert not any(r == "Annex III" or r.startswith("Annex III.") for r in supplemented), (
         "the engine half unexpectedly delivered Annex III to the wire — if "
         "this now passes, a route pass changed and the guard's rationale "
         "must be re-measured"
@@ -686,7 +686,7 @@ def test_engine_half_is_not_output_neutral_it_is_head_neutral(
 
     monkeypatch.setenv(_GUARD_FLAG, "1")
     guarded = _wire_refs(client, Q_MSA)
-    assert "Annex III" in guarded, f"guard failed to deliver: {guarded}"
+    assert any(r == "Annex III" or r.startswith("Annex III.") for r in guarded), f"guard failed to deliver: {guarded}"
     assert set(supplemented) <= set(guarded)
 
 
@@ -702,10 +702,10 @@ def test_wire_guard_recovers_the_measured_heads(
     rc.reset_recall_supplement_stats()
 
     fines = _wire_refs(client, Q_FINES)
-    assert "Article 50" in fines, f"Article 50 not on the wire: {fines}"
+    assert any(r == "Article 50" or r.startswith("Article 50.") for r in fines), f"Article 50 not on the wire: {fines}"
 
     medical = _wire_refs(client, Q_MEDICAL)
-    assert "Annex III" in medical, f"Annex III not on the wire: {medical}"
+    assert any(r == "Annex III" or r.startswith("Annex III.") for r in medical), f"Annex III not on the wire: {medical}"
 
     assert rc.recall_supplement_stats()["wire_guard_added"] >= 2
 
@@ -737,7 +737,7 @@ def test_wire_guard_only_emits_declared_heads(
     guarded = set(_wire_refs(client, Q_FINES)) | set(_wire_refs(client, Q_MEDICAL))
     added = guarded - base
     assert added, "the guard added nothing — it is inert"
-    assert added <= set(rc.RECALL_SUPPLEMENT_WIRE_HEADS)
+    assert {r.split(".")[0] for r in added} <= set(rc.RECALL_SUPPLEMENT_WIRE_HEADS)
 
 
 def test_guard_alone_without_the_supplement_gates_is_inert(

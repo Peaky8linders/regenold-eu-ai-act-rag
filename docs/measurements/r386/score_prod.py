@@ -21,7 +21,8 @@ import re
 import statistics
 import sys
 
-REPO = r"D:\Claude Projects\regenold-eu-ai-act-rag"
+from pathlib import Path
+REPO = str(Path(__file__).resolve().parents[3])
 os.environ.setdefault("REGENOLD_SKIP_DOTENV", "1")
 os.environ.setdefault("REGENOLD_EXTERNAL_EMBEDDINGS", "0")
 os.environ.setdefault("OPENAI_API_BASE", "http://127.0.0.1:1/v1")
@@ -99,6 +100,7 @@ for line in open(os.path.join(REPO, "docs/measurements/r386/minimal-gold-probe-s
 live = {r["id"]: r for r in json.load(open(os.path.join(REPO, "docs/measurements/r384/r384-reeval-round-2026-07-2324-live.json"), encoding="utf-8"))}
 ROWS = [(live[k]["question"], live[k]["now"]["ans"], [norm(x) for x in live[k]["now"]["refs"]], g)
         for k, g in gold.items() if k in live]
+assert len(ROWS) >= 90, f"Insufficient sample size: {len(ROWS)}"
 
 print()
 print("GATE 2 - the R386 minimal-gold probe set, n=%d, scored as the OFFICIAL rubric describes the axes" % len(ROWS))
@@ -123,3 +125,8 @@ ds = res2["ON  (default)"][0] - res2["OFF"][0]
 d2 = res2["ON  (default)"][1] - res2["OFF"][1]
 print("Ref Strict %+.1f pp   |   HARD RULE #8 delta: %+d  ->  %s" % (ds, d2, "PASS" if d2 <= 0 else "FAIL"))
 on("1")
+
+if d1 > 0 or d2 > 0 or ds <= 0:
+    print("\nGATE ENFORCEMENT FAILURE: d1=%+d, d2=%+d, ds=%+.1f pp" % (d1, d2, ds))
+    sys.exit(1)
+

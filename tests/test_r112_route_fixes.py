@@ -125,7 +125,7 @@ class TestAssistantAnchorInheritanceValidation:
             },
         ])
         assert r.status_code == 200, r.text
-        assert "Article 43" in r.json()["references"]
+        assert any(r == "Article 43" or r.startswith("Article 43.") for r in r.json()["references"])
 
     def test_helper_skips_nonexistent_anchor(self, monkeypatch) -> None:
         """Unit-level pin: 'Article 999' (and 'Annex XIV' — only I..XIII

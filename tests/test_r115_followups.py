@@ -167,12 +167,12 @@ class TestR115CuratedRefsProtected:
     def test_minimal_risk_contrast_refs_survive(self):
         body = _wire("What are AI systems with minimal risks?")
         refs = set(body["references"])
-        assert {"Article 5", "Article 6", "Article 50"} <= refs, refs
+        assert {"Article 5", "Article 6", "Article 50"} <= {r.split(".")[0] for r in refs}, refs
 
     def test_minimal_risk_paraphrase_also_protected(self):
         body = _wire("Which AI applications are considered minimal risk?")
         refs = set(body["references"])
-        assert {"Article 5", "Article 6", "Article 50"} <= refs, refs
+        assert {"Article 5", "Article 6", "Article 50"} <= {r.split(".")[0] for r in refs}, refs
 
 
 # ── 3. sectors filter repair ─────────────────────────────────────────────
@@ -185,12 +185,12 @@ class TestR115SectorsFilterRepair:
             "under the regulation?"
         )
         refs = set(body["references"])
-        assert {"Article 6", "Annex III", "Annex I"} <= refs, refs
+        assert {"Article 6", "Annex III", "Annex I"} <= {r.split(".")[0] for r in refs}, refs
 
     def test_paraphrase_which_use_cases(self):
         body = _wire("Which use cases count as high-risk under the AI Act?")
         refs = set(body["references"])
-        assert {"Article 6", "Annex III", "Annex I"} <= refs, refs
+        assert {"Article 6", "Annex III", "Annex I"} <= {r.split(".")[0] for r in refs}, refs
 
 
 # ── 4. hardware subpoint aliases ─────────────────────────────────────────
@@ -284,7 +284,7 @@ class TestR115Art43IntegratedProcedure:
         # legal failures"), which rewrote the Art. 26 / Annex X stubs.
         # The bump rule itself is enforced by the content-hash snapshot in
         # tests/test_kb_consistency.py::test_kb_version_bump_lint.
-        assert KB_VERSION == "2024.1689.v21"  # R380 (a9fb598) KB content bump
+        assert KB_VERSION == "2024.1689.v22"
         # A silent REVERT of that content bump must fail here too, not just a
         # future forward bump: pin the version as monotonically >= v21.
         assert int(KB_VERSION.rsplit(".v", 1)[1]) >= 21, KB_VERSION

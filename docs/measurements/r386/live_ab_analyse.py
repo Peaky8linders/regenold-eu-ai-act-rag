@@ -8,7 +8,9 @@ the reference list is the only thing that can have moved. This is the design
 that flipped parent collapse ON at R381.
 """
 import json, os, re, statistics, sys
-REPO = r"D:\Claude Projects\regenold-eu-ai-act-rag"
+from pathlib import Path
+DIR = Path(__file__).resolve().parent
+REPO = DIR.parents[2]
 HEAD = re.compile(r"^(Article\s+\d{1,3}|Annex\s+[IVXL]+)")
 
 def norm(r):
@@ -26,11 +28,11 @@ def f1(p, g):
     return 2*pr*rc/(pr+rc)
 
 gold = {}
-for line in open("mingold_rows.jsonl", encoding="utf-8"):
+for line in open(DIR / "minimal-gold-probe-set-n110.jsonl", encoding="utf-8"):
     r = json.loads(line)
     if r.get("expected"): gold[r["id"]] = {norm(x) for x in r["expected"]}
 
-rows = json.load(open("live_ab_grain.json", encoding="utf-8"))
+rows = json.load(open(DIR / "live-paired-ab-n60.json", encoding="utf-8"))
 clean = [r for r in rows if r["off"]["transport"] != "bedrock" and r["on"]["transport"] != "bedrock"]
 zv = [r for r in clean if r["zero_variance"]]
 zvg = [r for r in zv if r["id"] in gold]

@@ -468,6 +468,8 @@ def _stem(w: str) -> str:
     """Light suffix strip so question vocab matches statute vocab —
     ``emotions``→``emotion``, ``scoring``→``scor``, ``recruitment``→
     ``recruit``. Crude but symmetric (applied to both sides)."""
+    if w.endswith("ition") and len(w) > 7:
+        return w[:-5] + "it"
     for suf in ("ing", "ment", "ies", "ed", "s"):
         if len(w) > len(suf) + 2 and w.endswith(suf):
             return w[: -len(suf)] + ("y" if suf == "ies" else "")

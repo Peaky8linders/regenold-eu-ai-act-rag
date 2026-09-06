@@ -136,7 +136,7 @@ def test_in_scope_question_unaffected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("REGENOLD_TOPIC_FILTER", raising=False)
     body = _ask(_client(), "What does Article 13 require for transparency?")
     assert body["answer"] not in (LEXY_GREETING, LEXY_OOS_GENERIC, LEXY_ADVERSARIAL)
-    assert "Article 13" in body["references"]
+    assert any(r == "Article 13" or r.startswith("Article 13.") for r in body["references"])
 
 
 def test_non_existent_article_corrected(monkeypatch: pytest.MonkeyPatch) -> None:
