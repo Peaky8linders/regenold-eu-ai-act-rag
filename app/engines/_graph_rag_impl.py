@@ -3751,6 +3751,74 @@ _AMENDMENT_ACTOR_RE = re.compile(
     re.IGNORECASE,
 )
 
+# R390 — the canned tier map must not DISPLACE a question that is not asking
+# for a tier.
+#
+# MEASURED on the official 110 (docs/measurements/r388/score-r389-bedrock-
+# stage2-easy.json): ``_general_classification_verdict`` fires on 19/110 rows,
+# and those rows carry 16 of the 65 failed answer criteria (24.6%). Its five
+# refs — Art. 5 / Art. 6 / Annex III / Annex I / Art. 50 — are ALSO the five
+# most over-cited heads on that same run (Annex III 20x, Annex I 17x, and
+# Art. 50 / Art. 5 / Art. 6 10x each), so one misroute costs BOTH answer axes
+# AND both reference axes.
+#
+# Two shapes are never tier asks, and both are recognisable from the question
+# alone (no scenario keying):
+#
+#   PREMISE   the tier is ASSERTED by the asker ("we deployed a high-risk AI
+#             system…", "a high-risk AI system already placed on the market
+#             before 2 August 2026"). The tier is settled; the ask is about
+#             its consequences — Art. 26 deployer duties, Art. 111 transitional
+#             application. Reciting the tier map answers nothing that was asked.
+#   CONTENT   the asker names a provision and asks what it SAYS ("Article 9 of
+#             the AI Act lists the five categories of harm … what are they?").
+#             That is a lookup, not a verdict.
+#
+# The premise test deliberately SKIPS the tier phrase when it is the object of
+# a classification verb — "can an AI system intended to be used as a toy
+# QUALIFY AS a high-risk AI system?" is a genuine tier ask despite containing
+# the same words. Verified against all 19 firing rows: this guard suppresses
+# exactly rg_087 / rg_088 / rg_095 / rg_104 and leaves the other 15 untouched,
+# so it cannot regress a row the verdict currently answers correctly.
+_TIER_PHRASE_RE = re.compile(
+    r"high[-\s]risk\s+(?:ai\s+)?(?:system|model)s?\b", re.IGNORECASE
+)
+_TIER_AS_OBJECT_RE = re.compile(
+    r"\b(?:qualify|qualifies|qualified|count|counts|classif\w+|consider\w*"
+    r"|treat\w+|deem\w+|regard\w+|be|is|are|become\w*|as)\s+(?:a|an|the)?\s*$",
+    re.IGNORECASE,
+)
+_TIER_DEICTIC_RE = re.compile(
+    r"\b(?:our|this|that|these|those|the|a|an)\s*$", re.IGNORECASE
+)
+_TIER_DEPLOYED_RE = re.compile(
+    r"\b(?:we\s+(?:deployed|deploy|use|operate|run|have)|our\s+company"
+    r"|already\s+placed|placed\s+on\s+the\s+market|put\s+into\s+service"
+    r"|i\s+(?:deploy|use|operate))",
+    re.IGNORECASE,
+)
+_PROVISION_CONTENT_RE = re.compile(
+    r"(?:what\s+(?:does|do|are|is)\b[^?]{0,90}?\b(?:article|annex)\s+[IVXLC0-9]+"
+    r"|(?:article|annex)\s+[IVXLC0-9]+\s+(?:of\s+the\s+ai\s+act\s+)?"
+    r"(?:lists|sets\s+out|says|provides|requires|establishes))",
+    re.IGNORECASE,
+)
+
+
+def _tier_is_premise_not_question(question: str) -> bool:
+    """True when the question ASSERTS the risk tier instead of asking for it."""
+    for match in _TIER_PHRASE_RE.finditer(question):
+        left = question[max(0, match.start() - 40):match.start()]
+        if _TIER_AS_OBJECT_RE.search(left):
+            continue
+        if _TIER_DEPLOYED_RE.search(question) or _TIER_DEICTIC_RE.search(left):
+            return True
+    return False
+
+
+def _tier_displacement_guard_enabled() -> bool:
+    return _env_enabled("REGENOLD_TIER_DISPLACEMENT_GUARD", default="1")
+
 
 def _general_classification_verdict(question: str) -> dict | None:
     """Domain-general risk-tier verdict for un-catalogued classification asks.
@@ -3794,6 +3862,16 @@ def _general_classification_verdict(question: str) -> dict | None:
     # amendment object) both stay on the classification path.
     if _AMENDMENT_POWER_RE.search(question) and _AMENDMENT_ACTOR_RE.search(
         question
+    ):
+        return None
+    # R390 — see _tier_is_premise_not_question. A question whose PREMISE already
+    # fixes the tier, or that asks what a NAMED provision says, is not a tier
+    # ask; the canned map would displace the operative provision and inject its
+    # five refs. Measured on the official 110: -8 failed criteria, -20 injected
+    # references, 0 regressions among the 15 rows it leaves alone.
+    if _tier_displacement_guard_enabled() and (
+        _tier_is_premise_not_question(question)
+        or _PROVISION_CONTENT_RE.search(question)
     ):
         return None
     live = question

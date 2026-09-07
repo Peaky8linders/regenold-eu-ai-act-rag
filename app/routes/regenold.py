@@ -1693,6 +1693,10 @@ def _engine_cache_key(
             #   * REGENOLD_REF_SEM_THRESHOLD — tunes which AtomicFacts
             #     sentences feed the engine's semantic-statement context.
             "REGENOLD_GENERAL_VERDICT",
+            # R390 — suppresses the canned tier map when the question's premise
+            # already fixes the tier, or asks what a named provision says.
+            # Changes both the answer and the emitted references.
+            "REGENOLD_TIER_DISPLACEMENT_GUARD",
             "REGENOLD_EMBEDDINGS_INDEX",
             "REGENOLD_REF_SEM_THRESHOLD",
             # R110 — Sufficient-Context bounded multi-hop decomposition.
@@ -3611,7 +3615,17 @@ def _deepen_one_ref(ref: str, question: str, answer: str) -> str:
             else:
                 won = _pick_unit(q_units, q_tok, a_tok)
         elif art_num == 44:
-            if any(k in _q_low for k in ("validity", "certificate", "technical documentation assessment")):
+            # R390 — cea6cba forced Article 44.1 on any question containing
+            # "validity". Verbatim: 44(1) is the LANGUAGE rule ("drawn-up in a
+            # language which can be easily understood by the relevant
+            # authorities"); it is 44(2) that carries the validity period
+            # ("shall not exceed five years for AI systems covered by Annex I,
+            # and four years for AI systems covered by Annex III"). The
+            # hardcode therefore deepened validity asks to the one paragraph
+            # that does not answer them. Only the language limb is pinned;
+            # everything else falls through to _pick_unit, which already
+            # resolves a validity ask to 44.2.
+            if any(k in _q_low for k in ("language", "drawn up", "drawn-up", "understood")):
                 won = 1 if 1 in units else _pick_unit(q_units, q_tok, a_tok)
             else:
                 won = _pick_unit(q_units, q_tok, a_tok)
@@ -6956,17 +6970,25 @@ def _surface_anchor_citations(
         domain_anchors.append("Article 76")
     if any(w in user_low for w in ("election", "referendum", "political campaign")):
         domain_anchors.append("Article 50")
-    if any(w in user_low for w in ("machinery", "medical device", "annex i", "industrial robot", "robot")) and ("conformity assessment" in user_low or "notified body" in user_low):
+    # R390 — the sectoral-product route is a statutory rule (Article 6(1) reaches
+    # a system that is a safety component of a product covered by Annex I
+    # legislation), so it stays. "industrial robot"/"robot" was a scenario key
+    # for one benchmark row and is dropped: "machinery" already reaches it via
+    # the Machinery Regulation, which is what Annex I actually lists.
+    if any(w in user_low for w in ("machinery", "medical device", "annex i")) and ("conformity assessment" in user_low or "notified body" in user_low):
         domain_anchors.append("Article 43")
         domain_anchors.append("Article 6")
         domain_anchors.append("Annex I")
-    if any(w in user_low for w in ("gas supply", "water supply", "electricity supply", "critical infrastructure")):
+    # R390 — "critical infrastructure" is Annex III point 2's own statutory
+    # vocabulary and generalises. The four utility names beside it ("gas supply",
+    # "water supply", "electricity supply") were scenario keys measured to fire
+    # on 1/110 official rows; Annex III point 2 names those sectors itself, so
+    # the concept term is the anchor. Article 25/27 were dropped from this
+    # anchor: they encode a role reclassification and a FRIA carve-out that do
+    # not follow from the mere mention of critical infrastructure.
+    if "critical infrastructure" in user_low:
         domain_anchors.append("Annex III")
         domain_anchors.append("Article 6")
-        domain_anchors.append("Article 25")
-        domain_anchors.append("Article 27")
-    if any(w in user_low for w in ("supermarket", "loss-prevention", "bag check", "theft")):
-        domain_anchors.append("Annex III")
     if any(w in user_low for w in ("eu database", "database")) and any(w in user_low for w in ("submit", "information", "categories", "register")):
         domain_anchors.append("Article 71")
         domain_anchors.append("Annex VIII")
@@ -6974,9 +6996,10 @@ def _surface_anchor_citations(
         domain_anchors.append("Article 76")
     if "post-market monitoring" in user_low and any(w in user_low for w in ("authority", "authorities", "surveillance")):
         domain_anchors.append("Article 75")
-    if any(w in user_low for w in ("elevator", "lift", "lifts")):
-        domain_anchors.append("Article 6")
-        domain_anchors.append("Annex I")
+    # R390 — the "elevator"/"lift" anchor was a scenario key for a single
+    # benchmark row (measured fire rate 1/110). Lifts reach Article 6(1) the
+    # same way every other Annex I product does, through the sectoral-product
+    # anchor above; naming one product does not generalise to the next one.
 
     combined_anchors = list(anchors) + [a for a in domain_anchors if a not in anchors]
     for anchor in combined_anchors:
