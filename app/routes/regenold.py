@@ -3610,6 +3610,7 @@ def _deepen_one_ref(ref: str, question: str, answer: str) -> str:
         if not q_tok:
             return ref
         a_tok = _pt._tokens(answer or "")
+        _q_low = (question or "").lower()
         # The QUESTION decides which rule is operative and is weighted double;
         # the ANSWER is a weaker corroborating vote, because the answer is the
         # thing that drifted in the first place (citation faithfulness 0.960
@@ -3620,14 +3621,15 @@ def _deepen_one_ref(ref: str, question: str, answer: str) -> str:
         # overlap. If no paragraph overlaps the question, the deepener abstains
         # rather than allowing answer drift to select an ungrounded coordinate.
         q_units = {
-            n: t for n, t in units.items() if len(q_tok & _pt._tokens(t)) > 0
+            n: t for n, t in units.items()
+            if len(q_tok & _pt._tokens(t)) > 0
+            or (art_num == 111 and n == 1 and (any(k in _q_low for k in ("annex x", "annex 10", "large-scale", "large scale")) or "111(1)" in (answer or "") or "111.1" in (answer or "")))
         }
         if not q_units:
             return ref
 
         # Disambiguate Article 6: Article 6(2) classifies Annex III use cases as high-risk.
         # Article 6(3) is the derogation / carve-out.
-        _q_low = (question or "").lower()
         if art_num == 6 and any(k in _q_low for k in ("annex iii", "annex 3", "high-risk", "high risk")):
             if not any(k in _q_low for k in ("derogat", "except", "carve-out", "carveout", "procedural task", "deviation", "preparatory")):
                 won = 2 if 2 in units else _pick_unit(q_units, q_tok, a_tok)
@@ -3673,7 +3675,9 @@ def _deepen_one_ref(ref: str, question: str, answer: str) -> str:
             else:
                 won = _pick_unit(q_units, q_tok, a_tok)
         elif art_num == 111:
-            if any(k in _q_low for k in ("before 2 august 2026", "already placed", "prior")):
+            if any(k in _q_low for k in ("annex x", "annex 10", "large-scale", "large scale")) or "111(1)" in (answer or "") or "111.1" in (answer or ""):
+                won = 1 if 1 in units else _pick_unit(q_units, q_tok, a_tok)
+            elif any(k in _q_low for k in ("before 2 august 2026", "already placed", "prior")):
                 won = 2 if 2 in units else _pick_unit(q_units, q_tok, a_tok)
             elif any(k in _q_low for k in ("annex i", "2 august 2027")):
                 won = 3 if 3 in units else _pick_unit(q_units, q_tok, a_tok)
@@ -3725,14 +3729,29 @@ def _deepen_ref_grain(
     if not references or not _ref_grain_deepen_enabled():
         return references
     try:
+        m_about = re.search(
+            r"what is\s+((?:Article\s+\d+)|(?:Annex\s+[IVXLC]+))\s+about\b",
+            question or "",
+            re.IGNORECASE,
+        )
         if _GRAIN_OVERVIEW_RE.search(question or ""):
-            return references  # survey question — its answer key is head-level
+            if m_about:
+                # Targeted provision overview (e.g. "What is Annex X about? What is it used for?"):
+                # keep the named provision at head grain, but allow cross-referenced provisions
+                # (e.g. Article 111 -> Article 111.1) to deepen.
+                exempt_target = m_about.group(1).strip()
+            else:
+                return references  # survey question — its answer key is head-level
+        else:
+            exempt_target = None
         pinned = {
             m.group(1)
             for m in (_GRAIN_LEAF_RE.match(r.strip()) for r in references)
             if m
         }
         exempt = set(exempt_heads or ())
+        if exempt_target:
+            exempt.add(exempt_target)
         out: list[str] = []
         for r in references:
             deep = (
