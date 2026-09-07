@@ -268,3 +268,66 @@ behaviour changes on merge.
    change that cannot invent a reference, and it directly addresses the over-citation family.
 4. R391's `+15.06 pp Ref Strict` claim has **no committed replay script** and its live n=110 gate is
    **arm A only, 57/110 rows**. It is the largest unverified number currently in CLAUDE.md.
+
+---
+
+## 8. Hard mode — the drift premise, measured, and mostly refuted
+
+**Asked:** make hard mode robust so it does not drift under the evaluator's adversarial pushback.
+**Executed:** 12 official questions, turn 1 then the byte-exact `PUSHBACK_TEMPLATE`, live over the
+wrapper on `claude-opus-5`, comparing the two turns per row
+(`scratchpad/drift_probe.py`).
+
+| | turn 1 | post-pushback | |
+| :--- | ---: | ---: | :--- |
+| answer chars | 789 | 771 | **0.98×** |
+| Ans. Conciseness | 81.8 | 82.3 | slightly BETTER |
+| refs/row | 2.58 | 2.67 | +0.09 |
+| Ref. Conciseness | 56.7 | 53.7 | **−3.0 pp** |
+| byte-identical answers | — | **6/12** | |
+| reference Jaccard | — | 0.88 | |
+
+**The drift premise does not hold on answers.** Answers do not inflate under pushback (0.98×),
+half are byte-identical, and Ans. Conciseness slightly improves. The V1
+`USER_CHALLENGE_BREVITY_CLAUSE` is active on HEAD (`REGENOLD_PROMPT_V2` is default OFF after the
+R379 gate failed) and its substance is right — *"say the same thing at the SAME length or shorter …
+do not add citations you would not have given the first time"* — and `is_challenge_turn` fires on
+the evaluator's verbatim template and not on a plain question. It is working.
+
+⚠ **The one apparent capitulation is a false positive of my own metric.** `rg_008` tripped a
+leading-verdict-word heuristic, but both turns say the same thing (high-risk, Art. 6(1), Annex I,
+MDR classes IIa/IIb/III) with **identical references**; only the opening reformatted from
+"AI safety components within…" to "Yes, high-risk…". Corrected count: **0/12 genuine
+capitulations.**
+
+**The one real cost is reference growth**, not answer drift: `rg_012` went
+`['Annex III.8']` → `['Annex III.8', 'Article 6.2']`. That is Ref. Conciseness, a pure count ratio.
+
+### 8.1 `REGENOLD_PUSHBACK_REF_FREEZE` (R302, default OFF) — the aimed lever, NOT resolved
+
+Same 12 rows, freeze ON:
+
+| arm | refs/row turn 1 | refs/row post | within-row delta |
+| :--- | ---: | ---: | ---: |
+| baseline | 2.58 | 2.67 | **+0.09** |
+| freeze ON | 2.92 | 2.92 | **+0.00** |
+
+The within-row paired delta goes to zero, which is what a freeze does by construction.
+
+⚠ **But the run is UNDERPOWERED and the control says so.** Turn 1 is not a challenge turn, so the
+freeze is provably inert there — yet turn-1 refs/row moved **2.58 → 2.92 between arms, 0.34**, which
+is ~4× the effect being measured. Generation variance dominates. This reproduces the documented
+noise floor (`project_easyhard_ab_noise_floor_n40`, and R381's finding that 8 of 13 control rows
+changed with the lever inert).
+
+**Disposition: NOT flipped.** The mechanism is confirmed structurally; the score benefit is
+unresolved and n=12 cannot resolve it. It needs a properly powered paired run (n ≥ 120) with the
+gold gate, like any reference-dropping lever.
+
+### 8.2 What this means for the hard/easy gap
+
+Hard mode's lower official Overall is therefore **not** explained by pushback drift on this
+evidence. Post-pushback answers are marginally shorter and marginally more concise. The gap is far
+more likely the same closed-set incompleteness measured in §3, which is question-shaped and applies
+to both modes — i.e. **§4 is the hard-mode lever too**, and no separate anti-drift mechanism is
+warranted until a powered run says otherwise.
