@@ -193,7 +193,8 @@ def test_p1_p2_pull_hrais_section2_articles(client) -> None:
         "Article 15",  # Accuracy
         "Article 16",  # Provider obligations
     }
-    overlap = refs & section_2_chain
+    heads = {r.split(".")[0] for r in refs}
+    overlap = heads & section_2_chain
     assert len(overlap) >= 3, (
         f"expected ≥3 Section-2 articles after R87-B fires; "
         f"got {sorted(overlap)} from {sorted(refs)}"

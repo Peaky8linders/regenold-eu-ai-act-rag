@@ -245,6 +245,22 @@ class TestBuildConverseKwargs:
         kwargs = _build_converse_kwargs(req)
         assert kwargs["modelId"] == "us.amazon.nova-pro-v1:0"
 
+    def test_thinking_budget_pops_top_p_and_sets_temp_one(self) -> None:
+        from app.llm.bedrock_client import BedrockRequest, _build_converse_kwargs
+
+        req = BedrockRequest(
+            user="Hi",
+            temperature=0.0,
+            top_p=0.9,
+            thinking_budget=1024,
+            max_tokens=4096,
+        )
+        kwargs = _build_converse_kwargs(req)
+        ic = kwargs["inferenceConfig"]
+        assert ic["temperature"] == 1.0
+        assert "topP" not in ic
+        assert kwargs["additionalModelRequestFields"]["reasoning_config"]["budget_tokens"] == 1024
+
 
 # ── Response parsing ─────────────────────────────────────────────────────────
 

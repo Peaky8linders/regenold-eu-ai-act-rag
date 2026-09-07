@@ -150,10 +150,13 @@ ROLE_OBLIGATIONS: list[RoleObligation] = [
             "input/output coordination, Art. 26(2) human oversight, Art. 26(4) "
             "input data appropriateness, Art. 26(6) log retention."
         ),
-        "source": "Art. 3(4) + Art. 26 + Art. 27",
-        "paper_lines": "1010-1014, 1738-1744",
-        "primary_articles": ["Art. 26", "Art. 27", "Art. 50", "Art. 72"],
-        "secondary_articles": ["Art. 4", "Art. 14", "Art. 13"],
+        "primary_articles": ["Art. 26", "Art. 27", "Art. 50"],
+        # Art. 72's obligation-bearer is the PROVIDER (Art. 72(1) "Providers
+        # shall establish and document a post-market monitoring system"). The
+        # deployer reaches it only through the Art. 26(5) cross-reference
+        # ("inform providers in accordance with Article 72"), so it is a
+        # related provision, not a deployer duty — secondary, not primary.
+        "secondary_articles": ["Art. 4", "Art. 14", "Art. 13", "Art. 72"],
         "kb_dimensions": [
             "ai_literacy",
             "deployer_obligations",
@@ -303,9 +306,9 @@ ROLE_OBLIGATIONS: list[RoleObligation] = [
             "cybersecurity measures. Autonomy and tool use are decisive factors "
             "in this designation per AI Office (Art. 51(1)(b), Annex XIII)."
         ),
-        "source": "Art. 51(2) + Art. 55 + Art. 56",
+        "source": "Art. 51(2) + Art. 55",
         "paper_lines": "439-443, 2091-2094",
-        "primary_articles": ["Art. 51", "Art. 55", "Art. 56"],
+        "primary_articles": ["Art. 51", "Art. 55"],
         "secondary_articles": ["Art. 53"],
         "kb_dimensions": ["gpai", "gpai_systemic_risk", "security"],
         "flips_provider_under": [],

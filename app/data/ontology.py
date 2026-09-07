@@ -692,20 +692,27 @@ ROLE_OBLIGATIONS: dict[ActorRole, dict[RiskClass, tuple[str, ...]]] = {
         # accuracy/robustness/cybersecurity). Art. 12 (record-keeping)
         # was previously missing from this list — fixed in the May 2026
         # ontology review per the senior-engineer audit.
+        # Art. 4 (AI literacy) binds providers and deployers of ALL AI
+        # systems — Art. 4's text is unqualified by risk tier (R371.8).
+        # It sits on every SYSTEM tier (Annex I / Annex III high-risk,
+        # limited, minimal) but NOT on the GPAI model tiers (Art. 4 names
+        # "AI systems", and the GPAI rows here are model-level duties)
+        # and NOT on PROHIBITED (no lawful provider/deployer relation).
         RiskClass.HIGH_RISK_ANNEX_I: (
             "Art. 6", "Art. 8", "Art. 9", "Art. 10", "Art. 11", "Art. 12",
             "Art. 13", "Art. 14", "Art. 15", "Art. 16", "Art. 17",
             "Art. 43", "Art. 47", "Art. 48", "Art. 49", "Art. 72", "Art. 73",
-            "Annex I", "Annex IV",
+            "Annex I", "Annex IV", "Annex VI", "Art. 4",
         ),
         RiskClass.HIGH_RISK_ANNEX_III: (
             "Art. 6", "Art. 8", "Art. 9", "Art. 10", "Art. 11", "Art. 12",
             "Art. 13", "Art. 14", "Art. 15", "Art. 16", "Art. 17",
             "Art. 43", "Art. 47", "Art. 48", "Art. 49", "Art. 72", "Art. 73",
-            "Annex III", "Annex IV",
+            "Annex III", "Annex IV", "Annex VI", "Art. 4",
         ),
         RiskClass.LIMITED_RISK: (
-            "Art. 50",  # Transparency obligations only
+            "Art. 50",  # Transparency obligations
+            "Art. 4",  # AI literacy — binds at all tiers (R371.8)
         ),
         RiskClass.MINIMAL_RISK: (
             "Art. 4",  # AI literacy
@@ -721,8 +728,11 @@ ROLE_OBLIGATIONS: dict[ActorRole, dict[RiskClass, tuple[str, ...]]] = {
             "Art. 53",
             "Annex XI", "Annex XII",  # Technical doc + downstream-provider info
         ),
+        # Art. 56 is "Codes of practice" — the AI OFFICE's facilitation duty,
+        # not an obligation on providers (R371.6 audit). Art. 55 is the
+        # systemic-risk provider obligation.
         RiskClass.GPAI_SYSTEMIC: (
-            "Art. 53", "Art. 55", "Art. 56",
+            "Art. 53", "Art. 55",
             "Annex XI", "Annex XII", "Annex XIII",
         ),
     },
@@ -734,15 +744,24 @@ ROLE_OBLIGATIONS: dict[ActorRole, dict[RiskClass, tuple[str, ...]]] = {
         # selected categories). Annex I medical-device deployers operate
         # under MDR/IVDR oversight, not the FRIA regime. Fixed in the
         # May 2026 ontology audit.
+        # Art. 13 (transparency + instructions for use) is a PROVIDER duty;
+        # the deployer's mirror obligation is Art. 26(1) (use in accordance
+        # with the instructions). R371.6 audit removed it from the deployer
+        # sets — the live deontic block already labels it "Provider (primary),
+        # Deployer (secondary)", so the matrix contradicted the graph.
+        # Art. 86 (right to explanation) sits only under ANNEX_III: Art.
+        # 86(1) limits the explanation duty to Annex III systems (excluding
+        # point 2).
         RiskClass.HIGH_RISK_ANNEX_I: (
             "Art. 26",  # General deployer obligations
-            "Art. 13",  # Read & follow instructions
+            "Art. 4",  # AI literacy — binds at all tiers (R371.8)
         ),
         RiskClass.HIGH_RISK_ANNEX_III: (
-            "Art. 26", "Art. 27", "Art. 13", "Art. 86",  # right to explanation
+            "Art. 26", "Art. 27", "Art. 86",  # right to explanation (deployer duty)
+            "Art. 4",  # AI literacy — binds at all tiers (R371.8)
         ),
-        RiskClass.LIMITED_RISK: ("Art. 50",),
-        RiskClass.MINIMAL_RISK: ("Art. 4",),
+        RiskClass.LIMITED_RISK: ("Art. 50", "Art. 4",),
+        RiskClass.MINIMAL_RISK: ("Art. 4",),  # AI literacy
         RiskClass.GPAI: (),  # Deployer obligations attach to the AI SYSTEM, not the model
         RiskClass.GPAI_SYSTEMIC: (),
     },
@@ -750,7 +769,11 @@ ROLE_OBLIGATIONS: dict[ActorRole, dict[RiskClass, tuple[str, ...]]] = {
         RiskClass.PROHIBITED: ("Art. 5",),
         RiskClass.HIGH_RISK_ANNEX_I: ("Art. 23",),
         RiskClass.HIGH_RISK_ANNEX_III: ("Art. 23",),
-        RiskClass.LIMITED_RISK: ("Art. 23",),  # Importer still verifies marking
+        # Art. 23 importer duties apply to HIGH-RISK systems only (Art. 23(1)
+        # "Before placing a high-risk AI system on the market..."); there is no
+        # importer obligation at limited risk. R371.6 audit removed the
+        # limited-risk binding.
+        RiskClass.LIMITED_RISK: (),
         RiskClass.MINIMAL_RISK: (),
         RiskClass.GPAI: (),
         RiskClass.GPAI_SYSTEMIC: (),
@@ -759,7 +782,10 @@ ROLE_OBLIGATIONS: dict[ActorRole, dict[RiskClass, tuple[str, ...]]] = {
         RiskClass.PROHIBITED: ("Art. 5",),
         RiskClass.HIGH_RISK_ANNEX_I: ("Art. 24",),
         RiskClass.HIGH_RISK_ANNEX_III: ("Art. 24",),
-        RiskClass.LIMITED_RISK: ("Art. 24",),
+        # Art. 24 distributor duties apply to HIGH-RISK systems only (Art.
+        # 24(1) "Before making a high-risk AI system available on the
+        # market..."). R371.6 audit removed the limited-risk binding.
+        RiskClass.LIMITED_RISK: (),
         RiskClass.MINIMAL_RISK: (),
         RiskClass.GPAI: (),
         RiskClass.GPAI_SYSTEMIC: (),
@@ -776,9 +802,16 @@ ROLE_OBLIGATIONS: dict[ActorRole, dict[RiskClass, tuple[str, ...]]] = {
         RiskClass.GPAI: ("Art. 54",),
         RiskClass.GPAI_SYSTEMIC: ("Art. 54",),
     },
+    # Downstream providers (Art. 3(2)) hold no Chapter V obligations qua
+    # downstream provider: Art. 53/Annex XII are the GPAI MODEL provider's
+    # supply duties (Art. 53(1)(b)), Art. 55 binds the systemic-risk model
+    # provider, and Art. 89 is the AI Office's monitoring duty (downstream
+    # providers merely hold a complaint RIGHT under Art. 89(2)). R371.6
+    # audit removed all four bindings — the matrix renders "binds the
+    # downstream provider", which was direction-inverted.
     ActorRole.DOWNSTREAM_PROVIDER: {
-        RiskClass.GPAI: ("Art. 25", "Art. 53", "Annex XII"),
-        RiskClass.GPAI_SYSTEMIC: ("Art. 25", "Art. 53", "Art. 55", "Annex XII"),
+        RiskClass.GPAI: (),
+        RiskClass.GPAI_SYSTEMIC: (),
     },
     # Notified-body obligations live across Arts. 31 (notification),
     # 33 (requirements relating to notified bodies), and 34 (operational
@@ -790,9 +823,14 @@ ROLE_OBLIGATIONS: dict[ActorRole, dict[RiskClass, tuple[str, ...]]] = {
         RiskClass.HIGH_RISK_ANNEX_I: ("Art. 31", "Art. 33", "Art. 34", "Annex VII"),
         RiskClass.HIGH_RISK_ANNEX_III: ("Art. 31", "Art. 33", "Art. 34", "Annex VII"),
     },
+    # Art. 85 (right to lodge a complaint) and Art. 86 (right to explanation)
+    # are RIGHTS of the affected person, not obligations ON them — the matrix
+    # renders "binds the affected person", which is direction-inverted. The
+    # explanation DUTY sits on the deployer (Art. 86(1), already bound under
+    # DEPLOYER x HIGH_RISK_ANNEX_III). R371.6 audit emptied this role.
     ActorRole.AFFECTED_PERSON: {
-        RiskClass.HIGH_RISK_ANNEX_III: ("Art. 85", "Art. 86"),
-        RiskClass.HIGH_RISK_ANNEX_I: ("Art. 85", "Art. 86"),
+        RiskClass.HIGH_RISK_ANNEX_III: (),
+        RiskClass.HIGH_RISK_ANNEX_I: (),
     },
 }
 

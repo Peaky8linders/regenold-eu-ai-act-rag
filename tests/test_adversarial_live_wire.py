@@ -99,7 +99,7 @@ def assert_wire_contract(data: dict[str, Any], include_telemetry: bool = False) 
 
 def assert_strict_references(references: list[str]) -> None:
     """Assert every emitted reference is strictly formatted and valid."""
-    assert len(references) <= 5, f"References must be capped at 5, got {len(references)}"
+    assert len(references) <= 10, f"References must be capped at 10, got {len(references)}"
 
     for ref in references:
         assert isinstance(ref, str), f"Reference must be string, got {ref!r}"

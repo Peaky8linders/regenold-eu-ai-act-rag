@@ -1554,6 +1554,37 @@ def normalise_answer_for_regenold(
     sentences = [s for s in sentences if not _is_degenerate_sentence(s)]
     # Drop sentences leaking implementation detail.
     sentences = [s for s in sentences if not _sentence_has_meta_leak(s)]
+    # R376 — drop an EXACTLY repeated sentence.
+    #
+    # Measured on the deterministic path, the GPAI systemic-risk answer ended:
+    #   "... Under Annex III, Eight high-risk use-case categories: biometrics,
+    #    critical infrastructure. Under Annex III, Eight high-risk use-case
+    #    categories: biometrics, critical infrastructure."
+    # ``stitch_grounded_prose`` has its own near-duplicate guard (first 60
+    # chars), but the final answer is assembled from several fragments, so two
+    # refs that resolve to the SAME KB stub can each contribute the identical
+    # sentence through different paths. Its own dedup is keyed on the REF, not
+    # on the rendered sentence — the "one concept, two definitions" shape.
+    #
+    # This pass sits where every path converges, so it catches the class rather
+    # than one producer. It is deliberately EXACT-match after whitespace and
+    # case normalisation: a near-duplicate can carry a different coordinate or
+    # a different carve-out and is a judgement call, while a sentence repeated
+    # verbatim is never the intent. Order is preserved and the FIRST occurrence
+    # is kept, so a verdict-first lead cannot be displaced (hard rule #2).
+    #
+    # Answer-Conciseness is the one axis the official scorecard says we lead,
+    # and a repeated sentence spends it for nothing.
+    _seen_sentences: set[str] = set()
+    _deduped: list[str] = []
+    for _s in sentences:
+        _key = " ".join(str(_s).split()).casefold()
+        if _key and _key in _seen_sentences:
+            continue
+        if _key:
+            _seen_sentences.add(_key)
+        _deduped.append(_s)
+    sentences = _deduped
     if not sentences:
         # Everything we got was meta-commentary or labels. Return empty
         # rather than ship leakage; the closed-world refusal branch
