@@ -341,3 +341,132 @@ def hierarchy_merge_queries(
         queries.append((_MERGE_HAS_SUBPOINT, e))
 
     return queries
+
+
+# =============================================================================
+# R393 — closed-set member access for the Stage-2 evidence block.
+#
+# MEASURED motivation. ``provision_text.select_relevant_paragraphs`` is a
+# lexical token-overlap ranker under a char budget, and its own docstring says
+# "only WHICH sub-points are quoted is narrowed". So a question that asks what
+# a provision REQUIRES is handed a PROPER SUBSET of a closed statutory set.
+# Executed over the official 110-question batch at the live production budget
+# (``_GROUNDING_REF_CHARS`` = 1200), counting the members of every provision
+# the graded July-7 run cited:
+#
+#     closed-set member coverage delivered to Stage-2:  1340/3863 = 34.7%
+#     86 of 110 questions receive under half the members they need
+#
+# No prompt instruction can recover a member that is not in the prompt, which
+# is why R390 recorded the delivered coverage clause's closed-set rule as
+# "demonstrably insufficient" and R391 measured the same family by hand
+# (Annex IV 0/8, Article 17 4/13, Article 13 4/8).
+#
+# This accessor exposes the COMPLETE, ordered member list the hierarchy already
+# computes, keyed by the wire coordinate the rubric scores against
+# (``Article 13.3.a`` / ``Annex IV.1.e``), so the renderer can show the whole
+# closed set cheaply instead of substituting whole provisions
+# (``REGENOLD_FULL_PROVISION_EVIDENCE``, measured 3.93x the block).
+#
+# Pure and deterministic — no graph, no network. The Neo4j Paragraph/Point/
+# SubPoint nodes are a MIRROR of this same payload (``hierarchy_merge_queries``
+# writes them), so reading it locally is the same data without the driver, the
+# latency or the failure mode.
+# =============================================================================
+
+_MEMBER_INDEX_CACHE: dict[str, list[tuple[str, str]]] | None = None
+
+
+def _node_coordinate(node_id: str) -> str:
+    """``article_13_3_a`` -> ``Article 13.3.a``; ``annex_IV_1_e`` -> ``Annex IV.1.e``.
+
+    Emits the STRICT wire shape required by AGENTS.md invariant #1 —
+    ``Article N(.subpoint)*`` / ``Annex X(.subpoint)*``, uppercase Roman for
+    annexes — so a coordinate shown to the model is one it may legally cite.
+    """
+    parts = node_id.split("_")
+    if not parts:
+        return node_id
+    kind = "Article" if parts[0] == "article" else "Annex"
+    return f"{kind} {'.'.join(parts[1:])}"
+
+
+def _build_member_index() -> dict[str, list[tuple[str, str]]]:
+    """Map ``article_13`` / ``annex_IV`` -> ordered [(coordinate, text), ...].
+
+    Document order, parents before their children, so the rendered skeleton
+    reads as the statute reads.
+    """
+    payload = build_hierarchy_payload()
+    by_parent: dict[str, list[dict]] = {}
+    for node in payload.paragraph_nodes:
+        by_parent.setdefault(str(node["id"]).rsplit("_", 1)[0], []).append(node)
+    points_by_para: dict[str, list[dict]] = {}
+    for node in payload.point_nodes:
+        points_by_para.setdefault(str(node["id"]).rsplit("_", 1)[0], []).append(node)
+    subs_by_point: dict[str, list[dict]] = {}
+    for node in payload.subpoint_nodes:
+        subs_by_point.setdefault(str(node["id"]).rsplit("_", 1)[0], []).append(node)
+
+    def _key(node: dict) -> tuple:
+        # Numeric paragraphs must sort 2 < 10, not "10" < "2".
+        tail = str(node["id"]).rsplit("_", 1)[-1]
+        return (0, int(tail)) if tail.isdigit() else (1, tail)
+
+    index: dict[str, list[tuple[str, str]]] = {}
+    for parent, paragraphs in by_parent.items():
+        members: list[tuple[str, str]] = []
+        for para in sorted(paragraphs, key=_key):
+            pid = str(para["id"])
+            members.append((_node_coordinate(pid), _flatten(para.get("text"))))
+            for point in sorted(points_by_para.get(pid, []), key=_key):
+                ptid = str(point["id"])
+                members.append((_node_coordinate(ptid), _flatten(point.get("text"))))
+                for sub in sorted(subs_by_point.get(ptid, []), key=_key):
+                    members.append(
+                        (_node_coordinate(str(sub["id"])), _flatten(sub.get("text")))
+                    )
+        index[parent] = members
+    return index
+
+
+def _flatten(text: object) -> str:
+    return " ".join(str(text or "").split())
+
+
+def _parent_id(ref: str) -> str | None:
+    """``Article 13`` -> ``article_13``; ``Annex IV`` -> ``annex_IV``.
+
+    Returns ``None`` for anything that is not a bare head — a ref that already
+    carries a sub-coordinate is bounded, so it needs no closed-set expansion.
+    """
+    import re  # noqa: PLC0415 — module-local, keeps the hot import list lean
+
+    stripped = ref.strip()
+    m = re.fullmatch(r"Article\s+(\d{1,3})", stripped)
+    if m:
+        return f"article_{int(m.group(1))}"
+    m = re.fullmatch(r"Annex\s+([IVXLCDM]+)", stripped, re.IGNORECASE)
+    if m:
+        return f"annex_{m.group(1).upper()}"
+    return None
+
+
+def closed_set_members(ref: str) -> list[tuple[str, str]]:
+    """Every member of ``ref``'s closed statutory set, in document order.
+
+    ``closed_set_members("Article 13")`` ->
+    ``[("Article 13.1", "High-risk AI systems shall be designed ..."), ...,
+       ("Article 13.3.a", "the identity and the contact details ..."), ...]``
+
+    Returns ``[]`` for a ref that is not a bare Article/Annex head, that does
+    not resolve, or that has no enumerated members (a single-block article is
+    not a closed set and the shipped selector already renders it whole).
+    """
+    global _MEMBER_INDEX_CACHE  # noqa: PLW0603 — process-lifetime memo
+    if _MEMBER_INDEX_CACHE is None:
+        _MEMBER_INDEX_CACHE = _build_member_index()
+    parent = _parent_id(ref)
+    if parent is None:
+        return []
+    return list(_MEMBER_INDEX_CACHE.get(parent, ()))

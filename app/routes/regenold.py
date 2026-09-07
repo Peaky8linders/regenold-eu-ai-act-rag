@@ -1557,6 +1557,14 @@ def _engine_cache_key(
             # passes, the wire references too (AGENTS.md invariant #5).
             "REGENOLD_FULL_PROVISION_EVIDENCE",
             "REGENOLD_FULL_PROVISION_MAX_CHARS",
+            # R393 - the closed-set skeleton changes the EVIDENCE block (it
+            # prepends the exhaustive member list of a cited head), so it
+            # changes the answer and, via the prose->refs passes, the wire
+            # references too (AGENTS.md invariant #5). All three knobs are
+            # response-affecting, so all three are keyed.
+            "REGENOLD_CLOSED_SET_SKELETON",
+            "REGENOLD_CLOSED_SET_SKELETON_LEAD",
+            "REGENOLD_CLOSED_SET_MIN_MEMBERS",
             # R391 - decides whether a head the D1 granularity pass created
             # may be re-pinned to its own sub-point, which changes the wire.
             "REGENOLD_GRAIN_DEEPEN_COLLAPSED_HEADS",

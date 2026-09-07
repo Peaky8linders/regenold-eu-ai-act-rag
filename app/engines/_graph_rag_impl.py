@@ -7643,6 +7643,102 @@ def _full_provision_max_chars() -> int:
         return 12000
 
 
+def _closed_set_skeleton_enabled() -> bool:
+    """R393 — show the COMPLETE closed statutory set for a cited head (default OFF).
+
+    MEASURED root cause of the answer-completeness family.
+    ``select_relevant_paragraphs`` is a lexical token-overlap ranker under a
+    char budget; its own docstring says "only WHICH sub-points are quoted is
+    narrowed". Executed over the official 110-question batch at the live
+    ``_GROUNDING_REF_CHARS`` of 1200, counting the members of every provision
+    the graded July-7 run cited: **1340/3863 = 34.7 % of closed-set members
+    reach Stage-2**, and 86 of 110 questions receive under half of theirs.
+
+    This renders the whole member list as coordinate + leading clause, which
+    buys the same 100 % structural coverage as
+    ``REGENOLD_FULL_PROVISION_EVIDENCE`` at less than half its prompt cost
+    (measured over eight closed-set provisions: shipped 9,168 chars / 28.6 %
+    coverage; full-substitution 36,059 chars / 100 %; skeleton 17,182 chars /
+    100 %).
+
+    ⚠ **Prompt-side ⇒ NOT reference-neutral** (AGENTS.md invariant #5). The
+    wire ref list is recomputed from the final prose by ``_add_prose_named_refs``
+    (uncapped, and ``_citable_base_guard_enabled`` is default OFF), so showing
+    more statutory text means more cross-references the model can echo onto the
+    wire. It therefore ships **default OFF** and its gate is
+    ``evals.harness.easyhard_ab`` / ``gold_dropped_head``, NOT an argument from
+    construction.
+    """
+    return os.getenv("REGENOLD_CLOSED_SET_SKELETON", "0").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _closed_set_skeleton_lead() -> int:
+    """Chars of each member's own text shown beside its coordinate.
+
+    Swept over the eight worst closed-set provisions: 0 (coordinates only)
+    renders 11,380 chars and does NOT let the model state the member; 40 gives
+    full structural presence at 17,182; 60 and 90 cost 2.13x and 2.49x the
+    shipped block for no additional coverage. Fails OPEN to 40.
+    """
+    try:
+        return max(0, min(200, int(os.getenv("REGENOLD_CLOSED_SET_SKELETON_LEAD", ""))))
+    except (TypeError, ValueError):
+        return 40
+
+
+def _closed_set_min_members() -> int:
+    """Skip the skeleton for provisions too small to be a "closed set".
+
+    A two-paragraph article is already delivered whole by the shipped selector,
+    so skeletonising it is pure prompt cost. Fails OPEN to 3.
+    """
+    try:
+        return max(2, min(50, int(os.getenv("REGENOLD_CLOSED_SET_MIN_MEMBERS", ""))))
+    except (TypeError, ValueError):
+        return 3
+
+
+def _render_closed_set_skeleton(ref: str) -> str | None:
+    """The exhaustive member list of ``ref``, as ``coordinate: leading clause``.
+
+    Returns ``None`` when ``ref`` is not a bare Article/Annex head, does not
+    resolve, or carries fewer than ``_closed_set_min_members()`` members — in
+    every one of those cases the caller keeps the shipped selector output
+    unchanged, so the block is byte-identical to the OFF arm.
+
+    The coordinates emitted here are the STRICT wire shape (AGENTS.md
+    invariant #1), which is deliberate: a coordinate the model can read is a
+    coordinate it can cite, and the official Ref. Correctness (Strict) axis
+    scores sub-points where a bare head scores zero.
+    """
+    try:
+        from app.data.provision_hierarchy import (  # noqa: PLC0415
+            closed_set_members,
+        )
+    except Exception:  # noqa: BLE001 — no hierarchy ⇒ render nothing extra
+        logger.debug("grounding: provision_hierarchy unavailable", exc_info=True)
+        return None
+    try:
+        members = closed_set_members(ref)
+    except Exception:  # noqa: BLE001 — a bad ref must not break the block
+        logger.debug("grounding: closed set for %s failed", ref, exc_info=True)
+        return None
+    if len(members) < _closed_set_min_members():
+        return None
+    lead = _closed_set_skeleton_lead()
+    lines = []
+    for coord, text in members:
+        body = text[:lead] + ("..." if lead and len(text) > lead else "")
+        lines.append(f"    {coord}: {body}" if lead else f"    {coord}")
+    header = (
+        f"  COMPLETE STRUCTURE of {ref} — {len(members)} members, "
+        "this list is EXHAUSTIVE:"
+    )
+    return "\n".join([header, *lines])
+
+
 def _clip_grounding(text: str, limit: int = _GROUNDING_MAX_CHARS) -> str:
     """Clip to a sentence/clause boundary — never mid-word."""
     t = " ".join(str(text or "").split())
@@ -7727,7 +7823,30 @@ def _render_grounding_text(context: GraphContext) -> list[str]:
             body = None
         if not body:
             continue
-        rendered.append(f"- [{ref}] {' '.join(str(body).split())}")
+        # R393 — closed-set evidence completeness. Prepend the EXHAUSTIVE
+        # member list so the model can see that the set it is being asked
+        # about has N members, and what each one is, instead of inferring
+        # completeness from a token-overlap slice of it. Strictly ADDITIVE to
+        # the block and a strict no-op when the flag is OFF or the ref is not
+        # a multi-member head, so the OFF arm is byte-identical.
+        skeleton = (
+            _render_closed_set_skeleton(ref)
+            if _closed_set_skeleton_enabled()
+            else None
+        )
+        flat_body = " ".join(str(body).split())
+        if skeleton:
+            rendered.append(
+                "\n".join(
+                    [
+                        f"- [{ref}]",
+                        skeleton,
+                        f"  VERBATIM (question-relevant): {flat_body}",
+                    ]
+                )
+            )
+        else:
+            rendered.append(f"- [{ref}] {flat_body}")
     if rendered:
         parts.append(
             _GROUNDING_SECTION_MARKER
