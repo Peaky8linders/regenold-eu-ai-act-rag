@@ -20,6 +20,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -105,7 +106,9 @@ def load_cache() -> dict[str, dict]:
         if line:
             try:
                 r = json.loads(line)
-                out[r["key"]] = r["verdict"]
+                verdict = r.get("verdict") or {}
+                if verdict.get("_judge_runs", 0) > 0:
+                    out[r["key"]] = verdict
             except Exception:  # noqa: BLE001
                 pass
     return out
@@ -123,7 +126,7 @@ def load_ckpt(path: Path) -> list[dict]:
                 "id": r.get("id"),
                 "question": r.get("question") or "",
                 "answer": r.get("pred_answer") or r.get("answer") or "",
-                "references": r.get("pred_refs") or r.get("references") or [],
+                "references": r.get("pred_refs") or r.get("references") or r.get("refs") or [],
                 "latency_s": float(r.get("latency_ms") or 0.0) / 1000.0,
                 "difficulty": r.get("difficulty") or r.get("difficulty_category"),
             }
@@ -158,6 +161,8 @@ def main() -> int:
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--repeats", type=int, default=3)
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--deepen", action="store_true", default=True, help="Apply R388 grain deepening")
+    ap.add_argument("--no-deepen", dest="deepen", action="store_false")
     a = ap.parse_args()
 
     gold = load_gold()
@@ -167,11 +172,16 @@ def main() -> int:
     if not rows:
         raise SystemExit("no rows matched the reconstructed gold")
 
+    if a.deepen:
+        from app.routes.regenold import _deepen_ref_grain  # noqa: PLC0415
+        for r in rows:
+            r["references"] = _deepen_ref_grain(list(r["references"]), r.get("question") or "", r.get("answer") or "")
+
     cache = load_cache()
     todo, cached = [], []
     for r in rows:
         v = cache.get(_key(r["id"], r["answer"]))
-        if v and len(v.get("criteria") or []) == len(r["criteria_text"]):
+        if v and v.get("_judge_runs", 0) > 0 and len(v.get("criteria") or []) == len(r["criteria_text"]):
             cached.append({**r, **v})
         else:
             todo.append(r)
@@ -182,27 +192,29 @@ def main() -> int:
         CACHE.parent.mkdir(parents=True, exist_ok=True)
         with CACHE.open("a", encoding="utf-8") as fh:
             for j in judged:
-                fh.write(
-                    json.dumps(
-                        {
-                            "key": _key(j["id"], j["answer"]),
-                            "verdict": {
-                                k: j[k]
-                                for k in (
-                                    "criteria",
-                                    "tone_ok",
-                                    "_judge_runs",
-                                    "_criteria_rate_min",
-                                    "_criteria_rate_max",
-                                    "_judge_errors",
-                                )
-                                if k in j
+                if j.get("_judge_runs", 0) > 0:
+                    fh.write(
+                        json.dumps(
+                            {
+                                "key": _key(j["id"], j["answer"]),
+                                "verdict": {
+                                    k: j[k]
+                                    for k in (
+                                        "criteria",
+                                        "tone_ok",
+                                        "_judge_runs",
+                                        "_criteria_rate_min",
+                                        "_criteria_rate_max",
+                                        "_judge_errors",
+                                    )
+                                    if k in j
+                                },
                             },
-                        },
-                        ensure_ascii=False,
+                            ensure_ascii=False,
+                        )
+                        + "\n"
                     )
-                    + "\n"
-                )
+
 
     all_rows = cached + judged
     by_id = {r["id"]: r for r in all_rows}
@@ -250,10 +262,11 @@ def main() -> int:
     print("NOTE: criteria and reference answers are RECONSTRUCTED, not the evaluator's.")
     print("      Compare ARMS under this instrument; do not read a number as an official score.")
 
-    out = OUT_DIR / f"score-{a.label}-{a.mode}.json"
+    clean_label = re.sub(r"[^a-zA-Z0-9_\-]", "_", a.label)
+    out = OUT_DIR / f"score-{clean_label}-{a.mode}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "label": a.label,
+        "label": clean_label,
         "mode": a.mode,
         "ckpt": str(a.ckpt),
         "axes": res,

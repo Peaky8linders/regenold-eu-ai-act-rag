@@ -88,6 +88,8 @@ app/routes/regenold.py
    │     └── _extractive_shape_ok / _enumerated_categories (default ON)
    ├── _surface_anchor_citations          — keyword-derived anchors
    ├── _collapse_parent_when_subpoint_cited — parent collapse (R325), default ON (R381)
+   ├── _deepen_ref_grain                  — reference grain deepener (R386), default ON (R387)
+   ├── _qrel_prune_references             — query-relevance pruning (R385), default OFF
    ├── _apply_wire_ref_cap                — terminal reference cap (R381), default OFF
    └── normalise_answer_for_regenold      — sentence & char caps
 ```

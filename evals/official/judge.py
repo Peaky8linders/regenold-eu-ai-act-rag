@@ -40,19 +40,49 @@ sys.path.insert(0, str(REPO))
 from app.data.provision_text import get_provision_text  # noqa: E402
 from evals.official.rubric import normalise_ref, ref_head  # noqa: E402
 
-URL = os.getenv("R388_WRAPPER_URL", "http://127.0.0.1:8000/v1/chat/completions")
-MODEL = os.getenv("R388_JUDGE_MODEL", "claude-sonnet-5")
+try:
+    from dotenv import load_dotenv
+    load_dotenv(REPO / ".env")
+except ImportError:
+    pass
+
+_base = (os.getenv("OPENAI_API_BASE") or "http://127.0.0.1:8000/v1").rstrip("/")
+if not _base.endswith("/v1") and not _base.endswith("/chat/completions"):
+    _base = _base + "/v1"
+_default_url = _base if _base.endswith("/chat/completions") else f"{_base}/chat/completions"
+URL = os.getenv("R388_WRAPPER_URL") or _default_url
+MODEL = os.getenv("R388_JUDGE_MODEL", "claude-sonnet-4-6")
+if "openrouter.ai" in URL and not MODEL.startswith("anthropic/"):
+    MODEL = f"anthropic/{MODEL}"
+
 REPEATS = int(os.getenv("R388_JUDGE_REPEATS", "3"))
 TEMPERATURE = float(os.getenv("R388_JUDGE_TEMPERATURE", "0.1"))
 
+_token = (
+    os.getenv("R388_JUDGE_API_KEY")
+    or (os.getenv("OPENROUTER_API_KEY") if "openrouter.ai" in URL else None)
+    or os.getenv("OPENAI_API_KEY", "dummy")
+)
 _HDRS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     "Content-Type": "application/json",
-    "Authorization": "Bearer dummy",
+    "Authorization": f"Bearer {_token}",
 }
 if os.getenv("CF_ACCESS_CLIENT_ID"):
-    _HDRS["CF-Access-Client-Id"] = os.environ["CF_ACCESS_CLIENT_ID"]
-    _HDRS["CF-Access-Client-Secret"] = os.environ.get("CF_ACCESS_CLIENT_SECRET", "")
+    if "127.0.0.1" not in URL and "localhost" not in URL and "openrouter.ai" not in URL:
+        _HDRS["CF-Access-Client-Id"] = os.environ["CF_ACCESS_CLIENT_ID"]
+        _HDRS["CF-Access-Client-Secret"] = os.environ.get("CF_ACCESS_CLIENT_SECRET", "")
+
+
+def _parse_bool(val: Any) -> bool:
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, (int, float)):
+        return val == 1
+    if isinstance(val, str):
+        return val.strip().lower() in ("true", "1", "yes", "pass")
+    return False
+
 
 _FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.MULTILINE)
 
@@ -149,12 +179,13 @@ def _provisions_for(refs, budget: int = 8000) -> str:
             continue
         if n not in wanted:
             wanted.append(n)
-        h = ref_head(n)
-        if h and h != n and h not in wanted:
-            wanted.append(h)
     chunks, used = [], 0
     for w in wanted:
         t = get_provision_text(w)
+        if not t:
+            h = ref_head(w)
+            if h and h != w:
+                t = get_provision_text(h)
         if not t:
             continue
         room = max(0, budget - used)
@@ -171,13 +202,22 @@ def judge_correctness_once(row: dict) -> list[bool] | None:
     if not criteria:
         return []
     numbered = "\n".join(f"{i}. {c}" for i, c in enumerate(criteria, 1))
-    prompt = CORRECTNESS_PROMPT.format(
-        provisions=_provisions_for(row.get("expected_refs") or row.get("_fallback_refs") or []),
-        question=row["question"],
-        criteria=numbered,
-        answer=(row.get("answer") or "").strip() or "(the system returned no answer)",
+    provisions = _provisions_for(
+        row.get("expected_refs") or row.get("_fallback_refs") or []
     )
-    d = _parse(_call(prompt))
+    ans_text = (row.get("answer") or "").strip() or "(the system returned no answer)"
+    prompt = (
+        CORRECTNESS_PROMPT
+        .replace("{provisions}", provisions)
+        .replace("{question}", row.get("question") or "")
+        .replace("{criteria}", numbered)
+        .replace("{answer}", f"<candidate_answer>\n{ans_text}\n</candidate_answer>")
+    )
+    try:
+        raw = _call(prompt)
+    except Exception:
+        return None
+    d = _parse(raw)
     if not isinstance(d, dict):
         return None
     verdicts = d.get("verdicts")
@@ -187,12 +227,13 @@ def judge_correctness_once(row: dict) -> list[bool] | None:
     for v in verdicts:
         if isinstance(v, dict) and "n" in v:
             try:
-                by_n[int(v["n"])] = bool(v.get("satisfied"))
-            except Exception:  # noqa: BLE001
+                by_n[int(v["n"])] = _parse_bool(v.get("satisfied"))
+            except Exception:
                 continue
+    if 0 in by_n and len(criteria) not in by_n:
+        by_n = {k + 1: v for k, v in by_n.items()}
     if len(by_n) < len(criteria):
-        # fall back to positional order when the model dropped the "n" field
-        flat = [bool(v.get("satisfied")) for v in verdicts if isinstance(v, dict)]
+        flat = [_parse_bool(v.get("satisfied")) for v in verdicts if isinstance(v, dict)]
         if len(flat) != len(criteria):
             return None
         return flat
@@ -200,18 +241,20 @@ def judge_correctness_once(row: dict) -> list[bool] | None:
 
 
 def judge_tone_once(row: dict) -> bool | None:
-    d = _parse(
-        _call(
-            TONE_PROMPT.format(
-                question=row["question"],
-                answer=(row.get("answer") or "").strip() or "(the system returned no answer)",
-            ),
-            max_tokens=400,
-        )
+    ans_text = (row.get("answer") or "").strip() or "(the system returned no answer)"
+    prompt = (
+        TONE_PROMPT
+        .replace("{question}", row.get("question") or "")
+        .replace("{answer}", f"<candidate_response>\n{ans_text}\n</candidate_response>")
     )
+    try:
+        raw = _call(prompt, max_tokens=400)
+    except Exception:
+        return None
+    d = _parse(raw)
     if not isinstance(d, dict):
         return None
-    return bool(d.get("appropriate")) and bool(d.get("clear"))
+    return _parse_bool(d.get("appropriate")) and _parse_bool(d.get("clear"))
 
 
 def _majority(runs: list, n_criteria: int) -> list[bool]:

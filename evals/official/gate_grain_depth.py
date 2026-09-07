@@ -116,10 +116,9 @@ def main() -> int:
             n_ref = sub = tot = 0
             L, C, Se, Sd, G = [], [], [], [], 0
             for r in rows:
-                shipped = r.get("pred_refs") or []
-                out = R._deepen_ref_grain(
-                    list(shipped), r.get("question") or "", r.get("pred_answer") or ""
-                )
+                shipped = r.get("pred_refs") or r.get("references") or r.get("refs") or []
+                ans = r.get("pred_answer") or r.get("answer") or ""
+                out = R._deepen_ref_grain(list(shipped), r.get("question") or "", ans)
                 cl = _clean(out)
                 n_ref += len(cl)
                 sub += sum(1 for x in cl if "." in x)
