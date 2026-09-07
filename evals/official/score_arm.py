@@ -97,11 +97,12 @@ def _key(qid: str, answer: str) -> str:
     return f"{qid}:{hashlib.sha256((answer or '').encode('utf-8')).hexdigest()[:16]}"
 
 
-def load_cache() -> dict[str, dict]:
-    if not CACHE.exists():
+def load_cache(cache_path: Path | None = None) -> dict[str, dict]:
+    target = cache_path or CACHE
+    if not target.exists():
         return {}
     out = {}
-    for line in CACHE.read_text(encoding="utf-8").splitlines():
+    for line in target.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if line:
             try:
@@ -163,7 +164,11 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--deepen", action="store_true", default=True, help="Apply R388 grain deepening")
     ap.add_argument("--no-deepen", dest="deepen", action="store_false")
+    ap.add_argument("--cache-file", default=None, help="Custom judge cache JSONL path")
+    ap.add_argument("--rejudge", action="store_true", default=False, help="Bypass cache and re-judge all rows")
     a = ap.parse_args()
+
+    cache_target = Path(a.cache_file) if a.cache_file else CACHE
 
     gold = load_gold()
     rows = build_rows(load_ckpt(Path(a.ckpt)), gold)
@@ -177,7 +182,7 @@ def main() -> int:
         for r in rows:
             r["references"] = _deepen_ref_grain(list(r["references"]), r.get("question") or "", r.get("answer") or "")
 
-    cache = load_cache()
+    cache = {} if a.rejudge else load_cache(cache_target)
     todo, cached = [], []
     for r in rows:
         v = cache.get(_key(r["id"], r["answer"]))
@@ -185,12 +190,12 @@ def main() -> int:
             cached.append({**r, **v})
         else:
             todo.append(r)
-    print(f"{len(rows)} rows: {len(cached)} cached, {len(todo)} to judge")
+    print(f"{len(rows)} rows: {len(cached)} cached, {len(todo)} to judge (cache: {cache_target.name})")
 
     judged = judge_rows(todo, workers=a.workers, repeats=a.repeats) if todo else []
     if judged:
-        CACHE.parent.mkdir(parents=True, exist_ok=True)
-        with CACHE.open("a", encoding="utf-8") as fh:
+        cache_target.parent.mkdir(parents=True, exist_ok=True)
+        with cache_target.open("a", encoding="utf-8") as fh:
             for j in judged:
                 if j.get("_judge_runs", 0) > 0:
                     fh.write(
@@ -206,6 +211,8 @@ def main() -> int:
                                         "_criteria_rate_min",
                                         "_criteria_rate_max",
                                         "_judge_errors",
+                                        "_corr_runs",
+                                        "_tone_runs_raw",
                                     )
                                     if k in j
                                 },
@@ -245,6 +252,43 @@ def main() -> int:
         + ("  BEATS" if gap_o >= 0 else "")
     )
     print()
+
+    # Min-Max Uncertainty Bounds across repetitions (per official Table 1 & Table 2)
+    has_runs = any("_corr_runs" in r for r in ordered)
+    if has_runs:
+        per_run_scores = []
+        valid_repeats = [len(r["_corr_runs"]) for r in ordered if r.get("_corr_runs")]
+        repeats_count = min(valid_repeats) if valid_repeats else 0
+        if repeats_count > 1:
+            for run_idx in range(repeats_count):
+                run_rows = []
+                for r in ordered:
+                    r_copy = dict(r)
+                    if r.get("_corr_runs") and len(r["_corr_runs"]) > run_idx and r["_corr_runs"][run_idx] is not None:
+                        r_copy["criteria"] = r["_corr_runs"][run_idx]
+                    if r.get("_tone_runs_raw") and len(r["_tone_runs_raw"]) > run_idx and r["_tone_runs_raw"][run_idx] is not None:
+                        r_copy["tone_ok"] = r["_tone_runs_raw"][run_idx]
+                    run_rows.append(r_copy)
+                per_run_scores.append(score_rows(run_rows))
+
+            if per_run_scores:
+                print("-" * 88)
+                print(f"Min–Max Uncertainty Bounds across {repeats_count} Repetitions (Temperature {os.getenv('R388_JUDGE_TEMPERATURE', '0.1')})")
+                print("-" * 88)
+                print(f"{'Metric':<26}{'Range':>20}{'Spread':>15}")
+                for axis_name, axis_label in [
+                    ("ans_correctness_loose", "Ans Cor L"),
+                    ("ans_correctness_strict", "Ans Cor S"),
+                    ("regulatory_tone", "Regulatory Tone"),
+                    ("overall", "Overall (geo mean)"),
+                ]:
+                    vals = [s[axis_name] for s in per_run_scores]
+                    min_v, max_v = min(vals), max(vals)
+                    spread = max_v - min_v
+                    print(f"{axis_label:<26}{f'{min_v:.1f}% – {max_v:.1f}%':>20}{f'{spread:+.1f} pp':>15}")
+                print("-" * 88)
+                print()
+
     print("diagnostics:")
     for k in (
         "_ans_loose_macro",

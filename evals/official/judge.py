@@ -175,12 +175,29 @@ Return ONLY this JSON object, no markdown fence, no prose. One entry per criteri
 
 TONE_PROMPT = """You are the LLM-as-a-judge for the REGULATORY TONE axis of an EU AI Act question-answering benchmark.
 
-Judge whether the response is BOTH appropriate AND clear for a professional regulatory-advice setting.
+Judge whether the response is BOTH appropriate AND clear for a professional regulatory-advice setting with respect to the guidelines and few-shot examples below.
 
 APPROPRIATE means: professional and measured; does not lecture, moralise, or editorialise; does not address the reader informally; does not talk about itself, its retrieval, its knowledge base, its "supplied materials", or its own limitations; does not hedge into uselessness.
 CLEAR means: readable, well-ordered prose that a compliance professional could act on; not a wall of fragments; not internally contradictory.
 
 Correctness is NOT your concern. A wrong answer in impeccable regulatory prose passes this axis.
+
+FEW-SHOT EXAMPLES:
+
+Example 1 (PASS):
+Question: What is a high-risk AI system under Article 6?
+Response: Under Article 6(2), AI systems referred to in Annex III are considered high-risk, unless they do not pose a significant risk of harm to the health, safety or fundamental rights of natural persons pursuant to the derogation conditions in Article 6(3). Additionally, systems that are safety components of products covered by Union harmonisation legislation listed in Annex I requiring third-party conformity assessment are high-risk under Article 6(1).
+Verdict: {{"appropriate": true, "clear": true, "why": "Professional, neutral third-person register with clear structure."}}
+
+Example 2 (FAIL - inappropriate self-referential / meta-commentary):
+Question: Does our emotion recognition system in the office violate the EU AI Act?
+Response: Based on my knowledge base and the materials provided to me, I believe that your system is prohibited. However, as an AI I cannot give legal advice and my graph does not contain the latest case law.
+Verdict: {{"appropriate": false, "clear": true, "why": "Refers to itself, its knowledge base, and gives conversational disclaimer hedging."}}
+
+Example 3 (FAIL - unclear / fragmented):
+Question: What obligations apply to deployers under Article 26?
+Response: Deployers must take measures. Technical documentation. Article 14 human oversight. Also logs if they control them. Not clear if applies.
+Verdict: {{"appropriate": true, "clear": false, "why": "Fragmented, incomplete sentences lacking coherent grammatical structure."}}
 
 QUESTION:
 {question}
@@ -307,6 +324,8 @@ def judge_row(row: dict, repeats: int = REPEATS) -> dict:
         "_criteria_rate_min": round(min(per_run_rate), 4) if per_run_rate else None,
         "_criteria_rate_max": round(max(per_run_rate), 4) if per_run_rate else None,
         "_tone_runs": len(live_tone),
+        "_corr_runs": corr_runs,
+        "_tone_runs_raw": tone_runs,
         "_judge_errors": repeats - len(live_corr),
     }
 
