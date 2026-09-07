@@ -1,0 +1,90 @@
+{
+  "n": 16,
+  "arms": {
+    "0": {
+      "easy": {
+        "n": 16,
+        "errors": 0,
+        "ref_loose": 0.9375,
+        "ref_strict": 0.48154761904761906,
+        "ref_conc": 0.2317013888888889,
+        "tone": 1.0,
+        "kw_recall": 1.0,
+        "latency_p50_ms": 8477.307900000596,
+        "latency_p90_ms": 14688.791599997785,
+        "pred_gold_ratio": 3.176470588235294,
+        "gold_dropped_head": 1,
+        "gold_dropped_head_gold_count": 17
+      },
+      "hard": {
+        "n": 0,
+        "errors": 0
+      }
+    },
+    "1": {
+      "easy": {
+        "n": 16,
+        "errors": 0,
+        "ref_loose": 0.9375,
+        "ref_strict": 0.6645833333333333,
+        "ref_conc": 0.4817708333333333,
+        "tone": 1.0,
+        "kw_recall": 1.0,
+        "latency_p50_ms": 5648.561199996038,
+        "latency_p90_ms": 10902.188699998078,
+        "pred_gold_ratio": 2.0588235294117645,
+        "gold_dropped_head": 1,
+        "gold_dropped_head_gold_count": 17
+      },
+      "hard": {
+        "n": 0,
+        "errors": 0
+      }
+    }
+  },
+  "gold_gate": {
+    "comparable": true,
+    "splits": {
+      "easy": {
+        "n": 16,
+        "baseline": 1,
+        "branch": 1,
+        "delta": 0,
+        "source": "full"
+      }
+    },
+    "total_delta": 0,
+    "offending_splits": [],
+    "failed": false,
+    "allow_gold_drop": false,
+    "suppressed_by_flag": false,
+    "exit_code": 0
+  },
+  "capture": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\docs\\measurements\\prompt-compact\\bedrock-compact-top16.jsonl",
+  "pairwise": {
+    "correctness": {
+      "baseline_wins": 4,
+      "candidate_wins": 4,
+      "ties": 8,
+      "p_value": 1.0
+    },
+    "refs": {
+      "baseline_wins": 4,
+      "candidate_wins": 7,
+      "ties": 5,
+      "p_value": 0.5488
+    },
+    "conciseness": {
+      "baseline_wins": 0,
+      "candidate_wins": 14,
+      "ties": 2,
+      "p_value": 0.0001
+    },
+    "tone": {
+      "baseline_wins": 2,
+      "candidate_wins": 2,
+      "ties": 12,
+      "p_value": 1.0
+    }
+  }
+}

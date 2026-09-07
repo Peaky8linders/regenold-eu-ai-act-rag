@@ -1,0 +1,3 @@
+{"key": "rg_001:55fc01d4c88d4648", "verdict": {"criteria": [true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0, "_corr_runs": [[true, true]], "_tone_runs_raw": [true]}}
+{"key": "rg_002:58460b85227bad1c", "verdict": {"criteria": [true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0, "_corr_runs": [[true, true]], "_tone_runs_raw": [true]}}
+{"key": "rg_003:a8812b6860f3987a", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0, "_corr_runs": [[true, true, true, true]], "_tone_runs_raw": [true]}}

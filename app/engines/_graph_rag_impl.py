@@ -510,6 +510,7 @@ def _shrink_user_for_groq(user: str, budget: int = 10000) -> str:
         " CRITICAL ANSWER RULES",     # USER_CRITICAL_RULES_CLAUSE start
         " SCOPE STOP RULE",           # R367 USER_SCOPE_STOP_CLAUSE start
         " ANSWER DISCIPLINE (V3",     # R380 USER_V3_DISCIPLINE_CLAUSE start
+        " ANSWER CONTRACT (compact):",
     )
     tail_start = len(user)  # default: no protected tail found
     for tm in _TAIL_MARKERS:
@@ -7607,6 +7608,33 @@ def _grounding_ref_budget() -> int:
         return _GROUNDING_REF_CHARS
 
 
+def _full_provision_evidence_enabled() -> bool:
+    """R391 — deliver the COMPLETE provision text for cited refs (default OFF).
+
+    Split out of ``REGENOLD_PROMPT_COMPACT`` because the two levers move
+    different axes in opposite directions: the compact contract shortens the
+    ANSWER (conciseness), this lengthens the PROMPT (evidence completeness,
+    at a latency cost). Read afresh so a paired in-process A/B sees the flip;
+    registered in ``_engine_cache_key`` so arm A's cache is not served to B.
+    """
+    return os.getenv("REGENOLD_FULL_PROVISION_EVIDENCE", "0").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _full_provision_max_chars() -> int:
+    """Upper bound on a single complete provision in the evidence block.
+
+    Bounded so one pathological reference (Article 5, Annex III) cannot make
+    the Stage-2 prompt unbounded. Fails OPEN to the default on a malformed
+    value, matching the house convention for numeric knobs.
+    """
+    try:
+        return max(1000, min(40000, int(os.getenv("REGENOLD_FULL_PROVISION_MAX_CHARS", ""))))
+    except (TypeError, ValueError):
+        return 12000
+
+
 def _clip_grounding(text: str, limit: int = _GROUNDING_MAX_CHARS) -> str:
     """Clip to a sentence/clause boundary — never mid-word."""
     t = " ".join(str(text or "").split())
@@ -7660,6 +7688,32 @@ def _render_grounding_text(context: GraphContext) -> list[str]:
     for ref in _context_article_refs(context)[:_grounding_max_refs()]:
         try:
             body = select_relevant_paragraphs(ref, question, budget)
+            # R391 — closed-set evidence completeness. MEASURED root cause of
+            # the R390 s5.2 enumeration family (~25 of 65 failed criteria):
+            # ``select_relevant_paragraphs`` drills into the question-relevant
+            # sub-points of an oversized paragraph, so a question that asks for
+            # a CLOSED statutory set is handed a PROPER SUBSET of it. Executed
+            # on HEAD, lettered members reaching the Stage-2 evidence block:
+            # Annex IV 0/8, Article 17 4/13, Article 13 4/8, Article 10 7/8.
+            # No prompt instruction can recover a member that is not in the
+            # prompt, which is why the delivered coverage clause's closed-set
+            # rule was demonstrably insufficient.
+            #
+            # Substituting the complete provision adds no new citable head
+            # (``_extract_context_grounded_refs`` is unchanged and pinned by
+            # test), and cannot cut an item mid-way. It is a SEPARATE lever
+            # from ``REGENOLD_PROMPT_COMPACT`` and carries its own flag and its
+            # own char cap: it more than DOUBLES the reference block (measured
+            # 2.08x mean over six questions), which is a Speed-axis cost, and
+            # bundling the two would make neither attributable (hard rule #6).
+            if _full_provision_evidence_enabled():
+                from app.data.provision_text import (  # noqa: PLC0415
+                    get_provision_text,
+                )
+
+                full = get_provision_text(ref)
+                if full and len(full) <= _full_provision_max_chars():
+                    body = full
         except Exception:  # noqa: BLE001 — a bad ref must not break the block
             logger.debug("grounding: ref %s did not resolve", ref, exc_info=True)
             body = None
@@ -8727,6 +8781,7 @@ def _claude_max_enhance_answer(
         if sanitized_q != sanitized_orig_q:
             user_message += f"REWRITTEN / SEARCH QUESTION: {sanitized_q}\n"
         user_message += "\n"
+        reference_block = ""
 
         # R69 — structured query profile (proposed architecture, Section
         # 3A). A one-line deterministic intent payload {actor, actor
@@ -8754,9 +8809,10 @@ def _claude_max_enhance_answer(
         # Without this, the system prompt's "cite only articles present
         # in the supplied references" clause has nothing to constrain.
         if context is not None:
+            reference_block = _build_context_references_block(context, question=question)
             user_message += (
                 f"EU AI ACT REFERENCES:\n"
-                f"{_build_context_references_block(context, question=question)}\n\n"
+                f"{reference_block}\n\n"
             )
 
             # R69 — cross-reference context (the architecture's
@@ -9161,6 +9217,47 @@ def _claude_max_enhance_answer(
         # against Answer-Conciseness, the ONE official axis this system leads
         # (96.0 easy / 93.4 hard) and therefore the one with pure downside
         # risk. Removed.
+
+        # Opt-in replacement, not another appended set of competing rules.
+        # Use the same grounded block (including labelled non-citable graph
+        # context) but discard the heuristic draft and its instruction stack.
+        from app.data.graph_rag_prompts import (
+            build_compact_answer_user,
+            prompt_compact_enabled,
+        )
+
+        if prompt_compact_enabled():
+            user_message = build_compact_answer_user(
+                sanitized_orig_q,
+                reference_block,
+                system_description=(
+                    sanitize_for_llm(system_description, context_type="system_description")
+                    if system_description else ""
+                ),
+                rewritten_question=(
+                    sanitized_q if sanitized_q != sanitized_orig_q else ""
+                ),
+            )
+            # R391 — the wholesale replacement above discarded the pushback
+            # clause, which is the ONLY instruction telling the model to hold a
+            # correct answer when the evaluator says "I don't think this is
+            # correct". MEASURED on the benchmark's verbatim pushback template:
+            # is_challenge_turn(...) is True while 'CHALLENGE' was absent from
+            # the compact user message, i.e. every hard-mode row lost it. Hard
+            # mode is half the official score, so the compact arm has to carry
+            # it too. Appended AFTER the contract so it stays in the protected
+            # tail that _shrink_user_for_groq preserves.
+            try:
+                from app.data.graph_rag_prompts import (  # noqa: PLC0415
+                    challenge_brevity_enabled,
+                    is_challenge_turn,
+                    user_challenge_brevity_clause,
+                )
+
+                if challenge_brevity_enabled() and is_challenge_turn(question):
+                    user_message += user_challenge_brevity_clause()
+            except Exception:  # noqa: BLE001 — a prompt add-on must not break Stage-2
+                pass
 
         try:
             max_tokens = settings.graph_rag.max_tokens

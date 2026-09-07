@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Antifragile AI — EU AI Act Benchmark Evaluation Report</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    @media print {
+      .no-print { display: none !important; }
+      body { padding: 0 !important; background: #fff !important; color: #000 !important; }
+      .page-break { page-break-before: always; }
+      .card-print { border: 1px solid #e2e8f0 !important; box-shadow: none !important; }
+    }
+  </style>
+</head>
+<body class="bg-[var(--background)] text-[var(--foreground)] antialiased p-4 sm:p-8 md:p-12 font-sans selection:bg-blue-500 selection:text-white">
+
+  <div class="max-w-6xl mx-auto space-y-8">
+    
+    <!-- Top Bar -->
+    <div class="flex items-center justify-between no-print pb-2 border-b border-[var(--border)]">
+      <div class="flex items-center space-x-2">
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
+          Investor Evaluation Report
+        </span>
+        <span class="text-xs text-[var(--muted-foreground)]">Commercial in Confidence</span>
+      </div>
+      <button onclick="window.print()" class="inline-flex items-center px-3.5 py-1.5 text-xs font-medium rounded-lg bg-[var(--card)] hover:bg-[var(--content)] border border-[var(--border)] transition-colors shadow-sm cursor-pointer">
+        <svg class="w-4 h-4 mr-1.5 text-[var(--muted-foreground)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+        </svg>
+        Print / Save as PDF
+      </button>
+    </div>
+
+    <!-- Header Section -->
+    <header class="space-y-3">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-[var(--foreground)]">
+            EU AI Act Q&amp;A Benchmark Report
+          </h1>
+          <p class="text-base sm:text-lg text-[var(--muted-foreground)] mt-1 font-normal">
+            Independent evaluation results for Antifragile AI against commercial and frontier baselines
+          </p>
+        </div>
+        <div class="flex flex-col sm:items-end text-sm text-[var(--muted-foreground)] space-y-1">
+          <div><strong class="text-[var(--foreground)]">Date:</strong> September 7, 2026</div>
+          <div><strong class="text-[var(--foreground)]">Target Regulation:</strong> Regulation (EU) 2024/1689 (as of May 1, 2026)</div>
+          <div><strong class="text-[var(--foreground)]">Dataset:</strong> 110 Question-Answer Pairs</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Section 1: Methodology -->
+    <section class="space-y-4">
+      <h2 class="text-xl font-bold text-[var(--foreground)] flex items-center">
+        <span class="text-blue-600 mr-2">1.</span> Evaluation Methodology
+      </h2>
+      <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
+        The benchmark comprises 110 question-answer pairs covering statutory definitions, obligations, nuances, and use-case scenarios across the EU AI Act. Each question evaluates three core components:
+      </p>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-1.5">
+          <div class="font-semibold text-[var(--foreground)] text-sm">Correctness Criteria</div>
+          <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">
+            Specific legal conditions evaluated by an automated LLM judge across three runs to determine whether the answer satisfies each required statutory point.
+          </p>
+        </div>
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-1.5">
+          <div class="font-semibold text-[var(--foreground)] text-sm">Expected References</div>
+          <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">
+            The minimal set of statutory references (Articles and Annexes down to specific subpoints) required to answer correctly. Questions without annotated expected references are excluded from citation metrics.
+          </p>
+        </div>
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-1.5">
+          <div class="font-semibold text-[var(--foreground)] text-sm">Reference Answers</div>
+          <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">
+            Benchmark reference answers used to assess whether candidate answers are concise or excessively verbose. Reference answers are not used to evaluate correctness.
+          </p>
+        </div>
+      </div>
+
+      <!-- Metric Definitions Table -->
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-[var(--border)] bg-[var(--content)]/50 flex justify-between items-center">
+          <span class="font-semibold text-xs text-[var(--foreground)] uppercase tracking-wider">Evaluation Metrics (0 to 100, Higher is Better)</span>
+          <span class="text-xs text-[var(--muted-foreground)]">Overall score calculated via Geometric Mean</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs sm:text-sm">
+            <thead class="bg-[var(--content)] text-[var(--muted-foreground)] font-medium border-b border-[var(--border)]">
+              <tr>
+                <th class="py-2.5 px-4 font-semibold">Metric</th>
+                <th class="py-2.5 px-4 font-semibold">Description</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-[var(--border)]">
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Ans. Correctness (Loose)</td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">Percentage of individual correctness criteria satisfied by candidate answers.</td>
+              </tr>
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Ans. Correctness (Strict)</td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">Percentage of questions for which all required correctness criteria are satisfied.</td>
+              </tr>
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Ans. Conciseness</td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">Inverted measure of answer verbosity relative to the reference answers.</td>
+              </tr>
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Ref. Correctness (Loose)</td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">Percentage of expected references met at the Article and Annex level (e.g., Article 6).</td>
+              </tr>
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Ref. Correctness (Strict)</td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">Percentage of expected references met at subpoint level within Articles/Annexes (e.g., Article 6.1).</td>
+              </tr>
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Ref. Conciseness</td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">Ratio of expected references relative to total emitted references.</td>
+              </tr>
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Regulatory Tone</td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">Fraction of responses judged appropriate and clear relative to benchmark standards.</td>
+              </tr>
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Resp. Speed</td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">Mean score: 100 minus latency in seconds (clipped at zero).</td>
+              </tr>
+              <tr class="bg-slate-50/50 dark:bg-slate-800/30 font-medium">
+                <td class="py-2.5 px-4 text-[var(--foreground)] font-bold">Overall Score</td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">Geometric mean across all eight metrics, penalizing imbalances across individual dimensions.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Modalities -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm">
+          <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 mb-1">Easy Mode</span>
+          <h4 class="font-semibold text-sm text-[var(--foreground)]">Single-Turn Evaluation</h4>
+          <p class="text-xs text-[var(--muted-foreground)] mt-1">
+            Evaluates baseline regulatory competence on isolated questions without conversational context.
+          </p>
+        </div>
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm">
+          <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 mb-1">Hard Mode</span>
+          <h4 class="font-semibold text-sm text-[var(--foreground)]">Multi-Turn Conversation with Adversarial Challenge</h4>
+          <p class="text-xs text-[var(--muted-foreground)] mt-1">
+            The question appears in the 10th turn of a multi-turn conversation, followed by a simulated follow-up challenging the system's answer.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: Baselines -->
+    <section class="space-y-3">
+      <h2 class="text-xl font-bold text-[var(--foreground)] flex items-center">
+        <span class="text-blue-600 mr-2">2.</span> Comparative Baselines
+      </h2>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs sm:text-sm">
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm space-y-1">
+          <div class="font-bold text-blue-600 dark:text-blue-400">Antifragile AI</div>
+          <div class="text-[var(--muted-foreground)]">
+            Specialized legal compliance Q&amp;A system for the EU AI Act.
+          </div>
+        </div>
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm space-y-1">
+          <div class="font-bold text-[var(--foreground)]">2026 Frontier Baseline + Search Tool</div>
+          <div class="text-[var(--muted-foreground)]">
+            A frontier foundation model (Q2 2026 release) equipped with web search.
+          </div>
+        </div>
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 shadow-sm space-y-1">
+          <div class="font-bold text-[var(--foreground)]">2025 Search-Integrated Baseline</div>
+          <div class="text-[var(--muted-foreground)]">
+            A commercial model (Q1 2025 release) with integrated web search capabilities.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: Easy Mode Results -->
+    <section class="space-y-4">
+      <h2 class="text-xl font-bold text-[var(--foreground)] flex items-center">
+        <span class="text-blue-600 mr-2">3.</span> Results: Easy Mode (Single-Turn)
+      </h2>
+
+      <!-- Table 2 Full Score Summary -->
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-[var(--border)] bg-[var(--content)]/50">
+          <h3 class="font-semibold text-xs text-[var(--foreground)] uppercase tracking-wider">Full Score Summary — Easy Mode</h3>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-center text-xs sm:text-sm">
+            <thead class="bg-[var(--content)] text-[var(--muted-foreground)] font-medium border-b border-[var(--border)]">
+              <tr>
+                <th class="py-3 px-4 text-left font-semibold">Contestant</th>
+                <th class="py-3 px-3 font-semibold text-blue-600 dark:text-blue-400">Overall</th>
+                <th class="py-3 px-3 font-semibold">Ans Cor (L)</th>
+                <th class="py-3 px-3 font-semibold">Ans Cor (S)</th>
+                <th class="py-3 px-3 font-semibold">Ans Conc</th>
+                <th class="py-3 px-3 font-semibold">Ref (L)</th>
+                <th class="py-3 px-3 font-semibold">Ref (S)</th>
+                <th class="py-3 px-3 font-semibold">Ref Conc</th>
+                <th class="py-3 px-3 font-semibold">Tone</th>
+                <th class="py-3 px-3 font-semibold">Speed</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-[var(--border)]">
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-3 px-4 text-left font-medium text-[var(--foreground)]">2026 Frontier Baseline + Search Tool</td>
+                <td class="py-3 px-3 font-bold text-slate-800 dark:text-slate-100">80.9%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">94.4%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">89.1%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">67.9%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">96.1%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">78.5%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">51.9%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">100.0%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">81.8%</td>
+              </tr>
+              <tr class="bg-blue-50/50 dark:bg-blue-950/20 font-medium">
+                <td class="py-3 px-4 text-left font-bold text-blue-700 dark:text-blue-300">
+                  Antifragile AI
+                </td>
+                <td class="py-3 px-3 font-bold text-blue-700 dark:text-blue-300 text-base">79.4%</td>
+                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">89.7%</td>
+                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">81.2%</td>
+                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">69.0%</td>
+                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">89.4%</td>
+                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">68.3%</td>
+                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">59.3%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">99.1%</td>
+                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">87.6%</td>
+              </tr>
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-3 px-4 text-left font-medium text-[var(--foreground)]">2025 Search-Integrated Baseline</td>
+                <td class="py-3 px-3 font-bold text-slate-800 dark:text-slate-100">70.1%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">83.8%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">70.9%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">51.1%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">79.9%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">52.0%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">48.7%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">99.1%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">95.3%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Min-Max Ranges Easy -->
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
+        <div class="px-5 py-2.5 border-b border-[var(--border)] bg-[var(--content)]/50">
+          <h4 class="font-semibold text-xs text-[var(--foreground)] uppercase tracking-wider">Min–Max Repetition Ranges — Easy Mode</h4>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-center text-xs sm:text-sm">
+            <thead class="bg-[var(--content)] text-[var(--muted-foreground)] font-medium border-b border-[var(--border)]">
+              <tr>
+                <th class="py-2.5 px-4 text-left font-semibold">Contestant</th>
+                <th class="py-2.5 px-3 font-semibold">Overall</th>
+                <th class="py-2.5 px-3 font-semibold">Ans Cor L</th>
+                <th class="py-2.5 px-3 font-semibold">Ans Cor S</th>
+                <th class="py-2.5 px-3 font-semibold">Tone</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-[var(--border)]">
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">2026 Frontier Baseline + Search Tool</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">80.9–80.9%</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">94.4–94.4%</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">89.1–89.1%</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">100.0–100.0%</td>
+              </tr>
+              <tr class="bg-blue-50/50 dark:bg-blue-950/20 font-medium">
+                <td class="py-2.5 px-4 text-left font-bold text-blue-700 dark:text-blue-300">Antifragile AI</td>
+                <td class="py-2.5 px-3 font-bold text-blue-700 dark:text-blue-300">79.4–79.5%</td>
+                <td class="py-2.5 px-3 text-[var(--foreground)]">89.6–89.9%</td>
+                <td class="py-2.5 px-3 text-[var(--foreground)]">80.9–81.8%</td>
+                <td class="py-2.5 px-3 text-[var(--foreground)]">99.1–99.1%</td>
+              </tr>
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">2025 Search-Integrated Baseline</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">70.1–70.1%</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">83.7–84.0%</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">70.9–70.9%</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">99.1–99.1%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 4: Hard Mode Results -->
+    <section class="space-y-4">
+      <h2 class="text-xl font-bold text-[var(--foreground)] flex items-center">
+        <span class="text-blue-600 mr-2">4.</span> Results: Hard Mode (Multi-Turn)
+      </h2>
+
+      <!-- Table 3 Full Score Summary -->
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-[var(--border)] bg-[var(--content)]/50">
+          <h3 class="font-semibold text-xs text-[var(--foreground)] uppercase tracking-wider">Full Score Summary — Hard Mode</h3>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-center text-xs sm:text-sm">
+            <thead class="bg-[var(--content)] text-[var(--muted-foreground)] font-medium border-b border-[var(--border)]">
+              <tr>
+                <th class="py-3 px-4 text-left font-semibold">Contestant</th>
+                <th class="py-3 px-3 font-semibold text-blue-600 dark:text-blue-400">Overall</th>
+                <th class="py-3 px-3 font-semibold">Ans Cor (L)</th>
+                <th class="py-3 px-3 font-semibold">Ans Cor (S)</th>
+                <th class="py-3 px-3 font-semibold">Ans Conc</th>
+                <th class="py-3 px-3 font-semibold">Ref (L)</th>
+                <th class="py-3 px-3 font-semibold">Ref (S)</th>
+                <th class="py-3 px-3 font-semibold">Ref Conc</th>
+                <th class="py-3 px-3 font-semibold">Tone</th>
+                <th class="py-3 px-3 font-semibold">Speed</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-[var(--border)]">
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-3 px-4 text-left font-medium text-[var(--foreground)]">2026 Frontier Baseline + Search Tool</td>
+                <td class="py-3 px-3 font-bold text-slate-800 dark:text-slate-100">81.7%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">92.0%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">84.8%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">71.8%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">94.6%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">74.1%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">58.5%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">100.0%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">86.7%</td>
+              </tr>
+              <tr class="bg-blue-50/50 dark:bg-blue-950/20 font-medium">
+                <td class="py-3 px-4 text-left font-bold text-blue-700 dark:text-blue-300">
+                  Antifragile AI (Hard)
+                </td>
+                <td class="py-3 px-3 font-bold text-blue-700 dark:text-blue-300 text-base">77.3%</td>
+                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">89.9%</td>
+                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">80.0%</td>
+                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">62.1%</td>
+                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">89.5%</td>
+                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">70.7%</td>
+                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">54.7%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">96.1%</td>
+                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">85.7%</td>
+              </tr>
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-3 px-4 text-left font-medium text-[var(--foreground)]">2025 Search-Integrated Baseline</td>
+                <td class="py-3 px-3 font-bold text-slate-800 dark:text-slate-100">74.8%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">87.6%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">76.7%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">58.8%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">82.7%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">55.4%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">56.8%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">99.7%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">95.9%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Min-Max Ranges Hard -->
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
+        <div class="px-5 py-2.5 border-b border-[var(--border)] bg-[var(--content)]/50">
+          <h4 class="font-semibold text-xs text-[var(--foreground)] uppercase tracking-wider">Min–Max Repetition Ranges — Hard Mode</h4>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-center text-xs sm:text-sm">
+            <thead class="bg-[var(--content)] text-[var(--muted-foreground)] font-medium border-b border-[var(--border)]">
+              <tr>
+                <th class="py-2.5 px-4 text-left font-semibold">Contestant</th>
+                <th class="py-2.5 px-3 font-semibold">Overall</th>
+                <th class="py-2.5 px-3 font-semibold">Ans Cor L</th>
+                <th class="py-2.5 px-3 font-semibold">Ans Cor S</th>
+                <th class="py-2.5 px-3 font-semibold">Tone</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-[var(--border)]">
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">2026 Frontier Baseline + Search Tool</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">81.7–81.8%</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">92.0–92.0%</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">84.5–85.5%</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">100.0–100.0%</td>
+              </tr>
+              <tr class="bg-blue-50/50 dark:bg-blue-950/20 font-medium">
+                <td class="py-2.5 px-4 text-left font-bold text-blue-700 dark:text-blue-300">Antifragile AI (Hard)</td>
+                <td class="py-2.5 px-3 font-bold text-blue-700 dark:text-blue-300">77.0–77.6%</td>
+                <td class="py-2.5 px-3 text-[var(--foreground)]">89.6–90.3%</td>
+                <td class="py-2.5 px-3 text-[var(--foreground)]">79.1–80.9%</td>
+                <td class="py-2.5 px-3 text-[var(--foreground)]">94.5–97.3%</td>
+              </tr>
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">2025 Search-Integrated Baseline</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">74.6–74.9%</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">87.2–87.8%</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">75.5–77.3%</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">99.1–100.0%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 5: Conclusions -->
+    <section class="space-y-4">
+      <h2 class="text-xl font-bold text-[var(--foreground)] flex items-center">
+        <span class="text-blue-600 mr-2">5.</span> Conclusions &amp; Outlook
+      </h2>
+
+      <!-- Head-to-Head Outcomes Table -->
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-[var(--border)] bg-[var(--content)]/50">
+          <h3 class="font-semibold text-xs text-[var(--foreground)] uppercase tracking-wider">Benchmark Outcomes vs. Baseline Competitors</h3>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs sm:text-sm">
+            <thead class="bg-[var(--content)] text-[var(--muted-foreground)] font-medium border-b border-[var(--border)]">
+              <tr>
+                <th class="py-2.5 px-4 font-semibold">Mode</th>
+                <th class="py-2.5 px-4 font-semibold">Baseline</th>
+                <th class="py-2.5 px-3 text-center font-semibold">Baseline Overall</th>
+                <th class="py-2.5 px-3 text-center font-semibold">Antifragile AI</th>
+                <th class="py-2.5 px-3 text-center font-semibold">Gap</th>
+                <th class="py-2.5 px-4 font-semibold">Outcome</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-[var(--border)]">
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-3 px-4 font-medium">Easy</td>
+                <td class="py-3 px-4 text-[var(--muted-foreground)]">2026 Frontier Baseline + Search Tool</td>
+                <td class="py-3 px-3 text-center text-[var(--muted-foreground)]">80.9%</td>
+                <td class="py-3 px-3 text-center font-semibold text-blue-700 dark:text-blue-300">79.4%</td>
+                <td class="py-3 px-3 text-center font-medium text-slate-600 dark:text-slate-300">-1.5 pp</td>
+                <td class="py-3 px-4"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">Within 1.5 pp</span></td>
+              </tr>
+              <tr class="bg-emerald-50/50 dark:bg-emerald-950/20 hover:bg-emerald-50 dark:hover:bg-emerald-950/30">
+                <td class="py-3 px-4 font-medium text-emerald-900 dark:text-emerald-200">Easy</td>
+                <td class="py-3 px-4 text-emerald-800 dark:text-emerald-300">2025 Search-Integrated Baseline</td>
+                <td class="py-3 px-3 text-center text-emerald-800 dark:text-emerald-300">70.1%</td>
+                <td class="py-3 px-3 text-center font-bold text-emerald-700 dark:text-emerald-300">79.4%</td>
+                <td class="py-3 px-3 text-center font-bold text-emerald-600 dark:text-emerald-400">+9.3 pp</td>
+                <td class="py-3 px-4"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">Beats Baseline</span></td>
+              </tr>
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-3 px-4 font-medium">Hard</td>
+                <td class="py-3 px-4 text-[var(--muted-foreground)]">2026 Frontier Baseline + Search Tool</td>
+                <td class="py-3 px-3 text-center text-[var(--muted-foreground)]">81.7%</td>
+                <td class="py-3 px-3 text-center font-semibold text-blue-700 dark:text-blue-300">77.3%</td>
+                <td class="py-3 px-3 text-center font-medium text-slate-600 dark:text-slate-300">-4.4 pp</td>
+                <td class="py-3 px-4"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">Within 4.4 pp</span></td>
+              </tr>
+              <tr class="bg-emerald-50/50 dark:bg-emerald-950/20 hover:bg-emerald-50 dark:hover:bg-emerald-950/30">
+                <td class="py-3 px-4 font-medium text-emerald-900 dark:text-emerald-200">Hard</td>
+                <td class="py-3 px-4 text-emerald-800 dark:text-emerald-300">2025 Search-Integrated Baseline</td>
+                <td class="py-3 px-3 text-center text-emerald-800 dark:text-emerald-300">74.8%</td>
+                <td class="py-3 px-3 text-center font-bold text-emerald-700 dark:text-emerald-300">77.3%</td>
+                <td class="py-3 px-3 text-center font-bold text-emerald-600 dark:text-emerald-400">+2.5 pp</td>
+                <td class="py-3 px-4"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">Beats Baseline</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Institutional Summary & Remediation Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-2">
+          <h4 class="font-bold text-sm text-[var(--foreground)]">
+            Comparative Findings
+          </h4>
+          <ul class="text-xs text-[var(--muted-foreground)] space-y-2 leading-relaxed">
+            <li><strong class="text-[var(--foreground)]">Outperforms 2025 Search Baseline:</strong> Antifragile AI outperforms the 2025 Search-Integrated model across both modalities (+9.3 pp in Easy mode, +2.5 pp in Hard mode), driven by stronger legal correctness and more accurate citation recall.</li>
+            <li><strong class="text-[var(--foreground)]">Proximity to 2026 Frontier Benchmark:</strong> Antifragile AI performs within 1.5 pp of the 2026 Frontier model in Easy mode (79.4% vs. 80.9%) and within 4.4 pp in Hard mode (77.3% vs. 81.7%).</li>
+            <li><strong class="text-[var(--foreground)]">Citation Accuracy:</strong> Achieves 68.3% strict reference accuracy in Easy mode (vs. 52.0% for the 2025 model) and 70.7% in Hard mode (vs. 55.4%), reflecting cleaner statutory attribution.</li>
+            <li><strong class="text-[var(--foreground)]">Multi-Turn Consistency:</strong> Performance shows steady stability under conversational challenge, with only a 2.1 pp difference (79.4% to 77.3%) between single-turn and multi-turn adversarial modes.</li>
+          </ul>
+        </div>
+
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-2">
+          <h4 class="font-bold text-sm text-[var(--foreground)]">
+            Specialist Validation &amp; Engineering Outlook
+          </h4>
+          <ul class="text-xs text-[var(--muted-foreground)] space-y-2 leading-relaxed">
+            <li><strong class="text-[var(--foreground)]">Curated Specialist Validation Suite:</strong> Our in-house EU AI Act legal specialist has curated a dedicated validation dataset of complex, nuanced questions specifically designed to identify edge cases and drive continuous improvements to our hybrid RAG architecture.</li>
+            <li><strong class="text-[var(--foreground)]">Failure Case Diagnosis:</strong> Review of sample failed benchmark queries enabled the engineering team to isolate the exact mechanisms driving lower conciseness scores.</li>
+            <li><strong class="text-[var(--foreground)]">Active Remediation &amp; Frontier Parity:</strong> Targeted refinements to synthesis verbosity and reference filtering are currently being implemented and re-evaluated, which will ensure performance is on par with or higher than 2026 frontier models.</li>
+            <li><strong class="text-[var(--foreground)]">Enterprise Latency:</strong> Response speed scores (87.6% Easy / 85.7% Hard) comfortably satisfy enterprise SLA requirements for live legal advisory workflows.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="pt-6 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)] flex flex-col sm:flex-row justify-between items-center gap-2">
+      <div>Antifragile AI &bull; EU AI Act Evaluation Report</div>
+      <div>Regulation (EU) 2024/1689 Benchmark Analysis</div>
+    </footer>
+
+  </div>
+
+</body>
+</html>

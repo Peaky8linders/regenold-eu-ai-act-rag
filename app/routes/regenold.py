@@ -1534,6 +1534,17 @@ def _engine_cache_key(
             # clause stack on the Stage-2 USER message. Same doctrine: it flips
             # the polished answer AND, via the prose->refs passes, the wire.
             "REGENOLD_PROMPT_V3",
+            "REGENOLD_PROMPT_COMPACT",
+            # R391 -- split out of PROMPT_COMPACT because the two levers move
+            # different axes in opposite directions. This one changes the
+            # EVIDENCE the model sees (complete provisions vs question-relevant
+            # paragraphs), so it changes the answer and, via the prose->refs
+            # passes, the wire references too (AGENTS.md invariant #5).
+            "REGENOLD_FULL_PROVISION_EVIDENCE",
+            "REGENOLD_FULL_PROVISION_MAX_CHARS",
+            # R391 - decides whether a head the D1 granularity pass created
+            # may be re-pinned to its own sub-point, which changes the wire.
+            "REGENOLD_GRAIN_DEEPEN_COLLAPSED_HEADS",
             # R300 — the wrapper model alias decides WHICH model generates the
             # Stage-2 answer, so flipping it flips the answer.
             "REGENOLD_WRAPPER_MODEL_ALIAS",
@@ -3712,6 +3723,53 @@ def _deepen_ref_grain(
         return out or list(references)
     except Exception:  # noqa: BLE001 — never break the route
         return references
+
+
+def _deepen_collapsed_heads_enabled() -> bool:
+    """R391 - let the grain deepener re-pin a head the D1 granularity pass made.
+
+    THE DEFECT. ``_apply_ref_granularity`` (auto) collapses a head's leaves onto
+    the head and records that head in ``_collapsed_to_heads``; the deepener was
+    then told to SKIP exactly those heads. Two passes fighting: one discards the
+    sub-point coordinate, the other is forbidden from restoring it. Measured on
+    the live route, ``rg_046`` shipped ``['Article 6.2', 'Article 13',
+    'Article 26.1']`` with ``exempt=['Article 13']`` -- the two non-exempt heads
+    were deepened and the exempt one was not, on a row whose answer key is
+    ``Article 13.3``.
+
+    WHY LIFTING IT IS FREE, against the official rubric's own definitions
+    (``report_antifragile_ai.pdf`` Table 1, pinned in
+    ``tests/test_official_rubric_alignment.py``):
+
+    * **Ref. Correctness (Loose)** is scored "at the level of Article and Annex
+      numbers", so the head survives inside its own leaf. No change.
+    * **Ref. Conciseness** is "excess references relative to expected", a pure
+      COUNT ratio -- and deepening replaces one reference with one reference.
+      No change.
+    * **Ref. Correctness (Strict)** "includ[es] subpoints", so the leaf scores
+      where the bare head scores zero. Pure gain.
+
+    And ``gold_dropped_head`` folds both sides onto heads, while deepening maps
+    a head to its OWN leaf -- so the head set is invariant and hard rule #8 is
+    ``+0`` BY CONSTRUCTION, not merely by measurement. Verified both ways:
+    0 of 57 captured live rows change their head set, and a zero-variance replay
+    over the gold-bearing rows of a live capture (n=52) reads
+
+        arm                       RefLoose  RefStrict  RefConc  refs/row  gold_drop
+        exemption kept (OFF)         96.15      57.69    51.33      2.71          2
+        exemption lifted (ON)        96.15      72.76    51.33      2.71          2
+
+    **+15.06 pp Ref Strict with every other axis byte-identical while 21 of 52
+    rows change their reference list** -- the same signature as R386/R381, a
+    transform that adds precision without moving a provision. Ref Strict is our
+    second-largest gap to the 2026 frontier baseline (62.2 vs 78.5 on r389,
+    69.2 on r390) and carries 1.13 pp of Overall per pp of axis.
+
+    ``=0`` restores the exemption. Registered in ``_engine_cache_key``.
+    """
+    return os.getenv("REGENOLD_GRAIN_DEEPEN_COLLAPSED_HEADS", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
 
 
 def _qrel_prune_enabled() -> bool:
@@ -11321,7 +11379,12 @@ def regenold_eu_ai_act_ask(
         # pass that can DROP, so a dropped reference is never a deepened one.
         # It is not a filter: it changes a coordinate, never the provision set.
         _gd_refs = _deepen_ref_grain(
-            references, question, answer_text, exempt_heads=_collapsed_to_heads
+            references,
+            question,
+            answer_text,
+            exempt_heads=(
+                set() if _deepen_collapsed_heads_enabled() else _collapsed_to_heads
+            ),
         )
         if _gd_refs != references:
             _gd_changed = [

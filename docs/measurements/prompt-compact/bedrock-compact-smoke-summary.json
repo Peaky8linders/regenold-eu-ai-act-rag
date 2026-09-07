@@ -1,0 +1,90 @@
+{
+  "n": 4,
+  "arms": {
+    "0": {
+      "easy": {
+        "n": 4,
+        "errors": 0,
+        "ref_loose": 1.0,
+        "ref_strict": 0.43333333333333335,
+        "ref_conc": 0.08118055555555556,
+        "tone": 1.0,
+        "kw_recall": 1.0,
+        "latency_p50_ms": 12393.236699994304,
+        "latency_p90_ms": 12469.573199996375,
+        "pred_gold_ratio": 3.75,
+        "gold_dropped_head": 0,
+        "gold_dropped_head_gold_count": 4
+      },
+      "hard": {
+        "n": 0,
+        "errors": 0
+      }
+    },
+    "1": {
+      "easy": {
+        "n": 4,
+        "errors": 0,
+        "ref_loose": 1.0,
+        "ref_strict": 0.625,
+        "ref_conc": 0.3333333333333333,
+        "tone": 1.0,
+        "kw_recall": 1.0,
+        "latency_p50_ms": 7370.90029999672,
+        "latency_p90_ms": 8489.82149999938,
+        "pred_gold_ratio": 2.5,
+        "gold_dropped_head": 0,
+        "gold_dropped_head_gold_count": 4
+      },
+      "hard": {
+        "n": 0,
+        "errors": 0
+      }
+    }
+  },
+  "gold_gate": {
+    "comparable": true,
+    "splits": {
+      "easy": {
+        "n": 4,
+        "baseline": 0,
+        "branch": 0,
+        "delta": 0,
+        "source": "full"
+      }
+    },
+    "total_delta": 0,
+    "offending_splits": [],
+    "failed": false,
+    "allow_gold_drop": false,
+    "suppressed_by_flag": false,
+    "exit_code": 0
+  },
+  "capture": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\docs\\measurements\\prompt-compact\\bedrock-compact-smoke.jsonl",
+  "pairwise": {
+    "correctness": {
+      "baseline_wins": 0,
+      "candidate_wins": 0,
+      "ties": 4,
+      "p_value": 1.0
+    },
+    "refs": {
+      "baseline_wins": 0,
+      "candidate_wins": 2,
+      "ties": 2,
+      "p_value": 0.5
+    },
+    "conciseness": {
+      "baseline_wins": 0,
+      "candidate_wins": 2,
+      "ties": 2,
+      "p_value": 0.5
+    },
+    "tone": {
+      "baseline_wins": 0,
+      "candidate_wins": 0,
+      "ties": 4,
+      "p_value": 1.0
+    }
+  }
+}
