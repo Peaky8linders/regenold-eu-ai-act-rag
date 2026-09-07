@@ -331,3 +331,71 @@ evidence. Post-pushback answers are marginally shorter and marginally more conci
 more likely the same closed-set incompleteness measured in §3, which is question-shaped and applies
 to both modes — i.e. **§4 is the hard-mode lever too**, and no separate anti-drift mechanism is
 warranted until a powered run says otherwise.
+
+---
+
+## 9. THE GATE — run, and the lever FAILS it
+
+Live paired A/B, **n=110 official easy questions**, `claude-opus-5` on the wrapper, arms run
+sequentially by `evals.regenold.run_official_batch --baseline-env REGENOLD_CLOSED_SET_SKELETON=0
+--branch-env REGENOLD_CLOSED_SET_SKELETON=1`. Deterministic axes and the gold-head verdict are
+pure functions of the captured output, scored against the R388 official reference key
+(`docs/measurements/r388/official_refkey_n110.jsonl`, 84.3 % sub-point).
+
+| axis | A (OFF) | B (ON) | delta |
+| :--- | ---: | ---: | ---: |
+| answer chars (mean) | 1053 | 1088 | +35 |
+| Ans. Conciseness | 66.6 | 64.9 | **−1.77** |
+| refs / row | 2.92 | 3.05 | +0.14 |
+| Ref. Conciseness | 53.9 | 52.2 | **−1.65** |
+| sub-point grain % | 85.7 | 84.2 | −1.44 |
+| Speed | 88.8 | 89.0 | +0.21 |
+| **`gold_dropped_head` (SUM)** | **4** | **5** | **+1** |
+
+### ⛔ HARD RULE #8: FAIL. `REGENOLD_CLOSED_SET_SKELETON` stays default OFF.
+
+The rule is "drop ZERO more gold heads", and the branch drops one. That is disqualifying on its
+own terms and is not softened by the other columns — which are also negative on both conciseness
+axes.
+
+**This is exactly the exposure §5 named and refused to argue away.** The lever is prompt-side, so
+it is not reference-neutral: more statutory text in the evidence block means more provisions the
+model can name in prose, and `_add_prose_named_refs` promotes every one of them, uncapped, with
+`_citable_base_guard_enabled()` default OFF. Predicted mechanism, observed mechanism.
+
+**The failing row, read rather than counted.** `rg_068` ("who is responsible for ensuring input
+data is relevant and sufficiently representative"), expected key `['Article 10.3']`:
+
+```
+A (OFF)  ['Article 6.2', 'Article 26.1', 'Article 10.2']   -> head Article 10 COVERED
+B (ON)   ['Article 6.2', 'Article 26.1']                   -> head Article 10 LOST
+```
+
+Neither arm lands the correct sub-point (10.3), so both fail Ref Strict on that row; head-folded,
+A covers and B does not. The two answers are near-identical prose — the difference is one dropped
+reference.
+
+⚠ **Read the power honestly.** Only **27 of 110** answers are byte-identical across arms, so 83
+rows moved on live generation variance and the gold delta rests on a single row. That does **not**
+rescue the lever — the rule is zero, not net-zero — but it does mean the *size* of the effect is
+unresolved, and a re-run could land 0 or +2. Do not quote "+1" as a stable measurement; quote it
+as "failed the gate on this run".
+
+### 9.1 Why the 2×2 predicted this, and what the next arm is
+
+The §4 2×2 said the skeleton **alone** runs 1.34× longer than baseline. Live, it ran +35 chars
+(1.03×) — same sign, much smaller — and that lengthening is precisely what costs Ans. Conciseness
+and drags extra provisions onto the wire. The 2×2 also said the skeleton's value is realised
+**with** a terse contract, where it converts a −27.3 pp recall catastrophe into −0.8 pp while
+keeping the +40 pp of conciseness.
+
+So the arm that this round's evidence actually points at is
+**`REGENOLD_CLOSED_SET_SKELETON` × `REGENOLD_PROMPT_COMPACT`**, not the skeleton alone. It was not
+run here because bundling it into this gate would have made neither lever attributable (hard rule
+#6), and because a failing single-lever arm has to be recorded as failing before it is combined
+with anything.
+
+**Second candidate, and it addresses the measured mechanism directly:**
+`_citable_base_guard_enabled()` (default OFF) constrains prose-promotion to the retrieval-derived
+universe. It is ADD-removing — it can only remove an ungrounded promotion, never invent a
+reference — which is the exact failure path observed here. Gate it on its own first.
