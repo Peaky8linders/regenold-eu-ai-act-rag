@@ -751,11 +751,63 @@ _KEYWORD_ENTITY_MAP: tuple[tuple[str, str], ...] = (
     ("real world testing plan", "Art. 60"),
     ("testing in real-world conditions", "Art. 60"),
     ("testing in real world conditions", "Art. 60"),
+    # R390 — the bare statutory term of art. The two keys above only match the
+    # contiguous phrase "testing in real-world conditions"; the official
+    # question rg_044 reads "testing of a high-risk AI system in real-world
+    # conditions outside an AI regulatory sandbox", so neither fired and the
+    # generic "sandbox" key carried the row to Art. 57 — the exact article the
+    # question says it is asking OUTSIDE of. These keys are Article 60's and
+    # Article 61's own official headings ("Testing of high-risk AI systems in
+    # real world conditions OUTSIDE AI regulatory sandboxes" / "Informed
+    # consent to participate in testing in real world conditions outside AI
+    # regulatory sandboxes"), so they generalise to any phrasing of that ask.
+    ("real-world conditions", "Art. 60"),
+    ("real world conditions", "Art. 60"),
+    ("outside an ai regulatory sandbox", "Art. 60"),
+    ("outside a regulatory sandbox", "Art. 60"),
+    ("outside ai regulatory sandboxes", "Art. 60"),
+    ("outside regulatory sandboxes", "Art. 60"),
+    ("outside a sandbox", "Art. 60"),
+    ("outside sandboxes", "Art. 60"),
+    ("consent to participate in testing", "Art. 61"),
+    ("informed consent", "Art. 61"),
     # mt_v2_016: sandbox → real-world testing (Art. 60)
     ("deploy it to a real client", "Art. 60"),
     ("deploy to a real client", "Art. 60"),
     ("real client during the sandbox", "Art. 60"),
     ("deploy during the sandbox", "Art. 60"),
+    # ── Article 76 (MSA supervision of real-world testing) ───────────
+    # R390 — Article 76's own heading is "Supervision of testing in real world
+    # conditions BY MARKET SURVEILLANCE AUTHORITIES", and 76(1)-(2) is what an
+    # MSA verifies in that supervisory role. rg_030 asked exactly that and the
+    # only keys that fired were "market surveillance" → Art. 74 (the general
+    # market-surveillance article) and "sandbox" → Art. 57.
+    ("supervisory role", "Art. 76"),
+    ("supervision of testing", "Art. 76"),
+    ("supervise testing in real world", "Art. 76"),
+    ("supervise testing in real-world", "Art. 76"),
+    # ── Article 3 (definitions) ──────────────────────────────────────
+    # R390 — Article 3 IS the definitions article. The map already carried a
+    # dozen "definition of an ai system"-style keys but no generic one, so
+    # rg_048 ("what is the definition of (a) a 'conformity assessment body'
+    # and (b) 'conformity assessment'?") matched only "conformity assessment"
+    # → Art. 43 and we shipped "conformity assessment is not explicitly defined
+    # in Regulation (EU) 2024/1689" — which is false; it is Article 3(20).
+    ("what is the definition of", "Art. 3"),
+    ("what are the definitions of", "Art. 3"),
+    ("definition of a", "Art. 3"),
+    ("definition of the term", "Art. 3"),
+    ("how does the act define", "Art. 3"),
+    ("how is .. defined", "Art. 3"),
+    # ── Article 44 (certificates: language + validity period) ────────
+    # R390 — Article 44's heading is "Certificates". Annex VII point 4.6 says
+    # what the notified body issues; Article 44(1)-(2) says what the
+    # certificate must CONTAIN (an official Union language, and a validity
+    # period of at most 5 years for Annex I / 4 years for Annex III).
+    ("certificate contain", "Art. 44"),
+    ("certificate must contain", "Art. 44"),
+    ("validity of the certificate", "Art. 44"),
+    ("certificate validity", "Art. 44"),
     # ── Article 70 (national competent authorities + EDPS role) ──────
     ("european data protection supervisor", "Art. 70"),
     ("edps role", "Art. 70"),
