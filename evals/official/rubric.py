@@ -23,8 +23,9 @@ from typing import Any, Iterable, Sequence
 _REF_RE = re.compile(
     r"^\s*(?:the\s+)?(?P<kind>Article|Art\.?|Annex)\s*"
     r"(?P<num>\d{1,3}|[IVXLivxl]+)"
-    r"(?P<rest>(?:\s*[.(\-]\s*[0-9]{1,3}\s*\)?|\s*[.(]\s*[a-zA-Z]{1,5}\s*\)?)*)"
-    r"\s*[.,;:]?\s*$"
+    r"(?P<rest>(?:[,\s]*(?:point|paragraph|para|item|section)?\s*(?:[.(\-]\s*[0-9]{1,3}\s*\)?|\s*[.(]\s*[a-zA-Z]{1,5}\s*\)?|[0-9]{1,3}|[a-zA-Z]))*)"
+    r"\s*[.,;:]?\s*$",
+    re.IGNORECASE,
 )
 _PART_RE = re.compile(r"[0-9]{1,3}|[a-zA-Z]{1,5}")
 
@@ -52,7 +53,11 @@ def normalise_ref(ref: str) -> str | None:
         if not num.isdigit():
             return None
         num = str(int(num))
-    parts = _PART_RE.findall(m.group("rest") or "")
+    rest = m.group("rest") or ""
+    rest_clean = re.sub(
+        r"\b(point|paragraph|para|item|section)\b", "", rest, flags=re.I
+    )
+    parts = _PART_RE.findall(rest_clean)
     tail = "".join("." + p.lower() for p in parts)
     return f"{kind} {num}{tail}"
 

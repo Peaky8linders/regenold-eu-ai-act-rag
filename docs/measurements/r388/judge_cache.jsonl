@@ -1,0 +1,188 @@
+{"key": "rg_001:55fc01d4c88d4648", "verdict": {"criteria": [true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_002:58460b85227bad1c", "verdict": {"criteria": [true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_003:3aecfca5917b07dd", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_004:c6ed4b8c843a4eea", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_005:1cc8be01a7b39afe", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_006:bbdfa53d69f012b2", "verdict": {"criteria": [true, false, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.3333, "_criteria_rate_max": 0.3333, "_judge_errors": 0}}
+{"key": "rg_007:6e4b1ad759669c67", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_008:fbfb2e9dadf2f967", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_009:3daa002a2ecb294a", "verdict": {"criteria": [true, true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_010:27082f66d5433852", "verdict": {"criteria": [true, true, false, false, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.6, "_criteria_rate_max": 0.6, "_judge_errors": 0}}
+{"key": "rg_011:a29d63a95ae14c4c", "verdict": {"criteria": [true, false, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.3333, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_012:57a479de104750a3", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_013:e3aa3f8560478f10", "verdict": {"criteria": [true, true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_014:876b6c3bee21c708", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_015:b8125f290cba90be", "verdict": {"criteria": [true, false, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_016:be38c695a555f8a3", "verdict": {"criteria": [true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_017:442d966016c044cc", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_018:d70f984dfbb08bda", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_019:a678ce073c74e704", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_020:9acb2edf4e4aba04", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_021:17e148fef9f0fd6d", "verdict": {"criteria": [true, true, false, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.75, "_criteria_rate_max": 0.75, "_judge_errors": 0}}
+{"key": "rg_022:faec3f4094dccac9", "verdict": {"criteria": [true, true, true, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.75, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_023:b1bad6e338ace9cf", "verdict": {"criteria": [false, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.5, "_criteria_rate_max": 0.5, "_judge_errors": 0}}
+{"key": "rg_024:23e3afc5959ed099", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_025:252bbdab0d06f00e", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_026:93318263cee20428", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_027:e20bf7a1fbc9b149", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_028:9fa601cb953cf333", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_029:4e1f709e2dab5753", "verdict": {"criteria": [false, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_030:21375a78d4886f6a", "verdict": {"criteria": [false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_031:22936c702e14405b", "verdict": {"criteria": [false, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.5, "_criteria_rate_max": 0.75, "_judge_errors": 0}}
+{"key": "rg_032:7aed7c4e313d8f98", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_033:eb5a2342d4ffc10f", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_034:fbf0ee7a0610c3ff", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_035:afd18af8eb4a222d", "verdict": {"criteria": [true, true, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_036:75e35ea0154f5fc2", "verdict": {"criteria": [true, false, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.3333, "_criteria_rate_max": 0.3333, "_judge_errors": 0}}
+{"key": "rg_037:61fcbd3c16b03f23", "verdict": {"criteria": [true, false, false, false, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.2, "_criteria_rate_max": 0.2, "_judge_errors": 0}}
+{"key": "rg_038:179eb2614fffdb73", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_039:ee61f0e3b4d3e443", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_040:02a18267fa5e5495", "verdict": {"criteria": [false, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_041:4acb014cb3eaf356", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_042:dbe95c5c391a23d9", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_043:1a1f4cbb6a73c937", "verdict": {"criteria": [true, true, false, true, false, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.5, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_044:c2ec5284235caa0c", "verdict": {"criteria": [false, false, false, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_045:25b638dfb7d52c44", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_046:9bbe4a723cd0e596", "verdict": {"criteria": [true, true, false, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.8333, "_judge_errors": 0}}
+{"key": "rg_047:e6d981ce03adef2d", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_048:894996c7a4a0ab24", "verdict": {"criteria": [false, false, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.3333, "_criteria_rate_max": 0.3333, "_judge_errors": 0}}
+{"key": "rg_049:9c87c31e3baef618", "verdict": {"criteria": [true, false, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_050:d6a47aff6736f76f", "verdict": {"criteria": [true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_051:49a47c3f50929916", "verdict": {"criteria": [true, true, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_052:a17ada8d4ee94007", "verdict": {"criteria": [true, true, false, true, true, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_053:0dce7094d1b3652d", "verdict": {"criteria": [true, true, false, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.75, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_054:8068507f0b1f299a", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_055:8877cf59c43ac761", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_056:acc285e72c8805bb", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_057:0087a827932f2b4c", "verdict": {"criteria": [true, false, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_058:245812ccc706aa49", "verdict": {"criteria": [true, true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_059:19c22775a16165d9", "verdict": {"criteria": [false, false, false, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.25, "_criteria_rate_max": 0.25, "_judge_errors": 0}}
+{"key": "rg_060:311cc9cab1ad3f10", "verdict": {"criteria": [false, false, false], "tone_ok": false, "_judge_runs": 3, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_061:bf8b1e956bcaf863", "verdict": {"criteria": [true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_062:459591fc144f5f43", "verdict": {"criteria": [false, false, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_063:c89c7694a3afd8c4", "verdict": {"criteria": [true, true, true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_064:994a934f1e7e17aa", "verdict": {"criteria": [false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_065:5bd1bc755c3b11df", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_066:888e5e0552515208", "verdict": {"criteria": [false, false, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.3333, "_criteria_rate_max": 0.3333, "_judge_errors": 0}}
+{"key": "rg_067:02fb264306e73392", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_068:77a63a0084b8d825", "verdict": {"criteria": [true, false, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.3333, "_criteria_rate_max": 0.3333, "_judge_errors": 0}}
+{"key": "rg_069:260c74a0b7d6e7d2", "verdict": {"criteria": [true, true, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_070:8baa1651cebd005b", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_071:dac19ad6309fc97e", "verdict": {"criteria": [true, false, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_072:47d1c30a32aca05f", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_073:eea5ae028011bbb6", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_074:72b4647b350f7ff5", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_075:2d6c947ca81aa7a9", "verdict": {"criteria": [true, true, false], "tone_ok": false, "_judge_runs": 3, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_076:f389841bcd76bfa5", "verdict": {"criteria": [true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_077:3ae8db35f91a8f21", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_078:39b066e35856bcaa", "verdict": {"criteria": [true, false, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.3333, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_079:e16e93dcab2ca9bb", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_080:425dfcbb767bd06d", "verdict": {"criteria": [true, false, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.75, "_criteria_rate_max": 0.75, "_judge_errors": 0}}
+{"key": "rg_081:ac52aaec466f27e0", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_082:93a090c52f5716e2", "verdict": {"criteria": [true, true, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_083:1bddee5452d560e1", "verdict": {"criteria": [true, false, false, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.5, "_criteria_rate_max": 0.5, "_judge_errors": 0}}
+{"key": "rg_084:508d82a92af54270", "verdict": {"criteria": [true, false, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.3333, "_criteria_rate_max": 0.3333, "_judge_errors": 0}}
+{"key": "rg_085:f61f2f4d1b42d5ad", "verdict": {"criteria": [true, false, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.25, "_criteria_rate_max": 0.75, "_judge_errors": 0}}
+{"key": "rg_086:3dab67fb6f59f3d9", "verdict": {"criteria": [true, true, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_087:1f92da3689b72867", "verdict": {"criteria": [false, false, false, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_088:6eb88ac1e20f46b4", "verdict": {"criteria": [false, false, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_089:3eae92cc9bdda56d", "verdict": {"criteria": [true, true, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_090:8aec91359fec3f6a", "verdict": {"criteria": [true, false, false, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.25, "_criteria_rate_max": 0.5, "_judge_errors": 0}}
+{"key": "rg_091:b5b50c0c1d4acdc1", "verdict": {"criteria": [false, false, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.3333, "_judge_errors": 0}}
+{"key": "rg_092:e21b6cf52883d7e0", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_093:8fb371521a4e6de4", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_094:42ee0498193aeeef", "verdict": {"criteria": [true, true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_095:5a6247b34d199a45", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_096:2373d7189767f519", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_097:d7cdc446060ddb4a", "verdict": {"criteria": [true, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.5, "_criteria_rate_max": 0.5, "_judge_errors": 0}}
+{"key": "rg_098:5cdc210d9cb9d82d", "verdict": {"criteria": [false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_099:b1bad6e338ace9cf", "verdict": {"criteria": [true, true, false, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.5, "_criteria_rate_max": 0.5, "_judge_errors": 0}}
+{"key": "rg_100:d4e5128e99e9be21", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_101:a03c965f1f340403", "verdict": {"criteria": [false, false, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.3333, "_criteria_rate_max": 0.3333, "_judge_errors": 0}}
+{"key": "rg_102:bb8954ba6f431beb", "verdict": {"criteria": [true, true, false, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.5, "_criteria_rate_max": 0.75, "_judge_errors": 0}}
+{"key": "rg_103:58460b85227bad1c", "verdict": {"criteria": [false, true, false, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.5, "_criteria_rate_max": 0.5, "_judge_errors": 0}}
+{"key": "rg_104:cfe8643cb9f72aa4", "verdict": {"criteria": [false, false, false, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_105:9659d753f834312a", "verdict": {"criteria": [true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_106:05e16ad21353e8ba", "verdict": {"criteria": [true, false, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.3333, "_criteria_rate_max": 0.3333, "_judge_errors": 0}}
+{"key": "rg_107:6373b9266778242b", "verdict": {"criteria": [false, false, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.5, "_criteria_rate_max": 0.5, "_judge_errors": 0}}
+{"key": "rg_108:0e16a9065c362d35", "verdict": {"criteria": [true, true, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_109:8ba427795862defc", "verdict": {"criteria": [false, false, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.3333, "_judge_errors": 0}}
+{"key": "rg_110:ba5c9d524f67169d", "verdict": {"criteria": [false, true, false, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.25, "_criteria_rate_max": 0.25, "_judge_errors": 0}}
+{"key": "rg_003:745c06ecb9031f52", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_004:9bb487c6cc8939ac", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_007:29ef6e99e789d03e", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_008:8552344be83e151f", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_010:c25168e3d7029523", "verdict": {"criteria": [true, true, false, false, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.6, "_criteria_rate_max": 0.6, "_judge_errors": 0}}
+{"key": "rg_014:0ed153a0d7079cc9", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_015:9a403688d8d65de5", "verdict": {"criteria": [false, false, true], "tone_ok": false, "_judge_runs": 1, "_criteria_rate_min": 0.3333, "_criteria_rate_max": 0.3333, "_judge_errors": 0}}
+{"key": "rg_016:bf6941199bf478b4", "verdict": {"criteria": [true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_017:472bffce3f0c2463", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_018:021053acdce1ee69", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_020:467cf90ed0ef8ca8", "verdict": {"criteria": [true, true, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_021:e9e61ae4dffdc4b3", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_026:7f92dc1e6dfe968b", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_028:da677ea7af60a038", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_030:fb783cc9289950cb", "verdict": {"criteria": [false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_034:3fcde2b65d18c0e1", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_035:39f41b82366eed24", "verdict": {"criteria": [true, true, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_036:6ed611cc9028f8a2", "verdict": {"criteria": [false, false, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_037:779b44352459f076", "verdict": {"criteria": [true, false, false, false, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.2, "_criteria_rate_max": 0.2, "_judge_errors": 0}}
+{"key": "rg_044:8c79c716b07fe6ed", "verdict": {"criteria": [false, false, false, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_045:b6ccae0ff4375eed", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_046:57f6ff7b8b0125b1", "verdict": {"criteria": [true, true, false, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.8333, "_criteria_rate_max": 0.8333, "_judge_errors": 0}}
+{"key": "rg_047:053df3526013b8d9", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_048:5651e866d7f67438", "verdict": {"criteria": [false, false, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_049:36899ff251cc67e4", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_050:fe7bc61f88023a18", "verdict": {"criteria": [true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_051:0b7a82b732fe74b2", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_052:e385aed63f6bcb6b", "verdict": {"criteria": [true, true, true, true, true, false], "tone_ok": false, "_judge_runs": 1, "_criteria_rate_min": 0.8333, "_criteria_rate_max": 0.8333, "_judge_errors": 0}}
+{"key": "rg_053:b3e4b926b15d5d92", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_055:88d3981f9f89b68c", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_056:d44d5f6dcfadb483", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_057:56ece8b5208f7b50", "verdict": {"criteria": [true, false, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_058:8dcb49fc349ececd", "verdict": {"criteria": [true, true, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_059:b34d540fcbbc923b", "verdict": {"criteria": [true, false, false, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.5, "_criteria_rate_max": 0.5, "_judge_errors": 0}}
+{"key": "rg_060:99ffcb8d31ccc57b", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_062:dd411fa0348c4d8d", "verdict": {"criteria": [false, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_065:7c1301a281cf17cd", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_066:6b4c322cae3db51e", "verdict": {"criteria": [false, false, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.3333, "_criteria_rate_max": 0.3333, "_judge_errors": 0}}
+{"key": "rg_067:c87bec498608fb14", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_068:e268d941a8cb28a8", "verdict": {"criteria": [true, false, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.3333, "_criteria_rate_max": 0.3333, "_judge_errors": 0}}
+{"key": "rg_069:38143874f20eb3f3", "verdict": {"criteria": [false, true, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.3333, "_criteria_rate_max": 0.3333, "_judge_errors": 0}}
+{"key": "rg_070:bc5144a9bebdabf2", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_071:c4a218adb1dc28fd", "verdict": {"criteria": [true, false, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_072:3656c9cc520786b2", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_073:18127ca77532ec53", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_075:86ed3f3ce2b65213", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_077:2d0471594e15bc02", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_078:70cccc0874e97d94", "verdict": {"criteria": [true, false, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.3333, "_criteria_rate_max": 0.3333, "_judge_errors": 0}}
+{"key": "rg_079:400126276ef3c438", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_080:2b1450fcba49099a", "verdict": {"criteria": [true, false, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.75, "_criteria_rate_max": 0.75, "_judge_errors": 0}}
+{"key": "rg_081:6fbe7bb34b23eae2", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_082:04d8e32d704debb7", "verdict": {"criteria": [true, true, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_083:f0ba0c0ae14ecf6a", "verdict": {"criteria": [true, false, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.75, "_criteria_rate_max": 0.75, "_judge_errors": 0}}
+{"key": "rg_084:3b2eb3b7448324a9", "verdict": {"criteria": [true, true, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_085:f0a8f0b84dc0958a", "verdict": {"criteria": [true, false, true, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.5, "_criteria_rate_max": 0.5, "_judge_errors": 0}}
+{"key": "rg_086:045405f473de3f23", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_087:1879a01c999ef83e", "verdict": {"criteria": [true, false, false, true], "tone_ok": false, "_judge_runs": 1, "_criteria_rate_min": 0.5, "_criteria_rate_max": 0.5, "_judge_errors": 0}}
+{"key": "rg_088:dbb2bb6e241c1916", "verdict": {"criteria": [false, false, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_089:e24c77a9bf31e36c", "verdict": {"criteria": [true, true, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_090:d312d83ec300e45d", "verdict": {"criteria": [true, true, false, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.75, "_criteria_rate_max": 0.75, "_judge_errors": 0}}
+{"key": "rg_091:8eb9a24ed37abfd8", "verdict": {"criteria": [true, false, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.3333, "_criteria_rate_max": 0.3333, "_judge_errors": 0}}
+{"key": "rg_092:62b5044b214fe8ff", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_093:d7511199d68de673", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_094:baec0db8a3688003", "verdict": {"criteria": [true, true, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_095:031f3dc6dc2df262", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_096:8a122d306315784c", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_097:47101e1654354d9b", "verdict": {"criteria": [true, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.5, "_criteria_rate_max": 0.5, "_judge_errors": 0}}
+{"key": "rg_098:7e36a17693378ef8", "verdict": {"criteria": [false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_100:02e1ede299bb2ab8", "verdict": {"criteria": [false, false, false, false], "tone_ok": false, "_judge_runs": 1, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_101:f219ebbab449eb8c", "verdict": {"criteria": [false, false, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_102:2efaabca6d88ed2e", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_104:0fc5beb9923a9293", "verdict": {"criteria": [false, false, false, false], "tone_ok": false, "_judge_runs": 1, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_105:80d709492d94a9d5", "verdict": {"criteria": [true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_106:1a7459f313d9b327", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_107:1e4c032e911f3744", "verdict": {"criteria": [true, true, false, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.5, "_criteria_rate_max": 0.5, "_judge_errors": 0}}
+{"key": "rg_108:97840d680a3f1d70", "verdict": {"criteria": [true, true, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.6667, "_criteria_rate_max": 0.6667, "_judge_errors": 0}}
+{"key": "rg_109:1945839f813cbf69", "verdict": {"criteria": [false, false, false], "tone_ok": false, "_judge_runs": 1, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}
+{"key": "rg_110:296a6bf311b1899c", "verdict": {"criteria": [false, false, false, false], "tone_ok": true, "_judge_runs": 1, "_criteria_rate_min": 0.0, "_criteria_rate_max": 0.0, "_judge_errors": 0}}

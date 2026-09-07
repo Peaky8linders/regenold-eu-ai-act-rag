@@ -3330,12 +3330,7 @@ def _ref_grain_deepen_enabled() -> bool:
     invariance that makes them all grain-form is proven three separate ways
     (by construction, n=129, n=99, and live 23/23).
 
-    But migrating 27 contract tests is a reviewed change of its own, and doing it
-    in the same commit that introduces the lever is exactly how a real regression
-    gets masked. Default OFF keeps every existing contract byte-identical, and
-    the measured gain is one environment variable away.
-
-    ``=0`` / ``=false`` disables it (deny-list default ON).
+    Default ON with deny-list opt-out (=0 / =false / no / off disables it).
     """
     return os.getenv("REGENOLD_REF_GRAIN_DEEPEN", "1").strip().lower() not in (
         "0", "false", "no", "off",
@@ -3487,7 +3482,7 @@ def _pick_unit(units: dict, q_tok: set, a_tok: set):
             (n, 2 * len(q_tok & _pt._tokens(t)) + len(a_tok & _pt._tokens(t)))
             for n, t in units.items()
         ),
-        key=lambda x: (-x[1], str(x[0])),
+        key=lambda x: (-x[1], x[0] if isinstance(x[0], int) else str(x[0])),
     )
     if not scored:
         return None
@@ -3512,14 +3507,21 @@ def _deepen_within(coord: str, text: str, q_tok: set, a_tok: set, budget: int) -
         from app.data import provision_text as _pt  # noqa: PLC0415
 
         nested = _pt.subpoints_nested(text) or {}
-        units = {
-            k: (v.get("text", "") if isinstance(v, dict) else str(v))
-            for k, v in nested.items()
-        }
-        units = {k: t for k, t in units.items() if len(q_tok & _pt._tokens(t)) > 0}
-        if len(units) < 2:
+        if len(nested) < 2:
             return coord
-        won = _pick_unit(units, q_tok, a_tok)
+
+        def _full_text(v):
+            if isinstance(v, dict):
+                subs = v.get("subs") or {}
+                subs_text = " ".join(str(s) for s in subs.values())
+                return f"{v.get('text', '')} {subs_text}".strip()
+            return str(v)
+
+        units = {k: _full_text(v) for k, v in nested.items()}
+        q_units = {k: t for k, t in units.items() if len(q_tok & _pt._tokens(t)) > 0}
+        if not q_units:
+            return coord
+        won = _pick_unit(q_units, q_tok, a_tok)
         if won is None:
             return coord
         deeper = "%s.%s" % (coord, won)
@@ -3527,11 +3529,11 @@ def _deepen_within(coord: str, text: str, q_tok: set, a_tok: set, budget: int) -
         subs = node.get("subs") if isinstance(node, dict) else None
         if budget > 1 and isinstance(subs, dict) and len(subs) >= 2:
             sub_units = {k: str(v) for k, v in subs.items()}
-            sub_units = {
+            q_sub_units = {
                 k: t for k, t in sub_units.items() if len(q_tok & _pt._tokens(t)) > 0
             }
-            if len(sub_units) >= 2:
-                won2 = _pick_unit(sub_units, q_tok, a_tok)
+            if q_sub_units:
+                won2 = _pick_unit(q_sub_units, q_tok, a_tok)
                 if won2 is not None:
                     return "%s.%s" % (deeper, won2)
         return deeper
@@ -3554,8 +3556,17 @@ def _deepen_one_ref(ref: str, question: str, answer: str) -> str:
 
         body = _pt.article_body(ref.strip())
         if not body:
+            clean_ref = " ".join(ref.strip().split())
+            body = _pt.article_body(clean_ref)
+        if not body:
             return ref
-        units = _pt._paragraphs(body) if m.group(2) else _pt._annex_items(body)
+        art_num = int(m.group(2)) if m.group(2) else None
+        if art_num == 3:
+            units = _pt._definitions(body)
+        elif m.group(2):
+            units = _pt._paragraphs(body)
+        else:
+            units = _pt._annex_items(body)
         if len(units) < 2:
             return ref  # nothing to choose between
         q_tok = _pt._tokens(question or "")

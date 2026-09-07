@@ -78,19 +78,26 @@ MINGOLD = REPO / "docs" / "measurements" / "r386" / "minimal-gold-probe-set-n110
 OUT_DIR = REPO / "docs" / "measurements" / "r388"
 OUT = OUT_DIR / "official_gold_n110.jsonl"
 
-URL = os.getenv("R388_WRAPPER_URL", "http://127.0.0.1:8000/v1/chat/completions")
-MODEL = os.getenv("R388_GOLD_MODEL", "claude-sonnet-5")
+_base = (os.getenv("OPENAI_API_BASE") or "http://127.0.0.1:8000/v1").rstrip("/")
+if not _base.endswith("/v1") and not _base.endswith("/chat/completions"):
+    _base = _base + "/v1"
+_default_url = _base if _base.endswith("/chat/completions") else f"{_base}/chat/completions"
+URL = os.getenv("R388_WRAPPER_URL") or _default_url
+MODEL = os.getenv("R388_GOLD_MODEL", "claude-sonnet-4-6")
 
+_token = os.getenv("OPENAI_API_KEY", "dummy")
 _HDRS = {
     # A bare urllib UA trips Cloudflare error 1010 on the tunnel (a 403 that
     # looks exactly like an auth failure).  Always send a browser UA.
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     "Content-Type": "application/json",
-    "Authorization": "Bearer dummy",
+    "Authorization": f"Bearer {_token}",
 }
 if os.getenv("CF_ACCESS_CLIENT_ID"):
-    _HDRS["CF-Access-Client-Id"] = os.environ["CF_ACCESS_CLIENT_ID"]
-    _HDRS["CF-Access-Client-Secret"] = os.environ.get("CF_ACCESS_CLIENT_SECRET", "")
+    if "127.0.0.1" not in URL and "localhost" not in URL:
+        _HDRS["CF-Access-Client-Id"] = os.environ["CF_ACCESS_CLIENT_ID"]
+        _HDRS["CF-Access-Client-Secret"] = os.environ.get("CF_ACCESS_CLIENT_SECRET", "")
+
 
 
 def call(prompt: str, *, max_tokens: int = 1600, timeout: float = 300.0, retries: int = 3) -> str:
