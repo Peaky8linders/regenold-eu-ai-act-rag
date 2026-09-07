@@ -4153,16 +4153,24 @@ def _detect_role_and_risk_class(question: str) -> tuple[str | None, str | None]:
     low = question.lower()
     role_id: str | None = None
     best_role_len = 0
+    best_role_pos = len(low) + 1
     for phrase, rid in _ROLE_PHRASES:
-        if phrase in low and len(phrase) > best_role_len:
-            role_id = rid
-            best_role_len = len(phrase)
+        pos = low.find(phrase)
+        if pos >= 0:
+            if len(phrase) > best_role_len or (len(phrase) == best_role_len and pos < best_role_pos):
+                role_id = rid
+                best_role_len = len(phrase)
+                best_role_pos = pos
     risk_id: str | None = None
     best_risk_len = 0
+    best_risk_pos = len(low) + 1
     for phrase, rcid in _RISK_CLASS_PHRASES:
-        if phrase in low and len(phrase) > best_risk_len:
-            risk_id = rcid
-            best_risk_len = len(phrase)
+        pos = low.find(phrase)
+        if pos >= 0:
+            if len(phrase) > best_risk_len or (len(phrase) == best_risk_len and pos < best_risk_pos):
+                risk_id = rcid
+                best_risk_len = len(phrase)
+                best_risk_pos = pos
     return role_id, risk_id
 
 

@@ -67,7 +67,9 @@ def test_penalty_inquiry_narrows_to_art_99(client) -> None:
         body = _post(client, "What's the maximum penalty for using prohibited AI?")
 
     refs = body["references"]
-    assert "Article 99" in refs
+    assert any(r == "Article 99" or r.startswith("Article 99.") for r in refs), (
+        f"Article 99 (or leaf) missing; got {refs}"
+    )
     # Round-19 left 3 refs here; round-20 narrows to 1.
     assert "Article 5" not in refs, f"Art. 5 should be pruned by intent; got {refs}"
     assert "Annex II" not in refs, f"Annex II should be pruned by intent; got {refs}"
@@ -107,7 +109,9 @@ def test_incident_reporting_narrows_to_art_73(client) -> None:
         body = _post(client, "Within what time must I report a serious AI incident?")
 
     refs = body["references"]
-    assert "Article 73" in refs
+    assert any(r == "Article 73" or r.startswith("Article 73.") for r in refs), (
+        f"Article 73 (or leaf) missing; got {refs}"
+    )
     for spurious in ("Article 3", "Article 55", "Article 85", "Article 86"):
         assert spurious not in refs, (
             f"{spurious} should be pruned by intent; got {refs}"
@@ -127,7 +131,9 @@ def test_low_confidence_intent_is_no_op(client) -> None:
 
     refs = body["references"]
     # Low-confidence intent → no narrowing → at least the gold ref still ships.
-    assert "Article 99" in refs
+    assert any(r == "Article 99" or r.startswith("Article 99.") for r in refs), (
+        f"Article 99 (or leaf) missing; got {refs}"
+    )
 
 
 def test_intent_does_not_override_explicit_anchor(client) -> None:
@@ -160,4 +166,6 @@ def test_classifier_returning_none_is_no_op(client) -> None:
     refs = body["references"]
     # Round-19 baseline kept Art. 99 + spurious anchors; we just verify
     # the route didn't crash and Art. 99 still ships.
-    assert "Article 99" in refs
+    assert any(r == "Article 99" or r.startswith("Article 99.") for r in refs), (
+        f"Article 99 (or leaf) missing; got {refs}"
+    )

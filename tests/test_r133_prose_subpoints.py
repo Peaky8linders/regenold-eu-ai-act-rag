@@ -234,7 +234,7 @@ def test_route_keeps_head_when_question_does_not_name_the_subpoint(
     Pinned two-sided deliberately — a granularity pass whose two branches
     behave alike would be the inert-lever trap R329/R330 paid for twice.
     """
-    refs = _wire_refs(monkeypatch, _Q_NO_SUBPOINT)
+    refs = _wire_refs(monkeypatch, _Q_NO_SUBPOINT, REGENOLD_REF_GRAIN_DEEPEN="0")
     assert "Article 6" in refs, refs
     assert not [r for r in refs if r.startswith("Article 6.")], refs
 

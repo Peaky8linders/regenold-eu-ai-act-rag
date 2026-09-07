@@ -599,6 +599,14 @@ def _build_converse_kwargs(req: BedrockRequest) -> dict[str, Any]:
         if int(inference_config.get("maxTokens") or 0) <= budget:
             inference_config["maxTokens"] = budget + 512
         inference_config["temperature"] = 1.0
+        # R377 - Anthropic REJECTS top_p alongside extended thinking, the same
+        # way it rejects a temperature other than 1. The temperature was already
+        # being coerced here while topP was left on the request, so any caller
+        # that set top_p would have turned a working thinking call into a 400.
+        # No Stage-2 or judge caller sets it today, so this is a latent defect
+        # rather than a live one - but the two constraints are one rule and
+        # honouring half of it is what made the other half look safe.
+        inference_config.pop("topP", None)
         kwargs["additionalModelRequestFields"] = {
             "reasoning_config": {
                 "type": "enabled",

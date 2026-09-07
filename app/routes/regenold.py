@@ -1210,6 +1210,21 @@ def _apply_fact_state_carry_forward(
     return out
 
 
+def _prohibition_contradiction_guard_enabled() -> bool:
+    """R376 — default ON. Strip a sentence that DENIES an Article 5 prohibition
+    the gatekeeper independently matched, so the curated verdict can lead.
+
+    ``REGENOLD_PROHIBITION_CONTRADICTION_GUARD=0`` restores the pre-R376
+    behaviour, where any mention of "Article 5" — including a denial — suppressed
+    the verdict prepend. Route-level post-processing over cached engine output,
+    so it stays OUT of ``_engine_cache_key`` per the R79 doctrine; fresh env read
+    per call (R263.2).
+    """
+    return os.getenv(
+        "REGENOLD_PROHIBITION_CONTRADICTION_GUARD", "1"
+    ).strip().lower() not in ("0", "false", "no", "off")
+
+
 def _engine_cache_key(
     question: str,
     system_context: str | None,
@@ -2533,6 +2548,12 @@ _CARDINAL_WORDS = frozenset({
 _LIST_SHAPE_RE = re.compile(r"\([a-z]\)|\bfollowing\b|\bnamely\b", re.IGNORECASE)
 
 
+_DATE_EXPRESSION_RE = re.compile(
+    r"\b(?:\d{1,2}\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}|\d{1,2}/\d{1,2}/\d{2,4}|20\d\d)\b",
+    re.IGNORECASE,
+)
+
+
 def _extractive_shape_ok(question: str, sentence: str) -> bool:
     """R381 — does this extracted sentence actually ANSWER the question shape?
 
@@ -2567,6 +2588,7 @@ def _extractive_shape_ok(question: str, sentence: str) -> bool:
         return True
     qtype = classify_question_type(question)
     bare = _PROVISION_COORD_RE.sub(" ", sentence)
+    bare = _DATE_EXPRESSION_RE.sub(" ", bare)
     has_quantity = bool(re.search(r"\d", bare)) or bool(
         _CARDINAL_WORDS & set(re.findall(r"[a-zA-Z]+", bare.lower()))
     )
@@ -2719,6 +2741,25 @@ def _try_extractive_answer(
 ) -> str | None:
     """R93 extractive-QA pass, with the R381 responsiveness guard applied to
     every return path (see :func:`_extractive_shape_ok`)."""
+    # R381 — LIST shape: if the provisions retrieved or preferred contain
+    # an enumerated statutory limb structure (e.g. Article 13(3)(a)-(f)),
+    # prefer the enumeration over a single sentence summary.
+    if (
+        _extract_shape_guard_enabled()
+        and classify_question_type(question) == "list"
+    ):
+        seen: set[str] = set()
+        ordered = list(preferred_refs) + [
+            getattr(c, "article_ref", "") or "" for c in (engine_citations or ())
+        ]
+        for ref in ordered[:6]:
+            if not ref or ref in seen:
+                continue
+            seen.add(ref)
+            enumerated = _enumerated_categories(ref)
+            if enumerated:
+                return enumerated
+
     sentence = _extractive_answer_candidate(
         question=question,
         engine_citations=engine_citations,
@@ -2736,25 +2777,6 @@ def _try_extractive_answer(
     if sentence and (preferred_refs or _extractive_shape_ok(question, sentence)):
         return sentence
 
-    # R381 — LIST shape, second chance. The single-sentence pick either did not
-    # exist or did not enumerate; try the lettered limbs of the provisions the
-    # engine actually retrieved, in rank order.
-    if (
-        _extract_shape_guard_enabled()
-        and not preferred_refs
-        and classify_question_type(question) == "list"
-    ):
-        seen: set[str] = set()
-        ordered = list(preferred_refs) + [
-            getattr(c, "article_ref", "") or "" for c in (engine_citations or ())
-        ]
-        for ref in ordered[:6]:
-            if not ref or ref in seen:
-                continue
-            seen.add(ref)
-            enumerated = _enumerated_categories(ref)
-            if enumerated:
-                return enumerated
     return None
 
 
@@ -8694,15 +8716,21 @@ def regenold_eu_ai_act_ask(
         and not _is_general_verdict
         and not _stage2_landed
     ):
+        _m_anchors = list(scope.anchor_articles or ())
+        if len(_m_anchors) > 1 and any(r not in ("Art. 6", "Article 6") for r in _m_anchors):
+            _m_anchors = [r for r in _m_anchors if r not in ("Art. 6", "Article 6")] + [
+                r for r in _m_anchors if r in ("Art. 6", "Article 6")
+            ]
         extracted = _try_extractive_answer(
             question=resolved_question or question,
             engine_citations=rag_res.citations or (),
             # R68 — when the engine matrix-dumped a focused QA question,
             # prefer the scope gate's specific keyword anchors so the
             # extracted prose matches the contained reference set.
+            # Order specific obligation anchors before generic risk-tier anchor.
             preferred_refs=(
-                tuple(scope.anchor_articles)
-                if _engine_matrix_dump and scope.anchor_articles
+                tuple(_m_anchors)
+                if _engine_matrix_dump and _m_anchors
                 else ()
             ),
         )
@@ -9070,9 +9098,11 @@ def regenold_eu_ai_act_ask(
     # fires — architecturally consistent with the spec's "immediate
     # alert that skips lower-tier testing loops".
     from app.engines.prohibited_gatekeeper import (  # noqa: PLC0415
+        answer_denies_prohibition,
         build_verdict_prefix,
         force_prohibited_citations,
         scan_for_prohibitions,
+        strip_prohibition_denials,
     )
     _prohibition_matches = scan_for_prohibitions(resolved_question or question)
     if _prohibition_matches:
@@ -9088,9 +9118,67 @@ def regenold_eu_ai_act_ask(
         # tight (1 sentence, ≤200 chars) so the existing 3-sentence
         # + 600-char cap absorbs it without dropping engine content.
         _verdict_prefix = build_verdict_prefix(resolved_question or question)
+
+        # R376 — A DENIAL IS NOT AN ANCHOR.
+        #
+        # The ``"Article 5" not in answer_text`` guard below stops a duplicate
+        # anchor, which is right when the answer already STATES the prohibition.
+        # It also fires when the answer states the OPPOSITE, because a denial
+        # names Article 5 too — so the curated verdict was suppressed by the
+        # sentence contradicting it. Measured on the deterministic path: the
+        # emotion-in-the-workplace question shipped "The system described is not
+        # among the practices prohibited under Article 5", with the correct
+        # Article 5(1)(f) verdict computed and discarded.
+        #
+        # An answer carrying both claims would be worse than either, so the
+        # denial is REMOVED (only the sentences that carry it) before the
+        # verdict leads. Shape-based and practice-agnostic — see the guard's
+        # module docstring on hard rule #3.
+        _denial_removed = 0
         if (
             _verdict_prefix
-            and "Article 5" not in (answer_text or "")
+            and _prohibition_contradiction_guard_enabled()
+            # NEVER STRIP WITHOUT REPLACING. The prepend below is additionally
+            # gated on ``not _is_classification_topic`` (Round-36 issue #49 — a
+            # classification verdict already leads with the canonical anchor).
+            # Without this matching condition, a classification-topic answer
+            # would lose its denying sentence and gain NOTHING in its place:
+            # silent content deletion, which is worse than the wrong sentence it
+            # removes. The strip earns its keep only as the first half of
+            # "remove the denial, then lead with the verdict".
+            and not _is_classification_topic
+            and answer_denies_prohibition(answer_text or "")
+        ):
+            _pre_strip = answer_text or ""
+            _stripped, _denial_removed = strip_prohibition_denials(_pre_strip)
+            # R376 review — a strip that removes EVERY sentence is allowed, but
+            # only because the verdict prepend below is guaranteed to replace it
+            # (this branch already requires a truthy ``_verdict_prefix``, and the
+            # prepend's extra ``not _is_classification_topic`` condition is
+            # mirrored on the strip). An answer whose every sentence denies the
+            # prohibition has no correct analysis to preserve, so a short
+            # correct answer beats a long wrong one — but it is worth seeing in
+            # the trace, because it also means retrieval produced nothing usable.
+            answer_text = _stripped
+            if _denial_removed and not _stripped.strip():
+                try:
+                    _trace_note("prohibition_denial_stripped_whole_answer")
+                except Exception:  # noqa: BLE001 — trace is best-effort
+                    pass
+                logger.warning(
+                    "regenold.prohibition_denial_stripped_whole_answer — every "
+                    "sentence denied the matched Article 5 prohibition; shipping "
+                    "the curated verdict alone"
+                )
+            if _denial_removed:
+                try:
+                    _trace_note(f"prohibition_denial_stripped count={_denial_removed}")
+                except Exception:  # noqa: BLE001
+                    pass
+
+        if (
+            _verdict_prefix
+            and ("Article 5" not in (answer_text or "") or _denial_removed)
             # Round-36 issue #49: classification verdicts already lead
             # with the canonical anchor — a re-prepend duplicates it and
             # re-normalisation would lop off the closing clause.
@@ -9543,12 +9631,14 @@ def regenold_eu_ai_act_ask(
         _scope_front: list[str] = []
         for _anchor in scope.anchor_articles:
             _anchor_wire = reference_from_article_ref(_anchor)
-            if (
-                _anchor_wire
-                and _anchor_wire in candidates
-                and _anchor_wire not in _scope_front
-            ):
-                _scope_front.append(_anchor_wire)
+            if not _anchor_wire:
+                continue
+            for _c in candidates:
+                if (
+                    _c == _anchor_wire
+                    or _ref_head_of(_c) == _anchor_wire
+                ) and _c not in _scope_front:
+                    _scope_front.append(_c)
         if _scope_front and _engine_matrix_dump:
             # R68 — the engine matrix-dumped a focused QA question
             # (15-article provider×risk chain). Restrict the reference

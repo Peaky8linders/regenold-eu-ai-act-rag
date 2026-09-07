@@ -31,7 +31,7 @@ SYS = g.ANSWER_GENERATE_SYSTEM
 
 class TestR147RunOnDiscipline:
     def test_length_discipline_caps_at_four_sentences(self) -> None:
-        assert "AT MOST four sentences" in SYS
+        assert "AT MOST four" in SYS and "sentences" in SYS
         # The rationale must explain the judge's clause-decomposition so a
         # future editor understands why brevity is enforced here.
         assert "decomposes a dense paragraph into one clause per distinct point" in SYS

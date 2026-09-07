@@ -161,12 +161,20 @@ class TestRoleObligationMatrix:
         refs = obligations_for(ActorRole.AUTHORISED_REPRESENTATIVE, RiskClass.GPAI)
         assert "Art. 54" in refs
 
-    def test_affected_person_high_risk_returns_remedies(self) -> None:
+    def test_affected_person_holds_rights_not_obligations(self) -> None:
+        """R371.6 — Art. 85 (complaint) / Art. 86 (explanation) are RIGHTS of
+        the affected person, not obligations ON them. The matrix renders
+        "binds the affected person" — direction-inverted — so both bindings
+        were removed. The Art. 86 explanation DUTY sits on the deployer of
+        an Annex III system (Art. 86(1), excluding point 2)."""
         from app.data.ontology import ActorRole, RiskClass, obligations_for
         refs = obligations_for(ActorRole.AFFECTED_PERSON, RiskClass.HIGH_RISK_ANNEX_III)
-        # Right to lodge a complaint + right to explanation
-        assert "Art. 85" in refs
-        assert "Art. 86" in refs
+        assert refs == ()
+        refs_i = obligations_for(ActorRole.AFFECTED_PERSON, RiskClass.HIGH_RISK_ANNEX_I)
+        assert refs_i == ()
+        # The deployer owes the explanation for Annex III systems...
+        deployer = obligations_for(ActorRole.DEPLOYER, RiskClass.HIGH_RISK_ANNEX_III)
+        assert "Art. 86" in deployer
 
 
 # ── Ontology keyword helpers ───────────────────────────────────────────

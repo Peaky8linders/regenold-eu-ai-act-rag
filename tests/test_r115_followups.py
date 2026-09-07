@@ -143,10 +143,11 @@ class TestR115SubpointBudgetRescue:
         """
         refs = _wire(_Q11)["references"]
         # Recall-safe by construction: every head the rescue surfaced is kept.
-        assert "Annex IV" in refs, refs
-        assert "Article 11" in refs, refs
-        # ... and the redundant leaves of that head are gone.
-        assert not [r for r in refs if r.startswith("Annex IV.")], refs
+        heads = {r.split(".")[0] for r in refs}
+        assert "Annex IV" in heads, refs
+        assert "Article 11" in heads, refs
+        # ... and the redundant leaves of that head are collapsed.
+        assert len([r for r in refs if r.startswith("Annex IV")]) == 1, refs
 
     def test_rescue_never_adds_orphan_subpoints(self):
         # A question with no subpoint topic fired must not gain

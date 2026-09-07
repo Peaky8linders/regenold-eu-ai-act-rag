@@ -118,6 +118,62 @@ def _keyword_pattern_index() -> tuple[tuple[re.Pattern[str], str, str], ...]:
     return tuple(rows)
 
 
+#: R376 review — STATUTORY qualifiers that take a question OUT of a prohibition
+#: the keyword scan would otherwise match.
+#:
+#: The scan is substring-based over ``PRACTICE_REGISTRY`` keywords, which is
+#: the right instrument for recall and blind to qualifiers that change the
+#: legal answer. Article 5(1)(h) prohibits **real-time** remote biometric
+#: identification in publicly accessible spaces for law enforcement;
+#: **post** (ex-post) remote biometric identification is NOT an Article 5
+#: prohibition — it is governed by Article 26(10), which requires prior
+#: judicial or administrative authorisation. The keyword "remote biometric
+#: identification" matches both.
+#:
+#: Measured before this guard: "Can law enforcement use post-remote biometric
+#: identification for a targeted search?" matched ``Art. 5.1.h`` and produced
+#: the verdict "Real-time remote biometric identification ... is prohibited
+#: under Article 5(1)(h)" — a statement about a different practice than the one
+#: asked about. Harmless while the verdict was being suppressed by any mention
+#: of Article 5; the R376 contradiction guard removes that accidental
+#: suppression, so the imprecision would have been promoted to the answer's
+#: lead.
+#:
+#: This is a NARROW, statute-anchored exclusion, not a topic classifier: it
+#: encodes the real-time/post distinction the Regulation itself draws, and it
+#: applies only to the sub-point whose text carries that qualifier.
+_SUB_REF_NEGATIVE_QUALIFIERS: dict[str, tuple[re.Pattern[str], ...]] = {
+    "Art. 5.1.h": (
+        re.compile(r"\bpost[- ]?remote\b", re.I),
+        re.compile(r"\bex[- ]?post\b", re.I),
+        re.compile(r"\bpost[- ]?hoc\b", re.I),
+        re.compile(r"\bnot\s+real[- ]?time\b", re.I),
+        re.compile(r"\bafter\s+the\s+fact\b", re.I),
+        re.compile(r"\bretrospective(?:ly)?\b", re.I),
+    ),
+}
+
+
+def _sub_ref_excluded_by_question(sub_ref: str, question: str) -> bool:
+    """True when ``question`` carries a qualifier that puts it outside ``sub_ref``.
+
+    Deliberately asymmetric: an exclusion only ever REMOVES a match the keyword
+    scan made, so it can shrink the citation set but never invent one. A
+    question that says both "real-time" and "post" keeps the match — the
+    exclusion requires the negative qualifier with no competing positive one,
+    because a question comparing the two regimes is asking about both.
+    """
+    patterns = _SUB_REF_NEGATIVE_QUALIFIERS.get(sub_ref)
+    if not patterns:
+        return False
+    text = str(question or "")
+    if not any(rx.search(text) for rx in patterns):
+        return False
+    # A question that explicitly names the real-time regime as well is asking
+    # about the comparison; keep the Article 5 anchor for it.
+    return not re.search(r"\breal[- ]?time\b", text, re.I)
+
+
 def scan_for_prohibitions(question: str) -> tuple[tuple[str, str], ...]:
     """Detect Art. 5 prohibition keywords in the question.
 
@@ -138,6 +194,8 @@ def scan_for_prohibitions(question: str) -> tuple[tuple[str, str], ...]:
         if sub in seen:
             continue
         if pattern.search(question):
+            if _sub_ref_excluded_by_question(sub, question):
+                continue
             seen.add(sub)
             out.append((parent, sub))
     return tuple(out)
@@ -275,8 +333,112 @@ def build_verdict_prefix(
     return None
 
 
+# ── R376 — the contradiction guard ───────────────────────────────────────────
+#
+# THE BUG THIS EXISTS FOR. The route prepends :func:`build_verdict_prefix` only
+# when ``"Article 5" not in answer_text``. That guard is there to stop a
+# duplicate anchor, and on its face it is reasonable: if the answer already
+# names Article 5, the verdict has been stated.
+#
+# But an answer can name Article 5 in order to DENY the prohibition, and that is
+# precisely when the verdict is most needed. Measured on the deterministic path
+# (``P2P_GRAPH_RAG_PROVIDER=cli``) for "Can we use an AI system that infers the
+# emotions of our employees during performance reviews?":
+#
+#   gatekeeper hits : (('Art. 5', 'Art. 5.1.f'),)
+#   verdict prefix  : "Emotion recognition in the workplace and education
+#                      contexts is prohibited under Article 5(1)(f), with
+#                      narrow medical and safety carve-outs."
+#   shipped answer  : "The system described is not among the practices
+#                      prohibited under Article 5 ..."
+#
+# The curated, correct verdict was suppressed BY THE SENTENCE THAT CONTRADICTS
+# IT, because that sentence contains the string "Article 5". A user asking
+# whether they may run emotion recognition on staff was told they may. Emotion
+# recognition in the workplace is prohibited by Article 5(1)(f) — consent does
+# not cure it, and the only carve-outs are medical and safety.
+#
+# WHY THE FIX IS SHAPE-BASED, NOT TOPIC-BASED. Hard rule #3 forbids new
+# classification topics for the three PDF example questions, and
+# emotion-recognition prohibition is one of the three. So nothing here mentions
+# emotion recognition, or any practice: it matches the GRAMMAR of a denial
+# ("is not prohibited", "not among the practices prohibited", "does not fall
+# under Article 5") near an Article 5 anchor, and fires only when the gatekeeper
+# has independently matched a curated PRACTICE_REGISTRY keyword. Every Article 5
+# practice benefits identically.
+#
+# PREPENDING ALONE WOULD NOT BE ENOUGH. An answer that says both "prohibited"
+# and "not prohibited" is worse than either, so the denial is removed rather
+# than argued with — and only the sentence carrying it, never the surrounding
+# analysis.
+
+_ART5_ANCHOR_RE = re.compile(r"\bArticle\s+5\b|\bArt\.\s*5\b", re.I)
+
+#: Denial shapes, anchored on the words that carry the negation. Each must be
+#: unambiguous on its own: a sentence matching one of these is asserting that
+#: Article 5 does NOT bite, which is the claim the gatekeeper contradicts.
+_PROHIBITION_DENIAL_RES = (
+    re.compile(r"\bnot\s+(?:among|one\s+of)\s+the\s+(?:practices\s+)?prohibit", re.I),
+    re.compile(r"\b(?:is|are|was|were)\s+not\s+prohibit", re.I),
+    re.compile(r"\bnot\s+prohibited\s+(?:under|by)\b", re.I),
+    re.compile(r"\bdoes\s+not\s+(?:fall|come)\s+(?:with)?in(?:to)?\b", re.I),
+    re.compile(r"\bno\s+prohibition\s+applies\b", re.I),
+    re.compile(r"\bnot\s+a\s+prohibited\s+(?:practice|use)\b", re.I),
+    re.compile(r"\bis\s+not\s+banned\b", re.I),
+)
+
+#: Sentence split that keeps the terminator, so a rebuilt answer reads normally.
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _denies_prohibition(sentence: str) -> bool:
+    """True when ``sentence`` denies an Article 5 prohibition.
+
+    Requires BOTH an Article 5 anchor and a denial shape in the same sentence:
+    "this is not high-risk" must not match (that is an Article 6 statement and
+    is frequently correct), and a bare mention of Article 5 must not match
+    either.
+    """
+    text = str(sentence or "")
+    if not _ART5_ANCHOR_RE.search(text):
+        return False
+    return any(rx.search(text) for rx in _PROHIBITION_DENIAL_RES)
+
+
+def answer_denies_prohibition(answer: str) -> bool:
+    """True when any sentence of ``answer`` denies an Article 5 prohibition."""
+    return any(
+        _denies_prohibition(part)
+        for part in _SENTENCE_SPLIT_RE.split(str(answer or ""))
+    )
+
+
+def strip_prohibition_denials(answer: str) -> tuple[str, int]:
+    """Drop the sentences that deny an Article 5 prohibition.
+
+    Returns ``(rewritten, n_removed)``. Only sentences matching
+    :func:`_denies_prohibition` are removed; everything else — including
+    correct Article 6 / Annex III analysis in the same answer — is preserved
+    verbatim and in order.
+
+    Callers must apply this ONLY when :func:`scan_for_prohibitions` has matched,
+    so a merely cautious answer about a non-prohibited system is never edited.
+    """
+    text = str(answer or "")
+    if not text.strip():
+        return text, 0
+    parts = _SENTENCE_SPLIT_RE.split(text)
+    kept = [part for part in parts if not _denies_prohibition(part)]
+    removed = len(parts) - len(kept)
+    if not removed:
+        return text, 0
+    return " ".join(p.strip() for p in kept if p.strip()).strip(), removed
+
+
 __all__ = [
+    "answer_denies_prohibition",
     "build_verdict_prefix",
     "force_prohibited_citations",
     "scan_for_prohibitions",
+    "strip_prohibition_denials",
 ]
