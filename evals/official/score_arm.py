@@ -54,7 +54,19 @@ OFFICIAL = {
 }
 
 
+REFKEY = REPO / "docs" / "measurements" / "r388" / "official_refkey_n110.jsonl"
+
+
 def load_gold() -> dict[str, dict]:
+    """Criteria + reference answers, with the best available expected-ref key.
+
+    ``build_gold`` seeds ``expected_refs`` from R386's minimal-gold set, which
+    is ~1.5x finer than the evaluator's (92.4% sub-point against a measured
+    ~60%) and therefore reads Ref. Strict as a pessimistic floor.  When the
+    R388 grain-calibrated key is present it wins: it reproduces all EIGHT
+    expected references the report prints, bare heads included, where R386's
+    method scored 5/7 and could not produce a bare head at all.
+    """
     if not GOLD.exists():
         raise SystemExit(f"missing reconstructed gold: {GOLD}\nrun evals.official.build_gold first")
     out = {}
@@ -63,6 +75,20 @@ def load_gold() -> dict[str, dict]:
         if line:
             r = json.loads(line)
             out[r["id"]] = r
+
+    if REFKEY.exists():
+        n = 0
+        for line in REFKEY.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            k = json.loads(line)
+            if k["id"] in out:
+                out[k["id"]]["expected_refs"] = [] if k.get("unstable") else (k.get("expected") or [])
+                n += 1
+        print(f"expected-ref key: {REFKEY.name} (R388 grain-calibrated, {n} rows)")
+    else:
+        print("expected-ref key: R386 minimal-gold (over-fine; ref_strict is a FLOOR)")
     return out
 
 

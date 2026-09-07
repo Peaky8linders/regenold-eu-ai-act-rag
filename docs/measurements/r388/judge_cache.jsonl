@@ -1,0 +1,6 @@
+{"key": "rg_001:55fc01d4c88d4648", "verdict": {"criteria": [true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_002:58460b85227bad1c", "verdict": {"criteria": [true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_003:3aecfca5917b07dd", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_004:c6ed4b8c843a4eea", "verdict": {"criteria": [true, true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_005:1cc8be01a7b39afe", "verdict": {"criteria": [true, true, true], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 1.0, "_criteria_rate_max": 1.0, "_judge_errors": 0}}
+{"key": "rg_006:bbdfa53d69f012b2", "verdict": {"criteria": [true, false, false], "tone_ok": true, "_judge_runs": 3, "_criteria_rate_min": 0.3333, "_criteria_rate_max": 0.3333, "_judge_errors": 0}}
