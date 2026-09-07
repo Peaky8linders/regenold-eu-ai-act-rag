@@ -1,0 +1,134 @@
+{
+ "label": "test-local-r3",
+ "mode": "easy",
+ "ckpt": "evals/bench/results/official-test-local-bedrock-r3-easy.ckpt.jsonl",
+ "axes": {
+  "ans_correctness_loose": 100.0,
+  "ans_correctness_strict": 100.0,
+  "ans_conciseness": 99.5465,
+  "ref_correctness_loose": 100.0,
+  "ref_correctness_strict": 50.0,
+  "ref_conciseness": 66.6667,
+  "regulatory_tone": 100.0,
+  "resp_speed": 96.1173,
+  "overall": 86.6889,
+  "n": 3,
+  "n_ref_scored": 2,
+  "_ans_loose_macro": 100.0,
+  "_mean_answer_chars": 501.3,
+  "_mean_reference_chars": 569.0,
+  "_mean_refs_per_row": 2.0,
+  "_mean_expected_per_row": 1.0,
+  "_mean_latency_s": 3.883
+ },
+ "official_reference": {
+  "us": {
+   "ans_correctness_loose": 89.7,
+   "ans_correctness_strict": 81.2,
+   "ans_conciseness": 51.9,
+   "ref_correctness_loose": 89.4,
+   "ref_correctness_strict": 68.3,
+   "ref_conciseness": 50.4,
+   "regulatory_tone": 99.1,
+   "resp_speed": 87.6
+  },
+  "frontier_2026": {
+   "ans_correctness_loose": 94.4,
+   "ans_correctness_strict": 89.1,
+   "ans_conciseness": 67.9,
+   "ref_correctness_loose": 96.1,
+   "ref_correctness_strict": 78.5,
+   "ref_conciseness": 51.9,
+   "regulatory_tone": 100.0,
+   "resp_speed": 81.8
+  },
+  "baseline_2025": {
+   "ans_correctness_loose": 83.8,
+   "ans_correctness_strict": 70.9,
+   "ans_conciseness": 51.1,
+   "ref_correctness_loose": 79.9,
+   "ref_correctness_strict": 52.0,
+   "ref_conciseness": 48.7,
+   "regulatory_tone": 99.1,
+   "resp_speed": 95.3
+  },
+  "overall": {
+   "us": 75.1,
+   "frontier_2026": 80.9,
+   "baseline_2025": 70.1
+  }
+ },
+ "rows": [
+  {
+   "id": "rg_001",
+   "criteria_text": [
+    "Yes",
+    "Description of the hardware on which the AI system is intended to run (Annex IV.1.e)"
+   ],
+   "criteria": [
+    true,
+    true
+   ],
+   "n_criteria_passed": 2,
+   "tone_ok": true,
+   "answer_chars": 387,
+   "reference_chars": 479,
+   "refs": [
+    "Article 11.1",
+    "Annex IV.2"
+   ],
+   "expected_refs": [],
+   "latency_s": 3.765611599999829
+  },
+  {
+   "id": "rg_002",
+   "criteria_text": [
+    "No",
+    "Deep-fake disclosure exemption covers detection, prevention, investigation or prosecution of criminal offences"
+   ],
+   "criteria": [
+    true,
+    true
+   ],
+   "n_criteria_passed": 2,
+   "tone_ok": true,
+   "answer_chars": 382,
+   "reference_chars": 503,
+   "refs": [
+    "Article 50.4"
+   ],
+   "expected_refs": [
+    "Article 50.4"
+   ],
+   "latency_s": 1.706674800007022
+  },
+  {
+   "id": "rg_003",
+   "criteria_text": [
+    "No",
+    "Exception applies where system does not pose significant risk of harm to health, safety or fundamental rights, including by not materially influencing outcome of decision making",
+    "Exception requires one of: narrow procedural task; improving result of previously completed human activity; detecting deviations from prior decision-making patterns without replacing/influencing human assessment; preparatory task to an Annex III assessment",
+    "Exception never applies (system is always high-risk) if it performs profiling of natural persons"
+   ],
+   "criteria": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "n_criteria_passed": 4,
+   "tone_ok": true,
+   "answer_chars": 735,
+   "reference_chars": 725,
+   "refs": [
+    "Annex III.6",
+    "Article 6.2",
+    "Article 49.3"
+   ],
+   "expected_refs": [
+    "Article 6.3"
+   ],
+   "latency_s": 6.17591390000598
+  }
+ ]
+}

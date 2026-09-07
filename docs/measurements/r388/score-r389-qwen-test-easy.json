@@ -1,0 +1,106 @@
+{
+ "label": "r389-qwen-test",
+ "mode": "easy",
+ "ckpt": "evals/bench/results/official-r389-live-easy.ckpt.jsonl",
+ "axes": {
+  "ans_correctness_loose": 100.0,
+  "ans_correctness_strict": 100.0,
+  "ans_conciseness": 100.0,
+  "ref_correctness_loose": 100.0,
+  "ref_correctness_strict": 100.0,
+  "ref_conciseness": 100.0,
+  "regulatory_tone": 100.0,
+  "resp_speed": 99.4323,
+  "overall": 99.9289,
+  "n": 2,
+  "n_ref_scored": 1,
+  "_ans_loose_macro": 100.0,
+  "_mean_answer_chars": 384.5,
+  "_mean_reference_chars": 491.0,
+  "_mean_refs_per_row": 1.5,
+  "_mean_expected_per_row": 1.0,
+  "_mean_latency_s": 0.568
+ },
+ "official_reference": {
+  "us": {
+   "ans_correctness_loose": 89.7,
+   "ans_correctness_strict": 81.2,
+   "ans_conciseness": 51.9,
+   "ref_correctness_loose": 89.4,
+   "ref_correctness_strict": 68.3,
+   "ref_conciseness": 50.4,
+   "regulatory_tone": 99.1,
+   "resp_speed": 87.6
+  },
+  "frontier_2026": {
+   "ans_correctness_loose": 94.4,
+   "ans_correctness_strict": 89.1,
+   "ans_conciseness": 67.9,
+   "ref_correctness_loose": 96.1,
+   "ref_correctness_strict": 78.5,
+   "ref_conciseness": 51.9,
+   "regulatory_tone": 100.0,
+   "resp_speed": 81.8
+  },
+  "baseline_2025": {
+   "ans_correctness_loose": 83.8,
+   "ans_correctness_strict": 70.9,
+   "ans_conciseness": 51.1,
+   "ref_correctness_loose": 79.9,
+   "ref_correctness_strict": 52.0,
+   "ref_conciseness": 48.7,
+   "regulatory_tone": 99.1,
+   "resp_speed": 95.3
+  },
+  "overall": {
+   "us": 75.1,
+   "frontier_2026": 80.9,
+   "baseline_2025": 70.1
+  }
+ },
+ "rows": [
+  {
+   "id": "rg_001",
+   "criteria_text": [
+    "Yes",
+    "Description of the hardware on which the AI system is intended to run (Annex IV.1.e)"
+   ],
+   "criteria": [
+    true,
+    true
+   ],
+   "n_criteria_passed": 2,
+   "tone_ok": true,
+   "answer_chars": 387,
+   "reference_chars": 479,
+   "refs": [
+    "Article 11.1",
+    "Annex IV.2"
+   ],
+   "expected_refs": [],
+   "latency_s": 0.23397400000249036
+  },
+  {
+   "id": "rg_002",
+   "criteria_text": [
+    "No",
+    "Deep-fake disclosure exemption covers detection, prevention, investigation or prosecution of criminal offences"
+   ],
+   "criteria": [
+    true,
+    true
+   ],
+   "n_criteria_passed": 2,
+   "tone_ok": true,
+   "answer_chars": 382,
+   "reference_chars": 503,
+   "refs": [
+    "Article 50.4"
+   ],
+   "expected_refs": [
+    "Article 50.4"
+   ],
+   "latency_s": 0.9014986999973189
+  }
+ ]
+}
