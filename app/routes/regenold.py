@@ -1383,6 +1383,8 @@ def _engine_cache_key(
             # answer length and 2.38x faster, so it is emphatically
             # answer-flipping and must not share a cache entry.
             "REGENOLD_STAGE2_FULL_SYSTEM",
+            "REGENOLD_STAGE2_MODEL",
+            "REGENOLD_STAGE2_MODEL_OPENROUTER",
             "P2P_GRAPH_RAG_ENABLE_STAGE2",
             "REGENOLD_BEDROCK_MODEL",
             "REGENOLD_BEDROCK_COMPLEX_MODEL",
