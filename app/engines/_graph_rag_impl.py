@@ -867,12 +867,10 @@ def _openai_wrapper_complete_for_graph_rag(
     #   * Stage-1 / other  → ``base_model``    (Sonnet 4.6)
     # R116 removed the Fable 5 ultra tier.
     is_stage2 = "stage 2" in (stage_name or "").lower()
-    if "openrouter" in os.getenv("OPENAI_API_BASE", "").lower():
-        model = os.getenv("REGENOLD_STAGE2_MODEL_OPENROUTER", "meta-llama/llama-3.3-70b-instruct")
-    elif complex_question and complex_model:
+    if complex_question and complex_model:
         model = complex_model
     elif is_stage2:
-        model = complex_model or stage2_model or os.getenv("REGENOLD_STAGE2_MODEL", "") or "claude-opus-4-8"
+        model = complex_model or stage2_model or "claude-opus-4-8"
         if not model or "opus" not in model.lower():
             model = "claude-opus-4-8"
     else:
@@ -985,7 +983,7 @@ def _openai_wrapper_complete_for_graph_rag(
     ).strip().lower() in ("1", "true", "yes", "on")
     wrapper_system = (
         system
-        if (_full_system or len(system) <= 1000 or "openrouter" in os.getenv("OPENAI_API_BASE", "").lower())
+        if (_full_system or len(system) <= 1000)
         else "You are an expert EU AI Act regulatory compliance specialist."
     )
 
@@ -1572,12 +1570,10 @@ def _anthropic_complete_for_graph_rag(
     # ``stage2_model`` (Opus); Stage-1 parse / other → ``base_model`` (Sonnet).
     # R116 removed the Fable 5 ultra tier.
     is_stage2 = "stage 2" in (stage_name or "").lower()
-    if "openrouter" in os.getenv("OPENAI_API_BASE", "").lower():
-        model = os.getenv("REGENOLD_STAGE2_MODEL_OPENROUTER", "meta-llama/llama-3.3-70b-instruct")
-    elif complex_question and complex_model:
+    if complex_question and complex_model:
         model = complex_model
     elif is_stage2:
-        model = complex_model or stage2_model or os.getenv("REGENOLD_STAGE2_MODEL", "") or "claude-opus-4-8"
+        model = complex_model or stage2_model or "claude-opus-4-8"
         if not model or "opus" not in model.lower():
             model = "claude-opus-4-8"
     else:
