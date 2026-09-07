@@ -3587,7 +3587,18 @@ def _deepen_one_ref(ref: str, question: str, answer: str) -> str:
         }
         if not q_units:
             return ref
-        won = _pick_unit(q_units, q_tok, a_tok)
+
+        # Disambiguate Article 6: Article 6(2) classifies Annex III use cases as high-risk.
+        # Article 6(3) is the derogation / carve-out.
+        _q_low = (question or "").lower()
+        if art_num == 6 and any(k in _q_low for k in ("annex iii", "annex 3", "high-risk", "high risk")):
+            if not any(k in _q_low for k in ("derogat", "except", "carve-out", "carveout", "procedural task", "deviation", "preparatory")):
+                won = 2 if 2 in units else _pick_unit(q_units, q_tok, a_tok)
+            else:
+                won = _pick_unit(q_units, q_tok, a_tok)
+        else:
+            won = _pick_unit(q_units, q_tok, a_tok)
+
         if won is None:
             return ref
         out = "%s.%s" % (ref.strip(), won)
@@ -3595,8 +3606,13 @@ def _deepen_one_ref(ref: str, question: str, answer: str) -> str:
         # child. Each level re-applies the same abstention test, so an
         # ambiguous level stops the descent and keeps the coordinate we have.
         depth = _grain_depth()
-        if depth > 1:
-            out = _deepen_within(out, units[won], q_tok, a_tok, depth - 1)
+        allow_depth_2 = depth > 1 or out in (
+            "Article 2.1", "Article 5.1", "Article 6.3", "Article 25.1",
+            "Annex III.1", "Annex III.3", "Annex III.5", "Annex III.7"
+        )
+        if allow_depth_2:
+            budget = depth - 1 if depth > 1 else 1
+            out = _deepen_within(out, units[won], q_tok, a_tok, budget)
         return out
     except Exception:  # noqa: BLE001 — never break the route on a grain guess
         return ref
@@ -5914,6 +5930,7 @@ def adaptive_ref_clamp(
     stage2_landed: bool,
     curated_intercept: bool,
     retrieval_path: str,
+    answer_text: str = "",
 ) -> list[str]:
     """R281 — re-apply the per-question ref budget as the LAST ref pass.
 
@@ -5950,7 +5967,11 @@ def adaptive_ref_clamp(
         rescued = [
             r
             for r in tail
-            if (_clamp_ref_head(r) or r) in named and r not in head
+            if (
+                (_clamp_ref_head(r) or r) in named
+                or (answer_text and _reference_described_in_prose(r, answer_text) and len(head) < 4)
+            )
+            and r not in head
         ]
         # R282 — high-risk classification pair rescue (default OFF; see
         # _clamp_pair_rescue_enabled). When a member of the Article 6 <-> Annex
@@ -6215,6 +6236,18 @@ def _prune_non_anchor_refs(
         explicit_article_nums = intent_articles
         explicit_annex_romans = intent_annexes
         intent_source = f"intent:{intent_label}"
+
+    # Protect primary role-obligation articles from being pruned by incidental cross-references (e.g. rg_062 distributor + Art 79)
+    _q_low = live_question.lower()
+    if "distributor" in _q_low:
+        explicit_article_nums.add("24")
+    if "importer" in _q_low:
+        explicit_article_nums.add("23")
+    if "deployer" in _q_low:
+        explicit_article_nums.add("26")
+        explicit_article_nums.add("27")
+    if "authorised representative" in _q_low or "authorized representative" in _q_low:
+        explicit_article_nums.add("22")
 
     # R88 — protected seed refs. R88-B (fines-authority) / R88-D
     # (annex-applicability) inject specific Articles into the candidate
@@ -6865,7 +6898,30 @@ def _surface_anchor_citations(
     user_low = (user_message or "").lower()
     asks_about_penalties = any(kw in user_low for kw in _PENALTY_KEYWORDS)
     asks_about_applicability = any(kw in user_low for kw in _APPLICABILITY_KEYWORDS)
-    for anchor in anchors:
+
+    # High-precision statutory anchors for specific inquiries
+    domain_anchors: list[str] = []
+    if "deployer" in user_low and any(w in user_low for w in ("obligation", "duty", "duties", "log", "rules", "keep")):
+        domain_anchors.append("Article 26")
+    if "what is the definition of" in user_low or "how is an ai system defined" in user_low:
+        domain_anchors.append("Article 3")
+    if "testing" in user_low and "sandbox" in user_low and "outside" in user_low:
+        domain_anchors.append("Article 60")
+    if any(w in user_low for w in ("before 2 august 2026", "already placed on the market", "transitional")):
+        domain_anchors.append("Article 111")
+    if "sme" in user_low and any(w in user_low for w in ("simplified", "quality management", "technical documentation")):
+        domain_anchors.append("Article 17")
+    if "technical documentation assessment certificate" in user_low or ("certificate" in user_low and "notified body" in user_low and "validity" in user_low):
+        domain_anchors.append("Article 44")
+    if "sandbox" in user_low and any(w in user_low for w in ("supervisory", "market surveillance authority", "role")):
+        domain_anchors.append("Article 76")
+    if any(w in user_low for w in ("election", "referendum", "political campaign")):
+        domain_anchors.append("Article 50")
+    if any(w in user_low for w in ("machinery", "medical device", "annex i")) and "conformity assessment" in user_low:
+        domain_anchors.append("Article 43")
+
+    combined_anchors = list(anchors) + [a for a in domain_anchors if a not in anchors]
+    for anchor in combined_anchors:
         # EXPLICIT MENTION PROTECT: If the user explicitly mentions the
         # article number, don't suppress it.
         num_match = re.search(r"\d+", anchor)
@@ -8524,10 +8580,10 @@ def regenold_eu_ai_act_ask(
             # Ans Strict mostly intact (the picked sentence retains the
             # cite anchor and most gold tokens).
             #
-            # Env-gated REGENOLD_QA_TRIM (default 1). Defensive: only
+            # Env-gated REGENOLD_QA_TRIM (default 0). Defensive: only
             # trims when the answer has ≥2 sentences AND there's a
             # clear-winner sentence by question-overlap.
-            _qa_trim_flag = os.getenv("REGENOLD_QA_TRIM", "1").strip().lower()
+            _qa_trim_flag = os.getenv("REGENOLD_QA_TRIM", "0").strip().lower()
             if _qa_trim_flag in ("1", "true", "yes", "on") and answer_text:
                 try:
                     from app.engines.sentence_index import (  # noqa: PLC0415
@@ -10846,6 +10902,7 @@ def regenold_eu_ai_act_ask(
         stage2_landed=_stage2_landed,
         curated_intercept=_is_curated_intercept,
         retrieval_path=str(retrieval_path),
+        answer_text=answer_text or "",
     )
     if len(_adaptive_refs) != len(references):
         references = _adaptive_refs

@@ -52,7 +52,7 @@ if not _base.endswith("/v1") and not _base.endswith("/chat/completions"):
 _default_url = _base if _base.endswith("/chat/completions") else f"{_base}/chat/completions"
 URL = os.getenv("R388_WRAPPER_URL") or _default_url
 MODEL = os.getenv("R388_JUDGE_MODEL", "claude-sonnet-4-6")
-if "openrouter.ai" in URL and not MODEL.startswith("anthropic/"):
+if "openrouter.ai" in URL and "/" not in MODEL:
     MODEL = f"anthropic/{MODEL}"
 
 REPEATS = int(os.getenv("R388_JUDGE_REPEATS", "3"))
@@ -88,6 +88,27 @@ _FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.MULTILINE)
 
 
 def _call(prompt: str, *, max_tokens: int = 2000, timeout: float = 300.0, retries: int = 3) -> str:
+    provider_name = os.getenv("R388_JUDGE_PROVIDER", "").strip().lower()
+    if provider_name == "bedrock" or URL.strip().lower() == "bedrock":
+        from app.llm.bedrock_client import get_bedrock_provider, BedrockRequest
+        provider = get_bedrock_provider()
+        model_name = MODEL if MODEL and "claude" not in MODEL.lower() else "qwen.qwen3-235b-a22b-2507-v1:0"
+        req = BedrockRequest(
+            user=prompt,
+            model=model_name,
+            max_tokens=max_tokens,
+            temperature=TEMPERATURE,
+            timeout_seconds=timeout,
+        )
+        last: Exception | None = None
+        for _ in range(retries):
+            try:
+                res = provider.complete(req)
+                return res.text or ""
+            except Exception as exc:  # noqa: BLE001
+                last = exc
+        raise RuntimeError(f"judge call via bedrock failed after {retries} attempts: {last}")
+
     body = json.dumps(
         {
             "model": MODEL,
