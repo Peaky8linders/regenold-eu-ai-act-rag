@@ -1,0 +1,272 @@
+"""R388 - the LLM-as-a-judge half of the official-rubric reconstruction.
+
+Two judgements, matching the report's methodology section:
+
+* ``Ans. Correctness`` -- per-criterion PASS/FAIL against the candidate answer.
+  "an LLM-as-a-judge is used to evaluate whether the answer satisfies each
+  criterion".
+* ``Regulatory Tone``  -- "fraction of responses judged both appropriate and
+  clear".
+
+Both are judged THREE times per question at temperature 0.1 and resolved by
+majority, because the report states exactly that ("Ans. Correctness and
+Regulatory Tone are judged three times per question") and prints the min-max
+spread across the three repetitions.  :func:`judge_rows` returns that spread so
+our reports can print it the same way.
+
+How strict is the real judge?  The appendix shows it, and it is strict about
+SUBSTANCE, not citation.  On Q17 it failed a criterion because the answer
+"refers generally to conditions in Article 7(1) but does not state the
+specific condition"; on Q45 it failed every criterion because the answer named
+Article 13 without enumerating anything.  Pointing at the right provision is
+NOT satisfying a criterion.  The prompt below says so in those words, and
+:mod:`evals.official.calibration` checks the judge reproduces the fifteen
+PASS/FAIL verdicts the appendix prints.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+os.environ.setdefault("REGENOLD_SKIP_DOTENV", "1")
+sys.path.insert(0, str(REPO))
+
+from app.data.provision_text import get_provision_text  # noqa: E402
+from evals.official.rubric import normalise_ref, ref_head  # noqa: E402
+
+URL = os.getenv("R388_WRAPPER_URL", "http://127.0.0.1:8000/v1/chat/completions")
+MODEL = os.getenv("R388_JUDGE_MODEL", "claude-sonnet-5")
+REPEATS = int(os.getenv("R388_JUDGE_REPEATS", "3"))
+TEMPERATURE = float(os.getenv("R388_JUDGE_TEMPERATURE", "0.1"))
+
+_HDRS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "Content-Type": "application/json",
+    "Authorization": "Bearer dummy",
+}
+if os.getenv("CF_ACCESS_CLIENT_ID"):
+    _HDRS["CF-Access-Client-Id"] = os.environ["CF_ACCESS_CLIENT_ID"]
+    _HDRS["CF-Access-Client-Secret"] = os.environ.get("CF_ACCESS_CLIENT_SECRET", "")
+
+_FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.MULTILINE)
+
+
+def _call(prompt: str, *, max_tokens: int = 2000, timeout: float = 300.0, retries: int = 3) -> str:
+    body = json.dumps(
+        {
+            "model": MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": TEMPERATURE,
+        }
+    ).encode()
+    last: Exception | None = None
+    for _ in range(retries):
+        try:
+            req = urllib.request.Request(URL, data=body, headers=_HDRS)
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                d = json.loads(r.read().decode())
+            return d["choices"][0]["message"]["content"] or ""
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+    raise RuntimeError(f"judge call failed after {retries} attempts: {last}")
+
+
+def _parse(text: str):
+    t = _FENCE.sub("", text or "").strip()
+    try:
+        return json.loads(t)
+    except Exception:  # noqa: BLE001
+        pass
+    for opener, closer in (("{", "}"), ("[", "]")):
+        i, j = t.find(opener), t.rfind(closer)
+        if i != -1 and j > i:
+            try:
+                return json.loads(t[i : j + 1])
+            except Exception:  # noqa: BLE001
+                continue
+    return None
+
+
+CORRECTNESS_PROMPT = """You are the LLM-as-a-judge for an EU AI Act question-answering benchmark (Regulation (EU) 2024/1689).
+
+You are given a QUESTION, a set of CORRECTNESS CRITERIA, and a CANDIDATE ANSWER. For EACH criterion, decide whether the candidate answer satisfies it.
+
+HOW TO JUDGE - this is the part that matters:
+- A criterion is satisfied only when the candidate answer STATES THE SUBSTANCE of it. Naming or citing the provision that contains the fact is NOT enough. "The conditions are set out in Article 7(1)" does NOT satisfy a criterion that names one of those conditions.
+- The answer may use different words. Judge meaning, not phrasing.
+- A criterion that is a bare verdict ("Yes" / "No") is satisfied only when the answer's actual position matches it. An answer that leads with the opposite verdict and later concedes the point does NOT satisfy it - the verdict must be the answer's unambiguous position.
+- Extra correct material in the answer neither satisfies nor breaks a criterion. Judge each criterion on its own.
+- An answer that declines to answer, or says the material available does not permit an answer, satisfies NOTHING.
+- Do not reward an answer for being long. Do not punish it for being short.
+
+VERBATIM STATUTORY TEXT (ground truth - use it to resolve any dispute about what the Act says):
+{provisions}
+
+QUESTION:
+{question}
+
+CRITERIA:
+{criteria}
+
+CANDIDATE ANSWER:
+{answer}
+
+Return ONLY this JSON object, no markdown fence, no prose. One entry per criterion, in order:
+{{"verdicts": [{{"n": 1, "satisfied": true, "why": "one short sentence"}}]}}"""
+
+
+TONE_PROMPT = """You are the LLM-as-a-judge for the REGULATORY TONE axis of an EU AI Act question-answering benchmark.
+
+Judge whether the response is BOTH appropriate AND clear for a professional regulatory-advice setting.
+
+APPROPRIATE means: professional and measured; does not lecture, moralise, or editorialise; does not address the reader informally; does not talk about itself, its retrieval, its knowledge base, its "supplied materials", or its own limitations; does not hedge into uselessness.
+CLEAR means: readable, well-ordered prose that a compliance professional could act on; not a wall of fragments; not internally contradictory.
+
+Correctness is NOT your concern. A wrong answer in impeccable regulatory prose passes this axis.
+
+QUESTION:
+{question}
+
+RESPONSE:
+{answer}
+
+Return ONLY this JSON object, no markdown fence, no prose:
+{{"appropriate": true, "clear": true, "why": "one short sentence"}}"""
+
+
+def _provisions_for(refs, budget: int = 8000) -> str:
+    wanted: list[str] = []
+    for r in refs or []:
+        n = normalise_ref(r)
+        if not n:
+            continue
+        if n not in wanted:
+            wanted.append(n)
+        h = ref_head(n)
+        if h and h != n and h not in wanted:
+            wanted.append(h)
+    chunks, used = [], 0
+    for w in wanted:
+        t = get_provision_text(w)
+        if not t:
+            continue
+        room = max(0, budget - used)
+        if room < 200:
+            break
+        body = t if len(t) <= room else t[:room] + " [...]"
+        chunks.append(f"--- {w} ---\n{body}")
+        used += len(body)
+    return "\n\n".join(chunks) if chunks else "(no verbatim text supplied)"
+
+
+def judge_correctness_once(row: dict) -> list[bool] | None:
+    criteria = row.get("criteria") or []
+    if not criteria:
+        return []
+    numbered = "\n".join(f"{i}. {c}" for i, c in enumerate(criteria, 1))
+    prompt = CORRECTNESS_PROMPT.format(
+        provisions=_provisions_for(row.get("expected_refs") or row.get("_fallback_refs") or []),
+        question=row["question"],
+        criteria=numbered,
+        answer=(row.get("answer") or "").strip() or "(the system returned no answer)",
+    )
+    d = _parse(_call(prompt))
+    if not isinstance(d, dict):
+        return None
+    verdicts = d.get("verdicts")
+    if not isinstance(verdicts, list):
+        return None
+    by_n = {}
+    for v in verdicts:
+        if isinstance(v, dict) and "n" in v:
+            try:
+                by_n[int(v["n"])] = bool(v.get("satisfied"))
+            except Exception:  # noqa: BLE001
+                continue
+    if len(by_n) < len(criteria):
+        # fall back to positional order when the model dropped the "n" field
+        flat = [bool(v.get("satisfied")) for v in verdicts if isinstance(v, dict)]
+        if len(flat) != len(criteria):
+            return None
+        return flat
+    return [by_n.get(i, False) for i in range(1, len(criteria) + 1)]
+
+
+def judge_tone_once(row: dict) -> bool | None:
+    d = _parse(
+        _call(
+            TONE_PROMPT.format(
+                question=row["question"],
+                answer=(row.get("answer") or "").strip() or "(the system returned no answer)",
+            ),
+            max_tokens=400,
+        )
+    )
+    if not isinstance(d, dict):
+        return None
+    return bool(d.get("appropriate")) and bool(d.get("clear"))
+
+
+def _majority(runs: list, n_criteria: int) -> list[bool]:
+    """Per-criterion majority across the repetitions; ties resolve to FAIL.
+
+    Ties only arise when a repetition errored out and an even number survive.
+    Resolving a tie to FAIL keeps the instrument from flattering the arm on
+    exactly the rows the judge found hardest.
+    """
+    live = [r for r in runs if r is not None and len(r) == n_criteria]
+    if not live:
+        return [False] * n_criteria
+    return [sum(1 for r in live if r[i]) * 2 > len(live) for i in range(n_criteria)]
+
+
+def judge_row(row: dict, repeats: int = REPEATS) -> dict:
+    """Judge one captured row; returns criteria booleans, tone, and spread."""
+    n = len(row.get("criteria") or [])
+    corr_runs = [judge_correctness_once(row) for _ in range(repeats)]
+    tone_runs = [judge_tone_once(row) for _ in range(repeats)]
+    criteria = _majority(corr_runs, n)
+    live_corr = [r for r in corr_runs if r is not None and len(r) == n]
+    per_run_rate = [sum(1 for c in r if c) / n for r in live_corr] if (live_corr and n) else []
+    live_tone = [t for t in tone_runs if t is not None]
+    return {
+        "criteria": criteria,
+        "tone_ok": (sum(1 for t in live_tone if t) * 2 > len(live_tone)) if live_tone else False,
+        "_judge_runs": len(live_corr),
+        "_criteria_rate_min": round(min(per_run_rate), 4) if per_run_rate else None,
+        "_criteria_rate_max": round(max(per_run_rate), 4) if per_run_rate else None,
+        "_tone_runs": len(live_tone),
+        "_judge_errors": repeats - len(live_corr),
+    }
+
+
+def judge_rows(rows: list[dict], *, workers: int = 4, repeats: int = REPEATS) -> list[dict]:
+    """Judge many rows; returns each row augmented in place-order."""
+
+    def _one(r):
+        try:
+            out = dict(r)
+            out.update(judge_row(r, repeats=repeats))
+            return out
+        except Exception as exc:  # noqa: BLE001
+            out = dict(r)
+            out.update(
+                {
+                    "criteria": [False] * len(r.get("criteria") or []),
+                    "tone_ok": False,
+                    "_judge_runs": 0,
+                    "_judge_errors": repeats,
+                    "_judge_exception": str(exc),
+                }
+            )
+            return out
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        return list(ex.map(_one, rows))
