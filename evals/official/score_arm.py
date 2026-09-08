@@ -159,7 +159,12 @@ def main() -> int:
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--label", required=True)
     ap.add_argument("--mode", choices=["easy", "hard"], required=True)
-    ap.add_argument("--workers", type=int, default=4)
+    # R393 — default 1, not 4. The judge transport is normally the LOCAL Claude
+    # Max wrapper (one process, one CLI); workers x repeats x 2 judges saturates
+    # it and every failed row is scored all-False in silence. Measured on one
+    # checkpoint: workers=4 read Overall 60.2, workers=1 read 82.4. Raise it only
+    # against a genuinely concurrent endpoint (Bedrock, OpenRouter).
+    ap.add_argument("--workers", type=int, default=1)
     ap.add_argument("--repeats", type=int, default=3)
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--deepen", action="store_true", default=True, help="Apply R388 grain deepening")
@@ -193,6 +198,36 @@ def main() -> int:
     print(f"{len(rows)} rows: {len(cached)} cached, {len(todo)} to judge (cache: {cache_target.name})")
 
     judged = judge_rows(todo, workers=a.workers, repeats=a.repeats) if todo else []
+
+    # R393 — LOUD failure on a saturated judge transport.
+    #
+    # MEASURED. ``judge_row`` returns all-False criteria and ``tone_ok=False``
+    # when every repeat of a row fails, and nothing downstream distinguishes
+    # that from a genuinely wrong answer. Against the LOCAL Claude Max wrapper
+    # -- one process wrapping one CLI -- the default ``--workers 4`` times
+    # ``repeats`` times two judges is up to 24 concurrent calls, and it
+    # saturates. Same arm, same checkpoint, sonnet-5, only ``--workers``
+    # differing:
+    #
+    #     workers=4   ans_loose 46.0   ans_strict 38.2   tone  47.3   Overall 60.2
+    #     workers=1   ans_loose 90.2   ans_strict 83.3   tone 100.0   Overall 82.4
+    #
+    # A tone of 47.3 is not a scorecard, it is a broken instrument -- and it
+    # silently read as a 22-point Overall regression. Never let that be quiet.
+    if judged:
+        dead = [j for j in judged if not j.get("_judge_runs", 0)]
+        if dead:
+            frac = len(dead) / len(judged)
+            print(
+                f"\n{'!' * 72}\n"
+                f"JUDGE TRANSPORT DEGRADED: {len(dead)}/{len(judged)} rows "
+                f"({frac:.0%}) returned NO live judge run and were scored "
+                f"all-False.\nThe answer and tone axes below are NOT a "
+                f"measurement. Re-run with --workers 1.\n"
+                f"first offenders: {[j['id'] for j in dead[:8]]}\n"
+                f"{'!' * 72}\n"
+            )
+
     if judged:
         cache_target.parent.mkdir(parents=True, exist_ok=True)
         with cache_target.open("a", encoding="utf-8") as fh:
