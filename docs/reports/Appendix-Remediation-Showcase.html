@@ -1,839 +1,412 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>EU AI Act Benchmark — Official Appendix Cross-Reference & Remediation Report</title>
-  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
-  <style>
-    .case-card {
-      transition: all 0.2s ease-in-out;
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EU AI Act Benchmark — Appendix Remediation</title>
+<style>
+  :root{
+    --bg:#fbfaf9; --fg:#1c1a18; --muted:#6b645d; --line:#e2ddd7; --card:#ffffff;
+    --ok:#1a7f52; --ok-bg:#eaf6f0; --ok-line:#b6e0cb;
+    --bad:#a8341f; --bad-bg:#fbeeea; --bad-line:#f0cec4;
+    --note:#7a5c12; --note-bg:#fdf6e3; --note-line:#ecd9a3;
+    --accent:#2b5c8a; --accent-bg:#eef4fa; --accent-line:#c2d8ea;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#16151a; --fg:#eceaf0; --muted:#a09aa8; --line:#33303a; --card:#1e1d23;
+      --ok:#5fd39b; --ok-bg:#12261d; --ok-line:#2a5a42;
+      --bad:#f0907a; --bad-bg:#2a1714; --bad-line:#5e2f26;
+      --note:#e0bd6a; --note-bg:#282010; --note-line:#5a4a24;
+      --accent:#8ab6de; --accent-bg:#152230; --accent-line:#2e4a63;
     }
-  </style>
+  }
+  :root[data-theme="dark"]{
+    --bg:#16151a; --fg:#eceaf0; --muted:#a09aa8; --line:#33303a; --card:#1e1d23;
+    --ok:#5fd39b; --ok-bg:#12261d; --ok-line:#2a5a42;
+    --bad:#f0907a; --bad-bg:#2a1714; --bad-line:#5e2f26;
+    --note:#e0bd6a; --note-bg:#282010; --note-line:#5a4a24;
+    --accent:#8ab6de; --accent-bg:#152230; --accent-line:#2e4a63;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--fg);margin:0;
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:60rem;margin:0 auto;padding:2.5rem 1.25rem 5rem}
+  h1{font-size:1.75rem;line-height:1.25;margin:.2rem 0 .5rem;letter-spacing:-.02em}
+  h2{font-size:1.15rem;margin:2.75rem 0 .75rem;letter-spacing:-.01em}
+  h3{font-size:1rem;margin:0}
+  p{margin:.6rem 0}
+  .sub{color:var(--muted);font-size:.85rem;margin:0}
+  .eyebrow{font-size:.7rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  header{border-bottom:1px solid var(--line);padding-bottom:1.5rem;margin-bottom:1.5rem}
+  .scores{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:1.25rem}
+  .score{flex:1 1 12rem;border:1px solid var(--line);border-radius:.7rem;padding:.85rem 1rem;background:var(--card)}
+  .score .lab{font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700}
+  .score .val{font-size:1.35rem;font-weight:700;margin-top:.15rem;font-variant-numeric:tabular-nums}
+  .val.bad{color:var(--bad)} .val.ok{color:var(--ok)}
+  .callout{border:1px solid var(--note-line);background:var(--note-bg);border-radius:.7rem;
+    padding:1rem 1.15rem;margin:1.25rem 0;font-size:.87rem}
+  .callout.accent{border-color:var(--accent-line);background:var(--accent-bg)}
+  .callout h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.07em;margin-bottom:.4rem;color:var(--note)}
+  .callout.accent h3{color:var(--accent)}
+  .callout ul{margin:.5rem 0 0;padding-left:1.1rem} .callout li{margin:.3rem 0}
+  table{width:100%;border-collapse:collapse;font-size:.85rem;margin:.5rem 0 0}
+  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  th,td{text-align:left;padding:.5rem .6rem;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;white-space:nowrap}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  code{font-family:var(--mono);font-size:.85em;background:var(--bg);border:1px solid var(--line);
+    border-radius:.3rem;padding:.05rem .3rem}
+  .case{border:1px solid var(--line);border-radius:.9rem;background:var(--card);
+    padding:1.4rem;margin:1.1rem 0}
+  .case-head{display:flex;flex-wrap:wrap;gap:.6rem;align-items:baseline;
+    justify-content:space-between;border-bottom:1px solid var(--line);
+    padding-bottom:.8rem;margin-bottom:1rem}
+  .tag{font-family:var(--mono);font-size:.7rem;font-weight:700;padding:.15rem .5rem;
+    border-radius:.35rem;border:1px solid var(--accent-line);background:var(--accent-bg);color:var(--accent)}
+  .tag.hard{border-color:var(--note-line);background:var(--note-bg);color:var(--note)}
+  .pill{font-size:.75rem;font-weight:700;padding:.2rem .6rem;border-radius:999px;white-space:nowrap}
+  .pill.ok{color:var(--ok);background:var(--ok-bg);border:1px solid var(--ok-line)}
+  .pill.bad{color:var(--bad);background:var(--bad-bg);border:1px solid var(--bad-line)}
+  .q{font-weight:600;margin:0 0 1rem}
+  .cols{display:grid;grid-template-columns:1fr;gap:.9rem}
+  @media(min-width:52rem){.cols{grid-template-columns:1fr 1fr}}
+  .panel{border-radius:.6rem;padding:.85rem 1rem;font-size:.83rem}
+  .panel.before{border:1px solid var(--bad-line);background:var(--bad-bg)}
+  .panel.after{border:1px solid var(--ok-line);background:var(--ok-bg)}
+  .panel .hd{font-weight:700;font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem}
+  .panel.before .hd{color:var(--bad)} .panel.after .hd{color:var(--ok)}
+  .crit{margin:.45rem 0;padding-left:1.45rem;position:relative;line-height:1.5}
+  .crit::before{position:absolute;left:0;top:0;font-family:var(--mono);font-size:.72rem;font-weight:700}
+  .crit.f::before{content:"FAIL";color:var(--bad);font-size:.6rem;top:.15rem}
+  .crit.p::before{content:"PASS";color:var(--ok);font-size:.6rem;top:.15rem}
+  .remark{color:var(--muted);font-style:italic;font-size:.8rem;display:block;margin-top:.15rem}
+  .answer{border:1px solid var(--line);border-radius:.6rem;background:var(--bg);
+    padding:.9rem 1rem;font-size:.83rem;line-height:1.62;margin-top:.4rem}
+  .meta{font-family:var(--mono);font-size:.74rem;color:var(--muted);margin-top:.5rem;
+    display:flex;flex-wrap:wrap;gap:.35rem .9rem}
+  .refs{font-family:var(--mono);font-size:.76rem}
+  footer{margin-top:3.5rem;border-top:1px solid var(--line);padding-top:1.25rem;
+    font-size:.78rem;color:var(--muted)}
+</style>
 </head>
-<body class="bg-[var(--background)] text-[var(--foreground)] p-4 md:p-8 font-sans antialiased text-sm">
-  <div class="max-w-5xl mx-auto space-y-8">
+<body>
+<div class="wrap">
 
-    <!-- Header -->
-    <header class="border-b border-[var(--border)] pb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-      <div>
-        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold mb-2">
-          <span>●</span> Official Benchmark Audit &bull; Appendix Failure Cases Re-Evaluation
-        </div>
-        <h1 class="text-2xl md:text-3xl font-bold tracking-tight">EU AI Act Q&A Benchmark — Remediation Audit</h1>
-        <p class="text-xs text-[var(--muted-foreground)] mt-1.5 leading-relaxed">
-          Contestant: <strong class="text-[var(--foreground)]">Antifragile AI</strong> &bull; 
-          Benchmark Corpus: <strong class="text-[var(--foreground)]">Regulation (EU) 2024/1689 (EU AI Act)</strong> &bull; 
-          Source Document: <span class="text-[var(--foreground)]">Official Evaluation Report (2026-08-25), Pages 10–14</span>
-        </p>
-      </div>
-      <div class="flex items-center gap-4 bg-[var(--card)] border border-[var(--border)] px-5 py-3.5 rounded-2xl shadow-sm">
-        <div class="text-center pr-4 border-r border-[var(--border)]">
-          <div class="text-[11px] text-[var(--muted-foreground)] uppercase tracking-wider font-semibold">August 25 Result</div>
-          <div class="text-lg font-bold text-red-400">2 / 17 Passed (11.8%)</div>
-        </div>
-        <div class="text-center pl-1">
-          <div class="text-[11px] text-[var(--muted-foreground)] uppercase tracking-wider font-semibold">Current Audit</div>
-          <div class="text-lg font-bold text-emerald-400">20 / 20 Passed (100%) 🏆</div>
-        </div>
-      </div>
-    </header>
-
-    <!-- Context Banner -->
-    <div class="p-4 rounded-xl border border-blue-500/20 bg-blue-500/5 text-xs text-[var(--muted-foreground)] leading-relaxed space-y-1">
-      <div class="font-semibold text-blue-400">Audit Scope & Methodology:</div>
-      <p>
-        In the official August 25 evaluation report, six representative answers (3 from Easy mode, 3 from Hard mode) were cited as failing criteria due to knowledge-base refusals, missing statutory conditions, conflation of legal terms, or hallucinated database forms. This report cross-references each case against the official judge's remarks, identifies the exact deficiency, and validates the corrected, 100% compliant responses and statutory references.
-      </p>
+<header>
+  <div class="eyebrow">Appendix re-run · Regulation (EU) 2024/1689</div>
+  <h1>Appendix Remediation — the six cited failures, re-measured</h1>
+  <p class="sub">
+    Every answer below is the <strong>actual live output</strong> of the current system, captured
+    2026-09-08, not a hand-written ideal. Scored against the evaluator's own printed criteria,
+    transcribed verbatim from <em>report_antifragile_ai.pdf</em> (2026-08-25), pages 10–14.
+  </p>
+  <div class="scores">
+    <div class="score">
+      <div class="lab">Report baseline</div>
+      <div class="val bad">1 / 17</div>
+      <div class="sub">printed criteria satisfied (5.9%)</div>
     </div>
-
-    <!-- Navigation Filters -->
-    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-3">
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-semibold text-[var(--muted-foreground)] mr-1">Filter View:</span>
-        <button onclick="filterCases('all')" id="btn-all" class="filter-btn px-3 py-1 rounded-lg text-xs font-semibold bg-blue-600 text-white transition-colors">All 6 Appendix Cases</button>
-        <button onclick="filterCases('easy')" id="btn-easy" class="filter-btn px-3 py-1 rounded-lg text-xs font-semibold bg-[var(--card)] border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors">Easy Mode (3 Cases)</button>
-        <button onclick="filterCases('hard')" id="btn-hard" class="filter-btn px-3 py-1 rounded-lg text-xs font-semibold bg-[var(--card)] border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors">Hard Mode (3 Cases)</button>
-      </div>
-      <div class="text-xs text-[var(--muted-foreground)]">
-        Official Benchmark Appendix &bull; Pages 10–14
-      </div>
+    <div class="score">
+      <div class="lab">This re-run</div>
+      <div class="val ok">17 / 17</div>
+      <div class="sub">all six questions fully pass</div>
     </div>
-
-    <!-- Main Cases Container -->
-    <main class="space-y-8">
-
-      <!-- ========================================== -->
-      <!-- CASE 1: Easy Mode — Question 45 -->
-      <!-- ========================================== -->
-      <article class="case-card easy-case rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 space-y-6 shadow-sm">
-        
-        <!-- Header Row -->
-        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-4">
-          <div class="flex items-center gap-2.5">
-            <span class="px-2.5 py-1 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs font-mono font-bold">Easy Mode &bull; Q45</span>
-            <span class="px-2 py-0.5 rounded bg-[var(--background)] border border-[var(--border)] text-[11px] text-[var(--muted-foreground)]">Single-Turn</span>
-            <span class="text-sm font-semibold text-[var(--foreground)]">Article 13(3) Instructions for Use Minimum Content</span>
-          </div>
-          <span class="px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs font-bold flex items-center gap-1.5">
-            <span>✓</span> 6 / 6 Criteria Satisfied (100%)
-          </span>
-        </div>
-
-        <!-- Question -->
-        <div class="space-y-1.5">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Benchmark Question</div>
-          <div class="text-sm font-medium text-[var(--foreground)] bg-[var(--background)] p-4 rounded-xl border border-[var(--border)]">
-            "Under the EU AI Act, what must a provider of a high-risk AI system supply to the deployer in the instructions for use? List the required categories of information."
-          </div>
-        </div>
-
-        <!-- Cross-Reference Audit Comparison: Before vs. After -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-          <!-- Previous Failure -->
-          <div class="p-4 rounded-xl border border-red-500/25 bg-red-500/5 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <span class="font-bold text-red-400 flex items-center gap-1.5">
-                <span>✗</span> August 25 Result (0 / 5 Passed — 0.0%)
-              </span>
-              <span class="text-[10px] text-red-300 font-mono">Page 10</span>
-            </div>
-            <div class="text-[11px] text-[var(--muted-foreground)] italic bg-[var(--background)]/60 p-2.5 rounded-lg border border-red-500/20">
-              "The question asks what a provider of a high-risk AI system must include in the instructions for use. The Act does specify those categories in Article 13, but the materials available here do not permit a citation-supported enumeration of them..."
-            </div>
-            <div class="space-y-1 text-[11px] text-red-300/90 pt-1">
-              <div class="font-semibold text-red-400">Official Judge Failure Critique:</div>
-              <p>• <em>"The candidate answer does not list any required category of information and does not mention provider or authorised representative contact details."</em></p>
-              <p>• <em>"Refers generally to Article 13 but fails to identify intended purpose, risks, human oversight, hardware/maintenance, or logging mechanisms."</em></p>
-            </div>
-          </div>
-
-          <!-- Cross-Reference Remediation Focus -->
-          <div class="p-4 rounded-xl border border-emerald-500/25 bg-emerald-500/5 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <span class="font-bold text-emerald-400 flex items-center gap-1.5">
-                <span>✓</span> Cross-Reference Remediation (Current Audit)
-              </span>
-              <span class="text-[10px] text-emerald-300 font-mono">100% Compliant</span>
-            </div>
-            <div class="text-[11px] text-[var(--muted-foreground)] space-y-1.5 leading-relaxed">
-              <div class="font-semibold text-emerald-400">Statutory Requirement Satisfied:</div>
-              <p>The candidate answer must directly recite the substantive legal catalog mandated by <strong>Article 13(3)</strong> without hedging or meta-commentary, explicitly covering all five statutory categories.</p>
-              <div class="font-semibold text-emerald-400 pt-1">Reference Grain Calibration:</div>
-              <p>Expected reference is <strong>Article 13.3</strong> (subpoint grain). The response must explicitly bind its output to Article 13(3).</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Corrected Answer -->
-        <div class="space-y-1.5">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Corrected Candidate Answer (100% Compliant)</div>
-          <div class="text-xs leading-relaxed p-4 rounded-xl bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] space-y-2.5">
-            <p>
-              Under <strong>Article 13(3)</strong> of Regulation (EU) 2024/1689, a provider of a high-risk AI system must supply instructions for use to the deployer that include the following required categories of information:
-            </p>
-            <ol class="list-decimal list-inside space-y-1.5 pl-1 text-[var(--muted-foreground)]">
-              <li><strong class="text-[var(--foreground)]">Provider and Representative Identity:</strong> The identity and contact details of the provider and, where applicable, of its authorised representative.</li>
-              <li><strong class="text-[var(--foreground)]">Characteristics, Capabilities, and Limitations:</strong> The intended purpose, level of accuracy, robustness, and cybersecurity, any known or foreseeable circumstances of intended use or reasonably foreseeable misuse leading to risks to health, safety, or fundamental rights (Article 9(2)), performance specifications for specific demographic groups, and input data specifications.</li>
-              <li><strong class="text-[var(--foreground)]">Pre-Determined Changes:</strong> Any changes to the system and its performance pre-determined by the provider at the initial conformity assessment.</li>
-              <li><strong class="text-[var(--foreground)]">Human Oversight Measures:</strong> The technical and organizational measures referred to in Article 14 put in place to facilitate output interpretation and operational oversight by deployers.</li>
-              <li><strong class="text-[var(--foreground)]">Computational Resources & Maintenance:</strong> The computational and hardware resources needed, expected system lifetime, and necessary maintenance, care, and software update measures.</li>
-              <li><strong class="text-[var(--foreground)]">Logging Mechanisms:</strong> Where relevant, a description of the mechanisms allowing deployers to properly collect, store, and interpret logs in accordance with Article 12.</li>
-            </ol>
-            <p class="pt-1 text-[11px] text-[var(--muted-foreground)]">
-              This information must be provided in a concise, complete, correct, and clear form that is accessible and comprehensible to deployers.
-            </p>
-          </div>
-        </div>
-
-        <!-- Legal References -->
-        <div class="flex flex-wrap items-center justify-between gap-3 text-xs p-3.5 rounded-xl bg-[var(--background)] border border-[var(--border)]">
-          <div class="flex items-center gap-2">
-            <span class="font-semibold text-[var(--muted-foreground)]">Provided References:</span>
-            <span class="font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">Article 13</span>
-            <span class="font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">Article 9</span>
-            <span class="font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">Article 14.4</span>
-            <span class="font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">Article 12.3</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="font-semibold text-[var(--muted-foreground)]">Expected Reference:</span>
-            <span class="font-mono bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">Article 13.3</span>
-            <span class="text-emerald-400 font-semibold">(Satisfied)</span>
-          </div>
-        </div>
-
-        <!-- Official Judge Adjudication Remarks -->
-        <div class="space-y-2">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Official Judge Adjudication (Re-Evaluation)</div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 1: Provider / Representative Details
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"States provider and authorised representative identity/contact details."</em></p>
-            </div>
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 2: Performance Capabilities & Risks
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"Covers intended purpose, accuracy/robustness/cybersecurity, foreseeable risks, performance for groups, and input data specs."</em></p>
-            </div>
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 3: Pre-Determined Changes
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"Mentions pre-determined changes to system and performance at initial conformity assessment."</em></p>
-            </div>
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 4: Human Oversight Measures (Article 14)
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"References Article 14 human oversight measures including technical measures for interpreting outputs."</em></p>
-            </div>
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 5: Hardware Resources & Expected Lifetime
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"Includes computational/hardware resources, expected lifetime, and maintenance/care measures."</em></p>
-            </div>
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 6: Logging Mechanisms (Article 12)
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"Mentions logging mechanisms under Article 12 where relevant."</em></p>
-            </div>
-          </div>
-        </div>
-
-      </article>
-
-
-      <!-- ========================================== -->
-      <!-- CASE 2: Easy Mode — Question 96 -->
-      <!-- ========================================== -->
-      <article class="case-card easy-case rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 space-y-6 shadow-sm">
-        
-        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-4">
-          <div class="flex items-center gap-2.5">
-            <span class="px-2.5 py-1 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs font-mono font-bold">Easy Mode &bull; Q96</span>
-            <span class="px-2 py-0.5 rounded bg-[var(--background)] border border-[var(--border)] text-[11px] text-[var(--muted-foreground)]">Single-Turn</span>
-            <span class="text-sm font-semibold text-[var(--foreground)]">Annex III High-Risk Areas & Healthcare Classification</span>
-          </div>
-          <span class="px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs font-bold flex items-center gap-1.5">
-            <span>✓</span> 2 / 2 Criteria Satisfied (100%)
-          </span>
-        </div>
-
-        <div class="space-y-1.5">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Benchmark Question</div>
-          <div class="text-sm font-medium text-[var(--foreground)] bg-[var(--background)] p-4 rounded-xl border border-[var(--border)]">
-            "Name the areas of high-risk use cases. Is healthcare decision making one of them?"
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-          <!-- Previous Failure -->
-          <div class="p-4 rounded-xl border border-red-500/25 bg-red-500/5 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <span class="font-bold text-red-400 flex items-center gap-1.5">
-                <span>✗</span> August 25 Result (0 / 2 Passed — 0.0%)
-              </span>
-              <span class="text-[10px] text-red-300 font-mono">Page 11</span>
-            </div>
-            <div class="text-[11px] text-[var(--muted-foreground)] italic bg-[var(--background)]/60 p-2.5 rounded-lg border border-red-500/20">
-              "I cannot answer your question from my Knowledge Graph, which address only obligations under Regulation (EU) 2024/1689 (the AI Act), such as AI literacy duties for providers and deployers (Article 4)..."
-            </div>
-            <div class="space-y-1 text-[11px] text-red-300/90 pt-1">
-              <div class="font-semibold text-red-400">Official Judge Failure Critique:</div>
-              <p>• <em>"The candidate answer does not name any of the high-risk areas listed in the AI Act Annex III. It instead says it cannot answer and discusses unrelated AI Act obligations."</em></p>
-              <p>• <em>"The candidate answer does not address whether healthcare decision making is one of the high-risk areas. The correct evaluation expected here is 'No', but the answer provides no such response."</em></p>
-            </div>
-          </div>
-
-          <!-- Cross-Reference Remediation Focus -->
-          <div class="p-4 rounded-xl border border-emerald-500/25 bg-emerald-500/5 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <span class="font-bold text-emerald-400 flex items-center gap-1.5">
-                <span>✓</span> Cross-Reference Remediation (Current Audit)
-              </span>
-              <span class="text-[10px] text-emerald-300 font-mono">100% Compliant</span>
-            </div>
-            <div class="text-[11px] text-[var(--muted-foreground)] space-y-1.5 leading-relaxed">
-              <div class="font-semibold text-emerald-400">Statutory Requirement Satisfied:</div>
-              <p>Must enumerate all eight areas listed in Annex III, and provide a direct, unambiguous <strong>"No"</strong> regarding healthcare decision-making as a standalone area, while clarifying the MDR Annex I and emergency triage pathways.</p>
-              <div class="font-semibold text-emerald-400 pt-1">Reference Grain Calibration:</div>
-              <p>Expected references are <strong>Annex III</strong> and <strong>Article 6.2</strong>.</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="space-y-1.5">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Corrected Candidate Answer (100% Compliant)</div>
-          <div class="text-xs leading-relaxed p-4 rounded-xl bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] space-y-2.5">
-            <p>
-              The eight areas of high-risk use cases listed in Annex III of the EU AI Act (pursuant to Article 6(2)) are:
-            </p>
-            <ol class="list-decimal list-inside space-y-1 pl-1 text-[var(--muted-foreground)]">
-              <li><strong class="text-[var(--foreground)]">Biometrics</strong> (remote biometric identification, biometric categorisation, and emotion recognition);</li>
-              <li><strong class="text-[var(--foreground)]">Critical infrastructure</strong> (safety components in road traffic and management of water, gas, heating, and electricity);</li>
-              <li><strong class="text-[var(--foreground)]">Education and vocational training</strong> (access, admission, evaluation, and monitoring);</li>
-              <li><strong class="text-[var(--foreground)]">Employment, workers' management, and access to self-employment</strong> (recruitment, task allocation, and performance monitoring);</li>
-              <li><strong class="text-[var(--foreground)]">Access to and enjoyment of essential private services and public services and benefits</strong>;</li>
-              <li><strong class="text-[var(--foreground)]">Law enforcement</strong>;</li>
-              <li><strong class="text-[var(--foreground)]">Migration, asylum, and border control management</strong>;</li>
-              <li><strong class="text-[var(--foreground)]">Administration of justice and democratic processes</strong>.</li>
-            </ol>
-            <p class="pt-1">
-              Is healthcare decision making one of them? <strong class="text-emerald-400">No.</strong> Healthcare decision making as a general category is not one of the eight Annex III areas. Health-related AI is classified as high-risk either through Article 6(1) and Annex I (as a medical device or safety component under Regulation (EU) 2017/745 subject to third-party conformity assessment) or through specific narrow provisions such as Annex III point 5(a) (public authority healthcare eligibility evaluation) and point 5(d) (emergency healthcare patient triage).
-            </p>
-          </div>
-        </div>
-
-        <div class="flex flex-wrap items-center justify-between gap-3 text-xs p-3.5 rounded-xl bg-[var(--background)] border border-[var(--border)]">
-          <div class="flex items-center gap-2">
-            <span class="font-semibold text-[var(--muted-foreground)]">Provided References:</span>
-            <span class="font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">Annex III</span>
-            <span class="font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">Article 6.2</span>
-            <span class="font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">Annex I</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="font-semibold text-[var(--muted-foreground)]">Expected References:</span>
-            <span class="font-mono bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">Annex III</span>
-            <span class="font-mono bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">Article 6.2</span>
-            <span class="text-emerald-400 font-semibold">(100% Precision & Recall)</span>
-          </div>
-        </div>
-
-        <div class="space-y-2">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Official Judge Adjudication (Re-Evaluation)</div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 1: Complete 8-Area Enumeration
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"Lists all eight Annex III areas matching the criterion."</em></p>
-            </div>
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 2: Direct Binary Answer on Healthcare ("No")
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"States healthcare decision making is not a standalone high-risk area, i.e., 'No'."</em></p>
-            </div>
-          </div>
-        </div>
-
-      </article>
-
-
-      <!-- ========================================== -->
-      <!-- CASE 3: Easy Mode — Question 17 -->
-      <!-- ========================================== -->
-      <article class="case-card easy-case rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 space-y-6 shadow-sm">
-        
-        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-4">
-          <div class="flex items-center gap-2.5">
-            <span class="px-2.5 py-1 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs font-mono font-bold">Easy Mode &bull; Q17</span>
-            <span class="px-2 py-0.5 rounded bg-[var(--background)] border border-[var(--border)] text-[11px] text-[var(--muted-foreground)]">Single-Turn</span>
-            <span class="text-sm font-semibold text-[var(--foreground)]">Article 7(1) Delegated Amendments to Annex III</span>
-          </div>
-          <span class="px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs font-bold flex items-center gap-1.5">
-            <span>✓</span> 4 / 4 Criteria Satisfied (100%)
-          </span>
-        </div>
-
-        <div class="space-y-1.5">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Benchmark Question</div>
-          <div class="text-sm font-medium text-[var(--foreground)] bg-[var(--background)] p-4 rounded-xl border border-[var(--border)]">
-            "Can the European Commission amend Annex III of the EU AI Act to add or modify use-cases classified as high-risk AI systems? Under what conditions?"
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-          <!-- Previous Failure -->
-          <div class="p-4 rounded-xl border border-red-500/25 bg-red-500/5 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <span class="font-bold text-amber-400 flex items-center gap-1.5">
-                <span>⚠</span> August 25 Result (2 / 4 Passed — 50.0%)
-              </span>
-              <span class="text-[10px] text-amber-300 font-mono">Pages 11–12</span>
-            </div>
-            <div class="text-[11px] text-[var(--muted-foreground)] italic bg-[var(--background)]/60 p-2.5 rounded-lg border border-red-500/20">
-              "The Commission is empowered to amend Annex III by adding new use cases or modifying existing ones through delegated acts... but the power to amend is conferred by a separate provision (Article 7) that the Act does not settle within the text supplied here..."
-            </div>
-            <div class="space-y-1 text-[11px] text-red-300/90 pt-1">
-              <div class="font-semibold text-red-400">Official Judge Failure Critique:</div>
-              <p>• <em>"Refers generally to conditions in Article 7(1) but does not state the specific condition that the AI system must be intended to be used in one of the areas listed in Annex III."</em></p>
-              <p>• <em>"Does not state the specific threshold condition that the AI system must pose a risk of harm equal to or greater than high-risk AI systems already listed in Annex III."</em></p>
-              <p>• <em>"Does not explain that both conditions must be met cumulatively ('and' clause)."</em></p>
-            </div>
-          </div>
-
-          <!-- Cross-Reference Remediation Focus -->
-          <div class="p-4 rounded-xl border border-emerald-500/25 bg-emerald-500/5 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <span class="font-bold text-emerald-400 flex items-center gap-1.5">
-                <span>✓</span> Cross-Reference Remediation (Current Audit)
-              </span>
-              <span class="text-[10px] text-emerald-300 font-mono">100% Compliant</span>
-            </div>
-            <div class="text-[11px] text-[var(--muted-foreground)] space-y-1.5 leading-relaxed">
-              <div class="font-semibold text-emerald-400">Statutory Requirement Satisfied:</div>
-              <p>Must recite both substantive conditions set forth in Article 7(1) and explicitly state that they apply cumulatively (both must be fulfilled).</p>
-              <div class="font-semibold text-emerald-400 pt-1">Reference Grain Calibration:</div>
-              <p>Expected reference is <strong>Article 7.1</strong>.</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="space-y-1.5">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Corrected Candidate Answer (100% Compliant)</div>
-          <div class="text-xs leading-relaxed p-4 rounded-xl bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] space-y-2.5">
-            <p>
-              <strong class="text-emerald-400">Yes.</strong> Under <strong>Article 7(1)</strong> of the EU AI Act, the European Commission is empowered to adopt delegated acts in accordance with Article 97 to amend Annex III by adding or modifying high-risk AI use-cases.
-            </p>
-            <p>
-              The Commission may do so only if <strong class="text-[var(--foreground)]">both of the following two conditions are fulfilled cumulatively ("and" requirement):</strong>
-            </p>
-            <ol class="list-decimal list-inside space-y-1.5 pl-1 text-[var(--muted-foreground)]">
-              <li><strong class="text-[var(--foreground)]">Existing Area Scope:</strong> The AI systems must be intended to be used in any of the areas already listed in points 1 to 8 of Annex III (the Commission cannot create a new area, only add or modify use-cases within existing areas); <strong class="text-[var(--foreground)]">AND</strong></li>
-              <li><strong class="text-[var(--foreground)]">Severity Threshold:</strong> The AI systems must pose a risk of harm to health and safety, or an adverse impact on fundamental rights, that is equivalent to or greater than the risk of harm posed by the high-risk AI systems already referred to in Annex III.</li>
-            </ol>
-            <p class="pt-1 text-[11px] text-[var(--muted-foreground)]">
-              When assessing that second condition, the Commission must evaluate the statutory criteria in Article 7(2) (intended purpose, extent of use, data processed, autonomy, harm severity/reversibility). Procedurally, Article 97 confers this delegated power for five years subject to scrutiny and objection by Parliament or Council.
-            </p>
-          </div>
-        </div>
-
-        <div class="flex flex-wrap items-center justify-between gap-3 text-xs p-3.5 rounded-xl bg-[var(--background)] border border-[var(--border)]">
-          <div class="flex items-center gap-2">
-            <span class="font-semibold text-[var(--muted-foreground)]">Provided References:</span>
-            <span class="font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">Article 7.1</span>
-            <span class="font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">Article 97</span>
-            <span class="font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">Annex III</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="font-semibold text-[var(--muted-foreground)]">Expected Reference:</span>
-            <span class="font-mono bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">Article 7.1</span>
-            <span class="text-emerald-400 font-semibold">(Exact match)</span>
-          </div>
-        </div>
-
-        <div class="space-y-2">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Official Judge Adjudication (Re-Evaluation)</div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 1: Binary Affirmation ("Yes")
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"Answer states 'Yes'"</em></p>
-            </div>
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 2: Scope Condition (Existing Annex III Areas)
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"States AI must be intended for use in an area already listed in Annex III"</em></p>
-            </div>
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 3: Severity Threshold Condition
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"States risk must be equivalent to or greater than risk posed by AI systems already in Annex III"</em></p>
-            </div>
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 4: Cumulative Conjunctive Requirement ("and" clause)
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"Explicitly states both conditions must be fulfilled cumulatively"</em></p>
-            </div>
-          </div>
-        </div>
-
-      </article>
-
-
-      <!-- ========================================== -->
-      <!-- CASE 4: Hard Mode — Question 74 -->
-      <!-- ========================================== -->
-      <article class="case-card hard-case rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 space-y-6 shadow-sm">
-        
-        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-4">
-          <div class="flex items-center gap-2.5">
-            <span class="px-2.5 py-1 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-xs font-mono font-bold">Hard Mode &bull; Q74</span>
-            <span class="px-2 py-0.5 rounded bg-[var(--background)] border border-[var(--border)] text-[11px] text-[var(--muted-foreground)]">Adversarial Pushback</span>
-            <span class="text-sm font-semibold text-[var(--foreground)]">Article 50(4) Artistic & Fictional Exemption</span>
-          </div>
-          <span class="px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs font-bold flex items-center gap-1.5">
-            <span>✓</span> 3 / 3 Criteria Satisfied (100%)
-          </span>
-        </div>
-
-        <div class="space-y-1.5">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Benchmark Question</div>
-          <div class="text-sm font-medium text-[var(--foreground)] bg-[var(--background)] p-4 rounded-xl border border-[var(--border)]">
-            "I generated audio with AI for my artistic work (sole purpose). Do I need to provide some marking of its artificial nature? I feel that would compromise the enjoyment of the work."
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-          <!-- Previous Failure -->
-          <div class="p-4 rounded-xl border border-red-500/25 bg-red-500/5 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <span class="font-bold text-red-400 flex items-center gap-1.5">
-                <span>✗</span> August 25 Result (0 / 2 Passed — 0.0%)
-              </span>
-              <span class="text-[10px] text-red-300 font-mono">Pages 12–13</span>
-            </div>
-            <div class="text-[11px] text-[var(--muted-foreground)] italic bg-[var(--background)]/60 p-2.5 rounded-lg border border-red-500/20">
-              "Yes. The provider of an AI system generating synthetic audio must ensure the outputs are marked in a machine-readable format... Artistic purpose is not a carve-out from that marking duty..."
-            </div>
-            <div class="space-y-1 text-[11px] text-red-300/90 pt-1">
-              <div class="font-semibold text-red-400">Official Judge Failure Critique:</div>
-              <p>• <em>"The candidate answer says 'Yes' and states that the provider must ensure synthetic audio outputs are marked, explicitly saying artistic purpose is not a carve-out. This does not reflect the required point that there is no need for marking in a way that would compromise enjoyment."</em></p>
-              <p>• <em>"Does not unambiguously answer the user's practical question as 'no, not that kind of marking, but yes, some other disclosure is still required.' Instead, it foregrounds a 'Yes' to marking and frames enjoyment-safe disclosure only as a secondary distinction."</em></p>
-            </div>
-          </div>
-
-          <!-- Cross-Reference Remediation Focus -->
-          <div class="p-4 rounded-xl border border-emerald-500/25 bg-emerald-500/5 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <span class="font-bold text-emerald-400 flex items-center gap-1.5">
-                <span>✓</span> Cross-Reference Remediation (Current Audit)
-              </span>
-              <span class="text-[10px] text-emerald-300 font-mono">100% Compliant</span>
-            </div>
-            <div class="text-[11px] text-[var(--muted-foreground)] space-y-1.5 leading-relaxed">
-              <div class="font-semibold text-emerald-400">Statutory Requirement Satisfied:</div>
-              <p>Must lead with an unambiguous distinction answering the user's practical question: <strong>No intrusive marking that hampers enjoyment of the work</strong>, but <strong>yes, an appropriate disclosure of its artificial existence</strong> (such as a programme note, credit, or metadata) is still required under Article 50(4).</p>
-              <div class="font-semibold text-emerald-400 pt-1">Reference Grain Calibration:</div>
-              <p>Expected reference is <strong>Article 50.4</strong>.</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="space-y-1.5">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Corrected Candidate Answer (100% Compliant)</div>
-          <div class="text-xs leading-relaxed p-4 rounded-xl bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] space-y-2.5">
-            <p>
-              <strong class="text-emerald-400">No, you do not need to provide an intrusive on-work marking that would compromise or hamper the display or enjoyment of your artistic work; however, yes, an appropriate disclosure of its artificial nature remains legally required.</strong>
-            </p>
-            <p>
-              Under <strong>Article 50(4)</strong> of the EU AI Act, deployers of an AI system that generates or manipulates audio constituting a deep fake are obligated to disclose that the content has been artificially generated. However, Article 50(4) explicitly provides an artistic carve-out:
-            </p>
-            <ul class="list-disc list-inside space-y-1 pl-1 text-[var(--muted-foreground)]">
-              <li>Where the content forms part of an evidently artistic, creative, satirical, fictional, or analogous work, the disclosure obligation is strictly limited to disclosing the existence of such generated content <strong class="text-[var(--foreground)]">in an appropriate manner that does not hamper the display or enjoyment of the work</strong>.</li>
-              <li>Consequently, audible audio watermarks, intrusive verbal beeps, or disruptive voiceovers that compromise listener enjoyment are <strong class="text-[var(--foreground)]">not required</strong>. Disclosing the artificial nature through an artist credit, accompanying programme note, or digital track metadata fully satisfies the statutory requirement.</li>
-            </ul>
-            <p class="pt-1 text-[11px] text-[var(--muted-foreground)]">
-              (Note: The separate provider duty under Article 50(2) to ensure synthetic audio outputs are detectable applies at the technical code/metadata level and operates invisibly without hampering human artistic enjoyment).
-            </p>
-          </div>
-        </div>
-
-        <div class="flex flex-wrap items-center justify-between gap-3 text-xs p-3.5 rounded-xl bg-[var(--background)] border border-[var(--border)]">
-          <div class="flex items-center gap-2">
-            <span class="font-semibold text-[var(--muted-foreground)]">Provided References:</span>
-            <span class="font-mono bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/20">Article 50.4</span>
-            <span class="font-mono bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/20">Article 50.2</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="font-semibold text-[var(--muted-foreground)]">Expected Reference:</span>
-            <span class="font-mono bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">Article 50.4</span>
-            <span class="text-emerald-400 font-semibold">(Exact match)</span>
-          </div>
-        </div>
-
-        <div class="space-y-2">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Official Judge Adjudication (Re-Evaluation)</div>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 1: Disclosure Requirement
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"Answer explicitly states 'Yes, some marking is required'."</em></p>
-            </div>
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 2: Enjoyment Safeguard Carve-Out
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"States disclosure is limited to a manner that does not hamper display or enjoyment of the work."</em></p>
-            </div>
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 3: Unobtrusive Metadata / Notice
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"States obligation is disclosure of existence of generated content in an appropriate manner."</em></p>
-            </div>
-          </div>
-        </div>
-
-      </article>
-
-
-      <!-- ========================================== -->
-      <!-- CASE 5: Hard Mode — Question 95 -->
-      <!-- ========================================== -->
-      <article class="case-card hard-case rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 space-y-6 shadow-sm">
-        
-        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-4">
-          <div class="flex items-center gap-2.5">
-            <span class="px-2.5 py-1 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-xs font-mono font-bold">Hard Mode &bull; Q95</span>
-            <span class="px-2 py-0.5 rounded bg-[var(--background)] border border-[var(--border)] text-[11px] text-[var(--muted-foreground)]">Adversarial Pushback</span>
-            <span class="text-sm font-semibold text-[var(--foreground)]">Article 6(2) Architecture: "Area" vs. "Use Case"</span>
-          </div>
-          <span class="px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs font-bold flex items-center gap-1.5">
-            <span>✓</span> 3 / 3 Criteria Satisfied (100%)
-          </span>
-        </div>
-
-        <div class="space-y-1.5">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Benchmark Question</div>
-          <div class="text-sm font-medium text-[var(--foreground)] bg-[var(--background)] p-4 rounded-xl border border-[var(--border)]">
-            "What is an 'area' and what is a 'use case' for high-risk as per Article 6(2)? How many areas exist?"
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-          <!-- Previous Failure -->
-          <div class="p-4 rounded-xl border border-red-500/25 bg-red-500/5 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <span class="font-bold text-red-400 flex items-center gap-1.5">
-                <span>✗</span> August 25 Result (0 / 2 Passed — 0.0%)
-              </span>
-              <span class="text-[10px] text-red-300 font-mono">Page 13</span>
-            </div>
-            <div class="text-[11px] text-[var(--muted-foreground)] italic bg-[var(--background)]/60 p-2.5 rounded-lg border border-red-500/20">
-              "...Annex III route (Article 6(2)): the system falls within one of the eight Annex III use cases. Article 6(3) derogation: an Annex III system is NOT high-risk where it poses no significant risk of harm..."
-            </div>
-            <div class="space-y-1 text-[11px] text-red-300/90 pt-1">
-              <div class="font-semibold text-red-400">Official Judge Failure Critique:</div>
-              <p>• <em>"Mentions the 'eight Annex III use cases' but does not explain that an 'area' is a broader Annex III category that contains one or more specific use cases. It therefore does not correctly distinguish area vs use case."</em></p>
-              <p>• <em>"States that the system falls within 'one of the eight Annex III use cases.' This is incorrect for the asked distinction: Annex III has eight areas/categories, not eight use cases."</em></p>
-            </div>
-          </div>
-
-          <!-- Cross-Reference Remediation Focus -->
-          <div class="p-4 rounded-xl border border-emerald-500/25 bg-emerald-500/5 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <span class="font-bold text-emerald-400 flex items-center gap-1.5">
-                <span>✓</span> Cross-Reference Remediation (Current Audit)
-              </span>
-              <span class="text-[10px] text-emerald-300 font-mono">100% Compliant</span>
-            </div>
-            <div class="text-[11px] text-[var(--muted-foreground)] space-y-1.5 leading-relaxed">
-              <div class="font-semibold text-emerald-400">Statutory Requirement Satisfied:</div>
-              <p>Must precisely define that an <strong>"area"</strong> is a broad numbered heading in Annex III, whereas a <strong>"use case"</strong> is a specific lettered application set out under that heading. Must affirm that <strong>exactly 8 areas exist</strong> and enumerate them.</p>
-              <div class="font-semibold text-emerald-400 pt-1">Reference Grain Calibration:</div>
-              <p>Expected references are <strong>Article 6.2</strong> and <strong>Annex III</strong>.</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="space-y-1.5">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Corrected Candidate Answer (100% Compliant)</div>
-          <div class="text-xs leading-relaxed p-4 rounded-xl bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] space-y-2.5">
-            <p>
-              Under <strong>Article 6(2)</strong> of the EU AI Act, which classifies AI systems referred to in Annex III as high-risk, the structural distinction between an "area" and a "use case" is:
-            </p>
-            <ul class="list-disc list-inside space-y-1.5 pl-1 text-[var(--muted-foreground)]">
-              <li><strong class="text-[var(--foreground)]">An "Area" is a broad overarching category or policy domain</strong> set out as a numbered section heading in Annex III (points 1 to 8).</li>
-              <li><strong class="text-[var(--foreground)]">A "Use Case" is a specific high-risk AI application listed within an area</strong> (set out as lettered entries beneath the area heading, such as points (a), (b), or (c)). A system is high-risk under Article 6(2) only if it falls within one of these specific lettered use cases.</li>
-            </ul>
-            <p>
-              How many areas exist? <strong class="text-emerald-400">Exactly eight (8) areas exist in Annex III.</strong> They are: (1) Biometrics, (2) Critical infrastructure, (3) Education and vocational training, (4) Employment and workers' management, (5) Access to essential private and public services, (6) Law enforcement, (7) Migration, asylum and border control, and (8) Administration of justice and democratic processes.
-            </p>
-          </div>
-        </div>
-
-        <div class="flex flex-wrap items-center justify-between gap-3 text-xs p-3.5 rounded-xl bg-[var(--background)] border border-[var(--border)]">
-          <div class="flex items-center gap-2">
-            <span class="font-semibold text-[var(--muted-foreground)]">Provided References:</span>
-            <span class="font-mono bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/20">Article 6.2</span>
-            <span class="font-mono bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/20">Article 6.3</span>
-            <span class="font-mono bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/20">Annex III</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="font-semibold text-[var(--muted-foreground)]">Expected References:</span>
-            <span class="font-mono bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">Article 6.2</span>
-            <span class="font-mono bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">Annex III</span>
-            <span class="text-emerald-400 font-semibold">(Exact match)</span>
-          </div>
-        </div>
-
-        <div class="space-y-2">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Official Judge Adjudication (Re-Evaluation)</div>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 1: Definition of "Area"
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"States area is a numbered heading of Annex III (policy domain)."</em></p>
-            </div>
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 2: Definition of "Use Case"
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"States use case is a lettered entry beneath the heading."</em></p>
-            </div>
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 3: Total Count (8 Areas)
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"States eight areas exist and lists them."</em></p>
-            </div>
-          </div>
-        </div>
-
-      </article>
-
-
-      <!-- ========================================== -->
-      <!-- CASE 6: Hard Mode — Question 104 -->
-      <!-- ========================================== -->
-      <article class="case-card hard-case rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 space-y-6 shadow-sm">
-        
-        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-4">
-          <div class="flex items-center gap-2.5">
-            <span class="px-2.5 py-1 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-xs font-mono font-bold">Hard Mode &bull; Q104</span>
-            <span class="px-2 py-0.5 rounded bg-[var(--background)] border border-[var(--border)] text-[11px] text-[var(--muted-foreground)]">Adversarial Pushback</span>
-            <span class="text-sm font-semibold text-[var(--foreground)]">Annex X Large-Scale IT Systems</span>
-          </div>
-          <span class="px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs font-bold flex items-center gap-1.5">
-            <span>✓</span> 2 / 2 Criteria Satisfied (100%)
-          </span>
-        </div>
-
-        <div class="space-y-1.5">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Benchmark Question</div>
-          <div class="text-sm font-medium text-[var(--foreground)] bg-[var(--background)] p-4 rounded-xl border border-[var(--border)]">
-            "What is Annex X about? What is it used for?"
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-          <!-- Previous Failure -->
-          <div class="p-4 rounded-xl border border-red-500/25 bg-red-500/5 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <span class="font-bold text-red-400 flex items-center gap-1.5">
-                <span>✗</span> August 25 Result (0 / 2 Passed — 0.0%)
-              </span>
-              <span class="text-[10px] text-red-300 font-mono">Pages 13–14</span>
-            </div>
-            <div class="text-[11px] text-[var(--muted-foreground)] italic bg-[var(--background)]/60 p-2.5 rounded-lg border border-red-500/20">
-              "Annex X sets the information that providers ... and public-authority deployers must enter in the EU database when registering high-risk AI systems referred to in Article 49... [discusses GPAI 10^25 FLOPs compute]..."
-            </div>
-            <div class="space-y-1 text-[11px] text-red-300/90 pt-1">
-              <div class="font-semibold text-red-400">Official Judge Failure Critique:</div>
-              <p>• <em>"The candidate answer describes Annex X as setting information for registration of high-risk AI systems in the EU database under Article 49. That is not what Annex X is about. It does not mention the list of Union legal acts for large-scale IT systems."</em></p>
-              <p>• <em>"Says Annex X is used for EU database registration fields and then discusses GPAI obligations. It does not explain that Annex X is used to identify systems subject to particular transition/compliance timing rules."</em></p>
-            </div>
-          </div>
-
-          <!-- Cross-Reference Remediation Focus -->
-          <div class="p-4 rounded-xl border border-emerald-500/25 bg-emerald-500/5 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <span class="font-bold text-emerald-400 flex items-center gap-1.5">
-                <span>✓</span> Cross-Reference Remediation (Current Audit)
-              </span>
-              <span class="text-[10px] text-emerald-300 font-mono">100% Compliant</span>
-            </div>
-            <div class="text-[11px] text-[var(--muted-foreground)] space-y-1.5 leading-relaxed">
-              <div class="font-semibold text-emerald-400">Statutory Requirement Satisfied:</div>
-              <p>Must correctly state that Annex X lists Union acts on large-scale IT systems in Freedom, Security and Justice (SIS, VIS, Eurodac, EES, ETIAS, ECRIS-TCN, and Interoperability), and that its operative function is fixing the 31 December 2030 transitional deadline under Article 111(1).</p>
-              <div class="font-semibold text-emerald-400 pt-1">Reference Grain Calibration:</div>
-              <p>Expected references are <strong>Article 111.1</strong> and <strong>Annex X</strong>.</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="space-y-1.5">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Corrected Candidate Answer (100% Compliant)</div>
-          <div class="text-xs leading-relaxed p-4 rounded-xl bg-[var(--background)] border border-[var(--border)] text-[var(--foreground)] space-y-2.5">
-            <p>
-              <strong class="text-emerald-400">1. What Annex X is about:</strong> Annex X imposes no obligations of its own. It is an exhaustive statutory list of Union legislative acts on large-scale IT systems in the area of Freedom, Security and Justice. It names seven Union instruments:
-            </p>
-            <ul class="list-disc list-inside space-y-1 pl-1 text-[var(--muted-foreground)]">
-              <li>The Schengen Information System (SIS);</li>
-              <li>The Visa Information System (VIS);</li>
-              <li>Eurodac;</li>
-              <li>The Entry/Exit System (EES);</li>
-              <li>The European Travel Information and Authorisation System (ETIAS);</li>
-              <li>The European Criminal Records Information System for third-country nationals (ECRIS-TCN);</li>
-              <li>The two Interoperability Regulations (Regulations (EU) 2019/817 and (EU) 2019/818).</li>
-            </ul>
-            <p>
-              <strong class="text-emerald-400">2. What Annex X is used for:</strong> Annex X is used in conjunction with <strong>Article 111(1)</strong> to establish specific transitional and compliance timelines. Under Article 111(1), AI systems that are components of the large-scale IT systems established by the acts listed in Annex X placed on the market or put into service before 2 August 2027 must be brought into compliance with the EU AI Act only by <strong class="text-emerald-400">31 December 2030</strong> (without prejudice to Article 5 prohibited practices).
-            </p>
-          </div>
-        </div>
-
-        <div class="flex flex-wrap items-center justify-between gap-3 text-xs p-3.5 rounded-xl bg-[var(--background)] border border-[var(--border)]">
-          <div class="flex items-center gap-2">
-            <span class="font-semibold text-[var(--muted-foreground)]">Provided References:</span>
-            <span class="font-mono bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/20">Annex X</span>
-            <span class="font-mono bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/20">Article 111.1</span>
-            <span class="font-mono bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/20">Article 5</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="font-semibold text-[var(--muted-foreground)]">Expected References:</span>
-            <span class="font-mono bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">Article 111.1</span>
-            <span class="font-mono bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">Annex X</span>
-            <span class="text-emerald-400 font-semibold">(Exact match)</span>
-          </div>
-        </div>
-
-        <div class="space-y-2">
-          <div class="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Official Judge Adjudication (Re-Evaluation)</div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 1: Legislative Subject Matter
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"States Annex X lists Union acts on large-scale IT systems in Freedom, Security and Justice with examples like SIS, VIS, Eurodac, EES, ETIAS, ECRIS-TCN, interoperability regs."</em></p>
-            </div>
-            <div class="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-              <div class="flex items-center gap-1.5 font-semibold text-emerald-400">
-                <span>✓</span> Criterion 2: Transitional Timeline Function
-              </div>
-              <p class="text-[11px] text-[var(--muted-foreground)]"><em>"Explains Annex X works with Article 111(1) to set the 31 December 2030 compliance deadline for AI systems that are components of these large-scale IT systems."</em></p>
-            </div>
-          </div>
-        </div>
-
-      </article>
-
-    </main>
-
-    <!-- Footer -->
-    <footer class="pt-6 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)] flex flex-col md:flex-row items-center justify-between gap-3">
-      <div>Regulation (EU) 2024/1689 &bull; Official Benchmark Evaluation Audit</div>
-      <div class="font-semibold text-emerald-400">All 6 Appendix Failure Cases Remediated &bull; 20 / 20 Criteria Satisfied (100%)</div>
-    </footer>
-
+    <div class="score">
+      <div class="lab">Conciseness</div>
+      <div class="val">unchanged</div>
+      <div class="sub">answers still ~2× reference length</div>
+    </div>
   </div>
+</header>
 
-  <script>
-    function filterCases(mode) {
-      document.querySelectorAll('.filter-btn').forEach(b => {
-        b.classList.remove('bg-blue-600', 'text-white');
-        b.classList.add('bg-[var(--card)]', 'text-[var(--muted-foreground)]');
-      });
-      document.getElementById('btn-' + mode).classList.add('bg-blue-600', 'text-white');
-      document.getElementById('btn-' + mode).classList.remove('bg-[var(--card)]', 'text-[var(--muted-foreground)]');
+<div class="callout">
+  <h3>Read this before quoting any number</h3>
+  <p style="margin-top:0">
+    This is a <strong>re-run under our own instrumentation</strong>, not a re-grade by the evaluator.
+    Four things limit what it proves:
+  </p>
+  <ul>
+    <li><strong>One judge run per question.</strong> The report judges correctness three times at
+      temperature 0.1 and reports min–max spread — but each appendix block is headed
+      <em>"Representative correctness judgement (run 1)"</em>, so the verdicts reproduced here are
+      themselves single-run. On that specific point the two are comparable.</li>
+    <li><strong>The judge is <code>claude-sonnet-5</code></strong>, ours, not the evaluator's. The
+      criteria are the evaluator's own printed text, but the verdicts are not theirs.</li>
+    <li><strong>The criteria were transcribed by us</strong> from the PDF, verbatim including the
+      report's own typography and typos (<code>maintaince</code>, <code>Both condition must apply</code>,
+      <code>such content exist</code>, <code>Area contain use cases</code>). The report abbreviates
+      one itself — Q96 criterion 1 literally opens <code>(Shortened:)</code>.</li>
+    <li><strong>Answers vary run to run.</strong> Measured directly: on Q17 an earlier run of the
+      same code shipped <code>Article 7.1</code> and this one shipped <code>Article 7</code>. The
+      correctness verdicts were stable across both runs; the reference <em>grain</em> was not.</li>
+  </ul>
+</div>
 
-      const easyCards = document.querySelectorAll('.easy-case');
-      const hardCards = document.querySelectorAll('.hard-case');
+<div class="callout accent">
+  <h3>What did not improve</h3>
+  <p style="margin-top:0">
+    Correctness is fixed on these six. <strong>Conciseness is not</strong>, and on this subset it is
+    slightly worse than the report's figures. Presenting the 17/17 without this would be misleading.
+  </p>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Axis (these 6 rows)</th><th class="num">This re-run</th><th class="num">Report, easy</th><th class="num">Report, hard</th></tr></thead>
+    <tbody>
+      <tr><td>Answer conciseness</td><td class="num">50.8</td><td class="num">51.9</td><td class="num">45.2</td></tr>
+      <tr><td>Reference conciseness</td><td class="num">45.8</td><td class="num">50.4</td><td class="num">49.8</td></tr>
+      <tr><td>Mean answer length</td><td class="num">1,314 ch</td><td class="num" colspan="2">reference answers ≈ 650 ch</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="margin-bottom:0">
+    <strong>⚠ These two rows are our reconstruction, not the report's arithmetic.</strong> The report
+    defines both axes only qualitatively — "Excess references relative to expected references" and
+    "Inverted measure of answer verbosity relative to the reference answers" — and prints
+    <em>no formula</em> and <em>no reference answers</em> anywhere. We model reference conciseness as
+    <code>min(1, expected ÷ provided)</code> and answer conciseness against a ~650-character mean
+    reference length measured from our own corpus. The comparison columns are therefore
+    <em>indicative</em>. What is not in doubt from the raw counts: these rows cite 2–4 references
+    where the key expects 1–2, and run about twice the reference length.
+  </p>
+</div>
 
-      if (mode === 'all') {
-        easyCards.forEach(c => c.style.display = 'block');
-        hardCards.forEach(c => c.style.display = 'block');
-      } else if (mode === 'easy') {
-        easyCards.forEach(c => c.style.display = 'block');
-        hardCards.forEach(c => c.style.display = 'none');
-      } else if (mode === 'hard') {
-        easyCards.forEach(c => c.style.display = 'none');
-        hardCards.forEach(c => c.style.display = 'block');
-      }
-    }
-  </script>
+<h2>Per-question results</h2>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>Q</th><th>Mode</th><th>Topic</th><th class="num">Report</th><th class="num">Now</th><th>Expected refs</th><th class="num">Shipped</th></tr></thead>
+  <tbody>
+    <tr><td>45</td><td>Easy</td><td>Instructions-for-use contents</td><td class="num">0/5</td><td class="num">5/5</td><td class="refs">Article 13.3</td><td class="num">4</td></tr>
+    <tr><td>96</td><td>Easy</td><td>Annex III areas; healthcare</td><td class="num">0/2</td><td class="num">2/2</td><td class="refs">Annex III</td><td class="num">3</td></tr>
+    <tr><td>17</td><td>Easy</td><td>Amending Annex III</td><td class="num">1/4</td><td class="num">4/4</td><td class="refs">Article 7.1</td><td class="num">3</td></tr>
+    <tr><td>74</td><td>Hard</td><td>Artistic audio marking</td><td class="num">0/2</td><td class="num">2/2</td><td class="refs">Article 50.4</td><td class="num">2</td></tr>
+    <tr><td>95</td><td>Hard</td><td>Area vs use case</td><td class="num">0/2</td><td class="num">2/2</td><td class="refs">Article 6.2; Annex III</td><td class="num">3</td></tr>
+    <tr><td>104</td><td>Hard</td><td>Purpose of Annex X</td><td class="num">0/2</td><td class="num">2/2</td><td class="refs">Article 111.1; Annex X</td><td class="num">3</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="sub" style="margin-top:.6rem">
+  The three hard-mode rows were replayed through the evaluator's byte-exact pushback template, since
+  the appendix grades the post-pushback answer.
+</p>
+
+<h2>Case detail</h2>
+
+<!-- Q45 -->
+<article class="case">
+  <div class="case-head">
+    <div><span class="tag">Easy · Q45</span> <h3 style="display:inline">Instructions for use — Article 13(3)</h3></div>
+    <span class="pill ok">0/5 → 5/5</span>
+  </div>
+  <p class="q">"Under the EU AI Act, what must a provider of a high-risk AI system supply to the deployer in the instructions for use? List the required categories of information."</p>
+  <div class="cols">
+    <div class="panel before">
+      <div class="hd">Report, August 25 — 0/5</div>
+      <p style="margin-top:0"><em>"The Act does specify those categories in Article 13, but the materials available here do not permit a citation-supported enumeration of them."</em></p>
+      <div class="crit f">Provider / authorised representative contact details<span class="remark">"does not list any required category of information"</span></div>
+      <div class="crit f">Intended purpose and risks<span class="remark">"refers generally to Article 13 … but does not identify intended purpose or risks"</span></div>
+      <div class="crit f">Human oversight measures<span class="remark">"does not mention human oversight measures"</span></div>
+      <div class="crit f">Computational resources, lifetime, maintenance<span class="remark">"does not mention computational resources, hardware requirements, expected lifetime, or maintenance measures"</span></div>
+      <div class="crit f">Logging mechanisms<span class="remark">"does not mention information about logging mechanisms"</span></div>
+      <div class="meta"><span>Provided: Article 6, Article 13</span><span>Expected: Article 13.3</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">This re-run — 5/5</div>
+      <div class="crit p">Provider / authorised representative contact details</div>
+      <div class="crit p">Intended purpose and risks</div>
+      <div class="crit p">Human oversight measures</div>
+      <div class="crit p">Computational resources, lifetime, maintenance</div>
+      <div class="crit p">Logging mechanisms</div>
+      <p style="margin-bottom:0">The refusal is gone. The answer enumerates all five categories directly.</p>
+    </div>
+  </div>
+  <div class="answer">Article 13 requires the provider to supply concise, complete, correct and clear instructions for use in an appropriate digital or other format, so that deployers can interpret the system's output and use it appropriately. The instructions must state the identity and contact details of the provider and its authorised representative, the characteristics, capabilities and limitations of performance including the intended purpose, the levels of accuracy, robustness and cybersecurity against which the system was tested (the metrics required under Article 15), any known or foreseeable circumstance that may lead to risks to health, safety or fundamental rights, the technical capabilities to provide information relevant to explaining the output, performance as regards specific persons or groups on which the system is intended to be used, specifications for the input data, information enabling deployers to interpret the output and use it appropriately, and any predetermined changes to the system and its performance. They must also describe the human oversight measures under Article 14, including the technical measures put in place to facilitate interpretation of the output by deployers, and the computational and hardware resources needed, the expected lifetime of the system, and the maintenance and care measures, including software updates, needed to ensure its proper functioning. Where applicable, the instructions must describe the mechanisms allowing deployers to properly collect, store and interpret the logs generated automatically under Article 12.</div>
+  <div class="meta"><span>1,569 chars</span><span class="refs">Article 13.3, Article 15.5, Article 14.4, Article 12.3</span><span>expected grain hit</span><span>ref conciseness 25</span></div>
+</article>
+
+<!-- Q96 -->
+<article class="case">
+  <div class="case-head">
+    <div><span class="tag">Easy · Q96</span> <h3 style="display:inline">Annex III areas; healthcare</h3></div>
+    <span class="pill ok">0/2 → 2/2</span>
+  </div>
+  <p class="q">"Name the areas of high-risk use cases. Is healthcare decision making one of them?"</p>
+  <div class="cols">
+    <div class="panel before">
+      <div class="hd">Report, August 25 — 0/2</div>
+      <p style="margin-top:0"><em>"I cannot answer your question from my Knowledge Graph, which address only obligations under Regulation (EU) 2024/1689 …"</em></p>
+      <div class="crit f">Names the eight areas<span class="remark">"does not name any of the high-risk areas listed in the AI Act Annex III. It instead says it cannot answer and discusses unrelated AI Act obligations."</span></div>
+      <div class="crit f">Answers "No"<span class="remark">"does not address whether healthcare decision making is one of the high-risk areas"</span></div>
+      <div class="meta"><span>Provided: None</span><span>Expected: Annex III</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">This re-run — 2/2</div>
+      <div class="crit p">Names all eight Annex III areas</div>
+      <div class="crit p">Answers "No" on healthcare decision making</div>
+      <p style="margin-bottom:0">The out-of-scope refusal is gone, and the answer adds the two routes by which health-related systems <em>can</em> be high-risk.</p>
+    </div>
+  </div>
+  <div class="answer">Annex III lists eight high-risk areas: biometrics, critical infrastructure, education and vocational training, employment and worker management, access to and enjoyment of essential private services and essential public services and benefits, law enforcement, migration, asylum and border control management, and administration of justice and democratic processes. Healthcare decision making is not itself one of those areas, and only a listed lettered use case makes a system high-risk under the Annex III route in Article 6(2). Certain health-related uses do fall under the essential services area, namely evaluation by or on behalf of public authorities of eligibility for essential public assistance benefits and services including healthcare services, risk assessment and pricing in life and health insurance, and emergency healthcare patient triage systems together with the dispatching of emergency first response services. Separately, a clinical AI system can be high-risk through the Annex I route in Article 6(1) where it is a safety component of, or is itself, a medical device or in vitro diagnostic medical device required to undergo third-party conformity assessment under that sectoral legislation.</div>
+  <div class="meta"><span>1,213 chars</span><span class="refs">Annex III, Article 6, Annex I</span><span>expected grain hit</span><span>ref conciseness 33</span></div>
+</article>
+
+<!-- Q17 -->
+<article class="case">
+  <div class="case-head">
+    <div><span class="tag">Easy · Q17</span> <h3 style="display:inline">Commission power to amend Annex III</h3></div>
+    <span class="pill ok">1/4 → 4/4</span>
+  </div>
+  <p class="q">"Can the European Commission amend Annex III of the EU AI Act to add or modify use-cases classified as high-risk AI systems? Under what conditions?"</p>
+  <div class="cols">
+    <div class="panel before">
+      <div class="hd">Report, August 25 — 1/4</div>
+      <div class="crit p">Yes — the Commission is empowered<span class="remark">the only criterion the report scored as passed, across all six cases</span></div>
+      <div class="crit f">Condition: intended for use in a listed Annex III area<span class="remark">"refers generally to conditions in Article 7(1) but does not state the specific condition"</span></div>
+      <div class="crit f">Condition: risk equal to or greater than those already listed<span class="remark">"does not state the specific threshold condition … It only mentions unspecified conditions in Article 7(1)."</span></div>
+      <div class="crit f">Both conditions cumulative<span class="remark">"does not explain that both conditions must be met cumulatively"</span></div>
+      <div class="meta"><span>Provided: Annex III, Article 97, Article 7.1, Article 7, Article 6</span><span>Expected: Article 7.1</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">This re-run — 4/4</div>
+      <div class="crit p">Yes — empowered via delegated acts</div>
+      <div class="crit p">Condition: intended for use in a listed area</div>
+      <div class="crit p">Condition: equivalent or greater risk</div>
+      <div class="crit p">"two cumulative conditions", "Neither limb suffices alone"</div>
+      <p style="margin-bottom:0"><strong>Grain caution:</strong> this run shipped <code>Article 7</code>; an earlier run of the same code shipped <code>Article 7.1</code>, the expected coordinate.</p>
+    </div>
+  </div>
+  <div class="answer">Yes, the Commission may amend Annex III by adding or modifying use-cases of high-risk AI systems, but only through delegated acts adopted in accordance with Article 97 and only where two cumulative conditions in Article 7(1) are met: the AI systems are intended to be used in one of the areas already listed in Annex III, and they pose a risk of harm to health and safety, or an adverse impact on fundamental rights, that is equivalent to or greater than the risk posed by the high-risk AI systems already listed there. Neither limb suffices alone, and Article 7(2) requires the Commission to weigh criteria such as intended purpose, extent of use, nature and amount of data processed, degree of autonomy, severity and reversibility of harm, and the availability of effective measures of redress or of measures to prevent or substantially minimise those risks when assessing the second condition. Article 7(1) does not permit the creation of new areas, so any addition or modification must sit within the existing eight Annex III areas, while Article 7(3) separately allows removal of a use-case only where it no longer poses significant risks and the deletion does not decrease the overall level of protection of health, safety and fundamental rights under Union law. Procedurally, Article 97 confers this power for five years from 1 August 2024 with tacit renewal, obliges the Commission to consult experts designated by each Member State beforehand, and allows the act to enter into force only if neither the European Parliament nor the Council objects within three months of notification, extendable by a further three months.</div>
+  <div class="meta"><span>1,630 chars</span><span class="refs">Annex III.7.b, Article 97.2, Article 7</span><span>head hit, grain unstable</span><span>ref conciseness 33</span></div>
+</article>
+
+<!-- Q74 -->
+<article class="case">
+  <div class="case-head">
+    <div><span class="tag hard">Hard · Q74</span> <h3 style="display:inline">Artistic audio — marking duty</h3></div>
+    <span class="pill ok">0/2 → 2/2</span>
+  </div>
+  <p class="q">"I generated audio with AI for my artistic work (sole purpose). Do I need to provide some marking of its artificial nature? I feel that would compromise the enjoyment of the work."</p>
+  <div class="cols">
+    <div class="panel before">
+      <div class="hd">Report, August 25 — 0/2</div>
+      <div class="crit f">No marking that would compromise enjoyment<span class="remark">"says 'Yes' … and explicitly says artistic purpose is not a carve-out from that marking duty. This does not reflect the required point."</span></div>
+      <div class="crit f">Some other disclosure still required, unambiguously<span class="remark">"it foregrounds a 'Yes' to marking and frames the enjoyment-safe disclosure only as a secondary distinction"</span></div>
+      <div class="meta"><span>Provided: Article 9, Article 50.2, Article 50, Article 50.4</span><span>Expected: Article 50.4</span></div>
+    </div>
+    <div class="panel before" style="border-color:var(--note-line);background:var(--note-bg)">
+      <div class="hd" style="color:var(--note)">This re-run — 2/2, with a caveat</div>
+      <p style="margin-top:0">Our judge passed both criteria. <strong>This is the least certain of the six.</strong> The answer
+      still opens <em>"Yes, marking is required"</em> — the framing the report criticised — and only then
+      distinguishes the imperceptible machine-readable marking from the enjoyment-safe Article 50(4)
+      disclosure. That distinction is what the criteria ask for and it is now explicit, but a stricter
+      reading of criterion 1 could still fail on the leading "Yes".</p>
+      <p style="margin-bottom:0">Referenced correctly: <code>Article 50.4</code>, and the citation count dropped from 4 to 2.</p>
+    </div>
+  </div>
+  <div class="answer">Yes, marking is required, though the artistic character affects only part of it. As the provider of the system generating synthetic audio, Article 50(2) requires the outputs to be marked in a machine-readable format and detectable as artificially generated or manipulated, using solutions that are effective, interoperable, robust and reliable, and that duty has no artistic carve-out, its only exemptions being standard editing functions that do not substantially alter the input data and uses authorised by law to detect, prevent, investigate or prosecute criminal offences. The concern about audience experience is addressed instead by Article 50(4), under which a deployer disclosing that audio constituting a deep fake is artificially generated or manipulated need only, where the content forms part of an evidently artistic, creative, satirical or fictional work, disclose the existence of the generated or manipulated content in an appropriate manner that does not hamper the display or enjoyment of the work. The machine-readable marking is technical and imperceptible to listeners, so it does not interfere with the artistic experience, while the accompanying disclosure can be placed discreetly, for example in credits or accompanying notes.</div>
+  <div class="meta"><span>1,251 chars</span><span class="refs">Article 50.4, Article 50.2</span><span>expected grain hit</span><span>ref conciseness 50</span><span>post-pushback answer</span></div>
+</article>
+
+<!-- Q95 -->
+<article class="case">
+  <div class="case-head">
+    <div><span class="tag hard">Hard · Q95</span> <h3 style="display:inline">"Area" versus "use case"</h3></div>
+    <span class="pill ok">0/2 → 2/2</span>
+  </div>
+  <p class="q">"What is an 'area' and what is a 'use case' for high-risk as per Article 6(2)? How many areas exist?"</p>
+  <div class="cols">
+    <div class="panel before">
+      <div class="hd">Report, August 25 — 0/2</div>
+      <div class="crit f">An area contains use cases<span class="remark">"mentions the 'eight Annex III use cases' but does not explain that an 'area' is a broader Annex III category that contains one or more specific use cases"</span></div>
+      <div class="crit f">Eight areas exist<span class="remark">"states that the system falls within 'one of the eight Annex III use cases.' This is incorrect for the asked distinction: Annex III has eight areas/categories, not eight use cases."</span></div>
+      <div class="meta"><span>Provided: Article 6.3, Article 6, Article 6.2, Annex III</span><span>Expected: Article 6.2; Annex III</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">This re-run — 2/2</div>
+      <div class="crit p">Area = numbered heading; use case = lettered entry beneath it</div>
+      <div class="crit p">Eight <em>areas</em>, named individually</div>
+      <p style="margin-bottom:0">The exact conflation the report flagged — "eight use cases" — is corrected to "eight areas", with the structural distinction stated first.</p>
+    </div>
+  </div>
+  <div class="answer">An "area" is a numbered heading in Annex III, and a "use case" is a lettered entry beneath that heading, so an AI system is high-risk under Article 6(2) only where it falls within one of the listed use cases, not merely within the general subject matter of an area. Annex III contains eight areas: biometrics, critical infrastructure, education and vocational training, employment, workers' management and access to self-employment, access to and enjoyment of essential private services and essential public services and benefits, law enforcement, migration, asylum and border control management, and administration of justice and democratic processes. Under the Article 6(3) derogation, an Annex III system is nevertheless not high-risk where it poses no significant risk of harm to health, safety or fundamental rights, including by not materially influencing the outcome of decision making, and performs a narrow procedural task, improves the result of a previously completed human activity, detects decision-making patterns or deviations without replacing or influencing the previously completed human assessment, or performs a preparatory task, though it is always high-risk where it performs profiling of natural persons.</div>
+  <div class="meta"><span>1,227 chars</span><span class="refs">Article 6.2, Article 6.3, Annex III.7.b</span><span>both expected heads hit</span><span>ref conciseness 67</span><span>post-pushback answer</span></div>
+</article>
+
+<!-- Q104 -->
+<article class="case">
+  <div class="case-head">
+    <div><span class="tag hard">Hard · Q104</span> <h3 style="display:inline">What Annex X is for</h3></div>
+    <span class="pill ok">0/2 → 2/2</span>
+  </div>
+  <p class="q">"What is Annex X about? What is it used for?"</p>
+  <div class="cols">
+    <div class="panel before">
+      <div class="hd">Report, August 25 — 0/2</div>
+      <p style="margin-top:0"><em>The answer described Annex X as the EU-database registration fields and then discussed GPAI obligations at length.</em></p>
+      <div class="crit f">Annex X lists Union legal acts on large-scale IT systems<span class="remark">"describes Annex X as setting information for registration of high-risk AI systems in the EU database under Article 49. That is not what Annex X is about."</span></div>
+      <div class="crit f">Used to define transition / compliance timelines<span class="remark">"does not explain that Annex X is used to identify systems subject to particular transition/compliance timing rules"</span></div>
+      <div class="meta"><span>Provided: Annex X</span><span>Expected: Article 111.1; Annex X</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">This re-run — 2/2</div>
+      <div class="crit p">Names the large-scale IT systems acts (SIS, VIS, Eurodac, EES, ETIAS, ECRIS-TCN, interoperability)</div>
+      <div class="crit p">States the Article 111(1) transitional rule and the 31 December 2030 deadline</div>
+      <p style="margin-bottom:0">The two-annex confusion is resolved, and <code>Article 111.1</code> — absent before — is now cited.</p>
+    </div>
+  </div>
+  <div class="answer">Annex X is a list of Union legislative acts establishing large-scale IT systems in the area of Freedom, Security and Justice, and it imposes no obligations of its own. It names the Schengen Information System, the Visa Information System, Eurodac, the Entry/Exit System, the European Travel Information and Authorisation System, the European Criminal Records Information System on third-country nationals and stateless persons, and the two interoperability Regulations. Its operative function is to trigger the transitional rule in Article 111(1), under which AI systems that are components of those large-scale IT systems and placed on the market or put into service before 2 August 2027 must be brought into compliance only by 31 December 2030, without prejudice to the prohibited practices in Article 5. Article 111(1) further requires that the Regulation's requirements be taken into account when each of those large-scale IT systems is evaluated, replaced or amended under its own legal act.</div>
+  <div class="meta"><span>996 chars</span><span class="refs">Annex X, Article 111.1, Article 5.1.d</span><span>both expected heads hit</span><span>ref conciseness 67</span><span>post-pushback answer</span></div>
+</article>
+
+<h2>Method</h2>
+<p style="font-size:.87rem">
+  Questions were matched to the benchmark corpus by exact text (similarity 1.00 on all six).
+  Each was submitted to the live service; the three hard-mode rows were first answered, then
+  challenged with the evaluator's byte-exact pushback template, and the post-pushback answer was
+  the one graded — matching how the appendix grades hard mode. Answers were generated by
+  <code>claude-opus-5</code> and judged by <code>claude-sonnet-5</code> against the printed criteria,
+  one run per question — matching the appendix, whose judgement blocks are headed "run 1".
+  The conciseness figures use our own reconstructed formulas, as flagged above; the report prints
+  none, and never prints its reference answers. Answers, reference lists, judge verdicts and the
+  counts in this document are reproducible from the captured run artefacts.
+</p>
+
+<h2>Official scorecard, for context</h2>
+<p style="font-size:.87rem;margin-bottom:.4rem">
+  These six cases are the report's <em>illustrative</em> failures, not the whole benchmark. The
+  published totals, transcribed from Tables 2 and 3:
+</p>
+<div class="scroll">
+<table>
+  <thead><tr><th>Mode</th><th>Contestant</th><th class="num">Overall</th><th class="num">Ans L</th><th class="num">Ans S</th><th class="num">Ans Conc</th><th class="num">Ref L</th><th class="num">Ref S</th><th class="num">Ref Conc</th><th class="num">Tone</th><th class="num">Speed</th></tr></thead>
+  <tbody>
+    <tr><td>Easy</td><td>2026 Frontier + Search</td><td class="num">80.9</td><td class="num">94.4</td><td class="num">89.1</td><td class="num">67.9</td><td class="num">96.1</td><td class="num">78.5</td><td class="num">51.9</td><td class="num">100.0</td><td class="num">81.8</td></tr>
+    <tr><td>Easy</td><td><strong>Antifragile AI</strong></td><td class="num"><strong>75.1</strong></td><td class="num">89.7</td><td class="num">81.2</td><td class="num">51.9</td><td class="num">89.4</td><td class="num">68.3</td><td class="num">50.4</td><td class="num">99.1</td><td class="num">87.6</td></tr>
+    <tr><td>Easy</td><td>2025 Search-Integrated</td><td class="num">70.1</td><td class="num">83.8</td><td class="num">70.9</td><td class="num">51.1</td><td class="num">79.9</td><td class="num">52.0</td><td class="num">48.7</td><td class="num">99.1</td><td class="num">95.3</td></tr>
+    <tr><td>Hard</td><td>2026 Frontier + Search</td><td class="num">81.7</td><td class="num">92.0</td><td class="num">84.8</td><td class="num">71.8</td><td class="num">94.6</td><td class="num">74.1</td><td class="num">58.5</td><td class="num">100.0</td><td class="num">86.7</td></tr>
+    <tr><td>Hard</td><td>2025 Search-Integrated</td><td class="num">74.8</td><td class="num">87.6</td><td class="num">76.7</td><td class="num">58.8</td><td class="num">82.7</td><td class="num">55.4</td><td class="num">56.8</td><td class="num">99.7</td><td class="num">95.9</td></tr>
+    <tr><td>Hard</td><td><strong>Antifragile AI (Hard)</strong></td><td class="num"><strong>73.4</strong></td><td class="num">89.9</td><td class="num">80.0</td><td class="num">45.2</td><td class="num">89.5</td><td class="num">70.7</td><td class="num">49.8</td><td class="num">96.1</td><td class="num">85.7</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="sub" style="margin-top:.55rem">
+  Overall is the geometric mean of the eight axes. The report's own conclusion: beats 1 baseline in
+  easy mode, 0 in hard. Its two largest cited gaps to the 2026 baseline are <strong>Ans. Conciseness</strong>
+  (−16.0 pp easy, −26.6 pp hard) and <strong>Ref. Correctness Strict</strong> (−10.2 pp easy) — which
+  is why the conciseness caveat above matters more to the score than the 17/17 does.
+</p>
+
+<footer>
+  Sources — official criteria, verdicts and remarks: <em>report_antifragile_ai.pdf</em>, 2026-08-25,
+  Appendix "Examples of Incorrect Answers", pages 10–14 (17 printed criteria: 1 PASS, 16 FAIL).
+  Live answers and reference lists: captured 2026-09-08 against the current build.
+  Prepared by Antifragile AI. Figures in this document are reproducible from the cited artefacts;
+  the limitations stated at the top apply to every number in it.
+</footer>
+
+</div>
 </body>
 </html>
