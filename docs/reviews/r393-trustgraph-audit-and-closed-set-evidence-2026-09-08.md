@@ -468,3 +468,97 @@ table**: Ans. Strict is the single largest gap. But the closed-set skeleton as b
 completeness at a reference cost it cannot afford, and it failed the gold gate (§9). The 2×2 in §4
 already said why: the skeleton pays for itself only when paired with a terse contract, and that
 pairing is the next arm.
+
+---
+
+## 12. R394 — TrustGraph re-opened on correct facts, and the intercept bloc
+
+### 12.1 The infrastructure claim was wrong; here is the real answer
+
+§0.2 asserted adoption was "disqualified on infrastructure" from an unverified guess about the
+host. The Railway instance is **24 vCPU / 24 GB RAM**, which clears TrustGraph's floor. Re-run
+properly, by GENERATING the artefact rather than reading about it (`npx @trustgraph/config`, 2.6,
+RabbitMQ, Claude API, fastembed, no OCR/MCP):
+
+**20 services · 11.54 GiB · 16.1 vCPU · 8 named volumes · 13 host bind-mounts.** Query-only trim:
+12 containers / 7.83 GiB. There is no lite or single-container mode. **Capacity is not the
+blocker** — 24 GB clears 11.54 GiB.
+
+Three constraints survive, all docs-verified or executed:
+
+1. **Railway allows exactly ONE volume per service and volumes cannot be shared**
+   (docs.railway.com/volumes/reference). TrustGraph needs 8, and `garage` alone mounts two
+   (`garage-meta`, `garage-data`) **in a single service**. That is structurally impossible on
+   Railway without re-architecting their storage layer. Railway also states flatly: *"Railway does
+   not run `docker-compose.yml` files directly."*
+2. **Our Aura graph is unreadable to it.** TrustGraph queries
+   `(:Node {uri,workspace,collection})-[:Rel]->(:Node|:Literal)`; we have
+   `Article/Annex/Paragraph/Point` with `CROSS_REFERENCES`/`HAS_OBLIGATION`. Zero overlap — it
+   returns nothing. Entity lookup also routes through Qdrant graph-embeddings, so our vectors are
+   equally unusable. Full re-ingestion required.
+3. **The bus is mandatory.** `pubsub.py:74` raises `ValueError` for anything but
+   pulsar/rabbitmq/kafka; the GraphRAG processor reaches all six collaborators as request/response
+   pairs over it. Every query costs two SEQUENTIAL LLM calls plus O(200) bus round-trips.
+
+**And the decisive one for scoring:** `kg-synthesis` receives `knowledge` as a list of
+`{"s","p","o"}` labelled triples — **verbatim provision text never reaches synthesis** — and
+`trace_source_documents` returns `{"uri","title"}`. **The finest citation grain the architecture
+can express is a document title.** `Article 13.3.a` is not a document. It is structurally unable
+to touch Ref Correctness (Strict), our joint-largest gap.
+
+**Verdict: do not deploy it as a runtime service.** The one defensible use is as an OFFLINE
+knowledge-build step whose output is a committed static index — no runtime hop, no bus, no Speed
+cost. That remains open.
+
+### 12.2 Stage-0 intent was silently OFF for ~95% of every batch run
+
+`max_tokens` was hardcoded to 250. The classifier's JSON carries a `reasoning` field, so it
+truncated mid-field (`'"primary_anchor": "Art'`), and three failures inside the 60 s window latch
+`_BREAKER`. Live on the official batch: rg_001-004 classified, rg_005-007 failed, **rg_008 onward
+returned `None` in 0 ms**. Same bug class R380 fixed for the de-noiser, at a call site never fixed.
+
+Head-to-head, same prompt, same parser: groq `gpt-oss-120b` 4/10 at mt=250 and **0/10 at mt=600
+(all `api_status_429` — the account is rate-limited)**; wrapper haiku-4-5 4/10 at **15,004 ms**;
+wrapper sonnet-5 10/10 at 7,111 ms; **bedrock sonnet-4-6 12/12 at 3,508 ms**. A budget sweep
+isolates the cause as truncation rather than the model: mt=250 → 7/10, mt=600 → 10/10.
+
+Shipped: `REGENOLD_INTENT_MAX_TOKENS` default **600** (the actual fix, provider-independent), and
+`REGENOLD_INTENT_BEDROCK` default **OFF**. Bedrock is default OFF because
+`tests/test_rag_hardening.py` pins the intent timeout ≤ 5 s — *"the only LLM call on the hot
+latency budget"* — and a reliable Stage-0 costs ~3.1 s. An intermediate cut of this change raised
+that guard to 12 s and broke the contract; reverted.
+
+### 12.3 The R393 skeleton was INERT — the gate in § 9 measured a no-op
+
+`_context_article_refs` normalises every reference to the internal short form `Art. N`.
+`_parent_id` only matched `Article N`, so `closed_set_members("Art. 13")` returned `[]` and the
+skeleton rendered **nothing** on the live path — while shipping with 37 passing tests, one named
+"prove it fires on the real renderer" whose fixture used the long form.
+
+**So § 9's numbers are void.** Overall 77.2 vs 78.5 and `gold_dropped_head` 4 → 5 are generation
+variance between two identical configurations. Sixth instance of the inert-feature pattern.
+Fixed; the tests now drive `_context_article_refs` output and are mutation-verified.
+
+### 12.4 The intercept bloc — the best-gated change of the round
+
+Seven official rows ship answers byte-identical to hard-coded strings, and Stage-2 is skipped for
+them, so their failures were typed into the source. Two detectors also MISFIRED, overriding a
+correct pipeline answer with a canned answer to a different question.
+
+**The gate is zero-variance and it is the strongest situation this repo affords**: all 27
+Stage-2-skipped rows are byte-identical across two independent live runs, so a replay attributes
+every change to the edit with no sampling noise.
+
+| same-harness replay, n=27 | baseline | R394 |
+| :--- | ---: | ---: |
+| rows changed | — | **7 — exactly the targets** |
+| NON-TARGET rows changed | — | **0** |
+| refs / row | 2.556 | 2.704 |
+| `gold_dropped_head` | 2 | **1 (−1, RECOVERED)** |
+
+**HARD RULE #8: PASS.** The recovery is `rg_040`, which shipped only `Annex VII` against an
+expected `Article 44.1` — Ref Loose scored zero on that row and now does not.
+
+⚠ One non-target (`rg_009`) differed by reference ORDER only, same set, byte-identical answer.
+Controlled: **baseline code in the same harness reproduces that same order**, so it is a
+harness/process difference, not the edit. Always run the do-nothing arm in the same harness.
