@@ -31,6 +31,36 @@ python -m evals.harness.ab_judge (run position-swapped live pairwise A/B evaluat
 python -m evals.harness.easyhard_ab (run ref conciseness & strict recall pairwise evaluation)
 ```
 
+### 1b. The DEPLOYABILITY gate — `.github/workflows/ci.yml` (R394.3)
+
+⚠ **A green `pytest tests/` does NOT mean the commit deploys.** The suite runs
+against your WORKING TREE; Railway deploys from a **clone**. PR #389 shipped
+`from app.engines.prompt_budget import …` for a file that was never `git add`-ed,
+so 7,525 tests passed locally while `import app.main` raised `ModuleNotFoundError`
+on Railway, `/healthz` never bound, and production silently served the previous
+release across two merges. Only git can see that class of defect.
+
+CI is a clean clone, so it is the instrument. The `deployable` job runs the
+tracked-module gate, imports `app.main`, then boots uvicorn using the start
+command, healthcheck path and timeout it **parses out of `railway.toml`** (so CI
+cannot drift into testing a command Railway does not run).
+
+```bash
+pytest tests/test_r394_2_tracked_module_imports.py -q (no tracked module may import an untracked one)
+python .github/scripts/boot_healthcheck.py (boot per railway.toml and wait for /healthz — runs locally too)
+git -c core.autocrlf=false archive HEAD | tar -x -C /tmp/cc (reproduce CI's exact tree)
+```
+
+⚠ **Use `-c core.autocrlf=false`.** On a Windows box `git archive` otherwise
+writes CRLF, which changes the SHA of `evals/bench/data/*.json`, fails
+`dataset.ensure_dataset()`'s pin, and makes 27 tests try to re-download the
+davidath corpus — 27 phantom failures that do not exist on Linux CI.
+
+Tests needing the gitignored competition data (`.gitignore:22-25`) **skip** with a
+stated reason rather than fail; they still run wherever the data is present.
+**Do not delete `.github/` again** — it was removed at `bc63f86`, which is why
+there were no PR checks at all for the ~180 commits that followed.
+
 ### 2. Local Environment Setup & Execution
 ```bash
 # Set deterministic environment variables for local testing
