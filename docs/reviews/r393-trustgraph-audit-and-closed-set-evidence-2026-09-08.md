@@ -17,11 +17,16 @@ that could not be reproduced are marked as such.
    project. This is the **fifth** instance of the port-drift pattern this repo has paid for
    (R329 rerank ×3, R330 semantic layer, R366 parent collapse).
 
-2. **Adopting TrustGraph is disqualified on infrastructure, not on merit.** It is not a library:
-   the deployment unit is a docker-compose / Kubernetes cluster of ~34 processor containers on an
-   Apache Pulsar bus, plus Cassandra, Qdrant, Garage (S3) and the Prometheus/Grafana/Loki stack.
-   Minimum footprint **12 GB RAM + 8 CPUs**. This service is a single FastAPI container on Railway
-   with no GPU. Only the *patterns* transfer.
+2. ⛔ **CORRECTED 2026-09-08. This point originally read "Adopting TrustGraph is disqualified on
+   infrastructure" — that was WRONG, and it was asserted from an assumption about the Railway host
+   that was never verified.** The instance is **24 vCPU / 24 GB RAM**, which clears TrustGraph's
+   stated floor (12 GB + 8 CPUs) with headroom. **Capacity is not the blocker.**
+
+   What is true: TrustGraph is not a library. The deployment unit is a docker-compose / Kubernetes
+   cluster of ~34 processor containers on an Apache Pulsar bus, plus Cassandra, Qdrant, Garage (S3)
+   and Prometheus/Grafana/Loki. The real constraints to evaluate are the **deployment model**
+   (Railway builds one container per service; a compose cluster is not that shape) and the
+   **latency budget** (we beat frontier on Speed by +7.0, and a bus hop spends exactly that).
 
 3. **The one TrustGraph practice that maps onto our measured gap was measured here and it
    works.** Daniel Davis asserts — without numbers — that "structured formats … improved responses
