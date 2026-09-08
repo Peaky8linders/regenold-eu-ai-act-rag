@@ -1,0 +1,360 @@
+{
+  "classes": {
+    "Annex": {
+      "owl:equivalentClass": [
+        "https://w3id.org/codexai#Annex"
+      ],
+      "rdfs:comment": [
+        {
+          "@language": "en",
+          "@value": "One of the 13 Annexes of Regulation (EU) 2024/1689."
+        }
+      ],
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "Annex"
+        }
+      ],
+      "rdfs:subClassOf": [
+        "https://antifragile-ai.net/ns/eu-ai-act#Provision"
+      ],
+      "type": "owl:Class",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#Annex"
+    },
+    "Article": {
+      "owl:equivalentClass": [
+        "https://w3id.org/codexai#Article"
+      ],
+      "rdfs:comment": [
+        {
+          "@language": "en",
+          "@value": "One of the 113 Articles of Regulation (EU) 2024/1689."
+        }
+      ],
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "Article"
+        }
+      ],
+      "rdfs:subClassOf": [
+        "https://antifragile-ai.net/ns/eu-ai-act#Provision"
+      ],
+      "type": "owl:Class",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#Article"
+    },
+    "CompliancePhase": {
+      "owl:equivalentClass": [
+        "https://w3id.org/codexai#Deadline"
+      ],
+      "rdfs:comment": [
+        {
+          "@language": "en",
+          "@value": "A staged application date of the Regulation and the provisions that become applicable on it."
+        }
+      ],
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "Compliance phase"
+        }
+      ],
+      "type": "owl:Class",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#CompliancePhase"
+    },
+    "HighRiskArea": {
+      "rdfs:comment": [
+        {
+          "@language": "en",
+          "@value": "One of the eight areas of Annex III. Note the Regulation lists AREAS, not use cases."
+        }
+      ],
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "High-risk area"
+        }
+      ],
+      "type": "owl:Class",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#HighRiskArea"
+    },
+    "Obligation": {
+      "owl:equivalentClass": [
+        "https://w3id.org/codexai#Obligation"
+      ],
+      "rdfs:comment": [
+        {
+          "@language": "en",
+          "@value": "A duty a provision places on an operator role at a risk class."
+        }
+      ],
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "Obligation"
+        }
+      ],
+      "type": "owl:Class",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#Obligation"
+    },
+    "OperatorRole": {
+      "owl:equivalentClass": [
+        "https://w3id.org/codexai#OperatorRole"
+      ],
+      "rdfs:comment": [
+        {
+          "@language": "en",
+          "@value": "A role the Regulation binds duties to (provider, deployer, importer, distributor, authorised representative, downstream provider, notified body) or protects (affected person)."
+        }
+      ],
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "Operator role"
+        }
+      ],
+      "type": "owl:Class",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#OperatorRole"
+    },
+    "ProhibitedPractice": {
+      "rdfs:comment": [
+        {
+          "@language": "en",
+          "@value": "An Article 5(1) practice prohibited outright."
+        }
+      ],
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "Prohibited practice"
+        }
+      ],
+      "type": "owl:Class",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#ProhibitedPractice"
+    },
+    "Provision": {
+      "rdfs:comment": [
+        {
+          "@language": "en",
+          "@value": "Any citable unit of the Regulation: an Article, an Annex, or a sub-point of either. The superclass that carries the citation coordinate."
+        }
+      ],
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "Provision"
+        }
+      ],
+      "type": "owl:Class",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#Provision"
+    },
+    "RiskClass": {
+      "rdfs:comment": [
+        {
+          "@language": "en",
+          "@value": "A risk tier: prohibited, high-risk under Annex I or Annex III, limited risk, minimal risk, GPAI, or GPAI with systemic risk."
+        }
+      ],
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "Risk class"
+        }
+      ],
+      "type": "owl:Class",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#RiskClass"
+    }
+  },
+  "datatypeProperties": {
+    "annexNumber": {
+      "rdfs:comment": [
+        {
+          "@language": "en",
+          "@value": "The numbered point within an Annex, e.g. 1 for Annex III point 1."
+        }
+      ],
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "annex point number"
+        }
+      ],
+      "rdfs:range": "xsd:integer",
+      "type": "owl:DatatypeProperty",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#annexNumber"
+    },
+    "citation": {
+      "rdfs:comment": [
+        {
+          "@language": "en",
+          "@value": "The canonical wire citation, e.g. 'Article 13.3' or 'Annex III.1'."
+        }
+      ],
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "citation"
+        }
+      ],
+      "rdfs:range": "xsd:string",
+      "type": "owl:DatatypeProperty",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#citation"
+    },
+    "effectiveDate": {
+      "rdfs:comment": [
+        {
+          "@language": "en",
+          "@value": "The date a compliance phase begins to apply."
+        }
+      ],
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "effective date"
+        }
+      ],
+      "rdfs:range": "xsd:date",
+      "type": "owl:DatatypeProperty",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#effectiveDate"
+    },
+    "verbatimText": {
+      "rdfs:comment": [
+        {
+          "@language": "en",
+          "@value": "The adopted text of the provision, used for grounding and quotation. Never paraphrased."
+        }
+      ],
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "verbatim text"
+        }
+      ],
+      "rdfs:range": "xsd:string",
+      "type": "owl:DatatypeProperty",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#verbatimText"
+    }
+  },
+  "metadata": {
+    "description": "Focused operational ontology of the EU AI Act: provisions, operator roles, risk classes, obligations, prohibited practices, Annex III areas and staged application dates. Generated from verified repository data by scripts/build_trustgraph_core.py.",
+    "name": "EU AI Act (Regulation (EU) 2024/1689)",
+    "namespace": "https://antifragile-ai.net/ns/eu-ai-act#",
+    "prefixes": {
+      "codexai": "https://w3id.org/codexai#",
+      "eu-ai-act": "https://antifragile-ai.net/ns/eu-ai-act#",
+      "owl": "http://www.w3.org/2002/07/owl#",
+      "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+      "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+      "skos": "http://www.w3.org/2004/02/skos/core#",
+      "xsd": "http://www.w3.org/2001/XMLSchema#"
+    }
+  },
+  "objectProperties": {
+    "applicableFrom": {
+      "rdfs:domain": "https://antifragile-ai.net/ns/eu-ai-act#Provision",
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "applicable from"
+        }
+      ],
+      "rdfs:range": "https://antifragile-ai.net/ns/eu-ai-act#CompliancePhase",
+      "type": "owl:ObjectProperty",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#applicableFrom"
+    },
+    "appliesToRiskClass": {
+      "owl:equivalentProperty": [
+        "https://w3id.org/codexai#appliesToRiskTier"
+      ],
+      "rdfs:domain": "https://antifragile-ai.net/ns/eu-ai-act#Obligation",
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "applies to risk class"
+        }
+      ],
+      "rdfs:range": "https://antifragile-ai.net/ns/eu-ai-act#RiskClass",
+      "type": "owl:ObjectProperty",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#appliesToRiskClass"
+    },
+    "appliesToRole": {
+      "owl:equivalentProperty": [
+        "https://w3id.org/codexai#appliesToRole"
+      ],
+      "rdfs:domain": "https://antifragile-ai.net/ns/eu-ai-act#Obligation",
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "applies to role"
+        }
+      ],
+      "rdfs:range": "https://antifragile-ai.net/ns/eu-ai-act#OperatorRole",
+      "type": "owl:ObjectProperty",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#appliesToRole"
+    },
+    "citesProvision": {
+      "owl:equivalentProperty": [
+        "https://w3id.org/codexai#crossReferences"
+      ],
+      "rdfs:domain": "https://antifragile-ai.net/ns/eu-ai-act#Provision",
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "cites provision"
+        }
+      ],
+      "rdfs:range": "https://antifragile-ai.net/ns/eu-ai-act#Provision",
+      "type": "owl:ObjectProperty",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#citesProvision"
+    },
+    "imposedBy": {
+      "rdfs:domain": "https://antifragile-ai.net/ns/eu-ai-act#Obligation",
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "imposed by"
+        }
+      ],
+      "rdfs:range": "https://antifragile-ai.net/ns/eu-ai-act#Provision",
+      "type": "owl:ObjectProperty",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#imposedBy"
+    },
+    "partOf": {
+      "rdfs:domain": "https://antifragile-ai.net/ns/eu-ai-act#Provision",
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "part of"
+        }
+      ],
+      "rdfs:range": "https://antifragile-ai.net/ns/eu-ai-act#Provision",
+      "type": "owl:ObjectProperty",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#partOf"
+    },
+    "prohibitedBy": {
+      "rdfs:domain": "https://antifragile-ai.net/ns/eu-ai-act#ProhibitedPractice",
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "prohibited by"
+        }
+      ],
+      "rdfs:range": "https://antifragile-ai.net/ns/eu-ai-act#Provision",
+      "type": "owl:ObjectProperty",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#prohibitedBy"
+    },
+    "relatedProhibition": {
+      "rdfs:domain": "https://antifragile-ai.net/ns/eu-ai-act#HighRiskArea",
+      "rdfs:label": [
+        {
+          "@language": "en",
+          "@value": "related prohibition"
+        }
+      ],
+      "rdfs:range": "https://antifragile-ai.net/ns/eu-ai-act#ProhibitedPractice",
+      "type": "owl:ObjectProperty",
+      "uri": "https://antifragile-ai.net/ns/eu-ai-act#relatedProhibition"
+    }
+  }
+}

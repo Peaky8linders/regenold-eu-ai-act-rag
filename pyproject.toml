@@ -35,6 +35,12 @@ dev = [
   "pytest>=8.0.0",
   "pytest-xdist>=3.5.0",
   "ruff>=0.6.0",
+  # R397 — build/validate the TrustGraph artefacts. DEV ONLY, deliberately not
+  # in requirements.txt: nothing on the request path imports rdflib, and
+  # AGENTS.md forbids growing the runtime dependency set for offline tooling.
+  # `tg-load-turtle` parses with rdflib too, so validating with it here proves
+  # the artefact is loadable by the tool that consumes it.
+  "rdflib>=7.0.0",
 ]
 
 [tool.pytest.ini_options]
