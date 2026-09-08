@@ -30,7 +30,8 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _KEY_FILE = _REPO_ROOT / "app" / "routes" / "regenold.py"
 _ENGINE_DIRS = (_REPO_ROOT / "app" / "engines", _REPO_ROOT / "app" / "integrations" / "regenold",
-    _REPO_ROOT / "app" / "data"  # R379 — REGENOLD_PROMPT_V2 lives here; was a blind spot
+    _REPO_ROOT / "app" / "data",  # R379 — prompt flags
+    _REPO_ROOT / "app" / "llm",  # Stage-0 and Stage-2 flags also change answers
 )
 _FLAG_RE = re.compile(r"^(?:REGENOLD|P2P)_[A-Z0-9_]+$")
 _KEY_TUPLE_LINE_RE = re.compile(r'^[ \t]*"((?:REGENOLD|P2P)_[A-Z0-9_]+)",[ \t]*$', re.M)
@@ -221,6 +222,7 @@ _JUSTIFIED_EXCLUSIONS: dict[str, str] = {
     # Pure concurrency admission cap (threading.BoundedSemaphore); changes
     # parallelism, never engine output.
     "REGENOLD_KG_MAX_INFLIGHT": "concurrency cap only — does not flip engine output",
+    "REGENOLD_INTENT_CACHE_MAX": "LRU capacity only; intent cache entries are configuration-scoped",
 }
 
 

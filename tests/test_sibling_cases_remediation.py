@@ -13,8 +13,6 @@ Covers remediation for sibling test cases:
 
 from __future__ import annotations
 
-import pytest
-
 from app.data.graph_rag_prompts import (
     USER_CHALLENGE_BREVITY_CLAUSE,
     USER_CHALLENGE_BREVITY_CLAUSE_V2,
@@ -27,12 +25,15 @@ from app.data.graph_rag_prompts import (
 def test_rg_040_certificate_validity_guard():
     """rg_040: Annex VII point 4.6 / Article 44 certificate validity periods and language."""
     clause = USER_CRITICAL_RULES_CLAUSE
-    assert "Article 44" in clause
+    assert "Article 44(1)" in clause and "Article 44(2)" in clause
     assert "Annex VII point 4.6" in clause
     assert "certificate validity" in clause
     assert "five years for Annex I systems" in clause
     assert "four years for Annex III systems" in clause
-    assert "drawn up in an official Union language easily understood by the notifying authority" in clause
+    assert "language easily understood by the relevant authorities" in clause
+    assert "Member State where the notified body is established" in clause
+    assert "official Union language" not in clause
+    assert "sets certificate contents, not validity periods" in clause
 
 
 def test_rg_043_special_categories_gdpr_led_guard():
@@ -52,6 +53,7 @@ def test_rg_068_non_training_testing_data_sets_guard():
     assert "Article 10(6)" in clause
     assert "without techniques involving training AI models" in clause
     assert "apply exclusively to testing data sets" in clause
+    assert "Article 10 paragraphs 2 to 5" in clause
 
 
 def test_rg_103_deepfake_disclosure_regimes_guard():
@@ -59,20 +61,22 @@ def test_rg_103_deepfake_disclosure_regimes_guard():
     clause = USER_CRITICAL_RULES_CLAUSE
     assert "Article 50(4)" in clause
     assert "deepfake disclosure" in clause
-    assert "artistic, creative, satirical or fictional works" in clause
+    assert "evidently artistic, creative, satirical, fictional or analogous works or programmes" in clause
     assert "lighter disclosure regime" in clause
-    assert "'analogous work'" in clause
-    assert "law enforcement is a full exemption" in clause
+    assert "use authorised by law to detect, prevent, investigate or prosecute criminal offences" in clause
+    assert "a law-enforcement purpose alone is insufficient" in clause
 
 
 def test_rg_037_rg_044_annex_viii_ix_registration_guard():
     """rg_037 & rg_044: Annex VIII Sections A, B, C and Annex IX registration delineation."""
     clause = USER_CRITICAL_RULES_CLAUSE
     assert "Annex VIII & IX EU database registration" in clause
-    assert "Section A is entered by the provider" in clause
-    assert "Section B for Annex III high-risk systems" in clause
-    assert "Section C by public authority deployers" in clause
-    assert "Annex IX for real-world testing / non-high-risk systems" in clause
+    assert "Section A covers Article 49(1) high-risk registrations" in clause
+    assert "Section B covers Article 49(2) registrations of Annex III systems considered not high-risk" in clause
+    assert "Both are entered by providers or authorised representatives" in clause
+    assert "Section C covers Article 49(3) deployers who are or act on behalf of public authorities" in clause
+    assert "Annex IX covers Article 60 testing in real world conditions" in clause
+    assert "not Article 6(3) non-high-risk registration" in clause
 
 
 def test_rg_069_storage_transport_duties_guard():
