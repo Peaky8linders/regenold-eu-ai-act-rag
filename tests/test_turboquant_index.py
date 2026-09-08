@@ -427,21 +427,32 @@ def test_turboquant_index_with_external_embeddings(monkeypatch):
 
     monkeypatch.setenv("COHERE_API_KEY", "co-testkey")
 
-    mock_doc_emb = [[0.1] * 1024] * 281
     mock_query_emb = [0.1] * 1024
 
+    # R394.3 — return exactly ONE embedding per input text, as the real Cohere
+    # API does, instead of a hardcoded 281. The filtered dense corpus is 277
+    # docs, so the old constant handed the index four rows that no BM25 doc maps
+    # to. Every mock vector is identical, so which rows win is pure tie-break:
+    # on Windows the top-k came back < 277 and the test passed, on Linux it came
+    # back >= 277 and dense_top_k correctly dropped them all as out-of-range
+    # (turboquant_index.py:528), making `len(hits) > 0` fail. Deriving the count
+    # from the request removes the magic number and the platform dependence.
     class MockResponse:
+        def __init__(self, n: int):
+            self._n = n
+
         def raise_for_status(self):
             pass
+
         def json(self):
-            return {"embeddings": mock_doc_emb}
+            return {"embeddings": [[0.1] * 1024] * self._n}
 
     def mock_post(self, url, headers, json, **kwargs):
         # Determine if query or docs
         if json.get("input_type") == "search_query":
-            return MockResponse() if json["texts"] == ["biometric"] else None
+            return MockResponse(len(json["texts"])) if json["texts"] == ["biometric"] else None
         else:
-            return MockResponse()
+            return MockResponse(len(json["texts"]))
 
     monkeypatch.setattr("httpx.Client.post", mock_post)
 
@@ -450,6 +461,10 @@ def test_turboquant_index_with_external_embeddings(monkeypatch):
     assert diag["loaded"] is True
     assert ti._INDEX._use_external is True
     assert ti._INDEX._doc_vecs_dense.shape[1] == 1024
+    # R394.3 — pin the invariant the hardcoded 281 broke: one dense row per
+    # mapped BM25 doc. Without this the mismatch is invisible until a
+    # tie-break happens to surface an unmapped row on one platform only.
+    assert ti._INDEX._doc_vecs_dense.shape[0] == len(ti._INDEX._bm25_idx_map)
 
     # We now mock the query response
     class MockQueryResponse:

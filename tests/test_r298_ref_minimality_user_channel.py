@@ -12,6 +12,8 @@ mode this whole round exists to avoid.
 """
 from __future__ import annotations
 
+import importlib.util
+
 import pytest
 
 from app.data.graph_rag_prompts import (
@@ -171,6 +173,20 @@ class TestClauseContent:
 
 # ── cache key ────────────────────────────────────────────────────────────────
 
+# R394.3 — every test below imports evals.regenold.run_hard_sample_r297, which
+# imports evals.regenold.july7_difficulty at its module top (line 97). That
+# module is gitignored (.gitignore:24, competition data), so in a clean clone —
+# which is what CI and Railway get — all four died with ModuleNotFoundError
+# while passing on a developer box. find_spec resolves it without importing, so
+# the whole class skips with a stated reason, the same treatment
+# tests/test_r380_hard_mode_reask.py already gives the same module.
+_JULY7_PRESENT = importlib.util.find_spec("evals.regenold.july7_difficulty") is not None
+
+
+@pytest.mark.skipif(
+    not _JULY7_PRESENT,
+    reason="gitignored July-7 competition data not present in this checkout",
+)
 class TestStratifiedFractionSampler:
     """R298 — `--frac` rescales the R297 stratified design."""
 

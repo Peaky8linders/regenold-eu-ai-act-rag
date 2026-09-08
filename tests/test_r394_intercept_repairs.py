@@ -42,6 +42,16 @@ _BATCH = Path(__file__).resolve().parents[1] / "evals" / "regenold" / "_official
 
 
 def _questions() -> dict[str, str]:
+    # R394.3 — the official batch is gitignored (.gitignore:23, competition
+    # data), so it is absent from a clean clone and 15 of this module's tests
+    # died with FileNotFoundError there while passing on a developer box. Skip
+    # with a stated reason instead, matching the treatment
+    # tests/test_r381_judge_gold_and_exit.py already gives its absent sidecar.
+    # Every call site is inside a test body (the parametrize decorators read
+    # module constants, not this), so the skip lands per-test and the module's
+    # other tests still run.
+    if not _BATCH.exists():
+        pytest.skip(f"{_BATCH.name} not present in this checkout (gitignored)")
     rows = json.loads(_BATCH.read_text(encoding="utf-8"))
     return {r["id"]: r["question"] for r in rows}
 

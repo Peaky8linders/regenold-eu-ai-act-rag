@@ -157,6 +157,13 @@ def _ask(client: TestClient, messages: list[dict[str, str]]) -> tuple[str, list[
 
 def _pushback(question: str) -> str:
     """The verbatim adversarial preamble every HARD July-7 turn-2 row carries."""
+    # R394.3 — evaluator_batch_july7 is gitignored (.gitignore:25, competition
+    # data), so it is absent from a clean clone. Skip rather than fail; this
+    # runs inside a test body, so the skip lands on the test that needs it.
+    pytest.importorskip(
+        "evals.regenold.evaluator_batch_july7",
+        reason="gitignored July-7 competition data not present in this checkout",
+    )
     from evals.regenold.evaluator_batch_july7 import PUSHBACK_PREAMBLE
 
     return PUSHBACK_PREAMBLE.format(question=question)

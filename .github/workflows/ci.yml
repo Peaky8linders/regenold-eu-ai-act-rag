@@ -1,0 +1,107 @@
+name: CI
+
+# R394.3 — the repo had NO CI. `.github/` was deleted at bc63f86 (it held one
+# workflow, railway-redeploy.yml, which had failed on all ten of its last runs),
+# and `gh pr checks` reported "no checks reported" on every PR since.
+#
+# That is how PR #389 shipped an `import app.engines.prompt_budget` for a file
+# that was never `git add`-ed. Railway deploys from a CLONE, so the module was
+# absent there: `import app.main` raised ModuleNotFoundError, uvicorn's workers
+# died, /healthz never bound, and Railway silently kept serving the previous
+# release while every local instrument stayed green — the suite runs against the
+# working tree, which is exactly where the untracked file lived.
+#
+# A GitHub Actions runner IS a clean clone. So merely starting the app here is
+# the check that was missing, and it is the first job below.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # DELIBERATELY no REGENOLD_* / OPENAI_API_BASE here. tests/conftest.py is the
+  # single source of truth for the test environment: it neutralises the
+  # integration credentials, points the wrapper at a dead loopback port, and its
+  # R365 egress guard turns any non-loopback TCP connect into a failure. Adding
+  # "belt-and-braces" copies of AGENTS.md's bench-runner flags is not free — the
+  # first run of this workflow set REGENOLD_EXTERNAL_EMBEDDINGS=0 globally and
+  # broke 3 tests that assert external embeddings are ENABLED
+  # (test_external_embeddings.py:20/:64, test_turboquant_index.py:451).
+  # Measured: with those two vars 3 failed / 27 passed; without them 30 passed.
+  # Nothing here needs a secret, so a fork PR behaves like a branch PR.
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  deployable:
+    # THE GATE. Everything here is what Railway does, in the order Railway does
+    # it. If this job is green the commit boots; if PR #389 had run it, it would
+    # have failed at "import app.main" in about forty seconds.
+    name: Deployable (clean clone)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install runtime dependencies
+        # requirements.txt verbatim — the same manifest Railway installs, so a
+        # dependency that cannot resolve fails here rather than on deploy.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: No tracked module may import an untracked one
+        # Cheap and specific: names the offending file:line directly instead of
+        # leaving you to read an ImportError traceback.
+        run: |
+          pip install "pytest>=8.0.0"
+          pytest tests/test_r394_2_tracked_module_imports.py -q
+
+      - name: Import the app (this is the check that would have caught PR #389)
+        run: python -c "import app.main; print('ASGI app:', type(app.main.app).__name__)"
+
+      - name: Boot uvicorn per railway.toml and wait for the healthcheck
+        # The script parses railway.toml for the start command, healthcheck path
+        # and timeout rather than restating them, so CI cannot drift into
+        # testing a command Railway does not run.
+        run: python .github/scripts/boot_healthcheck.py
+
+  tests:
+    name: Test suite (clean clone)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install runtime + test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install "pytest>=8.0.0" "pytest-xdist>=3.5.0"
+
+      - name: pytest
+        # The competition batch and the July-7 helper modules are gitignored
+        # (.gitignore:22-25), so the tests that need them SKIP here with a stated
+        # reason rather than fail — the same treatment
+        # tests/test_r380_hard_mode_reask.py and tests/test_r381_judge_gold_and_exit.py
+        # already give their absent sidecars. Everything else must pass.
+        run: pytest tests/ -q -n auto -p no:cacheprovider -rs
