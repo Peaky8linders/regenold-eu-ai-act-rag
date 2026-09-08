@@ -48,6 +48,14 @@ def test_article_49_2_is_the_article_6_3_registration_duty():
 # ── the engine's curated verdicts must agree with the above ─────────────────
 
 
+# R394.1 — anchor on the verdict NAME rather than on prose wording.
+# The former anchor "register it under Article" broke when the Article 6(3)
+# answer was rewritten to fit the three-sentence budget, even though it still
+# cites Article 49(2) in both prose and refs. A verdict name is stable across
+# rewordings; a sentence fragment is not.
+_ART_6_3_ANCHOR = '"name": "article_6_3_exception"'
+
+
 def _verdict_block(anchor: str) -> str:
     """Return the source region of the curated verdict containing ``anchor``."""
     from pathlib import Path
@@ -55,8 +63,15 @@ def _verdict_block(anchor: str) -> str:
     src = Path("app/engines/_graph_rag_impl.py").read_text(encoding="utf-8")
     idx = src.find(anchor)
     assert idx != -1, f"anchor not found in engine source: {anchor!r}"
-    # The refs list sits within a few lines of the prose in these verdicts.
-    return src[idx : idx + 600]
+    # R394.1 — span to the END of this verdict's refs list rather than a fixed
+    # 600-char window. A fixed window silently stops covering the refs as soon
+    # as an explanatory comment is added above the answer, which turns these
+    # pins into false failures instead of real ones.
+    end = src.find('"refs"', idx)
+    assert end != -1, f"no refs list after anchor: {anchor!r}"
+    close = src.find("]", end)
+    assert close != -1, f"unterminated refs list after anchor: {anchor!r}"
+    return src[idx : close + 1]
 
 
 def test_record_retention_verdict_cites_article_47_not_48():
@@ -73,7 +88,7 @@ def test_record_retention_verdict_cites_article_47_not_48():
 
 
 def test_article_6_3_verdict_cites_article_49_2_not_71_2():
-    block = _verdict_block("register it under Article")
+    block = _verdict_block(_ART_6_3_ANCHOR)
     assert "Article 49(2)" in block
     assert "Article 71(2)" not in block
     refs = re.search(r'"refs":\s*\[([^\]]*)\]', block)
@@ -84,7 +99,7 @@ def test_article_6_3_verdict_cites_article_49_2_not_71_2():
 
 @pytest.mark.parametrize(
     "anchor",
-    ["conformity (Article ", "register it under Article"],
+    ["conformity (Article ", _ART_6_3_ANCHOR],
 )
 def test_prose_and_refs_never_contradict(anchor: str):
     """Every Article N named in the prose must appear in that verdict's refs."""

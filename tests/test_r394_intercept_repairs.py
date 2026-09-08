@@ -198,7 +198,7 @@ _SCORED_CONTENT = {
     "rg_031": [
         ("No.",),
         ("point (a)", "narrow procedural"),
-        ("profiling",),
+        ("profil",),   # matches "profiling" and "profiles"
         ("Article 6(4)", "document", "before"),
     ],
     "rg_040": [("Article 44(1)", "easily understood"), ("Article 44(2)", "five years", "four years")],
