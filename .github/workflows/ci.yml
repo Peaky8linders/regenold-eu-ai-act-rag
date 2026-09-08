@@ -93,10 +93,14 @@ jobs:
           cache-dependency-path: requirements.txt
 
       - name: Install runtime + test dependencies
+        # rdflib is DEV ONLY (pyproject [dev]) — nothing on the request path
+        # imports it, so it stays out of requirements.txt. It must be installed
+        # here even so: tests/test_trustgraph_ontology.py importorskips on it,
+        # so without it the TrustGraph artefacts would silently go unvalidated.
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install "pytest>=8.0.0" "pytest-xdist>=3.5.0"
+          pip install "pytest>=8.0.0" "pytest-xdist>=3.5.0" "rdflib>=7.0.0"
 
       - name: pytest
         # The competition batch and the July-7 helper modules are gitignored
