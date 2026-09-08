@@ -120,9 +120,36 @@ class TestCuratedAnswers:
         return ans, refs
 
     def test_la_q29_emergency_triage(self) -> None:
+        """R394 — assertions re-pinned to the VERBATIM Annex III.5(d) limbs.
+
+        This test previously required the paraphrase "triage of emergency
+        medical-service patients" and did NOT require the provision's first
+        limb at all. The intercept therefore shipped an answer that dropped
+        "evaluate and classify emergency calls by natural persons" — which the
+        official evaluator scored as a failed criterion on rg_029 — and that
+        misstated the statute's "police, firefighters and medical aid" as
+        "fire brigades and medical aid", with a green test.
+
+        Annex III.5(d) verbatim: "AI systems intended to evaluate and classify
+        emergency calls by natural persons or to be used to dispatch, or to
+        establish priority in the dispatching of, emergency first response
+        services, including by police, firefighters and medical aid, as well as
+        of emergency healthcare patient triage systems".
+
+        Pinning the statute rather than a paraphrase makes the test stricter:
+        each limb below is one the answer previously could omit.
+        """
         ans, refs = self._answer(LA_Q29)
         assert "Annex III point 5(d)" in ans
-        assert "triage of emergency medical-service patients" in ans
+        # limb 1 — dropped entirely by the pre-R394 wording
+        assert "evaluate and classify emergency calls" in ans
+        # limb 2 — the dispatch/prioritisation duty
+        assert "dispatch" in ans and "priority in the dispatching" in ans
+        # the statutory roster, not the invented "fire brigades"
+        assert "police, firefighters and medical aid" in ans
+        assert "fire brigades" not in ans
+        # limb 3 — the triage systems limb
+        assert "emergency healthcare patient triage" in ans
         assert "Article 6(2)" in ans
         assert _looks_incomplete_final_sentence(ans) is False
         # gold heads: Annex III, Article 6

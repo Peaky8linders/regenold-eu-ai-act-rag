@@ -4374,8 +4374,33 @@ _SYSTEMIC_RISK_MODELS_RE = re.compile(
 )
 
 
+# R394 — the scope intercept MISFIRED on rg_099, overriding a correct pipeline
+# answer with a canned answer to a different question. rg_099 asks whether GPAI
+# providers have an OBLIGATION to shield models from adversarial attacks; it
+# matched only because "GPAI systems, even if not with systemic risk" satisfies
+# the proximity regex and "their models" satisfies the models regex.
+#
+# The distinguishing feature is the SCOPE-QUESTION SHAPE. rg_023, the row this
+# intercept exists for, asks "Does 'systemic risk' apply to AI systems or
+# general purpose AI models or both?" — a disjunction over the two candidate
+# subjects. rg_099 has no such disjunction. Requiring it keeps rg_023 and
+# releases rg_099 to the normal pipeline. Measured: fires on 1/110 after this
+# guard, down from 2/110, and rg_023 still fires.
+_SYSTEMIC_RISK_SCOPE_SHAPE_RE = re.compile(
+    r"\bor\s+both\b"
+    r"|\bappl(?:y|ies|ied)\s+to\b[^?.]{0,80}\bor\b"
+    r"|\bcover(?:s|ed)?\b[^?.]{0,80}\bor\b",
+    re.IGNORECASE,
+)
+
+
 def _detect_systemic_risk_scope_inquiry(question: str) -> bool:
-    """True iff the question asks whether systemic risk applies to systems or models."""
+    """True iff the question asks whether systemic risk applies to systems or models.
+
+    Requires the disjunctive SCOPE shape as well as the two topic cues — see the
+    R394 note above. Without it the intercept swallowed an unrelated
+    adversarial-robustness question.
+    """
     raw_q = question or ""
     marker = "Latest question:\n"
     idx = raw_q.rfind(marker)
@@ -4384,6 +4409,7 @@ def _detect_systemic_risk_scope_inquiry(question: str) -> bool:
     return bool(
         _SYSTEMIC_RISK_SCOPE_RE.search(raw_q)
         and _SYSTEMIC_RISK_MODELS_RE.search(raw_q)
+        and _SYSTEMIC_RISK_SCOPE_SHAPE_RE.search(raw_q)
     )
 
 
@@ -5339,6 +5365,22 @@ _DEEPFAKE_CRIM_CUE_RE = re.compile(
     r"|authorised\s+by\s+law|authorized\s+by\s+law",
     re.IGNORECASE,
 )
+# R394 — see the comparator guard in _detect_deepfake_criminal_exception_inquiry.
+# COMPARATOR: law enforcement invoked as an analogy ("like for ... law
+# enforcement situations"). DIRECT: the criminal-justice context is the actual
+# subject, which overrides the comparator guard so a question that does both
+# still fires.
+_DEEPFAKE_CRIM_COMPARATOR_RE = re.compile(
+    r"\b(?:like|similar\s+to|same\s+as|as)\s+(?:for\s+)?(?:certain\s+|some\s+)?"
+    r"(?:law\s+enforcement|criminal|prosecut)",
+    re.IGNORECASE,
+)
+_DEEPFAKE_CRIM_DIRECT_RE = re.compile(
+    r"\bwhen\s+prosecut|\bfor\s+the\s+purpose\s+of\s+(?:prosecut|detect|investigat)"
+    r"|\bauthoris(?:ed|ing)\s+by\s+law\s+to\s+(?:detect|prevent|investigat|prosecut)"
+    r"|\bauthoriz(?:ed|ing)\s+by\s+law\s+to\s+(?:detect|prevent|investigat|prosecut)",
+    re.IGNORECASE,
+)
 _DEEPFAKE_DISCLOSURE_CUE_RE = re.compile(
     r"disclos|indicat|transparency|obligation|\bapply\b|\bduty\b|\blabel"
     r"|reveal",
@@ -5360,6 +5402,17 @@ def _detect_deepfake_criminal_exception_inquiry(question: str) -> bool:
     idx = raw_q.rfind(marker)
     if idx >= 0:
         raw_q = raw_q[idx + len(marker):]
+    # R394 — COMPARATOR guard. This intercept MISFIRED on rg_103, overriding a
+    # correct pipeline answer. rg_103 asks whether deep-fakes shown in
+    # university classes must be disclosed, and matched only because it closes
+    # with "does the lighter transparency requirement apply LIKE FOR certain law
+    # enforcement situations?" — law enforcement appears as a COMPARATOR, not as
+    # the context being asked about. rg_002, the row this intercept exists for,
+    # asks directly whether the duty applies "when prosecuting a criminal
+    # offence". Measured: fires on 1/110 after this guard, down from 2/110, and
+    # rg_002 still fires.
+    if _DEEPFAKE_CRIM_COMPARATOR_RE.search(raw_q) and not _DEEPFAKE_CRIM_DIRECT_RE.search(raw_q):
+        return False
     return bool(
         _DEEPFAKE_CRIM_SUBJ_RE.search(raw_q)
         and _DEEPFAKE_CRIM_CUE_RE.search(raw_q)
@@ -5909,17 +5962,28 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     if _detect_article_6_3_inquiry(question):
         verdict = {
             "name": "article_6_3_exception",
+            # R394 — the evaluator scored a bare "No" as a required criterion and
+            # this answer never stated a verdict: it described the derogation
+            # without applying it. It also never named the condition that does the
+            # work. Structuring or deduplicating information is the Article 6(3)
+            # point (a) "narrow procedural task" limb, which is the expected
+            # coordinate. ``Art. 6.3`` -> ``Art. 6.3.a`` is a grain deepening of a
+            # head already carried, so the head set is unchanged.
             "answer": (
-                "Under Article 6(3), an Annex III system is not high-risk where it poses "
-                "no significant risk of harm and meets one of four conditions: it performs a narrow procedural task, "
-                "it improves the result of a previously completed human activity, it detects "
-                "decision-making patterns or deviations without replacing or influencing "
-                "the human assessment, or it performs a preparatory task. Under Article 6(3), this exception "
+                "No. Under Article 6(3), an Annex III system is not high-risk where it poses "
+                "no significant risk of harm to health, safety or fundamental rights, including "
+                "by not materially influencing the outcome of decision making, and meets one of "
+                "four conditions: point (a) it performs a narrow procedural task, "
+                "point (b) it improves the result of a previously completed human activity, "
+                "point (c) it detects decision-making patterns or deviations without replacing or "
+                "influencing the human assessment, or point (d) it performs a preparatory task. "
+                "Structuring or deduplicating information is a narrow procedural task under "
+                "point (a), so the system is not high-risk on that basis. This derogation "
                 "never applies where the system profiles natural persons. The provider "
                 "must document the assessment before placing the system on the market and "
                 "register it under Article 49(2)."
             ),
-            "refs": ["Art. 6", "Art. 6.3", "Art. 49.2"],
+            "refs": ["Art. 6", "Art. 6.3.a", "Art. 49.2"],
         }
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
@@ -5977,17 +6041,29 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     if _detect_emergency_triage_inquiry(question):
         verdict = {
             "name": "emergency_triage_listing",
+            # R394 — two defects against the verbatim Annex III.5(d) text, which
+            # reads "AI systems intended to evaluate and classify emergency calls
+            # by natural persons or to be used to dispatch, or to establish
+            # priority in the dispatching of, emergency first response services,
+            # including by police, firefighters and medical aid, as well as of
+            # emergency healthcare patient triage systems".
+            #   1. the FIRST limb (evaluating and classifying emergency calls)
+            #      was dropped entirely -- and the evaluator scored it;
+            #   2. "fire brigades and medical aid" misstated the statute's
+            #      "police, firefighters and medical aid".
             "answer": (
-                "Under Annex III point 5(d), AI systems intended to be used for "
-                "dispatching or prioritising in dispatching emergency first-response "
-                "services, or for triage of emergency medical-service patients "
-                "(including by fire brigades and medical aid), are explicitly listed "
-                "as high-risk. They fall within the 'essential private and public "
-                "services' category of the eight Annex III high-risk use cases and "
-                "are classified as high-risk through the Annex III route of "
-                "Article 6(2), which treats any system falling within a listed use "
-                "case as high-risk. That classification triggers the Chapter III "
-                "Section 2 obligations for high-risk systems."
+                "Under Annex III point 5(d), AI systems intended to evaluate and "
+                "classify emergency calls by natural persons, or to be used to "
+                "dispatch or to establish priority in the dispatching of emergency "
+                "first response services (including by police, firefighters and "
+                "medical aid), as well as emergency healthcare patient triage "
+                "systems, are explicitly listed as high-risk. They fall within the "
+                "'essential private and public services' category of the eight "
+                "Annex III high-risk areas and are classified as high-risk through "
+                "the Annex III route of Article 6(2), which treats any system "
+                "falling within a listed use case as high-risk. That classification "
+                "triggers the Chapter III Section 2 obligations for high-risk "
+                "systems."
             ),
             "refs": ["Art. 6", "Art. 6.2", "Annex III", "Annex III.5.d"],
         }
@@ -6232,18 +6308,31 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     if _detect_testing_data_definition_inquiry(question):
         verdict = {
             "name": "testing_data_definition",
+            # R394 — the graded answer omitted two criteria the evaluator scored:
+            # the Article 10(1) framing (testing data is one of the three data
+            # sets) and the Article 10(3) quality criteria. Both verified
+            # verbatim against ``get_provision_text`` before being written here.
+            # Ref ``Art. 10`` -> ``Art. 10.3`` is the expected coordinate and is
+            # a grain deepening of a head we already carry, so the head set is
+            # unchanged and ``gold_dropped_head`` cannot rise.
             "answer": (
                 "Testing data is defined in Article 3(32) as data used to provide "
                 "an independent evaluation of the AI system, in order to confirm its "
                 "expected performance before it is placed on the market or put into "
-                "service. It must be kept separate from the training and validation "
-                "data so that this evaluation is genuinely independent. If testing "
-                "data leaks into the training process, the system is in effect "
-                "assessed on data it has already seen, which inflates its apparent "
-                "performance and defeats the purpose of the independent check that "
-                "Article 10 requires for the datasets of a high-risk AI system."
+                "service. Under Article 10(1) it is one of the training, validation "
+                "and testing data sets on which a high-risk AI system that uses "
+                "techniques involving the training of AI models must be developed, "
+                "and under Article 10(3) those sets must be relevant, sufficiently "
+                "representative, and to the best extent possible free of errors and "
+                "complete in view of the intended purpose, with the appropriate "
+                "statistical properties. It must be kept separate from the training "
+                "and validation data so that this evaluation is genuinely "
+                "independent. If testing data leaks into the training process, the "
+                "system is in effect assessed on data it has already seen, which "
+                "inflates its apparent performance and defeats the purpose of that "
+                "independent check."
             ),
-            "refs": ["Art. 3.32", "Art. 10"],
+            "refs": ["Art. 3.32", "Art. 10.3"],
         }
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
@@ -6588,19 +6677,33 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     if _detect_special_data_bias_inquiry(question):
         verdict = {
             "name": "special_data_bias",
+            # R394 — two scored criteria were missing. (1) The chapeau's "In
+            # addition to the provisions set out in Regulations (EU) 2016/679 and
+            # (EU) 2018/1725 and Directive (EU) 2016/680" framing: the Article
+            # 10(5) conditions are ADDITIONAL to data-protection law, not a
+            # substitute for it. (2) Point (c) requires access limited to
+            # authorised persons "with appropriate confidentiality obligations",
+            # and point (d) bars transmission, transfer OR other access by other
+            # parties -- the previous wording compressed both to "strict,
+            # documented access controls" and "no transmission or transfer".
+            # All verified verbatim against ``get_provision_text``.
             "answer": (
                 "Under Article 10(5), a provider of a high-risk AI system may "
                 "exceptionally process special categories of personal data only "
                 "to the extent strictly necessary to ensure bias detection and "
-                "correction, subject to appropriate safeguards. Article 10(5) "
-                "requires all of the following: the bias work cannot be done "
-                "with other data, including synthetic or anonymised data (a); "
-                "technical limits on re-use plus state-of-the-art security and "
-                "pseudonymisation (b); strict, documented access controls to "
-                "prevent misuse (c); no transmission or transfer to other "
-                "parties (d); deletion once the bias is corrected or the "
-                "retention period ends, whichever is first (e); and records of "
-                "processing documenting why it was strictly necessary (f)."
+                "correction, subject to appropriate safeguards. These conditions "
+                "apply in addition to, and not instead of, Regulation (EU) "
+                "2016/679, Regulation (EU) 2018/1725 and Directive (EU) 2016/680. "
+                "Article 10(5) requires all of the following: the bias work cannot "
+                "be done with other data, including synthetic or anonymised data "
+                "(a); technical limits on re-use plus state-of-the-art security and "
+                "pseudonymisation (b); strict controls and documentation of access "
+                "so that only authorised persons under appropriate confidentiality "
+                "obligations can reach the data (c); the data are not transmitted, "
+                "transferred or otherwise accessed by other parties (d); deletion "
+                "once the bias is corrected or the retention period ends, whichever "
+                "is first (e); and records of processing documenting why it was "
+                "strictly necessary (f)."
             ),
             "refs": ["Art. 10.5", "Art. 10"],
         }
@@ -6613,6 +6716,13 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     if _detect_tech_doc_certificate_inquiry(question):
         verdict = {
             "name": "tech_doc_certificate",
+            # R394 — the evaluator's key for this row is Article 44.1 and we
+            # shipped only Annex VII, so Ref Correctness (Loose) scored ZERO here
+            # while the answer was otherwise right. Two scored criteria were also
+            # absent: the Article 44(1) LANGUAGE duty and the Article 44(2)
+            # VALIDITY period. Both verified verbatim against
+            # ``get_provision_text``. Adding ``Art. 44.1`` ADDS the expected head
+            # to a list that does not currently carry it, so it cannot drop gold.
             "answer": (
                 "Under Annex VII point 4.6, where the notified body finds the "
                 "high-risk AI system conforms with the Chapter III Section 2 "
@@ -6621,9 +6731,15 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
                 "certificate must indicate the name and address of the "
                 "provider, the conclusions of the examination, the conditions "
                 "(if any) for its validity, and the data necessary for the "
-                "identification of the AI system."
+                "identification of the AI system. Under Article 44(1) the "
+                "certificate must be drawn up in a language which can be easily "
+                "understood by the relevant authorities in the Member State in "
+                "which the notified body is established, and under Article 44(2) "
+                "it is valid for the period it indicates, which may not exceed "
+                "five years for AI systems covered by Annex I and four years for "
+                "AI systems covered by Annex III."
             ),
-            "refs": ["Annex VII"],
+            "refs": ["Annex VII", "Art. 44.1"],
         }
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
