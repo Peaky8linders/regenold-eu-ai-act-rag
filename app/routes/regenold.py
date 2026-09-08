@@ -1389,6 +1389,14 @@ def _engine_cache_key(
             # wire (`Article 13` -> `Article 13.3`), so a same-process A/B
             # differing only here must not share a cache entry.
             "REGENOLD_REF_GRAIN_DEEPEN",
+            # R397 — folds a coordinate the Regulation does not contain back
+            # onto its head (`Article 13.9` -> `Article 13`). Changes the wire
+            # reference list, so it needs its own cache-key slot.
+            "REGENOLD_REF_COORD_GUARD",
+            # R397 — appends the real paragraph range of each cited head to the
+            # Stage-2 user message. Prompt-side, so it changes the answer and
+            # (invariant #5) the wire references derived from it.
+            "REGENOLD_COORD_MAP_PROMPT",
             # R388 — how many coordinate levels that deepener may descend
             # (`Article 13` -> `13.3` -> `13.3.b` -> `13.3.b.iv`). Same wire
             # effect as the gate above, so it needs its own cache-key slot.
@@ -3885,6 +3893,63 @@ def _qrel_prune_enabled() -> bool:
     return os.getenv("REGENOLD_QREL_PRUNE", "0").strip().lower() in (
         "1", "true", "yes", "on",
     )
+
+
+def _coord_guard_enabled() -> bool:
+    """R397 — never ship a citation to a provision that does not exist.
+
+    Default ON, deny-list form (matching the other default-ON gates in this
+    file), and registered in ``_engine_cache_key``.
+    """
+    return os.getenv("REGENOLD_REF_COORD_GUARD", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
+def _repair_nonexistent_coordinates(references: list[str]) -> list[str]:
+    """Fold a coordinate the Regulation does not contain back onto its head.
+
+    R386's grain deepener replaces a bare head with a paragraph coordinate at a
+    measured **77 % accuracy (47/61)**, so roughly a quarter of the coordinates
+    it mints are not the gold one — and some name a paragraph that does not
+    exist at all. ``article_existence`` cannot see that: it stops at the 126
+    heads, so ``Article 13.9`` passes the lint floor because ``Art. 13`` exists.
+    ``app/data/provision_coordinates`` is the first enumeration of which
+    coordinates are real (655 paragraphs, verified against the adopted text and
+    independently corroborating the graph's 658 ``Paragraph`` nodes).
+
+    **Hard rule #8 delta is +0 BY CONSTRUCTION, not by measurement.** This never
+    removes a provision: it rewrites ``Article 13.9`` to ``Article 13``, so the
+    HEAD SET is bit-identical before and after, and ``gold_dropped_head`` folds
+    both sides onto heads (``evals/bench/metrics.py:572``). It is the R381
+    parent-collapse shape — correcting a coordinate, not dropping a citation —
+    and squarely outside the refuted positional-trimmer families, which drop a
+    provision the list does not otherwise carry.
+
+    On the official axes the repair is free-to-positive: Ref Loose scores at
+    Article/Annex level so the head scores exactly as the bad coordinate did;
+    Ref Strict fails for a non-existent coordinate either way; Ref Conciseness
+    is a pure COUNT ratio and the count is unchanged. What it removes is a
+    citation to a provision that is not in the Regulation.
+
+    Order-preserving, duplicate-safe, and a strict no-op when every coordinate
+    is real — which is the expected reading, not evidence it is broken.
+    """
+    from app.data.provision_coordinates import coordinate_exists  # noqa: PLC0415
+
+    out: list[str] = []
+    for ref in references:
+        keep = ref
+        if not coordinate_exists(ref):
+            head = ref.split(".")[0]
+            # Only fold onto a head that is itself real; otherwise leave the
+            # reference untouched for the existing lint to deal with, rather
+            # than inventing a different bad citation.
+            if coordinate_exists(head):
+                keep = head
+        if keep not in out:
+            out.append(keep)
+    return out
 
 
 #: R385 tuned thresholds. In-sample best on the 110-row round; the two held-out
@@ -11530,6 +11595,28 @@ def regenold_eu_ai_act_ask(
                 _rn4("ref_grain_deepen " + ",".join(_gd_changed))
             except Exception:  # noqa: BLE001 — fail-soft on trace
                 pass
+
+        # R397 — coordinate guard, immediately AFTER the deepener because the
+        # deepener is what mints coordinates (77% accurate, R386) and this is
+        # what checks them. Head-preserving, so hard rule #8 delta is +0 by
+        # construction; see _repair_nonexistent_coordinates.
+        if _coord_guard_enabled():
+            _cg_refs = _repair_nonexistent_coordinates(references)
+            if _cg_refs != references:
+                _cg_fixed = [
+                    "%s->%s" % (a, b)
+                    for a, b in zip(references, _cg_refs)
+                    if a != b
+                ]
+                references = _cg_refs
+                try:
+                    from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                        record_note as _rn5,
+                    )
+
+                    _rn5("ref_coord_guard " + ",".join(_cg_fixed))
+                except Exception:  # noqa: BLE001 — fail-soft on trace
+                    pass
 
         # R385 — question-relevance prune, immediately before the terminal cap so
         # it sees the fully assembled list (including everything the three

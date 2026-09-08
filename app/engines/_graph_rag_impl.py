@@ -474,6 +474,66 @@ def _stage2_answer_headroom() -> int:
         return 2048
 
 
+def _coord_map_prompt_enabled() -> bool:
+    """R397 — opt-in. Prompt-side, so NOT reference-neutral (AGENTS.md #5)."""
+    return os.getenv("REGENOLD_COORD_MAP_PROMPT", "0").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _valid_coordinate_line(context_text: str, limit: int = 10) -> str:
+    """One compact line giving the real paragraph range of each cited head.
+
+    R397. The Stage-2 model is asked for sub-point grain — Reference
+    Correctness STRICT is scored at it, and it is our largest gap — but nothing
+    in the prompt tells it which coordinates actually EXIST. So it can only
+    guess the range, and ``Article 13.4`` (Article 13 has three paragraphs) is
+    indistinguishable to it from ``Article 13.3``.
+
+    ``app/data/provision_coordinates`` is the first enumeration of the real
+    universe (655 paragraph coordinates, verified against the adopted text), so
+    this states the bound as fact rather than asking the model to infer it:
+
+        VALID COORDINATES: Article 13 -> .1-.3; Annex III -> .1-.8.
+
+    Deliberately terse. Answer Conciseness carries the highest marginal leverage
+    of the eight axes (R381) and R380 measured prompt bloat as the source of the
+    fat, so this is one line, capped at ``limit`` heads, and adds ~20 chars per
+    head rather than a block. Returns "" when the flag is off or nothing in the
+    context resolves — never a dangling label.
+    """
+    if not _coord_map_prompt_enabled() or not context_text:
+        return ""
+    try:
+        from app.data.provision_coordinates import (  # noqa: PLC0415
+            PROVISION_COORDINATES,
+        )
+    except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
+        return ""
+
+    heads: list[str] = []
+    for match in re.finditer(r"\b(?:Article\s+(\d{1,3})|Annex\s+([IVX]{1,5}))\b", context_text):
+        head = f"Article {match.group(1)}" if match.group(1) else f"Annex {match.group(2)}"
+        if head not in heads:
+            heads.append(head)
+
+    parts: list[str] = []
+    for head in heads[:limit]:
+        nums = sorted(
+            int(c.rsplit(".", 1)[1])
+            for c in PROVISION_COORDINATES
+            if c.startswith(head + ".") and c.rsplit(".", 1)[1].isdigit()
+        )
+        if nums:
+            parts.append(f"{head} -> .{nums[0]}-.{nums[-1]}")
+    if not parts:
+        return ""
+    return (
+        "\n\nVALID COORDINATES (cite only paragraphs that exist; a coordinate "
+        "outside these ranges is not in the Regulation): " + "; ".join(parts) + ".\n"
+    )
+
+
 def _get_groq_compressed_system_prompt() -> str:
     """Return a compressed version of the Stage-2 system prompt for Groq GPT-OSS 120B synthesis."""
     return (
@@ -2025,6 +2085,7 @@ def _llm_generate_answer(
         # Talking about references trains the model to write as the
         # regulation expert, not as a graph-querying agent.
         user_message += f"EU AI ACT REFERENCES:\n{context_text}"
+        user_message += _valid_coordinate_line(context_text)
 
         full_system = PROMPT_HARDENING_PREFIX + ANSWER_GENERATE_SYSTEM
 

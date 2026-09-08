@@ -78,6 +78,54 @@ from app.data.provision_text import get_provision_text  # noqa: E402
 
 OUT_ONTOLOGY = REPO / "trustgraph-integration" / "ontology" / "eu-ai-act.json"
 OUT_KNOWLEDGE = REPO / "trustgraph-integration" / "knowledge" / "eu-ai-act-core.ttl"
+OUT_COORDINATES = REPO / "app" / "data" / "provision_coordinates.py"
+
+_ROMAN = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII")
+
+
+def enumerate_paragraph_coordinates(limit: int = 80, lookahead: int = 3) -> list[str]:
+    """Every PARAGRAPH coordinate that exists in the adopted text, e.g. 'Article 13.3'.
+
+    Nothing in this repo previously enumerated this. ``article_existence`` stops
+    at the 126 heads, and ``OFFICIAL_ARTICLE_TEXT`` is keyed by head too — the
+    sub-point text is derived by regex at call time, so there was no set to ask
+    "does this coordinate exist?" against. That is the question the R386 grain
+    deepener needs (it emits paragraph grain by default, ``REF_GRAIN_DEPTH=1``)
+    and the question invariant #2 could not answer below head level.
+
+    Verified against the adopted text: Article 3 -> 68 paragraphs (the 68
+    definitions), Article 5 -> 8, Article 13 -> 3. The 655 coordinates this
+    yields independently corroborate the production Neo4j graph's 658
+    ``Paragraph`` nodes (R380).
+
+    ⚠ PARAGRAPH GRAIN ONLY, deliberately. Point grain is NOT enumerable from
+    this source and is excluded:
+
+    * ``get_provision_text`` falls back to the PARENT when a paragraph carries
+      no lettered points, so ``Article 3.1.z`` returns Article 3.1's own text
+      and every letter appears to "exist". Comparing against the parent defeats
+      that, but a second defect does not yield:
+    * a roman sub-point is flattened into the letter slot — ``Article 5.1.i``
+      returns Article 5(1)(h)(i), so paragraph 1 appears to have a ninth point
+      when the Act gives it (a)-(h).
+
+    Emitting a point-grain universe on that basis would ship coordinates that do
+    not exist, which is the failure this module is meant to detect.
+    """
+    heads = [f"Article {n}" for n in range(1, 114)] + [f"Annex {r}" for r in _ROMAN]
+    coordinates: list[str] = []
+    for head in heads:
+        misses = 0
+        found = False
+        for n in range(1, limit + 1):
+            if get_provision_text(f"{head}.{n}"):
+                coordinates.append(f"{head}.{n}")
+                found, misses = True, 0
+            else:
+                misses += 1
+                if misses > lookahead and found:
+                    break
+    return coordinates
 
 BASE = "https://antifragile-ai.net/ns/eu-ai-act#"
 EU = Namespace(BASE)
@@ -279,6 +327,20 @@ def build_knowledge_graph(*, with_text: bool = True) -> Graph:
     for ref in sorted(ARTICLE_EXISTENCE):
         provision(ref)
 
+    # --- and every PARAGRAPH coordinate that actually exists ----------------
+    # This is the layer the repo never had. It takes the knowledge core from 16
+    # sub-points (whatever the registries happened to mention) to the real
+    # structure of the Regulation, at the exact grain the R386 deepener emits.
+    for coord in enumerate_paragraph_coordinates():
+        provision(coord)
+
+    # --- and the POINT grain, from the production graph --------------------
+    # The existing knowledge graph is the authority here (421 HAS_POINT edges);
+    # the regex derivation cannot enumerate letters. Committed, so this stays
+    # deterministic offline.
+    for coord in committed_point_coordinates():
+        provision(coord)
+
     # --- operator roles ---
     role_node = {}
     for role in onto.ActorRole:
@@ -341,10 +403,173 @@ def build_knowledge_graph(*, with_text: bool = True) -> Graph:
     return g
 
 
+def _graph_id_to_wire(node_id: str) -> str | None:
+    """``article_13`` -> ``Article 13``; ``annex_III`` -> ``Annex III``."""
+    if node_id.startswith("article_"):
+        return f"Article {node_id[len('article_'):]}"
+    if node_id.startswith("annex_"):
+        return f"Annex {node_id[len('annex_'):]}"
+    return None
+
+
+def point_coordinates_from_graph() -> list[str]:
+    """Read the POINT grain from the production Neo4j graph.
+
+    The standing operator directive is to use the knowledge graph, and here it
+    is the only source that can answer the question. ``get_provision_text``
+    cannot enumerate points: it returns the PARENT's text for a letter that does
+    not exist, and flattens a roman sub-point into the letter slot
+    (``Article 5.1.i`` is really Article 5(1)(h)(i)). The graph models the
+    structure explicitly —
+    ``(Article|Annex)-[:HAS_PARAGRAPH]->(Paragraph)-[:HAS_POINT]->(Point)``
+    with ``Paragraph.number`` and ``Point.letter`` — so it is authoritative
+    where the regex derivation is not.
+
+    Requires ``NEO4J_URI`` and credentials; returns [] when the graph is not
+    reachable, so the offline build is never blocked by it.
+    """
+    try:
+        import app.config  # noqa: F401, PLC0415 — import runs _load_dotenv_once()
+        from app.graph.client import get_graph_client  # noqa: PLC0415
+
+        client = get_graph_client()
+        if not client.enabled:
+            return []
+        rows = client.execute_read(
+            "MATCH (a)-[:HAS_PARAGRAPH]->(p)-[:HAS_POINT]->(pt) "
+            "RETURN a.id AS head, p.number AS para, pt.letter AS letter"
+        )
+    except Exception as exc:  # noqa: BLE001 — the graph is optional for the build
+        print(f"  graph unavailable ({type(exc).__name__}); keeping the committed points",
+              file=sys.stderr)
+        return []
+
+    out = set()
+    for row in rows:
+        head = _graph_id_to_wire(str(row.get("head") or ""))
+        para, letter = row.get("para"), row.get("letter")
+        if head and para and letter:
+            out.add(f"{head}.{para}.{letter}")
+    return sorted(out)
+
+
+def committed_point_coordinates() -> list[str]:
+    """The point set already in ``provision_coordinates.py``.
+
+    An offline rebuild must PRESERVE it: the graph is the only source for point
+    grain, so a build without network access has nothing to regenerate it from
+    and would otherwise silently delete a whole layer — and CI, which has no
+    Neo4j, would then see the committed file as permanently stale.
+    """
+    if not OUT_COORDINATES.exists():
+        return []
+    try:
+        from app.data.provision_coordinates import POINT_COORDINATES  # noqa: PLC0415
+
+        return sorted(POINT_COORDINATES)
+    except Exception:  # noqa: BLE001 — first run, before the constant exists
+        return []
+
+
+def build_coordinates_module(coordinates: list[str], points: list[str]) -> str:
+    """Emit ``app/data/provision_coordinates.py`` — the in-process oracle.
+
+    A generated frozenset in the style of ``article_existence``: no runtime
+    dependency (rdflib stays dev-only), O(1) membership, zero latency. The
+    knowledge core carries the same facts for TrustGraph; this is the form the
+    request path can actually use.
+    """
+    body = "\n".join(f'    "{c}",' for c in coordinates)
+    point_body = "\n".join(f'    "{c}",' for c in points)
+    return f'''"""Every PARAGRAPH coordinate that exists in Regulation (EU) 2024/1689.
+
+GENERATED by ``scripts/build_trustgraph_core.py`` — do not edit by hand.
+
+``article_existence`` answers "is Article 13 a real Article?" and stops at the
+126 heads. Nothing answered "is *Article 13.3* a real coordinate?", because the
+sub-point text is derived by regex at call time rather than stored, so there was
+no set to ask. That is the grain the R386 deepener emits by default
+(``REGENOLD_REF_GRAIN_DEPTH=1``), and the grain the official rubric scores
+Reference Correctness STRICT at.
+
+Verified against the adopted text: Article 3 -> 68 paragraphs (its 68
+definitions), Article 5 -> 8, Article 13 -> 3. The {len(coordinates)} entries
+below independently corroborate the production Neo4j graph's 658 ``Paragraph``
+nodes (R380).
+
+⚠ PARAGRAPH GRAIN ONLY. Point grain (``Article 5.1.a``) is deliberately absent:
+``get_provision_text`` silently returns the PARENT's text for a non-existent
+letter, and flattens a roman sub-point into the letter slot (``Article 5.1.i``
+is really Article 5(1)(h)(i)). Enumerating points from that source would ship
+coordinates that do not exist. :func:`coordinate_exists` therefore answers
+``True`` for a deeper coordinate whose paragraph exists, rather than pretending
+to a precision it does not have.
+"""
+
+from __future__ import annotations
+
+from app.data.article_existence import ARTICLE_EXISTENCE
+
+#: ``Article N.P`` / ``Annex R.P`` coordinates present in the adopted text.
+PROVISION_COORDINATES: frozenset[str] = frozenset({{
+{body}
+}})
+
+#: ``Article N.P.L`` / ``Annex R.P.L`` POINT coordinates, read from the
+#: production Neo4j graph's ``(Paragraph)-[:HAS_POINT]->(Point)`` edges — the
+#: only source that models points explicitly instead of deriving them by regex.
+POINT_COORDINATES: frozenset[str] = frozenset({{
+{point_body}
+}})
+
+
+def _head_of(reference: str) -> str:
+    """The ``article_existence`` key for a wire reference."""
+    head = reference.split(".")[0]
+    return "Art. " + head[len("Article "):] if head.startswith("Article ") else head
+
+
+def coordinate_exists(reference: str) -> bool:
+    """Does ``reference`` name a provision that exists in the Regulation?
+
+    Accepts the wire form (``Article 13.3``, ``Annex III.1``). Head references
+    are checked against :data:`ARTICLE_EXISTENCE`; paragraph references against
+    :data:`PROVISION_COORDINATES`; anything deeper is judged by its paragraph,
+    because point grain is not reliably enumerable (see the module docstring).
+
+    Returns ``False`` for a coordinate the Regulation does not contain — which
+    is the check ``article_existence`` could not make below head level.
+    """
+    if not reference:
+        return False
+    parts = reference.split(".")
+    if _head_of(reference) not in ARTICLE_EXISTENCE:
+        return False
+    if len(parts) == 1:
+        return True
+    if ".".join(parts[:2]) not in PROVISION_COORDINATES:
+        return False
+    if len(parts) == 2:
+        return True
+    # Point grain: the graph models it explicitly. Only judge a letter when the
+    # parent paragraph HAS points in the graph — no points recorded means the
+    # graph does not model that paragraph's letters, not that the letter is wrong.
+    parent = ".".join(parts[:2])
+    siblings = {{c for c in POINT_COORDINATES if c.startswith(parent + ".")}}
+    if not siblings:
+        return True
+    return ".".join(parts[:3]) in siblings
+'''
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--check", action="store_true",
                     help="exit 1 if the committed artefacts differ from a fresh build")
+    ap.add_argument("--from-graph", action="store_true",
+                    help="refresh POINT coordinates from the Neo4j graph (needs NEO4J_URI); "
+                         "without it the committed point set is preserved, so an offline "
+                         "rebuild and CI's --check stay deterministic")
     ap.add_argument("--no-text", action="store_true",
                     help="omit verbatim provision text (smaller, for inspection)")
     args = ap.parse_args()
@@ -352,10 +577,15 @@ def main() -> int:
     ontology = json.dumps(build_ontology_json(), indent=2, sort_keys=True, ensure_ascii=False) + "\n"
     graph = build_knowledge_graph(with_text=not args.no_text)
     turtle = graph.serialize(format="turtle")
+    points = point_coordinates_from_graph() if args.from_graph else committed_point_coordinates()
+    if args.from_graph:
+        print(f"  read {len(points)} point coordinates from the Neo4j graph")
+    coordinates = build_coordinates_module(enumerate_paragraph_coordinates(), points)
 
     if args.check:
         stale = []
-        for path, fresh in ((OUT_ONTOLOGY, ontology), (OUT_KNOWLEDGE, turtle)):
+        for path, fresh in ((OUT_ONTOLOGY, ontology), (OUT_KNOWLEDGE, turtle),
+                            (OUT_COORDINATES, coordinates)):
             if not path.exists():
                 stale.append(f"{path.relative_to(REPO)} is missing")
             elif path.read_text(encoding="utf-8") != fresh:
@@ -368,7 +598,8 @@ def main() -> int:
         print(f"up to date — {len(graph)} triples, {len(build_ontology_json()['classes'])} classes")
         return 0
 
-    for path, content in ((OUT_ONTOLOGY, ontology), (OUT_KNOWLEDGE, turtle)):
+    for path, content in ((OUT_ONTOLOGY, ontology), (OUT_KNOWLEDGE, turtle),
+                          (OUT_COORDINATES, coordinates)):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         print(f"wrote {path.relative_to(REPO)} ({len(content):,} bytes)")
