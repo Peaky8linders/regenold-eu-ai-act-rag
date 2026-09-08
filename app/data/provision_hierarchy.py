@@ -435,14 +435,32 @@ def _flatten(text: object) -> str:
 
 
 def _parent_id(ref: str) -> str | None:
-    """``Article 13`` -> ``article_13``; ``Annex IV`` -> ``annex_IV``.
+    """``Article 13`` / ``Art. 13`` -> ``article_13``; ``Annex IV`` -> ``annex_IV``.
 
     Returns ``None`` for anything that is not a bare head — a ref that already
     carries a sub-coordinate is bounded, so it needs no closed-set expansion.
+
+    ⚠ **R394 — accepts the INTERNAL short form, and that is load-bearing.**
+    The route does not pass the long wire form: ``_context_article_refs``
+    (``app/routes/regenold.py``) normalises every reference to ``Art. N``, and
+    that is what reaches ``_render_grounding_text``. A matcher that only
+    accepted ``Article N`` returned ``[]`` for every live call, so the R393
+    closed-set skeleton rendered NOTHING in production while its unit tests
+    passed — they built their own fixture using the long form — and its n=110
+    live gate measured a no-op as though it were the lever.
+
+    That is the sixth instance in this repo of a feature that reads correctly in
+    the diff and makes zero calls (R329 rerank x3, R330 semantic layer, R366
+    parent collapse). The lesson the earlier five did not teach: grepping the
+    call site is not enough — assert on the DATA SHAPE the call site actually
+    produces. ``tests/test_r393_closed_set_skeleton.py`` now drives
+    ``_context_article_refs`` rather than hand-writing refs.
     """
     import re  # noqa: PLC0415 — module-local, keeps the hot import list lean
 
     stripped = ref.strip()
+    if re.match(r"art\.?\s", stripped, re.IGNORECASE):
+        stripped = "Article " + re.sub(r"^art\.?\s+", "", stripped, flags=re.IGNORECASE)
     m = re.fullmatch(r"Article\s+(\d{1,3})", stripped)
     if m:
         return f"article_{int(m.group(1))}"

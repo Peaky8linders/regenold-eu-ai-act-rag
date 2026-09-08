@@ -236,13 +236,50 @@ def _context_for(refs, question):
     )
 
 
+# ⚠ R394 — these fixtures MUST use the INTERNAL short form ``Art. N``, because
+# that is what ``_context_article_refs`` produces and therefore what
+# ``_render_grounding_text`` actually iterates. The original suite hand-wrote
+# ``Article 13``, the long WIRE form, so every test passed while the feature
+# rendered nothing in production and its live n=110 gate measured a no-op.
+_LIVE_REFS = ["Art. 13", "Annex IV"]
+
+
+def test_the_call_site_really_produces_the_short_form():
+    """Pin the shape assumption itself, so it cannot drift silently again.
+
+    If ``_context_article_refs`` ever starts emitting the long form, this fails
+    and whoever changed it learns that the skeleton's matcher depends on it —
+    rather than the skeleton quietly going inert for a second time.
+    """
+    ctx = _context_for(_LIVE_REFS, _Q)
+    refs = G._context_article_refs(ctx)
+    assert refs, "the call site produced no refs at all"
+    assert any(r.startswith("Art. ") for r in refs), (
+        f"expected the internal short form from _context_article_refs, got {refs}"
+    )
+
+
+def test_closed_set_members_accepts_the_internal_short_form():
+    """``Art. 13`` must resolve exactly as ``Article 13`` does.
+
+    This is the R394 regression: it returned [] for the short form, which is
+    the ONLY form the route passes.
+    """
+    long_form = [c for c, _ in closed_set_members("Article 13")]
+    for short in ("Art. 13", "Art 13", "art. 13"):
+        assert [c for c, _ in closed_set_members(short)] == long_form, (
+            f"{short!r} did not resolve to the same members as 'Article 13'"
+        )
+    assert long_form, "Article 13 resolved to nothing — corpus regression"
+
+
 _Q = "What information must the instructions for use contain?"
 
 
 def test_real_renderer_is_byte_identical_when_off(monkeypatch):
     """The inert-feature tripwire: OFF must really still suppress it."""
     monkeypatch.delenv("REGENOLD_CLOSED_SET_SKELETON", raising=False)
-    ctx = _context_for(["Article 13", "Annex IV"], _Q)
+    ctx = _context_for(_LIVE_REFS, _Q)
     off = G._render_grounding_text(ctx)
     monkeypatch.setenv("REGENOLD_CLOSED_SET_SKELETON", "0")
     assert G._render_grounding_text(ctx) == off
@@ -253,7 +290,7 @@ def test_real_renderer_is_byte_identical_when_off(monkeypatch):
 
 def test_real_renderer_carries_the_closed_set_when_on(monkeypatch):
     """ON must change the block the model actually receives."""
-    ctx = _context_for(["Article 13", "Annex IV"], _Q)
+    ctx = _context_for(_LIVE_REFS, _Q)
     monkeypatch.delenv("REGENOLD_CLOSED_SET_SKELETON", raising=False)
     off = "".join(G._render_grounding_text(ctx))
     monkeypatch.setenv("REGENOLD_CLOSED_SET_SKELETON", "1")
@@ -281,7 +318,7 @@ def test_on_arm_adds_no_new_citable_head(monkeypatch):
     ``_add_prose_named_refs`` still promotes whatever the model NAMES in prose.
     That exposure is what the live ``gold_dropped_head`` gate exists to measure.
     """
-    ctx = _context_for(["Article 13", "Annex IV"], _Q)
+    ctx = _context_for(_LIVE_REFS, _Q)
     monkeypatch.delenv("REGENOLD_CLOSED_SET_SKELETON", raising=False)
     before = G._extract_context_grounded_refs(ctx)
     monkeypatch.setenv("REGENOLD_CLOSED_SET_SKELETON", "1")
