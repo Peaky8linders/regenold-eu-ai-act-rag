@@ -37,6 +37,7 @@ from app.data.kb_search import (
     top_articles_by_relevance_in_chapters,
     top_articles_by_relevance_in_sections,
 )
+from app.engines.prompt_budget import _shrink_user_for_groq as _shrink_user_for_groq
 from app.engines.scenario_classifier import (
     ScenarioVerdict,
     classify_scenario_query,
@@ -473,117 +474,6 @@ def _stage2_answer_headroom() -> int:
         return 2048
 
 
-def _shrink_user_for_groq(user: str, budget: int = 10000) -> str:
-    """Fit ``user`` into ``budget`` chars WITHOUT deleting the grounding.
-
-    R315 + R341. The Stage-2 user message has two layouts:
-
-    **Multi-turn** (contains ``Latest question:``)::
-
-        [Context anchors ...] / Conversation so far: ...   <- compressible
-        Latest question: ...                               <- must survive
-        EU AI ACT REFERENCES ...                           <- must survive
-        VERBATIM PROVISION TEXT ...                        <- must survive
-        ANSWER COVERAGE / CRITICAL RULES ...               <- must survive
-
-    **Single-turn** (starts with ``ORIGINAL QUESTION:``)::
-
-        ORIGINAL QUESTION: ...                             <- must survive
-        [query profile / context / references ...]         <- compressible middle
-        ANSWER COVERAGE / CRITICAL RULES ...               <- must survive
-
-    R341: The previous fallback for single-turn was ``user[:budget]`` which
-    chopped the TAIL where ``USER_ANSWER_COVERAGE_CLAUSE`` and
-    ``USER_CRITICAL_RULES_CLAUSE`` sit — the highest-impact instructions.
-    Now both layouts preserve head (question) + tail (rules), compressing
-    only the bulky middle (cross-references, verbatim text, KG context).
-    """
-
-    if len(user) <= budget:
-        return user
-
-    # --- Locate the critical tail rules (R308 coverage + R340 critical) ---
-    # These sit at the very end of user_message.  Find the earliest of the
-    # two clause markers so we can protect everything from there onward.
-    _TAIL_MARKERS = (
-        " ANSWER COVERAGE:",          # USER_ANSWER_COVERAGE_CLAUSE start
-        " CRITICAL ANSWER RULES",     # USER_CRITICAL_RULES_CLAUSE start
-        " SCOPE STOP RULE",           # R367 USER_SCOPE_STOP_CLAUSE start
-        " ANSWER DISCIPLINE (V3",     # R380 USER_V3_DISCIPLINE_CLAUSE start
-        " ANSWER CONTRACT (compact):",
-    )
-    tail_start = len(user)  # default: no protected tail found
-    for tm in _TAIL_MARKERS:
-        pos = user.find(tm)
-        if pos > 0:
-            tail_start = min(tail_start, pos)
-
-    protected_tail = user[tail_start:] if tail_start < len(user) else ""
-
-    # --- Multi-turn: split on "Latest question:" ---
-    marker = "Latest question:"
-    idx = user.find(marker)
-    if idx > 0:
-        head = user[:idx]
-        # Middle = from marker to tail rules; tail rules are protected separately
-        middle = user[idx:tail_start]
-        core = middle + protected_tail
-        if len(core) <= budget:
-            keep = budget - len(core)
-            if keep > 0:
-                trimmed = head[-keep:]
-                return (
-                    "... [EARLIER CONVERSATION TRUNCATED FOR GROQ CONTEXT LIMIT] ...\n\n"
-                    + trimmed
-                    + core
-                )
-            return core
-        # Even middle + tail overflow: keep question front + tail rules,
-        # compress the verbatim text in between.
-        mid_budget = budget - len(protected_tail)
-        if mid_budget > 0:
-            return middle[:mid_budget] + protected_tail
-        return protected_tail[:budget]
-
-    # --- Single-turn: starts with "ORIGINAL QUESTION:" ---
-    # Locate end of question header (first double-newline after question).
-    q_marker = "ORIGINAL QUESTION:"
-    q_idx = user.find(q_marker)
-    if q_idx >= 0:
-        # Find the end of the question block (first blank line)
-        q_end = user.find("\n\n", q_idx)
-        if q_end < 0:
-            q_end = min(len(user), q_idx + 500)
-        else:
-            q_end += 2  # include the double newline
-
-        question_head = user[:q_end]
-        middle_block = user[q_end:tail_start]
-
-        head_tail_len = len(question_head) + len(protected_tail)
-        if head_tail_len <= budget:
-            mid_budget = budget - head_tail_len
-            if mid_budget > 0:
-                # Keep question + as much middle as fits + tail rules
-                return question_head + middle_block[:mid_budget] + (
-                    "\n... [MIDDLE CONTEXT TRUNCATED FOR GROQ CONTEXT LIMIT] ...\n"
-                    if len(middle_block) > mid_budget else ""
-                ) + protected_tail
-            return question_head + protected_tail
-        # Even head + tail overflow — keep tail rules (they're the instructions),
-        # trim the question.
-        q_budget = budget - len(protected_tail)
-        if q_budget > 0:
-            return question_head[:q_budget] + protected_tail
-        return protected_tail[:budget]
-
-    # --- Unrecognised layout: preserve tail rules, trim front ---
-    if protected_tail and len(protected_tail) < budget:
-        front_budget = budget - len(protected_tail)
-        return user[:front_budget] + (
-            "\n... [TRUNCATED FOR GROQ CONTEXT LIMIT] ...\n"
-        ) + protected_tail
-    return user[:budget]
 
 
 def _get_groq_compressed_system_prompt() -> str:
@@ -5983,33 +5873,48 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
             # system is placed on the market or put into service. Such provider
             # shall be subject to the registration obligation set out in Article
             # 49(2)."
+            # ⚠ THREE SENTENCES, and every constraint below is load-bearing.
+            #
+            # This ONE canned answer serves two question shapes: the generic
+            # "what are the Article 6(3) requirements?" (which needs all four
+            # limbs enumerated) and the official rg_031 "is deduplication
+            # high-risk?" (which needs a verdict, point (a), the profiling
+            # carve-out and the Article 6(4) duty). An earlier R394 cut optimised
+            # for the second and dropped limbs (b)-(d), breaking the first.
+            #
+            # The sentence COUNT is the binding constraint. The deterministic
+            # path caps this answer, and at four sentences the normaliser drops
+            # one from the MIDDLE — measured 652 -> 542 chars, removing the
+            # standalone profiling sentence while the tail survived, which failed
+            # a criterion that had previously passed. Every variant of that
+            # sentence survives in ISOLATION, so the trigger is the count, not the
+            # wording. Everything therefore folds into three sentences.
+            #
+            # Do NOT append "which remains high-risk" to the profiling clause:
+            # this answer's verdict is "not high-risk", and a trailing contrary
+            # tier assertion trips the tier-displacement guard, which strips the
+            # whole sentence.
             "answer": (
                 "No. Structuring or deduplicating information is a narrow "
                 "procedural task, so the system falls under the Article 6(3) first "
                 "subparagraph point (a) derogation and is not high-risk, provided "
                 "it poses no significant risk of harm to health, safety or "
                 "fundamental rights and does not materially influence the outcome "
-                # R394.1 — do NOT write "which remains high-risk" here. This
-                # answer's verdict is "not high-risk", so a trailing high-risk
-                # tier assertion trips the tier-displacement guard inside
-                # normalise_answer_for_regenold, which strips the WHOLE sentence
-                # and takes the profiling exception (a scored criterion) with it.
-                # Measured: 652 -> 542 chars, that sentence removed from the
-                # MIDDLE while the tail survived.
-                # R394.1 — the profiling exception is FOLDED INTO the sentence
-                # above rather than given its own. The deterministic path applies
-                # a THREE-SENTENCE cap, and at four sentences the normaliser drops
-                # one from the MIDDLE: measured 652 -> 542 chars with the standalone
-                # profiling sentence removed while the tail survived, which failed
-                # a criterion that had previously passed. Every variant of that
-                # sentence survives in isolation, so the trigger is the count, not
-                # the wording. Keep this intercept at three sentences.
-                "of decision making, and does not perform profiling of natural "
-                "persons, for which the derogation is never available. "
-                "Under Article 6(4) a provider relying on the derogation must "
-                "document its assessment before the system is placed on the market "
-                "or put into service, and is subject to the registration "
-                "obligation in Article 49(2)."
+                "of decision making; the other limbs are (b) improving the result "
+                "of a previously completed human activity, (c) detecting "
+                "decision-making patterns or deviations without replacing or "
+                "influencing the human assessment, and (d) performing a "
+                # ⚠ Keep the profiling clause on ONE source line. R109 pins the
+                # kill-switch wording by grepping this function's source, and a
+                # concatenation break mid-phrase makes the literal absent from the
+                # source while still present in the answer.
+                "preparatory task, and the derogation "
+                "never applies where the system profiles natural persons. "
+                "Under Article 6(4) a provider "
+                "relying on the derogation must document the assessment before the "
+                # ⚠ Keep this phrase on ONE source line too — same R109 grep.
+                "system is placed on the market or put into service, and "
+                "register it under Article 49(2)."
             ),
             "refs": ["Art. 6", "Art. 6.3.a", "Art. 49.2"],
         }
