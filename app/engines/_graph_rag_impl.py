@@ -37,7 +37,6 @@ from app.data.kb_search import (
     top_articles_by_relevance_in_chapters,
     top_articles_by_relevance_in_sections,
 )
-from app.engines.prompt_budget import _shrink_user_for_groq as _shrink_user_for_groq
 from app.engines.scenario_classifier import (
     ScenarioVerdict,
     classify_scenario_query,
@@ -474,6 +473,117 @@ def _stage2_answer_headroom() -> int:
         return 2048
 
 
+def _shrink_user_for_groq(user: str, budget: int = 10000) -> str:
+    """Fit ``user`` into ``budget`` chars WITHOUT deleting the grounding.
+
+    R315 + R341. The Stage-2 user message has two layouts:
+
+    **Multi-turn** (contains ``Latest question:``)::
+
+        [Context anchors ...] / Conversation so far: ...   <- compressible
+        Latest question: ...                               <- must survive
+        EU AI ACT REFERENCES ...                           <- must survive
+        VERBATIM PROVISION TEXT ...                        <- must survive
+        ANSWER COVERAGE / CRITICAL RULES ...               <- must survive
+
+    **Single-turn** (starts with ``ORIGINAL QUESTION:``)::
+
+        ORIGINAL QUESTION: ...                             <- must survive
+        [query profile / context / references ...]         <- compressible middle
+        ANSWER COVERAGE / CRITICAL RULES ...               <- must survive
+
+    R341: The previous fallback for single-turn was ``user[:budget]`` which
+    chopped the TAIL where ``USER_ANSWER_COVERAGE_CLAUSE`` and
+    ``USER_CRITICAL_RULES_CLAUSE`` sit — the highest-impact instructions.
+    Now both layouts preserve head (question) + tail (rules), compressing
+    only the bulky middle (cross-references, verbatim text, KG context).
+    """
+
+    if len(user) <= budget:
+        return user
+
+    # --- Locate the critical tail rules (R308 coverage + R340 critical) ---
+    # These sit at the very end of user_message.  Find the earliest of the
+    # two clause markers so we can protect everything from there onward.
+    _TAIL_MARKERS = (
+        " ANSWER COVERAGE:",          # USER_ANSWER_COVERAGE_CLAUSE start
+        " CRITICAL ANSWER RULES",     # USER_CRITICAL_RULES_CLAUSE start
+        " SCOPE STOP RULE",           # R367 USER_SCOPE_STOP_CLAUSE start
+        " ANSWER DISCIPLINE (V3",     # R380 USER_V3_DISCIPLINE_CLAUSE start
+        " ANSWER CONTRACT (compact):",
+    )
+    tail_start = len(user)  # default: no protected tail found
+    for tm in _TAIL_MARKERS:
+        pos = user.find(tm)
+        if pos > 0:
+            tail_start = min(tail_start, pos)
+
+    protected_tail = user[tail_start:] if tail_start < len(user) else ""
+
+    # --- Multi-turn: split on "Latest question:" ---
+    marker = "Latest question:"
+    idx = user.find(marker)
+    if idx > 0:
+        head = user[:idx]
+        # Middle = from marker to tail rules; tail rules are protected separately
+        middle = user[idx:tail_start]
+        core = middle + protected_tail
+        if len(core) <= budget:
+            keep = budget - len(core)
+            if keep > 0:
+                trimmed = head[-keep:]
+                return (
+                    "... [EARLIER CONVERSATION TRUNCATED FOR GROQ CONTEXT LIMIT] ...\n\n"
+                    + trimmed
+                    + core
+                )
+            return core
+        # Even middle + tail overflow: keep question front + tail rules,
+        # compress the verbatim text in between.
+        mid_budget = budget - len(protected_tail)
+        if mid_budget > 0:
+            return middle[:mid_budget] + protected_tail
+        return protected_tail[:budget]
+
+    # --- Single-turn: starts with "ORIGINAL QUESTION:" ---
+    # Locate end of question header (first double-newline after question).
+    q_marker = "ORIGINAL QUESTION:"
+    q_idx = user.find(q_marker)
+    if q_idx >= 0:
+        # Find the end of the question block (first blank line)
+        q_end = user.find("\n\n", q_idx)
+        if q_end < 0:
+            q_end = min(len(user), q_idx + 500)
+        else:
+            q_end += 2  # include the double newline
+
+        question_head = user[:q_end]
+        middle_block = user[q_end:tail_start]
+
+        head_tail_len = len(question_head) + len(protected_tail)
+        if head_tail_len <= budget:
+            mid_budget = budget - head_tail_len
+            if mid_budget > 0:
+                # Keep question + as much middle as fits + tail rules
+                return question_head + middle_block[:mid_budget] + (
+                    "\n... [MIDDLE CONTEXT TRUNCATED FOR GROQ CONTEXT LIMIT] ...\n"
+                    if len(middle_block) > mid_budget else ""
+                ) + protected_tail
+            return question_head + protected_tail
+        # Even head + tail overflow — keep tail rules (they're the instructions),
+        # trim the question.
+        q_budget = budget - len(protected_tail)
+        if q_budget > 0:
+            return question_head[:q_budget] + protected_tail
+        return protected_tail[:budget]
+
+    # --- Unrecognised layout: preserve tail rules, trim front ---
+    if protected_tail and len(protected_tail) < budget:
+        front_budget = budget - len(protected_tail)
+        return user[:front_budget] + (
+            "\n... [TRUNCATED FOR GROQ CONTEXT LIMIT] ...\n"
+        ) + protected_tail
+    return user[:budget]
 
 
 def _get_groq_compressed_system_prompt() -> str:
