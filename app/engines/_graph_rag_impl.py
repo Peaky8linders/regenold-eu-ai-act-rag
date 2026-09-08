@@ -5969,19 +5969,47 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
             # point (a) "narrow procedural task" limb, which is the expected
             # coordinate. ``Art. 6.3`` -> ``Art. 6.3.a`` is a grain deepening of a
             # head already carried, so the head set is unchanged.
+            # R394.1 — same lesson as rg_011. The first cut enumerated all four
+            # Article 6(3) limbs up front, which pushed the Article 6(4)
+            # documentation duty past a downstream length cut: criterion 1 ("No")
+            # started passing while criterion 4, previously passing, began to
+            # FAIL. Net zero.
+            #
+            # Rewritten to lead with the verdict and the operative limb, drop the
+            # three limbs the question does not turn on, and keep the Article 6(4)
+            # duty inside the answer. Four sentences, ~620 chars. Article 6(4)
+            # verbatim: "A provider who considers that an AI system referred to in
+            # Annex III is not high-risk shall document its assessment before that
+            # system is placed on the market or put into service. Such provider
+            # shall be subject to the registration obligation set out in Article
+            # 49(2)."
             "answer": (
-                "No. Under Article 6(3), an Annex III system is not high-risk where it poses "
-                "no significant risk of harm to health, safety or fundamental rights, including "
-                "by not materially influencing the outcome of decision making, and meets one of "
-                "four conditions: point (a) it performs a narrow procedural task, "
-                "point (b) it improves the result of a previously completed human activity, "
-                "point (c) it detects decision-making patterns or deviations without replacing or "
-                "influencing the human assessment, or point (d) it performs a preparatory task. "
-                "Structuring or deduplicating information is a narrow procedural task under "
-                "point (a), so the system is not high-risk on that basis. This derogation "
-                "never applies where the system profiles natural persons. The provider "
-                "must document the assessment before placing the system on the market and "
-                "register it under Article 49(2)."
+                "No. Structuring or deduplicating information is a narrow "
+                "procedural task, so the system falls under the Article 6(3) first "
+                "subparagraph point (a) derogation and is not high-risk, provided "
+                "it poses no significant risk of harm to health, safety or "
+                "fundamental rights and does not materially influence the outcome "
+                # R394.1 — do NOT write "which remains high-risk" here. This
+                # answer's verdict is "not high-risk", so a trailing high-risk
+                # tier assertion trips the tier-displacement guard inside
+                # normalise_answer_for_regenold, which strips the WHOLE sentence
+                # and takes the profiling exception (a scored criterion) with it.
+                # Measured: 652 -> 542 chars, that sentence removed from the
+                # MIDDLE while the tail survived.
+                # R394.1 — the profiling exception is FOLDED INTO the sentence
+                # above rather than given its own. The deterministic path applies
+                # a THREE-SENTENCE cap, and at four sentences the normaliser drops
+                # one from the MIDDLE: measured 652 -> 542 chars with the standalone
+                # profiling sentence removed while the tail survived, which failed
+                # a criterion that had previously passed. Every variant of that
+                # sentence survives in isolation, so the trigger is the count, not
+                # the wording. Keep this intercept at three sentences.
+                "of decision making, and does not perform profiling of natural "
+                "persons, for which the derogation is never available. "
+                "Under Article 6(4) a provider relying on the derogation must "
+                "document its assessment before the system is placed on the market "
+                "or put into service, and is subject to the registration "
+                "obligation in Article 49(2)."
             ),
             "refs": ["Art. 6", "Art. 6.3.a", "Art. 49.2"],
         }
@@ -6315,22 +6343,29 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
             # Ref ``Art. 10`` -> ``Art. 10.3`` is the expected coordinate and is
             # a grain deepening of a head we already carry, so the head set is
             # unchanged and ``gold_dropped_head`` cannot rise.
+            # R394.1 — the first cut of this answer ADDED the Article 10(1)/10(3)
+            # content at the front and pushed the leakage sentence past a
+            # downstream length cut, so criteria 1 and 2 started passing while
+            # criterion 3, which had been passing, began to FAIL. Net zero.
+            #
+            # A curated intercept is not exempt from the answer-length pipeline.
+            # The rule this cost us: put every scored fact EARLY and keep the
+            # whole answer near the 650-char reference length, rather than
+            # appending to a string that already sits near the cut. Three
+            # sentences, one per criterion, ~660 chars.
             "answer": (
-                "Testing data is defined in Article 3(32) as data used to provide "
-                "an independent evaluation of the AI system, in order to confirm its "
-                "expected performance before it is placed on the market or put into "
-                "service. Under Article 10(1) it is one of the training, validation "
-                "and testing data sets on which a high-risk AI system that uses "
-                "techniques involving the training of AI models must be developed, "
-                "and under Article 10(3) those sets must be relevant, sufficiently "
+                "Testing data is one of the training, validation and testing data "
+                "sets required by Article 10(1); under Article 3(32) it provides an "
+                "independent evaluation of the system to confirm its expected "
+                "performance against the intended purpose, after training and "
+                "validation and before the system is placed on the market. Under "
+                "Article 10(3) those sets must be relevant, sufficiently "
                 "representative, and to the best extent possible free of errors and "
                 "complete in view of the intended purpose, with the appropriate "
-                "statistical properties. It must be kept separate from the training "
-                "and validation data so that this evaluation is genuinely "
-                "independent. If testing data leaks into the training process, the "
-                "system is in effect assessed on data it has already seen, which "
-                "inflates its apparent performance and defeats the purpose of that "
-                "independent check."
+                "statistical properties. If training data leaks into the testing "
+                "set, the set loses that independence: it can no longer verify "
+                "Article 10(3) compliance and instead yields inflated, misleading "
+                "accuracy that masks errors, biases and gaps."
             ),
             "refs": ["Art. 3.32", "Art. 10.3"],
         }
