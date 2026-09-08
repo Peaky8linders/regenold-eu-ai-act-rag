@@ -399,3 +399,67 @@ with anything.
 `_citable_base_guard_enabled()` (default OFF) constrains prose-promotion to the retrieval-derived
 universe. It is ADD-removing — it can only remove an ungrounded promotion, never invent a
 reference — which is the exact failure path observed here. Gate it on its own first.
+
+---
+
+## 10. The judge was broken, and it read as a 22-point regression
+
+Found while scoring §9. `evals/official/score_arm.py` defaulted to `--workers 4`; `judge_row`
+fires `repeats` correctness calls **and** `repeats` tone calls per row, so the default is up to 24
+concurrent requests against the **local Claude Max wrapper — one process wrapping one CLI**. It
+saturates, `judge_row` scores every failed row all-False, and **nothing printed a warning**.
+
+Same arm, same checkpoint, same judge model (`claude-sonnet-5`), only `--workers` differing:
+
+| | ans_loose | ans_strict | tone | Overall |
+| :--- | ---: | ---: | ---: | ---: |
+| `--workers 4` | 46.0 | 38.2 | **47.3** | **60.2** |
+| `--workers 1` | 89.6 | 78.2 | **99.1** | **78.5** |
+
+**55 of 110 rows came back all-False.** A regulatory-tone score of 47.3 is not a scorecard, it is
+a broken instrument — and it would have been recorded as a 22-point Overall regression on an arm
+whose answers were fine. The concurrency was the cause; **the silence was the defect.**
+
+Fixed in `9cc322a`: `--workers` defaults to **1**, and any row with zero live judge runs now trips
+a 72-`!` banner naming the offenders and stating that the answer and tone axes are NOT a
+measurement. `tests/test_r393_judge_transport_guard.py` (7) pins it two-sided — a dead transport
+must report `_judge_runs == 0`, a live one must not look dead, a partial failure must still score
+from the surviving runs, and the CLI default must stay 1.
+
+⚠ **An n=12 probe of the same fix read Overall 82.4.** The honest n=110 number is **78.5**. Do not
+quote the small-sample read; it was optimistic by 3.9 pp.
+
+---
+
+## 11. Current production scorecard — n=110, `claude-opus-5`, `claude-sonnet-5` judge
+
+Arm A is the shipped configuration (every R393 flag OFF), so this is where production stands on
+the R388 reconstructed rubric:
+
+| axis | **us (now)** | us (Aug-25) | 2026 frontier | gap |
+| :--- | ---: | ---: | ---: | ---: |
+| Ans. Correctness (Loose) | 89.6 | 89.7 | 94.4 | −4.8 |
+| Ans. Correctness (Strict) | 78.2 | 81.2 | 89.1 | **−10.9** |
+| Ans. Conciseness | 66.2 | 51.9 | 67.9 | −1.7 |
+| Ref. Correctness (Loose) | **96.5** | 89.4 | 96.1 | **+0.4 BEATS** |
+| Ref. Correctness (Strict) | 68.2 | 68.3 | 78.5 | **−10.3** |
+| Ref. Conciseness | **53.9** | 50.4 | 51.9 | **+2.0 BEATS** |
+| Regulatory Tone | 99.1 | 99.1 | 100.0 | −0.9 |
+| Resp. Speed | **88.8** | 87.6 | 81.8 | **+7.0 BEATS** |
+| **OVERALL** | **78.5** | 75.1 | **80.9** | **−2.4** |
+
+**We beat the 2026 frontier baseline on three axes and trail Overall by 2.4 pp.** The whole
+remaining gap is two axes: **Ans. Correctness Strict (−10.9)** and **Ref. Correctness Strict
+(−10.3)**. Ans. Conciseness has closed to −1.7 and Ref. Conciseness is now positive — the two axes
+that dominated R367/R381 are no longer the problem.
+
+⚠ Criteria and reference answers here are **reconstructed**, not the evaluator's. Compare arms
+under this instrument; do not read a number as an official score.
+
+### What this means for the round
+
+R393's premise — that answer completeness is the biggest lever — is **confirmed by the axis
+table**: Ans. Strict is the single largest gap. But the closed-set skeleton as built buys that
+completeness at a reference cost it cannot afford, and it failed the gold gate (§9). The 2×2 in §4
+already said why: the skeleton pays for itself only when paired with a terse contract, and that
+pairing is the next arm.
