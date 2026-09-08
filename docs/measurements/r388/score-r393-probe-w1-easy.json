@@ -1,0 +1,380 @@
+{
+ "label": "r393-probe-w1",
+ "mode": "easy",
+ "ckpt": "evals/bench/results/official-r393-live-A-easy.ckpt.jsonl",
+ "axes": {
+  "ans_correctness_loose": 90.2439,
+  "ans_correctness_strict": 83.3333,
+  "ans_conciseness": 84.9129,
+  "ref_correctness_loose": 100.0,
+  "ref_correctness_strict": 63.6364,
+  "ref_conciseness": 55.6061,
+  "regulatory_tone": 100.0,
+  "resp_speed": 93.6309,
+  "overall": 82.3535,
+  "n": 12,
+  "n_ref_scored": 11,
+  "_ans_loose_macro": 91.1111,
+  "_mean_answer_chars": 747.1,
+  "_mean_reference_chars": 644.7,
+  "_mean_refs_per_row": 2.583,
+  "_mean_expected_per_row": 1.182,
+  "_mean_latency_s": 6.369
+ },
+ "official_reference": {
+  "us": {
+   "ans_correctness_loose": 89.7,
+   "ans_correctness_strict": 81.2,
+   "ans_conciseness": 51.9,
+   "ref_correctness_loose": 89.4,
+   "ref_correctness_strict": 68.3,
+   "ref_conciseness": 50.4,
+   "regulatory_tone": 99.1,
+   "resp_speed": 87.6
+  },
+  "frontier_2026": {
+   "ans_correctness_loose": 94.4,
+   "ans_correctness_strict": 89.1,
+   "ans_conciseness": 67.9,
+   "ref_correctness_loose": 96.1,
+   "ref_correctness_strict": 78.5,
+   "ref_conciseness": 51.9,
+   "regulatory_tone": 100.0,
+   "resp_speed": 81.8
+  },
+  "baseline_2025": {
+   "ans_correctness_loose": 83.8,
+   "ans_correctness_strict": 70.9,
+   "ans_conciseness": 51.1,
+   "ref_correctness_loose": 79.9,
+   "ref_correctness_strict": 52.0,
+   "ref_conciseness": 48.7,
+   "regulatory_tone": 99.1,
+   "resp_speed": 95.3
+  },
+  "overall": {
+   "us": 75.1,
+   "frontier_2026": 80.9,
+   "baseline_2025": 70.1
+  }
+ },
+ "rows": [
+  {
+   "id": "rg_001",
+   "criteria_text": [
+    "Yes",
+    "Description of the hardware on which the AI system is intended to run (Annex IV.1.e)"
+   ],
+   "criteria": [
+    true,
+    true
+   ],
+   "n_criteria_passed": 2,
+   "tone_ok": true,
+   "answer_chars": 387,
+   "reference_chars": 479,
+   "refs": [
+    "Article 11.1",
+    "Annex IV.2"
+   ],
+   "expected_refs": [],
+   "latency_s": 4.4095564000017475
+  },
+  {
+   "id": "rg_002",
+   "criteria_text": [
+    "No",
+    "Deep-fake disclosure exemption covers detection, prevention, investigation or prosecution of criminal offences"
+   ],
+   "criteria": [
+    true,
+    true
+   ],
+   "n_criteria_passed": 2,
+   "tone_ok": true,
+   "answer_chars": 382,
+   "reference_chars": 503,
+   "refs": [
+    "Article 50.4"
+   ],
+   "expected_refs": [
+    "Article 50.4"
+   ],
+   "latency_s": 4.898956200020621
+  },
+  {
+   "id": "rg_003",
+   "criteria_text": [
+    "No",
+    "Exception applies where system does not pose significant risk of harm to health, safety or fundamental rights, including by not materially influencing outcome of decision making",
+    "Exception requires one of: narrow procedural task; improving result of previously completed human activity; detecting deviations from prior decision-making patterns without replacing/influencing human assessment; preparatory task to an Annex III assessment",
+    "Exception never applies (system is always high-risk) if it performs profiling of natural persons"
+   ],
+   "criteria": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "n_criteria_passed": 4,
+   "tone_ok": true,
+   "answer_chars": 1089,
+   "reference_chars": 725,
+   "refs": [
+    "Annex III.7.b",
+    "Article 6.2",
+    "Article 49"
+   ],
+   "expected_refs": [
+    "Article 6.3"
+   ],
+   "latency_s": 13.54682019999018
+  },
+  {
+   "id": "rg_004",
+   "criteria_text": [
+    "Yes - high-risk (AI Act has no \"medium-risk\" category)",
+    "Condition (a): AI system is safety component of a product covered by Annex I legislation (medical devices under Regulation (EU) 2017/745)",
+    "Condition (b): that product is required to undergo third-party conformity assessment",
+    "Both conditions cumulative under Article 6(1), irrespective of the device's own sectoral risk classification"
+   ],
+   "criteria": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "n_criteria_passed": 4,
+   "tone_ok": true,
+   "answer_chars": 1043,
+   "reference_chars": 686,
+   "refs": [
+    "Article 6.1",
+    "Article 43.3",
+    "Article 9.2",
+    "Annex I.19"
+   ],
+   "expected_refs": [
+    "Article 6.1"
+   ],
+   "latency_s": 15.226074100006372
+  },
+  {
+   "id": "rg_005",
+   "criteria_text": [
+    "No",
+    "Article 13 requires sufficient transparency/interpretability for deployers, without naming a technique",
+    "Requirement is outcome-based and technology-neutral, leaving choice of method to the provider"
+   ],
+   "criteria": [
+    true,
+    true,
+    true
+   ],
+   "n_criteria_passed": 3,
+   "tone_ok": true,
+   "answer_chars": 441,
+   "reference_chars": 614,
+   "refs": [
+    "Article 13.3",
+    "Article 14.4",
+    "Article 15.1"
+   ],
+   "expected_refs": [
+    "Article 13.1"
+   ],
+   "latency_s": 1.2729319999925792
+  },
+  {
+   "id": "rg_006",
+   "criteria_text": [
+    "Both AI systems and AI models",
+    "Art 2(1)(a): providers placing/putting into service AI systems",
+    "Art 2(1)(a): providers placing general-purpose AI models on the market"
+   ],
+   "criteria": [
+    true,
+    true,
+    true
+   ],
+   "n_criteria_passed": 3,
+   "tone_ok": true,
+   "answer_chars": 594,
+   "reference_chars": 626,
+   "refs": [
+    "Article 2.1.a",
+    "Article 3.1",
+    "Article 51.1"
+   ],
+   "expected_refs": [
+    "Article 2.1.a"
+   ],
+   "latency_s": 1.1296543999924324
+  },
+  {
+   "id": "rg_007",
+   "criteria_text": [
+    "No, not prohibited",
+    "No, not high-risk",
+    "Falls within Annex III.1(a) biometric verification exclusion"
+   ],
+   "criteria": [
+    true,
+    true,
+    true
+   ],
+   "n_criteria_passed": 3,
+   "tone_ok": true,
+   "answer_chars": 1071,
+   "reference_chars": 537,
+   "refs": [
+    "Article 5.1",
+    "Article 6.2",
+    "Annex III.1.a"
+   ],
+   "expected_refs": [
+    "Annex III.1.a",
+    "Article 5.1"
+   ],
+   "latency_s": 10.499358600005507
+  },
+  {
+   "id": "rg_008",
+   "criteria_text": [
+    "Yes",
+    "Condition: AI system is a safety component of a product covered by Union harmonisation legislation listed in Annex I (the MDR)",
+    "Condition: that product must undergo third-party (notified body) conformity assessment to be placed on the market (Article 6(1))",
+    "MDR classes IIa, IIb, III require notified-body conformity assessment, so both cumulative conditions are met"
+   ],
+   "criteria": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "n_criteria_passed": 4,
+   "tone_ok": true,
+   "answer_chars": 874,
+   "reference_chars": 639,
+   "refs": [
+    "Article 6.2",
+    "Annex I.11"
+   ],
+   "expected_refs": [
+    "Article 6.1",
+    "Annex I.a.11"
+   ],
+   "latency_s": 12.27040500001749
+  },
+  {
+   "id": "rg_009",
+   "criteria_text": [
+    "Technical documentation (Article 11)",
+    "Quality management system documentation (Article 17)",
+    "Notified body change documentation and decisions/other documents, where applicable",
+    "EU declaration of conformity (Article 47)",
+    "10 years after the system is placed on the market or put into service"
+   ],
+   "criteria": [
+    true,
+    true,
+    true,
+    true,
+    true
+   ],
+   "n_criteria_passed": 5,
+   "tone_ok": true,
+   "answer_chars": 606,
+   "reference_chars": 621,
+   "refs": [
+    "Article 18.1",
+    "Article 11.1",
+    "Article 17.1",
+    "Article 47.1",
+    "Article 19.1"
+   ],
+   "expected_refs": [
+    "Article 18.1"
+   ],
+   "latency_s": 1.0448278000112623
+  },
+  {
+   "id": "rg_010",
+   "criteria_text": [
+    "Article 14",
+    "Design for effective human oversight during use",
+    "Aim: prevent/minimise risks to health, safety, fundamental rights",
+    "Measures built in by provider and/or implemented by deployer",
+    "Overseers enabled to understand, monitor, interpret, override, and halt the system"
+   ],
+   "criteria": [
+    true,
+    true,
+    false,
+    false,
+    true
+   ],
+   "n_criteria_passed": 3,
+   "tone_ok": true,
+   "answer_chars": 1198,
+   "reference_chars": 759,
+   "refs": [
+    "Article 14.5",
+    "Annex III"
+   ],
+   "expected_refs": [
+    "Article 14"
+   ],
+   "latency_s": 9.83049240001128
+  },
+  {
+   "id": "rg_011",
+   "criteria_text": [
+    "Testing data is one of the training/validation/testing data sets under Article 10(1), used to check the high-risk AI system against its intended purpose after training and validation",
+    "It must meet the Article 10(3) quality criteria: relevant, sufficiently representative, to the best extent possible free of errors, complete, and with appropriate statistical properties for the intended purpose",
+    "Leakage of training data into the testing set destroys the set's independence, so it can no longer reliably verify Article 10(3) compliance and instead yields inflated, misleading accuracy that masks errors, biases or gaps"
+   ],
+   "criteria": [
+    false,
+    false,
+    true
+   ],
+   "n_criteria_passed": 1,
+   "tone_ok": true,
+   "answer_chars": 589,
+   "reference_chars": 811,
+   "refs": [
+    "Article 3.32",
+    "Article 10.2"
+   ],
+   "expected_refs": [
+    "Article 10.3"
+   ],
+   "latency_s": 1.1670894999988377
+  },
+  {
+   "id": "rg_012",
+   "criteria_text": [
+    "AI systems assisting a judicial authority (or on its behalf) in researching/interpreting facts and law and applying law to facts, or used similarly in alternative dispute resolution",
+    "AI systems intended to influence the outcome of an election or referendum, or the voting behaviour of natural persons in exercising their vote",
+    "Exclusion: does not cover AI systems whose output natural persons are not directly exposed to, e.g. tools organising/optimising/structuring political campaigns administratively or logistically"
+   ],
+   "criteria": [
+    true,
+    true,
+    true
+   ],
+   "n_criteria_passed": 3,
+   "tone_ok": true,
+   "answer_chars": 691,
+   "reference_chars": 736,
+   "refs": [
+    "Annex III.8"
+   ],
+   "expected_refs": [
+    "Annex III.8"
+   ],
+   "latency_s": 1.1333700999966823
+  }
+ ]
+}

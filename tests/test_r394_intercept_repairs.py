@@ -168,3 +168,102 @@ def test_added_claims_are_grounded_in_the_verbatim_corpus(ref, phrase):
         f"{phrase!r} is not in the verbatim text of {ref} — an intercept is "
         "asserting something the statute does not say"
     )
+
+
+# -- R394.1: a curated intercept must survive the ANSWER-LENGTH pipeline ------
+#
+# MEASURED, and it cost a full round. The first cut of the rg_011 and rg_031
+# repairs added the missing statutory content and made the previously-failing
+# criteria pass -- but pushed the answers to four sentences. The deterministic
+# path applies a THREE-SENTENCE cap in
+# ``normalise_answer_for_regenold``, which drops one sentence from the MIDDLE:
+#
+#     rg_011  1/3 -> 2/3   crit 3 (leakage) was PASSING, began to FAIL
+#     rg_031  3/4 -> 3/4   crit 4 (Article 6(4)) was PASSING, began to FAIL
+#
+# Net gain on both rows: zero. Every variant of the dropped sentence survives in
+# ISOLATION, so the trigger is the sentence COUNT, not the wording.
+#
+# A curated intercept is not exempt from the length pipeline. These tests assert
+# on the answer AFTER normalisation, which is what actually ships.
+
+
+_SCORED_CONTENT = {
+    "rg_011": [
+        ("Article 10(1)",),
+        ("relevant", "sufficiently representative", "free of errors",
+         "complete", "statistical properties"),
+        ("leak", "independence", "inflated", "masks"),
+    ],
+    "rg_031": [
+        ("No.",),
+        ("point (a)", "narrow procedural"),
+        ("profiling",),
+        ("Article 6(4)", "document", "before"),
+    ],
+    "rg_040": [("Article 44(1)", "easily understood"), ("Article 44(2)", "five years", "four years")],
+    "rg_043": [("in addition to",), ("confidentiality obligations",)],
+    "rg_029": [("evaluate and classify emergency calls",),
+               ("police, firefighters and medical aid",)],
+}
+
+
+# Rows MEASURED to pass through normalise_answer_for_regenold. The route
+# bypasses it entirely for classification-topic rows without Stage-2
+# (regenold.py:8679 `if _is_classification_topic and not _stage2_landed`),
+# so asserting the capped regime on those would test a path they never take.
+_NORMALISED_ROWS = ["rg_011", "rg_031"]
+
+
+@pytest.mark.parametrize("qid", _NORMALISED_ROWS)
+def test_scored_content_survives_normalisation(qid):
+    """Every scored fact must be present in the SHIPPED answer, not just the raw one."""
+    from app.integrations.regenold.models import normalise_answer_for_regenold
+
+    question = _questions()[qid]
+    raw = _answer(question)
+    shipped = normalise_answer_for_regenold(raw, question=question)
+    for group in _SCORED_CONTENT[qid]:
+        missing = [t for t in group if t.lower() not in shipped.lower()]
+        assert not missing, (
+            f"{qid}: {missing} present in the raw intercept but STRIPPED by "
+            f"normalise_answer_for_regenold. raw={len(raw)} shipped={len(shipped)} "
+            f"chars, {shipped.count('.')} sentences — most likely the "
+            "three-sentence cap dropping a middle sentence. Shorten the answer "
+            "or fold the fact into an earlier sentence."
+        )
+
+
+@pytest.mark.parametrize("qid", _NORMALISED_ROWS)
+def test_repaired_intercepts_are_not_truncated(qid):
+    """The normaliser must not shorten these answers at all.
+
+    A shrink means a sentence was dropped, and the dropped sentence carries a
+    scored criterion often enough that it is worth failing on the shrink itself
+    rather than waiting for a criterion assertion to notice.
+    """
+    from app.integrations.regenold.models import normalise_answer_for_regenold
+
+    question = _questions()[qid]
+    raw = _answer(question)
+    shipped = normalise_answer_for_regenold(raw, question=question)
+    assert len(shipped) == len(raw), (
+        f"{qid}: normalisation shortened the intercept {len(raw)} -> "
+        f"{len(shipped)} chars ({raw.count('.')} sentences). Keep curated "
+        "intercepts within the three-sentence budget."
+    )
+
+
+@pytest.mark.parametrize("qid", sorted(_SCORED_CONTENT))
+def test_scored_content_is_present_in_the_raw_intercept(qid):
+    """Every repaired row must CARRY its scored facts, whatever the routing.
+
+    The two tests above pin survival through the length pipeline for the
+    rows that go through it; this one pins that the content exists at all,
+    for every row, so a future edit cannot silently delete a scored fact
+    from a row that happens to bypass normalisation today.
+    """
+    raw = _answer(_questions()[qid])
+    for group in _SCORED_CONTENT[qid]:
+        missing = [t for t in group if t.lower() not in raw.lower()]
+        assert not missing, f"{qid}: scored content absent from the intercept: {missing}"

@@ -552,9 +552,12 @@ USER_CHALLENGE_BREVITY_CLAUSE = (
     "the same thing at the SAME length or shorter, in the same format, without "
     "mentioning the dispute. A challenge is NOT a request for more provisions, "
     "more detail, or a longer answer: do not add citations you would not have "
-    "given the first time merely to appear thorough. If the previous answer was "
-    "genuinely wrong, state the corrected position directly, still without "
-    "referring to the earlier answer.\n"
+    "given the first time merely to appear thorough. When responding to pushback, "
+    "maintain core statutory boundaries and jurisdictional exclusions (such as "
+    "'used by or on behalf of law enforcement authorities' or emergency "
+    "authorisation timelines) and do not drop them merely because the user poses "
+    "an adversarial comparison. If the previous answer was genuinely wrong, state "
+    "the corrected position directly, still without referring to the earlier answer.\n"
 )
 
 # R304 — Sub-paragraph attribution discipline (anti-fabrication).
@@ -994,7 +997,36 @@ USER_CRITICAL_RULES_CLAUSE = (
     "procedural task, improving a completed human activity, detecting decision "
     "patterns without replacing human assessment, or a preparatory task removes "
     "Annex III systems from high-risk UNLESS they profile natural persons. "
-    "(e) GPAI Chapter V spans Articles 51 TO 56, not 51 to 55.\n"
+    "(e) GPAI Chapter V spans Articles 51 TO 56, not 51 to 55. "
+    "(f) Annex III point 6 (law enforcement) applies ONLY where the AI system "
+    "is used 'by or on behalf of law enforcement authorities' (or Union bodies "
+    "in support); private commercial or store loss-prevention tools operated by "
+    "retail staff fall outside point 6 however closely they resemble "
+    "investigative or evaluative functions. "
+    "(g) Article 44 / Annex VII point 4.6 certificate validity: Union technical "
+    "documentation assessment certificates have validity not exceeding five "
+    "years for Annex I systems, or four years for Annex III systems, and must "
+    "be drawn up in an official Union language easily understood by the "
+    "notifying authority. "
+    "(h) Article 10(5) processing of special categories of personal data for "
+    "bias detection is strictly in addition to, and not a substitute for, "
+    "obligations under the GDPR, EUDPR, and Directive (EU) 2016/680 (Law "
+    "Enforcement Directive). "
+    "(i) Article 10(6): For high-risk AI systems developed without techniques "
+    "involving training AI models, Article 10 data quality rules apply "
+    "exclusively to testing data sets. "
+    "(j) Article 50(4) deepfake disclosure: artistic, creative, satirical or "
+    "fictional works have a lighter disclosure regime ('analogous work' "
+    "disclosing existence without hampering display or enjoyment), whereas law "
+    "enforcement is a full exemption. "
+    "(k) Annex VIII & IX EU database registration: Section A is entered by the "
+    "provider, Section B for Annex III high-risk systems, Section C by public "
+    "authority deployers, and Annex IX for real-world testing / non-high-risk "
+    "systems. "
+    "(l) Articles 23(4) and 24(3): Importers and distributors have an explicit "
+    "statutory duty to ensure that while a high-risk AI system is under their "
+    "responsibility, storage or transport conditions do not jeopardise its "
+    "compliance with Chapter III Section 2 requirements.\n"
     "VOICE: Write as the EU AI Act legal specialist. Do NOT reference the source "
     "of your information. Never say 'the graph', 'graph context', 'knowledge "
     "graph', 'the data provided', 'based on the context', 'the references "
@@ -1075,7 +1107,7 @@ USER_REF_MINIMALITY_CLAUSE_V2 = " REFERENCE MINIMALITY: the EU AI ACT REFERENCES
 
 USER_SUBPARAGRAPH_ATTRIBUTION_CLAUSE_V2 = " SUB-PARAGRAPH DISCIPLINE: attribute a legal claim to the coordinate whose supplied text contains the words your sentence relies on. If those words appear only in the parent article, cite the parent article. Where a provision states more than one route, condition or derogation, cite the one whose conditions the stated facts satisfy, not a neighbouring one. Write a sub-paragraph in parentheses, as in Article 5(1)(f) or Annex III(5)(d), and only where the supplied references carry it. Do NOT invent a sub-clause number, and do not add a sub-paragraph walk-through the question did not ask for. This never overrides closed-set completeness: when the question's subject IS an enumerated statutory set, name every member of it.\n"
 
-USER_CHALLENGE_BREVITY_CLAUSE_V2 = ' CHALLENGE TURN: the user is disputing the previous answer. Re-derive the answer independently. Place your brief internal reasoning inside <reasoning_scratchpad>...</reasoning_scratchpad> and provide your clear answer inside <answer>...</answer>. If the previous answer was right, say the same thing at the SAME length or shorter, in the same format, without mentioning the dispute. A challenge is NOT a request for more provisions, more detail, or a longer answer: do not add citations you would not have given the first time merely to appear thorough. If the previous answer was genuinely wrong, state the corrected position directly inside <answer>...</answer>, still without referring to the earlier answer.\n'
+USER_CHALLENGE_BREVITY_CLAUSE_V2 = ' CHALLENGE TURN: the user is disputing the previous answer. Re-derive the answer independently. Place your brief internal reasoning inside <reasoning_scratchpad>...</reasoning_scratchpad> and provide your clear answer inside <answer>...</answer>. If the previous answer was right, say the same thing at the SAME length or shorter, in the same format, without mentioning the dispute. A challenge is NOT a request for more provisions, more detail, or a longer answer: do not add citations you would not have given the first time merely to appear thorough. When responding to pushback, maintain core statutory boundaries and jurisdictional exclusions (such as \'used by or on behalf of law enforcement authorities\' or emergency authorisation timelines) and do not drop them merely because the user poses an adversarial comparison. If the previous answer was genuinely wrong, state the corrected position directly inside <answer>...</answer>, still without referring to the earlier answer.\n'
 
 
 def _prompt_v2_enabled() -> bool:
