@@ -27,13 +27,16 @@ permissions:
   contents: read
 
 env:
-  # The offline deterministic environment AGENTS.md documents. Belt-and-braces:
-  # tests/conftest.py already neutralises the integration credentials and points
-  # the wrapper at a dead loopback port, and its R365 egress guard turns any
-  # non-loopback TCP connect into a test failure. Nothing here needs a secret,
-  # so a fork PR gets the same result as a branch PR.
-  OPENAI_API_BASE: http://127.0.0.1:1/v1
-  REGENOLD_EXTERNAL_EMBEDDINGS: "0"
+  # DELIBERATELY no REGENOLD_* / OPENAI_API_BASE here. tests/conftest.py is the
+  # single source of truth for the test environment: it neutralises the
+  # integration credentials, points the wrapper at a dead loopback port, and its
+  # R365 egress guard turns any non-loopback TCP connect into a failure. Adding
+  # "belt-and-braces" copies of AGENTS.md's bench-runner flags is not free — the
+  # first run of this workflow set REGENOLD_EXTERNAL_EMBEDDINGS=0 globally and
+  # broke 3 tests that assert external embeddings are ENABLED
+  # (test_external_embeddings.py:20/:64, test_turboquant_index.py:451).
+  # Measured: with those two vars 3 failed / 27 passed; without them 30 passed.
+  # Nothing here needs a secret, so a fork PR behaves like a branch PR.
   PYTHONUNBUFFERED: "1"
 
 jobs:
