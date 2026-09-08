@@ -62,6 +62,72 @@ tg-invoke-sparql-query -q 'SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }'
 `rdflib`, so a file this repo emits is parseable by the tool that consumes it
 **by construction** — and CI re-parses it on every run.
 
+## The coordinate universe — what this actually complements
+
+`article_existence` answers *"is Article 13 a real Article?"* and stops at the 126
+heads. **Nothing answered *"is `Article 13.3` a real coordinate?"*** — the
+sub-point text is derived by regex at call time rather than stored, so there was
+no set to ask.
+
+That is the grain that matters. The R386 deepener emits paragraph grain by
+default (`REGENOLD_REF_GRAIN_DEPTH=1`), the official rubric scores Reference
+Correctness **Strict** at sub-point grain, and Ref Strict is our largest gap.
+
+`app/data/provision_coordinates.py` (generated) closes it: **655 paragraph
+coordinates**, verified against the adopted text —
+
+| check | result |
+| :--- | :--- |
+| Article 3 | 68 paragraphs — its 68 definitions ✓ |
+| Article 5 | 8 ✓ |
+| Article 13 | 3 ✓ |
+| total | 655, independently corroborating the production Neo4j graph's **658** `Paragraph` nodes (R380) |
+
+```python
+from app.data.provision_coordinates import coordinate_exists
+coordinate_exists("Article 13.3")   # True
+coordinate_exists("Article 13.9")   # False   <- article_existence cannot see this
+coordinate_exists("Article 3.68")   # True
+coordinate_exists("Article 3.69")   # False
+```
+
+No runtime dependency (rdflib stays dev-only), O(1) membership, zero latency.
+
+### Point grain comes from the existing knowledge graph
+
+`get_provision_text` cannot enumerate letters, and both reasons are worth knowing:
+
+1. **Silent parent fallback** — `get_provision_text("Article 3.1.z")` returns
+   *Article 3.1's own text*, so every letter appears to exist when the paragraph
+   carries no lettered points. A caller cannot tell it received a fallback.
+2. **Roman sub-points flattened into the letter slot** — `Article 5.1.i` returns
+   Article 5(1)(**h**)(i), so paragraph 1 looks like it has a ninth point when
+   the Act gives it (a)-(h).
+
+So point grain is taken from the **production Neo4j graph**, which models it
+explicitly as `(Article|Annex)-[:HAS_PARAGRAPH]->(Paragraph)-[:HAS_POINT]->(Point)`
+with `Paragraph.number` and `Point.letter` — **421 point coordinates**, exactly the
+graph's `HAS_POINT` edge count:
+
+```python
+coordinate_exists("Article 5.1.a")   # True
+coordinate_exists("Article 5.1.z")   # False  <- Article 5(1) stops at (h)
+coordinate_exists("Annex III.1.z")   # False
+coordinate_exists("Article 3.1.a")   # True   <- graph records no points here;
+                                     #          conservative rather than wrong
+```
+
+Refresh it deliberately with `python scripts/build_trustgraph_core.py --from-graph`.
+Without that flag the committed point set is **preserved**, so an offline rebuild
+and CI's `--check` (which has no Neo4j) stay deterministic.
+
+**Not yet wired into the wire path.** It is data and an oracle; nothing drops or
+rewrites a reference today. Making it a wire guard is a reference-affecting
+change and needs `gold_dropped_head` (AGENTS.md invariant #5, hard rule #8) —
+and the prior question, *how often does the live path actually emit a
+non-existent coordinate*, is unmeasured: the deterministic offline path emits
+only heads, so it takes a wrapper run to answer.
+
 ## Deploying TrustGraph — the honest position
 
 TrustGraph is **not a library**. There is no documented way to use its ontology,
@@ -92,9 +158,9 @@ ready to load the moment a TrustGraph instance exists.
 
 | class | instances | source |
 | :--- | ---: | :--- |
+| `Provision` (sub-points) | 663 | enumerated from the adopted text — see below |
 | `Article` | 113 | `article_existence` (the canonical 126, minus Annexes) |
 | `Annex` | 13 | same |
-| `Provision` (sub-points) | 16 | `PRACTICE_REGISTRY`, `ANNEX_III_REGISTRY` |
 | `Obligation` | 86 | `ROLE_OBLIGATIONS` (role × risk class × provision) |
 | `OperatorRole` | 9 | `ActorRole` |
 | `RiskClass` | 7 | `RiskClass` |

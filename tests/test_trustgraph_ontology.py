@@ -193,6 +193,77 @@ def test_every_subpoint_reaches_its_head(graph: Graph) -> None:
         assert (node, part_of, None) in graph, f"{graph.value(node, citation)} has no parent"
 
 
+# -- the coordinate universe: the layer the repo never had ------------------
+
+
+def test_the_coordinate_universe_matches_the_adopted_text() -> None:
+    """Spot-check the enumeration against provisions whose shape is known.
+
+    `article_existence` stops at the 126 heads, so nothing could previously
+    answer "is Article 13.3 a real coordinate?". These three are checkable by
+    hand against the Regulation and are the reason to trust the other 652.
+    """
+    from app.data.provision_coordinates import PROVISION_COORDINATES
+
+    def paragraphs(head: str) -> int:
+        return sum(1 for c in PROVISION_COORDINATES if c.startswith(head + "."))
+
+    assert paragraphs("Article 3") == 68, "Article 3 has 68 definitions"
+    assert paragraphs("Article 5") == 8
+    assert paragraphs("Article 13") == 3
+    # 655 here independently corroborates the production graph's 658 Paragraph
+    # nodes (R380) — two different derivations of the same structure.
+    assert 640 <= len(PROVISION_COORDINATES) <= 670, len(PROVISION_COORDINATES)
+
+
+def test_coordinate_exists_is_two_sided() -> None:
+    """A guard that only ever says True is not a guard."""
+    from app.data.provision_coordinates import coordinate_exists
+
+    for real in ("Article 13", "Article 13.3", "Article 3.68", "Annex III.1", "Annex III"):
+        assert coordinate_exists(real), real
+    for invented in ("Article 13.9", "Article 3.69", "Annex III.99", "Article 999", ""):
+        assert not coordinate_exists(invented), invented
+
+
+def test_point_grain_comes_from_the_knowledge_graph() -> None:
+    """Points are validated exactly, because the GRAPH models them.
+
+    `get_provision_text` cannot enumerate letters — it returns the parent's text
+    for a letter that does not exist, and flattens roman sub-points into the
+    letter slot (`Article 5.1.i` is really Article 5(1)(h)(i)). The production
+    Neo4j graph models points explicitly as
+    `(Paragraph)-[:HAS_POINT]->(Point {letter})`, so the 421 point coordinates
+    are read from there. This is the layer the regex derivation could not give.
+    """
+    from app.data.provision_coordinates import POINT_COORDINATES, coordinate_exists
+
+    assert len(POINT_COORDINATES) == 421, "the graph reports 421 HAS_POINT edges"
+    assert coordinate_exists("Article 5.1.a")
+    assert not coordinate_exists("Article 5.1.z"), "Article 5(1) stops at (h)"
+    assert coordinate_exists("Annex III.1.a")
+    assert not coordinate_exists("Annex III.1.z")
+    assert not coordinate_exists("Article 5.9.a"), "paragraph 5.9 does not exist"
+
+
+def test_a_paragraph_the_graph_records_no_points_for_accepts_its_letters() -> None:
+    """Conservative where the graph is silent — absence of points is not proof
+    the letter is wrong, and inventing a rejection would drop real citations."""
+    from app.data.provision_coordinates import POINT_COORDINATES, coordinate_exists
+
+    assert not any(c.startswith("Article 3.1.") for c in POINT_COORDINATES)
+    assert coordinate_exists("Article 3.1.a"), "no points recorded -> do not reject"
+
+
+def test_the_knowledge_core_carries_the_coordinate_universe(graph: Graph) -> None:
+    """The oracle and the TrustGraph artefact must agree — same generator."""
+    from app.data.provision_coordinates import PROVISION_COORDINATES
+
+    cited = {str(o) for o in graph.objects(None, URIRef(_BASE + "citation"))}
+    missing = sorted(PROVISION_COORDINATES - cited)
+    assert not missing, f"{len(missing)} coordinates absent from the knowledge core: {missing[:5]}"
+
+
 # -- the artefacts are generated, and stay in sync --------------------------
 
 
