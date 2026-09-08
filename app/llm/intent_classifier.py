@@ -350,6 +350,7 @@ _DEFAULT_GROQ_MODEL = os.getenv(
 )
 _TIMEOUT_SECONDS = float(os.getenv("REGENOLD_INTENT_TIMEOUT", "3.5"))
 _CACHE_MAX = int(os.getenv("REGENOLD_INTENT_CACHE_MAX", "2048"))
+_INTENT_MAX_TOKENS_DEFAULT = 600
 _FAILURE_THRESHOLD = int(os.getenv("REGENOLD_INTENT_FAILURE_THRESHOLD", "3"))
 _FAILURE_WINDOW_SECONDS = float(
     os.getenv("REGENOLD_INTENT_FAILURE_WINDOW", "60")
@@ -626,9 +627,9 @@ def _parse_intent_json(text: str) -> IntentResult | None:
     except (TypeError, ValueError):
         conf = 0.0
     conf = max(0.0, min(1.0, conf))
-    
+
     reasoning = (data.get("reasoning") or "").strip()
-    
+
     # If the model didn't pick a primary anchor but the taxonomy has a
     # default for that intent (e.g. penalty_inquiry → Art. 99), inject it.
     if not primary:
@@ -642,6 +643,115 @@ def _parse_intent_json(text: str) -> IntentResult | None:
         reasoning=reasoning,
         bridging_context=tuple(BRIDGING_NODES.get(intent, [])),
     )
+
+
+def _max_tokens() -> int:
+    """Completion budget for the Stage-0 intent call (fresh env read).
+
+    R394 -- MEASURED DEFECT. At the previous hardcoded 250 the classifier's
+    JSON was truncated mid-field (observed tail: ``"primary_anchor": "Art``)
+    and ``_parse_intent_json`` returned ``None``; three of those inside the
+    60 s window trip ``_BREAKER`` and intent classification is then OFF for
+    the rest of the process. Observed live on the official batch: rg_001-004
+    classified, rg_005-007 failed, rg_008 onward returned ``None`` in 0 ms --
+    the breaker had latched.
+
+    Swept on Bedrock ``claude-sonnet-4-6`` over the official questions:
+    mt=250 -> 7/10, mt=600 -> 10/10, mt=1000 -> 10/10. 600 is the measured
+    knee and is the default.
+
+    Same bug class R380 fixed for the Stage-0 de-noiser
+    (``REGENOLD_DENOISER_MAX_TOKENS`` 100 -> 400) at a call site that was
+    never fixed. Fails OPEN to the default; clamped so a typo cannot make the
+    call unbounded.
+    """
+    try:
+        return max(120, min(4000, int(os.getenv("REGENOLD_INTENT_MAX_TOKENS", ""))))
+    except (TypeError, ValueError):
+        return _INTENT_MAX_TOKENS_DEFAULT
+
+
+def _bedrock_intent_enabled() -> bool:
+    """Route Stage-0 intent at AWS Bedrock? (fresh env read, default ON.)
+
+    R394 -- MEASURED. The previous primary, Groq ``openai/gpt-oss-120b``, is a
+    REASONING model whose hidden reasoning counts against ``max_tokens``, and
+    this account is rate-limited on it. Head-to-head, same prompt, same parser,
+    official questions:
+
+        provider / model                parsed    p50
+        groq gpt-oss-120b  mt=250         4/10     56 ms  (rest api_status_429)
+        groq gpt-oss-120b  mt=600         0/10     55 ms  (all api_status_429)
+        wrapper haiku-4-5  mt=250         4/10  15004 ms
+        wrapper sonnet-5   mt=250        10/10   7111 ms
+        bedrock haiku-4-5  mt=600        12/12   3390 ms
+        bedrock sonnet-4-6 mt=600        12/12   3508 ms   <-- selected
+
+    Bedrock is a real API rather than a per-call CLI spawn, so it is 2-4x
+    faster than the wrapper AND fully reliable at the corrected budget.
+    ``sonnet-4-6`` is chosen over ``haiku-4-5`` at equal latency because it
+    labels correctly where haiku does not (the Art. 50 deep-fake prosecution
+    carve-out: sonnet ``transparency_obligation``, haiku ``scope_applicability``).
+
+    ⚠ ``claude-sonnet-5`` returns ``api_access_denied_403`` on this
+    Bedrock key -- do not select it here.
+
+    ``REGENOLD_INTENT_BEDROCK=0`` restores the Groq-then-wrapper chain.
+    """
+    return os.getenv("REGENOLD_INTENT_BEDROCK", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _bedrock_intent_timeout() -> float:
+    """Timeout for the Bedrock intent path ONLY (fresh env read).
+
+    The module-level ``_TIMEOUT_SECONDS`` (3.5 s) is a documented hot-path
+    guard and stays as it is. Bedrock measured 3.1 s p50 / 7.7 s worst on the
+    official questions, so it needs its own budget -- which is exactly why the
+    Bedrock path is default OFF: a reliable Stage-0 costs more latency than the
+    guard allows, and spending it is a gated decision, not a default.
+    """
+    try:
+        return max(1.0, min(30.0, float(os.getenv("REGENOLD_INTENT_BEDROCK_TIMEOUT", ""))))
+    except (TypeError, ValueError):
+        return 12.0
+
+
+def _bedrock_intent_model() -> str:
+    raw = os.getenv("REGENOLD_INTENT_MODEL_BEDROCK", "").strip()
+    return raw or "claude-sonnet-4-6"
+
+
+class _BedrockIntentAdapter:
+    """Adapt the Bedrock provider to the ``OpenAIWrapperRequest`` call shape.
+
+    ``classify_intent`` builds one request object and hands it to whichever
+    provider ``_resolve_intent_provider`` returned; adapting here keeps that
+    single call site unchanged rather than branching it per provider.
+    """
+
+    __slots__ = ("_inner",)
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def complete(self, req):
+        from app.llm.bedrock_client import BedrockRequest  # noqa: PLC0415
+
+        return self._inner.complete(
+            BedrockRequest(
+                system=getattr(req, "system", None),
+                user=getattr(req, "user", ""),
+                model=getattr(req, "model", None) or _bedrock_intent_model(),
+                max_tokens=getattr(req, "max_tokens", _INTENT_MAX_TOKENS_DEFAULT),
+                temperature=getattr(req, "temperature", 0.0),
+                timeout_seconds=_bedrock_intent_timeout(),
+            )
+        )
 
 
 def _resolve_intent_provider() -> tuple[Any, str] | None:
@@ -660,6 +770,18 @@ def _resolve_intent_provider() -> tuple[Any, str] | None:
     otherwise we fall through to the existing wrapper path if it's
     enabled.
     """
+    if _bedrock_intent_enabled():
+        try:
+            from app.llm.bedrock_client import (  # noqa: PLC0415
+                get_bedrock_provider,
+            )
+
+            return (
+                _BedrockIntentAdapter(get_bedrock_provider()),
+                _bedrock_intent_model(),
+            )
+        except Exception:  # noqa: BLE001 — fail-soft to the next path
+            logger.debug("intent bedrock unavailable", exc_info=True)
     if is_groq_intent_provider_enabled():
         return get_groq_intent_provider(), _DEFAULT_GROQ_MODEL
     if is_openai_wrapper_enabled():
@@ -680,7 +802,11 @@ def is_intent_enabled() -> bool:
     issue #50 hardening contract: provider acquisition failures must
     not propagate up through ``is_intent_enabled``.
     """
-    if not (is_groq_intent_provider_enabled() or is_openai_wrapper_enabled()):
+    if not (
+        _bedrock_intent_enabled()
+        or is_groq_intent_provider_enabled()
+        or is_openai_wrapper_enabled()
+    ):
         return False
     if _BREAKER.open():
         return False
@@ -764,7 +890,7 @@ def classify_intent(
                 system=_SYSTEM_PROMPT,
                 user=_USER_TEMPLATE.format(q=trimmed),
                 model=model,
-                max_tokens=250, # Increased max_tokens to accommodate reasoning
+                max_tokens=_max_tokens(),
                 temperature=0.0,
                 timeout_seconds=_TIMEOUT_SECONDS,
             )
@@ -783,7 +909,7 @@ def classify_intent(
                         system=_SYSTEM_PROMPT,
                         user=_USER_TEMPLATE.format(q=trimmed),
                         model=model,
-                        max_tokens=250,
+                        max_tokens=_max_tokens(),
                         temperature=0.0,
                         timeout_seconds=_TIMEOUT_SECONDS,
                     )
