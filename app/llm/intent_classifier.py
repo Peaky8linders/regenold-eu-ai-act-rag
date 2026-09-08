@@ -400,11 +400,24 @@ _CACHE_LOCK = threading.Lock()
 
 
 def _cache_key(question: str, model: str) -> str:
-    """SHA-256 of question + model. Short, deterministic, model-scoped."""
+    """Scope successful classifications to the inference configuration.
+
+    The same model can run on different transports, and the output budget
+    changes whether its JSON completes. Neither may reuse the other arm's
+    result during an in-process evaluation.
+    """
     h = hashlib.sha256()
     h.update(model.encode("utf-8"))
     h.update(b"\0")
     h.update(question.strip().lower().encode("utf-8"))
+    for value in (
+        str(_max_tokens()), str(_bedrock_intent_enabled()),
+        _bedrock_intent_model(), str(_bedrock_intent_timeout()),
+        os.getenv("REGENOLD_INTENT_PROVIDER", ""),
+        str(_TIMEOUT_SECONDS),
+    ):
+        h.update(b"\0")
+        h.update(value.encode("utf-8"))
     return h.hexdigest()
 
 
@@ -823,7 +836,7 @@ def classify_intent(
     ``None`` gracefully — the engine falls through to the existing
     deterministic logic in that case.
 
-    Caches results by SHA-256(question + model) on success. Cache size
+    Caches results by question, model and inference configuration on success. Cache size
     is bounded by ``REGENOLD_INTENT_CACHE_MAX`` (default 2048).
     """
     if not question or not is_intent_enabled():
@@ -901,9 +914,9 @@ def classify_intent(
         # Fallback to OpenAI wrapper (Sonnet) if Groq fails
         if model == _DEFAULT_GROQ_MODEL and is_openai_wrapper_enabled():
             logger.debug("intent_classifier_exception on Groq: %s, falling back to Sonnet", str(exc)[:200])
-            provider = get_openai_wrapper_provider()
-            model = _DEFAULT_MODEL
             try:
+                provider = get_openai_wrapper_provider()
+                model = _DEFAULT_MODEL
                 response = provider.complete(
                     OpenAIWrapperRequest(
                         system=_SYSTEM_PROMPT,
