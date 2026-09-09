@@ -464,6 +464,39 @@ def get_provision_text(ref: str) -> str | None:
     return _subpoints(para).get(second)
 
 
+def _oxford_z(w: str) -> str:
+    """Fold the ``-ize``/``-ise`` orthographic split onto one form.
+
+    R399 — MEASURED root cause of rg_069 (0/3 criteria, easy). The question
+    asks a distributor's duty "not to jeopardize its conformity"; the adopted
+    text of Article 24(3) — the ONLY paragraph that answers it — says
+    "jeopardise". The two spellings share no token, so 24(3) scored 4 against
+    24(1)'s 7 and 24(2)'s 6 and was ranked out of the Stage-2 evidence budget.
+    Article 23(4) (the importer limb of the same question) was lost the same
+    way. No prompt instruction can recover a paragraph that is not in the
+    prompt.
+
+    Both sides are folded, so this is orthography only and never semantics.
+    It matters beyond one row: the adopted English text is predominantly
+    ``-ise`` ("harmonised standards", "Union harmonisation legislation",
+    "authorisation", "categorisation") while questions routinely use ``-ize``.
+    Over the official 110 easy questions, 4 rows carry an ``-ize`` form and 2
+    distinct terms (``jeopardize``, ``harmonized``) have an ``-ise``
+    counterpart in the corpus that currently cannot match. The corpus is also
+    internally split — it carries ``organization``, ``standardization`` and
+    ``categorizing`` alongside 70 ``-ise`` forms — so the fold repairs
+    corpus-to-corpus matches too.
+
+    A prefix of >= 4 characters is required so that words where ``ize`` is
+    not a suffix are left alone: ``size`` -> "s", ``prize`` -> "pr",
+    ``seize`` -> "se" and ``maize`` -> "ma" all fall below the floor.
+    """
+    for suf, repl in (("ization", "isation"), ("ize", "ise"), ("iz", "is")):
+        if w.endswith(suf) and len(w) - len(suf) >= 4:
+            return w[: -len(suf)] + repl
+    return w
+
+
 def _stem(w: str) -> str:
     """Light suffix strip so question vocab matches statute vocab —
     ``emotions``→``emotion``, ``scoring``→``scor``, ``recruitment``→
@@ -475,11 +508,11 @@ def _stem(w: str) -> str:
     elif w.endswith("s") and not w.endswith("ss") and len(w) > 3:
         w = w[:-1]
     if w.endswith("ition") and len(w) > 7:
-        return w[:-5] + "it"
+        return _oxford_z(w[:-5] + "it")
     for suf in ("ing", "ment", "ed"):
         if len(w) > len(suf) + 2 and w.endswith(suf):
-            return w[: -len(suf)]
-    return w
+            return _oxford_z(w[: -len(suf)])
+    return _oxford_z(w)
 
 
 def _tokens(text: str) -> set[str]:

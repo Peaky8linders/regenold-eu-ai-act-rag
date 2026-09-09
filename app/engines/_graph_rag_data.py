@@ -1520,7 +1520,9 @@ _CLASSIFICATION_TOPICS: list[dict] = [
             "under Article 6 (as a safety component of an Annex I product, or as one of "
             "the Annex III use cases) and carry the Chapter III Section 2 obligations; "
             "limited-risk systems carry the Article 50 transparency duties; and "
-            "minimal-risk systems have no mandatory obligations. General-purpose AI "
+            "minimal-risk systems avoid Chapter III high-risk requirements but "
+            "retain Article 4 AI literacy duties, with voluntary codes under "
+            "Article 95. General-purpose AI "
             "models are governed separately under Articles 51 to 56, with stricter "
             "duties for models posing systemic risk."
         ),
