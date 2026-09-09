@@ -1051,15 +1051,21 @@ pushback clause. Verified is not scored.
   `kw_recall +0.0167`, **est. Overall −0.67 pp**, and one row newly dropped
   gold `Article 5`. The harness returned INDETERMINATE (n=20 < its n=30 floor;
   the ref axes need n≥120), so this is a reason not to enable, not a refutation.
-* **`REGENOLD_CITABLE_BASE_GUARD` — TRIED ON, REVERTED.** It breaks a recorded
-  operator directive. `tests/test_r138_bluf_verdict_citations.py` states it
-  verbatim: *"every article / annex the SHIPPED answer names must appear in the
-  wire references list (UI citations area)"*. With the guard ON the route logged
-  *"prose cited Article 73 — catalog-valid but not retrieval-grounded; not
-  promoting it, answer retained"* and `test_every_cited_article_is_in_references`
-  FAILED. That is the guard working as designed, and R274 blocks the other
-  repair (never drop a ref the prose describes). Re-enable only on an explicit
-  decision to relax that directive.
+* **`REGENOLD_CITABLE_BASE_GUARD` — DIRECTIVE RELAXED FOR OPT-IN; DEFAULT ON
+  REJECTED LIVE.** R401 explicitly permits the opt-in regime to omit an
+  answer-named provision from wire references when retrieval did not ground it;
+  `tests/test_r138_bluf_verdict_citations.py` pins both regimes. That removed the
+  former policy blocker, but not the performance gate. Full live hard-set A/B,
+  n=37/arm, all 37 multi-turn probes, Qwen 3 235B through the Bedrock client for
+  generation and legal judging: 24 of 37 paired wire-reference lists differed;
+  RefLoose **87.84% → 69.82% (−18.02 pp, 95% CI −28.83 to −8.11)**,
+  RefStrict **−3.63 pp** (underpowered), RefConc **+9.61 pp** (95% CI +1.25 to
+  +19.12), and `gold_dropped_head` **9 → 19 (+10, VETO)**. The three-reference-
+  axis leverage estimate is **−1.47 pp Overall**. Qwen legal-v2 pass-rate deltas
+  were answer correctness +0.00 pp, reference correctness +5.41 pp, citation
+  faithfulness +0.00 pp and answer conciseness +2.70 pp; all were underpowered
+  and cannot override the gold veto. Keep default OFF; `=1` remains an
+  experimental opt-in.
 
 **Test-suite consequence.** Nine modules pinned the OFF defaults. Every tripwire
 was KEPT and stays two-sided; where a test used `delenv` to MEAN "off" it now
@@ -1086,6 +1092,7 @@ the branch arm, at n≥30 per split, before the benchmark window.
 | `REGENOLD_SEMANTIC_GLOSS` | `0` | Open-domain definitions/recitals gloss gate (R327) |
 | `REGENOLD_GRAPH_VECTOR_RECALL` | `0` | Additive Neo4j & local SVD vector recall path (R326) |
 | `REGENOLD_PARENT_COLLAPSE` | **`1`** | Collapse parent provisions when sub-points are cited (R325). Dead flag until R366 wired it; **R381 flipped it to default ON on a live paired A/B** — n=20 official questions, 40/40 calls wrapper-served, 0 Bedrock. Four rows are ZERO-VARIANCE paired observations (answer byte-identical between arms, so refs are the only change): `rg_013` 5→4 (drops `Article 53`, keeps `53.2`), `rg_025` 3→2, `rg_029` 4→2 (drops `Article 6` + `Annex III`, keeps `6.2` + `Annex III.5.d`), `rg_041` 4→2. All 6 drops are bare parents whose own sub-point survives; the **head set is unchanged on all four rows**, and `gold_dropped_head` folds both sides onto heads (`metrics.py:572-574`), so **hard rule #8 delta = +0, measured**. Lever-only Ref. Conciseness **51.3 → 56.3 (+5.0 pp) = +0.90 pp Overall**. Free on the other two ref axes: Ref Loose scores at HEAD level (the head survives inside the leaf) and Ref Strict INCLUDES subpoints (the leaf is strictly better). `=0` restores the old behaviour |
+| `REGENOLD_CITABLE_BASE_GUARD` | **`0`** | Restrict prose-named citation promotion to the retrieval-grounded universe. R401 relaxes the exhaustive prose/reference mirroring directive only when explicitly enabled, but the full Qwen 3 235B Bedrock hard-set A/B rejected default ON: RefLoose −18.02 pp and `gold_dropped_head` +10 despite RefConc +9.61 pp; inferred three-reference-axis Overall −1.47 pp. |
 | `REGENOLD_STAGE2_TRUNCATION_GUARD` | `1` | R357 post-generation truncation repair on the Stage-2 polish |
 | `REGENOLD_SCOPE_STOP_RULE` | `0` | R367 scope stop rule on the Stage-2 USER channel: answer the question, then STOP; never append a neighbouring provision/power/mechanism/derogation the question did not raise. Targets BOTH conciseness axes (combined leverage 0.364 pp/pp). **Prompt-side ⇒ NOT reference-neutral** (AGENTS.md invariant #5), so it needs `easyhard_ab`/`gold_dropped_head` AND `ab_judge` before flipping |
 | `REGENOLD_PROMPT_V2` | `1` | R377 port (PR #368): selects the four rebuilt V2 USER-channel clauses (coverage incl. `LEGAL VERSION` Omnibus exclusion, reference minimality, sub-paragraph discipline, and the CHALLENGE clause that instructs `<reasoning_scratchpad>`/`<answer>` channels on pushback turns). Shipped default ON on a gate claim with no record — see § R379 for the Bedrock A/B. Lives in `app/data/`, which the R355 AST gate does NOT scan; registered in `_engine_cache_key` by hand |

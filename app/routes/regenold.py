@@ -5795,11 +5795,10 @@ def _citable_base_guard_enabled() -> bool:
     """R365 — restrict prose-promotion to the retrieved citation universe?
     **Default OFF.**
 
-    Gates passing ``citable_bases`` into :func:`_add_prose_named_refs`. New
-    levers ship OFF here; flipping the default is a separate, A/B-gated,
-    confirmation-required decision. The sibling evaluation fork ships the same
-    predicate default ON — that default is NOT ported (see the R365 notes at
-    the call sites).
+    Gates passing ``citable_bases`` into :func:`_add_prose_named_refs`. When
+    ON, only bases that were retrieved by the engine or injected by a route
+    pass may be promoted onto the wire ``references`` list. Provisions the
+    Stage-2 answer names but that were never retrieval-grounded are withheld.
 
     The gate is the gold-bearing ``evals.harness.easyhard_ab`` (Ref Strict /
     Ref Conciseness, with ``gold_dropped_head`` as the zero-drop guard), NOT
@@ -5810,25 +5809,16 @@ def _citable_base_guard_enabled() -> bool:
     mutates ``os.environ`` between arms in the SAME process, so a value
     snapshot at import time would make both arms read the baseline.
 
-    ⛔ R400 — TRIED DEFAULT ON, REVERTED. It stays OFF, and the reason is an
-    operator directive rather than a score: it makes the shipped answer name a
-    provision the wire references list does not carry.
+    R401 relaxed the R138 directive for the opt-in regime: when the guard is
+    explicitly ON, an answer-named but non-retrieval-grounded provision MAY be
+    absent from wire references. The pre-R401 directive still holds when the
+    guard is OFF.
 
-    Executed on the R138 route test, which records the directive verbatim —
-    "every article / annex the SHIPPED answer names must appear in the wire
-    references list (UI citations area)". With the guard ON the route logged
-    "prose cited Article 73 - catalog-valid but not retrieval-grounded; not
-    promoting it, answer retained" and
-    ``test_every_cited_article_is_in_references`` FAILED. That is the guard
-    working exactly as designed: it withholds the promotion and leaves the
-    prose mention standing, which is precisely the prose/citation mismatch the
-    directive forbids. Removing the mention instead is not available either —
-    R274 pins that a reference the prose describes is never dropped.
-
-    So the trade is real and it is not ours to take silently: the guard buys
-    reference precision at the cost of the citations area disagreeing with the
-    answer text. Its upside is also unmeasured. Re-enable only on an explicit
-    operator decision to relax that directive.
+    The default was trialled ON and rejected on a full live hard-set A/B
+    (n=37/arm, Qwen 3 235B via Bedrock): reference conciseness +9.61 pp, but
+    head-level reference recall -18.02 pp and gold_dropped_head 9 -> 19 (+10).
+    The leverage-weighted three-reference-axis contribution was -1.47 pp
+    overall. Keep OFF; ``=1`` remains available for controlled experiments.
     """
     return os.getenv("REGENOLD_CITABLE_BASE_GUARD", "0").strip().lower() in (
         "1", "true", "yes", "on",

@@ -546,6 +546,10 @@
                 <td class="py-2.5 px-4 text-[var(--muted-foreground)]">changes the evidence supplied on 73 of 220 questions; a 20-question live paired screen returned <span class="text-[var(--foreground)]">&minus;0.67 pp</span> on the reference axes and dropped a correct citation on one question</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">Ans. and Ref. Correctness</td>
                 <td class="py-2.5 px-3 text-right text-[var(--foreground)]">screened negative</td></tr>
+              <tr><td class="py-2.5 px-4 font-medium text-[var(--muted-foreground)]">Retrieval-grounded citation guard <span class="text-xs font-normal">(tested, not enabled)</span></td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">full hard set: 37 paired multi-turn questions, 0 errors; 24 paired reference lists differed as the guard withheld answer-named provisions that retrieval had not surfaced</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">Ref. Recall and Conciseness</td>
+                <td class="py-2.5 px-3 text-right text-[var(--foreground)]">&minus;1.47 pp inferred overall</td></tr>
               <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Single synthesis contract <span class="text-xs font-normal">(now enabled)</span></td>
                 <td class="py-2.5 px-4 text-[var(--muted-foreground)]">replaces the accumulated instruction stack with one contract over the same evidence, cutting the instruction payload to about a quarter on challenged turns</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">Ans. Conciseness, Speed</td>
@@ -574,12 +578,29 @@
           the official strict axis rewards. The two measures marked not enabled contribute nothing to any
           number in this report; each changes the evidence or the instructions given to the model and is
           held behind a live paired evaluation that must show no loss of a correct citation before it can
-          be turned on. Rarity-weighted evidence selection has now had that evaluation at small scale and
-          did not earn its place: on 20 questions it moved the reference axes by &minus;0.67 pp and dropped
-          a correct citation on one, so it stays off. That screen is itself below the threshold at which
-          these axes resolve, so it is reported as a reason not to enable rather than as a finding against
-          the method. The September 9 work was primarily correctness and defensibility work, and it is
-          reported here as such rather than as a material change in score.
+          be turned on. Neither disabled measure earned its place. Rarity-weighted evidence selection's
+          20-question screen moved the reference axes by &minus;0.67 pp and dropped a correct citation on
+          one question; that sample is below the resolution threshold and is therefore a reason not to
+          enable, not a finding against the method. The retrieval-grounded citation guard was tested on
+          the complete 37-question hard set and failed the recall veto: it improved reference conciseness
+          by 9.61 pp, but reduced head-level reference recall by 18.02 pp and increased missing gold heads
+          from 9 to 19. Its leverage-weighted contribution across the three reference axes is
+          <strong class="text-[var(--foreground)]">&minus;1.47 pp Overall</strong>, so it also stays off.
+          The September 9 work was primarily correctness and defensibility work, and it is reported here
+          as such rather than as a material change in score.
+        </div>
+        <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
+          <strong class="text-[var(--foreground)]">R401 live hard-mode decision.</strong>
+          Both arms used Qwen 3 235B through the AWS Bedrock client for answer generation and legal-v2
+          judging. The 37 paired questions completed with zero route errors. Reference recall moved
+          87.84% to 69.82% (&minus;18.02 pp; 95% CI &minus;28.83 to &minus;8.11), strict reference
+          correctness moved 61.81% to 58.18% (&minus;3.63 pp; underpowered), and reference conciseness
+          moved 40.81% to 50.42% (+9.61 pp; 95% CI +1.25 to +19.12). The independent Qwen legal judge
+          recorded pass-rate changes of +0.00 pp answer correctness, +5.41 pp reference correctness,
+          +0.00 pp citation faithfulness and +2.70 pp answer conciseness; all four judge deltas were
+          underpowered. The negative Overall estimate is inferred from the measured reference axes, not
+          claimed as a fresh evaluator score, and the report's projected ranges remain unchanged because
+          the guard is not enabled.
         </div>
         <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
           <strong class="text-[var(--foreground)]">Status of the four measures marked "now enabled".</strong>

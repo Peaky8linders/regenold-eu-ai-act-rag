@@ -579,6 +579,31 @@ def gold_dropped_head(
     }
 
 
+def gold_dropped_exact(
+    pred_refs: list[str], gold_articles: int | list[int] | list[str] | None
+) -> dict[str, Any]:
+    """Gold citations missing at full article/annex coordinate grain.
+
+    Unlike :func:`gold_dropped_head`, this comparison preserves sub-points:
+    ``Article 5`` does not satisfy gold ``Article 5.1.a``. Inputs are
+    normalised through the same citation converter used by the exact and
+    hierarchical reference scorers, so parenthesised/internal and wire forms
+    compare consistently.
+
+    This metric is meaningful only for rows whose gold carries a sub-point.
+    The dynamic A/B harness enforces that applicability rule before treating
+    its aggregate as a veto.
+    """
+    gold = set(_to_ref_list(gold_articles))
+    pred = set(_to_ref_list(pred_refs))
+    dropped = sorted(gold - pred)
+    return {
+        "gold_count": len(gold),
+        "dropped_count": len(dropped),
+        "dropped_refs": dropped,
+    }
+
+
 # ── 8: Regulatory tone ───────────────────────────────────────────────────
 
 
