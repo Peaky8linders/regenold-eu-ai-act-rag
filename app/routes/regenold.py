@@ -1574,6 +1574,10 @@ def _engine_cache_key(
             "REGENOLD_CLOSED_SET_SKELETON",
             "REGENOLD_CLOSED_SET_SKELETON_LEAD",
             "REGENOLD_CLOSED_SET_MIN_MEMBERS",
+            # R399 - rarity-weighted paragraph selection. Decides WHICH
+            # verbatim paragraphs reach Stage-2, so it is response- and
+            # reference-affecting for the same reason the three above are.
+            "REGENOLD_EVIDENCE_IDF",
             # R391 - decides whether a head the D1 granularity pass created
             # may be re-pinned to its own sub-point, which changes the wire.
             "REGENOLD_GRAIN_DEEPEN_COLLAPSED_HEADS",
