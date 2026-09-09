@@ -58,6 +58,8 @@ from app.routes.regenold import (
 
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Deleting the variable exercises the shipped OFF default. Tests that want
+    # the relaxed R401 regime opt in explicitly with ``1``.
     monkeypatch.delenv("REGENOLD_CITABLE_BASE_GUARD", raising=False)
     reset_citable_base_guard_stats()
 
@@ -67,9 +69,8 @@ def _clean(monkeypatch: pytest.MonkeyPatch) -> None:
 
 class TestGateDefaultOff:
     def test_disabled_by_default(self) -> None:
-        # New levers ship OFF. The sibling evaluation fork ships this same
-        # predicate default ON; that default is deliberately NOT ported —
-        # flipping it is a separate, easyhard_ab-gated decision.
+        # R401's full live hard-set A/B rejected default ON on the gold-drop
+        # veto; the relaxed citation-gap regime remains explicit opt-in.
         assert _citable_base_guard_enabled() is False
 
     @pytest.mark.parametrize("val", ["1", "true", "TRUE", "yes", "on", " on "])
@@ -79,7 +80,9 @@ class TestGateDefaultOff:
         monkeypatch.setenv("REGENOLD_CITABLE_BASE_GUARD", val)
         assert _citable_base_guard_enabled() is True
 
-    @pytest.mark.parametrize("val", ["0", "false", "no", "off", ""])
+    @pytest.mark.parametrize(
+        "val", ["0", "false", "FALSE", "no", "off", " off ", "", "unexpected"]
+    )
     def test_falsy_values_disable(
         self, monkeypatch: pytest.MonkeyPatch, val: str
     ) -> None:
@@ -279,13 +282,12 @@ class TestRouteWireEffect:
     def test_default_wire_is_byte_identical_to_pre_r365(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        _stage2_env(monkeypatch)  # flag left unset by the autouse fixture
+        _stage2_env(monkeypatch)  # flag intentionally absent: shipped default
         body = _post()
         assert "Article 14" in (body.get("answer") or ""), (
             "Stage-2 did not land — the arm is vacuous"
         )
         assert [r.split(".")[0] for r in body["references"]] == _PRE_R365_REFS
-        # And the guard was never consulted, so it cannot have had an effect.
         assert citable_base_guard_stats()["attempts"] == 0
         assert citable_base_guard_stats()["component_d_attempts"] == 0
 

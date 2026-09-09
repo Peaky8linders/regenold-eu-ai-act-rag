@@ -1,0 +1,74 @@
+{
+  "round": "R401",
+  "date": "2026-09-09",
+  "decision": "REJECT_DEFAULT_ON",
+  "feature": "REGENOLD_CITABLE_BASE_GUARD",
+  "baseline": "0",
+  "candidate": "1",
+  "dataset": {
+    "name": "full hard split of evals.harness.probe_set",
+    "sources": ["paper_mt_v4", "mt_v2"],
+    "rows": 37,
+    "paired_rows": 37,
+    "route_errors": 0
+  },
+  "live_transport": {
+    "provider": "bedrock",
+    "generation_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+    "judge_provider": "bedrock",
+    "judge_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+    "judge_samples": 1,
+    "query_denoiser": false,
+    "external_embeddings": false
+  },
+  "fire_check": {
+    "paired_reference_lists_differed": 24,
+    "paired_answers_differed": 35,
+    "any_output_differed": 36
+  },
+  "reference_axes": {
+    "ref_loose": {
+      "baseline": 0.8783783783783784,
+      "candidate": 0.6981981981981982,
+      "delta": -0.1801801801801802,
+      "ci95": [-0.2882882882882883, -0.08108108108108109],
+      "verdict": "LOSS"
+    },
+    "ref_strict": {
+      "baseline": 0.6180823680823682,
+      "candidate": 0.5818103818103818,
+      "delta": -0.03627198627198628,
+      "ci95": [-0.10643500643500643, 0.02775632775632774],
+      "verdict": "UNDERPOWERED"
+    },
+    "ref_conc": {
+      "baseline": 0.408131588220874,
+      "candidate": 0.5041835585585586,
+      "delta": 0.09605197033768462,
+      "ci95": [0.012508426794141075, 0.19115615615615617],
+      "verdict": "WIN"
+    }
+  },
+  "gold_veto": {
+    "grain": "head",
+    "baseline_missing": 9,
+    "candidate_missing": 19,
+    "delta": 10,
+    "verdict": "VETO"
+  },
+  "legal_v2_judge_pass_rate_deltas_pp": {
+    "answer_correctness": 0.0,
+    "reference_correctness": 5.405405405405406,
+    "citation_faithfulness": 0.0,
+    "answer_conciseness": 2.702702702702703
+  },
+  "inferred_overall_pp_from_reference_axes": -1.465,
+  "inference_formula": "0.113*delta_ref_loose_pp + 0.163*delta_ref_strict_pp + 0.121*delta_ref_conc_pp",
+  "caveats": [
+    "The 37 rows exhaust the available hard split and clear the harness n>=30 gate floor, but the repository records n>=120 as the historical reference-axis resolution threshold.",
+    "The two live arms generated independently; 35 answer pairs differed because Qwen generation is stochastic even though this flag is post-processing-only. Judge deltas are therefore distributional and all were underpowered.",
+    "The exact-coordinate gold veto was inapplicable because all 58 gold references in this split were head-grained.",
+    "The Overall number is a leverage-weighted inference from internal reference axes, not a fresh official evaluator score."
+  ],
+  "raw_sidecar": "evals/bench/results/dynamic-ab-r401-citable-base-guard-qwen235b-hard37.json (gitignored local artifact)"
+}

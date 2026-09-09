@@ -194,7 +194,14 @@ def _post(question: str, sonnet_answer: str, captured: list[str] | None = None):
 
 def test_every_cited_article_is_in_references(monkeypatch) -> None:
     """The user directive: every article / annex the SHIPPED answer names
-    must appear in the wire references list (UI citations area)."""
+    must appear in the wire references list (UI citations area).
+
+    R401 — this directive holds in the GUARD=0 regime (the shipped default).
+    With ``REGENOLD_CITABLE_BASE_GUARD=1`` (explicit opt-in), the directive is
+    relaxed: answer-named but non-retrieval-grounded provisions MAY be absent
+    from wire references. This test pins the old regime.
+    """
+    monkeypatch.setenv("REGENOLD_CITABLE_BASE_GUARD", "0")
     _stage2_env(monkeypatch)
     body = _post(_Q, _VERDICT_SONNET)
     answer = body.get("answer", "")
@@ -222,6 +229,45 @@ def test_every_cited_article_is_in_references(monkeypatch) -> None:
     for m in _ANNEX_RE.finditer(answer):
         assert m.group(1).upper() in ref_annex, (
             f"Annex {m.group(1)} is in the answer but missing from "
+            f"references {refs}"
+        )
+
+
+def test_citable_base_guard_on_allows_prose_citation_gap(monkeypatch) -> None:
+    """R401 — with the guard ON, the answer may name a provision that does
+    NOT appear in wire references (because it was not retrieval-grounded).
+
+    Specifically: the mock Sonnet answer names Article 73, which is
+    catalog-valid but NOT in the engine's retrieval universe for this
+    question. The guard should block its promotion, the answer should be
+    retained (R274 — never drop a ref the prose describes means never
+    strip the PROSE), and the wire references should NOT contain Article 73.
+    """
+    monkeypatch.setenv("REGENOLD_CITABLE_BASE_GUARD", "1")
+    _stage2_env(monkeypatch)
+    body = _post(_Q, _VERDICT_SONNET)
+    answer = body.get("answer", "")
+    refs = body.get("references", [])
+    # The answer should still mention Article 73 (prose is not stripped).
+    assert "Article 73" in answer, (
+        "The answer should retain the Article 73 mention (R274)"
+    )
+    # With the guard ON, Article 73 should NOT be in wire references
+    # (it is not retrieval-grounded for this question).
+    ref_art_nums = {
+        m.group(1)
+        for r in refs
+        for m in [_ART_RE.match(str(r).strip())]
+        if m
+    }
+    assert "73" not in ref_art_nums, (
+        f"Article 73 should be BLOCKED by the citable base guard but "
+        f"appeared in references {refs}"
+    )
+    # Retrieval-grounded articles (14, 26, 27) SHOULD still be present.
+    for art_num in ("14", "26", "27"):
+        assert art_num in ref_art_nums, (
+            f"Article {art_num} is retrieval-grounded and should be in "
             f"references {refs}"
         )
 

@@ -1,7 +1,7 @@
 """Tests for gold_dropped_head metric and easyhard_ab harness integration (R332)."""
 from __future__ import annotations
 
-from evals.bench.metrics import gold_dropped_head
+from evals.bench.metrics import gold_dropped_exact, gold_dropped_head
 from evals.harness.easyhard_ab import _aggregate, _paired, _score_row
 from evals.harness.probe_set import ProbeRow
 
@@ -61,6 +61,28 @@ class TestGoldDroppedHead:
         assert res["gold_count"] == 2
         assert res["dropped_count"] == 1
         assert res["dropped_refs"] == ["Article 6"]
+
+
+class TestGoldDroppedExact:
+    def test_exact_coordinate_hit_normalises_wire_and_internal_forms(self):
+        res = gold_dropped_exact(["Art. 5(1)(a)"], ["Article 5.1.a"])
+        assert res == {"gold_count": 1, "dropped_count": 0, "dropped_refs": []}
+
+    def test_parent_does_not_cover_leaf_gold(self):
+        res = gold_dropped_exact(["Article 5"], ["Article 5.1.a"])
+        assert res == {
+            "gold_count": 1,
+            "dropped_count": 1,
+            "dropped_refs": ["Article 5.1.a"],
+        }
+
+    def test_leaf_does_not_cover_parent_gold(self):
+        res = gold_dropped_exact(["Annex III.5.a"], ["Annex III"])
+        assert res == {
+            "gold_count": 1,
+            "dropped_count": 1,
+            "dropped_refs": ["Annex III"],
+        }
 
 
 class TestEasyHardWiring:
