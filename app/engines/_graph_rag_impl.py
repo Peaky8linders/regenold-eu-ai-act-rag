@@ -7778,7 +7778,8 @@ def _closed_set_skeleton_enabled() -> bool:
 
     ⚠ **Prompt-side ⇒ NOT reference-neutral** (AGENTS.md invariant #5). The
     wire ref list is recomputed from the final prose by ``_add_prose_named_refs``
-    (uncapped, and ``_citable_base_guard_enabled`` is default OFF), so showing
+    (capped at ``_CITE_CONSISTENCY_CAP=8`` + ``_MAX_PROSE_SUBPOINT_ADDS=3``;
+    ``_citable_base_guard_enabled`` is default OFF), so showing
     more statutory text means more cross-references the model can echo onto the
     wire. It therefore ships **default OFF** and its gate is
     ``evals.harness.easyhard_ab`` / ``gold_dropped_head``, NOT an argument from
@@ -9056,6 +9057,13 @@ def _claude_max_enhance_answer(
                 f"EU AI ACT REFERENCES:\n"
                 f"{reference_block}\n\n"
             )
+            # R398 — wire the coordinate-map prompt into the REAL Stage-2 path.
+            # Before R398, _valid_coordinate_line was only called from
+            # _llm_generate_answer, which has no production caller (the fifth
+            # instance of the R329/R330/R366 dead-code trap). The function is
+            # gated on _coord_map_prompt_enabled() (default OFF) and returns ""
+            # when disabled, so this is a strict no-op at the default config.
+            user_message += _valid_coordinate_line(reference_block)
 
             # R69 — cross-reference context (the architecture's
             # "Fragmentation Problem" fix). Surfaces the text of
@@ -9480,6 +9488,15 @@ def _claude_max_enhance_answer(
                     sanitized_q if sanitized_q != sanitized_orig_q else ""
                 ),
             )
+            # R398 — the wholesale replacement above also discards the R397
+            # coordinate map appended at the top of this function. MEASURED:
+            # with REGENOLD_COORD_MAP_PROMPT=1 the dispatched user message
+            # carries "VALID COORDINATES" in the full arm and NOT in the
+            # compact arm, i.e. the lever silently switches itself off in the
+            # one arm an A/B would compare it against. Re-appended here, on the
+            # same reference block the compact builder was handed. Strict no-op
+            # when the flag is OFF (the builder returns "").
+            user_message += _valid_coordinate_line(reference_block)
             # R391 — the wholesale replacement above discarded the pushback
             # clause, which is the ONLY instruction telling the model to hold a
             # correct answer when the evaluator says "I don't think this is

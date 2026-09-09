@@ -83,6 +83,108 @@ axes against a *reference answer*; the July-7 batch carries neither (`_official_
 has 8 fields, none of them criteria or a reference answer, because regenold never published
 them). Treat every local judged number as a PROXY. See § R381.
 
+## ⛔ R398 — the merge gate itself returned a FALSE GREEN, and the R397 lever was inert
+
+**Executed 2026-09-09.** Two defects in the *instruments*, not in the product. Both are the
+R329/R330/R366 shape one level up: the thing that was supposed to be measuring was not running.
+
+### 1. `easyhard_ab` printed PASS on runs where Stage-2 never landed
+
+The gate AGENTS.md invariant #5 mandates for every prompt-side lever had **no liveness guard**.
+Offline (`P2P_GRAPH_RAG_PROVIDER=cli`, dead `OPENAI_API_BASE`) both arms return the same
+deterministic Stage-1 answer, the three prose→refs passes are skipped at their `stage2_landed`
+route call sites, `gold_dropped_head` is identical by construction — and the gate printed
+`PASS`, exit 0. Reproduced on `1dc70db` at n=6 **and at full corpus**:
+
+```
+BEFORE  easy n=95  hard n=37   delta +0 / +0   ->  "PASS"          exit 0
+AFTER   easy n=95  hard n=37   delta +0 / +0   ->  "INDETERMINATE" exit 2
+                                    LIVENESS FAILED: no Stage-2 completions landed.
+```
+
+**Every historical prompt-side "cleared the gold gate" claim made from a local run is
+unverifiable.** R365 turned the flag string into an exit code; the exit code could still be a
+false green for a different reason.
+
+`main()` now has **three** outcomes — `0` PASS, `1` hard-rule-#8 FAIL, `2` INDETERMINATE — and
+a run is indeterminate when **any** of:
+
+* **no Stage-2 landed** — read from `app.llm.stage2_policy.transport_stats()`
+  (`primary_ok`/`fallback_ok`), zeroed before the arms run. ⚠ The first cut of this guard
+  imported `app.integrations.regenold.transport`, **which does not exist**, and a bare
+  `except Exception: pass` swallowed the `ModuleNotFoundError` — so every `--local` run read
+  "not live" whether or not it was. `_transport_liveness` now returns an explicit reason
+  string and an import failure is reported as UNKNOWN, never laundered into "not live";
+* **a scored split is below `_MIN_GATE_N` (30)**;
+* **a split the probe corpus carried scored zero rows** — `_split_gold_dropped` returned
+  `None` for an unscored split, which dropped it out of `splits` entirely, so "zero on ANY
+  split" quietly became "zero on the splits that happened to score". `easyhard-v2_ab_gate.json`
+  (easy 10, hard **0**) and `easyhard-r379-promptv2-bedrock.json` (n=132) sat on disk for the
+  **same flag**, one PASS one FAIL, with equal standing. A run scoped with
+  `--multiturn only|skip` is not penalised — `expected_splits` is what the corpus actually held.
+
+⚠ **`_MIN_GATE_N = 30` buys HONESTY, not POWER — do not cite it as power.** The recorded
+resolution threshold for the reference axes is **n ≥ 120** (R367), and R381's cap=3 simulation
+read PASS at n=17/30/34 and FAILED at n=129, so 30 is a value at which the record shows a
+*wrong* verdict. It cannot be raised: **the probe corpus tops out at easy=95 / hard=37**
+(measured), so any floor above 37 makes the gate permanently indeterminate. Its whole job is to
+reject smoke runs. `--allow-gold-drop` suppresses a FAILURE only; indeterminacy is a statement
+about the evidence, not about what the operator will accept.
+
+⚠ **And the gate must never die of an encoding error.** A `⚠` in the new verdict prints raised
+`UnicodeEncodeError` on a cp1252 console, killing the run **before the sidecar was written** —
+and an uncaught crash also exits non-zero, so it was indistinguishable from a hard-rule-#8 FAIL.
+Gate output is ASCII; both streams are reconfigured with `errors="replace"`.
+`test_the_gate_report_is_cp1252_safe` pins it.
+
+### 2. `REGENOLD_COORD_MAP_PROMPT` was a DEAD FLAG — the fifth instance
+
+`_valid_coordinate_line` (R397) had exactly one call site, inside `_llm_generate_answer`,
+**which has no production caller** — the repo's own comment at `_graph_rag_impl.py:7625` says
+so. Spy-instrumented through the real route with Stage-2 landing: **Stage-2 called, the builder
+called 0 times.** The R397 hypothesis (tell Stage-2 the real coordinate range, attack Ref
+Strict) is therefore **untested, not disproven**, and the reported "7/20 vs a 6/20 noise floor"
+compared two byte-identical prompts.
+
+**And the test written to prevent exactly this was a source-string search** —
+`assert "user_message += _valid_coordinate_line(context_text)" in source` — satisfied by a line
+in a function nothing calls. Measured in the dead state: the old assertion evaluates **True**
+while the new call-count test **fails**.
+
+Now wired into `_claude_max_enhance_answer` (the real Stage-2 path), fed the reference block.
+**Verified by call count and by the dispatched bytes**, two-sided:
+
+```
+flag OFF, compact OFF   calls=1  "VALID COORDINATES" on the wire: False
+flag ON,  compact OFF   calls=1  "VALID COORDINATES" on the wire: True
+flag ON,  compact ON    calls=2  "VALID COORDINATES" on the wire: True   (was False)
+```
+
+⚠ **`REGENOLD_PROMPT_COMPACT` REPLACES `user_message` wholesale** (`~:9479`,
+`build_compact_answer_user`), so it silently discarded the coordinate map — the lever switching
+itself off in one of the two arms an A/B would compare. R391 had already had to re-append the
+pushback clause for this exact reason. **Anything appended above that line must be re-appended
+inside the compact branch.** Still default OFF; the A/B is now meaningful for the first time.
+
+### Still open, deliberately (reference levers need the live gold gate)
+
+* **The two prose→refs guards are asymmetric, and both errors inflate the emitted count** —
+  against Ref Conciseness, the highest-leverage axis. Reproduced: the ADD pass's
+  `_CONTRAST_BEHIND_RE` is behind-only with a ≤4-word window, so
+  `"Article 5 is not engaged here."` **promotes Article 5** and `"This is NOT the EU-database
+  annex, that is Annex VIII."` **promotes Annex VIII** (the live R379 mechanism), while
+  `"This is not Article 5."` is correctly suppressed. The DROP pass
+  (`_reference_described_in_prose`) has **no negation check at all** and is number-anchored, so
+  a paraphrase drops a reference while an explicitly ruled-out provision is kept.
+* **Seven prompt-side levers ship default ON with no `gold_dropped_head` record** —
+  `REGENOLD_USER_CRITICAL_RULES`, `REGENOLD_ANSWER_COVERAGE` and the other default-ON
+  user-channel clauses. `git ls-files docs .planning evals | xargs grep -l` returns **0 files**
+  and no sidecar carries them. This is what R379 caught PR #368 doing. Gate them **after** the
+  liveness guard exists, i.e. now — a pre-R398 run could not have measured them.
+
+Full evidence: `docs/reviews/r398-invariant-5-audit-2026-09-09.md`.
+
+
 ## ⛔ R386 — the reference gap is GRAIN, not precision. And the gate's gold was the blocker.
 
 **Executed 2026-09-06.** Two findings, and the second one retires a whole line of work.
@@ -300,8 +402,9 @@ tunnel: each answer states the answer in its first one or two sentences, then ap
 four sentences of adjacent-but-UNASKED law**. Art. 97's delegation mechanics on an Art. 7
 question; the Art. 6(3) derogation on a definitional one; Art. 26 deployer duties on an Art. 13
 one; the Annex I product route on an Annex III one. That trailing material is also what drags
-the extra provisions onto the wire, because `_add_prose_named_refs` promotes every provision the
-prose names, **uncapped**. **ONE root cause, BOTH conciseness axes.**
+the extra provisions onto the wire, because `_add_prose_named_refs` promotes provisions the
+prose names (budget: cap=2 first pass + cap=8 consistency pass + 3 subpoint adds ≈ 13 adds/turn;
+see `_CITE_CONSISTENCY_CAP` and `_MAX_PROSE_SUBPOINT_ADDS`). **ONE root cause, BOTH conciseness axes.**
 
 **It is NOT a Stage-1 length regression.** Two-arm offline replay, HEAD vs the July snapshot
 (`231c1d5`), same 111 questions, `REGENOLD_SKIP_DOTENV=1` in both arms: **byte-identical, all
@@ -602,8 +705,8 @@ from the final Stage-2 prose* by three default-ON, `stage2_landed`-gated passes:
 
 * `_reconcile_references_to_prose` (`app/routes/regenold.py:3921`, live at `:8791` / `:9073`,
   `REGENOLD_REFS_RECONCILE` default `1`) — **DROPS** wire refs the prose does not describe;
-* R138 `_add_prose_named_refs` (`:4223`, final pass at `:9114`, `REGENOLD_CITE_CONSISTENCY`
-  default `1`) — **ADDS** every provision the prose names, uncapped;
+* R138 `_add_prose_named_refs` (`:5685`, final pass at `:11015`, `REGENOLD_CITE_CONSISTENCY`
+  default `1`) — **ADDS** provisions the prose names, capped at `_CITE_CONSISTENCY_CAP=8`;
 * `_surface_prose_subpoints` (`:3990`, at `:9179`) — **ADDS** sub-points the prose names.
 
 So **any lever that changes the Stage-2 prompt can add, drop and reorder wire citations.**
@@ -618,9 +721,11 @@ It is **not** a statement of reference-neutrality.
 
 ⚠ **The trap that hides this.** The sibling's unit test `test_lever_does_not_change_the_wire`
 asserts `on["references"] == off["references"]` and *passes* — because its fixture sets
-`P2P_GRAPH_RAG_PROVIDER=cli` and a dead `OPENAI_API_BASE`, so `stage2_landed` is False and all
-three prose→refs passes are, in this repo's own words, a "strict no-op". **A deterministic
-fixture pins reference-neutrality in exactly the regime where the coupling is switched off.**
+`P2P_GRAPH_RAG_PROVIDER=cli` and a dead `OPENAI_API_BASE`, so `stage2_landed` is False and the
+three prose→refs passes are skipped at their route call sites (gated by `stage2_landed`). **A
+deterministic fixture pins reference-neutrality in exactly the regime where the coupling is
+switched off.** (The functions themselves are NOT no-ops when called directly — R398 verified
+`_reconcile_references_to_prose` drops Article 6 and Article 17 at `provider=cli`.)
 Never conclude reference-neutrality from a `provider=cli` test.
 
 **Therefore: gate this on `ab_judge` for answers AND on `easyhard_ab`/`gold_dropped_head` for
@@ -696,9 +801,11 @@ as obligations when they are **rights**).
 **What to do instead** — both outside all seven refuted families, and both ADD/GROUND rather
 than DROP:
 * **the citable-base guard** — `_add_prose_named_refs` already takes a `citable_bases`
-  parameter (`app/routes/regenold.py:4223`) and **neither call site passes it**. Constraining
-  prose-promotion to the retrieval-derived universe can only ever *remove an ungrounded
-  promotion*; it can never invent a reference.
+  parameter (`app/routes/regenold.py:5685`) and **both call sites pass it conditionally**
+  (`_citable_base_guard_enabled()`, default OFF → resolves to `None`). Needs only a flag
+  flip + gate run — not implementation work. Constraining prose-promotion to the
+  retrieval-derived universe can only ever *remove an ungrounded promotion*; it can never
+  invent a reference.
 * **R368/R369 recall supplements** — the best-measured reference change in either repo
   (12 gold heads recovered, **0 false positives**, ref_loose 0.764 → 0.833). ADD-only, so it
   cannot trip `gold_dropped_head`.
