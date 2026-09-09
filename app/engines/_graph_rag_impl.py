@@ -9520,6 +9520,43 @@ def _claude_max_enhance_answer(
             except Exception:  # noqa: BLE001 — a prompt add-on must not break Stage-2
                 pass
 
+        # R399: replace competing instruction stacks AFTER the compact branch.
+        # The existing hybrid retrieval, ontology and graph evidence is retained.
+        from app.data.graph_rag_prompts import (
+            build_evidence_answer_user,
+            evidence_contract_enabled,
+        )
+        if evidence_contract_enabled():
+            user_message = build_evidence_answer_user(
+                sanitized_orig_q, reference_block,
+                rewritten_question=sanitized_q if sanitized_q != sanitized_orig_q else "",
+                system_description=(sanitize_for_llm(system_description, context_type="system_description")
+                                    if system_description else ""),
+            )
+            user_message += _valid_coordinate_line(reference_block)
+            # R399 — THIRD instance of the wholesale-replacement trap (R391 for
+            # the compact branch, R398 for the coordinate map). This assignment
+            # discards whatever the compact branch appended, including the
+            # pushback clause, and it does so on the exact turns this contract
+            # is aimed at. MEASURED on the benchmark's verbatim pushback with
+            # is_challenge_turn(...) True: 'CHALLENGE' present in the dispatched
+            # user message at compact=0/1 with the contract OFF, ABSENT in both
+            # arms with it ON. Hard mode is half the official score and the
+            # clause is the only instruction telling the model to hold a correct
+            # answer under dispute, so the contract has to carry it too.
+            # Appended last so it stays in the tail _shrink_user_for_groq keeps.
+            try:
+                from app.data.graph_rag_prompts import (  # noqa: PLC0415
+                    challenge_brevity_enabled,
+                    is_challenge_turn,
+                    user_challenge_brevity_clause,
+                )
+
+                if challenge_brevity_enabled() and is_challenge_turn(question):
+                    user_message += user_challenge_brevity_clause()
+            except Exception:  # noqa: BLE001 — a prompt add-on must not break Stage-2
+                pass
+
         try:
             max_tokens = settings.graph_rag.max_tokens
         except Exception:  # noqa: BLE001

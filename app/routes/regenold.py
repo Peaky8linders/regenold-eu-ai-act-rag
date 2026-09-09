@@ -1558,6 +1558,7 @@ def _engine_cache_key(
             # the polished answer AND, via the prose->refs passes, the wire.
             "REGENOLD_PROMPT_V3",
             "REGENOLD_PROMPT_COMPACT",
+            "REGENOLD_EVIDENCE_CONTRACT",
             # R391 -- split out of PROMPT_COMPACT because the two levers move
             # different axes in opposite directions. This one changes the
             # EVIDENCE the model sees (complete provisions vs question-relevant
