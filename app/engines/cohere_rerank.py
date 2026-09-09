@@ -157,6 +157,13 @@ _ENV_GATE = "REGENOLD_COHERE_RERANK"
 _ENV_MODEL = "REGENOLD_COHERE_RERANK_MODEL"
 _DEFAULT_MODEL = "rerank-v3.5"
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
+#: R400 — the gate is default ON, so it reads as a DENY list: a blank or
+#: unexpected value must keep the ON behaviour rather than silently reverting
+#: production, which is the R379 P2-7 defect (``REGENOLD_PROMPT_V2`` used
+#: allow-list truthiness in a file whose other default-ON gates used deny-list,
+#: so ``=`` or ``=enabled`` reverted prod to V1 while the cache key still
+#: recorded the variable — an A/B that compared V1 to V1).
+_FALSY = frozenset({"0", "false", "no", "off"})
 
 #: Latency is a SCORED axis (Speed, 61.7% — our second-worst) and live p50 is
 #: already ~57 s, so this call must be tightly bounded and must fail open.
@@ -307,21 +314,44 @@ def _get_client() -> httpx.Client:
 
 
 def rerank_enabled() -> bool:
-    """``REGENOLD_COHERE_RERANK`` — **DEFAULT OFF**, fresh env read per call.
+    """``REGENOLD_COHERE_RERANK`` — **DEFAULT ON** (R400), fresh env read per call.
 
-    Default OFF for three independent reasons, any one of which is sufficient:
+    R331 wired this into ``_render_supplementary_sections``, reordering the
+    graph-context ref list immediately before ``render_kg_context`` using
+    ``context.question`` as the query. The placement is load-bearing rather
+    than cosmetic: every ``kg_context.fetch_*`` reader truncates via
+    ``_node_ids(refs, limit=max_refs)`` with ``max_refs`` default 8, and the
+    cut is by LIST POSITION — so when the context carries more than eight refs
+    the order decides WHICH provisions' verbatim paragraph and sub-point text
+    reaches Stage-2. That is a content change, not a permutation of the output,
+    and it targets Answer Correctness, the largest gap to frontier.
 
-    * it is unmeasured on this corpus (R325 measured that nothing beat the
-      engine's own ``rank``, AUC 0.703 — though with a *lexical* reranker, not a
-      cross-encoder, so this is a genuinely different arm);
-    * it adds external egress of partner questions (see the module docstring);
-    * this repo has just paid for an ungated default-ON retrieval change
-      (R329 HyPA: Ref Conciseness −0.209).
+    R400 — flipped ON as part of wiring the retrieval stack in. Two things a
+    future reader must keep straight, because only one of them is refuted:
+
+    * Reranking the EMITTED reference list post-hoc is MEASURED DEAD (R329:
+      mean normalised position of judged-wrong refs 0.582 -> 0.562, i.e.
+      slightly worse). Do not re-propose that variant.
+    * Reranking the Stage-2 CONTEXT — this placement — is a different
+      intervention and has never been scored.
+
+    Expect a smaller effect than the model's headline numbers imply. Measured
+    live against this repo's own ``get_provision_text``: the cross-encoder
+    separates ``Article 50.3`` (0.8803) from ``Article 19`` (0.0286), but
+    scores ``Article 99`` — penalties, legally inapposite to a transparency
+    question yet semantically plausible because its text enumerates the very
+    articles being asked about — at **0.4583**. That is exactly this corpus's
+    failure class, and a relevance cross-encoder does not cleanly reject it.
+
+    ⚠ OPERATIONAL: this sends partner questions to Cohere. Egress is a
+    data-governance decision, made deliberately here, not a silent default.
+    Setting ``REGENOLD_COHERE_RERANK=0`` restores the previous behaviour, and
+    a missing ``COHERE_API_KEY`` still disables it rather than erroring.
 
     Fresh read per call (R263.2) so ``evals/harness/easyhard_ab.py`` can flip it
     between in-process arms.
     """
-    if os.getenv(_ENV_GATE, "0").strip().lower() not in _TRUTHY:
+    if os.getenv(_ENV_GATE, "1").strip().lower() in _FALSY:
         return False
     return bool(os.getenv("COHERE_API_KEY", "").strip())
 

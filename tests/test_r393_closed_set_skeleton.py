@@ -40,10 +40,12 @@ _CLOSED_SET_PROVISIONS = [
 # -- the flag, two-sided -----------------------------------------------------
 
 
-def test_default_is_off(monkeypatch):
-    """New prompt-side levers ship OFF; this one is NOT reference-neutral."""
+def test_default_is_on(monkeypatch):
+    """R400 — flipped ON. R393 measured the gap: only 34.7% of closed
+    statutory-set members reach Stage-2 and 86 of 110 questions get under half,
+    and no prompt instruction can recover a member that is not in the prompt."""
     monkeypatch.delenv("REGENOLD_CLOSED_SET_SKELETON", raising=False)
-    assert G._closed_set_skeleton_enabled() is False
+    assert G._closed_set_skeleton_enabled() is True
 
 
 @pytest.mark.parametrize("truthy", ["1", "true", "TRUE", "yes", "on"])
@@ -52,10 +54,22 @@ def test_flag_turns_on(monkeypatch, truthy):
     assert G._closed_set_skeleton_enabled() is True
 
 
-@pytest.mark.parametrize("falsy", ["0", "", "no", "off", "garbage"])
-def test_flag_stays_off(monkeypatch, falsy):
+@pytest.mark.parametrize("falsy", ["0", "no", "off", "FALSE"])
+def test_explicit_falsy_turns_it_off(monkeypatch, falsy):
     monkeypatch.setenv("REGENOLD_CLOSED_SET_SKELETON", falsy)
     assert G._closed_set_skeleton_enabled() is False
+
+
+@pytest.mark.parametrize("unexpected", ["", "garbage", "enabled", "Y"])
+def test_a_blank_or_unexpected_value_keeps_the_on_behaviour(monkeypatch, unexpected):
+    """R400 — deny-list semantics for a default-ON gate.
+
+    R379 P2-7: ``REGENOLD_PROMPT_V2`` used allow-list truthiness in a file
+    whose other default-ON gates used deny-list, so ``=`` or ``=enabled``
+    silently reverted production to V1 while the cache key still recorded the
+    variable, and an A/B would have compared V1 to V1."""
+    monkeypatch.setenv("REGENOLD_CLOSED_SET_SKELETON", unexpected)
+    assert G._closed_set_skeleton_enabled() is True
 
 
 # -- numeric knobs fail OPEN -------------------------------------------------
@@ -278,10 +292,10 @@ _Q = "What information must the instructions for use contain?"
 
 def test_real_renderer_is_byte_identical_when_off(monkeypatch):
     """The inert-feature tripwire: OFF must really still suppress it."""
-    monkeypatch.delenv("REGENOLD_CLOSED_SET_SKELETON", raising=False)
+    monkeypatch.setenv("REGENOLD_CLOSED_SET_SKELETON", "0")
     ctx = _context_for(_LIVE_REFS, _Q)
     off = G._render_grounding_text(ctx)
-    monkeypatch.setenv("REGENOLD_CLOSED_SET_SKELETON", "0")
+    monkeypatch.setenv("REGENOLD_CLOSED_SET_SKELETON", "off")
     assert G._render_grounding_text(ctx) == off
     joined = "".join(off)
     assert "COMPLETE STRUCTURE" not in joined
@@ -291,9 +305,9 @@ def test_real_renderer_is_byte_identical_when_off(monkeypatch):
 def test_real_renderer_carries_the_closed_set_when_on(monkeypatch):
     """ON must change the block the model actually receives."""
     ctx = _context_for(_LIVE_REFS, _Q)
-    monkeypatch.delenv("REGENOLD_CLOSED_SET_SKELETON", raising=False)
+    monkeypatch.setenv("REGENOLD_CLOSED_SET_SKELETON", "0")
     off = "".join(G._render_grounding_text(ctx))
-    monkeypatch.setenv("REGENOLD_CLOSED_SET_SKELETON", "1")
+    monkeypatch.delenv("REGENOLD_CLOSED_SET_SKELETON", raising=False)
     on = "".join(G._render_grounding_text(ctx))
 
     assert on != off, "flag reached no call site — the R329 failure mode"

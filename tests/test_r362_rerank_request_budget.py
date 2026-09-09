@@ -92,7 +92,9 @@ def test_reset_restores_budget_per_request():
 
 
 def test_gate_off_never_touches_budget(monkeypatch):
-    monkeypatch.delenv("REGENOLD_COHERE_RERANK", raising=False)
+    # R400 — the gate is DEFAULT ON, so "off" must be set explicitly here or
+    # this stops exercising the gate-off path at all.
+    monkeypatch.setenv("REGENOLD_COHERE_RERANK", "0")
     CR.reset_request_budget()
     assert _call_documents(3) == [False, False, False]
     stats = CR.rerank_stats()
@@ -121,7 +123,7 @@ def test_direct_caller_without_reset_gets_fresh_ceiling(monkeypatch):
 def test_budget_does_not_affect_gate_off_rerank_pool(monkeypatch):
     """With the gate off, rerank_pool returns input unchanged and issues zero
     calls regardless of the budget — the byte-identical guarantee."""
-    monkeypatch.delenv("REGENOLD_COHERE_RERANK", raising=False)
+    monkeypatch.setenv("REGENOLD_COHERE_RERANK", "0")
     refs = ["Article 6", "Article 43"]
     out, ok = CR.rerank_pool("q", refs, text_for=lambda r: f"text of {r}")
     assert out == refs

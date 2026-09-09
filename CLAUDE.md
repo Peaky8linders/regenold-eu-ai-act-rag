@@ -1025,6 +1025,56 @@ Concise record of the applied fixes; full rationale in `docs/reviews/`:
   `risk_classification.py` (Annex-III risk-class anchor, default OFF),
   rerank + graph-semantic upgrades; see the port review doc.
 
+## ⛔ R400 — four levers flipped to DEFAULT ON by operator decision, UNGATED
+
+**Executed 2026-09-09, on the operator's explicit instruction to wire the
+optimisations in.** These four now ship ON. **None of them has cleared
+`gold_dropped_head`.** That is a deliberate, recorded operator decision, not an
+oversight, and it is the thing to re-read first if the next scorecard moves:
+
+| flag | was | why it was flipped | what is NOT known |
+| :--- | :--- | :--- | :--- |
+| `REGENOLD_EVIDENCE_CONTRACT` | 0 | replaces the competing USER-channel stack R380 measured as the conciseness root cause; 14162 → 3531 chars on a pushback turn with evidence, coordinate map and pushback clause all intact | never scored on any axis |
+| `REGENOLD_CLOSED_SET_SKELETON` | 0 | R393 measured only **34.7 %** of closed statutory-set members reach Stage-2 (1340/3863 over the official 110), 86 of 110 questions under half | prompt bulk 1.87x ⇒ Speed cost unmeasured |
+| `REGENOLD_COORD_MAP_PROMPT` | 0 | attacks Ref Strict, where the evaluator's keys are ~71 % sub-point against our 14.3 %; R398 rewired it after finding it inert | R397 hypothesis untested, not proven |
+| `REGENOLD_COHERE_RERANK` | 0 | R331 placement is load-bearing — `kg_context` readers truncate by LIST POSITION at `max_refs=8`, so order decides WHICH provisions' text reaches Stage-2 | never scored; **sends partner questions to Cohere**; the cross-encoder scores `Article 99` (penalties) at **0.4583** on a transparency question, i.e. it does NOT cleanly reject this corpus's failure class |
+
+⚠ **All four are prompt/evidence-side, so per invariant #5 they are NOT
+reference-neutral.** Verified on the dispatched bytes that all four fire
+together and that the contract does not clobber the coordinate map or the R391
+pushback clause. Verified is not scored.
+
+⛔ **Two levers were NOT flipped, and the reasons are recorded:**
+
+* **`REGENOLD_EVIDENCE_IDF` — SCREENED NEGATIVE.** Live paired, n=20, both arms
+  0 errors: `ref_loose +0.0000`, `ref_strict −0.0083`, `ref_conc −0.0438`,
+  `kw_recall +0.0167`, **est. Overall −0.67 pp**, and one row newly dropped
+  gold `Article 5`. The harness returned INDETERMINATE (n=20 < its n=30 floor;
+  the ref axes need n≥120), so this is a reason not to enable, not a refutation.
+* **`REGENOLD_CITABLE_BASE_GUARD` — TRIED ON, REVERTED.** It breaks a recorded
+  operator directive. `tests/test_r138_bluf_verdict_citations.py` states it
+  verbatim: *"every article / annex the SHIPPED answer names must appear in the
+  wire references list (UI citations area)"*. With the guard ON the route logged
+  *"prose cited Article 73 — catalog-valid but not retrieval-grounded; not
+  promoting it, answer retained"* and `test_every_cited_article_is_in_references`
+  FAILED. That is the guard working as designed, and R274 blocks the other
+  repair (never drop a ref the prose describes). Re-enable only on an explicit
+  decision to relax that directive.
+
+**Test-suite consequence.** Nine modules pinned the OFF defaults. Every tripwire
+was KEPT and stays two-sided; where a test used `delenv` to MEAN "off" it now
+sets `"0"` explicitly, because with the default flipped `delenv` means ON and
+the tripwire would silently have become an ON-vs-ON comparison (the R365
+defect). Modules pinning the pre-R399 USER message declare
+`REGENOLD_EVIDENCE_CONTRACT=0`, the regime they were written for — the same
+precedent as R360. All four gates use **deny-list** truthiness so a blank or
+unexpected value keeps the ON behaviour, which is the R379 P2-7 defect.
+
+**The one thing to do next:** run `evals.harness.easyhard_ab` with all four as
+the branch arm, at n≥30 per split, before the benchmark window.
+
+---
+
 ## Environment Flags Reference
 
 | Environment Variable | Code Default | Purpose |

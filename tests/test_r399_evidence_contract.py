@@ -5,14 +5,27 @@ from app.engines import _graph_rag_impl as impl
 from app.engines.prompt_budget import _shrink_user_for_groq
 
 
-def test_default_off_and_cache_identity(monkeypatch):
+def test_default_on_and_cache_identity(monkeypatch):
+    """R400 - flipped ON. It replaces the competing USER-channel stack that
+    R380 measured as the root cause of the conciseness gap, and Ans.
+    Conciseness carries the highest marginal geometric-mean leverage of the
+    eight axes in hard mode (0.203 pp per pp)."""
     from app.routes.regenold import _engine_cache_key
     monkeypatch.delenv("REGENOLD_EVIDENCE_CONTRACT", raising=False)
-    assert not prompts.evidence_contract_enabled()
-    before = _engine_cache_key("What must a deployer do?", None)
-    monkeypatch.setenv("REGENOLD_EVIDENCE_CONTRACT", "1")
     assert prompts.evidence_contract_enabled()
+    before = _engine_cache_key("What must a deployer do?", None)
+    monkeypatch.setenv("REGENOLD_EVIDENCE_CONTRACT", "0")
+    assert not prompts.evidence_contract_enabled()
     assert _engine_cache_key("What must a deployer do?", None) != before
+
+
+@pytest.mark.parametrize("unexpected", ["", "garbage", "enabled"])
+def test_a_blank_or_unexpected_value_keeps_the_on_behaviour(monkeypatch, unexpected):
+    """Deny-list semantics for a default-ON gate - the R379 P2-7 defect, where
+    an allow-list default-ON gate silently reverted production while the cache
+    key still recorded the variable, so an A/B compared V1 to V1."""
+    monkeypatch.setenv("REGENOLD_EVIDENCE_CONTRACT", unexpected)
+    assert prompts.evidence_contract_enabled()
 
 
 @pytest.mark.parametrize("compact", ["0", "1"])

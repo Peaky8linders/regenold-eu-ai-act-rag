@@ -1146,10 +1146,28 @@ graph paths, JSON, discussion of retrieval, or repeated concluding summary.
 
 
 def evidence_contract_enabled() -> bool:
-    """Opt-in pending live hard-mode quality and gold-head gates (R399)."""
+    """R399 synthesis contract — R400 flipped it to DEFAULT ON.
+
+    It replaces the accumulated USER-channel instruction stack with ONE
+    contract over the same grounded block, keeping closed-set skeletons,
+    statute provenance and labelled non-citable graph sections byte-for-byte
+    and withholding the heuristic draft. Measured on the dispatched bytes with
+    the benchmark's verbatim pushback: 14162 -> 3531 chars (0.25x) with the
+    evidence, the coordinate map and the pushback clause all still present.
+
+    The competing stack it replaces is the measured root cause of the
+    conciseness gap (R380): three default-ON clauses that instruct the model to
+    "state both the prohibited context AND its treatment elsewhere" and to use
+    additional sentences for a neighbouring tier or cross-reference, on top of
+    ~11.7k chars of overlapping instructions. Ans. Conciseness carries the
+    highest marginal geometric-mean leverage of the eight axes in hard mode
+    (0.203 pp per pp) and the second highest in easy (0.181).
+
+    Deny-list form so a blank value keeps the ON behaviour.
+    """
     import os
-    return os.getenv("REGENOLD_EVIDENCE_CONTRACT", "0").strip().lower() in (
-        "1", "true", "yes", "on",
+    return os.getenv("REGENOLD_EVIDENCE_CONTRACT", "1").strip().lower() not in (
+        "0", "false", "no", "off",
     )
 
 
