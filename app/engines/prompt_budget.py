@@ -40,6 +40,7 @@ def _shrink_user_for_groq(user: str, budget: int = 10000) -> str:
         " SCOPE STOP RULE",           # R367 USER_SCOPE_STOP_CLAUSE start
         " ANSWER DISCIPLINE (V3",     # R380 USER_V3_DISCIPLINE_CLAUSE start
         " ANSWER CONTRACT (compact):",
+        " ANSWER CONTRACT (evidence):",
         " CHALLENGE TURN:",
     )
     tail_start = len(user)  # default: no protected tail found
