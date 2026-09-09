@@ -32,6 +32,7 @@ coarser granularity. Pure stdlib; no network.
 """
 from __future__ import annotations
 
+import os
 import re
 from functools import lru_cache
 
@@ -522,6 +523,59 @@ def _tokens(text: str) -> set[str]:
     }
 
 
+def _evidence_idf_enabled() -> bool:
+    """R399 — rarity-weighted paragraph selection. Default OFF pending the gate.
+
+    This changes WHICH verbatim paragraphs reach Stage-2, so per AGENTS.md
+    invariant #5 it is reference-affecting and must clear ``gold_dropped_head``
+    on a LIVE paired run before it can be flipped. Registered in
+    ``_engine_cache_key``.
+    """
+    return os.getenv("REGENOLD_EVIDENCE_IDF", "0").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _sibling_idf(units: dict) -> dict:
+    """token -> document frequency across the SIBLING units of one provision.
+
+    Local to the provision, so it needs no corpus statistics and stays
+    deterministic. Within one article the discriminating vocabulary is exactly
+    the vocabulary that does NOT repeat: "high-risk AI system", "market",
+    "conformity" occur in every paragraph of Article 24 and separate nothing,
+    while "jeopardise", "storage" and "transport" occur in one.
+    """
+    df: dict[str, int] = {}
+    for txt in units.values():
+        for tok in _tokens(txt):
+            df[tok] = df.get(tok, 0) + 1
+    return df
+
+
+def _overlap_score(q_tok: set, u_tok: set, weights: dict | None) -> float:
+    """Question/unit overlap, optionally weighted by within-provision rarity.
+
+    R399 — MEASURED root cause of rg_069 (0/3 criteria, easy). Unweighted, a
+    boilerplate token counts exactly as much as the one term that identifies
+    the operative paragraph, so on "do I have an obligation not to jeopardise
+    its conformity" Article 24 scored:
+
+        24(1) 7   verification duties      - does not answer the question
+        24(2) 6   non-conformity           - does not answer the question
+        24(3) 5   storage/transport        - THE ANSWER, ranked third and cut
+
+    Weighting each shared token by 1/df over the article's own paragraphs
+    reverses that: the three tokens 24(3) shares with the question and no
+    sibling shares are worth 1.0 each, while the tokens every paragraph
+    carries are worth 1/N. ``weights=None`` reproduces the legacy count
+    exactly, so the OFF arm is byte-identical.
+    """
+    shared = q_tok & u_tok
+    if weights is None:
+        return float(len(shared))
+    return sum(1.0 / weights.get(tok, 1) for tok in shared)
+
+
 def select_relevant_paragraphs(
     ref: str, question: str = "", max_chars: int = 500
 ) -> str | None:
@@ -581,8 +635,9 @@ def select_relevant_paragraphs(
         return drilled if drilled is not None else body
 
     # (number, text, score) in document order.
+    weights = _sibling_idf(units) if _evidence_idf_enabled() else None
     scored = [
-        (num, txt, len(q_tok & _tokens(txt)))
+        (num, txt, _overlap_score(q_tok, _tokens(txt), weights))
         for num, txt in sorted(units.items())
     ]
     # Rank by score (desc), then document order (asc) for ties.
