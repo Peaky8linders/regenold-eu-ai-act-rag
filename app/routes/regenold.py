@@ -3526,6 +3526,96 @@ _GRAIN_OVERVIEW_RE = re.compile(
 )
 
 
+#: R399 — an annex point the ANSWER ITSELF names, in the shapes the live
+#: answers actually use. ``{roman}`` is substituted with the annex being
+#: deepened, so a mention of a DIFFERENT annex never matches.
+#:
+#: Two shapes, because the captured answers use both and the looser one must
+#: not be loose everywhere:
+#:  * ADJACENT — "Annex IV point 1(e)", "Annex III.5", "Annex I (point 11)":
+#:    the number follows the annex name directly, so a bare number is safe.
+#:  * WINDOWED — "in Annex I, which includes Regulation (EU) 2017/745 (MDR)
+#:    at point 11" (rg_008 verbatim): prose separates the two, so an explicit
+#:    "point"/"item" WORD is REQUIRED and the search stops at the first
+#:    sentence end. A bare number is never accepted across a gap.
+_PROSE_ANNEX_ADJACENT_TMPL = (
+    r"Annex\s+{roman}\b[\s,]*(?:\(\s*)?(?:points?|items?|sections?)?\s*\(?\s*(\d{{1,2}})\b"
+)
+_PROSE_ANNEX_WINDOW_TMPL = r"Annex\s+{roman}\b"
+_PROSE_ANNEX_POINT_WORD_RE = re.compile(r"\b(?:points?|items?)\s*\(?\s*(\d{1,2})\b", re.I)
+#: How far past "Annex X" a "point N" marker may sit and still be read as that
+#: annex's point. One clause, not one paragraph — rg_008's gap is 47 chars.
+_PROSE_ANNEX_WINDOW_CHARS = 120
+#: Prose that names SEVERAL points names none of them in particular.
+#: MEASURED: without this, "Annex III points 1, 6 and 7" (rg_037, rg_066) and
+#: "Annex I (points 11 and 12, ...)" (rg_091) each promoted their first listed
+#: number to THE coordinate — three lateral-or-wrong moves against four clear
+#: wins. Abstaining on an enumeration is the rule this module already applies
+#: to a lexical tie: an unresolved grain is correct but imprecise, whereas a
+#: wrong coordinate is a worse citation than the coarser one.
+_PROSE_ANNEX_ENUMERATION_RE = re.compile(
+    r"^(?:\s*,\s*|\s+(?:and|or|to)\s+|\s*[-–]\s*)\d", re.I
+)
+
+
+def _prose_named_annex_point(roman: str, answer: str, units: dict):
+    """The first annex point the answer's own prose names, or ``None``.
+
+    R399 — MEASURED on the Sept 7 capture. The deepener is purely lexical, so
+    on rg_008 it emitted ``Annex I.19`` (motor-vehicle type approval) for a
+    medical-device question whose answer says, verbatim, "which includes
+    Regulation (EU) 2017/745 (MDR) **at point 11**". rg_001 shipped
+    ``Annex IV.2`` while its answer answers the hardware question with
+    "(**Annex IV point 1(e)**)". In both rows the correct coordinate was
+    already written in the prose being cited, and token overlap out-voted it.
+
+    FIRST mention wins: the lead citation is the operative one, which is the
+    same rule the Article 6 product-route correction above applies to a lead
+    6(1) explanation.
+
+    Scoped to ANNEX heads on purpose. Articles carry individually measured
+    per-article corrections (6, 26, 3, 44, 60, 61, 111) — R390 had to repair
+    one of them after a hardcode forced ``Article 44.1`` onto validity asks —
+    and overriding a measured correction with an unmeasured prose rule is the
+    trade this repo has paid for before. The article case belongs to the
+    systematic coordinate audit the R399 review asks for separately.
+    """
+    if not roman or not answer:
+        return None
+    try:
+        adjacent = re.compile(
+            _PROSE_ANNEX_ADJACENT_TMPL.format(roman=re.escape(roman)), re.I
+        )
+        window = re.compile(_PROSE_ANNEX_WINDOW_TMPL.format(roman=re.escape(roman)), re.I)
+    except re.error:  # a bad roman must never break the route
+        return None
+    def _accept(match, haystack):
+        """The captured number, unless it opens an enumeration."""
+        if _PROSE_ANNEX_ENUMERATION_RE.match(haystack[match.end(1) :]):
+            return None
+        try:
+            n = int(match.group(1))
+        except (TypeError, ValueError):
+            return None
+        return n if n in units else None
+
+    for m in adjacent.finditer(answer):
+        n = _accept(m, answer)
+        if n is not None:
+            return n
+    for m in window.finditer(answer):
+        tail = answer[m.end() : m.end() + _PROSE_ANNEX_WINDOW_CHARS]
+        stop = re.search(r"(?<!\bNo)\.\s+[A-Z]", tail)  # first sentence boundary
+        if stop:
+            tail = tail[: stop.start()]
+        hit = _PROSE_ANNEX_POINT_WORD_RE.search(tail)
+        if hit:
+            n = _accept(hit, tail)
+            if n is not None:
+                return n
+    return None
+
+
 def _pick_unit(units: dict, q_tok: set, a_tok: set):
     """The one unit the question+answer point at, or ``None`` to abstain.
 
@@ -3658,7 +3748,36 @@ def _deepen_one_ref(ref: str, question: str, answer: str) -> str:
 
         # Disambiguate Article 6: Article 6(2) classifies Annex III use cases as high-risk.
         # Article 6(3) is the derogation / carve-out.
-        if art_num == 6 and any(k in _q_low for k in ("annex iii", "annex 3", "high-risk", "high risk")):
+        # R399: "high-risk" alone also describes the Annex I product route.
+        # Forcing 6(2) on that word mislabelled MDR/toy safety components even
+        # when the answer correctly explained 6(1). Require both product/clinical
+        # question evidence and a lead 6(1) explanation for this correction.
+        # Broadly removing the legacy shortcut makes lexical overlap select
+        # derogations on unrelated questions; keep that separate from this fix.
+        first_art6 = re.search(r"\bArticle\s+6\s*(?:\(\s*|\.)([123])\b", answer or "", re.I)
+        product_route = bool(re.search(
+            r"\b(?:medical devices?|mdr|ivdr|safety components?|third.party conformity|annex i\b|clinical|clinicians?|treatment)\b",
+            _q_low,
+        ))
+        # R399 — an annex point the answer itself names beats a token-overlap
+        # guess, but only where the question corroborates it: keeping the
+        # named unit inside ``q_units`` preserves Audit Finding 1's invariant
+        # (answer drift alone may never select a coordinate) and makes this a
+        # tie-breaker rather than an override.
+        prose_pt = (
+            _prose_named_annex_point(m.group(3), answer or "", q_units)
+            if m.group(3)
+            else None
+        )
+        if prose_pt is not None:
+            won = prose_pt
+        elif (art_num == 6 and not re.search(r"\bannex\s+(?:iii|3)\b", _q_low)
+                and not re.search(r"\b(?:article|art\.?)\s+6\s*(?:\(|\.)\s*[23]\b", _q_low)
+                and product_route and first_art6 and first_art6.group(1) == "1"):
+            # A lead explanation of 6(1) must not be outweighed by a later
+            # explanation that the 6(3) derogation is unavailable on this route.
+            won = 1 if 1 in units else _pick_unit(q_units, q_tok, a_tok)
+        elif art_num == 6 and any(k in _q_low for k in ("annex iii", "annex 3", "high-risk", "high risk")):
             if not any(k in _q_low for k in ("derogat", "except", "carve-out", "carveout", "procedural task", "deviation", "preparatory")):
                 won = 2 if 2 in units else _pick_unit(q_units, q_tok, a_tok)
             else:
@@ -3726,6 +3845,15 @@ def _deepen_one_ref(ref: str, question: str, answer: str) -> str:
             "Article 60.4", "Annex III.1", "Annex III.2", "Annex III.3", "Annex III.5",
             "Annex III.6", "Annex III.7"
         )
+        # R399 — the descent is NOT suppressed when ``prose_pt`` chose the
+        # level-1 coordinate, though it was tried. Rationale is measured, not
+        # aesthetic: suppressing it reads better on hard rg_098 (whose answer
+        # names "Annex III point 1" as a whole and which then descends to
+        # ``Annex III.1.a``) but costs the sub-point grain on twelve other
+        # rows — ``Annex III.5.d`` emergency-call dispatch among them, the
+        # exact coordinate R394 was written to recover. Sub-point grain is the
+        # Ref Strict lever R386 measured at +18.2 pp; one over-specific row on
+        # an unannotated question does not buy it back.
         if allow_depth_2:
             budget = depth - 1 if depth > 1 else 1
             out = _deepen_within(out, units[won], q_tok, a_tok, budget)

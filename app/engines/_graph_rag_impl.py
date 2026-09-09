@@ -6229,8 +6229,10 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
                 "case), nor subject to the Article 50 transparency duties, nor "
                 "general-purpose AI models. Typical examples are AI-enabled spam "
                 "filters, inventory-management tools, and AI in video games. They "
-                "carry no mandatory obligations under the Regulation, though "
-                "providers and deployers may adopt voluntary codes of conduct."
+                "have no mandatory obligations under the Chapter III high-risk "
+                "regime, but their providers "
+                "and deployers remain subject to Article 4 AI literacy duties and "
+                "may adopt voluntary codes of conduct under Article 95."
             ),
             "refs": ["Art. 5", "Art. 6", "Art. 50"],
         }
@@ -6401,7 +6403,9 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
                 "under Article 6 (an Annex I product safety component, or an Annex "
                 "III use case) and carry the Chapter III Section 2 obligations. "
                 "Limited-risk systems carry the Article 50 transparency duties, "
-                "minimal-risk systems have no mandatory duties under the Act, and "
+                "minimal-risk systems avoid Chapter III high-risk requirements but "
+                "retain Article 4 AI literacy duties, with voluntary codes under "
+                "Article 95, and "
                 "general-purpose AI models are governed separately under Articles "
                 "51 to 56, with added obligations under Article 55 for models "
                 "classified as having systemic risk under Article 51."
@@ -6418,16 +6422,14 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
         verdict = {
             "name": "systems_or_models_scope",
             "answer": (
-                "Both. The EU AI Act's core regime governs AI systems, defined in "
-                "Article 3(1) and brought within scope by Article 2, through the "
-                "risk-based tiers (prohibited practices under Article 5, high-risk "
-                "systems under Article 6, and limited-risk transparency duties under "
-                "Article 50). General-purpose AI models are regulated separately "
+                "Both. Article 2(1)(a) covers providers placing AI systems on the "
+                "Union market or putting them into service, and providers placing "
+                "general-purpose AI models on the market, irrespective of where "
+                "the providers are established. AI systems are defined in Article "
+                "3(1), while general-purpose AI models are regulated separately "
                 "under Chapter V (Articles 51 to 56), are defined in Article 3(63), "
                 "and carry their own provider obligations with additional duties for "
-                "models posing systemic risk. The Regulation therefore applies to "
-                "both AI systems and general-purpose AI models under two parallel "
-                "regimes."
+                "models posing systemic risk."
             ),
             "refs": ["Art. 2", "Art. 3", "Art. 51"],
         }

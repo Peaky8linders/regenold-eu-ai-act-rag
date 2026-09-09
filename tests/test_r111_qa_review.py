@@ -52,14 +52,34 @@ class TestR111MinimalRisk:
         ) is False
 
     def test_answer_is_residual_tier_not_high_risk(self):
+        # R399 — this test used to require the phrase "no mandatory
+        # obligations", which is a FALSE statement of law and was shipping on
+        # every minimal-risk answer: Article 4 binds providers and deployers of
+        # AI systems generally, whatever the tier, and Article 95 voluntary
+        # codes do not displace it. The assertion is re-pointed at the
+        # corrected wording rather than dropped — what the test exists to pin
+        # is that minimal risk does not attract the Chapter III high-risk
+        # regime, and that is asserted below exactly as before.
         ans, refs = _ctx_refs("What are AI systems with minimal risks?")
         low = ans.lower()
         assert "residual" in low
-        assert "no mandatory obligations" in low
+        # The exclusion must stay QUALIFIED to the Chapter III regime. The
+        # unqualified forms this test used to REQUIRE ("no mandatory
+        # obligations under the Regulation") are false statements of law:
+        # Article 4 binds providers and deployers of AI systems generally,
+        # whatever the tier, and Article 95 voluntary codes do not displace it.
+        assert "chapter iii" in low
+        assert "no mandatory obligations under the regulation" not in low
+        assert "no mandatory duties under the act" not in low
+        assert "article 4" in low and "literacy" in low
+        assert "voluntary codes of conduct under article 95" in low
         # Must NOT be the old high-risk risk-management / FRIA dump.
         assert "risk-management system" not in low
         assert "fundamental rights impact" not in low
-        # Clean contrast refs only — no high-risk Chapter III articles.
+        # Clean contrast refs only — no high-risk Chapter III articles. The
+        # Article 4 / 95 anchors are stated in the prose and reach the wire via
+        # _add_prose_named_refs on the live path; seeding them here as well
+        # would double-count against the pure-count Ref. Conciseness axis.
         assert set(refs) == {"Art. 5", "Art. 6", "Art. 50"}
 
 
