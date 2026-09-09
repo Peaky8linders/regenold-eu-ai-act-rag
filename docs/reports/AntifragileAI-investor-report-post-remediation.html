@@ -546,10 +546,22 @@
                 <td class="py-2.5 px-4 text-[var(--muted-foreground)]">changes the evidence supplied on 73 of 220 questions; a 20-question live paired screen returned <span class="text-[var(--foreground)]">&minus;0.67 pp</span> on the reference axes and dropped a correct citation on one question</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">Ans. and Ref. Correctness</td>
                 <td class="py-2.5 px-3 text-right text-[var(--foreground)]">screened negative</td></tr>
-              <tr><td class="py-2.5 px-4 font-medium text-[var(--muted-foreground)]">Single synthesis contract <span class="text-xs font-normal">(built, not enabled)</span></td>
-                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">reduces the instruction payload to about a quarter on challenged turns</td>
+              <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Single synthesis contract <span class="text-xs font-normal">(now enabled)</span></td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">replaces the accumulated instruction stack with one contract over the same evidence, cutting the instruction payload to about a quarter on challenged turns</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">Ans. Conciseness, Speed</td>
-                <td class="py-2.5 px-3 text-right text-[var(--muted-foreground)]">not yet measured</td></tr>
+                <td class="py-2.5 px-3 text-right text-[var(--foreground)]">not yet measured</td></tr>
+              <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Complete statutory sets in evidence <span class="text-xs font-normal">(now enabled)</span></td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">only 34.7% of the members of a closed statutory list were reaching the model, and 86 of 110 questions received under half; the full membership is now supplied</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">Ans. Correctness</td>
+                <td class="py-2.5 px-3 text-right text-[var(--foreground)]">not yet measured</td></tr>
+              <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Valid coordinate ranges supplied <span class="text-xs font-normal">(now enabled)</span></td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">the model is told which paragraph numbers actually exist in each cited provision, so a citation cannot name a subpoint that does not exist</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">Ref. Correctness (Strict)</td>
+                <td class="py-2.5 px-3 text-right text-[var(--foreground)]">not yet measured</td></tr>
+              <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Evidence reranking <span class="text-xs font-normal">(now enabled)</span></td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">the supporting-provision list is truncated at eight entries by position, so ordering decides which provisions' text the model actually sees; a relevance model now sets that order</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">Ans. Correctness</td>
+                <td class="py-2.5 px-3 text-right text-[var(--foreground)]">not yet measured</td></tr>
             </tbody>
           </table>
         </div>
@@ -568,6 +580,17 @@
           these axes resolve, so it is reported as a reason not to enable rather than as a finding against
           the method. The September 9 work was primarily correctness and defensibility work, and it is
           reported here as such rather than as a material change in score.
+        </div>
+        <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
+          <strong class="text-[var(--foreground)]">Status of the four measures marked "now enabled".</strong>
+          They were switched on in production on September 9 as a deliberate decision to ship rather than
+          hold. Each has been verified to reach the model &mdash; confirmed on the actual request payload,
+          not inferred from the code &mdash; and each addresses a defect that was itself measured. None of
+          the four has yet been scored on the benchmark's own axes, and none has cleared the internal
+          check that no correct citation is lost. They therefore contribute <strong class="text-[var(--foreground)]">nothing</strong>
+          to the projected ranges in the table above, which remain as previously stated. A properly
+          powered paired evaluation of the four together is the next measurement, and it is the one that
+          would move any number on this page.
         </div>
       </div>
 
