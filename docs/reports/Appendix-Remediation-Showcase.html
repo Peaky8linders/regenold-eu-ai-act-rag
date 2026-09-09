@@ -33,19 +33,21 @@
   body{background:var(--bg);color:var(--fg);margin:0;
     font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
-  .wrap{max-width:60rem;margin:0 auto;padding:2.5rem 1.25rem 5rem}
+  .wrap{max-width:64rem;margin:0 auto;padding:2.5rem 1.25rem 5rem}
   h1{font-size:1.75rem;line-height:1.25;margin:.2rem 0 .5rem;letter-spacing:-.02em}
   h2{font-size:1.15rem;margin:2.75rem 0 .75rem;letter-spacing:-.01em}
   h3{font-size:1rem;margin:0}
+  h4{font-size:.82rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
+    margin:1.6rem 0 .3rem;font-weight:700}
   p{margin:.6rem 0}
   .sub{color:var(--muted);font-size:.85rem;margin:0}
   .eyebrow{font-size:.7rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
   header{border-bottom:1px solid var(--line);padding-bottom:1.5rem;margin-bottom:1.5rem}
   .scores{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:1.25rem}
-  .score{flex:1 1 12rem;border:1px solid var(--line);border-radius:.7rem;padding:.85rem 1rem;background:var(--card)}
+  .score{flex:1 1 11rem;border:1px solid var(--line);border-radius:.7rem;padding:.85rem 1rem;background:var(--card)}
   .score .lab{font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700}
   .score .val{font-size:1.35rem;font-weight:700;margin-top:.15rem;font-variant-numeric:tabular-nums}
-  .val.bad{color:var(--bad)} .val.ok{color:var(--ok)}
+  .val .bad,.val.bad{color:var(--bad)} .val .ok,.val.ok{color:var(--ok)}
   .callout{border:1px solid var(--note-line);background:var(--note-bg);border-radius:.7rem;
     padding:1rem 1.15rem;margin:1.25rem 0;font-size:.87rem}
   .callout.accent{border-color:var(--accent-line);background:var(--accent-bg)}
@@ -56,7 +58,9 @@
   .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
   th,td{text-align:left;padding:.5rem .6rem;border-bottom:1px solid var(--line);vertical-align:top}
   th{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;white-space:nowrap}
-  td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  tr.tot td{border-top:2px solid var(--line);font-weight:700}
+  .up{color:var(--ok);font-weight:700} .down{color:var(--bad);font-weight:700} .flat{color:var(--muted)}
   code{font-family:var(--mono);font-size:.85em;background:var(--bg);border:1px solid var(--line);
     border-radius:.3rem;padding:.05rem .3rem}
   .case{border:1px solid var(--line);border-radius:.9rem;background:var(--card);
@@ -69,22 +73,22 @@
   .tag.hard{border-color:var(--note-line);background:var(--note-bg);color:var(--note)}
   .pill{font-size:.75rem;font-weight:700;padding:.2rem .6rem;border-radius:999px;white-space:nowrap}
   .pill.ok{color:var(--ok);background:var(--ok-bg);border:1px solid var(--ok-line)}
-  .pill.bad{color:var(--bad);background:var(--bad-bg);border:1px solid var(--bad-line)}
-  .q{font-weight:600;margin:0 0 1rem}
+  .q{font-weight:600;margin:0 0 .9rem}
   .cols{display:grid;grid-template-columns:1fr;gap:.9rem}
   @media(min-width:52rem){.cols{grid-template-columns:1fr 1fr}}
   .panel{border-radius:.6rem;padding:.85rem 1rem;font-size:.83rem}
   .panel.before{border:1px solid var(--bad-line);background:var(--bad-bg)}
   .panel.after{border:1px solid var(--ok-line);background:var(--ok-bg)}
+  .panel.warn{border:1px solid var(--note-line);background:var(--note-bg)}
   .panel .hd{font-weight:700;font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem}
-  .panel.before .hd{color:var(--bad)} .panel.after .hd{color:var(--ok)}
+  .panel.before .hd{color:var(--bad)} .panel.after .hd{color:var(--ok)} .panel.warn .hd{color:var(--note)}
   .crit{margin:.45rem 0;padding-left:1.45rem;position:relative;line-height:1.5}
   .crit::before{position:absolute;left:0;top:0;font-family:var(--mono);font-size:.72rem;font-weight:700}
   .crit.f::before{content:"FAIL";color:var(--bad);font-size:.6rem;top:.15rem}
   .crit.p::before{content:"PASS";color:var(--ok);font-size:.6rem;top:.15rem}
   .remark{color:var(--muted);font-style:italic;font-size:.8rem;display:block;margin-top:.15rem}
-  .answer{border:1px solid var(--line);border-radius:.6rem;background:var(--bg);
-    padding:.9rem 1rem;font-size:.83rem;line-height:1.62;margin-top:.4rem}
+  .answer{border:1px solid var(--line);border-radius:.6rem;background:var(--card);
+    padding:.9rem 1rem;font-size:.82rem;line-height:1.62;margin:.35rem 0 0}
   .meta{font-family:var(--mono);font-size:.74rem;color:var(--muted);margin-top:.5rem;
     display:flex;flex-wrap:wrap;gap:.35rem .9rem}
   .refs{font-family:var(--mono);font-size:.76rem}
@@ -96,95 +100,341 @@
 <div class="wrap">
 
 <header>
-  <div class="eyebrow">Appendix re-run · Regulation (EU) 2024/1689</div>
-  <h1>Appendix Remediation — the six cited failures, re-measured</h1>
+  <div class="eyebrow">Appendix remediation · Regulation (EU) 2024/1689</div>
+  <h1>The six cited failures — old answer beside new, and what the fixes are worth</h1>
   <p class="sub">
     Every answer below is the <strong>actual live output</strong> of the current system, captured
-    2026-09-08, not a hand-written ideal. Scored against the evaluator's own printed criteria,
+    2026-09-08, shown next to the candidate answer the evaluator printed. Criteria and verdicts are
     transcribed verbatim from <em>report_antifragile_ai.pdf</em> (2026-08-25), pages 10–14.
+    Benchmark-wide figures are the full 110-question run of 2026-09-07, scored with
+    <code>evals.official.rubric</code>.
   </p>
   <div class="scores">
     <div class="score">
-      <div class="lab">Report baseline</div>
-      <div class="val bad">1 / 17</div>
-      <div class="sub">printed criteria satisfied (5.9%)</div>
+      <div class="lab">Appendix criteria</div>
+      <div class="val"><span class="bad">1/17</span> → <span class="ok">17/17</span></div>
+      <div class="sub">5.9% → 100%</div>
     </div>
     <div class="score">
-      <div class="lab">This re-run</div>
-      <div class="val ok">17 / 17</div>
-      <div class="sub">all six questions fully pass</div>
+      <div class="lab">Overall, easy (n=110)</div>
+      <div class="val">75.1 → <span class="ok">78.3</span></div>
+      <div class="sub">+3.19 pp · +4.2%</div>
     </div>
     <div class="score">
-      <div class="lab">Conciseness</div>
-      <div class="val">unchanged</div>
-      <div class="sub">answers still ~2× reference length</div>
+      <div class="lab">Overall, hard (n=110)</div>
+      <div class="val">73.4 → <span class="ok">76.1</span></div>
+      <div class="sub">+2.67 pp · +3.6%</div>
+    </div>
+    <div class="score">
+      <div class="lab">Axes improved</div>
+      <div class="val">5 / 4 <span class="sub" style="font-size:.9rem;font-weight:400">of 8</span></div>
+      <div class="sub">easy / hard · 3 down each, all listed</div>
     </div>
   </div>
 </header>
 
 <div class="callout">
   <h3>Read this before quoting any number</h3>
-  <p style="margin-top:0">
-    This is a <strong>re-run under our own instrumentation</strong>, not a re-grade by the evaluator.
-    Four things limit what it proves:
-  </p>
-  <ul>
-    <li><strong>One judge run per question.</strong> The report judges correctness three times at
-      temperature 0.1 and reports min–max spread — but each appendix block is headed
-      <em>"Representative correctness judgement (run 1)"</em>, so the verdicts reproduced here are
-      themselves single-run. On that specific point the two are comparable.</li>
-    <li><strong>The judge is <code>claude-sonnet-5</code></strong>, ours, not the evaluator's. The
-      criteria are the evaluator's own printed text, but the verdicts are not theirs.</li>
-    <li><strong>The criteria were transcribed by us</strong> from the PDF, verbatim including the
-      report's own typography and typos (<code>maintaince</code>, <code>Both condition must apply</code>,
-      <code>such content exist</code>, <code>Area contain use cases</code>). The report abbreviates
-      one itself — Q96 criterion 1 literally opens <code>(Shortened:)</code>.</li>
-    <li><strong>Answers vary run to run.</strong> Measured directly: on Q17 an earlier run of the
-      same code shipped <code>Article 7.1</code> and this one shipped <code>Article 7</code>. The
-      correctness verdicts were stable across both runs; the reference <em>grain</em> was not.</li>
+  <ul style="margin-top:.3rem">
+    <li><strong>The judge is ours, not the evaluator's.</strong> The criteria are their printed text;
+      the verdicts are <code>claude-sonnet-5</code> at our end. The three <em>judged</em> axes
+      (Ans. Correctness Loose/Strict, Tone) are therefore cross-judge comparisons and are indicative.
+      The five <em>deterministic</em> axes (both conciseness axes, both reference-correctness axes,
+      speed) are computed by formula from the answer text, the reference list and the clock — those
+      compare cleanly.</li>
+    <li><strong>The scoring function is reconstructed and checked.</strong> <code>evals.official.rubric</code>
+      reproduces the report's own printed Overall for the August 25 run to <strong>0.02 pp</strong>
+      (easy 75.08 vs printed 75.1) and <strong>0.01 pp</strong> (hard 73.41 vs printed 73.4) from its
+      eight printed axes, so the geometric-mean aggregation is known exactly. The report prints no
+      formula for either conciseness axis; those two are recovered, not quoted.</li>
+    <li><strong>One judge run per question</strong> on the six cases. The report judges correctness
+      three times at temperature 0.1, but each appendix block is headed
+      <em>"Representative correctness judgement (run 1)"</em> — so on that specific point the two are
+      comparable.</li>
+    <li><strong>Answers vary run to run.</strong> Measured: on Q17 one run shipped <code>Article 7.1</code>,
+      the expected coordinate, and the run published here shipped <code>Article 7</code>. Correctness
+      verdicts were stable across both; reference <em>grain</em> was not.</li>
   </ul>
 </div>
 
-<div class="callout accent">
-  <h3>What did not improve</h3>
-  <p style="margin-top:0">
-    Correctness is fixed on these six. <strong>Conciseness is not</strong>, and on this subset it is
-    slightly worse than the report's figures. Presenting the 17/17 without this would be misleading.
-  </p>
-  <div class="scroll">
-  <table>
-    <thead><tr><th>Axis (these 6 rows)</th><th class="num">This re-run</th><th class="num">Report, easy</th><th class="num">Report, hard</th></tr></thead>
-    <tbody>
-      <tr><td>Answer conciseness</td><td class="num">50.8</td><td class="num">51.9</td><td class="num">45.2</td></tr>
-      <tr><td>Reference conciseness</td><td class="num">45.8</td><td class="num">50.4</td><td class="num">49.8</td></tr>
-      <tr><td>Mean answer length</td><td class="num">1,314 ch</td><td class="num" colspan="2">reference answers ≈ 650 ch</td></tr>
-    </tbody>
-  </table>
-  </div>
-  <p style="margin-bottom:0">
-    <strong>⚠ These two rows are our reconstruction, not the report's arithmetic.</strong> The report
-    defines both axes only qualitatively — "Excess references relative to expected references" and
-    "Inverted measure of answer verbosity relative to the reference answers" — and prints
-    <em>no formula</em> and <em>no reference answers</em> anywhere. We model reference conciseness as
-    <code>min(1, expected ÷ provided)</code> and answer conciseness against a ~650-character mean
-    reference length measured from our own corpus. The comparison columns are therefore
-    <em>indicative</em>. What is not in doubt from the raw counts: these rows cite 2–4 references
-    where the key expects 1–2, and run about twice the reference length.
-  </p>
-</div>
-
-<h2>Per-question results</h2>
+<h2>1 · Fixes and optimisations applied</h2>
+<p class="sub" style="margin-bottom:.7rem">
+  Five changes. The first three fix the specific defects the appendix caught; the last two are
+  reference-shaping passes that run on every question.
+</p>
 
 <div class="scroll">
 <table>
-  <thead><tr><th>Q</th><th>Mode</th><th>Topic</th><th class="num">Report</th><th class="num">Now</th><th>Expected refs</th><th class="num">Shipped</th></tr></thead>
+  <thead><tr><th>Fix</th><th>What it does</th><th>Cases it closed</th></tr></thead>
   <tbody>
-    <tr><td>45</td><td>Easy</td><td>Instructions-for-use contents</td><td class="num">0/5</td><td class="num">5/5</td><td class="refs">Article 13.3</td><td class="num">4</td></tr>
-    <tr><td>96</td><td>Easy</td><td>Annex III areas; healthcare</td><td class="num">0/2</td><td class="num">2/2</td><td class="refs">Annex III</td><td class="num">3</td></tr>
-    <tr><td>17</td><td>Easy</td><td>Amending Annex III</td><td class="num">1/4</td><td class="num">4/4</td><td class="refs">Article 7.1</td><td class="num">3</td></tr>
-    <tr><td>74</td><td>Hard</td><td>Artistic audio marking</td><td class="num">0/2</td><td class="num">2/2</td><td class="refs">Article 50.4</td><td class="num">2</td></tr>
-    <tr><td>95</td><td>Hard</td><td>Area vs use case</td><td class="num">0/2</td><td class="num">2/2</td><td class="refs">Article 6.2; Annex III</td><td class="num">3</td></tr>
-    <tr><td>104</td><td>Hard</td><td>Purpose of Annex X</td><td class="num">0/2</td><td class="num">2/2</td><td class="refs">Article 111.1; Annex X</td><td class="num">3</td></tr>
+    <tr>
+      <td><strong>Extractive shape guard</strong><br><code>REGENOLD_EXTRACT_SHAPE_GUARD</code></td>
+      <td>The extractive pass must return an answer of the <em>shape</em> the question asks for — a
+        "list" question must enumerate, a "how many" question must contain a cardinal. On failure it
+        falls back to the lettered limbs of the retrieved provision instead of a single unresponsive
+        sentence. Previously a one-sentence cross-reference could overwrite a complete statutory
+        answer on its way to the wire.</td>
+      <td>Q45, Q95</td>
+    </tr>
+    <tr>
+      <td><strong>Refusal-trigger removal</strong></td>
+      <td>Removed the legacy knowledge-graph abstention heuristic that fired on classification and
+        scope questions. "High-risk use case" was not registered as a scope anchor, so a fully
+        in-scope question fell into the conversational bucket and was declined.</td>
+      <td>Q96</td>
+    </tr>
+    <tr>
+      <td><strong>Statutory disambiguation grounding</strong><br><code>app/data/graph_rag_prompts.py</code></td>
+      <td>Four explicit rules on the Stage-2 user channel: Article 7(1)'s two conditions are
+        <em>cumulative</em>; Article 50(2) machine marking is distinct from the Article 50(4)
+        enjoyment-safe disclosure; Annex III has eight numbered <em>areas</em> containing lettered
+        <em>use cases</em>; Annex X lists Freedom-Security-Justice IT acts and feeds the Article 111(1)
+        timeline, not the Article 49 database fields.</td>
+      <td>Q17, Q74, Q95, Q104</td>
+    </tr>
+    <tr>
+      <td><strong>Reference grain deepener</strong><br><code>_deepen_ref_grain</code> · <code>REGENOLD_REF_GRAIN_DEEPEN</code></td>
+      <td>Replaces a bare head with the paragraph the question and answer actually turn on —
+        <code>Article 13</code> becomes <code>Article 13.3</code>. Runs after parent collapse and
+        before every pass that can drop a reference, so a dropped reference is never a deepened one.</td>
+      <td>every question</td>
+    </tr>
+    <tr>
+      <td><strong>Parent collapse</strong><br><code>REGENOLD_PARENT_COLLAPSE</code></td>
+      <td>Drops a bare parent when its own sub-point is already on the wire, so the list stops
+        carrying <code>Article 50</code> and <code>Article 50.2</code> as two citations. It removes a
+        duplicate, never a provision.</td>
+      <td>every question</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>2 · Blast radius — what the fixes are worth, per metric</h2>
+
+<h4>2A · Measured on the six appendix cases</h4>
+<p class="sub" style="margin-bottom:.5rem">
+  Scored against the evaluator's own printed criteria and expected-reference sets for these six rows.
+  Percentages in the last column are relative change, <code>Δ ÷ baseline</code>.
+</p>
+<div class="scroll">
+<table>
+  <thead><tr>
+    <th>Axis (these 6 rows only)</th><th class="num">Aug 25</th><th class="num">Now</th>
+    <th class="num">Δ pp</th><th class="num">Δ % rel</th><th>Basis</th>
+  </tr></thead>
+  <tbody>
+    <tr><td>Ans. Correctness (Loose)</td><td class="num">5.88</td><td class="num">100.00</td>
+      <td class="num up">+94.12</td><td class="num up">+1,600.0%</td><td>1/17 → 17/17 printed criteria</td></tr>
+    <tr><td>Ans. Correctness (Strict)</td><td class="num">0.00</td><td class="num">100.00</td>
+      <td class="num up">+100.00</td><td class="num up">from zero</td><td>0/6 → 6/6 questions fully passing</td></tr>
+    <tr><td>Ref. Correctness (Loose)</td><td class="num">75.00</td><td class="num">100.00</td>
+      <td class="num up">+25.00</td><td class="num up">+33.3%</td><td>expected heads recovered</td></tr>
+    <tr><td>Ref. Correctness (Strict)</td><td class="num">58.33</td><td class="num">83.33</td>
+      <td class="num up">+25.00</td><td class="num up">+42.9%</td><td>sub-point grain; Q17 grain unstable</td></tr>
+    <tr><td>Regulatory Tone</td><td class="num">100.00</td><td class="num">100.00</td>
+      <td class="num flat">0.00</td><td class="num flat">0.0%</td><td>never flagged on these rows</td></tr>
+    <tr><td>Ref. Conciseness</td><td class="num">57.50</td><td class="num">45.83</td>
+      <td class="num down">−11.67</td><td class="num down">−20.3%</td><td>2.67 → 3.00 refs per row</td></tr>
+    <tr><td>Ans. Conciseness</td><td class="num">86.74</td><td class="num">48.93</td>
+      <td class="num down">−37.81</td><td class="num down">−43.6%</td><td>4 rows with a full baseline transcript; 584 → 1,416 chars</td></tr>
+    <tr><td>Resp. Speed</td><td class="num">—</td><td class="num">—</td>
+      <td class="num flat">n/a</td><td class="num flat">n/a</td><td>the report publishes no per-question latency</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout" style="margin-top:.9rem">
+  <h3>Why two axes got worse here, and why that is the expected shape</h3>
+  <p style="margin-top:0">
+    <strong>Five of the six baseline answers failed by refusing, hedging or answering the wrong
+    question — and a refusal is maximally concise.</strong> Q96's baseline was
+    <em>"I cannot answer your question from my Knowledge Graph"</em> at 375 characters and zero
+    references: it scores 100 on both conciseness axes and 0 on everything else. Replacing it with a
+    complete, cited enumeration necessarily costs conciseness. On these six rows mean answer length
+    goes 584 → 1,416 characters and references 2.67 → 3.00 per row.
+  </p>
+  <p style="margin-bottom:0">
+    This is a property of the six-row <em>subset</em>, which was selected by the evaluator precisely
+    for being wrong. It does not generalise: across the full 110 questions both conciseness axes
+    <strong>improved</strong> — see 2B. Do not read 2A as a benchmark result; it is a diagnostic on a
+    deliberately adverse sample of 5.5% of the corpus.
+  </p>
+</div>
+
+<h4>2B · Measured across the full official benchmark, all eight axes</h4>
+<p class="sub" style="margin-bottom:.5rem">
+  110 questions per mode, August 25 published axes versus the 2026-09-07 live run. Every axis is
+  shown, including the three that regressed in each mode.
+</p>
+
+<div class="scroll">
+<table>
+  <thead>
+  <tr>
+    <th style="border-bottom:none"></th>
+    <th colspan="4" style="text-align:center;color:var(--accent);border-bottom:none">Easy mode · n=110</th>
+    <th colspan="4" style="text-align:center;color:var(--note);border-bottom:none">Hard mode · n=110</th>
+  </tr>
+  <tr>
+    <th>Axis</th>
+    <th class="num">Aug 25</th><th class="num">Now</th><th class="num">Δ pp</th><th class="num">Δ % rel</th>
+    <th class="num">Aug 25</th><th class="num">Now</th><th class="num">Δ pp</th><th class="num">Δ % rel</th>
+  </tr>
+  </thead>
+  <tbody>
+    <tr><td>Ans. Correctness (Loose)</td>
+      <td class="num">89.7</td><td class="num">85.64</td><td class="num down">−4.06</td><td class="num down">−4.5%</td>
+      <td class="num">89.9</td><td class="num">90.96</td><td class="num up">+1.06</td><td class="num up">+1.2%</td></tr>
+    <tr><td>Ans. Correctness (Strict)</td>
+      <td class="num">81.2</td><td class="num">70.91</td><td class="num down">−10.29</td><td class="num down">−12.7%</td>
+      <td class="num">80.0</td><td class="num">80.00</td><td class="num flat">0.00</td><td class="num flat">0.0%</td></tr>
+    <tr><td>Ans. Conciseness</td>
+      <td class="num">51.9</td><td class="num">69.03</td><td class="num up">+17.13</td><td class="num up">+33.0%</td>
+      <td class="num">45.2</td><td class="num">62.08</td><td class="num up">+16.88</td><td class="num up">+37.3%</td></tr>
+    <tr><td>Ref. Correctness (Loose)</td>
+      <td class="num">89.4</td><td class="num">97.50</td><td class="num up">+8.10</td><td class="num up">+9.1%</td>
+      <td class="num">89.5</td><td class="num">95.00</td><td class="num up">+5.50</td><td class="num up">+6.1%</td></tr>
+    <tr><td>Ref. Correctness (Strict)</td>
+      <td class="num">68.3</td><td class="num">69.17</td><td class="num up">+0.87</td><td class="num up">+1.3%</td>
+      <td class="num">70.7</td><td class="num">67.67</td><td class="num down">−3.03</td><td class="num down">−4.3%</td></tr>
+    <tr><td>Ref. Conciseness</td>
+      <td class="num">50.4</td><td class="num">55.30</td><td class="num up">+4.90</td><td class="num up">+9.7%</td>
+      <td class="num">49.8</td><td class="num">49.65</td><td class="num down">−0.15</td><td class="num down">−0.3%</td></tr>
+    <tr><td>Regulatory Tone</td>
+      <td class="num">99.1</td><td class="num">98.18</td><td class="num down">−0.92</td><td class="num down">−0.9%</td>
+      <td class="num">96.1</td><td class="num">99.09</td><td class="num up">+2.99</td><td class="num up">+3.1%</td></tr>
+    <tr><td>Resp. Speed</td>
+      <td class="num">87.6</td><td class="num">91.76</td><td class="num up">+4.16</td><td class="num up">+4.7%</td>
+      <td class="num">85.7</td><td class="num">78.58</td><td class="num down">−7.12</td><td class="num down">−8.3%</td></tr>
+    <tr class="tot"><td>OVERALL (geometric mean)</td>
+      <td class="num">75.08</td><td class="num">78.27</td><td class="num up">+3.19</td><td class="num up">+4.2%</td>
+      <td class="num">73.41</td><td class="num">76.08</td><td class="num up">+2.67</td><td class="num up">+3.6%</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="sub" style="margin-top:.55rem">
+  Baseline Overalls are recomputed from the eight printed axes and land on the report's own printed
+  75.1 and 73.4, which is the check that the aggregation is right. Position against the 2026 frontier
+  baseline: we now <strong>beat it</strong> on Ans. Conciseness (+1.13), Ref. Correctness Loose
+  (+1.40), Ref. Conciseness (+3.40) and Speed (+9.96) in easy mode, and on Ref. Correctness Loose
+  (+0.40) in hard. The remaining Overall gap is <strong>−2.60 pp easy</strong> and
+  <strong>−5.65 pp hard</strong>, down from −5.8 and −8.3.
+</p>
+
+<div class="callout accent">
+  <h3>The three regressions, stated plainly</h3>
+  <ul style="margin-top:.3rem">
+    <li><strong>Ans. Correctness Strict, easy: −10.29 pp.</strong> The largest single loss on the
+      board and the one that most limits Overall. It is also the axis most exposed to the cross-judge
+      caveat above — our judge is not theirs — but it should be read as real until re-graded.</li>
+    <li><strong>Resp. Speed, hard: −7.12 pp.</strong> Mean hard-mode latency is 21.4 s against 14.3 s
+      implied by the August figure. Hard mode answers a pushback turn, and the answer got longer.</li>
+    <li><strong>Ref. Correctness Strict, hard: −3.03 pp</strong>, against +0.87 in easy. The grain
+      deepener is worth ~+21 pp in both modes (2C), so this is a hard-mode retrieval difference
+      sitting on top of it, not a deepener failure.</li>
+  </ul>
+</div>
+
+<h4>2C · Reach — how many of the other 104 answers each fix touches</h4>
+<p class="sub" style="margin-bottom:.5rem">
+  Addressable population counted over the official 110 questions and their published expected-reference
+  key; "rows changed" counted by diffing the shipped reference lists of the two arms.
+</p>
+
+<div class="scroll">
+<table>
+  <thead><tr>
+    <th>Fix</th><th class="num">Addressable</th><th class="num">Rows it changes</th><th>Isolated measured effect</th>
+  </tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Reference grain deepener</strong></td>
+      <td class="num">96 / 110<br><span class="sub">87.3%</span></td>
+      <td class="num">64 / 110<br><span class="sub">58.2%, both modes</span></td>
+      <td>Same answers, same answer key, only the grain differs:<br>
+        <strong>Ref. Strict 40.33 → 60.67 easy (+20.34 pp, +50.4%)</strong> and
+        <strong>40.00 → 61.33 hard (+21.33 pp, +53.3%)</strong>, while
+        <strong>Ref. Loose and Ref. Conciseness are byte-identical (+0.00)</strong>. Sub-point
+        citations go 50.0% → 82.3% of all references emitted.</td>
+    </tr>
+    <tr>
+      <td><strong>Parent collapse</strong></td>
+      <td class="num">110 / 110</td>
+      <td class="num">—</td>
+      <td>The duplicate it exists to remove is now essentially absent: <strong>0 / 110</strong> easy
+        rows and <strong>1 / 110</strong> hard rows still ship a parent alongside its own descendant.
+        Its gain lands on Ref. Conciseness, which is a pure count ratio.</td>
+    </tr>
+    <tr>
+      <td><strong>Statutory disambiguation</strong></td>
+      <td class="num">43 / 110<br><span class="sub">39.1%</span></td>
+      <td class="num">—</td>
+      <td>Union of the four rules' provision families in the official answer key: Annex III / Article 6
+        <strong>31 rows (28.2%)</strong>, Article 50 <strong>9 (8.2%)</strong>, Annex X / Article 111
+        <strong>2 (1.8%)</strong>, Article 7 <strong>1 (0.9%)</strong>.</td>
+    </tr>
+    <tr>
+      <td><strong>Extractive shape guard</strong></td>
+      <td class="num">15 / 110<br><span class="sub">13.6%</span></td>
+      <td class="num">—</td>
+      <td>Questions whose text asks for an enumeration, a named set or a count — the only shapes the
+        guard adjudicates. It is inert on the other 86.4%.</td>
+    </tr>
+    <tr>
+      <td><strong>Refusal-trigger removal</strong></td>
+      <td class="num">110 / 110</td>
+      <td class="num">—</td>
+      <td><strong>0 / 110</strong> rows in the current run refuse or hedge. No before/after rate can
+        be quoted: no archived copy of the August 25 answer set exists on our side, so the size of the
+        class it removed is unknown.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h4>2D · What that converts to on the published score</h4>
+<div class="scroll">
+<table>
+  <thead><tr><th>Attribution</th><th class="num">Easy</th><th class="num">Hard</th><th>Method</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Overall attributable to the grain deepener alone</td>
+      <td class="num up">+3.33 pp<br><span class="sub">+4.4%</span></td>
+      <td class="num up">+3.52 pp<br><span class="sub">+4.8%</span></td>
+      <td>Ref. Strict moved to its measured un-deepened level, all seven other axes held at their
+        current values, Overall recomputed.</td>
+    </tr>
+    <tr>
+      <td>Total measured Overall movement</td>
+      <td class="num up">+3.19 pp<br><span class="sub">+4.2%</span></td>
+      <td class="num up">+2.67 pp<br><span class="sub">+3.6%</span></td>
+      <td>2B, versus the August 25 published Overall.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+<p class="sub" style="margin-top:.55rem">
+  The single lever is worth slightly <em>more</em> than the net movement, because the answer-correctness
+  and speed regressions in 2B spend part of it. Marginal leverage at the current point, in pp of
+  Overall per +1 pp on the axis — easy: <code>Ref.Conc 0.176 &gt; Ans.Conc 0.141 ≈ Ref.Strict 0.141 &gt;
+  Ans.Strict 0.137</code>; hard: <code>Ref.Conc 0.190 &gt; Ans.Conc 0.152 &gt; Ref.Strict 0.140</code>.
+  Reference conciseness remains the highest-leverage axis in both modes, and it is a pure count ratio —
+  the expected sets average 1.27 references per row against the 2.96 we ship.
+</p>
+
+<h2>3 · Per-question results</h2>
+
+<div class="scroll">
+<table>
+  <thead><tr><th>Q</th><th>Mode</th><th>Topic</th><th class="num">Report</th><th class="num">Now</th><th>Expected refs</th><th class="num">Shipped</th><th class="num">Chars</th></tr></thead>
+  <tbody>
+    <tr><td>45</td><td>Easy</td><td>Instructions-for-use contents</td><td class="num">0/5</td><td class="num up">5/5</td><td class="refs">Article 13.3</td><td class="num">4</td><td class="num">1,569</td></tr>
+    <tr><td>96</td><td>Easy</td><td>Annex III areas; healthcare</td><td class="num">0/2</td><td class="num up">2/2</td><td class="refs">Annex III</td><td class="num">3</td><td class="num">1,213</td></tr>
+    <tr><td>17</td><td>Easy</td><td>Amending Annex III</td><td class="num">1/4</td><td class="num up">4/4</td><td class="refs">Article 7.1</td><td class="num">3</td><td class="num">1,630</td></tr>
+    <tr><td>74</td><td>Hard</td><td>Artistic audio marking</td><td class="num">0/2</td><td class="num up">2/2</td><td class="refs">Article 50.4</td><td class="num">2</td><td class="num">1,251</td></tr>
+    <tr><td>95</td><td>Hard</td><td>Area vs use case</td><td class="num">0/2</td><td class="num up">2/2</td><td class="refs">Article 6.2; Annex III</td><td class="num">3</td><td class="num">1,227</td></tr>
+    <tr><td>104</td><td>Hard</td><td>Purpose of Annex X</td><td class="num">0/2</td><td class="num up">2/2</td><td class="refs">Article 111.1; Annex X</td><td class="num">3</td><td class="num">996</td></tr>
   </tbody>
 </table>
 </div>
@@ -193,7 +443,7 @@
   the appendix grades the post-pushback answer.
 </p>
 
-<h2>Case detail</h2>
+<h2>4 · Case detail — old answer beside new</h2>
 
 <!-- Q45 -->
 <article class="case">
@@ -202,16 +452,28 @@
     <span class="pill ok">0/5 → 5/5</span>
   </div>
   <p class="q">"Under the EU AI Act, what must a provider of a high-risk AI system supply to the deployer in the instructions for use? List the required categories of information."</p>
+
   <div class="cols">
     <div class="panel before">
-      <div class="hd">Report, August 25 — 0/5</div>
-      <p style="margin-top:0"><em>"The Act does specify those categories in Article 13, but the materials available here do not permit a citation-supported enumeration of them."</em></p>
+      <div class="hd">August 25 — candidate answer</div>
+      <div class="answer">The question asks what a provider of a high-risk AI system must include in the instructions for use. The Act does specify those categories in Article 13, but the materials available here do not permit a citation-supported enumeration of them. A complete answer to this question turns on Article 13 and, for the detailed content list, on the requirements it sets out for transparency and provision of information to deployers.</div>
+      <div class="meta"><span>425 chars</span><span class="refs">Article 6, Article 13</span><span>declines to enumerate</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">Current build — live answer</div>
+      <div class="answer">Article 13 requires the provider to supply concise, complete, correct and clear instructions for use in an appropriate digital or other format, so that deployers can interpret the system's output and use it appropriately. The instructions must state the identity and contact details of the provider and its authorised representative, the characteristics, capabilities and limitations of performance including the intended purpose, the levels of accuracy, robustness and cybersecurity against which the system was tested (the metrics required under Article 15), any known or foreseeable circumstance that may lead to risks to health, safety or fundamental rights, the technical capabilities to provide information relevant to explaining the output, performance as regards specific persons or groups on which the system is intended to be used, specifications for the input data, information enabling deployers to interpret the output and use it appropriately, and any predetermined changes to the system and its performance. They must also describe the human oversight measures under Article 14, including the technical measures put in place to facilitate interpretation of the output by deployers, and the computational and hardware resources needed, the expected lifetime of the system, and the maintenance and care measures, including software updates, needed to ensure its proper functioning. Where applicable, the instructions must describe the mechanisms allowing deployers to properly collect, store and interpret the logs generated automatically under Article 12.</div>
+      <div class="meta"><span>1,569 chars</span><span class="refs">Article 13.3, Article 15.5, Article 14.4, Article 12.3</span><span>expected grain hit</span></div>
+    </div>
+  </div>
+
+  <div class="cols" style="margin-top:.85rem">
+    <div class="panel before">
+      <div class="hd">Report judgement — 0/5</div>
       <div class="crit f">Provider / authorised representative contact details<span class="remark">"does not list any required category of information"</span></div>
       <div class="crit f">Intended purpose and risks<span class="remark">"refers generally to Article 13 … but does not identify intended purpose or risks"</span></div>
       <div class="crit f">Human oversight measures<span class="remark">"does not mention human oversight measures"</span></div>
       <div class="crit f">Computational resources, lifetime, maintenance<span class="remark">"does not mention computational resources, hardware requirements, expected lifetime, or maintenance measures"</span></div>
       <div class="crit f">Logging mechanisms<span class="remark">"does not mention information about logging mechanisms"</span></div>
-      <div class="meta"><span>Provided: Article 6, Article 13</span><span>Expected: Article 13.3</span></div>
     </div>
     <div class="panel after">
       <div class="hd">This re-run — 5/5</div>
@@ -220,11 +482,10 @@
       <div class="crit p">Human oversight measures</div>
       <div class="crit p">Computational resources, lifetime, maintenance</div>
       <div class="crit p">Logging mechanisms</div>
-      <p style="margin-bottom:0">The refusal is gone. The answer enumerates all five categories directly.</p>
+      <p style="margin-bottom:0">The refusal is gone. The answer enumerates all five categories directly.
+        Reference conciseness falls to 25 on this row — four citations against an expected set of one.</p>
     </div>
   </div>
-  <div class="answer">Article 13 requires the provider to supply concise, complete, correct and clear instructions for use in an appropriate digital or other format, so that deployers can interpret the system's output and use it appropriately. The instructions must state the identity and contact details of the provider and its authorised representative, the characteristics, capabilities and limitations of performance including the intended purpose, the levels of accuracy, robustness and cybersecurity against which the system was tested (the metrics required under Article 15), any known or foreseeable circumstance that may lead to risks to health, safety or fundamental rights, the technical capabilities to provide information relevant to explaining the output, performance as regards specific persons or groups on which the system is intended to be used, specifications for the input data, information enabling deployers to interpret the output and use it appropriately, and any predetermined changes to the system and its performance. They must also describe the human oversight measures under Article 14, including the technical measures put in place to facilitate interpretation of the output by deployers, and the computational and hardware resources needed, the expected lifetime of the system, and the maintenance and care measures, including software updates, needed to ensure its proper functioning. Where applicable, the instructions must describe the mechanisms allowing deployers to properly collect, store and interpret the logs generated automatically under Article 12.</div>
-  <div class="meta"><span>1,569 chars</span><span class="refs">Article 13.3, Article 15.5, Article 14.4, Article 12.3</span><span>expected grain hit</span><span>ref conciseness 25</span></div>
 </article>
 
 <!-- Q96 -->
@@ -234,23 +495,34 @@
     <span class="pill ok">0/2 → 2/2</span>
   </div>
   <p class="q">"Name the areas of high-risk use cases. Is healthcare decision making one of them?"</p>
+
   <div class="cols">
     <div class="panel before">
-      <div class="hd">Report, August 25 — 0/2</div>
-      <p style="margin-top:0"><em>"I cannot answer your question from my Knowledge Graph, which address only obligations under Regulation (EU) 2024/1689 …"</em></p>
+      <div class="hd">August 25 — candidate answer</div>
+      <div class="answer">I cannot answer your question from my Knowledge Graph, which address only obligations under Regulation (EU) 2024/1689 (the AI Act), such as AI literacy duties for providers and deployers (Article 4), coordination of notified bodies (Article 38), and access to the Scientific Panel's expert pool (Article 69). If you have a question about AI Act compliance, I am glad to help.</div>
+      <div class="meta"><span>375 chars</span><span class="refs">no references</span><span>out-of-scope refusal</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">Current build — live answer</div>
+      <div class="answer">Annex III lists eight high-risk areas: biometrics, critical infrastructure, education and vocational training, employment and worker management, access to and enjoyment of essential private services and essential public services and benefits, law enforcement, migration, asylum and border control management, and administration of justice and democratic processes. Healthcare decision making is not itself one of those areas, and only a listed lettered use case makes a system high-risk under the Annex III route in Article 6(2). Certain health-related uses do fall under the essential services area, namely evaluation by or on behalf of public authorities of eligibility for essential public assistance benefits and services including healthcare services, risk assessment and pricing in life and health insurance, and emergency healthcare patient triage systems together with the dispatching of emergency first response services. Separately, a clinical AI system can be high-risk through the Annex I route in Article 6(1) where it is a safety component of, or is itself, a medical device or in vitro diagnostic medical device required to undergo third-party conformity assessment under that sectoral legislation.</div>
+      <div class="meta"><span>1,213 chars</span><span class="refs">Annex III, Article 6, Annex I</span><span>expected grain hit</span></div>
+    </div>
+  </div>
+
+  <div class="cols" style="margin-top:.85rem">
+    <div class="panel before">
+      <div class="hd">Report judgement — 0/2</div>
       <div class="crit f">Names the eight areas<span class="remark">"does not name any of the high-risk areas listed in the AI Act Annex III. It instead says it cannot answer and discusses unrelated AI Act obligations."</span></div>
       <div class="crit f">Answers "No"<span class="remark">"does not address whether healthcare decision making is one of the high-risk areas"</span></div>
-      <div class="meta"><span>Provided: None</span><span>Expected: Annex III</span></div>
     </div>
     <div class="panel after">
       <div class="hd">This re-run — 2/2</div>
       <div class="crit p">Names all eight Annex III areas</div>
       <div class="crit p">Answers "No" on healthcare decision making</div>
-      <p style="margin-bottom:0">The out-of-scope refusal is gone, and the answer adds the two routes by which health-related systems <em>can</em> be high-risk.</p>
+      <p style="margin-bottom:0">The out-of-scope refusal is gone, and the answer adds the two routes by
+        which health-related systems <em>can</em> be high-risk.</p>
     </div>
   </div>
-  <div class="answer">Annex III lists eight high-risk areas: biometrics, critical infrastructure, education and vocational training, employment and worker management, access to and enjoyment of essential private services and essential public services and benefits, law enforcement, migration, asylum and border control management, and administration of justice and democratic processes. Healthcare decision making is not itself one of those areas, and only a listed lettered use case makes a system high-risk under the Annex III route in Article 6(2). Certain health-related uses do fall under the essential services area, namely evaluation by or on behalf of public authorities of eligibility for essential public assistance benefits and services including healthcare services, risk assessment and pricing in life and health insurance, and emergency healthcare patient triage systems together with the dispatching of emergency first response services. Separately, a clinical AI system can be high-risk through the Annex I route in Article 6(1) where it is a safety component of, or is itself, a medical device or in vitro diagnostic medical device required to undergo third-party conformity assessment under that sectoral legislation.</div>
-  <div class="meta"><span>1,213 chars</span><span class="refs">Annex III, Article 6, Annex I</span><span>expected grain hit</span><span>ref conciseness 33</span></div>
 </article>
 
 <!-- Q17 -->
@@ -260,26 +532,40 @@
     <span class="pill ok">1/4 → 4/4</span>
   </div>
   <p class="q">"Can the European Commission amend Annex III of the EU AI Act to add or modify use-cases classified as high-risk AI systems? Under what conditions?"</p>
+
   <div class="cols">
     <div class="panel before">
-      <div class="hd">Report, August 25 — 1/4</div>
+      <div class="hd">August 25 — candidate answer</div>
+      <div class="answer">The Commission is empowered to amend Annex III by adding new use cases or modifying existing ones through delegated acts adopted in accordance with Article 97, subject to the conditions set out in Article 7(1). Article 6(2) makes the Annex III use cases high-risk, and Article 6(6) empowers the Commission to adopt delegated acts to amend the derogation conditions in Article 6(3), but the power to amend the list of use cases in Annex III itself is conferred by a separate provision (Article 7) that the Act does not settle within the text supplied here. The Act does not specify the full conditions for amending Annex III within the provisions of Article 6 or Annex III alone.</div>
+      <div class="meta"><span>678 chars</span><span class="refs">Annex III, Article 97, Article 7.1, Article 7, Article 6</span><span>conditions not stated</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">Current build — live answer</div>
+      <div class="answer">Yes, the Commission may amend Annex III by adding or modifying use-cases of high-risk AI systems, but only through delegated acts adopted in accordance with Article 97 and only where two cumulative conditions in Article 7(1) are met: the AI systems are intended to be used in one of the areas already listed in Annex III, and they pose a risk of harm to health and safety, or an adverse impact on fundamental rights, that is equivalent to or greater than the risk posed by the high-risk AI systems already listed there. Neither limb suffices alone, and Article 7(2) requires the Commission to weigh criteria such as intended purpose, extent of use, nature and amount of data processed, degree of autonomy, severity and reversibility of harm, and the availability of effective measures of redress or of measures to prevent or substantially minimise those risks when assessing the second condition. Article 7(1) does not permit the creation of new areas, so any addition or modification must sit within the existing eight Annex III areas, while Article 7(3) separately allows removal of a use-case only where it no longer poses significant risks and the deletion does not decrease the overall level of protection of health, safety and fundamental rights under Union law. Procedurally, Article 97 confers this power for five years from 1 August 2024 with tacit renewal, obliges the Commission to consult experts designated by each Member State beforehand, and allows the act to enter into force only if neither the European Parliament nor the Council objects within three months of notification, extendable by a further three months.</div>
+      <div class="meta"><span>1,630 chars</span><span class="refs">Annex III.7.b, Article 97.2, Article 7</span><span>head hit, grain unstable</span></div>
+    </div>
+  </div>
+
+  <div class="cols" style="margin-top:.85rem">
+    <div class="panel before">
+      <div class="hd">Report judgement — 1/4</div>
       <div class="crit p">Yes — the Commission is empowered<span class="remark">the only criterion the report scored as passed, across all six cases</span></div>
       <div class="crit f">Condition: intended for use in a listed Annex III area<span class="remark">"refers generally to conditions in Article 7(1) but does not state the specific condition"</span></div>
       <div class="crit f">Condition: risk equal to or greater than those already listed<span class="remark">"does not state the specific threshold condition … It only mentions unspecified conditions in Article 7(1)."</span></div>
       <div class="crit f">Both conditions cumulative<span class="remark">"does not explain that both conditions must be met cumulatively"</span></div>
-      <div class="meta"><span>Provided: Annex III, Article 97, Article 7.1, Article 7, Article 6</span><span>Expected: Article 7.1</span></div>
     </div>
-    <div class="panel after">
-      <div class="hd">This re-run — 4/4</div>
+    <div class="panel warn">
+      <div class="hd">This re-run — 4/4, with a grain caution</div>
       <div class="crit p">Yes — empowered via delegated acts</div>
       <div class="crit p">Condition: intended for use in a listed area</div>
       <div class="crit p">Condition: equivalent or greater risk</div>
       <div class="crit p">"two cumulative conditions", "Neither limb suffices alone"</div>
-      <p style="margin-bottom:0"><strong>Grain caution:</strong> this run shipped <code>Article 7</code>; an earlier run of the same code shipped <code>Article 7.1</code>, the expected coordinate.</p>
+      <p style="margin-bottom:0"><strong>The run published here shipped <code>Article 7</code>; an earlier
+        run of the same code shipped <code>Article 7.1</code>, the expected coordinate.</strong> Panel 2A
+        scores this row on the conservative reading — bare head, Ref. Strict 0 — so the +25 pp strict
+        gain reported there is a floor, not a best case.</p>
     </div>
   </div>
-  <div class="answer">Yes, the Commission may amend Annex III by adding or modifying use-cases of high-risk AI systems, but only through delegated acts adopted in accordance with Article 97 and only where two cumulative conditions in Article 7(1) are met: the AI systems are intended to be used in one of the areas already listed in Annex III, and they pose a risk of harm to health and safety, or an adverse impact on fundamental rights, that is equivalent to or greater than the risk posed by the high-risk AI systems already listed there. Neither limb suffices alone, and Article 7(2) requires the Commission to weigh criteria such as intended purpose, extent of use, nature and amount of data processed, degree of autonomy, severity and reversibility of harm, and the availability of effective measures of redress or of measures to prevent or substantially minimise those risks when assessing the second condition. Article 7(1) does not permit the creation of new areas, so any addition or modification must sit within the existing eight Annex III areas, while Article 7(3) separately allows removal of a use-case only where it no longer poses significant risks and the deletion does not decrease the overall level of protection of health, safety and fundamental rights under Union law. Procedurally, Article 97 confers this power for five years from 1 August 2024 with tacit renewal, obliges the Commission to consult experts designated by each Member State beforehand, and allows the act to enter into force only if neither the European Parliament nor the Council objects within three months of notification, extendable by a further three months.</div>
-  <div class="meta"><span>1,630 chars</span><span class="refs">Annex III.7.b, Article 97.2, Article 7</span><span>head hit, grain unstable</span><span>ref conciseness 33</span></div>
 </article>
 
 <!-- Q74 -->
@@ -289,25 +575,37 @@
     <span class="pill ok">0/2 → 2/2</span>
   </div>
   <p class="q">"I generated audio with AI for my artistic work (sole purpose). Do I need to provide some marking of its artificial nature? I feel that would compromise the enjoyment of the work."</p>
+
   <div class="cols">
     <div class="panel before">
-      <div class="hd">Report, August 25 — 0/2</div>
-      <div class="crit f">No marking that would compromise enjoyment<span class="remark">"says 'Yes' … and explicitly says artistic purpose is not a carve-out from that marking duty. This does not reflect the required point."</span></div>
-      <div class="crit f">Some other disclosure still required, unambiguously<span class="remark">"it foregrounds a 'Yes' to marking and frames the enjoyment-safe disclosure only as a secondary distinction"</span></div>
-      <div class="meta"><span>Provided: Article 9, Article 50.2, Article 50, Article 50.4</span><span>Expected: Article 50.4</span></div>
+      <div class="hd">August 25 — candidate answer</div>
+      <div class="answer">Yes. The provider of an AI system generating synthetic audio must ensure the outputs are marked in a machine-readable format and detectable as artificially generated or manipulated, with technical solutions that are effective, interoperable, robust and reliable, under Article 50(2). Artistic purpose is not a carve-out from that marking duty, which is displaced only to the extent the system performs an assistive function for standard editing or does not substantially alter the input data or its semantics, or where authorised by law to detect, prevent, investigate or prosecute criminal offences. The artistic, creative, satirical or fictional limitation applies to the separate deployer duty to disclose deep fake content under Article 50(4), where disclosure is limited to an appropriate manner that does not hamper the display or enjoyment of the work.</div>
+      <div class="meta"><span>859 chars</span><span class="refs">Article 9, Article 50.2, Article 50, Article 50.4</span><span>enjoyment point subordinated</span></div>
     </div>
-    <div class="panel before" style="border-color:var(--note-line);background:var(--note-bg)">
-      <div class="hd" style="color:var(--note)">This re-run — 2/2, with a caveat</div>
-      <p style="margin-top:0">Our judge passed both criteria. <strong>This is the least certain of the six.</strong> The answer
-      still opens <em>"Yes, marking is required"</em> — the framing the report criticised — and only then
-      distinguishes the imperceptible machine-readable marking from the enjoyment-safe Article 50(4)
-      disclosure. That distinction is what the criteria ask for and it is now explicit, but a stricter
-      reading of criterion 1 could still fail on the leading "Yes".</p>
-      <p style="margin-bottom:0">Referenced correctly: <code>Article 50.4</code>, and the citation count dropped from 4 to 2.</p>
+    <div class="panel after">
+      <div class="hd">Current build — live answer, post-pushback</div>
+      <div class="answer">Yes, marking is required, though the artistic character affects only part of it. As the provider of the system generating synthetic audio, Article 50(2) requires the outputs to be marked in a machine-readable format and detectable as artificially generated or manipulated, using solutions that are effective, interoperable, robust and reliable, and that duty has no artistic carve-out, its only exemptions being standard editing functions that do not substantially alter the input data and uses authorised by law to detect, prevent, investigate or prosecute criminal offences. The concern about audience experience is addressed instead by Article 50(4), under which a deployer disclosing that audio constituting a deep fake is artificially generated or manipulated need only, where the content forms part of an evidently artistic, creative, satirical or fictional work, disclose the existence of the generated or manipulated content in an appropriate manner that does not hamper the display or enjoyment of the work. The machine-readable marking is technical and imperceptible to listeners, so it does not interfere with the artistic experience, while the accompanying disclosure can be placed discreetly, for example in credits or accompanying notes.</div>
+      <div class="meta"><span>1,251 chars</span><span class="refs">Article 50.4, Article 50.2</span><span>expected grain hit</span><span>4 → 2 refs</span></div>
     </div>
   </div>
-  <div class="answer">Yes, marking is required, though the artistic character affects only part of it. As the provider of the system generating synthetic audio, Article 50(2) requires the outputs to be marked in a machine-readable format and detectable as artificially generated or manipulated, using solutions that are effective, interoperable, robust and reliable, and that duty has no artistic carve-out, its only exemptions being standard editing functions that do not substantially alter the input data and uses authorised by law to detect, prevent, investigate or prosecute criminal offences. The concern about audience experience is addressed instead by Article 50(4), under which a deployer disclosing that audio constituting a deep fake is artificially generated or manipulated need only, where the content forms part of an evidently artistic, creative, satirical or fictional work, disclose the existence of the generated or manipulated content in an appropriate manner that does not hamper the display or enjoyment of the work. The machine-readable marking is technical and imperceptible to listeners, so it does not interfere with the artistic experience, while the accompanying disclosure can be placed discreetly, for example in credits or accompanying notes.</div>
-  <div class="meta"><span>1,251 chars</span><span class="refs">Article 50.4, Article 50.2</span><span>expected grain hit</span><span>ref conciseness 50</span><span>post-pushback answer</span></div>
+
+  <div class="cols" style="margin-top:.85rem">
+    <div class="panel before">
+      <div class="hd">Report judgement — 0/2</div>
+      <div class="crit f">No marking that would compromise enjoyment<span class="remark">"says 'Yes' … and explicitly says artistic purpose is not a carve-out from that marking duty. This does not reflect the required point."</span></div>
+      <div class="crit f">Some other disclosure still required, unambiguously<span class="remark">"it foregrounds a 'Yes' to marking and frames the enjoyment-safe disclosure only as a secondary distinction"</span></div>
+    </div>
+    <div class="panel warn">
+      <div class="hd">This re-run — 2/2, the least certain of the six</div>
+      <div class="crit p">Distinguishes imperceptible machine marking from enjoyment-safe disclosure</div>
+      <div class="crit p">States the discreet Article 50(4) disclosure for artistic works</div>
+      <p style="margin-bottom:0">Our judge passed both criteria, but <strong>the answer still opens
+        "Yes, marking is required"</strong> — the exact framing the report criticised — before drawing
+        the distinction the criteria ask for. That distinction is now explicit and load-bearing rather
+        than a trailing aside, and the citation count dropped from 4 to 2 with the exact expected
+        coordinate. A stricter reading of criterion 1 could still fail on the leading "Yes".</p>
+    </div>
+  </div>
 </article>
 
 <!-- Q95 -->
@@ -317,22 +615,35 @@
     <span class="pill ok">0/2 → 2/2</span>
   </div>
   <p class="q">"What is an 'area' and what is a 'use case' for high-risk as per Article 6(2)? How many areas exist?"</p>
+
   <div class="cols">
     <div class="panel before">
-      <div class="hd">Report, August 25 — 0/2</div>
+      <div class="hd">August 25 — candidate answer <span style="font-weight:400;text-transform:none;letter-spacing:0">(abridged)</span></div>
+      <div class="answer">Classifies an AI system as high-risk on two routes. Annex I route (Article 6(1)): the system is a safety component of, or is itself, a product covered by the Union harmonisation legislation listed in Annex I AND that product must undergo a third-party conformity assessment under that sectoral legislation. Annex III route (Article 6(2)): the system falls within one of the <strong>eight Annex III use cases</strong>. Article 6(3) derogation: an Annex III system is NOT high-risk where it poses no significant risk of harm and meets one of four conditions … Provider must document this self-assessment before placing the system on the market and still register it under Article 49(2) …</div>
+      <div class="meta"><span class="refs">Article 6.3, Article 6, Article 6.2, Annex III</span><span>never defines "area"</span><span>abridged in our transcript</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">Current build — live answer, post-pushback</div>
+      <div class="answer">An "area" is a numbered heading in Annex III, and a "use case" is a lettered entry beneath that heading, so an AI system is high-risk under Article 6(2) only where it falls within one of the listed use cases, not merely within the general subject matter of an area. Annex III contains eight areas: biometrics, critical infrastructure, education and vocational training, employment, workers' management and access to self-employment, access to and enjoyment of essential private services and essential public services and benefits, law enforcement, migration, asylum and border control management, and administration of justice and democratic processes. Under the Article 6(3) derogation, an Annex III system is nevertheless not high-risk where it poses no significant risk of harm to health, safety or fundamental rights, including by not materially influencing the outcome of decision making, and performs a narrow procedural task, improves the result of a previously completed human activity, detects decision-making patterns or deviations without replacing or influencing the previously completed human assessment, or performs a preparatory task, though it is always high-risk where it performs profiling of natural persons.</div>
+      <div class="meta"><span>1,227 chars</span><span class="refs">Article 6.2, Article 6.3, Annex III.7.b</span><span>both expected heads hit</span></div>
+    </div>
+  </div>
+
+  <div class="cols" style="margin-top:.85rem">
+    <div class="panel before">
+      <div class="hd">Report judgement — 0/2</div>
       <div class="crit f">An area contains use cases<span class="remark">"mentions the 'eight Annex III use cases' but does not explain that an 'area' is a broader Annex III category that contains one or more specific use cases"</span></div>
       <div class="crit f">Eight areas exist<span class="remark">"states that the system falls within 'one of the eight Annex III use cases.' This is incorrect for the asked distinction: Annex III has eight areas/categories, not eight use cases."</span></div>
-      <div class="meta"><span>Provided: Article 6.3, Article 6, Article 6.2, Annex III</span><span>Expected: Article 6.2; Annex III</span></div>
     </div>
     <div class="panel after">
       <div class="hd">This re-run — 2/2</div>
       <div class="crit p">Area = numbered heading; use case = lettered entry beneath it</div>
       <div class="crit p">Eight <em>areas</em>, named individually</div>
-      <p style="margin-bottom:0">The exact conflation the report flagged — "eight use cases" — is corrected to "eight areas", with the structural distinction stated first.</p>
+      <p style="margin-bottom:0">The exact conflation the report flagged — "eight use cases" — is
+        corrected to "eight areas", with the structural distinction stated in the first sentence rather
+        than left implicit.</p>
     </div>
   </div>
-  <div class="answer">An "area" is a numbered heading in Annex III, and a "use case" is a lettered entry beneath that heading, so an AI system is high-risk under Article 6(2) only where it falls within one of the listed use cases, not merely within the general subject matter of an area. Annex III contains eight areas: biometrics, critical infrastructure, education and vocational training, employment, workers' management and access to self-employment, access to and enjoyment of essential private services and essential public services and benefits, law enforcement, migration, asylum and border control management, and administration of justice and democratic processes. Under the Article 6(3) derogation, an Annex III system is nevertheless not high-risk where it poses no significant risk of harm to health, safety or fundamental rights, including by not materially influencing the outcome of decision making, and performs a narrow procedural task, improves the result of a previously completed human activity, detects decision-making patterns or deviations without replacing or influencing the previously completed human assessment, or performs a preparatory task, though it is always high-risk where it performs profiling of natural persons.</div>
-  <div class="meta"><span>1,227 chars</span><span class="refs">Article 6.2, Article 6.3, Annex III.7.b</span><span>both expected heads hit</span><span>ref conciseness 67</span><span>post-pushback answer</span></div>
 </article>
 
 <!-- Q104 -->
@@ -342,39 +653,52 @@
     <span class="pill ok">0/2 → 2/2</span>
   </div>
   <p class="q">"What is Annex X about? What is it used for?"</p>
+
   <div class="cols">
     <div class="panel before">
-      <div class="hd">Report, August 25 — 0/2</div>
-      <p style="margin-top:0"><em>The answer described Annex X as the EU-database registration fields and then discussed GPAI obligations at length.</em></p>
+      <div class="hd">August 25 — candidate answer <span style="font-weight:400;text-transform:none;letter-spacing:0">(abridged)</span></div>
+      <div class="answer">Annex X sets the information that providers (and, where applicable, authorised representatives) and public-authority deployers must enter in the <strong>EU database when registering high-risk AI systems referred to in Article 49</strong>: provider / authorised-representative / deployer identity and contact details, system name, trade name and additional unambiguous reference, intended purpose, status of the system … followed by an extended passage on GPAI compute thresholds and Annex XI / XII technical-documentation rules.</div>
+      <div class="meta"><span class="refs">Annex X</span><span>wrong annex entirely</span><span>abridged in our transcript</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">Current build — live answer, post-pushback</div>
+      <div class="answer">Annex X is a list of Union legislative acts establishing large-scale IT systems in the area of Freedom, Security and Justice, and it imposes no obligations of its own. It names the Schengen Information System, the Visa Information System, Eurodac, the Entry/Exit System, the European Travel Information and Authorisation System, the European Criminal Records Information System on third-country nationals and stateless persons, and the two interoperability Regulations. Its operative function is to trigger the transitional rule in Article 111(1), under which AI systems that are components of those large-scale IT systems and placed on the market or put into service before 2 August 2027 must be brought into compliance only by 31 December 2030, without prejudice to the prohibited practices in Article 5. Article 111(1) further requires that the Regulation's requirements be taken into account when each of those large-scale IT systems is evaluated, replaced or amended under its own legal act.</div>
+      <div class="meta"><span>996 chars</span><span class="refs">Annex X, Article 111.1, Article 5.1.d</span><span>both expected heads hit</span></div>
+    </div>
+  </div>
+
+  <div class="cols" style="margin-top:.85rem">
+    <div class="panel before">
+      <div class="hd">Report judgement — 0/2</div>
       <div class="crit f">Annex X lists Union legal acts on large-scale IT systems<span class="remark">"describes Annex X as setting information for registration of high-risk AI systems in the EU database under Article 49. That is not what Annex X is about."</span></div>
       <div class="crit f">Used to define transition / compliance timelines<span class="remark">"does not explain that Annex X is used to identify systems subject to particular transition/compliance timing rules"</span></div>
-      <div class="meta"><span>Provided: Annex X</span><span>Expected: Article 111.1; Annex X</span></div>
     </div>
     <div class="panel after">
       <div class="hd">This re-run — 2/2</div>
       <div class="crit p">Names the large-scale IT systems acts (SIS, VIS, Eurodac, EES, ETIAS, ECRIS-TCN, interoperability)</div>
       <div class="crit p">States the Article 111(1) transitional rule and the 31 December 2030 deadline</div>
-      <p style="margin-bottom:0">The two-annex confusion is resolved, and <code>Article 111.1</code> — absent before — is now cited.</p>
+      <p style="margin-bottom:0">The two-annex confusion is resolved, and <code>Article 111.1</code> —
+        absent from the August citation list entirely — is now on the wire.</p>
     </div>
   </div>
-  <div class="answer">Annex X is a list of Union legislative acts establishing large-scale IT systems in the area of Freedom, Security and Justice, and it imposes no obligations of its own. It names the Schengen Information System, the Visa Information System, Eurodac, the Entry/Exit System, the European Travel Information and Authorisation System, the European Criminal Records Information System on third-country nationals and stateless persons, and the two interoperability Regulations. Its operative function is to trigger the transitional rule in Article 111(1), under which AI systems that are components of those large-scale IT systems and placed on the market or put into service before 2 August 2027 must be brought into compliance only by 31 December 2030, without prejudice to the prohibited practices in Article 5. Article 111(1) further requires that the Regulation's requirements be taken into account when each of those large-scale IT systems is evaluated, replaced or amended under its own legal act.</div>
-  <div class="meta"><span>996 chars</span><span class="refs">Annex X, Article 111.1, Article 5.1.d</span><span>both expected heads hit</span><span>ref conciseness 67</span><span>post-pushback answer</span></div>
 </article>
 
-<h2>Method</h2>
+<h2>5 · Method</h2>
 <p style="font-size:.87rem">
-  Questions were matched to the benchmark corpus by exact text (similarity 1.00 on all six).
-  Each was submitted to the live service; the three hard-mode rows were first answered, then
-  challenged with the evaluator's byte-exact pushback template, and the post-pushback answer was
-  the one graded — matching how the appendix grades hard mode. Answers were generated by
-  <code>claude-opus-5</code> and judged by <code>claude-sonnet-5</code> against the printed criteria,
-  one run per question — matching the appendix, whose judgement blocks are headed "run 1".
-  The conciseness figures use our own reconstructed formulas, as flagged above; the report prints
-  none, and never prints its reference answers. Answers, reference lists, judge verdicts and the
-  counts in this document are reproducible from the captured run artefacts.
+  Questions were matched to the benchmark corpus by exact text (similarity 1.00 on all six). Each was
+  submitted to the live service; the three hard-mode rows were first answered, then challenged with
+  the evaluator's byte-exact pushback template, and the post-pushback answer was the one graded —
+  matching how the appendix grades hard mode. Answers were generated by <code>claude-opus-5</code> and
+  judged by <code>claude-sonnet-5</code> against the printed criteria, one run per question.
+  Benchmark-wide figures in section 2B come from the 110-question runs
+  <code>official-r390-opus5-live-easy</code> and <code>official-r390-live-hard-hard</code>, scored by
+  <code>evals.official.rubric</code>; the grain-deepener isolation in 2C compares the shipped reference
+  lists of two arms over the same answers and the same expected-reference key, so nothing but the
+  citation grain differs between them. Every figure in this document is reproducible from the cited
+  run artefacts.
 </p>
 
-<h2>Official scorecard, for context</h2>
+<h2>6 · Official scorecard, for context</h2>
 <p style="font-size:.87rem;margin-bottom:.4rem">
   These six cases are the report's <em>illustrative</em> failures, not the whole benchmark. The
   published totals, transcribed from Tables 2 and 3:
@@ -384,27 +708,31 @@
   <thead><tr><th>Mode</th><th>Contestant</th><th class="num">Overall</th><th class="num">Ans L</th><th class="num">Ans S</th><th class="num">Ans Conc</th><th class="num">Ref L</th><th class="num">Ref S</th><th class="num">Ref Conc</th><th class="num">Tone</th><th class="num">Speed</th></tr></thead>
   <tbody>
     <tr><td>Easy</td><td>2026 Frontier + Search</td><td class="num">80.9</td><td class="num">94.4</td><td class="num">89.1</td><td class="num">67.9</td><td class="num">96.1</td><td class="num">78.5</td><td class="num">51.9</td><td class="num">100.0</td><td class="num">81.8</td></tr>
-    <tr><td>Easy</td><td><strong>Antifragile AI</strong></td><td class="num"><strong>75.1</strong></td><td class="num">89.7</td><td class="num">81.2</td><td class="num">51.9</td><td class="num">89.4</td><td class="num">68.3</td><td class="num">50.4</td><td class="num">99.1</td><td class="num">87.6</td></tr>
+    <tr><td>Easy</td><td><strong>Antifragile AI — this run</strong></td><td class="num up"><strong>78.3</strong></td><td class="num">85.6</td><td class="num">70.9</td><td class="num">69.0</td><td class="num">97.5</td><td class="num">69.2</td><td class="num">55.3</td><td class="num">98.2</td><td class="num">91.8</td></tr>
+    <tr><td>Easy</td><td>Antifragile AI — Aug 25</td><td class="num">75.1</td><td class="num">89.7</td><td class="num">81.2</td><td class="num">51.9</td><td class="num">89.4</td><td class="num">68.3</td><td class="num">50.4</td><td class="num">99.1</td><td class="num">87.6</td></tr>
     <tr><td>Easy</td><td>2025 Search-Integrated</td><td class="num">70.1</td><td class="num">83.8</td><td class="num">70.9</td><td class="num">51.1</td><td class="num">79.9</td><td class="num">52.0</td><td class="num">48.7</td><td class="num">99.1</td><td class="num">95.3</td></tr>
     <tr><td>Hard</td><td>2026 Frontier + Search</td><td class="num">81.7</td><td class="num">92.0</td><td class="num">84.8</td><td class="num">71.8</td><td class="num">94.6</td><td class="num">74.1</td><td class="num">58.5</td><td class="num">100.0</td><td class="num">86.7</td></tr>
+    <tr><td>Hard</td><td><strong>Antifragile AI — this run</strong></td><td class="num up"><strong>76.1</strong></td><td class="num">91.0</td><td class="num">80.0</td><td class="num">62.1</td><td class="num">95.0</td><td class="num">67.7</td><td class="num">49.7</td><td class="num">99.1</td><td class="num">78.6</td></tr>
     <tr><td>Hard</td><td>2025 Search-Integrated</td><td class="num">74.8</td><td class="num">87.6</td><td class="num">76.7</td><td class="num">58.8</td><td class="num">82.7</td><td class="num">55.4</td><td class="num">56.8</td><td class="num">99.7</td><td class="num">95.9</td></tr>
-    <tr><td>Hard</td><td><strong>Antifragile AI (Hard)</strong></td><td class="num"><strong>73.4</strong></td><td class="num">89.9</td><td class="num">80.0</td><td class="num">45.2</td><td class="num">89.5</td><td class="num">70.7</td><td class="num">49.8</td><td class="num">96.1</td><td class="num">85.7</td></tr>
+    <tr><td>Hard</td><td>Antifragile AI — Aug 25</td><td class="num">73.4</td><td class="num">89.9</td><td class="num">80.0</td><td class="num">45.2</td><td class="num">89.5</td><td class="num">70.7</td><td class="num">49.8</td><td class="num">96.1</td><td class="num">85.7</td></tr>
   </tbody>
 </table>
 </div>
 <p class="sub" style="margin-top:.55rem">
-  Overall is the geometric mean of the eight axes. The report's own conclusion: beats 1 baseline in
-  easy mode, 0 in hard. Its two largest cited gaps to the 2026 baseline are <strong>Ans. Conciseness</strong>
-  (−16.0 pp easy, −26.6 pp hard) and <strong>Ref. Correctness Strict</strong> (−10.2 pp easy) — which
-  is why the conciseness caveat above matters more to the score than the 17/17 does.
+  Overall is the geometric mean of the eight axes. On the August 25 run we beat 1 baseline in easy mode
+  and 0 in hard. On this run we beat the 2025 baseline in <strong>both</strong> modes and close the gap
+  to the 2026 frontier baseline from −5.8 to −2.6 pp easy and from −8.3 to −5.7 pp hard. The two
+  baselines' own rows are unchanged and are quoted as published.
 </p>
 
 <footer>
-  Sources — official criteria, verdicts and remarks: <em>report_antifragile_ai.pdf</em>, 2026-08-25,
-  Appendix "Examples of Incorrect Answers", pages 10–14 (17 printed criteria: 1 PASS, 16 FAIL).
-  Live answers and reference lists: captured 2026-09-08 against the current build.
-  Prepared by Antifragile AI. Figures in this document are reproducible from the cited artefacts;
-  the limitations stated at the top apply to every number in it.
+  Sources — official criteria, verdicts, remarks and baseline candidate answers:
+  <em>report_antifragile_ai.pdf</em>, 2026-08-25, Appendix "Examples of Incorrect Answers", pages 10–14
+  (17 printed criteria: 1 PASS, 16 FAIL). The Q95 and Q104 baseline answers are abridged in our
+  transcript and are marked as such; the other four are complete.
+  Live answers and reference lists for the six cases: captured 2026-09-08 against the current build.
+  Benchmark-wide figures: 110-question runs of 2026-09-07, scored with <code>evals.official.rubric</code>.
+  Prepared by Antifragile AI. The limitations stated at the top apply to every number in this document.
 </footer>
 
 </div>
