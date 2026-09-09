@@ -24,10 +24,35 @@ def _no_network(monkeypatch):
     yield
 
 
-def test_disabled_by_default(monkeypatch):
+def test_enabled_by_default_when_a_key_is_present(monkeypatch):
+    """R400 - flipped ON. The placement is load-bearing: kg_context readers
+    truncate by LIST POSITION at max_refs=8, so with more than eight refs the
+    order decides WHICH provisions' verbatim text reaches Stage-2."""
     monkeypatch.delenv("REGENOLD_COHERE_RERANK", raising=False)
     monkeypatch.setenv("COHERE_API_KEY", "x")
+    assert CR.rerank_enabled() is True
+
+
+def test_a_missing_key_still_disables_it(monkeypatch):
+    """Fails safe: no credential, no egress, no error."""
+    monkeypatch.delenv("REGENOLD_COHERE_RERANK", raising=False)
+    monkeypatch.delenv("COHERE_API_KEY", raising=False)
     assert CR.rerank_enabled() is False
+
+
+@pytest.mark.parametrize("falsy", ["0", "false", "no", "off"])
+def test_an_explicit_falsy_value_turns_it_off(monkeypatch, falsy):
+    monkeypatch.setenv("REGENOLD_COHERE_RERANK", falsy)
+    monkeypatch.setenv("COHERE_API_KEY", "x")
+    assert CR.rerank_enabled() is False
+
+
+@pytest.mark.parametrize("unexpected", ["", "garbage", "enabled"])
+def test_a_blank_or_unexpected_value_keeps_the_on_behaviour(monkeypatch, unexpected):
+    """Deny-list semantics for a default-ON gate - the R379 P2-7 defect."""
+    monkeypatch.setenv("REGENOLD_COHERE_RERANK", unexpected)
+    monkeypatch.setenv("COHERE_API_KEY", "x")
+    assert CR.rerank_enabled() is True
 
 
 def test_enabled_needs_both_flag_and_key(monkeypatch):

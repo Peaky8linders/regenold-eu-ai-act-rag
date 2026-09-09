@@ -57,10 +57,10 @@ def _drive_stage2(
     monkeypatch.setenv("REGENOLD_EXTERNAL_EMBEDDINGS", "0")
     monkeypatch.setenv("REGENOLD_ANSWER_FIRST", "0")
     monkeypatch.setenv("REGENOLD_PROMPT_COMPACT", compact)
-    if coord is None:
-        monkeypatch.delenv("REGENOLD_COORD_MAP_PROMPT", raising=False)
-    else:
-        monkeypatch.setenv("REGENOLD_COORD_MAP_PROMPT", coord)
+    # R400 - the flag is DEFAULT ON, so "off" must be set explicitly. Leaving
+    # this as delenv() would silently make every two-sided tripwire below an
+    # ON-vs-ON comparison, which is the exact shape R365 caught elsewhere.
+    monkeypatch.setenv("REGENOLD_COORD_MAP_PROMPT", "0" if coord is None else coord)
 
     calls = 0
     real_builder = impl._valid_coordinate_line
@@ -147,8 +147,27 @@ def test_order_is_preserved() -> None:
 # -- the prompt line --------------------------------------------------------
 
 
-def test_the_coordinate_line_is_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_coordinate_line_is_on_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R400 - flipped ON. It attacks Ref. Correctness (Strict), where the
+    evaluator's own printed keys are ~71% sub-point grain against the 14.3% we
+    ship. R398 found the lever INERT (its only call site had no production
+    caller) and rewired it; it is verified on the dispatched bytes but has
+    never been scored, so the R397 hypothesis is untested, not disproven."""
     monkeypatch.delenv("REGENOLD_COORD_MAP_PROMPT", raising=False)
+    assert "VALID COORDINATES" in impl._valid_coordinate_line("Article 13 and Annex III")
+
+
+@pytest.mark.parametrize("unexpected", ["", "garbage", "enabled"])
+def test_a_blank_or_unexpected_value_keeps_the_on_behaviour(
+    monkeypatch: pytest.MonkeyPatch, unexpected: str
+) -> None:
+    """Deny-list semantics for a default-ON gate - the R379 P2-7 defect."""
+    monkeypatch.setenv("REGENOLD_COORD_MAP_PROMPT", unexpected)
+    assert impl._valid_coordinate_line("Article 13 and Annex III") != ""
+
+
+def test_an_explicit_falsy_value_turns_it_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("REGENOLD_COORD_MAP_PROMPT", "0")
     assert impl._valid_coordinate_line("Article 13 and Annex III") == ""
 
 

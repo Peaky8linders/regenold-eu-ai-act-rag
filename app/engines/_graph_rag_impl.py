@@ -475,9 +475,20 @@ def _stage2_answer_headroom() -> int:
 
 
 def _coord_map_prompt_enabled() -> bool:
-    """R397 — opt-in. Prompt-side, so NOT reference-neutral (AGENTS.md #5)."""
-    return os.getenv("REGENOLD_COORD_MAP_PROMPT", "0").strip().lower() in (
-        "1", "true", "yes", "on",
+    """R397 coordinate map. Prompt-side, so NOT reference-neutral (AGENTS.md #5).
+
+    R400 — flipped to DEFAULT ON. It tells Stage-2 the real coordinate range of
+    each cited provision, which attacks Ref. Correctness (Strict) — the axis
+    with the largest gap to the frontier baseline after conciseness, and the
+    one the evaluator's own printed keys score at ~71% sub-point grain against
+    the 14.3% we ship. R398 found the lever had been INERT (its only call site
+    was a function with no production caller) and rewired it into
+    ``_claude_max_enhance_answer``; it has been verified on the dispatched
+    bytes in both arms and in the compact branch, but never scored, so the
+    R397 hypothesis is untested rather than disproven. Deny-list form.
+    """
+    return os.getenv("REGENOLD_COORD_MAP_PROMPT", "1").strip().lower() not in (
+        "0", "false", "no", "off",
     )
 
 
@@ -7783,12 +7794,22 @@ def _closed_set_skeleton_enabled() -> bool:
     (capped at ``_CITE_CONSISTENCY_CAP=8`` + ``_MAX_PROSE_SUBPOINT_ADDS=3``;
     ``_citable_base_guard_enabled`` is default OFF), so showing
     more statutory text means more cross-references the model can echo onto the
-    wire. It therefore ships **default OFF** and its gate is
-    ``evals.harness.easyhard_ab`` / ``gold_dropped_head``, NOT an argument from
-    construction.
+    wire. Its gate is ``evals.harness.easyhard_ab`` / ``gold_dropped_head``,
+    NOT an argument from construction.
+
+    R400 — flipped to DEFAULT ON. R393 measured the gap it closes: only 34.7%
+    of closed statutory-set members (1340/3863 over the official 110) reach
+    Stage-2 at all, and 86 of 110 questions get under HALF, because
+    ``select_relevant_paragraphs`` hands back a token-overlap slice of a set
+    the question asks for in full. No prompt instruction can recover a member
+    that is not in the prompt. The skeleton is strictly ADDITIVE to the block
+    and a strict no-op when the ref is not a multi-member head, so it cannot
+    cut an item mid-way and adds no new citable head. Its cost is prompt bulk
+    (1.87x, against FULL_PROVISION_EVIDENCE's 2.08x), i.e. the Speed axis.
+    Deny-list form so a blank value keeps the ON behaviour.
     """
-    return os.getenv("REGENOLD_CLOSED_SET_SKELETON", "0").strip().lower() in (
-        "1", "true", "yes", "on",
+    return os.getenv("REGENOLD_CLOSED_SET_SKELETON", "1").strip().lower() not in (
+        "0", "false", "no", "off",
     )
 
 

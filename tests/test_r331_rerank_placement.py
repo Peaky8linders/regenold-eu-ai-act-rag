@@ -107,7 +107,9 @@ def test_reorder_changes_which_provisions_survive_the_cut(monkeypatch, _wired):
 
 def test_default_off_is_byte_identical(monkeypatch, _wired):
     """Gate off ⇒ the graph sees exactly the pre-R331 list."""
-    monkeypatch.delenv("REGENOLD_COHERE_RERANK", raising=False)
+    # R400 - the gate is DEFAULT ON, so "off" must be explicit here or this
+    # tripwire quietly becomes an ON-vs-ON comparison.
+    monkeypatch.setenv("REGENOLD_COHERE_RERANK", "0")
     monkeypatch.setenv("COHERE_API_KEY", "x")
 
     _render(_Q)
@@ -162,9 +164,9 @@ def test_flag_is_in_the_engine_cache_key(monkeypatch):
     from app.routes.regenold import _engine_cache_key
 
     monkeypatch.setenv("COHERE_API_KEY", "x")
-    monkeypatch.delenv("REGENOLD_COHERE_RERANK", raising=False)
+    monkeypatch.setenv("REGENOLD_COHERE_RERANK", "0")
     off = _engine_cache_key("q", None)
-    monkeypatch.setenv("REGENOLD_COHERE_RERANK", "1")
+    monkeypatch.delenv("REGENOLD_COHERE_RERANK", raising=False)
     on = _engine_cache_key("q", None)
 
     assert off != on, (

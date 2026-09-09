@@ -9,6 +9,22 @@ from app.engines import _graph_rag_impl as impl
 from app.llm import intent_classifier as ic
 
 
+@pytest.fixture(autouse=True)
+def _pins_the_legacy_instruction_stack(monkeypatch):
+    """R400 - this module pins the shape of the pre-R399 Stage-2 USER message.
+
+    ``REGENOLD_EVIDENCE_CONTRACT`` is now default ON and REPLACES that message
+    wholesale with one contract over the same grounded block, deliberately
+    withholding the heuristic draft and the competing clause stack. These tests
+    declare the regime they were written for rather than being weakened - the
+    legacy path still exists and is still reachable with the flag off.
+    Precedent: R360, where four modules declared
+    ``REGENOLD_STAGE2_STRICT_TRANSPORT=0`` for exactly this reason.
+    """
+    monkeypatch.setenv("REGENOLD_EVIDENCE_CONTRACT", "0")
+
+
+
 @pytest.mark.parametrize("ref,phrases", [
     ("Article 44.1", ["relevant authorities", "Member State", "notified body"]),
     ("Article 44.2", ["five years", "four years", "re-assessment"]),
@@ -19,6 +35,7 @@ from app.llm import intent_classifier as ic
     ("Annex VIII", ["Section B", "Article 49(2)", "Article 6(3)"]),
     ("Annex IX", ["testing in real world conditions", "Article 60"]),
 ])
+
 def test_corrected_rules_match_the_adopted_statute(ref, phrases):
     text = get_provision_text(ref)
     assert text, ref

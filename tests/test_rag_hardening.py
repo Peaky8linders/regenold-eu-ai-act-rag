@@ -76,6 +76,23 @@ def _r77_enable_stage2_polish(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("P2P_GRAPH_RAG_ENABLE_STAGE2", "1")
 
 
+@pytest.fixture(autouse=True)
+def _pins_the_legacy_instruction_stack(monkeypatch):
+    """R400 — this module pins the shape of the pre-R399 Stage-2 USER message.
+
+    ``REGENOLD_EVIDENCE_CONTRACT`` is now default ON and REPLACES that message
+    wholesale with one contract over the same grounded block, deliberately
+    withholding the heuristic draft and the competing clause stack. These tests
+    therefore declare the regime they were written for rather than being
+    weakened - the legacy path still exists and is still reachable with the
+    flag off. Precedent: R360, where four modules declared
+    ``REGENOLD_STAGE2_STRICT_TRANSPORT=0`` for exactly this reason.
+
+    The contract's own coverage lives in tests/test_r399_evidence_contract.py,
+    which asserts on the real dispatched bytes in both arms.
+    """
+    monkeypatch.setenv("REGENOLD_EVIDENCE_CONTRACT", "0")
+
 class TestDeterministicParseEntities:
     """Multi-turn correctness: the parse must capture every article + annex
     reference shape the route can possibly thread into the question."""

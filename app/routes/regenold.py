@@ -5809,6 +5809,26 @@ def _citable_base_guard_enabled() -> bool:
     Fresh env read per call — the R263.2 in-process A/B idiom: ``easyhard_ab``
     mutates ``os.environ`` between arms in the SAME process, so a value
     snapshot at import time would make both arms read the baseline.
+
+    ⛔ R400 — TRIED DEFAULT ON, REVERTED. It stays OFF, and the reason is an
+    operator directive rather than a score: it makes the shipped answer name a
+    provision the wire references list does not carry.
+
+    Executed on the R138 route test, which records the directive verbatim —
+    "every article / annex the SHIPPED answer names must appear in the wire
+    references list (UI citations area)". With the guard ON the route logged
+    "prose cited Article 73 - catalog-valid but not retrieval-grounded; not
+    promoting it, answer retained" and
+    ``test_every_cited_article_is_in_references`` FAILED. That is the guard
+    working exactly as designed: it withholds the promotion and leaves the
+    prose mention standing, which is precisely the prose/citation mismatch the
+    directive forbids. Removing the mention instead is not available either —
+    R274 pins that a reference the prose describes is never dropped.
+
+    So the trade is real and it is not ours to take silently: the guard buys
+    reference precision at the cost of the citations area disagreeing with the
+    answer text. Its upside is also unmeasured. Re-enable only on an explicit
+    operator decision to relax that directive.
     """
     return os.getenv("REGENOLD_CITABLE_BASE_GUARD", "0").strip().lower() in (
         "1", "true", "yes", "on",
