@@ -94,6 +94,7 @@ import argparse
 import json
 import os
 import statistics as st
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -107,6 +108,42 @@ _RESULTS = Path(__file__).resolve().parents[1] / "bench" / "results"
 # axes) at our operating point — pp of Overall per +1pp of the axis.
 # Source: .planning/R276-PLAN.md (reproduces every reported figure to <0.05pp).
 _LEVERAGE = {"ref_strict": 0.163, "ref_conc": 0.121, "ref_loose": 0.113}
+
+# R398 — the minimum n per split below which the gate is INDETERMINATE.
+#
+# ⚠ This floor buys HONESTY, not POWER, and the distinction matters.  The
+# recorded resolution threshold for the reference axes is n >= 120 (R367:
+# "the REFERENCE axes do not resolve until n>=120"), and R381's cap=3
+# simulation read PASS at n=17/30/34 and FAILED at n=129 — so 30 is a value
+# at which the record shows a WRONG verdict was returned, not a safe one.
+#
+# It cannot be set to 120: the probe corpus tops out at easy=95 / hard=37
+# rows (measured), so any floor above 37 makes the gate PERMANENTLY
+# indeterminate.  30 is therefore the largest floor a full-corpus run still
+# clears, and its whole job is to reject SMOKE runs (n=6, n=10) that used to
+# print PASS with the same standing as a full one.  A run that clears this
+# floor is not thereby powered — read the n before citing the verdict.
+_MIN_GATE_N = 30
+
+
+def _harden_streams() -> None:
+    """The gold gate must never die of an encoding error.
+
+    R398. Its exit code is load-bearing (1 = hard rule #8 violated), and an
+    uncaught ``UnicodeEncodeError`` also exits non-zero — so a crash is
+    indistinguishable from a FAIL, and it happens BEFORE the sidecar is
+    written, leaving the run with no record at all. MEASURED: one "⚠" in a
+    verdict print took the whole gate down on a cp1252 console.
+
+    Gate output is kept ASCII (``test_the_gate_report_is_cp1252_safe``); this
+    is the belt to that pair of braces. Called from ``main`` rather than at
+    import, so importing the harness never reconfigures a caller's streams.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")  # type: ignore[union-attr]
+        except Exception:  # noqa: BLE001 — not a TextIOWrapper; nothing to harden
+            pass
 
 
 def _keyword_recall(answer: str, expected: list[str]) -> float:
@@ -429,6 +466,7 @@ def _gold_gate_verdict(
     branch_agg: dict[str, Any] | None,
     allow: bool = False,
     paired: dict[str, Any] | None = None,
+    expected_splits: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     """Decide hard rule #8 from aggregates alone — no live run required.
 
@@ -442,6 +480,22 @@ def _gold_gate_verdict(
     Failing on ANY split, rather than on the cross-split sum, is deliberate:
     a sum lets an easy-split improvement mask a hard-split gold deletion, and
     the rule is zero, not net-zero.
+
+    R398 — three outcomes, not two. ``exit_code`` 1 = FAIL, 2 = INDETERMINATE,
+    0 = PASS. A verdict is indeterminate when a scored split is below
+    ``_MIN_GATE_N``, or when a split the probe corpus actually contained
+    produced no scored rows at all: ``easyhard-v2_ab_gate.json`` (easy n=10,
+    hard n=0) and ``easyhard-r379-promptv2-bedrock.json`` (n=132) sat on disk
+    for the SAME flag with equal standing, one PASS and one FAIL.
+
+    ``expected_splits`` is what the loaded probe set contained. A run scoped
+    with ``--multiturn only|skip`` legitimately carries one split, so the
+    omitted one is not held against it; a split that WAS in the corpus and
+    scored zero rows is a silent hole and is reported as such.
+
+    ``--allow-gold-drop`` suppresses a FAILURE only. Indeterminacy is a
+    statement about the evidence, not about whether the operator is willing
+    to accept a gold drop, so it survives the flag.
     """
     splits: dict[str, dict[str, Any]] = {}
     for split in ("easy", "hard"):
@@ -464,6 +518,36 @@ def _gold_gate_verdict(
     comparable = bool(splits) and branch_agg is not None
     offenders = [k for k in ("easy", "hard") if splits.get(k, {}).get("delta", 0) > 0]
     failed = comparable and bool(offenders)
+
+    # R398 — refuse to emit a verdict below the minimum n.  A run with
+    # n=10 PASS and n=132 FAIL for the SAME flag sat on disk with equal
+    # standing; the gate must not be binary on an underpowered sample.
+    underpowered = [
+        f"{split} (n={splits[split]['n']})"
+        for split in ("easy", "hard")
+        if split in splits and 0 < splits[split]["n"] < _MIN_GATE_N
+    ]
+
+    # R398 — and refuse to SKIP a split silently.  ``_split_gold_dropped``
+    # returns None for an unscored split, which drops it out of ``splits``
+    # entirely, so hard rule #8's "zero on ANY split" quietly became "zero on
+    # the splits that happened to score".  Only splits the corpus actually
+    # carried are held against the run.
+    unscored = [
+        split
+        for split in (expected_splits or ())
+        if split in ("easy", "hard") and not splits.get(split, {}).get("n")
+    ]
+
+    # Decide exit code: 1 = failed, 2 = indeterminate, 0 = passed.
+    indeterminate = bool(underpowered) or bool(unscored)
+    if failed and not allow:
+        exit_code = 1
+    elif comparable and indeterminate:
+        exit_code = 2
+    else:
+        exit_code = 0
+
     return {
         "comparable": comparable,
         "splits": splits,
@@ -472,8 +556,48 @@ def _gold_gate_verdict(
         "failed": failed,
         "allow_gold_drop": bool(allow),
         "suppressed_by_flag": failed and bool(allow),
-        "exit_code": 1 if (failed and not allow) else 0,
+        "exit_code": exit_code,
+        "underpowered": underpowered,
+        "unscored_splits": unscored,
+        "indeterminate": bool(comparable and indeterminate),
     }
+
+
+
+def _transport_liveness(*, local: bool) -> tuple[bool, str]:
+    """Did Stage-2 actually land? Returns ``(live, human-readable reason)``.
+
+    R398. The counters are ``app.llm.stage2_policy.transport_stats`` — the
+    single source of truth the R360 contract instrumented, and the same one
+    ``/healthz/llm`` and ``evals.harness.prompt_ab`` read. A ``--endpoint``
+    run drives a REMOTE server, whose counters are not in this process, so
+    liveness there is the caller's to assert.
+
+    Never raises: a liveness probe must not be able to take down the gate it
+    is protecting. But it never fails SILENT either — an import failure is
+    reported as such rather than being laundered into "not live".
+    """
+    if not local:
+        return True, "remote --endpoint run; liveness is the caller's assertion"
+    try:
+        from app.llm.stage2_policy import transport_stats  # noqa: PLC0415
+    except Exception as exc:  # noqa: BLE001
+        return False, (
+            f"could not import app.llm.stage2_policy.transport_stats ({exc!r}) - "
+            "liveness UNKNOWN, treated as not live"
+        )
+    try:
+        stats = transport_stats()
+        ok = int(stats.get("primary_ok", 0) or 0)
+        fb = int(stats.get("fallback_ok", 0) or 0)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"transport_stats() raised ({exc!r}) - liveness UNKNOWN"
+    if ok or fb:
+        return True, f"live: primary_ok={ok} fallback_ok={fb}"
+    return False, (
+        f"primary_ok={ok} fallback_ok={fb} - no live Stage-2 completions landed. "
+        "Rerun against a live wrapper for a valid verdict."
+    )
 
 
 def _gold_drop_rows(
@@ -545,6 +669,39 @@ def _report_gold_gate(
                 f"   dropped={o['branch_dropped']}"
             )
             print(f"        NEWLY DROPPED  : {o['newly_dropped']}")
+    # R398 — an indeterminate run must NOT also print PASS. R365's whole
+    # finding was that "it passed the gold gate" had only ever been a human
+    # reading stdout; a stdout that says PASS while the process exits 2 is the
+    # same defect wearing a new exit code.
+    reasons: list[str] = []
+    if verdict.get("underpowered"):
+        reasons.append(
+            f"UNDERPOWERED: {', '.join(verdict['underpowered'])} - below minimum "
+            f"n={_MIN_GATE_N}. This floor only rejects smoke runs; clearing it "
+            f"is not power (the ref axes need n>=120, the corpus holds 95/37)."
+        )
+    if verdict.get("unscored_splits"):
+        reasons.append(
+            f"UNSCORED SPLIT(S): {', '.join(verdict['unscored_splits'])} - the "
+            "probe corpus carried rows for them and none scored. Hard rule #8 "
+            "is 'zero on ANY split', so this run does not clear those."
+        )
+    if verdict.get("liveness_failed"):
+        reasons.append(
+            "LIVENESS FAILED: no Stage-2 completions landed. Both arms returned "
+            "deterministic answers, so delta=0 is tautological, not evidence."
+        )
+    if reasons and not verdict["failed"]:
+        print(f"\n  {_GOLD_GATE_BANNER}")
+        print("  !! INDETERMINATE - this run does NOT clear hard rule #8.")
+        for reason in reasons:
+            print(f"  !! {reason}")
+        print("  !! Do NOT cite this run as having passed the gold gate.")
+        print(f"  {_GOLD_GATE_BANNER}")
+        return
+    if reasons:
+        for reason in reasons:
+            print(f"\n  !! {reason}")
     if not verdict["failed"]:
         print("\n  PASS — the branch drops no more gold heads than the baseline.")
         return
@@ -553,8 +710,17 @@ def _report_gold_gate(
         print(f"\n  {_GOLD_GATE_BANNER}")
         print(f"  !! HARD RULE #8 VIOLATED on split(s): {where}"
               f"  (total delta {verdict['total_delta']:+d})")
-        print("  !! THIS RUN WOULD HAVE FAILED. Exit code forced to 0 by "
-              "--allow-gold-drop.")
+        # R398 — say the exit code this run ACTUALLY carries. --allow-gold-drop
+        # suppresses the FAILURE, but an underpowered or unscored run is still
+        # indeterminate (exit 2), and printing "forced to 0" there would be the
+        # same stdout-contradicts-exit-code defect one branch over.
+        if verdict.get("exit_code") == 2:
+            print("  !! THIS RUN WOULD HAVE FAILED. --allow-gold-drop suppresses "
+                  "the failure,")
+            print("  !! but the run is INDETERMINATE on other grounds and exits 2.")
+        else:
+            print("  !! THIS RUN WOULD HAVE FAILED. Exit code forced to 0 by "
+                  "--allow-gold-drop.")
         print("  !! An --allow-gold-drop run is EXPLORATORY. Do NOT cite it as "
               "having")
         print("  !! passed the gold gate.")
@@ -603,6 +769,7 @@ def main() -> int:
         ),
     )
     args = ap.parse_args()
+    _harden_streams()
 
     if not args.local and not args.endpoint:
         raise SystemExit("need --endpoint or --local")
@@ -615,6 +782,26 @@ def main() -> int:
     probe = load_probe_set(multiturn=mt, limit=args.limit)
     print(f"probe rows: {len(probe)} (easy={sum(1 for p in probe if not p.is_multiturn)}, "
           f"hard={sum(1 for p in probe if p.is_multiturn)})")
+
+    # R398 — the splits this run could possibly score. A split the corpus
+    # carried but that scored zero rows is a hole; a split the corpus never
+    # carried (--multiturn only|skip, or a small --limit) is not.
+    expected_splits = tuple(
+        s for s, present in (
+            ("easy", any(not p.is_multiturn for p in probe)),
+            ("hard", any(p.is_multiturn for p in probe)),
+        ) if present
+    )
+
+    # R398 — zero the transport counters so the liveness guard reads THIS
+    # run. They are process-global; anything that dialled Stage-2 at import
+    # time would otherwise hand the gate a stale green.
+    try:
+        from app.llm.stage2_policy import reset_transport_stats  # noqa: PLC0415
+
+        reset_transport_stats()
+    except Exception:  # noqa: BLE001 — reported by _transport_liveness later
+        pass
 
     _RESULTS.mkdir(parents=True, exist_ok=True)
     base_env = _parse_env(args.baseline_env)
@@ -652,9 +839,29 @@ def main() -> int:
     # is persisted, and the sidecar is written even when the gate fails: a
     # failing run's rows are exactly the ones worth keeping.
     verdict = _gold_gate_verdict(
-        a_agg, b_agg, allow=bool(args.allow_gold_drop), paired=paired
+        a_agg, b_agg, allow=bool(args.allow_gold_drop), paired=paired,
+        expected_splits=expected_splits,
     )
     offenders = _gold_drop_rows(a_rows, b_rows) if b_rows else []
+
+    # R398 — liveness guard.  Without Stage-2 landing, both arms return
+    # identical deterministic answers, gold_dropped_head is 0/0, and the
+    # gate prints PASS — a false green on the exact class of lever (prompt
+    # side, AGENTS.md invariant #5) it exists to police.
+    #
+    # ⚠ The counters live in ``app.llm.stage2_policy`` — the first cut of this
+    # guard imported ``app.integrations.regenold.transport``, which does not
+    # exist, and the bare ``except`` swallowed the ModuleNotFoundError, so
+    # every --local run read "not live" whether or not it was.  Hence
+    # ``_transport_liveness`` returns an explicit reason string and the caller
+    # SAYS which of the three cases it is, instead of failing silent.
+    live, live_note = _transport_liveness(local=bool(args.local))
+    verdict["transport_liveness"] = live_note
+    if not live and verdict.get("exit_code") == 0 and verdict.get("comparable"):
+        print(f"\nWARNING: {live_note}", file=sys.stderr)
+        verdict["exit_code"] = 2
+        verdict["liveness_failed"] = True
+
     _report_gold_gate(verdict, offenders)
 
     out = _RESULTS / f"easyhard-{args.label}.json"

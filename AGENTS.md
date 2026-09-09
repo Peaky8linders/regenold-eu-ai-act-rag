@@ -31,6 +31,15 @@ python -m evals.harness.ab_judge (run position-swapped live pairwise A/B evaluat
 python -m evals.harness.easyhard_ab (run ref conciseness & strict recall pairwise evaluation)
 ```
 
+⚠ **`easyhard_ab` has THREE exit codes (R398): `0` PASS, `1` hard-rule-#8 FAIL,
+`2` INDETERMINATE.** A verdict is indeterminate when no Stage-2 completion landed
+(both arms then return the same deterministic answer and `delta=+0` is tautological,
+not evidence), when a scored split is below `_MIN_GATE_N=30`, or when a split the
+probe corpus carried scored zero rows. Before R398 all three printed **PASS, exit 0**
+— measured at full corpus, easy n=95 / hard n=37. **Only exit 0 clears the gate;
+never read the stdout instead of the exit code.** The n floor rejects smoke runs, it
+does not confer power: the ref axes need n>=120 and the probe corpus holds 95/37.
+
 ### 1b. The DEPLOYABILITY gate — `.github/workflows/ci.yml` (R394.3)
 
 ⚠ **A green `pytest tests/` does NOT mean the commit deploys.** The suite runs
@@ -150,7 +159,7 @@ grep for the call site.
 4. **Cache Key Identity**: **EVERY** runtime flag that can change the response must be registered in `_engine_cache_key` (`app/routes/regenold.py:1207`). This is enforced by an AST gate, `tests/test_r355_cache_key_complete.py` - run it after adding any flag. The four flags this line used to enumerate (`REGENOLD_GRAPH_SEMANTIC_LAYERS`, `REGENOLD_SEMANTIC_GLOSS`, `REGENOLD_GRAPH_VECTOR_RECALL`, `REGENOLD_PARENT_COLLAPSE`) are a stale R325-R327 subset; the register now carries 21+, including the rerank and `REGENOLD_STAGE2_*` families. **Corrected R365** - do not read that list as exhaustive.
    ⚠ The AST gate scans `app/engines` and `app/integrations/regenold` only (`tests/test_r355_cache_key_complete.py:32`), so flags living in **`app/llm/`** - every `REGENOLD_STAGE2_*` and `REGENOLD_BEDROCK_WRAPPER_FALLBACK` - are invisible to it and must be checked by hand.
 
-5. **The Stage-2 prompt is NOT a sink** (R365). The wire `references` list is recomputed from the final Stage-2 prose by three default-ON, `stage2_landed`-gated passes - `_reconcile_references_to_prose` (drops), `_add_prose_named_refs` (adds), `_surface_prose_subpoints` (adds sub-points). So invariant #3 ("graph is additive only") means the graph cannot be a citation **SOURCE**; it does **not** mean a prompt-side change is reference-neutral. Any lever that changes the Stage-2 prompt must be gated on `gold_dropped_head`. A `provider=cli` test cannot show otherwise - it pins the property in the one regime where all three passes are documented no-ops.
+5. **The Stage-2 prompt is NOT a sink** (R365). The wire `references` list is recomputed from the final Stage-2 prose by three default-ON, `stage2_landed`-gated passes - `_reconcile_references_to_prose` (drops), `_add_prose_named_refs` (adds), `_surface_prose_subpoints` (adds sub-points). So invariant #3 ("graph is additive only") means the graph cannot be a citation **SOURCE**; it does **not** mean a prompt-side change is reference-neutral. Any lever that changes the Stage-2 prompt must be gated on `gold_dropped_head`. A `provider=cli` test cannot show otherwise — the three passes are gated by `stage2_landed` at their route call sites and are skipped in the offline path, so a deterministic fixture pins reference-neutrality in the one regime where the coupling is switched off. (The functions themselves are NOT no-ops when called directly — R398 verified this.)
 
 ---
 

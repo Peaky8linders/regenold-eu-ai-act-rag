@@ -26,6 +26,71 @@ from app.routes.regenold import (
     _repair_nonexistent_coordinates,
 )
 
+# -- the live-path driver ----------------------------------------------------
+#
+# R398. ``_valid_coordinate_line`` shipped as a DEAD FLAG: its only call site
+# was inside ``_llm_generate_answer``, which has no production caller, and the
+# test guarding it asserted a source substring — so it stayed green at a call
+# count of zero. Everything below drives the REAL Stage-2 path
+# (``_claude_max_enhance_answer``), spies the transport, and asserts on the
+# bytes dispatched.
+
+_Q = (
+    "Under the EU AI Act, what transparency information must a provider give "
+    "to deployers of a high-risk AI system under Article 13?"
+)
+
+
+def _drive_stage2(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    coord: str | None,
+    compact: str = "0",
+) -> tuple[int, str]:
+    """Run one real Stage-2 dispatch; return (builder call count, user message).
+
+    The transport is replaced by a spy, so nothing leaves the process; the
+    dead ``OPENAI_API_BASE`` port is belt-and-braces on top of that.
+    """
+    monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "openai_wrapper")
+    monkeypatch.setenv("OPENAI_API_BASE", "http://127.0.0.1:1/v1")
+    monkeypatch.setenv("REGENOLD_EXTERNAL_EMBEDDINGS", "0")
+    monkeypatch.setenv("REGENOLD_ANSWER_FIRST", "0")
+    monkeypatch.setenv("REGENOLD_PROMPT_COMPACT", compact)
+    if coord is None:
+        monkeypatch.delenv("REGENOLD_COORD_MAP_PROMPT", raising=False)
+    else:
+        monkeypatch.setenv("REGENOLD_COORD_MAP_PROMPT", coord)
+
+    calls = 0
+    real_builder = impl._valid_coordinate_line
+
+    def counting(*args: object, **kwargs: object) -> str:
+        nonlocal calls
+        calls += 1
+        return real_builder(*args, **kwargs)  # type: ignore[arg-type]
+
+    captured: list[dict[str, object]] = []
+
+    def spy(*_args: object, **kwargs: object) -> None:
+        captured.append(kwargs)
+        return None
+
+    monkeypatch.setattr(impl, "_valid_coordinate_line", counting)
+    monkeypatch.setattr(impl, "_openai_wrapper_complete_for_graph_rag", spy)
+
+    context = impl._retrieve_from_kb(impl._deterministic_parse(_Q))
+    impl._claude_max_enhance_answer(
+        question=_Q,
+        kg_answer="HEURISTIC DRAFT SENTINEL",
+        context=context,
+        original_question=_Q,
+    )
+    assert captured, "the real Stage-2 transport was never reached"
+    user = captured[-1].get("user")
+    assert isinstance(user, str), f"no `user` message dispatched: {sorted(captured[-1])}"
+    return calls, user
+
 
 # -- the guard --------------------------------------------------------------
 
@@ -114,14 +179,66 @@ def test_the_coordinate_line_never_emits_a_dangling_label(
     assert impl._valid_coordinate_line("") == ""
 
 
-def test_the_coordinate_line_reaches_the_stage2_user_message() -> None:
-    """Prove it is WIRED, not merely defined — the R329/R331 doctrine.
+def test_the_coordinate_line_reaches_the_stage2_user_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prove it is WIRED by a CALL COUNT and the DISPATCHED prompt.
 
-    Three rerank placements once read correctly in the diff and made zero calls.
+    R398 — the first version of this test asserted a source substring::
+
+        assert "user_message += _valid_coordinate_line(context_text)" in source
+
+    which passed while the flag was completely inert: the only call site was
+    inside ``_llm_generate_answer``, **which has no production caller**. Both
+    "the test is green" and "the call count is zero" were true at once — the
+    fifth instance of the R329 / R330 / R366 trap in this repo, hit inside a
+    test written to prevent it.
+
+    A source grep cannot distinguish a live call site from a dead one, so this
+    does not grep. It spies the real Stage-2 transport, counts the builder's
+    invocations, and asserts on the bytes actually dispatched — two-sided, so
+    a builder that emitted the line unconditionally would fail too.
     """
-    import inspect
-
-    source = inspect.getsource(impl)
-    assert "user_message += _valid_coordinate_line(context_text)" in source, (
-        "the builder exists but nothing appends it to the Stage-2 user message"
+    calls, captured = _drive_stage2(monkeypatch, coord="1")
+    assert calls, "_valid_coordinate_line was never called on the live Stage-2 path"
+    assert "VALID COORDINATES" in captured, (
+        "the builder ran but its output never reached the dispatched user message"
     )
+
+
+def test_the_coordinate_line_is_absent_when_the_flag_is_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two-sided: OFF must really be off on the same path, not merely default."""
+    _calls, captured = _drive_stage2(monkeypatch, coord=None)
+    assert "VALID COORDINATES" not in captured
+
+
+def test_the_coordinate_line_survives_the_compact_prompt_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R398 — ``REGENOLD_PROMPT_COMPACT`` REPLACES ``user_message`` wholesale.
+
+    ``build_compact_answer_user`` rebuilds the user message from scratch at
+    ``_graph_rag_impl`` ~:9479, discarding everything appended above it. R391
+    already had to re-append the pushback clause for exactly this reason.
+
+    MEASURED before the fix: with ``REGENOLD_COORD_MAP_PROMPT=1`` the
+    dispatched prompt carried ``VALID COORDINATES`` in the full arm and **not**
+    in the compact arm — the lever silently switching itself off in one of the
+    two arms an A/B would compare. That is the same class of defect as the
+    dead call site, one flag deeper.
+    """
+    calls, captured = _drive_stage2(monkeypatch, coord="1", compact="1")
+    assert calls, "the builder must still run under the compact prompt"
+    assert "VALID COORDINATES" in captured, (
+        "the compact prompt replacement dropped the R397 coordinate map"
+    )
+
+
+def test_the_compact_prompt_replacement_is_still_two_sided(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The compact arm must not emit the line when the flag is OFF either."""
+    _calls, captured = _drive_stage2(monkeypatch, coord=None, compact="1")
+    assert "VALID COORDINATES" not in captured
