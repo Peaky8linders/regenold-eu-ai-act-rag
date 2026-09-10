@@ -192,12 +192,26 @@ def semantic_layers_enabled() -> bool:
 
     The flag is in ``_engine_cache_key`` so an in-process A/B of it is real and
     not a cache replay. Fresh env read per call (R263.2).
+
+    R402 — **default flipped OFF → ON, deny-list form** (a blank or unexpected
+    value keeps the ON behaviour, the R379 P2-7 defect class). The R330
+    flip-to-OFF was explicitly temporary pending measurement; the measurement
+    now exists. Validated live against the production Aura instance on the
+    r402 hard-set failing rows: rg_015 (failed criterion: the Article 50(1)
+    information duty) gets the exact Article 50(1) and 50(3) paragraph text;
+    rg_036 gets the Article 42(1) presumed-compliance paragraph; rg_087 gets
+    the Article 9(2) risk-step limbs — 0.1-1.3 s per query, non-citable blocks
+    so wire references are unreachable (invariant #3). The constrained half is
+    the ONLY half enabled: every candidate belongs to an already-cited
+    provision, so the R327.1 substitution failure mode (open-domain gloss
+    shifting Stage-2's discussion) is structurally excluded. Answer-axes
+    intervention per R330's own gate note — scored live in r402.
     """
-    return os.getenv("REGENOLD_GRAPH_SEMANTIC_LAYERS", "0").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
+    return os.getenv("REGENOLD_GRAPH_SEMANTIC_LAYERS", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
     )
 
 
@@ -613,6 +627,26 @@ def fetch_focused_subprovisions(question: str, refs: list[str]) -> list[dict]:
         emb = _embed(question)
         if emb is None:
             return []
+        # R403 — flexible prompt budgets: the units quota scales with the
+        # question's evidence tier when no explicit env override exists.
+        # Explicit REGENOLD_SEMANTIC_UNITS still wins outright (tier_quota).
+        try:
+            from app.data.graph_rag_prompts import tier_quota
+
+            units_kept = tier_quota(
+                question,
+                history_turn_count=1,
+                env_name="REGENOLD_SEMANTIC_UNITS",
+                default=_DEFAULT_UNITS_KEPT,
+                lo=1,
+                hi=60,
+                # S lookups need few units; L syntheses get the full surface.
+                scale={"S": 8, "M": _DEFAULT_UNITS_KEPT, "L": 24},
+            )
+        except Exception:  # noqa: BLE001 — quota must never break the layer
+            units_kept = _int_env(
+                "REGENOLD_SEMANTIC_UNITS", _DEFAULT_UNITS_KEPT, 1, 60
+            )
         rows = _bounded_execute_read(
             _FOCUS_COORD_CYPHER if semantic_coordinates_enabled() else _FOCUS_CYPHER,
             {
@@ -622,9 +656,7 @@ def fetch_focused_subprovisions(question: str, refs: list[str]) -> list[dict]:
                 "min_sim": _float_env(
                     "REGENOLD_SEMANTIC_MIN_SIM", _DEFAULT_MIN_SIM, 0.0, 1.0
                 ),
-                "limit": _int_env(
-                    "REGENOLD_SEMANTIC_UNITS", _DEFAULT_UNITS_KEPT, 1, 60
-                ),
+                "limit": units_kept,
                 "per_provision": _int_env(
                     "REGENOLD_SEMANTIC_UNITS_PER_PROVISION",
                     _DEFAULT_UNITS_PER_PROVISION,

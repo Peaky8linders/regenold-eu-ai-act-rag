@@ -4094,6 +4094,25 @@ _ROLE_PREDICATE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# R402 — the matrix stub answers the ENUMERATION ("what are the obligations of
+# a deployer of a high-risk system?") but is contentless on PROCEDURAL
+# follow-ups ("what must a distributor do if it considers a system not in
+# conformity?" → the stub shipped "Distributors … are bound by Article 24." and
+# the legal judge failed every criterion). A question that specifies a concrete
+# situation, state or step asks for the procedure's substance, which the
+# two-line verdict does not carry. Detectors: a leading "what must/does/should
+# <role> DO/…" with a conditional or purposive clause, and condition words that
+# mark a specific scenario rather than a standing catalogue.
+_ROLE_PROCEDURAL_RE = re.compile(
+    r"(?:"
+    r"\b(if|when|where|how)\s+(?:it|they|the|a|an|we|i)\b[\w\s,-]{0,80}?"
+    r"\b(consider|present|identif|detect|find|become|is|are|has|have)\b|"
+    r"\b(extra|additional|further|next|which steps?|what steps?)\b|"
+    r"\b(in the event|in case|upon|following)\b"
+    r")",
+    re.IGNORECASE,
+)
+
 
 def _detect_role_and_risk_class(question: str) -> tuple[str | None, str | None]:
     """Extract (role_id, risk_class_id) from the question text.
@@ -4160,6 +4179,10 @@ def _detect_role_obligation_query(question: str) -> tuple[str, str] | None:
     if "Latest question:" in live:
         live = live.split("Latest question:", 1)[-1]
     if not (_ROLE_SUBJECT_RE.search(live) or _ROLE_PREDICATE_RE.search(live)):
+        return None
+    # R402 — procedural follow-ups need the retrieval+polish path, not the
+    # two-line matrix verdict. See ``_ROLE_PROCEDURAL_RE`` above.
+    if _ROLE_PROCEDURAL_RE.search(live):
         return None
     role_id, risk_id = _detect_role_and_risk_class(live)
     if role_id is None or risk_id is None:
@@ -10032,6 +10055,53 @@ def _attempt_stage2_tail_repair(
         return None
 
 
+def _salvage_truncated_polish(enhanced: str, kg_answer: str) -> str | None:
+    """R402 — salvage the complete-sentence prefix of a failed-repair polish.
+
+    When tail repair fails, the historical behaviour ships the deterministic
+    Stage-1 answer wholesale. Measured live (r402 hard capture, rg_062): the
+    polish was a substantive multi-obligation answer cut mid-final-sentence by
+    the token cap, the repair missed, and the wire shipped an 82-character
+    role-matrix stub that the legal judge failed on every criterion. The
+    truncated polish's COMPLETE sentences are grounded prose that already
+    passed the fabricated-citation scrub (the drift guard runs before this
+    guard), so cutting at the last complete sentence and shipping that beats a
+    thin stub whenever the prefix is materially richer than the stub.
+
+    Returns the salvaged prefix, or ``None`` when the polish does not qualify:
+    fewer than two complete sentences (substance loss risk), or a prefix not
+    longer than the deterministic answer it would displace.
+    """
+    if not enhanced or not enhanced.strip():
+        return None
+    text = enhanced.strip()
+    # Cut at the end of the last COMPLETE sentence. ``_last_sentence_of`` plus
+    # the incomplete-detector already classify the tail; here we split on
+    # terminal punctuation and keep only fully terminated sentences.
+    matches = list(re.finditer(r"[.!?](?=\s|$)", text))
+    if not matches:
+        return None
+    # A polish whose final sentence is already complete never reaches this
+    # helper (the guard returns early), but a mid-text ellipsis or abbreviation
+    # must not truncate substance either — require the cut to actually drop a
+    # dangling tail.
+    last_end = matches[-1].end()
+    prefix = text[:last_end].strip()
+    if prefix == text:
+        return None
+    sentences = re.split(r"(?<=[.!?])\s+", prefix)
+    sentences = [s for s in sentences if s.strip()]
+    if not sentences:
+        return None
+    # Substance gate: the salvaged prefix must be materially richer than the
+    # deterministic answer it displaces (and never a bare fragment). A single
+    # long statutory sentence counts — rg_062's cut polish was exactly that
+    # shape (one multi-limb sentence + a cut second one).
+    if len(prefix) <= max(len(kg_answer or ""), 240):
+        return None
+    return prefix
+
+
 def _guard_stage2_truncation(
     question: str,
     enhanced: str,
@@ -10043,7 +10113,11 @@ def _guard_stage2_truncation(
     Returns ``(final_text, stage2_used)``:
       * complete polish             → (enhanced, True)
       * repaired polish             → (repaired, True)
-      * repair failed / not possible → (kg_answer, False) — the complete
+      * repair failed but the complete-sentence prefix is materially richer
+        than the deterministic answer → (salvaged prefix, True) — R402, the
+        rg_062 fix (an 82-char role-matrix stub shipped while a substantive
+        truncated polish was discarded)
+      * otherwise                   → (kg_answer, False) — the complete
         deterministic Stage-1 answer, so the wire ships it deterministically
         (the route keys the R72 reconcile on ``stage2_landed``).
     """
@@ -10056,6 +10130,15 @@ def _guard_stage2_truncation(
     if repaired is not None:
         logger.warning("stage2_truncation_guard: tail repaired")
         return repaired, True
+    salvaged = _salvage_truncated_polish(enhanced, kg_answer)
+    if salvaged is not None:
+        logger.warning(
+            "stage2_truncation_guard: tail repair failed — salvaging complete-"
+            "sentence prefix (%d of %d chars)",
+            len(salvaged),
+            len(enhanced),
+        )
+        return salvaged, True
     logger.warning(
         "stage2_truncation_guard: tail repair failed — shipping deterministic Stage-1 answer"
     )

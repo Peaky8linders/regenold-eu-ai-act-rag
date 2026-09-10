@@ -1,0 +1,468 @@
+[
+ {
+  "id": "rg_015",
+  "failed": [
+   "Obligation: providers must design/develop the system so natural persons are informed they are interacting with an AI system",
+   "Exception: not required where obvious to a reasonably well-informed, observant and circumspect person, given the circumstances and context of use",
+   "Exception: AI systems authorised by law to detect, prevent, investigate or prosecute criminal offences, subject to safeguards for third parties' rights and freedoms \u2014 unless available for the public to report a criminal offence"
+  ],
+  "all_crit": [
+   "Obligation: providers must design/develop the system so natural persons are informed they are interacting with an AI system",
+   "Exception: not required where obvious to a reasonably well-informed, observant and circumspect person, given the circumstances and context of use",
+   "Exception: AI systems authorised by law to detect, prevent, investigate or prosecute criminal offences, subject to safeguards for third parties' rights and freedoms \u2014 unless available for the public to report a criminal offence"
+  ],
+  "q": "What obligations, if any, does the EU AI Act set in place for AI systems that interact directly with natural persons? What exceptions, if any, apply?",
+  "ans_len": 885,
+  "refs": [
+   "Article 50.1",
+   "Article 50.3"
+  ],
+  "expected": [
+   "Article 50.1"
+  ]
+ },
+ {
+  "id": "rg_021",
+  "failed": [
+   "Accuracy levels/metrics must be declared in instructions of use (Art. 15(3))"
+  ],
+  "all_crit": [
+   "No",
+   "Must perform consistently throughout lifecycle, including resilience to errors/faults/inconsistencies (Art. 15(1),(4))",
+   "Cybersecurity resilience against third-party exploitation is ongoing, not one-time (Art. 15(5))",
+   "Accuracy levels/metrics must be declared in instructions of use (Art. 15(3))"
+  ],
+  "q": "If a provider of a high-risk AI system confirms that the system achieves an appropriate level of accuracy, robustness, and cybersecurity at the time of development, then no further action is required by the provider on these aspects in the future. Correct?",
+  "ans_len": 753,
+  "refs": [
+   "Article 15.1",
+   "Article 9.2",
+   "Article 17.1",
+   "Article 19.1",
+   "Article 20.1"
+  ],
+  "expected": [
+   "Article 15.1"
+  ]
+ },
+ {
+  "id": "rg_035",
+  "failed": [
+   "Failure to comply within that period triggers fines under Article 99 (and Article 79(5)-(9) applies), not gravity-based variation of the timeframe"
+  ],
+  "all_crit": [
+   "MSA sets a compliance/corrective-action period for the provider, rather than an automatic without-undue-delay recall/suspension duty",
+   "Provider must bring the system into compliance and take corrective action within that MSA-prescribed period (Article 80(2) and 80(4))",
+   "Failure to comply within that period triggers fines under Article 99 (and Article 79(5)-(9) applies), not gravity-based variation of the timeframe"
+  ],
+  "q": "Consider the situation in which a market surveillance authority (MSA) determines that an AI system, originally classified as non-high-risk by the provider, is in fact high-risk. Does the provider need to recall and suspend the use of the system without undue delay, or does the MSA provide a timefram",
+  "ans_len": 797,
+  "refs": [
+   "Article 80.2",
+   "Article 6.2",
+   "Article 79.2"
+  ],
+  "expected": [
+   "Article 80.2"
+  ]
+ },
+ {
+  "id": "rg_036",
+  "failed": [
+   "Presumed compliant with Article 10(3) representativeness/quality requirement for that setting",
+   "Not an exemption from other Article 10 obligations (e.g., bias examination/mitigation)"
+  ],
+  "all_crit": [
+   "Presumed compliant with Article 10(3) representativeness/quality requirement for that setting",
+   "Presumption is limited to the extent required by the intended purpose",
+   "Not an exemption from other Article 10 obligations (e.g., bias examination/mitigation)"
+  ],
+  "q": "Under the EU AI Act, what presumption applies when a high-risk AI system is trained and tested on data that reflects the specific geographical, behavioural, contextual or functional setting in which it is intended to be used?",
+  "ans_len": 718,
+  "refs": [
+   "Article 42.1",
+   "Article 10.4"
+  ],
+  "expected": [
+   "Article 42.1"
+  ]
+ },
+ {
+  "id": "rg_037",
+  "failed": [
+   "Annex VIII Section B points 1-5, 8 and 9",
+   "Annex VIII Section C points 1-3",
+   "Annex IX points 1, 2, 3 and 5"
+  ],
+  "all_crit": [
+   "Registration confined to secure, non-public section of EU database (Article 71)",
+   "Annex VIII Section A points 1-10, excluding 6, 8 and 9",
+   "Annex VIII Section B points 1-5, 8 and 9",
+   "Annex VIII Section C points 1-3",
+   "Annex IX points 1, 2, 3 and 5"
+  ],
+  "q": "When registering a high-risk AI system in the EU database under the EU AI Act, what specific information must the provider submit? List the required items.",
+  "ans_len": 1183,
+  "refs": [
+   "Article 49.4",
+   "Article 71.2",
+   "Annex III.7.b",
+   "Annex VIII.12"
+  ],
+  "expected": []
+ },
+ {
+  "id": "rg_046",
+  "failed": [
+   "Pre-determined changes to the system and its performance",
+   "Description of logging mechanisms under Article 12, where relevant"
+  ],
+  "all_crit": [
+   "Provider and, where applicable, authorised representative identity/contact details",
+   "Characteristics, capabilities and performance limitations (intended purpose, accuracy/robustness/cybersecurity levels, foreseeable risks, explainability capabilities, performance for specific groups, input data specifications)",
+   "Pre-determined changes to the system and its performance",
+   "Human oversight measures under Article 14",
+   "Computational/hardware resources needed, expected lifetime, and maintenance/care measures",
+   "Description of logging mechanisms under Article 12, where relevant"
+  ],
+  "q": "Under the EU AI Act, what must a provider of a high-risk AI system supply to the deployer in the instructions for use? List the required categories of information.",
+  "ans_len": 656,
+  "refs": [
+   "Article 13.3"
+  ],
+  "expected": [
+   "Article 13.3"
+  ]
+ },
+ {
+  "id": "rg_057",
+  "failed": [
+   "Grounds to consider there has been an infringement of the Regulation"
+  ],
+  "all_crit": [
+   "Any natural or legal person",
+   "Grounds to consider there has been an infringement of the Regulation",
+   "Submitted to the relevant market surveillance authority"
+  ],
+  "q": "Who is entitled to lodge a complaint about an infringement, and to which authority must the complaint be submitted?",
+  "ans_len": 375,
+  "refs": [
+   "Article 85",
+   "Article 86"
+  ],
+  "expected": [
+   "Article 85.1"
+  ]
+ },
+ {
+  "id": "rg_062",
+  "failed": [
+   "Not make it available on market until brought into conformity",
+   "If risk under Art 79(1): immediately inform provider or importer and the competent authorities",
+   "Notification must detail the non-compliance and any corrective actions taken"
+  ],
+  "all_crit": [
+   "Not make it available on market until brought into conformity",
+   "If risk under Art 79(1): immediately inform provider or importer and the competent authorities",
+   "Notification must detail the non-compliance and any corrective actions taken"
+  ],
+  "q": "What must a distributor do if it considers a high-risk AI system is not in conformity with the Act's requirements? Additionally, what extra steps are required if the system presents a risk within the meaning of Article 79(1)?",
+  "ans_len": 82,
+  "refs": [
+   "Article 79.1",
+   "Article 24"
+  ],
+  "expected": [
+   "Article 24.4"
+  ]
+ },
+ {
+  "id": "rg_066",
+  "failed": [
+   "EU database (set up/maintained by Commission with Member States) covers high-risk AI systems under Art 6(2) registered per Arts 49 and 60, and non-high-risk Art 6(3) systems registered per Art 6(4) and 49",
+   "Categories: Annex VIII Sections A and B entered by provider/authorised representative; Section C entered by deployer that is/acts on behalf of a public authority, agency or body"
+  ],
+  "all_crit": [
+   "EU database (set up/maintained by Commission with Member States) covers high-risk AI systems under Art 6(2) registered per Arts 49 and 60, and non-high-risk Art 6(3) systems registered per Art 6(4) and 49",
+   "Categories: Annex VIII Sections A and B entered by provider/authorised representative; Section C entered by deployer that is/acts on behalf of a public authority, agency or body",
+   "Controller: the Commission"
+  ],
+  "q": "Under the EU AI Act, what is the EU database for high-risk AI systems, what categories of information must it contain, and who is the controller of that database?",
+  "ans_len": 820,
+  "refs": [
+   "Article 71.4",
+   "Article 49.4",
+   "Article 60.4.c",
+   "Annex III.7.b",
+   "Annex VIII.12"
+  ],
+  "expected": [
+   "Article 71",
+   "Annex VIII"
+  ]
+ },
+ {
+  "id": "rg_068",
+  "failed": [
+   "Applies whenever the system is developed using techniques involving training AI models with data (Art. 10(1))",
+   "For systems not using such training techniques, applies only to testing data sets (Art. 10(6))"
+  ],
+  "all_crit": [
+   "Provider of the high-risk AI system",
+   "Applies whenever the system is developed using techniques involving training AI models with data (Art. 10(1))",
+   "For systems not using such training techniques, applies only to testing data sets (Art. 10(6))"
+  ],
+  "q": "For a high-risk AI system, who is responsible for ensuring that input data is relevant and sufficiently representative for the system's intended purpose, and under what condition does that responsibility apply?",
+  "ans_len": 665,
+  "refs": [
+   "Article 10.3",
+   "Article 42.1"
+  ],
+  "expected": [
+   "Article 10.3"
+  ]
+ },
+ {
+  "id": "rg_069",
+  "failed": [
+   "Yes, obligation applies regardless of high-risk knowledge",
+   "Importer: same obligation applies (Article 23(4))"
+  ],
+  "all_crit": [
+   "Yes, obligation applies regardless of high-risk knowledge",
+   "Distributor: storage/transport must not jeopardise Section 2 compliance (Article 24(3))",
+   "Importer: same obligation applies (Article 23(4))"
+  ],
+  "q": "I am a distributor of an AI systems. Do I have obligation not to jeopardize its conformity? I was not told if the system is high-risk or not. What if am I am importer instead?",
+  "ans_len": 876,
+  "refs": [
+   "Article 24.1",
+   "Article 23.4",
+   "Article 16"
+  ],
+  "expected": [
+   "Article 24.3",
+   "Article 23.4"
+  ]
+ },
+ {
+  "id": "rg_075",
+  "failed": [
+   "Yes, disclosure still required"
+  ],
+  "all_crit": [
+   "Yes, disclosure still required",
+   "No need for marking that hampers enjoyment",
+   "Must disclose existence of AI-generated content in appropriate/unobtrusive manner"
+  ],
+  "q": "I generated audio with AI for my artistic work (sole purpose). Do I need to provide some marking of its artificial nature? I feel that would compromise the enjoyment of the work.",
+  "ans_len": 445,
+  "refs": [
+   "Article 50.4",
+   "Article 50.2"
+  ],
+  "expected": [
+   "Article 50.4"
+  ]
+ },
+ {
+  "id": "rg_078",
+  "failed": [
+   "Consent must be dated, documented, and a copy given to the subject or their legal representative"
+  ],
+  "all_crit": [
+   "Yes",
+   "Consent must be freely given and informed, obtained prior to participation, covering nature/objectives/inconveniences, conditions and duration, rights to refuse/withdraw without detriment or justification, reversal/disregard arrangements, and the unique ID plus provider contact details",
+   "Consent must be dated, documented, and a copy given to the subject or their legal representative"
+  ],
+  "q": "Do I need informed consent to test a high-risk AI system in real-world conditions outside a regulatory sandbox?",
+  "ans_len": 635,
+  "refs": [
+   "Article 61.1",
+   "Article 60.4.c"
+  ],
+  "expected": [
+   "Article 61.1"
+  ]
+ },
+ {
+  "id": "rg_082",
+  "failed": [
+   "Duty applies only 'where applicable' (e.g., embedded/supplied hardware or physical media)"
+  ],
+  "all_crit": [
+   "No, not hallucinated",
+   "Article 24(3) applies",
+   "Duty applies only 'where applicable' (e.g., embedded/supplied hardware or physical media)"
+  ],
+  "q": "My local small language model says that, as a distributor of high-risk AI systems, I must be careful that transport conditions do not jeopardize compliance. But AI is just software, isn't it? So I am pretty sure my model hallucinated. What do you say?",
+  "ans_len": 686,
+  "refs": [
+   "Article 24.3"
+  ],
+  "expected": [
+   "Article 24.1"
+  ]
+ },
+ {
+  "id": "rg_087",
+  "failed": [
+   "Four steps: identify/analyze risks (9(2)(a)); estimate/evaluate risks under intended use and foreseeable misuse (9(2)(b)); evaluate risks from post-market monitoring data (9(2)(c)); adopt targeted risk management measures (9(2)(d))"
+  ],
+  "all_crit": [
+   "No",
+   "Article 9 only establishes the risk management system for high-risk AI systems, not a five-tier harm classification",
+   "Four steps: identify/analyze risks (9(2)(a)); estimate/evaluate risks under intended use and foreseeable misuse (9(2)(b)); evaluate risks from post-market monitoring data (9(2)(c)); adopt targeted risk management measures (9(2)(d))",
+   "The prohibited/high-risk/limited-risk/minimal-risk/systemic-risk tiering comes from elsewhere in the Regulation (e.g. Articles 5, 6, 50, 51), not Article 9"
+  ],
+  "q": "Article 9 of the AI Act lists the five categories of harm that map to AI systems with: no risk, limited risk, high-risk, systemic risk, prohibited. What are the five categories and how do they map to the five risk levels?",
+  "ans_len": 1332,
+  "refs": [
+   "Article 51.1",
+   "Article 9",
+   "Article 5.1.g",
+   "Article 6.2",
+   "Annex I"
+  ],
+  "expected": [
+   "Article 9"
+  ]
+ },
+ {
+  "id": "rg_089",
+  "failed": [
+   "Reason: narrow procedural task derogation, Article 6(3), point (a)"
+  ],
+  "all_crit": [
+   "No, not a prohibited practice under Article 5",
+   "No, not high-risk under Annex III",
+   "Reason: narrow procedural task derogation, Article 6(3), point (a)"
+  ],
+  "q": "Is an AI that transcribes doctor-patient conversations prohibited? Or is it high-risk as per the use cases of Annex III of the AI Act?",
+  "ans_len": 953,
+  "refs": [
+   "Annex III",
+   "Article 6.2",
+   "Article 5.1.d",
+   "Annex I.5",
+   "Article 50.1"
+  ],
+  "expected": [
+   "Article 6.3.a"
+  ]
+ },
+ {
+  "id": "rg_091",
+  "failed": [
+   "Article 6(2)",
+   "Annex III (healthcare access/provision)"
+  ],
+  "all_crit": [
+   "Yes",
+   "Article 6(2)",
+   "Annex III (healthcare access/provision)"
+  ],
+  "q": "Is AI software that helps clinicians take medical decisions around best treatment potentially high-risk? According to what Article and/or Annex?",
+  "ans_len": 915,
+  "refs": [
+   "Article 6.1",
+   "Annex III.5",
+   "Annex I.12"
+  ],
+  "expected": [
+   "Article 6.1"
+  ]
+ },
+ {
+  "id": "rg_097",
+  "failed": [
+   "No"
+  ],
+  "all_crit": [
+   "Biometrics; Critical infrastructure; Education and vocational training; Employment, workers' management and access to self-employment; Access to and enjoyment of essential private and public services and benefits; Law enforcement; Migration, asylum and border control management; Administration of justice and democratic processes",
+   "No"
+  ],
+  "q": "Name the areas of high-risk use cases. Is healthcare decision making one of them?",
+  "ans_len": 1034,
+  "refs": [
+   "Article 6",
+   "Annex III"
+  ],
+  "expected": [
+   "Annex III",
+   "Article 6.2"
+  ]
+ },
+ {
+  "id": "rg_102",
+  "failed": [
+   "No \u2014 trigger is being a \"private entity providing public services\" under Article 27(1), not Annex III 5(b)/(c)",
+   "5(b)/(c) is a separate, additional limb pulling in deployers of those specific systems even when not providing public services"
+  ],
+  "all_crit": [
+   "Yes, FRIA required",
+   "No \u2014 trigger is being a \"private entity providing public services\" under Article 27(1), not Annex III 5(b)/(c)",
+   "5(b)/(c) is a separate, additional limb pulling in deployers of those specific systems even when not providing public services",
+   "Other private contractors offering public services outside 5(b)/(c) remain covered via the general public-service limb, for every Annex III area except point 2"
+  ],
+  "q": "Consider a private contractor of the municipality that runs a city's emergency-call triage platform. The contractor plans to use an AI tool to prioritize police response decisions. Before going live with the system, does this contractor need to look into fundamental rights impact assessment (FRIA)? ",
+  "ans_len": 1043,
+  "refs": [
+   "Annex III.5.d",
+   "Article 6.2",
+   "Article 27.1"
+  ],
+  "expected": [
+   "Article 27.1"
+  ]
+ },
+ {
+  "id": "rg_106",
+  "failed": [
+   "Annex III.6 categories apply only where the AI system is used by or on behalf of law enforcement authorities (or by Union institutions/bodies in support of law enforcement authorities)",
+   "A supermarket's own loss-prevention/bag-check tool, run by store staff, is not used by or on behalf of a law enforcement authority, so it falls outside Annex III.6 regardless of its resemblance to investigative or evaluative functions"
+  ],
+  "all_crit": [
+   "No",
+   "Annex III.6 categories apply only where the AI system is used by or on behalf of law enforcement authorities (or by Union institutions/bodies in support of law enforcement authorities)",
+   "A supermarket's own loss-prevention/bag-check tool, run by store staff, is not used by or on behalf of a law enforcement authority, so it falls outside Annex III.6 regardless of its resemblance to investigative or evaluative functions"
+  ],
+  "q": "A supermarket uses an AI tool that analyzes only current-cart and checkout anomalies (no biometrics, no face recognition, no sensitive-trait inference, no cross-context social scoring) to flag transactions for optional manual bag checks by store staff. The retailer claims this is \"high risk like pol",
+  "ans_len": 855,
+  "refs": [
+   "Article 5.1.c",
+   "Annex III.6.d"
+  ],
+  "expected": [
+   "Annex III.6"
+  ]
+ },
+ {
+  "id": "rg_110",
+  "failed": [
+   "Annex III, point 2 together with Article 6(2) \u2014 system classified high-risk as a safety component in gas supply (critical infrastructure)",
+   "No",
+   "FRIA (Article 27) is a deployer obligation; having been reclassified as provider under Article 25(1)(a), the contractor is not acting as deployer of this system"
+  ],
+  "all_crit": [
+   "Annex III, point 2 together with Article 6(2) \u2014 system classified high-risk as a safety component in gas supply (critical infrastructure)",
+   "Article 25(1)(a) \u2014 contractor deemed the provider by putting its own name/trademark on the system already placed on the market or put into service",
+   "No",
+   "FRIA (Article 27) is a deployer obligation; having been reclassified as provider under Article 25(1)(a), the contractor is not acting as deployer of this system"
+  ],
+  "q": "A private contractor runs a region's gas supply service on behalf of the local government. It licenses an AI system from a vendor, fine-tunes it on local data, and then puts it into service under its own brand. To learn about correct applicable classifications of the system and the contractor, what ",
+  "ans_len": 892,
+  "refs": [
+   "Article 6.1",
+   "Annex I",
+   "Article 27.1",
+   "Article 25.4",
+   "Article 43.3"
+  ],
+  "expected": [
+   "Annex III.2",
+   "Article 25.1.a",
+   "Article 27.1"
+  ]
+ }
+]

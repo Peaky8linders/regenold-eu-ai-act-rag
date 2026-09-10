@@ -1,0 +1,668 @@
+{
+ "arm_a": "score-r403-L1G0C0-hard.json",
+ "arm_b": "score-r403-L1G0C1-hard.json",
+ "rows_compared": 110,
+ "axis_deltas": {
+  "ans_correctness_loose": 0.6818181818181817,
+  "ans_correctness_strict": 0.0,
+  "ans_conciseness": -0.7341737683521617,
+  "ref_correctness_loose": -1.5,
+  "ref_correctness_strict": -2.0,
+  "ref_conciseness": 6.716666666666668,
+  "regulatory_tone": 0.9090909090909091,
+  "resp_speed": -0.9350598381814053
+ },
+ "est_net_overall_pp": 0.213,
+ "gold_dropped_rows": {
+  "total": 5,
+  "stable": 5,
+  "unstable": 0,
+  "recoverable_head": 0,
+  "kinds": {
+   "mixed": 2,
+   "substituted": 2,
+   "pruned": 1
+  }
+ },
+ "stable_drop_rows": [
+  "rg_041",
+  "rg_061",
+  "rg_085",
+  "rg_089",
+  "rg_106"
+ ],
+ "unstable_drop_rows": [],
+ "detail": [
+  {
+   "id": "rg_002",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_003",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_004",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_005",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_006",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_007",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_008",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_009",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_010",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_011",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_012",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_013",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_015",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_016",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_017",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_018",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_019",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_020",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_021",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_023",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_024",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_025",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_026",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_027",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_028",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_030",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_031",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_032",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_033",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_034",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_035",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_036",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_038",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_039",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_040",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_041",
+   "dropped": true,
+   "unstable": false,
+   "new_drops": [
+    {
+     "gold_head": "Article 17",
+     "kind": "mixed",
+     "recoverable": false
+    }
+   ]
+  },
+  {
+   "id": "rg_042",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_043",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_044",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_045",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_046",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_047",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_048",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_049",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_050",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_051",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_052",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_053",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_054",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_055",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_056",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_057",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_058",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_059",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_061",
+   "dropped": true,
+   "unstable": false,
+   "new_drops": [
+    {
+     "gold_head": "Article 75",
+     "kind": "substituted",
+     "recoverable": false
+    }
+   ]
+  },
+  {
+   "id": "rg_062",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_063",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_064",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_065",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_066",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_067",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_068",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_069",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_070",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_072",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_073",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_074",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_075",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_076",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_077",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_078",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_079",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_080",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_081",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_082",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_083",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_085",
+   "dropped": true,
+   "unstable": false,
+   "new_drops": [
+    {
+     "gold_head": "Article 6",
+     "kind": "mixed",
+     "recoverable": false
+    }
+   ]
+  },
+  {
+   "id": "rg_087",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_088",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_089",
+   "dropped": true,
+   "unstable": false,
+   "new_drops": [
+    {
+     "gold_head": "Article 6",
+     "kind": "substituted",
+     "recoverable": false
+    }
+   ]
+  },
+  {
+   "id": "rg_090",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_091",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_092",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_093",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_094",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_095",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_096",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_097",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_099",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_100",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_101",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_102",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_103",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_104",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_105",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_106",
+   "dropped": true,
+   "unstable": false,
+   "new_drops": [
+    {
+     "gold_head": "Annex III",
+     "kind": "pruned",
+     "recoverable": false
+    }
+   ]
+  },
+  {
+   "id": "rg_107",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_108",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_109",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  },
+  {
+   "id": "rg_110",
+   "dropped": false,
+   "unstable": false,
+   "new_drops": []
+  }
+ ],
+ "VERDICT": "VETO (stable, non-recoverable gold head dropped)"
+}

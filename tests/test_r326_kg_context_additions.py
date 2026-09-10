@@ -193,21 +193,21 @@ def test_semantic_layers_default_off_after_r330(monkeypatch):
     ``kg_context._render_semantic_layers`` returns ``[]`` when it is empty — so
     the layer emitted nothing on every request regardless of this flag.
 
-    R330 repairs the wiring AND flips the default to OFF in the same commit, so
-    production stays byte-identical to the behaviour the bug produced instead of
-    silently activating an unmeasured feature (live Neo4j vector queries on a
-    scored latency axis) the moment the wiring landed.
+    R402 flips the constrained half back to DEFAULT ON (deny-list form) after
+    live re-measurement on the r402 hard-set failing rows — the R330 pairing
+    was explicitly temporary pending measurement. The open-domain gloss half
+    keeps its measured OFF default.
 
-    This is a deliberate contract change, not a weakened assertion: the flag
-    still has both states, and ``test_semantic_layers_have_an_off_switch`` plus
-    ``tests/test_r330_semantic_layers_wiring.py`` pin the ON path and the
-    fail-closed parse.
+    Deliberate contract change, not a weakened assertion: the flag keeps both
+    states (``test_semantic_layers_have_an_off_switch`` and
+    ``tests/test_r330_semantic_layers_wiring.py`` pin the OFF path and the
+    deny-list parse).
     """
     from app.engines import graph_semantic as gs
 
     monkeypatch.delenv("REGENOLD_GRAPH_SEMANTIC_LAYERS", raising=False)
     monkeypatch.delenv("REGENOLD_SEMANTIC_GLOSS", raising=False)
-    assert gs.semantic_layers_enabled() is False
+    assert gs.semantic_layers_enabled() is True
     assert gs.gloss_layers_enabled() is False
 
 
