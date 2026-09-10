@@ -1406,6 +1406,13 @@ def _engine_cache_key(
             # answer length and 2.38x faster, so it is emphatically
             # answer-flipping and must not share a cache entry.
             "REGENOLD_STAGE2_FULL_SYSTEM",
+            # R407 — the Cohere clients' transient-retry ceilings. They do not
+            # change WHAT a successful call returns, but they change WHEN a
+            # call succeeds at all (a 429'd rerank used to be dropped, now it
+            # is retried) — so the reordering/refs a cache entry was built on
+            # can differ across the boundary. Keyed per R30/R56 doctrine.
+            "REGENOLD_COHERE_RERANK_RETRIES",
+            "REGENOLD_EXTERNAL_EMBEDDING_RETRIES",
             "P2P_GRAPH_RAG_ENABLE_STAGE2",
             "REGENOLD_BEDROCK_MODEL",
             "REGENOLD_BEDROCK_COMPLEX_MODEL",

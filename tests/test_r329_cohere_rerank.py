@@ -63,6 +63,34 @@ def test_enabled_needs_both_flag_and_key(monkeypatch):
     assert CR.rerank_enabled() is True
 
 
+def test_default_model_is_rerank_v4_pro(monkeypatch):
+    """The quality-first Cohere default is the current Rerank 4.0 Pro model."""
+    monkeypatch.setenv("REGENOLD_COHERE_RERANK", "1")
+    monkeypatch.setenv("COHERE_API_KEY", "x")
+    monkeypatch.delenv("REGENOLD_COHERE_RERANK_MODEL", raising=False)
+    seen = {}
+
+    class Response:
+        status_code = 200
+        text = ""
+
+        @staticmethod
+        def json():
+            return {"results": [{"index": 0, "relevance_score": 0.9}]}
+
+    class Client:
+        @staticmethod
+        def post(_url, *, json, headers):
+            del headers
+            seen.update(json)
+            return Response()
+
+    monkeypatch.setattr(CR, "_get_client", lambda: Client())
+    CR.reset_request_budget()
+    assert CR.rerank_documents("q", ["a", "b"])
+    assert seen["model"] == "rerank-v4.0-pro"
+
+
 def test_disabled_returns_input_order_untouched(monkeypatch):
     monkeypatch.delenv("REGENOLD_COHERE_RERANK", raising=False)
     refs = ["Article 6", "Article 43", "Annex I"]

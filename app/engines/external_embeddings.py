@@ -65,6 +65,14 @@ _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "0.0.0.0"})
 # R112 — short, split timeout for the pooled client. connect=3 bounds a
 # black-holed host; read=10 is plenty for a 50-doc embeddings batch.
 _CLIENT_TIMEOUT = httpx.Timeout(10.0, connect=3.0)
+from app.engines._http_retry import attempts_from_env, post_transient_retry
+
+#: R407 — transient-retry ceiling for the embeddings POST (429/5xx with
+#: backoff + Retry-After). Cohere failures were already treated as transient
+#: (never probe-cached, unlike openai); now they are actually retried instead
+#: of silently dropping that fetch. Fresh-read per call (R263.2) so
+#: same-process A/Bs can flip it. ``REGENOLD_EXTERNAL_EMBEDDING_RETRIES=1``
+#: restores the old one-shot behaviour.
 
 _CLIENT_LOCK = threading.Lock()
 _CLIENT: httpx.Client | None = None
@@ -265,7 +273,17 @@ def get_embedding(
                     "model": model,
                     "input_type": input_type,
                 }
-                res = client.post(COHERE_API_URL, headers=headers, json=payload)
+                res = post_transient_retry(
+                    lambda: _get_client().post(
+                        COHERE_API_URL, headers=headers, json=payload
+                    ),
+                    max_attempts=attempts_from_env(
+                        "REGENOLD_EXTERNAL_EMBEDDING_RETRIES", 3
+                    ),
+                    log_prefix="external_embeddings",
+                )
+                if res is None:
+                    raise RuntimeError("embedding POST failed after retries")
                 res.raise_for_status()
                 data = res.json()
                 embeddings.extend(data["embeddings"])
