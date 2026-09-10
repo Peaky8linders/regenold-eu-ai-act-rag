@@ -635,6 +635,13 @@ def index_diagnostics() -> dict[str, object]:
 
     return {
         "loaded": True,
+        "embedding_backend": (
+            "cohere"
+            if _INDEX._use_external and os.getenv("COHERE_API_KEY", "").strip()
+            else "openai"
+            if _INDEX._use_external
+            else "svd"
+        ),
         "num_docs": _INDEX._num_docs,  # noqa: SLF001
         "vocab_size": len(_INDEX._vocab),  # noqa: SLF001
         "projection_dim": _PROJECTION_DIM,

@@ -29,7 +29,7 @@ os.environ.setdefault("REGENOLD_SKIP_DOTENV", "1")
 os.environ.setdefault("REGENOLD_EXTERNAL_EMBEDDINGS", "0")
 sys.path.insert(0, str(REPO))
 
-from evals.official.judge import judge_rows  # noqa: E402
+from evals.official import judge as official_judge  # noqa: E402
 from evals.official.rubric import AXIS_ORDER, _clean, score_rows  # noqa: E402
 
 GOLD = REPO / "docs" / "measurements" / "r388" / "official_gold_n110.jsonl"
@@ -41,15 +41,15 @@ OUT_DIR = REPO / "docs" / "measurements" / "r388"
 # reconstructed (see evals/official/__init__.py).
 OFFICIAL = {
     "easy": {
-        "us": dict(zip(AXIS_ORDER, [89.7, 81.2, 51.9, 89.4, 68.3, 50.4, 99.1, 87.6])),
-        "frontier_2026": dict(zip(AXIS_ORDER, [94.4, 89.1, 67.9, 96.1, 78.5, 51.9, 100.0, 81.8])),
-        "baseline_2025": dict(zip(AXIS_ORDER, [83.8, 70.9, 51.1, 79.9, 52.0, 48.7, 99.1, 95.3])),
+        "us": dict(zip(AXIS_ORDER, [89.7, 81.2, 51.9, 89.4, 68.3, 50.4, 99.1, 87.6], strict=True)),
+        "frontier_2026": dict(zip(AXIS_ORDER, [94.4, 89.1, 67.9, 96.1, 78.5, 51.9, 100.0, 81.8], strict=True)),
+        "baseline_2025": dict(zip(AXIS_ORDER, [83.8, 70.9, 51.1, 79.9, 52.0, 48.7, 99.1, 95.3], strict=True)),
         "overall": {"us": 75.1, "frontier_2026": 80.9, "baseline_2025": 70.1},
     },
     "hard": {
-        "us": dict(zip(AXIS_ORDER, [89.9, 80.0, 45.2, 89.5, 70.7, 49.8, 96.1, 85.7])),
-        "frontier_2026": dict(zip(AXIS_ORDER, [92.0, 84.8, 71.8, 94.6, 74.1, 58.5, 100.0, 86.7])),
-        "baseline_2025": dict(zip(AXIS_ORDER, [87.6, 76.7, 58.8, 82.7, 55.4, 56.8, 99.7, 95.9])),
+        "us": dict(zip(AXIS_ORDER, [89.9, 80.0, 45.2, 89.5, 70.7, 49.8, 96.1, 85.7], strict=True)),
+        "frontier_2026": dict(zip(AXIS_ORDER, [92.0, 84.8, 71.8, 94.6, 74.1, 58.5, 100.0, 86.7], strict=True)),
+        "baseline_2025": dict(zip(AXIS_ORDER, [87.6, 76.7, 58.8, 82.7, 55.4, 56.8, 99.7, 95.9], strict=True)),
         "overall": {"us": 73.4, "frontier_2026": 81.7, "baseline_2025": 74.8},
     },
 }
@@ -93,8 +93,17 @@ def load_gold() -> dict[str, dict]:
     return out
 
 
-def _key(qid: str, answer: str) -> str:
-    return f"{qid}:{hashlib.sha256((answer or '').encode('utf-8')).hexdigest()[:16]}"
+def _key(qid: str, answer: str, judge_id: str = "legacy") -> str:
+    """Cache key scoped to answer *and* judge configuration.
+
+    The legacy key omitted the judge identity, so a Qwen verdict could be
+    replayed during an Opus/Sonnet run (or vice versa).  ``legacy`` remains an
+    explicit default for small external utilities, but ``main`` always passes
+    the resolved live identity.
+    """
+    digest = hashlib.sha256((answer or "").encode("utf-8")).hexdigest()[:16]
+    judge_digest = hashlib.sha256(judge_id.encode("utf-8")).hexdigest()[:12]
+    return f"{qid}:{digest}:{judge_digest}"
 
 
 def load_cache(cache_path: Path | None = None) -> dict[str, dict]:
@@ -171,7 +180,22 @@ def main() -> int:
     ap.add_argument("--no-deepen", dest="deepen", action="store_false")
     ap.add_argument("--cache-file", default=None, help="Custom judge cache JSONL path")
     ap.add_argument("--rejudge", action="store_true", default=False, help="Bypass cache and re-judge all rows")
+    ap.add_argument(
+        "--judge-provider",
+        choices=("wrapper", "bedrock"),
+        default=os.getenv("R388_JUDGE_PROVIDER", "wrapper") or "wrapper",
+        help="LLM judge transport (explicitly recorded in cache/output provenance)",
+    )
+    ap.add_argument(
+        "--judge-model",
+        default=os.getenv("R388_JUDGE_MODEL", "claude-sonnet-4-6"),
+        help="Exact judge model or Bedrock inference-profile alias",
+    )
     a = ap.parse_args()
+
+    official_judge.configure_judge(provider=a.judge_provider, model=a.judge_model)
+    judge_id = official_judge.judge_identity().rsplit(":r=", 1)[0] + f":r={a.repeats}"
+    print(f"judge identity: {judge_id}")
 
     cache_target = Path(a.cache_file) if a.cache_file else CACHE
 
@@ -190,14 +214,14 @@ def main() -> int:
     cache = {} if a.rejudge else load_cache(cache_target)
     todo, cached = [], []
     for r in rows:
-        v = cache.get(_key(r["id"], r["answer"]))
+        v = cache.get(_key(r["id"], r["answer"], judge_id))
         if v and v.get("_judge_runs", 0) > 0 and len(v.get("criteria") or []) == len(r["criteria_text"]):
             cached.append({**r, **v})
         else:
             todo.append(r)
     print(f"{len(rows)} rows: {len(cached)} cached, {len(todo)} to judge (cache: {cache_target.name})")
 
-    judged = judge_rows(todo, workers=a.workers, repeats=a.repeats) if todo else []
+    judged = official_judge.judge_rows(todo, workers=a.workers, repeats=a.repeats) if todo else []
 
     # R393 — LOUD failure on a saturated judge transport.
     #
@@ -236,7 +260,8 @@ def main() -> int:
                     fh.write(
                         json.dumps(
                             {
-                                "key": _key(j["id"], j["answer"]),
+                                "key": _key(j["id"], j["answer"], judge_id),
+                                "judge_identity": judge_id,
                                 "verdict": {
                                     k: j[k]
                                     for k in (
@@ -348,6 +373,7 @@ def main() -> int:
         "label": clean_label,
         "mode": a.mode,
         "ckpt": str(a.ckpt),
+        "judge_identity": judge_id,
         "axes": res,
         "official_reference": ref,
         "rows": [

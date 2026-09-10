@@ -46,6 +46,8 @@ import argparse
 import json
 import os
 import statistics as st
+import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -128,6 +130,96 @@ def _apply_env(arm_env: dict[str, str]) -> dict[str, str | None]:
         saved[k] = os.environ.get(k)
         os.environ[k] = v
     return saved
+
+
+def _install_cohere_guard() -> Callable[[], None]:
+    """Require real Cohere embeddings and reranking for a local live run.
+
+    The application deliberately fails open when an optional retrieval provider
+    is unavailable. That is correct production behaviour but invalid benchmark
+    behaviour: a 429 would otherwise turn a labelled Cohere run into an SVD/no-op
+    run. Probe both APIs, verify that the document index really selected Cohere,
+    then install sticky wrappers whose health check is called after every POST.
+    """
+    if not os.getenv("COHERE_API_KEY", "").strip():
+        raise RuntimeError("--require-cohere needs COHERE_API_KEY")
+    falsy = {"0", "false", "no", "off"}
+    if os.getenv("REGENOLD_EXTERNAL_EMBEDDINGS", "1").strip().lower() in falsy:
+        raise RuntimeError("--require-cohere conflicts with REGENOLD_EXTERNAL_EMBEDDINGS=0")
+    if os.getenv("REGENOLD_COHERE_RERANK", "1").strip().lower() in falsy:
+        raise RuntimeError("--require-cohere conflicts with REGENOLD_COHERE_RERANK=0")
+
+    from app.engines import cohere_rerank, external_embeddings, turboquant_index
+
+    probe = external_embeddings.get_embedding(
+        "EU AI Act benchmark Cohere preflight",
+        is_query=True,
+    )
+    if probe is None:
+        raise RuntimeError("Cohere embedding preflight failed; refusing a fallback-contaminated run")
+
+    diagnostics = turboquant_index.index_diagnostics()
+    if diagnostics.get("embedding_backend") != "cohere":
+        backend = diagnostics.get("embedding_backend", "unavailable")
+        raise RuntimeError(
+            f"dense index backend is {backend!r}, not Cohere; refusing benchmark"
+        )
+
+    cohere_rerank.reset_rerank_stats()
+    cohere_rerank.reset_request_budget()
+    reranked = cohere_rerank.rerank_documents(
+        "Which provision governs provider transparency?",
+        ["Article 13 transparency obligations", "Article 99 administrative fines"],
+    )
+    stats = cohere_rerank.rerank_stats()
+    if not reranked or stats.get("attempts") != 1 or stats.get("failed"):
+        raise RuntimeError("Cohere rerank preflight failed; refusing a no-op benchmark")
+    cohere_rerank.reset_rerank_stats()
+    cohere_rerank.reset_request_budget()
+
+    failures: list[str] = []
+    failure_lock = threading.Lock()
+    original_embed = external_embeddings.get_embedding
+    original_rerank = cohere_rerank.rerank_documents
+
+    def record(message: str) -> None:
+        with failure_lock:
+            failures.append(message)
+
+    def guarded_embed(texts, *, is_query=False):
+        result = original_embed(texts, is_query=is_query)
+        if result is None:
+            record("Cohere embedding call fell back")
+        return result
+
+    def guarded_rerank(query, documents, *, top_n=None):
+        docs = [str(item) for item in documents if str(item).strip()]
+        before = cohere_rerank.rerank_stats()
+        result = original_rerank(query, documents, top_n=top_n)
+        after = cohere_rerank.rerank_stats()
+        if len(docs) >= 2 and str(query).strip() and result is None:
+            if after.get("failed", 0) > before.get("failed", 0):
+                record("Cohere rerank call failed")
+            elif after.get("attempts", 0) == before.get("attempts", 0):
+                record("Cohere rerank call was skipped or disabled")
+        return result
+
+    external_embeddings.get_embedding = guarded_embed
+    cohere_rerank.rerank_documents = guarded_rerank
+
+    def assert_healthy() -> None:
+        with failure_lock:
+            problem = failures[0] if failures else ""
+        if problem:
+            raise RuntimeError(f"{problem}; Cohere-required benchmark is invalid")
+
+    print(
+        "Cohere strict mode: embeddings=cohere "
+        f"({os.getenv('REGENOLD_EXTERNAL_EMBEDDING_MODEL', 'embed-english-v3.0')}), "
+        "rerank=cohere "
+        f"({os.getenv('REGENOLD_COHERE_RERANK_MODEL', 'rerank-v3.5')})"
+    )
+    return assert_healthy
 
 
 def _restore_env(saved: dict[str, str | None]) -> None:
@@ -476,7 +568,18 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=0, help="first N questions only")
     ap.add_argument("--baseline-env", action="append", default=None)
     ap.add_argument("--branch-env", action="append", default=None)
+    ap.add_argument(
+        "--require-cohere",
+        action="store_true",
+        help="fail closed unless local embeddings and eligible reranks use Cohere",
+    )
     args = ap.parse_args()
+
+    if args.require_cohere and args.endpoint:
+        raise SystemExit(
+            "--require-cohere supports local-live evaluation only: the deployed "
+            "wire response does not expose provider provenance"
+        )
 
     rows = list(load_official_batch())
     if args.limit:
@@ -486,6 +589,16 @@ def main() -> None:
 
     local = not args.endpoint
     poster = _post_local if local else _post
+    if args.require_cohere:
+        assert_cohere_healthy = _install_cohere_guard()
+        base_poster = poster
+
+        def guarded_poster(*poster_args, **poster_kwargs):
+            result = base_poster(*poster_args, **poster_kwargs)
+            assert_cohere_healthy()
+            return result
+
+        poster = guarded_poster
     url = (
         "local://app.main:app/api/v1/regenold/eu-ai-act/ask"
         if local

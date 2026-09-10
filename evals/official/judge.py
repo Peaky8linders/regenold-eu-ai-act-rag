@@ -32,6 +32,7 @@ import sys
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Any
 
 REPO = Path(__file__).resolve().parents[2]
 os.environ.setdefault("REGENOLD_SKIP_DOTENV", "1")
@@ -74,6 +75,28 @@ if os.getenv("CF_ACCESS_CLIENT_ID"):
         _HDRS["CF-Access-Client-Secret"] = os.environ.get("CF_ACCESS_CLIENT_SECRET", "")
 
 
+def configure_judge(*, provider: str | None = None, model: str | None = None) -> None:
+    """Apply an explicit judge transport/model for the current scoring run.
+
+    ``score_arm`` imports this module before parsing its CLI, so relying on
+    module-import-time environment reads made a command-line model override
+    impossible.  Keep the environment in sync as well: worker threads and
+    diagnostics read the provider from there on every call.
+    """
+    global MODEL
+    if provider:
+        os.environ["R388_JUDGE_PROVIDER"] = provider.strip().lower()
+    if model:
+        MODEL = model.strip()
+        os.environ["R388_JUDGE_MODEL"] = MODEL
+
+
+def judge_identity() -> str:
+    """Stable identity for cache separation and score provenance."""
+    provider = os.getenv("R388_JUDGE_PROVIDER", "wrapper").strip().lower() or "wrapper"
+    return f"{provider}:{MODEL}:t={TEMPERATURE}:r={REPEATS}"
+
+
 def _parse_bool(val: Any) -> bool:
     if isinstance(val, bool):
         return val
@@ -90,9 +113,12 @@ _FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.MULTILINE)
 def _call(prompt: str, *, max_tokens: int = 2000, timeout: float = 300.0, retries: int = 3) -> str:
     provider_name = os.getenv("R388_JUDGE_PROVIDER", "").strip().lower()
     if provider_name == "bedrock" or URL.strip().lower() == "bedrock":
-        from app.llm.bedrock_client import get_bedrock_provider, BedrockRequest
+        from app.llm.bedrock_client import BedrockRequest, get_bedrock_provider
         provider = get_bedrock_provider()
-        model_name = MODEL if MODEL and "claude" not in MODEL.lower() else "qwen.qwen3-235b-a22b-2507-v1:0"
+        # Use the requested model exactly.  The former Claude-name special case
+        # silently relabelled a Qwen 235B judgement as Claude, making model A/Bs
+        # and audit provenance false.  Callers that need Qwen must request it.
+        model_name = MODEL
         req = BedrockRequest(
             user=prompt,
             model=model_name,
@@ -104,7 +130,13 @@ def _call(prompt: str, *, max_tokens: int = 2000, timeout: float = 300.0, retrie
         for _ in range(retries):
             try:
                 res = provider.complete(req)
-                return res.text or ""
+                # BedrockProvider is fail-soft: API failures are returned in
+                # ``res.error`` rather than raised.  Treat them as failed
+                # attempts so the judge transport guard can reject the run.
+                if res.error or not res.text:
+                    last = RuntimeError(res.error or "empty Bedrock judge response")
+                    continue
+                return res.text
             except Exception as exc:  # noqa: BLE001
                 last = exc
         raise RuntimeError(f"judge call via bedrock failed after {retries} attempts: {last}")

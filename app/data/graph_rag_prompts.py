@@ -1197,6 +1197,11 @@ def prompt_budget_tier(question: str, history_turn_count: int = 1) -> str:
 
     live = question or ""
     if "Latest question:" in live:
+        # The graph-semantic renderer receives the route's flattened
+        # conversation string, not ``GraphRAGRequest.history_turn_count``.
+        # Preserve the multi-turn signal before isolating the live question;
+        # otherwise the documented L-tier branch is unreachable on this path.
+        history_turn_count = max(history_turn_count, 2)
         live = live.split("Latest question:", 1)[-1]
     if history_turn_count >= 2 or len(live) > 350:
         return "L"
