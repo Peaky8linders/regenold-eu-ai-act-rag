@@ -1,0 +1,257 @@
+{
+ "label": "r398-six-case-judged",
+ "source_run": "r398-six-case-live",
+ "captured": "2026-09-09T11:28:38",
+ "commit": "3007956",
+ "judge_model": "claude-sonnet-5",
+ "judge_url": "https://wrapper.antifragile-ai.net/v1/chat/completions",
+ "judge_temperature": 0.1,
+ "repeats": 3,
+ "total_passed": 17,
+ "total_criteria": 17,
+ "rows": [
+  {
+   "id": "rg_046",
+   "label": "Q45",
+   "mode": "easy",
+   "question": "Under the EU AI Act, what must a provider of a high-risk AI system supply to the deployer in the instructions for use? List the required categories of information.",
+   "answer": "Article 13 requires the provider to design a high-risk AI system for sufficient operational transparency and to supply it with instructions for use in an appropriate digital or other format, concise, complete, correct and clear, in a language easily understood by deployers. Those instructions must contain six categories of information: the identity and contact details of the provider and, where applicable, its authorised representative, the characteristics, capabilities and limitations of performance of the system including its intended purpose, the levels of accuracy including accuracy metrics, robustness and cybersecurity required under Article 15, any known or foreseeable circumstances that may lead to risks to health, safety or fundamental rights, the technical capabilities to provide information relevant to explaining its output, performance as regards specific persons or groups on which the system is intended to be used and input data specifications, the changes to the system and its performance pre-determined by the provider at the moment of the initial conformity assessment, the human oversight measures under Article 14 including the technical measures enabling deployers to interpret output, the computational and hardware resources needed, the expected lifetime and the maintenance and care measures including software updates, and, where relevant, a description of the mechanisms allowing deployers to properly collect, store and interpret the logs generated under Article 12. Article 9 reinforces this by treating the provision of that information, and where appropriate training to deployers, as a risk management measure where risk cannot be eliminated by design.",
+   "refs": [
+    "Article 13.3",
+    "Article 9.5"
+   ],
+   "expected_refs": [
+    "Article 13.3"
+   ],
+   "criteria": [
+    "Provider and, if applicable, authorised representative contact details",
+    "Intended purpose and risks",
+    "Human oversight measures",
+    "Required computational resources/hardware, expected lifetime, maintaince measures",
+    "Info about logging mechanisms"
+   ],
+   "criteria_pass": [
+    true,
+    true,
+    true,
+    true,
+    true
+   ],
+   "criteria_why": [
+    "States provider identity/contact details and, where applicable, authorised representative's.",
+    "States intended purpose and known/foreseeable circumstances that may lead to risks to health, safety or fundamental rights.",
+    "States human oversight measures under Article 14 including technical measures enabling deployers to interpret output.",
+    "States computational and hardware resources needed, expected lifetime, and maintenance/care measures including software updates.",
+    "States description of mechanisms allowing deployers to collect, store and interpret logs under Article 12."
+   ],
+   "n_passed": 5,
+   "n_criteria": 5,
+   "judge_runs_ok": 3,
+   "judge_errors": 0,
+   "per_run_rates": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "tone_ok": true,
+   "tone_why": "Professional third-person register, though the long enumerated categories are run into dense sentences that strain readability."
+  },
+  {
+   "id": "rg_097",
+   "label": "Q96",
+   "mode": "easy",
+   "question": "Name the areas of high-risk use cases. Is healthcare decision making one of them?",
+   "answer": "Annex III lists eight high-risk areas: biometrics, critical infrastructure, education and vocational training, employment and worker management, access to and enjoyment of essential private services and essential public services and benefits, law enforcement, migration, asylum and border control management, and administration of justice and democratic processes. Healthcare decision making is not itself one of those areas, and under Article 6(2) only a listed lettered use-case within an area makes a system high-risk. Clinical decision making is nonetheless captured in part: Annex III point 5 covers systems used by or on behalf of public authorities to evaluate eligibility for essential public assistance benefits and services, including healthcare services, risk assessment and pricing in life and health insurance, and emergency healthcare patient triage systems. Separately, Article 6(1) classifies as high-risk an AI system that is a safety component of, or is itself, a product covered by the Union harmonisation legislation in Annex I, which includes the in vitro diagnostic medical devices Regulation, where that product must undergo third-party conformity assessment.",
+   "refs": [
+    "Annex III",
+    "Article 6",
+    "Annex I"
+   ],
+   "expected_refs": [
+    "Annex III"
+   ],
+   "criteria": [
+    "(Shortened:) Biometrics; Critical infrastructure; Education and vocational training; Employment, workers' management and access to self-employment; Access to and enjoyment of essential private services and essential public services and benefits; Law enforcement; Migration, asylum and border control management; Administration of justice and democratic processes",
+    "No"
+   ],
+   "criteria_pass": [
+    true,
+    true
+   ],
+   "criteria_why": [
+    "All eight areas are named matching the criteria list.",
+    "Answer states healthcare decision making is not itself one of the listed areas."
+   ],
+   "n_passed": 2,
+   "n_criteria": 2,
+   "judge_runs_ok": 3,
+   "judge_errors": 0,
+   "per_run_rates": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "tone_ok": true,
+   "tone_why": "Professional third-person register with well-structured, logically ordered prose covering the question directly."
+  },
+  {
+   "id": "rg_018",
+   "label": "Q17",
+   "mode": "easy",
+   "question": "Can the European Commission amend Annex III of the EU AI Act to add or modify use-cases classified as high-risk AI systems? Under what conditions?",
+   "answer": "Yes, the Commission may amend Annex III by adding or modifying use-cases of high-risk AI systems, but only through delegated acts adopted in accordance with Article 97 and only where two conditions are cumulatively fulfilled under Article 7(1): the AI systems are intended to be used in one of the areas already listed in Annex III, and they pose a risk of harm to health and safety, or an adverse impact on fundamental rights, that is equivalent to or greater than that posed by the high-risk AI systems already listed there. Neither limb alone suffices, and in assessing the second the Commission must weigh the criteria in Article 7(2), including the intended purpose, the extent of use, the nature and amount of data processed, the degree of autonomy, the severity and reversibility of harm, and the availability of effective measures of redress or of measures to prevent or substantially minimise the risks. Article 97 frames the procedure: the delegation runs for five years from 1 August 2024 with tacit extension unless the European Parliament or the Council opposes it, the Commission must consult experts designated by each Member State before adoption, and the act enters into force only if neither institution objects within three months of notification, extendable by a further three months. Article 7(3) separately allows removal of a use-case from Annex III where it no longer poses any significant risk to fundamental rights, health or safety and the deletion does not decrease the overall level of protection under Union law.",
+   "refs": [
+    "Annex III.7.b",
+    "Article 97.2",
+    "Article 7.1"
+   ],
+   "expected_refs": [
+    "Article 7.1"
+   ],
+   "criteria": [
+    "Yes",
+    "Condition: AI intended to be used in any of the areas listed in Annex III",
+    "Condition: posed risk is equal or greater than those already referred to in Annex III",
+    "Both condition must apply (\"and\" clause)"
+   ],
+   "criteria_pass": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "criteria_why": [
+    "Answer explicitly states 'Yes' as its position.",
+    "States AI systems must be intended for use in areas listed in Annex III.",
+    "States the risk posed must be equivalent to or greater than that of high-risk systems already in Annex III.",
+    "States conditions are 'cumulatively fulfilled' and 'neither limb alone suffices'."
+   ],
+   "n_passed": 4,
+   "n_criteria": 4,
+   "judge_runs_ok": 3,
+   "judge_errors": 0,
+   "per_run_rates": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "tone_ok": true,
+   "tone_why": "Professional third-person register with well-structured, coherent prose covering the legal conditions in logical order."
+  },
+  {
+   "id": "rg_075",
+   "label": "Q74",
+   "mode": "hard",
+   "question": "I generated audio with AI for my artistic work (sole purpose). Do I need to provide some marking of its artificial nature? I feel that would compromise the enjoyment of the work.",
+   "answer": "Yes, marking is required, but it need not intrude on the work. As the provider of the AI system generating synthetic audio, Article 50(2) requires the output to be marked in a machine-readable format and detectable as artificially generated or manipulated, using solutions that are effective, interoperable, robust and reliable, with exemptions only for standard editing functions that do not substantially alter the input data or for use authorised by law to detect, prevent, investigate or prosecute criminal offences. That marking is embedded metadata or watermarking rather than a visible or audible notice, so it does not affect how the audience experiences the work. Where the audio also constitutes a deep fake, the separate deployer disclosure under Article 50(4) applies, and for content forming part of an evidently artistic, creative, satirical or fictional work that disclosure is limited to an appropriate manner that does not hamper the display or enjoyment of the work.",
+   "refs": [
+    "Article 50.4"
+   ],
+   "expected_refs": [
+    "Article 50.4"
+   ],
+   "criteria": [
+    "No need of marking that would compromise enjoyment",
+    "Still required: other form of disclosure that such content exist (unambiguous)"
+   ],
+   "criteria_pass": [
+    true,
+    true
+   ],
+   "criteria_why": [
+    "Answer states the Article 50(4) artistic exemption limits disclosure to a manner that does not hamper enjoyment of the work.",
+    "Answer states deployer disclosure under Article 50(4) still applies, just limited to an appropriate manner, implying disclosure of existence remains required."
+   ],
+   "n_passed": 2,
+   "n_criteria": 2,
+   "judge_runs_ok": 3,
+   "judge_errors": 0,
+   "per_run_rates": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "tone_ok": true,
+   "tone_why": "Professional, well-structured prose that directly addresses the marking requirements without self-reference or moralising."
+  },
+  {
+   "id": "rg_096",
+   "label": "Q95",
+   "mode": "hard",
+   "question": "What is an \"area\" and what is a \"use case\" for high-risk as per Article 6(2)? How many areas exist?",
+   "answer": "Under Article 6(2), which classifies as high-risk the AI systems listed in Annex III, an \"area\" is a numbered heading of Annex III identifying a sector or context of deployment, and a \"use case\" is a lettered entry beneath that heading describing a specific intended purpose, so a system is high-risk only where it matches a listed use case within an area, not merely because it operates in that area. Annex III contains eight areas: biometrics, critical infrastructure, education and vocational training, employment and workers' management and access to self-employment, access to and enjoyment of essential private services and essential public services and benefits, law enforcement, migration and asylum and border control management, and administration of justice and democratic processes. The distinction matters operationally because Article 7 empowers the Commission to add or modify use cases only within the areas already listed in Annex III and only where the risk is equivalent to or greater than that of the systems already listed, while Article 112 reserves the extension of existing area headings or the addition of new ones to the periodic review process.",
+   "refs": [
+    "Article 6.2",
+    "Annex III.7.b",
+    "Article 7.1",
+    "Article 112.11"
+   ],
+   "expected_refs": [
+    "Article 6.2",
+    "Annex III"
+   ],
+   "criteria": [
+    "Area contain use cases",
+    "8 areas exist"
+   ],
+   "criteria_pass": [
+    true,
+    true
+   ],
+   "criteria_why": [
+    "States a use case is a lettered entry beneath (contained within) an area heading.",
+    "Explicitly states Annex III contains eight areas."
+   ],
+   "n_passed": 2,
+   "n_criteria": 2,
+   "judge_runs_ok": 3,
+   "judge_errors": 0,
+   "per_run_rates": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "tone_ok": true,
+   "tone_why": "Professional, well-structured, neutral third-person prose with no self-reference or hedging."
+  },
+  {
+   "id": "rg_105",
+   "label": "Q104",
+   "mode": "hard",
+   "question": "What is Annex X about? What is it used for?",
+   "answer": "Annex X is a list of Union legislative acts establishing large-scale IT systems in the area of Freedom, Security and Justice, and it imposes no obligations of its own. It names the Schengen Information System, the Visa Information System, Eurodac, the Entry/Exit System, the European Travel Information and Authorisation System, the European Criminal Records Information System on third-country nationals and stateless persons, and the two interoperability Regulations. Its operative use is in Article 111(1) on transitional arrangements, under which AI systems that are components of the large-scale IT systems established by the acts listed in Annex X and placed on the market or put into service before 2 August 2027 must be brought into compliance with the Regulation only by 31 December 2030, without prejudice to the prohibited practices in Article 5. Article 111(1) also requires the Regulation's requirements to be taken into account in the evaluation of each such large-scale IT system provided for in those acts, and where those acts are replaced or amended.",
+   "refs": [
+    "Annex X",
+    "Article 111.1",
+    "Article 5.1.d"
+   ],
+   "expected_refs": [
+    "Article 111.1",
+    "Annex X"
+   ],
+   "criteria": [
+    "Annex X lists Union legal acts on large-scale IT systems in the area of Freedom, Security and Justice",
+    "Used to define transition/compliance timelines for AI systems that are components of these large-scale IT systems"
+   ],
+   "criteria_pass": [
+    true,
+    true
+   ],
+   "criteria_why": [
+    "States Annex X lists Union legislative acts establishing large-scale IT systems in the area of Freedom, Security and Justice.",
+    "States its operative use is Article 111(1) transitional compliance timelines (31 December 2030) for AI systems that are components of these large-scale IT systems."
+   ],
+   "n_passed": 2,
+   "n_criteria": 2,
+   "judge_runs_ok": 3,
+   "judge_errors": 0,
+   "per_run_rates": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "tone_ok": true,
+   "tone_why": "Professional, well-structured third-person prose with no self-reference or hedging."
+  }
+ ]
+}

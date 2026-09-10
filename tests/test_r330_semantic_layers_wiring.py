@@ -82,29 +82,38 @@ def test_include_kg_false_still_skips_the_renderer(monkeypatch) -> None:
     assert called["n"] == 0
 
 
-def test_semantic_layers_default_is_off() -> None:
-    """R330 ships the repaired wiring with the flag DEFAULT OFF.
+def test_semantic_layers_default_is_on() -> None:
+    """R402 ships the constrained semantic layer DEFAULT ON (deny-list).
 
-    That pairing keeps production byte-identical to the behaviour the bug
-    produced. Repairing the wiring while leaving the flag ON would activate an
-    unmeasured feature in production on merge — the R308/R299 mistake.
+    The R330 pairing (repair wiring + flip OFF) was explicitly temporary
+    pending measurement. The r402 live validation on the hard-set failing rows
+    (rg_015/rg_036/rg_087 get the exact missing sub-limb paragraphs, 0.1-1.3 s)
+    is that measurement. Deny-list form: a blank or unexpected value keeps the
+    ON behaviour — the R379 P2-7 defect class — while the explicit off values
+    still roll back.
     """
     import os
 
     from app.engines.graph_semantic import semantic_layers_enabled
 
     os.environ.pop("REGENOLD_GRAPH_SEMANTIC_LAYERS", None)
-    assert semantic_layers_enabled() is False
+    assert semantic_layers_enabled() is True
 
 
 def test_semantic_layers_flag_parses_fail_closed(monkeypatch) -> None:
-    """Garbage must mean OFF, never a silent enable (the R321 bug class)."""
+    """R402 — explicit OFF values roll back; deny-list means garbage stays ON.
+
+    Historical note: pre-R402 this test asserted the allow-list convention
+    (garbage → OFF). The R400 four-lever flip established deny-list truthiness
+    as the project convention precisely so a blank env on Railway cannot
+    silently disable a shipped lever.
+    """
     from app.engines.graph_semantic import semantic_layers_enabled
 
-    for raw in ("", " ", "false", "no", "off", "-2", "four", "0"):
+    for raw in ("0", "false", "no", "off", "OFF"):
         monkeypatch.setenv("REGENOLD_GRAPH_SEMANTIC_LAYERS", raw)
         assert semantic_layers_enabled() is False, raw
 
-    for raw in ("1", "true", "yes", "on", "ON"):
+    for raw in ("", " ", "-2", "four", "1", "true", "yes", "on", "ON"):
         monkeypatch.setenv("REGENOLD_GRAPH_SEMANTIC_LAYERS", raw)
         assert semantic_layers_enabled() is True, raw

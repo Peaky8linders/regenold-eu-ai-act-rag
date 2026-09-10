@@ -12735,3 +12735,111 @@ verbatim to `docs/ROUNDS.md`; the durable negative results were distilled into a
 is actually read. **CLAUDE.md 12,760 → ~370 lines (−97%).** Verified nothing was
 lost: 121 round headings, 0 missing; hard-rule numbering preserved (code cites
 rules #1-#8 in 80 places); all 13 env defaults re-verified against the code.
+
+## R403 — the re-measurement campaign: paired A/B statistics, semantic layers re-verdicted
+
+**Motivation.** Every lever verdict cited from older rounds (R142.1 drop-rerank
+11-0, R327.1 gloss rejection, R401 CBG rejection at n=37) was decided on
+AGGREGATE means with no paired variance — and R327.1's own A/B later proved to
+have run through the dead-wired path where BOTH ARMS WERE THE SAME ARM. The
+operator directive: re-measure against current code with proper significant
+A/B before assuming validity. Parallel workstream: validate the external
+"SOTA Hybrid Vector + GraphRAG" blueprint adversarially against live Aura.
+
+### The instrument fix — `evals/official/paired_ab.py`
+
+New module. Pairs two score_arm checkpoints ROW BY ROW (same question, both
+arms, SAME judge cache file — identical answers share verdicts, so deltas
+measure generation, not judge noise) and reports per-axis paired deltas with
+10,000-resample bootstrap 95% CIs, exact McNemar on flip counts, per-row
+`gold_dropped_head` veto counting, and mean answer chars. This is the
+decision instrument all three re-measurements used.
+
+### Campaign protocol
+
+Four single-arm captures, official 110 hard, every Bedrock slot pinned
+`qwen.qwen3-235b-a22b-2507-v1:0` (STAGE1/STAGE2/COMPLEX/MODEL + pure-235B
+`REGENOLD_BEDROCK_FALLBACK_CHAIN`, `REGENOLD_BEDROCK_WRAPPER_FALLBACK=0`,
+`REGENOLD_STAGE2_STRICT_TRANSPORT=0` — strict transport ON wastes a wrapper
+attempt per call against the dead local wrapper, 32s vs 9s), shared fresh
+judge cache `docs/measurements/r403/judge-cache-r403.jsonl` (Qwen 235B judge,
+3 repeats, workers 8). Arms:
+
+| arm | LAYERS | GLOSS | CITABLE_BASE_GUARD |
+|---|---|---|---|
+| r403-L0G0C0 | 0 | 0 | 0 |
+| r403-L1G0C0 | 1 | 0 | 0 |
+| r403-L1G1C0 | 1 | 1 | 0 |
+| r403-L1G0C1 | 1 | 0 | 1 |
+
+Baseline L0G0C0 shared across all three pairs → 4 captures, not 6.
+
+### AB1 — semantic layers (RE-MEASURED: default ON, overturning R330)
+
+`paired-L0-vs-L1.json`, n=110 paired. **RefStrict +4.50 pp, 95% CI
+[+1.00, +9.00] — significant.** RefLoose +2.33 ns; every answer axis CI
+crosses 0 (ans_loose −0.77 [−4.18, +2.48]; conciseness −0.40 ns); tone flat;
+**gold-head drops 8 → 5** (rule-#8 veto passes in the winning direction).
+The R327.1 citation-faithfulness result is CONFIRMED on live wiring for the
+first time; R330's temporary default-OFF is formally overturned. Code default
+now `REGENOLD_GRAPH_SEMANTIC_LAYERS=1` (deny-list form, per R400 convention).
+
+### AB2 — gloss (RE-MEASURED: HOLD AT OFF, rejection reason corrected)
+
+`paired-G0-vs-G1.json`, n=110 paired. The R327.1 rejection reason did NOT
+reproduce under current code: ref axes flat (+1.00/+0.50 ns, conciseness
++0.12 ns), gold drops 5 → 4, ans_loose +1.55 ns [−0.91, +3.97], and the one
+failing tone row flipped to pass (99.09 → 100.0). But the cost is real and
+now measured: **resp_speed −0.95 pp, CI [−1.88, +0.06], McNemar p=0.0015,
+72/110 rows slower** (two extra Aura ANN round-trips per request). Verdict:
+marginal unproven gain, significant latency cost → stays default OFF, with
+the correction that the historical "reference precision collapses" claim is
+falsified under current code. A definitions-only or recitals-only subset gate
+is the natural re-test.
+
+### AB3 — citable-base-guard (RE-MEASURED: default OFF CONFIRMED, now on statistics)
+
+`paired-C0-vs-C1.json`, n=110 paired. The RefConc gain is REAL and now
+formally significant: **+6.72 pp, 95% CI [+3.63, +10.22], McNemar p<0.0001,
+29/5 flips** — R401 could only infer this direction at n=37. But
+**`gold_dropped_head` 5 → 7 (new drops: rg_067, rg_090) trips hard rule #8's
+veto**, and RefLoose −1.50 [−4.00, +0.00] / RefStrict −2.00 [−4.50, +0.00]
+trend negative with CIs touching zero. Verdict: default OFF confirmed at full
+power — the lever trades gold references for conciseness, which is the exact
+definition of a rule-#8 no. Tone 99.09 → 100.0 (1 flip, ns). Note: the
+resp_speed −0.94 in this pair is a measurement-order confound (both B-arms
+ran after A; Bedrock load drifted slower over the session; CBG is pure-local
+post-processing and cannot slow generation), NOT a lever cost — same signature
+as the gloss pair's speed delta.
+
+### Blueprint adversarial validation (external SOTA spec)
+
+Five of six elements REJECTED or already-present-stronger against measured
+repo history: graph-primary retrieval (R252 buried operative articles — the
+constrained hierarchy walk is the superior validated design); the blueprint's
+Cypher template (mandated rel types PROVIDES_INTENT_FOR / DEFINES_SCOPE_OF /
+HAS_DEROGATION / AMENDS_OR_GOVERNS / CLARIFIES_MANDATE_OF / OPERATIONALIZES
+exist NOWHERE in live Aura → 0 rows; real equivalents CROSS_REFERENCES ×254,
+HAS_RECITAL_ANCHOR, INTERPRETS, TRIGGERS_HIGH_RISK_UNDER); Cohere top_n=7
+drop (R142.1 lost live pairwise 11-0; reorder-only + gold-guarded clamp is
+the measured-safe composition); JSON verdict output (benchmark grades
+prose+refs); its 2026 temporal layer (contradicts the Act-as-adopted pin).
+Stage-1 intent JSON: already present and stronger (deterministic parse +
+Stage-0 LLM parse). ACCEPTED: semantic layers over the Aura vector indexes —
+then validated live on three failing rows (rg_015/036/087 surface the exact
+missing sub-limb paragraphs) and A/B-measured (AB1).
+
+### Hard-won ops lessons this round
+
+* `REGENOLD_STAGE2_STRICT_TRANSPORT=1` routes Stage-2 to the local wrapper as
+  PRIMARY even when `P2P_GRAPH_RAG_PROVIDER=bedrock` — with the wrapper down
+  every call burns a 5s timeout before Bedrock fallback. For all-Bedrock
+  measurement arms set `=0`.
+* `REGENOLD_BEDROCK_FALLBACK_CHAIN` must be pinned to the SAME model as the
+  primary or a throttle silently mixes a 32B into a "235B" arm — v2 r402
+  shipped 26% of Stage-2 rows on 32B this way.
+* Windows cp1252 stdout kills `−`/`\u2212` in report code; keep generated
+  reports ASCII.
+* The judge cache is keyed `qid:sha256(answer)` with NO judge identity — a
+  shared campaign cache gives perfect cross-arm pairing, but never mix caches
+  across judge models.

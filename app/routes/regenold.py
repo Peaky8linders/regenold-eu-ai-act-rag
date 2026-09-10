@@ -2094,6 +2094,21 @@ def _engine_cache_key(
             # enforces their presence here.
             "REGENOLD_ANNEXIII_RECALL_SUPPLEMENTS",
             "REGENOLD_ART50_RECALL_SUPPLEMENTS",
+            # R403 — two flags living in ``app/data/graph_rag_prompts.py``
+            # (outside the R355 AST gate's ``app/engines`` scan, so they must
+            # be checked by hand per AGENTS.md invariant #4 caveat):
+            #   * REGENOLD_CONTRACT_COMPLETENESS — appends the completeness
+            #     directive to the Stage-2 evidence-contract prompt → flips
+            #     the polished answer AND, via the prose→refs passes, the wire
+            #     references (AGENTS.md invariant #5).
+            #   * REGENOLD_PROMPT_BUDGET_FLEX — when ON, tier_quota() scales
+            #     the semantic-layer units quota with the question's evidence
+            #     tier (S/M/L); OFF restores the historical fixed quota. The
+            #     semantic units reach Stage-2 as non-citable context → flip
+            #     the polished answer. Same R263.2 doctrine as every line
+            #     above.
+            "REGENOLD_CONTRACT_COMPLETENESS",
+            "REGENOLD_PROMPT_BUDGET_FLEX",
         )
     )
     import json

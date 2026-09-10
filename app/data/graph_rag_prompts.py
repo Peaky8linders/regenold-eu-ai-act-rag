@@ -1144,6 +1144,125 @@ Return concise professional prose only, with no headings, reasoning scratchpad,
 graph paths, JSON, discussion of retrieval, or repeated concluding summary.
 """
 
+#: R403 — the completeness directive is a SEPARATE block so it can be A/B
+#: measured on its own (the R402 text shipped merged into the base contract
+#: before any arm isolated it). Appended verbatim to the base contract when
+#: :func:`contract_completeness_directives_enabled` is on.
+EVIDENCE_COMPLETENESS_BLOCK = """COMPLETENESS DIRECTIVE: an obligation and its
+exceptions are ONE answer. When a cited provision carries enumerated limbs,
+sub-points or exceptions, state each of them, not just the headline duty: a
+transparency duty is incomplete without its carve-outs, and a verification
+duty is incomplete without its follow-on steps. When the question is
+answerable yes/no, give the bare verdict FIRST as a complete sentence, then
+the grounds — never only the conditions under which the verdict might change."""
+
+EVIDENCE_ANSWER_CONTRACT_WITH_COMPLETENESS = (
+    EVIDENCE_ANSWER_CONTRACT + "\n\n" + EVIDENCE_COMPLETENESS_BLOCK
+)
+
+
+def contract_completeness_directives_enabled() -> bool:
+    """R403 gate for :data:`EVIDENCE_COMPLETENESS_BLOCK`. Default ON (the
+    R402 directive shipped default-ON merged into the base; the split keeps
+    behaviour identical while making the block isolated and reversible).
+    Deny-list form."""
+    import os
+    return os.getenv("REGENOLD_CONTRACT_COMPLETENESS", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
+# ── R403 — flexible prompt budgets ──────────────────────────────────────────
+#
+# Fixed prompt quotas waste two ways at once: simple lookups pay for context
+# they cannot use (cost), and complex syntheses get the same caps as simple
+# ones (performance). The tier system scales the expensive context-side
+# quotas with cheap question signals ONLY where no explicit env override
+# exists — an operator-set REGENOLD_SEMANTIC_UNITS still wins outright.
+
+
+def prompt_budget_tier(question: str, history_turn_count: int = 1) -> str:
+    """Classify the live question into an evidence-budget tier: ``S``/``M``/``L``.
+
+    Pure stdlib, ~µs. ``L`` = genuinely complex (the R51 complexity signals,
+    multi-turn, or long live questions) — full quotas. ``S`` = single-anchor
+    lookup (short, one article/annex token, no synthesis keywords) — lean
+    quotas. ``M`` = everything else (the historical fixed behaviour).
+
+    A tier is a BUDGET prior, not a content gate: no block is withheld by
+    tier alone (that would be the gloss-style withholding decision, which is
+    separately measured); quotas scale, presence does not.
+    """
+    import re
+
+    live = question or ""
+    if "Latest question:" in live:
+        live = live.split("Latest question:", 1)[-1]
+    if history_turn_count >= 2 or len(live) > 350:
+        return "L"
+    low = live.lower()
+    if any(
+        kw in low
+        for kw in (
+            "compare", "comparison", "difference", " versus ", " vs ",
+            "trade-off", "tradeoff", "prioritis", "prioritiz", "remediat",
+            "roadmap", "how should we", "what should we", "exceptions",
+            "derogation", "all of the following", "each of",
+        )
+    ):
+        return "L"
+    # Single statutory anchor + short question with no duty/enumeration
+    # language = lookup. Duty verbs mark obligation-enumeration questions,
+    # which need the full evidence surface even when short.
+    if re.search(
+        r"\b(?:must|obligation|require|comply|compliance|duty|document|"
+        r"assess|procedure|steps?|do\b|owe)\b",
+        low,
+    ):
+        return "M"
+    anchors = re.findall(r"\b(?:article|annex)\s+[ivxlcdm\d]+", low)
+    if len(anchors) <= 1 and len(live) < 160:
+        return "S"
+    return "M"
+
+
+def tier_quota(
+    question: str,
+    *,
+    history_turn_count: int = 1,
+    env_name: str,
+    default: int,
+    lo: int,
+    hi: int,
+    scale: dict[str, int],
+) -> int:
+    """Resolve a quota: explicit env override > tier scale > fixed default.
+
+    ``scale`` maps tier letter to the value used when the env var is unset
+    and flexible budgets are on. When flexible budgets are OFF (or the env
+    var is set) this is exactly the historical fixed resolution.
+    """
+    import os
+    raw = os.getenv(env_name, "").strip()
+    if raw:
+        try:
+            return max(lo, min(int(raw), hi))
+        except ValueError:
+            pass
+    if prompt_budget_flex_enabled():
+        tier = prompt_budget_tier(question, history_turn_count)
+        return max(lo, min(int(scale.get(tier, default)), hi))
+    return max(lo, min(default, hi))
+
+
+def prompt_budget_flex_enabled() -> bool:
+    """``REGENOLD_PROMPT_BUDGET_FLEX`` — flexible evidence quotas. Default ON.
+    Deny-list form. Off restores the historical fixed quotas byte-identically."""
+    import os
+    return os.getenv("REGENOLD_PROMPT_BUDGET_FLEX", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
 
 def evidence_contract_enabled() -> bool:
     """R399 synthesis contract — R400 flipped it to DEFAULT ON.
@@ -1200,5 +1319,8 @@ def build_evidence_answer_user(
     if system_description:
         parts.append(f"SYSTEM DESCRIPTION: {system_description}")
     parts.append(f"EU AI ACT REFERENCES:\n{references}")
-    parts.append(EVIDENCE_ANSWER_CONTRACT)
+    if contract_completeness_directives_enabled():
+        parts.append(EVIDENCE_ANSWER_CONTRACT_WITH_COMPLETENESS)
+    else:
+        parts.append(EVIDENCE_ANSWER_CONTRACT)
     return "\n\n".join(parts)
