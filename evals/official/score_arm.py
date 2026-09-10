@@ -266,7 +266,9 @@ def main() -> int:
                                     k: j[k]
                                     for k in (
                                         "criteria",
+                                        "criterion_remarks",
                                         "tone_ok",
+                                        "tone_remark",
                                         "_judge_runs",
                                         "_criteria_rate_min",
                                         "_criteria_rate_max",
@@ -379,10 +381,14 @@ def main() -> int:
         "rows": [
             {
                 "id": r["id"],
+                "question": r.get("question") or "",
+                "answer": r.get("answer") or "",
                 "criteria_text": r["criteria_text"],
                 "criteria": r.get("criteria"),
+                "criterion_remarks": r.get("criterion_remarks") or [],
                 "n_criteria_passed": sum(1 for c in (r.get("criteria") or []) if c),
                 "tone_ok": r.get("tone_ok"),
+                "tone_remark": r.get("tone_remark") or "",
                 "answer_chars": len(r.get("answer") or ""),
                 "reference_chars": len(r.get("reference_answer") or ""),
                 "refs": _clean(r.get("references") or []),

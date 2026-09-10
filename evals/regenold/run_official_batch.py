@@ -47,6 +47,7 @@ import json
 import os
 import statistics as st
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -132,7 +133,11 @@ def _apply_env(arm_env: dict[str, str]) -> dict[str, str | None]:
     return saved
 
 
-def _install_cohere_guard() -> Callable[[], None]:
+def _install_cohere_guard(
+    *,
+    require_embeddings: bool = True,
+    min_rerank_gap_s: float = 0.0,
+) -> Callable[[], None]:
     """Require real Cohere embeddings and reranking for a local live run.
 
     The application deliberately fails open when an optional retrieval provider
@@ -141,29 +146,41 @@ def _install_cohere_guard() -> Callable[[], None]:
     run. Probe both APIs, verify that the document index really selected Cohere,
     then install sticky wrappers whose health check is called after every POST.
     """
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=False)
+    except ImportError:
+        pass
     if not os.getenv("COHERE_API_KEY", "").strip():
         raise RuntimeError("--require-cohere needs COHERE_API_KEY")
     falsy = {"0", "false", "no", "off"}
-    if os.getenv("REGENOLD_EXTERNAL_EMBEDDINGS", "1").strip().lower() in falsy:
+    if (
+        require_embeddings
+        and os.getenv("REGENOLD_EXTERNAL_EMBEDDINGS", "1").strip().lower() in falsy
+    ):
         raise RuntimeError("--require-cohere conflicts with REGENOLD_EXTERNAL_EMBEDDINGS=0")
     if os.getenv("REGENOLD_COHERE_RERANK", "1").strip().lower() in falsy:
         raise RuntimeError("--require-cohere conflicts with REGENOLD_COHERE_RERANK=0")
 
     from app.engines import cohere_rerank, external_embeddings, turboquant_index
 
-    probe = external_embeddings.get_embedding(
-        "EU AI Act benchmark Cohere preflight",
-        is_query=True,
-    )
-    if probe is None:
-        raise RuntimeError("Cohere embedding preflight failed; refusing a fallback-contaminated run")
-
-    diagnostics = turboquant_index.index_diagnostics()
-    if diagnostics.get("embedding_backend") != "cohere":
-        backend = diagnostics.get("embedding_backend", "unavailable")
-        raise RuntimeError(
-            f"dense index backend is {backend!r}, not Cohere; refusing benchmark"
+    if require_embeddings:
+        probe = external_embeddings.get_embedding(
+            "EU AI Act benchmark Cohere preflight",
+            is_query=True,
         )
+        if probe is None:
+            raise RuntimeError(
+                "Cohere embedding preflight failed; refusing a fallback-contaminated run"
+            )
+
+        diagnostics = turboquant_index.index_diagnostics()
+        if diagnostics.get("embedding_backend") != "cohere":
+            backend = diagnostics.get("embedding_backend", "unavailable")
+            raise RuntimeError(
+                f"dense index backend is {backend!r}, not Cohere; refusing benchmark"
+            )
 
     cohere_rerank.reset_rerank_stats()
     cohere_rerank.reset_request_budget()
@@ -181,6 +198,9 @@ def _install_cohere_guard() -> Callable[[], None]:
     failure_lock = threading.Lock()
     original_embed = external_embeddings.get_embedding
     original_rerank = cohere_rerank.rerank_documents
+    min_gap = max(0.0, float(min_rerank_gap_s))
+    pace_lock = threading.Lock()
+    last_rerank_at = time.monotonic()
 
     def record(message: str) -> None:
         with failure_lock:
@@ -193,15 +213,33 @@ def _install_cohere_guard() -> Callable[[], None]:
         return result
 
     def guarded_rerank(query, documents, *, top_n=None):
+        nonlocal last_rerank_at
         docs = [str(item) for item in documents if str(item).strip()]
         before = cohere_rerank.rerank_stats()
-        result = original_rerank(query, documents, top_n=top_n)
+        if min_gap:
+            with pace_lock:
+                wait_s = min_gap - (time.monotonic() - last_rerank_at)
+                if wait_s > 0:
+                    time.sleep(wait_s)
+                result = original_rerank(query, documents, top_n=top_n)
+                if (
+                    cohere_rerank.rerank_stats().get("attempts", 0)
+                    > before.get("attempts", 0)
+                ):
+                    last_rerank_at = time.monotonic()
+        else:
+            result = original_rerank(query, documents, top_n=top_n)
         after = cohere_rerank.rerank_stats()
         if len(docs) >= 2 and str(query).strip() and result is None:
             if after.get("failed", 0) > before.get("failed", 0):
                 record("Cohere rerank call failed")
             elif after.get("attempts", 0) == before.get("attempts", 0):
-                record("Cohere rerank call was skipped or disabled")
+                budget_skip = (
+                    after.get("budget_skipped", 0)
+                    > before.get("budget_skipped", 0)
+                )
+                if require_embeddings or not budget_skip:
+                    record("Cohere rerank call was skipped or disabled")
         return result
 
     external_embeddings.get_embedding = guarded_embed
@@ -213,11 +251,16 @@ def _install_cohere_guard() -> Callable[[], None]:
         if problem:
             raise RuntimeError(f"{problem}; Cohere-required benchmark is invalid")
 
+    embedding_label = (
+        "cohere "
+        f"({os.getenv('REGENOLD_EXTERNAL_EMBEDDING_MODEL', 'embed-english-v3.0')})"
+        if require_embeddings
+        else "not required"
+    )
     print(
-        "Cohere strict mode: embeddings=cohere "
-        f"({os.getenv('REGENOLD_EXTERNAL_EMBEDDING_MODEL', 'embed-english-v3.0')}), "
-        "rerank=cohere "
-        f"({os.getenv('REGENOLD_COHERE_RERANK_MODEL', 'rerank-v3.5')})"
+        f"Cohere strict mode: embeddings={embedding_label}, rerank=cohere "
+        f"({os.getenv('REGENOLD_COHERE_RERANK_MODEL', 'rerank-v4.0-pro')}), "
+        f"min_rerank_gap={min_gap:.1f}s"
     )
     return assert_healthy
 
@@ -520,6 +563,7 @@ def _arm(
     timeout: float,
     arm_env: dict[str, str],
     suffix: str,
+    resume: bool = False,
 ) -> dict[str, Any]:
     saved = _apply_env(arm_env)
     try:
@@ -530,15 +574,38 @@ def _arm(
             ckpt_path = _RESULTS / f"official-{label}{suffix}-{m}.ckpt.jsonl"
             ckpt_path.parent.mkdir(parents=True, exist_ok=True)
             print(f"\n--- {label}{suffix} :: {m} (n={len(rows)}) -> {ckpt_path.name}")
-            # R292 — "w", not "a". In append mode, re-running the SAME label
-            # silently merged the previous run's rows into the checkpoint file,
-            # so anything reading the .ckpt.jsonl (a resumed run, or the judge)
-            # graded a mix of stale and fresh answers with no way to tell them
-            # apart. Each run now owns its checkpoint; use a distinct --label to
-            # keep an earlier run.
-            with ckpt_path.open("w", encoding="utf-8") as ckpt:
+            previous: list[dict[str, Any]] = []
+            pending = list(rows)
+            file_mode = "w"
+            if resume and ckpt_path.exists():
+                seen: set[str] = set()
+                for line in ckpt_path.read_text(encoding="utf-8").splitlines():
+                    if not line.strip():
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError as exc:
+                        raise RuntimeError(
+                            f"invalid resume checkpoint row in {ckpt_path.name}: "
+                            "truncated or corrupt JSON line"
+                        ) from exc
+                    row_id = str(record.get("id") or "")
+                    if not row_id or row_id in seen or record.get("mode") != m:
+                        raise RuntimeError(
+                            f"invalid resume checkpoint row in {ckpt_path.name}: {row_id!r}"
+                        )
+                    seen.add(row_id)
+                    previous.append(record)
+                pending = [row for row in rows if row.id not in seen]
+                file_mode = "a"
+                print(f"  resuming: {len(previous)} complete, {len(pending)} pending")
+            # Default remains overwrite (R292). Append is allowed only through
+            # the explicit, validated --resume path above.
+            with ckpt_path.open(file_mode, encoding="utf-8") as ckpt:
                 runner = _run_easy if m == "easy" else _run_hard
-                got = runner(rows, poster, url, api_key, timeout, ckpt)
+                fresh = runner(pending, poster, url, api_key, timeout, ckpt)
+            by_id = {r["id"]: r for r in previous + fresh}
+            got = [by_id[row.id] for row in rows if row.id in by_id]
             strata = _stratify(got)
             result[m] = {"rows": got, "agg": _aggregate(got), "strata": strata}
             _print_agg(f"{label}{suffix} {m}", result[m]["agg"])
@@ -566,6 +633,11 @@ def main() -> None:
     ap.add_argument("--api-key", default=os.environ.get("REGENOLD_API_KEY"))
     ap.add_argument("--timeout", type=float, default=180.0)
     ap.add_argument("--limit", type=int, default=0, help="first N questions only")
+    ap.add_argument(
+        "--resume",
+        action="store_true",
+        help="validate and continue this label's existing checkpoint",
+    )
     ap.add_argument("--baseline-env", action="append", default=None)
     ap.add_argument("--branch-env", action="append", default=None)
     ap.add_argument(
@@ -573,13 +645,29 @@ def main() -> None:
         action="store_true",
         help="fail closed unless local embeddings and eligible reranks use Cohere",
     )
+    ap.add_argument(
+        "--require-cohere-rerank",
+        action="store_true",
+        help="fail closed unless eligible reranks use Cohere; embeddings may stay offline",
+    )
+    ap.add_argument(
+        "--cohere-rerank-min-gap",
+        type=float,
+        default=0.0,
+        help="minimum seconds between Cohere rerank calls (use 6.5 for trial keys)",
+    )
     args = ap.parse_args()
 
-    if args.require_cohere and args.endpoint:
+    if args.require_cohere and args.require_cohere_rerank:
+        raise SystemExit("choose only one of --require-cohere and --require-cohere-rerank")
+    require_any_cohere = args.require_cohere or args.require_cohere_rerank
+    if require_any_cohere and args.endpoint:
         raise SystemExit(
-            "--require-cohere supports local-live evaluation only: the deployed "
+            "Cohere strict modes support local-live evaluation only: the deployed "
             "wire response does not expose provider provenance"
         )
+    if args.cohere_rerank_min_gap and not require_any_cohere:
+        raise SystemExit("--cohere-rerank-min-gap requires a Cohere strict mode")
 
     rows = list(load_official_batch())
     if args.limit:
@@ -589,8 +677,11 @@ def main() -> None:
 
     local = not args.endpoint
     poster = _post_local if local else _post
-    if args.require_cohere:
-        assert_cohere_healthy = _install_cohere_guard()
+    if require_any_cohere:
+        assert_cohere_healthy = _install_cohere_guard(
+            require_embeddings=args.require_cohere,
+            min_rerank_gap_s=args.cohere_rerank_min_gap,
+        )
         base_poster = poster
 
         def guarded_poster(*poster_args, **poster_kwargs):
@@ -628,7 +719,7 @@ def main() -> None:
     baseline = _arm(
         args.label, args.mode, rows,
         poster=poster, url=url, api_key=args.api_key, timeout=args.timeout,
-        arm_env=base_env, suffix="-A" if ab else "",
+        arm_env=base_env, suffix="-A" if ab else "", resume=args.resume,
     )
     payload["baseline"] = {m: v["agg"] for m, v in baseline.items()}
 
@@ -637,7 +728,7 @@ def main() -> None:
         branch = _arm(
             args.label, args.mode, rows,
             poster=poster, url=url, api_key=args.api_key, timeout=args.timeout,
-            arm_env=branch_env, suffix="-B",
+            arm_env=branch_env, suffix="-B", resume=args.resume,
         )
         payload["branch"] = {m: v["agg"] for m, v in branch.items()}
         for m in baseline:

@@ -153,6 +153,10 @@ class TestNegativeProbeCache:
         flaky-network deploy functional)."""
         monkeypatch.setenv("COHERE_API_KEY", "co-test")
         monkeypatch.delenv("REGENOLD_EXTERNAL_EMBEDDINGS", raising=False)
+        # R407 — pin the retry ceiling to the historical one-shot so this test
+        # isolates the NEGATIVE-PROBE-CACHE behaviour (retry has its own
+        # tripwires in tests/test_r407_cohere_transient_retry.py).
+        monkeypatch.setenv("REGENOLD_EXTERNAL_EMBEDDING_RETRIES", "1")
 
         calls = {"n": 0}
 

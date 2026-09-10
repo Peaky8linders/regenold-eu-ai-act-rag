@@ -29,6 +29,7 @@ import json
 import os
 import re
 import sys
+import threading
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -108,6 +109,7 @@ def _parse_bool(val: Any) -> bool:
 
 
 _FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.MULTILINE)
+_remark_state = threading.local()
 
 
 def _call(prompt: str, *, max_tokens: int = 2000, timeout: float = 300.0, retries: int = 3) -> str:
@@ -294,19 +296,31 @@ def judge_correctness_once(row: dict) -> list[bool] | None:
     if not isinstance(verdicts, list):
         return None
     by_n = {}
+    remarks_by_n: dict[int, str] = {}
     for v in verdicts:
         if isinstance(v, dict) and "n" in v:
             try:
-                by_n[int(v["n"])] = _parse_bool(v.get("satisfied"))
+                item_n = int(v["n"])
+                by_n[item_n] = _parse_bool(v.get("satisfied"))
+                remarks_by_n[item_n] = str(v.get("why") or "").strip()
             except Exception:
                 continue
     if 0 in by_n and len(criteria) not in by_n:
         by_n = {k + 1: v for k, v in by_n.items()}
+        remarks_by_n = {k + 1: v for k, v in remarks_by_n.items()}
     if len(by_n) < len(criteria):
         flat = [_parse_bool(v.get("satisfied")) for v in verdicts if isinstance(v, dict)]
         if len(flat) != len(criteria):
             return None
+        _remark_state.correctness = [
+            str(v.get("why") or "").strip()
+            for v in verdicts
+            if isinstance(v, dict)
+        ]
         return flat
+    _remark_state.correctness = [
+        remarks_by_n.get(i, "") for i in range(1, len(criteria) + 1)
+    ]
     return [by_n.get(i, False) for i in range(1, len(criteria) + 1)]
 
 
@@ -324,6 +338,7 @@ def judge_tone_once(row: dict) -> bool | None:
     d = _parse(raw)
     if not isinstance(d, dict):
         return None
+    _remark_state.tone = str(d.get("why") or "").strip()
     return _parse_bool(d.get("appropriate")) and _parse_bool(d.get("clear"))
 
 
@@ -343,15 +358,53 @@ def _majority(runs: list, n_criteria: int) -> list[bool]:
 def judge_row(row: dict, repeats: int = REPEATS) -> dict:
     """Judge one captured row; returns criteria booleans, tone, and spread."""
     n = len(row.get("criteria") or [])
-    corr_runs = [judge_correctness_once(row) for _ in range(repeats)]
-    tone_runs = [judge_tone_once(row) for _ in range(repeats)]
+    corr_runs = []
+    corr_remarks_runs: list[list[str]] = []
+    for _ in range(repeats):
+        _remark_state.correctness = []
+        corr_runs.append(judge_correctness_once(row))
+        corr_remarks_runs.append(list(getattr(_remark_state, "correctness", [])))
+
+    tone_runs = []
+    tone_remarks_runs: list[str] = []
+    for _ in range(repeats):
+        _remark_state.tone = ""
+        tone_runs.append(judge_tone_once(row))
+        tone_remarks_runs.append(str(getattr(_remark_state, "tone", "")))
     criteria = _majority(corr_runs, n)
     live_corr = [r for r in corr_runs if r is not None and len(r) == n]
     per_run_rate = [sum(1 for c in r if c) / n for r in live_corr] if (live_corr and n) else []
     live_tone = [t for t in tone_runs if t is not None]
+    criterion_remarks: list[str] = []
+    for idx, majority_value in enumerate(criteria):
+        remark = ""
+        for run, run_remarks in zip(corr_runs, corr_remarks_runs, strict=False):
+            if (
+                run is not None
+                and len(run) == n
+                and run[idx] == majority_value
+                and idx < len(run_remarks)
+                and run_remarks[idx]
+            ):
+                remark = run_remarks[idx]
+                break
+        criterion_remarks.append(remark)
+
+    tone_ok = (
+        (sum(1 for t in live_tone if t) * 2 > len(live_tone))
+        if live_tone
+        else False
+    )
+    tone_remark = ""
+    for run_value, run_remark in zip(tone_runs, tone_remarks_runs, strict=False):
+        if run_value is not None and run_value == tone_ok and run_remark:
+            tone_remark = run_remark
+            break
     return {
         "criteria": criteria,
-        "tone_ok": (sum(1 for t in live_tone if t) * 2 > len(live_tone)) if live_tone else False,
+        "criterion_remarks": criterion_remarks,
+        "tone_ok": tone_ok,
+        "tone_remark": tone_remark,
         "_judge_runs": len(live_corr),
         "_criteria_rate_min": round(min(per_run_rate), 4) if per_run_rate else None,
         "_criteria_rate_max": round(max(per_run_rate), 4) if per_run_rate else None,

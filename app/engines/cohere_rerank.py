@@ -155,7 +155,7 @@ COHERE_RERANK_URL = "https://api.cohere.com/v2/rerank"
 
 _ENV_GATE = "REGENOLD_COHERE_RERANK"
 _ENV_MODEL = "REGENOLD_COHERE_RERANK_MODEL"
-_DEFAULT_MODEL = "rerank-v3.5"
+_DEFAULT_MODEL = "rerank-v4.0-pro"
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 #: R400 — the gate is default ON, so it reads as a DENY list: a blank or
 #: unexpected value must keep the ON behaviour rather than silently reverting
@@ -168,6 +168,15 @@ _FALSY = frozenset({"0", "false", "no", "off"})
 #: Latency is a SCORED axis (Speed, 61.7% — our second-worst) and live p50 is
 #: already ~57 s, so this call must be tightly bounded and must fail open.
 _CLIENT_TIMEOUT = httpx.Timeout(6.0, connect=2.0)
+
+from app.engines._http_retry import attempts_from_env, post_transient_retry  # noqa: E402
+
+#: R407 — transient-retry ceiling for the rerank POST (429/5xx with backoff +
+#: Retry-After). Trial keys rate-limit at 10 calls/min, so one unlucky call
+#: used to silently drop that reordering; now a transient survives. Permanent
+#: 4xx still fails immediately. Fresh-read per call (R263.2) so same-process
+#: A/Bs can flip it. ``REGENOLD_COHERE_RERANK_RETRIES=1`` restores the old
+#: one-shot behaviour.
 
 _CLIENT_LOCK = threading.Lock()
 _CLIENT: httpx.Client | None = None
@@ -389,14 +398,21 @@ def rerank_documents(
         return None
     _bump("attempts")
     try:
-        resp = _get_client().post(
-            COHERE_RERANK_URL,
-            json=payload,
-            headers={
-                "Authorization": f"Bearer {key}",
-                "Content-Type": "application/json",
-            },
+        resp = post_transient_retry(
+            lambda: _get_client().post(
+                COHERE_RERANK_URL,
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json",
+                },
+            ),
+            max_attempts=attempts_from_env("REGENOLD_COHERE_RERANK_RETRIES", 3),
+            log_prefix="cohere_rerank",
         )
+        if resp is None:
+            _bump("failed")
+            return None
         if resp.status_code != 200:
             logger.debug(
                 "cohere_rerank: http %s (%s)", resp.status_code, resp.text[:160]

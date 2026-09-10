@@ -130,3 +130,45 @@ def test_cohere_required_run_rejects_noop_reranker(
 
     with pytest.raises(RuntimeError, match="rerank preflight failed"):
         _install_cohere_guard()
+
+
+def test_rerank_only_guard_allows_offline_embeddings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A reranker experiment must not be forced to consume embedding quota."""
+    from app.engines import cohere_rerank
+    from evals.regenold.run_official_batch import _install_cohere_guard
+
+    monkeypatch.setenv("COHERE_API_KEY", "test-key")
+    monkeypatch.setenv("REGENOLD_EXTERNAL_EMBEDDINGS", "0")
+    monkeypatch.setattr(
+        cohere_rerank,
+        "rerank_documents",
+        lambda *_args, **_kwargs: (
+            cohere_rerank._bump("attempts") or [(0, 0.9), (1, 0.1)]
+        ),
+    )
+
+    assert_healthy = _install_cohere_guard(require_embeddings=False)
+    assert_healthy()
+
+
+def test_judge_remarks_are_persisted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The judge asks for explanations, so the audit artifact must retain them."""
+    from evals.official import judge
+
+    replies = iter(
+        [
+            '{"verdicts":[{"n":1,"satisfied":true,"why":"States the rule."}]}',
+            '{"appropriate":true,"clear":true,"why":"Professional and clear."}',
+        ]
+    )
+    monkeypatch.setattr(judge, "_call", lambda *_args, **_kwargs: next(replies))
+
+    out = judge.judge_row(
+        {"question": "Q", "answer": "A", "criteria": ["rule"]},
+        repeats=1,
+    )
+
+    assert out["criterion_remarks"] == ["States the rule."]
+    assert out["tone_remark"] == "Professional and clear."
