@@ -124,6 +124,25 @@ def load_cache(cache_path: Path | None = None) -> dict[str, dict]:
     return out
 
 
+def _criteria_sha(criteria: list) -> str:
+    return hashlib.sha256("\n".join(str(c) for c in criteria).encode("utf-8")).hexdigest()[:12]
+
+
+def _criteria_match(v: dict, row: dict) -> bool:
+    """R409 — a cached verdict is valid only for the criteria it judged.
+
+    ``_key`` hashes the answer and the judge, not the criteria, so editing a
+    row's criteria (same count) silently replayed the old verdicts. Verdicts
+    written from R409 carry ``_criteria_sha``; older lines carry none and are
+    trusted only for gold rows never revised since (``_revised`` unset), which
+    is exact because every committed cache predates the first revision.
+    """
+    sha = v.get("_criteria_sha")
+    if sha is not None:
+        return sha == _criteria_sha(row.get("criteria_text") or [])
+    return not row.get("_revised")
+
+
 def _verdict_complete(v: dict, repeats: int) -> bool:
     """R409 — a verdict is cacheable only when EVERY repetition was live.
 
@@ -188,6 +207,7 @@ def build_rows(ckpt_rows: list[dict], gold: dict[str, dict]) -> list[dict]:
                 "reference_answer": g["reference_answer"],
                 "expected_refs": g.get("expected_refs") or [],
                 "criteria_unstable": g.get("criteria_unstable", False),
+                "_revised": g.get("_revised"),
             }
         )
     return out
@@ -257,7 +277,7 @@ def main() -> int:
     todo, cached = [], []
     for r in rows:
         v = cache.get(_key(r["id"], r["answer"], judge_id))
-        if v and _verdict_complete(v, a.repeats) and len(v.get("criteria") or []) == len(r["criteria_text"]):
+        if v and _verdict_complete(v, a.repeats) and _criteria_match(v, r) and len(v.get("criteria") or []) == len(r["criteria_text"]):
             cached.append({**r, **v})
         else:
             todo.append(r)
@@ -280,20 +300,23 @@ def main() -> int:
                                 "key": _key(j["id"], j["answer"], judge_id),
                                 "judge_identity": judge_id,
                                 "verdict": {
-                                    k: j[k]
-                                    for k in (
-                                        "criteria",
-                                        "criterion_remarks",
-                                        "tone_ok",
-                                        "tone_remark",
-                                        "_judge_runs",
-                                        "_criteria_rate_min",
-                                        "_criteria_rate_max",
-                                        "_judge_errors",
-                                        "_corr_runs",
-                                        "_tone_runs_raw",
-                                    )
-                                    if k in j
+                                    **{
+                                        k: j[k]
+                                        for k in (
+                                            "criteria",
+                                            "criterion_remarks",
+                                            "tone_ok",
+                                            "tone_remark",
+                                            "_judge_runs",
+                                            "_criteria_rate_min",
+                                            "_criteria_rate_max",
+                                            "_judge_errors",
+                                            "_corr_runs",
+                                            "_tone_runs_raw",
+                                        )
+                                        if k in j
+                                    },
+                                    "_criteria_sha": _criteria_sha(j.get("criteria_text") or []),
                                 },
                             },
                             ensure_ascii=False,

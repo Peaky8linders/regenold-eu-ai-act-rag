@@ -30,6 +30,17 @@ def test_pacing_sleep_is_not_response_latency(monkeypatch):
     assert rob._net_of_pacing(result, rob._PACING_SLEPT_S[0]) is result
 
 
+def test_cached_verdict_must_match_the_criteria_it_judged():
+    row = {"criteria_text": ["Yes", "Article 26(4) deployer duty"], "_revised": None}
+    fresh = {"_criteria_sha": sa._criteria_sha(row["criteria_text"])}
+    assert sa._criteria_match(fresh, row)
+    # Same criteria COUNT, different text: the pre-R409 key replayed this.
+    assert not sa._criteria_match(fresh, {**row, "criteria_text": ["Yes", "Article 10(3) provider duty"]})
+    # Legacy lines without a hash: trusted only while the gold row is unrevised.
+    assert sa._criteria_match({}, row)
+    assert not sa._criteria_match({}, {**row, "_revised": "R409"})
+
+
 def test_only_complete_verdicts_are_cacheable():
     assert sa._verdict_complete({"_judge_runs": 3, "_tone_runs_raw": [True, True, False]}, 3)
     assert not sa._verdict_complete({"_judge_runs": 2, "_tone_runs_raw": [True, True, True]}, 3)
