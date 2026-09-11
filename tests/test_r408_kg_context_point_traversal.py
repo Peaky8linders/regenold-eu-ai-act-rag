@@ -32,18 +32,32 @@ _ART5 = _points(0, "Article 5", 13)
 _ANNEX3 = _points(1, "Annex III", 24)
 
 
-def _serve(monkeypatch, rows):
+def _serve(monkeypatch, rows, point_text="1"):
     calls = []
     monkeypatch.setenv("REGENOLD_KG_CONTEXT", "1")
+    monkeypatch.setenv("REGENOLD_KG_POINT_TEXT", point_text)
 
     def fake(cache_key, cypher, params):
-        if cypher is not kg._SUBPOINT_CYPHER:
+        if cypher not in (kg._SUBPOINT_CYPHER, kg._SUBPOINT_CYPHER_LEGACY):
             return kg._ReadRows()
-        calls.append(params)
+        calls.append((cypher, params))
         return kg._ReadRows(rows)
 
     monkeypatch.setattr(kg, "_memoized_read", fake)
     return calls
+
+
+def test_flag_off_dispatches_the_exact_pre_r408_query(monkeypatch):
+    """Default OFF: production keeps the query it served before R408."""
+    monkeypatch.delenv("REGENOLD_KG_POINT_TEXT", raising=False)
+    assert not kg._kg_point_text_enabled()
+    calls = _serve(monkeypatch, _ART5 + _ANNEX3, point_text="0")
+    rows = kg.fetch_subpoint_detail(["Article 5", "Annex III"])
+
+    cypher, params = calls[0]
+    assert cypher is kg._SUBPOINT_CYPHER_LEGACY
+    assert "max_units" in params and "max_rows" not in params
+    assert rows == _ART5 + _ANNEX3  # served as read, no allocation
 
 
 def test_legacy_global_limit_evicted_the_article():
@@ -72,9 +86,11 @@ def test_fetch_keeps_every_cited_provision(monkeypatch):
     rows = kg.fetch_subpoint_detail(["Article 5", "Annex III"])
 
     assert len(calls) == 1
-    assert calls[0]["ids"] == ["article_5", "annex_III"]
+    cypher, params = calls[0]
+    assert cypher is kg._SUBPOINT_CYPHER
+    assert params["ids"] == ["article_5", "annex_III"]
     # The query must not cut a later provision before the budget is shared.
-    assert calls[0]["max_rows"] >= 24 * len(calls[0]["ids"])
+    assert params["max_rows"] >= 24 * len(params["ids"])
     cites = [r["cite"] for r in rows]
     assert {"Article 5", "Annex III"} <= set(cites)
     assert cites.index("Annex III") > max(i for i, c in enumerate(cites) if c == "Article 5")

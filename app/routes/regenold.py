@@ -1481,6 +1481,8 @@ def _engine_cache_key(
             "REGENOLD_KG_CONTEXT",
             "REGENOLD_KG_MAX_REFS",
             "REGENOLD_KG_MAX_UNITS",
+            # R409 — point text in the Stage-2 sub-point block (default OFF).
+            "REGENOLD_KG_POINT_TEXT",
             "REGENOLD_KG_UNIT_CHARS",
             "REGENOLD_KG_MAX_RECITALS",
             "REGENOLD_VECTOR_MIN_SIM",

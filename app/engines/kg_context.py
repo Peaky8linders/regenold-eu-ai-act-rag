@@ -245,7 +245,39 @@ LIMIT $max_recitals
 # now carry the caller's ref order and the budget is shared in Python by
 # ``_allocate_units``. The ceiling only guards against a runaway seed: the
 # whole graph holds 449 such rows.
+#
+# Both behaviours sit behind ``REGENOLD_KG_POINT_TEXT`` (default OFF): OFF runs
+# ``_SUBPOINT_CYPHER_LEGACY``, the exact pre-R408 query production serves.
 _SUBPOINT_ROW_CEILING = 600
+
+_SUBPOINT_CYPHER_LEGACY = """
+UNWIND $ids AS aid
+MATCH (a) WHERE a.id = aid AND (a:Article OR a:Annex)
+MATCH (a)-[:HAS_PARAGRAPH]->(p:Paragraph)-[:HAS_POINT]->(pt:Point)-[:HAS_SUBPOINT]->(sp:SubPoint)
+RETURN coalesce(a.strict_citation, a.id) AS cite,
+       p.number AS para,
+       coalesce(pt.letter, pt.number) AS letter,
+       sp.id AS sid,
+       sp.roman AS roman,
+       sp.text AS text
+ORDER BY cite, toIntegerOrNull(p.number), letter, sid
+LIMIT $max_units
+"""
+
+
+def _kg_point_text_enabled() -> bool:
+    """``REGENOLD_KG_POINT_TEXT`` — R408/R409 point text in the sub-point block.
+
+    DEFAULT OFF. ON: every Point reaches the block (a bare point carries its own
+    text) and the unit budget is shared across the cited provisions. OFF: the
+    pre-R408 query, which only returns points that carry a SubPoint. The block
+    is Stage-2 prompt text, so it is NOT reference-neutral (AGENTS.md invariant
+    #5): over the R407 refs it grows from 341 to 3,832 chars per row, and it has
+    to clear ``gold_dropped_head`` and a Speed read before it may default ON.
+    """
+    return os.getenv("REGENOLD_KG_POINT_TEXT", "0").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
 
 _SUBPOINT_CYPHER = """
 UNWIND range(0, size($ids) - 1) AS i
@@ -474,10 +506,16 @@ def fetch_subpoint_detail(refs: list[str]) -> list[dict]:
     if not ids:
         return []
 
-    # The query no longer depends on ``max_units`` (R409), so the memo holds the
+    if not _kg_point_text_enabled():
+        return _memoized_read(
+            f"sp:{','.join(ids)}:u{max_units}",
+            _SUBPOINT_CYPHER_LEGACY,
+            {"ids": ids, "max_units": max_units},
+        )
+    # The R409 query does not depend on ``max_units``, so the memo holds the
     # full per-provision rows and the budget is applied after it.
     rows = _memoized_read(
-        f"sp:{','.join(ids)}",
+        f"spt:{','.join(ids)}",
         _SUBPOINT_CYPHER,
         {"ids": ids, "max_rows": _SUBPOINT_ROW_CEILING},
     )
