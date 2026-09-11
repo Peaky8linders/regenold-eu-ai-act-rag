@@ -27,6 +27,15 @@ R410 conciseness audit, not a hypothetical:
    verdict) and it read the LAST interrogative of a multi-clause question.
    Measured after the fix: 2 fires, 2/2 on target, 0 false positives on a
    passing row (``docs/measurements/r409/answer_completeness_offline_validation.py``).
+6. **Closed-set engagement** — the member guard engaged a group off the ANSWER's
+   own citations, so it demanded the full lettered list of any provision the
+   answer merely named: ``rg_055`` cites Article 5(1)(h) and was asked for
+   Article 5(1)(a)-(g); ``rg_064`` cites 60(4)(e) and was asked for 60(4)(a)-(k).
+   13 fires, 3 true positives, **7 on rows the grader passed in full** — the
+   §6.8 gold-drop mechanism. Engagement is now question-side (a distinctive
+   chapeau bigram, or an exact parent coordinate), measured at 2 fires, both on
+   target, 0 on a passed row, with the 7/22 target-criteria coverage unchanged.
+   Probe: ``docs/measurements/r409/closed_set_engagement_probe.py``.
 """
 
 from __future__ import annotations
@@ -367,3 +376,84 @@ def test_verdict_detector_does_not_fire_on_a_correct_conditional_framing_row():
 )
 def test_first_interrogative_decides_yes_no(question, expected):
     assert ac.is_yes_no_question(question) is expected
+
+
+# ── 6. Closed-set engagement is question-side, not citation-side ──────────────
+#
+# Shapes taken from the frozen R407 ledger rows the citation-side gate got wrong.
+
+_RG055_Q = (
+    "Under the EU AI Act, in which specific situations may law enforcement use "
+    "'real-time' remote biometric identification in publicly accessible spaces "
+    "for law-enforcement purposes (i.e., the exceptions to the prohibition)? "
+    "List the permitted objectives."
+)
+_RG055_A = (
+    "Real-time remote biometric identification in publicly accessible spaces is "
+    "permitted for law-enforcement purposes only in the situations set out in "
+    "Article 5(1)(h)(i) to (iii): the targeted search for victims of abduction, "
+    "trafficking in human beings or sexual exploitation and for missing persons; "
+    "the prevention of a specific, substantial and imminent threat to life or "
+    "physical safety, or of a genuine and foreseeable terrorist attack; and the "
+    "localisation or identification of a suspect."
+)
+_RG046_Q = (
+    "Under the EU AI Act, what must a provider of a high-risk AI system supply "
+    "to the deployer in the instructions for use? List the required categories "
+    "of information."
+)
+_RG046_A = (
+    "Under Article 13(3), the instructions for use shall contain the information "
+    "listed in point (b)(i) to (vii), namely the characteristics, capabilities "
+    "and limitations of performance of the high-risk AI system."
+)
+
+
+def _member_coords(question, answer):
+    return [g.coordinate for g in ac.missing_closed_set_members(question, answer)]
+
+
+def test_a_provision_the_answer_cites_is_not_demanded_in_full():
+    """rg_055: citing Article 5(1)(h) must not demand Article 5(1)(a)-(g)."""
+    coords = _member_coords(_RG055_Q, _RG055_A)
+    prohibited = {f"Article 5.1.{c}" for c in "abcdefg"}
+    assert not (set(coords) & prohibited), f"demanded the prohibition list: {coords}"
+
+
+def test_boilerplate_overlap_does_not_engage_a_group():
+    """rg_066: 'high risk' is in every paragraph of Article 6, so it engages nothing."""
+    question = (
+        "Under the EU AI Act, what is the EU database for high-risk AI systems, "
+        "what categories of information must it contain, and who is the controller?"
+    )
+    answer = (
+        "The EU database for high-risk AI systems is established under Article 71, "
+        "and Article 6(3) sets out the derogation for systems that are not high-risk."
+    )
+    assert _member_coords(question, answer) == []
+
+
+def test_the_question_engaging_the_set_still_completes_it():
+    """rg_046: the question asks for the instructions-for-use categories."""
+    coords = _member_coords(_RG046_Q, _RG046_A)
+    assert "Article 13.3.a" in coords and "Article 13.3.f" in coords
+    assert "Article 13.3.b" not in coords, "the covered member must not be demanded"
+
+
+def test_naming_the_parent_coordinate_engages_the_set():
+    question = (
+        "Under the EU AI Act, what minimum elements must Article 17(1) require a "
+        "provider's quality management system to include?"
+    )
+    answer = (
+        "Article 17(1) requires the quality management system to include the "
+        "elements set out in points (a), (d) and (g) of that paragraph."
+    )
+    coords = _member_coords(question, answer)
+    assert "Article 17.1.b" in coords and "Article 17.1.a" not in coords
+
+
+def test_engagement_needs_the_answer_to_name_the_set_too():
+    """A question about a set the answer never cites must not invent a repair."""
+    answer = "The Regulation sets out the relevant requirements in general terms."
+    assert _member_coords(_RG046_Q, answer) == []
