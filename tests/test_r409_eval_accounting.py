@@ -13,10 +13,14 @@ def test_hard_checkpoint_scores_the_graded_turn_not_the_sum():
         "latency_ms": 30000,
         "turn1_latency_ms": 14000,
         "pushback_latency_ms": 16000,
+        "turn1_answer": "Yes.",
         "pushback_answer": "Yes.",
     }
     assert sa._graded_latency_ms(row) == 16000
-    assert sa._graded_latency_ms({**row, "pushback_answer": ""}) == 14000
+    # A pushback that failed still took that time: never score it at turn-1 speed.
+    assert sa._graded_latency_ms({**row, "pushback_answer": ""}) == 16000
+    # No turn-1 answer means no pushback was sent.
+    assert sa._graded_latency_ms({**row, "turn1_answer": "", "pushback_latency_ms": 0}) == 14000
     # Checkpoints written before the per-turn fields keep the old reading.
     assert sa._graded_latency_ms({"latency_ms": 30000}) == 30000
 
@@ -30,15 +34,21 @@ def test_pacing_sleep_is_not_response_latency(monkeypatch):
     assert rob._net_of_pacing(result, rob._PACING_SLEPT_S[0]) is result
 
 
-def test_cached_verdict_must_match_the_criteria_it_judged():
-    row = {"criteria_text": ["Yes", "Article 26(4) deployer duty"], "_revised": None}
-    fresh = {"_criteria_sha": sa._criteria_sha(row["criteria_text"])}
+def test_cached_verdict_must_match_the_criteria_and_grounding_it_judged():
+    row = {
+        "criteria_text": ["Yes", "Article 26(4) deployer duty"],
+        "expected_refs": ["Article 26.4"],
+        "_revised": None,
+    }
+    fresh = {"_basis_sha": sa._judge_basis_sha(row)}
     assert sa._criteria_match(fresh, row)
     # Same criteria COUNT, different text: the pre-R409 key replayed this.
     assert not sa._criteria_match(fresh, {**row, "criteria_text": ["Yes", "Article 10(3) provider duty"]})
-    # Legacy lines without a hash: trusted only while the gold row is unrevised.
+    # Refkey-only correction: same criteria, but the judge is grounded on other text.
+    assert not sa._criteria_match(fresh, {**row, "expected_refs": ["Article 24.1"]})
+    # Lines without a basis hash: trusted only while the gold row is unrevised.
     assert sa._criteria_match({}, row)
-    assert not sa._criteria_match({}, {**row, "_revised": "R409"})
+    assert not sa._criteria_match({"_criteria_sha": "abc"}, {**row, "_revised": "R409"})
 
 
 def test_only_complete_verdicts_are_cacheable():

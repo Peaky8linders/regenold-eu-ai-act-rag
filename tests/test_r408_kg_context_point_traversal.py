@@ -60,6 +60,35 @@ def test_flag_off_dispatches_the_exact_pre_r408_query(monkeypatch):
     assert rows == _ART5 + _ANNEX3  # served as read, no allocation
 
 
+_PRE_R408_SUBPOINT_CYPHER = """
+UNWIND $ids AS aid
+MATCH (a) WHERE a.id = aid AND (a:Article OR a:Annex)
+MATCH (a)-[:HAS_PARAGRAPH]->(p:Paragraph)-[:HAS_POINT]->(pt:Point)-[:HAS_SUBPOINT]->(sp:SubPoint)
+RETURN coalesce(a.strict_citation, a.id) AS cite,
+       p.number AS para,
+       coalesce(pt.letter, pt.number) AS letter,
+       sp.id AS sid,
+       sp.roman AS roman,
+       sp.text AS text
+ORDER BY cite, toIntegerOrNull(p.number), letter, sid
+LIMIT $max_units
+"""
+
+
+def test_query_texts_are_pinned_both_ways():
+    """Behaviour here depends on Aura, so the query text itself is the contract."""
+    # OFF: byte-identical to the query production served before R408 (13547ff~1).
+    assert kg._SUBPOINT_CYPHER_LEGACY == _PRE_R408_SUBPOINT_CYPHER
+    # ON: the R408 traversal fix. The first cut of these tests passed with it reverted.
+    assert "OPTIONAL MATCH (pt)-[:HAS_SUBPOINT]->(sp:SubPoint)" in kg._SUBPOINT_CYPHER
+    assert "coalesce(sp.text, pt.text) AS text" in kg._SUBPOINT_CYPHER
+    assert "(pt:Point)-[:HAS_SUBPOINT]" not in kg._SUBPOINT_CYPHER
+    # R380: Point nodes carry .letter, in BOTH queries.
+    for cypher in (kg._SUBPOINT_CYPHER, kg._SUBPOINT_CYPHER_LEGACY):
+        assert "coalesce(pt.letter, pt.number) AS letter" in cypher
+        assert "pt.number AS letter" not in cypher
+
+
 def test_legacy_global_limit_evicted_the_article():
     """Tripwire: the fixture reproduces the measured R408 eviction."""
     legacy = sorted(_ART5 + _ANNEX3, key=lambda r: r["cite"])[:24]

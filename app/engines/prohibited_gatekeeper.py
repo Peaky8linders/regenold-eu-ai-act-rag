@@ -154,6 +154,30 @@ _SUB_REF_NEGATIVE_QUALIFIERS: dict[str, tuple[re.Pattern[str], ...]] = {
 }
 
 
+#: R410 — REQUIRED statutory qualifiers. Article 5(1)(g) does not prohibit
+#: biometric categorisation as such: it prohibits categorisation that infers a
+#: CLOSED-LIST attribute (race, political opinions, trade-union membership,
+#: religious or philosophical beliefs, sex life, sexual orientation). The
+#: keyword scan matched the bare phrases ``sort patients`` / ``patient sorting``
+#: / ``biometric categorisation``, so an emergency-triage or clinical-trial
+#: question picked up the Art. 5(1)(g) verdict — the live Part II Q8-Q11 defect,
+#: four different supplied facts shipping one identical prohibition answer.
+#: A required qualifier makes the gatekeeper fire only where the question's own
+#: facts engage the closed list. Narrowing only: it can remove a match, never
+#: invent one. ``sex``/``gender`` are deliberately absent — they are protected
+#: attributes but NOT on the Art. 5(1)(g) closed list.
+_SUB_REF_REQUIRED_QUALIFIERS: dict[str, tuple[re.Pattern[str], ...]] = {
+    "Art. 5.1.g": (
+        re.compile(
+            r"\b(?:race|racial|ethnic(?:ity|\s+origin)?|political\w*|"
+            r"trade[- ]?union|religious|religion|philosoph\w*|"
+            r"sex\s+life|sexual\s+orientation|sensitive\s+attributes?)\b",
+            re.I,
+        ),
+    ),
+}
+
+
 def _sub_ref_excluded_by_question(sub_ref: str, question: str) -> bool:
     """True when ``question`` carries a qualifier that puts it outside ``sub_ref``.
 
@@ -163,10 +187,13 @@ def _sub_ref_excluded_by_question(sub_ref: str, question: str) -> bool:
     exclusion requires the negative qualifier with no competing positive one,
     because a question comparing the two regimes is asking about both.
     """
+    text = str(question or "")
+    required = _SUB_REF_REQUIRED_QUALIFIERS.get(sub_ref)
+    if required and not any(rx.search(text) for rx in required):
+        return True
     patterns = _SUB_REF_NEGATIVE_QUALIFIERS.get(sub_ref)
     if not patterns:
         return False
-    text = str(question or "")
     if not any(rx.search(text) for rx in patterns):
         return False
     # A question that explicitly names the real-time regime as well is asking

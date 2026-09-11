@@ -6,8 +6,11 @@ R408 = 5f43818: every point, but ONE global ``LIMIT $max_units`` under
 FIXED = working tree: every point, rows in ref order, budget shared by
         ``kg_context._allocate_units``.
 
-Input: the refs of every row of the R407 hard-mode checkpoint (turn 1 + graded
-turn), mapped through ``kg_context._node_ids`` exactly as the renderer does.
+Input: the EMITTED wire refs of every row of the R407 hard-mode checkpoint
+(turn 1 + graded turn), mapped through ``kg_context._node_ids``. They are a
+PROXY for the renderer's input: ``render_kg_context`` receives the pre-Stage-2
+context refs, which the checkpoint does not record, so the counts are
+indicative rather than the exact per-request block.
 Run: PYTHONPATH=. py -3.12 docs/measurements/r409/kg_subpoint_allocation_probe.py
 """
 import collections

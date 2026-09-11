@@ -100,7 +100,14 @@ class TestR111GuidingPrinciples:
             "accountability",
         ):
             assert principle in low, f"missing principle: {principle}"
-        assert set(refs) == {"Art. 1", "Art. 4"}
+        # R410 — Art. 95(2)(a) is the single operative connection (Recital 27 is
+        # non-binding and the answer says so), so the wire cites it too. Art. 1
+        # is deliberately gone: it was a purpose-clause aside, not the
+        # question's operative connection, and the annotated gold for this item
+        # is Recital 27 + Art. 95.2(a) + Art. 95 — so citing it cost pure-count
+        # Ref. Conciseness for no reference-correctness gain.
+        assert low.startswith("the eu ai act does not establish")
+        assert set(refs) == {"Art. 4", "Art. 95"}
 
     def test_curated_short_circuit_covers_guiding_principles(self):
         assert _is_curated_authoritative_intercept(

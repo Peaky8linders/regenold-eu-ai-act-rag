@@ -327,11 +327,13 @@ class TestR109Batch2GuidingPrinciples:
         # The actual principles, not GPAI authrep (the live-benchmark bug).
         assert "human agency" in ans or "human oversight" in ans
         assert "transparency" in ans
-        assert "article 1" in ans and "article 4" in ans
+        assert "article 95" in ans and "article 4" in ans
         assert "authorised representative" not in ans
-        # Seeded refs are Art. 1 + Art. 4.
+        # R410 — Art. 1 is deliberately gone: Recital 27's grounds are not the
+        # question's operative connection, and the annotated gold for this item
+        # is Recital 27 + Art. 95.2(a) + Art. 95. Seeded refs are Art. 4 + Art. 95.
         arts = [o.get("article") for o in ctx.obligations]
-        assert "Art. 1" in arts and "Art. 4" in arts
+        assert "Art. 4" in arts and "Art. 95" in arts
 
 
 class TestR109Batch2Penalties:

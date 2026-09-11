@@ -124,22 +124,30 @@ def load_cache(cache_path: Path | None = None) -> dict[str, dict]:
     return out
 
 
-def _criteria_sha(criteria: list) -> str:
-    return hashlib.sha256("\n".join(str(c) for c in criteria).encode("utf-8")).hexdigest()[:12]
+def _judge_basis_sha(row: dict) -> str:
+    """Hash of what a verdict depends on besides the answer and the judge.
+
+    The criteria text AND the refs the judge prompt is grounded on, taken with
+    the same expression ``judge._provisions_for`` receives.
+    """
+    grounding = row.get("expected_refs") or row.get("_fallback_refs") or []
+    basis = "\n".join(str(c) for c in (row.get("criteria_text") or []))
+    basis += "\n--\n" + "\n".join(str(r) for r in grounding)
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:12]
 
 
 def _criteria_match(v: dict, row: dict) -> bool:
-    """R409 — a cached verdict is valid only for the criteria it judged.
+    """R409 — a cached verdict is valid only for the criteria and grounding it judged.
 
     ``_key`` hashes the answer and the judge, not the criteria, so editing a
-    row's criteria (same count) silently replayed the old verdicts. Verdicts
-    written from R409 carry ``_criteria_sha``; older lines carry none and are
-    trusted only for gold rows never revised since (``_revised`` unset), which
-    is exact because every committed cache predates the first revision.
+    row's criteria (same count) silently replayed the old verdicts, and a
+    refkey-only correction (rg_082) changes the verbatim provisions the judge is
+    grounded on while replaying them too. Verdicts carry ``_basis_sha``; lines
+    without it are trusted only for gold rows never revised (``_revised`` unset).
     """
-    sha = v.get("_criteria_sha")
+    sha = v.get("_basis_sha")
     if sha is not None:
-        return sha == _criteria_sha(row.get("criteria_text") or [])
+        return sha == _judge_basis_sha(row)
     return not row.get("_revised")
 
 
@@ -168,7 +176,9 @@ def _graded_latency_ms(r: dict) -> float:
     easy latency. Checkpoints written before the per-turn fields keep the sum.
     """
     if "pushback_latency_ms" in r or "turn1_latency_ms" in r:
-        graded = r.get("pushback_latency_ms") if r.get("pushback_answer") else r.get("turn1_latency_ms")
+        # A pushback is sent iff turn 1 produced an answer. Score that turn even
+        # when it failed, or a timed-out pushback would score at turn-1 speed.
+        graded = r.get("pushback_latency_ms") if r.get("turn1_answer") else r.get("turn1_latency_ms")
         return float(graded or 0.0)
     return float(r.get("latency_ms") or 0.0)
 
@@ -316,7 +326,7 @@ def main() -> int:
                                         )
                                         if k in j
                                     },
-                                    "_criteria_sha": _criteria_sha(j.get("criteria_text") or []),
+                                    "_basis_sha": _judge_basis_sha(j),
                                 },
                             },
                             ensure_ascii=False,
