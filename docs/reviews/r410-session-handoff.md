@@ -245,13 +245,33 @@ per-turn graded latency) are in place and pinned by tests.
 
 | Check | Result |
 | :--- | :--- |
-| `r410_wire_probe.py` (Part II, 7 items) | all expectations met |
+| `r410_wire_probe.py` (offline, Part II, 7 items) | all expectations met |
 | Full suite `pytest tests/` | **7847 passed, 2 skipped** |
 | Targeted R410/R409/R111/R109/R358/gatekeeper | 295 passed |
+| CI `Deployable (clean clone)` on PR #407 | pass (32s) |
+| CI `Test suite (clean clone)` on PR #407 | pass (2m11s) |
+| **Production** `r410_live_prod_check.py` (Stage-2 live) | **all asserted invariants hold** |
 
-Note on the probe: the local Stage-2 wrapper is currently 401 (expired Claude-Max
-OAuth token), so the probe exercises the deterministic/intercept path — which is
-exactly where all four fixes live. Stage-2 polish is a separate layer above them.
+Note on the offline probe: the local Stage-2 wrapper is currently 401 (expired
+Claude-Max OAuth token), so the probe exercises the deterministic/intercept path —
+which is exactly where all four fixes live. Stage-2 polish is a separate layer
+above them.
+
+**Post-deploy production evidence** (`2c8ed878`, the PR #407 merge commit; the
+Railway GitHub integration auto-deploys `main`). The four Q8-Q11 variants now
+resolve to three DIFFERENT statutory branches, which is the defect inverted:
+
+| Item | Deployed verdict (lead) |
+| :--- | :--- |
+| Q6 | "The EU AI Act does not establish legally operative guiding principles: Article 95(2)(a) ..." (refs `Article 4`, `Article 95.2`) |
+| Q8 (no fact) | "Yes ... but only if it stays outside Article 5(1)(g) and is then operated as a high-risk AI system" — conditional |
+| Q9 (race) | "No. The hospital cannot deploy that system ... prohibited practice under Article 5(1)(g)" |
+| Q10 (sex) | "Yes ... but only as a high-risk AI system: inferring a patient's sex from biometric data is not one of the attributes whose inference is banned" |
+| Q11 (physiological) | "Yes ... neither a prohibited practice nor ..." — Annex I / Art. 6(1) fallback |
+
+Q10 is the sharpest confirmation: the deployed engine now states the statutory
+point the old gatekeeper obscured — `sex` is a protected attribute but is **not**
+on the Art. 5(1)(g) closed list, so the question is high-risk, not prohibited.
 
 ## 7. Actionable Roadmap for the Next Session
 
