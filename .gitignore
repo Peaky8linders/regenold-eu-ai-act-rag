@@ -60,6 +60,7 @@ node_modules/
 *_EVAL_*.md
 *eval_*.md
 *evaluation*.md
+!docs/investor-evaluation-report.md
 regenold_questions_and_live_answers.md
 HANDOFF_SOTA_EVAL_DATASET.md
 
