@@ -21,6 +21,12 @@ R410 conciseness audit, not a hypothetical:
 4. **Reask/pushback coupling** — under ``REGENOLD_REASK_FOCUS`` (default) the
    route hands the engine the BARE re-asked question on a pushback turn, so
    ``previous_answer()`` found no turn 1 and the pushback-keep guard was a no-op.
+5. **Verdict-lead detector precision** — on the 110-row R407 ledger the guard
+   fired on 11 rows and only 1 was a real missing lead: it required the literal
+   token ``Yes``/``No`` (so "Not prohibited and not high-risk." counted as no
+   verdict) and it read the LAST interrogative of a multi-clause question.
+   Measured after the fix: 2 fires, 2/2 on target, 0 false positives on a
+   passing row (``docs/measurements/r409/answer_completeness_offline_validation.py``).
 """
 
 from __future__ import annotations
@@ -287,3 +293,77 @@ def test_two_stage_generate_forwards_the_guard_question(monkeypatch):
         bare, impl.GraphContext(question=bare), guard_question=guard
     )
     assert seen == [guard]
+
+
+# ── 5. Verdict-lead detector precision ──────────────────────────────────────
+#
+# Every case is a real R407 row (``docs/measurements/r409/r407_sonnet5_failing_
+# criteria_triage.json`` + the R407 hard checkpoint). The pre-R410 detector
+# fired on all of the "no fire" rows below and missed the "fire" rows.
+
+_WORDED_VERDICT_LEADS = (
+    "Not prohibited and not high-risk.",                                 # rg_007/089
+    "Not high-risk.",                                                    # rg_081/084/106
+    "Not high-risk, so no deployer log-keeping obligation under Article 12.",  # rg_090
+    "Emotion recognition is not categorically prohibited under the AI Act.",   # rg_074
+)
+
+_CONDITIONAL_LEADS = (
+    "High-risk only where the system materially influences the assignment.",   # rg_107
+    "Only where the system is high-risk under Annex III does Article 27 apply.",
+    "Where the system is high-risk, Article 27(1) applies.",
+)
+
+
+@pytest.mark.parametrize("answer", _WORDED_VERDICT_LEADS)
+def test_worded_verdict_lead_is_not_a_verdict_gap(answer):
+    assert ac._opens_with_verdict(answer) is True
+
+
+@pytest.mark.parametrize("answer", _CONDITIONAL_LEADS)
+def test_a_conditional_lead_is_still_a_verdict_gap(answer):
+    assert ac._opens_with_verdict(answer) is False
+
+
+def test_verdict_detector_does_not_fire_on_a_correct_conditional_framing_row():
+    # rg_107: the question is yes/no, the answer opens with a condition, so the
+    # gap is real and the repair prompt must ask for a Yes/No lead...
+    question = (
+        "We are a private educational institution intending to deploy an AI tool "
+        "that analyses students' prior grades and learning outcomes to recommend "
+        "whether they should follow the standard or accelerated honours track. "
+        "Is the system high-risk?"
+    )
+    assert ac.verdict_lead_gap(question, _CONDITIONAL_LEADS[0]), "rg_107 must fire"
+    # ...while the already-correct rg_007 shape must not.
+    assert ac.verdict_lead_gap(
+        "Is this system prohibited? Is it high-risk?", "Not prohibited and not high-risk."
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "question, expected",
+    [
+        # rg_095 — a wh-ask with a yes/no follow-up is not a yes/no question.
+        (
+            "Who, if at all, needs to establish the post-market monitoring system "
+            "for a high-risk AI system? Is it possible that it may also include "
+            "third parties?",
+            False,
+        ),
+        # rg_069 — the leading ask IS yes/no; the trailing clause is a follow-up.
+        (
+            "I am a distributor of an AI system. Do I have an obligation not to "
+            "jeopardize its conformity? What if I am an importer instead?",
+            True,
+        ),
+        # rg_067 — same shape the other way round, and correctly not yes/no.
+        (
+            "What are the conditions to classify a general-purpose AI model as "
+            "having systemic risk? Do all need to be met at the same time?",
+            False,
+        ),
+    ],
+)
+def test_first_interrogative_decides_yes_no(question, expected):
+    assert ac.is_yes_no_question(question) is expected
