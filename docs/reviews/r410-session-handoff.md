@@ -241,6 +241,33 @@ repetitions is carried on `_criteria_rate_min`/`_criteria_rate_max`. The R409
 accounting fixes (basis-hash cache key including the judge's grounding refs,
 per-turn graded latency) are in place and pinned by tests.
 
+The formulas were also **calibrated empirically**, not just read. With the Claude
+Max tunnel restored, `python -m evals.official.calibration` replays the
+report's own transcribed appendix — 17 criterion-level verdicts of known ground
+truth, over six questions, two arms (`docs/measurements/r388/calibration.json`):
+
+| Arm | Agreement | Trivial-baseline comparison |
+| :--- | :--- | :--- |
+| Negative (the answers the evaluator printed, 16 FAIL / 1 PASS) | **15/17 = 88.2%** | always-FAIL scores 16/17 = 94.1% |
+| Positive (reconstructed reference answers, same criteria) | **17/17 = 100.0%** | always-FAIL scores 0/17 |
+
+The two arms are what make this meaningful: an always-FAIL judge beats us on the
+negative arm but scores ZERO on the positive arm, and an always-PASS judge scores
+1/17 negative. Our profile is the one that holds on both, so the judge is
+neither degenerate-PASS nor degenerate-FAIL.
+
+**The one caveat, stated plainly.** Both misses are over-acceptances on the same
+row — Q74 (Art. 50(4) deepfake disclosure for an artistic work), criteria
+"No need of marking that would compromise enjoyment" and "Still required: other
+form of disclosure ...". The shipped answer does contain the relevant vocabulary
+("does not hamper the display or enjoyment of the work", Article 50(4)) but
+asserts the carve-out as belonging to a DIFFERENT duty from the one the question
+asked about. That is a plausible judge miss, but the ground truth on that row is
+itself ambiguous, so the judge prompt was deliberately **not** edited to flip
+two criteria — that would be teaching to the test on n=2. If it is to be fixed,
+it needs a rule for criteria phrased as a NEGATION or a RESIDUAL duty, validated
+on a larger printed-verdict set first.
+
 ### 6.7 Verification
 
 | Check | Result |

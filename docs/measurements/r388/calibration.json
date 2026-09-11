@@ -1,0 +1,17 @@
+{
+  "negative": {
+    "agree": 15,
+    "total": 17,
+    "rate": 0.8824,
+    "disagreements": [
+      "Q74 criterion 1: judge=PASS expected=FAIL :: No need of marking that would compromise enjoyment",
+      "Q74 criterion 2: judge=PASS expected=FAIL :: Still required: other form of disclosure that such content exist (must"
+    ]
+  },
+  "positive": {
+    "agree": 17,
+    "total": 17,
+    "rate": 1.0,
+    "disagreements": []
+  }
+}
