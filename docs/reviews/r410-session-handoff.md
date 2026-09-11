@@ -300,6 +300,57 @@ Q10 is the sharpest confirmation: the deployed engine now states the statutory
 point the old gatekeeper obscured — `sex` is a protected attribute but is **not**
 on the Art. 5(1)(g) closed list, so the question is high-risk, not prohibited.
 
+### 6.8 Gold gate run on the largest R409 lever — it FAILS, so it stays OFF
+
+With the Claude Max tunnel restored, the R409 flag table's own precondition ("gate
+each lever on the live gold set before flipping") was finally executed for the
+biggest lever, `REGENOLD_CLOSED_SET_COMPLETENESS_GUARD` (22 of the 55 engine-side
+triage gaps). Live Stage-2, hard split, paired n=37, both arms scored 37/37 with
+0 errors:
+
+```
+  axis          baseline    branch     delta
+  ref_loose       0.7883    0.7748   -0.0135  <-- GOLD LOSS (R142.1 failure mode)
+  ref_strict      0.3816    0.3813   -0.0003
+  ref_conc        0.1551    0.1645   +0.0094
+  tone            1.0000    1.0000   +0.0000
+  kw_recall       0.8333    0.7883   -0.0450
+  pred:gold         2.91      2.95     +0.03
+  gold_drop_hd        15        16        +1  <-- GOLD DROPPED (hard rule #8)
+```
+
+**Verdict: FAIL — hard rule #8.** `gold_dropped_head` 15 → 16 on mt_v2_004,
+007, 015, 022; est. Overall −0.04 pp. The only axis it improves is Reference
+Conciseness (+0.0094). The gate exits NON-ZERO, so **the flag stays default
+OFF** and must not be reported as having passed.
+
+**Attribution caveat — this paired read is NOT same-generation, and it matters.**
+All 37 branch answers differ from baseline (0/37 byte-identical), because
+`REGENOLD_CLOSED_SET_COMPLETENESS_GUARD` is part of `_engine_cache_key`'s env
+fingerprint, so each arm generated fresh through Stage-2. The delta therefore
+mixes the lever's effect with sampling variance across the whole split. Two
+measures bound how much of it the lever can possibly explain:
+
+* The detector fires on only **4/37** hard rows (`mt_v4_004`, `mt_v4_011`,
+  `mt_v2_004`, `mt_v2_010`); with every completeness lever ON, 8/37.
+* Only **1 of the 4** gold-drop offenders (`mt_v2_004`) is a row where the
+detector fires.
+
+So what stands is the gate's own verdict: the branch arm dropped a gold head the
+baseline kept, which is a rejection under hard rule #8, not a trade. What does
+**not** stand is any claim about the size of the lever's effect — the plausible
+mechanism (refs are partly a function of the answer via `_add_prose_named_refs`,
+so a prose repair re-derives the reference set) is not established by this run.
+Measuring it cleanly needs a same-generation comparison that shares the Stage-2
+answer across arms, as the R381 parent-collapse A/B did, not two independent
+arms.
+
+Evidence: `docs/measurements/r409/score-r410-closed-set-gate-hard.md` (report)
+and `-hard.json` (per-row sidecar). This run was taken from the working tree
+after the R410 conciseness fix, so `repair_char_budget` **was** the acceptance
+bound throughout — i.e. this is the lever's post-R410 performance, not a
+pre-fix reading.
+
 ## 7. Actionable Roadmap for the Next Session
 
 ```mermaid
@@ -322,7 +373,7 @@ graph LR
 
 ### Task 3: Gated Evaluation of Fix 5 (Verdict Lead) & Fix 1 (Closed-Set Completeness)
 1. Run `easyhard_ab` with `REGENOLD_VERDICT_LEAD_GUARD=1` to confirm `gold_dropped_head = 0`. This will immediately resolve failing verdict criteria across Part II questions 5, 6, 8, 9, 10, and 11.
-2. Run `easyhard_ab` with `REGENOLD_CLOSED_SET_COMPLETENESS_GUARD=1` to recover missing statutory limbs on Article 13(3) (`rg_046`), Article 17(1) (`rg_052`), and Article 6(3) (`rg_066`).
+2. ~~Run `easyhard_ab` with `REGENOLD_CLOSED_SET_COMPLETENESS_GUARD=1` …~~ **DONE (R410) and it FAILED** — see §6.8. `gold_dropped_head` 15 → 16, est. Overall −0.04 pp. The flag stays OFF. Do not re-propose it without a gold-drop-safe variant **and** a same-generation comparison.
 
 ### Task 4: Re-Run Investor Hard-Mode Benchmark on Production Stack
 1. With the harness now recording single-turn latency and subtracting the 13-second Cohere pacing sleep, execute the 110-row official benchmark on the production Claude Sonnet 3.5 Stage-2 stack.
