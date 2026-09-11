@@ -23,6 +23,17 @@ import pytest
 from evals.official import judge as J
 
 
+@pytest.fixture(autouse=True)
+def _split_judge_regime(monkeypatch):
+    """R408: these tests pin the SPLIT regime they were written for.
+
+    They stub ``judge_correctness_once`` / ``judge_tone_once``. Grouped mode, now
+    the default, routes through ``judge_grouped_once``; the grouped counterpart
+    of every invariant below lives in ``tests/test_r408_grouped_judge.py``.
+    """
+    monkeypatch.setenv("R388_JUDGE_GROUPED", "0")
+
+
 def test_a_dead_transport_is_reported_not_scored(monkeypatch):
     """Every repeat failing ⇒ ``_judge_runs == 0``, which the caller can SEE.
 

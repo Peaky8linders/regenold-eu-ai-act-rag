@@ -191,9 +191,21 @@ def main() -> int:
         default=os.getenv("R388_JUDGE_MODEL", "claude-sonnet-4-6"),
         help="Exact judge model or Bedrock inference-profile alias",
     )
+    ap.add_argument(
+        "--judge-split",
+        action="store_true",
+        default=False,
+        help="Legacy two judge calls per repetition (correctness, then tone). "
+        "Grouped is the default; use this to re-score an arm against a cache "
+        "written before R408.",
+    )
     a = ap.parse_args()
 
-    official_judge.configure_judge(provider=a.judge_provider, model=a.judge_model)
+    official_judge.configure_judge(
+        provider=a.judge_provider,
+        model=a.judge_model,
+        grouped=False if a.judge_split else None,
+    )
     judge_id = official_judge.judge_identity().rsplit(":r=", 1)[0] + f":r={a.repeats}"
     print(f"judge identity: {judge_id}")
 
@@ -252,11 +264,29 @@ def main() -> int:
                 f"{'!' * 72}\n"
             )
 
+    # R408 — grouped verdicts parse correctness and tone out of ONE reply, so a
+    # judge that drifts off the output contract can drop the tone object on every
+    # row while the criteria still parse. Tone would then read as a quiet
+    # all-False: the R393 failure shape, one field over. Say so, and do not cache
+    # those rows, so a re-run re-judges them.
+    if judged:
+        tone_dead = [j for j in judged if j.get("_judge_runs", 0) and not j.get("_tone_runs", 0)]
+        if tone_dead:
+            print(
+                f"\n{'!' * 72}\n"
+                f"TONE JUDGEMENT MISSING: {len(tone_dead)}/{len(judged)} rows "
+                f"returned criteria but NO live tone run and were scored "
+                f"tone=False.\nThe tone axis below is NOT a measurement, and "
+                f"these rows were not cached.\n"
+                f"first offenders: {[j['id'] for j in tone_dead[:8]]}\n"
+                f"{'!' * 72}\n"
+            )
+
     if judged:
         cache_target.parent.mkdir(parents=True, exist_ok=True)
         with cache_target.open("a", encoding="utf-8") as fh:
             for j in judged:
-                if j.get("_judge_runs", 0) > 0:
+                if j.get("_judge_runs", 0) > 0 and j.get("_tone_runs", 0) > 0:
                     fh.write(
                         json.dumps(
                             {

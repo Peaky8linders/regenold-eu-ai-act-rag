@@ -157,6 +157,9 @@ def test_judge_remarks_are_persisted(monkeypatch: pytest.MonkeyPatch) -> None:
     """The judge asks for explanations, so the audit artifact must retain them."""
     from evals.official import judge
 
+    # R408: two replies, correctness then tone, is the SPLIT regime this pins.
+    # Its grouped counterpart is in tests/test_r408_grouped_judge.py.
+    monkeypatch.setenv("R388_JUDGE_GROUPED", "0")
     replies = iter(
         [
             '{"verdicts":[{"n":1,"satisfied":true,"why":"States the rule."}]}',

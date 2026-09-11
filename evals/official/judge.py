@@ -76,13 +76,19 @@ if os.getenv("CF_ACCESS_CLIENT_ID"):
         _HDRS["CF-Access-Client-Secret"] = os.environ.get("CF_ACCESS_CLIENT_SECRET", "")
 
 
-def configure_judge(*, provider: str | None = None, model: str | None = None) -> None:
+def configure_judge(
+    *,
+    provider: str | None = None,
+    model: str | None = None,
+    grouped: bool | None = None,
+) -> None:
     """Apply an explicit judge transport/model for the current scoring run.
 
     ``score_arm`` imports this module before parsing its CLI, so relying on
     module-import-time environment reads made a command-line model override
     impossible.  Keep the environment in sync as well: worker threads and
-    diagnostics read the provider from there on every call.
+    diagnostics read the provider from there on every call.  ``grouped=None``
+    leaves ``R388_JUDGE_GROUPED`` as the environment has it.
     """
     global MODEL
     if provider:
@@ -90,12 +96,31 @@ def configure_judge(*, provider: str | None = None, model: str | None = None) ->
     if model:
         MODEL = model.strip()
         os.environ["R388_JUDGE_MODEL"] = MODEL
+    if grouped is not None:
+        os.environ["R388_JUDGE_GROUPED"] = "1" if grouped else "0"
+
+
+def _grouped_enabled() -> bool:
+    """R408 — judge correctness and tone of one answer in ONE call (default ON).
+
+    Deny-list truthiness, like the repo's other default-ON gates: only an
+    explicit 0 / false / no / off selects the legacy split calls.
+    """
+    return os.getenv("R388_JUDGE_GROUPED", "1").strip().lower() not in ("0", "false", "no", "off")
 
 
 def judge_identity() -> str:
-    """Stable identity for cache separation and score provenance."""
+    """Stable identity for cache separation and score provenance.
+
+    Grouped verdicts carry a ``:grouped`` segment, so they are never served from
+    or written into a split-call cache entry; the split identity is byte-
+    identical to the pre-R408 string, so existing caches still hit.  The segment
+    sits before ``:r=`` because ``score_arm`` rebuilds the repeat suffix with
+    ``rsplit(":r=", 1)``.
+    """
     provider = os.getenv("R388_JUDGE_PROVIDER", "wrapper").strip().lower() or "wrapper"
-    return f"{provider}:{MODEL}:t={TEMPERATURE}:r={REPEATS}"
+    mode = ":grouped" if _grouped_enabled() else ""
+    return f"{provider}:{MODEL}:t={TEMPERATURE}{mode}:r={REPEATS}"
 
 
 def _parse_bool(val: Any) -> bool:
@@ -295,6 +320,18 @@ def judge_correctness_once(row: dict) -> list[bool] | None:
     verdicts = d.get("verdicts")
     if not isinstance(verdicts, list):
         return None
+    parsed, remarks = _verdicts_from(verdicts, len(criteria))
+    if parsed is not None:
+        _remark_state.correctness = remarks
+    return parsed
+
+
+def _verdicts_from(verdicts: list, n_criteria: int) -> tuple[list[bool] | None, list[str]]:
+    """Per-criterion booleans and remarks out of a judge's ``verdicts`` list.
+
+    Accepts 1-based ``n`` (the contract), 0-based ``n``, or an unnumbered list
+    of exactly ``n_criteria`` entries; anything else is ``(None, [])``.
+    """
     by_n = {}
     remarks_by_n: dict[int, str] = {}
     for v in verdicts:
@@ -305,23 +342,25 @@ def judge_correctness_once(row: dict) -> list[bool] | None:
                 remarks_by_n[item_n] = str(v.get("why") or "").strip()
             except Exception:
                 continue
-    if 0 in by_n and len(criteria) not in by_n:
+    if 0 in by_n and n_criteria not in by_n:
         by_n = {k + 1: v for k, v in by_n.items()}
         remarks_by_n = {k + 1: v for k, v in remarks_by_n.items()}
-    if len(by_n) < len(criteria):
+    if len(by_n) < n_criteria:
         flat = [_parse_bool(v.get("satisfied")) for v in verdicts if isinstance(v, dict)]
-        if len(flat) != len(criteria):
-            return None
-        _remark_state.correctness = [
-            str(v.get("why") or "").strip()
-            for v in verdicts
-            if isinstance(v, dict)
-        ]
-        return flat
-    _remark_state.correctness = [
-        remarks_by_n.get(i, "") for i in range(1, len(criteria) + 1)
-    ]
-    return [by_n.get(i, False) for i in range(1, len(criteria) + 1)]
+        if len(flat) != n_criteria:
+            return None, []
+        return flat, [str(v.get("why") or "").strip() for v in verdicts if isinstance(v, dict)]
+    return (
+        [by_n.get(i, False) for i in range(1, n_criteria + 1)],
+        [remarks_by_n.get(i, "") for i in range(1, n_criteria + 1)],
+    )
+
+
+def _tone_from(d: dict) -> tuple[bool, str]:
+    return (
+        _parse_bool(d.get("appropriate")) and _parse_bool(d.get("clear")),
+        str(d.get("why") or "").strip(),
+    )
 
 
 def judge_tone_once(row: dict) -> bool | None:
@@ -338,8 +377,109 @@ def judge_tone_once(row: dict) -> bool | None:
     d = _parse(raw)
     if not isinstance(d, dict):
         return None
-    _remark_state.tone = str(d.get("why") or "").strip()
-    return _parse_bool(d.get("appropriate")) and _parse_bool(d.get("clear"))
+    tone, _remark_state.tone = _tone_from(d)
+    return tone
+
+
+# R408 — both judgements read the SAME answer, so they share one call. The rule
+# text of each half is CORRECTNESS_PROMPT / TONE_PROMPT verbatim, so grouping is
+# the only thing that changes between the two modes.
+GROUPED_PROMPT = """You are the LLM-as-a-judge for an EU AI Act question-answering benchmark (Regulation (EU) 2024/1689).
+
+You are given a QUESTION, a set of CORRECTNESS CRITERIA, and a CANDIDATE ANSWER. Make TWO INDEPENDENT judgements of that one answer and return both in a single JSON object.
+
+JUDGEMENT 1 - ANSWER CORRECTNESS. For EACH criterion, decide whether the candidate answer satisfies it.
+
+HOW TO JUDGE - this is the part that matters:
+- A criterion is satisfied only when the candidate answer STATES THE SUBSTANCE of it. Naming or citing the provision that contains the fact is NOT enough. "The conditions are set out in Article 7(1)" does NOT satisfy a criterion that names one of those conditions.
+- The answer may use different words. Judge meaning, not phrasing.
+- A criterion that is a bare verdict ("Yes" / "No") is satisfied only when the answer's actual position matches it. An answer that leads with the opposite verdict and later concedes the point does NOT satisfy it - the verdict must be the answer's unambiguous position.
+- Extra correct material in the answer neither satisfies nor breaks a criterion. Judge each criterion on its own.
+- An answer that declines to answer, or says the material available does not permit an answer, satisfies NOTHING.
+- Do not reward an answer for being long. Do not punish it for being short.
+
+JUDGEMENT 2 - REGULATORY TONE. Judge whether the response is BOTH appropriate AND clear for a professional regulatory-advice setting with respect to the guidelines and few-shot examples below.
+
+APPROPRIATE means: professional and measured; does not lecture, moralise, or editorialise; does not address the reader informally; does not talk about itself, its retrieval, its knowledge base, its "supplied materials", or its own limitations; does not hedge into uselessness.
+CLEAR means: readable, well-ordered prose that a compliance professional could act on; not a wall of fragments; not internally contradictory.
+
+Correctness is NOT a tone concern. A wrong answer in impeccable regulatory prose passes judgement 2. Make judgement 2 without regard to your verdicts in judgement 1.
+
+TONE FEW-SHOT EXAMPLES:
+
+Example 1 (PASS):
+Question: What is a high-risk AI system under Article 6?
+Response: Under Article 6(2), AI systems referred to in Annex III are considered high-risk, unless they do not pose a significant risk of harm to the health, safety or fundamental rights of natural persons pursuant to the derogation conditions in Article 6(3). Additionally, systems that are safety components of products covered by Union harmonisation legislation listed in Annex I requiring third-party conformity assessment are high-risk under Article 6(1).
+Verdict: {{"appropriate": true, "clear": true, "why": "Professional, neutral third-person register with clear structure."}}
+
+Example 2 (FAIL - inappropriate self-referential / meta-commentary):
+Question: Does our emotion recognition system in the office violate the EU AI Act?
+Response: Based on my knowledge base and the materials provided to me, I believe that your system is prohibited. However, as an AI I cannot give legal advice and my graph does not contain the latest case law.
+Verdict: {{"appropriate": false, "clear": true, "why": "Refers to itself, its knowledge base, and gives conversational disclaimer hedging."}}
+
+Example 3 (FAIL - unclear / fragmented):
+Question: What obligations apply to deployers under Article 26?
+Response: Deployers must take measures. Technical documentation. Article 14 human oversight. Also logs if they control them. Not clear if applies.
+Verdict: {{"appropriate": true, "clear": false, "why": "Fragmented, incomplete sentences lacking coherent grammatical structure."}}
+
+VERBATIM STATUTORY TEXT (ground truth for judgement 1 - use it to resolve any dispute about what the Act says):
+{provisions}
+
+QUESTION:
+{question}
+
+CRITERIA:
+{criteria}
+
+CANDIDATE ANSWER:
+{answer}
+
+Return ONLY this JSON object, no markdown fence, no prose. "verdicts" has one entry per criterion, in order:
+{{"verdicts": [{{"n": 1, "satisfied": true, "why": "one short sentence"}}], "tone": {{"appropriate": true, "clear": true, "why": "one short sentence"}}}}"""
+
+
+def judge_grouped_once(row: dict) -> tuple[list[bool] | None, bool | None]:
+    """R408 — ONE call returns both judgements of the same answer.
+
+    Returns ``(criteria, tone)``. Either half is ``None`` when that half did not
+    parse, so a reply that drops the tone object still scores its criteria and
+    the caller can see the missing tone run. A row with no criteria needs no
+    correctness judgement, so it costs exactly the legacy tone call.
+    """
+    criteria = row.get("criteria") or []
+    if not criteria:
+        return [], judge_tone_once(row)
+    numbered = "\n".join(f"{i}. {c}" for i, c in enumerate(criteria, 1))
+    provisions = _provisions_for(
+        row.get("expected_refs") or row.get("_fallback_refs") or []
+    )
+    ans_text = (row.get("answer") or "").strip() or "(the system returned no answer)"
+    prompt = (
+        GROUPED_PROMPT
+        .replace("{provisions}", provisions)
+        .replace("{question}", row.get("question") or "")
+        .replace("{criteria}", numbered)
+        .replace("{answer}", f"<candidate_answer>\n{ans_text}\n</candidate_answer>")
+    )
+    try:
+        raw = _call(prompt)
+    except Exception:
+        return None, None
+    d = _parse(raw)
+    if not isinstance(d, dict):
+        return None, None
+    corr: list[bool] | None = None
+    if isinstance(d.get("verdicts"), list):
+        corr, remarks = _verdicts_from(d["verdicts"], len(criteria))
+        if corr is not None:
+            _remark_state.correctness = remarks
+    tone_obj = d.get("tone")
+    if not isinstance(tone_obj, dict) and "appropriate" in d and "clear" in d:
+        tone_obj = d
+    tone: bool | None = None
+    if isinstance(tone_obj, dict):
+        tone, _remark_state.tone = _tone_from(tone_obj)
+    return corr, tone
 
 
 def _majority(runs: list, n_criteria: int) -> list[bool]:
@@ -356,21 +496,34 @@ def _majority(runs: list, n_criteria: int) -> list[bool]:
 
 
 def judge_row(row: dict, repeats: int = REPEATS) -> dict:
-    """Judge one captured row; returns criteria booleans, tone, and spread."""
+    """Judge one captured row; returns criteria booleans, tone, and spread.
+
+    Grouped (the R408 default): each repetition is ONE call returning both
+    judgements. Split: a correctness call and a tone call per repetition.
+    """
     n = len(row.get("criteria") or [])
     corr_runs = []
     corr_remarks_runs: list[list[str]] = []
-    for _ in range(repeats):
-        _remark_state.correctness = []
-        corr_runs.append(judge_correctness_once(row))
-        corr_remarks_runs.append(list(getattr(_remark_state, "correctness", [])))
-
     tone_runs = []
     tone_remarks_runs: list[str] = []
-    for _ in range(repeats):
-        _remark_state.tone = ""
-        tone_runs.append(judge_tone_once(row))
-        tone_remarks_runs.append(str(getattr(_remark_state, "tone", "")))
+    if _grouped_enabled():
+        for _ in range(repeats):
+            _remark_state.correctness = []
+            _remark_state.tone = ""
+            corr, tone = judge_grouped_once(row)
+            corr_runs.append(corr)
+            corr_remarks_runs.append(list(getattr(_remark_state, "correctness", [])))
+            tone_runs.append(tone)
+            tone_remarks_runs.append(str(getattr(_remark_state, "tone", "")))
+    else:
+        for _ in range(repeats):
+            _remark_state.correctness = []
+            corr_runs.append(judge_correctness_once(row))
+            corr_remarks_runs.append(list(getattr(_remark_state, "correctness", [])))
+        for _ in range(repeats):
+            _remark_state.tone = ""
+            tone_runs.append(judge_tone_once(row))
+            tone_remarks_runs.append(str(getattr(_remark_state, "tone", "")))
     criteria = _majority(corr_runs, n)
     live_corr = [r for r in corr_runs if r is not None and len(r) == n]
     per_run_rate = [sum(1 for c in r if c) / n for r in live_corr] if (live_corr and n) else []
