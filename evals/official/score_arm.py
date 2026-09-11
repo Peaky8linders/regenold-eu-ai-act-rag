@@ -233,7 +233,52 @@ def main() -> int:
             todo.append(r)
     print(f"{len(rows)} rows: {len(cached)} cached, {len(todo)} to judge (cache: {cache_target.name})")
 
-    judged = official_judge.judge_rows(todo, workers=a.workers, repeats=a.repeats) if todo else []
+    cache_target.parent.mkdir(parents=True, exist_ok=True)
+    import threading as _threading  # noqa: PLC0415
+    _cache_lock = _threading.Lock()
+    _done_count = 0
+
+    def _on_row_done(j: dict) -> None:
+        nonlocal _done_count
+        if j.get("_judge_runs", 0) > 0 and j.get("_tone_runs", 0) > 0:
+            with _cache_lock:
+                _done_count += 1
+                with cache_target.open("a", encoding="utf-8") as fh:
+                    fh.write(
+                        json.dumps(
+                            {
+                                "key": _key(j["id"], j["answer"], judge_id),
+                                "judge_identity": judge_id,
+                                "verdict": {
+                                    k: j[k]
+                                    for k in (
+                                        "criteria",
+                                        "criterion_remarks",
+                                        "tone_ok",
+                                        "tone_remark",
+                                        "_judge_runs",
+                                        "_criteria_rate_min",
+                                        "_criteria_rate_max",
+                                        "_judge_errors",
+                                        "_corr_runs",
+                                        "_tone_runs_raw",
+                                    )
+                                    if k in j
+                                },
+                            },
+                            ensure_ascii=False,
+                        )
+                        + "\n"
+                    )
+                passed = sum(1 for c in (j.get("criteria") or []) if c)
+                total = len(j.get("criteria") or [])
+                print(
+                    f"  [{_done_count:3d}/{len(todo)}] checkpointed {j['id']} "
+                    f"(criteria: {passed}/{total}, tone: {'PASS' if j.get('tone_ok') else 'FAIL'})",
+                    flush=True,
+                )
+
+    judged = official_judge.judge_rows(todo, workers=a.workers, repeats=a.repeats, on_row=_on_row_done) if todo else []
 
     # R393 — LOUD failure on a saturated judge transport.
     #
@@ -281,38 +326,6 @@ def main() -> int:
                 f"first offenders: {[j['id'] for j in tone_dead[:8]]}\n"
                 f"{'!' * 72}\n"
             )
-
-    if judged:
-        cache_target.parent.mkdir(parents=True, exist_ok=True)
-        with cache_target.open("a", encoding="utf-8") as fh:
-            for j in judged:
-                if j.get("_judge_runs", 0) > 0 and j.get("_tone_runs", 0) > 0:
-                    fh.write(
-                        json.dumps(
-                            {
-                                "key": _key(j["id"], j["answer"], judge_id),
-                                "judge_identity": judge_id,
-                                "verdict": {
-                                    k: j[k]
-                                    for k in (
-                                        "criteria",
-                                        "criterion_remarks",
-                                        "tone_ok",
-                                        "tone_remark",
-                                        "_judge_runs",
-                                        "_criteria_rate_min",
-                                        "_criteria_rate_max",
-                                        "_judge_errors",
-                                        "_corr_runs",
-                                        "_tone_runs_raw",
-                                    )
-                                    if k in j
-                                },
-                            },
-                            ensure_ascii=False,
-                        )
-                        + "\n"
-                    )
 
 
     all_rows = cached + judged

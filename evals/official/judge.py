@@ -568,14 +568,19 @@ def judge_row(row: dict, repeats: int = REPEATS) -> dict:
     }
 
 
-def judge_rows(rows: list[dict], *, workers: int = 4, repeats: int = REPEATS) -> list[dict]:
+def judge_rows(
+    rows: list[dict],
+    *,
+    workers: int = 4,
+    repeats: int = REPEATS,
+    on_row: Any = None,
+) -> list[dict]:
     """Judge many rows; returns each row augmented in place-order."""
 
     def _one(r):
         try:
             out = dict(r)
             out.update(judge_row(r, repeats=repeats))
-            return out
         except Exception as exc:  # noqa: BLE001
             out = dict(r)
             out.update(
@@ -587,7 +592,12 @@ def judge_rows(rows: list[dict], *, workers: int = 4, repeats: int = REPEATS) ->
                     "_judge_exception": str(exc),
                 }
             )
-            return out
+        if on_row is not None:
+            try:
+                on_row(out)
+            except Exception:  # noqa: BLE001
+                pass
+        return out
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
         return list(ex.map(_one, rows))
