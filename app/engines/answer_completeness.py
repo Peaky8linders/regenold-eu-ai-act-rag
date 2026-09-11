@@ -77,6 +77,14 @@ Deviations from the written spec, each for a measured reason:
 * A repair is bounded by :func:`repair_char_budget`, NOT a blanket ratio: the
   acceptance limit grows one short clause per MISSING ITEM (R410 conciseness
   fix), not a multiple of the whole answer.
+* :func:`verdict_lead_gap` reads the FIRST interrogative of a multi-clause
+  question (R410) and accepts a worded verdict lead, not only a literal
+  ``Yes``/``No`` token. Both are precision fixes measured on the 110-row R407
+  ledger: the guard fired on 11 rows and only 1 was a real missing lead, the
+  other 10 being correct answers that decided the question without the exact
+  token ("Not prohibited and not high-risk.") or a trailing clause the guard had
+  mistaken for the ask. It now fires on 2 rows with no false positive on a
+  passing row. A conditional lead ("High-risk only where ...") is still a gap.
 """
 
 from __future__ import annotations
@@ -518,12 +526,20 @@ def _is_yes_no_sentence(sentence: str) -> bool:
 
 
 def _yes_no_sentence(question: str) -> str:
-    """The yes/no sentence of the asked question, ``""`` if it is not yes/no."""
+    """The yes/no sentence of the asked question, ``""`` if it is not yes/no.
+
+    The FIRST interrogative decides, not the last. A multi-clause question whose
+    leading ask is a wh- or request clause ("Who needs to establish the system?
+    Is it possible that ...?") is not a yes/no question: the trailing clause is
+    a follow-up, and demanding a Yes/No lead for it repels a correct answer. The
+    converse also holds — "Do I have an obligation? What if I am an importer?"
+    is a yes/no question, and reading only the last clause missed it.
+    """
     ask = _ask_text(question)
     sentences = _sentences(ask)
     interrogatives = [s for s in sentences if s.rstrip().endswith("?")]
-    if interrogatives and _is_yes_no_sentence(interrogatives[-1]):
-        return interrogatives[-1]
+    if interrogatives and _is_yes_no_sentence(interrogatives[0]):
+        return interrogatives[0]
     if sentences and _is_yes_no_sentence(sentences[0]):
         return sentences[0]
     return ""
@@ -941,10 +957,49 @@ def missing_exception_limbs(question: str, answer: str) -> list[Gap]:
 
 _MARKDOWN_LEAD_RE = re.compile(r"^[\s*_#>`~|•\-]+")
 _VERDICT_TOKEN_RE = re.compile(r"(?:yes|no)\b", re.IGNORECASE)
+_V = r"(?:prohibited|high-?risk|permitted|required|allowed|lawful|applicable|mandatory)"
+#: A lead verdict stated in words rather than as a bare Yes/No. A bare-token
+#: test scored "Not prohibited and not high-risk." as having no verdict at all,
+#: so the guard forced a needless repair on a correct answer (R410: only 1 of
+#: its 11 fires on the 110-row ledger was a real missing lead).
+_VERDICT_LEAD_RE = re.compile(
+    r"^(?:"
+    r"not\b"
+    r"|(?:the\s+|an?\s+)?[\w-]+(?:\s+[\w-]+){0,4}\s+(?:is|are|isn't|aren't|does|do)\s+"
+    r"(?:not\s+)?(?:[a-z]+ly\s+)?" + _V + r"\b"
+    r"|" + _V + r"\b"
+    r")",
+    re.IGNORECASE,
+)
+#: "High-risk ONLY WHERE ..." frames a condition instead of deciding, so it is
+#: not a verdict lead and the guard still fires.
+_VERDICT_CONDITION_RE = re.compile(
+    r"\s+(?:only\s+)?(?:where|when|if|unless|provided|to\s+the\s+extent|insofar)\b",
+    re.IGNORECASE,
+)
+#: "Only where ... does Article 27 apply" opens a condition outright.
+_VERDICT_CONDITION_LEAD_RE = re.compile(
+    r"^(?:only\s+)?(?:where|when|if|unless|provided|to\s+the\s+extent|insofar)\b",
+    re.IGNORECASE,
+)
 
 
 def _opens_with_verdict(answer: str) -> bool:
-    return bool(_VERDICT_TOKEN_RE.match(_MARKDOWN_LEAD_RE.sub("", _s(answer))))
+    """Does the answer open by deciding the question's yes/no verdict?
+
+    Accepts a bare ``Yes``/``No`` and, because the Act's verdicts are usually
+    phrased as classifications, an equally explicit worded lead: a negation
+    ("Not prohibited and not high-risk."), a subject-predicate verdict
+    ("Emotion recognition is not categorically prohibited ...") or a bare
+    classification ("High-risk."). A conditional, wherever it sits, is refused.
+    """
+    lead = _MARKDOWN_LEAD_RE.sub("", _s(answer))
+    if _VERDICT_TOKEN_RE.match(lead):
+        return True
+    if _VERDICT_CONDITION_LEAD_RE.match(lead):
+        return False
+    m = _VERDICT_LEAD_RE.match(lead)
+    return bool(m) and not _VERDICT_CONDITION_RE.match(lead, m.end())
 
 
 def _verdict_gaps(question: str, answer: str, limit: int | None = None) -> list[Gap]:

@@ -351,6 +351,101 @@ after the R410 conciseness fix, so `repair_char_budget` **was** the acceptance
 bound throughout — i.e. this is the lever's post-R410 performance, not a
 pre-fix reading.
 
+### 6.9 Judge-remark forensics: detector precision, and why the off-by-default levers stay off
+
+**Root-cause split of the 67 triaged failing criteria**
+(`docs/measurements/r409/r407_sonnet5_failing_criteria_triage.json`):
+
+| root cause | criteria | lever that targets it | status |
+| :--- | ---: | :--- | :--- |
+| `OMITTED_ENUMERATED_ITEM` | 22 | `REGENOLD_CLOSED_SET_COMPLETENESS_GUARD` | **gated FAIL** (§6.8) — stays OFF |
+| `NOT_APPLICABLE` | 12 | none — criterion defect, not an engine gap | gold work, not code |
+| `WRONG_OR_MISSING_PROVISION` | 10 | `REGENOLD_GOVERNING_PROVISION_CLAUSE` | ungated |
+| `MISSING_CONDITION_OR_EXCEPTION` | 9 | `REGENOLD_EXCEPTION_LIMB_GUARD` | ungated |
+| `PUSHBACK_DRIFT` | 7 | `REGENOLD_PUSHBACK_KEEP_CONTRACT` | ungated |
+| `VERDICT_POLARITY_OR_FRAMING` | 6 | `REGENOLD_VERDICT_LEAD_GUARD` | **precision fixed here** |
+| `HEDGED_OR_UNSUPPORTED` | 1 | none | — |
+
+**Detector precision/recall on the frozen 110-row R407 ledger**, measured with
+the deterministic instrument that already ships (`docs/measurements/r409/
+answer_completeness_offline_validation.py`, all five flags ON, no network):
+
+| detector | target rows fired | PASSING rows fired (FP) |
+| :--- | ---: | ---: |
+| member | 3/12 (25.0%) | 7/71 (9.9%) |
+| exception | 1/8 (12.5%) | 6/71 (8.5%) |
+| verdict — **before** | 1/6 (16.7%) | 6/71 (8.5%) |
+| verdict — **after the R410 fix** | **2/6 (33.3%)** | **0/71 (0.0%)** |
+| keep | 1/6 (16.7%) | 3/71 (4.2%) |
+| governing_clause | 1/8 (12.5%) | 0/71 (0.0%) |
+| keep_clause | 6/6 (100.0%) | 69/71 (97.2%) — fires on everything, useless as a gate |
+
+Two defects grounded by that table and fixed (`answer_completeness.py`):
+
+1. **`_opens_with_verdict` required the literal token `Yes`/`No`.** 7 of the 11
+verdict fires were correct answers that decided the question in words —
+`rg_007`/`rg_089` "Not prohibited and not high-risk.", `rg_081`/`rg_084`/
+`rg_106` "Not high-risk.", `rg_090` "Not high-risk, so no deployer log-keeping
+obligation under Article 12.", `rg_074` "Emotion recognition is not categorically
+prohibited ...". All 7 were flagged as *no verdict at all*, which forces a
+needless repair on a correct answer — the same mechanism as the R410 verbosity
+regression. It now also accepts a worded classification lead, while still
+refusing a conditional framing (`rg_107` "High-risk only where ...", "Only where
+the system is high-risk ... does Article 27 apply.") — a framing is not a verdict.
+2. **`_yes_no_sentence` read the LAST interrogative of a multi-clause question.**
+`rg_095` ("Who ... needs to establish the post-market monitoring system? Is it
+possible that ...?") is a wh-ask with a follow-up and is not a yes/no question,
+but the trailing clause made it one. Conversely `rg_069` ("Do I have an
+obligation ...? What if I am an importer instead?") *is* a yes/no question and
+the trailing clause made it not one. The FIRST interrogative now decides.
+
+Measured effect: fires 11 → 2 rows, false positives on passing rows 6 → 0,
+target recall 1/6 → 2/6. The two remaining fires are both genuine lead-shaped
+defects (`rg_107` conditional framing, `rg_097` verdict not in the lead).
+
+**The other three levers stay OFF, and the reason is measurable, not timid.**
+
+* `member` fires on 7 of 71 PASSING rows — it demands the full lettered list of a
+  provision the answer merely *cites* (`rg_055` demands Article 5(1)(a)-(g) for a
+  question about the 5(1)(h) exceptions; `rg_064` demands Article 60(4)(a)-(k) for
+  a question answered from 60(4)(e); `rg_018` demands Article 7(2)(b)-(j)). That is
+  the direct explanation of the §6.8 gold drop: repairs on already-correct
+  answers. A gold-safe variant needs a rule for *which* closed set the question
+  engages, and that is a reference-affecting change that needs its own gate.
+* `exception` fires on 6 passing rows and hits 0/9 target criteria by coordinate.
+* `keep_clause` fires on 107/110 rows — a clause that always fires carries no
+  signal.
+
+### 6.10 TrustGraph: the oracle is correct, and its target failure mode does not occur
+
+The §6.8 gate left one open question from the TrustGraph README
+(`trustgraph-integration/README.md`): *"how often does the live path actually
+emit a non-existent coordinate?"* — the precondition for turning the generated
+`provision_coordinates` oracle into a wire guard.
+
+**Measured: never.** Every wire reference in the frozen captures was replayed
+through `coordinate_exists`:
+
+| capture | rows | refs | non-existent coordinates |
+| :--- | ---: | ---: | ---: |
+| R407 hard, `pred_refs` | 110 | 310 | **0** |
+| R407 hard, `turn1_refs` | 110 | 310 | **0** |
+| R410 closed-set gate, arm A | 37 | 170 | **0** |
+| R410 closed-set gate, arm B | 37 | 172 | **0** |
+| **total** | **294** | **962** | **0 (0.00%)** |
+
+The `coordinate_exists` oracle (655 paragraph + 421 point coordinates, CI-checked
+by `tests/test_trustgraph_ontology.py`) is well-founded, but there is nothing for
+it to catch on the wire: the `_repair_nonexistent_coordinates` pass at
+`app/routes/regenold.py:4078`, enabled by `REGENOLD_REF_COORD_GUARD` (default
+`1`), already folds an unreal coordinate back onto its head, and the three
+prose→refs passes only emit coordinates they can substantiate. That is why the
+count is 0 — the oracle is already applied, and 0 is the *post-guard* reading.
+**A second wire guard built on this oracle would therefore be a no-op that can
+only lose gold heads — hard rule #8 — so it is not added.** The remaining
+TrustGraph benefit is not a reference guard; it is the SPARQL-queryable A-Box,
+which stays available without the cluster.
+
 ## 7. Actionable Roadmap for the Next Session
 
 ```mermaid
