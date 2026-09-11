@@ -53,7 +53,7 @@ if not _base.endswith("/v1") and not _base.endswith("/chat/completions"):
     _base = _base + "/v1"
 _default_url = _base if _base.endswith("/chat/completions") else f"{_base}/chat/completions"
 URL = os.getenv("R388_WRAPPER_URL") or _default_url
-MODEL = os.getenv("R388_JUDGE_MODEL", "claude-sonnet-4-6")
+MODEL = os.getenv("R388_JUDGE_MODEL", "claude-sonnet-5")
 if "openrouter.ai" in URL and "/" not in MODEL:
     MODEL = f"anthropic/{MODEL}"
 
@@ -568,14 +568,19 @@ def judge_row(row: dict, repeats: int = REPEATS) -> dict:
     }
 
 
-def judge_rows(rows: list[dict], *, workers: int = 4, repeats: int = REPEATS) -> list[dict]:
+def judge_rows(
+    rows: list[dict],
+    *,
+    workers: int = 4,
+    repeats: int = REPEATS,
+    on_row: Any = None,
+) -> list[dict]:
     """Judge many rows; returns each row augmented in place-order."""
 
     def _one(r):
         try:
             out = dict(r)
             out.update(judge_row(r, repeats=repeats))
-            return out
         except Exception as exc:  # noqa: BLE001
             out = dict(r)
             out.update(
@@ -587,7 +592,12 @@ def judge_rows(rows: list[dict], *, workers: int = 4, repeats: int = REPEATS) ->
                     "_judge_exception": str(exc),
                 }
             )
-            return out
+        if on_row is not None:
+            try:
+                on_row(out)
+            except Exception as exc:  # noqa: BLE001 — a checkpoint failure must not kill the run
+                print(f"  checkpoint callback failed for {out.get('id')}: {exc}", flush=True)
+        return out
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
         return list(ex.map(_one, rows))

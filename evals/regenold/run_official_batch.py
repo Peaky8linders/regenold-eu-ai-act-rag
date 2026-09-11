@@ -133,6 +133,21 @@ def _apply_env(arm_env: dict[str, str]) -> dict[str, str | None]:
     return saved
 
 
+#: R409 — seconds the rerank pacer has slept, process-wide. The pacer sleeps
+#: INSIDE the in-process request, so the sleep landed in the measured latency:
+#: R407 ran with a 13 s gap and scored Resp. Speed on it. ``guarded_poster``
+#: subtracts the delta; requests are posted sequentially, so it is exact.
+_PACING_SLEPT_S = [0.0]
+
+
+def _net_of_pacing(result: tuple, slept_before: float) -> tuple:
+    """Remove the pacer's sleep since ``slept_before`` from a poster result."""
+    slept_ms = (_PACING_SLEPT_S[0] - slept_before) * 1000.0
+    if slept_ms > 0 and result[1] is not None:
+        return (result[0], max(0.0, result[1] - slept_ms), *result[2:])
+    return result
+
+
 def _install_cohere_guard(
     *,
     require_embeddings: bool = True,
@@ -221,6 +236,7 @@ def _install_cohere_guard(
                 wait_s = min_gap - (time.monotonic() - last_rerank_at)
                 if wait_s > 0:
                     time.sleep(wait_s)
+                    _PACING_SLEPT_S[0] += wait_s
                 result = original_rerank(query, documents, top_n=top_n)
                 if (
                     cohere_rerank.rerank_stats().get("attempts", 0)
@@ -369,6 +385,13 @@ def _run_hard(rows, poster, url, api_key, timeout, ckpt) -> list[dict[str, Any]]
             "jul07_answer": row.jul07_answer,
             "jul07_refs": list(row.jul07_refs),
             "latency_ms": (lat1 or 0) + (lat2 or 0),
+            # R409 — per-turn latency. The official hard-mode Resp. Speed is per
+            # graded response: on Aug-25 the same system scored hard 85.7 vs easy
+            # 87.6, where a two-turn sum would read about twice the easy latency.
+            # ``score_arm`` scores the graded turn and falls back to the sum only
+            # for checkpoints written before these fields existed.
+            "turn1_latency_ms": lat1 or 0,
+            "pushback_latency_ms": lat2 or 0,
             "http_status": st2 or st1,
             "attempts": (att1 or 0) + (att2 or 0),
         }
@@ -685,9 +708,10 @@ def main() -> None:
         base_poster = poster
 
         def guarded_poster(*poster_args, **poster_kwargs):
+            slept_before = _PACING_SLEPT_S[0]
             result = base_poster(*poster_args, **poster_kwargs)
             assert_cohere_healthy()
-            return result
+            return _net_of_pacing(result, slept_before)
 
         poster = guarded_poster
     url = (

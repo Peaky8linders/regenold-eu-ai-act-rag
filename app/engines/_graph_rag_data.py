@@ -911,14 +911,29 @@ _CLASSIFICATION_TOPICS: list[dict] = [
     {
         "name": "medtech_triage",
         "patterns": [
+            # R410 — emergency-response triage ONLY. The pre-R410 shape matched
+            # "sort patients ... clinical trial", hard-routing clinical-trial
+            # selection to this Annex III(5)(d) emergency-dispatch verdict: the
+            # antifragile Part II Q8-Q11 defect shipped the identical 651-char
+            # answer for four different facts. Annex III point 5(d) reaches
+            # emergency CALLS and emergency healthcare patient triage, so an
+            # emergency-response marker is now required. Clinical-trial triage
+            # (no emergency marker) falls through to the classification /
+            # synthesis path, which can resolve the branch the supplied fact
+            # selects (prohibited Art. 5(1)(g) / high-risk Annex III(1)(b) /
+            # unclassified Art. 6(1)) instead of asserting emergency dispatch.
+            # Conjunction of three order-independent lookaheads: an
+            # emergency-response marker AND a triage/priority/dispatch action
+            # AND a patient or clinical subject. This matches la_q66 ("dispatch
+            # and triage emergency-room patients") and the emergency-dispatch
+            # shapes in every word order, while a clinical-trial question (no
+            # emergency marker) cannot match however it is phrased.
             re.compile(
-                r"\b(?:sort|prioritiz|triage|priority)[\w\s\-,]{0,60}?"
-                r"(?:patient|clinical|medical|hospital)",
-                re.IGNORECASE,
-            ),
-            re.compile(
-                r"(?:patient|clinical|medical|hospital)[\w\s\-,]{0,60}?"
-                r"\b(?:sort|prioritiz|triage|priority)",
+                r"(?=[\s\S]*\b(?:emergenc\w*|first[\s-]?respons\w*|ambulanc\w*|"
+                r"paramedic\w*|112|casualt\w*|urgent\s+care)\b)"
+                r"(?=[\s\S]*\b(?:sort\w*|prioriti[sz]\w*|triage\w*|priority|"
+                r"dispatch\w*|respond\w*)\b)"
+                r"(?=[\s\S]*(?:patient\w*|clinical|medical|hospital\w*|ambulanc\w*))",
                 re.IGNORECASE,
             ),
         ],
@@ -1514,17 +1529,18 @@ _CLASSIFICATION_TOPICS: list[dict] = [
             re.compile(r"^\s*(?:what(?:'s|\s+is|\s+are)(?:\s+the)?|what)\s+risk\s+(?:categor|tier|level|class)", re.IGNORECASE)
         ],
         "answer": (
-            "The EU AI Act applies a risk-based framework with four tiers plus a "
-            "parallel regime for general-purpose AI models. Unacceptable-risk practices "
-            "are prohibited outright under Article 5; high-risk systems are classified "
-            "under Article 6 (as a safety component of an Annex I product, or as one of "
-            "the Annex III use cases) and carry the Chapter III Section 2 obligations; "
-            "limited-risk systems carry the Article 50 transparency duties; and "
-            "minimal-risk systems avoid Chapter III high-risk requirements but "
-            "retain Article 4 AI literacy duties, with voluntary codes under "
-            "Article 95. General-purpose AI "
-            "models are governed separately under Articles 51 to 56, with stricter "
-            "duties for models posing systemic risk."
+            "The EU AI Act attaches obligations by condition rather than by a formal "
+            "statutory risk category; the familiar four-tier vocabulary is descriptive "
+            "shorthand for how those conditions group. Unacceptable-risk practices are "
+            "prohibited outright under Article 5; high-risk systems are classified under "
+            "Article 6 (as a safety component of an Annex I product, or as one of the "
+            "Annex III use cases) and carry the Chapter III Section 2 obligations; "
+            "limited-risk systems carry the Article 50 transparency duties; and systems "
+            "outside all of those conditions, often called minimal-risk, avoid the "
+            "Chapter III high-risk requirements but retain Article 4 AI literacy duties, "
+            "with voluntary codes under Article 95. General-purpose AI models are "
+            "governed separately under Articles 51 to 56, with stricter duties for "
+            "models posing systemic risk."
         ),
         "refs": ["Art. 5", "Art. 6", "Annex I", "Annex III", "Art. 50", "Art. 51", "Art. 52", "Art. 53", "Art. 54", "Art. 55", "Art. 56"],
     },

@@ -143,6 +143,17 @@ class GraphRAGRequest(BaseModel):
     candidate extraction, preventing cited-but-nonoperative assistant prose
     from changing the retrieved provision set.
     """
+    guard_question: str | None = Field(default=None, max_length=_MAX_QUESTION_CHARS)
+    """R305/R410 — flattened conversation for post-generation completeness guards.
+
+    Under ``REGENOLD_REASK_FOCUS`` (the default) the route hands the engine the
+    bare re-asked question on a pushback turn, so ``question`` carries no
+    ``Conversation so far`` block and ``previous_answer()`` cannot find turn 1.
+    The completeness guard needs turn 1 to keep the points a pushback dropped, so
+    the route forwards the flattened history here. Retrieval ignores this field:
+    the ``question`` / ``resolved_question`` / ``context_retrieval_text`` contract
+    is unchanged.
+    """
     bridging_context: list[str] = Field(default_factory=list)
 
 

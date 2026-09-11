@@ -1,0 +1,3989 @@
+{
+  "verified_score": {
+    "ans_correctness_loose": 90.6915,
+    "ans_correctness_strict": 81.8182,
+    "ans_conciseness": 84.4217,
+    "ref_correctness_loose": 95.5,
+    "ref_correctness_strict": 74.8333,
+    "ref_conciseness": 55.9333,
+    "regulatory_tone": 100.0,
+    "resp_speed": 71.6455,
+    "overall": 80.6731,
+    "n": 110,
+    "n_ref_scored": 100,
+    "_ans_loose_macro": 90.3788,
+    "_mean_answer_chars": 757.2,
+    "_mean_reference_chars": 650.1,
+    "_mean_refs_per_row": 2.818,
+    "_mean_expected_per_row": 1.27,
+    "_mean_latency_s": 28.422
+  },
+  "raw_wire_score": {
+    "ans_correctness_loose": 90.6915,
+    "ans_correctness_strict": 81.8182,
+    "ans_conciseness": 84.4217,
+    "ref_correctness_loose": 95.5,
+    "ref_correctness_strict": 74.8333,
+    "ref_conciseness": 55.9333,
+    "regulatory_tone": 100.0,
+    "resp_speed": 71.6455,
+    "overall": 80.6731,
+    "n": 110,
+    "n_ref_scored": 100,
+    "_ans_loose_macro": 90.3788,
+    "_mean_answer_chars": 757.2,
+    "_mean_reference_chars": 650.1,
+    "_mean_refs_per_row": 2.818,
+    "_mean_expected_per_row": 1.27,
+    "_mean_latency_s": 28.422
+  },
+  "cohorts": {
+    "content_easy": {
+      "ans_correctness_loose": 94.012,
+      "ans_correctness_strict": 88.2353,
+      "ans_conciseness": 88.885,
+      "ref_correctness_loose": 96.6667,
+      "ref_correctness_strict": 78.8889,
+      "ref_conciseness": 61.0,
+      "regulatory_tone": 100.0,
+      "resp_speed": 77.6789,
+      "overall": 84.7613,
+      "n": 51,
+      "n_ref_scored": 45,
+      "_ans_loose_macro": 93.6275,
+      "_mean_answer_chars": 648.2,
+      "_mean_reference_chars": 611.5,
+      "_mean_refs_per_row": 2.451,
+      "_mean_expected_per_row": 1.156,
+      "_mean_latency_s": 22.321
+    },
+    "content_hard": {
+      "ans_correctness_loose": 88.0383,
+      "ans_correctness_strict": 76.2712,
+      "ans_conciseness": 80.5636,
+      "ref_correctness_loose": 94.5455,
+      "ref_correctness_strict": 71.5152,
+      "ref_conciseness": 51.7879,
+      "regulatory_tone": 100.0,
+      "resp_speed": 66.4302,
+      "overall": 77.1748,
+      "n": 59,
+      "n_ref_scored": 55,
+      "_ans_loose_macro": 87.5706,
+      "_mean_answer_chars": 851.4,
+      "_mean_reference_chars": 683.5,
+      "_mean_refs_per_row": 3.136,
+      "_mean_expected_per_row": 1.364,
+      "_mean_latency_s": 33.695
+    },
+    "stage2_landed": {
+      "ans_correctness_loose": 87.9725,
+      "ans_correctness_strict": 76.4706,
+      "ans_conciseness": 81.3639,
+      "ref_correctness_loose": 95.5128,
+      "ref_correctness_strict": 72.8632,
+      "ref_conciseness": 55.0,
+      "regulatory_tone": 100.0,
+      "resp_speed": 66.5802,
+      "overall": 78.1752,
+      "n": 85,
+      "n_ref_scored": 78,
+      "_ans_loose_macro": 87.549,
+      "_mean_answer_chars": 809.5,
+      "_mean_reference_chars": 654.6,
+      "_mean_refs_per_row": 2.882,
+      "_mean_expected_per_row": 1.333,
+      "_mean_latency_s": 33.507
+    },
+    "stage2_not_landed": {
+      "ans_correctness_loose": 100.0,
+      "ans_correctness_strict": 100.0,
+      "ans_conciseness": 94.8181,
+      "ref_correctness_loose": 95.4545,
+      "ref_correctness_strict": 81.8182,
+      "ref_conciseness": 59.2424,
+      "regulatory_tone": 100.0,
+      "resp_speed": 88.8676,
+      "overall": 88.8923,
+      "n": 25,
+      "n_ref_scored": 22,
+      "_ans_loose_macro": 100.0,
+      "_mean_answer_chars": 579.4,
+      "_mean_reference_chars": 634.9,
+      "_mean_refs_per_row": 2.6,
+      "_mean_expected_per_row": 1.045,
+      "_mean_latency_s": 11.132
+    },
+    "all_criteria_pass": {
+      "ans_correctness_loose": 100.0,
+      "ans_correctness_strict": 100.0,
+      "ans_conciseness": 84.3643,
+      "ref_correctness_loose": 95.7831,
+      "ref_correctness_strict": 75.9036,
+      "ref_conciseness": 57.5703,
+      "regulatory_tone": 100.0,
+      "resp_speed": 72.7816,
+      "overall": 84.3803,
+      "n": 90,
+      "n_ref_scored": 83,
+      "_ans_loose_macro": 100.0,
+      "_mean_answer_chars": 760.5,
+      "_mean_reference_chars": 649.2,
+      "_mean_refs_per_row": 2.8,
+      "_mean_expected_per_row": 1.277,
+      "_mean_latency_s": 27.3
+    },
+    "some_criteria_fail": {
+      "ans_correctness_loose": 46.1538,
+      "ans_correctness_strict": 0.0,
+      "ans_conciseness": 84.6802,
+      "ref_correctness_loose": 94.1176,
+      "ref_correctness_strict": 69.6078,
+      "ref_conciseness": 47.9412,
+      "regulatory_tone": 100.0,
+      "resp_speed": 66.533,
+      "overall": 0.0,
+      "n": 20,
+      "n_ref_scored": 17,
+      "_ans_loose_macro": 47.0833,
+      "_mean_answer_chars": 742.2,
+      "_mean_reference_chars": 654.4,
+      "_mean_refs_per_row": 2.9,
+      "_mean_expected_per_row": 1.235,
+      "_mean_latency_s": 33.467
+    }
+  },
+  "history": {
+    "score-r390-opus5-live-easy.json": {
+      "axes": {
+        "ans_correctness_loose": 85.6383,
+        "ans_correctness_strict": 70.9091,
+        "ans_conciseness": 69.0312,
+        "ref_correctness_loose": 97.5,
+        "ref_correctness_strict": 69.1667,
+        "ref_conciseness": 55.3028,
+        "regulatory_tone": 98.1818,
+        "resp_speed": 91.7553,
+        "overall": 78.2692,
+        "n": 110,
+        "n_ref_scored": 100,
+        "_ans_loose_macro": 86.0758,
+        "_mean_answer_chars": 989.8,
+        "_mean_reference_chars": 650.1,
+        "_mean_refs_per_row": 2.964,
+        "_mean_expected_per_row": 1.27,
+        "_mean_latency_s": 8.245
+      },
+      "checkpoint": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\evals\\bench\\results\\official-r390-opus5-live-easy.ckpt.jsonl",
+      "judge_identity": null,
+      "criteria_equal_rows": 110,
+      "expected_equal_rows": 110,
+      "ans_conciseness_delta": 15.390553345224536,
+      "descriptive_paired_question_bootstrap_95": [
+        11.796985502694358,
+        19.223314668879553
+      ],
+      "shorter": 74,
+      "longer": 24,
+      "equal_length": 12
+    },
+    "score-r390-live-hard-opus5-hard.json": {
+      "axes": {
+        "ans_correctness_loose": 90.9574,
+        "ans_correctness_strict": 80.0,
+        "ans_conciseness": 62.075,
+        "ref_correctness_loose": 95.0,
+        "ref_correctness_strict": 67.6667,
+        "ref_conciseness": 49.65,
+        "regulatory_tone": 99.0909,
+        "resp_speed": 78.5809,
+        "overall": 76.0811,
+        "n": 110,
+        "n_ref_scored": 100,
+        "_ans_loose_macro": 91.0152,
+        "_mean_answer_chars": 1139.3,
+        "_mean_reference_chars": 650.1,
+        "_mean_refs_per_row": 3.091,
+        "_mean_expected_per_row": 1.27,
+        "_mean_latency_s": 21.419
+      },
+      "checkpoint": "evals/bench/results/official-r390-live-hard-hard.ckpt.jsonl",
+      "judge_identity": null,
+      "criteria_equal_rows": 110,
+      "expected_equal_rows": 110,
+      "ans_conciseness_delta": 22.346721977574372,
+      "descriptive_paired_question_bootstrap_95": [
+        18.146191836972378,
+        26.609651159112655
+      ],
+      "shorter": 80,
+      "longer": 18,
+      "equal_length": 12
+    },
+    "score-r405-hard-bedrock-qwen235b-hard.json": {
+      "axes": {
+        "ans_correctness_loose": 91.2234,
+        "ans_correctness_strict": 83.6364,
+        "ans_conciseness": 83.8491,
+        "ref_correctness_loose": 97.0,
+        "ref_correctness_strict": 75.1667,
+        "ref_conciseness": 54.7333,
+        "regulatory_tone": 100.0,
+        "resp_speed": 90.5286,
+        "overall": 83.2682,
+        "n": 110,
+        "n_ref_scored": 100,
+        "_ans_loose_macro": 91.197,
+        "_mean_answer_chars": 760.4,
+        "_mean_reference_chars": 650.1,
+        "_mean_refs_per_row": 2.855,
+        "_mean_expected_per_row": 1.27,
+        "_mean_latency_s": 9.471
+      },
+      "checkpoint": "evals/bench/results/official-r405-hard-bedrock-qwen235b-hard.ckpt.jsonl",
+      "judge_identity": "bedrock:qwen.qwen3-235b-a22b-2507-v1:0:t=0.1:r=3",
+      "criteria_equal_rows": 110,
+      "expected_equal_rows": 110,
+      "ans_conciseness_delta": 0.5725704837982291,
+      "descriptive_paired_question_bootstrap_95": [
+        -1.919947295860147,
+        3.1789814216390777
+      ],
+      "shorter": 39,
+      "longer": 39,
+      "equal_length": 32
+    }
+  },
+  "turn1_deterministic_axes": {
+    "ans_conciseness": 84.0653,
+    "ref_correctness_loose": 96.1667,
+    "ref_correctness_strict": 73.8333,
+    "ref_conciseness": 56.4262,
+    "_mean_answer_chars": 775.4,
+    "_mean_refs_per_row": 2.818
+  },
+  "repetitions": [
+    {
+      "ans_correctness_loose": 90.5914,
+      "ans_correctness_strict": 81.6514,
+      "ans_conciseness": 84.4217,
+      "ref_correctness_loose": 95.5,
+      "ref_correctness_strict": 74.8333,
+      "ref_conciseness": 55.9333,
+      "regulatory_tone": 100.0,
+      "resp_speed": 71.6455,
+      "overall": 80.6414,
+      "n": 110,
+      "n_ref_scored": 100,
+      "_ans_loose_macro": 90.2905,
+      "_mean_answer_chars": 757.2,
+      "_mean_reference_chars": 650.1,
+      "_mean_refs_per_row": 2.818,
+      "_mean_expected_per_row": 1.27,
+      "_mean_latency_s": 28.422
+    },
+    {
+      "ans_correctness_loose": 90.3485,
+      "ans_correctness_strict": 80.7339,
+      "ans_conciseness": 84.4217,
+      "ref_correctness_loose": 95.5,
+      "ref_correctness_strict": 74.8333,
+      "ref_conciseness": 55.9333,
+      "regulatory_tone": 100.0,
+      "resp_speed": 71.6455,
+      "overall": 80.5005,
+      "n": 110,
+      "n_ref_scored": 100,
+      "_ans_loose_macro": 90.0612,
+      "_mean_answer_chars": 757.2,
+      "_mean_reference_chars": 650.1,
+      "_mean_refs_per_row": 2.818,
+      "_mean_expected_per_row": 1.27,
+      "_mean_latency_s": 28.422
+    },
+    {
+      "ans_correctness_loose": 90.8356,
+      "ans_correctness_strict": 82.5688,
+      "ans_conciseness": 84.4217,
+      "ref_correctness_loose": 95.5,
+      "ref_correctness_strict": 74.8333,
+      "ref_conciseness": 55.9333,
+      "regulatory_tone": 100.0,
+      "resp_speed": 71.6455,
+      "overall": 80.7812,
+      "n": 110,
+      "n_ref_scored": 100,
+      "_ans_loose_macro": 90.5199,
+      "_mean_answer_chars": 757.2,
+      "_mean_reference_chars": 650.1,
+      "_mean_refs_per_row": 2.818,
+      "_mean_expected_per_row": 1.27,
+      "_mean_latency_s": 28.422
+    }
+  ],
+  "reference_groups_by_expected_count": {
+    "1": {
+      "n": 76,
+      "mean_provided": 2.710526315789474,
+      "mean_ref_conciseness": 49.05701754385965
+    },
+    "2": {
+      "n": 21,
+      "mean_provided": 2.761904761904762,
+      "mean_ref_conciseness": 77.61904761904762
+    },
+    "3": {
+      "n": 3,
+      "mean_provided": 4,
+      "mean_ref_conciseness": 78.33333333333333
+    }
+  },
+  "counts": {
+    "criteria_total": 376,
+    "criteria_failed": 35,
+    "failed_rows": [
+      "rg_015",
+      "rg_021",
+      "rg_035",
+      "rg_036",
+      "rg_037",
+      "rg_046",
+      "rg_051",
+      "rg_057",
+      "rg_060",
+      "rg_062",
+      "rg_068",
+      "rg_069",
+      "rg_075",
+      "rg_078",
+      "rg_087",
+      "rg_089",
+      "rg_091",
+      "rg_097",
+      "rg_098",
+      "rg_110"
+    ],
+    "excluded_ref_rows": [
+      "rg_001",
+      "rg_014",
+      "rg_022",
+      "rg_029",
+      "rg_037",
+      "rg_060",
+      "rg_071",
+      "rg_084",
+      "rg_086",
+      "rg_098"
+    ],
+    "answer_score_100": 34,
+    "ref_score_100": 28,
+    "ref_over_budget": 72,
+    "pred_refs_scored_total": 276,
+    "expected_refs_total": 127,
+    "reference_count_excess": 152,
+    "extra_heads_total": 157,
+    "extra_head_rows": 71,
+    "strict_incomplete_rows": 30,
+    "loose_incomplete_rows": 6,
+    "wrong_grain_only_rows": [
+      "rg_003",
+      "rg_005",
+      "rg_008",
+      "rg_017",
+      "rg_027",
+      "rg_034",
+      "rg_038",
+      "rg_048",
+      "rg_049",
+      "rg_051",
+      "rg_057",
+      "rg_069",
+      "rg_072",
+      "rg_077",
+      "rg_082",
+      "rg_088",
+      "rg_094",
+      "rg_095",
+      "rg_097",
+      "rg_099",
+      "rg_100",
+      "rg_104",
+      "rg_107",
+      "rg_110"
+    ],
+    "same_head_redundancy": 4,
+    "score_raw_ref_mismatch_rows": [],
+    "judge_disagreement_rows": [
+      "rg_021",
+      "rg_082",
+      "rg_089",
+      "rg_091",
+      "rg_106",
+      "rg_107"
+    ],
+    "judge_disagreement_criteria": 8,
+    "judge_runs": {
+      "3": 107,
+      "2": 3
+    },
+    "tone_valid_run_counts": {
+      "3": 110
+    },
+    "models": {
+      "": 25,
+      "qwen.qwen3-235b-a22b-2507-v1:0": 62,
+      "qwen.qwen3-32b-v1:0": 23
+    },
+    "difficulty": {
+      "EASY": 51,
+      "HARD": 59
+    },
+    "answer_changed_on_pushback": 72,
+    "pushback_shorter": 33,
+    "pushback_longer": 38
+  },
+  "scenarios_not_forecasts": {
+    "reference_conciseness_70": {
+      "changes": {
+        "ref_conciseness": 70
+      },
+      "overall": 82.96730403409026
+    },
+    "reference_conciseness_80": {
+      "changes": {
+        "ref_conciseness": 80
+      },
+      "overall": 84.36376855961562
+    },
+    "speed_86_7": {
+      "changes": {
+        "resp_speed": 86.7
+      },
+      "overall": 82.61945028450619
+    },
+    "ref70_and_speed86_7": {
+      "changes": {
+        "ref_conciseness": 70,
+        "resp_speed": 86.7
+      },
+      "overall": 84.96904765901218
+    },
+    "target_all_axes": {
+      "changes": {
+        "ans_correctness_loose": 95,
+        "ans_correctness_strict": 90,
+        "ans_conciseness": 88,
+        "ref_correctness_loose": 98,
+        "ref_correctness_strict": 85,
+        "ref_conciseness": 80,
+        "regulatory_tone": 100,
+        "resp_speed": 90
+      },
+      "overall": 90.53224407032681
+    }
+  },
+  "reference_length_sensitivity": {
+    "0.8": 71.81771213113336,
+    "0.9": 78.64473013366698,
+    "1": 84.42171713439383,
+    "1.1": 88.86233497062621,
+    "1.2": 91.90395895388328
+  },
+  "sha256": {
+    "docs/measurements/r388/score-r407-direct-bedrock-cohere-v4-pro-hard.json": "12e6547e5999081b910ff669686718031930e0571008c43e77170ba7a2fbaf05",
+    "evals/bench/results/official-r407-direct-bedrock-cohere-v4-pro-hard.ckpt.jsonl": "8cc87bc68c37c3fd3c7a852e281aad9fcf2f9351f609984f4ee4ccf97587d6e8",
+    "docs/measurements/r407/judge-cache.jsonl": "d34a6dc1f46b1cc87e2877cf91ff3f6b7ca9171d228deee1feddf7acf173678b",
+    "docs/measurements/r388/official_gold_n110.jsonl": "a7ebb92e0c31acf1fd7fe0492e96f536b1008d4cf06c1e040476330eac399d00",
+    "docs/measurements/r388/official_refkey_n110.jsonl": "abb1acaef6e81227353a435da7f3ea9f814a6fd24a67b9dd531f6e2f464be4f3",
+    "report.md": "05dfd7653657311db782d78906fa7f7c4b482c268922fa81146185e1deb5ab9f",
+    "docs/measurements/r407/report.md": "05dfd7653657311db782d78906fa7f7c4b482c268922fa81146185e1deb5ab9f"
+  },
+  "rows": [
+    {
+      "id": "rg_001",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 2,
+      "criteria_count": 2,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": null,
+      "ref_loose": null,
+      "ref_strict": null,
+      "refs": [
+        "Article 11.1",
+        "Annex IV.1"
+      ],
+      "expected_refs": [],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 387,
+      "answer_chars": 387,
+      "reference_chars": 479,
+      "latency_s": 26.25643520000085,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_002",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 2,
+      "criteria_count": 2,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 50.4"
+      ],
+      "expected_refs": [
+        "Article 50.4"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 382,
+      "answer_chars": 382,
+      "reference_chars": 503,
+      "latency_s": 5.887694699998974,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_003",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 93.06803594351733,
+      "ref_conciseness": 0.3333333333333333,
+      "ref_loose": 1.0,
+      "ref_strict": 0.0,
+      "refs": [
+        "Annex III.6.d",
+        "Article 6.2",
+        "Article 49.3"
+      ],
+      "expected_refs": [
+        "Article 6.3"
+      ],
+      "missing_strict": [
+        "Article 6.3"
+      ],
+      "extra_heads": [
+        "Annex III",
+        "Article 49"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 779,
+      "answer_chars": 779,
+      "reference_chars": 725,
+      "latency_s": 25.055538499997056,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_004",
+      "difficulty": "HARD",
+      "category": "Cross-Framework & Sectoral MedTech Integration",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 67.25490196078432,
+      "ref_conciseness": 0.25,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 6.1",
+        "Article 43.3",
+        "Annex I.11",
+        "Article 48.4"
+      ],
+      "expected_refs": [
+        "Article 6.1"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Annex I",
+        "Article 43",
+        "Article 48"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 1210,
+      "answer_chars": 1020,
+      "reference_chars": 686,
+      "latency_s": 107.38809250000122,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_005",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 0.3333333333333333,
+      "ref_loose": 1.0,
+      "ref_strict": 0.0,
+      "refs": [
+        "Article 13.3",
+        "Article 14.4",
+        "Article 15.1"
+      ],
+      "expected_refs": [
+        "Article 13.1"
+      ],
+      "missing_strict": [
+        "Article 13.1"
+      ],
+      "extra_heads": [
+        "Article 14",
+        "Article 15"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 441,
+      "answer_chars": 441,
+      "reference_chars": 614,
+      "latency_s": 5.955693700001575,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_006",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 0.3333333333333333,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 2.1.a",
+        "Article 3.1",
+        "Article 51.1"
+      ],
+      "expected_refs": [
+        "Article 2.1.a"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 3",
+        "Article 51"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 478,
+      "answer_chars": 478,
+      "reference_chars": 626,
+      "latency_s": 3.0592539999997825,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_007",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 60.13437849944009,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 5.1.d",
+        "Article 6.2",
+        "Article 50.1",
+        "Annex III.1.a"
+      ],
+      "expected_refs": [
+        "Annex III.1.a",
+        "Article 5.1"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 50",
+        "Article 6"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 2512,
+      "answer_chars": 893,
+      "reference_chars": 537,
+      "latency_s": 24.959228799998527,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_008",
+      "difficulty": "HARD",
+      "category": "Cross-Framework & Sectoral MedTech Integration",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 77.92682926829269,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 0.5,
+      "refs": [
+        "Article 6.1",
+        "Annex I.19"
+      ],
+      "expected_refs": [
+        "Article 6.1",
+        "Annex I.a.11"
+      ],
+      "missing_strict": [
+        "Annex I.a.11"
+      ],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 984,
+      "answer_chars": 820,
+      "reference_chars": 639,
+      "latency_s": 47.91549210000085,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_009",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 5,
+      "criteria_count": 5,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 0.2,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 18.1",
+        "Article 11.1",
+        "Article 17.1",
+        "Article 47.1",
+        "Article 19.1"
+      ],
+      "expected_refs": [
+        "Article 18.1"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 11",
+        "Article 17",
+        "Article 19",
+        "Article 47"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 606,
+      "answer_chars": 606,
+      "reference_chars": 621,
+      "latency_s": 9.661652499999036,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_010",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 5,
+      "criteria_count": 5,
+      "ans_conciseness": 93.8195302843016,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 14.4",
+        "Annex III"
+      ],
+      "expected_refs": [
+        "Article 14"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Annex III"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 752,
+      "answer_chars": 809,
+      "reference_chars": 759,
+      "latency_s": 9.047627600000851,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_011",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 3.32",
+        "Article 10.3"
+      ],
+      "expected_refs": [
+        "Article 10.3"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 3"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 739,
+      "answer_chars": 739,
+      "reference_chars": 811,
+      "latency_s": 2.140058399996633,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_012",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Annex III.8"
+      ],
+      "expected_refs": [
+        "Annex III.8"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 691,
+      "answer_chars": 691,
+      "reference_chars": 736,
+      "latency_s": 2.174054899998737,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_013",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 5,
+      "criteria_count": 5,
+      "ans_conciseness": 72.37209302325581,
+      "ref_conciseness": 0.25,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 53.2",
+        "Article 51.1",
+        "Article 55.2",
+        "Annex XI.2"
+      ],
+      "expected_refs": [
+        "Article 53.2"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Annex XI",
+        "Article 51",
+        "Article 55"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 1075,
+      "answer_chars": 1075,
+      "reference_chars": 778,
+      "latency_s": 2.0997275000008813,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_014",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 52.18855218855219,
+      "ref_conciseness": null,
+      "ref_loose": null,
+      "ref_strict": null,
+      "refs": [
+        "Annex III.3.c",
+        "Article 6.2",
+        "Article 49.3"
+      ],
+      "expected_refs": [],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 909,
+      "answer_chars": 1188,
+      "reference_chars": 620,
+      "latency_s": 16.868202899997414,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_015",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 2,
+      "criteria_count": 3,
+      "ans_conciseness": 88.23529411764706,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 50.1",
+        "Article 50.3"
+      ],
+      "expected_refs": [
+        "Article 50.1"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 1360,
+      "answer_chars": 867,
+      "reference_chars": 765,
+      "latency_s": 33.08835840000029,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_016",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 2,
+      "criteria_count": 2,
+      "ans_conciseness": 48.99845916795069,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 99.3",
+        "Article 5.1.g"
+      ],
+      "expected_refs": [
+        "Article 99.3"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 5"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 649,
+      "answer_chars": 649,
+      "reference_chars": 318,
+      "latency_s": 40.391183799998544,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_017",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 56.06177606177606,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 0.5,
+      "refs": [
+        "Annex II",
+        "Article 5.1.h",
+        "Article 27.1",
+        "Article 49.3"
+      ],
+      "expected_refs": [
+        "Article 5.1.h.iii",
+        "Annex II"
+      ],
+      "missing_strict": [
+        "Article 5.1.h.iii"
+      ],
+      "extra_heads": [
+        "Article 27",
+        "Article 49"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 1075,
+      "answer_chars": 1295,
+      "reference_chars": 726,
+      "latency_s": 37.83468359999824,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_018",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 50.617283950617285,
+      "ref_conciseness": 0.3333333333333333,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Annex III.7.b",
+        "Article 7.1",
+        "Article 97"
+      ],
+      "expected_refs": [
+        "Article 7.1"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Annex III",
+        "Article 97"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 1006,
+      "answer_chars": 1053,
+      "reference_chars": 533,
+      "latency_s": 39.96008570000049,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_019",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 3.60",
+        "Article 50.4"
+      ],
+      "expected_refs": [
+        "Article 3.60"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 50"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 210,
+      "answer_chars": 210,
+      "reference_chars": 492,
+      "latency_s": 21.6288870999997,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_020",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 76.6624843161857,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 74.12"
+      ],
+      "expected_refs": [
+        "Article 74.12"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 785,
+      "answer_chars": 797,
+      "reference_chars": 611,
+      "latency_s": 7.128098099998169,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_021",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 3,
+      "criteria_count": 4,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 0.3333333333333333,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 15.1",
+        "Article 13.3",
+        "Article 9"
+      ],
+      "expected_refs": [
+        "Article 15.1"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 13",
+        "Article 9"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 572,
+      "answer_chars": 534,
+      "reference_chars": 693,
+      "latency_s": 30.66958009999871,
+      "judge_disagreements": [
+        4
+      ]
+    },
+    {
+      "id": "rg_022",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": null,
+      "ref_loose": null,
+      "ref_strict": null,
+      "refs": [
+        "Article 5",
+        "Article 6",
+        "Article 50",
+        "Article 51",
+        "Article 52",
+        "Annex I",
+        "Annex III",
+        "Article 53",
+        "Article 54",
+        "Article 55",
+        "Article 56"
+      ],
+      "expected_refs": [],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 702,
+      "answer_chars": 702,
+      "reference_chars": 790,
+      "latency_s": 28.992551299998013,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_023",
+      "difficulty": "HARD",
+      "category": "GPAI & Systemic Risk Boundary",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 2,
+      "criteria_count": 2,
+      "ans_conciseness": 70.8636836628512,
+      "ref_conciseness": 0.3333333333333333,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 51.1",
+        "Article 55.1",
+        "Article 53.2"
+      ],
+      "expected_refs": [
+        "Article 51.1"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 53",
+        "Article 55"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 961,
+      "answer_chars": 961,
+      "reference_chars": 681,
+      "latency_s": 26.65160299999843,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_024",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 86.9620253164557,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Annex III.6.d",
+        "Article 6.2"
+      ],
+      "expected_refs": [
+        "Article 6.2",
+        "Annex III"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 956,
+      "answer_chars": 790,
+      "reference_chars": 687,
+      "latency_s": 48.62884169999961,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_025",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 90.57324840764332,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 25.1",
+        "Article 16"
+      ],
+      "expected_refs": [
+        "Article 25.1"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 16"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 785,
+      "answer_chars": 785,
+      "reference_chars": 711,
+      "latency_s": 1.9274000999976124,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_026",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 85.95505617977528,
+      "ref_conciseness": 0.3333333333333333,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Annex III.6.d",
+        "Annex I.5",
+        "Article 6.2"
+      ],
+      "expected_refs": [
+        "Article 6.2"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Annex I",
+        "Annex III"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 922,
+      "answer_chars": 712,
+      "reference_chars": 612,
+      "latency_s": 47.559067800000776,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_027",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 0.3333333333333333,
+      "ref_loose": 1.0,
+      "ref_strict": 0.0,
+      "refs": [
+        "Article 6.3",
+        "Article 50.1",
+        "Annex III.8"
+      ],
+      "expected_refs": [
+        "Article 50.2"
+      ],
+      "missing_strict": [
+        "Article 50.2"
+      ],
+      "extra_heads": [
+        "Annex III",
+        "Article 6"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 493,
+      "answer_chars": 493,
+      "reference_chars": 583,
+      "latency_s": 5.660894699998607,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_028",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 1"
+      ],
+      "expected_refs": [
+        "Article 1"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 454,
+      "answer_chars": 454,
+      "reference_chars": 509,
+      "latency_s": 4.347295600000507,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_029",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 76.52050919377652,
+      "ref_conciseness": null,
+      "ref_loose": null,
+      "ref_strict": null,
+      "refs": [
+        "Article 6.2",
+        "Annex III.5.d"
+      ],
+      "expected_refs": [],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 707,
+      "answer_chars": 707,
+      "reference_chars": 541,
+      "latency_s": 1.9289647000005061,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_030",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 1,
+      "criteria_count": 1,
+      "ans_conciseness": 97.74647887323944,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 76.2",
+        "Article 60.4.b"
+      ],
+      "expected_refs": [
+        "Article 76.2"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 60"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 355,
+      "answer_chars": 355,
+      "reference_chars": 347,
+      "latency_s": 30.771993800000928,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_031",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 86.66666666666667,
+      "ref_conciseness": 0.3333333333333333,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 6.3.a",
+        "Article 49.2",
+        "Annex III.7.b"
+      ],
+      "expected_refs": [
+        "Article 6.3.a"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Annex III",
+        "Article 49"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 825,
+      "answer_chars": 825,
+      "reference_chars": 715,
+      "latency_s": 1.980304900000192,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_032",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 6.3",
+        "Annex III"
+      ],
+      "expected_refs": [
+        "Article 6.3"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Annex III"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 477,
+      "answer_chars": 477,
+      "reference_chars": 609,
+      "latency_s": 1.9921831999999995,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_033",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 65.5"
+      ],
+      "expected_refs": [
+        "Article 65"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 508,
+      "answer_chars": 508,
+      "reference_chars": 528,
+      "latency_s": 2.0631020000000717,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_034",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 48.63636363636364,
+      "ref_conciseness": 0.2,
+      "ref_loose": 1.0,
+      "ref_strict": 0.0,
+      "refs": [
+        "Article 101",
+        "Article 99.4",
+        "Article 91.3",
+        "Article 93.3",
+        "Article 92.1"
+      ],
+      "expected_refs": [
+        "Article 101.3"
+      ],
+      "missing_strict": [
+        "Article 101.3"
+      ],
+      "extra_heads": [
+        "Article 91",
+        "Article 92",
+        "Article 93",
+        "Article 99"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 657,
+      "answer_chars": 660,
+      "reference_chars": 321,
+      "latency_s": 45.67990540000028,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_035",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 2,
+      "criteria_count": 3,
+      "ans_conciseness": 88.25910931174089,
+      "ref_conciseness": 0.3333333333333333,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 80.2",
+        "Article 6.2",
+        "Article 79.2"
+      ],
+      "expected_refs": [
+        "Article 80.2"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 6",
+        "Article 79"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 843,
+      "answer_chars": 741,
+      "reference_chars": 654,
+      "latency_s": 38.42150590000165,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_036",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 1,
+      "criteria_count": 3,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 42.1",
+        "Article 10.4"
+      ],
+      "expected_refs": [
+        "Article 42.1"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 10"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 445,
+      "answer_chars": 445,
+      "reference_chars": 605,
+      "latency_s": 17.054244600003585,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_037",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 0,
+      "criteria_count": 5,
+      "ans_conciseness": 61.73469387755102,
+      "ref_conciseness": null,
+      "ref_loose": null,
+      "ref_strict": null,
+      "refs": [
+        "Article 49.4",
+        "Annex VIII.12",
+        "Article 71.5",
+        "Annex III.7.b"
+      ],
+      "expected_refs": [],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 1027,
+      "answer_chars": 980,
+      "reference_chars": 605,
+      "latency_s": 54.176478999997926,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_038",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 0.25,
+      "ref_loose": 1.0,
+      "ref_strict": 0.0,
+      "refs": [
+        "Article 3.55",
+        "Article 57.5",
+        "Article 1",
+        "Article 4"
+      ],
+      "expected_refs": [
+        "Article 57.1"
+      ],
+      "missing_strict": [
+        "Article 57.1"
+      ],
+      "extra_heads": [
+        "Article 1",
+        "Article 3",
+        "Article 4"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 345,
+      "answer_chars": 345,
+      "reference_chars": 748,
+      "latency_s": 33.09095180000077,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_039",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 98.33333333333333,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 50.4"
+      ],
+      "expected_refs": [
+        "Article 50.4"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 600,
+      "answer_chars": 600,
+      "reference_chars": 590,
+      "latency_s": 2.059614600002533,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_040",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 2,
+      "criteria_count": 2,
+      "ans_conciseness": 75.12376237623762,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 44.1",
+        "Annex VII.4"
+      ],
+      "expected_refs": [
+        "Article 44.1"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Annex VII"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 808,
+      "answer_chars": 808,
+      "reference_chars": 607,
+      "latency_s": 14.914965400002984,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_041",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 0.5,
+      "ref_loose": 0.0,
+      "ref_strict": 0.0,
+      "refs": [
+        "Article 11.1",
+        "Annex IV.2"
+      ],
+      "expected_refs": [
+        "Article 17.4"
+      ],
+      "missing_strict": [
+        "Article 17.4"
+      ],
+      "extra_heads": [
+        "Annex IV",
+        "Article 11"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 362,
+      "answer_chars": 362,
+      "reference_chars": 650,
+      "latency_s": 26.88728450000417,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_042",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 26.7"
+      ],
+      "expected_refs": [
+        "Article 26.7"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 493,
+      "answer_chars": 493,
+      "reference_chars": 553,
+      "latency_s": 9.816053499998816,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_043",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 6,
+      "criteria_count": 6,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 10.5"
+      ],
+      "expected_refs": [
+        "Article 10.5"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 986,
+      "answer_chars": 986,
+      "reference_chars": 1007,
+      "latency_s": 6.598224499997741,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_044",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 48.6328125,
+      "ref_conciseness": 0.2,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 60.4.c",
+        "Article 13.3",
+        "Annex IX.2",
+        "Annex III.7.b",
+        "Article 49.4"
+      ],
+      "expected_refs": [
+        "Article 60.4"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Annex III",
+        "Annex IX",
+        "Article 13",
+        "Article 49"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 1051,
+      "answer_chars": 1536,
+      "reference_chars": 747,
+      "latency_s": 34.71119039999758,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_045",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 51.31396957123098,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 79.2",
+        "Article 26.5"
+      ],
+      "expected_refs": [
+        "Article 26.5"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 79"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 791,
+      "answer_chars": 723,
+      "reference_chars": 371,
+      "latency_s": 18.147137199997815,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_046",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 1,
+      "criteria_count": 6,
+      "ans_conciseness": 95.8171206225681,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 13.3"
+      ],
+      "expected_refs": [
+        "Article 13.3"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 1028,
+      "answer_chars": 1028,
+      "reference_chars": 985,
+      "latency_s": 31.81843359999766,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_047",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 50.40080160320641,
+      "ref_conciseness": 0.25,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 20.1",
+        "Article 16",
+        "Article 79.2",
+        "Article 44.3"
+      ],
+      "expected_refs": [
+        "Article 20.1"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 16",
+        "Article 44",
+        "Article 79"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 992,
+      "answer_chars": 998,
+      "reference_chars": 503,
+      "latency_s": 23.15886280000268,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_048",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 99.73958333333334,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 0.5,
+      "refs": [
+        "Article 3.21"
+      ],
+      "expected_refs": [
+        "Article 3.20",
+        "Article 3.21"
+      ],
+      "missing_strict": [
+        "Article 3.20"
+      ],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 384,
+      "answer_chars": 384,
+      "reference_chars": 383,
+      "latency_s": 46.14951330000258,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_049",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 0.0,
+      "refs": [
+        "Article 95.3"
+      ],
+      "expected_refs": [
+        "Article 95.1",
+        "Article 95.2"
+      ],
+      "missing_strict": [
+        "Article 95.1",
+        "Article 95.2"
+      ],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 387,
+      "answer_chars": 376,
+      "reference_chars": 433,
+      "latency_s": 19.85600180000256,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_050",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 2,
+      "criteria_count": 2,
+      "ans_conciseness": 45.3125,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 6.3.d",
+        "Annex III.5.b"
+      ],
+      "expected_refs": [
+        "Annex III.5.b"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 6"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 414,
+      "answer_chars": 704,
+      "reference_chars": 319,
+      "latency_s": 48.430479800001194,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_051",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 2,
+      "criteria_count": 3,
+      "ans_conciseness": 78.57142857142857,
+      "ref_conciseness": 0.2,
+      "ref_loose": 1.0,
+      "ref_strict": 0.0,
+      "refs": [
+        "Article 22.3",
+        "Article 9.10",
+        "Annex IV.2",
+        "Article 43.1",
+        "Article 13.3"
+      ],
+      "expected_refs": [
+        "Article 22.1"
+      ],
+      "missing_strict": [
+        "Article 22.1"
+      ],
+      "extra_heads": [
+        "Annex IV",
+        "Article 13",
+        "Article 43",
+        "Article 9"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 1048,
+      "answer_chars": 1050,
+      "reference_chars": 825,
+      "latency_s": 24.380615200003376,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_052",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 6,
+      "criteria_count": 6,
+      "ans_conciseness": 92.38921001926782,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 9.10",
+        "Article 17.1"
+      ],
+      "expected_refs": [
+        "Article 17.1"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 9"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 1009,
+      "answer_chars": 1038,
+      "reference_chars": 959,
+      "latency_s": 23.509857699998975,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_053",
+      "difficulty": "HARD",
+      "category": "GPAI & Systemic Risk Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 64.86941870261163,
+      "ref_conciseness": 0.2,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 53.1",
+        "Article 55.1",
+        "Annex XI.2",
+        "Annex XII.2",
+        "Article 56.2"
+      ],
+      "expected_refs": [
+        "Article 55.1"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Annex XI",
+        "Annex XII",
+        "Article 53",
+        "Article 56"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 1200,
+      "answer_chars": 1187,
+      "reference_chars": 770,
+      "latency_s": 51.209542099997634,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_054",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 83.9622641509434,
+      "ref_conciseness": 0.3333333333333333,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 79.6",
+        "Article 5.1.h",
+        "Article 50"
+      ],
+      "expected_refs": [
+        "Article 79.6"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 5",
+        "Article 50"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 477,
+      "answer_chars": 636,
+      "reference_chars": 534,
+      "latency_s": 23.91263219999746,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_055",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 95.24913093858632,
+      "ref_conciseness": 0.25,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 5.1.h",
+        "Annex II",
+        "Article 27.1",
+        "Article 49.4"
+      ],
+      "expected_refs": [
+        "Article 5.1.h"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Annex II",
+        "Article 27",
+        "Article 49"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 863,
+      "answer_chars": 863,
+      "reference_chars": 822,
+      "latency_s": 68.85997660000066,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_056",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 31.7",
+        "Article 32"
+      ],
+      "expected_refs": [
+        "Article 32"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 31"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 414,
+      "answer_chars": 422,
+      "reference_chars": 551,
+      "latency_s": 40.30356430000393,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_057",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 2,
+      "criteria_count": 3,
+      "ans_conciseness": 74.08536585365853,
+      "ref_conciseness": 0.3333333333333333,
+      "ref_loose": 1.0,
+      "ref_strict": 0.0,
+      "refs": [
+        "Article 85",
+        "Article 86",
+        "Annex III.7.c"
+      ],
+      "expected_refs": [
+        "Article 85.1"
+      ],
+      "missing_strict": [
+        "Article 85.1"
+      ],
+      "extra_heads": [
+        "Annex III",
+        "Article 86"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 333,
+      "answer_chars": 656,
+      "reference_chars": 486,
+      "latency_s": 21.53400430000329,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_058",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 5,
+      "criteria_count": 5,
+      "ans_conciseness": 92.45689655172413,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 50.2",
+        "Article 17.1"
+      ],
+      "expected_refs": [
+        "Article 50.2"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 17"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 832,
+      "answer_chars": 928,
+      "reference_chars": 858,
+      "latency_s": 31.391116800001328,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_059",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 68.3"
+      ],
+      "expected_refs": [
+        "Article 68"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 891,
+      "answer_chars": 892,
+      "reference_chars": 985,
+      "latency_s": 27.254176800001005,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_060",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 1,
+      "criteria_count": 3,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": null,
+      "ref_loose": null,
+      "ref_strict": null,
+      "refs": [
+        "Article 73.6"
+      ],
+      "expected_refs": [],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 428,
+      "answer_chars": 320,
+      "reference_chars": 615,
+      "latency_s": 45.87627170000269,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_061",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 2,
+      "criteria_count": 2,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 1.0,
+      "ref_loose": 0.5,
+      "ref_strict": 0.5,
+      "refs": [
+        "Article 88.1"
+      ],
+      "expected_refs": [
+        "Article 88.1",
+        "Article 75.1"
+      ],
+      "missing_strict": [
+        "Article 75.1"
+      ],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 448,
+      "answer_chars": 448,
+      "reference_chars": 483,
+      "latency_s": 38.72220479999669,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_062",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 2,
+      "criteria_count": 3,
+      "ans_conciseness": 64.23034330011073,
+      "ref_conciseness": 0.3333333333333333,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 24.4",
+        "Article 79.1",
+        "Article 81.1"
+      ],
+      "expected_refs": [
+        "Article 24.4"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 79",
+        "Article 81"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 875,
+      "answer_chars": 903,
+      "reference_chars": 580,
+      "latency_s": 39.62444719999985,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_063",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 6,
+      "criteria_count": 6,
+      "ans_conciseness": 96.50537634408603,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 2.1"
+      ],
+      "expected_refs": [
+        "Article 2.1"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 592,
+      "answer_chars": 744,
+      "reference_chars": 718,
+      "latency_s": 7.88163429999986,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_064",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 1,
+      "criteria_count": 1,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 60.4.e"
+      ],
+      "expected_refs": [
+        "Article 60.4.e"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 236,
+      "answer_chars": 236,
+      "reference_chars": 502,
+      "latency_s": 4.31250259999797,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_065",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 76.39405204460967,
+      "ref_conciseness": 0.25,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 99.5",
+        "Article 5.6",
+        "Article 50.2",
+        "Article 101.1"
+      ],
+      "expected_refs": [
+        "Article 99"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 101",
+        "Article 5",
+        "Article 50"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 1037,
+      "answer_chars": 1076,
+      "reference_chars": 822,
+      "latency_s": 47.314458300003025,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_066",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 79.42238267148014,
+      "ref_conciseness": 0.4,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 71.1",
+        "Article 49.4",
+        "Article 60.4.c",
+        "Article 6.2",
+        "Annex VIII.12"
+      ],
+      "expected_refs": [
+        "Article 71",
+        "Annex VIII"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 49",
+        "Article 6",
+        "Article 60"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 831,
+      "answer_chars": 831,
+      "reference_chars": 660,
+      "latency_s": 20.72363210000185,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_067",
+      "difficulty": "HARD",
+      "category": "GPAI & Systemic Risk Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 76.21744054360136,
+      "ref_conciseness": 1.0,
+      "ref_loose": 0.5,
+      "ref_strict": 0.5,
+      "refs": [
+        "Article 55.1",
+        "Annex XIII"
+      ],
+      "expected_refs": [
+        "Article 51.1",
+        "Annex XIII"
+      ],
+      "missing_strict": [
+        "Article 51.1"
+      ],
+      "extra_heads": [
+        "Article 55"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 696,
+      "answer_chars": 883,
+      "reference_chars": 673,
+      "latency_s": 51.37933549999798,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_068",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 0,
+      "criteria_count": 3,
+      "ans_conciseness": 79.11764705882352,
+      "ref_conciseness": 0.3333333333333333,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 26.1",
+        "Article 6.2",
+        "Article 10.3"
+      ],
+      "expected_refs": [
+        "Article 10.3"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 26",
+        "Article 6"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 775,
+      "answer_chars": 680,
+      "reference_chars": 538,
+      "latency_s": 24.06758880000416,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_069",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 2,
+      "criteria_count": 3,
+      "ans_conciseness": 57.03422053231939,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 0.0,
+      "refs": [
+        "Article 24.1",
+        "Article 23.1",
+        "Article 16",
+        "Article 79.2"
+      ],
+      "expected_refs": [
+        "Article 24.3",
+        "Article 23.4"
+      ],
+      "missing_strict": [
+        "Article 24.3",
+        "Article 23.4"
+      ],
+      "extra_heads": [
+        "Article 16",
+        "Article 79"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 1548,
+      "answer_chars": 1052,
+      "reference_chars": 600,
+      "latency_s": 43.88618610000049,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_070",
+      "difficulty": "HARD",
+      "category": "Cross-Framework & Sectoral MedTech Integration",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 89.7039897039897,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 6.1",
+        "Annex I"
+      ],
+      "expected_refs": [
+        "Article 6.1"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Annex I"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 905,
+      "answer_chars": 777,
+      "reference_chars": 697,
+      "latency_s": 45.109440899999754,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_071",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 90.95295536791315,
+      "ref_conciseness": null,
+      "ref_loose": null,
+      "ref_strict": null,
+      "refs": [
+        "Article 50.4",
+        "Article 6.2"
+      ],
+      "expected_refs": [],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 876,
+      "answer_chars": 829,
+      "reference_chars": 754,
+      "latency_s": 29.605385900002148,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_072",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 96.9270166453265,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 0.0,
+      "refs": [
+        "Annex I",
+        "Article 6.2"
+      ],
+      "expected_refs": [
+        "Article 6.1",
+        "Annex I.a.2"
+      ],
+      "missing_strict": [
+        "Article 6.1",
+        "Annex I.a.2"
+      ],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 761,
+      "answer_chars": 781,
+      "reference_chars": 757,
+      "latency_s": 19.594243800002005,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_073",
+      "difficulty": "HARD",
+      "category": "Cross-Framework & Sectoral MedTech Integration",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 84.8032564450475,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 6.1",
+        "Annex I.4"
+      ],
+      "expected_refs": [
+        "Article 6.1",
+        "Annex I"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 768,
+      "answer_chars": 737,
+      "reference_chars": 625,
+      "latency_s": 49.47589930000322,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_074",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 0.6666666666666666,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 5.1.f",
+        "Article 50.3",
+        "Annex III.1.c"
+      ],
+      "expected_refs": [
+        "Annex III.1.c",
+        "Article 5.1.f"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 50"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 321,
+      "answer_chars": 321,
+      "reference_chars": 740,
+      "latency_s": 32.80868410000039,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_075",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 2,
+      "criteria_count": 3,
+      "ans_conciseness": 95.44715447154472,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 50.4",
+        "Article 50.2"
+      ],
+      "expected_refs": [
+        "Article 50.4"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 666,
+      "answer_chars": 615,
+      "reference_chars": 587,
+      "latency_s": 10.153160399997432,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_076",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": false,
+      "stage2_model": "",
+      "passed": 1,
+      "criteria_count": 1,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 3.2"
+      ],
+      "expected_refs": [
+        "Article 3.2"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 103,
+      "answer_chars": 103,
+      "reference_chars": 160,
+      "latency_s": 2.072813999999198,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_077",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 62.34693877551021,
+      "ref_conciseness": 0.2,
+      "ref_loose": 1.0,
+      "ref_strict": 0.0,
+      "refs": [
+        "Article 6.2",
+        "Annex III.7.b",
+        "Article 49.1",
+        "Article 71.1",
+        "Annex VIII.12"
+      ],
+      "expected_refs": [
+        "Article 49.2"
+      ],
+      "missing_strict": [
+        "Article 49.2"
+      ],
+      "extra_heads": [
+        "Annex III",
+        "Annex VIII",
+        "Article 6",
+        "Article 71"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 677,
+      "answer_chars": 980,
+      "reference_chars": 611,
+      "latency_s": 45.4660944999996,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_078",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 2,
+      "criteria_count": 3,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 60.4.i",
+        "Article 61.1"
+      ],
+      "expected_refs": [
+        "Article 61.1"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 60"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 694,
+      "answer_chars": 593,
+      "reference_chars": 723,
+      "latency_s": 39.92762779999612,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_079",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 0.3333333333333333,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 79.1",
+        "Article 79.2",
+        "Article 20.2"
+      ],
+      "expected_refs": [
+        "Article 20.2"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 79"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 781,
+      "answer_chars": 783,
+      "reference_chars": 889,
+      "latency_s": 35.86401100000148,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_080",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 50.4"
+      ],
+      "expected_refs": [
+        "Article 50.4"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 855,
+      "answer_chars": 856,
+      "reference_chars": 886,
+      "latency_s": 30.52722139999969,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_081",
+      "difficulty": "HARD",
+      "category": "GPAI & Systemic Risk Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 69.95192307692307,
+      "ref_conciseness": 0.2,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 6.2",
+        "Article 50.4",
+        "Annex III",
+        "Annex I.19",
+        "Article 5.1.d"
+      ],
+      "expected_refs": [
+        "Article 6"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Annex I",
+        "Annex III",
+        "Article 5",
+        "Article 50"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 689,
+      "answer_chars": 832,
+      "reference_chars": 582,
+      "latency_s": 38.03258669999923,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_082",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 97.2463768115942,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 0.0,
+      "refs": [
+        "Article 24.3"
+      ],
+      "expected_refs": [
+        "Article 24.1"
+      ],
+      "missing_strict": [
+        "Article 24.1"
+      ],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 749,
+      "answer_chars": 690,
+      "reference_chars": 671,
+      "latency_s": 8.259525700002996,
+      "judge_disagreements": [
+        3
+      ]
+    },
+    {
+      "id": "rg_083",
+      "difficulty": "EASY",
+      "category": "Easy Mode (Direct Statutory Lookup)",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-32b-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 0.25,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Annex III.6.d",
+        "Annex I.5",
+        "Article 6.2",
+        "Article 71.1"
+      ],
+      "expected_refs": [
+        "Article 6.2"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Annex I",
+        "Annex III",
+        "Article 71"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 543,
+      "answer_chars": 543,
+      "reference_chars": 703,
+      "latency_s": 32.29608429999644,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_084",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 93.12242090784044,
+      "ref_conciseness": null,
+      "ref_loose": null,
+      "ref_strict": null,
+      "refs": [
+        "Article 6.2",
+        "Annex III.5.d",
+        "Annex I.19",
+        "Article 50.1"
+      ],
+      "expected_refs": [],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 697,
+      "answer_chars": 727,
+      "reference_chars": 677,
+      "latency_s": 26.449705399998493,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_085",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 64.26086956521739,
+      "ref_conciseness": 0.75,
+      "ref_loose": 0.5,
+      "ref_strict": 0.0,
+      "refs": [
+        "Annex III.7",
+        "Annex I.2",
+        "Article 5.1.h",
+        "Article 50"
+      ],
+      "expected_refs": [
+        "Article 6.1",
+        "Article 6.2",
+        "Annex III.1.a"
+      ],
+      "missing_strict": [
+        "Article 6.1",
+        "Article 6.2",
+        "Annex III.1.a"
+      ],
+      "extra_heads": [
+        "Annex I",
+        "Article 5",
+        "Article 50"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 1060,
+      "answer_chars": 1150,
+      "reference_chars": 739,
+      "latency_s": 24.500177100002475,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_086",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 86.76470588235294,
+      "ref_conciseness": null,
+      "ref_loose": null,
+      "ref_strict": null,
+      "refs": [
+        "Article 2.1.a",
+        "Article 112.6"
+      ],
+      "expected_refs": [],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 871,
+      "answer_chars": 816,
+      "reference_chars": 708,
+      "latency_s": 27.11331290000453,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_087",
+      "difficulty": "HARD",
+      "category": "GPAI & Systemic Risk Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 4,
+      "ans_conciseness": 89.12319644839067,
+      "ref_conciseness": 0.2,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 51.1",
+        "Article 9.2",
+        "Article 5.1.d",
+        "Article 6.2",
+        "Article 50.4"
+      ],
+      "expected_refs": [
+        "Article 9"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 5",
+        "Article 50",
+        "Article 51",
+        "Article 6"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 778,
+      "answer_chars": 901,
+      "reference_chars": 803,
+      "latency_s": 47.780730100002984,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_088",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 76.52370203160271,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 0.5,
+      "refs": [
+        "Annex I.5",
+        "Annex III.7.b",
+        "Article 25.1.c",
+        "Article 26.6"
+      ],
+      "expected_refs": [
+        "Article 26.1",
+        "Article 26.6"
+      ],
+      "missing_strict": [
+        "Article 26.1"
+      ],
+      "extra_heads": [
+        "Annex I",
+        "Annex III",
+        "Article 25"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 876,
+      "answer_chars": 886,
+      "reference_chars": 678,
+      "latency_s": 22.157476899999892,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_089",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 2,
+      "criteria_count": 3,
+      "ans_conciseness": 79.91967871485943,
+      "ref_conciseness": 0.25,
+      "ref_loose": 0.0,
+      "ref_strict": 0.0,
+      "refs": [
+        "Annex III.5",
+        "Article 5.1.d",
+        "Annex I.5",
+        "Article 50.1"
+      ],
+      "expected_refs": [
+        "Article 6.3.a"
+      ],
+      "missing_strict": [
+        "Article 6.3.a"
+      ],
+      "extra_heads": [
+        "Annex I",
+        "Annex III",
+        "Article 5",
+        "Article 50"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 620,
+      "answer_chars": 747,
+      "reference_chars": 597,
+      "latency_s": 43.16395819999889,
+      "judge_disagreements": [
+        3
+      ]
+    },
+    {
+      "id": "rg_090",
+      "difficulty": "HARD",
+      "category": "GPAI & Systemic Risk Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 94.6987951807229,
+      "ref_conciseness": 0.2,
+      "ref_loose": 0.0,
+      "ref_strict": 0.0,
+      "refs": [
+        "Article 12.3",
+        "Article 25.1",
+        "Annex I.5",
+        "Article 50",
+        "Article 4"
+      ],
+      "expected_refs": [
+        "Article 26.6"
+      ],
+      "missing_strict": [
+        "Article 26.6"
+      ],
+      "extra_heads": [
+        "Annex I",
+        "Article 12",
+        "Article 25",
+        "Article 4",
+        "Article 50"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 1102,
+      "answer_chars": 830,
+      "reference_chars": 786,
+      "latency_s": 21.91729209999903,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_091",
+      "difficulty": "HARD",
+      "category": "Cross-Framework & Sectoral MedTech Integration",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 1,
+      "criteria_count": 3,
+      "ans_conciseness": 64.17050691244239,
+      "ref_conciseness": 0.3333333333333333,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 6.1",
+        "Annex III.5.d",
+        "Annex I.12"
+      ],
+      "expected_refs": [
+        "Article 6.1"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Annex I",
+        "Annex III"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 877,
+      "answer_chars": 868,
+      "reference_chars": 557,
+      "latency_s": 34.765874599997915,
+      "judge_disagreements": [
+        2,
+        3
+      ]
+    },
+    {
+      "id": "rg_092",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 80.03802281368822,
+      "ref_conciseness": 0.6,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Annex III",
+        "Annex I",
+        "Annex II",
+        "Article 6",
+        "Article 5"
+      ],
+      "expected_refs": [
+        "Annex I",
+        "Annex II",
+        "Annex III"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 5",
+        "Article 6"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 1261,
+      "answer_chars": 1052,
+      "reference_chars": 842,
+      "latency_s": 46.69788370000242,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_093",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 97.75086505190312,
+      "ref_conciseness": 0.3333333333333333,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 6.4",
+        "Article 27.1",
+        "Annex III.7.b"
+      ],
+      "expected_refs": [
+        "Annex III.7.b"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 27",
+        "Article 6"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 596,
+      "answer_chars": 578,
+      "reference_chars": 565,
+      "latency_s": 40.73686460000317,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_094",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 5,
+      "criteria_count": 5,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 0.3333333333333333,
+      "ref_loose": 1.0,
+      "ref_strict": 0.0,
+      "refs": [
+        "Article 53.1",
+        "Annex XII.1",
+        "Annex XI.2"
+      ],
+      "expected_refs": [
+        "Article 53.1.b"
+      ],
+      "missing_strict": [
+        "Article 53.1.b"
+      ],
+      "extra_heads": [
+        "Annex XI",
+        "Annex XII"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 507,
+      "answer_chars": 507,
+      "reference_chars": 561,
+      "latency_s": 23.826299299998936,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_095",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 97.30458221024259,
+      "ref_conciseness": 0.6666666666666666,
+      "ref_loose": 1.0,
+      "ref_strict": 0.5,
+      "refs": [
+        "Article 72.2",
+        "Article 9.2",
+        "Article 17.1"
+      ],
+      "expected_refs": [
+        "Article 72.1",
+        "Article 72.2"
+      ],
+      "missing_strict": [
+        "Article 72.1"
+      ],
+      "extra_heads": [
+        "Article 17",
+        "Article 9"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 805,
+      "answer_chars": 742,
+      "reference_chars": 722,
+      "latency_s": 27.398772300002747,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_096",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 73.30873308733086,
+      "ref_conciseness": 0.6666666666666666,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 6.2",
+        "Article 6.3",
+        "Annex III.7.b"
+      ],
+      "expected_refs": [
+        "Article 6.2",
+        "Annex III"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 879,
+      "answer_chars": 813,
+      "reference_chars": 596,
+      "latency_s": 39.39941519999775,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_097",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 1,
+      "criteria_count": 2,
+      "ans_conciseness": 77.85800240673886,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 0.5,
+      "refs": [
+        "Annex III",
+        "Article 6"
+      ],
+      "expected_refs": [
+        "Annex III",
+        "Article 6.2"
+      ],
+      "missing_strict": [
+        "Article 6.2"
+      ],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 690,
+      "answer_chars": 831,
+      "reference_chars": 647,
+      "latency_s": 27.3726843000004,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_098",
+      "difficulty": "HARD",
+      "category": "Two-Article Conflict & Reconciliation",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 0,
+      "criteria_count": 1,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": null,
+      "ref_loose": null,
+      "ref_strict": null,
+      "refs": [
+        "Annex VII.5",
+        "Article 7.2",
+        "Annex III.8"
+      ],
+      "expected_refs": [],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 816,
+      "answer_chars": 345,
+      "reference_chars": 520,
+      "latency_s": 43.72950879999917,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_099",
+      "difficulty": "HARD",
+      "category": "GPAI & Systemic Risk Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 58.340048348106365,
+      "ref_conciseness": 0.2,
+      "ref_loose": 1.0,
+      "ref_strict": 0.0,
+      "refs": [
+        "Article 55.1",
+        "Article 53.1",
+        "Annex XI.2",
+        "Annex XII.2",
+        "Article 15.5"
+      ],
+      "expected_refs": [
+        "Article 55.1.a"
+      ],
+      "missing_strict": [
+        "Article 55.1.a"
+      ],
+      "extra_heads": [
+        "Annex XI",
+        "Annex XII",
+        "Article 15",
+        "Article 53"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 916,
+      "answer_chars": 1241,
+      "reference_chars": 724,
+      "latency_s": 46.188997799999925,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_100",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 63.83561643835617,
+      "ref_conciseness": 0.2,
+      "ref_loose": 1.0,
+      "ref_strict": 0.0,
+      "refs": [
+        "Article 25.1.c",
+        "Article 50.1",
+        "Article 6.2",
+        "Annex III.6.d",
+        "Annex I.5"
+      ],
+      "expected_refs": [
+        "Article 6.3"
+      ],
+      "missing_strict": [
+        "Article 6.3"
+      ],
+      "extra_heads": [
+        "Annex I",
+        "Annex III",
+        "Article 25",
+        "Article 50"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 1299,
+      "answer_chars": 1095,
+      "reference_chars": 699,
+      "latency_s": 28.281158900001174,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_101",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 91.44542772861357,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 5.3"
+      ],
+      "expected_refs": [
+        "Article 5.3"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 678,
+      "answer_chars": 678,
+      "reference_chars": 620,
+      "latency_s": 46.774420999998256,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_102",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 54.01574803149606,
+      "ref_conciseness": 0.3333333333333333,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Annex III.5.d",
+        "Article 6.2",
+        "Article 27.1"
+      ],
+      "expected_refs": [
+        "Article 27.1"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Annex III",
+        "Article 6"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 1065,
+      "answer_chars": 1270,
+      "reference_chars": 686,
+      "latency_s": 45.71410710000055,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_103",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 64.50754214729369,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 50.4",
+        "Article 5.1.g"
+      ],
+      "expected_refs": [
+        "Article 50.4"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 5"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 830,
+      "answer_chars": 1127,
+      "reference_chars": 727,
+      "latency_s": 18.878213500003767,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_104",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 99.22600619195046,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 0.5,
+      "refs": [
+        "Article 111.2",
+        "Article 53.1"
+      ],
+      "expected_refs": [
+        "Article 111.2",
+        "Article 111.3"
+      ],
+      "missing_strict": [
+        "Article 111.3"
+      ],
+      "extra_heads": [
+        "Article 53"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 635,
+      "answer_chars": 646,
+      "reference_chars": 641,
+      "latency_s": 49.339416700000584,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_105",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 2,
+      "criteria_count": 2,
+      "ans_conciseness": 65.3765690376569,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Annex X",
+        "Article 111.1"
+      ],
+      "expected_refs": [
+        "Article 111.1",
+        "Annex X"
+      ],
+      "missing_strict": [],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 893,
+      "answer_chars": 956,
+      "reference_chars": 625,
+      "latency_s": 30.19104149999839,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_106",
+      "difficulty": "HARD",
+      "category": "Borderline Prohibition & Exception",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 66.29881154499151,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 5.1.c",
+        "Annex III.6.d"
+      ],
+      "expected_refs": [
+        "Annex III.6"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Article 5"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 1169,
+      "answer_chars": 1178,
+      "reference_chars": 781,
+      "latency_s": 9.694095800001378,
+      "judge_disagreements": [
+        2,
+        3
+      ]
+    },
+    {
+      "id": "rg_107",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 4,
+      "criteria_count": 4,
+      "ans_conciseness": 87.52577319587628,
+      "ref_conciseness": 0.5,
+      "ref_loose": 1.0,
+      "ref_strict": 0.0,
+      "refs": [
+        "Article 6.2",
+        "Annex III.3.b",
+        "Article 5.1.d",
+        "Article 49.3"
+      ],
+      "expected_refs": [
+        "Annex III.3.c",
+        "Article 6.3"
+      ],
+      "missing_strict": [
+        "Annex III.3.c",
+        "Article 6.3"
+      ],
+      "extra_heads": [
+        "Article 49",
+        "Article 5"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 1120,
+      "answer_chars": 970,
+      "reference_chars": 849,
+      "latency_s": 18.028684200002317,
+      "judge_disagreements": [
+        4
+      ]
+    },
+    {
+      "id": "rg_108",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 87.41176470588236,
+      "ref_conciseness": 0.4,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Annex I.19",
+        "Article 43.3",
+        "Article 6.1",
+        "Article 49.3",
+        "Annex III"
+      ],
+      "expected_refs": [
+        "Article 6.1",
+        "Article 43.3"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Annex I",
+        "Annex III",
+        "Article 49"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 741,
+      "answer_chars": 850,
+      "reference_chars": 743,
+      "latency_s": 47.756908600000315,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_109",
+      "difficulty": "HARD",
+      "category": "Two-Article Conflict & Reconciliation",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 3,
+      "criteria_count": 3,
+      "ans_conciseness": 79.74537037037037,
+      "ref_conciseness": 0.25,
+      "ref_loose": 1.0,
+      "ref_strict": 1.0,
+      "refs": [
+        "Article 6.1",
+        "Annex I.19",
+        "Article 43.3",
+        "Annex VI.3"
+      ],
+      "expected_refs": [
+        "Article 43.3"
+      ],
+      "missing_strict": [],
+      "extra_heads": [
+        "Annex I",
+        "Annex VI",
+        "Article 6"
+      ],
+      "raw_refs_differ": false,
+      "turn1_chars": 1164,
+      "answer_chars": 864,
+      "reference_chars": 689,
+      "latency_s": 42.69575780000014,
+      "judge_disagreements": []
+    },
+    {
+      "id": "rg_110",
+      "difficulty": "HARD",
+      "category": "Complex Decision Boundary",
+      "stage2": true,
+      "stage2_model": "qwen.qwen3-235b-a22b-2507-v1:0",
+      "passed": 1,
+      "criteria_count": 4,
+      "ans_conciseness": 100.0,
+      "ref_conciseness": 1.0,
+      "ref_loose": 1.0,
+      "ref_strict": 0.3333333333333333,
+      "refs": [
+        "Article 25.4",
+        "Annex III.5.a",
+        "Article 27.1"
+      ],
+      "expected_refs": [
+        "Annex III.2",
+        "Article 25.1.a",
+        "Article 27.1"
+      ],
+      "missing_strict": [
+        "Annex III.2",
+        "Article 25.1.a"
+      ],
+      "extra_heads": [],
+      "raw_refs_differ": false,
+      "turn1_chars": 1072,
+      "answer_chars": 689,
+      "reference_chars": 702,
+      "latency_s": 17.84863309999855,
+      "judge_disagreements": []
+    }
+  ]
+}

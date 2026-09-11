@@ -124,6 +124,65 @@ def load_cache(cache_path: Path | None = None) -> dict[str, dict]:
     return out
 
 
+def _judge_basis_sha(row: dict) -> str:
+    """Hash of what a verdict depends on besides the answer and the judge.
+
+    The criteria text AND the refs the judge prompt is grounded on, taken with
+    the same expression ``judge._provisions_for`` receives.
+    """
+    grounding = row.get("expected_refs") or row.get("_fallback_refs") or []
+    basis = "\n".join(str(c) for c in (row.get("criteria_text") or []))
+    basis += "\n--\n" + "\n".join(str(r) for r in grounding)
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:12]
+
+
+def _criteria_match(v: dict, row: dict) -> bool:
+    """R409 — a cached verdict is valid only for the criteria and grounding it judged.
+
+    ``_key`` hashes the answer and the judge, not the criteria, so editing a
+    row's criteria (same count) silently replayed the old verdicts, and a
+    refkey-only correction (rg_082) changes the verbatim provisions the judge is
+    grounded on while replaying them too. Verdicts carry ``_basis_sha``; lines
+    without it are trusted only for gold rows never revised (``_revised`` unset).
+    """
+    sha = v.get("_basis_sha")
+    if sha is not None:
+        return sha == _judge_basis_sha(row)
+    return not row.get("_revised")
+
+
+def _verdict_complete(v: dict, repeats: int) -> bool:
+    """R409 — a verdict is cacheable only when EVERY repetition was live.
+
+    A dropped repetition used to be cached under an ``r=3`` identity and served
+    as complete from then on (rg_084/rg_094/rg_099 in the R407 Qwen cache), and
+    per-row checkpointing now persists it mid-run too. A partial row still
+    scores the run that produced it and is re-judged on the next. Cache lines
+    that predate tone accounting carry neither tone field and stay usable.
+    """
+    tone = v.get("_tone_runs")
+    raw = v.get("_tone_runs_raw")
+    if tone is None and raw is not None:
+        tone = sum(1 for x in raw if x is not None)
+    return v.get("_judge_runs", 0) >= repeats and (tone is None or tone >= repeats)
+
+
+def _graded_latency_ms(r: dict) -> float:
+    """R409 — latency of the GRADED response, not of the whole exchange.
+
+    Hard-mode checkpoints store ``latency_ms`` as turn 1 PLUS the pushback turn.
+    The official Resp. Speed is per response: on Aug-25 the same system scored
+    hard 85.7 against easy 87.6, where a two-turn sum would read about twice the
+    easy latency. Checkpoints written before the per-turn fields keep the sum.
+    """
+    if "pushback_latency_ms" in r or "turn1_latency_ms" in r:
+        # A pushback is sent iff turn 1 produced an answer. Score that turn even
+        # when it failed, or a timed-out pushback would score at turn-1 speed.
+        graded = r.get("pushback_latency_ms") if r.get("turn1_answer") else r.get("turn1_latency_ms")
+        return float(graded or 0.0)
+    return float(r.get("latency_ms") or 0.0)
+
+
 def load_ckpt(path: Path) -> list[dict]:
     rows = []
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -137,7 +196,7 @@ def load_ckpt(path: Path) -> list[dict]:
                 "question": r.get("question") or "",
                 "answer": r.get("pred_answer") or r.get("answer") or "",
                 "references": r.get("pred_refs") or r.get("references") or r.get("refs") or [],
-                "latency_s": float(r.get("latency_ms") or 0.0) / 1000.0,
+                "latency_s": _graded_latency_ms(r) / 1000.0,
                 "difficulty": r.get("difficulty") or r.get("difficulty_category"),
             }
         )
@@ -158,6 +217,7 @@ def build_rows(ckpt_rows: list[dict], gold: dict[str, dict]) -> list[dict]:
                 "reference_answer": g["reference_answer"],
                 "expected_refs": g.get("expected_refs") or [],
                 "criteria_unstable": g.get("criteria_unstable", False),
+                "_revised": g.get("_revised"),
             }
         )
     return out
@@ -188,7 +248,7 @@ def main() -> int:
     )
     ap.add_argument(
         "--judge-model",
-        default=os.getenv("R388_JUDGE_MODEL", "claude-sonnet-4-6"),
+        default=os.getenv("R388_JUDGE_MODEL", "claude-sonnet-5"),
         help="Exact judge model or Bedrock inference-profile alias",
     )
     ap.add_argument(
@@ -227,13 +287,61 @@ def main() -> int:
     todo, cached = [], []
     for r in rows:
         v = cache.get(_key(r["id"], r["answer"], judge_id))
-        if v and v.get("_judge_runs", 0) > 0 and len(v.get("criteria") or []) == len(r["criteria_text"]):
+        if v and _verdict_complete(v, a.repeats) and _criteria_match(v, r) and len(v.get("criteria") or []) == len(r["criteria_text"]):
             cached.append({**r, **v})
         else:
             todo.append(r)
     print(f"{len(rows)} rows: {len(cached)} cached, {len(todo)} to judge (cache: {cache_target.name})")
 
-    judged = official_judge.judge_rows(todo, workers=a.workers, repeats=a.repeats) if todo else []
+    cache_target.parent.mkdir(parents=True, exist_ok=True)
+    import threading as _threading  # noqa: PLC0415
+    _cache_lock = _threading.Lock()
+    _done_count = 0
+
+    def _on_row_done(j: dict) -> None:
+        nonlocal _done_count
+        if _verdict_complete(j, a.repeats):
+            with _cache_lock:
+                _done_count += 1
+                with cache_target.open("a", encoding="utf-8") as fh:
+                    fh.write(
+                        json.dumps(
+                            {
+                                "key": _key(j["id"], j["answer"], judge_id),
+                                "judge_identity": judge_id,
+                                "verdict": {
+                                    **{
+                                        k: j[k]
+                                        for k in (
+                                            "criteria",
+                                            "criterion_remarks",
+                                            "tone_ok",
+                                            "tone_remark",
+                                            "_judge_runs",
+                                            "_criteria_rate_min",
+                                            "_criteria_rate_max",
+                                            "_judge_errors",
+                                            "_corr_runs",
+                                            "_tone_runs_raw",
+                                        )
+                                        if k in j
+                                    },
+                                    "_basis_sha": _judge_basis_sha(j),
+                                },
+                            },
+                            ensure_ascii=False,
+                        )
+                        + "\n"
+                    )
+                passed = sum(1 for c in (j.get("criteria") or []) if c)
+                total = len(j.get("criteria") or [])
+                print(
+                    f"  [{_done_count:3d}/{len(todo)}] checkpointed {j['id']} "
+                    f"(criteria: {passed}/{total}, tone: {'PASS' if j.get('tone_ok') else 'FAIL'})",
+                    flush=True,
+                )
+
+    judged = official_judge.judge_rows(todo, workers=a.workers, repeats=a.repeats, on_row=_on_row_done) if todo else []
 
     # R393 — LOUD failure on a saturated judge transport.
     #
@@ -281,38 +389,12 @@ def main() -> int:
                 f"first offenders: {[j['id'] for j in tone_dead[:8]]}\n"
                 f"{'!' * 72}\n"
             )
-
-    if judged:
-        cache_target.parent.mkdir(parents=True, exist_ok=True)
-        with cache_target.open("a", encoding="utf-8") as fh:
-            for j in judged:
-                if j.get("_judge_runs", 0) > 0 and j.get("_tone_runs", 0) > 0:
-                    fh.write(
-                        json.dumps(
-                            {
-                                "key": _key(j["id"], j["answer"], judge_id),
-                                "judge_identity": judge_id,
-                                "verdict": {
-                                    k: j[k]
-                                    for k in (
-                                        "criteria",
-                                        "criterion_remarks",
-                                        "tone_ok",
-                                        "tone_remark",
-                                        "_judge_runs",
-                                        "_criteria_rate_min",
-                                        "_criteria_rate_max",
-                                        "_judge_errors",
-                                        "_corr_runs",
-                                        "_tone_runs_raw",
-                                    )
-                                    if k in j
-                                },
-                            },
-                            ensure_ascii=False,
-                        )
-                        + "\n"
-                    )
+        partial = [j["id"] for j in judged if j.get("_judge_runs", 0) and not _verdict_complete(j, a.repeats)]
+        if partial:
+            print(
+                f"\nPARTIAL VERDICTS: {len(partial)}/{len(judged)} rows lost at least one "
+                f"repetition; scored on the live runs and NOT cached: {partial[:8]}\n"
+            )
 
 
     all_rows = cached + judged

@@ -735,6 +735,10 @@ def _bedrock_intent_timeout() -> float:
 
 
 def _bedrock_intent_model() -> str:
+    # R409 — 13547ff flipped this to ``claude-sonnet-5`` in a blanket "v5
+    # upgrade", directly under the docstring that forbids it. Re-verified
+    # 2026-09-11 on this key: ``eu.anthropic.claude-sonnet-5`` ->
+    # ``api_access_denied_403``, ``eu.anthropic.claude-sonnet-4-6`` -> OK.
     raw = os.getenv("REGENOLD_INTENT_MODEL_BEDROCK", "").strip()
     return raw or "claude-sonnet-4-6"
 

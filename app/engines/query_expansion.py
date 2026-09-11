@@ -106,6 +106,9 @@ def _read_timeout(env: str, default: float) -> float:
 # paraphrase is a light task, Opus would buy nothing), pinned up with
 # ``REGENOLD_QUERY_EXPANSION_MODEL=claude-opus-4-6`` if the operator wants
 # the generation tier. Fresh read per call (R263.2).
+# R409 — reverted from 13547ff's ``claude-sonnet-5``: the same id feeds the
+# Bedrock path below, where ``eu.anthropic.claude-sonnet-5`` returns
+# ``api_access_denied_403`` on this key (re-verified 2026-09-11).
 _DEFAULT_PARAPHRASE_MODEL = "claude-sonnet-4-6"
 
 

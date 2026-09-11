@@ -185,6 +185,70 @@ inside the compact branch.** Still default OFF; the A/B is now meaningful for th
 Full evidence: `docs/reviews/r398-invariant-5-audit-2026-09-09.md`.
 
 
+## ⛔ R410 — the R409 defect set, fixed and re-verified on the wire
+
+Full evidence: `docs/reviews/r410-session-handoff.md` §6. Instrument:
+`docs/measurements/r409/r410_wire_probe.py` (offline `TestClient`, asserts the
+Part II expectations on the shipped prose + refs).
+
+* **A polar opener is cap-droppable, and that silently deletes the answer.**
+  `normalise_answer_for_regenold` drops the longest sentence with no
+  `art.` / `article ` / `annex` token until the reply fits its soft cap (code
+  default **400**, Railway **1200**). "The EU AI Act does not establish ..." is
+  exactly that shape, so the guiding-principles reply shipped the Recital-27
+  enumeration **alone** — it asserted the principles existed and lost 2 of the 4
+  graded criteria. **Rule: every sentence of a curated answer must carry a cite
+  anchor**, so the cap has nothing it may drop at any cap value.
+* **Art. 5(1)(g) does not prohibit biometric categorisation as such** — only
+  categorisation that infers a CLOSED-LIST attribute (race, political opinions,
+  trade-union membership, religious/philosophical beliefs, sex life, sexual
+  orientation). The gatekeeper matched the bare keywords `sort patients` /
+  `biometric categorisation`, shipping an Art. 5(1)(g) verdict for clinical-trial
+  triage. It now requires the closed-list qualifier. **`sex` is NOT on that
+  list** — "infers sex" resolves to Annex III(1)(b) high-risk, never the ban.
+* **Annex III point 5(d) reaches emergency calls/triage, not clinical-trial
+  selection.** `medtech_triage` matched `sort patients ... clinical trial` and
+  hard-routed four different Part II facts to one identical emergency-dispatch
+  answer; it now requires an emergency-response marker.
+* **Conciseness is bought by the repair budget, not by prose.** The R409
+  acceptance bound was `max(1.8x, +900)`; answers ran 1.78x and Answer
+  Conciseness fell 92.45 → 69.88 pp. `repair_char_budget` is ADDITIVE in the gap
+  count (120 + 90/item, ≤1.6x). Prefer shipping the concise original over a
+  marginal completeness gain.
+
+## ⛔ R409 — the R408 Gemini commits, audited by execution
+
+Full evidence: `docs/reviews/r409-r408-audit-2026-09-11.md`.
+
+* **The R408 KG "point traversal fix" evicted Article text.** One global `LIMIT` under
+  `ORDER BY cite` ("Annex" < "Article"; Annex III = 24 rows = the budget) removed every
+  Article's point text whenever Annex III was cited: 42/97 R407 rows on live Aura. Its test
+  mocked the function under test and passed on the pre-fix file. R409 keeps ref order and
+  shares the budget (`kg_context._allocate_units`): 0/97. ⚠ The block grows 341 → 3,832
+  chars/row and is **ungated** (invariant #5), so it ships behind `REGENOLD_KG_POINT_TEXT`
+  (default OFF = the exact pre-R408 query).
+* **The reconstructed gold had verbatim-provable defects** (rg_037, rg_041, rg_060, rg_068,
+  rg_082, rg_110), corrected in place with `_revised: "R409"` and the old values kept under
+  `_pre_r409`. `score_arm` now stores `_criteria_sha` with every verdict and refuses a
+  legacy verdict for a revised row: before R409 the cache key hashed the answer and the
+  judge but NOT the criteria, so an edited criterion replayed the stale verdict.
+* **Five answer-completeness levers (R409) ship default OFF**, one per engine-side root
+  cause of the triage; see the flag table. All are prompt/generation-side ⇒ gate each on
+  `easyhard_ab` before flipping.
+* **Never "upgrade" a Bedrock-bound model id without a live call.** `eu.anthropic.claude-sonnet-5`
+  still 403s (2026-09-11); the intent classifier and query expansion were reverted to sonnet-4-6.
+* **R407's hard 80.7 is judge-dependent.** Sonnet 5 grouped judge on the SAME 110 answers:
+  **77.4**, Ans Strict 64.5 (Qwen 81.8); on the R409-corrected gold, Qwen **81.4** / Sonnet 5
+  **78.3** (`score-r409-*-corrected-gold-hard.json`). Triage of its 67 failing criteria: 0 judge misreads,
+  12 defects in OUR reconstructed gold, 55 engine-side (22 omitted enumerated limbs,
+  10 wrong provision, 9 missing condition, 7 post-pushback content loss). And R407's
+  Stage-2 was Bedrock Qwen 3, not production. Name the judge AND the Stage-2 model with
+  every local number.
+* **Hard-mode Resp. Speed was scored on turn 1 + pushback summed, plus a 13 s pacing sleep
+  inside the timed request.** Fixed for future runs (`score_arm._graded_latency_ms`,
+  `run_official_batch._net_of_pacing`); R407's Speed is not a production latency.
+
+
 ## ⛔ R386 — the reference gap is GRAIN, not precision. And the gate's gold was the blocker.
 
 **Executed 2026-09-06.** Two findings, and the second one retires a whole line of work.
@@ -1094,6 +1158,12 @@ the branch arm, at n≥30 per split, before the benchmark window.
 | `REGENOLD_PARENT_COLLAPSE` | **`1`** | Collapse parent provisions when sub-points are cited (R325). Dead flag until R366 wired it; **R381 flipped it to default ON on a live paired A/B** — n=20 official questions, 40/40 calls wrapper-served, 0 Bedrock. Four rows are ZERO-VARIANCE paired observations (answer byte-identical between arms, so refs are the only change): `rg_013` 5→4 (drops `Article 53`, keeps `53.2`), `rg_025` 3→2, `rg_029` 4→2 (drops `Article 6` + `Annex III`, keeps `6.2` + `Annex III.5.d`), `rg_041` 4→2. All 6 drops are bare parents whose own sub-point survives; the **head set is unchanged on all four rows**, and `gold_dropped_head` folds both sides onto heads (`metrics.py:572-574`), so **hard rule #8 delta = +0, measured**. Lever-only Ref. Conciseness **51.3 → 56.3 (+5.0 pp) = +0.90 pp Overall**. Free on the other two ref axes: Ref Loose scores at HEAD level (the head survives inside the leaf) and Ref Strict INCLUDES subpoints (the leaf is strictly better). `=0` restores the old behaviour |
 | `REGENOLD_CITABLE_BASE_GUARD` | **`0`** | Restrict prose-named citation promotion to the retrieval-grounded universe. **R403 re-measurement at full n=110 paired (over R401's n=37) CONFIRMS default OFF, now on statistics rather than an underpowered mean**: RefConc +6.72 pp is real (CI [+3.63, +10.22], p<0.0001) but `gold_dropped_head` 5→7 (rg_067, rg_090) trips hard rule #8's veto, and RefLoose −1.50 / RefStrict −2.00 trend negative with CIs touching 0. Do not re-propose without a gold-drop-safe variant. |
 | `REGENOLD_STAGE2_TRUNCATION_GUARD` | `1` | R357 post-generation truncation repair on the Stage-2 polish |
+| `REGENOLD_KG_POINT_TEXT` | `0` | R409 — point text in the Stage-2 KG sub-point block (R408 hop fix + R409 ref-order budget sharing). OFF runs the exact pre-R408 query production serves. Prompt-side ⇒ NOT reference-neutral; grows the block 341 → 3,832 chars/row over the R407 refs, so it needs `gold_dropped_head` plus a Speed read before default ON |
+| `REGENOLD_CLOSED_SET_COMPLETENESS_GUARD` | `0` | R409 — post-generation check that a list question's engaged closed statutory set is fully stated; one bounded repair call via `_stage2_complete`, accepted only if it closes gaps without dropping or adding a named provision. Targets the 22 OMITTED_ENUMERATED_ITEM criteria of the R407 triage. Counters: `completeness_guard_stats()` |
+| `REGENOLD_EXCEPTION_LIMB_GUARD` | `0` | R409 — same repair path, for exception/condition clauses ("unless", "with the exception of", "provided that") of provisions the answer names, on questions that ask about exceptions or conditions (9 criteria) |
+| `REGENOLD_VERDICT_LEAD_GUARD` | `0` | R409 — same repair path, for a yes/no question whose answer does not open with Yes or No (6 criteria) |
+| `REGENOLD_PUSHBACK_KEEP_CONTRACT` | `0` | R409 — on a challenge turn, a USER-channel clause listing the previous answer's anchored points to keep, plus a post-check that repairs points dropped without a stated legal reason (7 PUSHBACK_DRIFT criteria) |
+| `REGENOLD_GOVERNING_PROVISION_CLAUSE` | `0` | R409 — USER-channel clause for "which provision governs X" questions: state what each numbered paragraph of the governing provision requires (targets the WRONG_OR_MISSING_PROVISION shape) |
 | `REGENOLD_SCOPE_STOP_RULE` | `0` | R367 scope stop rule on the Stage-2 USER channel: answer the question, then STOP; never append a neighbouring provision/power/mechanism/derogation the question did not raise. Targets BOTH conciseness axes (combined leverage 0.364 pp/pp). **Prompt-side ⇒ NOT reference-neutral** (AGENTS.md invariant #5), so it needs `easyhard_ab`/`gold_dropped_head` AND `ab_judge` before flipping |
 | `REGENOLD_PROMPT_V2` | `1` | R377 port (PR #368): selects the four rebuilt V2 USER-channel clauses (coverage incl. `LEGAL VERSION` Omnibus exclusion, reference minimality, sub-paragraph discipline, and the CHALLENGE clause that instructs `<reasoning_scratchpad>`/`<answer>` channels on pushback turns). Shipped default ON on a gate claim with no record — see § R379 for the Bedrock A/B. Lives in `app/data/`, which the R355 AST gate does NOT scan; registered in `_engine_cache_key` by hand |
 | `REGENOLD_FIDELITY_TIER_NEGATION` | `1` | R377-B port: the cross-tier fidelity CONTRACT is what the deterministic draft ASSERTS, not what it mentions — a sentence-local denial ("not high-risk") no longer counts as an asserted tier. `=0` restores the anchor-only reading |

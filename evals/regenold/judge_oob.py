@@ -236,7 +236,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument(
         "--model",
-        default=os.environ.get("REGENOLD_JUDGE_MODEL", "claude-sonnet-4-6"),
+        default=os.environ.get("REGENOLD_JUDGE_MODEL", "claude-sonnet-5"),
         help="Judge model (defaults to Sonnet 4.6 via wrapper).",
     )
     ap.add_argument("--concurrency", type=int, default=3)

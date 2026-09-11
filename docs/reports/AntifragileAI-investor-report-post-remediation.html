@@ -70,13 +70,13 @@
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div>
           <div class="text-xs uppercase tracking-wider text-[var(--muted-foreground)] font-semibold">Easy mode overall</div>
-          <div class="text-2xl font-bold text-blue-700 dark:text-blue-300 mt-1">79.4%</div>
-          <div class="text-xs text-[var(--muted-foreground)]">1.5 pp from the 2026 frontier</div>
+          <div class="text-2xl font-bold text-blue-700 dark:text-blue-300 mt-1">78.3%</div>
+          <div class="text-xs text-[var(--muted-foreground)]">2.6 pp from the 2026 frontier (R390, live measured)</div>
         </div>
         <div>
           <div class="text-xs uppercase tracking-wider text-[var(--muted-foreground)] font-semibold">Hard mode measured</div>
-          <div class="text-2xl font-bold text-emerald-700 dark:text-emerald-400 mt-1">80.7%</div>
-          <div class="text-xs text-[var(--muted-foreground)]">1.0 pp from frontier (leads on 4 axes)</div>
+          <div class="text-2xl font-bold text-emerald-700 dark:text-emerald-400 mt-1">81.4% / 78.3%</div>
+          <div class="text-xs text-[var(--muted-foreground)]">Qwen 3 235B / Sonnet 5 judge — 0.3/3.4 pp from frontier (leads on 4 axes)</div>
         </div>
         <div>
           <div class="text-xs uppercase tracking-wider text-[var(--muted-foreground)] font-semibold">Cited failures resolved</div>
@@ -85,22 +85,25 @@
         </div>
         <div>
           <div class="text-xs uppercase tracking-wider text-[var(--muted-foreground)] font-semibold">Projected easy overall</div>
-          <div class="text-2xl font-bold text-emerald-700 dark:text-emerald-400 mt-1">81.2 to 84.6</div>
-          <div class="text-xs text-[var(--muted-foreground)]">at or above the frontier</div>
+          <div class="text-2xl font-bold text-emerald-700 dark:text-emerald-400 mt-1">superseded</div>
+          <div class="text-xs text-[var(--muted-foreground)]">projection retired, not re-derived (see Section 6)</div>
         </div>
       </div>
       <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
-        Antifragile AI scores <strong class="text-[var(--foreground)]">79.4%</strong> in easy mode and has now
-        been measured live at <strong class="text-[var(--foreground)]">80.7%</strong> in hard mode across the
-        full 110-question EU AI Act benchmark (up from 73.4% at evaluation), ahead of the 2025 search-integrated
-        baseline in both modes (+9.3 pp easy, +5.9 pp hard) and within 1.0 pp of the 2026 frontier model in hard
-        mode (leading on four of eight axes). The evaluator published an appendix of six representative
-        failures; all six have since been remediated and re-measured live, moving from
+        Antifragile AI scores <strong class="text-[var(--foreground)]">78.3%</strong> in easy mode (R390, live
+        measured) and has now been measured live in hard mode across the full 110-question EU AI Act benchmark
+        at <strong class="text-[var(--foreground)]">81.4%</strong> under a Qwen 3 235B judge and
+        <strong class="text-[var(--foreground)]">78.3%</strong> under a Claude Sonnet 5 re-judge of the same
+        110 answers (up from 73.4% at the August 25 evaluation), ahead of the 2025 search-integrated baseline
+        in both modes (+8.2 pp easy, +6.6 pp hard under the Qwen judge / +3.5 pp under the Sonnet 5 judge) and
+        within 0.3 to 3.4 pp of the 2026 frontier model in hard mode, depending on the judge (leading on four of
+        eight axes under both). The evaluator published an appendix of six representative failures; all six
+        have since been remediated and re-measured live, moving from
         <strong class="text-[var(--foreground)]">1 of 17</strong> printed criteria satisfied to
-        <strong class="text-[var(--foreground)]">17 of 17</strong>. Applying the enabled engineering
-        improvements across the entire benchmark achieves measured hard-mode performance of
-        <strong class="text-[var(--foreground)]">80.7%</strong>, closing all but 1.0 pp of the gap to the
-        frontier baseline with zero adversarial concessions.
+        <strong class="text-[var(--foreground)]">17 of 17</strong>. The easy-mode projection previously shown
+        here was computed from a synthetic baseline row that spliced Aug-25 official correctness/speed with
+        R390 conciseness figures and has been retired; it has not been re-derived (see Section 6 and
+        <code>docs/reviews/r409-r408-audit-2026-09-11.md</code>).
       </p>
     </section>
 
@@ -225,12 +228,20 @@
                 <td class="py-3 px-3 text-[var(--muted-foreground)]">100.0%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">81.8%</td>
               </tr>
               <tr class="bg-blue-50/50 dark:bg-blue-950/20 font-medium">
-                <td class="py-3 px-4 text-left font-bold text-blue-700 dark:text-blue-300">Antifragile AI</td>
-                <td class="py-3 px-3 font-bold text-blue-700 dark:text-blue-300 text-base">79.4%</td>
-                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">89.7%</td><td class="py-3 px-3 font-semibold text-[var(--foreground)]">81.2%</td>
-                <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">69.0%</td><td class="py-3 px-3 font-semibold text-[var(--foreground)]">89.4%</td>
-                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">68.3%</td><td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">59.3%</td>
-                <td class="py-3 px-3 text-[var(--muted-foreground)]">99.1%</td><td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">87.6%</td>
+                <td class="py-3 px-4 text-left font-bold text-blue-700 dark:text-blue-300">Antifragile AI (Live Measured — R390)</td>
+                <td class="py-3 px-3 font-bold text-blue-700 dark:text-blue-300 text-base">78.3%</td>
+                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">85.6%</td><td class="py-3 px-3 font-semibold text-[var(--foreground)]">70.9%</td>
+                <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">69.0%</td><td class="py-3 px-3 font-semibold text-[var(--foreground)]">97.5%</td>
+                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">69.2%</td><td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">55.3%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">98.2%</td><td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">91.8%</td>
+              </tr>
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-3 px-4 text-left font-medium text-[var(--foreground)]">Antifragile AI (Official Aug 25 Baseline)</td>
+                <td class="py-3 px-3 font-bold text-slate-800 dark:text-slate-100">75.1%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">89.7%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">81.2%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">51.9%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">89.4%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">68.3%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">50.4%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">99.1%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">87.6%</td>
               </tr>
               <tr class="hover:bg-[var(--content)]/30">
                 <td class="py-3 px-4 text-left font-medium text-[var(--foreground)]">2025 Search-Integrated Baseline</td>
@@ -244,7 +255,7 @@
           </table>
         </div>
         <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
-          Green marks the three metrics on which Antifragile AI leads the 2026 frontier baseline.
+          Green marks the three metrics on which Antifragile AI (Live Measured — R390) leads the 2026 frontier baseline (Ans. Conciseness, Ref. Conciseness, Resp. Speed).
         </div>
       </div>
     </section>
@@ -280,15 +291,23 @@
                 <td class="py-3 px-3 text-[var(--muted-foreground)]">100.0%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">86.7%</td>
               </tr>
               <tr class="bg-emerald-50/50 dark:bg-emerald-950/20 font-medium">
-                <td class="py-3 px-4 text-left font-bold text-emerald-800 dark:text-emerald-300">Antifragile AI (Live Measured)</td>
-                <td class="py-3 px-3 font-bold text-emerald-700 dark:text-emerald-300 text-base">80.7%</td>
-                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">90.7%</td><td class="py-3 px-3 font-semibold text-[var(--foreground)]">81.8%</td>
-                <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">84.4%</td><td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">95.5%</td>
-                <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">74.8%</td><td class="py-3 px-3 font-semibold text-[var(--foreground)]">55.9%</td>
+                <td class="py-3 px-4 text-left font-bold text-emerald-800 dark:text-emerald-300">Antifragile AI (R407 answers — Qwen 3 235B judge)</td>
+                <td class="py-3 px-3 font-bold text-emerald-700 dark:text-emerald-300 text-base">81.4%</td>
+                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">93.1%</td><td class="py-3 px-3 font-semibold text-[var(--foreground)]">83.6%</td>
+                <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">84.5%</td><td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">96.5%</td>
+                <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">75.8%</td><td class="py-3 px-3 font-semibold text-[var(--foreground)]">55.9%</td>
+                <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">100.0%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">71.6%</td>
+              </tr>
+              <tr class="bg-emerald-50/50 dark:bg-emerald-950/20 font-medium">
+                <td class="py-3 px-4 text-left font-bold text-emerald-800 dark:text-emerald-300">Antifragile AI (same R407 answers — Claude Sonnet 5 judge)</td>
+                <td class="py-3 px-3 font-bold text-emerald-700 dark:text-emerald-300 text-base">78.3%</td>
+                <td class="py-3 px-3 font-semibold text-[var(--foreground)]">84.7%</td><td class="py-3 px-3 font-semibold text-[var(--foreground)]">67.3%</td>
+                <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">84.5%</td><td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">96.5%</td>
+                <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">75.8%</td><td class="py-3 px-3 font-semibold text-[var(--foreground)]">55.9%</td>
                 <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">100.0%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">71.6%</td>
               </tr>
               <tr class="hover:bg-[var(--content)]/30">
-                <td class="py-3 px-4 text-left font-medium text-[var(--foreground)]">Antifragile AI (Official Evaluation)</td>
+                <td class="py-3 px-4 text-left font-medium text-[var(--foreground)]">Antifragile AI (Official Aug 25 Baseline)</td>
                 <td class="py-3 px-3 font-bold text-slate-800 dark:text-slate-100">73.4%</td>
                 <td class="py-3 px-3 text-[var(--muted-foreground)]">89.9%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">80.0%</td>
                 <td class="py-3 px-3 text-[var(--muted-foreground)]">45.2%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">89.5%</td>
@@ -307,7 +326,10 @@
           </table>
         </div>
         <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
-          Green marks the four metrics on which Antifragile AI leads or matches the 2026 frontier baseline in hard mode (Ans. Conciseness +12.6 pp, Ref. Loose +0.9 pp, Ref. Strict +0.7 pp, Regulatory Tone 100.0%). Response speed reflects the multi-turn generation floor across sequential Bedrock turns and 13s Cohere rate-limit pacing under adversarial challenge.
+          Green marks the four metrics on which Antifragile AI leads or matches the 2026 frontier baseline in hard mode (Ans. Conciseness +12.7 pp, Ref. Loose +1.9 pp, Ref. Strict +1.7 pp, Regulatory Tone 100.0%). These four values are identical under both judges; Response Speed here is a harness artefact, not a production latency (see note below).
+        </div>
+        <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)] leading-relaxed">
+          <strong class="text-[var(--foreground)]">Note (R409 provenance):</strong> both Antifragile R407 rows above grade the SAME 110 answers against the R409-corrected reconstructed gold (six rows fixed against verbatim Act text); only the correctness judge differs, and it moves Ans. Correctness Strict by 16.4 pp and Overall by 3.1 pp. Every local row is a proxy: the correctness criteria, reference answers and expected references are reconstructed (<code>evals/official/build_gold.py</code>, R386 minimal-gold probe) because the evaluator never published them, so the reference and conciseness axes are not directly comparable with the evaluator's own frontier figures (the R386 probe under-reads Ref. Conciseness by 11.9 pp against the printed Aug-25 value). Response Speed here is not a production latency: the harness summed turn 1 and the pushback turn, and counted a 13s Cohere rate-limit pacing sleep that ran inside the timed request (both corrected in R409 for future runs); the evaluator's hard-mode Speed is per response.
         </div>
       </div>
 
@@ -335,14 +357,21 @@
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">100.0–100.0%</td>
               </tr>
               <tr class="bg-emerald-50/50 dark:bg-emerald-950/20 font-medium">
-                <td class="py-2.5 px-4 text-left font-bold text-emerald-800 dark:text-emerald-300">Antifragile AI (Live Measured)</td>
+                <td class="py-2.5 px-4 text-left font-bold text-emerald-800 dark:text-emerald-300">Antifragile AI (R407 answers, Qwen 3 235B judge, pre-R409 gold)</td>
                 <td class="py-2.5 px-3 font-bold text-emerald-700 dark:text-emerald-300">80.5–80.8%</td>
                 <td class="py-2.5 px-3 font-semibold text-[var(--foreground)]">90.4–91.0%</td>
                 <td class="py-2.5 px-3 font-semibold text-[var(--foreground)]">80.9–82.7%</td>
                 <td class="py-2.5 px-3 font-semibold text-emerald-700 dark:text-emerald-300">100.0–100.0%</td>
               </tr>
               <tr class="hover:bg-[var(--content)]/30">
-                <td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">Antifragile AI (Official Evaluation)</td>
+                <td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">Antifragile AI (same R407 answers, Claude Sonnet 5 judge, pre-R409 gold)</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">77.2–77.4%</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">81.6–82.7%</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">63.6–65.5%</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">98.2–100.0%</td>
+              </tr>
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">Antifragile AI (Official Aug 25)</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">73.1–73.7%</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">89.6–90.3%</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">79.1–80.9%</td>
@@ -492,6 +521,15 @@
         assumes the gap to the 2026 frontier baseline is closed on each metric where Antifragile AI
         currently trails it.
       </p>
+      <p class="text-xs text-[var(--muted-foreground)] italic leading-relaxed">
+        The Hard Mode columns below predate the September 11 live measurement in Section 4 and are
+        superseded by it (Section 4: 81.4% Overall under the Qwen 3 235B judge, 78.3% under a Claude
+        Sonnet 5 re-judge of the same 110 answers). The Overall row, the Ans. Conciseness (Hard) row and
+        the Ref. Conciseness row (both modes) were computed from or spliced against a synthetic pre-remediation
+        baseline described in the R409 audit (<code>docs/reviews/r409-r408-audit-2026-09-11.md</code>)
+        rather than a single measured system state; those cells have not been re-derived and are marked
+        "&mdash;" below rather than restated.
+      </p>
 
       <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
         <div class="px-5 py-3 border-b border-[var(--border)] bg-[var(--content)]/50">
@@ -519,7 +557,7 @@
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">80.0</td><td class="py-2.5 px-3">81.1</td><td class="py-2.5 px-3 font-semibold">83.3</td></tr>
               <tr><td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">Ans. Conciseness</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">69.0</td><td class="py-2.5 px-3">72.5</td><td class="py-2.5 px-3 font-semibold">79.3</td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">62.1</td><td class="py-2.5 px-3">63.0</td><td class="py-2.5 px-3 font-semibold">64.8</td></tr>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td><td class="py-2.5 px-3">&mdash;</td><td class="py-2.5 px-3 font-semibold">&mdash;</td></tr>
               <tr><td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">Ref. Correctness (Loose)</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">89.4</td><td class="py-2.5 px-3">90.3</td><td class="py-2.5 px-3 font-semibold">91.9</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">89.5</td><td class="py-2.5 px-3">89.9</td><td class="py-2.5 px-3 font-semibold">90.8</td></tr>
@@ -527,8 +565,8 @@
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">68.3</td><td class="py-2.5 px-3">70.3</td><td class="py-2.5 px-3 font-semibold">74.3</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">70.7</td><td class="py-2.5 px-3">70.7</td><td class="py-2.5 px-3">70.7</td></tr>
               <tr><td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">Ref. Conciseness</td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">59.3</td><td class="py-2.5 px-3">61.7</td><td class="py-2.5 px-3 font-semibold">66.2</td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">54.7</td><td class="py-2.5 px-3">55.4</td><td class="py-2.5 px-3 font-semibold">56.8</td></tr>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td><td class="py-2.5 px-3">&mdash;</td><td class="py-2.5 px-3 font-semibold">&mdash;</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td><td class="py-2.5 px-3">&mdash;</td><td class="py-2.5 px-3 font-semibold">&mdash;</td></tr>
               <tr><td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">Regulatory Tone</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">99.1</td><td class="py-2.5 px-3 text-[var(--muted-foreground)]">99.1</td><td class="py-2.5 px-3 text-[var(--muted-foreground)]">99.1</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">96.1</td><td class="py-2.5 px-3 text-[var(--muted-foreground)]">96.1</td><td class="py-2.5 px-3 text-[var(--muted-foreground)]">96.1</td></tr>
@@ -537,35 +575,37 @@
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">85.7</td><td class="py-2.5 px-3 text-[var(--muted-foreground)]">85.7</td><td class="py-2.5 px-3 text-[var(--muted-foreground)]">85.7</td></tr>
               <tr class="bg-emerald-50/50 dark:bg-emerald-950/20 font-bold">
                 <td class="py-3 px-4 text-left text-emerald-900 dark:text-emerald-200">Overall (Geometric Mean)</td>
-                <td class="py-3 px-3 text-[var(--foreground)]">79.4</td>
-                <td class="py-3 px-3 text-emerald-700 dark:text-emerald-300">81.2</td>
-                <td class="py-3 px-3 text-emerald-700 dark:text-emerald-300 text-base">84.6</td>
-                <td class="py-3 px-3 text-[var(--foreground)]">77.3</td>
-                <td class="py-3 px-3 text-emerald-700 dark:text-emerald-300">77.8</td>
-                <td class="py-3 px-3 text-emerald-700 dark:text-emerald-300 text-base">78.8</td></tr>
+                <td class="py-3 px-3 text-[var(--foreground)]">&mdash;</td>
+                <td class="py-3 px-3 text-emerald-700 dark:text-emerald-300">&mdash;</td>
+                <td class="py-3 px-3 text-emerald-700 dark:text-emerald-300 text-base">&mdash;</td>
+                <td class="py-3 px-3 text-[var(--foreground)]">&mdash;</td>
+                <td class="py-3 px-3 text-emerald-700 dark:text-emerald-300">&mdash;</td>
+                <td class="py-3 px-3 text-emerald-700 dark:text-emerald-300 text-base">&mdash;</td></tr>
               <tr class="font-semibold">
                 <td class="py-2.5 px-4 text-left text-[var(--foreground)]">Overall gain</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">—</td>
-                <td class="py-2.5 px-3 text-emerald-700 dark:text-emerald-400">+1.8 pp</td>
-                <td class="py-2.5 px-3 text-emerald-700 dark:text-emerald-400">+5.2 pp</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">—</td>
-                <td class="py-2.5 px-3 text-emerald-700 dark:text-emerald-400">+0.5 pp</td>
-                <td class="py-2.5 px-3 text-emerald-700 dark:text-emerald-400">+1.5 pp</td></tr>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td></tr>
               <tr class="font-semibold">
                 <td class="py-2.5 px-4 text-left text-[var(--foreground)]">Relative gain</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">—</td>
-                <td class="py-2.5 px-3 text-emerald-700 dark:text-emerald-400">+2.2%</td>
-                <td class="py-2.5 px-3 text-emerald-700 dark:text-emerald-400">+6.5%</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">—</td>
-                <td class="py-2.5 px-3 text-emerald-700 dark:text-emerald-400">+0.7%</td>
-                <td class="py-2.5 px-3 text-emerald-700 dark:text-emerald-400">+1.9%</td></tr>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td></tr>
             </tbody>
           </table>
         </div>
         <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
-          Hard mode gains were initially projected at half the easy-mode rate under conservative assumptions (77.8% to 78.8%).
-          In the full live 110-question evaluation on September 11, 2026, Antifragile AI achieved <strong class="text-emerald-700 dark:text-emerald-400 font-semibold">80.67% Overall</strong>,
-          exceeding even the optimistic projection as Answer Conciseness reached 84.4% (+12.6 pp above frontier) and Reference Correctness reached 95.5% loose / 74.8% strict.
+          Hard mode was initially to be assessed via the projection above; that projection has been retired (dashes, this table) rather than re-derived.
+          In the full live 110-question evaluation on September 11, 2026 (run <code>official-r407-direct-bedrock-cohere-v4-pro-hard</code>), Antifragile AI achieved
+          <strong class="text-emerald-700 dark:text-emerald-400 font-semibold">81.4% Overall under a Qwen 3 235B judge</strong> and
+          <strong class="text-emerald-700 dark:text-emerald-400 font-semibold">78.3% under a Claude Sonnet 5 re-judge</strong> of the same answers,
+          with Answer Conciseness reaching 84.5% (+12.7 pp above frontier) and Reference Correctness reaching 96.5% loose (+1.9 pp above frontier) / 75.8% strict (+1.7 pp above frontier) under both judges.
         </div>
       </div>
 
@@ -613,19 +653,19 @@
               <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Single synthesis contract <span class="text-xs font-normal">(measured live)</span></td>
                 <td class="py-2.5 px-4 text-[var(--muted-foreground)]">replaces accumulated instruction stack with one contract over evidence, cutting payload ~75% on challenged turns; enabled in R407 full hard run</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">Ans. Conciseness, Speed</td>
-                <td class="py-2.5 px-3 text-right font-semibold text-emerald-700 dark:text-emerald-400">84.4% (+12.6 pp vs frontier)</td></tr>
+                <td class="py-2.5 px-3 text-right font-semibold text-emerald-700 dark:text-emerald-400">84.5% (+12.7 pp vs frontier)</td></tr>
               <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Complete statutory sets in evidence <span class="text-xs font-normal">(measured live)</span></td>
                 <td class="py-2.5 px-4 text-[var(--muted-foreground)]">supplies full membership of closed statutory lists (e.g. Art. 13 disclosures, Annex III categories); enabled in R407</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">Ans. Correctness (Strict)</td>
-                <td class="py-2.5 px-3 text-right font-semibold text-emerald-700 dark:text-emerald-400">81.8% (up from 80.0%)</td></tr>
+                <td class="py-2.5 px-3 text-right font-semibold text-emerald-700 dark:text-emerald-400">83.6% Qwen judge / 67.3% Sonnet 5 judge (up from 80.0% at evaluation)</td></tr>
               <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Valid coordinate ranges supplied <span class="text-xs font-normal">(measured live)</span></td>
                 <td class="py-2.5 px-4 text-[var(--muted-foreground)]">informs the model of actual existing paragraph and subpoint numbers for cited provisions; enabled in R407</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">Ref. Correctness (Strict)</td>
-                <td class="py-2.5 px-3 text-right font-semibold text-emerald-700 dark:text-emerald-400">74.8% (+0.7 pp vs frontier)</td></tr>
+                <td class="py-2.5 px-3 text-right font-semibold text-emerald-700 dark:text-emerald-400">75.8% (+1.7 pp vs frontier)</td></tr>
               <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Evidence reranking <span class="text-xs font-normal">(measured live)</span></td>
                 <td class="py-2.5 px-4 text-[var(--muted-foreground)]">Cohere v4.0 Pro neural reranker orders candidate provisions before 8-provision truncation; enabled in R407</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">Ref. Correctness (Loose)</td>
-                <td class="py-2.5 px-3 text-right font-semibold text-emerald-700 dark:text-emerald-400">95.5% (+0.9 pp vs frontier)</td></tr>
+                <td class="py-2.5 px-3 text-right font-semibold text-emerald-700 dark:text-emerald-400">96.5% (+1.9 pp vs frontier)</td></tr>
             </tbody>
           </table>
         </div>
@@ -667,8 +707,9 @@
           Switched on in production and evaluated live across all 110 benchmark questions in hard mode on September 11, 2026
           (run <code>official-r407-direct-bedrock-cohere-v4-pro-hard</code>). Scored against the reconstructed official rubric
           with an independent Bedrock Qwen 235B judge across three repetitions (temperature 0.1), the combined system achieved
-          <strong class="text-[var(--foreground)]">80.67% Overall</strong> (+7.27 pp over the August 25 evaluation baseline of 73.4%).
-          The run established frontier-beating marks on four of eight axes, recorded 0.0% concessions under adversarial pushback,
+          <strong class="text-[var(--foreground)]">81.4% Overall under the Qwen 3 235B judge</strong> (+8.0 pp over the August 25 evaluation baseline of 73.4%)
+          and <strong class="text-[var(--foreground)]">78.3% under a Claude Sonnet 5 re-judge</strong> of the same 110 answers (+4.9 pp over the same baseline).
+          The run established frontier-beating marks on four of eight axes under both judges, recorded 0.0% concessions under adversarial pushback,
           and maintained 100% judge remark persistence with zero transport failures.
         </div>
       </div>
@@ -676,11 +717,16 @@
       <div class="bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-xl p-5 space-y-1.5">
         <h4 class="font-bold text-sm text-blue-900 dark:text-blue-200">Position against the 2026 frontier baseline</h4>
         <p class="text-xs text-blue-900/80 dark:text-blue-300 leading-relaxed">
-          In easy mode, Antifragile AI scores 79.4% (projected 81.2 to 84.6 post-remediation, reaching or passing the frontier's 80.9%).
-          In hard mode, the September 11 live measurement established an overall score of <strong class="text-blue-950 dark:text-blue-100">80.7%</strong>,
-          narrowing the deficit to the 2026 frontier model (81.7%) to just 1.0 pp and outperforming the 2025 search baseline (74.8%) by 5.9 pp.
-          Antifragile AI now directly leads or matches the frontier on four of eight hard-mode dimensions while demonstrating unyielding
-          resistance to adversarial conversational challenges.
+          In easy mode, Antifragile AI scores 78.3% (R390, live measured), 2.6 pp from the frontier's 80.9%; the
+          previously published 81.2&ndash;84.6% post-remediation projection was derived from a superseded
+          synthetic baseline and has not been re-derived (see Section 6). In hard mode, the September 11 live
+          measurement established an overall score of <strong class="text-blue-950 dark:text-blue-100">81.4%</strong>
+          under a Qwen 3 235B judge and <strong class="text-blue-950 dark:text-blue-100">78.3%</strong> under a
+          Claude Sonnet 5 re-judge of the same answers, narrowing the deficit to the 2026 frontier model (81.7%)
+          to 0.3 pp (Qwen) / 3.4 pp (Sonnet 5) and outperforming the 2025 search baseline (74.8%) by 6.6 pp
+          (Qwen) / 3.5 pp (Sonnet 5). Antifragile AI leads or matches the frontier on four of eight hard-mode
+          dimensions (reconstructed keys) under both judges while demonstrating unyielding resistance to
+          adversarial conversational challenges.
         </p>
       </div>
     </section>

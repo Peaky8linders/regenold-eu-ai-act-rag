@@ -1230,6 +1230,7 @@ def _engine_cache_key(
     system_context: str | None,
     history_turn_count: int = 0,
     reasoning_active: bool = False,
+    guard_question: str | None = None,
 ) -> str:
     """Sha256-hash of the engine input fingerprint.
 
@@ -1428,6 +1429,13 @@ def _engine_cache_key(
             # same-process A/B differing only here must not share a cache entry
             # (R30/R56/R79/R263.2 doctrine).
             "REGENOLD_STAGE2_TRUNCATION_GUARD",
+            # R409 — answer-completeness guards and clauses (all default OFF):
+            # each can rewrite GraphRAGResponse.answer or the Stage-2 prompt.
+            "REGENOLD_CLOSED_SET_COMPLETENESS_GUARD",
+            "REGENOLD_EXCEPTION_LIMB_GUARD",
+            "REGENOLD_VERDICT_LEAD_GUARD",
+            "REGENOLD_PUSHBACK_KEEP_CONTRACT",
+            "REGENOLD_GOVERNING_PROVISION_CLAUSE",
             # R270 — opus-for-all flips the Stage-2 answer MODEL (Sonnet 5 vs
 
             # Opus 4.8) for standard questions → flips GraphRAGResponse.answer.
@@ -1481,6 +1489,8 @@ def _engine_cache_key(
             "REGENOLD_KG_CONTEXT",
             "REGENOLD_KG_MAX_REFS",
             "REGENOLD_KG_MAX_UNITS",
+            # R409 — point text in the Stage-2 sub-point block (default OFF).
+            "REGENOLD_KG_POINT_TEXT",
             "REGENOLD_KG_UNIT_CHARS",
             "REGENOLD_KG_MAX_RECITALS",
             "REGENOLD_VECTOR_MIN_SIM",
@@ -2127,6 +2137,10 @@ def _engine_cache_key(
         f"provider:{provider_bit}",
         f"engine:{engine_flags}",
         f"history:{int(history_turn_count)}",
+        # R410 — the reask path's flattened history. The completeness repair
+        # reads it, so it flips GraphRAGResponse.answer; an unkeyed flip would
+        # serve arm A's cached answer to arm B (R263.2 doctrine).
+        guard_question or "",
         # R104 — ?include_reasoning=true activates the per-request reasoning
         # trace, which (in graph_rag _two_stage_generate /
         # _claude_max_enhance_answer) forces Stage-2 polish + the Opus
@@ -8072,6 +8086,7 @@ class QuestionHistoryResult(tuple):
     salvaged: bool
     self_contained_focus: bool
     context_retrieval_text: str | None
+    guard_question: str | None
 
     def __new__(
         cls,
@@ -8081,6 +8096,7 @@ class QuestionHistoryResult(tuple):
         salvaged: bool = False,
         self_contained_focus: bool = False,
         context_retrieval_text: str | None = None,
+        guard_question: str | None = None,
     ):
         obj = super().__new__(cls, (question, system_context))
         obj.resolved_question = resolved_question
@@ -8100,6 +8116,10 @@ class QuestionHistoryResult(tuple):
         # bench) → byte-identical by construction.
         obj.self_contained_focus = bool(self_contained_focus)
         obj.context_retrieval_text = context_retrieval_text
+        # R410 — flattened conversation for the post-generation completeness
+        # guards. Set ONLY on the R305 reask path, where ``question`` is the
+        # bare re-asked ask and carries no turn-1 assistant answer.
+        obj.guard_question = guard_question
         return obj
 
 
@@ -8213,12 +8233,26 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
                 )
             except Exception:  # noqa: BLE001 — tracing must never break the route
                 pass
+            _reask_history_block = "\n".join(
+                f"{m.role.capitalize()}: {m.content.strip()}"
+                for m in history_turns
+            )
+            # R410 — retrieve on the bare re-asked question (``question`` and
+            # ``resolved_question`` below, R305's focus), but carry the flattened
+            # history for the completeness guards so ``previous_answer()`` can
+            # find turn 1 on a pushback turn.
             return QuestionHistoryResult(
                 _reask_tail,
                 system_context,
                 _reask_tail,  # resolved live turn IS the re-asked question
                 False,
                 True,  # self_contained_focus — drop prior-turn scope + R88-A bleed
+                None,
+                "Conversation so far:\n"
+                f"{_reask_history_block}\n"
+                "\n"
+                "Latest question:\n"
+                f"{live_question}",
             )
 
     if history_turns:
@@ -8718,6 +8752,7 @@ def regenold_eu_ai_act_ask(
         history_turn_count=_history_turn_count,
         resolved_question=resolved_question,
         context_retrieval_text=history_res.context_retrieval_text,
+        guard_question=history_res.guard_question,
         bridging_context=list(intent_res.bridging_context) if intent_res else [],
     )
 
@@ -8752,6 +8787,11 @@ def regenold_eu_ai_act_ask(
         # ~3096) when ?include_reasoning=true, so this reflects the request's
         # actual Stage-2 routing.
         reasoning_active=_current_reasoning_trace() is not None,
+        # R410 — the reask path's flattened history (see
+        # GraphRAGRequest.guard_question). It flips the completeness repair, so
+        # two re-asks with the same bare question but different turn 1 must not
+        # share a cache entry.
+        guard_question=history_res.guard_question,
     )
     rag_res = _ENGINE_CACHE.get(cache_key)
     _trace_cache_hit(rag_res is not None)
@@ -11688,13 +11728,14 @@ def regenold_eu_ai_act_ask(
     # base-coverage test is later loosened. Both are default OFF, so no
     # interaction ships today.
     #
-    # DEFAULT OFF, and it stays off. This pass DROPS references, the R142.1
-    # failure mode that lost a live pairwise judge 11-0 (p=0.001), so it ships
-    # only behind an ``evals.harness.easyhard_ab`` win (gold-bearing — NOT
-    # ``ab_judge``). It also knowingly overrides the R274 curated-intercept
-    # protection: ``['Article 6.3', 'Article 6', 'Annex III']`` collapses to
-    # ``['Article 6.3', 'Annex III']``, dropping the general-rule head that
-    # R274 deliberately pairs with its carve-out. That trade is test-pinned in
+    # DEFAULT ON as of R381 (0 gold dropped, +5.0 pp RefConc). This pass DROPS
+    # bare parent references when their own sub-points are cited, resolving head+leaf
+    # redundancy at the wire without dropping substantive coverage. It was NOT
+    # cleared by ``evals.harness.easyhard_ab`` (a strict no-op offline, so that
+    # harness reads +0.0000): R381 gated it on a live paired A/B restricted to rows
+    # whose answer was byte-identical across arms. It knowingly overrides the R274 curated-
+    # intercept protection: ``['Article 6.3', 'Article 6', 'Annex III']`` collapses to
+    # ``['Article 6.3', 'Annex III']``. That trade is test-pinned in
     # ``tests/test_r325_parent_collapse.py::TestKnownTradeIsPinned``.
     #
     # ⚠ IT IS A NO-OP ON THE OFFLINE DETERMINISTIC PATH — expect +0.0000 there

@@ -4500,7 +4500,19 @@ _GUIDING_PRINCIPLES_RE = re.compile(
     r"|(?:that\s+)?underpin\w*"
     r"|established\s+(?:by|in|under)"
     r"|laid\s+down\s+(?:by|in|under))\s+"
-    r"(?:the\s+)?(?:eu\s+)?(?:ai\s+)?(?:act|regulation)\b",
+    r"(?:the\s+)?(?:eu\s+)?(?:ai\s+)?(?:act|regulation)\b"
+    # R410 — the ACT-FIRST verb form. The presupposition-defusing re-ask
+    # ("Does the EU AI Act establish guiding principles for AI?") reverses the
+    # order every branch above assumes and names no article, so the intercept
+    # never fired and retrieval fell to BM25 (live Part II Q6: Articles 28/57/70
+    # notifying-authority prose, 0/4 criteria). Bind the principles to the Act
+    # wherever the verb sits between them and the noun the user asks about.
+    r"|\b(?:does|do|has|have|can|could|would|will|is|are)\s+(?:the\s+)?(?:eu\s+)?"
+    r"(?:ai\s+)?(?:act|regulation)\b[\w\s,'-]{0,60}?"
+    r"(?:establish|establishes|provide(?:\s+for)?|provides(?:\s+for)?|set\s+out|"
+    r"sets\s+out|lay\s+down|lays\s+down|contain|contains|define|defines|"
+    r"have|has)\b[\w\s,'-]{0,40}?"
+    r"(?:(?:guiding|general|core|ethical|underlying|overarching)\s+)?principles?\b",
     re.IGNORECASE,
 )
 # Explicit Article/Annex reference other than Art. 1 / Art. 4 in the live
@@ -6223,23 +6235,34 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     if _detect_guiding_principles_inquiry(question):
         verdict = {
             "name": "guiding_principles",
-            # The seven-principles enumeration MUST carry a cite anchor
-            # (Article 1): normalise_answer_for_regenold's 600-char soft cap
-            # drops the longest NON-cite-anchored sentence first, and without
-            # the anchor the enumeration — the whole point of the answer — is
-            # exactly that sentence (R114, Antifragile Q7 wire regression).
+            # R410 — EVERY sentence carries a cite anchor, and the denial
+            # comes FIRST. ``normalise_answer_for_regenold`` drops the longest
+            # sentence holding no ``art.`` / ``article `` / ``annex`` token
+            # until the reply fits its soft cap (code default 400, Railway
+            # 1200), and a polar opener ("The EU AI Act does not establish
+            # ...") is exactly that shape. The pre-R410 reply therefore
+            # shipped the Recital-27 enumeration ALONE: it asserted the
+            # principles existed and lost BOTH the No verdict and the
+            # recitals-are-not-binding point (2 of the 4 graded criteria; the
+            # R114 note below is the same failure caught earlier on the
+            # enumeration). Anchoring the denial on ``Article 95(2)(a)`` and
+            # the enumeration tail on ``Article 4`` leaves the cap loop with
+            # no non-cite sentence to drop, so nothing is lost at any cap.
+            # Art. 1 is dropped from the refs: Recital 27's grounds are not
+            # the question's operative connection, and the annotated gold for
+            # this item is Recital 27 + Art. 95.2(a) + Art. 95 only.
             "answer": (
-                "The seven guiding principles of the EU AI Act are articulated "
-                "in Recital 27 (the trustworthy-AI framework) and inform the "
-                "human-centric purpose of Article 1: human agency and oversight; "
-                "technical robustness and safety; privacy and data governance; "
-                "transparency; diversity, non-discrimination and fairness; "
-                "social and environmental wellbeing; and accountability. "
-                "Article 4 operationalises these principles by requiring "
-                "providers and deployers to ensure a sufficient level of AI "
-                "literacy among their staff."
+                "The EU AI Act does not establish legally operative guiding "
+                "principles: Article 95(2)(a) lets voluntary codes of conduct "
+                "cover trustworthy-AI ethical guidelines, and Recital 27 merely "
+                "recalls the seven non-binding principles of the 2019 High-Level "
+                "Expert Group. They are human agency and oversight, technical "
+                "robustness and safety, privacy and data governance, transparency, "
+                "diversity, non-discrimination and fairness, social and "
+                "environmental wellbeing, and accountability; Article 4 adds the "
+                "AI literacy duty."
             ),
-            "refs": ["Art. 1", "Art. 4"],
+            "refs": ["Art. 4", "Art. 95"],
         }
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
@@ -6257,11 +6280,13 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
         verdict = {
             "name": "minimal_risk",
             "answer": (
-                "Minimal-risk AI systems are the residual category: systems that "
-                "are neither prohibited under Article 5, nor high-risk under "
-                "Article 6 (as an Annex I safety component or an Annex III use "
-                "case), nor subject to the Article 50 transparency duties, nor "
-                "general-purpose AI models. Typical examples are AI-enabled spam "
+                "The EU AI Act does not establish a formal minimal-risk category; "
+                "minimal risk is descriptive shorthand for the residual class of "
+                "systems that are neither prohibited under Article 5, nor "
+                "high-risk under Article 6 (as an Annex I safety component or an "
+                "Annex III use case), nor subject to the Article 50 transparency "
+                "duties, nor general-purpose AI models. Typical examples are "
+                "AI-enabled spam "
                 "filters, inventory-management tools, and AI in video games. They "
                 "have no mandatory obligations under the Chapter III high-risk "
                 "regime, but their providers "
@@ -9045,6 +9070,7 @@ def _claude_max_enhance_answer(
     is_general_classification: bool = False,
     force_provider: str | None = None,
     original_question: str | None = None,
+    guard_question: str | None = None,
 ) -> str | None:
     """Stage-2: polish the KG-grounded answer via the Claude Max proxy.
 
@@ -9601,6 +9627,27 @@ def _claude_max_enhance_answer(
             except Exception:  # noqa: BLE001 — a prompt add-on must not break Stage-2
                 pass
 
+        # R409 — answer-completeness clauses (both default OFF). Appended AFTER
+        # every wholesale replacement above (compact, evidence contract), the
+        # trap R391/R398/R399 each paid for, so they reach every arm. They read
+        # the ORIGINAL question: only it carries the flattened history the
+        # pushback clause quotes from.
+        try:
+            from app.engines.answer_completeness import (  # noqa: PLC0415
+                governing_provision_clause,
+                pushback_keep_clause,
+            )
+
+            # R410 — the completeness clauses read the FLATTENED history. On a
+            # reask-focus pushback turn ``orig_q`` is the bare re-asked question,
+            # so ``previous_answer()`` finds no turn 1; `guard_question` carries
+            # it (see ``GraphRAGRequest.guard_question``).
+            history_q = (guard_question or orig_q).strip() or orig_q
+            user_message += governing_provision_clause(history_q)
+            user_message += pushback_keep_clause(history_q)
+        except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
+            pass
+
         try:
             max_tokens = settings.graph_rag.max_tokens
         except Exception:  # noqa: BLE001
@@ -10145,6 +10192,96 @@ def _guard_stage2_truncation(
     return kg_answer, False
 
 
+#: R409 — prove-it-fires counters for the completeness repair (the R329 rule:
+#: a guard that never calls reads +0.0000, indistinguishable from one that does
+#: not work). ``attempts`` counts repair calls actually dispatched.
+_COMPLETENESS_STATS: dict[str, int] = {
+    "attempts": 0,
+    "repaired": 0,
+    "rejected": 0,
+    "failed": 0,
+}
+
+
+def completeness_guard_stats() -> dict[str, int]:
+    return dict(_COMPLETENESS_STATS)
+
+
+def reset_completeness_guard_stats() -> None:
+    for key in _COMPLETENESS_STATS:
+        _COMPLETENESS_STATS[key] = 0
+
+
+def _guard_answer_completeness(
+    question: str,
+    answer: str,
+    context: GraphContext | None,
+) -> str:
+    """R409 — one bounded repair when the final answer misses what was asked.
+
+    MEASURED root cause: triage of the 67 criteria the Sonnet 5 judge failed on
+    R407 found 55 engine-side gaps, and the needed provision was ALREADY cited
+    in 53 — the content was lost at generation, not retrieval. The detectors in
+    :mod:`app.engines.answer_completeness` (closed-set members, exception
+    limbs, the yes/no verdict lead, points dropped after a pushback) are all
+    default OFF; with every one OFF this returns ``answer`` without work.
+
+    The repair is a rewrite, so it is accepted only when ``accept_repair``
+    confirms it closes gaps without dropping a named provision or adding a new
+    one, and only when it is complete. Any failure ships ``answer`` unchanged.
+    Prompt-side ⇒ NOT reference-neutral (AGENTS.md invariant #5): the route
+    recomputes wire references from this prose.
+    """
+    try:
+        from app.engines import answer_completeness as ac  # noqa: PLC0415
+
+        if not (
+            ac.closed_set_completeness_enabled()
+            or ac.exception_limb_guard_enabled()
+            or ac.verdict_lead_guard_enabled()
+            or ac.pushback_keep_enabled()
+        ):
+            return answer
+        gaps = ac.collect_gaps(question, answer)
+        if not gaps:
+            return answer
+        _COMPLETENESS_STATS["attempts"] += 1
+        repaired = _stage2_complete(
+            system=(
+                "You revise a legal answer so it states everything the question "
+                "asks. Output ONLY the complete revised answer."
+            ),
+            user=ac.build_repair_user_message(question, answer, gaps),
+            max_tokens=1536,
+            temperature=0.0,
+            complex_question=False,
+            stage_name="Stage 2 (Completeness Repair)",
+        )
+        from app.security.prompt_guard import validate_llm_output  # noqa: PLC0415
+
+        repaired = validate_llm_output(repaired).strip()
+        if not repaired or _looks_incomplete_final_sentence(repaired):
+            _COMPLETENESS_STATS["failed"] += 1
+            return answer
+        if not ac.accept_repair(question, answer, repaired, gaps):
+            _COMPLETENESS_STATS["rejected"] += 1
+            return answer
+        _COMPLETENESS_STATS["repaired"] += 1
+        try:
+            from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                record_note,
+            )
+
+            kinds = ",".join(sorted({g.kind for g in gaps}))
+            record_note(f"completeness_repair={len(gaps)}:{kinds}"[:160])
+        except Exception:  # noqa: BLE001 — trace is best-effort
+            pass
+        return repaired
+    except Exception:  # noqa: BLE001 — a guard must never break Stage-2
+        logger.debug("answer completeness guard failed", exc_info=True)
+        return answer
+
+
 def _two_stage_generate(
     question: str,
     context: GraphContext,
@@ -10152,6 +10289,7 @@ def _two_stage_generate(
     system_description: str | None = None,
     history_turn_count: int = 1,
     resolved_question: str | None = None,
+    guard_question: str | None = None,
 ) -> tuple[str, bool]:
     """Two-stage answer generation.
 
@@ -10319,6 +10457,7 @@ def _two_stage_generate(
         history_turn_count=history_turn_count,
         is_general_classification=_general_classification_verdict(resolved_q) is not None,
         original_question=question,
+        guard_question=guard_question,
     )
 
     if enhanced is None:
@@ -10513,10 +10652,18 @@ def _two_stage_generate(
     # (REGENOLD_STAGE2_TRUNCATION_GUARD=0). Stage-2-only ⇒ the deterministic
     # davidath bench is byte-identical.
     if _stage2_truncation_guard_enabled():
-        return _guard_stage2_truncation(
+        final, stage2_used = _guard_stage2_truncation(
             resolved_q, enhanced, kg_answer, context
         )
-    return enhanced, True
+    else:
+        final, stage2_used = enhanced, True
+    # R409 — completeness repair on the text that would ship. Only a landed
+    # polish is eligible: a deterministic fallback is not ours to rewrite.
+    if stage2_used:
+        # ``guard_question`` carries the flattened history on a reask-focus
+        # pushback turn, where ``question`` is only the bare re-asked ask.
+        final = _guard_answer_completeness(guard_question or question, final, context)
+    return final, stage2_used
 
 
 # ─── Main entry point ────────────────────────────────────────────────────────
@@ -11138,6 +11285,7 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
         request.question, context, query, request.system_description,
         history_turn_count=getattr(request, "history_turn_count", 1) or 1,
         resolved_question=resolved_q,
+        guard_question=getattr(request, "guard_question", None),
     )
 
     reasoning_trace = [

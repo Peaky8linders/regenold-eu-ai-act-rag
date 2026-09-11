@@ -1,0 +1,88 @@
+{
+  "q01-risk-categories": {
+    "question": "What risk categories, if any, does the EU AI Act provide for AI systems?",
+    "answer": "The EU AI Act attaches obligations by condition rather than by a formal statutory risk category; the familiar four-tier vocabulary is descriptive shorthand for how those conditions group. Unacceptable-risk practices are prohibited outright under Article 5; high-risk systems are classified under Article 6 (as a safety component of an Annex I product, or as one of the Annex III use cases) and carry the Chapter III Section 2 obligations; limited-risk systems carry the Article 50 transparency duties; and systems outside all of those conditions, often called minimal-risk, avoid the Chapter III high-risk requirements but retain Article 4 AI literacy duties, with voluntary codes under Article 95. General-purpose AI models are governed separately under Articles 51 to 56, with stricter duties for models posing systemic risk.",
+    "answer_chars": 827,
+    "references": [
+      "Article 5.1.d",
+      "Article 6.3.d",
+      "Article 50",
+      "Article 52.2",
+      "Article 53.2"
+    ],
+    "lead": "The EU AI Act attaches obligations by condition rather than by a formal statutory risk category; the familiar "
+  },
+  "q05-minimal-risk": {
+    "question": "Does the EU AI Act provide for a category of minimal risk AI systems?",
+    "answer": "The EU AI Act does not establish a formal minimal-risk category; minimal risk is descriptive shorthand for the residual class of systems that are neither prohibited under Article 5, nor high-risk under Article 6 (as an Annex I safety component or an Annex III use case), nor subject to the Article 50 transparency duties, nor general-purpose AI models. They have no mandatory obligations under the Chapter III high-risk regime, but their providers and deployers remain subject to Article 4 AI literacy duties and may adopt voluntary codes of conduct under Article 95.",
+    "answer_chars": 567,
+    "references": [
+      "Article 5.1.d",
+      "Article 6.4",
+      "Article 50"
+    ],
+    "lead": "The EU AI Act does not establish a formal minimal-risk category; minimal risk is descriptive shorthand for the"
+  },
+  "q06-guiding-principles": {
+    "question": "Does the EU AI Act establish guiding principles for AI?",
+    "answer": "The EU AI Act does not establish legally operative guiding principles: Article 95(2)(a) lets voluntary codes of conduct cover trustworthy-AI ethical guidelines, and Recital 27 merely recalls the seven non-binding principles of the 2019 High-Level Expert Group. They are human agency and oversight, technical robustness and safety, privacy and data governance, transparency, diversity, non-discrimination and fairness, social and environmental wellbeing, and accountability; Article 4 adds the AI literacy duty.",
+    "answer_chars": 510,
+    "references": [
+      "Article 4",
+      "Article 95.2"
+    ],
+    "lead": "The EU AI Act does not establish legally operative guiding principles: Article 95(2)(a) lets voluntary codes o"
+  },
+  "q08-conditional": {
+    "question": "Under the EU AI Act, can a hospital use an AI system to sort patients based on their biometric data to determine priority for an experimental clinical trial?",
+    "answer": "The system described is not among the practices prohibited under Article 5 (social scoring, untargeted facial-image scraping, manipulative or exploitative techniques, and the other exhaustively-listed bans). Whether it is high-risk turns on Article 6: it is high-risk only if it is a safety component of a product regulated under Annex I (for example a medical device under the MDR or IVDR) or falls within one of the Annex III use cases. Otherwise it is limited- or minimal-risk, subject mainly to the Article 50 transparency duties where it interacts directly with people.",
+    "answer_chars": 574,
+    "references": [
+      "Article 6.3.d",
+      "Article 50.4",
+      "Annex III.1.b",
+      "Annex I.5",
+      "Article 5.1.g"
+    ],
+    "lead": "The system described is not among the practices prohibited under Article 5 (social scoring, untargeted facial-"
+  },
+  "q09-race-PROHIBITED": {
+    "question": "Under the EU AI Act, can a hospital use an AI system to sort patients based on their biometric data to determine priority for an experimental clinical trial, where the system infers each patient's race from that data?",
+    "answer": "Biometric categorisation that infers sensitive attributes (race, political opinion, religious belief, sexual orientation) is prohibited under Article 5(1)(g). Whether it is high-risk turns on Article 6: it is high-risk only if it is a safety component of a product regulated under Annex I (for example a medical device under the MDR or IVDR) or falls within one of the Annex III use cases. Otherwise it is limited- or minimal-risk, subject mainly to the Article 50 transparency duties where it interacts directly with people.",
+    "answer_chars": 525,
+    "references": [
+      "Article 6.3.d",
+      "Article 50",
+      "Annex III.1.b",
+      "Annex I.20",
+      "Article 5.1.g"
+    ],
+    "lead": "Biometric categorisation that infers sensitive attributes (race, political opinion, religious belief, sexual o"
+  },
+  "q10-sex-HIGH-RISK": {
+    "question": "Under the EU AI Act, can a hospital use an AI system to sort patients based on their biometric data to determine priority for an experimental clinical trial, where the system infers each patient's sex from that data?",
+    "answer": "The system described is not among the practices prohibited under Article 5 (social scoring, untargeted facial-image scraping, manipulative or exploitative techniques, and the other exhaustively-listed bans). Whether it is high-risk turns on Article 6: it is high-risk only if it is a safety component of a product regulated under Annex I (for example a medical device under the MDR or IVDR) or falls within one of the Annex III use cases. Otherwise it is limited- or minimal-risk, subject mainly to the Article 50 transparency duties where it interacts directly with people.",
+    "answer_chars": 574,
+    "references": [
+      "Article 6.3.d",
+      "Article 50.4",
+      "Annex III.1.b",
+      "Annex I.20",
+      "Article 5.1.g"
+    ],
+    "lead": "The system described is not among the practices prohibited under Article 5 (social scoring, untargeted facial-"
+  },
+  "q11-physiological-FALLBACK": {
+    "question": "Under the EU AI Act, can a hospital use an AI system to sort patients based on their biometric data to determine priority for an experimental clinical trial, where the system sorts on clinically relevant physiological parameters and infers no sensitive or protected attribute?",
+    "answer": "The system described is not among the practices prohibited under Article 5 (social scoring, untargeted facial-image scraping, manipulative or exploitative techniques, and the other exhaustively-listed bans). Whether it is high-risk turns on Article 6: it is high-risk only if it is a safety component of a product regulated under Annex I (for example a medical device under the MDR or IVDR) or falls within one of the Annex III use cases. Otherwise it is limited- or minimal-risk, subject mainly to the Article 50 transparency duties where it interacts directly with people.",
+    "answer_chars": 574,
+    "references": [
+      "Article 6.3.d",
+      "Article 50.4",
+      "Annex III.1.b",
+      "Annex I.20",
+      "Article 5.1.g"
+    ],
+    "lead": "The system described is not among the practices prohibited under Article 5 (social scoring, untargeted facial-"
+  }
+}
