@@ -11690,8 +11690,10 @@ def regenold_eu_ai_act_ask(
     #
     # DEFAULT ON as of R381 (0 gold dropped, +5.0 pp RefConc). This pass DROPS
     # bare parent references when their own sub-points are cited, resolving head+leaf
-    # redundancy at the wire without dropping substantive coverage. It ships behind
-    # an ``evals.harness.easyhard_ab`` win. It knowingly overrides the R274 curated-
+    # redundancy at the wire without dropping substantive coverage. It was NOT
+    # cleared by ``evals.harness.easyhard_ab`` (a strict no-op offline, so that
+    # harness reads +0.0000): R381 gated it on a live paired A/B restricted to rows
+    # whose answer was byte-identical across arms. It knowingly overrides the R274 curated-
     # intercept protection: ``['Article 6.3', 'Article 6', 'Annex III']`` collapses to
     # ``['Article 6.3', 'Annex III']``. That trade is test-pinned in
     # ``tests/test_r325_parent_collapse.py::TestKnownTradeIsPinned``.

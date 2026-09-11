@@ -185,6 +185,29 @@ inside the compact branch.** Still default OFF; the A/B is now meaningful for th
 Full evidence: `docs/reviews/r398-invariant-5-audit-2026-09-09.md`.
 
 
+## ⛔ R409 — the R408 Gemini commits, audited by execution
+
+Full evidence: `docs/reviews/r409-r408-audit-2026-09-11.md`.
+
+* **The R408 KG "point traversal fix" evicted Article text.** One global `LIMIT` under
+  `ORDER BY cite` ("Annex" < "Article"; Annex III = 24 rows = the budget) removed every
+  Article's point text whenever Annex III was cited: 42/97 R407 rows on live Aura. Its test
+  mocked the function under test and passed on the pre-fix file. R409 keeps ref order and
+  shares the budget (`kg_context._allocate_units`): 0/97. ⚠ The block grows 341 → 3,832
+  chars/row and is **ungated** (invariant #5): gate it or restore the pre-R408 query before deploy.
+* **Never "upgrade" a Bedrock-bound model id without a live call.** `eu.anthropic.claude-sonnet-5`
+  still 403s (2026-09-11); the intent classifier and query expansion were reverted to sonnet-4-6.
+* **R407's hard 80.7 is judge-dependent.** Sonnet 5 grouped judge on the SAME 110 answers:
+  **77.4**, Ans Strict 64.5 (Qwen 81.8). Triage of its 67 failing criteria: 0 judge misreads,
+  12 defects in OUR reconstructed gold, 55 engine-side (22 omitted enumerated limbs,
+  10 wrong provision, 9 missing condition, 7 post-pushback content loss). And R407's
+  Stage-2 was Bedrock Qwen 3, not production. Name the judge AND the Stage-2 model with
+  every local number.
+* **Hard-mode Resp. Speed was scored on turn 1 + pushback summed, plus a 13 s pacing sleep
+  inside the timed request.** Fixed for future runs (`score_arm._graded_latency_ms`,
+  `run_official_batch._net_of_pacing`); R407's Speed is not a production latency.
+
+
 ## ⛔ R386 — the reference gap is GRAIN, not precision. And the gate's gold was the blocker.
 
 **Executed 2026-09-06.** Two findings, and the second one retires a whole line of work.

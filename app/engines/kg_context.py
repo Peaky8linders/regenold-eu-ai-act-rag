@@ -229,20 +229,67 @@ LIMIT $max_recitals
 # pt.number)`` keeps the query defensive if a future seed ever sets the other
 # property. ``sp.roman AS roman`` was already correct — SubPoint carries
 # ``.roman`` (``_MERGE_SUBPOINT``), never ``.number``.
+#
+# R408 — the inner ``MATCH (pt)-[:HAS_SUBPOINT]->(sp)`` required a SubPoint,
+# but the live graph has 421 Points (all with ``.text``) and only 37
+# SubPoints, so every point WITHOUT one — all of Article 25(1), most of
+# Article 13(3) — never reached Stage-2. The sub-point hop is now OPTIONAL and
+# a bare point contributes its own text.
+#
+# R409 — R408 kept ONE global ``LIMIT $max_units`` under ``ORDER BY cite``.
+# ``"Annex" < "Article"`` and Annex III alone has 24 point rows, the default
+# budget, so any context citing Annex III lost EVERY Article's point text.
+# Measured on live Aura over the R407 official-110 refs: a cited provision's
+# point text was evicted on 42 of the 97 rows that have any, and on 14 rows it
+# removed text the pre-R408 query had delivered (Article 5 on 7 of them). Rows
+# now carry the caller's ref order and the budget is shared in Python by
+# ``_allocate_units``. The ceiling only guards against a runaway seed: the
+# whole graph holds 449 such rows.
+_SUBPOINT_ROW_CEILING = 600
+
 _SUBPOINT_CYPHER = """
-UNWIND $ids AS aid
+UNWIND range(0, size($ids) - 1) AS i
+WITH i, $ids[i] AS aid
 MATCH (a) WHERE a.id = aid AND (a:Article OR a:Annex)
 MATCH (a)-[:HAS_PARAGRAPH]->(p:Paragraph)-[:HAS_POINT]->(pt:Point)
 OPTIONAL MATCH (pt)-[:HAS_SUBPOINT]->(sp:SubPoint)
-RETURN coalesce(a.strict_citation, a.id) AS cite,
+RETURN i AS ref_index,
+       coalesce(a.strict_citation, a.id) AS cite,
        p.number AS para,
        coalesce(pt.letter, pt.number) AS letter,
        sp.id AS sid,
        sp.roman AS roman,
        coalesce(sp.text, pt.text) AS text
-ORDER BY cite, toIntegerOrNull(p.number), letter, sid
-LIMIT $max_units
+ORDER BY ref_index, toIntegerOrNull(p.number), letter, sid
+LIMIT $max_rows
 """
+
+
+def _allocate_units(rows: list[dict], max_units: int) -> list[dict]:
+    """Share ``max_units`` round-robin across cited provisions, in ref order.
+
+    ``rows`` arrive grouped by ``ref_index`` (the caller's, reranked, ref order)
+    and in document order within a provision. One unit is taken from each
+    provision per round until the budget is spent, so no cited provision is
+    starved by a long one, and the kept units are emitted grouped by provision.
+    Rows without ``ref_index`` fall into one group, which degrades to a plain
+    ``rows[:max_units]``.
+    """
+    groups: dict[int, list[dict]] = {}
+    for row in rows:
+        groups.setdefault(int(row.get("ref_index") or 0), []).append(row)
+    order = sorted(groups)
+    kept = dict.fromkeys(order, 0)
+    budget = max(0, int(max_units))
+    progressed = True
+    while budget and progressed:
+        progressed = False
+        for k in order:
+            if budget and kept[k] < len(groups[k]):
+                kept[k] += 1
+                budget -= 1
+                progressed = True
+    return [row for k in order for row in groups[k][: kept[k]]]
 
 _DEONTIC_CYPHER = """
 CALL () {
@@ -427,11 +474,15 @@ def fetch_subpoint_detail(refs: list[str]) -> list[dict]:
     if not ids:
         return []
 
-    cache_key = f"sp:{','.join(ids)}:u{max_units}"
-    return _memoized_read(
-        cache_key,
+    # The query no longer depends on ``max_units`` (R409), so the memo holds the
+    # full per-provision rows and the budget is applied after it.
+    rows = _memoized_read(
+        f"sp:{','.join(ids)}",
         _SUBPOINT_CYPHER,
-        {"ids": ids, "max_units": max_units},
+        {"ids": ids, "max_rows": _SUBPOINT_ROW_CEILING},
+    )
+    return _ReadRows(
+        _allocate_units(rows, max_units), failed=getattr(rows, "failed", False)
     )
 
 

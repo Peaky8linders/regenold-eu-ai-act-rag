@@ -74,18 +74,20 @@ Antifragile AI is benchmarked against two industry baselines:
 | Contestant | Overall | Ans Cor (L) | Ans Cor (S) | Ans Conc | Ref (L) | Ref (S) | Ref Conc | Tone | Speed |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | **2026 Frontier Baseline + Search Tool** | **81.7%** | **92.0%** | **84.8%** | 71.8% | 94.6% | 74.1% | **58.5%** | **100.0%** | **86.7%** |
-| **Antifragile AI (Live Measured — Sept 11)** | **80.7%** | 90.7% | 81.8% | **84.4%** | **95.5%** | **74.8%** | 55.9% | **100.0%** | 71.6% |
+| **Antifragile AI (R407 answers — Qwen 3 235B judge)** | **80.7%** | 90.7% | 81.8% | **84.4%** | **95.5%** | **74.8%** | 55.9% | **100.0%** | 71.6% |
+| **Antifragile AI (same R407 answers — Claude Sonnet 5 judge)** | 77.4% | 82.2% | 64.5% | **84.4%** | **95.5%** | **74.8%** | 55.9% | **100.0%** | 71.6% |
 | **Antifragile AI (Official Aug 25 Baseline)** | 73.4% | 89.9% | 80.0% | 45.2% | 89.5% | 70.7% | 49.8% | 96.1% | 85.7% |
 | **2025 Search-Integrated Baseline** | 74.8% | 87.6% | 76.7% | 58.8% | 82.7% | 55.4% | 56.8% | 99.7% | **95.9%** |
 
-*Note: In hard mode, Antifragile AI directly leads or matches the 2026 frontier baseline on four of eight dimensions: Ans. Conciseness (+12.6 pp), Ref. Correctness Loose (+0.9 pp), Ref. Correctness Strict (+0.7 pp), and Regulatory Tone (100.0%). Response speed reflects the multi-turn generation floor across sequential AWS Bedrock turns and 13s Cohere rate-limit pacing under adversarial challenge.*
+*Note (R409 provenance): both Antifragile R407 rows grade the SAME 110 answers; only the correctness judge differs, and it moves Ans. Correctness Strict by 17.3 pp and Overall by 3.3 pp. Every local row is a proxy: the correctness criteria, reference answers and expected references are reconstructed (`evals/official/build_gold.py`, R386 minimal-gold probe) because the evaluator never published them, so the reference and conciseness axes are not directly comparable with the evaluator's own frontier figures (the R386 probe under-reads Ref. Conciseness by 11.9 pp against the printed Aug-25 value). Response Speed here is not a production latency: the harness summed turn 1 and the pushback turn, and counted a 13 s Cohere rate-limit pacing sleep that ran inside the timed request (both corrected in R409 for future runs); the evaluator's hard-mode Speed is per response.*
 
 ### Min–Max Repetition Ranges (Hard Mode — 3 Repetitions @ Temp 0.1)
 
 | Contestant | Overall | Ans Cor L | Ans Cor S | Tone |
 | :--- | :---: | :---: | :---: | :---: |
 | **2026 Frontier Baseline + Search Tool** | 81.7–81.8% | 92.0–92.0% | 84.5–85.5% | 100.0–100.0% |
-| **Antifragile AI (Live Measured)** | **80.5–80.8%** | **90.4–91.0%** | **80.9–82.7%** | **100.0–100.0%** |
+| **Antifragile AI (R407 answers, Qwen 3 235B judge)** | **80.5–80.8%** | **90.4–91.0%** | **80.9–82.7%** | **100.0–100.0%** |
+| **Antifragile AI (same R407 answers, Claude Sonnet 5 judge)** | 77.2–77.4% | 81.6–82.7% | 63.6–65.5% | 98.2–100.0% |
 | **Antifragile AI (Official Aug 25)** | 73.1–73.7% | 89.6–90.3% | 79.1–80.9% | 94.5–97.3% |
 | **2025 Search-Integrated Baseline** | 74.6–74.9% | 87.2–87.8% | 75.5–77.3% | 99.1–100.0% |
 
@@ -99,14 +101,14 @@ Antifragile AI is benchmarked against two industry baselines:
 | :--- | :--- | :---: | :---: | :---: | :--- |
 | **Easy (R390)** | 2026 Frontier Baseline + Search Tool | 80.9% | **78.3%** | -2.6 pp | Within 2.6 pp |
 | **Easy (R390)** | 2025 Search-Integrated Baseline | 70.1% | **78.3%** | **+8.2 pp** | **Beats Baseline (+8.2 pp)** |
-| **Hard (R407)** | 2026 Frontier Baseline + Search Tool | 81.7% | **80.7%** | **-1.0 pp** | **Within 1.0 pp (Leads 4 Axes)** |
-| **Hard (R407)** | 2025 Search-Integrated Baseline | 74.8% | **80.7%** | **+5.9 pp** | **Beats Baseline (+5.9 pp)** |
+| **Hard (R407)** | 2026 Frontier Baseline + Search Tool | 81.7% | 80.7% (Qwen judge) / 77.4% (Sonnet 5 judge) | -1.0 / -4.3 pp | Behind under both judges; size of gap is judge-dependent |
+| **Hard (R407)** | 2025 Search-Integrated Baseline | 74.8% | 80.7% (Qwen judge) / 77.4% (Sonnet 5 judge) | **+5.9 / +2.6 pp** | **Beats Baseline under both judges** |
 
 ### Key Findings:
 
-* **Outperforms 2025 Search Baseline Across Both Modalities:** Antifragile AI outperforms the 2025 Search-Integrated model by +8.2 pp in Easy mode (78.3% vs 70.1%) and +5.9 pp in Hard mode (80.7% vs 74.8%), driven by specialized legal graph retrieval, neural evidence reranking, and subpoint-precise statutory recall.
-* **Narrowed Gap to 2026 Frontier Benchmark:** In Hard mode, Antifragile AI has closed all but 1.0 pp of the gap to the 2026 Frontier model (80.7% vs. 81.7%, up from the 73.4% official evaluation baseline), while trailing by only 2.6 pp in single-turn Easy mode.
-* **Frontier-Beating Performance on Four Hard-Mode Axes:** Antifragile AI surpasses or matches the 2026 frontier baseline in:
+* **Outperforms 2025 Search Baseline Across Both Modalities:** Antifragile AI outperforms the 2025 Search-Integrated model by +8.2 pp in Easy mode (78.3% vs 70.1%) and in Hard mode by +5.9 pp under the Qwen judge or +2.6 pp under the Sonnet 5 judge on the same answers, driven by specialized legal graph retrieval, neural evidence reranking, and subpoint-precise statutory recall.
+* **Narrowed Gap to 2026 Frontier Benchmark:** In Hard mode the remaining gap to the 2026 Frontier model is 1.0 pp under the Qwen judge and 4.3 pp under the Sonnet 5 judge on the same answers (the official Aug-25 evaluation scored 73.4%), and 2.6 pp in single-turn Easy mode.
+* **Four Hard-Mode Axes At or Above the Frontier Figure (reconstructed keys, see the Section 4 note):** Antifragile AI surpasses or matches the 2026 frontier baseline in:
   - **Answer Conciseness:** 84.4% vs. 71.8% (+12.6 pp advantage)
   - **Reference Correctness (Loose):** 95.5% vs. 94.6% (+0.9 pp advantage)
   - **Reference Correctness (Strict):** 74.8% vs. 74.1% (+0.7 pp advantage)

@@ -595,8 +595,8 @@ def judge_rows(
         if on_row is not None:
             try:
                 on_row(out)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001 — a checkpoint failure must not kill the run
+                print(f"  checkpoint callback failed for {out.get('id')}: {exc}", flush=True)
         return out
 
     with ThreadPoolExecutor(max_workers=workers) as ex:

@@ -124,6 +124,36 @@ def load_cache(cache_path: Path | None = None) -> dict[str, dict]:
     return out
 
 
+def _verdict_complete(v: dict, repeats: int) -> bool:
+    """R409 — a verdict is cacheable only when EVERY repetition was live.
+
+    A dropped repetition used to be cached under an ``r=3`` identity and served
+    as complete from then on (rg_084/rg_094/rg_099 in the R407 Qwen cache), and
+    per-row checkpointing now persists it mid-run too. A partial row still
+    scores the run that produced it and is re-judged on the next. Cache lines
+    that predate tone accounting carry neither tone field and stay usable.
+    """
+    tone = v.get("_tone_runs")
+    raw = v.get("_tone_runs_raw")
+    if tone is None and raw is not None:
+        tone = sum(1 for x in raw if x is not None)
+    return v.get("_judge_runs", 0) >= repeats and (tone is None or tone >= repeats)
+
+
+def _graded_latency_ms(r: dict) -> float:
+    """R409 — latency of the GRADED response, not of the whole exchange.
+
+    Hard-mode checkpoints store ``latency_ms`` as turn 1 PLUS the pushback turn.
+    The official Resp. Speed is per response: on Aug-25 the same system scored
+    hard 85.7 against easy 87.6, where a two-turn sum would read about twice the
+    easy latency. Checkpoints written before the per-turn fields keep the sum.
+    """
+    if "pushback_latency_ms" in r or "turn1_latency_ms" in r:
+        graded = r.get("pushback_latency_ms") if r.get("pushback_answer") else r.get("turn1_latency_ms")
+        return float(graded or 0.0)
+    return float(r.get("latency_ms") or 0.0)
+
+
 def load_ckpt(path: Path) -> list[dict]:
     rows = []
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -137,7 +167,7 @@ def load_ckpt(path: Path) -> list[dict]:
                 "question": r.get("question") or "",
                 "answer": r.get("pred_answer") or r.get("answer") or "",
                 "references": r.get("pred_refs") or r.get("references") or r.get("refs") or [],
-                "latency_s": float(r.get("latency_ms") or 0.0) / 1000.0,
+                "latency_s": _graded_latency_ms(r) / 1000.0,
                 "difficulty": r.get("difficulty") or r.get("difficulty_category"),
             }
         )
@@ -227,7 +257,7 @@ def main() -> int:
     todo, cached = [], []
     for r in rows:
         v = cache.get(_key(r["id"], r["answer"], judge_id))
-        if v and v.get("_judge_runs", 0) > 0 and len(v.get("criteria") or []) == len(r["criteria_text"]):
+        if v and _verdict_complete(v, a.repeats) and len(v.get("criteria") or []) == len(r["criteria_text"]):
             cached.append({**r, **v})
         else:
             todo.append(r)
@@ -240,7 +270,7 @@ def main() -> int:
 
     def _on_row_done(j: dict) -> None:
         nonlocal _done_count
-        if j.get("_judge_runs", 0) > 0 and j.get("_tone_runs", 0) > 0:
+        if _verdict_complete(j, a.repeats):
             with _cache_lock:
                 _done_count += 1
                 with cache_target.open("a", encoding="utf-8") as fh:
@@ -325,6 +355,12 @@ def main() -> int:
                 f"these rows were not cached.\n"
                 f"first offenders: {[j['id'] for j in tone_dead[:8]]}\n"
                 f"{'!' * 72}\n"
+            )
+        partial = [j["id"] for j in judged if j.get("_judge_runs", 0) and not _verdict_complete(j, a.repeats)]
+        if partial:
+            print(
+                f"\nPARTIAL VERDICTS: {len(partial)}/{len(judged)} rows lost at least one "
+                f"repetition; scored on the live runs and NOT cached: {partial[:8]}\n"
             )
 
 
