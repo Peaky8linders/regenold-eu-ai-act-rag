@@ -405,13 +405,12 @@ defects (`rg_107` conditional framing, `rg_097` verdict not in the lead).
 
 **The other three levers stay OFF, and the reason is measurable, not timid.**
 
-* `member` fires on 7 of 71 PASSING rows — it demands the full lettered list of a
-  provision the answer merely *cites* (`rg_055` demands Article 5(1)(a)-(g) for a
-  question about the 5(1)(h) exceptions; `rg_064` demands Article 60(4)(a)-(k) for
-  a question answered from 60(4)(e); `rg_018` demands Article 7(2)(b)-(j)). That is
-  the direct explanation of the §6.8 gold drop: repairs on already-correct
-  answers. A gold-safe variant needs a rule for *which* closed set the question
-  engages, and that is a reference-affecting change that needs its own gate.
+* `member` fired on 7 of 71 PASSING rows — it demanded the full lettered list of a
+  provision the answer merely *cited* (`rg_055` demanded Article 5(1)(a)-(g) for a
+  question about the 5(1)(h) exceptions; `rg_064` demanded Article 60(4)(a)-(k) for
+  a question answered from 60(4)(e); `rg_018` demanded Article 7(2)(b)-(j)). That
+  was the direct explanation of the §6.8 gold drop: repairs on already-correct
+  answers. **Fixed in §6.11** (question-side engagement): 7/71 → 0/71.
 * `exception` fires on 6 passing rows and hits 0/9 target criteria by coordinate.
 * `keep_clause` fires on 107/110 rows — a clause that always fires carries no
   signal.
@@ -445,6 +444,73 @@ count is 0 — the oracle is already applied, and 0 is the *post-guard* reading.
 only lose gold heads — hard rule #8 — so it is not added.** The remaining
 TrustGraph benefit is not a reference guard; it is the SPARQL-queryable A-Box,
 which stays available without the cluster.
+
+### 6.11 Closed-set engagement is now question-side — the §6.8 gold drop explained and removed
+
+§6.9 left the closed-set lever with one open question: it fired on 7 of 71 rows the
+grader passed in full, and *which* closed set a question engages is what decides
+whether a demanded member is a gap or noise. That rule is now implemented and
+measured.
+
+**Why the answer's own citations cannot be the engagement signal.** The clause was
+`mentioned = prefix_closure(answer_paths) | prefix_closure(question_paths)`, so
+naming *any* member engaged its whole group. `rg_055` cites Article 5(1)(h) — the
+law-enforcement exception — and was asked for Article 5(1)(a)–(g), the
+prohibitions. `rg_064` cites Article 60(4)(e) and was asked for 60(4)(a)–(k).
+
+A bare token-overlap gate does not fix this, and that is worth stating because it
+is counter-intuitive: the false positives score **higher** on chapeau overlap than
+the true positives (16 and 15 shared stems for `rg_055`/`rg_064` against 8 and 7 for
+`rg_046`/`rg_052`), because the Regulation's boilerplate ("high-risk AI system",
+"information", "provider") dominates any raw count.
+
+**The signal that works: a distinctive chapeau bigram.** A group is engaged when
+the question names the parent coordinate exactly, or contains a two-word phrase
+from the parent's chapeau whose words each occur in at most one member of the head.
+The chapeau carries the set's own subject ("instructions for use", "quality
+management system"); the document-frequency filter over the head's members removes
+the boilerplate ("high risk", "AI system", "technical documentation"). The
+answer-side requirement is kept, so a repair can never invent a head the answer did
+not already name.
+
+Measured on the frozen 110-row R407 ledger
+(`docs/measurements/r409/closed_set_engagement_probe.py`, deterministic, no
+network):
+
+| rule | fires | true positives | FP on a PASSED row |
+| :--- | ---: | ---: | ---: |
+| citation-side (shipped before) | 13 | 3/12 | **7/71 (9.9%)** |
+| question names the parent, or a distinctive chapeau bigram of it | **2** | 2/12 | **0/71 (0.0%)** |
+
+Target-criteria coverage is **unchanged at 7/22**: the two fires are still `rg_046`
+(Article 13(3), the instructions-for-use list) and `rg_052` (Article 17(1), the QMS
+elements list). The three rows lost were not coverage — `rg_066`'s "hit" was the
+Article 6(3) derogation demanded of a question about the EU database, i.e. a false
+positive the old hit-count was crediting.
+
+**What this does to the §6.8 gold drop — the headline.** Replayed over the recorded
+hard-split answers:
+
+| leverage | fires |
+| :--- | ---: |
+| citation-side rule, baseline answers | **1/37** — `mt_v2:mt_v2_004` |
+| question-side rule (this change) | **0/37** |
+
+`mt_v2_004` is **one of the four `gold_dropped_head` offenders** the failed gate
+recorded. The one row this lever was harming on that split is exactly the fire the
+new rule removes.
+
+⚠ **The gate is now unsatisfiable on the current corpus, and that is a finding,
+not an omission.** Running the whole `easyhard_ab` corpus (132 rows) with the
+**gold** answer as the draft, the lever engages on **0** rows — there is no row in
+the corpus that asks for the enumeration of a closed statutory set in the shape
+`rg_046`/`rg_052` do. A live A/B on that corpus cannot exercise the lever at all: it
+would measure Stage-2 sampling noise around a no-op, which is precisely the
+confound that left §6.8's effect size unsettled. So the flag stays **default OFF**,
+now for a *better* reason than "it lost gold": it has nothing to do on the corpus
+available to gate it, and the one harmful fire is gone. Gating it needs either a
+probe split with enumeration-ask rows, or the official 110-row benchmark as the
+gate.
 
 ## 7. Actionable Roadmap for the Next Session
 

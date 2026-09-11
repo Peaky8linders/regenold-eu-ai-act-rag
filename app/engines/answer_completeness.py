@@ -77,6 +77,15 @@ Deviations from the written spec, each for a measured reason:
 * A repair is bounded by :func:`repair_char_budget`, NOT a blanket ratio: the
   acceptance limit grows one short clause per MISSING ITEM (R410 conciseness
   fix), not a multiple of the whole answer.
+* :func:`missing_closed_set_members` engages a group on the QUESTION, not on the
+  answer's own citations (R410). Citation-side engagement demanded the full
+  lettered list of any provision the answer merely named — rg_055 cites
+  Article 5(1)(h) and was asked for Article 5(1)(a)-(g) — which fired on 7 of 71
+  rows the grader passed in full. The signal is a DISTINCTIVE chapeau bigram
+  (both words in at most one member of the head) or an exact parent coordinate;
+  bare token overlap does not separate the cases, because the false positives
+  score higher than the true positives. Measured: 13 fires -> 2, both on target,
+  0 on a passed row, target-criteria coverage unchanged at 7/22.
 * :func:`verdict_lead_gap` reads the FIRST interrogative of a multi-clause
   question (R410) and accepts a worded verdict lead, not only a literal
   ``Yes``/``No`` token. Both are precision fixes measured on the 110-row R407
@@ -810,6 +819,98 @@ def _groups(members: list[tuple[str, str]]) -> list[tuple[str, list[tuple[str, s
     return [(p, groups[p]) for p in order]
 
 
+# ── Question-side engagement (R410) ──────────────────────────────────────────
+#
+# A group is engaged by the QUESTION, never by the answer's own citations. That
+# distinction is the whole precision of this detector, and it is measured on the
+# frozen 110-row R407 ledger (`docs/measurements/r409/closed_set_engagement_probe.py`).
+#
+# Under the citation rule the detector demanded the FULL lettered list of any
+# provision the answer happened to name: rg_055 cites Article 5(1)(h) (the
+# law-enforcement exception) and was asked for Article 5(1)(a)-(g) (the
+# prohibitions); rg_064 cites Article 60(4)(e) and was asked for 60(4)(a)-(k).
+# It fired on 13 rows: 3 true positives and 7 the grader passed in full, and a
+# repair on a correct answer is the R409 §6.8 gold-drop mechanism.
+#
+# Signal: the question names the parent coordinate exactly, or it contains a
+# DISTINCTIVE bigram of the parent's chapeau - distinctive meaning both words
+# occur in at most one member of the head. The chapeau carries the set's own
+# subject ("instructions for use", "quality management system"); the
+# document-frequency filter over the head's members removes the Regulation's
+# boilerplate ("high risk", "AI system", "technical documentation"). Bare token
+# overlap on the chapeau does NOT separate the cases - the false positives score
+# *higher* than the true positives (16 and 15 shared stems for rg_055/rg_064
+# against 8 and 7 for rg_046/rg_052), which is why the phrase form is required.
+#
+# Measured: fires 13 -> 2, true positives 3 -> 2 (rg_046 "instructions for use",
+# rg_052 "management system"), false positives on a passed row 7/71 -> 0/71.
+
+_ENGAGE_CHAPEAU_MEMO: dict[str, str] = {}
+_ENGAGE_BIGRAM_MEMO: dict[str, frozenset[tuple[str, str]]] = {}
+_WORD_RE = re.compile(r"[a-z0-9]+")
+
+
+def _word_bigrams(text: str) -> set[tuple[str, str]]:
+    toks = [t for t in _WORD_RE.findall(_s(text).lower()) if len(t) > 2]
+    return {(toks[i], toks[i + 1]) for i in range(len(toks) - 1)}
+
+
+def _chapeau_text(parent: str, children: list[tuple[str, str]]) -> str:
+    """The parent's introductory text, up to its first member."""
+    cached = _ENGAGE_CHAPEAU_MEMO.get(parent)
+    if cached is not None:
+        return cached
+    from app.data.provision_text import get_provision_text  # noqa: PLC0415
+
+    txt = get_provision_text(parent) or ""
+    if txt and children:
+        first = " ".join(_member_own_text(children[0][1]).split())[:40]
+        idx = txt.find(first)
+        if idx > 0:
+            txt = txt[:idx]
+    _ENGAGE_CHAPEAU_MEMO[parent] = txt
+    return txt
+
+
+def _distinctive_chapeau_bigrams(
+    head: str, parent: str, children: list[tuple[str, str]]
+) -> frozenset[tuple[str, str]]:
+    """Chapeau bigrams of ``parent`` whose words are rare across ``head``'s members."""
+    cached = _ENGAGE_BIGRAM_MEMO.get(parent)
+    if cached is not None:
+        return cached
+    from app.data.provision_hierarchy import closed_set_members  # noqa: PLC0415
+    from app.data.provision_text import _tokens  # noqa: PLC0415
+
+    df: dict[str, int] = {}
+    try:
+        for _coord, text in closed_set_members(head):
+            for token in _tokens(text):
+                df[token] = df.get(token, 0) + 1
+    except Exception:  # noqa: BLE001 — a missing text must not disarm the detector
+        df = {}
+    out = frozenset(
+        (a, b)
+        for a, b in _word_bigrams(_chapeau_text(parent, children))
+        if df.get(a, 0) <= 1 and df.get(b, 0) <= 1
+    )
+    _ENGAGE_BIGRAM_MEMO[parent] = out
+    return out
+
+
+def _question_engages(
+    parent: str,
+    head: str,
+    children: list[tuple[str, str]],
+    ask_coords: set[str],
+    q_bigrams: set[tuple[str, str]],
+) -> bool:
+    if parent in ask_coords:
+        return True
+    distinct = _distinctive_chapeau_bigrams(head, parent, children)
+    return bool(distinct and (distinct & q_bigrams))
+
+
 def _member_gaps(question: str, answer: str, limit: int | None) -> list[Gap]:
     ask = _ask_text(question)
     ans = _s(answer)
@@ -818,9 +919,11 @@ def _member_gaps(question: str, answer: str, limit: int | None) -> list[Gap]:
     from app.data.provision_hierarchy import closed_set_members  # noqa: PLC0415
 
     ans_paths = _paths_in(ans)
-    mentioned = _prefix_closure(ans_paths) | _prefix_closure(_paths_in(ask))
+    mentioned = _prefix_closure(ans_paths)
     covered = _prefix_closure(ans_paths) | _loose_point_coords(ans)
     answer_tokens = _token_set(ans)
+    ask_coords = {_coord_str(p) for p in _paths_in(ask)}
+    q_bigrams = _word_bigrams(ask)
     gaps: list[Gap] = []
     seen: set[str] = set()
     for head in _dedupe(named_heads(ans) + named_heads(ask)):
@@ -828,7 +931,12 @@ def _member_gaps(question: str, answer: str, limit: int | None) -> list[Gap]:
             # A head's own paragraphs are separate provisions, never a closed list.
             if "." not in parent or len(children) < _MIN_GROUP_CHILDREN:
                 continue
+            # The answer must already name the set (so completion cannot invent a
+            # head) AND the question must ask for it (so a correct answer is never
+            # sent back for the full list of a provision it merely cites).
             if parent not in mentioned and not any(c in mentioned for c, _ in children):
+                continue
+            if not _question_engages(parent, head, children, ask_coords, q_bigrams):
                 continue
             for coord, text in children:
                 if coord in seen or coord in covered:
@@ -848,10 +956,12 @@ def missing_closed_set_members(question: str, answer: str) -> list[Gap]:
     """Members of an ENGAGED closed statutory list that the answer does not state.
 
     Fires only on a list-shaped question. A group (children of one paragraph or
-    point, >= 3 of them) is engaged only when the answer or the live question
-    names its parent paragraph or one of its members. A member is covered when
-    the answer names its coordinate in any common form, or carries >= 55 % of the
-    member's first 8 content tokens. At most 10 gaps.
+    point, >= 3 of them) is engaged when BOTH hold: the answer already names its
+    parent paragraph or one of its members, and the QUESTION asks for the set -
+    it names the parent coordinate exactly or carries a distinctive chapeau
+    bigram of it (see the R410 note above :func:`_question_engages`). A member is
+    covered when the answer names its coordinate in any common form, or carries
+    >= 55 % of the member's first 8 content tokens. At most 10 gaps.
     """
     try:
         return _member_gaps(question, answer, _MAX_MEMBER_GAPS)
