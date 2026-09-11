@@ -736,7 +736,7 @@ def _bedrock_intent_timeout() -> float:
 
 def _bedrock_intent_model() -> str:
     raw = os.getenv("REGENOLD_INTENT_MODEL_BEDROCK", "").strip()
-    return raw or "claude-sonnet-4-6"
+    return raw or "claude-sonnet-5"
 
 
 class _BedrockIntentAdapter:

@@ -1192,7 +1192,7 @@ def wrapper_model_for(bedrock_model_id: str) -> str:
     for needle, wrapper_model in _WRAPPER_FALLBACK_MODELS:
         if needle in low:
             return wrapper_model
-    return "claude-sonnet-4-6"
+    return "claude-sonnet-5"
 
 
 def _try_wrapper_fallback(

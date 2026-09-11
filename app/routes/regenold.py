@@ -11688,13 +11688,12 @@ def regenold_eu_ai_act_ask(
     # base-coverage test is later loosened. Both are default OFF, so no
     # interaction ships today.
     #
-    # DEFAULT OFF, and it stays off. This pass DROPS references, the R142.1
-    # failure mode that lost a live pairwise judge 11-0 (p=0.001), so it ships
-    # only behind an ``evals.harness.easyhard_ab`` win (gold-bearing — NOT
-    # ``ab_judge``). It also knowingly overrides the R274 curated-intercept
-    # protection: ``['Article 6.3', 'Article 6', 'Annex III']`` collapses to
-    # ``['Article 6.3', 'Annex III']``, dropping the general-rule head that
-    # R274 deliberately pairs with its carve-out. That trade is test-pinned in
+    # DEFAULT ON as of R381 (0 gold dropped, +5.0 pp RefConc). This pass DROPS
+    # bare parent references when their own sub-points are cited, resolving head+leaf
+    # redundancy at the wire without dropping substantive coverage. It ships behind
+    # an ``evals.harness.easyhard_ab`` win. It knowingly overrides the R274 curated-
+    # intercept protection: ``['Article 6.3', 'Article 6', 'Annex III']`` collapses to
+    # ``['Article 6.3', 'Annex III']``. That trade is test-pinned in
     # ``tests/test_r325_parent_collapse.py::TestKnownTradeIsPinned``.
     #
     # ⚠ IT IS A NO-OP ON THE OFFLINE DETERMINISTIC PATH — expect +0.0000 there

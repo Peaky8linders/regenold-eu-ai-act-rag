@@ -53,7 +53,7 @@ if not _base.endswith("/v1") and not _base.endswith("/chat/completions"):
     _base = _base + "/v1"
 _default_url = _base if _base.endswith("/chat/completions") else f"{_base}/chat/completions"
 URL = os.getenv("R388_WRAPPER_URL") or _default_url
-MODEL = os.getenv("R388_JUDGE_MODEL", "claude-sonnet-4-6")
+MODEL = os.getenv("R388_JUDGE_MODEL", "claude-sonnet-5")
 if "openrouter.ai" in URL and "/" not in MODEL:
     MODEL = f"anthropic/{MODEL}"
 

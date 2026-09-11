@@ -106,7 +106,7 @@ def _read_timeout(env: str, default: float) -> float:
 # paraphrase is a light task, Opus would buy nothing), pinned up with
 # ``REGENOLD_QUERY_EXPANSION_MODEL=claude-opus-4-6`` if the operator wants
 # the generation tier. Fresh read per call (R263.2).
-_DEFAULT_PARAPHRASE_MODEL = "claude-sonnet-4-6"
+_DEFAULT_PARAPHRASE_MODEL = "claude-sonnet-5"
 
 
 def _paraphrase_model() -> str:

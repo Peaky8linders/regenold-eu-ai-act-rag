@@ -188,7 +188,7 @@ def main() -> int:
     )
     ap.add_argument(
         "--judge-model",
-        default=os.getenv("R388_JUDGE_MODEL", "claude-sonnet-4-6"),
+        default=os.getenv("R388_JUDGE_MODEL", "claude-sonnet-5"),
         help="Exact judge model or Bedrock inference-profile alias",
     )
     ap.add_argument(

@@ -232,13 +232,14 @@ LIMIT $max_recitals
 _SUBPOINT_CYPHER = """
 UNWIND $ids AS aid
 MATCH (a) WHERE a.id = aid AND (a:Article OR a:Annex)
-MATCH (a)-[:HAS_PARAGRAPH]->(p:Paragraph)-[:HAS_POINT]->(pt:Point)-[:HAS_SUBPOINT]->(sp:SubPoint)
+MATCH (a)-[:HAS_PARAGRAPH]->(p:Paragraph)-[:HAS_POINT]->(pt:Point)
+OPTIONAL MATCH (pt)-[:HAS_SUBPOINT]->(sp:SubPoint)
 RETURN coalesce(a.strict_citation, a.id) AS cite,
        p.number AS para,
        coalesce(pt.letter, pt.number) AS letter,
        sp.id AS sid,
        sp.roman AS roman,
-       sp.text AS text
+       coalesce(sp.text, pt.text) AS text
 ORDER BY cite, toIntegerOrNull(p.number), letter, sid
 LIMIT $max_units
 """
