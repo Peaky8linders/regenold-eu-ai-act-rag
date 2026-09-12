@@ -72,7 +72,9 @@ def provider(monkeypatch: pytest.MonkeyPatch) -> _CapturingProvider:
     return doub
 
 
-def _call(provider: _CapturingProvider, system: str) -> str | None:
+def _call(
+    provider: _CapturingProvider, system: str, history_turn_count: int | None = None
+) -> str | None:
     return G._openai_wrapper_complete_for_graph_rag(
         system=system,
         user="ORIGINAL QUESTION: What does Article 6 say?",
@@ -80,6 +82,7 @@ def _call(provider: _CapturingProvider, system: str) -> str | None:
         temperature=0.0,
         complex_question=False,
         stage_name="Stage 2 (Polishing)",
+        history_turn_count=history_turn_count,
     )
 
 
@@ -153,3 +156,94 @@ def test_answer_generate_system_is_far_over_the_cap() -> None:
     from app.data.graph_rag_prompts import ANSWER_GENERATE_SYSTEM
 
     assert len(ANSWER_GENERATE_SYSTEM) > 10_000
+
+
+# --------------------------------------------------------------------------- #
+# R411 — the SINGLE-TURN-ONLY variant
+# ---------------------------------------------------------------------------
+
+
+def test_single_turn_flag_is_registered_in_engine_cache_key() -> None:
+    """Invariant #4 — the single-turn variant flips the answer too."""
+    from app.routes import regenold as route_mod
+
+    src = Path(route_mod.__file__).read_text(encoding="utf-8")
+    fn = src[src.index("def _engine_cache_key") :]
+    nxt = re.search(r"\ndef [a-zA-Z_]", fn[1:])
+    if nxt:
+        fn = fn[: nxt.start() + 1]
+    assert "REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN" in fn, (
+        "the single-turn variant rewrites the Stage-2 answer (and therefore the "
+        "wire references recomputed from it) but is not in _engine_cache_key(): "
+        "an in-process A/B would be served arm A's cached output."
+    )
+
+
+def test_single_turn_flag_defaults_off(
+    provider: _CapturingProvider, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("REGENOLD_STAGE2_FULL_SYSTEM", raising=False)
+    monkeypatch.delenv("REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN", raising=False)
+    _call(provider, LONG_SYSTEM, history_turn_count=1)
+    assert provider.calls[0].system == PERSONA
+
+
+def test_single_turn_flag_delivers_the_full_system_on_a_single_turn(
+    provider: _CapturingProvider, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("REGENOLD_STAGE2_FULL_SYSTEM", raising=False)
+    monkeypatch.setenv("REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN", "1")
+    _call(provider, LONG_SYSTEM, history_turn_count=1)
+    assert provider.calls[0].system == LONG_SYSTEM
+
+
+@pytest.mark.parametrize("turns", [2, 3, 10, 11])
+def test_single_turn_flag_keeps_the_persona_on_a_multi_turn(
+    provider: _CapturingProvider, monkeypatch: pytest.MonkeyPatch, turns: int
+) -> None:
+    """HARD mode is the graded modality and must keep the persona.
+
+    11 = the 9-turn preamble + the live question + the adversarial pushback. The
+    pushback is the ask whose keep-contract a 58 %-shorter answer violates, which
+    is exactly the +6 gold-drop the full-system flag measured on hard (n=37).
+    """
+    monkeypatch.delenv("REGENOLD_STAGE2_FULL_SYSTEM", raising=False)
+    monkeypatch.setenv("REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN", "1")
+    _call(provider, LONG_SYSTEM, history_turn_count=turns)
+    assert provider.calls[0].system == PERSONA
+
+
+def test_single_turn_flag_ignores_an_unknown_turn_count(
+    provider: _CapturingProvider, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An auxiliary/Stage-1 caller that does not know the modality is NOT single-turn.
+
+    ``history_turn_count=None`` is the opt-out sentinel. Without it, every call
+    through the wrapper (the Stage-1 query parser, the faithfulness verifier)
+    would inherit the "single-turn" default and be handed the answer prompt.
+    """
+    monkeypatch.delenv("REGENOLD_STAGE2_FULL_SYSTEM", raising=False)
+    monkeypatch.setenv("REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN", "1")
+    _call(provider, LONG_SYSTEM, history_turn_count=None)
+    assert provider.calls[0].system == PERSONA
+
+
+def test_single_turn_flag_does_not_override_the_global_flag(
+    provider: _CapturingProvider, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The global flag still wins on multi-turn; the variant only adds easy mode."""
+    monkeypatch.setenv("REGENOLD_STAGE2_FULL_SYSTEM", "1")
+    monkeypatch.setenv("REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN", "1")
+    _call(provider, LONG_SYSTEM, history_turn_count=10)
+    assert provider.calls[0].system == LONG_SYSTEM
+
+
+def test_answer_path_passes_the_turn_count() -> None:
+    """Source-level guard: the wiring must reach the Stage-2 answer call.
+
+    A behavioural test cannot see this — with the flag off, a missing kwarg and a
+    correct kwarg look identical. If this wiring is dropped, the single-turn lever
+    becomes a silent no-op instead of failing loudly.
+    """
+    src = (REPO_ROOT / "app" / "engines" / "_graph_rag_impl.py").read_text(encoding="utf-8")
+    assert "history_turn_count=history_turn_count," in src

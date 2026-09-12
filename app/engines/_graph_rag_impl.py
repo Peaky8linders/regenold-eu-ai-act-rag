@@ -776,9 +776,16 @@ def _bedrock_complete_for_graph_rag(
 def _openai_wrapper_complete_for_graph_rag(
 
     *, system: str, user: str, max_tokens: int, temperature: float,
-    complex_question: bool = False, stage_name: str = "Stage"
+    complex_question: bool = False, stage_name: str = "Stage",
+    history_turn_count: int | None = None,
 ) -> str | None:
     """One OpenAI-compatible call (Claude Max via wrapper, etc.).
+
+    ``history_turn_count`` is OPT-IN and ``None`` means "unknown" — the Stage-2
+    answer path passes the request's real turn count so the R411 single-turn
+    variant of the full-system gate can read the modality. Every other caller
+    (Stage-1 parsing, auxiliary passes) leaves it ``None`` and is therefore never
+    treated as single-turn.
 
     Returns ``None`` on any error so callers fall back to deterministic.
     The model picks up the deploy's ``graph_rag.model`` knob; defaults
@@ -984,9 +991,39 @@ def _openai_wrapper_complete_for_graph_rag(
     # genuinely single-turn synthesis (no pushback, history_turn_count == 1), so
     # the easy-mode speed win is kept without the pushback keep-loss. That is a
     # NEW hypothesis and needs its own paired run — it is NOT shipped here.
-    _full_system = os.getenv(
-        "REGENOLD_STAGE2_FULL_SYSTEM", "0"
-    ).strip().lower() in ("1", "true", "yes", "on")
+    def _env_flag(name: str) -> bool:
+        return os.getenv(name, "0").strip().lower() in ("1", "true", "yes", "on")
+
+    _full_system = _env_flag("REGENOLD_STAGE2_FULL_SYSTEM")
+
+    # R411 — SINGLE-TURN-ONLY delivery of the full system prompt.
+    #
+    # The modality split above is mechanical: the full system prompt cuts the
+    # answer to 0.199x its length, and HARD mode grades the answer to an
+    # ADVERSARIAL PUSHBACK whose contract is to KEEP the points turn 1 made. A
+    # 58 %-shorter answer drops them, which is where the +6 gold-drop came from.
+    # Easy (single-turn) mode has no pushback turn, so the mechanism that loses
+    # references on hard cannot operate there — and that is exactly the mode where
+    # the n=12 probe measured +13.03 pp ``resp_speed`` at ``gold_drop_hd`` +0.
+    #
+    # ``history_turn_count <= 1`` is the modality predicate: the route threads it
+    # from the conversation (`GraphRAGRequest.history_turn_count`, "turns BEFORE
+    # the live question"), so a single-turn ask reads 1 and both hard-mode asks
+    # (the 9-turn final and the pushback) read >= 2. Same predicate
+    # ``answer_router.is_multi_turn`` uses.
+    #
+    # Ships DEFAULT OFF and is NOT a licence to flip
+    # ``REGENOLD_STAGE2_FULL_SYSTEM``: this lever still needs its own paired gate
+    # on the EASY split (a refs/row drop of 5.08 -> 4.67 on the n=12 probe is a
+    # ``ref_loose`` risk that n=12 cannot settle). Registered in
+    # ``_engine_cache_key``.
+    if (
+        history_turn_count is not None
+        and history_turn_count <= 1
+        and _env_flag("REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN")
+    ):
+        _full_system = True
+
     wrapper_system = (
         system
         if (_full_system or len(system) <= 1000)
@@ -4324,6 +4361,26 @@ def _seed_role_obligation_obligations(context: GraphContext, role_id: str, risk_
     context.nodes_traversed = max(context.nodes_traversed, len(synthetic))
 
 
+# R411 — a comma-terminated conditional protasis. Used by
+# ``_detect_article_6_3_inquiry`` to tell a PREMISE mention ("If X relies on the
+# Article 6(3) derogation, ...") from an ASK about the provision itself.
+_PREMISE_OPENER_RE = re.compile(
+    r"^\s*(?:if|when|where|whenever|assuming|suppose|supposing|given\s+that|"
+    r"in\s+case|provided\s+that)\b",
+    re.IGNORECASE,
+)
+
+# R411 — the bare Article 6(3) DESIGNATION (not the exception's name).
+# The trailing negative lookahead is deliberate, NOT ``\b``: the designation
+# ends in ``)``, a non-word char, so ``\b`` can never match when it is followed
+# by a space. With ``\b`` this alternative was DEAD for the ordinary form
+# ("Article 6(3) derogation") and only matched when glued to a word ("6(3)a").
+_PREMATCH_ARTICLE_6_3_DESIGNATION = re.compile(
+    r"(?:\bart(?:icle)?\s+6\s*\(3\)|\b6\s*\(3\))(?![0-9a-zA-Z])",
+    re.IGNORECASE,
+)
+
+
 def _detect_article_6_3_inquiry(question: str) -> bool:
     """True if the question specifically targets the Article 6(3) high-risk exceptions/exemptions.
     R356: also fires on the narrow-procedural / preparatory-task shape (la_q31:
@@ -4339,15 +4396,76 @@ def _detect_article_6_3_inquiry(question: str) -> bool:
         raw_q = raw_q[idx + len(_FLATTEN_MARKER):]
     q = raw_q.strip().lower()
 
-    pattern = re.compile(
-        r"\b(?:art(?:icle)?\s+6\(3\)|6\s*\(3\)|exception\s+to\s+high\s*-\s*risk\b|"
-        r"high\s*-\s*risk\s+exception\b|high\s*-\s*risk\s+exemption\b|"
-        r"self\s*-\s*assess\s+not\s+high\s*-\s*risk\b|"
-        r"preparatory\s+task\s+exception\b|preparatory\s+task\s+exemption\b|"
-        r"(?:structure\w*|deduplicat\w*|organis\w*|organiz\w*)\b.{0,80}?\binformation\b)",
-        re.IGNORECASE
+    # R411 — the bare designation is no longer sufficient on its own.
+    #
+    # MEASURED (docs/measurements/r411/mention_vs_ask_probe.py): of the 33
+    # detectors wired into ``_is_curated_authoritative_intercept``, this was the
+    # ONLY one that fired on a question which merely NAMES a provision — the
+    # first alternative was the bare ``art(?:icle)?\s+6\(3\)|6\s*\(3\)``. That
+    # matters because firing here SKIPS Stage-2 and ships a STOCK classification
+    # verdict, so a question that mentions 6(3) while asking something else gets
+    # a fluent answer to a DIFFERENT question.
+    #
+    # Live instance (2026-09-12, production): "If a provider relies on the
+    # Article 6(3) derogation for an Annex III system, what documentation and
+    # registration duties apply?" was answered with the rg_031 verdict ("No.
+    # Structuring or deduplicating information is a narrow procedural task ...").
+    #
+    # The fix requires the question to actually ASK about classification whenever
+    # it reaches the topic only through a provision mention. The R356 task shape
+    # (structure / deduplicate / organise information) is itself the
+    # classification question and stays sufficient alone, which is what keeps
+    # rg_031 (gold Article 6.3.a) firing. rg_032 is unaffected either way: the
+    # docstring already requires it NOT to match, and it carries no 6(3) or
+    # exception phrase.
+    # The gate is applied to the BARE DESIGNATION ONLY. A phrase like "high-risk
+    # exemption" or "preparatory task exception" is already the topic being
+    # asked about, so gating it on a further classification cue would cost real
+    # recall for no precision gain — that was the first cut of this fix and the
+    # test suite caught it.
+    _bare_mention = _PREMATCH_ARTICLE_6_3_DESIGNATION.search(q)
+    _topic_phrase = re.search(
+        r"\b(?:exception\s+to\s+high\s*-?\s*risk"
+        r"|high\s*-?\s*risk\s+(?:exception|exemption)"
+        r"|self\s*-?\s*assess\w*\s+not\s+high\s*-?\s*risk"
+        r"|preparatory\s+task\s+(?:exception|exemption))\b",
+        q,
+        re.IGNORECASE,
     )
-    return bool(pattern.search(q))
+    # The ask must be about the 6(3) TOPIC, not merely contain the designation.
+    # Two classes of vocabulary count: risk-classification words, and the
+    # exception's own name (exception / exemption / exempt / derogation /
+    # self-assessment / preparatory task). A neutral request for the provision
+    # ("what does Article 6(3) say?", "please summarise Article 6(3)") carries
+    # neither and must not short-circuit Stage-2.
+    _topic_ask = re.search(
+        r"\bhigh\s*-?\s*risk\b|\bclassif\w+\b|\bconsidered\b|\bcategor\w+\b|"
+        r"\bexempt\w*\b|\bexception\w*\b|\bexemption\w*\b|\bderogat\w+\b|"
+        r"\bself[\s-]*assess\w*\b|\bpreparatory\s+task\b",
+        q,
+        re.IGNORECASE,
+    )
+    _task_shape = re.search(
+        r"\b(?:structure\w*|deduplicat\w*|organis\w*|organiz\w*)\b.{0,80}?\binformation\b",
+        q,
+        re.IGNORECASE,
+    )
+    # A designation inside a comma-terminated CONDITIONAL PROTASIS is a PREMISE,
+    # not the ask. "If a provider relies on the Article 6(3) derogation for an
+    # Annex III system, what documentation and registration duties apply?" is an
+    # Article 6(4) duties question: the 6(3) name is assumed, the ask is the
+    # duties. Shipping the stock classification verdict there is the live defect
+    # this whole guard exists for. Same principle as the R411 trailing-ask guard
+    # on ``_detect_reclassification_inquiry`` — the ASK decides, not the mention.
+    _premise = False
+    if _bare_mention and _PREMISE_OPENER_RE.match(q):
+        _protasis_end = q.find(",")
+        _premise = _protasis_end < 0 or _bare_mention.start() < _protasis_end
+    return (
+        bool(_task_shape)
+        or bool(_topic_phrase)
+        or bool(_bare_mention and _topic_ask and not _premise)
+    )
 
 
 # R356 - GPAI transparency-exception intercept (la_q13). "Under what conditions
@@ -9948,7 +10066,10 @@ def _claude_max_enhance_answer(
                 max_tokens=max_tokens,
                 temperature=0.0,
                 complex_question=complex_q,
-                stage_name="Stage 2 (Polishing)"
+                stage_name="Stage 2 (Polishing)",
+                # R411 — the request's real turn count, so the single-turn variant
+                # of the full-system gate can read the modality here.
+                history_turn_count=history_turn_count,
             )
 
 

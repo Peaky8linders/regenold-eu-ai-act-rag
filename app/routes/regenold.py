@@ -925,8 +925,32 @@ _ANNEX_REF_RE = re.compile(
 
 # Live-turn applicability cue — for the single-turn case (no prior
 # assistant frame, e.g. "When do Annex I obligations apply?").
+# R411 — NARROWED. The first alternative used to be a bare ``apply`` /
+# ``applicable``, i.e. the common English verb. Combined with Gate 1 (any Annex
+# reference) that made every question using the word "apply" eligible for the
+# Art. 113 applicability seed — which injects Article 113 at HEAD, where the ref
+# machinery then deepens it to a sub-point.
+#
+# Measured over the official 110: the old cue fires on exactly ONE row, rg_088,
+# and it is a false positive. Its only match is the bare word "apply" inside a
+# NEGATIVE clause — "our legal team say such a use is definitely no risk (no
+# Annex I nor III **apply**)" — while the question actually asks whether they may
+# proceed and must keep logs. rg_088's gold is Article 26.1 / 26.6 and contains
+# **no Article 113**, so the seed was pure over-citation, the axis we score worst
+# (Ref. Conciseness 55.93).
+#
+# Live instance (2026-09-12, production): "If a provider relies on the Article
+# 6(3) derogation ... what documentation and registration duties apply?" shipped
+# wire refs ['Article 49.2', 'Article 6.3', 'Article 113.3'] — the 113.3 came from
+# this seed firing on "duties apply".
+#
+# This seed is about DATES (entry into application + the phased dates), so the
+# cue must be date-framed. Bare "applicable" is dropped for the same reason: "is
+# the Act applicable to us?" is an Article 2 scope question, not an Article 113
+# one. The multi-turn carry-over rows (e.g. mt_v2_019) are protected by
+# ``_APPLICABILITY_FRAME_RE`` on the prior assistant turn, not by this pattern.
 _APPLICABILITY_CUE_RE = re.compile(
-    r"\b(?:apply(?:\s+from)?|applicable|applicability|"
+    r"\b(?:appl(?:y|ies)\s+from|applicable\s+from|applicability|"
     r"enters?\s+into\s+(?:force|application)|entry\s+into\s+(?:force|application)|"
     r"effective\s+(?:date|from)|"
     r"transitional|phased\s+application|grace\s+period|"
@@ -1407,6 +1431,10 @@ def _engine_cache_key(
             # answer length and 2.38x faster, so it is emphatically
             # answer-flipping and must not share a cache entry.
             "REGENOLD_STAGE2_FULL_SYSTEM",
+            # R411 — delivers the same full prompt on SINGLE-TURN requests only.
+            # Same answer-flipping effect as the flag above on the requests it
+            # covers, so it needs its own cache-key slot for the same reason.
+            "REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN",
             # R407 — the Cohere clients' transient-retry ceilings. They do not
             # change WHAT a successful call returns, but they change WHEN a
             # call succeeds at all (a 429'd rerank used to be dropped, now it
