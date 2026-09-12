@@ -212,6 +212,25 @@ set. It is the lowest axis on the board. Every prior attempt to trim it
 tripped the R142.1 failure mode — dropping a *needed* provision because a *needed* gold
 head looked redundant. It stays a first-class target but it is **not** a safe one.
 
+**R411 measured the cheapest candidate and it FAILS its own safety test.**
+`docs/measurements/r411/ref_minimality_probe.py`, over the 107 ref-scored rows of the
+frozen R407 hard ledger: 221 of 301 emitted refs (73.4 %) are outside the expected key,
+and the obvious prune — *drop any emitted ref the prose never mentions* — would remove only
+**19** of them, because **202 of the 221 are provisions the answer genuinely discusses**.
+Worse, it is not reference-neutral: `rg_019` (Article 3.60) and `rg_076` (Article 3.2) are
+correct *definitional* answers that quote the definition TEXT without naming the
+provision, so the rule deletes two EXPECTED refs to shed nineteen excess ones. That is a
+ref-correctness loss traded for conciseness — exactly what hard rule #8 refuses.
+
+The structural read is the useful part: `ref_conc` is not measuring noise, it is
+penalising thoroughness, because the expected key is the *minimal* set while the engine
+answers with the surrounding framework (Art 5, 50, 51-56, Annex III). That is why three
+prior attempts failed, and it means the axis has to be moved **generation-side** (discuss
+fewer provisions) rather than pruned post hoc. Bias note for the next attempt: a first cut
+of this probe parsed only `Article N` and scored every `Annex` ref as unmentioned,
+reporting 78 prunable refs and hiding 15 expected refs inside them — the fix that matters
+is in the instrument, not the rule.
+
 ### F7 — The R409 completeness guards are precision-poor and stay OFF
 
 Replayed deterministically over the frozen 110-row ledger: `member` fires on 9.9 % of
@@ -219,6 +238,20 @@ Replayed deterministically over the frozen 110-row ledger: `member` fires on 9.9
 (15 → 16 gold heads). R412 fixed the `member` detector's premises (13 fires → 2, FP
 9.9 % → 0.0 %) but the lever has nothing to do on the available corpus, so it remains
 default-OFF. Recorded so it is not re-proposed on evidence that cannot support it.
+
+**R411 closed the recall side too, and found it is at its safe ceiling.**
+`docs/measurements/r411/member_recall_probe.py` replays the detector over the 12 distinct
+rows carrying the 22 `OMITTED_ENUMERATED_ITEM` criteria and reports the blocking gate:
+`is_list_question` false on **7**, no closed-set HEAD discovered (the question names
+"instructions for use"/"quality management system", not a coordinate) on **3**, and the
+answer never names the set on **2**. Read against the criteria, the 7 are mostly the wrong
+instrument — `rg_010` wants the provider/deployer attribution of Art. 14(3) measures,
+`rg_014` the full text of ONE Annex III point, `rg_078`/`rg_102` clause fidelity on yes/no
+asks. Only `rg_051` (Art 22(3)), `rg_059` (Art 68(3)) and `rg_094` (Annex XII.1) are real
+lettered sets the answer touched partially, and each would also need `_question_engages`
+to admit a question that does not ask for the set — the citation-side rule that lost gold.
+So **no change**: the instrument for these rows is the evidence/prompt layer, not a wider
+engagement rule.
 
 ---
 
@@ -228,8 +261,8 @@ Ordered by risk-adjusted expected gain, using `Δoverall ≈ (1/8)·Δaxis/axis`
 
 | # | lever | axis (current) | mechanism | expected | gate | risk |
 | :- | :--- | :--- | :--- | ---: | :--- | :--- |
-| 1 | **Single-turn-only full system prompt** | Speed 71.65 | the F3 lever, restricted to `history_turn_count == 1`: keeps the easy-mode −13 s without the pushback keep-loss | +1.3 pp | `easyhard_ab` n≥120 + `gold_dropped_head` | Medium — the split must be shown, not assumed |
-| 2 | Ref-minimality pass | Ref Conc 55.93 | rank wire refs by *claim-dependence*, not retrieval score; cut the ~45 % excess | +2.2 pp at 70 | `easyhard_ab` + R142.1 audit | **High** — three prior attempts lost gold |
+| 1 | **Single-turn-only full system prompt** | Speed 71.65 | the F3 lever, restricted to `history_turn_count == 1`: keeps the easy-mode −13 s without the pushback keep-loss. **IMPLEMENTED (`REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN`, default OFF); its paired easy gate is NOT yet run** — the first attempt was VOID because the Claude-Max wrapper was down and the Bedrock fallback always passes the full system, so both arms were identical by construction | +1.3 pp | `easyhard_ab` on the EASY split + `gold_dropped_head` + `ref_loose` (the n=12 probe showed refs/row 5.08 → 4.67) | Medium — the split must be shown, not assumed |
+| 2 | Ref-minimality pass | Ref Conc 55.93 | rank wire refs by *claim-dependence*, not retrieval score; cut the ~45 % excess. **R411 tested the cheapest form (prose-ungrounded prune) and it FAILS: 202 of 221 excess refs are prose-grounded, and the remaining 19 cannot be cut without deleting 2 expected refs.** Any future form must survive that same safety test | +2.2 pp at 70 | `easyhard_ab` + R142.1 audit | **High** — four attempts now, all constrained by the same tension |
 | 3 | Stage-2 content-preservation contract | Ans Strict 67.27 | reject a polish that drops a skeleton member the draft carried; deterministic, no extra call | +1.0 pp | `easyhard_ab` + `answer_completeness` replay | Medium — needs to stop firing on passing rows (F7) |
 | 4 | Sub-point grain on the wire | Ref Strict 75.83 | the evaluator's keys are ~71 % sub-point vs our 14.3 %; `COORD_MAP_PROMPT` is the candidate | +0.6 pp | `easyhard_ab` | Medium |
 | 5 | `REGENOLD_KG_POINT_TEXT` | Ans Loose | point text into the Stage-2 block (+3.5 kB/row) | unknown | needs a same-generation A/B | Medium — prompt-side |
