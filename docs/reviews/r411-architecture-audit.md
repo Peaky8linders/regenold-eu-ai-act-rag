@@ -235,9 +235,13 @@ is in the instrument, not the rule.
 
 Replayed deterministically over the frozen 110-row ledger: `member` fires on 9.9 % of
 *passing* rows, `keep_clause` on 97.2 %. The R410 closed-set gate failed hard rule #8
-(15 → 16 gold heads). R412 fixed the `member` detector's premises (13 fires → 2, FP
-9.9 % → 0.0 %) but the lever has nothing to do on the available corpus, so it remains
-default-OFF. Recorded so it is not re-proposed on evidence that cannot support it.
+(15 → 16 gold heads). **R410** fixed the `member` detector's premises (13 fires → 2, FP
+9.9 % → 0.0 %; attributed in `answer_completeness.py`'s own docstring, where the round
+label is R410 — an earlier draft of this section credited it to "R412", a round that
+does not exist in this repository and is now used by the R412 notification-filter work,
+so the label was corrected here rather than left to collide) but the lever has nothing to
+do on the available corpus, so it remains default-OFF. Recorded so it is not re-proposed
+on evidence that cannot support it.
 
 **R411 closed the recall side too, and found it is at its safe ceiling.**
 `docs/measurements/r411/member_recall_probe.py` replays the detector over the 12 distinct
@@ -261,7 +265,7 @@ Ordered by risk-adjusted expected gain, using `Δoverall ≈ (1/8)·Δaxis/axis`
 
 | # | lever | axis (current) | mechanism | expected | gate | risk |
 | :- | :--- | :--- | :--- | ---: | :--- | :--- |
-| 1 | **Single-turn-only full system prompt** | Speed 71.65 | the F3 lever, restricted to `history_turn_count == 1`: keeps the easy-mode −13 s without the pushback keep-loss. **IMPLEMENTED (`REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN`, default OFF); its paired easy gate is NOT yet run** — the first attempt was VOID because the Claude-Max wrapper was down and the Bedrock fallback always passes the full system, so both arms were identical by construction | +1.3 pp | `easyhard_ab` on the EASY split + `gold_dropped_head` + `ref_loose` (the n=12 probe showed refs/row 5.08 → 4.67) | Medium — the split must be shown, not assumed |
+| 1 | **Single-turn-only full system prompt** | Speed 71.65 | the F3 lever, restricted to `history_turn_count == 1`: keeps the easy-mode −13 s without the pushback keep-loss. **R412 RAN THE PAIRED EASY GATE AND IT PASSED ON EVERY AXIS → SHIPPED DEFAULT ON.** n=39 of the 95-row easy split, wrapper-served (0 `bedrock_auto_fallback`), 0 errors: `ref_loose` 0.8718 → **0.9615**, `ref_strict` 0.4333 → **0.5831**, `ref_conc` 0.2025 → **0.3481**, `kw_recall` +2.56 pp, `gold_dropped_head` **8 → 3** (hard rule #8 passes), latency p50 37.40 s → **21.93 s** (**−15.47 s**, 37/39 rows faster). Opt out with `=0`. The previous round's "no speedup" paired run was **VOID**: its log carried **189** `bedrock_auto_fallback` events (wrapper down ⇒ Bedrock served both arms with the full `system`) | **+13.2 pp** (measured, not projected — the ref axes gained far more than the +1.3 pp that assumed only Speed moved) | DONE — `docs/measurements/r412/score-singleturn-easy-n39.json` | **Shipped.** `REGENOLD_STAGE2_FULL_SYSTEM` itself stays OFF (multi-turn pushback: `gold_drop_hd` 12 → 18) |
 | 2 | Ref-minimality pass | Ref Conc 55.93 | rank wire refs by *claim-dependence*, not retrieval score; cut the ~45 % excess. **R411 tested the cheapest form (prose-ungrounded prune) and it FAILS: 202 of 221 excess refs are prose-grounded, and the remaining 19 cannot be cut without deleting 2 expected refs.** Any future form must survive that same safety test | +2.2 pp at 70 | `easyhard_ab` + R142.1 audit | **High** — four attempts now, all constrained by the same tension |
 | 3 | Stage-2 content-preservation contract | Ans Strict 67.27 | reject a polish that drops a skeleton member the draft carried; deterministic, no extra call | +1.0 pp | `easyhard_ab` + `answer_completeness` replay | Medium — needs to stop firing on passing rows (F7) |
 | 4 | Sub-point grain on the wire | Ref Strict 75.83 | the evaluator's keys are ~71 % sub-point vs our 14.3 %; `COORD_MAP_PROMPT` is the candidate | +0.6 pp | `easyhard_ab` | Medium |

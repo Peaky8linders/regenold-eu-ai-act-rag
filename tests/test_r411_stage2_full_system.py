@@ -19,9 +19,13 @@ Two properties must hold and neither is visible in a diff:
    the wire references are recomputed FROM that answer, so a same-process A/B
    differing only here must not be served a shared cache entry
    (``AGENTS.md`` invariant #4).
-2. Default OFF, and the gate is an **allow-list** (``in {"1","true","yes","on"}``).
-   A blank value keeps the persona. This is deliberate: the R342 -> R383 history
-   is a chain of changes whose author assumed the safer branch was taken.
+2. Default **ON** as of R412, with an explicit falsy opt-out vocabulary
+   (``0``/``false``/``no``/``off``, case-insensitive). The R411 default-OFF
+   position was pending this lever's own paired gate; that gate ran in R412 on a
+   wrapper-served sample and came back a win on every axis, so the default
+   flipped. The R342 -> R383 history is a chain of changes whose author assumed
+   the safer branch was taken, which is why the default carries its evidence in
+   the docstring above rather than a bare boolean.
 """
 
 from __future__ import annotations
@@ -179,11 +183,30 @@ def test_single_turn_flag_is_registered_in_engine_cache_key() -> None:
     )
 
 
-def test_single_turn_flag_defaults_off(
+def test_single_turn_flag_defaults_on(
     provider: _CapturingProvider, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """R412 — unset means ON.
+
+    The R411 paired easy gate came back a win on every axis (ref_loose
+    +0.0897, ref_strict +0.1498, ref_conc +0.1456, gold_dropped_head 8 -> 3,
+    latency p50 37.40 s -> 21.93 s, 37 of 39 rows faster) on a wrapper-served
+    sample, so the default flipped. This test exists so a future reader sees the
+    default is a measured decision, not an accident of wiring.
+    """
     monkeypatch.delenv("REGENOLD_STAGE2_FULL_SYSTEM", raising=False)
     monkeypatch.delenv("REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN", raising=False)
+    _call(provider, LONG_SYSTEM, history_turn_count=1)
+    assert provider.calls[0].system == LONG_SYSTEM
+
+
+@pytest.mark.parametrize("falsy", ["0", "false", "no", "off", "OFF", "False"])
+def test_single_turn_flag_falsy_vocabulary_restores_the_persona(
+    provider: _CapturingProvider, monkeypatch: pytest.MonkeyPatch, falsy: str
+) -> None:
+    """The opt-out is explicit and complete — it restores R411's behaviour exactly."""
+    monkeypatch.delenv("REGENOLD_STAGE2_FULL_SYSTEM", raising=False)
+    monkeypatch.setenv("REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN", falsy)
     _call(provider, LONG_SYSTEM, history_turn_count=1)
     assert provider.calls[0].system == PERSONA
 
