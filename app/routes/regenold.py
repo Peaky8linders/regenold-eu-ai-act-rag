@@ -1457,6 +1457,11 @@ def _engine_cache_key(
             # same-process A/B differing only here must not share a cache entry
             # (R30/R56/R79/R263.2 doctrine).
             "REGENOLD_STAGE2_TRUNCATION_GUARD",
+            # R413 — how the guard completes a cut final sentence (grammatical
+            # single-sentence reconstruction vs the R357 blind tail splice).
+            # Both branches replace GraphRAGResponse.answer, so a same-process
+            # A/B differing only here must not share a cache entry.
+            "REGENOLD_STAGE2_TAIL_REPAIR_MODE",
             # R409 — answer-completeness guards and clauses (all default OFF):
             # each can rewrite GraphRAGResponse.answer or the Stage-2 prompt.
             "REGENOLD_CLOSED_SET_COMPLETENESS_GUARD",

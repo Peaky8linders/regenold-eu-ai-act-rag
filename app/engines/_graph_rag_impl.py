@@ -10436,18 +10436,413 @@ def _stage2_truncation_guard_enabled() -> bool:
     )
 
 
+_TAIL_REPAIR_MODE_ENV = "REGENOLD_STAGE2_TAIL_REPAIR_MODE"
+
+
+#: Tokens whose trailing period never ends a sentence (used by the R413
+#: abbreviation-aware splitter; ``Article 6(1)``/``Annex IV.1.e`` are already
+#: safe because their periods are not followed by whitespace).
+_SENTENCE_ABBREV = frozenset({
+    "art", "arts", "annex", "no", "nos", "cf", "eg", "ie", "etc", "para",
+    "paras", "rec", "reg", "sec", "pt", "al", "vs", "approx", "resp", "fig",
+    "figs", "ch", "chap", "ed", "eds", "inc", "ltd", "mr", "ms", "dr", "prof",
+})
+
+#: Connectors that leave the sentence open, so a word after them cannot be the
+#: start of a NEW clause (used by the R413 weld detector).
+_OPEN_CONNECTORS = frozenset({
+    "and", "or", "but", "nor", "which", "that", "who", "whom", "whose",
+    "where", "when", "if", "unless", "until", "while", "because", "since",
+    "as", "than", "whether", "to", "of", "in", "on", "with", "for", "by",
+    "from", "at", "into", "under", "over", "including", "such",
+})
+
+#: Clause breaks used to isolate a fragment's trailing clause (R413).
+_CLAUSE_BREAK_RE = re.compile(
+    r"(?:[,;:]|\b(?:and|or|but|nor|which|that|who|whom|whose|where|when|if|"
+    r"while|because|since|unless|until|whether|than)\b)\s*",
+    re.IGNORECASE,
+)
+
+#: Finite verbs that begin an independent clause. A bare one of these sitting
+#: directly after an already-closed clause is the R411 sentence weld.
+_CLAUSE_START_FINITE_VERBS = frozenset({
+    "is", "are", "was", "were", "am", "be", "been", "being", "has", "have",
+    "had", "does", "do", "did", "must", "shall", "will", "would", "should",
+    "can", "could", "may", "might", "applies", "apply", "requires",
+    "require", "imposes", "impose", "means", "mean", "contains", "contain",
+    "sets", "provides", "provide", "states", "state", "includes", "include",
+    "remains", "remain", "becomes", "become", "needs", "need", "falls",
+    "fall", "lies", "lie", "appears", "appear", "constitutes",
+    "constitute", "carries", "carry", "depends", "depend", "results",
+    "result", "matters", "starts", "ends", "occurs", "exists", "holds",
+    "comes", "goes", "takes", "gives", "makes", "entails", "suffices",
+    "follows", "prescribes", "prohibits", "permits", "allows", "entitles",
+    "obliges", "appertains", "belongs", "consists", "derives", "stems",
+})
+
+#: Words that carry no topical substance for the R413 continuity test.
+_CONTENT_STOPWORDS = frozenset({
+    "the", "and", "for", "are", "but", "not", "you", "all", "any", "can",
+    "her", "was", "one", "our", "out", "day", "get", "has", "him", "his",
+    "how", "its", "may", "new", "now", "old", "see", "two", "way", "who",
+    "boy", "did", "let", "put", "say", "she", "too", "use", "that",
+    "this", "with", "have", "from", "they", "know", "want", "been", "good",
+    "much", "some", "time", "very", "when", "come", "here", "just", "like",
+    "long", "make", "many", "more", "only", "over", "such", "take", "than",
+    "them", "well", "were", "what", "your", "shall", "must", "into", "upon",
+    "also", "where", "which", "while", "under", "about", "after", "other",
+    "their", "there", "these", "those", "then", "does", "doing",
+    "being", "each", "both", "same", "whether", "without", "within",
+})
+
+
+def _stage2_tail_repair_mode() -> str:
+    """R413 — how ``_attempt_stage2_tail_repair`` completes a cut sentence.
+
+    ``"sentence"`` asks the model for the COMPLETE final sentence and accepts
+    it only when it is ONE sentence, continues the cut sentence, keeps its
+    substance, and does not weld a second clause onto an already-closed one.
+    ``"splice"`` is the R357 behaviour — ask for the missing tail and
+    concatenate it blindly (``enhanced + tail``). MEASURED defect of the blind
+    splice (R411 production): nothing checked that the two halves form one
+    sentence, so it shipped
+
+        "... duties it triggers are those in answering general patient queries
+         on a hospital website is neither emergency triage nor ..."
+
+    — the cut clause and a freshly started clause jammed together. Deny-list
+    form: any unrecognised value keeps the legacy splice, so an operator typo
+    cannot silently change the wire.
+    """
+    raw = os.getenv(_TAIL_REPAIR_MODE_ENV, "").strip().lower()
+    if raw in ("sentence", "single", "grammatical", "rewrite"):
+        return "sentence"
+    return "splice"
+
+
+def _split_sentences_text(text: str) -> list[str]:
+    """Abbreviation-aware sentence split (R413).
+
+    ``_last_sentence_of`` splits on any ``[.!?]`` followed by whitespace, so the
+    repair path cannot use it to find the *last sentence* without inventing
+    boundaries at "Art. 6" or "Annex IV. 1". This splitter suppresses a
+    boundary when the period follows a known abbreviation or a single capital
+    letter, or when the next word starts lower-case.
+    """
+    src = (text or "").strip()
+    if not src:
+        return []
+    out: list[str] = []
+    start = 0
+    for match in re.finditer(r"[.!?]+(?=\s|$)", src):
+        rest = src[match.end():].lstrip()
+        if not rest:
+            boundary = True
+        else:
+            before = src[max(0, match.start() - 12):match.start()]
+            tokens = re.findall(r"([A-Za-z]+)\.?$", before)
+            word = (tokens[-1] if tokens else "").lower()
+            boundary = not (
+                word in _SENTENCE_ABBREV
+                or (len(word) == 1 and word.isalpha())
+                or rest[:1].islower()
+            )
+        if boundary:
+            out.append(src[start:match.end()].strip())
+            start = match.end()
+    tail = src[start:].strip()
+    if tail:
+        out.append(tail)
+    return [s for s in out if s]
+
+
+def _normalised_words(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9]+", (text or "").lower())
+
+
+def _content_words(text: str) -> set[str]:
+    return {
+        w
+        for w in _normalised_words(text)
+        if (len(w) > 2 or w.isdigit()) and w not in _CONTENT_STOPWORDS
+    }
+
+
+def _find_run(haystack: list[str], needle: list[str]) -> int | None:
+    """Index of the first contiguous ``needle`` run inside ``haystack``."""
+    if not needle or len(needle) > len(haystack):
+        return None
+    for i in range(len(haystack) - len(needle) + 1):
+        if haystack[i:i + len(needle)] == needle:
+            return i
+    return None
+
+
+def _trailing_clause_has_predicate(fragment: str) -> bool:
+    """Does the fragment's LAST clause already carry its own finite verb?
+
+    This is what separates a closed clause from an open one. "... the logs and
+    the provider" is open — the trailing segment after "and" is a bare noun
+    phrase, so a finite verb after it supplies ITS predicate. "... duties it
+    triggers are those in answering general patient queries on a hospital
+    website" is closed — its trailing segment already has one, so a finite verb
+    after it can only start a second clause.
+    """
+    matches = list(_CLAUSE_BREAK_RE.finditer(fragment))
+    trailing = fragment[matches[-1].end():] if matches else fragment
+    return any(w in _CLAUSE_START_FINITE_VERBS for w in _normalised_words(trailing))
+
+
+def _welds_new_clause(candidate: str, fragment: str) -> bool:
+    """Does ``candidate`` finish ``fragment`` by starting a NEW clause?
+
+    MEASURED shape (R411 production, hospital-chatbot ask): the cut fragment
+    already closed a clause ("... duties it triggers are those in answering
+    general patient queries on a hospital website") and the appended text opened
+    a second one ("is neither emergency triage nor ..."). The two were joined
+    with neither punctuation nor a conjunction, so the shipped sentence carried
+    two finite clauses jammed together.
+
+    Fires only when the fragment is a CLOSED clause (its trailing segment has
+    its own finite verb), it does not end on an open connector or comma, and the
+    word directly after the fragment run is a bare finite verb. Conservative by
+    construction: a miss costs one fallback, and a false rejection would hide a
+    hostile weld, so the rule under-fires rather than over-fires.
+    """
+    frag_words = _normalised_words(fragment)
+    cand_words = _normalised_words(candidate)
+    if not frag_words or not cand_words:
+        return False
+    stripped = fragment.rstrip()
+    if stripped[-1:] in ",;:(" or frag_words[-1] in _OPEN_CONNECTORS:
+        return False
+    if not _trailing_clause_has_predicate(fragment):
+        return False
+    idx = _find_run(cand_words, frag_words)
+    if idx is None:
+        return False
+    nxt = idx + len(frag_words)
+    return nxt < len(cand_words) and cand_words[nxt] in _CLAUSE_START_FINITE_VERBS
+
+
+#: Function words that cannot END a sentence: a cut after one of these is
+#: mid-clause, so terminating it would ship a broken sentence (R413 rung 0).
+_CANNOT_END_SENTENCE = frozenset({
+    # determiners / pronouns / subordinators
+    "the", "a", "an", "this", "that", "these", "those", "its", "their",
+    "our", "your", "his", "her", "my", "there", "which", "who", "whom",
+    "whose", "where", "when", "if", "unless", "whether", "than",
+    # conjunctions / prepositions
+    "and", "or", "but", "nor", "because", "since", "while", "until",
+    "to", "of", "in", "on", "with", "for", "by", "from", "at", "into",
+    "under", "over", "including", "such", "via", "per", "upon", "within",
+    "without", "between", "against", "during", "about", "after", "before",
+    # modals / auxiliaries / copulas
+    "must", "shall", "will", "would", "should", "can", "could", "may",
+    "might", "is", "are", "was", "were", "am", "be", "been", "being",
+    "has", "have", "had", "do", "does", "did", "not",
+})
+
+
+def _fragment_terminates_cleanly(fragment: str) -> bool:
+    """Is ``fragment`` already a full sentence that merely lacks its full stop?
+
+    R413 rung 0. The R411 production defect was a cut final sentence that was
+    ALREADY grammatical — "... the only EU AI Act transparency duties it
+    triggers are those in answering general patient queries on a hospital
+    website" — and a model tail that began a NEW clause after it ("is neither
+    emergency triage nor ..."). Nothing was missing but the punctuation, so no
+    completion can beat terminating the text as it stands: a model round-trip
+    can only paraphrase a provision away, and this rung cannot.
+
+    Conservative by construction — the fragment must be a real span whose LAST
+    clause carries its own finite verb (``_trailing_clause_has_predicate``) and
+    must not end on a function word or on clause-open punctuation. A miss costs
+    one completion call, so the rule refuses whenever the cut could be
+    mid-clause.
+    """
+    frag = (fragment or "").strip()
+    if len(frag) < 40:
+        return False
+    words = re.findall(r"[A-Za-z][A-Za-z\-']*|\d+", frag)
+    if len(words) < 6:
+        return False
+    if frag[-1] in ",;:(\u2013\u2014-":
+        return False
+    if words[-1].lower() in _CANNOT_END_SENTENCE:
+        return False
+    return _trailing_clause_has_predicate(frag)
+
+
+def _accept_reconstructed_final_sentence(
+    candidate: str | None, fragment: str, prefix: str, enhanced: str,
+) -> str | None:
+    """Accept a reconstructed final sentence only if it is a sound one (R413).
+
+    Six checks, each of which a blind splice can fail:
+      1. exactly ONE sentence,
+      2. complete (terminal punctuation, no dangling tail word),
+      3. opens with the cut sentence's own opening words,
+      4. keeps the cut sentence's substance (content-word recall >= 0.8),
+      5. does not weld a new clause onto a closed one (``_welds_new_clause``),
+      6. does not re-answer the earlier sentences it was shown as context.
+    """
+    if not candidate or not candidate.strip():
+        return None
+    text = re.sub(r"^```[A-Za-z]*\s*|\s*```$", "", candidate.strip()).strip()
+    text = text.strip('"').strip()
+    if not text:
+        return None
+    if len(text) > max(400, len(enhanced)):
+        return None
+    # R413 — an exact echo of a terminable cut sentence is a LOSSLESS
+    # termination (the model returned the text verbatim plus its full stop), so
+    # no paraphrase can have dropped a provision. Accepted before the strict
+    # checks, which it would otherwise pass anyway on the pinned fragment.
+    body = text.rstrip(" .!?;:,")
+    if _fragment_terminates_cleanly(fragment) and body == fragment.rstrip(" .!?;:,"):
+        return f"{body}."
+    if len(_split_sentences_text(text)) != 1:
+        return None
+    if _looks_incomplete_final_sentence(text):
+        return None
+    frag_words = _normalised_words(fragment)
+    cand_words = _normalised_words(text)
+    head_n = min(4, len(frag_words))
+    if head_n and cand_words[:head_n] != frag_words[:head_n]:
+        return None
+    frag_content = _content_words(fragment)
+    if frag_content:
+        kept = len(frag_content & _content_words(text)) / len(frag_content)
+        if kept < 0.8:
+            return None
+    if _welds_new_clause(text, fragment):
+        return None
+    prefix_words = _normalised_words(prefix)
+    if len(prefix_words) >= 10:
+        if _find_run(cand_words, prefix_words[-10:]) is not None:
+            return None
+    return text
+
+
+def _reconstruct_stage2_final_sentence(
+    *, question: str, enhanced: str, refs_block: str,
+) -> str | None:
+    """R413 — replace the cut final sentence with ONE complete sentence.
+
+    Asks for the complete final sentence (not a bare tail), so the surviving
+    sentences are preserved verbatim while the cut sentence is re-emitted as a
+    single grammatical sentence. Returns ``None`` on any failure; the caller
+    then salvages the complete-sentence prefix or ships the deterministic
+    Stage-1 answer.
+    """
+    sentences = _split_sentences_text(enhanced)
+    if not sentences:
+        return None
+    fragment = sentences[-1]
+    prefix = " ".join(sentences[:-1]).strip()
+    if len(fragment) < 12:
+        return None
+    # R413 rung 0 — TERMINATE. When the cut sentence is already grammatical and
+    # wants only its full stop (the R411 hospital case), the whole repair is
+    # that full stop. The deterministic detector below cannot tell a whole
+    # final word from one cut mid-word ("...of a produc"), and the model can, so
+    # the detector only decides whether the ECHO option is OFFERED; the model's
+    # echo is accepted by ``_accept_reconstructed_final_sentence`` only when it
+    # is byte-identical to the cut sentence, i.e. provably lossless.
+    terminate_hint = ""
+    if _fragment_terminates_cleanly(fragment):
+        terminate_hint = (
+            "CHECK THIS FIRST: if the cut sentence is ALREADY a complete, "
+            "grammatical sentence that lacks only its final full stop, output "
+            "that sentence EXACTLY as given, character for character, with a "
+            "full stop added and nothing else. Do this ONLY when its final "
+            "word is a whole word — if the last word is visibly cut off "
+            "(\"produc\", \"registrat\", \"obligatio\"), never echo it: "
+            "complete that word instead.\n"
+        )
+    system = (
+        "You complete the final sentence of a truncated EU AI Act answer. "
+        "You return exactly ONE complete, grammatical sentence and nothing else."
+    )
+    user = (
+        f"QUESTION: {question}\n\n"
+        f"EU AI ACT REFERENCES (background only, for grounding):\n"
+        f"{refs_block}\n\n"
+        "A legal answer was cut off by a token limit. Its LAST sentence is "
+        "incomplete; the earlier sentences are complete and must not be "
+        "rewritten.\n\n"
+        "COMPLETE EARLIER TEXT (context only, do not repeat it):\n"
+        f"{prefix or '(none)'}\n\n"
+        "INCOMPLETE FINAL SENTENCE (exactly as it was cut):\n"
+        f"{fragment}\n\n"
+        f"{terminate_hint}"
+        "Otherwise write the COMPLETE final sentence. Start with the same "
+        "opening words as the cut sentence and finish ITS thought. It must be "
+        "exactly ONE "
+        "sentence ending with a full stop: do not begin a new clause or a new "
+        "subject and do not add a second sentence.\n"
+        "Finishing the thought means stating the content the sentence was "
+        "reaching for. If the cut sentence was identifying the legal basis, a "
+        "body, an actor or a status, NAME the Article, Annex or body from the "
+        "references above. If it was listing obligations, conditions, powers "
+        "or exceptions, STATE them. MEASURED failure to avoid (R413 gate, "
+        "rg_034): a sentence ending \"... the remedial actions available to "
+        "the Court\" was completed as \"... would instead derive from the "
+        "provisions governing the Court's unlimited jurisdiction\", which "
+        "states no power at all, where the correct completion names Article "
+        "100(5) and its power to cancel, reduce or increase the fine. Never "
+        "replace the operative content with a hedge such as \"is not "
+        "established by\", \"must be derived from\", \"is left to\" or "
+        "\"would instead derive from\". \"Do not introduce a new topic\" "
+        "forbids an unrelated subject, NOT naming the provision the sentence "
+        "is leading to.\n"
+        "Output ONLY that one sentence.\n\n"
+        "COMPLETE FINAL SENTENCE:"
+    )
+    candidate = _stage2_complete(
+        system=system,
+        user=user,
+        max_tokens=512,
+        temperature=0.0,
+        complex_question=False,
+        stage_name="Stage 2 (Tail Repair)",
+    )
+    accepted = _accept_reconstructed_final_sentence(
+        candidate, fragment, prefix, enhanced
+    )
+    if accepted is None:
+        return None
+    return f"{prefix} {accepted}".strip() if prefix else accepted
+
+
 def _attempt_stage2_tail_repair(
     question: str,
     enhanced: str,
     kg_answer: str,
     context: GraphContext | None,
 ) -> str | None:
-    """Complete ONLY the truncated final sentence via the wired Stage-2 provider.
+    """Complete the truncated final sentence via the wired Stage-2 provider.
 
-    Returns the spliced, complete answer or ``None`` on any failure (the caller
-    then ships the deterministic Stage-1 answer). The model is asked for the
-    missing tail only — never a rewrite — so the surviving polish is preserved
-    verbatim. Temp 0 ⇒ deterministic ⇒ the repaired branch is cacheable.
+    Rungs, selected by ``REGENOLD_STAGE2_TAIL_REPAIR_MODE``:
+
+    * ``sentence`` (R413) — three rungs in order:
+        0. TERMINATE, when the cut sentence is already grammatical and wants
+           only its full stop: the model is offered the echo, and the echo is
+           accepted only byte-identical (lossless; R411 hospital case);
+        1. RECONSTRUCT the whole final sentence as one grammatical sentence;
+        2. SPLICE (the R357 rung) — MEASURED: the strict validator refused the
+           reconstruction on 3 of 40 gate rows, and dropping straight to the
+           deterministic Stage-1 answer lost every criterion the splice had
+           recovered from the SAME input (rg_053: 1.00 -> 0.00). A welded
+           sentence that states Article 55 beats a clean sentence about the
+           wrong thing, so the splice is the last rung, not a discarded branch;
+    * ``splice`` (R357) — ask for the missing tail only and concatenate it.
+
+    Returns the repaired answer or ``None`` on any failure (the caller then
+    salvages the complete-sentence prefix or ships the deterministic Stage-1
+    answer). Temp 0 ⇒ deterministic ⇒ the repaired branch is cacheable.
     """
     if not enhanced or not enhanced.strip():
         return None
@@ -10461,6 +10856,82 @@ def _attempt_stage2_tail_repair(
         refs_block = ""
         if context is not None:
             refs_block = _build_context_references_block(context, question=question)
+        if _stage2_tail_repair_mode() == "sentence":
+            reconstructed = _reconstruct_stage2_final_sentence(
+                question=question, enhanced=enhanced, refs_block=refs_block
+            )
+            if reconstructed is not None:
+                return reconstructed
+            # R413 — THE LADDER. MEASURED on the n=40 paired gate: the strict
+            # grammatical validator refused the reconstruction on 3 rows, and
+            # the historical chain then dropped straight to the deterministic
+            # Stage-1 answer — which the judge failed on every criterion where
+            # the R357 splice had recovered the operative provision from the
+            # SAME input (rg_053: ans_correctness_loose 1.00 -> 0.00). The splice
+            # is therefore the SECOND rung, not a discarded branch: a welded
+            # sentence that states Article 55 beats a clean sentence about the
+            # wrong thing.
+            logger.info(
+                "stage2_tail_repair: grammatical reconstruction rejected — "
+                "falling back to the R357 splice before the deterministic answer"
+            )
+        return _tail_splice_attempt(question, enhanced, refs_block)
+    except Exception:  # noqa: BLE001 — repair must never break Stage-2
+        logger.debug("stage2_tail_repair failed", exc_info=True)
+        return None
+
+
+#: R413 — the tail rung's join markers. The tail prompt used to ask the model
+#: to express the join by leading whitespace ("begin your output with a space",
+#: R357) and NOTHING may assume that survives the transport: the provider trims
+#: the completion, so the signal is destroyed before the splice reads it.
+#: MEASURED live (R413 hospital probe, the exact R411 sentence):
+#:
+#:     "... queries on a hospital websiteArticle 50(1), requiring that ..."
+#:
+#: A token marker survives trimming, so the join is decided by the model's
+#: stated intent instead of guessed from whitespace that may not arrive.
+_TAIL_CONTINUE_MARKER = "CONT:"
+_TAIL_GAP_MARKER = "GAP:"
+
+
+def _join_tail_to_fragment(enhanced: str, tail: str) -> tuple[str, str]:
+    """Join a model tail to the cut text. Returns ``(text, boundary)``.
+
+    ``boundary`` is ``"mid-word"`` or ``"word"`` so a gate can count how often
+    each branch is taken (the R329 rule: a branch that never fires is
+    indistinguishable from one that does not work).
+
+    A tail that arrives without a marker is treated as a word-boundary join,
+    which is both the common case and the one that fails loudly rather than
+    silently gluing two words together; the choice is logged.
+    """
+    body = (tail or "").lstrip()
+    upper = body.upper()
+    if upper.startswith(_TAIL_CONTINUE_MARKER):
+        return enhanced.rstrip() + body[len(_TAIL_CONTINUE_MARKER):].lstrip(), "mid-word"
+    if upper.startswith(_TAIL_GAP_MARKER):
+        return f"{enhanced.rstrip()} {body[len(_TAIL_GAP_MARKER):].lstrip()}", "word"
+    logger.info(
+        "stage2_tail_repair: tail returned without a %s/%s marker — joining on "
+        "a word boundary",
+        _TAIL_CONTINUE_MARKER,
+        _TAIL_GAP_MARKER,
+    )
+    return f"{enhanced.rstrip()} {body}", "word"
+
+
+def _tail_splice_attempt(question: str, enhanced: str, refs_block: str) -> str | None:
+    """R357 — ask for the missing TAIL and concatenate it. The second rung.
+
+    Kept because it recovers a substantive completion (and the provision behind
+    it) when the grammatical reconstruction is refused. Its two defects — a
+    glued word at the join ("must stillregister") and a new clause welded onto a
+    closed one — are measured in ``docs/measurements/r413`` and are why it is no
+    longer the FIRST rung. The glue defect is fixed below by the marker
+    protocol, so this rung is now grammatical at the join too.
+    """
+    try:
         system = (
             "You complete a truncated legal answer. Output ONLY the missing "
             "tail of the final sentence. Never repeat or paraphrase existing text."
@@ -10472,15 +10943,21 @@ def _attempt_stage2_tail_repair(
             "An answer was cut off mid-final-sentence by a token limit. "
             "Below is the text exactly as it was cut. "
             "Output ONLY the missing tail: the remainder of the final sentence, "
-            "starting EXACTLY where the text stops. If it stopped mid-word, "
-            "continue the word with no space before it; if it stopped between "
-            "words, begin your output with a space. Do NOT repeat, paraphrase, "
-            "re-answer, or "
-            "summarise anything already written, and do NOT add a new topic or "
-            "new citation beyond what completing the sentence requires. "
-            "End with sentence-final punctuation.\n\n"
+            "starting EXACTLY where the text stops. Do NOT repeat, paraphrase, "
+            "re-answer, or summarise anything already written, and do NOT add a "
+            "new topic or new citation beyond what completing the sentence "
+            "requires. End with sentence-final punctuation.\n\n"
+            "Say how the cut landed by starting your output with a marker:\n"
+            f"  {_TAIL_GAP_MARKER} immediately followed by the rest of the "
+            "sentence — use this when the cut landed BETWEEN two words\n"
+            f"  {_TAIL_CONTINUE_MARKER} immediately followed by the characters "
+            "that finish the cut word — use this when the cut landed INSIDE a "
+            "word, and do not repeat any character already present\n"
+            "Nothing else: no explanation, no quotes, no leading space after "
+            "the marker.\n\n"
             f"TRUNCATED ANSWER:\n{enhanced}\n\n"
-            "MISSING TAIL:"
+            f"MISSING TAIL (begin with {_TAIL_GAP_MARKER} or "
+            f"{_TAIL_CONTINUE_MARKER}):"
         )
         tail = _stage2_complete(
             system=system,
@@ -10492,24 +10969,17 @@ def _attempt_stage2_tail_repair(
         )
         if not tail or not tail.strip():
             return None
-        # Preserve the boundary signal the model expressed: a leading space
-        # means the cut landed between words (the model was told to begin
-        # with a space there); no leading space means a mid-word continuation.
-        tail = tail.rstrip()
-        tail = re.sub(r"^[ \t]+\n?", " ", tail, count=1) if tail[:1].isspace() else tail
-        tail = tail.lstrip("\n")
         # Reject a model that re-answered the whole thing instead of the tail.
-        head_frag = " ".join(tail.split()[:8])
+        probe = re.sub(r"^(CONT|GAP):", "", tail.strip(), flags=re.IGNORECASE)
+        head_frag = " ".join(probe.split()[:8])
         if head_frag and head_frag in enhanced:
             return None
         if len(tail) > max(400, len(enhanced)):
             return None
-        # Splice: literal join. The model was told to continue mid-word with no
-        # space and to lead with a space at a word boundary, so the tail carries
-        # the boundary signal itself — no guessing about the cut point.
-        repaired = enhanced.rstrip() + tail
+        repaired, boundary = _join_tail_to_fragment(enhanced, tail)
         if _looks_incomplete_final_sentence(repaired):
             return None
+        logger.info("stage2_tail_repair: spliced tail on a %s boundary", boundary)
         return repaired
     except Exception:  # noqa: BLE001 — repair must never break Stage-2
         logger.debug("stage2_tail_repair failed", exc_info=True)

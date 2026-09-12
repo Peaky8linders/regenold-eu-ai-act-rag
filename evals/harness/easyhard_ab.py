@@ -87,6 +87,16 @@ USAGE
     # exit code 1 when the branch drops gold the baseline kept; add
     # --allow-gold-drop to let a deliberate exploratory arm finish anyway
     echo $?
+
+EXIT CODES
+----------
+    0  PASS (or a deliberate --allow-gold-drop / --allow-void run)
+    1  hard rule #8 violated — the branch dropped a gold head the baseline kept
+    2  no live Stage-2 completion landed (the R398 liveness guard)
+    3  VOID — the run cannot measure the lever (R413, see evals.harness.
+       gate_validity): an arm was served by the FALLBACK transport, or a
+       declared system-slot lever dispatched identical system payloads to both
+       arms. The deltas are WITHHELD, not printed as zeros.
 """
 from __future__ import annotations
 
@@ -100,6 +110,7 @@ from pathlib import Path
 from typing import Any
 
 from evals.bench import metrics as bench_metrics
+from evals.harness import gate_validity
 from evals.harness.probe_set import ProbeRow, load_probe_set
 
 _RESULTS = Path(__file__).resolve().parents[1] / "bench" / "results"
@@ -403,7 +414,24 @@ def _paired(
     return out
 
 
-def _report_paired(label: str, paired: dict[str, Any]) -> None:
+def _report_paired(
+    label: str,
+    paired: dict[str, Any],
+    void_reasons: tuple[str, ...] = (),
+) -> None:
+    """Print the paired deltas — or REFUSE to, when the run is void.
+
+    R413. A void run's deltas are indistinguishable from a real null (the R412
+    95+95 pair that showed no effect at all was void: Bedrock served both arms
+    while the tunnel was down). The refusal lives HERE, at the reporting site,
+    so every caller inherits it rather than each remembering to check.
+    """
+    if void_reasons:
+        print(f"\n=== {label} — PAIRED DELTAS WITHHELD (VOID RUN) ===")
+        for reason in void_reasons:
+            print(f"  VOID: {reason}")
+        print("  A delta table from this run would read exactly like a real null.")
+        return
     printed = False
     for split in ("easy", "hard"):
         p = paired.get(split) or {}
@@ -564,7 +592,34 @@ def _gold_gate_verdict(
 
 
 
-def _transport_liveness(*, local: bool) -> tuple[bool, str]:
+def _merged_transport_stats(*provs: Any) -> dict[str, Any]:
+    """Sum per-arm transport snapshots back into one run-level view.
+
+    R413 resets the process-global counters once per ARM (so provenance is
+    attributable), which breaks the older assumption that the counters carry the
+    whole run. The R398 liveness guard is run-level, so it is handed the sum.
+    """
+    out: dict[str, Any] = {}
+    for prov in provs:
+        stats = getattr(prov, "stats", None) or {}
+        for key, value in stats.items():
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, int):
+                out[key] = int(out.get(key, 0)) + value
+            elif isinstance(value, dict):
+                merged = dict(out.get(key) or {})
+                for k, v in value.items():
+                    merged[k] = int(merged.get(k, 0)) + int(v or 0)
+                out[key] = merged
+            elif key == "_error" and value:
+                out.setdefault(key, value)
+    return out
+
+
+def _transport_liveness(
+    *, local: bool, stats: dict[str, Any] | None = None
+) -> tuple[bool, str]:
     """Did Stage-2 actually land? Returns ``(live, human-readable reason)``.
 
     R398. The counters are ``app.llm.stage2_policy.transport_stats`` — the
@@ -579,19 +634,23 @@ def _transport_liveness(*, local: bool) -> tuple[bool, str]:
     """
     if not local:
         return True, "remote --endpoint run; liveness is the caller's assertion"
+    if stats is None:
+        try:
+            from app.llm.stage2_policy import transport_stats  # noqa: PLC0415
+        except Exception as exc:  # noqa: BLE001
+            return False, (
+                f"could not import app.llm.stage2_policy.transport_stats ({exc!r}) - "
+                "liveness UNKNOWN, treated as not live"
+            )
+        try:
+            stats = transport_stats()
+        except Exception as exc:  # noqa: BLE001
+            return False, f"transport_stats() raised ({exc!r}) - liveness UNKNOWN"
     try:
-        from app.llm.stage2_policy import transport_stats  # noqa: PLC0415
-    except Exception as exc:  # noqa: BLE001
-        return False, (
-            f"could not import app.llm.stage2_policy.transport_stats ({exc!r}) - "
-            "liveness UNKNOWN, treated as not live"
-        )
-    try:
-        stats = transport_stats()
         ok = int(stats.get("primary_ok", 0) or 0)
         fb = int(stats.get("fallback_ok", 0) or 0)
     except Exception as exc:  # noqa: BLE001
-        return False, f"transport_stats() raised ({exc!r}) - liveness UNKNOWN"
+        return False, f"transport snapshot unreadable ({exc!r}) - liveness UNKNOWN"
     if ok or fb:
         return True, f"live: primary_ok={ok} fallback_ok={fb}"
     return False, (
@@ -768,6 +827,32 @@ def main() -> int:
             "so."
         ),
     )
+    lever_group = ap.add_mutually_exclusive_group()
+    lever_group.add_argument(
+        "--lever-changes-system", dest="lever_changes_system", action="store_true",
+        default=None,
+        help=(
+            "Declare that this lever edits the Stage-2 SYSTEM payload. R413 "
+            "then VOIDS the run when both arms dispatch an identical system "
+            "payload — an inert lever reads exactly like a null otherwise. "
+            "Default: inferred from the arm envs (see gate_validity."
+            "SYSTEM_SLOT_FLAGS)."
+        ),
+    )
+    lever_group.add_argument(
+        "--no-lever-changes-system", dest="lever_changes_system",
+        action="store_false",
+        help="Declare that this lever does NOT edit the system payload.",
+    )
+    ap.add_argument(
+        "--allow-void",
+        action="store_true",
+        help=(
+            "EXPLORATORY ONLY. Let the run exit 0 on a VOID run. The VOID "
+            "banner and the withheld-deltas notice are still printed: a run "
+            "carrying this flag produced no measurement of the lever."
+        ),
+    )
     args = ap.parse_args()
     _harden_streams()
 
@@ -808,32 +893,62 @@ def main() -> int:
     branch_env = _parse_env(args.branch_env)
 
     print(f"\n### ARM A (baseline) env={base_env or '{}'}")
-    a_rows = _run_arm(
-        probe, endpoint=args.endpoint, api_key=args.api_key, local=args.local,
-        timeout=args.timeout, arm_env=base_env,
-        ckpt_path=_RESULTS / f"easyhard-{args.label}-A.ckpt.jsonl",
-    )
+    # R413 — each arm's transport leg and dispatched payloads are captured per
+    # arm, so a fallback-served arm can be named instead of averaged in.
+    with gate_validity.ArmProbe("baseline") as probe_a:
+        a_rows = _run_arm(
+            probe, endpoint=args.endpoint, api_key=args.api_key, local=args.local,
+            timeout=args.timeout, arm_env=base_env,
+            ckpt_path=_RESULTS / f"easyhard-{args.label}-A.ckpt.jsonl",
+        )
+    a_prov = probe_a.provenance(rows=a_rows)
     a_agg = {k: _aggregate(v) for k, v in _split(a_rows).items()}
 
     b_agg = None
     b_rows: list[dict[str, Any]] = []
+    b_prov = None
     if branch_env:
         # SEQUENTIAL by construction — both arms hairpin to ONE local Claude
         # Max; concurrent wrapper jobs corrupt each other's latency.
         print(f"\n### ARM B (branch) env={branch_env}")
-        b_rows = _run_arm(
-            probe, endpoint=args.endpoint, api_key=args.api_key, local=args.local,
-            timeout=args.timeout, arm_env=branch_env,
-            ckpt_path=_RESULTS / f"easyhard-{args.label}-B.ckpt.jsonl",
-        )
+        with gate_validity.ArmProbe("branch") as probe_b:
+            b_rows = _run_arm(
+                probe, endpoint=args.endpoint, api_key=args.api_key, local=args.local,
+                timeout=args.timeout, arm_env=branch_env,
+                ckpt_path=_RESULTS / f"easyhard-{args.label}-B.ckpt.jsonl",
+            )
+        b_prov = probe_b.provenance(rows=b_rows)
         b_agg = {k: _aggregate(v) for k, v in _split(b_rows).items()}
 
-    _report(args.label, a_agg, b_agg)
+    # R413 — VOID detection runs BEFORE any delta or verdict is printed. A run
+    # whose arms were served by the fallback leg, or whose system payloads were
+    # identical under a system-slot lever, cannot measure the lever at all: its
+    # delta table reads exactly like a real null (the R412 95+95 void run).
+    if args.local:
+        lever = gate_validity.lever_changes_system(
+            base_env, branch_env, override=args.lever_changes_system
+        )
+    else:
+        lever = (False, "remote --endpoint run; payloads are not observable in-process")
+    void = gate_validity.assess(
+        base=a_prov, branch=b_prov, lever=lever, transport_checked=bool(args.local),
+    )
+    print()
+    print(void.render())
+    void_reasons = tuple(void.reasons) if b_rows else ()
+
+    if void_reasons:
+        # Refuse the delta: each arm's own scorecard is still printed, because
+        # the absolute numbers are honest; only the DIFF is unmeasurable.
+        _report(f"{args.label} [baseline]", a_agg, None)
+        _report(f"{args.label} [branch]", b_agg, None)
+    else:
+        _report(args.label, a_agg, b_agg)
 
     # The paired subset is the honest A/B read when either arm loses rows.
     paired = _paired(a_rows, b_rows) if b_rows else {}
     if paired:
-        _report_paired(args.label, paired)
+        _report_paired(args.label, paired, void_reasons)
 
     # R365 — hard rule #8. Decided BEFORE the sidecar is written so the verdict
     # is persisted, and the sidecar is written even when the gate fails: a
@@ -855,14 +970,30 @@ def main() -> int:
     # every --local run read "not live" whether or not it was.  Hence
     # ``_transport_liveness`` returns an explicit reason string and the caller
     # SAYS which of the three cases it is, instead of failing silent.
-    live, live_note = _transport_liveness(local=bool(args.local))
+    live, live_note = _transport_liveness(
+        local=bool(args.local),
+        stats=_merged_transport_stats(a_prov, b_prov) if b_prov is not None else a_prov.stats,
+    )
     verdict["transport_liveness"] = live_note
     if not live and verdict.get("exit_code") == 0 and verdict.get("comparable"):
         print(f"\nWARNING: {live_note}", file=sys.stderr)
         verdict["exit_code"] = 2
         verdict["liveness_failed"] = True
 
-    _report_gold_gate(verdict, offenders)
+    # R413 — a VOID run carries no verdict of any kind: the hard-rule-#8
+    # comparison is as unmeasurable as the deltas, so it is not reported as a
+    # PASS. It outranks the gold gate, the liveness code and --allow-gold-drop.
+    verdict["void"] = bool(void_reasons)
+    verdict["void_reasons"] = list(void_reasons)
+    verdict["arm_provenance"] = void.as_dict()
+    if void_reasons:
+        verdict["exit_code"] = 0 if args.allow_void else 3
+        print(
+            "\nHARD RULE #8 GATE: not evaluated — the run is VOID "
+            f"({len(void_reasons)} reason(s); exit {verdict['exit_code']})"
+        )
+    else:
+        _report_gold_gate(verdict, offenders)
 
     out = _RESULTS / f"easyhard-{args.label}.json"
     out.write_text(
@@ -876,6 +1007,8 @@ def main() -> int:
                 "baseline": a_agg,
                 "branch": b_agg,
                 "paired": paired,
+                "lever": {"changes_system": bool(lever[0]), "why": lever[1]},
+                "gate_validity": void.as_dict(),
                 "gold_gate": verdict,
                 "gold_gate_rows": offenders,
                 "baseline_rows": a_rows,
