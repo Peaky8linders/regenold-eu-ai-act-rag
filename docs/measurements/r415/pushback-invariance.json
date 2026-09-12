@@ -1,0 +1,437 @@
+{
+  "predicate_scope": [
+    {
+      "history_turn_count": null,
+      "flag_off_system_len": 61,
+      "flag_on_system_len": 61,
+      "identical": true
+    },
+    {
+      "history_turn_count": 0,
+      "flag_off_system_len": 61,
+      "flag_on_system_len": 5000,
+      "identical": false
+    },
+    {
+      "history_turn_count": 1,
+      "flag_off_system_len": 61,
+      "flag_on_system_len": 5000,
+      "identical": false
+    },
+    {
+      "history_turn_count": 2,
+      "flag_off_system_len": 61,
+      "flag_on_system_len": 61,
+      "identical": true
+    },
+    {
+      "history_turn_count": 9,
+      "flag_off_system_len": 61,
+      "flag_on_system_len": 61,
+      "identical": true
+    }
+  ],
+  "hard": [
+    {
+      "id": "paper_mt_v4:mt_v4_001",
+      "is_multiturn": true,
+      "signature_identical": false,
+      "threaded_on": [
+        [
+          "Stage 2 (Polishing)",
+          2
+        ]
+      ],
+      "threaded_off": [
+        [
+          "Stage 2 (Polishing)",
+          2
+        ]
+      ],
+      "payloads_on": [
+        [
+          false,
+          6365,
+          "578dad4c591fa99d"
+        ],
+        [
+          true,
+          61,
+          "3bc63d065b58812b"
+        ],
+        [
+          false,
+          6365,
+          "578dad4c591fa99d"
+        ]
+      ],
+      "payloads_off": [
+        [
+          false,
+          6365,
+          "578dad4c591fa99d"
+        ],
+        [
+          true,
+          61,
+          "3bc63d065b58812b"
+        ]
+      ],
+      "graded_on": [
+        61,
+        "3bc63d065b58812b"
+      ],
+      "graded_off": [
+        61,
+        "3bc63d065b58812b"
+      ],
+      "graded_identical": true,
+      "graded_full_on": false,
+      "graded_full_off": false,
+      "answer_identical": false
+    },
+    {
+      "id": "paper_mt_v4:mt_v4_002",
+      "is_multiturn": true,
+      "signature_identical": true,
+      "threaded_on": [
+        [
+          "Stage 2 (Polishing)",
+          2
+        ]
+      ],
+      "threaded_off": [
+        [
+          "Stage 2 (Polishing)",
+          2
+        ]
+      ],
+      "payloads_on": [
+        [
+          true,
+          61,
+          "3bc63d065b58812b"
+        ]
+      ],
+      "payloads_off": [
+        [
+          true,
+          61,
+          "3bc63d065b58812b"
+        ]
+      ],
+      "graded_on": [
+        61,
+        "3bc63d065b58812b"
+      ],
+      "graded_off": [
+        61,
+        "3bc63d065b58812b"
+      ],
+      "graded_identical": true,
+      "graded_full_on": false,
+      "graded_full_off": false,
+      "answer_identical": true
+    },
+    {
+      "id": "paper_mt_v4:mt_v4_003",
+      "is_multiturn": true,
+      "signature_identical": false,
+      "threaded_on": [
+        [
+          "Stage 2 (Polishing)",
+          2
+        ]
+      ],
+      "threaded_off": [
+        [
+          "Stage 2 (Polishing)",
+          2
+        ]
+      ],
+      "payloads_on": [
+        [
+          true,
+          61,
+          "3bc63d065b58812b"
+        ],
+        [
+          false,
+          6365,
+          "578dad4c591fa99d"
+        ],
+        [
+          false,
+          6365,
+          "578dad4c591fa99d"
+        ]
+      ],
+      "payloads_off": [
+        [
+          false,
+          6365,
+          "578dad4c591fa99d"
+        ],
+        [
+          true,
+          61,
+          "3bc63d065b58812b"
+        ]
+      ],
+      "graded_on": [
+        61,
+        "3bc63d065b58812b"
+      ],
+      "graded_off": [
+        61,
+        "3bc63d065b58812b"
+      ],
+      "graded_identical": true,
+      "graded_full_on": false,
+      "graded_full_off": false,
+      "answer_identical": false
+    },
+    {
+      "id": "paper_mt_v4:mt_v4_004",
+      "is_multiturn": true,
+      "signature_identical": true,
+      "threaded_on": [
+        [
+          "Stage 2 (Polishing)",
+          2
+        ]
+      ],
+      "threaded_off": [
+        [
+          "Stage 2 (Polishing)",
+          2
+        ]
+      ],
+      "payloads_on": [
+        [
+          true,
+          61,
+          "3bc63d065b58812b"
+        ]
+      ],
+      "payloads_off": [
+        [
+          true,
+          61,
+          "3bc63d065b58812b"
+        ]
+      ],
+      "graded_on": [
+        61,
+        "3bc63d065b58812b"
+      ],
+      "graded_off": [
+        61,
+        "3bc63d065b58812b"
+      ],
+      "graded_identical": true,
+      "graded_full_on": false,
+      "graded_full_off": false,
+      "answer_identical": true
+    }
+  ],
+  "easy": [
+    {
+      "id": "paper_st_v4:st_v4_001",
+      "is_multiturn": false,
+      "signature_identical": false,
+      "threaded_on": [
+        [
+          "Stage 2 (Polishing)",
+          1
+        ]
+      ],
+      "threaded_off": [
+        [
+          "Stage 2 (Polishing)",
+          1
+        ]
+      ],
+      "payloads_on": [
+        [
+          true,
+          59644,
+          "3e427d7d42b87f11"
+        ]
+      ],
+      "payloads_off": [
+        [
+          true,
+          61,
+          "3bc63d065b58812b"
+        ]
+      ],
+      "graded_on": [
+        59644,
+        "3e427d7d42b87f11"
+      ],
+      "graded_off": [
+        61,
+        "3bc63d065b58812b"
+      ],
+      "graded_identical": false,
+      "graded_full_on": true,
+      "graded_full_off": false,
+      "answer_identical": true
+    },
+    {
+      "id": "paper_st_v4:st_v4_002",
+      "is_multiturn": false,
+      "signature_identical": false,
+      "threaded_on": [
+        [
+          "Stage 2 (Polishing)",
+          1
+        ]
+      ],
+      "threaded_off": [
+        [
+          "Stage 2 (Polishing)",
+          1
+        ]
+      ],
+      "payloads_on": [
+        [
+          false,
+          6365,
+          "578dad4c591fa99d"
+        ],
+        [
+          true,
+          59644,
+          "3e427d7d42b87f11"
+        ]
+      ],
+      "payloads_off": [
+        [
+          false,
+          6365,
+          "578dad4c591fa99d"
+        ],
+        [
+          true,
+          61,
+          "3bc63d065b58812b"
+        ]
+      ],
+      "graded_on": [
+        59644,
+        "3e427d7d42b87f11"
+      ],
+      "graded_off": [
+        61,
+        "3bc63d065b58812b"
+      ],
+      "graded_identical": false,
+      "graded_full_on": true,
+      "graded_full_off": false,
+      "answer_identical": true
+    },
+    {
+      "id": "paper_st_v4:st_v4_003",
+      "is_multiturn": false,
+      "signature_identical": false,
+      "threaded_on": [
+        [
+          "Stage 2 (Polishing)",
+          1
+        ]
+      ],
+      "threaded_off": [
+        [
+          "Stage 2 (Polishing)",
+          1
+        ]
+      ],
+      "payloads_on": [
+        [
+          false,
+          6365,
+          "578dad4c591fa99d"
+        ],
+        [
+          true,
+          59644,
+          "3e427d7d42b87f11"
+        ]
+      ],
+      "payloads_off": [
+        [
+          true,
+          61,
+          "3bc63d065b58812b"
+        ]
+      ],
+      "graded_on": [
+        59644,
+        "3e427d7d42b87f11"
+      ],
+      "graded_off": [
+        61,
+        "3bc63d065b58812b"
+      ],
+      "graded_identical": false,
+      "graded_full_on": true,
+      "graded_full_off": false,
+      "answer_identical": true
+    },
+    {
+      "id": "paper_st_v4:st_v4_004",
+      "is_multiturn": false,
+      "signature_identical": false,
+      "threaded_on": [
+        [
+          "Stage 2 (Polishing)",
+          1
+        ]
+      ],
+      "threaded_off": [
+        [
+          "Stage 2 (Polishing)",
+          1
+        ]
+      ],
+      "payloads_on": [
+        [
+          true,
+          59644,
+          "3e427d7d42b87f11"
+        ]
+      ],
+      "payloads_off": [
+        [
+          true,
+          61,
+          "3bc63d065b58812b"
+        ]
+      ],
+      "graded_on": [
+        59644,
+        "3e427d7d42b87f11"
+      ],
+      "graded_off": [
+        61,
+        "3bc63d065b58812b"
+      ],
+      "graded_identical": false,
+      "graded_full_on": true,
+      "graded_full_off": false,
+      "answer_identical": true
+    }
+  ],
+  "hard_threaded_same": true,
+  "call_count_variance_rows": [
+    "paper_mt_v4:mt_v4_001",
+    "paper_mt_v4:mt_v4_003"
+  ],
+  "conclusive": true,
+  "predicate_scope_ok": true,
+  "hard_untouched": true,
+  "seam_fired": true,
+  "non_vacuity_control_passed": true
+}

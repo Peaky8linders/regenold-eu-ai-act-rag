@@ -1008,9 +1008,18 @@ def _openai_wrapper_complete_for_graph_rag(
     #
     # ``history_turn_count <= 1`` is the modality predicate: the route threads it
     # from the conversation (`GraphRAGRequest.history_turn_count`, "turns BEFORE
-    # the live question"), so a single-turn ask reads 1 and both hard-mode asks
-    # (the 9-turn final and the pushback) read >= 2. Same predicate
-    # ``answer_router.is_multi_turn`` uses.
+    # the live question"), so it reads **0 for a first ask** and **1 for an ask
+    # with one prior exchange** — both single-turn-shaped — while both hard-mode
+    # asks (the 10-message final and the pushback) read >= 9. Same predicate
+    # ``answer_router.is_multi_turn`` uses. MEASURED with
+    # ``docs/measurements/r415/pushback_invariance_probe.py``, which reads the
+    # real substitution at the provider seam: the graded payload is byte-identical
+    # between the flag's arms on every hard row (61-char persona, sha
+    # 3bc63d065b58812b) and differs on every easy row (59644-char full system), so
+    # the pushback path is untouched and the lever cannot move the hard board.
+    # A DIRECT engine caller that leaves ``GraphRAGRequest``'s default of 1 does
+    # read 1, which is why the boundary matters and why the probe asserts the
+    # {0, 1} differ-set rather than {1}.
     #
     # R412 — GATED AND SHIPPED, default ON.
     #
