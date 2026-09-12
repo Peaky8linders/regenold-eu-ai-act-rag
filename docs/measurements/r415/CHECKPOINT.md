@@ -92,7 +92,25 @@ indistinguishable from an instrument that never fired.
 * **Combined:** the movement is the easy-half movement; the hard half contributes
   exactly zero because the lever never reaches it.
 
-## 5. Honest residuals
+## 5. Live production confirmation (deploy `dfea832308de`)
+
+The same question asked to production twice — once as a first ask, once with a
+9-turn preamble (the official hard shape):
+
+| ask | answer chars | refs |
+| :--- | ---: | :--- |
+| single-turn | **2065** | `Article 11.1`, `Annex IV.2`, `Annex I`, `Article 17.1`, `Article 47.1`, `Annex V.2` |
+| multi-turn (9 prior turns) | **4802** | `Article 11.1`, `Annex IV.2`, `Article 9.2`, `Article 47.1`, `Article 16` |
+
+The multi-turn answer is **2.3× longer**, which is the observable live signature
+of the invariance: the single-turn ask is served the full system (the R383/R411
+mechanism compresses the answer to ~0.199×), the multi-turn ask keeps the persona
+and answers at length — and the two share their operative references
+(`Article 11.1`, `Annex IV.2`). An earlier skip of this check would have been a
+misread: a shorter multi-turn answer would have looked like the lever leaking
+into hard mode.
+
+## 6. Honest residuals
 
 * The correctness axes (`Ans Loose/Strict`) were NOT re-judged in this pass. They
   need the Claude-Max wrapper judge, whose OAuth is expired; the substitute on
