@@ -938,6 +938,52 @@ def _openai_wrapper_complete_for_graph_rag(
     # recompute the wire citations from the Stage-2 prose, so this must clear
     # ``gold_dropped_head`` at n >= 100 before it is flipped. Registered in
     # ``_engine_cache_key``.
+    # R411 — MEASURED MODALITY-DEPENDENT. Default stays OFF. Do not flip without a
+    # SINGLE-TURN-ONLY gate (see below).
+    #
+    # The cap existed because R342 believed the wrapper CLI 500s on a 53 kB system
+    # prompt. Measured false (0 errors in 6/6, R383). R308 had also proven the
+    # system slot is dropped 100% by the wrapper (French-instruction probe on
+    # sonnet-4-6 AND opus-4-6), and R282 measured forwarding ANSWER_GENERATE_SYSTEM
+    # to that slot as rubric-negative (kw_recall -0.267, off-topic drift) — for a
+    # while the persona was the right call, and the R308 coverage clause in the
+    # USER channel was the supported route to the same content.
+    #
+    # R411 re-tested it on the CURRENT stack, paired, over the cloudflared tunnel
+    # (`evals.harness.easyhard_ab --local`, 0 errors in every arm). IT SPLITS BY
+    # MODALITY, and the split is the whole finding:
+    #
+    #   EASY (single-turn, n=12)     baseline      branch      delta
+    #     ref_loose                   0.9583        0.9583     +0.0000
+    #     ref_strict                  0.4583        0.4768     +0.0185
+    #     ref_conc                    0.2514        0.2540     +0.0026
+    #     kw_recall                   0.9444        0.9444     +0.0000
+    #     gold_drop_hd                1             1          +0   PASSES
+    #     latency mean / p50          27.98 / 24.03  14.95 / 13.90  -13.0 / -10.1 s
+    #     answer chars                2798.8        1179.7     -58 %
+    #     12 of 12 rows faster
+    #
+    #   HARD (multi-turn + pushback, n=37)  baseline   branch    delta
+    #     ref_loose                   0.8423        0.7342     -0.1081  GOLD LOSS
+    #     ref_strict                  0.4392        0.3932     -0.0461
+    #     ref_conc                    0.1719        0.2391     +0.0672
+    #     kw_recall                   0.7793        0.7432     -0.0360
+    #     gold_drop_hd                12            18         +6      ** FAILS **
+    #     latency p50                 31.2 s        21.5 s     -9.7 s
+    #
+    # So on the graded modality it is a 10.8 pp reference-correctness LOSS for a
+    # 9.7 s speed gain: the +13 pp Speed is worth ~+1.7 pp Overall, which does not
+    # buy back -10.8 pp of ref_loose. The n=12 easy probe alone would have shipped
+    # this regression; it takes the hard split to see it.
+    #
+    # MECHANISM (and the fix to try next): the full system prompt is what cuts the
+    # answer to 0.199x its length. Hard mode grades the answer to an ADVERSARIAL
+    # PUSHBACK, where the contract is to KEEP the points turn 1 made — and a
+    # 58 %-shorter answer drops them. The two levers are in direct tension. The
+    # candidate repair is therefore to deliver the full system only on a
+    # genuinely single-turn synthesis (no pushback, history_turn_count == 1), so
+    # the easy-mode speed win is kept without the pushback keep-loss. That is a
+    # NEW hypothesis and needs its own paired run — it is NOT shipped here.
     _full_system = os.getenv(
         "REGENOLD_STAGE2_FULL_SYSTEM", "0"
     ).strip().lower() in ("1", "true", "yes", "on")
@@ -5131,6 +5177,25 @@ _RECLASSIFY_ACTION_RE = re.compile(
 )
 
 
+# R411 — see the trailing-ask guard in :func:`_detect_reclassification_inquiry`.
+# A question that OPENS with a synthesis imperative and carries an explicit
+# second ask is a synthesis request; a curated single-issue verdict must not
+# pre-empt it. The second-ask alternation is intentionally restricted to an
+# explicit ask verb so that a compound subject ("providers and deployers") can
+# never be mistaken for a compound ask.
+_RECLASSIFY_SYNTHESIS_OPENER_RE = re.compile(
+    r"^\s*(?:compare|contrast|explain|describe|outline|list|summari[sz]e|"
+    r"analyse|analyze|discuss|detail|walk\s+me\s+through)\b",
+    re.IGNORECASE,
+)
+_RECLASSIFY_SECOND_ASK_RE = re.compile(
+    r",?\s*(?:and|as\s+well\s+as|plus)\s+(?:also\s+)?"
+    r"(?:explain|describe|outline|list|state|identify|say|tell|compare|contrast)\b"
+    r"|;\s*(?:also\s+)?(?:explain|describe|outline|list|state|identify|compare)\b",
+    re.IGNORECASE,
+)
+
+
 def _detect_reclassification_inquiry(question: str) -> bool:
     """True when the question asks how a non-provider operator (deployer /
     distributor / importer) becomes a PROVIDER of a high-risk AI system."""
@@ -5140,6 +5205,27 @@ def _detect_reclassification_inquiry(question: str) -> bool:
     if idx >= 0:
         raw_q = raw_q[idx + len(marker):]
     if _MINIMAL_RISK_SCENARIO_OPENER_RE.search(raw_q):
+        return False
+    # R411 — a curated single-issue intercept must not pre-empt a SYNTHESIS
+    # request. ``"Compare the obligations of providers and deployers of
+    # high-risk AI systems ..., and explain what happens if a deployer becomes a
+    # provider"`` carries every marker this detector looks for — but in its
+    # SECOND ask. The pre-R411 detector fired on them, hit the
+    # ``_curated_stage2_skip`` gate, and shipped the narrow Article 25
+    # reclassification verdict (2 wire refs) in place of the comparison the
+    # question actually asks for. That is the same trailing-ask shape the R410
+    # verdict-lead fix addressed: the FIRST ask decides.
+    #
+    # Both conjuncts are required, so the guard is deliberately narrow: a
+    # genuine single-issue ask (``"Explain how an operator becomes a provider
+    # under Article 25"``) has no second ask and still routes to the curated
+    # verdict. Measured over the official 110, this detector still fires on
+    # exactly its one row (rg_025, which opens ``"Can an operator ..."``), so
+    # the deterministic bench and the scored corpus are unchanged.
+    if (
+        _RECLASSIFY_SYNTHESIS_OPENER_RE.search(raw_q)
+        and _RECLASSIFY_SECOND_ASK_RE.search(raw_q)
+    ):
         return False
     return bool(
         _RECLASSIFY_NONPROVIDER_ROLE_RE.search(raw_q)
