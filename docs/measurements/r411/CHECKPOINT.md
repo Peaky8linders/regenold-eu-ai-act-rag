@@ -447,3 +447,31 @@ touched.
   (`docs/measurements/r411/wrapper_stub_bedrock.py`) is built and smoke-tested for it.
 * `easyhard_ab` scores the official *reference* axes only; the Ans Correctness deltas above
   come from the re-judge instrument, not from a gold gate.
+
+### 7.1 Ship record and live verification
+
+* **PR #417** merged to `main`; both CI gates green on a clean clone
+  (Deployable 33 s, Test suite 1 m 53 s). Full suite **7962 passed / 2 skipped**.
+* **Production live on `ba1ea80e5c43`**, `/healthz` `status: ok`.
+* Live probe of all four fixed shapes against the deployed endpoint:
+
+  | case | live answer | verdict |
+  | :--- | :--- | :--- |
+  | "What is the definition of high risk?" | *"not a single definition but a classification made by Article 6 on two alternative routes, against the background definition in Article 3(2) ... On the product route, Article 6(1) ..."* | **fixed** (was the bare Art 6(2) sentence) |
+  | provider chatbot on a hospital website | Article 50 limited-risk transparency duties, explicitly *"neither emergency triage nor a determination of eligibility ... under Annex III.5"* | **fixed** (was the hospital-deployer roster) |
+  | "how must a natural person be informed that they are interacting with an AI system?" | Article 50(1) / 50(2) / 50(3) by actor | **fixed** (was the Art 14(5) two-person rule) |
+  | clinical-trial triage, race inferred | *"No. A hospital may not deploy such a system ... a prohibited practice under Article 5(1)(g) ..."* | **fixed** (guard survives the new wording) |
+
+  Note for the next reader: the live probe's first cut asserted the literal
+  "prohibited under Article 5(1)(g)" and reported a false FAIL, because Stage-2
+  renders it "a prohibited practice under Article 5(1)(g)". Assert the phrase the
+  judge criterion names, not the deterministic-path string — the same instrument
+  bias caught twice already in this round.
+
+* **NEW live residual, observed during this verification (pre-existing, not from
+  this diff).** Two production answers show Stage-2 sentence splicing: the chatbot
+  answer reads *"the only EU AI Act transparency duties it triggers are those in
+  answering general patient queries on a hospital website is neither emergency
+  triage nor ..."*, and the definition answer has a similar mid-clause join. This
+  is a Stage-2 truncation/repair artefact on the live transport (the deterministic
+  path is clean), and it belongs on the next round's list.
