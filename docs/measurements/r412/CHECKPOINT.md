@@ -144,6 +144,24 @@ count, not from the deltas.** A void run's deltas look like a plausible null
 result, which is precisely why the previous round's "no speedup" reading was
 nearly filed as a finding about the lever.
 
+## 4.2 Ship record and live verification
+
+* **PR #419** merged to `main` as `9f21a9c6c56f`; both CI gates green on a clean
+  clone (Deployable 29 s, Test suite 2 m 29 s). Full suite **7973 passed / 2
+  skipped** (11 new pins).
+* **Production live on `9f21a9c6c56f`**, `/healthz` `status: ok`.
+* Live check of the lever on the deployed endpoint (single-turn asks, which is
+  exactly the path the flag gates):
+
+  | question | latency | answer | wire refs |
+  | :--- | ---: | ---: | :--- |
+  | provider transparency obligations | **26.8 s** | 1,614 chars | `['Article 50.2']` |
+  | which Article carries the risk-management requirements | **23.8 s** | 229 chars | `['Article 9.6']` |
+
+  Both inside the branch arm's p50 of 21.9 s and far below the baseline's
+  37.4 s, with answers that are concise and on-topic — i.e. the deployed service
+  is serving the full system prompt on single-turn asks, as intended.
+
 ## 5. Residuals
 
 * **`ref_recall_probe.py` reports 11 rows with a NAMED-but-omitted expected
