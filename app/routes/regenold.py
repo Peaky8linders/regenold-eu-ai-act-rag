@@ -1984,6 +1984,15 @@ def _engine_cache_key(
             # is cached; without it in the identity a same-process A/B serves the
             # baseline arm's response to the branch arm (the R263.2 bug).
             "REGENOLD_GENERAL_VERDICT_V2",
+            # R411 — conditional general-verdict wording for a DESCRIBED Article 5
+            # practice. It swaps the deterministic answer text inside the engine,
+            # so it flips GraphRAGResponse.answer and must be in the cache
+            # identity (same R263.2 same-process A/B doctrine as the flag above).
+            "REGENOLD_GENERAL_VERDICT_ART5_CONDITIONAL",
+            # R411 — the Article 50(1) information intercept's recall widening.
+            # It flips which questions match that curated intercept, so it flips
+            # both the answer and the references.
+            "REGENOLD_USER_INFORMATION_RECALL",
             # R327 — semantic layers & vector recall & parent collapse flags
             "REGENOLD_GRAPH_SEMANTIC_LAYERS",
             "REGENOLD_SEMANTIC_GLOSS",
@@ -2494,6 +2503,55 @@ def _extract_qtypes_enabled() -> frozenset[str]:
     return _EXTRACT_HIGH_PRECISION_QTYPES
 
 
+# R411 — an EXPLICIT definition ask. These name the term the reader wants
+# defined ("the definition of X", "define X", "how is X defined", "the
+# meaning of X"), so the only precise source is the Art. 3 registry lookup in
+# ``_extractive_answer_candidate``.
+#
+# Measured failure this gate exists for. When the registry DECLINES (the term
+# is not an Art. 3 defined term), the definition block below used to fall
+# through to the generic BM25 sentence walk, which then shipped ONE arbitrary
+# sentence from the top-cited article in place of the engine's composed prose:
+#
+#   "What is the definition of high risk?"          -> Art. 6(2) verbatim
+#       "In addition to the high-risk AI systems referred to in paragraph 1,
+#        AI systems referred to in Annex III shall be considered to be
+#        high-risk."                                    (0 of 4 criteria)
+#   "... the definition of high risk under the EU AI Act?" -> Art. 6(6) verbatim
+#       "The Commission is empowered to adopt delegated acts ..."
+#                                                      (0 of 5 criteria)
+#   rg_048 "... the definition of (a) a 'conformity assessment body' and
+#          (b) 'conformity assessment' ..."            -> Art. 43(3) procedure
+#
+# None of those sentences DEFINES the term asked about; each is an operative
+# clause of the article the term happens to live in. The registry miss is
+# itself the signal: the R93 design note for this pass says definition-shape
+# questions are served by the exact term lookup and "every other question
+# shape" falls through to the engine prose — the generic walk was never
+# intended to be the definition path's fallback.
+#
+# Scoped to explicit asks ON PURPOSE. The five corpus rows whose Art. 3 lookup
+# misses are not uniformly broken: rg_059 ("what is the scientific panel of
+# independent experts ...") is answered WELL by the extracted Art. 68(1)
+# sentence, and rg_080 / rg_105 already return None. A blanket decline for
+# every unresolved ``definition``-qtype row would trade three bad answers for
+# one good one. Only the explicit ask is a promise the sentence walk cannot
+# keep.
+_EXPLICIT_DEFINITION_ASK_RE = re.compile(
+    r"\bdefinition\s+of\b"
+    r"|\bdefine\b"
+    r"|\bhow\s+is\b[^?]{0,60}\bdefined\b"
+    r"|\bmeanings?\s+of\b"
+    r"|\bwhat\s+does\b[^?]{0,40}\bmean\b",
+    re.IGNORECASE,
+)
+
+
+def _explicit_definition_ask(question: str) -> bool:
+    """True iff the question explicitly asks for a term's definition."""
+    return bool(_EXPLICIT_DEFINITION_ASK_RE.search(question or ""))
+
+
 def _extract_cited_only_enabled() -> bool:
     """R307 — gate the cite-what-you-quote invariant. Default ON."""
     return os.getenv("REGENOLD_EXTRACT_CITED_ONLY", "1").strip().lower() not in (
@@ -2947,6 +3005,13 @@ def _extractive_answer_candidate(
         candidate = select_definition_sentence(question)
         if candidate:
             return candidate
+        # R411 — the registry DECLINED. For an explicit definition ask, do not
+        # fall through to the generic BM25 walk below: a single arbitrary
+        # sentence from the top-cited article is not a definition, and it
+        # REPLACES the engine's composed prose. See
+        # ``_EXPLICIT_DEFINITION_ASK_RE`` for the measured rows.
+        if _explicit_definition_ask(question):
+            return None
 
     # R68 / R69 — targeted answer for a matrix-dumped focused QA
     # question. ``preferred_refs`` is supplied ONLY when the engine
