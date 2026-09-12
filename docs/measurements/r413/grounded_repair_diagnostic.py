@@ -103,7 +103,11 @@ def main() -> int:
     details: list[dict] = []
 
     for arm in ARMS:
-        rows = [json.loads(l) for l in (OUT / f"arm-{arm}.jsonl").read_text(encoding="utf-8").splitlines()]
+        rows = [
+            json.loads(line)
+            for line in (OUT / f"arm-{arm}.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
         stats = {
             "n": len(rows),
             "glue_rows": 0,
