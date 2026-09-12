@@ -126,6 +126,21 @@ corpus rather than against a paraphrase:
 changed per-arm). It still dials the live cloudflared tunnel, so it measures the
 real transport.
 
+## 3.1 Ship record
+
+* **PR #413** merged to `main` as `f7b1250933d5e4dc6306713bee616f7a7de6af`; both CI gates
+  green on a clean clone (Deployable 38 s, Test suite 2 m 04 s).
+* **Production live on `f7b1250933d5`**, `/healthz` `status: ok`.
+* Live verification on the deployed endpoint (real Opus via the cloudflared tunnel):
+  * *"Are AI systems for social scoring prohibited ... and is the prohibition limited to
+    public authorities?"* → **"Yes ... and no, the prohibition is not limited to public
+    authorities"**, wire refs `['Article 5.1.c']`.
+  * *"If a provider relies on the Article 6(3) derogation for an Annex III system, what
+    documentation and registration duties apply?"* → names **Article 6(4)** and
+    **Article 49(2)**, wire refs `['Article 49.2', 'Article 6.3', 'Article 113.3']`.
+    Note: `Article 113.3` (application dates) is off-topic here — a small over-citation on
+    the deterministic intercept path, recorded rather than hidden.
+
 ## 4. Do not lose this
 
 * `REGENOLD_STAGE2_FULL_SYSTEM` **is** registered in `_engine_cache_key`
