@@ -181,30 +181,60 @@ the marker and logs the boundary it took;
   **cancel, reduce or increase the fine** imposed" — the exact criteria the splice
   had and the old reconstruction lost.
 
-## 7. Gate outcome — the default does NOT flip, and the reason is the judge
+## 7. Gate outcome — measured on the Bedrock leg, and the default does NOT flip
 
 Part 1 (deterministic, provider stubbed to raise) re-ran with the new prompt and
 the marker protocol: **413 of 413 recorded complete answers byte-identical, 0
 provider calls**, across all four corpora. The "does not touch passing rows"
 contract holds.
 
-Part 3's judge leg came back **VOID** and must not be read: the wrapper's
-Claude-Max OAuth expired mid-run, so the freshly written splice scorecard has
-`ans_correctness_loose` **3.76 %** and `regulatory_tone` **2.5 %** (the judge
-returns nothing) against 75.9 / 92.5 in the recorded identity. Its REFERENCE
-axes are still valid — they are computed deterministically from the reference
-lists: `ref_loose` **90.54 in both arms**, `ref_strict` 72.52 (splice) vs 69.82
-(sentence, previous prompt), `ref_conc` 53.92 vs 53.33.
+The wrapper's judge leg came back **VOID** and must not be read: the Claude-Max
+OAuth expired mid-run, so that scorecard has `ans_correctness_loose` **3.76 %**
+and `regulatory_tone` **2.5 %** against 75.9 / 92.5 for the recorded identity.
+`score_arm` had already detected this (`JUDGE TRANSPORT DEGRADED: 39/39 rows
+(100 %)`) and printed the table anyway — **detection without refusal**, which is
+how a dead judge became an arm delta. That is fixed in the same round (§10).
 
-So the §4b table cannot be re-read against the new rungs, and the honest
-decision follows from that:
+### 7a. The valid re-read: wrapper forced down, both arms on Bedrock, Opus-4.6 judge
 
-* **default stays `splice`** — the reconstruction rung ships behind the
-  default-off `sentence` mode until a judge leg carries both arms;
-* the two fixes that are unconditional ship now, because each is verified with a
-  deterministic instrument or a live reproduction rather than a judge: the
-  marker-protocol join (applies to BOTH modes) and the under-completing prompt
-  (inside `sentence` mode).
+`eu.anthropic.claude-opus-4-6-v1` is live on this account's Bedrock (Sonnet 4.6 /
+Opus 5 / Sonnet 5 profiles return `api_validation_400`), so the gate was re-run
+with the wrapper's endpoint pointed at a dead host: **both arms are then served
+by the SAME fallback transport**, which *removes* the R412 confound instead of
+repeating it (that round was void because the fallback MASKED a system-slot
+lever; this lever is in the repair PROMPT, which reaches Bedrock intact — 82
+`bedrock_auto_fallback` lines, 0 errors, 39 of 40 rows differ between arms, so
+the lever is demonstrably not inert).
+
+| axis | splice | sentence | delta |
+| :--- | ---: | ---: | ---: |
+| ans_correctness_loose | 66.9 | 68.4 | **+1.5** |
+| ans_correctness_strict | 45.0 | 45.0 | +0.0 |
+| ans_conciseness | 77.7 | 80.7 | **+3.0** |
+| ref_correctness_loose | 90.5 | 90.5 | +0.0 |
+| ref_correctness_strict | 75.2 | 75.2 | +0.0 |
+| ref_conciseness | 53.0 | 52.6 | −0.4 |
+| regulatory_tone | 95.0 | 92.5 | **−2.5** |
+| resp_speed | 97.4 | 97.3 | −0.1 |
+| **OVERALL (geo mean)** | 72.7 | **72.9** | **+0.2** |
+
+**Two findings, one decision.**
+
+1. The −6.0 pp correctness regression in §4b was the PROMPT, not the approach:
+   with the under-completing prompt fixed, the same arm is now **+1.5 pp loose**
+   instead of −6.0, and **+3.0 pp on answer conciseness**. The diagnosis in §6
+   was right and is now confirmed on a valid leg.
+2. The rung-order change is still a **WASH**: +0.2 pp overall, inside the noise
+   of a 3-repeat, temp-0.1 judge, bought with **−2.5 pp regulatory tone**. The R413
+   criterion was "ship only on evidence", and a wash is not evidence — so the
+   **default stays `splice`**, now on a *measured* reading rather than on a void
+   one, and the opt-in `sentence` mode keeps the export for a future round with a
+   cheaper rung.
+
+The two fixes that ARE unconditional ship regardless, because each is verified by
+a deterministic instrument or a live reproduction rather than a judge: the
+marker-protocol join (both modes) and the under-completing prompt (inside
+`sentence` mode).
 
 ## 8. Open items
 
@@ -218,10 +248,25 @@ decision follows from that:
   second read, not a substitute for the recorded one).
 * `prompt_ab.py` already raises on `fallback_attempts`/`primary_failed` for the
   wrapper arm, so it needed no wiring; the gap was in the paired gate.
-* A judge leg that returns nothing produces plausible-looking zeros. The paired
-  harness VOIDs on transport, but `score_arm` does not check whether the judge
-  actually answered — a `tone`/`ans_loose` of 2.5 % is the tell, and the next
-  round should make that a hard error rather than a readable number.
+* A judge leg that returns nothing produces plausible-looking zeros — FIXED in
+  §10 below rather than left as a note.
+
+---
+
+## 10. R414 — a judge leg that answered nothing now REFUSES to publish
+
+`score_arm` already WARNED (`JUDGE TRANSPORT DEGRADED`, R393; `TONE JUDGEMENT
+MISSING`, R408) and then printed the axis table, which the paired gate parsed
+into a delta. `judge_void_reason(judged, repeats)` now returns a reason when
+more than `JUDGE_VOID_FRAC = 0.2` of judged rows came back with no live judge run
+(or no live tone run while criteria parsed); on a hit, `score_arm` writes
+`score-<label>-<mode>.VOID.json` carrying ONLY the judge-free reference axes plus
+the reason, prints the VOID banner, and **exits 3**. `tail_repair_gate.py` treats
+a non-zero exit as "this arm has no scores" and withholds the whole delta table
+(exit 0 with a VOID banner). Same doctrine as `gate_validity`, one leg over: a
+void reading and a real one must not have the same shape. Pinned by
+`tests/test_r414_judge_void_refusal.py` (7 cases, including the transient-failure
+case that must still publish and the fully-cached arm that judges nothing).
 
 ---
 

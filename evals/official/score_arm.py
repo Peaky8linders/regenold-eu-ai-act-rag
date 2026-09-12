@@ -151,6 +151,48 @@ def _criteria_match(v: dict, row: dict) -> bool:
     return not row.get("_revised")
 
 
+#: R414 — above this fraction of judge-dead rows the arm has no judged axes at
+#: all, so the run VOIDs instead of publishing a table. Below it the existing
+#: R393/R408 banners are enough (a couple of transient failures are tolerable and
+#: the rows are not cached).
+JUDGE_VOID_FRAC = 0.2
+
+
+def judge_void_reason(judged: list[dict], repeats: int) -> str:
+    """R414 — why this arm's JUDGED axes must not be published ("" = publishable).
+
+    MEASURED (R413). The wrapper's Claude-Max OAuth expired mid-run, so 39 of 39
+    rows returned NO live judge run. ``score_arm`` printed
+
+        JUDGE TRANSPORT DEGRADED: 39/39 rows (100%) returned NO live judge run
+        and were scored all-False.
+
+    and then printed the axis table anyway — `ans_correctness_loose` 3.76 %,
+    `regulatory_tone` 2.5 % — which the paired gate parsed into a delta table.
+    Detection without REFUSAL is what let a dead judge read as a result, so this
+    returns a reason and the caller withholds the judged axes and exits 3. The
+    reference axes are judge-free and are still written to the artifact.
+    """
+    if not judged:
+        return ""
+    n = len(judged)
+    dead = [j for j in judged if not j.get("_judge_runs", 0)]
+    if dead and len(dead) / n > JUDGE_VOID_FRAC:
+        return (
+            f"{len(dead)}/{n} rows ({len(dead) / n:.0%}) returned NO live judge "
+            "run and would be scored all-False"
+        )
+    tone_dead = [
+        j for j in judged if j.get("_judge_runs", 0) and not j.get("_tone_runs", 0)
+    ]
+    if tone_dead and len(tone_dead) / n > JUDGE_VOID_FRAC:
+        return (
+            f"{len(tone_dead)}/{n} rows ({len(tone_dead) / n:.0%}) returned "
+            "criteria but NO live tone run"
+        )
+    return ""
+
+
 def _verdict_complete(v: dict, repeats: int) -> bool:
     """R409 — a verdict is cacheable only when EVERY repetition was live.
 
@@ -400,6 +442,41 @@ def main() -> int:
     all_rows = cached + judged
     by_id = {r["id"]: r for r in all_rows}
     ordered = [by_id[r["id"]] for r in rows if r["id"] in by_id]
+
+    void_reason = judge_void_reason(judged, a.repeats)
+    if void_reason:
+        # R414 — REFUSE, do not warn. The reference axes are computed from the
+        # reference LISTS and never touch the judge, so they remain valid and are
+        # the only numbers this artifact may carry.
+        res = score_rows(ordered)
+        ref_only = {k: v for k, v in res.items() if k.startswith("ref_")}
+        clean = re.sub(r"[^a-zA-Z0-9_\-]", "_", a.label)
+        out = OUT_DIR / f"score-{clean}-{a.mode}.VOID.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(
+            json.dumps(
+                {
+                    "label": clean,
+                    "mode": a.mode,
+                    "ckpt": str(a.ckpt),
+                    "judge_identity": judge_id,
+                    "judge_valid": False,
+                    "judge_void_reason": void_reason,
+                    "reference_axes": ref_only,
+                    "n": res.get("n"),
+                },
+                indent=1,
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        print("\n" + "!" * 88)
+        print("VOID JUDGE RUN — THE JUDGED AXES ARE WITHHELD (exit 3).")
+        print(f"  reason: {void_reason}")
+        print(f"  reference axes (judge-free, still valid): {ref_only}")
+        print(f"  artifact: {out.name}")
+        print("!" * 88)
+        return 3
 
     res = score_rows(ordered)
     ref = OFFICIAL[a.mode]

@@ -1,24 +1,24 @@
 {
   "splice": {
-    "ans_correctness_loose": 75.9,
-    "ans_correctness_strict": 52.5,
-    "ans_conciseness": 75.4,
+    "ans_correctness_loose": 66.9,
+    "ans_correctness_strict": 45.0,
+    "ans_conciseness": 77.7,
     "ref_correctness_loose": 90.5,
-    "ref_correctness_strict": 72.5,
-    "ref_conciseness": 55.0,
-    "regulatory_tone": 92.5,
-    "resp_speed": 94.3,
-    "overall": 74.5
+    "ref_correctness_strict": 75.2,
+    "ref_conciseness": 53.0,
+    "regulatory_tone": 95.0,
+    "resp_speed": 97.4,
+    "overall": 72.7
   },
   "sentence": {
-    "ans_correctness_loose": 69.9,
-    "ans_correctness_strict": 50.0,
-    "ans_conciseness": 76.2,
+    "ans_correctness_loose": 68.4,
+    "ans_correctness_strict": 45.0,
+    "ans_conciseness": 80.7,
     "ref_correctness_loose": 90.5,
-    "ref_correctness_strict": 69.8,
-    "ref_conciseness": 53.3,
+    "ref_correctness_strict": 75.2,
+    "ref_conciseness": 52.6,
     "regulatory_tone": 92.5,
-    "resp_speed": 94.0,
-    "overall": 72.7
+    "resp_speed": 97.3,
+    "overall": 72.9
   }
 }

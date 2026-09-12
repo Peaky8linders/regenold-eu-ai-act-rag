@@ -377,6 +377,7 @@ def main() -> int:
 
     print("\n=== PART 3 — official rubric, all eight axes ===")
     scores: dict[str, dict[str, float]] = {}
+    void: list[str] = []
     for arm in ARMS:
         ckpt = OUT / f"arm-{arm}.ckpt.jsonl"
         if not ckpt.exists():
@@ -395,7 +396,27 @@ def main() -> int:
         proc = subprocess.run(cmd, capture_output=True, text=True, cwd=str(REPO))
         printed = proc.stdout + proc.stderr
         (OUT / f"score-arm-{arm}.log").write_text(printed, encoding="utf-8")
+        # R414 — ``score_arm`` exits 3 when its JUDGE leg answered nothing and
+        # withholds the judged axes. Parsing its table anyway is how a dead judge
+        # became an arm delta in R413, so a refused arm carries NO scores and the
+        # delta table below is withheld.
+        if proc.returncode != 0:
+            void.append(
+                f"{arm}: score_arm exited {proc.returncode} (judge leg refused — "
+                "see the VOID marker in its log)"
+            )
+            scores[arm] = {}
+            continue
         scores[arm] = _score_lines(printed)
+
+    if void:
+        print("\n" + "!" * 78)
+        print("VOID — ARM DELTAS ARE WITHHELD.")
+        for reason in void:
+            print(f"  VOID: {reason}")
+        print("  Fix the judge transport and re-run; the row checkpoints are kept.")
+        print("!" * 78)
+        return 3
 
     if len(scores) == 2:
         a, b = scores["splice"], scores["sentence"]

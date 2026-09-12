@@ -1086,10 +1086,13 @@ Concise record of the applied fixes; full rationale in `docs/reviews/`:
   prompt that HEDGED where the provision should be named (rg_034: `... available
   to the Court` was completed as `... would instead derive from ...`, 4/4 → 0/4;
   it now names **Article 100(5)** and its cancel/reduce/increase powers). The
-  rung ORDER stays opt-in (`REGENOLD_STAGE2_TAIL_REPAIR_MODE`): the 8-axis judge
-  leg for the reordered rungs came back VOID (the wrapper's Claude-Max OAuth
-  expired mid-run, `ans_loose` 3.76 %/`tone` 2.5 %), so the default keeps the
-  legacy order plus the join fix.
+  rung ORDER stays opt-in (`REGENOLD_STAGE2_TAIL_REPAIR_MODE`): re-read on a
+  VALID leg (wrapper forced down so BOTH arms are Bedrock, judge
+  `eu.anthropic.claude-opus-4-6-v1`, 82 symmetric fallbacks, 39/40 rows
+differing) the reordered rungs are a **WASH** — OVERALL 72.7 → 72.9 (+0.2 pp,
+  inside 3-repeat noise) bought with `regulatory_tone` −2.5 pp, while
+  `ans_loose` +1.5 and `ans_conciseness` +3.0. A wash does not ship, so the
+  default keeps the legacy order plus the join fix.
 * **R413 — void-run detection in the paired gate.** `evals.harness.gate_validity`
   refuses to report deltas when either arm was served by the FALLBACK transport,
   when an off-contract transport was refused, when no Stage-2 completion landed,
