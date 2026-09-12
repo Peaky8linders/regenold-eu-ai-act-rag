@@ -290,4 +290,26 @@ the outage message, then:
 | `REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN` (default OFF) | `app/engines/_graph_rag_impl.py` | done |
 | `history_turn_count` param + `_engine_cache_key` registration | `app/engines/_graph_rag_impl.py`, `app/routes/regenold.py` | done |
 | tests | `tests/test_r411_mention_vs_ask.py`, `tests/test_r411_stage2_full_system.py` | 21 + 12 pass |
-| instruments | `docs/measurements/r411/{member_recall_probe,ref_minimality_probe}.py` | done |
+| instruments | `docs/measurements/r411/{member_recall_probe,ref_minimality_probe,live_prod_check}.py` | done |
+
+### 5.6 Ship record and live verification (this round)
+
+* **PR #415** merged to `main` as `7bf45da`; both CI gates green on a clean clone
+  (Deployable 37 s, Test suite 2 m 33 s). Full suite **7922 passed / 2 skipped**.
+* **Production live on `7bf45dac1239`**, `/healthz` `status: ok`.
+* `docs/measurements/r411/live_prod_check.py` — **ALL CHECKS PASSED**:
+
+  | case | before (previous deploy) | after |
+  | :--- | :--- | :--- |
+  | *"If a provider relies on the Article 6(3) derogation for an Annex III system, what documentation and registration duties apply?"* | the `rg_031` classification verdict; refs `['Article 49.2', 'Article 6.3', 'Article 113.3']` | **not** the verdict; refs `['Article 6.3', 'Annex III.7.c', 'Article 5.1.d', 'Annex I']` — **Art 113.3 gone** |
+  | *"Is an AI system used to structure or deduplicate information for an Annex III use case considered high-risk?"* | verdict (correct) | verdict (correct), refs `['Article 6.3.a', 'Article 49.2', 'Annex III.7.b']` — **intercept recall intact** |
+
+* **RESIDUAL, recorded rather than hidden.** The duties question now falls through to the
+  normal path, and that path answers with the Article 6(1)/6(2) classification routes —
+  naming neither Article 6(4) nor Article 49(2), the duties actually asked about. That is
+  **out of scope for the mention gate** (the gate's guarantee is that a mention no longer
+  hijacks Stage-2, which it now meets) but it is a real relevance gap in the fallback
+  path and belongs on the next round's list. Also note the probe's first cut asserted the
+  verdict on the phrase "not considered high-risk"; the live wording is "is not
+  high-risk", so it reported a false failure of the intercept's own recall. Assert the
+  phrase the verdict actually uses.
