@@ -1,0 +1,134 @@
+{
+  "easy-live (n=110 gold)": [
+    {
+      "candidate": "A drop heads the prose never cites (R411 form)",
+      "heads_removed": 17,
+      "expected_lost": 4,
+      "lossless": false,
+      "axes": {
+        "ref_correctness_loose": 81.86274509803921,
+        "ref_correctness_strict": 56.36554621848739,
+        "ref_conciseness": 40.9433551198257
+      },
+      "overall": 68.681324658371
+    },
+    {
+      "candidate": "B drop heads confined to an enumeration dump",
+      "heads_removed": 16,
+      "expected_lost": 2,
+      "lossless": false,
+      "axes": {
+        "ref_correctness_loose": 83.82352941176471,
+        "ref_correctness_strict": 57.77077497665733,
+        "ref_conciseness": 41.32952069716776
+      },
+      "overall": 69.17832534366154
+    },
+    {
+      "candidate": "C drop heads whose last mention is past 70% of the prose",
+      "heads_removed": 98,
+      "expected_lost": 34,
+      "lossless": false,
+      "axes": {
+        "ref_correctness_loose": 60.13071895424837,
+        "ref_correctness_strict": 48.370681605975726,
+        "ref_conciseness": 47.85539215686274
+      },
+      "overall": 66.10806063039124
+    },
+    {
+      "candidate": "D cap the list at the median gold size K=1",
+      "heads_removed": 166,
+      "expected_lost": 54,
+      "lossless": false,
+      "axes": {
+        "ref_correctness_loose": 44.77124183006536,
+        "ref_correctness_strict": 46.73202614379085,
+        "ref_conciseness": 85.75708061002179
+      },
+      "overall": 68.23994981983394
+    },
+    {
+      "baseline_overall": 68.91873108949058,
+      "baseline": {
+        "ref_correctness_loose": 85.7843137254902,
+        "ref_correctness_strict": 57.67273576097106,
+        "ref_conciseness": 39.254901960784316
+      },
+      "emitted": 268,
+      "excess": 162,
+      "rows": 102,
+      "ceilings": {
+        "never-cited": 13,
+        "dump-only": 14,
+        "late-mention": 64
+      }
+    }
+  ],
+  "hard-ledger (R407)": [
+    {
+      "candidate": "A drop heads the prose never cites (R411 form)",
+      "heads_removed": 17,
+      "expected_lost": 5,
+      "lossless": false,
+      "axes": {
+        "ref_correctness_loose": 90.68627450980392,
+        "ref_correctness_strict": 62.406629318394025,
+        "ref_conciseness": 40.042755991285404
+      },
+      "overall": 70.26115137349387
+    },
+    {
+      "candidate": "B drop heads confined to an enumeration dump",
+      "heads_removed": 10,
+      "expected_lost": 1,
+      "lossless": false,
+      "axes": {
+        "ref_correctness_loose": 94.6078431372549,
+        "ref_correctness_strict": 64.73155929038282,
+        "ref_conciseness": 41.65985838779957
+      },
+      "overall": 71.30965844286288
+    },
+    {
+      "candidate": "C drop heads whose last mention is past 70% of the prose",
+      "heads_removed": 109,
+      "expected_lost": 47,
+      "lossless": false,
+      "axes": {
+        "ref_correctness_loose": 56.699346405228766,
+        "ref_correctness_strict": 45.326797385620914,
+        "ref_conciseness": 44.80528322440087
+      },
+      "overall": 64.55962819874244
+    },
+    {
+      "candidate": "D cap the list at the median gold size K=1",
+      "heads_removed": 175,
+      "expected_lost": 62,
+      "lossless": false,
+      "axes": {
+        "ref_correctness_loose": 46.895424836601315,
+        "ref_correctness_strict": 49.183006535947705,
+        "ref_conciseness": 85.75708061002179
+      },
+      "overall": 69.0764759715468
+    },
+    {
+      "baseline_overall": 71.06258182828799,
+      "baseline": {
+        "ref_correctness_loose": 95.58823529411765,
+        "ref_correctness_strict": 64.4047619047619,
+        "ref_conciseness": 40.30691721132898
+      },
+      "emitted": 277,
+      "excess": 160,
+      "rows": 102,
+      "ceilings": {
+        "never-cited": 12,
+        "dump-only": 9,
+        "late-mention": 62
+      }
+    }
+  ]
+}

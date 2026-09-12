@@ -1,0 +1,313 @@
+{
+  "arms": {
+    "splice": {
+      "n": 40,
+      "glue_rows": 17,
+      "glue_tokens": 17,
+      "fabricated_coord_rows": 8,
+      "lost_citation_rows": 1,
+      "citations_recovered": 1,
+      "citations_lost_vs_truncated": 3
+    },
+    "sentence": {
+      "n": 40,
+      "glue_rows": 0,
+      "glue_tokens": 0,
+      "fabricated_coord_rows": 4,
+      "lost_citation_rows": 1,
+      "citations_recovered": 4,
+      "citations_lost_vs_truncated": 1
+    }
+  },
+  "details": [
+    {
+      "arm": "splice",
+      "id": "rg_003",
+      "glue": [
+        "stillregister"
+      ],
+      "fabricated_coords": [],
+      "lost_citations": [],
+      "tail": "llregister the system in the EU database under Article 49(2) before placing it on the market or putting it into service."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_005",
+      "glue": [
+        "requiresappropriate"
+      ],
+      "fabricated_coords": [],
+      "lost_citations": [],
+      "tail": " means for meeting these obligations, including whether to deploy post-hoc explanation methods, is left to the provider."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_007",
+      "glue": [
+        "unionharmonisation"
+      ],
+      "fabricated_coords": [],
+      "lost_citations": [],
+      "tail": "dergo third-party conformity assessment under that legislation \u2014 which a standalone one-to-one verification tool is not."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_009",
+      "glue": [
+        "periodappropriate"
+      ],
+      "fabricated_coords": [],
+      "lost_citations": [],
+      "tail": "less provided otherwise in applicable Union or national law, in particular Union law on the protection of personal data."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_015",
+      "glue": [
+        "criminaloffence"
+      ],
+      "fabricated_coords": [],
+      "lost_citations": [],
+      "tail": "e system is available to the public to report a criminaloffence, in which case the transparency duty continues to apply."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_017",
+      "glue": [
+        "lawenforcement"
+      ],
+      "fabricated_coords": [],
+      "lost_citations": [],
+      "tail": "es the closed list of serious criminal offences that can justify one of the permitted derogations from that prohibition."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_022",
+      "glue": [
+        "separatelyunder"
+      ],
+      "fabricated_coords": [],
+      "lost_citations": [],
+      "tail": "sk systems have no mandatory duties under the Act, and general-purpose AI models are governed separatelyunder Chapter V."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_024",
+      "glue": [],
+      "fabricated_coords": [
+        "annex I",
+        "article 5",
+        "article 50",
+        "article 6(1)"
+      ],
+      "lost_citations": [],
+      "tail": "I product-safety route under Article 6(1), the prohibitions in Article 5, or the transparency obligations in Article 50."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_034",
+      "glue": [],
+      "fabricated_coords": [
+        "article 100(5)"
+      ],
+      "lost_citations": [],
+      "tail": "an Union unlimited jurisdiction to review such decisions and empowers it to cancel, reduce or increase the fine imposed."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_039",
+      "glue": [
+        "hasundergone"
+      ],
+      "fabricated_coords": [],
+      "lost_citations": [],
+      "tail": "s of human review or editorial control and a natural or legal person holds editorial responsibility for its publication."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_041",
+      "glue": [
+        "bodymust"
+      ],
+      "fabricated_coords": [],
+      "lost_citations": [],
+      "tail": "erprises. Where an SME opts to use that form, the notified bodymust accept it for the purposes of conformity assessment."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_045",
+      "glue": [
+        "themarket"
+      ],
+      "fabricated_coords": [
+        "article 26(5)"
+      ],
+      "lost_citations": [],
+      "tail": "r distributor and themarket surveillance authority, and suspend the use of the system, in accordance with Article 26(5)."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_049",
+      "glue": [
+        "thecommission"
+      ],
+      "fabricated_coords": [],
+      "lost_citations": [],
+      "tail": " drawing up of such codes of conduct, taking into account the specific interests and needs of SMEs, including start-ups."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_051",
+      "glue": [],
+      "fabricated_coords": [
+        "article 24",
+        "article 50"
+      ],
+      "lost_citations": [
+        "annex v",
+        "article 43",
+        "article 47"
+      ],
+      "tail": "n and biometric-categorisation systems must inform exposed persons; deepfakes and AI-generated content must be labelled."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_062",
+      "glue": [
+        "markingobligations"
+      ],
+      "fabricated_coords": [
+        "article 16"
+      ],
+      "lost_citations": [],
+      "tail": "onformity assessment, declaration of conformity, or CE markingobligations of Article 16, which remain with the provider."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_064",
+      "glue": [
+        "theprovisions"
+      ],
+      "fabricated_coords": [],
+      "lost_citations": [],
+      "tail": "de the material excerpted for this question, and I would need those provisions before stating the applicable safeguards."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_067",
+      "glue": [
+        "theirsources"
+      ],
+      "fabricated_coords": [],
+      "lost_citations": [],
+      "tail": " the AI Office without undue delay, and adequate cybersecurity protection for the model and its physical infrastructure."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_069",
+      "glue": [
+        "andthat"
+      ],
+      "fabricated_coords": [],
+      "lost_citations": [],
+      "tail": "structions for use accompany it, as well as that the provider has appointed an authorised representative where required."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_071",
+      "glue": [
+        "andannex"
+      ],
+      "fabricated_coords": [],
+      "lost_citations": [],
+      "tail": "ers or produces deepfake-style output must satisfy both the Chapter III requirements and the relevant disclosure duties."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_073",
+      "glue": [],
+      "fabricated_coords": [
+        "annex Il"
+      ],
+      "lost_citations": [],
+      "tail": " the lift under its Annex Ilegislation, rather than the mere presence of AI in the lift, that triggers high-risk status."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_079",
+      "glue": [],
+      "fabricated_coords": [
+        "article 73(6)"
+      ],
+      "lost_citations": [],
+      "tail": "ltering the system in a way that would prejudice any subsequent evaluation of the causes before informing the authority."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_083",
+      "glue": [],
+      "fabricated_coords": [
+        "article 49",
+        "article 71"
+      ],
+      "lost_citations": [],
+      "tail": "stems \u2014 fall away, meaning the third option is correct: it is neither high-risk nor subject to EU database registration."
+    },
+    {
+      "arm": "splice",
+      "id": "rg_085",
+      "glue": [
+        "nothigh"
+      ],
+      "fabricated_coords": [],
+      "lost_citations": [],
+      "tail": "e drone's toy character adds no further obligation beyond the Article 50 transparency duties where they happen to apply."
+    },
+    {
+      "arm": "sentence",
+      "id": "rg_024",
+      "glue": [],
+      "fabricated_coords": [
+        "annex I",
+        "article 6(1)"
+      ],
+      "lost_citations": [],
+      "tail": "ion listed in Annex I AND that product must undergo a third-party conformity assessment under that sectoral legislation."
+    },
+    {
+      "arm": "sentence",
+      "id": "rg_053",
+      "glue": [],
+      "fabricated_coords": [
+        "annex XI",
+        "annex XII",
+        "article 25",
+        "article 3(63)"
+      ],
+      "lost_citations": [
+        "article 53"
+      ],
+      "tail": "the base model's compute (or one-third of the 10^25 systemic threshold, ~3.3\u00d710^24 FLOPs, when base compute is unknown)."
+    },
+    {
+      "arm": "sentence",
+      "id": "rg_057",
+      "glue": [],
+      "fabricated_coords": [
+        "article 78"
+      ],
+      "lost_citations": [],
+      "tail": "uding any available judicial remedy under Article 78 of Regulation (EU) 2019/1020, to which Article 85 expressly refers."
+    },
+    {
+      "arm": "sentence",
+      "id": "rg_083",
+      "glue": [],
+      "fabricated_coords": [
+        "article 49"
+      ],
+      "lost_citations": [],
+      "tail": "gistration obligation in Article 49 applies only to high-risk systems, there is no need to report it in the EU database."
+    }
+  ]
+}

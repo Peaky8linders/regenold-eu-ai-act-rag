@@ -156,16 +156,28 @@ class TestGuardStage2Truncation:
 # Repair — _attempt_stage2_tail_repair (real splice, stubbed provider call)
 # ---------------------------------------------------------------------------
 class TestAttemptStage2TailRepair:
+    """The R357 blind-splice arm, pinned to its own mode.
+
+    R413 added a second mode (``REGENOLD_STAGE2_TAIL_REPAIR_MODE=sentence``)
+    that replaces the cut sentence instead of concatenating a bare tail. These
+    tests describe the SPLICE arm, so they pin the mode explicitly rather than
+    inheriting whatever the current default is.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _pin_splice_mode(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("REGENOLD_STAGE2_TAIL_REPAIR_MODE", "splice")
+
     def _ctx(self) -> GraphContext:
         return GraphContext(question="q")
 
     def test_clause_cut_splices_at_word_boundary(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # The cut lands BETWEEN words, so the model leads the tail with a space.
+        # The cut lands BETWEEN words, which the model states with GAP:.
         monkeypatch.setattr(
             "app.engines.graph_rag._stage2_complete",
-            lambda **kw: " under Article 6(1) if it is a medical device.",
+            lambda **kw: "GAP:under Article 6(1) if it is a medical device.",
         )
         out = _attempt_stage2_tail_repair(
             "q",
@@ -183,10 +195,13 @@ class TestAttemptStage2TailRepair:
     def test_mid_word_cut_splices_without_space(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # The cut lands MID-WORD, so the model continues the word (no space).
+        # R413 — the cut lands MID-WORD, which the model states with CONT:. The
+        # R357 shape inferred this from a MISSING leading space, and the
+        # provider trims completions, so the same tail arrived as a glued word
+        # (live: "websiteArticle 50(1)"). A marker survives the trim.
         monkeypatch.setattr(
             "app.engines.graph_rag._stage2_complete",
-            lambda **kw: "t is a safety component of a regulated product.",
+            lambda **kw: "CONT:t is a safety component of a regulated product.",
         )
         out = _attempt_stage2_tail_repair(
             "q",
@@ -202,6 +217,29 @@ class TestAttemptStage2TailRepair:
             "safety component of a regulated product."
         )
         assert _looks_incomplete_final_sentence(out) is False
+
+    def test_unmarked_tail_joins_on_a_word_boundary(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # R413 — a tail that ignores the marker protocol is joined with a space.
+        # Guessing the OTHER way round is what manufactured the glued word; a
+        # word-boundary join fails visibly (two words) rather than silently
+        # (one nonsense word).
+        monkeypatch.setattr(
+            "app.engines.graph_rag._stage2_complete",
+            lambda **kw: "Article 6(1) applies if it is a medical device.",
+        )
+        out = _attempt_stage2_tail_repair(
+            "q",
+            "The system would be high-risk where it is a safety component of a "
+            "regulated product",
+            "kg",
+            self._ctx(),
+        )
+        assert out is not None
+        assert out.endswith(
+            "regulated product Article 6(1) applies if it is a medical device."
+        )
 
     def test_repeat_model_output_rejected(
         self, monkeypatch: pytest.MonkeyPatch

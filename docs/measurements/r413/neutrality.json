@@ -1,0 +1,25 @@
+{
+  "corpora": {
+    "official-live": {
+      "checked": 110,
+      "byte_identical": 110,
+      "naturally_truncated": 0
+    },
+    "easyhard-r411-fullsys-full-A.ckpt": {
+      "checked": 132,
+      "byte_identical": 132,
+      "naturally_truncated": 0
+    },
+    "easyhard-r411-fullsys-hard-A.ckpt": {
+      "checked": 37,
+      "byte_identical": 37,
+      "naturally_truncated": 0
+    },
+    "easyhard-r411-fullsys-singleturn-easy-A.ckpt": {
+      "checked": 134,
+      "byte_identical": 134,
+      "naturally_truncated": 0
+    }
+  },
+  "natural_truncations": []
+}
