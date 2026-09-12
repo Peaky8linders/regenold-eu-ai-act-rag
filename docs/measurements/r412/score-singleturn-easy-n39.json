@@ -1,0 +1,28 @@
+{
+  "label": "r411-fullsys-singleturn-easy",
+  "n": 39,
+  "arm_a": {
+    "ref_loose": 0.8717948717948718,
+    "ref_strict": 0.4332691524999217,
+    "ref_conc": 0.20251023190507317,
+    "kw_recall": 0.9316239316239316,
+    "tone": 1.0,
+    "gold_dropped_head": 8,
+    "lat_p50": 37.39691220001259,
+    "lat_mean": 38.20948956410314,
+    "errors": 0
+  },
+  "arm_b": {
+    "ref_loose": 0.9615384615384616,
+    "ref_strict": 0.583072483072483,
+    "ref_conc": 0.34808720567017826,
+    "kw_recall": 0.9572649572649573,
+    "tone": 1.0,
+    "gold_dropped_head": 3,
+    "lat_p50": 21.929362700000638,
+    "lat_mean": 24.3483317384615,
+    "errors": 0
+  },
+  "faster_rows": 37,
+  "unpaired": []
+}

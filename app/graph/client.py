@@ -61,6 +61,77 @@ _STATS_LABELS = frozenset(
 )
 
 
+# R412 — the driver logs every DBMS notification it receives through
+# ``neo4j.notifications`` at WARNING, embedding the *full Cypher text* in the
+# message. Our vector-recall query calls ``db.index.vector.queryNodes``, which
+# Neo4j 5+/6 flags as DEPRECATION on every execution, so a single benchmark row
+# printed that ~1.3 kB query three times. Measured: it dominated the run log and
+# buried genuine warnings at the same level.
+#
+# The signal is real (the procedure IS deprecated), so it must not be silenced
+# outright — only de-duplicated: the first occurrence of each distinct
+# notification is kept at its original level and every repeat is dropped. Scope
+# is deliberately narrow: only the non-actionable informational classes are
+# de-duplicated. SECURITY stays fully verbose, so a repeated security
+# notification can never be hidden by the first one.
+_NOTIFICATION_NOISE_CLASSIFICATIONS = frozenset(
+    {"DEPRECATION", "HINT", "GENERIC", "PERFORMANCE", "UNRECOGNIZED"}
+)
+
+
+class _NotificationDedupeFilter(logging.Filter):
+    """Keep the first record per distinct DBMS notification, drop the repeats."""
+
+    def __init__(self) -> None:
+        super().__init__("neo4j.notifications")
+        self._seen: set[tuple[str, str]] = set()
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _key(record: logging.LogRecord) -> tuple[str, str] | None:
+        """``(classification, status_description)`` for a driver record.
+
+        The driver logs ``("Received notification from DBMS server: %s",
+        NotificationPrinter(...))``, and the printer carries the raw
+        ``GqlStatusObject`` on ``.notification``. Keying on that object rather
+        than the formatted message is what makes the de-duplication work: the
+        formatted message embeds the query text, so every distinct query would
+        otherwise read as a distinct notification.
+        """
+        args = getattr(record, "args", ())
+        first = args[0] if isinstance(args, tuple) and args else None
+        notification = getattr(first, "notification", None)
+        if notification is None:
+            return None
+        classification = str(getattr(notification, "classification", "") or "")
+        if classification.split(".")[-1] not in _NOTIFICATION_NOISE_CLASSIFICATIONS:
+            return None
+        return (classification, str(getattr(notification, "status_description", "") or ""))
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        key = self._key(record)
+        if key is None:
+            return True
+        with self._lock:
+            if key in self._seen:
+                return False
+            self._seen.add(key)
+        return True
+
+
+def install_notification_dedupe() -> bool:
+    """Attach the de-duplicating filter to ``neo4j.notifications`` once.
+
+    Idempotent and safe to call before the driver exists. Returns ``True`` when
+    this call installed the filter, ``False`` when a previous call already did.
+    """
+    target = logging.getLogger("neo4j.notifications")
+    if any(isinstance(f, _NotificationDedupeFilter) for f in target.filters):
+        return False
+    target.addFilter(_NotificationDedupeFilter())
+    return True
+
+
 def _neo4j_available() -> bool:
     """Return True if the optional ``neo4j`` driver package is importable."""
     try:
@@ -129,6 +200,10 @@ class GraphClient:
             # ``_should_activate`` guard above already confirmed it's
             # importable, so failures here are environmental.
             import neo4j
+
+            # Install BEFORE the first query so a single statement cannot emit
+            # its notification storm before de-duplication is in place.
+            install_notification_dedupe()
 
             self._driver = neo4j.GraphDatabase.driver(
                 settings.uri,

@@ -1012,15 +1012,45 @@ def _openai_wrapper_complete_for_graph_rag(
     # (the 9-turn final and the pushback) read >= 2. Same predicate
     # ``answer_router.is_multi_turn`` uses.
     #
-    # Ships DEFAULT OFF and is NOT a licence to flip
-    # ``REGENOLD_STAGE2_FULL_SYSTEM``: this lever still needs its own paired gate
-    # on the EASY split (a refs/row drop of 5.08 -> 4.67 on the n=12 probe is a
-    # ``ref_loose`` risk that n=12 cannot settle). Registered in
+    # R412 — GATED AND SHIPPED, default ON.
+    #
+    # The paired easy-split gate on a wrapper-served sample (n=39 of the 95-row
+    # easy split; `docs/measurements/r412/score-singleturn-easy-n39.json`) came
+    # back a win on EVERY axis, with no reference loss to trade away:
+    #
+    #     metric            baseline   branch     delta
+    #     ref_loose           0.8718    0.9615   +0.0897
+    #     ref_strict          0.4333    0.5831   +0.1498
+    #     ref_conc            0.2025    0.3481   +0.1456
+    #     kw_recall           0.9316    0.9573   +0.0256
+    #     gold_dropped_head        8         3        -5   (passes hard rule #8)
+    #     lat p50 (s)          37.40     21.93   -15.47   (37 of 39 rows faster)
+    #
+    # Two earlier readings disagreed with this one and both are explained rather
+    # than averaged away: the n=12 probe's flat reference axes were a small-sample
+    # read of a 12-row slice, and a full 95+95 paired run that appeared to show NO
+    # speedup at all was **VOID** — its log carried 189 ``bedrock_auto_fallback``
+    # lines, meaning the wrapper was down and Bedrock (which always receives the
+    # full ``system``) served BOTH arms, so the arms were byte-identical. The
+    # n=39 run above carries 0.
+    #
+    # This is NOT a licence to flip ``REGENOLD_STAGE2_FULL_SYSTEM``: that flag
+    # also covers the multi-turn pushback turns, where the same 58 %-shorter
+    # answer drops points turn 1 established (``gold_drop_hd`` 12 -> 18, R411).
+    # Only the ``history_turn_count <= 1`` restriction is safe. Registered in
     # ``_engine_cache_key``.
+    #
+    # Default ON, as an explicit allow-list: unset means ON, and only the falsy
+    # vocabulary turns it off. ``REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN=0``
+    # restores the previous R411 default-OFF behaviour exactly.
+    _single_turn_full_system = (
+        os.getenv("REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN", "1").strip().lower()
+        not in ("0", "false", "no", "off")
+    )
     if (
         history_turn_count is not None
         and history_turn_count <= 1
-        and _env_flag("REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN")
+        and _single_turn_full_system
     ):
         _full_system = True
 
