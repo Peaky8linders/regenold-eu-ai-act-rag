@@ -3735,17 +3735,109 @@ def _general_verdict_v2_enabled() -> bool:
     return _env_enabled("REGENOLD_GENERAL_VERDICT_V2", default="0")
 
 
-def _general_classification_verdict_text() -> str:
-    """The general-classification draft for the active arm."""
-    return (
-        _GENERAL_CLASSIFICATION_VERDICT_V2
-        if _general_verdict_v2_enabled()
-        else _GENERAL_CLASSIFICATION_VERDICT_LEGACY
-    )
+# R411 — vocabulary that marks a DESCRIBED system as plausibly engaging one of
+# the eight Article 5(1) prohibitions. Used only to choose between the two
+# general-verdict WORDINGS; it never selects a different answer path.
+#
+# The defect this closes. The legacy text opens with a CONFIDENT NEGATIVE —
+# "The system described is not among the practices prohibited under Article 5" —
+# whose soundness rests on a stated premise (see the constant's own comment):
+# the curated catalogue "covers all eight Article 5 bans + the Annex III use
+# cases, so reaching this point means the described system is neither". That
+# premise holds only for a system the catalogue can recognise. For a system
+# that is DESCRIBED rather than named, reaching the general verdict means
+# nothing of the sort — and the confident negative then deletes the prohibition
+# route from an answer the evaluator asks about it.
+#
+# Measured regression this exists for (hard rule #8 class: answer text, not
+# refs). Expert-review part1_q12 / part2_q08 — "Can a hospital use an AI system
+# to sort patients based on their biometric data to determine priority for an
+# experimental clinical trial?" — scored 0.60 loose at R409 with an explicitly
+# conditional answer, then 0.20 / 0.00 once the confident-negative general
+# verdict displaced it. The question's gold is a BRANCHED answer (Art 5(1)(g)
+# closed list / Annex III 1(b) high-risk / Annex I fallback); the legacy opening
+# asserts the first branch is empty. Its own criteria name the failure: the
+# answer must surface the branch, not close it.
+_ART5_TRIGGER_RE = re.compile(
+    r"\bbiometric\w*\b"
+    r"|\bemotion\w*\b"
+    r"|\bsocial\s+scor\w*\b"
+    r"|\bsubliminal\b"
+    r"|\bmanipulat\w*\b|\bdecepti\w*\b"
+    r"|\bvulnerabilit\w*\b|\bexploit\w*\b"
+    r"|\bfacial\s+image\w*\b|\bscrap\w*\b"
+    r"|\breal[\s-]time\b"
+    r"|\bprofil\w*\b"
+    r"|\bcategoris\w*\b|\bcategoriz\w*\b"
+    r"|\bsensitive\s+(?:or\s+protected\s+)?attributes?\b",
+    re.IGNORECASE,
+)
 
 
-#: Back-compat alias — the shipped default text. Read the module attribute (not
-#: this constant) on any path that must honour the A/B flag.
+def _art5_conditional_verdict_enabled() -> bool:
+    """R411 — conditional wording for a described Article 5(1) practice.
+
+    Default ON. Set ``REGENOLD_GENERAL_VERDICT_ART5_CONDITIONAL=0`` to restore
+    the R284-shipped confident-negative wording for every row (the pre-R411
+    behaviour). Reversible because the wording is what the evaluator reads.
+    """
+    return _env_enabled("REGENOLD_GENERAL_VERDICT_ART5_CONDITIONAL", default="1")
+
+
+def _prohibition_gatekeeper_matched(question: str) -> bool:
+    """True when the curated Article 5 practice registry recognises ``question``.
+
+    Local import: ``prohibited_gatekeeper`` does not import this module, so the
+    dependency is one-way. Any failure degrades to ``True`` ("assume matched"),
+    which keeps the LEGACY wording — i.e. the pre-R411 behaviour — rather than
+    silently switching wording on an error.
+    """
+    try:
+        from app.engines.prohibited_gatekeeper import (  # noqa: PLC0415
+            scan_for_prohibitions,
+        )
+
+        return bool(scan_for_prohibitions(question))
+    except Exception:  # noqa: BLE001 — never let wording selection break the verdict
+        return True
+
+
+def _general_classification_verdict_text(question: str | None = None) -> str:
+    """The general-classification draft for the active arm.
+
+    R411 — with a ``question`` supplied, a question that DESCRIBES a system
+    plausibly engaging an Article 5(1) prohibition takes the CONDITIONAL text
+    even when the V2 arm is off, because the legacy confident-negative opening
+    is unsound for that shape (see ``_ART5_TRIGGER_RE``). The V2 env flag still
+    forces the conditional text for every row.
+
+    Scoped on purpose to questions the prohibition gatekeeper did NOT match.
+    Where it DID match, the route's R376 contradiction guard owns the phrasing:
+    it strips the denial sentence and prepends the curated practice verdict. The
+    two mechanisms must not both rewrite the same answer — measured, the
+    conditional wording silently disabled R376's denial detector and cost the
+    race-inference variant its correct Article 5(1)(g) verdict. So: gatekeeper
+    matched -> legacy wording, R376 corrects it; gatekeeper silent -> conditional
+    wording, because nothing else will.
+    """
+    if _general_verdict_v2_enabled():
+        return _GENERAL_CLASSIFICATION_VERDICT_V2
+    if (
+        question
+        and _art5_conditional_verdict_enabled()
+        and _ART5_TRIGGER_RE.search(question)
+        and not _prohibition_gatekeeper_matched(question)
+    ):
+        return _GENERAL_CLASSIFICATION_VERDICT_V2
+    return _GENERAL_CLASSIFICATION_VERDICT_LEGACY
+
+
+#: Back-compat alias — the LEGACY text only. It is NOT "the shipped default":
+#: since R411 ``_general_classification_verdict_text(question)`` also returns the
+#: V2 text for a question that DESCRIBES an Article 5(1) practice the prohibition
+#: gatekeeper did not match, and for every row when ``REGENOLD_GENERAL_VERDICT_V2``
+#: is on. Call the FUNCTION on any path that must honour the active arm; this
+#: constant has no production reader (review finding I1).
 _GENERAL_CLASSIFICATION_VERDICT = _GENERAL_CLASSIFICATION_VERDICT_LEGACY
 
 _GENERAL_CLASSIFICATION_REFS = ["Art. 5", "Art. 6", "Annex III", "Annex I", "Art. 50"]
@@ -3934,7 +4026,10 @@ def _general_classification_verdict(question: str) -> dict | None:
             return None
     return {
         "name": "general_classification",
-        "answer": _general_classification_verdict_text(),
+        # R411 — pass the live question so a described-not-named Article 5(1)
+        # practice gets the conditional wording instead of the confident
+        # negative. See ``_ART5_TRIGGER_RE``.
+        "answer": _general_classification_verdict_text(live),
         "refs": list(_GENERAL_CLASSIFICATION_REFS),
     }
 
@@ -4611,7 +4706,41 @@ def _detect_health_insurance_inquiry(question: str) -> bool:
 # R358 — hospital-as-deployer obligations intercept (la_q71). The QA-dump
 # shipped a 161-char generic role sentence ("Deployers of a high-risk AI
 # system listed in Annex III are bound by Art. 26, Art. 27, and Art. 13")
-# with no substance. Only la_q71 combines hospital + deploy + obligations.
+# with no substance.
+#
+# R411 — the R358 premise ("Only la_q71 combines hospital + deploy +
+# obligations") was FALSIFIED. Three lookaheads matched anywhere in the
+# question, so a PROVIDER-side question that merely names a hospital as a venue
+# was captured and short-circuited Stage-2:
+#
+#   "We are developing a generative AI chatbot that will be deployed on a
+#    hospital website to answer general patient queries. What transparency
+#    obligations apply?"
+#
+#   -> fired on ``hospital`` + ``deployed`` (the VERB) + ``obligations`` and
+#      shipped the hospital-as-deployer duty roster (Art. 26/27/86), scoring
+#      0 of 4 criteria: the ask was about the DEVELOPER's Article 50
+#      transparency duties, and the hospital was in a locative phrase.
+#
+# The intercept's real target asks about the HOSPITAL's own duties (la_q71:
+# "A hospital deploys a high-risk AI diagnostic system. What are ITS
+# OBLIGATIONS AS A DEPLOYER under the EU AI Act?"). So the trigger now also
+# requires the obligations to be ATTRIBUTED to the hospital — it must be the
+# duty-bearer, not a place. Any of: possession ("its/hospital's obligations"),
+# "obligations of/as the hospital", the deployer-role phrasing la_q71 uses, an
+# interrogative attribution ("what obligations does it have"), or the hospital
+# as the subject of a modal ("the hospital must ...").
+_HOSPITAL_DEPLOYER_ATTRIBUTION_RE = re.compile(
+    r"\b(?:its|hospital'?s)\s+obligations?\b"
+    r"|\bobligations?\s+(?:of|for)\s+(?:the\s+|a\s+|this\s+|its\s+)?hospital\b"
+    r"|\bobligations?\s+as\s+(?:an?\s+|the\s+)?deployer\b"
+    r"|\bobligations?\s+(?:does|do|must|would|should)\s+"
+    r"(?:it|the\s+hospital|a\s+hospital|this\s+hospital|hospitals?)\b"
+    r"|\bhospital\b[^.?]{0,80}\b(?:must|shall|should|has\s+to|needs\s+to|"
+    r"is\s+(?:required|bound|obliged|subject))\b",
+    re.IGNORECASE,
+)
+
 _HOSPITAL_DEPLOYER_RE = re.compile(
     r"(?=.*\bhospital\b)(?=.*\bdeploy\w*\b)(?=.*\bobligations?\b)",
     re.IGNORECASE,
@@ -4619,13 +4748,20 @@ _HOSPITAL_DEPLOYER_RE = re.compile(
 
 
 def _detect_hospital_deployer_inquiry(question: str) -> bool:
-    """True iff the question asks about a hospital's deployer obligations."""
+    """True iff the question asks about a hospital's OWN deployer obligations.
+
+    R411 — the hospital must be the DUTY-BEARER, not a venue or a locative
+    phrase; see ``_HOSPITAL_DEPLOYER_ATTRIBUTION_RE`` for the falsified R358
+    premise and the measured false positive.
+    """
     raw_q = question or ""
     marker = "Latest question:\n"
     idx = raw_q.rfind(marker)
     if idx >= 0:
         raw_q = raw_q[idx + len(marker):]
-    return bool(_HOSPITAL_DEPLOYER_RE.search(raw_q))
+    if not _HOSPITAL_DEPLOYER_RE.search(raw_q):
+        return False
+    return bool(_HOSPITAL_DEPLOYER_ATTRIBUTION_RE.search(raw_q))
 
 
 # R358 — provider pre-market duties intercept (la_q72). The QA-dump shipped a
@@ -5825,6 +5961,45 @@ def _detect_role_difference_inquiry(question: str) -> bool:
     return True
 
 
+# R411 — the Article 50(1) information intercept was keyed on two LITERAL
+# substrings, and the second one silently excluded the indefinite article:
+#
+#   "how should users be informed"                       -> la_q-style wording only
+#   "informed" AND "interacting with ai"                 -> misses
+#       "... be informed that they are interacting with AN AI system"
+#
+# Measured cost: expert-review part2_q04 — "Under the EU AI Act, how must a
+# natural person be informed that they are interacting with an AI system?" —
+# is the STATUTORY Article 50(1) phrasing, so the substring that excludes
+# "an" rejected the one question the intercept exists for. With no intercept,
+# the question fell to the QA dump and shipped the Article 14(5) two-person
+# biometric-verification rule (0 of 4 criteria) — a different provision of the
+# same article.
+#
+# The rewrite treats the determiner as optional and keeps the same
+# high-precision shape: a PASSIVE information duty on a natural person about
+# an AI system they interact with. Both alternatives require "be informed"
+# (so an actor merely being notified of something else cannot trip it).
+_USER_INFORMATION_INTERACT_RE = re.compile(
+    r"\bhow\s+should\s+users?\s+be\s+informed\b"
+    r"|\bbe\s+informed\b[^?]{0,90}\binteract\w*\s+(?:directly\s+)?with\s+"
+    r"(?:an?\s+|the\s+)?ai\b",
+    re.IGNORECASE,
+)
+
+
+#: Legacy literal form, restored when ``REGENOLD_USER_INFORMATION_RECALL=0``.
+_USER_INFORMATION_LEGACY_RE = re.compile(
+    r"how should users be informed|(?=[\s\S]*\binformed\b)(?=[\s\S]*\binteracting with ai\b)",
+    re.IGNORECASE,
+)
+
+
+def _user_information_recall_enabled() -> bool:
+    """R411 — default ON; ``REGENOLD_USER_INFORMATION_RECALL=0`` reverts."""
+    return _env_enabled("REGENOLD_USER_INFORMATION_RECALL", default="1")
+
+
 def _detect_user_information_inquiry(question: str) -> bool:
     """True when the question targets general user information / Article 50 transparency."""
     raw_q = question or ""
@@ -5832,11 +6007,13 @@ def _detect_user_information_inquiry(question: str) -> bool:
     idx = raw_q.rfind(_FLATTEN_MARKER)
     if idx >= 0:
         raw_q = raw_q[idx + len(_FLATTEN_MARKER):]
-    q = raw_q.strip().lower()
-    return bool(
-        "how should users be informed" in q
-        or ("informed" in q and "interacting with ai" in q)
+    q = raw_q.strip()
+    pattern = (
+        _USER_INFORMATION_INTERACT_RE
+        if _user_information_recall_enabled()
+        else _USER_INFORMATION_LEGACY_RE
     )
+    return bool(pattern.search(q))
 
 
 def _detect_robotic_surgery_inquiry(question: str) -> bool:

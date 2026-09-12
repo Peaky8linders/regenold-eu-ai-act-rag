@@ -404,8 +404,21 @@ _ART5_ANCHOR_RE = re.compile(r"\bArticle\s+5\b|\bArt\.\s*5\b", re.I)
 #: Denial shapes, anchored on the words that carry the negation. Each must be
 #: unambiguous on its own: a sentence matching one of these is asserting that
 #: Article 5 does NOT bite, which is the claim the gatekeeper contradicts.
+# R411 — the R284 legacy denial ("... not among the practices prohibited under
+# Article 5") and the R285/R411 CONDITIONAL wording ("... is not one of the
+# practices EXHAUSTIVELY prohibited by Article 5 ...") are the same claim, but
+# the original pattern pinned the words "practices" and "prohibit" adjacent,
+# so the adverb broke the match. Measured consequence: flipping the verdict to
+# the conditional wording silently DISABLED this guard, and a question that
+# states the discriminating fact ("... where the system infers each patient's
+# race") lost the curated Article 5(1)(g) verdict it had been getting — the
+# guard never fired, so nothing contradicted the branch-less text. The
+# intervening adverbs are now allowed.
 _PROHIBITION_DENIAL_RES = (
-    re.compile(r"\bnot\s+(?:among|one\s+of)\s+the\s+(?:practices\s+)?prohibit", re.I),
+    re.compile(
+        r"\bnot\s+(?:among|one\s+of)\s+the\s+(?:practices\s+)?(?:\w+\s+){0,2}prohibit",
+        re.I,
+    ),
     re.compile(r"\b(?:is|are|was|were)\s+not\s+prohibit", re.I),
     re.compile(r"\bnot\s+prohibited\s+(?:under|by)\b", re.I),
     re.compile(r"\bdoes\s+not\s+(?:fall|come)\s+(?:with)?in(?:to)?\b", re.I),

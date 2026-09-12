@@ -272,8 +272,45 @@ run can only measure Stage-2 sampling noise. The check that catches this is one 
 the primary leg actually serving? If `bedrock_auto_fallback` appears in the log, the A/B
 is void.
 
-To run it: re-seed the wrapper's OAuth token (`login.bat`) and verify with the curl in
-the outage message, then:
+**R411b — re-checked after the login was re-seeded (2026-09-12). The diagnosis CHANGED;
+the lever is still blocked, for a different reason.**
+
+What was re-verified, in order, so the block is not misattributed again:
+
+| layer | state | evidence |
+| :--- | :--- | :--- |
+| DNS / Cloudflare edge | up | `nslookup` → Cloudflare A records |
+| Cloudflare Access | up, token accepted | a bare `curl` returns the Access HTML challenge; with `CF-Access-Client-Id`/`-Secret` (both in `.env`) it reaches the app |
+| wrapper process | up and healthy | `GET /health` → `{"status":"healthy",...}`; `GET /v1/models` lists models |
+| wrapper host | **local** | `127.0.0.1:8000` answers identically to the tunnel; the tunnel just fronts this box |
+| Claude login | **valid** | `~/.claude/.credentials.json` mtime `11:41`, `subscriptionType=max`, `rateLimitTier=default_claude_max_5x`, account `bacu.andrei@gmail.com` |
+| Claude Max quota | **EXHAUSTED** | `claude -p` → *"You've hit your session limit · resets 2:10pm (Europe/Bucharest)"* — **account-wide**, identical on `claude-haiku-4-5` and the default Sonnet |
+
+So every request through the wrapper returns `HTTP 500 {"error":{"message":"No response from Claude Code"}}`
+for **all** models (opus-4-6, sonnet-4-6, sonnet-4-5, haiku-4-5 all tried). The login is
+not the problem any more; the subscription window is.
+
+**The unblock that exists, and why it is not mine to take.** The wrapper's own `.env`
+(`D:/Claude Projects/claude-code-openai-wrapper/.env`) is configured:
+
+```
+CLAUDE_AUTH_METHOD=cli          # <- forces the Claude Code CLI / Max subscription
+WRAPPER_FORWARD_SYSTEM_PROMPT=1 # <- the caller's system prompt IS forwarded, so the lever is meaningful
+ANTHROPIC_API_KEY=SET(108)      # <- a working API key sits UNUSED
+AWS_BEARER_TOKEN_BEDROCK=EMPTY
+```
+
+`CLAUDE_AUTH_METHOD=api_key` (or a second instance on another port with that override)
+would bypass the Max window and use the API key that is already present — at per-token
+API cost, on an account with `hasExtraUsageEnabled: false`. That is a billing decision on
+a repo outside this project, so it is **escalated, not taken**.
+
+The other fact worth recording: `WRAPPER_FORWARD_SYSTEM_PROMPT=1` confirms the wrapper does
+not drop the system prompt, so the R383 persona cap in *our* code is the whole mechanism —
+the lever is real, not inert for a second reason.
+
+To run it once a working Stage-2 leg exists, verify the curl in the outage message
+returns 200 first, then:
 
 ```bash
 .venv/Scripts/python.exe -m evals.harness.easyhard_ab --local \
@@ -313,3 +350,100 @@ the outage message, then:
   verdict on the phrase "not considered high-risk"; the live wording is "is not
   high-risk", so it reported a false failure of the intercept's own recall. Assert the
   phrase the verdict actually uses.
+
+## 6. Re-validation record (2026-09-12, tunnel re-check round)
+
+Everything that does **not** need the Claude-Max leg was re-run from a clean tree at
+`9e59f8b` and reproduces the recorded readings exactly — no drift, so the numbers in §5
+are still the current numbers:
+
+| check | command | result | recorded | match |
+| :--- | :--- | :--- | :--- | :--- |
+| full suite | `pytest tests/ -q` | **7922 passed / 2 skipped** (228.7 s) | 7922 / 2 | ✅ |
+| mention-vs-ask | `mention_vs_ask_probe.py` | **33/33 ask-keyed, 0 mention-keyed** | 33/33 | ✅ |
+| member recall | `member_recall_probe.py` | blockers **7 / 3 / 2** | 7 / 3 / 2 | ✅ |
+| ref minimality | `ref_minimality_probe.py` | **221 excess (73.4 %)**, 19 prose-absent, **2 expected refs prose-absent → UNSAFE** | same | ✅ |
+| corpus neutrality | `intercept_precision_audit.py` | each detector **1/110**, total **22** | 22/110 | ✅ |
+| production live | `live_prod_check.py` | **ALL CHECKS PASSED** on `2031219ba476` | passed | ✅ |
+
+The single item that **could not** be re-run is the `REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN`
+paired easy-split gate, blocked by the Max session window (§5.4). Nothing else in this
+round is outstanding — the deterministic surface is green end to end.
+
+## 7. Re-opened judge reports — the four fixes (2026-09-12)
+
+**Method.** The R409 frontier-judge instrument was re-run verbatim against the current
+engine (`rejudge_open_issues.py`), then re-judged with the SAME judge, SAME prompt,
+SAME temperature as the R409 snapshot (OpenRouter `anthropic/claude-sonnet-5` @ 0.1)
+(`rejudge_current_answers.py`). 11 of 28 rows had changed answers since `dd797d9`, so
+the recorded verdicts were stale; the re-judge produced the true open-issue list.
+
+**Result on the 28-question expert-review set:**
+
+| | R409 snapshot | after these fixes |
+| :--- | ---: | ---: |
+| strict (all criteria) | 5/28 = 17.9% | **11/28 = 39.3%** |
+| loose (criteria mean) | 47.98% | **66.73%** (+18.75 pp) |
+| tone pass | 21/28 | 22/28 |
+
+Per-row deltas (vs the R409 snapshot): `part1_q03` 0.00 -> 1.00, `part2_q02` 0.00 -> 1.00,
+`part2_q06` 0.00 -> 0.75, `part1_q15` 0.00 -> 0.75, `part2_q01` 0.33 -> 1.00,
+`part1_q07` 0.50 -> 1.00, `part2_q05` 0.75 -> 1.00, `part1_q04` +0.25, `part1_q13` +0.25,
+`part1_q16` +0.25, `part2_q04` +0.25, `part2_q11` +0.33. No row regressed against the
+pre-fix R411 run.
+
+### The four defects
+
+| # | defect | file | evidence |
+| :- | :--- | :--- | :--- |
+| 1 | An explicit definition ask whose Art. 3 lookup MISSES fell through to the generic BM25 sentence walk, shipping one arbitrary statute sentence instead of the composed prose | `app/routes/regenold.py` (`_explicit_definition_ask`) | "What is the definition of high risk?" shipped Art. 6(2) verbatim (0/4); the EU-wording variant shipped Art. 6(6) (0/5). Same class on corpus `rg_048` |
+| 2 | `_HOSPITAL_DEPLOYER_RE`'s three lookaheads matched anywhere, so a PROVIDER question naming a hospital as a VENUE was captured and Stage-2 short-circuited | `app/engines/_graph_rag_impl.py` | provider chatbot on a hospital website got the hospital-deployer roster (0/4) |
+| 3 | The general verdict's confident "not among the practices prohibited under Article 5" is unsound for a DESCRIBED practice | `app/engines/_graph_rag_impl.py` + `app/engines/prohibited_gatekeeper.py` | clinical-trial triage variants lose the Art 5(1)(g) branch |
+| 4 | The Art 50(1) information intercept's second key was a literal substring that excluded the indefinite article, so the STATUTORY phrasing missed | `app/engines/_graph_rag_impl.py` | "how must a natural person be informed that they are interacting with AN AI system?" shipped the Art 14(5) two-person rule (0/4) |
+
+### The fix that had to be reverted
+
+Fix 3's first cut swapped the wording for EVERY described practice. That silently disabled
+the route's R376 prohibition-contradiction guard — measured, the race-inference variant
+lost its correct Article 5(1)(g) verdict (loose 0.25 -> 0.00). Two changes were needed:
+the denial grammar now tolerates the intervening adverb
+(`prohibited_gatekeeper._PROHIBITION_DENIAL_RES`), and the wording swap is now scoped to
+questions the prohibition gatekeeper did **not** match (`_prohibition_gatekeeper_matched`),
+so R376 keeps owning every row it matched. Pinned by
+`tests/test_r411_judge_reopen_fixes.py` and `tests/test_r376_prohibition_contradiction.py`.
+
+### Corpus neutrality (hard rule #8)
+
+Measured with the new `docs/measurements/r411/corpus_ab.py` (one clean subprocess per arm,
+limiter disabled, real route, deterministic offline transport):
+
+| flag | rows changed | ref_loose | ref_strict | ref_conc | expected heads lost / gained |
+| :--- | ---: | ---: | ---: | ---: | --- |
+| `REGENOLD_GENERAL_VERDICT_ART5_CONDITIONAL` 0 -> 1 | 1/110 (`rg_007`) | same | same | same | **0 / 0** |
+| `REGENOLD_USER_INFORMATION_RECALL` 0 -> 1 | 0/110 | same | same | same | **0 / 0** |
+| `REGENOLD_GENERAL_VERDICT_V2` 0 -> 1 | 5/110 | same | same | same | **0 / 0** |
+| `intercept_precision_audit` whole gate | unchanged at 22/110, same rows | | | | |
+
+Suite: **7962 passed / 2 skipped** (40 new pins). Ruff clean on every file this round
+touched.
+
+### Residuals (recorded, not hidden)
+
+* **`part1_q12` / `part2_q08`** — the conditional clinical-trial question is still below its
+  R409 reading (0.60 -> 0.20 / 0.00). Fix 3 removed the *wrong* negative, but the answer
+  still lacks the branched Art 5(1)(g) / Annex III 1(b) / Annex I structure the criteria
+  require. This regression pre-dates this round; the fix is a purpose-built branched answer,
+  which needs its own gate.
+* **`rg_066`** — "what is the EU database for high-risk AI systems ..." still ships
+  "The Commission shall be the controller of the EU database." It has no explicit definition
+  phrasing, so it is outside Fix 1's scope by construction.
+* **`rg_048`** improved to a composed KB summary but still does not state the Art 3(26)/(27)
+  definitions.
+* **`_USER_INFORMATION_INTERACT_RE`** still fires on a non-natural-person subject
+  ("Must an employer be informed when workers interact with AI systems"). Recorded precision
+  note; tightening it needs its own corpus measurement.
+* The `REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN` paired easy gate remains unrun: the
+  Claude-Max wrapper's CLI is still quota-blocked (§5.4/§6). The Bedrock stand-in
+  (`docs/measurements/r411/wrapper_stub_bedrock.py`) is built and smoke-tested for it.
+* `easyhard_ab` scores the official *reference* axes only; the Ans Correctness deltas above
+  come from the re-judge instrument, not from a gold gate.
