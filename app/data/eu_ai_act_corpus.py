@@ -8319,7 +8319,8 @@ PITFALLS: list[dict] = [ { 'id': 'phased_application',
     'detail_level': 'full'}]
 
 PROPORTIONALITY: list[dict] = [ { 'name': 'prohibited',
-    'applies_to': 'AI systems per Art. 5: social scoring by public authorities, '
+    'applies_to': 'AI systems per Art. 5: social scoring — public OR private actors, '
+                  'the final Regulation carries NO restriction to public authorities, '
                   'real-time remote biometric identification in public spaces (with '
                   'exceptions), exploitation of vulnerabilities of specific groups, '
                   'subliminal manipulation causing harm, emotion recognition in '
@@ -8339,12 +8340,18 @@ PROPORTIONALITY: list[dict] = [ { 'name': 'prohibited',
   { 'name': 'high_risk_annex_III',
     'applies_to': 'AI systems in Annex III use cases: biometrics, critical '
                   'infrastructure, education, employment, essential services, law '
-                  "enforcement, migration, justice. ONLY if they pose 'significant "
-                  "risk of harm' (Art. 6(2))",
-    'key_articles': ['6(2-3)', '8-15', '16-27'],
-    'note': 'Art. 6(3) self-assessment exception: provider may determine system is not '
-            'high-risk if it does not pose significant risk. Must document reasoning '
-            'and notify. Market surveillance authority can override. Applies from '
+                  "enforcement, migration, justice. High-risk under Art. 6(2) unless "
+                  "the Art. 6(3) derogation applies (no significant risk of harm and "
+                  "only a narrow procedural, improvement, detection or preparatory "
+                  "task, and never where the system profiles natural persons)",
+    'key_articles': ['6(2)', '6(3)', '6(4)', '8-15', '16-27'],
+    'note': 'Art. 6(3) derogation: an Annex III system is not high-risk where it '
+            'poses no significant risk of harm and performs only a narrow task, and '
+            'never where it profiles natural persons. Art. 6(4) requires the provider '
+            'to document that assessment before placing on the market or putting into '
+            'service and subjects the provider to the Article 49(2) registration '
+            'obligation, with the documentation supplied to competent authorities on '
+            'request. Applies from '
             '2026-08-02.'},
   { 'name': 'limited_risk',
     'applies_to': 'AI systems with transparency obligations: systems interacting with '
