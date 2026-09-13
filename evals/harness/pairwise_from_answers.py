@@ -17,7 +17,7 @@ wrapper INSTANCES on two ports. So each arm is captured by a SEPARATE
 own singleton at start), and THIS module runs the identical position-swapped
 pairwise judge over the two resulting sidecars.
 
-It REUSES ``ab_judge`` wholesale — ``ArmAnswer``, ``_pairwise_verdict`` (both
+It REUSES ``ab_judge`` wholesale — ``ArmAnswer``, ``_pairwise_verdict_detail`` (both
 orders must agree; a flip -> tie), ``AxisResult`` + the two-sided sign test, and
 ``pairwise_prompts`` — so the instrument is byte-identical to the in-process one;
 only the answer SOURCE differs (a sidecar row instead of a live capture).
@@ -43,7 +43,11 @@ from pathlib import Path
 from typing import Any
 
 from evals.harness import pairwise_prompts
-from evals.harness.ab_judge import ArmAnswer, AxisResult, _pairwise_verdict
+from evals.harness.ab_judge import (
+    ArmAnswer,
+    AxisResult,
+    _pairwise_verdict_detail,
+)
 from evals.harness.probe_set import ProbeRow, load_probe_set
 
 _RESULTS = Path(__file__).resolve().parents[1] / "bench" / "results"
@@ -126,8 +130,12 @@ def main(argv: list[str] | None = None) -> int:
         }
         verdicts: dict[str, str] = {}
         for ax in pairwise_prompts.AXES:
-            v = _pairwise_verdict(rd, ax, a, b, caller, summaries)
+            # R416 — the detail form so swap agreement is counted, not just
+            # consumed as a verdict (the consistency rate read 0.0 otherwise).
+            v, agreed = _pairwise_verdict_detail(rd, ax, a, b, caller, summaries)
             verdicts[ax] = v
+            if agreed:
+                axes[ax].swap_agreements += 1
             if v == "B":
                 axes[ax].wins_b += 1
             elif v == "A":

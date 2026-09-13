@@ -79,7 +79,8 @@ Bias controls
 The judge is NEVER shown: which system produced the answer, any arm/label,
 any prior score, or a prior baseline answer. This is enforced structurally,
 not by convention: every render function is built from :func:`_norm`'s
-strict allowlist (``id, category, question, answer, pred_refs, gold_refs``)
+strict allowlist (``id, category, question, answer, pred_refs, gold_refs,``
+``gold_answer, independent_gold_context``)
 — any other key on the input row (``arm``, ``label``, ``july07_answer``,
 ``system``, a prior ``score``, ...) is simply never read.
 
@@ -107,6 +108,7 @@ Writes ``evals/bench/results/legalv2-<label>.json``.
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import sys
 import threading
@@ -133,7 +135,6 @@ from evals.judge.runner import (  # reuse the battle-tested call plumbing
     set_judge_model,
 )
 from evals.judge.grounded import (  # reuse the sidecar-loading + row-norm plumbing
-    _ANSWER_TEXT_CAP,
     _GOLD_TEXT_CAP,
     _MAX_GOLD_REFS,
     _MAX_PRED_REFS,
@@ -141,11 +142,11 @@ from evals.judge.grounded import (  # reuse the sidecar-loading + row-norm plumb
     _load_rows,
     _norm,
     _num,
+    _answer_grounding_block,
+    _has_independent_answer_grounding,
 )
 
-# R361/R379 — was claude-sonnet-5, which returns 403 on current Bedrock key vintage.
-# claude-sonnet-4-6 is verified working on Bedrock and wrapper; override with --model.
-_DEFAULT_MODEL = "claude-sonnet-4-6"
+_DEFAULT_MODEL = os.environ.get("REGENOLD_JUDGE_MODEL", "claude-sonnet-4-6")
 
 AXES: tuple[str, ...] = (
     "answer_correctness",
@@ -158,13 +159,21 @@ AXES: tuple[str, ...] = (
 # ── quote-or-retract grounding forcing function ─────────────────────────
 
 
+import re
+
+
 def _normalise_ws(s: str) -> str:
-    return " ".join(str(s or "").split()).lower()
+    s = str(s or "").lower()
+    s = s.replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
+    s = s.replace("—", " ").replace("–", " ").replace("-", " ")
+    s = re.sub(r"[^\w\s]", " ", s)
+    return " ".join(s.split())
 
 
 def _quote_substantiated(quote: str, *text_blocks: str, min_words: int = 8) -> bool:
-    """True iff ``quote`` is a real, sufficiently-long, literal excerpt of
-    at least one of ``text_blocks`` (whitespace/case normalised).
+    """True iff ``quote`` is a real, sufficiently-long, literal/contiguous excerpt of
+    at least one of ``text_blocks`` (punctuation/whitespace normalised with
+    contiguous 4-gram sequence fallback).
 
     This is the anti-hallucination gate (R305 requirement 2): a judge
     verdict that asserts something is WRONG / MISSING / CONTRADICTED /
@@ -172,27 +181,142 @@ def _quote_substantiated(quote: str, *text_blocks: str, min_words: int = 8) -> b
     shown, not a paraphrase or an invented excerpt.
     """
     q = str(quote or "").strip()
-    if not q or len(q.split()) < min_words:
+    words = q.split()
+    if not q or len(words) < min_words:
         return False
     nq = _normalise_ws(q)
     if not nq:
         return False
+    nq_words = nq.split()
+    if len(nq_words) < min_words:
+        return False
+
     for block in text_blocks:
-        if nq in _normalise_ws(block):
+        nb = _normalise_ws(block)
+        if not nb:
+            continue
+        # 1. Exact normalized contiguous substring match
+        if nq in nb:
             return True
+        # 2. Longest CONTIGUOUS run fallback, with a negation veto.
+        #
+        # ⚠ The previous fallback was labelled "strict contiguous 4-gram
+        # sequence matching (order-preserving)" and was none of those things.
+        # It collected the block's 4-grams into a SET and asked what fraction of
+        # the quote's 4-grams appeared anywhere in it, so 25% of the quote could
+        # be arbitrary invention and the matches needed no adjacency and no
+        # order. Measured against the real Article 14 sentence, all of these
+        # returned True:
+        #
+        #   * the verbatim sentence                                  (correct)
+        #   * "High-risk AI systems shall NOT be designed and developed
+        #      in such a way that they can be effectively overseen..."  ← NEGATED
+        #   * the sentence with two invented 4-grams spliced in
+        #
+        # A negation flip is the single most damaging failure this gate exists
+        # to stop: it lets the judge "substantiate" a WRONG/CONTRADICTED verdict
+        # with a quote asserting the OPPOSITE of the provision, which then reads
+        # as evidence. The gate was passing exactly the case it was built for.
+        #
+        # Now: one maximal CONTIGUOUS run of matched tokens, no substitutions,
+        # plus a hard veto whenever the quote and the matched span disagree on
+        # any negation/exception token. Coverage is measured against the run,
+        # not against a bag.
+        nb_words = nb.split()
+        if len(nq_words) >= min_words and len(nb_words) >= min_words:
+            run = _longest_contiguous_run(nq_words, nb_words)
+            if run is not None:
+                start, length = run
+                covers = length / len(nq_words)
+                if covers >= 0.85:
+                    span = nb_words[start:start + length]
+                    if _negation_profile(nq_words) == _negation_profile(span):
+                        return True
     return False
+
+
+#: Tokens that invert or narrow a legal obligation. A quote that differs from
+#: the source on ANY of these is not the source, however well the rest matches.
+_NEGATION_TOKENS = frozenset({
+    "not", "no", "nor", "never", "except", "unless", "without",
+    "excluding", "exempt", "prohibited", "shall", "may", "must",
+})
+
+
+def _negation_profile(words: list[str]) -> tuple[str, ...]:
+    """Ordered negation/modality tokens — the part a paraphrase must not change."""
+    return tuple(w for w in words if w in _NEGATION_TOKENS)
+
+
+def _longest_contiguous_run(
+    quote_words: list[str], block_words: list[str]
+) -> tuple[int, int] | None:
+    """Longest run of quote tokens appearing CONTIGUOUSLY and in order in block.
+
+    Returns ``(block_start_index, length)`` for the best run, or ``None``.
+    Straight dynamic programming over the two token lists — no substitutions,
+    no gaps, which is what "contiguous" has to mean for this gate to hold.
+    """
+    if not quote_words or not block_words:
+        return None
+    best_len = 0
+    best_start = 0
+    prev = [0] * (len(block_words) + 1)
+    for qi in range(1, len(quote_words) + 1):
+        cur = [0] * (len(block_words) + 1)
+        for bi in range(1, len(block_words) + 1):
+            if quote_words[qi - 1] == block_words[bi - 1]:
+                cur[bi] = prev[bi - 1] + 1
+                if cur[bi] > best_len:
+                    best_len = cur[bi]
+                    best_start = bi - cur[bi]
+        prev = cur
+    return (best_start, best_len) if best_len else None
 
 
 # ── provision-text grounding (per-ref map, for substantiation checks) ───
 
 
-def _resolve_provision_texts(refs: list[str], cap: int, max_refs: int) -> dict[str, str]:
-    """Resolve each ref to its verbatim EU AI Act text (article-level
-    fallback). Unlike ``grounded._provision_block`` this returns a
-    ``ref -> text`` MAP so post-processing can substantiate a quote
-    against the exact provision it was claimed against."""
+_RECITAL_REF_RE = re.compile(r"^Recital\s+(\d{1,3})$", re.IGNORECASE)
+
+
+def _resolve_ref_text(ref: str) -> str:
+    """Verbatim text for a ref — Article/Annex via ``get_provision_text``,
+    ``Recital N`` via the official recital corpus (R361 — the paper's
+    related-recital retrieval makes recital-cited claims measurable; the
+    engine already retrieves recitals via ``fetch_recital_anchors`` /
+    ``_expand_referenced_annexes_and_recitals`` but the judge could not
+    ground them). Returns "" for a non-existent ref."""
     from app.data.provision_text import get_provision_text  # local heavy import
 
+    txt = get_provision_text(ref)
+    if txt:
+        return txt
+    m = _RECITAL_REF_RE.match(str(ref).strip())
+    if m:
+        try:
+            from app.data.official_eu_ai_act import OFFICIAL_RECITAL_TEXT  # noqa: PLC0415
+            return str(OFFICIAL_RECITAL_TEXT.get(int(m.group(1)), "")).strip()
+        except Exception:  # noqa: BLE001 — a missing corpus must not kill a run
+            return ""
+    return ""
+
+
+def _ref_exists(ref: str) -> bool:
+    """Resolution-based existence check. Deliberately NOT the head-lax
+    ``provision_exists`` (``provision_exists("Article 3.999") is True`` —
+    a documented open finding): a ref exists iff its verbatim text actually
+    resolves, Articles/Annexes via the provision resolver and ``Recital N``
+    via the official recital corpus."""
+    return bool(_resolve_ref_text(ref))
+
+
+def _resolve_provision_texts(refs: list[str], cap: int, max_refs: int) -> dict[str, str]:
+    """Resolve each ref at its exact cited coordinate. Unlike
+    ``grounded._provision_block`` this returns a
+    ``ref -> text`` MAP so post-processing can substantiate a quote
+    against the exact provision it was claimed against. Recital refs
+    resolve via ``OFFICIAL_RECITAL_TEXT`` (R361)."""
     out: dict[str, str] = {}
     seen: set[str] = set()
     for r in refs[:max_refs]:
@@ -200,11 +324,7 @@ def _resolve_provision_texts(refs: list[str], cap: int, max_refs: int) -> dict[s
         if not key or key in seen:
             continue
         seen.add(key)
-        txt = get_provision_text(key)
-        if txt is None:
-            base = key.split(".")[0].split("(")[0].strip()
-            if base and base != key:
-                txt = get_provision_text(base)
+        txt = _resolve_ref_text(key)
         out[key] = (txt or "").strip()[:cap]
     return out
 
@@ -299,11 +419,11 @@ def render_answer_correctness(r: dict[str, Any], union_map: dict[str, str]) -> s
         f"QUESTION: {r['question'][:600]}\n\n"
         "VERBATIM EU AI ACT TEXT (the provisions relevant to this question):\n"
         f"{union_block}\n\n"
-        f"PREDICTED ANSWER: {r['answer'][:_ANSWER_TEXT_CAP]}\n\n"
+        f"PREDICTED ANSWER: {r['answer']}\n\n"
         "STEP 1 — decompose the PREDICTED ANSWER into discrete legal "
         "propositions (one assertion each).\n"
         "STEP 2 — for EACH proposition, using ONLY the verbatim text above "
-        "plus well-established AI Act structure, mark it SUPPORTED, "
+        "and no outside legal memory, mark it SUPPORTED, "
         "CONTRADICTED, or NOT-ADDRESSED (the text neither confirms nor "
         "denies it). For every CONTRADICTED proposition you MUST quote >=8 "
         "consecutive verbatim words from the text above that contradict "
@@ -329,6 +449,16 @@ def render_reference_correctness(
     (enforced in post-processing, not trusted from the model)."""
     pred_block = _block_from_map(pred_map)
     gold_block = _block_from_map(gold_map)
+    recall_available = bool(gold_map or r.get("independent_gold_context"))
+    recall_instruction = (
+        "Assess missing governing provisions against the independent gold block."
+        if recall_available
+        else (
+            "No independent gold context was supplied. Do not use memory to "
+            "invent missing provisions; return missing_governing=[] and treat "
+            "recall as unavailable."
+        )
+    )
     return (
         _ANTI_SYCOPHANCY + _CALIBRATION_REFS +
         f"QUESTION: {r['question'][:500]}\n\n"
@@ -339,6 +469,7 @@ def render_reference_correctness(
         "VERBATIM TEXT OF GOLD CITATIONS (candidate governing provisions if "
         "the predicted set is missing something):\n"
         f"{gold_block}\n\n"
+        f"RECALL AVAILABILITY: {recall_instruction}\n\n"
         "Classify EVERY predicted citation into exactly one class:\n"
         "  GOVERNING  — directly answers the question; omitting it would "
         "be an error.\n"
@@ -370,7 +501,7 @@ def render_citation_faithfulness(r: dict[str, Any], pred_map: dict[str, str]) ->
     return (
         _ANTI_SYCOPHANCY + _CALIBRATION_CITE +
         f"QUESTION: {r['question'][:400]}\n\n"
-        f"PREDICTED ANSWER: {r['answer'][:_ANSWER_TEXT_CAP]}\n\n"
+        f"PREDICTED ANSWER: {r['answer']}\n\n"
         "VERBATIM TEXT OF EACH CITED PROVISION:\n"
         f"{pred_block}\n\n"
         "For EACH cited provision, decide whether the answer's prose "
@@ -388,27 +519,196 @@ def render_citation_faithfulness(r: dict[str, Any], pred_map: dict[str, str]) ->
     )
 
 
+# ── Axis 5 — fine-grained CRAG answer score (NICD paper, Appendix C.2.2) ─
+
+
+#: The fine-grained CRAG scale, from Wedge et al., "Reducing Hallucinations
+#: in Complex Question Answering using Simple Graph-based RAG" (NICD /
+#: Newcastle), Appendix C.2.2. The paper's rubric is ported VERBATIM below;
+#: the scale is asymmetric BY DESIGN — a hallucinated claim (extras) costs
+#: more than a missing one, and an honest refusal scores 0 (neutral) rather
+#: than being penalised like a wrong answer. The paper's headline metric,
+#: truthfulness = sum of scores, is computed in :func:`_postprocess_answer_crag_fine`
+#: and surfaced on the aggregate so a run reports correct − hallucinated
+#: rather than a binary pass/fail.
+_CRAG_SCALE = (
+    "+1.0  fully correct: the prediction matches ALL provided gold answers.\n"
+    "+0.5  partially correct: matches a SUBSET of the gold answers and\n"
+    "      includes NO incorrect answers (missing claims, but no hallucination).\n"
+    " 0.0  the model says 'unknown' / 'cannot answer' / that it lacks the\n"
+    "      information — an honest refusal, not an error.\n"
+    "-0.5  mixed: includes SOME correct gold answers AND at least one\n"
+    "      incorrect answer (correct + hallucinated claims together).\n"
+    "-1.0  incorrect: the prediction matches NONE of the gold answers.\n"
+)
+
+
+def render_answer_crag_fine(r: dict[str, Any], gold_block: str) -> str:
+    """Fine-grained CRAG answer score — the paper's Appendix C.2.2 rubric
+    applied to the ANSWER (not the reference set). Distinct from
+    ``answer_correctness`` (LeMAJ LDP decomposition, pass/fail): this axis
+    returns the paper's 5-level truthfulness scale and its asymmetry
+    (hallucination −0.5/−1 > omission +0.5 > refusal 0). The verdict is
+    derived from the score: pass iff score >= +0.5 (fully or cleanly
+    partial, i.e. no hallucinated claim), fail otherwise — a hallucination
+    always fails even when it also contains correct claims.
+
+    Gold answers come from the probe set (``gold_answer``); verbatim
+    provision text for the union of gold + predicted refs is supplied as
+    grounding so the judge never leans on parametric legal memory — the
+    repo's quote-or-retract discipline, applied to the gold answers.
+    """
+    gold_answers = str(r.get("gold_answer") or "").strip()
+    return (
+        _ANTI_SYCOPHANCY +
+        "You are grading a Q&A answer on the fine-grained CRAG truthfulness "
+        "scale. Judge whether the prediction matches the Ground Truth "
+        "answers, using the QUESTION and the provided GROUND TRUTH answers to "
+        "decide — never by string matching alone (different wording may "
+        "express the same answer; 1% tolerance on numerical answers).\n"
+        "Do not rely on your own legal knowledge: use ONLY the Ground Truth "
+        "answers and the verbatim text supplied below.\n\n"
+        "QUESTION: " + str(r["question"])[:600] + "\n\n"
+        "GROUND TRUTH ANSWERS:\n"
+        f"{gold_answers or '(none supplied)'}\n\n"
+        "VERBATIM EU AI ACT TEXT (provisions relevant to this question):\n"
+        f"{gold_block or '  (none)'}\n\n"
+        "PREDICTED ANSWER:\n" + str(r["answer"]) + "\n\n"
+        "Follow these steps:\n"
+        "  1. If the prediction returns 'unknown', says it cannot answer, or "
+        "says it lacks the information to answer, return 0.0.\n"
+        "  2. If the prediction makes a claim but it matches NONE of the "
+        "Ground Truth answers, return -1.0.\n"
+        "  3. If the prediction matches ALL provided Ground Truth answers, "
+        "return +1.0.\n"
+        "  4. If the prediction matches a SUBSET of the Ground Truth answers "
+        "(some correct answers missing) but includes NO additional incorrect "
+        "answers, return +0.5.\n"
+        "  5. If the prediction includes some correct Ground Truth answers "
+        "AND at least one incorrect answer (an answer not in the Ground "
+        "Truth list), return -0.5.\n\n"
+        f"SCALE:\n{_CRAG_SCALE}\n"
+        "Return ONLY one JSON object (no prose, no markdown fences):\n"
+        '{"score":1.0|"0.5"|0.0|"-0.5"|-1.0,"class":"FULLY_CORRECT"|'
+        '"PARTIAL_CLEAN"|"REFUSED"|"MIXED"|"WRONG",'
+        '"rationale":"<one short sentence citing which gold answer(s) matched "'
+        '"or were missed>","missing":["<gold claim omitted>"],'
+        '"hallucinated":["<predicted claim not in gold>"]}'
+    )
+
+
+# ── Axis 6 — Faithfulness (Ragas-style, reference-free) ─────────────────
+
+
+#: HyPA-RAG (Kalra et al., Holistic AI / UCL) evaluation metric #1, ported
+#: from Ragas: Faithfulness = |C_inferred| / |C_total| — the fraction of
+#: answer claims that are supported by the RETRIEVED context. Reference-free
+#: (uses the retrieved context, never the gold answer), so it scores the
+#: no-gold half of a benchmark that the gold-bound axes cannot touch.
+#: Grounding: verbatim provision text for the PREDICTED refs (what the
+#: answer claims to rely on). Verdict derived: pass iff all claims are
+#: supported (faithfulness = 1.0), the Ragas default threshold — a single
+#: unsupported claim is a hallucination-risk flag even at 0.8.
+_FAITHFULNESS_RUBRIC = (
+    "Decompose the PREDICTED ANSWER into discrete factual claims (one "
+    "assertion each). For EACH claim, using ONLY the verbatim text above "
+    "and no outside legal memory, decide whether the text ENTRAILS it "
+    "(states it directly or states premises that necessarily imply it).\n"
+    "  SUPPORTED — the text states it, or necessarily implies it.\n"
+    "  UNSUPPORTED — the text neither states nor implies it (may be "
+    "outside the retrieved provisions, invented, or unverifiable from "
+    "the text).\n"
+    "Do not penalise a claim merely because the retrieved context does "
+    "not cover a DIFFERENT part of the regulation the question also "
+    "touches: judge only what the answer asserts against the text "
+    "supplied. For every UNSUPPORTED claim, state in one short phrase "
+    "what the claim says and why the text does not support it.\n"
+)
+
+
+def render_answer_faithfulness(r: dict[str, Any], pred_map: dict[str, str]) -> str:
+    """Ragas Faithfulness (reference-free) — HyPA-RAG metric #1.
+
+    Faithfulness = supported claims / total claims, computed from the
+    retrieved context (predicted refs' verbatim text). Reference-free: no
+    gold answer or gold refs are used, so this scores the no-gold half of
+    a benchmark (e.g. graphrag_evals_dataset.txt B.2.2) that the
+    gold-bound axes (answer_correctness, answer_crag_fine,
+    reference_correctness) cannot touch.
+    """
+    pred_block = _block_from_map(pred_map)
+    return (
+        _ANTI_SYCOPHANCY +
+        "You are grading whether an answer is FAITHFUL to its cited "
+        "context: every claim in the answer must be entailed by the "
+        "retrieved text, not by the model's parametric memory.\n\n"
+        f"QUESTION: {r['question'][:500]}\n\n"
+        "VERBATIM RETRIEVED TEXT (the provisions the answer cites):\n"
+        f"{pred_block or '  (none — the answer cites no provisions)'}\n\n"
+        f"PREDICTED ANSWER: {r['answer']}\n\n"
+        f"{_FAITHFULNESS_RUBRIC}\n"
+        "Respond with ONE JSON object only (no prose, no markdown fences):\n"
+        '{"claims":[{"text":"...","status":"SUPPORTED"|"UNSUPPORTED",'
+        '"why":"<one short phrase, only for UNSUPPORTED>"}],'
+        '"failure_mode":"<one short phrase>"}'
+    )
+
+
+def render_answer_relevancy(r: dict[str, Any]) -> str:
+    """Ragas Answer Relevancy (reference-free) — HyPA-RAG metric #2.
+
+    Measures whether the answer actually addresses the QUESTION asked (vs
+    a fluent answer about a nearby topic). Reference-free: no gold answer
+    or refs are used. The paper's formula (generate questions from the
+    answer, cosine-sim their embeddings against the original query) is
+    approximated by a grounded LLM-judge relevancy score on the same 0-1
+    scale, per the paper's own human annotation criterion #2 ("Is the
+    answer relevant to the question?").
+    """
+    return (
+        _ANTI_SYCOPHANCY +
+        "You are grading whether an answer is RELEVANT to the question "
+        "asked. An answer can be accurate about its topic and still be "
+        "irrelevant if it answers a different question than the one posed.\n\n"
+        f"QUESTION: {r['question'][:500]}\n\n"
+        f"PREDICTED ANSWER: {r['answer']}\n\n"
+        "Scoring (Ragas answer-relevancy semantics):\n"
+        "  relevant = 1.0 if the answer directly addresses the question.\n"
+        "  relevant = 0.5 if it addresses a substantial part but misses a "
+        "core sub-question, or answers a closely-adjacent reading.\n"
+        "  relevant = 0.0 if it answers a different question, evades the "
+        "question, or its content does not respond to what was asked.\n"
+        "You may use intermediate values when the answer is partly on "
+        "target. Return the score on the Ragas 0-1 continuum.\n\n"
+        "Respond with ONE JSON object only (no prose, no markdown fences):\n"
+        '{"relevancy":0.0,"rationale":"<one short sentence: what the '
+        '"question asked and whether the answer addressed it>",'
+        '"failure_mode":"<one short phrase>"}'
+    )
+
+
 def render_answer_conciseness(r: dict[str, Any]) -> str:
-    """NEW axis (Answer-Conciseness is the only rubric axis this system
-    leads per CLAUDE.md — pure downside risk). Judges only what is
-    PRESENT for load-bearing relevance; never rewards omission (a missing
-    required element fails answer_correctness, not this axis)."""
+    """Judges only what is PRESENT for load-bearing relevance; never rewards omission."""
     return (
         _ANTI_SYCOPHANCY + _CALIBRATION_CONCISE +
         f"QUESTION: {r['question'][:500]}\n\n"
-        f"PREDICTED ANSWER: {r['answer'][:_ANSWER_TEXT_CAP]}\n\n"
-        "Judge ONLY what is PRESENT in the answer for load-bearing "
-        "relevance to the question asked. Do NOT judge completeness here "
-        "— a missing required element is scored on a different axis, not "
-        "this one; an answer that omits something is not thereby more "
-        "concise.\n\n"
-        "For EACH sentence, decide:\n"
-        "  REDUNDANT — it repeats a point an earlier sentence already "
-        "made in full (paraphrase-repetition, hedging filler, restating "
-        "the verdict a second time).\n"
-        "  UNREQUESTED TOPIC — it addresses a legal topic the question "
-        "did not ask about and that is not necessary context for the "
-        "answer.\n"
+        f"PREDICTED ANSWER: {r['answer']}\n\n"
+        "Judge ONLY what is PRESENT in the answer for load-bearing relevance to the "
+        "question asked. Do NOT judge completeness here — a missing required "
+        "element is scored on a different axis, not this one; an answer that "
+        "omits something is not thereby more concise.\n\n"
+        "Guidelines for conciseness evaluation:\n"
+        "  1. REDUNDANT — conversational filler ('It is worth noting...', 'In general...'), "
+        "repetitive hedging, or restating the exact same claim in multiple sentences "
+        "without adding new statutory facts or application. Applying a statutory rule "
+        "to the question's specific scenario is NOT redundant.\n"
+        "  2. UNREQUESTED TOPIC — a substantial detour into an unrelated legal regime "
+        "or distinct statutory requirement that has no direct bearing on the question "
+        "(e.g. detailed GDPR mechanics on an AI Act classification question, or MDR "
+        "notified-body audit intervals on a basic classification query). Direct statutory "
+        "conditions, exemptions, or immediate legal consequences of the primary rule are "
+        "permissible context and NOT an unrequested topic.\n\n"
+        "For EACH sentence, decide if it is genuinely REDUNDANT or an UNREQUESTED TOPIC. "
         "Quote each flagged sentence VERBATIM from the answer above.\n\n"
         "Respond with ONE JSON object only:\n"
         '{"sentence_count":N,"redundant_sentences":["..."],'
@@ -421,29 +721,117 @@ def render_answer_conciseness(r: dict[str, Any]) -> str:
 
 def _prepare(axis: str, r: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     if axis == "answer_correctness":
-        union = list(dict.fromkeys([*r["gold_refs"], *r["pred_refs"]]))
-        union_map = _resolve_provision_texts(union, _GOLD_TEXT_CAP, _MAX_GOLD_REFS + _MAX_PRED_REFS)
-        return render_answer_correctness(r, union_map), {"union_map": union_map}
+        if _has_independent_answer_grounding(r):
+            gold_map = {"independent_answer_context": _answer_grounding_block(r)}
+        else:
+            candidate_refs = list(dict.fromkeys((r.get("gold_refs") or []) + (r.get("pred_refs") or [])))
+            gold_map = _resolve_provision_texts(candidate_refs, _GOLD_TEXT_CAP, _MAX_GOLD_REFS)
+        return render_answer_correctness(r, gold_map), {"union_map": gold_map}
     if axis == "reference_correctness":
         pred_map = _resolve_provision_texts(r["pred_refs"], _PRED_TEXT_CAP, _MAX_PRED_REFS)
         gold_map = _resolve_provision_texts(r["gold_refs"], _GOLD_TEXT_CAP, _MAX_GOLD_REFS)
+        supplied = str(r.get("independent_gold_context") or "").strip()
+        if supplied:
+            gold_map["independent_gold_context"] = supplied
         return render_reference_correctness(r, pred_map, gold_map), {
-            "pred_map": pred_map, "gold_map": gold_map,
+            "pred_map": pred_map,
+            "gold_map": gold_map,
+            "recall_available": any(str(text).strip() for text in gold_map.values()),
         }
     if axis == "citation_faithfulness":
         pred_map = _resolve_provision_texts(r["pred_refs"], _PRED_TEXT_CAP, _MAX_PRED_REFS)
         return render_citation_faithfulness(r, pred_map), {"pred_map": pred_map}
     if axis == "answer_conciseness":
         return render_answer_conciseness(r), {}
+    if axis == "answer_crag_fine":
+        # Grounding for the CRAG judge: gold answers (from the probe set) are
+        # the primary evidence; verbatim provision text for the union of gold
+        # + predicted refs backs the gold claims so the judge never leans on
+        # parametric memory (quote-or-retract discipline applied to gold).
+        candidate_refs = list(dict.fromkeys((r.get("gold_refs") or []) + (r.get("pred_refs") or [])))
+        gold_map = _resolve_provision_texts(candidate_refs, _GOLD_TEXT_CAP, _MAX_GOLD_REFS)
+        return render_answer_crag_fine(r, _block_from_map(gold_map)), {"union_map": gold_map}
+    if axis == "answer_faithfulness":
+        # Reference-free (Ragas faithfulness): the only evidence is the
+        # verbatim text of the PREDICTED refs — never the gold answer, and
+        # never gold refs, so the axis stays scorable on the no-gold half of
+        # a benchmark. Gold refs deliberately NOT consulted here.
+        pred_map = _resolve_provision_texts(r["pred_refs"], _PRED_TEXT_CAP, _MAX_PRED_REFS)
+        return render_answer_faithfulness(r, pred_map), {"pred_map": pred_map}
+    if axis == "answer_relevancy":
+        # Reference-free (Ragas answer relevancy): question + answer only.
+        return render_answer_relevancy(r), {}
     raise ValueError(f"unknown axis {axis!r}; valid: {AXES}")
 
 
 # ── post-processing (quote-or-retract enforcement lives here) ───────────
 
 
+#: The raw reply keys that constitute ANSWERING each axis. An axis is
+#: unanswered only when the reply carries NONE of its keys.
+#:
+#: ⚠ R350.1 — the first cut of this guard tested ONE array per axis
+#: (``classifications``, ``redundant_sentences``, …) and that was too narrow in
+#: the direction that loses data. ``_postprocess_reference_correctness`` also
+#: reads ``missing_governing``; ``_postprocess_answer_conciseness`` also reads
+#: ``unrequested_topics`` and ``sentence_count``. Worse, the array a model is
+#: MOST likely to omit is the empty one — and empty is the PASS case. So the
+#: narrow test converted legitimate passes, and real ``missing_governing`` /
+#: ``unrequested_topics`` findings, into unscorable errors: it shrank n on the
+#: axes that already have the least data, and moved ``pass_rate_raw`` against
+#: the recorded baselines for reasons with nothing to do with the product.
+_AXIS_KEYS: dict[str, tuple[str, ...]] = {
+    "answer_correctness": ("propositions", "omission_present", "omission_detail"),
+    "reference_correctness": ("classifications", "missing_governing"),
+    "citation_faithfulness": ("citations",),
+    "answer_conciseness": ("redundant_sentences", "unrequested_topics",
+                           "sentence_count"),
+    "answer_crag_fine": ("score", "class", "rationale", "missing", "hallucinated"),
+    # Structured carriers ONLY — a reply carrying just free-text
+    # (failure_mode/rationale) has not answered the axis and must be
+    # unscorable, never silently scored as a pass (R350: absent is not
+    # empty; empty [] claims IS a legitimate pass finding).
+    "answer_faithfulness": ("claims",),
+    "answer_relevancy": ("relevancy",),
+}
+
+
+def _axis_unanswered(raw: dict[str, Any], axis: str) -> dict[str, Any] | None:
+    """Unscorable if the reply never answered THIS axis at all.
+
+    ⚠ R350 — every ``_postprocess_*`` read its findings as ``raw.get(key) or []``
+    and computed a verdict from the result. But ``runner._parse_judge_json``
+    accepts any balanced JSON object carrying ANY key from a UNION target set,
+    not the keys THIS axis needs. So a reply like
+    ``{"verdict": "fail", "failure_mode": "Article 6 mismatched"}`` parsed
+    cleanly, arrived with none of the axis's own keys, and postprocess
+    recomputed the verdict from zero findings — turning the judge's own
+    ``fail`` into a ``pass``. Verified end-to-end on two axes
+    (citation_faithfulness, reference_correctness); both flipped fail -> pass,
+    the unsafe direction, and both then entered ``dynamic_ab``'s aggregate as a
+    genuine 1.0.
+
+    ABSENT IS NOT EMPTY. ``[]`` is a legitimate finding ("I checked and found
+    nothing") and MUST stay scorable — it is usually the pass. Only a reply
+    carrying NONE of the axis's keys is unanswered, so this tests key
+    membership across the whole axis, never the truthiness of one array.
+
+    Returning a ``judge_error`` (rather than a verdict) is what makes the row
+    unscorable downstream — ``dynamic_ab._scorable`` drops it from the axis and
+    counts it in ``n_skipped``, instead of scoring it as a pass or a fail.
+    """
+    keys = _AXIS_KEYS.get(axis, ())
+    if keys and not (set(raw) & set(keys)):
+        return {"judge_error": f"axis_unanswered_{axis}", "_raw": raw}
+    return None
+
+
 def _postprocess_answer_correctness(raw: dict[str, Any], union_map: dict[str, str]) -> dict[str, Any]:
     if raw.get("judge_error"):
         return dict(raw)
+    _unanswered = _axis_unanswered(raw, "answer_correctness")
+    if _unanswered is not None:
+        return _unanswered
     props = raw.get("propositions") or []
     union_pool = tuple(union_map.values())
     supported = contradicted = not_addressed = 0
@@ -467,15 +855,52 @@ def _postprocess_answer_correctness(raw: dict[str, Any], union_map: dict[str, st
         else:
             not_addressed += 1
     omission_present = bool(raw.get("omission_present"))
-    total = supported + contradicted
-    factual_score = (supported / total) if total else (0.5 if not_addressed else 1.0)
+    total = supported + contradicted + not_addressed
+    factual_score = (supported / total) if total else 0.0
     fabrication_present = contradicted > 0
-    verdict = "pass" if (contradicted == 0 and not omission_present) else "fail"
+    unsupported_present = not_addressed > 0
+    # ⚠ THIS THRESHOLD IS A CHOICE, NOT A CALIBRATION — and it REDEFINED an axis
+    # in place. d7be457 replaced the previous rule (`not unsupported_present`,
+    # i.e. every proposition had to be addressed) with `factual_score >= 0.70`,
+    # under the SAME axis name and with the commit message calling it a
+    # "calibrated LeMAJ threshold". Neither half of that holds up:
+    #
+    #  * There is no calibration behind 0.70. It appears nowhere else in evals/,
+    #    docs/ROUNDS.md or .planning/ — no sweep, no ROC, no companion strict
+    #    variant, no env gate.
+    #  * LeMAJ (arXiv 2510.07243) prescribes Legal-Data-Point decomposition
+    #    against a REFERENCE ANSWER and specifies no threshold. This function
+    #    uses SUPPORTED / CONTRADICTED / NOT-ADDRESSED, and the July-7 batch has
+    #    no reference answer at all, so the citation does not transfer.
+    #
+    # The effect is a strictly looser axis: a row where 30% of its propositions
+    # go unverified now PASSES where it previously failed. That is CLAUDE.md's
+    # R327 trap in its most dangerous form — "the ruler was rewritten in the
+    # SAME change as the behaviour it grades" — so any number graded across
+    # d7be457 is comparing two different rulers.
+    #
+    # Named and env-exposed so the two rulers are at least distinguishable and
+    # the old one is recoverable: `REGENOLD_JUDGE_FACTUAL_THRESHOLD=1.0`
+    # restores the pre-d7be457 "every proposition addressed" rule.
+    import os  # noqa: PLC0415
+
+    try:
+        _factual_threshold = float(
+            os.getenv("REGENOLD_JUDGE_FACTUAL_THRESHOLD", "").strip() or 0.70
+        )
+    except (TypeError, ValueError):
+        _factual_threshold = 0.70
+    verdict = "pass" if (
+        contradicted == 0
+        and factual_score >= _factual_threshold
+        and not omission_present
+    ) else "fail"
     return {
         "verdict": verdict,
         "supported": supported, "contradicted": contradicted, "not_addressed": not_addressed,
         "omission_present": omission_present, "omission_detail": raw.get("omission_detail") or "",
         "fabrication_present": fabrication_present, "fabrications": fabrications,
+        "unsupported_present": unsupported_present,
         "factual_score": round(factual_score, 4),
         "unsubstantiated_verdicts": unsub,
         "failure_mode": raw.get("failure_mode") or "",
@@ -485,9 +910,13 @@ def _postprocess_answer_correctness(raw: dict[str, Any], union_map: dict[str, st
 
 def _postprocess_reference_correctness(
     raw: dict[str, Any], pred_map: dict[str, str], gold_map: dict[str, str], pred_refs: list[str],
+    recall_available: bool = True,
 ) -> dict[str, Any]:
     if raw.get("judge_error"):
         return dict(raw)
+    _unanswered = _axis_unanswered(raw, "reference_correctness")
+    if _unanswered is not None:
+        return _unanswered
     classifications = raw.get("classifications") or []
     by_ref: dict[str, dict[str, Any]] = {}
     for c in classifications:
@@ -510,8 +939,19 @@ def _postprocess_reference_correctness(
         c = by_ref.get(ref) or {}
         cls = str(c.get("class") or "").strip().upper()
         quote = c.get("quote") or ""
+        # Check if ref is a non-existent provision in the EU AI Act catalog.
+        # R361 — resolution-based (``_ref_exists``), NOT the head-lax
+        # ``provision_exists`` (which returns True for ``Article 3.999`` and
+        # False for real ``Recital N`` refs — both wrong directions, the
+        # second documented in R360).
+        if not _ref_exists(ref):
+            wrong.append(ref)
+            unsub.append({"ref": ref, "claimed": "NON_EXISTENT_PROVISION", "quote": quote})
+            continue
+
+        raw_prov = pred_map.get(ref, "")
         if cls == "WRONG":
-            if _quote_substantiated(quote, pred_map.get(ref, "")):
+            if _quote_substantiated(quote, raw_prov):
                 wrong.append(ref)
             else:
                 supporting.append(ref)  # downgrade — never trust an unquoted "wrong"
@@ -526,7 +966,7 @@ def _postprocess_reference_correctness(
             # as SUPPORTING (never as WRONG on a format hiccup).
             supporting.append(ref)
 
-    missing_raw = raw.get("missing_governing") or []
+    missing_raw = (raw.get("missing_governing") or []) if recall_available else []
     missing: list[str] = []
     for m in missing_raw:
         if not isinstance(m, dict):
@@ -544,7 +984,7 @@ def _postprocess_reference_correctness(
     focus_precision = (len(governing) / total) if total else 0.0
     legal_soundness_precision = ((len(governing) + len(supporting)) / total) if total else 0.0
     denom = len(governing) + len(missing)
-    recall = (len(governing) / denom) if denom else 1.0
+    recall = ((len(governing) / denom) if denom else 1.0) if recall_available else None
     verdict = "pass" if (len(wrong) == 0 and len(missing) == 0) else "fail"
     return {
         "verdict": verdict,
@@ -553,7 +993,12 @@ def _postprocess_reference_correctness(
         "n_predicted": total,
         "focus_precision": round(focus_precision, 4),
         "legal_soundness_precision": round(legal_soundness_precision, 4),
-        "recall": round(recall, 4),
+        "recall": round(recall, 4) if recall is not None else None,
+        "recall_available": recall_available,
+        "recall_provenance": (
+            "independent_gold_context"
+            if recall_available else "unavailable_no_independent_gold"
+        ),
         "unsubstantiated_verdicts": unsub,
         "failure_mode": raw.get("failure_mode") or "",
         "_raw": raw,
@@ -565,6 +1010,9 @@ def _postprocess_citation_faithfulness(
 ) -> dict[str, Any]:
     if raw.get("judge_error"):
         return dict(raw)
+    _unanswered = _axis_unanswered(raw, "citation_faithfulness")
+    if _unanswered is not None:
+        return _unanswered
     citations = raw.get("citations") or []
     by_ref: dict[str, dict[str, Any]] = {}
     for c in citations:
@@ -609,6 +1057,9 @@ def _postprocess_citation_faithfulness(
 def _postprocess_answer_conciseness(raw: dict[str, Any], answer_text: str) -> dict[str, Any]:
     if raw.get("judge_error"):
         return dict(raw)
+    _unanswered = _axis_unanswered(raw, "answer_conciseness")
+    if _unanswered is not None:
+        return _unanswered
     raw_redundant = raw.get("redundant_sentences") or []
     redundant: list[str] = []
     unsub: list[dict[str, Any]] = []
@@ -621,7 +1072,55 @@ def _postprocess_answer_conciseness(raw: dict[str, Any], answer_text: str) -> di
             redundant.append(s)
         else:
             unsub.append({"claimed": "REDUNDANT", "quote": s})
-    unrequested = [str(s) for s in (raw.get("unrequested_topics") or []) if str(s).strip()]
+    raw_unrequested = raw.get("unrequested_topics") or []
+    unrequested: list[str] = []
+    for s in raw_unrequested:
+        s = str(s or "").strip()
+        if not s:
+            continue
+        if _quote_substantiated(s, answer_text, min_words=3):
+            unrequested.append(s)
+        else:
+            unsub.append({"claimed": "UNREQUESTED", "quote": s})
+
+    # ⚠ ONE-SIDED LENIENCY — now gated, DEFAULT OFF.
+    #
+    # This block deletes a conciseness violation that the judge ALREADY
+    # SUBSTANTIATED (the quote cleared `_quote_substantiated` two lines above)
+    # because a free-text `failure_mode` field says "none". Three problems, and
+    # they compound:
+    #
+    #  1. It can only ever move a row fail -> pass. There is no symmetric rule
+    #     turning a pass into a fail, so it is a one-directional thumb on the
+    #     scale, in the flattering direction.
+    #  2. It ranks an unstructured prose field ABOVE structured, quote-verified
+    #     evidence. `failure_mode` is a free-text summary the judge writes last;
+    #     `unrequested_topics` are quote-anchored and were just validated
+    #     against the answer text. Trusting the summary over the evidence
+    #     inverts the whole point of the substantiation gate.
+    #  3. Conciseness is the ONE axis the official scorecard says we LEAD, with
+    #     zero headroom (CLAUDE.md, "Where we stand"). A silent rubric change
+    #     there is the most consequential place in the repo to make one — and
+    #     this shipped in an uncommitted diff with no A/B and no flag.
+    #
+    # CLAUDE.md's R327 lesson applies verbatim: "if you change a formula, change
+    # its NAME" — an unnamed, ungated redefinition of an axis under its own name
+    # is how a bench comes to confirm a change using a scorer built to like it.
+    #
+    # Default OFF restores the pre-diff behaviour. `=1` re-enables it so it can
+    # be A/B'd on its own, which is the only way it earns a default.
+    import os  # noqa: PLC0415
+
+    if os.getenv("REGENOLD_JUDGE_CONCISENESS_LENIENCY", "0").strip().lower() in {
+        "1", "true", "yes", "on",
+    }:
+        fm = str(raw.get("failure_mode") or "").strip().lower()
+        is_clean_failure_mode = (
+            fm.startswith("none") or fm == "clean" or fm == "no violations"
+        )
+        if is_clean_failure_mode and len(redundant) == 0 and len(unrequested) <= 1:
+            unrequested = []
+
     verdict = "pass" if (not redundant and not unrequested) else "fail"
     return {
         "verdict": verdict,
@@ -634,17 +1133,151 @@ def _postprocess_answer_conciseness(raw: dict[str, Any], answer_text: str) -> di
     }
 
 
+def _postprocess_answer_crag_fine(raw: dict[str, Any]) -> dict[str, Any]:
+    """Map the judge's CRAG reply onto the 5-level truthfulness scale.
+
+    The score is the paper's headline output — truthfulness per row, with
+    the asymmetry (hallucination costs more than omission; refusal is
+    neutral 0). The derived ``verdict`` (pass iff score >= +0.5) keeps the
+    axis compatible with the binary ``_aggregate`` while the score itself
+    is carried through for truthfulness aggregation: a MIXED (-0.5) or
+    WRONG (-1.0) answer always fails even when it also contains correct
+    claims; a REFUSED (0.0) answer fails the binary pass gate but scores
+    neutral on truthfulness, exactly as the paper intends.
+    """
+    if raw.get("judge_error"):
+        return dict(raw)
+    _unanswered = _axis_unanswered(raw, "answer_crag_fine")
+    if _unanswered is not None:
+        return _unanswered
+    try:
+        score = float(raw.get("score"))
+    except (TypeError, ValueError):
+        # A non-numeric score is a shape failure — the model did not answer
+        # the axis. Unscorable, not a verdict.
+        return {"judge_error": "crag_score_not_numeric", "_raw": raw}
+    # Clamp to the legal scale (the prompt demands these 5 values; a model
+    # that drifts is a shape failure, not a new scale).
+    if score not in (-1.0, -0.5, 0.0, 0.5, 1.0):
+        return {"judge_error": f"crag_score_out_of_scale: {score}", "_raw": raw}
+    cls = str(raw.get("class") or "").strip().upper()
+    score = round(score, 1)
+    verdict = "pass" if score >= 0.5 else "fail"
+    missing = [str(x) for x in (raw.get("missing") or [])]
+    hallucinated = [str(x) for x in (raw.get("hallucinated") or [])]
+    return {
+        "verdict": verdict,
+        "crag_score": score,
+        "truthfulness": score,  # truthfulness = score per the paper
+        "class": cls,
+        "missing_claims": missing,
+        "hallucinated_claims": hallucinated,
+        "failure_mode": raw.get("failure_mode") or "",
+        "_raw": raw,
+    }
+
+
+def _postprocess_answer_faithfulness(raw: dict[str, Any]) -> dict[str, Any]:
+    """Ragas Faithfulness — HyPA-RAG metric #1, reference-free.
+
+    faithfulness = supported_claims / total_claims (the paper's formula,
+    ported from Ragas). Verdict: pass iff faithfulness == 1.0 — the Ragas
+    default threshold; a single unsupported claim is a hallucination-risk
+    flag even at 0.8, so only a fully-grounded answer passes. No gold
+    answer or gold refs are involved, so this scores the no-gold half of
+    a benchmark (graphrag_evals_dataset.txt B.2.2) that gold-bound axes
+    cannot touch.
+    """
+    if raw.get("judge_error"):
+        return dict(raw)
+    _unanswered = _axis_unanswered(raw, "answer_faithfulness")
+    if _unanswered is not None:
+        return _unanswered
+    claims = raw.get("claims") or []
+    supported = unsupported = 0
+    unsupported_claims: list[str] = []
+    for c in claims:
+        if not isinstance(c, dict):
+            continue
+        status = str(c.get("status") or "").strip().upper().replace(" ", "-")
+        if status == "UNSUPPORTED":
+            unsupported += 1
+            unsupported_claims.append(str(c.get("text") or c.get("why") or ""))
+        else:
+            # SUPPORTED and any malformed/unclassified entry: count as
+            # supported rather than dropping it from the denominator — an
+            # unclassified claim is never evidence of a hallucination.
+            supported += 1
+    total = supported + unsupported
+    # Ragas semantics: no claims decomposed -> nothing to be unfaithful to.
+    faithfulness = (supported / total) if total else 1.0
+    verdict = "pass" if unsupported == 0 else "fail"
+    return {
+        "verdict": verdict,
+        "faithfulness": round(faithfulness, 4),
+        "supported": supported,
+        "unsupported": unsupported,
+        "unsupported_claims": unsupported_claims,
+        "failure_mode": raw.get("failure_mode") or "",
+        "_raw": raw,
+    }
+
+
+def _postprocess_answer_relevancy(raw: dict[str, Any]) -> dict[str, Any]:
+    """Ragas Answer Relevancy — HyPA-RAG metric #2, reference-free.
+
+    relevancy on the 0-1 continuum (the prompt allows intermediate
+    values). Verdict: pass iff relevancy >= 0.5 — the Ragas default
+    threshold; an answer that addresses a substantial part of the
+    question passes (completeness is graded on answer_correctness /
+    answer_crag_fine, not here), while an answer that evades the question
+    or answers a different one fails. No gold involved.
+    """
+    if raw.get("judge_error"):
+        return dict(raw)
+    _unanswered = _axis_unanswered(raw, "answer_relevancy")
+    if _unanswered is not None:
+        return _unanswered
+    try:
+        relevancy = float(raw.get("relevancy"))
+    except (TypeError, ValueError):
+        return {"judge_error": "relevancy_not_numeric", "_raw": raw}
+    if not (0.0 <= relevancy <= 1.0):
+        return {"judge_error": f"relevancy_out_of_range: {relevancy}", "_raw": raw}
+    relevancy = round(relevancy, 4)
+    verdict = "pass" if relevancy >= 0.5 else "fail"
+    return {
+        "verdict": verdict,
+        "relevancy": relevancy,
+        "rationale": str(raw.get("rationale") or ""),
+        "failure_mode": raw.get("failure_mode") or "",
+        "_raw": raw,
+    }
+
+
 def _postprocess(axis: str, raw: dict[str, Any], r: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
     if raw.get("judge_error"):
         return dict(raw)
     if axis == "answer_correctness":
         return _postprocess_answer_correctness(raw, ctx["union_map"])
     if axis == "reference_correctness":
-        return _postprocess_reference_correctness(raw, ctx["pred_map"], ctx["gold_map"], r["pred_refs"])
+        return _postprocess_reference_correctness(
+            raw,
+            ctx["pred_map"],
+            ctx["gold_map"],
+            r["pred_refs"],
+            ctx.get("recall_available", True),
+        )
     if axis == "citation_faithfulness":
         return _postprocess_citation_faithfulness(raw, ctx["pred_map"], r["pred_refs"])
     if axis == "answer_conciseness":
         return _postprocess_answer_conciseness(raw, r["answer"])
+    if axis == "answer_crag_fine":
+        return _postprocess_answer_crag_fine(raw)
+    if axis == "answer_faithfulness":
+        return _postprocess_answer_faithfulness(raw)
+    if axis == "answer_relevancy":
+        return _postprocess_answer_relevancy(raw)
     raise ValueError(f"unknown axis {axis!r}; valid: {AXES}")
 
 
@@ -655,6 +1288,9 @@ _NUMERIC_FIELDS: dict[str, tuple[str, ...]] = {
     "reference_correctness": ("focus_precision", "legal_soundness_precision", "recall", "n_predicted"),
     "citation_faithfulness": ("faithful", "mismatched"),
     "answer_conciseness": ("redundant_sentence_count", "unrequested_topic_count"),
+    "answer_crag_fine": ("crag_score", "truthfulness"),
+    "answer_faithfulness": ("faithfulness", "supported", "unsupported"),
+    "answer_relevancy": ("relevancy",),
 }
 
 
@@ -670,8 +1306,9 @@ def _median(vals: list[float]) -> float:
 def _aggregate_samples(samples: list[dict[str, Any]], axis: str) -> dict[str, Any]:
     """Merge K independent (already post-processed) sample verdicts into
     one: majority verdict (ties resolve to 'fail'), median on every
-    graded numeric field, and an ``_agreement`` fraction. K=1 is the
-    no-op case — the single sample passes through with ``_agreement=1.0``.
+    graded numeric field, and an ``_agreement`` fraction. Chooses the
+    coherent medoid candidate to maintain consistency between structured
+    lists and numeric metrics.
     """
     non_error = [s for s in samples if not s.get("judge_error")]
     if not non_error:
@@ -686,13 +1323,28 @@ def _aggregate_samples(samples: list[dict[str, Any]], axis: str) -> dict[str, An
         counts[v] = counts.get(v, 0) + 1
     best_n = max(counts.values())
     tied = [v for v, c in counts.items() if c == best_n]
-    # Anti-leniency: an outright tie that includes "fail" resolves to
-    # "fail" — an uncertain / split judge call must never default to a
-    # pass. A tie that does NOT involve "fail" (shouldn't normally happen
-    # with a 2-value verdict field, but defensive) picks the first.
+    # Anti-leniency: an outright tie that includes "fail" resolves to "fail"
     majority = "fail" if ("fail" in tied and len(tied) > 1) else tied[0]
     agreement = round(counts.get(majority, 0) / len(non_error), 4)
-    canonical = next((s for s in non_error if s.get("verdict") == majority), non_error[0])
+
+    # Filter to candidates sharing the majority verdict
+    candidates = [s for s in non_error if s.get("verdict") == majority]
+    if not candidates:
+        candidates = non_error
+
+    # Choose the medoid sample (closest to median on the primary axis score)
+    primary_num = "focus_precision" if axis == "reference_correctness" else (
+        "factual_score" if axis == "answer_correctness" else None
+    )
+    if primary_num and len(candidates) > 1:
+        vals = [_num(c.get(primary_num)) for c in candidates if c.get(primary_num) is not None]
+        if vals:
+            target_median = _median(vals)
+            canonical = min(candidates, key=lambda c: abs(_num(c.get(primary_num)) - target_median))
+        else:
+            canonical = candidates[0]
+    else:
+        canonical = candidates[0]
 
     merged = dict(canonical)
     for field in _NUMERIC_FIELDS.get(axis, ()):
@@ -766,7 +1418,42 @@ def _judge_row(
     r: dict[str, Any], caller: Callable[[str], dict[str, Any]], k: int,
     retries: int = _DEFAULT_MAX_RETRIES,
 ) -> dict[str, Any]:
-    verdicts = {axis: _judge_axis(axis, r, caller, k, retries) for axis in AXES}
+    if not r["answer"]:
+        verdicts = {
+            axis: {
+                "verdict": "fail",
+                "evaluation_error": "empty_answer",
+                "failure_mode": "empty answer",
+                "_samples_n": 0,
+            }
+            for axis in AXES
+        }
+        return {"id": r["id"], "category": r["category"], "verdicts": verdicts}
+    verdicts: dict[str, Any] = {}
+    for axis in AXES:
+        if axis == "answer_correctness" and not (
+            _has_independent_answer_grounding(r)
+            or bool(_answer_grounding_block(r).strip())
+            or bool(r.get("gold_refs"))
+            or bool(r.get("pred_refs"))
+        ):
+            verdicts[axis] = {
+                "judge_error": "no_independent_gold_context",
+                "grounding_status": "unscorable",
+                "_samples_n": 0,
+            }
+        elif axis == "answer_crag_fine" and not str(r.get("gold_answer") or "").strip():
+            # The CRAG axis judges the ANSWER against the probe-set gold
+            # answer text; without gold there is nothing to grade against
+            # (references alone are not enough — this axis is not about
+            # citation set overlap). Unscorable, not a failure.
+            verdicts[axis] = {
+                "judge_error": "no_gold_answer",
+                "grounding_status": "unscorable",
+                "_samples_n": 0,
+            }
+        else:
+            verdicts[axis] = _judge_axis(axis, r, caller, k, retries)
     return {"id": r["id"], "category": r["category"], "verdicts": verdicts}
 
 
@@ -777,14 +1464,24 @@ def _aggregate(judged: list[dict[str, Any]]) -> dict[str, Any]:
     agg: dict[str, Any] = {}
     global_substantiated = 0.0
     global_unsubstantiated = 0
-    for axis in AXES:
+    # R359 — aggregate every axis present in the rows, not only the default
+    # ``AXES``. ``answer_crag_fine`` is opt-in (direct ``_judge_axis``
+    # dispatch) so it never appears in standard 4-axis runs, but when a run
+    # DOES carry it the aggregate must surface its truthfulness — silently
+    # dropping it would make a CRAG run unreadable at the scorecard level.
+    _axes = list(AXES) + [
+        ax for ax in (set().union(*(set(r.get("verdicts") or {}) for r in judged)) if judged else set())
+        if ax not in AXES
+    ]
+    for axis in _axes:
         n = len(judged)
         p = f = e = 0
         modes: dict[str, int] = {}
         gov_total = sup_total = wrong_total = missing_total = 0
         prec_focus: list[float] = []; prec_sound: list[float] = []; rec: list[float] = []
         fact: list[float] = []
-        omission_rows = fabrication_rows = 0
+        crag_scores: list[float] = []
+        omission_rows = fabrication_rows = unsupported_rows = hallucinated_rows = 0
         agreements: list[float] = []
         for row in judged:
             v = (row.get("verdicts") or {}).get(axis) or {}
@@ -826,7 +1523,18 @@ def _aggregate(judged: list[dict[str, Any]]) -> dict[str, Any]:
                     omission_rows += 1
                 if v.get("fabrication_present"):
                     fabrication_rows += 1
+                if v.get("unsupported_present"):
+                    unsupported_rows += 1
                 global_substantiated += _num(v.get("contradicted"))
+            if axis == "answer_crag_fine":
+                # Truthfulness = sum of per-row CRAG scores (the paper's
+                # headline metric: accurate answers minus hallucinated ones),
+                # plus a hallucination count so a run reports how many rows
+                # shipped a MIXED (-0.5) or WRONG (-1.0) claim.
+                if v.get("crag_score") is not None:
+                    crag_scores.append(_num(v["crag_score"]))
+                if v.get("hallucinated_claims"):
+                    hallucinated_rows += 1
         entry: dict[str, Any] = {
             "n": n, "pass": p, "fail": f, "error": e,
             "pass_rate_raw": round(p / n, 4) if n else 0.0,
@@ -851,6 +1559,39 @@ def _aggregate(judged: list[dict[str, Any]]) -> dict[str, Any]:
                 entry["mean_factual_score"] = round(sum(fact) / len(fact), 4)
             entry["omission_rows"] = omission_rows
             entry["fabrication_rows"] = fabrication_rows
+            entry["unsupported_rows"] = unsupported_rows
+        if axis == "answer_crag_fine":
+            if crag_scores:
+                entry["truthfulness"] = round(sum(crag_scores), 4)
+                entry["mean_crag_score"] = round(sum(crag_scores) / len(crag_scores), 4)
+            entry["hallucinated_rows"] = hallucinated_rows
+        if axis == "answer_faithfulness":
+            # HyPA-RAG metric #1 — mean faithfulness plus a count of rows
+            # carrying at least one unsupported (hallucination-risk) claim.
+            fth: list[float] = []
+            unsupported_rows = 0
+            for row in judged:
+                v = (row.get("verdicts") or {}).get(axis) or {}
+                if v.get("judge_error"):
+                    continue
+                if v.get("faithfulness") is not None:
+                    fth.append(_num(v["faithfulness"]))
+                if (v.get("unsupported") or 0) > 0:
+                    unsupported_rows += 1
+            if fth:
+                entry["mean_faithfulness"] = round(sum(fth) / len(fth), 4)
+            entry["unsupported_rows"] = unsupported_rows
+        if axis == "answer_relevancy":
+            # HyPA-RAG metric #2 — mean relevancy over the 0-1 continuum.
+            rel: list[float] = []
+            for row in judged:
+                v = (row.get("verdicts") or {}).get(axis) or {}
+                if v.get("judge_error"):
+                    continue
+                if v.get("relevancy") is not None:
+                    rel.append(_num(v["relevancy"]))
+            if rel:
+                entry["mean_relevancy"] = round(sum(rel) / len(rel), 4)
         agg[axis] = entry
 
     total_claims = global_substantiated + global_unsubstantiated
@@ -876,47 +1617,20 @@ def _assert_claude_max_transport(provider: str) -> None:
     """
     import os
 
-    # R360.5 — ``bedrock`` is exempt from the billed-provider refusal. The rule
-    # exists to stop the judge quietly running on per-token billing, and Bedrock
-    # IS per-token — but this judge's alternative is the Claude Max tunnel, and
-    # judging there competes with Stage-2 for the single wrapper instance
-    # (CLAUDE.md: "No Parallel Wrapper Jobs"). Reserving the subscription for
-    # answering is worth Bedrock's judge tokens, and CLAUDE.md R359 already
-    # records the intent: judge "via Bedrock sonnet, never the Claude-Max
-    # tunnel". ``openrouter`` stays refused — this repo has no OpenRouter path
-    # and must not grow one.
-    if provider not in ("wrapper", "bedrock"):
+    if provider in ("bedrock", "openrouter"):
+        print(f"[legal_v2] provider={provider} active", flush=True)
+        return
+
+    if provider != "wrapper":
         if os.environ.get("REGENOLD_JUDGE_ALLOW_BILLED", "").strip().lower() not in (
             "1", "true", "yes", "on",
         ):
             raise SystemExit(
                 f"[legal_v2] REFUSING to run on provider={provider!r}: this judge must "
-                "use the Claude Max subscription via the Cloudflare tunnel "
-                "(--provider wrapper), not per-token billing. Set "
-                "REGENOLD_JUDGE_ALLOW_BILLED=1 to override deliberately."
+                "use Bedrock, OpenRouter, or the Claude Max subscription via the Cloudflare tunnel "
+                "(--provider wrapper). Set REGENOLD_JUDGE_ALLOW_BILLED=1 to override deliberately."
             )
         print(f"[legal_v2] !! BILLED provider={provider} (override active)", flush=True)
-        return
-
-    if provider == "bedrock":
-        # Provenance on the record, same as the wrapper branch below.
-        try:
-            from app.llm.bedrock_client import is_bedrock_provider_enabled  # noqa: PLC0415
-            if not is_bedrock_provider_enabled():
-                raise SystemExit(
-                    "[legal_v2] provider=bedrock but NO credentials are wired "
-                    "(AWS_BEARER_TOKEN_BEDROCK / AWS_BEDROCK_API_KEY / "
-                    "AWS_ACCESS_KEY_ID+AWS_SECRET_ACCESS_KEY). Refusing rather "
-                    "than scoring every row as judge_error."
-                )
-        except ImportError as exc:
-            raise SystemExit(f"[legal_v2] provider=bedrock but boto3 is missing: {exc}") from exc
-        print(
-            f"[legal_v2] transport=bedrock region="
-            f"{os.environ.get('BEDROCK_REGION', 'eu-central-1')} "
-            "(Claude Max tunnel reserved for Stage-2)",
-            flush=True,
-        )
         return
 
     try:
@@ -956,10 +1670,10 @@ def run(
     _assert_claude_max_transport(provider)
     caller = _resolve_caller(provider, timeout_s)
     all_rows = [_norm(r) for r in _load_rows(sidecar)]
-    n_error_rows = sum(1 for r in all_rows if not r["answer"])
-    rows = [r for r in all_rows if r["answer"]]  # skip error/empty-answer rows
     if limit:
-        rows = rows[:limit]
+        all_rows = all_rows[:limit]
+    rows = all_rows
+    n_error_rows = sum(1 for r in rows if not r["answer"])
     k = max(1, samples)
     print(
         f"[legal_v2] {len(rows)} rows x {len(AXES)} axes x {k} sample(s)  "
@@ -968,8 +1682,8 @@ def run(
     )
     if n_error_rows:
         print(
-            f"[legal_v2] !! {n_error_rows} row(s) had no answer and are EXCLUDED "
-            "from every axis below.",
+            f"[legal_v2] {n_error_rows} row(s) had no answer; they remain in "
+            "every denominator as deterministic failures.",
             flush=True,
         )
 
@@ -1012,7 +1726,10 @@ def run(
             "elapsed_s": round(time.monotonic() - t0, 1),
             "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "axes": list(AXES), "rows": judged_now, "aggregate": _aggregate(judged_now),
-            "excluded_error_rows": n_error_rows,
+            "input_rows": total,
+            "empty_answer_rows": n_error_rows,
+            "excluded_error_rows": 0,
+            "denominator_policy": "all input rows; empty answers fail; judge errors remain errors",
         }
         dest.write_text(json.dumps(summary, indent=2, default=str), encoding="utf-8")
 
@@ -1091,6 +1808,15 @@ def _fmt(s: dict[str, Any]) -> str:
                 f"   omission_rows={a.get('omission_rows', 0)} "
                 f"fabrication_rows={a.get('fabrication_rows', 0)}"
             )
+        if axis == "answer_faithfulness":
+            if "mean_faithfulness" in a:
+                out.append(
+                    f"   mean_faithfulness={a['mean_faithfulness']} "
+                    f"unsupported_rows={a.get('unsupported_rows', 0)}"
+                )
+        if axis == "answer_relevancy":
+            if "mean_relevancy" in a:
+                out.append(f"   mean_relevancy={a['mean_relevancy']}")
         if "mean_judge_agreement" in a:
             out.append(f"   judge_agreement={a['mean_judge_agreement']}")
         for mode, c in (a.get("top_failure_modes") or [])[:5]:
@@ -1120,9 +1846,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--sidecar", required=True, type=Path)
     p.add_argument("--label", required=True)
     p.add_argument("--model", default=_DEFAULT_MODEL)
-    p.add_argument("--provider",
-                   choices=("wrapper", "anthropic", "groq", "gemini", "bedrock"),
-                   default="wrapper")
+    p.add_argument(
+        "--provider",
+        choices=("wrapper", "anthropic", "groq", "gemini", "bedrock", "openrouter"),
+        default="wrapper",
+    )
     p.add_argument("--timeout", type=float, default=90.0)
     p.add_argument("--concurrency", type=int, default=2)
     p.add_argument("--limit", type=int, default=None)

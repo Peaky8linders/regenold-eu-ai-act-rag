@@ -94,9 +94,12 @@ class TestBiasAllowlist:
             assert marker_july7 not in prompt
             assert "MARKER_SYSTEM_XYZQ" not in prompt
 
-    def test_norm_allowlist_is_exactly_the_documented_six_keys(self) -> None:
+    def test_norm_allowlist_includes_only_independent_grounding_inputs(self) -> None:
         r = _norm(_row())
-        assert set(r.keys()) == {"id", "category", "question", "answer", "pred_refs", "gold_refs"}
+        assert set(r.keys()) == {
+            "id", "category", "question", "answer", "pred_refs", "gold_refs",
+            "gold_answer", "independent_gold_context",
+        }
 
 
 # ── quote substantiation ──────────────────────────────────────────────────
@@ -244,7 +247,9 @@ class TestAnswerCorrectnessCoVe:
         assert out["contradicted"] == 0
         assert out["not_addressed"] == 1
         assert out["fabrication_present"] is False
-        assert out["verdict"] == "pass"
+        # Unsupported propositions now count against correctness.
+        assert out["verdict"] == "fail"
+        assert out["unsupported_present"] is True
         assert len(out["unsubstantiated_verdicts"]) == 1
 
     def test_substantiated_contradiction_fails_as_fabrication(self) -> None:

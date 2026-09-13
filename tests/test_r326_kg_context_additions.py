@@ -153,11 +153,23 @@ def test_strict_read_failure_is_not_memoised_as_empty(monkeypatch):
     monkeypatch.setattr("app.graph.timeouts.graph_circuit_open", lambda: False)
     monkeypatch.setattr("app.graph.timeouts.record_graph_failure", lambda: None)
     monkeypatch.setattr("app.graph.timeouts.record_graph_success", lambda: None)
-    reset_kg_context_memo()
-
+    # R376 — the GUARANTEE under test is that a failed read is not memoised as
+    # an empty success, i.e. the next request re-tries the real graph. That is
+    # what ``len(calls) == 2`` proves, and it is unchanged.
+    #
+    # With the mirror OFF the old return value is reproduced exactly; with it ON
+    # the layer is served from build_hierarchy_payload() instead of vanishing.
+    monkeypatch.setenv("REGENOLD_KG_LOCAL_MIRROR", "0")
     assert kg.fetch_provision_hierarchy(["Art. 97"]) == []
     assert kg.fetch_provision_hierarchy(["Art. 97"]) == []
     assert len(calls) == 2
+
+    monkeypatch.setenv("REGENOLD_KG_LOCAL_MIRROR", "1")
+    reset_kg_context_memo()
+    mirrored = kg.fetch_provision_hierarchy(["Art. 9"])
+    assert mirrored, "mirror must serve the hierarchy when the graph read fails"
+    assert mirrored[0]["cite"] == "Article 9"
+    assert mirrored[0]["units"], "a mirrored provision must carry its paragraphs"
 
 
 def test_executor_cold_initialization_is_singleton_under_concurrency():

@@ -1,0 +1,69 @@
+{
+  "flag": "REGENOLD_KG_POINT_TEXT",
+  "split": "hard",
+  "rows": [
+    {
+      "id": "paper_mt_v4:mt_v4_001",
+      "source": "paper_mt_v4",
+      "msgs": 3,
+      "gold_refs": 1,
+      "graded_off": true,
+      "graded_on": true,
+      "kg_len_off": 0,
+      "kg_len_on": 4327,
+      "user_len_off": 30184,
+      "user_len_on": 34513,
+      "payload_changed": true
+    },
+    {
+      "id": "paper_mt_v4:mt_v4_002",
+      "source": "paper_mt_v4",
+      "msgs": 3,
+      "gold_refs": 1,
+      "graded_off": true,
+      "graded_on": true,
+      "kg_len_off": 1871,
+      "kg_len_on": 5387,
+      "user_len_off": 48837,
+      "user_len_on": 50960,
+      "payload_changed": true
+    },
+    {
+      "id": "paper_mt_v4:mt_v4_003",
+      "source": "paper_mt_v4",
+      "msgs": 3,
+      "gold_refs": 2,
+      "graded_off": true,
+      "graded_on": true,
+      "kg_len_off": 602,
+      "kg_len_on": 5890,
+      "user_len_off": 51686,
+      "user_len_on": 56953,
+      "payload_changed": true
+    },
+    {
+      "id": "paper_mt_v4:mt_v4_004",
+      "source": "paper_mt_v4",
+      "msgs": 3,
+      "gold_refs": 1,
+      "graded_off": true,
+      "graded_on": true,
+      "kg_len_off": 1871,
+      "kg_len_on": 5177,
+      "user_len_off": 31203,
+      "user_len_on": 34890,
+      "payload_changed": true
+    }
+  ],
+  "graded_rows": 4,
+  "payload_changed_rows": 4,
+  "kg_block_changed_rows": 4,
+  "kg_len_off_total": 4344,
+  "kg_len_on_total": 20781,
+  "payload_changed_ids": [
+    "paper_mt_v4:mt_v4_001",
+    "paper_mt_v4:mt_v4_002",
+    "paper_mt_v4:mt_v4_003",
+    "paper_mt_v4:mt_v4_004"
+  ]
+}

@@ -300,6 +300,34 @@ class _PayloadRecorder:
         return recorder
 
     def install(self) -> None:
+        # R416 — LOAD ``.env`` BEFORE TOUCHING A PROVIDER.
+        #
+        # ``_OpenAIWrapperProvider`` resolves its Cloudflare Access
+        # service-token headers ONCE, at construction, and caches them for the
+        # life of the process (``_resolve_cf_access_headers``). ``app.config``
+        # is what puts ``.env`` into ``os.environ``, and it does so lazily on
+        # first import — which, without this line, happens AFTER this method has
+        # already constructed the provider singletons. They then carry no
+        # service token, Cloudflare Access refuses every primary call with an
+        # HTTP 401, and the WHOLE paired run is served by the fallback leg.
+        #
+        # MEASURED (R416, hard split, 37 rows x 2 arms): 74/74 Stage-2 calls
+        # fell back — `primary_attempts=37, primary_ok=0, fallback_ok=37` on BOTH
+        # arms — while a direct call in the same environment, minutes apart, was
+        # served 10/10 by the primary and `cloudflare_access_service_token_active`
+        # never appeared in the gate's log at all. That is the R412 near-miss
+        # class — a VOID run that reads as a plausible null — except self-inflicted
+        # by the very module that exists to detect it. `.env` also carries
+        # ``OPENAI_API_BASE``, so its absence additionally hides the destination.
+        #
+        # ``app.config`` honours ``REGENOLD_SKIP_DOTENV`` and deliberately skips
+        # under pytest, so offline and test arms measure code defaults exactly as
+        # before — this cannot leak a developer's ``.env`` into a test.
+        try:
+            import app.config  # noqa: F401, PLC0415
+        except Exception:  # noqa: BLE001 — never block a gate on config sugar
+            pass
+
         import importlib  # noqa: PLC0415
 
         targets = (
@@ -396,12 +424,21 @@ def assess(
     branch: ArmProvenance | None = None,
     lever: tuple[bool, str] | bool = False,
     transport_checked: bool = True,
+    ignore_fallback_leg: bool = False,
 ) -> GateVerdict:
     """Decide whether a paired run is eligible to report deltas.
 
     ``lever`` is :func:`lever_changes_system`'s result (or a bare bool). The
     transport leg is checked for BOTH arms; the payload-identity check only
     applies when the lever claims the system slot.
+
+    ``ignore_fallback_leg`` — R416. Set by a caller that has ALREADY excluded
+    the fallback-served rows from both arms symmetrically (see
+    ``easyhard_ab._exclude_fallback_rows``) and is therefore reporting on a
+    tunnel-served subset. The fallback reason is suppressed, and the caller
+    takes on the obligation to publish the drop count and to refuse to report
+    when the survivors fall below the gate floor. Default ``False`` keeps every
+    existing caller's behaviour byte-identical.
     """
     if isinstance(lever, tuple):
         lever_changes, lever_why = lever
@@ -422,7 +459,7 @@ def assess(
                 f"{arm.label}: transport provenance unavailable — {arm.stats_error}"
             )
             continue
-        if arm.fallback_ok > 0:
+        if arm.fallback_ok > 0 and not ignore_fallback_leg:
             reasons.append(
                 f"{arm.label} was served by the FALLBACK transport "
                 f"(fallback_ok={arm.fallback_ok}, primary_ok={arm.primary_ok}). "

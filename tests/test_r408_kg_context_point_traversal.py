@@ -61,6 +61,55 @@ def test_default_is_the_fixed_query_after_r416(monkeypatch):
         assert not kg._kg_point_text_enabled()
 
 
+def test_multi_turn_selects_the_legacy_query(monkeypatch):
+    """R416 hard-split gate — the point-text lever is MODALITY-RESTRICTED.
+
+    The R416 flip was measured on the single-turn board (+8.0 ``ans_strict``,
+    +0.6 overall, ``ref_loose`` flat at 100.0). The hard split says the opposite
+    (paired, 32 tunnel-served rows): ``ref_loose`` 80.21 -> 75.52 and
+    ``gold_dropped_head`` 12 -> 14, a HARD RULE #8 failure on turn-1 expected
+    heads. Both readings are real, so an explicit multi-turn count must select
+    the legacy query — byte-identical to ``REGENOLD_KG_POINT_TEXT=0``, i.e. the
+    measured baseline arm — while a single-turn count keeps the fixed query.
+    """
+    monkeypatch.delenv("REGENOLD_KG_POINT_TEXT", raising=False)
+    monkeypatch.delenv("REGENOLD_KG_POINT_TEXT_SINGLE_TURN", raising=False)
+    assert kg._kg_point_text_enabled(0)
+    assert kg._kg_point_text_enabled(1)
+    assert not kg._kg_point_text_enabled(2)
+    assert not kg._kg_point_text_enabled(10)
+
+    calls = _serve(monkeypatch, _ART5)
+    kg.fetch_subpoint_detail(["Article 5"], history_turn_count=4)
+    assert calls and calls[0][0] == kg._SUBPOINT_CYPHER_LEGACY
+
+    calls = _serve(monkeypatch, _ART5)
+    kg.fetch_subpoint_detail(["Article 5"], history_turn_count=1)
+    assert calls and calls[0][0] == kg._SUBPOINT_CYPHER
+
+
+def test_unthreaded_turn_count_keeps_the_shipped_default(monkeypatch):
+    """``None`` means "not threaded", never "multi-turn".
+
+    Entry points that carry no conversation (``logic_rag``, direct engine calls,
+    tests) must be unchanged by the R416 scoping, or the modality restriction
+    would silently revert the single-turn gain for them too.
+    """
+    monkeypatch.setenv("REGENOLD_KG_POINT_TEXT", "1")
+    monkeypatch.delenv("REGENOLD_KG_POINT_TEXT_SINGLE_TURN", raising=False)
+    assert kg._kg_point_text_enabled(None)
+
+
+def test_unrestricted_flag_restores_the_pre_r416_behaviour(monkeypatch):
+    """``..._SINGLE_TURN=0`` is the opt-out that the hard gate above falsifies."""
+    monkeypatch.setenv("REGENOLD_KG_POINT_TEXT", "1")
+    monkeypatch.setenv("REGENOLD_KG_POINT_TEXT_SINGLE_TURN", "0")
+    assert kg._kg_point_text_enabled(9)
+
+    monkeypatch.setenv("REGENOLD_KG_POINT_TEXT", "0")
+    assert not kg._kg_point_text_enabled(1)
+
+
 def test_flag_off_dispatches_the_exact_pre_r408_query(monkeypatch):
     """Explicit OFF keeps the query production served before R408."""
     monkeypatch.setenv("REGENOLD_KG_POINT_TEXT", "0")

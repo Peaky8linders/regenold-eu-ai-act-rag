@@ -333,7 +333,7 @@ _CHALLENGE_PATTERNS: tuple[re.Pattern[str], ...] = (
 )
 
 
-def is_challenge_turn(question: str) -> bool:
+def is_challenge_turn(question: str, *, has_prior_turns: bool | None = None) -> bool:
     """True when the LIVE turn disputes the previous answer.
 
     Scans only the text after the route's ``Latest question:`` flatten marker
@@ -346,6 +346,7 @@ def is_challenge_turn(question: str) -> bool:
         text = str(question)
         marker = "Latest question:\n"
         idx = text.rfind(marker)
+        prior_present = (idx >= 0) if has_prior_turns is None else bool(has_prior_turns)
         if idx >= 0:
             text = text[idx + len(marker):]
         low = text.lower()
@@ -356,7 +357,7 @@ def is_challenge_turn(question: str) -> bool:
         # with the ``Latest question:`` marker, so its absence means turn 1,
         # and a "challenge" to a previous answer is undefined there. The
         # explicit dispute markers above stay unconditional.
-        if idx < 0:
+        if not prior_present:
             return False
         return any(p.search(text) for p in _CHALLENGE_PATTERNS)
     except Exception:  # noqa: BLE001 — a detector must never break the route

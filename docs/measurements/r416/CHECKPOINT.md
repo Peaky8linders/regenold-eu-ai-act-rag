@@ -9,7 +9,8 @@ review pass over the same claims.
 
 ## 1. What shipped
 
-**`REGENOLD_KG_POINT_TEXT` is now DEFAULT ON.** The gap report's finding 1.2 was
+**`REGENOLD_KG_POINT_TEXT` is DEFAULT ON for single-turn asks and scoped OFF on
+multi-turn ones** (§6.4). The gap report's finding 1.2 was
 right and is the only finding that turned out to be an ungated *lever* rather than a
 documented decision: production was serving `_SUBPOINT_CYPHER_LEGACY`, whose inner
 `MATCH (pt:Point)-[:HAS_SUBPOINT]->(sp:SubPoint)` requires a SubPoint, while the live
@@ -140,7 +141,112 @@ which is the live sampling spread, and exactly why the 25-row 3-repeat judge, no
 check, is the measurement above. The live check is a deploy smoke test that the flip is
 in effect; it is not evidence for the +8.0 pp.
 
-## 6. Artifacts
+## 6. The hard split, and the instrument bug that had to be fixed first
+
+§4 named one residual: this lever's hard-split movement is **unknown**, not zero — it
+is a grounding-text change, so unlike the R415 system-slot lever it is not
+modality-restricted. This section is that measurement.
+
+### 6.1 Reach, before spending a call (deterministic, live Aura)
+
+`kg_point_text_hard_reach.py` drives the real route with the provider stubbed to a
+recorder and diffs the graded Stage-2 **user** payload between the arms:
+
+| sample | rows | graded | payload changed | KG block chars OFF → ON |
+| :--- | ---: | ---: | ---: | ---: |
+| `paper_mt_v4` head | 4 | 4 | **4** | 4,344 → 20,781 |
+| `mt_v2` tail | 5 | 5 | **5** | 1,204 → 28,017 |
+
+9/9 across both hard source families, so a paired hard gate measures the lever rather
+than noise. (Total user-payload length moves both ways — the unit budget is shared, so a
+larger point-text block evicts other context on some rows.)
+
+### 6.2 `ArmProbe` stripped the Cloudflare Access service token — 74/74 calls fell back
+
+The first two hard runs were VOID: `primary_attempts=37, primary_ok=0, fallback_ok=37`
+on **both** arms, while a direct call in the same environment, minutes apart, was served
+**10/10** by the primary.
+
+Mechanism: `_OpenAIWrapperProvider` resolves its CF Access service-token headers **once,
+at construction**, and caches them. `app.config` is what puts `.env` into `os.environ`,
+and it does so lazily on first import — which, before this fix, happened **after**
+`gate_validity._PayloadRecorder.install()` had already constructed the provider
+singletons. They then carried no `CF-Access-Client-*` header and no `OPENAI_API_BASE`,
+so Cloudflare Access refused every primary call with a 401 and the run was served by
+Bedrock. Confirmed by the absence of `cloudflare_access_service_token_active` anywhere in
+the gate log, against its presence in a direct run.
+
+This is the R412 near-miss class — a VOID run that reads as a plausible null — except
+**self-inflicted by the module that exists to detect it**. Fixed by importing
+`app.config` in `install()` before any provider is touched (it honours
+`REGENOLD_SKIP_DOTENV` and skips under pytest, so offline/test arms are unchanged).
+
+Verified by the same 2-row arm under the same `ArmProbe`: `primary_ok=0` → **`primary_ok=2,
+fallback_ok=0`**.
+
+### 6.3 Two more gate defects, fixed so the finding can be reported at all
+
+* **No per-row transport provenance.** The ckpt recorded only an arm-level total, so a
+  single fallback row voided a complete 37+37 run with no way to say *which* rows the
+  other leg carried. Rows now carry `stage2_primary_ok`, `stage2_fallback_ok`,
+  `stage2_used`, `stage2_fell_back`.
+* **One fallback row voided everything.** `assess` voids when the fallback leg carried
+  any row — right for a system-slot lever (Bedrock always gets the full system), wasteful
+  for every other kind, where a grounding/user-payload lever reaches **both** legs.
+  `_exclude_fallback_rows` now drops the SAME ids from both arms (symmetry is the point:
+  R415's first draft dropped one side and voided on the other), the drop is printed, and
+  the run is still refused when survivors fall below `_MIN_GATE_N`.
+
+`tests/test_r416_gate_provenance_and_dotenv.py` pins all four (8 tests), including the
+ordering invariant that a provider is never constructed before `app.config` loads.
+
+### 6.4 The paired hard read — THE REVERT, TAKEN AS SCOPE NOT AS LOSS
+
+`r416d-kgpt-hard`: 37+37 rows, clean one-flag arms (`REGENOLD_KG_POINT_TEXT=0` vs `=1`),
+both arms primary-served on 35/32 rows. The gate process itself voided (it was launched
+before §6.3's exclusion existed), so the read is the **re-score** from the same on-disk
+rows by `score_hard_split.py`, which calls the gate's own `_exclude_fallback_rows`,
+`_aggregate`, `_paired` and `_gold_gate_verdict` — no second implementation.
+Five ids dropped symmetrically (`mt_v4_009`, `mt_v2_004`, `mt_v2_009`, `mt_v2_014`,
+`mt_v2_016`); **32 paired rows survive**, floor 30.
+
+| axis | OFF | ON | delta |
+| :--- | ---: | ---: | ---: |
+| ref_correctness_loose | 80.21 | 75.52 | **-4.69** |
+| ref_correctness_strict | 43.18 | 40.24 | -2.95 |
+| ref_conciseness | 22.19 | 19.85 | -2.34 |
+| regulatory_tone | 100.0 | 100.0 | 0.0 |
+| keyword_recall | 81.25 | 79.69 | -1.56 |
+| **gold_dropped_head** | **12** | **14** | **+2** |
+
+**HARD RULE #8 FAILS.** Four rows newly drop a turn-1 expected head the baseline kept:
+`Article 5` (mt_v4:001), `Article 51` (mt_v2:008), `Article 113` (mt_v2:020),
+`Article 24` (mt_v2:025). Six of 32 rows moved; three moves were favourable, so this is
+not a swing that averages out.
+
+**The revert, taken as modality scope rather than as global loss.** The R416 easy board
+measured the same lever UP (+8.0 `ans_strict`, +0.6 overall, `ref_loose` flat at 100.0 on
+25 paired rows). Both readings are real and the predicate is what separates them: the easy
+board is single-turn, the loss is on multi-turn pushbacks. So the default is unchanged for
+single-turn asks and falls back to `_SUBPOINT_CYPHER_LEGACY` when the conversation depth
+is known to be >= 2 — byte-identical to `REGENOLD_KG_POINT_TEXT=0`, i.e. the measured
+baseline arm above. `REGENOLD_KG_POINT_TEXT_SINGLE_TURN=0` restores the falsified
+unconditional behaviour; it is registered in `_engine_cache_key`.
+
+The depth rides a `ContextVar` (`kg_context.set_render_turn_count`), set once in
+`_two_stage_generate` — the single ancestor of both Stage-2 entry points — and reset in a
+`finally`. Not a parameter: **nine** test fakes patch `fetch_subpoint_detail` with a
+one-argument lambda, and a keyword at that seam is swallowed by `render_kg_context`'s
+`except Exception`, silently emptying the block (that swallow now logs).
+
+### 6.5 The re-score driver's own bug, found and fixed
+
+First run of `score_hard_split.py` **refused** a passing sample: it floor-checked
+`survivors.values()` (`{'easy': 0, 'hard': 32}`) instead of the splits the corpus carried,
+so a hard-only run's empty `easy` key read as a floor breach. `easyhard_ab` has always
+used `expected_splits`; the driver now does too (`--splits`, default `hard`).
+
+## 7. Artifacts
 
 | file | what |
 | :--- | :--- |
@@ -152,3 +258,10 @@ in effect; it is not evidence for the +8.0 pp.
 | `../r415/official-lever-b-matched-kgpt.ckpt.jsonl` | the graded answers behind it |
 | `../r415/judge-cache-r415-wrapper.jsonl` | the judge verdicts (shared cache) |
 | `../../reviews/r416-findings-validation.md` | disposition of all 12 findings |
+| `kg_point_text_hard_reach.py` / `kg-point-text-hard-reach{,-tail}.json` | §6.1 reach |
+| `score_hard_split.py` | §6.4 re-score (symmetric fallback exclusion) |
+| `hard-split-r416d-kgpt-hard.json` | §6.4 the verbatim hard-split read |
+| `anchor_precision_measure.py` / `anchor-precision.json` | the unbacked anchor-precision claim, measured |
+| `tests/test_r416_gate_provenance_and_dotenv.py` | pins §6.2 and §6.3 |
+| `tests/test_r408_kg_context_point_traversal.py` | pins §6.4's modality scope (4 new tests) |
+| `tests/test_r416_audit_remediations.py` | pins the audit remediations |

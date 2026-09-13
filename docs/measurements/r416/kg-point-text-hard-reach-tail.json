@@ -1,0 +1,84 @@
+{
+  "flag": "REGENOLD_KG_POINT_TEXT",
+  "split": "hard",
+  "rows": 5,
+  "graded_rows": 5,
+  "payload_changed_rows": 5,
+  "kg_block_changed_rows": 5,
+  "kg_len_off_total": 1204,
+  "kg_len_on_total": 28017,
+  "payload_changed_ids": [
+    "mt_v2:mt_v2_021",
+    "mt_v2:mt_v2_022",
+    "mt_v2:mt_v2_023",
+    "mt_v2:mt_v2_024",
+    "mt_v2:mt_v2_025"
+  ],
+  "detail": [
+    {
+      "id": "mt_v2:mt_v2_021",
+      "source": "mt_v2",
+      "msgs": 3,
+      "gold_refs": 2,
+      "graded_off": true,
+      "graded_on": true,
+      "kg_len_off": 602,
+      "kg_len_on": 6015,
+      "user_len_off": 53158,
+      "user_len_on": 58600,
+      "payload_changed": true
+    },
+    {
+      "id": "mt_v2:mt_v2_022",
+      "source": "mt_v2",
+      "msgs": 3,
+      "gold_refs": 1,
+      "graded_off": true,
+      "graded_on": true,
+      "kg_len_off": 602,
+      "kg_len_on": 4836,
+      "user_len_off": 47822,
+      "user_len_on": 30151,
+      "payload_changed": true
+    },
+    {
+      "id": "mt_v2:mt_v2_023",
+      "source": "mt_v2",
+      "msgs": 3,
+      "gold_refs": 1,
+      "graded_off": true,
+      "graded_on": true,
+      "kg_len_off": 0,
+      "kg_len_on": 6322,
+      "user_len_off": 37962,
+      "user_len_on": 41275,
+      "payload_changed": true
+    },
+    {
+      "id": "mt_v2:mt_v2_024",
+      "source": "mt_v2",
+      "msgs": 3,
+      "gold_refs": 1,
+      "graded_off": true,
+      "graded_on": true,
+      "kg_len_off": 0,
+      "kg_len_on": 5151,
+      "user_len_off": 28415,
+      "user_len_on": 51612,
+      "payload_changed": true
+    },
+    {
+      "id": "mt_v2:mt_v2_025",
+      "source": "mt_v2",
+      "msgs": 3,
+      "gold_refs": 2,
+      "graded_off": true,
+      "graded_on": true,
+      "kg_len_off": 0,
+      "kg_len_on": 5693,
+      "user_len_off": 48866,
+      "user_len_on": 32479,
+      "payload_changed": true
+    }
+  ]
+}

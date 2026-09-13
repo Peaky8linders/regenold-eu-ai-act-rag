@@ -25,26 +25,38 @@ AXES: tuple[str, ...] = ("correctness", "refs", "conciseness", "tone")
 
 _JSON_TAIL = (
     "\nRespond with ONE JSON object only (no preamble, no markdown fences):\n"
-    '{"winner":"A"|"B"|"tie","reason":"<one short phrase>"}'
+    '{"criteria_analysis":{"candidate_a_critique":"<short analysis>","candidate_b_critique":"<short analysis>"},'
+    '"comparative_reasoning":"<one phrase comparing A vs B>","winner":"A"|"B"|"tie"}'
 )
+
+
+def _escape_xml(text: str) -> str:
+    if not text:
+        return ""
+    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _common_head(row: dict[str, Any]) -> str:
     return (
         "You are an EU AI Act legal expert comparing two candidate answers (A "
-        "and B) to the SAME question. Judge ONLY the axis stated below. Prefer "
-        "the answer that better satisfies it; answer 'tie' only when they are "
-        "genuinely indistinguishable on this axis.\n\n"
-        "QUESTION: " + (row.get("question") or "")[:600] + "\n"
+        "and B) to the SAME question. Judge ONLY the axis stated below. First audit "
+        "each candidate's strengths and weaknesses, synthesize the comparison, and "
+        "only then decide the winner. Answer 'tie' only when they are genuinely "
+        "indistinguishable on this axis.\n\n"
+        "<question>\n" + _escape_xml((row.get("question") or "")[:600]) + "\n</question>\n"
     )
 
 
 def _ab_block(answer_a: str, refs_a: list[str], answer_b: str, refs_b: list[str]) -> str:
     return (
-        "\n--- ANSWER A ---\n" + (answer_a or "")[:1400] + "\n"
-        "REFERENCES A: " + str(refs_a or []) + "\n"
-        "\n--- ANSWER B ---\n" + (answer_b or "")[:1400] + "\n"
-        "REFERENCES B: " + str(refs_b or []) + "\n"
+        "\n<candidate_a>\n"
+        "<answer>\n" + _escape_xml(answer_a or "") + "\n</answer>\n"
+        "<references>" + str(refs_a or []) + "</references>\n"
+        "</candidate_a>\n"
+        "\n<candidate_b>\n"
+        "<answer>\n" + _escape_xml(answer_b or "") + "\n</answer>\n"
+        "<references>" + str(refs_b or []) + "</references>\n"
+        "</candidate_b>\n"
     )
 
 

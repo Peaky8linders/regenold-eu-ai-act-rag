@@ -255,18 +255,25 @@ def _judge_one(caller, prompt: str) -> str:
     return w if w in ("A", "B") else "tie"
 
 
-def _pairwise_verdict(
+def _pairwise_verdict_detail(
     row_dict: dict[str, Any],
     axis: str,
     a: ArmAnswer,
     b: ArmAnswer,
     caller,
     summaries: dict[str, str],
-) -> str:
-    """Position-swapped pairwise verdict for one axis.
+) -> tuple[str, bool]:
+    """Position-swapped verdict **and** whether the two orderings agreed.
 
-    Returns 'A' (baseline) / 'B' (branch) / 'tie'. A decisive win requires BOTH
-    orderings to agree; a position-flip → 'tie' (cancels position bias).
+    The agreement bit cannot be recovered from the verdict downstream: a pair
+    that agreed on 'A' and a pair whose orderings disagreed both collapse to
+    ``tie``. ``AxisResult.swap_consistency_rate`` therefore needs this flag,
+    and R416 found the field declared but never incremented — every run
+    reported a consistency of 0.0 by construction.
+
+    Returns ``(verdict, agreed)`` where verdict is 'A' / 'B' / 'tie'. A
+    decisive win requires BOTH orderings to agree; a position-flip → 'tie'
+    (cancels position bias).
     """
     # Order 1: prompt-A = arm-A, prompt-B = arm-B.
     p1 = pairwise_prompts.render(
@@ -282,9 +289,25 @@ def _pairwise_verdict(
     w2_raw = _judge_one(caller, p2)
     # Translate order-2 back to arm space.
     w2 = {"A": "B", "B": "A", "tie": "tie"}[w2_raw]
-    if w1 == w2 and w1 in ("A", "B"):
-        return w1
-    return "tie"
+    agreed = (w1 == w2)
+    verdict = w1 if (agreed and w1 in ("A", "B")) else "tie"
+    return verdict, agreed
+
+
+def _pairwise_verdict(
+    row_dict: dict[str, Any],
+    axis: str,
+    a: ArmAnswer,
+    b: ArmAnswer,
+    caller,
+    summaries: dict[str, str],
+) -> str:
+    """Position-swapped pairwise verdict for one axis.
+
+    Returns 'A' (baseline) / 'B' (branch) / 'tie'. A decisive win requires BOTH
+    orderings to agree; a position-flip → 'tie' (cancels position bias).
+    """
+    return _pairwise_verdict_detail(row_dict, axis, a, b, caller, summaries)[0]
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -314,6 +337,15 @@ class AxisResult:
     wins_b: int = 0   # branch beats baseline
     wins_a: int = 0   # baseline beats branch
     ties: int = 0
+    swap_agreements: int = 0
+
+    def effective_win_rate_b(self, total_rows: int) -> float | None:
+        """Standard Tie-Aware Effective Win Rate (Chatbot Arena / Elo standard):
+        W_eff = (Wins_B + 0.5 * Ties) / Total
+        """
+        if total_rows == 0:
+            return None
+        return round((self.wins_b + 0.5 * self.ties) / total_rows, 4)
 
     def win_rate_b(self) -> float | None:
         dec = self.wins_a + self.wins_b
@@ -321,6 +353,9 @@ class AxisResult:
 
     def p_value(self) -> float:
         return _sign_test_two_sided(self.wins_b, self.wins_a)
+
+    def swap_consistency_rate(self, total_rows: int) -> float | None:
+        return round(self.swap_agreements / total_rows, 4) if total_rows > 0 else None
 
     def verdict(self) -> str:
         wr = self.win_rate_b()
@@ -450,8 +485,10 @@ def run_ab(
               "expected_refs": list(row.expected_refs)}
         row_verdicts: dict[str, str] = {}
         for ax in pairwise_prompts.AXES:
-            v = _pairwise_verdict(rd, ax, a, b, caller, summaries)
+            v, agreed = _pairwise_verdict_detail(rd, ax, a, b, caller, summaries)
             row_verdicts[ax] = v
+            if agreed:
+                axes[ax].swap_agreements += 1
             if v == "B":
                 axes[ax].wins_b += 1
             elif v == "A":
@@ -462,11 +499,17 @@ def run_ab(
         print(f"  [judge] {i + 1}/{len(rows)} {row.id}  {row_verdicts}", flush=True)
 
     result["judge_model"] = model
+    _n_judged = len(per_row)
     result["axes"] = {
         ax: {
             "wins_branch": r.wins_b, "wins_baseline": r.wins_a, "ties": r.ties,
             "win_rate_branch": r.win_rate_b(), "p_value": r.p_value(),
             "verdict": r.verdict(),
+            # R416 — the tie-aware effective win rate (Chatbot Arena standard)
+            # and the swap-agreement rate, both now actually populated.
+            "effective_win_rate_branch": r.effective_win_rate_b(_n_judged),
+            "swap_agreements": r.swap_agreements,
+            "swap_consistency_rate": r.swap_consistency_rate(_n_judged),
         }
         for ax, r in axes.items()
     }

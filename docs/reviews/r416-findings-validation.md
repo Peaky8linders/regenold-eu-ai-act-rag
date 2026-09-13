@@ -262,13 +262,44 @@ gold-loss result remains the reason the repair flag stays OFF.
    (roadmap row 4), CLARA's reachability (`AGENTS.md`), and the cache-key AST gate's
    coverage of `app/llm/` (`AGENTS.md`).
 
+## 7b. Independent review pass — a second agent's "completed work" summary, checked
+
+A parallel agent's summary of its own changes was validated against the diff before any of
+it was allowed to stand as evidence. Verdicts below are what the tree and its measurements
+support, not what the summary asserts.
+
+| claim | verdict | evidence |
+| :--- | :--- | :--- |
+| Art. 56 removed from `ROLE_GPAI_PROVIDER`; Art. 73 retained in the high-risk roles | **VERIFIED** | `role_obligations.py` diff is exactly that one line; Art. 73 present in both `HIGH_RISK_ANNEX_I` and `HIGH_RISK_ANNEX_III` |
+| `REQUIREMENT_ARTICLE_ANCHORS` added (20 mappings) | **VERIFIED — but DEAD ON ARRIVAL** | 20 entries exist; **no call site anywhere**. The claimed `qa_030` fix therefore cannot be attributable to it |
+| "rebuilt `eu-ai-act-core.ttl`" | **NOT BACKED** | the file is **byte-identical to HEAD** (`git diff` empty), the builder reads `ontology.ROLE_OBLIGATIONS` (not `role_obligations.py`, so the Art. 56 edit cannot reach it), and `rdflib` is not installed so `--check` cannot have run |
+| `_citable_concept_anchors()` for Stage-2 citable universe | **REMOVED — DEAD** | definition only, zero call sites; its docstring's "93 % gold precision (38/41)" has no artifact and no 297-row pool exists in the repo. Measured against the live graph: **62.5 % (10/16)** (`anchor_precision_measure.py`) |
+| Cohere Rerank v4 support | **VERIFIED** | `_is_v4`, `_effective_model`, 24,000-char / 16,384-token v4 budgets, `X-Client-Name` |
+| in-process local KG mirror | **VERIFIED** | all seven claimed symbols present; wired as the Aura-unreachable fallback |
+| emotion regex widened (`personnel`, `colleague(s)`, `call centre`) | **VERIFIED** | present in both branch alternatives |
+| `_NEGATION_AHEAD_RE`, Bedrock denoiser fallback, pushback recovery | **VERIFIED** | all three present and reachable on the live path |
+| "expanded the focused-subprovision ceiling 10 -> 24" | **ACCURATE BUT INERT** | it is a **clamp** on `REGENOLD_KG_MAX_REFS` (env default **8**), and `_MAX_REFS_CEILING` is 24 — so the change aligns one seam with the rest at defaults rather than fetching 24 |
+| sibling paragraphs before KG hierarchy; `+4` overshoot removed | **VERIFIED** | block moved above the Aura read; `len(out) < limit + 4` -> `len(out) < limit` |
+| `ab_judge` swap agreements / effective win rates / consistency | **WIRED — the field was structurally dead** | `swap_agreements` was declared and read but **never incremented**, so every run reported consistency `0.0` by construction. Now tallied in both `ab_judge` and `pairwise_from_answers` |
+| `metrics.py`: head-normalisation port | **ABSENT** | the module is unchanged from HEAD and contains no `parse_entity_head`/`_SHORT_ARTICLE_HEAD_RE`, and nothing references them; the described code is not in the tree |
+| `legal_v2`: recitals, DP 85 % + negation veto, CRAG fine axis, ref-free axes, medoid | **VERIFIED** | `OFFICIAL_RECITAL_TEXT` resolution, contiguous-run fallback at `covers >= 0.85` with a negation-profile veto, `answer_crag_fine` / `answer_faithfulness` / `answer_relevancy` axes registered |
+| `runner.py` multi-pass JSON extractor | **VERIFIED** | present in the diff |
+
+**What was fixed rather than just recorded.** The artifacts that were dead, unbacked, or
+structurally inert were removed or repaired, not left to be cited later: the two dead
+definitions above, the duplicate comment block in `faithfulness_verify.py`, and the
+always-zero consistency rate. The `93 %` figure is replaced by the measured 62.5 %.
+
 ## 8. Residuals this round does not close
 
-* **The hard split is unmeasured for the KG lever.** It is a grounding-text change, so
-  unlike the R415 lever it is *not* modality-restricted. Its direction is the opposite
-  of the class that broke hard mode (answers got slightly longer and recovered points;
-  no reference axis moved), but that is reasoning, not measurement. This is the next
-  gate.
+* ~~**The hard split is unmeasured for the KG lever.**~~ **MEASURED, AND IT FAILED.**
+  Paired, 32 tunnel-served rows, floor 30, clean one-flag arms: the unconditional default
+  dropped turn-1 expected heads (`gold_dropped_head` 12 -> 14) and lost `ref_loose`
+  80.21 -> 75.52 — hard rule #8. The prediction above ("opposite direction") was wrong,
+  which is exactly why it was written as reasoning rather than as a result. The lever now
+  ships modality-scoped: single-turn keeps the measured +8.0 pp on Ans Strict, multi-turn
+  falls back to the measured baseline arm (`_SUBPOINT_CYPHER_LEGACY`).
+  `docs/measurements/r416/CHECKPOINT.md` §6.4.
 * **`REGENOLD_GRAPH_FUSE_SLACK` still has no value read.** §1.1 is confirmed but the
   question it needs answered — whether the 660 available candidates contain gold heads
   BM25 misses — is not answered here.
