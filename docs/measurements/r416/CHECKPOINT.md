@@ -239,7 +239,30 @@ The depth rides a `ContextVar` (`kg_context.set_render_turn_count`), set once in
 one-argument lambda, and a keyword at that seam is swallowed by `render_kg_context`'s
 `except Exception`, silently emptying the block (that swallow now logs).
 
-### 6.5 The re-score driver's own bug, found and fixed
+### 6.5 Post-deploy live confirmation of the SCOPE (`04aa6c9ebf59`)
+
+`docs/measurements/r416/live_prod_check.py` — the scope is a predicate, so BOTH halves
+were asked on the real transport (production Stage-2), not just the arm that improved:
+
+| case | turns | chars | wire refs | names Article 14 |
+| :--- | ---: | ---: | :--- | :--- |
+| single-turn | 1 | 417 | `['Article 14.4']` | yes |
+| multi-turn pushback | 11 | 2,095 | `['Article 14.4', 'Annex III.1.a']` | yes |
+
+Asserted and passed: healthy deploy, non-empty answers, wire references present, the
+operative article named on BOTH paths. The hard path is the point — the legacy query
+does not empty the block or break the answer when it is selected.
+
+**Reported honestly, not asserted:** on this live single-turn sample the Art. 14 *aim*
+clause ("with the aim of preventing or minimising risks to health, safety or fundamental
+rights") is **absent** from the 417-character answer, whereas the R416 easy gate credited
+`rg_010` (4/5 -> 5/5) to exactly that clause. The two asks are not the same object: the
+gate's row carries the official question text and routed to a ~1,230-character answer,
+and this probe's 417-character answer is a different (shorter) generation path. So this is
+**not reproduced here either way** — it is a prompt/route difference, not evidence against
+the modality scope, and not evidence for the clause gain. It stays a REPORTED residual.
+
+### 6.6 The re-score driver's own bug, found and fixed
 
 First run of `score_hard_split.py` **refused** a passing sample: it floor-checked
 `survivors.values()` (`{'easy': 0, 'hard': 32}`) instead of the splits the corpus carried,
@@ -265,3 +288,4 @@ used `expected_splits`; the driver now does too (`--splits`, default `hard`).
 | `tests/test_r416_gate_provenance_and_dotenv.py` | pins §6.2 and §6.3 |
 | `tests/test_r408_kg_context_point_traversal.py` | pins §6.4's modality scope (4 new tests) |
 | `tests/test_r416_audit_remediations.py` | pins the audit remediations |
+| `live_prod_check.py` | §6.5 post-deploy live check of both modalities |
