@@ -146,7 +146,17 @@ from evals.judge.grounded import (  # reuse the sidecar-loading + row-norm plumb
     _has_independent_answer_grounding,
 )
 
-_DEFAULT_MODEL = os.environ.get("REGENOLD_JUDGE_MODEL", "claude-sonnet-4-6")
+# R418 — resolved at ``main()`` call time, not at import. As a module-level
+# ``os.environ.get`` it froze at first import, so a caller that sets
+# ``REGENOLD_JUDGE_MODEL`` before invoking the CLI (the harness scripts do) got
+# the model the FIRST import saw — silently judging with a different model than
+# the one the run recorded. Kept as a name for back-compat, read lazily.
+_DEFAULT_MODEL_FALLBACK = "claude-sonnet-4-6"
+
+
+def _default_judge_model() -> str:
+    """``REGENOLD_JUDGE_MODEL`` at call time, else ``claude-sonnet-4-6``."""
+    return os.environ.get("REGENOLD_JUDGE_MODEL", "").strip() or _DEFAULT_MODEL_FALLBACK
 
 AXES: tuple[str, ...] = (
     "answer_correctness",
@@ -441,15 +451,32 @@ def render_answer_correctness(r: dict[str, Any], union_map: dict[str, str]) -> s
 
 
 def render_reference_correctness(
-    r: dict[str, Any], pred_map: dict[str, str], gold_map: dict[str, str],
+    r: dict[str, Any],
+    pred_map: dict[str, str],
+    gold_map: dict[str, str],
+    *,
+    recall_available: bool | None = None,
 ) -> str:
     """Three-way classification: GOVERNING / SUPPORTING / WRONG (+ MISSING
     governing provisions). SUPPORTING can never fail the axis — only WRONG
     and MISSING can. Every WRONG/MISSING verdict requires a verbatim quote
-    (enforced in post-processing, not trusted from the model)."""
+    (enforced in post-processing, not trusted from the model).
+
+    ``recall_available`` — R418. This used to be recomputed here as
+    ``bool(gold_map or ...)``, i.e. "any key exists", while ``_prepare`` wrote
+    the reported metadata flag as ``any(text.strip() ...)``. The two disagree
+    exactly when a gold reference resolved to EMPTY text: the prompt then told
+    the judge recall WAS assessable (so it could report missing governing
+    provisions) while the scorecard recorded it as unavailable — the prompt and
+    the metric describing different questions. The caller now computes it once
+    and passes it; the default applies the same text test for direct callers.
+    """
     pred_block = _block_from_map(pred_map)
     gold_block = _block_from_map(gold_map)
-    recall_available = bool(gold_map or r.get("independent_gold_context"))
+    if recall_available is None:
+        recall_available = any(
+            str(text).strip() for text in gold_map.values()
+        ) or bool(str(r.get("independent_gold_context") or "").strip())
     recall_instruction = (
         "Assess missing governing provisions against the independent gold block."
         if recall_available
@@ -733,10 +760,13 @@ def _prepare(axis: str, r: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         supplied = str(r.get("independent_gold_context") or "").strip()
         if supplied:
             gold_map["independent_gold_context"] = supplied
-        return render_reference_correctness(r, pred_map, gold_map), {
+        recall_available = any(str(text).strip() for text in gold_map.values())
+        return render_reference_correctness(
+            r, pred_map, gold_map, recall_available=recall_available
+        ), {
             "pred_map": pred_map,
             "gold_map": gold_map,
-            "recall_available": any(str(text).strip() for text in gold_map.values()),
+            "recall_available": recall_available,
         }
     if axis == "citation_faithfulness":
         pred_map = _resolve_provision_texts(r["pred_refs"], _PRED_TEXT_CAP, _MAX_PRED_REFS)
@@ -1617,9 +1647,42 @@ def _assert_claude_max_transport(provider: str) -> None:
     """
     import os
 
-    if provider in ("bedrock", "openrouter"):
-        print(f"[legal_v2] provider={provider} active", flush=True)
+    if provider == "bedrock":
+        # R418 — this branch used to be a bare pass-through, which dropped the
+        # credential pre-flight that made a misconfigured run fail LOUDLY before
+        # any row was processed. Without it every row returns
+        # ``judge_error=bedrock_not_configured``, which on the scorecard looks
+        # identical to a model failure — the exact silent-and-expensive shape
+        # this function exists to prevent.
+        try:
+            from app.llm.bedrock_client import (  # noqa: PLC0415
+                is_bedrock_provider_enabled,
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise SystemExit(
+                f"[legal_v2] --provider bedrock: bedrock client unavailable ({exc})"
+            ) from exc
+        if not is_bedrock_provider_enabled():
+            raise SystemExit(
+                "[legal_v2] REFUSING to run on --provider bedrock: no AWS "
+                "credentials / Bedrock access is wired, so every row would be "
+                "scored as a judge_error."
+            )
+        print("[legal_v2] provider=bedrock active (credentials verified)", flush=True)
         return
+
+    if provider == "openrouter":
+        # R418 — ``--provider openrouter`` was exempted here while
+        # ``runner._resolve_caller`` has NO openrouter branch: it falls through
+        # to the Claude-Max wrapper. So the flag printed "provider=openrouter
+        # active" and then graded the whole run over the tunnel, i.e. the run's
+        # recorded provenance named a transport it never used.
+        raise SystemExit(
+            "[legal_v2] REFUSING to run on --provider openrouter: no OpenRouter "
+            "caller exists (_resolve_caller falls through to the Claude-Max "
+            "wrapper), so the run would be labelled openrouter while being "
+            "served by the tunnel. Use --provider wrapper or --provider bedrock."
+        )
 
     if provider != "wrapper":
         if os.environ.get("REGENOLD_JUDGE_ALLOW_BILLED", "").strip().lower() not in (
@@ -1627,7 +1690,7 @@ def _assert_claude_max_transport(provider: str) -> None:
         ):
             raise SystemExit(
                 f"[legal_v2] REFUSING to run on provider={provider!r}: this judge must "
-                "use Bedrock, OpenRouter, or the Claude Max subscription via the Cloudflare tunnel "
+                "use Bedrock or the Claude Max subscription via the Cloudflare tunnel "
                 "(--provider wrapper). Set REGENOLD_JUDGE_ALLOW_BILLED=1 to override deliberately."
             )
         print(f"[legal_v2] !! BILLED provider={provider} (override active)", flush=True)
@@ -1845,7 +1908,7 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--sidecar", required=True, type=Path)
     p.add_argument("--label", required=True)
-    p.add_argument("--model", default=_DEFAULT_MODEL)
+    p.add_argument("--model", default=_default_judge_model())
     p.add_argument(
         "--provider",
         choices=("wrapper", "anthropic", "groq", "gemini", "bedrock", "openrouter"),

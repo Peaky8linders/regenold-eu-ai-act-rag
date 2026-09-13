@@ -157,6 +157,16 @@ def main(argv: list[str] | None = None) -> int:
                 "wins_branch": r.wins_b, "wins_baseline": r.wins_a, "ties": r.ties,
                 "win_rate_branch": r.win_rate_b(), "p_value": r.p_value(),
                 "verdict": r.verdict(),
+                # R418 — the tally above increments ``swap_agreements`` but this
+                # report dropped it, so the sibling ``ab_judge`` reported the
+                # position-bias consistency and this caller silently did not.
+                # Same two fields, same names, so a reader can compare them.
+                "swap_agreements": r.swap_agreements,
+                "swap_consistency_rate": r.swap_consistency_rate(len(common)),
+                # R418 — same field the sibling ``ab_judge`` reports; without it
+                # a reader comparing the two reports sees a tie-aware rate on one
+                # side and nothing on the other.
+                "effective_win_rate_branch": r.effective_win_rate_b(len(common)),
             }
             for ax, r in axes.items()
         },

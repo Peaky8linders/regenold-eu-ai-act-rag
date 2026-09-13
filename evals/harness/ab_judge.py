@@ -244,15 +244,28 @@ def _capture_arm(
 # ──────────────────────────────────────────────────────────────────────────
 
 
-def _judge_one(caller, prompt: str) -> str:
-    """Return 'A' | 'B' | 'tie' (or 'tie' on any judge error)."""
+def _judge_one_ok(caller, prompt: str) -> tuple[str, bool]:
+    """Return ``(verdict, judged)`` for one ordering.
+
+    ``judged`` is False when the call or the parse failed. The verdict alone
+    collapses that to ``"tie"``, and R418 exists because the swap-consistency
+    metric then read two independent FAILURES as two agreements: same verdict,
+    so ``agreed=True`` — a "the judge is stable" signal produced by the judge
+    not having run. The flag is what lets the caller tell a real tie from an
+    error fallback.
+    """
     from evals.judge.runner import _call_judge_with_retry
 
     result, _attempts, _retried = _call_judge_with_retry(caller, prompt)
     if not isinstance(result, dict) or result.get("judge_error"):
-        return "tie"
+        return "tie", False
     w = str(result.get("winner") or "").strip().upper()
-    return w if w in ("A", "B") else "tie"
+    return (w, True) if w in ("A", "B") else ("tie", True)
+
+
+def _judge_one(caller, prompt: str) -> str:
+    """Return 'A' | 'B' | 'tie' (or 'tie' on any judge error)."""
+    return _judge_one_ok(caller, prompt)[0]
 
 
 def _pairwise_verdict_detail(
@@ -280,16 +293,18 @@ def _pairwise_verdict_detail(
         axis, row_dict, answer_a=a.answer, refs_a=a.refs,
         answer_b=b.answer, refs_b=b.refs, article_summaries=summaries,
     )
-    w1 = _judge_one(caller, p1)
+    w1, ok1 = _judge_one_ok(caller, p1)
     # Order 2 (swapped): prompt-A = arm-B, prompt-B = arm-A.
     p2 = pairwise_prompts.render(
         axis, row_dict, answer_a=b.answer, refs_a=b.refs,
         answer_b=a.answer, refs_b=a.refs, article_summaries=summaries,
     )
-    w2_raw = _judge_one(caller, p2)
+    w2_raw, ok2 = _judge_one_ok(caller, p2)
     # Translate order-2 back to arm space.
     w2 = {"A": "B", "B": "A", "tie": "tie"}[w2_raw]
-    agreed = (w1 == w2)
+    # R418 — agreement requires that BOTH orderings actually produced a verdict.
+    # Two failed calls return "tie" apiece and used to count as agreement.
+    agreed = bool(ok1 and ok2) and (w1 == w2)
     verdict = w1 if (agreed and w1 in ("A", "B")) else "tie"
     return verdict, agreed
 

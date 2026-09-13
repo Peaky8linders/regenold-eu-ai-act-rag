@@ -31,6 +31,16 @@ class GraphContext:
     nodes_traversed: int = 0
     edges_followed: int = 0
     stage2_call_failed: bool = False
+    # R417 — WHICH Stage-2 leg produced the shipped answer: "" when Stage-2
+    # was never attempted (curated intercept / verbatim / definitional skip),
+    # "primary" for the Cloudflare-tunnel Claude Max leg, "fallback" when AWS
+    # Bedrock took over, "deterministic" when the wrapper was attempted and
+    # the deterministic Stage-1 answer shipped (total failure, or the
+    # truncation-repair guard dropping to it). ``stage2_call_failed`` only
+    # ever named the first of those three degradations, so a *successful*
+    # Bedrock answer was indistinguishable from a wrapper-served one and the
+    # route cached it (the replay measured on rg_010).
+    stage2_served_by: str = ""
     degraded: bool = False
     xrefs: list[str] = field(default_factory=list)
     semantically_relevant_statements: list[str] = field(default_factory=list)

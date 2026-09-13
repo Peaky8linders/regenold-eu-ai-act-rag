@@ -655,7 +655,17 @@ def _parse_converse_response(
         input_tokens=usage.get("inputTokens", 0) if isinstance(usage, dict) else 0,
         output_tokens=usage.get("outputTokens", 0) if isinstance(usage, dict) else 0,
         elapsed_ms=elapsed_ms,
-        finish_reason=stop_reason or None,
+        # R418 — normalise the Converse stop reason onto the OpenAI-shaped
+        # vocabulary every truncation guard already speaks. Converse reports
+        # ``max_tokens`` when the output was cut at the ceiling while the guards
+        # all test for ``length`` (the openai-wrapper value, R91), so a truncated
+        # Bedrock completion was invisible to all of them: the Stage-0 de-noiser
+        # could adopt a half-written rewrite as the retrieval query, and a
+        # Bedrock Stage-2 polish that happened to be cut on a sentence boundary
+        # shipped as ``stage2_landed=True``.
+        finish_reason=(
+            "length" if stop_reason == "max_tokens" else (stop_reason or None)
+        ),
         thinking="\n".join(thinking_parts) or None,
         tool_use=tool_use_blocks,
     )
@@ -1196,12 +1206,25 @@ def wrapper_model_for(bedrock_model_id: str) -> str:
 
 
 def _try_wrapper_fallback(
-    req: BedrockRequest, primary: str, last: BedrockResponse | None
+    req: BedrockRequest,
+    primary: str,
+    last: BedrockResponse | None,
+    *,
+    record_stage2: bool = True,
 ) -> BedrockResponse | None:
     """Last resort: serve this request from the Claude-Max wrapper.
 
     Returns ``None`` when the hop is disabled, the wrapper is not wired, or it
     also fails — in which case the caller keeps Bedrock's real error string.
+
+    ``record_stage2`` — R418. The hop IS a Stage-2 primary call, so it counts
+    against the Stage-2 transport counters by default. Non-Stage-2 callers must
+    pass ``False``: the Stage-0 de-noiser's Bedrock leg reaches this hop through
+    ``complete_with_fallback``, and letting it increment
+    ``primary_attempts/primary_ok`` makes a run in which Stage-2 never landed
+    look live. ``easyhard_ab._transport_liveness`` and ``gate_validity`` both
+    read those process-global counters, so the bleed is a false-green on exactly
+    the guard that exists to block false greens.
     """
     if not wrapper_fallback_enabled():
         return None
@@ -1236,7 +1259,8 @@ def _try_wrapper_fallback(
             return None
 
         target = wrapper_model_for(req.model or primary)
-        _s2pol.record_attempt(_s2pol.STAGE2_PRIMARY)
+        if record_stage2:
+            _s2pol.record_attempt(_s2pol.STAGE2_PRIMARY)
         resp = get_openai_wrapper_provider().complete(
             OpenAIWrapperRequest(
                 user=req.user,
@@ -1247,13 +1271,15 @@ def _try_wrapper_fallback(
             )
         )
         if resp.error or not resp.text:
-            _s2pol.record_result(_s2pol.STAGE2_PRIMARY, ok=False)
+            if record_stage2:
+                _s2pol.record_result(_s2pol.STAGE2_PRIMARY, ok=False)
             logger.warning(
                 "bedrock_wrapper_fallback_failed primary=%s target=%s error=%s",
                 primary, target, resp.error,
             )
             return None
-        _s2pol.record_result(_s2pol.STAGE2_PRIMARY, ok=True)
+        if record_stage2:
+            _s2pol.record_result(_s2pol.STAGE2_PRIMARY, ok=True)
         # LOUD, and greppable. `served_by=wrapper:` is the string to alert on:
         # its presence means the answer was NOT produced under the Bedrock
         # prompt contract, so the row is not comparable to a Bedrock-served one.
@@ -1344,7 +1370,10 @@ def fallback_chain_for(model_id: str) -> tuple[str, ...]:
 
 
 def complete_with_fallback(
-    req: BedrockRequest, *, fallbacks: tuple[str, ...] | None = None
+    req: BedrockRequest,
+    *,
+    fallbacks: tuple[str, ...] | None = None,
+    record_stage2: bool = True,
 ) -> BedrockResponse:
     """``BedrockProvider.complete`` plus ordered entitlement failover.
 
@@ -1402,7 +1431,7 @@ def complete_with_fallback(
 
     # Bedrock is exhausted. Try the cross-provider last resort before giving up
     # — but only now, so a working lower tier is never skipped in its favour.
-    hopped = _try_wrapper_fallback(req, primary, last)
+    hopped = _try_wrapper_fallback(req, primary, last, record_stage2=record_stage2)
     if hopped is not None:
         return hopped
 
