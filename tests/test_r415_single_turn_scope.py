@@ -6,7 +6,8 @@ that it cannot change a multi-turn request, and the scope it relies on is
 modality. The ROUTE derives it as ``max(0, user+assistant messages - 1)``, so:
 
 * a first ask (1 message) reads **0**,
-* an ask with one prior exchange (2 messages) reads **1**,
+* a two-message request reads **1**,
+* a normal follow-up (user / assistant / user) reads **2**,
 * a direct engine caller that omits the field gets ``GraphRAGRequest``'s default
   **1**,
 * the official hard final (10 messages) reads **9**, and the pushback 9 or 10.
@@ -125,7 +126,8 @@ class TestLeverScope:
             off = _system_for(provider, turns, on=False)
             if on != off:
                 differ.append(turns)
-        # The measured differ-set: first ask (0) and one prior exchange (1).
+        # The differ-set: first ask (0) and two-message request (1), not the
+        # ordinary three-message follow-up after a completed prior exchange (2).
         assert differ == [0, 1]
 
     def test_flag_off_reproduces_the_persona_everywhere(

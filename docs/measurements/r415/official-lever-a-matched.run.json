@@ -1,0 +1,21 @@
+{
+  "arm": "a",
+  "flag": "REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN",
+  "value": "0",
+  "tag": "-matched",
+  "n": 27,
+  "errors": 0,
+  "stage2_served_rows": 27,
+  "stage2_fell_back_rows": 1,
+  "wall_s": 925.2,
+  "transport": {
+    "primary_attempts": 28,
+    "primary_ok": 27,
+    "primary_failed": 1,
+    "fallback_attempts": 1,
+    "fallback_ok": 1,
+    "fallback_failed": 0,
+    "refused": 0,
+    "refused_by_provider": {}
+  }
+}

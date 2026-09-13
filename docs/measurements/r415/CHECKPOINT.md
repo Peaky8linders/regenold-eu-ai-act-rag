@@ -91,6 +91,15 @@ indistinguishable from an instrument that never fired.
   (`docs/measurements/r412/score-singleturn-easy-n39.json`).
 * **Combined:** the movement is the easy-half movement; the hard half contributes
   exactly zero because the lever never reaches it.
+* **Now measured on the criteria-bearing corpus too** — see
+  `CHECKPOINT-official-gate.md`. On the reconstructed official gold, the lever's
+  easy-half effect over the 26 rows it actually reaches is: `ans_conc`
+  **+19.2 pp**, `ref_conc` **+11.2 pp**, `resp_speed` **+3.8 pp**, offset by
+  `ans_loose` **−2.2 pp** and `ans_strict` **−7.7 pp** — two rows losing one
+  criterion each — for **OVERALL +6.1 pp** (64.9 → 71.0). Board-weighted by reach
+  this is ×1.047 on the geomean (`≈ +3.4 pp` at a board value of 72). The loss is
+  real content: the aim clause of Art. 14 (`rg_010`) and the scope of "without
+  undue delay" (`rg_045`) do not survive a 41% compression.
 
 ## 5. Live production confirmation (deploy `dfea832308de`)
 
@@ -112,11 +121,20 @@ into hard mode.
 
 ## 6. Honest residuals
 
-* The correctness axes (`Ans Loose/Strict`) were NOT re-judged in this pass. They
-  need the Claude-Max wrapper judge, whose OAuth is expired; the substitute on
-  this account is `eu.anthropic.claude-opus-4-6-v1` via Bedrock (Sonnet 4.6 /
-  Opus 5 / Sonnet 5 profiles return `api_validation_400`). Reference axes and
-  latency are judge-free and are the ones quoted above.
+* The correctness axes (`Ans Loose/Strict`) were NOT re-judged **in this pass**,
+  and §6 first blamed the wrong thing for it (the wrapper judge's expired OAuth).
+  They were subsequently judged on the criteria-bearing corpus — see
+  `CHECKPOINT-official-gate.md` §5 — so what follows is the reason the *probe*
+  corpus could never have answered them, not an open gap.
+  Corrected, because the reason changes what a future attempt should do: the
+  binding constraint is the **corpus**, not the judge. Both gates here run on the
+  harness probe corpus (`paper_st_v4` / `paper_tricky_v4` / `multiarticle_r268`),
+  which carries `expected_refs` and `expected_keywords` per row but **no
+  correctness criteria** — there is nothing to judge against. Measured: **0 of the
+  95 easy probe questions appear in `official_gold_n110.jsonl`**. A working judge
+  would not have helped; the criteria-bearing corpus is the reconstructed official
+  gold, which is what `docs/measurements/r415/official_lever_gate.py` uses.
+  Reference axes and latency are judge-free and are the ones quoted above.
 * **The `<= 1` boundary includes `history_turn_count == 1`** — an ask with ONE
   prior exchange also receives the full system. That is by design (it is the
   single-turn-shaped case, and `GraphRAGRequest`'s default is 1), and the official
@@ -128,3 +146,10 @@ into hard mode.
 * The probe's hard rows are the harness's `mt_v4` rows and read
   `history_turn_count=2`, not 9. The predicate table covers 9 directly (§2), so
   the graded case is covered even though the end-to-end sample is shallower.
+* **A large share of the graded board never reaches the model at all.** The
+  whole-board sweep (§7) found rows answered in ~4 s with **zero** Stage-2
+  attempts — curated deterministic intercepts. The single-turn lever edits the
+  system slot of a model call, so on those rows it is inert *by construction*, and
+  a contiguous convenience slice of the corpus is dominated by them (4 of the
+  first 6). That is why §7 pairs on the reachable subset instead of a slice, and
+  it is a reach fact about the board rather than about the lever.
