@@ -91,10 +91,14 @@ __all__ = [
 
 _DEFAULT_MAX_REFS = 8
 #: Upper bound for ``REGENOLD_KG_MAX_REFS``, declared once. R416: the two
-#: readers of this knob had drifted (24 in ``graph_semantic``, 20 here), so a
-#: value of 21-24 was silently clamped on the keyword reads but honoured on the
-#: focused-subprovision read. The default stays 8 either way — this is a
-#: ceiling, not a behaviour change.
+#: readers of this knob had drifted, so a value of 21-24 was silently clamped on
+#: the keyword reads but honoured on the focused-subprovision read. The pre-R416
+#: ceilings were 10 in ``graph_semantic`` and 20 here, so unifying them at 24 is
+#: NOT inert above 10 — an operator setting 11-24 now feeds more provisions into
+#: ``fetch_focused_subprovisions`` than before (at the default 8 nothing moves).
+#: R418: ``graph_semantic`` now reads the knob through the SAME ``_adaptive_int``
+#: helper the keyword reads use, so the two layers agree on ``max_refs`` even
+#: when the HyPA router scales ``kg_max_keywords``.
 _MAX_REFS_CEILING = 24
 _DEFAULT_MAX_UNITS = 24
 _DEFAULT_UNIT_CHARS = 900
@@ -549,7 +553,9 @@ def _mirror_index() -> dict:
             subpoint_by_id = {n["id"]: n for n in payload.subpoint_nodes}
 
             for edge in payload.has_paragraph_edges:
-                index.setdefault(edge["source_id"], {"units": [], "subpoints": []})
+                index.setdefault(
+                    edge["source_id"], {"units": [], "subpoints": [], "points": []}
+                )
                 node = para_by_id.get(edge["target_id"])
                 if node is None:
                     continue
@@ -569,7 +575,9 @@ def _mirror_index() -> dict:
                 if parent in index or parent in para_by_id:
                     if parent in para_by_id:
                         continue
-                index.setdefault(parent, {"units": [], "subpoints": []})
+                index.setdefault(
+                    parent, {"units": [], "subpoints": [], "points": []}
+                )
                 index[parent]["units"].append(
                     {
                         "num": str(node.get("letter") or node.get("number") or ""),
@@ -589,14 +597,36 @@ def _mirror_index() -> dict:
                 if node is not None:
                     subs_by_point.setdefault(edge["source_id"], []).append(node)
 
+            # R418 — the POINT-level rows, in the shape ``_SUBPOINT_CYPHER``
+            # returns. ``subpoints`` below only holds Points that HAVE a
+            # SubPoint (37 in the live graph), so a mirror built from it alone
+            # could not answer the R409 all-Points query — during an outage the
+            # single-turn arm silently reverted to the legacy shape. Bare
+            # Points and their text are kept here so the mirror can serve EITHER
+            # shape.
             for edge in payload.has_paragraph_edges:
                 root, para_id = edge["source_id"], edge["target_id"]
                 para = para_by_id.get(para_id)
                 if para is None:
                     continue
                 for point in points_by_para.get(para_id, []):
+                    index.setdefault(
+                        root, {"units": [], "subpoints": [], "points": []}
+                    )
+                    index[root]["points"].append(
+                        {
+                            "para": str(para.get("number") or ""),
+                            "letter": str(
+                                point.get("letter") or point.get("number") or ""
+                            ),
+                            "pid": point.get("id") or "",
+                            "text": point.get("text") or "",
+                        }
+                    )
                     for sub in subs_by_point.get(point["id"], []):
-                        index.setdefault(root, {"units": [], "subpoints": []})
+                        index.setdefault(
+                            root, {"units": [], "subpoints": [], "points": []}
+                        )
                         index[root]["subpoints"].append(
                             {
                                 "para": str(para.get("number") or ""),
@@ -607,8 +637,18 @@ def _mirror_index() -> dict:
                             }
                         )
         except Exception:  # noqa: BLE001
-            logger.warning("kg_context: local hierarchy mirror unavailable", exc_info=True)
-            index = {}
+            # R418 — do NOT cache the failure. ``_MIRROR_CACHE = {}`` made a
+            # single transient fault permanent: a boot-order import problem or
+            # one malformed node returned ``[]`` for the rest of the process
+            # while the warning was logged once, so the mirror silently stopped
+            # being a fallback at all. Not caching re-attempts the build on the
+            # next consult; the mirror is only ever consulted after a real graph
+            # read failure, so the retry cannot slow a healthy request.
+            logger.warning(
+                "kg_context: local hierarchy mirror unavailable (will retry)",
+                exc_info=True,
+            )
+            return {}
         _MIRROR_CACHE = index
         return _MIRROR_CACHE
 
@@ -648,6 +688,74 @@ def _mirror_hierarchy(ids: list[str], max_units: int) -> list[dict]:
             }
         )
     return out
+
+
+def _mirror_point_units(ids: list[str], max_units: int) -> list[dict]:
+    """``_SUBPOINT_CYPHER``-shaped rows from the in-process mirror (R418).
+
+    One row per Point, and per SubPoint where the Point has any — the same
+    ``OPTIONAL MATCH … coalesce(sp.text, pt.text)`` semantics the R409 query
+    has, including the ``ref_index`` the round-robin allocator groups on. During
+    an Aura outage this is what the single-turn arm must be served; reverting it
+    to :func:`_mirror_subpoints` (SubPoint rows only, greedy fill in ref order)
+    shipped a different prompt and re-introduced the R408 "a long first
+    provision evicts the rest" defect.
+    """
+    index = _mirror_index()
+    if not index:
+        return []
+    rows: list[dict] = []
+    for ref_index, node_id in enumerate(ids):
+        entry = index.get(node_id)
+        if not entry:
+            continue
+        cite = _cite_for_node(node_id)
+        subs_by_point: dict[tuple[str, str], list[dict]] = {}
+        for sub in entry.get("subpoints", ()):
+            subs_by_point.setdefault(
+                (str(sub.get("para") or ""), str(sub.get("letter") or "")), []
+            ).append(sub)
+        for point in sorted(
+            entry.get("points", ()),
+            key=lambda p: (_unit_sort_key(p.get("para")), str(p.get("letter") or "")),
+        ):
+            para = str(point.get("para") or "")
+            letter = str(point.get("letter") or "")
+            point_text = str(point.get("text") or "")
+            subs = sorted(
+                subs_by_point.get((para, letter), []),
+                key=lambda sp: (
+                    _unit_sort_key(sp.get("para")),
+                    str(sp.get("letter") or ""),
+                    str(sp.get("sid") or ""),
+                ),
+            )
+            if not subs:
+                rows.append(
+                    {
+                        "ref_index": ref_index,
+                        "cite": cite,
+                        "para": para,
+                        "letter": letter,
+                        "sid": None,
+                        "roman": None,
+                        "text": point_text,
+                    }
+                )
+                continue
+            for sub in subs:
+                rows.append(
+                    {
+                        "ref_index": ref_index,
+                        "cite": cite,
+                        "para": str(sub.get("para") or para),
+                        "letter": str(sub.get("letter") or letter),
+                        "sid": sub.get("sid") or None,
+                        "roman": sub.get("roman") or None,
+                        "text": str(sub.get("text") or "") or point_text,
+                    }
+                )
+    return _allocate_units(rows, max_units)
 
 
 def _mirror_subpoints(ids: list[str], limit: int) -> list[dict]:
@@ -763,7 +871,15 @@ def fetch_provision_hierarchy(refs: list[str]) -> list[dict]:
         _HIERARCHY_CYPHER,
         {"ids": ids, "max_units": max_units},
     )
-    if rows and not getattr(rows, "failed", False):
+    # R418 — consult the local mirror ONLY on a real read failure. ``_ReadRows``
+    # carries ``failed`` precisely to tell an error apart from an empty match,
+    # and a healthy empty result is a legitimate answer. The old guard
+    # (``if rows and not failed``) treated ``[]`` from a WORKING graph as an
+    # outage, so the mirror — built from the in-process regex parser, not the
+    # seeded graph — served text the graph does not hold, and logged it as
+    # ``kg_local_mirror_served``. That silently mixes two prompt shapes into any
+    # A/B that spans an ordinary empty match.
+    if not getattr(rows, "failed", False):
         return list(rows)
     if not kg_local_mirror_enabled():
         return list(rows)
@@ -823,11 +939,29 @@ def fetch_subpoint_detail(
             _SUBPOINT_CYPHER,
             {"ids": ids, "max_rows": _SUBPOINT_ROW_CEILING},
         )
-        if rows and not getattr(rows, "failed", False):
+        if not getattr(rows, "failed", False):
             return _ReadRows(
                 _allocate_units(rows, max_units), failed=False
             )
-    if rows and not getattr(rows, "failed", False):
+        # R418 — the ON branch's outage path must answer in the SAME shape. It
+        # used to fall through to ``_mirror_subpoints``, which emits SubPoint
+        # rows only (the pre-R408 legacy shape) and fills them greedily in ref
+        # order, so a single-turn ask during an Aura outage silently received
+        # the LEGACY block — a different Stage-2 prompt, logged only as
+        # ``kg_local_mirror_served``.
+        if not kg_local_mirror_enabled():
+            return list(rows)
+        mirrored_points = _mirror_point_units(ids, max_units)
+        if mirrored_points:
+            _mirror_note("subpoint_points", len(mirrored_points))
+        return mirrored_points or list(rows)
+    # R418 — same rule as ``fetch_provision_hierarchy``: a healthy empty match
+    # is an answer, not an outage. This one matters most on MULTI-TURN asks,
+    # where the legacy query legitimately returns no rows for the bare Points
+    # (the live graph holds 421 Points and 37 SubPoints), so the mirror used to
+    # inject unrequested text into the exact arm the R416 gate measured as
+    # "byte-identical to REGENOLD_KG_POINT_TEXT=0".
+    if not getattr(rows, "failed", False):
         return list(rows)
     if not kg_local_mirror_enabled():
         return list(rows)

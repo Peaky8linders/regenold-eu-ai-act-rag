@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import re
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -1127,6 +1128,12 @@ def _openai_wrapper_complete_for_graph_rag(
                 )
                 return None
             _s2pol.record_result(_s2pol.STAGE2_FALLBACK, ok=True)
+            # R417 — name the serving leg. A *successful* Bedrock answer left
+            # ``stage2_call_failed`` False, so the route's cache-poisoning
+            # guard could not distinguish it from a wrapper-served polish and
+            # replayed it long after the wrapper recovered. This function has
+            # no ``GraphContext`` to mark, so record it for the caller.
+            _STAGE2_LEG2_SERVED.set(True)
             logger.info("graph_rag.bedrock_auto_fallback_success")
             try:
                 from app.integrations.regenold.reasoning_trace import record_note
@@ -1247,6 +1254,95 @@ def _openai_wrapper_complete_for_graph_rag(
         if bedrock_answer is not None:
             return bedrock_answer
         raise
+    # R417 — the wrapper INTERMITTENTLY relays an interim/empty Claude-CLI
+    # assistant message as an HTTP-200 "completion" (measured: one token, a
+    # 1-2 char body). The structural guard below classified that as a model
+    # truncation, so every such blip cost a full Bedrock downgrade — and
+    # until R417 that downgrade was then cached. Retry the primary leg ONCE, on
+    # the identical request, before the downgrade: the wrapper is stateless
+    # and the next call almost always returns the real answer.
+    #
+    # The retry deliberately does NOT record a second
+    # ``record_attempt(STAGE2_PRIMARY)``: it is internal to the one attempt,
+    # and the stage2_policy invariant ``attempts == ok + failed`` (the thing
+    # ``/healthz/llm`` reconciles) must keep holding. The retry is visible in
+    # the log line and in the reasoning trace instead.
+    # ``completion_tokens`` is read through ``getattr``: the wrapper response
+    # is duck-typed at several test seams (SimpleNamespace / the R51 routing
+    # MagicMock) and, more importantly, a transport that relays no ``usage``
+    # yields 0 — the same "unknown" value a missing attribute means. Reading it
+    # directly made an attribute-less response an AttributeError mid-Stage-2.
+    _deg_tokens = int(getattr(response, "completion_tokens", 0) or 0)
+    if (
+        not response.error
+        and _stage2_degenerate_retry_enabled()
+        and _is_degenerate_completion(response.text, _deg_tokens)
+    ):
+        logger.warning(
+            "graph_rag.wrapper_degenerate_completion — model=%s "
+            "completion_tokens=%d chars=%d; retrying the primary leg once "
+            "before the Bedrock downgrade.",
+            response.model,
+            _deg_tokens,
+            len((response.text or "").strip()),
+        )
+        try:
+            response = _wrapper_provider.complete(
+                OpenAIWrapperRequest(
+                    system=wrapper_system,
+                    user=user,
+                    model=model,
+                    max_tokens=safe_max_tokens,
+                    temperature=temperature,
+                    extra_headers=extra_headers,
+                )
+            )
+            try:
+                from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                    record_note,
+                )
+                record_note("wrapper_degenerate_completion_retry")
+            except Exception:  # noqa: BLE001 — trace is best-effort
+                pass
+        except Exception as exc:  # noqa: BLE001 — a raising retry is a primary failure
+            logger.warning("graph_rag.wrapper_degenerate_retry_raised: %s", exc)
+            _bedrock_retry = _try_bedrock_fallback(
+                f"degenerate retry raised {type(exc).__name__}: {str(exc)[:60]}"
+            )
+            if _bedrock_retry is not None:
+                return _bedrock_retry
+            raise RuntimeError(
+                f"OpenAI wrapper degenerate retry raised: {exc}"
+            ) from exc
+        # If the second call is degenerate too, this is a primary failure and
+        # the Bedrock leg is what answers. Mirror the R91/R102 guard shape
+        # exactly (record the failure, dial leg 2, raise when it cannot serve)
+        # so the counters stay reconcilable and the operator sees
+        # ``degenerate_completion`` rather than the structural guard's
+        # "text ends mid-clause" mislabel.
+        _deg_tokens_2 = int(getattr(response, "completion_tokens", 0) or 0)
+        if not response.error and _is_degenerate_completion(
+            response.text, _deg_tokens_2
+        ):
+            logger.warning(
+                "graph_rag.wrapper_degenerate_completion_persisted — "
+                "model=%s completion_tokens=%d chars=%d; raising error to "
+                "trigger the Bedrock leg.",
+                response.model,
+                _deg_tokens_2,
+                len((response.text or "").strip()),
+            )
+            _s2pol.record_result(_s2pol.STAGE2_PRIMARY, ok=False)
+            _bedrock_degenerate = _try_bedrock_fallback(
+                f"degenerate completion model={response.model}"
+            )
+            if _bedrock_degenerate is not None:
+                return _bedrock_degenerate
+            raise RuntimeError(
+                "OpenAI wrapper returned a degenerate completion "
+                f"(model={response.model}, completion_tokens={_deg_tokens_2})"
+            )
+
     # R361 — an HTTP-200 completion with EMPTY content is a primary FAILURE,
     # not a success. ``openai_wrapper_provider`` does ``msg.get("content") or ""``
     # so an empty choice yields ``error=None``; every downstream guard then
@@ -3675,6 +3771,24 @@ def _emotion_curated_emit_enabled() -> bool:
     return _env_enabled("REGENOLD_EMOTION_CURATED_EMIT", default="1")
 
 
+#: R418 — emotion-recognition SUBJECT guard. Article 5(1)(f) reaches inferring
+#: the emotions of persons IN the workplace or an educational institution. The
+#: workplace topic keys on staff/employee/call-centre terms, but those also
+#: appear as the OPERATOR of a system whose subjects are patients or customers
+#: ("emotion recognition used by hospital staff to detect patient distress").
+#: Selecting the workplace topic there ships the curated "prohibited under
+#: Article 5 … workplaces" verdict for a use the provision does not cover, and
+#: the general emotion answer — which carries the medical/safety carve-out — is
+#: the correct one. Matched against a window AROUND the pattern hit, because the
+#: subject noun normally sits just outside the ≤ 40-char pattern span.
+_EMOTION_NON_WORKER_SUBJECT_RE = re.compile(
+    r"\b(?:patient|patients|customer|customers|client|clients|caller|callers|"
+    r"shopper|shoppers|passenger|passengers|consumer|consumers|public)\b",
+    re.IGNORECASE,
+)
+_EMOTION_SUBJECT_WINDOW_CHARS = 80
+
+
 def _detect_classification_topic(question: str) -> dict | None:
     """Find the best-matching classification topic for ``question``.
 
@@ -3692,11 +3806,35 @@ def _detect_classification_topic(question: str) -> dict | None:
         # ``emotion_recognition_workplace`` entry still wins over the
         # general one on its own traffic).
         if _emotion_curated_emit_enabled() and _detect_emotion_classification_inquiry(question):
+            # R418 — match the workplace patterns against the LIVE turn only.
+            # This used the whole flattened conversation, so a PRIOR turn
+            # mentioning staff/employees ("we use emotion recognition for our
+            # staff") selected the workplace topic for a live question about
+            # shoppers or patients — shipping the curated "prohibited under
+            # Article 5 … workplaces" verdict for a use the provision does not
+            # cover (Artikel 5(1)(f) reaches inferring the emotions of persons
+            # IN the workplace, and carries a medical/safety carve-out). The
+            # sibling loop below already reads the marker-trimmed ``live``; this
+            # block predates it.
+            _emotion_live = question
+            if "Latest question:" in _emotion_live:
+                _emotion_live = _emotion_live.split("Latest question:", 1)[-1]
             _general_fallback = None
             for topic in _CLASSIFICATION_TOPICS:
                 name = topic.get("name", "")
                 if name == "emotion_recognition_workplace":
-                    if any(p.search(question) for p in topic.get("patterns", ())):
+                    for _pat in topic.get("patterns", ()):
+                        _m = _pat.search(_emotion_live)
+                        if not _m:
+                            continue
+                        _window = _emotion_live[
+                            max(0, _m.start() - _EMOTION_SUBJECT_WINDOW_CHARS):
+                            _m.end() + _EMOTION_SUBJECT_WINDOW_CHARS
+                        ]
+                        if _EMOTION_NON_WORKER_SUBJECT_RE.search(_window):
+                            # The worker term is the OPERATOR, not the subject:
+                            # fall through to the general emotion answer.
+                            continue
                         return topic
                 elif name == "emotion_recognition_general":
                     _general_fallback = topic
@@ -9506,6 +9644,11 @@ def _claude_max_enhance_answer(
     has ground truth to cite from (matches the contract the
     :data:`ANSWER_GENERATE_SYSTEM` prompt expects).
     """
+    # R417 — clear the leg marker for THIS call, so the caller's read reflects
+    # this Stage-2 attempt and not an earlier auxiliary pass in the same
+    # request (the completeness repair and the tail repair both reach the
+    # provider through this module).
+    _STAGE2_LEG2_SERVED.set(False)
     try:
         from app.config import settings
         from app.data.graph_rag_prompts import ANSWER_GENERATE_SYSTEM
@@ -11049,6 +11192,102 @@ def _salvage_truncated_polish(enhanced: str, kg_answer: str) -> str | None:
     return prefix
 
 
+#: R417 — a wrapper "completion" shorter than this, with no more tokens than
+#: the accompanying ceiling, is the Claude-CLI relaying an interim or empty
+#: assistant message. Measured live on the graded Stage-2 path as
+#: ``completion_tokens=1`` with a 1-2 char body, which the structural guard
+#: then rejected ("text ends mid-clause") and paid a Bedrock downgrade for.
+_DEGENERATE_MAX_CHARS = 12
+_DEGENERATE_MAX_TOKENS = 6
+_DEGENERATE_HARD_TOKENS = 2
+
+
+#: R417 — did the Bedrock leg serve the Stage-2 answer currently in flight?
+#: ``_try_bedrock_fallback`` is nested inside
+#: ``_openai_wrapper_complete_for_graph_rag``, which has no ``GraphContext`` to
+#: mark (its four call sites pass none), so the leg travels out-of-band and is
+#: applied by ``_two_stage_generate``, which does have one. A ``ContextVar``
+#: rather than a module global: concurrent requests must not read each other's
+#: provenance. ``_claude_max_enhance_answer`` resets it at entry.
+_STAGE2_LEG2_SERVED: ContextVar[bool] = ContextVar(
+    "_STAGE2_LEG2_SERVED", default=False
+)
+
+
+def _stage2_degenerate_retry_enabled() -> bool:
+    """Env gate for the one-shot primary retry on a degenerate completion.
+
+    Default ON: the retry is the difference between a wrapper-served answer
+    and a silent Bedrock downgrade, and it cannot make a real answer worse —
+    a usable completion never reaches the branch. Set to 0 to restore the
+    pre-R417 behaviour (straight to the Bedrock leg).
+    """
+    return os.getenv("REGENOLD_STAGE2_DEGENERATE_RETRY", "1").strip().lower() not in {
+        "0",
+        "off",
+        "false",
+        "no",
+    }
+
+
+def _is_degenerate_completion(text: str | None, completion_tokens: int) -> bool:
+    """True when an HTTP-200 completion carries no usable answer (R417).
+
+    The measured shape (R417): an HTTP-200 body of one or two tokens — the
+    Claude-CLI's interim assistant message ("I", "Sure", "Here") — relayed as
+    the completion, with ``usage.completion_tokens`` reporting 1.
+
+    **The length clause requires token evidence.** ``OpenAIWrapperResponse``
+    defaults ``completion_tokens`` to 0 and the provider fills it from
+    ``usage`` (`or 0`), so 0 means "the provider reported no usage" — it is NOT
+    evidence of a stub. A body-length-only rule would reject any short text a
+    usage-less transport returns, and no character threshold separates a stub
+    ("I") from a terse real answer, so guessing from length alone would reject
+    content. With no token count this function therefore returns False and
+    defers to the guards that already existed: the R361 empty-body failure and
+    the downstream structural-truncation guard.
+    """
+    stripped = (text or "").strip()
+    if not stripped:
+        return True
+    if not completion_tokens:
+        return False
+    if completion_tokens <= _DEGENERATE_HARD_TOKENS:
+        return True
+    return (
+        completion_tokens <= _DEGENERATE_MAX_TOKENS
+        and len(stripped) <= _DEGENERATE_MAX_CHARS
+    )
+
+
+def _mark_stage2_served_by(context: GraphContext | None, leg: str) -> None:
+    """Record WHICH Stage-2 leg produced the shipped answer (R417).
+
+    Sticky in one direction: once a leg has been named, a later "primary"
+    marking cannot overwrite it (the truncation-repair tail may complete a
+    fallback-served body on the primary leg, but the body still came from
+    Bedrock, so the answer is still degraded). An explicit "deterministic"
+    marking always wins — when the deterministic Stage-1 text is what ships,
+    that is the leg that served it, whichever leg produced the discarded
+    draft.
+
+    Telemetry only, so it is fail-soft: a ``None`` context (direct engine
+    callers) or any error is a no-op and must never break Stage-2.
+    """
+    if context is None:
+        return
+    try:
+        current = str(getattr(context, "stage2_served_by", "") or "")
+        if leg == "deterministic":
+            context.stage2_served_by = leg
+        elif current:
+            return
+        else:
+            context.stage2_served_by = leg
+    except Exception:  # noqa: BLE001 — telemetry must never break Stage-2
+        pass
+
+
 def _guard_stage2_truncation(
     question: str,
     enhanced: str,
@@ -11089,6 +11328,10 @@ def _guard_stage2_truncation(
     logger.warning(
         "stage2_truncation_guard: tail repair failed — shipping deterministic Stage-1 answer"
     )
+    # R417 — we HAD a wrapper polish and dropped to deterministic: a degraded
+    # serve that ``stage2_call_failed`` never named (the wrapper call itself
+    # succeeded), so it used to be cached.
+    _mark_stage2_served_by(context, "deterministic")
     return kg_answer, False
 
 
@@ -11426,7 +11669,19 @@ def _two_stage_generate_inner(
         except Exception:  # noqa: BLE001 — trace is best-effort
             pass
         context.stage2_call_failed = True
+        _mark_stage2_served_by(context, "deterministic")
         return kg_answer, False
+
+    # R417 — name the leg that produced this polish. ``_STAGE2_LEG2_SERVED``
+    # was set by ``_try_bedrock_fallback`` if Bedrock answered (including the
+    # "primary raised" path); nothing else can have set it to True since
+    # ``_claude_max_enhance_answer`` resets it at entry. "fallback" is sticky
+    # in ``_mark_stage2_served_by``, so a later primary-leg tail repair cannot
+    # relabel a Bedrock body as primary.
+    _mark_stage2_served_by(
+        context,
+        "fallback" if _STAGE2_LEG2_SERVED.get() else "primary",
+    )
 
     # Post-Stage-2 hallucination guard: every Art./Annex mention in the
     # polished prose must resolve to a real provision in
@@ -11541,6 +11796,11 @@ def _two_stage_generate_inner(
             # The guard fell back to the deterministic cross-tier verdict; mark
             # stage2_used False so the wire ships it (consistent with the R72
             # reconcile / verbatim gates that key on stage2_landed).
+            #
+            # R417 — this is the second degraded-deterministic exit (a polish
+            # existed and was replaced by the deterministic verdict), so name
+            # the leg here too: without it the route cached the downgrade.
+            _mark_stage2_served_by(context, "deterministic")
             return kg_answer, False
         enhanced = guarded
     except Exception:  # noqa: BLE001 — never break Stage-2 on a guard error
@@ -12029,7 +12289,15 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
             try:
                 from app.engines.logic_rag import execute_logic_rag  # noqa: PLC0415
 
-                context = execute_logic_rag(request.question, answer_dict, risk_level=_risk_level)
+                # R418 — thread the modality so the LogicRAG-path KG render
+                # honours the R416 single-turn restriction (see the note at the
+                # call site in ``execute_logic_rag``).
+                context = execute_logic_rag(
+                    request.question,
+                    answer_dict,
+                    risk_level=_risk_level,
+                    history_turn_count=getattr(request, "history_turn_count", None),
+                )
             except Exception:  # noqa: BLE001 — never let LogicRAG 500 the route
                 logger.exception("LogicRAG failed; falling back to deterministic retrieval")
                 try:
@@ -12324,6 +12592,11 @@ def ask_compliance_question(request: GraphRAGRequest) -> GraphRAGResponse:
             # record AND the R72 reference-reconciliation gate; before
             # R72.1 the key was never set, so both silently saw False.
             "stage2_landed": bool(stage2_used),
+            # R417 — which leg served the shipped polish. The route reads
+            # this to refuse caching a Bedrock-served or deterministic
+            # answer, so a degraded serve cannot be replayed after the
+            # wrapper recovers.
+            "stage2_served_by": context.stage2_served_by,
             "retrieval_path": context.retrieval_path,
         },
         kg_answer=kg_answer,

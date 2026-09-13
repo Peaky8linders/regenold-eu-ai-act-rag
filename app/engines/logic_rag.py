@@ -343,7 +343,10 @@ def _truncate_on_boundary(text: str, limit: int) -> str:
 
 
 def execute_logic_rag(
-    query: str, request_answers: dict | None = None, risk_level: str | None = None
+    query: str,
+    request_answers: dict | None = None,
+    risk_level: str | None = None,
+    history_turn_count: int | None = None,
 ) -> GraphContext | None:
     """
     Implements LogicRAG methodology:
@@ -420,8 +423,30 @@ def execute_logic_rag(
             record_note("LogicRAG: wall-clock budget exhausted; finalising early.")
             break
 
-        # Format the newly retrieved context into text
-        new_context_text = _build_context_references_block(rank_ctx)
+        # Format the newly retrieved context into text.
+        #
+        # R418 — scope the KG modality for this render. The R416 point-text
+        # lever is restricted to single-turn requests, and it reads the depth
+        # from a ``ContextVar`` that ``_two_stage_generate`` sets — but this
+        # render runs during RETRIEVAL, before Stage-2, so the var was unset and
+        # ``None`` selected the shipped ON default. A multi-turn request on this
+        # path therefore got the all-Points query the R416 hard-split gate
+        # FALSIFIED (`gold_dropped_head` 12 → 14). Scoped here, and reset in a
+        # ``finally`` so the depth cannot leak into a later request on the same
+        # worker thread.
+        _kg_scope = None
+        _kg_token = None
+        try:
+            from app.engines import kg_context as _kg_scope  # noqa: PLC0415
+
+            _kg_token = _kg_scope.set_render_turn_count(history_turn_count)
+        except Exception:  # noqa: BLE001 — scoping must never break retrieval
+            _kg_scope = None
+        try:
+            new_context_text = _build_context_references_block(rank_ctx)
+        finally:
+            if _kg_scope is not None and _kg_token is not None:
+                _kg_scope.reset_render_turn_count(_kg_token)
 
         # Context Pruning via Rolling Memory Update (brace-safe fill)
         user_prompt = _safe_fill(

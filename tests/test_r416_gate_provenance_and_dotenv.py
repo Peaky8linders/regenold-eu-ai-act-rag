@@ -114,13 +114,30 @@ def test_row_transport_derives_per_row_fallback_provenance() -> None:
     assert clean["stage2_fell_back"] is False
 
 
-def test_row_transport_is_inert_when_counters_are_unobservable() -> None:
-    """An unobservable transport must read as "not used", never crash the arm."""
-    from evals.harness.easyhard_ab import _row_transport
+def test_row_transport_omits_provenance_when_counters_are_unobservable() -> None:
+    """R418 — an unobservable transport must report NO provenance, not zeroes.
+
+    This test previously asserted the opposite (``stage2_used is False``,
+    ``stage2_fell_back is False``), which is the defect the review found: those
+    zeroes are arithmetic on no evidence, and because the KEYS were present,
+    ``_fallback_served``'s missing-key conservatism could not fire — so a row
+    whose transport was never observed was recorded as tunnel-served. A false
+    green on the one guard whose whole job is to prevent false greens.
+
+    The corrected contract is stricter, never looser: no observation ⇒ no
+    provenance ⇒ the row counts as possibly-fallback and is dropped from the
+    paired comparison.
+    """
+    from evals.harness.easyhard_ab import _fallback_served, _row_transport
 
     rec = _row_transport({}, {})
-    assert rec["stage2_used"] is False
-    assert rec["stage2_fell_back"] is False
+    assert rec == {}, "no observation must not be reported as zero deltas"
+    assert _fallback_served({"id": "r1", **rec}) is True, (
+        "a row with no provenance must not be counted as tunnel-served"
+    )
+    # A half-observable pair is unobservable too: a missing 'before' snapshot
+    # would otherwise turn the arm switch itself into a positive delta.
+    assert _row_transport({}, {"primary_ok": 2}) == {}
     # A non-int stat (``refused_by_provider`` is a map) must not raise.
     assert _row_transport({"primary_ok": "x"}, {"primary_ok": 2})["stage2_primary_ok"] == 0
 

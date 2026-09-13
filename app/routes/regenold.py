@@ -1422,6 +1422,17 @@ def _engine_cache_key(
             # Stage-2 user message. Prompt-side, so it changes the answer and
             # (invariant #5) the wire references derived from it.
             "REGENOLD_COORD_MAP_PROMPT",
+            # R418 — selects the Bedrock model for the Stage-0 de-noiser's
+            # fallback leg. A different model writes a different standalone
+            # rewrite, and the rewrite IS the retrieval query for multi-turn
+            # rows, so it flips the cached answer. It was also invisible to the
+            # AST cache-key gate (R355), which only walks the engine package.
+            "REGENOLD_DENOISER_MODEL_BEDROCK",
+            # R417 — decides whether a degenerate (interim / one-token) wrapper
+            # completion is retried on the primary leg or downgraded to Bedrock.
+            # ON ships tunnel provenance, OFF ships Qwen provenance: the same
+            # question, answered by two different models, one cache.
+            "REGENOLD_STAGE2_DEGENERATE_RETRY",
             # R388 — how many coordinate levels that deepener may descend
             # (`Article 13` -> `13.3` -> `13.3.b` -> `13.3.b.iv`). Same wire
             # effect as the gate above, so it needs its own cache-key slot.
@@ -2309,6 +2320,67 @@ def _max_question_chars() -> int:
         if 200 <= parsed <= _MODEL_MAX_QUESTION_CHARS:
             return parsed
     return _MODEL_MAX_QUESTION_CHARS
+
+
+def _cap_history_result(
+    question: str,
+    system_context: str | None,
+    resolved_turn: str | None,
+) -> tuple[str, str | None, str | None]:
+    """Apply the two hard caps to a ``_build_question_from_history`` result.
+
+    R418 — every return path through that function must go through here. The
+    three per-path copies drifted: the R305 re-ask and the R372
+    challenge-recovery early returns skipped BOTH caps, so an uncapped system
+    description reached ``GraphRAGRequest(system_description=...)`` — whose
+    Pydantic bound is 1 000 chars — and an unhandled ``ValidationError`` turned
+    a legitimate partner request into an HTTP 500. The handler's early returns
+    were the only way to reach that state; the shared tail has capped since
+    R314/R315.
+
+    Returns ``(question, system_context, resolved_turn)``:
+
+    * ``question`` — left-truncated to ``_max_question_chars()`` keeping the
+      ``Latest question:\n`` marker. Truncating from the right would slice
+      mid-history and drop the marker that ``_detect_classification_topic``,
+      ``_detect_role_obligation_query`` and ``_needs_stage2_enhancement`` use
+      to isolate the live turn; without it those detectors test the whole
+      flattened prompt and a prior assistant turn can trigger a verdict
+      response for an unrelated question.
+    * ``system_context`` — head-truncated to 1 000 chars. Keep the HEAD, not the
+      tail: a system description opens by saying what the system does ("We
+      provide an AI system that screens job applicants…"), which is exactly the
+      text that decides the risk tier. The pre-R315 ``[-1000:]`` deleted that
+      opening sentence and kept the trailing boilerplate.
+    * ``resolved_turn`` — left-truncated to the same bound as ``question``.
+    """
+    max_chars = _max_question_chars()
+
+    if resolved_turn is not None and len(resolved_turn) > max_chars:
+        resolved_turn = resolved_turn[-max_chars:]
+
+    if len(question) > max_chars:
+        live_marker = "Latest question:\n"
+        marker_idx = question.rfind(live_marker)
+        if marker_idx >= 0:
+            live_part = question[marker_idx:]
+            if len(live_part) >= max_chars:
+                # Live question alone overflows; keep the marker + beginning
+                # of the live question so early anchors survive.
+                head_budget = max_chars - len(live_marker)
+                question = live_marker + live_part[len(live_marker):][:head_budget]
+            else:
+                history_budget = max_chars - len(live_part)
+                history_part = question[:marker_idx][-history_budget:]
+                question = history_part + live_part
+        else:
+            question = question[-max_chars:]
+
+    if system_context is not None and len(system_context) > 1000:
+        system_context = system_context[:1000]
+
+    return question, system_context, resolved_turn
+
 
 # ---------------------------------------------------------------------------
 # Cross-turn anchor extraction helpers (multi-turn coherence)
@@ -5776,6 +5848,22 @@ _CONTRAST_BEHIND_RE = re.compile(
     re.IGNORECASE,
 )
 
+# R418 — the cue negates the HEAD NOUN of the clause, not every provision the
+# clause happens to name. When the mention is the OBJECT of a preposition or
+# participle ("the exception **in** Article 5(1)(h) does not apply", "a system
+# listed **in** Annex III falls outside the scope"), the negated subject is the
+# head noun — the article/annex is still a real citation and suppressing it
+# drops a gold reference. Measured class, found by two review lenses against
+# the R309 label set's own examples; the sibling ``_CONTRAST_BEHIND_RE`` below
+# already works this way (behind-window, subject-side).
+_NEGATION_OBJECT_BEHIND_RE = re.compile(
+    r"(?:\b(?:in|under|of|to|for|by|from|within|per|pursuant\s+to|"
+    r"referred\s+to\s+in|listed\s+in|set\s+out\s+in|laid\s+down\s+in|"
+    r"provided\s+for\s+in|defined\s+in|specified\s+in|described\s+in|"
+    r"mentioned\s+in|referred\s+to|as\s+in))\.?\s+$",
+    re.IGNORECASE,
+)
+
 # Postpositive negation cues: "Article 50 does not apply", "Annex III is not applicable"
 _NEGATION_AHEAD_RE = re.compile(
     r"^\s*(?:\([^)]*\)\s*)*(?:,\s*)?"
@@ -5812,7 +5900,14 @@ def _prose_mention_is_real_citation(prose: str, start: int, end: int) -> bool:
     m_reg = _NUMBERED_REG_RE.search(ahead)
     if m_reg and m_reg.group(1) != "2024/1689":
         return False  # a different numbered EU Regulation
-    if _NEGATION_AHEAD_RE.search(ahead):
+    # R418 — a postpositive cue only negates the mention when the mention IS the
+    # clause subject. "Article 50 does not apply" is a negation; "the exception in
+    # Article 5(1)(h) does not apply" negates the exception, and "a system listed
+    # in Annex III falls outside the scope" negates the system.
+    _neg_before = prose[max(0, start - 40) : start]
+    if _NEGATION_AHEAD_RE.search(ahead) and not _NEGATION_OBJECT_BEHIND_RE.search(
+        _neg_before
+    ):
         return False  # postpositive negation ("Article 50 does not apply")
     # R311 — widened 24 -> 60 chars so the cue + up to four intervening words
     # fit in the window (see ``_CONTRAST_BEHIND_RE``).
@@ -7882,7 +7977,16 @@ class _BedrockDenoiserProvider:
                 max_tokens=req.max_tokens or 100,
                 temperature=req.temperature or 0.0,
                 timeout_seconds=req.timeout_seconds,
-            )
+            ),
+            # R418 — this is a Stage-0 query rewrite, not a Stage-2 polish. The
+            # chain's last-resort wrapper hop records
+            # ``stage2_policy.STAGE2_PRIMARY`` counters, which are
+            # process-global and are what ``easyhard_ab._transport_liveness``
+            # and ``gate_validity`` read to decide whether a run was served by
+            # the primary transport. Counting a de-noiser hop there makes a run
+            # where Stage-2 never landed clear the liveness guard — the
+            # false-green class that guard exists to block.
+            record_stage2=False,
         )
 
 
@@ -8273,6 +8377,7 @@ class QuestionHistoryResult(tuple):
     self_contained_focus: bool
     context_retrieval_text: str | None
     guard_question: str | None
+    challenge_recovered: bool
 
     def __new__(
         cls,
@@ -8283,6 +8388,7 @@ class QuestionHistoryResult(tuple):
         self_contained_focus: bool = False,
         context_retrieval_text: str | None = None,
         guard_question: str | None = None,
+        challenge_recovered: bool = False,
     ):
         obj = super().__new__(cls, (question, system_context))
         obj.resolved_question = resolved_question
@@ -8306,6 +8412,20 @@ class QuestionHistoryResult(tuple):
         # guards. Set ONLY on the R305 reask path, where ``question`` is the
         # bare re-asked ask and carries no turn-1 assistant answer.
         obj.guard_question = guard_question
+        # R418 — the R372 challenge-recovery branch set ``self_contained_focus``
+        # to narrow the engines' reference assembly, and that narrowing then
+        # leaked into the SCOPE gate, which runs on the live turn ALONE when the
+        # flag is set. On this branch the live turn is a dispute that is not
+        # self-contained BY CONSTRUCTION (the branch is guarded on
+        # ``not _live_turn_is_self_contained(live_question)``), so scope had no
+        # anchor to see, classified the dispute as conversational and shipped a
+        # zero-reference refusal. Measured: 8/255 ``in_scope_multi_turn``
+        # negative scenarios refused instead of answered
+        # (``tests/test_regenold_scope.py``). The flag now carries the "this is
+        # a re-anchor, not a standalone turn" fact so the scope gate can keep
+        # reading the whole conversation while the reference machinery stays
+        # narrowed.
+        obj.challenge_recovered = bool(challenge_recovered)
         return obj
 
 
@@ -8404,6 +8524,11 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
 
     _salvaged = False  # R131 — set when the deterministic de-noiser salvage fires
     _self_contained_focus = False  # R133.1 — focus scope + R88-A on the live turn
+    # R418 — set by the R372 challenge-recovery branch. It used to RETURN from
+    # inside that branch, which skipped the shared caps below (see
+    # ``_cap_history_result``); it now sets these and falls through instead.
+    _challenge_recovered = False
+    _guard_question: str | None = None
 
     # R305 — an explicit re-ask ("let's try again: <question>") is answered as
     # the fresh single-turn question it names. Deterministic (no LLM), so it
@@ -8427,9 +8552,20 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
             # ``resolved_question`` below, R305's focus), but carry the flattened
             # history for the completeness guards so ``previous_answer()`` can
             # find turn 1 on a pushback turn.
+            #
+            # R418 — these two caps are applied HERE rather than left to the
+            # shared tail, because this branch still returns early (its
+            # ``question`` is a bare 1-line re-ask, so falling through would
+            # re-enter the de-noiser and lose the focus). ``system_context`` in
+            # particular MUST respect the 1 000-char ``GraphRAGRequest`` bound:
+            # uncapped, a partner sending >1 000 chars of system prompt was
+            # answered with an unhandled ValidationError → HTTP 500.
+            _reask_q, _reask_system, _ = _cap_history_result(
+                _reask_tail, system_context, _reask_tail
+            )
             return QuestionHistoryResult(
-                _reask_tail,
-                system_context,
+                _reask_q,
+                _reask_system,
                 _reask_tail,  # resolved live turn IS the re-asked question
                 False,
                 True,  # self_contained_focus — drop prior-turn scope + R88-A bleed
@@ -8445,8 +8581,16 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
         try:
             from app.data.graph_rag_prompts import is_challenge_turn  # noqa: PLC0415
 
+            # R418 — ``has_prior_turns=True`` is REQUIRED here. This call sits
+            # inside ``if history_turns:``, so prior turns exist by construction;
+            # without the flag ``is_challenge_turn`` derives "no prior turn" from
+            # the absence of the ``Latest question:`` flatten marker (it is
+            # passed the bare ``live_question``), and the whole R377
+            # leading-confirmation family — "are you sure?", "hmm, I doubt
+            # that", "that doesn't sound right" — silently never fired. Only the
+            # explicit ``_CHALLENGE_MARKERS`` disputes were ever recovered.
             if (
-                is_challenge_turn(live_question)
+                is_challenge_turn(live_question, has_prior_turns=True)
                 and not _REASK_MARKER_RE.search(live_question)
                 and not _live_turn_is_self_contained(live_question)
             ):
@@ -8456,20 +8600,48 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
                 # Recover the root user question from Turn 1 as resolved_turn so retrieval
                 # (BM25, vector recall, NER) operates on the substantive legal inquiry rather than
                 # critique noise.
+                # R418 — ``require_anchor=False``, the same waiver the R305
+                # re-ask path uses for the same reason. The disputed answer
+                # replied to a real question; the anchor gate is about whether a
+                # turn can serve as a SEARCH query unaided, not about which turn
+                # to re-anchor on, and requiring it here rejected the anchorless
+                # questions outright. 7 of the 110 official questions name no
+                # article ("Who is entitled to lodge a complaint …"), and on the
+                # hard split an earlier SYNTHETIC history turn then became
+                # ``resolved_question`` — so the pushback re-answered a history
+                # question instead of the one under dispute. The length and
+                # coreference gates still stand, so a bare fragment ("what about
+                # deployers?") is still skipped in favour of its antecedent.
                 _root_q = next(
                     (
                         getattr(m, "content", "").strip()
                         for m in reversed(dialogue[:last_user_idx])
                         if getattr(m, "role", None) == "user"
                         and getattr(m, "content", None)
-                        and _live_turn_is_self_contained(getattr(m, "content", ""))
+                        and _live_turn_is_self_contained(
+                            getattr(m, "content", ""), require_anchor=False
+                        )
                     ),
                     None,
                 )
                 if not _root_q and dialogue and dialogue[0].role == "user" and getattr(dialogue[0], "content", None):
                     _root_q = dialogue[0].content.strip()
 
-                if _root_q:
+                # R418 — refuse the recovery when an EARLIER turn carries an
+                # injection payload. This branch returns
+                # ``self_contained_focus=True``, which makes the scope gate run
+                # ``classify_conversation`` on the LIVE turn alone; when the
+                # recovery replaces the retrieval text with the root question,
+                # the conversation-wide injection check never runs — yet
+                # ``q_combined`` (and ``_root_q`` as the "Target inquiry to
+                # answer") still carry every prior turn into the Stage-2 prompt.
+                # Fail CLOSED: fall through to the normal path, which does check
+                # the whole conversation.
+                _history_has_injection = any(
+                    text_has_injection(getattr(m, "content", "") or "")
+                    for m in history_turns
+                ) or (_root_q is not None and text_has_injection(_root_q))
+                if _root_q and not _history_has_injection:
                     try:
                         _trace_note(
                             f"challenge_focus: resolved root question from turn 1 ({len(_root_q)} chars)"
@@ -8488,22 +8660,27 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
                         f"Target inquiry to answer:\n"
                         f"{_root_q}"
                     )
-                    return QuestionHistoryResult(
-                        q_combined,
-                        system_context,
-                        _root_q,  # resolved live turn IS the root question
-                        False,
-                        True,  # self_contained_focus — drop prior assistant anchor bleed
-                        context_retrieval_text,
+                    # R418 — no early return any more: assign the recovered
+                    # shape and fall through to the shared caps. Returning here
+                    # skipped the ``_max_question_chars()`` bound AND the
+                    # 1 000-char ``system_context`` clip that every sibling path
+                    # applies, so this path alone could hand the engine an
+                    # uncapped system description (HTTP 500 on the Pydantic
+                    # bound) and an unbounded prompt.
+                    question = q_combined
+                    resolved_turn = _root_q
+                    _self_contained_focus = True
+                    _guard_question = (
                         "Conversation so far:\n"
                         f"{history_block}\n\n"
                         "Latest question:\n"
-                        f"{live_question}",
+                        f"{live_question}"
                     )
+                    _challenge_recovered = True
         except Exception:  # noqa: BLE001 — fail-safe to normal denoiser / concatenation
             pass
 
-    if history_turns:
+    if history_turns and not _challenge_recovered:
         # R86 — Query De-Noiser: attempt an LLM rewrite of the follow-up
         # into a standalone search query BEFORE flooding the retrieval
         # indexes with verbose assistant history.  On success the clean
@@ -8587,53 +8764,22 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
                 f"{live_question}"
             )
             resolved_turn = live_question
-    else:
+    elif not _challenge_recovered:
+        # R418 — ``elif``, not ``else``: when the challenge-recovery branch
+        # above already set ``question``/``resolved_turn``, falling into the
+        # no-history default would clobber the recovered root question with the
+        # raw pushback text (the exact history-bleed the recovery exists to
+        # prevent). Only a genuinely history-less request takes this path.
         question = live_question
         resolved_turn = live_question
 
-    max_chars = _max_question_chars()
-
-    if resolved_turn is not None and len(resolved_turn) > max_chars:
-        resolved_turn = resolved_turn[-max_chars:]
-
-    # Engine cap — see :func:`_max_question_chars`. At the default
-    # 64 000 this never fires on real evaluator traffic (a 20-turn legal
-    # conversation runs ~10-25k chars); it remains as a bound against a
-    # hostile payload, and as the mechanism the pre-R314 A/B
-    # (``REGENOLD_MAX_QUESTION_CHARS=2000``) re-activates.
-    #
-    # When it does fire, truncate from the LEFT (drop oldest turns
-    # first) so the live question always survives. The naive
-    # ``question[-max_chars:]`` would slice mid-history and drop the
-    # ``Latest question:\n`` marker that `_detect_classification_topic`,
-    # `_detect_role_obligation_query`, and `_needs_stage2_enhancement`
-    # rely on to isolate the live question from prior turns — without
-    # the marker, those detectors would test against the entire
-    # flattened prompt and a prior assistant turn could trigger a
-    # verdict response for an unrelated current question.
-    if len(question) > max_chars:
-        live_marker = "Latest question:\n"
-        marker_idx = question.rfind(live_marker)
-        if marker_idx >= 0:
-            live_part = question[marker_idx:]
-            if len(live_part) >= max_chars:
-                # Live question alone overflows; keep the marker + beginning
-                # of the live question so early anchors survive.
-                head_budget = max_chars - len(live_marker)
-                question = live_marker + live_part[len(live_marker):][:head_budget]
-            else:
-                history_budget = max_chars - len(live_part)
-                history_part = question[:marker_idx][-history_budget:]
-                question = history_part + live_part
-        else:
-            question = question[-max_chars:]
-    if system_context is not None and len(system_context) > 1000:
-        # R315 — keep the HEAD, not the tail. A system description opens by
-        # saying what the system does ("We provide an AI system that screens
-        # job applicants…"), which is precisely the text that decides the
-        # risk tier. The old ``[-1000:]`` deleted that opening sentence and
-        # kept the trailing boilerplate, silently and with no trace note.
-        system_context = system_context[:1000]
+    # R418 — the caps (``_max_question_chars()`` on the prompt, 1 000 chars on
+    # the system description) live in ONE place now, and every return path
+    # through this function goes through it. They used to be inline here only,
+    # which is why the two early returns below silently skipped both.
+    question, system_context, resolved_turn = _cap_history_result(
+        question, system_context, resolved_turn
+    )
 
     return QuestionHistoryResult(
         question,
@@ -8642,6 +8788,8 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
         _salvaged,
         _self_contained_focus,
         context_retrieval_text,
+        _guard_question,
+        _challenge_recovered,
     )
 
 
@@ -8847,7 +8995,7 @@ def regenold_eu_ai_act_ask(
     # after "What does Art. 13 require?" still counts as in-scope
     # because the prior turn establishes Art. 13 as an anchor — this
     # is the "coreference rescue" branch in classify_conversation.
-    if history_res.self_contained_focus:
+    if history_res.self_contained_focus and not history_res.challenge_recovered:
         # R131 / R133.1 — the live turn is self-contained AND an LLM de-noiser
         # ran (success OR salvage), so treat this as a single-turn question.
         # Run scope on the live turn ALONE so the prior-turn anchors (e.g. a
@@ -8858,6 +9006,15 @@ def regenold_eu_ai_act_ask(
         # widens this from the salvage-only path (R131) to the de-noiser-success
         # path, which leaves the engine query clean but still ran scope on the
         # full conversation.
+        #
+        # R418 — the R372 challenge-recovery path is excluded. Its live turn is
+        # a dispute that is not self-contained by construction, so narrowing
+        # here left scope with no anchor and produced a zero-reference refusal
+        # on in-scope follow-ups. On that path the whole conversation is also
+        # the CORRECT scope input: the recovered root question lives in it, and
+        # the injection scan has to see every turn (the branch itself fails
+        # closed on injection, but scope's own adversarial categories must still
+        # run on the conversation).
         _salvage_user = next(
             (m for m in reversed(req.messages) if m.role == "user"), None
         )
@@ -9055,13 +9212,36 @@ def regenold_eu_ai_act_ask(
         #     warm. Without this one cold-start window permanently
         #     poisons every question it touched.
         _stats = rag_res.graph_stats or {}
+        # R417 — refuse to cache a DEGRADED serve. R28 (``stage2_call_failed``)
+        # and R78 (low confidence) caught a total Stage-2 failure and a cold
+        # backend, but neither saw a *successful* Bedrock fallback: the
+        # wrapper returned a one-token interim completion, the structural
+        # guard rejected it, Bedrock answered, and because
+        # ``stage2_call_failed`` stayed False the degraded answer was cached
+        # for the worker's lifetime and replayed in 0.1-0.2 s long after the
+        # wrapper recovered (measured on rg_010: one fallback generation read
+        # as three separate "observations"). Cache only when the primary leg
+        # served the answer, or when Stage-2 was skipped by design ("" — a
+        # curated intercept is not a degradation).
+        _served_by = str(_stats.get("stage2_served_by") or "")
         _cacheable = (
             not _stats.get("stage2_call_failed")
+            and _served_by not in ("fallback", "deterministic")
             and rag_res.confidence >= _MIN_CACHEABLE_CONFIDENCE
             and _stats.get("nodes_traversed", 0) > 0
         )
         if _cacheable:
             _ENGINE_CACHE.put(cache_key, rag_res)
+        elif _served_by in ("fallback", "deterministic"):
+            # Leave a trace note: a silent cache skip is indistinguishable
+            # from a cache miss to the judge-correlation pass.
+            try:
+                from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                    record_note,
+                )
+                record_note(f"cache_skip_degraded_serve={_served_by}")
+            except Exception:  # noqa: BLE001 — tracing must never break the route
+                pass
     # R50 — surface the engine-side stage-2 outcome into the trace so
     # the judge can correlate "Sonnet polish landed" with output drift.
     # R97 — also captured locally: when Stage-2 synthesis landed (a

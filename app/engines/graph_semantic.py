@@ -615,6 +615,7 @@ def fetch_focused_subprovisions(question: str, refs: list[str]) -> list[dict]:
     try:
         from app.engines.kg_context import (  # noqa: PLC0415
             _MAX_REFS_CEILING,
+            _adaptive_int,
             _bounded_execute_read,
             _node_ids,
             kg_context_enabled,
@@ -622,8 +623,23 @@ def fetch_focused_subprovisions(question: str, refs: list[str]) -> list[dict]:
 
         if not kg_context_enabled():
             return []
+        # R418 — read the knob through kg_context's ``_adaptive_int``, not a
+        # local ``_int_env``. Both layers now share ``_MAX_REFS_CEILING``, but
+        # a plain env read is a different FUNCTION of the knob than the keyword
+        # layers use: with the HyPA router on, ``kg_max_keywords`` scales this
+        # value per question, so the focused-subprovision layer and the keyword
+        # layers truncated the same ref list at different lengths — the exact
+        # drift the shared ceiling was introduced to remove. With the router off
+        # (the default) ``_adaptive_int`` == ``_int_env``.
         ids = _node_ids(
-            refs or [], _int_env("REGENOLD_KG_MAX_REFS", 8, 1, _MAX_REFS_CEILING)
+            refs or [],
+            _adaptive_int(
+                "kg_max_keywords",
+                "REGENOLD_KG_MAX_REFS",
+                8,
+                1,
+                _MAX_REFS_CEILING,
+            ),
         )
         if not ids:
             return []

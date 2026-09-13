@@ -47,15 +47,28 @@ def _common_head(row: dict[str, Any]) -> str:
     )
 
 
+def _refs_block(refs: list[str] | None) -> str:
+    """Render the citation list INSIDE the XML block, escaped (R418).
+
+    The answer text was escaped (``_escape_xml``) but the sibling
+    ``<references>`` element was interpolated raw, so a candidate that emitted a
+    reference string containing ``</references></candidate_a>…`` could break out
+    of its own block and inject prompt structure into the judge's context — the
+    citation list is candidate-authored output, exactly like the answer. The
+    list shape is preserved; only the XML-significant characters are neutralised.
+    """
+    return "[" + ", ".join(_escape_xml(str(r)) for r in (refs or [])) + "]"
+
+
 def _ab_block(answer_a: str, refs_a: list[str], answer_b: str, refs_b: list[str]) -> str:
     return (
         "\n<candidate_a>\n"
         "<answer>\n" + _escape_xml(answer_a or "") + "\n</answer>\n"
-        "<references>" + str(refs_a or []) + "</references>\n"
+        "<references>" + _refs_block(refs_a) + "</references>\n"
         "</candidate_a>\n"
         "\n<candidate_b>\n"
         "<answer>\n" + _escape_xml(answer_b or "") + "\n</answer>\n"
-        "<references>" + str(refs_b or []) + "</references>\n"
+        "<references>" + _refs_block(refs_b) + "</references>\n"
         "</candidate_b>\n"
     )
 

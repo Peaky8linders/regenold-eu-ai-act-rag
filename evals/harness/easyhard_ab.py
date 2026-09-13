@@ -209,6 +209,9 @@ def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
 def _transport_snapshot() -> dict[str, Any]:
     """Per-row Stage-2 transport counters, or ``{}`` when unobservable.
 
+    ``{}`` means UNOBSERVABLE, and :func:`_row_transport` propagates that as "no
+    provenance at all" rather than as zero deltas (see R418 there).
+
     R416 — the ckpt records WHICH rows the primary leg served. Without this the
     only provenance is an arm-level total, so a single fallback row voids the
     whole run and there is no way to show which rows to drop instead. That is
@@ -225,7 +228,19 @@ def _transport_snapshot() -> dict[str, Any]:
 
 
 def _row_transport(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
-    """Delta of the transport counters across ONE row (0/False when unknown)."""
+    """Delta of the transport counters across ONE row.
+
+    R418 — returns ``{}`` when either snapshot is unobservable. It previously
+    computed every delta as ``0 - 0 = 0`` and still EMITTED the keys, so
+    ``stage2_fell_back`` was ``False`` by arithmetic on no evidence. Because the
+    key was present, :func:`_fallback_served`'s missing-key conservatism could
+    not fire, and a row whose transport was never observed was recorded as
+    tunnel-served — a false green on the exact provenance the per-row repair
+    exists to establish. Omitting the keys routes it back to "cannot be shown
+    to have been tunnel-served".
+    """
+    if not before or not after:
+        return {}
 
     def _d(key: str) -> int:
         try:

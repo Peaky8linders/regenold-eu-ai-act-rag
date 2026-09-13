@@ -568,9 +568,18 @@ def _parse_judge_json(text: str) -> dict[str, Any]:
         pass
 
     # Pass 4: Multi-object scanning with string-aware brace balance & schema key recognition
+    #
+    # R418 — the allow-list is a per-AXIS schema list, so every new axis has to
+    # be added here or its objects are invisible to the recovery pass: the fine-
+    # grained CRAG score (``score``), the HyPA reference-free axes
+    # (``relevancy``, ``claims``) and the reference-classification element
+    # (``class``) all arrive as bare objects with no fenced wrapper, which is
+    # precisely the case this pass exists for. ``_ELEMENT_SHAPES`` below still
+    # filters array elements out first.
     target_keys = {
         "verdict", "winner", "propositions", "classifications", "citations",
         "sentence_count", "issues", "criteria_analysis", "candidate_a_audit",
+        "score", "class", "claims", "relevancy", "reference_relevancy",
     }
     candidates: list[dict[str, Any]] = []
 
