@@ -120,7 +120,27 @@ verdicts are a judge-cache hit — this round cost one arm, not two.
   firing on passing rows.
 * Row 4 is closed on the frozen ledger, not on live output.
 
-## 5. Artifacts
+## 5. Live confirmation (deploy `84df3d3f8c24`)
+
+`docs/measurements/r415/live_prod_check.py` re-asks production for the two rows, and
+reports the clauses rather than asserting them (the flip traded a small conciseness cost
+for them, so a missing clause is a residual to re-verify, not a test failure):
+
+| row | clause | deploy `f658a49` (pre-flip) | deploy `84df3d3f8c24` (post-flip) |
+| :--- | :--- | :--- | :--- |
+| `rg_010` | Art. 14 *aim* — "preventing or minimising risks to health, safety or fundamental rights" | **absent** | **present** |
+| `rg_045` | *without undue delay* adjacent to the suspension | present | present |
+
+Production has **no `railway.toml` / `.env` override** for `REGENOLD_KG_POINT_TEXT`
+(checked), so the code default is what governs live and no deploy-env change was needed.
+
+**Do not read a single live ask as a rate.** Two consecutive live asks of the same
+`rg_010` question returned 1,230 and 350 chars — the short one omitted the aim clause —
+which is the live sampling spread, and exactly why the 25-row 3-repeat judge, not a spot
+check, is the measurement above. The live check is a deploy smoke test that the flip is
+in effect; it is not evidence for the +8.0 pp.
+
+## 6. Artifacts
 
 | file | what |
 | :--- | :--- |
