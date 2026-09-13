@@ -1,0 +1,27 @@
+{
+  "scope": "frozen R407 hard predictions and R388 reference key; not current production",
+  "inputs": {
+    "evals\\bench\\results\\official-r407-direct-bedrock-cohere-v4-pro-hard.ckpt.jsonl": "8cc87bc68c37c3fd3c7a852e281aad9fcf2f9351f609984f4ee4ccf97587d6e8",
+    "docs\\measurements\\r388\\official_refkey_n110.jsonl": "86821af5e86ec93898123ea7cb097b83e95bcd7f053891e0cee4e28096a9f8dc",
+    "docs\\measurements\\r409\\r407_sonnet5_failing_criteria_triage.json": "9444d4305e1c09ea376704ade5f59353db376d1a7e0c671f9132755ee15fc9b4"
+  },
+  "triage_classes": {
+    "AMBIGUOUS": 4,
+    "ENGINE_GAP": 51,
+    "CRITERION_DEFECT": 12
+  },
+  "engine_criteria_with_provision_in_emitted_refs": 49,
+  "retrieved_context_present": "not measured by inrefs; requires captured Stage-2 context",
+  "predicted_grain": {
+    "total": 310,
+    "subpoint": 266,
+    "subpoint_pct": 85.81
+  },
+  "expected_grain": {
+    "total": 135,
+    "subpoint": 114,
+    "subpoint_pct": 84.44
+  },
+  "stored_stage1_drafts": 0,
+  "stage1_preservation_gate": "not evaluable here: turn1_answer is a prior conversational answer, not Stage-1 draft"
+}

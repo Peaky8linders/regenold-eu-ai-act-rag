@@ -938,7 +938,7 @@ def _openai_wrapper_complete_for_graph_rag(
     # mechanism was never the wrapper dropping anything and never the model: it
     # is THIS cap, in our own code. Bedrock looked better because
     # ``_try_bedrock_fallback`` passes ``system=system`` — the full 53 kB — while
-    # the primary leg passes ``wrapper_system``, a 62-character persona.
+    # the capped primary leg passes ``wrapper_system``, a 61-character persona.
     #
     # Ships DEFAULT OFF because it is prompt-side and therefore NOT
     # reference-neutral (AGENTS.md invariant #5): the three prose->refs passes
@@ -1008,8 +1008,9 @@ def _openai_wrapper_complete_for_graph_rag(
     #
     # ``history_turn_count <= 1`` is the modality predicate: the route threads it
     # from the conversation (`GraphRAGRequest.history_turn_count`, "turns BEFORE
-    # the live question"), so it reads **0 for a first ask** and **1 for an ask
-    # with one prior exchange** — both single-turn-shaped — while both hard-mode
+    # the live question"), so it reads **0 for a first ask**, **1 for a two-message
+    # request**, and **2 for user/assistant/user (one completed prior exchange)**.
+    # The ordinary follow-up therefore receives the capped system. Both hard-mode
     # asks (the 10-message final and the pushback) read >= 9. Same predicate
     # ``answer_router.is_multi_turn`` uses. MEASURED with
     # ``docs/measurements/r415/pushback_invariance_probe.py``, which reads the
@@ -8751,8 +8752,8 @@ def _render_supplementary_sections(
             #
             # Ordering note: this runs AFTER the R330 question fix above and
             # feeds the same list to the semantic layers, so with the rerank
-            # gate ON both features see the reranked order. With the gate OFF
-            # (the default) ``rerank_references`` returns its input unchanged,
+            # gate ON both features see the reranked order. R400 defaults ON
+            # with a Cohere key; OFF or missing-key returns the input unchanged,
             # so this block is byte-identical to R330's behaviour.
             if _kg_question.strip() and len(_kg_refs) > 1:
                 from app.engines.cohere_rerank import (  # noqa: PLC0415

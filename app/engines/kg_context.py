@@ -246,8 +246,9 @@ LIMIT $max_recitals
 # ``_allocate_units``. The ceiling only guards against a runaway seed: the
 # whole graph holds 449 such rows.
 #
-# Both behaviours sit behind ``REGENOLD_KG_POINT_TEXT`` (default OFF): OFF runs
-# ``_SUBPOINT_CYPHER_LEGACY``, the exact pre-R408 query production serves.
+# Both behaviours sit behind ``REGENOLD_KG_POINT_TEXT`` (**default ON since R416**):
+# OFF is now the opt-out and runs ``_SUBPOINT_CYPHER_LEGACY``, the exact pre-R408
+# query. See ``_kg_point_text_enabled`` for the paired reading that flipped it.
 _SUBPOINT_ROW_CEILING = 600
 
 _SUBPOINT_CYPHER_LEGACY = """
@@ -268,15 +269,50 @@ LIMIT $max_units
 def _kg_point_text_enabled() -> bool:
     """``REGENOLD_KG_POINT_TEXT`` — R408/R409 point text in the sub-point block.
 
-    DEFAULT OFF. ON: every Point reaches the block (a bare point carries its own
-    text) and the unit budget is shared across the cited provisions. OFF: the
-    pre-R408 query, which only returns points that carry a SubPoint. The block
-    is Stage-2 prompt text, so it is NOT reference-neutral (AGENTS.md invariant
-    #5): over the R407 refs it grows from 341 to 3,832 chars per row, and it has
-    to clear ``gold_dropped_head`` and a Speed read before it may default ON.
+    **DEFAULT ON since R416** (deny-list, like the repo's other default-ON gates:
+    only an explicit ``0``/``false``/``no``/``off`` selects the legacy query).
+    ON: every Point reaches the block (a bare point carries its own text) and the
+    unit budget is shared across the cited provisions. OFF: the pre-R408 query,
+    which only returns points that carry a SubPoint.
+
+    R416 flipped it on a paired read of the reconstructed official gold, over the
+    rows Stage-2 actually answers, both arms tunnel-served, wrapper judge
+    ``claude-sonnet-5`` at temp 0.1 with 3 repeats
+    (``docs/measurements/r415/official-lever-paired-kgpt.json``, 25 paired rows):
+
+    | axis | OFF | ON | delta |
+    | :--- | ---: | ---: | ---: |
+    | ans_correctness_loose | 96.6 | 98.9 | **+2.3** |
+    | ans_correctness_strict | 88.0 | 96.0 | **+8.0** |
+    | ans_conciseness | 47.8 | 44.5 | -3.3 |
+    | ref_correctness_loose | 100.0 | 100.0 | 0.0 |
+    | ref_correctness_strict | 70.8 | 70.8 | 0.0 |
+    | ref_conciseness | 51.6 | 52.2 | +0.6 |
+    | regulatory_tone | 60.0 | 60.0 | 0.0 |
+    | resp_speed | 70.4 | 71.3 | +0.9 |
+    | **OVERALL (geo mean)** | 70.7 | **71.3** | **+0.6** |
+
+    The two preconditions this docstring used to name are met: `ref_loose` is
+    unchanged at **100.0** on both arms, so no expected head is dropped (hard rule
+    #8), and Speed moves UP (mean latency 29.6 s -> 28.7 s). The correctness gain
+    has a named mechanism rather than being a swing: the only two rows that
+    changed are ``rg_010`` (4/5 -> 5/5, the *aim* clause of Art. 14) and
+    ``rg_045`` (3/4 -> 4/4, the scope of "without undue delay") — exactly the two
+    the R415 system-prompt compression had broken — and a reach probe over the
+    same 26 rows shows the block changing on **23** of them (units 26 -> 384, text
+    5,201 -> 81,391 chars) with the legacy query returning **0** units for
+    ``rg_010``.
+
+    The cost is answer length (mean 1,425 -> 1,543 chars), which is where the
+    -3.3 pp of conciseness comes from. RESIDUAL: the hard split is NOT measured
+    for this lever — it is a grounding-text change, so unlike the R415 lever it is
+    not modality-restricted. It lengthens answers slightly and moves no reference
+    axis, which is the opposite direction from the class that broke hard mode
+    (`gold_dropped_head` 12 -> 18), but "opposite direction" is not evidence.
+    A hard-split paired read is the follow-up; ``=0`` reverts.
     """
-    return os.getenv("REGENOLD_KG_POINT_TEXT", "0").strip().lower() in (
-        "1", "true", "yes", "on",
+    return os.getenv("REGENOLD_KG_POINT_TEXT", "1").strip().lower() not in (
+        "0", "false", "no", "off",
     )
 
 _SUBPOINT_CYPHER = """
