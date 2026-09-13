@@ -206,6 +206,92 @@ def _aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return out
 
 
+def _transport_snapshot() -> dict[str, Any]:
+    """Per-row Stage-2 transport counters, or ``{}`` when unobservable.
+
+    R416 — the ckpt records WHICH rows the primary leg served. Without this the
+    only provenance is an arm-level total, so a single fallback row voids the
+    whole run and there is no way to show which rows to drop instead. That is
+    the R415 lesson one layer down: a gate that cannot say which rows the other
+    transport carried can only void, never repair. Purely additive — nothing in
+    the scoring path reads these keys unless a caller asks for them.
+    """
+    try:
+        from app.llm.stage2_policy import transport_stats  # noqa: PLC0415
+
+        return dict(transport_stats())
+    except Exception:  # noqa: BLE001 — provenance must never break a run
+        return {}
+
+
+def _row_transport(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
+    """Delta of the transport counters across ONE row (0/False when unknown)."""
+
+    def _d(key: str) -> int:
+        try:
+            return int(after.get(key, 0) or 0) - int(before.get(key, 0) or 0)
+        except (TypeError, ValueError):  # a non-int stat (refused_by_provider map)
+            return 0
+
+    primary_attempts = _d("primary_attempts")
+    primary_ok = _d("primary_ok")
+    fallback_attempts = _d("fallback_attempts")
+    fallback_ok = _d("fallback_ok")
+    return {
+        "stage2_primary_attempts": primary_attempts,
+        "stage2_primary_ok": primary_ok,
+        "stage2_fallback_attempts": fallback_attempts,
+        "stage2_fallback_ok": fallback_ok,
+        "stage2_used": bool(primary_attempts or fallback_attempts),
+        "stage2_fell_back": bool(fallback_ok),
+    }
+
+
+def _fallback_served(row: dict[str, Any]) -> bool:
+    """Did the fallback leg carry this row? Missing provenance counts as YES.
+
+    The R416 schema records it per row. An older ckpt predates the keys, and a
+    row that cannot be shown to have been tunnel-served must not be counted as
+    if it were — the same conservatism ``gate_validity`` applies to a whole arm.
+    """
+    if "stage2_fell_back" not in row:
+        return True
+    return bool(row.get("stage2_fell_back"))
+
+
+def _exclude_fallback_rows(
+    a_rows: list[dict[str, Any]], b_rows: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
+    """Drop the SAME ids from both arms where EITHER row fell back.
+
+    R416. ``gate_validity.assess`` voids a run when the fallback leg carried any
+    row. That is right for a system-slot lever (Bedrock always receives the full
+    system prompt, so such a row dispatches identical bytes across arms) and
+    needlessly destructive for every other kind: a grounding/user-payload lever
+    reaches BOTH legs, so the row still measures the lever — it is merely a
+    different operating point. R415 settled this on the easy board by dropping
+    the row symmetrically; the hard gate could not, because it recorded no
+    per-row provenance. It does now.
+
+    Symmetry is the whole point: dropping only the arm that fell back would put a
+    fallback row in one arm's mean while the other arm's mean excluded its own —
+    the confound R415's first draft shipped.
+    """
+    a_by = {r.get("id"): r for r in a_rows}
+    b_by = {r.get("id"): r for r in b_rows}
+    shared = [i for i in a_by if i in b_by]
+    bad = {
+        i
+        for i in shared
+        if _fallback_served(a_by[i]) or _fallback_served(b_by[i])
+    }
+    return (
+        [r for r in a_rows if r.get("id") not in bad],
+        [r for r in b_rows if r.get("id") not in bad],
+        [i for i in shared if i in bad],
+    )
+
+
 def _run_arm(
     probe: list[ProbeRow],
     *,
@@ -237,6 +323,7 @@ def _run_arm(
     try:
         for i, pr in enumerate(probe, 1):
             history = [dict(m) for m in pr.messages]
+            t_before = _transport_snapshot()
             body, latency_ms, status, err, attempts, _retried = poster(
                 url, api_key, history, timeout
             )
@@ -255,6 +342,7 @@ def _run_arm(
                 "http_status": status,
                 "attempts": attempts,
                 "answer_chars": len(answer),
+                **_row_transport(t_before, _transport_snapshot()),
             }
             if err or not answer:
                 rec["error"] = err or "empty_answer"
@@ -920,6 +1008,25 @@ def main() -> int:
         b_prov = probe_b.provenance(rows=b_rows)
         b_agg = {k: _aggregate(v) for k, v in _split(b_rows).items()}
 
+    # R416 — SYMMETRIC FALLBACK-ROW EXCLUSION (before any verdict is decided).
+    #
+    # One fallback row used to void a complete 37+37 run and throw away its
+    # measurement entirely. For a non-system lever that is a false void: the
+    # lever lives in the user payload, which BOTH legs receive, so the row still
+    # measures it. The row is dropped from BOTH arms (never from one), and the
+    # run is still refused when the survivors fall below ``_MIN_GATE_N`` in any
+    # split the corpus actually carried — a mostly-fallback run is not repaired
+    # by dropping, it is refused.
+    dropped_rows: list[str] = []
+    if b_rows:
+        a_rows, b_rows, dropped_rows = _exclude_fallback_rows(a_rows, b_rows)
+        a_agg = {k: _aggregate(v) for k, v in _split(a_rows).items()}
+        b_agg = {k: _aggregate(v) for k, v in _split(b_rows).items()}
+    survivors = {k: len(v) for k, v in _split(a_rows).items()}
+    rescued = bool(dropped_rows) and all(
+        survivors.get(s, 0) >= _MIN_GATE_N for s in expected_splits
+    )
+
     # R413 — VOID detection runs BEFORE any delta or verdict is printed. A run
     # whose arms were served by the fallback leg, or whose system payloads were
     # identical under a system-slot lever, cannot measure the lever at all: its
@@ -932,10 +1039,22 @@ def main() -> int:
         lever = (False, "remote --endpoint run; payloads are not observable in-process")
     void = gate_validity.assess(
         base=a_prov, branch=b_prov, lever=lever, transport_checked=bool(args.local),
+        ignore_fallback_leg=rescued,
     )
+    if dropped_rows:
+        print(
+            f"\nR416 — {len(dropped_rows)} fallback-served row(s) excluded from BOTH "
+            f"arms ({', '.join(dropped_rows[:5])}"
+            f"{'…' if len(dropped_rows) > 5 else ''}); "
+            f"survivors {survivors} (floor {_MIN_GATE_N}): "
+            f"{'MEASURED on the tunnel-served subset' if rescued else 'BELOW FLOOR — run stays void'}"
+        )
     print()
     print(void.render())
-    void_reasons = tuple(void.reasons) if b_rows else ()
+    # ``branch_env`` and not ``b_rows``: the fallback exclusion above can empty
+    # an arm, and an emptied arm must still be REFUSED (its delta is undefined)
+    # rather than reported as a clean single-arm run.
+    void_reasons = tuple(void.reasons) if branch_env else ()
 
     if void_reasons:
         # Refuse the delta: each arm's own scorecard is still printed, because
@@ -986,6 +1105,8 @@ def main() -> int:
     verdict["void"] = bool(void_reasons)
     verdict["void_reasons"] = list(void_reasons)
     verdict["arm_provenance"] = void.as_dict()
+    verdict["fallback_rows_excluded"] = list(dropped_rows)
+    verdict["fallback_exclusion_rescued_run"] = bool(rescued)
     if void_reasons:
         verdict["exit_code"] = 0 if args.allow_void else 3
         print(

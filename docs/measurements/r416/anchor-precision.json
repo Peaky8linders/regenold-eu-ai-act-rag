@@ -1,0 +1,232 @@
+{
+  "firings": 16,
+  "hits": 10,
+  "misses": [
+    {
+      "anchor": "Article 43",
+      "gold": [
+        "Article 6"
+      ],
+      "id": "rg_004",
+      "question": "i have a medical device that has an ai system as a safety component. the medical device is classified \"medium risk\" and undergoes a 3rd party conformi"
+    },
+    {
+      "anchor": "Article 11",
+      "gold": [
+        "Article 44"
+      ],
+      "id": "rg_040",
+      "question": "under the eu ai act, when a high risk ai system is found to conform with the requirements, what information must the union technical documentation ass"
+    },
+    {
+      "anchor": "Article 43",
+      "gold": [
+        "Article 11"
+      ],
+      "id": "rg_041",
+      "question": "under the eu ai act, is there a simplified way for smes (including startups) to provide the technical documentation for high risk ai systems, and who "
+    },
+    {
+      "anchor": "Article 43",
+      "gold": [
+        "Article 3"
+      ],
+      "id": "rg_048",
+      "question": "under regulation (eu) 2024/1689, what is the definition of (a) a \"conformity assessment body\" and (b) \"conformity assessment\"?"
+    },
+    {
+      "anchor": "Article 43",
+      "gold": [
+        "Article 32"
+      ],
+      "id": "rg_056",
+      "question": "under article 32 of regulation (eu) 2024/1689, when is a conformity assessment body presumed to comply with the requirements in article 31?"
+    },
+    {
+      "anchor": "Article 73",
+      "gold": [
+        "Article 60"
+      ],
+      "id": "rg_060",
+      "question": "under the eu ai act, if a provider identifies a serious incident during testing in real world conditions of a high risk ai system, what three actions "
+    }
+  ],
+  "precision": 0.625,
+  "reachability": {
+    "defs": 1,
+    "external_callers": [],
+    "occurrences_in_defining_module": 1
+  },
+  "rows": [
+    {
+      "fired": [
+        "Article 11"
+      ],
+      "gold": [
+        "Article 11"
+      ],
+      "hit": 1,
+      "id": "rg_001",
+      "n": 1
+    },
+    {
+      "fired": [
+        "Article 43"
+      ],
+      "gold": [
+        "Article 6"
+      ],
+      "hit": 0,
+      "id": "rg_004",
+      "n": 1
+    },
+    {
+      "fired": [
+        "Article 14"
+      ],
+      "gold": [
+        "Article 14"
+      ],
+      "hit": 1,
+      "id": "rg_010",
+      "n": 1
+    },
+    {
+      "fired": [
+        "Article 15"
+      ],
+      "gold": [
+        "Article 15"
+      ],
+      "hit": 1,
+      "id": "rg_021",
+      "n": 1
+    },
+    {
+      "fired": [
+        "Article 11"
+      ],
+      "gold": [
+        "Article 44"
+      ],
+      "hit": 0,
+      "id": "rg_040",
+      "n": 1
+    },
+    {
+      "fired": [
+        "Article 11",
+        "Article 43"
+      ],
+      "gold": [
+        "Article 11"
+      ],
+      "hit": 1,
+      "id": "rg_041",
+      "n": 2
+    },
+    {
+      "fired": [
+        "Article 43"
+      ],
+      "gold": [
+        "Article 3"
+      ],
+      "hit": 0,
+      "id": "rg_048",
+      "n": 1
+    },
+    {
+      "fired": [
+        "Article 17"
+      ],
+      "gold": [
+        "Article 17"
+      ],
+      "hit": 1,
+      "id": "rg_052",
+      "n": 1
+    },
+    {
+      "fired": [
+        "Article 43"
+      ],
+      "gold": [
+        "Article 32"
+      ],
+      "hit": 0,
+      "id": "rg_056",
+      "n": 1
+    },
+    {
+      "fired": [
+        "Article 73"
+      ],
+      "gold": [
+        "Article 60"
+      ],
+      "hit": 0,
+      "id": "rg_060",
+      "n": 1
+    },
+    {
+      "fired": [
+        "Article 72"
+      ],
+      "gold": [
+        "Article 72"
+      ],
+      "hit": 1,
+      "id": "rg_095",
+      "n": 1
+    },
+    {
+      "fired": [
+        "Article 27"
+      ],
+      "gold": [
+        "Article 27"
+      ],
+      "hit": 1,
+      "id": "rg_102",
+      "n": 1
+    },
+    {
+      "fired": [
+        "Article 43"
+      ],
+      "gold": [
+        "Article 43",
+        "Article 6"
+      ],
+      "hit": 1,
+      "id": "rg_108",
+      "n": 1
+    },
+    {
+      "fired": [
+        "Article 43"
+      ],
+      "gold": [
+        "Article 43"
+      ],
+      "hit": 1,
+      "id": "rg_109",
+      "n": 1
+    },
+    {
+      "fired": [
+        "Article 27"
+      ],
+      "gold": [
+        "Article 25",
+        "Article 27"
+      ],
+      "hit": 1,
+      "id": "rg_110",
+      "n": 1
+    }
+  ],
+  "rows_graded": 110,
+  "rows_with_a_firing": 15
+}

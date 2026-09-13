@@ -614,6 +614,7 @@ def fetch_focused_subprovisions(question: str, refs: list[str]) -> list[dict]:
         return []
     try:
         from app.engines.kg_context import (  # noqa: PLC0415
+            _MAX_REFS_CEILING,
             _bounded_execute_read,
             _node_ids,
             kg_context_enabled,
@@ -621,7 +622,9 @@ def fetch_focused_subprovisions(question: str, refs: list[str]) -> list[dict]:
 
         if not kg_context_enabled():
             return []
-        ids = _node_ids(refs or [], _int_env("REGENOLD_KG_MAX_REFS", 8, 1, 10))
+        ids = _node_ids(
+            refs or [], _int_env("REGENOLD_KG_MAX_REFS", 8, 1, _MAX_REFS_CEILING)
+        )
         if not ids:
             return []
         emb = _embed(question)

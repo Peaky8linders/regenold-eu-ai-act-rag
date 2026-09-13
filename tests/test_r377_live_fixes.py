@@ -174,3 +174,159 @@ class TestR377BDeniedTierIsNotAssertedTier:
         text = "The system is not prohibited under Article 5, but is high-risk under Article 6."
         assert extract_asserted_tier_set(text) == {"high_risk"}
 
+
+# ─── R377-D ──────────────────────────────────────────────────────────────────
+
+
+class TestR377DWorkplaceEmotionRecognition:
+    """A call centre is a workplace, so Article 5(1)(f) bites."""
+
+    def _match(self, question: str) -> str | None:
+        from app.engines._graph_rag_data import _CLASSIFICATION_TOPICS
+
+        for entry in _CLASSIFICATION_TOPICS:
+            if "emotion" not in entry.get("name", ""):
+                continue
+            if any(p.search(question) for p in entry["patterns"]):
+                return entry["name"]
+        return None
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "We deploy an emotion recognition system in our call centre to monitor agent stress.",
+            "We monitor the stress of our call-centre agents with an emotion recognition AI.",
+            "Can we use emotion recognition on our employees in the office?",
+            "Emotion recognition used on our staff during shifts",
+            "Emotion detection applied to our workforce",
+            "Emotion recognition on personnel in the plant",
+        ],
+    )
+    def test_workplace_shapes_reach_the_prohibition_entry(self, question: str) -> None:
+        assert self._match(question) == "emotion_recognition_workplace"
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "Emotion recognition in our retail stores to measure customer satisfaction",
+            "Emotion detection on viewers of our advertising",
+            "Emotion recognition for driver drowsiness in consumer cars",
+        ],
+    )
+    def test_non_workplace_shapes_stay_general(self, question: str) -> None:
+        """The widening must not sweep in deployments Article 5(1)(f) does not reach."""
+        assert self._match(question) == "emotion_recognition_general"
+
+    def test_agent_alone_is_not_a_workplace_token(self) -> None:
+        """"agent" collides with "AI agent" and is deliberately excluded."""
+        assert self._match("Emotion recognition inside our AI agent product") == (
+            "emotion_recognition_general"
+        )
+
+    def test_rescue_path_prefers_the_narrow_workplace_entry(self) -> None:
+        from app.engines._graph_rag_impl import _detect_classification_topic
+
+        not_verdict_shaped = (
+            "We deploy an emotion recognition system in our call centre to "
+            "monitor agent stress. Is that permitted in the EU?"
+        )
+        verdict_shaped = (
+            "We monitor the stress levels of our call-centre agents with an "
+            "emotion recognition AI. Is that allowed?"
+        )
+        for q in (not_verdict_shaped, verdict_shaped):
+            topic = _detect_classification_topic(q)
+            assert topic is not None
+            assert topic["name"] == "emotion_recognition_workplace"
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "Emotion recognition in our retail stores to measure customer satisfaction. Is that permitted?",
+            "Is emotion detection on viewers of our advertising permitted?",
+            "Is emotion recognition for driver drowsiness in consumer cars allowed?",
+        ],
+    )
+    def test_rescue_path_still_serves_general_off_workplace(self, question: str) -> None:
+        from app.engines._graph_rag_impl import _detect_classification_topic
+
+        topic = _detect_classification_topic(question)
+        assert topic is not None
+        assert topic["name"] == "emotion_recognition_general"
+
+
+# ─── R377-E ──────────────────────────────────────────────────────────────────
+
+
+class TestR377EChallengeTurnDetection:
+    """A pushback does not have to say "you are wrong" to be a pushback."""
+
+    LIVE_DEROGATION_PUSHBACK = (
+        "But Article 6(3) says a system is not high-risk if it performs a narrow "
+        "procedural task. Ours only sorts CVs into a preliminary order for a human "
+        "recruiter. So the derogation applies and we are exempt, correct?"
+    )
+
+    GENUINE_PUSHBACKS = [
+        LIVE_DEROGATION_PUSHBACK,
+        "Our vendor says we're exempt because the tool only assists a human recruiter. "
+        "So we have no obligations, correct?",
+        "We are a US company and the model is hosted in Virginia. The AI Act is EU law, "
+        "so it does not reach us. Agreed?",
+        "So we are out of scope then?",
+        "That means we do not need a conformity assessment, right?",
+        "Just confirm that a loyalty programme is fine so we can move on.",
+        "So we don't need technical documentation for this, correct?",
+        "We're exempt under Article 2(6) because this is research, right?",
+        "Then we have no obligations under Chapter III, correct?",
+        "So it is not covered by Annex III, agreed?",
+    ]
+
+    ORDINARY_FOLLOW_UPS = [
+        "Thanks. What about the deployer's obligations?",
+        "Can you also explain the conformity assessment route?",
+        "Is that correct for Annex I products too?",
+        "Which article covers the logging requirement?",
+        "How long must we retain the logs?",
+        "What happens if we modify the intended purpose later?",
+        "Does the same apply to our importer?",
+        "Could you list the Annex IV contents?",
+        "And for a general-purpose model, is the threshold different?",
+        "What is the deadline for compliance?",
+        "Should we reconsider our classification if we add profiling?",
+        "Is the fine calculated on group turnover or entity turnover?",
+        "Please confirm the article number you cited.",
+        "Can you confirm whether Annex III point 4 applies?",
+        "We want to be sure we are compliant. What else is needed?",
+    ]
+
+    @pytest.mark.parametrize("question", GENUINE_PUSHBACKS)
+    def test_leading_confirmation_pushback_is_a_challenge(self, question: str) -> None:
+        from app.data.graph_rag_prompts import is_challenge_turn
+
+        assert is_challenge_turn(question, has_prior_turns=True) is True
+
+    @pytest.mark.parametrize("question", ORDINARY_FOLLOW_UPS)
+    def test_ordinary_follow_ups_are_not_challenges(self, question: str) -> None:
+        from app.data.graph_rag_prompts import is_challenge_turn
+
+        assert is_challenge_turn(question, has_prior_turns=True) is False
+
+    def test_bare_verification_request_is_not_a_challenge(self) -> None:
+        from app.data.graph_rag_prompts import is_challenge_turn
+
+        assert is_challenge_turn("Is that correct?", has_prior_turns=True) is False
+        assert is_challenge_turn("We are exempt, correct?", has_prior_turns=True) is True
+        # Without prior turns, R379 gate correctly treats it as not a challenge turn
+        assert is_challenge_turn("We are exempt, correct?", has_prior_turns=False) is False
+
+    def test_live_turn_doctrine_preserved(self) -> None:
+        from app.data.graph_rag_prompts import is_challenge_turn
+
+        flattened = (
+            "Conversation so far:\nUser: So we are exempt, correct?\n"
+            "Assistant: No.\n\nLatest question:\nWhat are the logging duties?"
+        )
+        assert is_challenge_turn(flattened) is False
+
+

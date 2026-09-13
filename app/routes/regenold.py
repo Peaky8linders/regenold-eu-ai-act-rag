@@ -1522,8 +1522,10 @@ def _engine_cache_key(
             "REGENOLD_KG_CONTEXT",
             "REGENOLD_KG_MAX_REFS",
             "REGENOLD_KG_MAX_UNITS",
-            # R409/R416 — point text in the Stage-2 sub-point block (default ON).
+            # R409/R416 — point text in the Stage-2 sub-point block (default ON,
+            # modality-restricted since R416's hard-split gate).
             "REGENOLD_KG_POINT_TEXT",
+            "REGENOLD_KG_POINT_TEXT_SINGLE_TURN",
             "REGENOLD_KG_UNIT_CHARS",
             "REGENOLD_KG_MAX_RECITALS",
             "REGENOLD_VECTOR_MIN_SIM",
@@ -1749,9 +1751,19 @@ def _engine_cache_key(
             # R380 — skipping the rewrite for a self-contained turn changes
             # which query is retrieved on hard-mode turn 1.
             "REGENOLD_DENOISE_SELF_CONTAINED_SKIP",
+            # R377 — fall-through on length truncation rather than bailing immediately.
+            "REGENOLD_DENOISER_TRUNCATION_FALLTHROUGH",
+            "REGENOLD_DENOISER_BEDROCK",
             "REGENOLD_DENOISER_MODEL",
             "REGENOLD_DENOISER_MODEL_GROQ",
             "REGENOLD_ONTOLOGY_HOP",
+            # R323/R371 — in-process local KG mirror fallback
+            "REGENOLD_KG_LOCAL_MIRROR",
+            # R376 — the point-text query shape and its ref ceiling both change
+            # the Stage-2 KG block, so they must be in the cache key.
+            "REGENOLD_KG_POINT_TEXT",
+            "REGENOLD_KG_POINT_TEXT_SINGLE_TURN",
+            "REGENOLD_KG_MAX_REFS",
             # R263 — MedTech classifier/bridging + scoped hop flip engine
             # output (risk tier, refs, Stage-2 bridging), so they must be in
             # the cache key (R30/R56/R79 cache-poisoning doctrine).
@@ -5764,6 +5776,16 @@ _CONTRAST_BEHIND_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Postpositive negation cues: "Article 50 does not apply", "Annex III is not applicable"
+_NEGATION_AHEAD_RE = re.compile(
+    r"^\s*(?:\([^)]*\)\s*)*(?:,\s*)?"
+    r"(?:does\s+not\s+apply|is\s+not\s+applicable|is\s+inapplicable|"
+    r"do\s+not\s+apply|are\s+not\s+applicable|are\s+inapplicable|"
+    r"is\s+excluded|is\s+not\s+triggered|is\s+not\s+in\s+scope|"
+    r"is\s+outside\s+the\s+scope|is\s+not\s+required|falls\s+outside)\b",
+    re.IGNORECASE,
+)
+
 
 def _prose_mention_is_real_citation(prose: str, start: int, end: int) -> bool:
     """False when a prose ``Article N`` / ``Annex N`` mention is a
@@ -5790,6 +5812,8 @@ def _prose_mention_is_real_citation(prose: str, start: int, end: int) -> bool:
     m_reg = _NUMBERED_REG_RE.search(ahead)
     if m_reg and m_reg.group(1) != "2024/1689":
         return False  # a different numbered EU Regulation
+    if _NEGATION_AHEAD_RE.search(ahead):
+        return False  # postpositive negation ("Article 50 does not apply")
     # R311 — widened 24 -> 60 chars so the cue + up to four intervening words
     # fit in the window (see ``_CONTRAST_BEHIND_RE``).
     before = prose[max(0, start - 60) : start]
@@ -7841,6 +7865,47 @@ def _live_turn_is_self_contained(
     return bool(_has_ai_act_anchor(q))
 
 
+class _BedrockDenoiserProvider:
+    """Adapt the Bedrock Converse client to the denoiser's provider contract."""
+
+    def complete(self, req: Any) -> Any:  # OpenAIWrapperRequest -> BedrockResponse
+        from app.llm.bedrock_client import (  # noqa: PLC0415
+            BedrockRequest,
+            complete_with_fallback,
+        )
+
+        return complete_with_fallback(
+            BedrockRequest(
+                user=req.user,
+                system=req.system,
+                model=req.model,
+                max_tokens=req.max_tokens or 100,
+                temperature=req.temperature or 0.0,
+                timeout_seconds=req.timeout_seconds,
+            )
+        )
+
+
+def _denoiser_truncation_fallthrough_enabled() -> bool:
+    """R377 env gate, fresh read per call.
+
+    ``REGENOLD_DENOISER_TRUNCATION_FALLTHROUGH=0`` restores R91's terminal bail.
+    """
+    return os.getenv(
+        "REGENOLD_DENOISER_TRUNCATION_FALLTHROUGH", "1"
+    ).strip().lower() not in ("0", "false", "no", "off")
+
+
+def _denoiser_bedrock_enabled() -> bool:
+    """R377 env gate, fresh read per call. ``=0`` restores the pre-R377 chain."""
+    return os.getenv("REGENOLD_DENOISER_BEDROCK", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
 def _rewrite_multiturn_query(
     live_question: str,
     history_turns: list,
@@ -8010,6 +8075,24 @@ def _rewrite_multiturn_query(
     except Exception:  # noqa: BLE001 — singleton init must not crash route
         logger.debug("query_denoiser: mistral provider init failed", exc_info=True)
     try:
+        if _denoiser_bedrock_enabled():
+            from app.llm.bedrock_client import (  # noqa: PLC0415
+                is_bedrock_provider_enabled,
+            )
+
+            if is_bedrock_provider_enabled():
+                any_configured = True
+                candidates.append((
+                    _BedrockDenoiserProvider(),
+                    os.environ.get(
+                        "REGENOLD_DENOISER_MODEL_BEDROCK",
+                        "eu.anthropic.claude-sonnet-4-6",
+                    ),
+                    "bedrock",
+                ))
+    except Exception:  # noqa: BLE001 — singleton init must not crash route
+        logger.debug("query_denoiser: bedrock provider init failed", exc_info=True)
+    try:
         if is_openai_wrapper_enabled():
             any_configured = True
             candidates.append((
@@ -8131,8 +8214,13 @@ def _rewrite_multiturn_query(
             # actual intent. Terminal (see note above).
             if getattr(resp, "finish_reason", None) == "length":
                 logger.debug(
-                    "query_denoiser: response truncated (finish_reason=length)"
+                    "query_denoiser: response truncated via %s (finish_reason=length)",
+                    provider_name,
                 )
+                if _denoiser_truncation_fallthrough_enabled():
+                    last_reason = "truncated"
+                    last_model, last_provider = model, provider_name
+                    continue
                 return _salvage_on_provider_failure(
                     "truncated",
                     latency_ms=last_latency,
@@ -8352,6 +8440,68 @@ def _build_question_from_history(messages: list[Any]) -> QuestionHistoryResult:
                 "Latest question:\n"
                 f"{live_question}",
             )
+
+    if history_turns:
+        try:
+            from app.data.graph_rag_prompts import is_challenge_turn  # noqa: PLC0415
+
+            if (
+                is_challenge_turn(live_question)
+                and not _REASK_MARKER_RE.search(live_question)
+                and not _live_turn_is_self_contained(live_question)
+            ):
+                # R372 — Adversarial challenge / pushback turn recovery.
+                # The evaluator disputes the previous answer without restating the full question
+                # ("I don't think this is correct. Maybe your answer contains hallucinations...").
+                # Recover the root user question from Turn 1 as resolved_turn so retrieval
+                # (BM25, vector recall, NER) operates on the substantive legal inquiry rather than
+                # critique noise.
+                _root_q = next(
+                    (
+                        getattr(m, "content", "").strip()
+                        for m in reversed(dialogue[:last_user_idx])
+                        if getattr(m, "role", None) == "user"
+                        and getattr(m, "content", None)
+                        and _live_turn_is_self_contained(getattr(m, "content", ""))
+                    ),
+                    None,
+                )
+                if not _root_q and dialogue and dialogue[0].role == "user" and getattr(dialogue[0], "content", None):
+                    _root_q = dialogue[0].content.strip()
+
+                if _root_q:
+                    try:
+                        _trace_note(
+                            f"challenge_focus: resolved root question from turn 1 ({len(_root_q)} chars)"
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
+                    history_block = "\n".join(
+                        f"{m.role.capitalize()}: {m.content.strip()}"
+                        for m in history_turns
+                    )
+                    q_combined = (
+                        "Conversation so far:\n"
+                        f"{history_block}\n\n"
+                        "Latest question:\n"
+                        f"{live_question}\n\n"
+                        f"Target inquiry to answer:\n"
+                        f"{_root_q}"
+                    )
+                    return QuestionHistoryResult(
+                        q_combined,
+                        system_context,
+                        _root_q,  # resolved live turn IS the root question
+                        False,
+                        True,  # self_contained_focus — drop prior assistant anchor bleed
+                        context_retrieval_text,
+                        "Conversation so far:\n"
+                        f"{history_block}\n\n"
+                        "Latest question:\n"
+                        f"{live_question}",
+                    )
+        except Exception:  # noqa: BLE001 — fail-safe to normal denoiser / concatenation
+            pass
 
     if history_turns:
         # R86 — Query De-Noiser: attempt an LLM rewrite of the follow-up

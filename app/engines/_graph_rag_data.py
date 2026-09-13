@@ -1004,12 +1004,12 @@ _CLASSIFICATION_TOPICS: list[dict] = [
             re.compile(
                 r"emotion\s+(recognition|inference|detection|ai)"
                 r"[\w\s\-,]{0,40}?"
-                r"(workplace|workplaces|employer|employee|hr|hiring|interview|"
+                r"(workplace|workplaces|employer|employee|employees|staff|worker|workers|workforce|personnel|colleague|colleagues|call[\s\-]?cent(?:re|er)|hr|hiring|interview|"
                 r"school|schools|education|educational|classroom|student|teacher)",
                 re.IGNORECASE,
             ),
             re.compile(
-                r"(workplace|workplaces|employer|employee|hr|hiring|interview|"
+                r"(workplace|workplaces|employer|employee|employees|staff|worker|workers|workforce|personnel|colleague|colleagues|call[\s\-]?cent(?:re|er)|hr|hiring|interview|"
                 r"school|schools|education|educational|classroom|student|teacher)"
                 r"[\w\s\-,]{0,40}?emotion\s+(recognition|inference|detection)",
                 re.IGNORECASE,

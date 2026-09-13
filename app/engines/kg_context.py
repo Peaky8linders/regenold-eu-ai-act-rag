@@ -90,6 +90,12 @@ __all__ = [
 ]
 
 _DEFAULT_MAX_REFS = 8
+#: Upper bound for ``REGENOLD_KG_MAX_REFS``, declared once. R416: the two
+#: readers of this knob had drifted (24 in ``graph_semantic``, 20 here), so a
+#: value of 21-24 was silently clamped on the keyword reads but honoured on the
+#: focused-subprovision read. The default stays 8 either way — this is a
+#: ceiling, not a behaviour change.
+_MAX_REFS_CEILING = 24
 _DEFAULT_MAX_UNITS = 24
 _DEFAULT_UNIT_CHARS = 900
 _DEFAULT_MAX_RECITALS = 5
@@ -266,7 +272,32 @@ LIMIT $max_units
 """
 
 
-def _kg_point_text_enabled() -> bool:
+_KG_TURN_COUNT_VAR: ContextVar[int | None] = ContextVar(
+    "kg_render_turn_count", default=None
+)
+
+
+def set_render_turn_count(history_turn_count: int | None):
+    """R416 — scope the render to the request's modality; returns a token.
+
+    ``_kg_point_text_enabled`` is a leaf decision consumed by a function
+    (``fetch_subpoint_detail``) that NINE test fakes monkeypatch with a
+    one-argument lambda, so a new keyword on that seam would be swallowed by
+    ``render_kg_context``'s ``except Exception`` and silently degrade the block
+    to empty. A ``ContextVar`` — the mechanism this module already uses for the
+    render memo — carries the conversation depth across every intermediate
+    layer without changing any signature. Mirror it with
+    :func:`reset_render_turn_count` in a ``finally``.
+    """
+    return _KG_TURN_COUNT_VAR.set(history_turn_count)
+
+
+def reset_render_turn_count(token) -> None:
+    """Undo :func:`set_render_turn_count`."""
+    _KG_TURN_COUNT_VAR.reset(token)
+
+
+def _kg_point_text_enabled(history_turn_count: int | None = None) -> bool:
     """``REGENOLD_KG_POINT_TEXT`` — R408/R409 point text in the sub-point block.
 
     **DEFAULT ON since R416** (deny-list, like the repo's other default-ON gates:
@@ -304,16 +335,60 @@ def _kg_point_text_enabled() -> bool:
     ``rg_010``.
 
     The cost is answer length (mean 1,425 -> 1,543 chars), which is where the
-    -3.3 pp of conciseness comes from. RESIDUAL: the hard split is NOT measured
-    for this lever — it is a grounding-text change, so unlike the R415 lever it is
-    not modality-restricted. It lengthens answers slightly and moves no reference
-    axis, which is the opposite direction from the class that broke hard mode
-    (`gold_dropped_head` 12 -> 18), but "opposite direction" is not evidence.
-    A hard-split paired read is the follow-up; ``=0`` reverts.
+    -3.3 pp of conciseness comes from.
+
+    R416 HARD-SPLIT READ — THE LEVER IS MODALITY-RESTRICTED
+    ------------------------------------------------------
+    R416's residual named this gate and its revert. It was run (paired, 32
+    tunnel-served rows after the symmetric fallback exclusion, floor 30, both
+    arms served by the primary wrapper transport; wrapper judge, 3 repeats):
+
+    | axis | OFF | ON | delta |
+    | :--- | ---: | ---: | ---: |
+    | ref_correctness_loose | 80.21 | 75.52 | **-4.69** |
+    | ref_correctness_strict | 43.18 | 40.24 | -2.95 |
+    | ref_conciseness | 22.19 | 19.85 | -2.34 |
+    | regulatory_tone | 100.0 | 100.0 | 0.0 |
+    | keyword_recall | 81.25 | 79.69 | -1.56 |
+    | **gold_dropped_head** | **12** | **14** | **+2** |
+
+    HARD RULE #8 FAILS on the hard split: the branch newly drops ``Article 5``
+    (mt_v4:001), ``Article 51`` (mt_v2:008), ``Article 113`` (mt_v2:020) and
+    ``Article 24`` (mt_v2:025) — turn-1 expected heads the adversarial pushback
+    is graded on keeping. Six of 32 rows moved and only three of those moves were
+    favourable, so this is not a swing that averages out: it is the same failure
+    mode (gold loss) that the R415 lever had to be modality-scoped for.
+
+    The easy board says the opposite (+8.0 ans_correctness_strict, +0.6 overall,
+    ``ref_loose`` flat at 100.0 on 25 paired rows). Both readings are real, and
+    they are not in conflict once the predicate is added: the easy board is
+    SINGLE-TURN and the loss is on multi-turn pushbacks. So the lever is scoped
+    by modality exactly as its sibling
+    ``REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN`` is — ON requires a KNOWN turn
+    count ``<= 1``, and an explicit multi-turn count selects the legacy query,
+    which is byte-identical to ``REGENOLD_KG_POINT_TEXT=0`` and therefore
+    reproduces the measured baseline arm above.
+
+    ``history_turn_count=None`` means the count was not threaded. It keeps the
+    shipped default ON so that entry points which do not thread a conversation
+    (``logic_rag``, direct engine calls, tests) are unchanged by this scoping.
+    ``REGENOLD_KG_POINT_TEXT_SINGLE_TURN=0`` removes the restriction (the
+    pre-R416 unconditional behaviour, which the hard gate above falsifies).
     """
-    return os.getenv("REGENOLD_KG_POINT_TEXT", "1").strip().lower() not in (
+    if os.getenv("REGENOLD_KG_POINT_TEXT", "1").strip().lower() in (
         "0", "false", "no", "off",
-    )
+    ):
+        return False
+    unrestricted = os.getenv(
+        "REGENOLD_KG_POINT_TEXT_SINGLE_TURN", "1"
+    ).strip().lower() in ("0", "false", "no", "off")
+    if unrestricted:
+        return True
+    if history_turn_count is None:
+        history_turn_count = _KG_TURN_COUNT_VAR.get()
+    if history_turn_count is None:
+        return True
+    return history_turn_count <= 1
 
 _SUBPOINT_CYPHER = """
 UNWIND range(0, size($ids) - 1) AS i
@@ -424,6 +499,182 @@ class _ReadRows(list):
         self.failed = failed
 
 
+def kg_local_mirror_enabled() -> bool:
+    """R376 — in-process hierarchy mirror when Neo4j is offline/timed out. Default ON."""
+    return os.getenv("REGENOLD_KG_LOCAL_MIRROR", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
+_MIRROR_LOCK = threading.Lock()
+_MIRROR_CACHE: dict | None = None
+
+
+def _unit_sort_key(num) -> int:
+    """Numeric sort key matching the Cypher's ``coalesce(toInteger(n), MAXINT)``."""
+    try:
+        return int(str(num).strip())
+    except (TypeError, ValueError):
+        return 2147483647
+
+
+def _cite_for_node(node_id: str) -> str:
+    """``article_6`` -> ``Article 6``; ``annex_III`` -> ``Annex III``."""
+    nid = (node_id or "").strip()
+    if nid.startswith("article_"):
+        return f"Article {nid[len('article_'):]}"
+    if nid.startswith("annex_"):
+        return f"Annex {nid[len('annex_'):]}"
+    return nid
+
+
+def _mirror_index() -> dict:
+    """Build (once per process) the ``node_id -> hierarchy`` index."""
+    global _MIRROR_CACHE  # noqa: PLW0603
+    if _MIRROR_CACHE is not None:
+        return _MIRROR_CACHE
+    with _MIRROR_LOCK:
+        if _MIRROR_CACHE is not None:
+            return _MIRROR_CACHE
+        index: dict = {}
+        try:
+            from app.data.provision_hierarchy import (  # noqa: PLC0415
+                build_hierarchy_payload,
+            )
+
+            payload = build_hierarchy_payload()
+
+            para_by_id = {n["id"]: n for n in payload.paragraph_nodes}
+            point_by_id = {n["id"]: n for n in payload.point_nodes}
+            subpoint_by_id = {n["id"]: n for n in payload.subpoint_nodes}
+
+            for edge in payload.has_paragraph_edges:
+                index.setdefault(edge["source_id"], {"units": [], "subpoints": []})
+                node = para_by_id.get(edge["target_id"])
+                if node is None:
+                    continue
+                index[edge["source_id"]]["units"].append(
+                    {
+                        "num": str(node.get("number") or ""),
+                        "text": node.get("text") or "",
+                        "_id": node["id"],
+                    }
+                )
+
+            for edge in payload.has_point_edges:
+                parent = edge["source_id"]
+                node = point_by_id.get(edge["target_id"])
+                if node is None:
+                    continue
+                if parent in index or parent in para_by_id:
+                    if parent in para_by_id:
+                        continue
+                index.setdefault(parent, {"units": [], "subpoints": []})
+                index[parent]["units"].append(
+                    {
+                        "num": str(node.get("letter") or node.get("number") or ""),
+                        "text": node.get("text") or "",
+                        "_id": node["id"],
+                    }
+                )
+
+            points_by_para: dict[str, list[dict]] = {}
+            for edge in payload.has_point_edges:
+                node = point_by_id.get(edge["target_id"])
+                if node is not None:
+                    points_by_para.setdefault(edge["source_id"], []).append(node)
+            subs_by_point: dict[str, list[dict]] = {}
+            for edge in payload.has_subpoint_edges:
+                node = subpoint_by_id.get(edge["target_id"])
+                if node is not None:
+                    subs_by_point.setdefault(edge["source_id"], []).append(node)
+
+            for edge in payload.has_paragraph_edges:
+                root, para_id = edge["source_id"], edge["target_id"]
+                para = para_by_id.get(para_id)
+                if para is None:
+                    continue
+                for point in points_by_para.get(para_id, []):
+                    for sub in subs_by_point.get(point["id"], []):
+                        index.setdefault(root, {"units": [], "subpoints": []})
+                        index[root]["subpoints"].append(
+                            {
+                                "para": str(para.get("number") or ""),
+                                "letter": str(point.get("letter") or ""),
+                                "roman": str(sub.get("roman") or ""),
+                                "sid": sub.get("id") or "",
+                                "text": sub.get("text") or "",
+                            }
+                        )
+        except Exception:  # noqa: BLE001
+            logger.warning("kg_context: local hierarchy mirror unavailable", exc_info=True)
+            index = {}
+        _MIRROR_CACHE = index
+        return _MIRROR_CACHE
+
+
+def _mirror_note(kind: str, n: int) -> None:
+    """Record that the mirror, not Aura, supplied a layer."""
+    logger.info("kg_context.local_mirror_served layer=%s rows=%d", kind, n)
+    try:
+        from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+            record_note as _rn,
+        )
+        _rn(f"kg_local_mirror_served layer={kind} rows={n}")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _mirror_hierarchy(ids: list[str], max_units: int) -> list[dict]:
+    """Hierarchy rows for ``ids`` from the in-process mirror, Cypher-shaped."""
+    index = _mirror_index()
+    if not index:
+        return []
+    out: list[dict] = []
+    for node_id in ids:
+        entry = index.get(node_id)
+        if not entry or not entry["units"]:
+            continue
+        units = sorted(
+            entry["units"],
+            key=lambda u: (_unit_sort_key(u.get("num")), str(u.get("num") or "")),
+        )[:max_units]
+        out.append(
+            {
+                "id": node_id,
+                "cite": _cite_for_node(node_id),
+                "title": None,
+                "units": [{"num": u["num"], "text": u["text"]} for u in units],
+            }
+        )
+    return out
+
+
+def _mirror_subpoints(ids: list[str], limit: int) -> list[dict]:
+    """Sub-point rows for ``ids`` from the in-process mirror, Cypher-shaped."""
+    index = _mirror_index()
+    if not index:
+        return []
+    out: list[dict] = []
+    for node_id in ids:
+        entry = index.get(node_id)
+        if not entry:
+            continue
+        cite = _cite_for_node(node_id)
+        for sub in sorted(
+            entry["subpoints"],
+            key=lambda sp: (
+                _unit_sort_key(sp.get("para")),
+                str(sp.get("letter") or ""),
+                str(sp.get("sid") or ""),
+            ),
+        ):
+            out.append({"cite": cite, **sub})
+            if len(out) >= limit:
+                return out
+    return out
+
+
 def _get_kg_executor():
     """Lazy, module-private bounded worker pool."""
     global _EXECUTOR
@@ -500,25 +751,33 @@ def fetch_provision_hierarchy(refs: list[str]) -> list[dict]:
     """Paragraph/point breakdown of cited provisions from Neo4j."""
     if not kg_context_enabled():
         return []
-    max_refs = _adaptive_int("kg_max_keywords", "REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 20)
+    max_refs = _adaptive_int("kg_max_keywords", "REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, _MAX_REFS_CEILING)
     max_units = _adaptive_int("kg_max_units", "REGENOLD_KG_MAX_UNITS", _DEFAULT_MAX_UNITS, 1, 100)
     ids = _node_ids(refs, limit=max_refs)
     if not ids:
         return []
 
     cache_key = f"h:{','.join(ids)}:u{max_units}"
-    return _memoized_read(
+    rows = _memoized_read(
         cache_key,
         _HIERARCHY_CYPHER,
         {"ids": ids, "max_units": max_units},
     )
+    if rows and not getattr(rows, "failed", False):
+        return list(rows)
+    if not kg_local_mirror_enabled():
+        return list(rows)
+    mirrored = _mirror_hierarchy(ids, max_units)
+    if mirrored:
+        _mirror_note("hierarchy", len(mirrored))
+    return mirrored
 
 
 def fetch_recital_anchors(refs: list[str]) -> list[dict]:
     """Interpretive recitals for cited provisions."""
     if not kg_context_enabled():
         return []
-    max_refs = _adaptive_int("kg_max_keywords", "REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 20)
+    max_refs = _adaptive_int("kg_max_keywords", "REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, _MAX_REFS_CEILING)
     max_recitals = _int_env("REGENOLD_KG_MAX_RECITALS", _DEFAULT_MAX_RECITALS, 1, 20)
     ids = _node_ids(refs, limit=max_refs)
     if not ids:
@@ -532,39 +791,57 @@ def fetch_recital_anchors(refs: list[str]) -> list[dict]:
     )
 
 
-def fetch_subpoint_detail(refs: list[str]) -> list[dict]:
-    """Sub-point detail (paragraph -> point -> subpoint) for cited provisions."""
+def fetch_subpoint_detail(
+    refs: list[str], *, history_turn_count: int | None = None
+) -> list[dict]:
+    """Sub-point detail (paragraph -> point -> subpoint) for cited provisions.
+
+    ``history_turn_count`` selects the query shape through
+    :func:`_kg_point_text_enabled`: the R409 all-Points query on single-turn
+    asks, the pre-R408 ``_SUBPOINT_CYPHER_LEGACY`` on multi-turn ones. When it
+    is ``None`` the modality comes from :func:`set_render_turn_count`.
+    """
     if not kg_context_enabled():
         return []
-    max_refs = _adaptive_int("kg_max_keywords", "REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 20)
+    max_refs = _adaptive_int("kg_max_keywords", "REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, _MAX_REFS_CEILING)
     max_units = _adaptive_int("kg_max_units", "REGENOLD_KG_MAX_UNITS", _DEFAULT_MAX_UNITS, 1, 100)
     ids = _node_ids(refs, limit=max_refs)
     if not ids:
         return []
 
-    if not _kg_point_text_enabled():
-        return _memoized_read(
+    if not _kg_point_text_enabled(history_turn_count):
+        rows = _memoized_read(
             f"sp:{','.join(ids)}:u{max_units}",
             _SUBPOINT_CYPHER_LEGACY,
             {"ids": ids, "max_units": max_units},
         )
-    # The R409 query does not depend on ``max_units``, so the memo holds the
-    # full per-provision rows and the budget is applied after it.
-    rows = _memoized_read(
-        f"spt:{','.join(ids)}",
-        _SUBPOINT_CYPHER,
-        {"ids": ids, "max_rows": _SUBPOINT_ROW_CEILING},
-    )
-    return _ReadRows(
-        _allocate_units(rows, max_units), failed=getattr(rows, "failed", False)
-    )
+    else:
+        # The R409 query does not depend on ``max_units``, so the memo holds the
+        # full per-provision rows and the budget is applied after it.
+        rows = _memoized_read(
+            f"spt:{','.join(ids)}",
+            _SUBPOINT_CYPHER,
+            {"ids": ids, "max_rows": _SUBPOINT_ROW_CEILING},
+        )
+        if rows and not getattr(rows, "failed", False):
+            return _ReadRows(
+                _allocate_units(rows, max_units), failed=False
+            )
+    if rows and not getattr(rows, "failed", False):
+        return list(rows)
+    if not kg_local_mirror_enabled():
+        return list(rows)
+    mirrored = _mirror_subpoints(ids, max_units)
+    if mirrored:
+        _mirror_note("subpoint", len(mirrored))
+    return mirrored
 
 
 def fetch_deontic_context(refs: list[str]) -> list[dict]:
     """Regulatory classifications attached to cited provisions."""
     if not kg_context_enabled():
         return []
-    max_refs = _adaptive_int("kg_max_keywords", "REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, 20)
+    max_refs = _adaptive_int("kg_max_keywords", "REGENOLD_KG_MAX_REFS", _DEFAULT_MAX_REFS, 1, _MAX_REFS_CEILING)
     ids = _node_ids(refs, limit=max_refs)
     if not ids:
         return []
@@ -862,6 +1139,10 @@ def render_kg_context(refs: list[str], question: str = "") -> list[str]:
     try:
         subpoints = fetch_subpoint_detail(refs)
     except Exception:  # noqa: BLE001
+        # R416 — never swallow silently: a signature mismatch at this seam
+        # degrades the whole point-text block to empty, which reads as "the
+        # graph had nothing" rather than "the call failed".
+        logger.debug("kg_context subpoint render failed", exc_info=True)
         subpoints = []
     sp_lines = []
     for sp in subpoints:

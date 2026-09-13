@@ -122,6 +122,20 @@ def _provision_block(refs: list[str], cap: int, max_refs: int) -> str:
 
 def _norm(row: dict[str, Any]) -> dict[str, Any]:
     """Normalise the sidecar row shape (easyhard ckpt jsonl / bench / v2)."""
+    context_parts: list[str] = []
+    for key in (
+        "gold_context", "official_context", "full_context", "grounding_context",
+        "gold_provision_text", "verbatim_context",
+    ):
+        value = row.get(key)
+        if isinstance(value, str) and value.strip():
+            context_parts.append(value.strip())
+        elif isinstance(value, dict) and value:
+            context_parts.extend(
+                f"[{ref}] {text}" for ref, text in value.items() if str(text).strip()
+            )
+        elif isinstance(value, list):
+            context_parts.extend(str(item).strip() for item in value if str(item).strip())
     return {
         "id": row.get("id"),
         "category": row.get("category"),
@@ -148,7 +162,126 @@ def _norm(row: dict[str, Any]) -> dict[str, Any]:
         "gold_refs": list(
             row.get("gold_refs") or row.get("expected_refs") or []
         ),
+        "gold_answer": str(row.get("gold_answer") or row.get("answer_gold") or ""),
+        "independent_gold_context": "\n\n".join(context_parts),
     }
+
+
+def _answer_grounding_block(r: dict[str, Any]) -> str:
+    """Independent answer context; never derived from predicted references."""
+    supplied = str(r.get("independent_gold_context") or "").strip()
+    gold_answer = str(r.get("gold_answer") or "").strip()
+    parts: list[str] = []
+    if supplied:
+        parts.append(supplied)
+    elif r["gold_refs"]:
+        parts.append(_provision_block(r["gold_refs"], _GOLD_TEXT_CAP, _MAX_GOLD_REFS))
+    elif r.get("pred_refs") and not _strict_independent_grounding_required():
+        # No independent gold exists for this dataset (see
+        # _strict_independent_grounding_required). Fall back to the verbatim text
+        # of the PREDICTED provisions — HEAD's behaviour, and the basis of the
+        # July-7 numbers in CLAUDE.md — but label it, because the selection is
+        # prediction-derived and therefore partly circular: it can confirm that
+        # an answer misreads the text it cites, and cannot detect that a better
+        # provision was never cited. The reference-correctness axis, which is
+        # scored against the Act rather than the gold label, is what covers that.
+        parts.append(
+            "[NOTE] The provisions below were selected by the answer's OWN "
+            "citations; no independent gold context exists for this row. Judge "
+            "whether the answer states these provisions correctly."
+        )
+        parts.append(_provision_block(r["pred_refs"], _GOLD_TEXT_CAP, _MAX_GOLD_REFS))
+    if gold_answer:
+        parts.append(f"[INDEPENDENT GOLD ANSWER] {gold_answer}")
+    # ⚠ EMPTY MEANS EMPTY. This used to return the literal ``"  (none)"``, which
+    # is a truthy string once stripped ("(none)"). `legal_v2`'s unscorable guard
+    # tests `bool(_answer_grounding_block(r).strip())` as one of its OR'd
+    # conditions, so that sentinel made the condition CONSTANT TRUE and the
+    # whole guard permanently dead: a row with no gold answer, no gold refs, no
+    # pred refs and no context was still sent to the judge, whose verbatim
+    # evidence section then read "VERBATIM EU AI ACT TEXT: (none)" — and its
+    # unverified SUPPORTED claims scored factual 1.0.
+    #
+    # A sentinel that reads as "nothing" to a human and as "something" to code
+    # is the bug. Callers that want the literal marker render it themselves.
+    return "\n\n".join(parts)
+
+
+def _answer_grounding_source(r: dict[str, Any]) -> str:
+    """Which grounding the answer-correctness axis actually used, per row."""
+    if str(r.get("independent_gold_context") or "").strip():
+        return "independent_gold_context"
+    if r["gold_refs"]:
+        return "gold_refs"
+    if str(r.get("gold_answer") or "").strip():
+        return "gold_answer_only"
+    if r.get("pred_refs") and not _strict_independent_grounding_required():
+        return "predicted_refs_fallback_circular"
+    return "none"
+
+
+def _has_independent_answer_grounding(r: dict[str, Any]) -> bool:
+    return bool(
+        str(r.get("independent_gold_context") or "").strip()
+        or str(r.get("gold_answer") or "").strip()
+        or r["gold_refs"]
+    )
+
+
+def _unsupported_fails_enabled() -> bool:
+    """``GROUNDED_JUDGE_UNSUPPORTED_FAILS`` — default **OFF**.
+
+    Whether an UNSUPPORTED-but-not-wrong claim fails the answer-correctness row.
+    Default OFF so the axis keeps the meaning the documented July-7 numbers were
+    produced under; the strict reading is always emitted alongside as
+    ``verdict_unsupported_strict``, so nothing is lost either way.
+    """
+    import os  # noqa: PLC0415
+
+    return os.getenv("GROUNDED_JUDGE_UNSUPPORTED_FAILS", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _strict_independent_grounding_required() -> bool:
+    """``GROUNDED_JUDGE_STRICT_GROUNDING`` — default **OFF**.
+
+    Restricting answer-correctness to independently-supplied gold context is the
+    methodologically clean position: grading an answer against provision text
+    that the answer's OWN citations selected is circular.
+
+    But it cannot be the default here. This repo's reason to exist is the
+    July-7 re-evaluation, and ``_official_batch_20260707.json`` carries **no
+    gold answer and no gold refs** — only ``jul07_answer`` / ``jul07_refs``,
+    which are the July-7 SYSTEM's predictions, not gold. Measured on
+    ``official-opus5-tailfix-live-easy.ckpt.jsonl``: zero rows expose any of the
+    three grounding fields, so ON makes the axis return
+    ``judge_error=no_independent_gold_context`` for 100/100 rows and silently
+    deletes the very number CLAUDE.md tracks (answer correctness 0.500 -> 0.780).
+
+    Default OFF therefore keeps the axis measurable and comparable, and every
+    row records ``answer_grounding_source`` so a prediction-derived grounding is
+    visible in the output rather than assumed away.
+    """
+    import os  # noqa: PLC0415
+
+    return os.getenv("GROUNDED_JUDGE_STRICT_GROUNDING", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _has_reference_gold_grounding(r: dict[str, Any]) -> bool:
+    supplied = str(r.get("independent_gold_context") or "").strip()
+    if supplied:
+        return True
+    from app.data.provision_text import get_provision_text
+    return any(get_provision_text(str(ref).strip()) is not None for ref in r["gold_refs"])
 
 
 # ── grounded prompts ────────────────────────────────────────────────────
@@ -158,27 +291,28 @@ def render_answer_correctness(r: dict[str, Any]) -> str:
     # Ground on the UNION of gold + predicted provisions so the judge can verify
     # every provision the answer relies on (not just the gold ones — the gold
     # labels can be incomplete, and the answer may correctly cite beyond them).
-    union = list(dict.fromkeys([*r["gold_refs"], *r["pred_refs"]]))
-    gold_text = _provision_block(union, _GOLD_TEXT_CAP, _MAX_GOLD_REFS + _MAX_PRED_REFS)
+    # Render the human marker HERE, so the empty case stays falsy for code that
+    # has to decide whether this row is scorable at all (see the note on
+    # `_answer_grounding_block`).
+    gold_text = _answer_grounding_block(r) or "  (none)"
     return (
         "You are an independent EU AI Act legal examiner. Judge the ANSWER's "
         "correctness STRICTLY against the verbatim Regulation text below — do "
         "NOT rely on outside memory or on any label; the verbatim text is the "
-        "ground truth. (If the answer relies on a provision whose full verbatim "
-        "text is below, verify it against that text; treat well-established AI "
-        "Act structure as known.)\n\n"
+        "ground truth. If a claim cannot be verified against this independently "
+        "supplied text, mark it unsupported.\n\n"
         f"QUESTION: {r['question'][:600]}\n\n"
         "VERBATIM EU AI ACT TEXT (the provisions relevant to this question):\n"
         f"{gold_text}\n\n"
         f"PREDICTED ANSWER: {r['answer'][:_ANSWER_TEXT_CAP]}\n\n"
         "Decompose the answer into atomic legal assertions (Legal Data Points). "
-        "Using ONLY the verbatim text above plus well-established AI Act "
-        "structure, tag each LDP: correct | incorrect | unsupported. Separately "
+        "Using ONLY the independently supplied verbatim text above, tag each "
+        "LDP: correct | incorrect | unsupported. Separately "
         "count MISSING — operative holdings the verbatim text establishes that "
         "the question demands but the answer omits (e.g. it asks 'prohibited or "
         "high-risk?' and the answer never states the prohibition that the text "
         "shows applies). Verdict 'pass' iff there are ZERO incorrect LDPs AND "
-        "zero MISSING operative holdings.\n\n"
+        "ZERO UNSUPPORTED LDPs AND zero MISSING operative holdings.\n\n"
         "Respond with ONE JSON object only (no prose, no fences):\n"
         '{"verdict":"pass"|"fail","correct":N,"incorrect":N,"unsupported":N,'
         '"missing":N,"failure_mode":"<one short phrase>"}'
@@ -187,7 +321,20 @@ def render_answer_correctness(r: dict[str, Any]) -> str:
 
 def render_reference_correctness(r: dict[str, Any]) -> str:
     pred_text = _provision_block(r["pred_refs"], _PRED_TEXT_CAP, _MAX_PRED_REFS)
-    gold_text = _provision_block(r["gold_refs"], _GOLD_TEXT_CAP, _MAX_GOLD_REFS)
+    supplied = str(r.get("independent_gold_context") or "").strip()
+    gold_text = supplied or _provision_block(
+        r["gold_refs"], _GOLD_TEXT_CAP, _MAX_GOLD_REFS
+    )
+    recall_available = _has_reference_gold_grounding(r)
+    recall_instruction = (
+        "Assess MISSING provisions and recall against the independent gold context."
+        if recall_available
+        else (
+            "NO INDEPENDENT GOLD CONTEXT WAS SUPPLIED. Do not use memory to invent "
+            "missing provisions: set missing=0, missing_refs=[], recall=null, and "
+            "base verdict only on whether predicted citations are wrong."
+        )
+    )
     return (
         "You are an independent EU AI Act citation examiner. Judge whether the "
         "PREDICTED CITATIONS are the correct, MINIMAL set of provisions for this "
@@ -203,6 +350,7 @@ def render_reference_correctness(r: dict[str, Any]) -> str:
         f"GOLD CITATIONS (a reference set, may be incomplete): {r['gold_refs']}\n"
         "VERBATIM TEXT OF GOLD CITATIONS:\n"
         f"{gold_text}\n\n"
+        f"RECALL AVAILABILITY: {recall_instruction}\n\n"
         "Classify each PREDICTED citation as CORRECT (genuinely governs this "
         "question per the text) or WRONG (irrelevant / over-cited). Then count "
         "MISSING — provisions the text shows govern this question that are NOT "
@@ -219,7 +367,7 @@ def render_reference_correctness(r: dict[str, Any]) -> str:
         "be targeted at the provisions actually responsible.\n\n"
         "Respond with ONE JSON object only:\n"
         '{"verdict":"pass"|"fail","n_predicted":N,"correct":N,"wrong":N,'
-        '"missing":N,"precision":0.0,"recall":0.0,"wrong_refs":["..."],'
+        '"missing":N,"precision":0.0,"recall":0.0|null,"wrong_refs":["..."],'
         '"missing_refs":["..."],"failure_mode":"<one short phrase>"}'
     )
 
@@ -259,11 +407,61 @@ def _render(axis: str, r: dict[str, Any]) -> str:
 
 
 def _judge_row(r: dict[str, Any], caller: Callable[[str], dict[str, Any]]) -> dict[str, Any]:
+    if not r["answer"]:
+        verdicts = {
+            axis: {
+                "verdict": "fail",
+                "evaluation_error": "empty_answer",
+                "failure_mode": "empty answer",
+            }
+            for axis in GROUNDED_AXES
+        }
+        return {"id": r["id"], "category": r["category"], "verdicts": verdicts}
     verdicts: dict[str, Any] = {}
     for axis in GROUNDED_AXES:
+        if (
+            axis == "answer_correctness"
+            and not _has_independent_answer_grounding(r)
+            and (_strict_independent_grounding_required() or not r.get("pred_refs"))
+        ):
+            verdicts[axis] = {
+                "judge_error": "no_independent_gold_context",
+                "grounding_status": "unscorable",
+            }
+            continue
         result, attempts, retried = _call_judge_with_retry(caller, _render(axis, r))
         if retried:
             result = dict(result); result["_attempts"] = attempts
+        if axis == "answer_correctness" and not result.get("judge_error"):
+            result = dict(result)
+            hard = sum(_num(result.get(f)) for f in ("incorrect", "missing"))
+            unsupported = _num(result.get("unsupported"))
+            result["verdict_unsupported_strict"] = (
+                "fail" if hard or unsupported else "pass"
+            )
+            result["verdict_hard_only"] = "fail" if hard else "pass"
+            if _unsupported_fails_enabled():
+                result["verdict"] = result["verdict_unsupported_strict"]
+                result["unsupported_enforced"] = True
+            else:
+                result["verdict"] = result["verdict_hard_only"]
+                result["unsupported_enforced"] = False
+            result["answer_grounding_source"] = _answer_grounding_source(r)
+        if axis == "reference_correctness":
+            result = dict(result)
+            result["recall_available"] = _has_reference_gold_grounding(r)
+            result["recall_provenance"] = (
+                "independent_gold_context"
+                if result["recall_available"]
+                else "unavailable_no_independent_gold"
+            )
+            if not result["recall_available"] and not result.get("judge_error"):
+                result["missing"] = 0
+                result["missing_refs"] = []
+                result["recall"] = None
+                result["verdict"] = (
+                    "fail" if _num(result.get("wrong")) > 0 else "pass"
+                )
         verdicts[axis] = result
     return {"id": r["id"], "category": r["category"], "verdicts": verdicts}
 
@@ -318,8 +516,10 @@ def _aggregate(judged: list[dict[str, Any]]) -> dict[str, Any]:
                 # prefer model-reported precision/recall; else derive from counts
                 c, w, ms = _num(v.get("correct")), _num(v.get("wrong")), _num(v.get("missing"))
                 pr = _num(v.get("precision")) or (c / (c + w) if (c + w) else 0.0)
-                rc = _num(v.get("recall")) or (c / (c + ms) if (c + ms) else 0.0)
-                prec.append(pr); rec.append(rc)
+                prec.append(pr)
+                if v.get("recall_available", True):
+                    rc = _num(v.get("recall")) or (c / (c + ms) if (c + ms) else 0.0)
+                    rec.append(rc)
                 for ref in (v.get("wrong_refs") or []):
                     key = str(ref).strip()
                     if key:
@@ -329,8 +529,11 @@ def _aggregate(judged: list[dict[str, Any]]) -> dict[str, Any]:
                     if key:
                         missing_refs[key] = missing_refs.get(key, 0) + 1
             if axis == "answer_correctness":
-                c, i, m2 = _num(v.get("correct")), _num(v.get("incorrect")), _num(v.get("missing"))
-                tot = c + i + m2
+                c = _num(v.get("correct"))
+                i = _num(v.get("incorrect"))
+                u = _num(v.get("unsupported"))
+                m2 = _num(v.get("missing"))
+                tot = c + i + u + m2
                 fact.append(c / tot if tot else 0.0)
         entry = {
             "n": n, "pass": p, "fail": f, "error": e,
@@ -340,9 +543,14 @@ def _aggregate(judged: list[dict[str, Any]]) -> dict[str, Any]:
         }
         if prec:
             entry["mean_precision"] = round(sum(prec) / len(prec), 4)
-            entry["mean_recall"] = round(sum(rec) / len(rec), 4)
-            pm, rm = entry["mean_precision"], entry["mean_recall"]
-            entry["mean_f1"] = round(2 * pm * rm / (pm + rm), 4) if (pm + rm) else 0.0
+            if rec:
+                entry["mean_recall"] = round(sum(rec) / len(rec), 4)
+                entry["recall_n"] = len(rec)
+                pm, rm = entry["mean_precision"], entry["mean_recall"]
+                entry["mean_f1"] = round(2 * pm * rm / (pm + rm), 4) if (pm + rm) else 0.0
+            else:
+                entry["mean_recall"] = None
+                entry["recall_n"] = 0
         if wrong_refs:
             entry["top_wrong_refs"] = sorted(wrong_refs.items(), key=lambda kv: -kv[1])[:15]
         if missing_refs:
@@ -359,10 +567,10 @@ def run(*, sidecar: Path, label: str, model: str, provider: str,
     set_judge_model(model)
     caller = _resolve_caller(provider, timeout_s)
     all_rows = [_norm(r) for r in _load_rows(sidecar)]
-    n_error_rows = sum(1 for r in all_rows if not r["answer"])
-    rows = [r for r in all_rows if r["answer"]]  # skip error/empty-answer rows
     if limit:
-        rows = rows[:limit]
+        all_rows = all_rows[:limit]
+    rows = all_rows
+    n_error_rows = sum(1 for r in rows if not r["answer"])
     print(f"[grounded] {len(rows)} rows × {len(GROUNDED_AXES)} axes  model={model} "
           f"provider={provider} concurrency={concurrency}", flush=True)
 
@@ -373,24 +581,24 @@ def run(*, sidecar: Path, label: str, model: str, provider: str,
     # writes `jul07_refs` — which is OUR OWN prior output, NOT gold. Mapping it
     # into `gold_refs` would make the judge grade "did we match our past self",
     # which is circular, so we deliberately do NOT. Instead the gap is stamped
-    # on every scorecard: with no gold, reference RECALL is the judge model's
-    # recollection of the Act rather than a text-grounded comparison, while
-    # PRECISION stays text-grounded (each predicted ref is checked against the
-    # verbatim provision). Read the two asymmetrically.
-    n_gold = sum(1 for r in rows if r["gold_refs"])
+    # on every scorecard: without independent gold, recall is unavailable;
+    # precision remains text-grounded against each predicted provision.
+    n_gold = sum(
+        1 for r in rows
+        if _has_reference_gold_grounding(r)
+    )
     gold_coverage = (n_gold / len(rows)) if rows else 0.0
     if gold_coverage < 0.5:
         print(
-            f"[grounded] !! GOLD COVERAGE {n_gold}/{len(rows)} ({gold_coverage:.0%}) — "
-            "reference RECALL is judge recall (model memory), not text-grounded; "
-            "PRECISION remains text-grounded. Do not compare recall across "
-            "datasets with different gold coverage.",
+            f"[grounded] independent gold coverage {n_gold}/{len(rows)} "
+            f"({gold_coverage:.0%}); reference recall is unavailable on rows "
+            "without independent gold and is never inferred from model memory.",
             flush=True,
         )
     if n_error_rows:
         print(
-            f"[grounded] !! {n_error_rows} row(s) had no answer and are EXCLUDED "
-            "from every axis below — the scorecard does not reflect them.",
+            f"[grounded] {n_error_rows} row(s) had no answer; they remain in "
+            "every denominator as deterministic failures.",
             flush=True,
         )
     out: list[dict[str, Any] | None] = [None] * len(rows)
@@ -423,8 +631,11 @@ def run(*, sidecar: Path, label: str, model: str, provider: str,
         # read correctly months later without re-deriving these caveats.
         "gold_coverage": round(gold_coverage, 4),
         "gold_rows": n_gold,
-        "excluded_error_rows": n_error_rows,
-        "recall_is_text_grounded": gold_coverage >= 0.5,
+        "input_rows": len(rows),
+        "empty_answer_rows": n_error_rows,
+        "excluded_error_rows": 0,
+        "denominator_policy": "all input rows; empty answers fail; judge errors remain errors",
+        "recall_is_text_grounded": n_gold == len(rows) and bool(rows),
     }
     out_dir = out_dir or Path("evals/bench/results")
     out_dir.mkdir(parents=True, exist_ok=True)

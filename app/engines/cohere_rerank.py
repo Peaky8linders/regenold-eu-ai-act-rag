@@ -157,13 +157,32 @@ _ENV_GATE = "REGENOLD_COHERE_RERANK"
 _ENV_MODEL = "REGENOLD_COHERE_RERANK_MODEL"
 _DEFAULT_MODEL = "rerank-v4.0-pro"
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
-#: R400 — the gate is default ON, so it reads as a DENY list: a blank or
-#: unexpected value must keep the ON behaviour rather than silently reverting
-#: production, which is the R379 P2-7 defect (``REGENOLD_PROMPT_V2`` used
-#: allow-list truthiness in a file whose other default-ON gates used deny-list,
-#: so ``=`` or ``=enabled`` reverted prod to V1 while the cache key still
-#: recorded the variable — an A/B that compared V1 to V1).
 _FALSY = frozenset({"0", "false", "no", "off"})
+
+# R371.8 — model-aware document sizing (Cohere best-practices). v3.x has a
+# 4,096-token context (docs chunk at 4,093 tokens), so a 4,000-char local cap
+# (~1k tokens) is right. rerank-v4.0-pro / rerank-v4.0-fast have a 32,768-token
+# context (chunk at 32,764): a full EU AI Act provision (~5-12k chars ≈
+# 1.5-3k tokens) fits in ONE chunk, so the local cap only bounds the payload.
+_MAX_RERANK_DOC_CHARS_V3 = 4000
+_MAX_RERANK_DOC_CHARS_V4 = 24000
+_MAX_TOKENS_PER_DOC_V4 = 16384
+
+
+def _effective_model() -> str:
+    """The rerank model in force — env override, else the shipped default."""
+    return os.getenv(_ENV_MODEL, "").strip() or _DEFAULT_MODEL
+
+
+def _is_v4(model: str) -> bool:
+    """True for the 32,768-token rerank-v4.x family (pro / fast)."""
+    return str(model or "").startswith("rerank-v4")
+
+
+def _max_doc_chars() -> int:
+    """Local per-document cap, model-aware (R371.8)."""
+    return _MAX_RERANK_DOC_CHARS_V4 if _is_v4(_effective_model()) else _MAX_RERANK_DOC_CHARS_V3
+
 
 #: Latency is a SCORED axis (Speed, 61.7% — our second-worst) and live p50 is
 #: already ~57 s, so this call must be tightly bounded and must fail open.
@@ -384,13 +403,15 @@ def rerank_documents(
         return None
 
     key = os.getenv("COHERE_API_KEY", "").strip()
-    model = os.getenv(_ENV_MODEL, "").strip() or _DEFAULT_MODEL
+    model = _effective_model()
     payload: dict[str, Any] = {
         "model": model,
         "query": str(query),
         "documents": list(docs),
         "top_n": int(top_n) if top_n else len(docs),
     }
+    if _is_v4(model):
+        payload["max_tokens_per_doc"] = _MAX_TOKENS_PER_DOC_V4
     if not _budget_take():
         logger.debug(
             "cohere_rerank: request budget exhausted — call skipped"
@@ -405,6 +426,7 @@ def rerank_documents(
                 headers={
                     "Authorization": f"Bearer {key}",
                     "Content-Type": "application/json",
+                    "X-Client-Name": "regenold-rag",
                 },
             ),
             max_attempts=attempts_from_env("REGENOLD_COHERE_RERANK_RETRIES", 3),
@@ -789,10 +811,10 @@ def rerank_pool(
             txt = None
         if txt and str(txt).strip():
             scorable.append(i)
-            doc = str(txt).strip()[:4000]
+            doc = str(txt).strip()[:_max_doc_chars()]
             reason = reasons.get(str(ref))
             if reason:
-                doc = f"{doc}\nRelation: {reason}"[:4100]
+                doc = f"{doc}\nRelation: {reason}"[: _max_doc_chars() + 300]
             docs.append(doc)
 
     if len(scorable) < 2:

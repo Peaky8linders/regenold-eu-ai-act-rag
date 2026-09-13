@@ -3692,9 +3692,15 @@ def _detect_classification_topic(question: str) -> dict | None:
         # ``emotion_recognition_workplace`` entry still wins over the
         # general one on its own traffic).
         if _emotion_curated_emit_enabled() and _detect_emotion_classification_inquiry(question):
+            _general_fallback = None
             for topic in _CLASSIFICATION_TOPICS:
-                if topic["name"] == "emotion_recognition_general":
-                    return topic
+                name = topic.get("name", "")
+                if name == "emotion_recognition_workplace":
+                    if any(p.search(question) for p in topic.get("patterns", ())):
+                        return topic
+                elif name == "emotion_recognition_general":
+                    _general_fallback = topic
+            return _general_fallback
         return None
     live = question
     if "Latest question:" in live:
@@ -11177,6 +11183,54 @@ def _guard_answer_completeness(
 
 
 def _two_stage_generate(
+    question: str,
+    context: GraphContext,
+    query: GraphQuery | None = None,
+    system_description: str | None = None,
+    history_turn_count: int = 1,
+    resolved_question: str | None = None,
+    guard_question: str | None = None,
+) -> tuple[str, bool]:
+    """R416 — scope the KG point-text lever to the request's modality.
+
+    ``REGENOLD_KG_POINT_TEXT`` stays default ON for SINGLE-TURN asks and falls
+    back to the pre-R408 sub-point query on multi-turn ones. The R416 hard-split
+    paired gate (32 tunnel-served rows, floor 30) measured the unconditional
+    default DROPPING turn-1 expected heads: ``gold_dropped_head`` 12 -> 14 and
+    ``ref_loose`` 80.21 -> 75.52, a hard-rule-#8 failure. The easy board measured
+    the lever UP (+8.0 ``ans_strict``, +0.6 overall, ``ref_loose`` flat at 100.0),
+    so the modality is what separates the two readings, not noise.
+
+    The depth rides a ``ContextVar`` in :mod:`app.engines.kg_context` rather than
+    a parameter because nine test fakes patch ``fetch_subpoint_detail`` with a
+    one-argument lambda; a keyword at that seam would be swallowed by the
+    render's ``except Exception`` and silently empty the whole block. It is set
+    here, at the single ancestor of both Stage-2 entry points, and reset in a
+    ``finally`` so a leaked depth cannot mis-scope a later request.
+    """
+    try:
+        from app.engines import kg_context as _kg_turn  # noqa: PLC0415
+    except Exception:  # noqa: BLE001 — KG scoping must never break generation
+        _kg_turn = None
+    token = (
+        _kg_turn.set_render_turn_count(history_turn_count) if _kg_turn else None
+    )
+    try:
+        return _two_stage_generate_inner(
+            question,
+            context,
+            query,
+            system_description,
+            history_turn_count,
+            resolved_question,
+            guard_question,
+        )
+    finally:
+        if _kg_turn is not None and token is not None:
+            _kg_turn.reset_render_turn_count(token)
+
+
+def _two_stage_generate_inner(
     question: str,
     context: GraphContext,
     query: GraphQuery | None = None,

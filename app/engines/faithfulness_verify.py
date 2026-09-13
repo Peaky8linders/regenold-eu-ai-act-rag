@@ -276,8 +276,20 @@ def build_ground_truth(refs: list[str], *, max_refs: int | None = None,
     for ref in refs:
         _add(ref)
 
-    # R313.1 — the Neo4j Aura hierarchy as an ADDITIONAL evidence source.
-    #
+    # R316 — sibling paragraphs of any cited sub-provision, so a misattributed
+    # claim can be re-pointed at the provision that actually carries it. Run
+    # BEFORE the Neo4j hierarchy block below so a sibling the graph never
+    # returns (the graph holds 656 Paragraph against 416 Point nodes) is still
+    # available, and so the block can honour the caller's ``limit`` exactly.
+    for ref in list(refs):
+        m = re.match(r"^(Art\.\s*\d{1,3})\((\d{1,3})\)$", ref.strip())
+        if not m:
+            continue
+        parent, para = m.group(1), int(m.group(2))
+        for sibling in (para - 1, para + 1):
+            if sibling >= 1:
+                _add(f"{parent}({sibling})")
+
     # The graph holds 656 Paragraph + 416 Point nodes keyed at exactly the grain
     # these failures live at, so when a cited ARTICLE is bare ("Article 6") the
     # graph supplies its paragraph breakdown and the verifier can tell 6(2) from
@@ -297,22 +309,11 @@ def build_ground_truth(refs: list[str], *, max_refs: int | None = None,
                 if not (num and body and m_num):
                     continue
                 sub_ref = f"Art. {m_num.group(1)}({num})"
-                if sub_ref not in seen and len(out) < limit + 4:
+                if sub_ref not in seen and len(out) < limit:
                     seen.add(sub_ref)
                     out.append((sub_ref, body[:budget]))
     except Exception:  # noqa: BLE001 — the graph must never break the verifier
         logger.debug("faithfulness: kg hierarchy unavailable", exc_info=True)
-
-    # Sibling paragraphs of any cited sub-provision, so a misattributed claim
-    # can be re-pointed at the provision that actually carries it.
-    for ref in list(refs):
-        m = re.match(r"^(Art\.\s*\d{1,3})\((\d{1,3})\)$", ref.strip())
-        if not m:
-            continue
-        parent, para = m.group(1), int(m.group(2))
-        for sibling in (para - 1, para + 1):
-            if sibling >= 1:
-                _add(f"{parent}({sibling})")
 
     return out
 
