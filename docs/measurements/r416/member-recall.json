@@ -1,0 +1,115 @@
+{
+  "answer_field": "pred_answer",
+  "graded_answers": 110,
+  "inputs": {
+    "evals\\bench\\results\\official-r407-direct-bedrock-cohere-v4-pro-hard.ckpt.jsonl": "8cc87bc68c37c3fd3c7a852e281aad9fcf2f9351f609984f4ee4ccf97587d6e8",
+    "docs\\measurements\\r388\\official_gold_n110.jsonl": "8f7ba4a7d1b8f12b420459ca8985537b35c1563b85f694c3f82c2ff6f1d6f383",
+    "docs\\measurements\\r409\\r407_sonnet5_failing_criteria_triage.json": "9444d4305e1c09ea376704ade5f59353db376d1a7e0c671f9132755ee15fc9b4"
+  },
+  "counts": {
+    "1:not_a_list_question": 7,
+    "ENGAGED": 3,
+    "4:question_not_engaged": 1,
+    "3:answer_does_not_name_set": 1
+  },
+  "rows": [
+    {
+      "id": "rg_010",
+      "criteria": 1,
+      "gate": "1:not_a_list_question",
+      "detail": "",
+      "gaps": []
+    },
+    {
+      "id": "rg_014",
+      "criteria": 1,
+      "gate": "1:not_a_list_question",
+      "detail": "",
+      "gaps": []
+    },
+    {
+      "id": "rg_043",
+      "criteria": 1,
+      "gate": "ENGAGED",
+      "detail": "Article 10/Article 10:too_small(6); Article 10/Article 10.2:3:answer_does_not_name_set; Article 10/Article 10.5:ENGAGED",
+      "gaps": []
+    },
+    {
+      "id": "rg_046",
+      "criteria": 5,
+      "gate": "ENGAGED",
+      "detail": "Article 13/Article 13:too_small(3); Article 13/Article 13.3:ENGAGED; Article 13/Article 13.3.b:4:question_not_engaged",
+      "gaps": [
+        "Article 13.3.a",
+        "Article 13.3.c",
+        "Article 13.3.d",
+        "Article 13.3.e",
+        "Article 13.3.f"
+      ]
+    },
+    {
+      "id": "rg_051",
+      "criteria": 1,
+      "gate": "1:not_a_list_question",
+      "detail": "",
+      "gaps": []
+    },
+    {
+      "id": "rg_052",
+      "criteria": 4,
+      "gate": "ENGAGED",
+      "detail": "Article 9/Article 9:too_small(10); Article 9/Article 9.2:3:answer_does_not_name_set; Article 9/Article 9.5:3:answer_does_not_name_set; Article 17/Article 17:too_small(4); Article 17/Article 17.1:ENGAGED",
+      "gaps": [
+        "Article 17.1.b",
+        "Article 17.1.c",
+        "Article 17.1.e",
+        "Article 17.1.f",
+        "Article 17.1.j",
+        "Article 17.1.l",
+        "Article 17.1.m"
+      ]
+    },
+    {
+      "id": "rg_059",
+      "criteria": 2,
+      "gate": "1:not_a_list_question",
+      "detail": "",
+      "gaps": []
+    },
+    {
+      "id": "rg_066",
+      "criteria": 1,
+      "gate": "4:question_not_engaged",
+      "detail": "Article 71/Article 71:too_small(6); Article 49/Article 49:too_small(5); Article 49/Article 49.4:4:question_not_engaged; Article 60/Article 60:too_small(9); Article 60/Article 60.4:3:answer_does_not_name_set; Article 6/Article 6:too_small(8); Article 6/Article 6.1:too_small(2); Article 6/Article 6.3:4:question_not_engaged; Annex VIII/Annex VIII:too_small(13)",
+      "gaps": []
+    },
+    {
+      "id": "rg_078",
+      "criteria": 2,
+      "gate": "1:not_a_list_question",
+      "detail": "",
+      "gaps": []
+    },
+    {
+      "id": "rg_087",
+      "criteria": 1,
+      "gate": "3:answer_does_not_name_set",
+      "detail": "Article 5/Article 5:too_small(8); Article 5/Article 5.1:3:answer_does_not_name_set; Article 5/Article 5.1.c:too_small(2); Article 5/Article 5.1.h:3:answer_does_not_name_set; Article 5/Article 5.2:too_small(2); Article 6/Article 6:too_small(8); Article 6/Article 6.1:too_small(2); Article 6/Article 6.3:3:answer_does_not_name_set; Annex I/Annex I:too_small(20); Annex III/Annex III:too_small(8); Annex III/Annex III.1:3:answer_does_not_name_set; Annex III/Annex III.3:3:answer_does_not_name_set; Annex III/Annex III.4:too_small(2); Annex III/Annex III.5:3:answer_does_not_name_set; Annex III/Annex III.6:3:answer_does_not_name_set; Annex III/Annex III.7:3:answer_does_not_name_set; Annex III/Annex III.8:too_small(2); Article 50/Article 50:too_small(7); Article 51/Article 51:too_small(3); Article 51/Article 51.1:too_small(2); Article 52/Article 52:too_small(6); Article 53/Article 53:too_small(7); Article 53/Article 53.1:3:answer_does_not_name_set; Article 53/Article 53.1.b:too_small(2); Article 54/Article 54:too_small(6); Article 54/Article 54.3:3:answer_does_not_name_set; Article 55/Article 55:too_small(3); Article 55/Article 55.1:3:answer_does_not_name_set; Article 3/Article 3:too_small(68); Article 9/Article 9:too_small(10); Article 9/Article 9.2:3:answer_does_not_name_set; Article 9/Article 9.5:3:answer_does_not_name_set",
+      "gaps": []
+    },
+    {
+      "id": "rg_094",
+      "criteria": 2,
+      "gate": "1:not_a_list_question",
+      "detail": "",
+      "gaps": []
+    },
+    {
+      "id": "rg_102",
+      "criteria": 1,
+      "gate": "1:not_a_list_question",
+      "detail": "",
+      "gaps": []
+    }
+  ]
+}

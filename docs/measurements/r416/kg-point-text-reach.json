@@ -1,0 +1,34 @@
+{
+  "flag": "REGENOLD_KG_POINT_TEXT",
+  "paired_rows": 26,
+  "rows_changed": 23,
+  "units_off": 26,
+  "units_on": 384,
+  "chars_off": 5201,
+  "chars_on": 81391,
+  "inert_rows_no_refs": [],
+  "omitted_coords_supplied": [
+    {
+      "id": "rg_046",
+      "coord": "Article 13.3.a"
+    },
+    {
+      "id": "rg_046",
+      "coord": "Article 13.3.c"
+    },
+    {
+      "id": "rg_046",
+      "coord": "Article 13.3.d"
+    }
+  ],
+  "omitted_coords_absent_in_both": [
+    {
+      "id": "rg_046",
+      "coord": "Article 13.3.e"
+    },
+    {
+      "id": "rg_046",
+      "coord": "Article 13.3.f"
+    }
+  ]
+}

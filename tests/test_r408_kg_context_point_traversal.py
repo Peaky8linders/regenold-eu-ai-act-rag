@@ -47,9 +47,23 @@ def _serve(monkeypatch, rows, point_text="1"):
     return calls
 
 
-def test_flag_off_dispatches_the_exact_pre_r408_query(monkeypatch):
-    """Default OFF: production keeps the query it served before R408."""
+def test_default_is_the_fixed_query_after_r416(monkeypatch):
+    """R416 flipped the default ON (deny-list), so the unset env is the FIXED query.
+
+    The R409 evidence that kept it OFF was the block's size, and the R416 paired
+    official read is what cleared it: `ref_loose` unchanged at 100.0 (no gold loss)
+    and Speed up, for `ans_strict` 88.0 -> 96.0 on the 25 paired rows.
+    """
     monkeypatch.delenv("REGENOLD_KG_POINT_TEXT", raising=False)
+    assert kg._kg_point_text_enabled()
+    for off in ("0", "false", "no", "off"):
+        monkeypatch.setenv("REGENOLD_KG_POINT_TEXT", off)
+        assert not kg._kg_point_text_enabled()
+
+
+def test_flag_off_dispatches_the_exact_pre_r408_query(monkeypatch):
+    """Explicit OFF keeps the query production served before R408."""
+    monkeypatch.setenv("REGENOLD_KG_POINT_TEXT", "0")
     assert not kg._kg_point_text_enabled()
     calls = _serve(monkeypatch, _ART5 + _ANNEX3, point_text="0")
     rows = kg.fetch_subpoint_detail(["Article 5", "Annex III"])

@@ -1,0 +1,21 @@
+{
+  "arm": "b",
+  "flag": "REGENOLD_KG_POINT_TEXT",
+  "value": "1",
+  "tag": "-matched-kgpt",
+  "n": 27,
+  "errors": 0,
+  "stage2_served_rows": 27,
+  "stage2_fell_back_rows": 2,
+  "wall_s": 813.2,
+  "transport": {
+    "primary_attempts": 29,
+    "primary_ok": 27,
+    "primary_failed": 2,
+    "fallback_attempts": 2,
+    "fallback_ok": 2,
+    "fallback_failed": 0,
+    "refused": 0,
+    "refused_by_provider": {}
+  }
+}

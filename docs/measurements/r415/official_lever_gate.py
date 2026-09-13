@@ -67,6 +67,30 @@ it, so it could never print a table.)
     .venv/Scripts/python.exe docs/measurements/r415/official_lever_gate.py --arm a --matched-from b
     # 3. judge both arms on the matched subset, print the paired 8-axis table
     .venv/Scripts/python.exe docs/measurements/r415/official_lever_gate.py --score
+
+ANY LEVER (R416)
+----------------
+The instrument was written for one flag, but every unproven roadmap row needs
+this same read, so it now takes the flag, the two arm values and an output tag.
+The reach set belongs to the ROUTE (intercept vs model call), not to the lever,
+so a later lever reuses step 1's reach list and changes only its own arm B —
+which also keeps arm A's judge verdicts a cache hit, so a new lever costs ONE arm
+of calls, not two:
+
+    .venv/Scripts/python.exe docs/measurements/r415/official_lever_gate.py \\
+        --arm b --matched-from b --reach-from docs/measurements/r415/official-lever-b.ckpt.jsonl \\
+        --flag REGENOLD_KG_POINT_TEXT --arm-values 0,1 --tag -kgpt
+    .venv/Scripts/python.exe docs/measurements/r415/official_lever_gate.py --score \\
+        --flag REGENOLD_KG_POINT_TEXT --tag -kgpt \\
+        --baseline docs/measurements/r415/official-lever-b-matched.ckpt.jsonl
+
+**ONE-FLAG INVARIANT.** The arms must differ by exactly the flag under test. Arm
+B of a new lever run picks up the *shipped* defaults for every other flag, so
+baselining it against the R415 arm-A run — which has the single-turn lever OFF —
+compares two flags at once and reports their blend. R416 hit this: the first KG
+table read +6.1 pp overall, which was almost entirely the R415 lever's own effect.
+`--baseline` names the run that differs by one flag, and the gate prints both run
+names above the table so the invariant is visible in the artifact.
 """
 
 from __future__ import annotations
@@ -87,10 +111,19 @@ if str(REPO) not in sys.path:
 OUT = REPO / "docs" / "measurements" / "r415"
 GOLD = REPO / "docs" / "measurements" / "r388" / "official_gold_n110.jsonl"
 
-#: arm -> the lever's value. A is the pre-R412 behaviour (persona in the system
-#: slot); B is what ships.
+#: arm -> the lever's value. For the R415 lever, A is the pre-R412 behaviour
+#: (persona in the system slot) and B is what ships.
 ARMS = {"a": "0", "b": "1"}
 FLAG = "REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN"
+
+#: R416 — the same instrument now pairs ANY binary lever on the official corpus.
+#: The gate was written for one flag, but every unproven roadmap row (3
+#: content-preservation, 4 grain, 5 KG point text) needs exactly this read: the
+#: reachable rows, both arms tunnel-served, all eight axes judged. `--flag`,
+#: `--arm-values` and `--tag` re-point it without touching the pairing logic.
+ARM_VALUES = {"a": "0", "b": "1"}
+OUT_TAG = ""
+REACH_FROM = ""
 
 AXES = (
     "ans_correctness_loose",
@@ -124,7 +157,7 @@ def run_arm(arm: str, n: int | None, matched_from: str | None) -> int:
     """Drive the REAL route for one arm, over the board or the reachable subset."""
     # Live provider config must come from .env: the whole point is the tunnel leg.
     os.environ.pop("REGENOLD_SKIP_DOTENV", None)
-    os.environ[FLAG] = ARMS[arm]
+    os.environ[FLAG] = ARM_VALUES[arm]
 
     from fastapi.testclient import TestClient
 
@@ -148,13 +181,17 @@ def run_arm(arm: str, n: int | None, matched_from: str | None) -> int:
         # row the two arms dispatch identical bytes whatever the lever says — it
         # is structurally incomparable and pairing it would only dilute a real
         # effect. (This is the R412 lesson enforced per row instead of per run.)
-        source = _load_jsonl(_ckpt(matched_from))
+        reach_path = Path(REACH_FROM) if REACH_FROM else _ckpt(matched_from)
+        source = _load_jsonl(reach_path)
         reachable = [
             r["id"] for r in source if r.get("stage2_used") and not r.get("stage2_fell_back")
         ]
         wanted = set(reachable)
         gold = [g for g in gold if g["id"] in wanted]
-        tag = "-matched"
+        # The reach set is a property of the ROUTE (intercept vs model call), not
+        # of the lever, so a later lever reuses the R415 sweep's reach list and
+        # only its own arm-B answers carry the tag.
+        tag = f"-matched{OUT_TAG}"
         if not gold:
             print(f"no reachable rows in {_ckpt(matched_from).name} — nothing to pair")
             return 2
@@ -304,42 +341,59 @@ def score(args: argparse.Namespace) -> int:
 
     # Materialise arm B's answer to the SAME subset arm A was run on, so the two
     # checkpoints are matched row-for-row.
-    a_path, b_full = _ckpt("a", "-matched"), _ckpt("b")
+    # ONE-FLAG INVARIANT: the two arms must differ by exactly the flag under test,
+    # or the delta is a blend. The default baseline is the R415 arm-A run, which is
+    # correct only while the R415 lever is genuinely off in both arms. For the R416
+    # KG lever that is FALSE — arm A has `..._SINGLE_TURN=0` while a new arm-B run
+    # picks up the shipped default `=1` — so R416 compared KG-ON against the
+    # single-turn arm A, got +6.1 pp, and that reading was thrown away as a blend,
+    # not reported. The honest baseline for a lever shipped ON top of another is the
+    # run whose config differs by that one flag (here: the R415 arm-B run), and
+    # `--baseline` makes that explicit instead of implied.
+    a_path = Path(args.baseline) if args.baseline else _ckpt("a", "-matched")
+    b_full = _ckpt("b", f"-matched{OUT_TAG}") if OUT_TAG else _ckpt("b")
     if not a_path.exists() or not b_full.exists():
-        print("missing a matched arm-A run or the arm-B sweep — see the docstring")
+        print(f"missing {a_path.name} or {b_full.name} — run the arm first")
         return 2
     a_rows = _load_jsonl(a_path)
-    # A row arm A answered on the FALLBACK leg is as incomparable as one arm B
-    # answered that way, so it is dropped from the pair rather than voiding the
-    # run — and if the tunnel was down for arm A the surviving set collapses to
-    # nothing, which is the refusal below.
-    dropped = sorted(r["id"] for r in a_rows if r.get("stage2_fell_back"))
+    raw_b = _load_jsonl(b_full)
+    # Fallback doctrine, applied to BOTH arms identically: a row served by the
+    # Bedrock leg is structurally incomparable (that leg always receives the full
+    # `system`, so it dispatches identical bytes whatever the lever says), so it is
+    # DROPPED from the pair. Voiding is reserved for the case where the transport
+    # failed for a whole arm, which the residue checks below catch. Applying the
+    # drop to one arm and the void to the other is how a real reading becomes
+    # unreportable — R416 hit exactly that with 2 fallback rows on the new arm.
+    drop_a = sorted(r["id"] for r in a_rows if r.get("stage2_fell_back"))
+    drop_b = sorted(r["id"] for r in raw_b if r.get("stage2_fell_back"))
     a_ids = {r["id"] for r in a_rows if not r.get("stage2_fell_back")}
-    matched = [r for r in _load_jsonl(b_full) if r["id"] in a_ids]
-    if dropped:
-        print(
-            f"  dropping {len(dropped)} row(s) arm A answered on the fallback leg: {dropped[:5]}"
-        )
+    b_ids = {r["id"] for r in raw_b if not r.get("stage2_fell_back")}
+    paired_ids = a_ids & b_ids
+    matched = [r for r in raw_b if r["id"] in paired_ids]
+    for label, drop in (("A", drop_a), ("B", drop_b)):
+        if drop:
+            print(f"  dropping {len(drop)} row(s) arm {label} on the fallback leg: {drop[:5]}")
     # Dropping is only honest while the survivors still describe the surface the
     # sweep found. Past that the pair is a residue of a broken transport, not a
     # matched A/B, so it is refused instead of reported on a shrinking subset.
-    if dropped and len(a_ids) < len(a_rows) / 2:
-        print(
-            f"the fallback leg carried {len(dropped)}/{len(a_rows)} of arm A's rows — "
-            "the survivors no longer represent the reachable surface; refusing a delta"
-        )
-        return 3
+    for label, drop, total in (("A", drop_a, len(a_rows)), ("B", drop_b, len(raw_b))):
+        if drop and len(drop) > total / 2:
+            print(
+                f"the fallback leg carried {len(drop)}/{total} of arm {label}'s rows — "
+                "the survivors no longer represent the reachable surface; refusing a delta"
+            )
+            return 3
     # Both arms are written to the SAME comparable id set, so neither mean carries
     # a row the other excluded. Arm A's raw matched run stays on disk for audit.
-    b_path = _ckpt("b", "-matched")
+    b_path = _ckpt("b", f"-matched{OUT_TAG}")
     b_path.write_text(
         "\n".join(json.dumps(r, ensure_ascii=False) for r in matched) + "\n",
         encoding="utf-8",
     )
-    a_paired = _ckpt("a", "-paired")
+    a_paired = _ckpt("a", f"-paired{OUT_TAG}")
     a_paired.write_text(
         "\n".join(
-            json.dumps(r, ensure_ascii=False) for r in a_rows if r["id"] in a_ids
+            json.dumps(r, ensure_ascii=False) for r in a_rows if r["id"] in paired_ids
         )
         + "\n",
         encoding="utf-8",
@@ -347,6 +401,9 @@ def score(args: argparse.Namespace) -> int:
     if len(matched) < 2:
         print("fewer than two comparable rows survive — refusing to report a delta")
         return 3
+    print(f"  lever under test: {FLAG}: a={ARM_VALUES['a']} b={ARM_VALUES['b']}")
+    print(f"  baseline (A) run: {a_path.name}")
+    print(f"  treatment (B) run: {b_full.name}")
 
     # Non-vacuity: the paired rows are reachable BY CONSTRUCTION (arm B's sweep
     # chose them), but arm A is a separate process, so confirm the lever really
@@ -383,7 +440,12 @@ def score(args: argparse.Namespace) -> int:
                 f"arm {arm}: {len(unreached)} paired row(s) took no Stage-2 call at all "
                 f"({unreached[:5]}) — the lever edits a model call that did not happen"
             )
-        sidecar_path = _sidecar(arm, "-matched")
+        sidecar_path = _sidecar(arm, f"-matched{OUT_TAG}" if arm == "b" else "-matched")
+        if arm == "a" and args.baseline:
+            # A non-default baseline has its own provenance file name; read it when
+            # present so the transport line still describes the run that was used.
+            stem = Path(args.baseline).name.replace(".ckpt.jsonl", ".run.json")
+            sidecar_path = Path(args.baseline).with_name(stem)
         if sidecar_path.exists():
             sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
             # Reported, not voided: a row-level fallback is already handled by the
@@ -396,7 +458,7 @@ def score(args: argparse.Namespace) -> int:
             )
         cmd = [
             sys.executable, "-m", "evals.official.score_arm",
-            "--ckpt", str(path), "--label", f"r415-official-lever-{arm}-matched", "--mode", "easy",
+            "--ckpt", str(path), "--label", f"r415-official-lever-{arm}-matched{OUT_TAG}", "--mode", "easy",
             "--judge-provider", args.judge_provider, "--judge-model", args.judge_model,
             "--repeats", str(args.repeats), "--workers", str(args.workers),
             "--cache-file", str(OUT / f"judge-cache-r415-{args.judge_provider}.jsonl"),
@@ -439,11 +501,12 @@ def score(args: argparse.Namespace) -> int:
     print(f"paired on the {len(matched)} row(s) where Stage-2 reached the model.")
     for line in provenance:
         print(f"  transport provenance — {line}")
-    if dropped:
-        print(f"  dropped from the pair (fallback-served): {dropped}")
-    (OUT / "official-lever-paired.json").write_text(
+    if drop_a or drop_b:
+        print(f"  dropped from the pair (fallback-served): A={drop_a} B={drop_b}")
+    (OUT / f"official-lever-paired{OUT_TAG}.json").write_text(
         json.dumps(
             {
+                "lever": f"{FLAG}: a={ARM_VALUES['a']} b={ARM_VALUES['b']}",
                 "paired_n": len(matched),
                 "paired_ids": [r["id"] for r in matched],
                 "arm_a": a,
@@ -458,6 +521,9 @@ def score(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    # Declared first: the argparse defaults below read the current values, and a
+    # `global` after a use of the name is a SyntaxError.
+    global FLAG, ARM_VALUES, OUT_TAG, REACH_FROM
     ap = argparse.ArgumentParser()
     ap.add_argument("--arm", choices=("a", "b"))
     ap.add_argument("--n", type=int, default=None, help="first n graded rows (default: all 110)")
@@ -467,11 +533,44 @@ def main() -> int:
         help="run only the rows that arm's sweep reached with a Stage-2 call",
     )
     ap.add_argument("--score", action="store_true", help="judge both arms and print the paired table")
+    ap.add_argument("--flag", default=FLAG, help="the env flag this gate pairs (R416: any lever)")
+    ap.add_argument(
+        "--arm-values",
+        default="0,1",
+        help="the flag's value for arm a and arm b, comma-separated (default 0,1)",
+    )
+    ap.add_argument("--tag", default="", help="suffix for this lever's arm-B artifacts (e.g. -kgpt)")
+    ap.add_argument(
+        "--baseline",
+        default="",
+        help=(
+            "checkpoint to use as arm A. Default: the R415 arm-A matched run. Point "
+            "this at the run whose config differs from arm B by exactly the flag "
+            "under test (ONE-FLAG INVARIANT) — e.g. the R415 arm-B run for a lever "
+            "shipped on top of the single-turn lever."
+        ),
+    )
+    ap.add_argument(
+        "--reach-from",
+        default="",
+        help="checkpoint holding the reach list; default: the matched arm named by --matched-from",
+    )
     ap.add_argument("--judge-provider", default="wrapper", choices=("bedrock", "wrapper"))
     ap.add_argument("--judge-model", default=os.getenv("R388_JUDGE_MODEL", "claude-sonnet-5"))
     ap.add_argument("--repeats", type=int, default=3)
     ap.add_argument("--workers", type=int, default=1, help="1 for the CLAUDE-MAX wrapper (R393)")
     args = ap.parse_args()
+
+    # The flag/value pair is what makes this gate reusable across levers; it is
+    # set before any request so both arms are dispatched under their own config.
+    FLAG = args.flag
+    OUT_TAG = args.tag
+    REACH_FROM = args.reach_from
+    try:
+        a_val, b_val = (v.strip() for v in args.arm_values.split(",", 1))
+        ARM_VALUES = {"a": a_val, "b": b_val}
+    except ValueError:
+        ap.error("--arm-values must be two comma-separated values, e.g. 0,1")
 
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")

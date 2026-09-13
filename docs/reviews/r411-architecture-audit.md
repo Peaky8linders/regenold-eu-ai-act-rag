@@ -5,6 +5,18 @@
 **Base commit:** `dd797d9a9de6` (production, PR #412)
 **Instruments:** `docs/measurements/r411/*`, `evals/harness/easyhard_ab`, `docs/r388` gold key
 
+**R416 validation correction (2026-09-13):** the F7 `member_recall_probe.py`
+loaded `answer`/`final_answer`, but the R407 checkpoint has only `pred_answer`.
+It diagnosed empty strings for all 110 rows and its blocker histogram was void.
+The repaired, input-validated replay finds **7 not-list / 3 engaged / 1 question
+not engaged / 1 answer not naming the set** across the 12 target rows. Engaged
+rows are rg_043, rg_046 and rg_052; the actual detector fires on the latter two.
+The independent R409 detector replay remains valid: member FP **0/71**, target
+rows **2/12**, target-coordinate coverage **7/22**. F7's old 7/3/2 histogram and
+its claim of a proven "safe ceiling" must not be used as evidence. See
+`docs/reviews/r416-findings-validation.md` and
+`docs/measurements/r416/member-recall.json` for the corrected audit.
+
 ---
 
 ## 1. Method
@@ -243,19 +255,19 @@ so the label was corrected here rather than left to collide) but the lever has n
 do on the available corpus, so it remains default-OFF. Recorded so it is not re-proposed
 on evidence that cannot support it.
 
-**R411 closed the recall side too, and found it is at its safe ceiling.**
-`docs/measurements/r411/member_recall_probe.py` replays the detector over the 12 distinct
-rows carrying the 22 `OMITTED_ENUMERATED_ITEM` criteria and reports the blocking gate:
-`is_list_question` false on **7**, no closed-set HEAD discovered (the question names
-"instructions for use"/"quality management system", not a coordinate) on **3**, and the
-answer never names the set on **2**. Read against the criteria, the 7 are mostly the wrong
-instrument — `rg_010` wants the provider/deployer attribution of Art. 14(3) measures,
-`rg_014` the full text of ONE Annex III point, `rg_078`/`rg_102` clause fidelity on yes/no
-asks. Only `rg_051` (Art 22(3)), `rg_059` (Art 68(3)) and `rg_094` (Annex XII.1) are real
-lettered sets the answer touched partially, and each would also need `_question_engages`
-to admit a question that does not ask for the set — the citation-side rule that lost gold.
-So **no change**: the instrument for these rows is the evidence/prompt layer, not a wider
-engagement rule.
+**R416 correction: the original recall-ceiling diagnosis was void.**
+`docs/measurements/r411/member_recall_probe.py` read nonexistent answer fields from
+the checkpoint. With the graded `pred_answer` loaded and validated, the 12 rows
+carrying 22 `OMITTED_ENUMERATED_ITEM` criteria break down as **7 not-list, 3 engaged,
+1 question-not-engaged, 1 answer-not-naming-set**. The three engaged rows are
+`rg_043`, `rg_046` and `rg_052`; the detector finds missing members on the latter two.
+`rg_043` passes engagement but yields no member gap, so engagement and detection
+must be reported separately. The independent precision replay still finds **0/71
+passing rows fired**, **2/12 target rows fired**, and **7/22 target criteria with a
+coordinate hit**. These measurements neither establish a safe recall ceiling nor
+justify widening the detector. The previous live gold-loss result remains a reason
+to keep the repair flag OFF. Corrected per-row evidence is in
+`docs/measurements/r416/member-recall.json`.
 
 ---
 
@@ -268,7 +280,8 @@ Ordered by risk-adjusted expected gain, using `Δoverall ≈ (1/8)·Δaxis/axis`
 | 1 | **Single-turn-only full system prompt** | Speed 71.65 | the F3 lever, restricted to `history_turn_count == 1`: keeps the easy-mode −13 s without the pushback keep-loss. **R412 RAN THE PAIRED EASY GATE AND IT PASSED ON EVERY AXIS → SHIPPED DEFAULT ON.** n=39 of the 95-row easy split, wrapper-served (0 `bedrock_auto_fallback`), 0 errors: `ref_loose` 0.8718 → **0.9615**, `ref_strict` 0.4333 → **0.5831**, `ref_conc` 0.2025 → **0.3481**, `kw_recall` +2.56 pp, `gold_dropped_head` **8 → 3** (hard rule #8 passes), latency p50 37.40 s → **21.93 s** (**−15.47 s**, 37/39 rows faster). Opt out with `=0`. The previous round's "no speedup" paired run was **VOID**: its log carried **189** `bedrock_auto_fallback` events (wrapper down ⇒ Bedrock served both arms with the full `system`) | **+13.2 pp** (measured, not projected — the ref axes gained far more than the +1.3 pp that assumed only Speed moved) | DONE — `docs/measurements/r412/score-singleturn-easy-n39.json`, and all EIGHT axes on the criteria-bearing corpus in `docs/measurements/r415/official_lever_gate.py` (OVERALL 64.9 → 71.0, +6.1 pp: `ans_conc` +19.2, `ref_conc` +11.2, `resp_speed` +3.8 against `ans_loose` −2.2, `ans_strict` −7.7, on 26 paired reachable rows, both arms tunnel-served). Reach-weighted that is ×1.047 on the board geomean (≈ +3.4 pp at a board of 72) | **Shipped.** `REGENOLD_STAGE2_FULL_SYSTEM` itself stays OFF (multi-turn pushback: `gold_drop_hd` 12 → 18) |
 | 2 | Ref-minimality pass | Ref Conc 55.93 | rank wire refs by *claim-dependence*, not retrieval score; cut the ~45 % excess. **CLOSED BY MEASUREMENT — R413 `ref_minimality_ceiling.py` (deterministic, no provider calls, two frozen ledgers).** The row is exactly computable because `ref_conc` is a pure COUNT ratio `(min(|P|,|G|)/max(|P|,|G|))²` while `ref_loose` is recall and `ref_strict` F1. (i) **No shippable form exists**: on both ledgers the best LOSSLESS candidate is NONE — the R411 ungrounded form removes 17 excess heads but loses 4 expected (Δoverall **−0.24**), the enumeration-dump form 16/2 (+0.26), the late-mention form 98/34 (**−2.81**), and capping at the median gold size K=1 166/54 (**−0.68**). (ii) **The features carry no signal**: rank-AUC separating excess from expected-and-present heads is `never-cited` **0.521**, `dump-only` **0.534**, `late-mention` **0.597** (hard: 0.516 / 0.524 / 0.538) — no threshold or classifier in this family can do better, which is the general reason the four earlier attempts failed rather than four misfortunes. (iii) **The oracle ceiling is below the bar**: a PERFECT classifier of the same feature buys +1.26 / +0.85 / +4.18 pp, and the only one above +2.2 pp is `late-mention`, whose real threshold loses 34 expected heads. **Mechanism:** `ref_conc` is a length ratio and loose/strict are content recalls, aggregated by a GEOMETRIC mean — candidate D reaches `ref_conc` 85.76 (+46.50) and STILL loses overall, because each dropped expected head costs recall in the same product. Conciseness is not tradable against recall under this rubric | 0 — closed | DONE — `docs/measurements/r413/ref-minimality-ceiling.json`, §9 of `docs/measurements/r413/CHECKPOINT.md` | **FALSIFIED.** The remaining reference headroom is GRAIN (row 4), not head COUNT. Re-opening needs a form that beats the oracle ceiling, not another heuristic |
 | 3 | **Stage-2 content-preservation contract** (NEXT UNPROVEN) | Ans Strict 67.27 | reject a polish that drops a skeleton member the draft carried; deterministic, no extra call | +1.0 pp | `easyhard_ab` + `answer_completeness` replay | Medium — needs to stop firing on passing rows (F7). NB the R413 tail-repair work is the same failure mode one layer down (the polish/prompt dropping content the draft carried), so its rungs and `REF_MINIMALITY`-style deterministic instruments are reusable here. **R415 supplied the first MEASURED operand**, which sharpens the contract from "do not drop a skeleton member" to "do not let a qualifier's SCOPE shrink": on the official gold the lever's two lost criteria are `rg_045` (the polish narrowed *without undue delay* from all three deployer duties to the informing duties only, leaving the suspension unqualified) and `rg_010` (Art. 14's aim clause dropped). Neither is a missing citation — both are a clause the Stage-1 draft carried correctly and the polish narrowed, so the check is a scope comparison against the draft, not a member-set diff |
-| 4 | Sub-point grain on the wire | Ref Strict 75.83 | the evaluator's keys are ~71 % sub-point vs our 14.3 %; `COORD_MAP_PROMPT` is the candidate | +0.6 pp | `easyhard_ab` | Medium |
+| 4 | Sub-point grain on the wire | Ref Strict 75.83 | **CLOSED BY MEASUREMENT — R416 recount of the frozen ledger the premise came from.** The row's justification was "the evaluator's keys are ~71 % sub-point vs our 14.3 %", a 5× deficit. The recount (`docs/measurements/r416/validate_frozen_findings.py`, inputs pinned by SHA-256 in `frozen-summary.json`, dot-in-the-canonical-coordinate test on BOTH sides, no head folding because folding erases the property being counted) gives **emitted 266/310 = 85.81 %** vs **expected 114/135 = 84.44 %** — the wire is ~1.4 pp from the keys, not 57 pp behind. The 14.3 % figure appears nowhere in this repo outside this row's own cell, so there is no deficit to close and `COORD_MAP_PROMPT` has nothing to buy. Caveat: both sides are the frozen R407 ledger, not today's live wire — this refutes the stated gap, it is not a live scorecard | 0 — closed | DONE — `docs/measurements/r416/frozen-summary.json` | **FALSIFIED (premise stale).** Re-opening needs a *live* emitted-vs-expected grain read that shows a real gap, not a re-run of this ratio |
+| 5 | `REGENOLD_KG_POINT_TEXT` | Ans Strict 67.27 (the row targeted Ans Loose) | point text into the Stage-2 block (+3.5 kB/row). **R416 RAN THE PAIRED GATE AND FLIPPED IT DEFAULT ON.** The finding that made it the top lever: the pre-R408 query requires `(pt)-[:HAS_SUBPOINT]->(sp)` and the live graph has **421 Points / 37 SubPoints**, so production was feeding Stage-2 *no* statutory point text for the limbs that carry the obligations — the same generation-omission class as F1, one layer down. Reach, measured deterministically first (`docs/measurements/r416/kg_point_text_reach.py`, live Aura): block changes on **23/26** paired rows, units 26 → 384, text 5,201 → 81,391 chars, and the legacy query returns **0** units for `rg_010`. Paired read (25 rows, both arms tunnel-served, wrapper judge `claude-sonnet-5` r=3, baseline = the shipped config so the arms differ by ONE flag): `ans_strict` 88.0 → **96.0** (**+8.0 pp**), `ans_loose` +2.3, `ref_loose`/`ref_strict` **100.0/70.8 unchanged** (no gold drop — hard rule #8), `ref_conc` +0.6, `regulatory_tone` 0.0, `resp_speed` +0.9, `ans_conc` −3.3 (1,425 → 1,543 chars), **OVERALL 70.7 → 71.3 (+0.6 pp)** | **+8.0 pp on Ans Strict** — the axis this roadmap called the next target, against a +1.0 pp projection | DONE — `docs/measurements/r415/official-lever-paired-kgpt.json` | **Shipped default-ON.** The only two rows that moved are `rg_010` and `rg_045`, exactly the two the R415 compression had broken — a named mechanism, not a swing. Residual: hard split unmeasured and the lever is NOT modality-restricted; gate there next, revert with `=0` if turn-1 points drop |
 | 5 | `REGENOLD_KG_POINT_TEXT` | Ans Loose | point text into the Stage-2 block (+3.5 kB/row) | unknown | needs a same-generation A/B | Medium — prompt-side |
 
 Levers **explicitly not** on this list, with the measurement that removed them:
