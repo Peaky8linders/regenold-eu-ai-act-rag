@@ -253,14 +253,48 @@ Asserted and passed: healthy deploy, non-empty answers, wire references present,
 operative article named on BOTH paths. The hard path is the point — the legacy query
 does not empty the block or break the answer when it is selected.
 
-**Reported honestly, not asserted:** on this live single-turn sample the Art. 14 *aim*
-clause ("with the aim of preventing or minimising risks to health, safety or fundamental
-rights") is **absent** from the 417-character answer, whereas the R416 easy gate credited
-`rg_010` (4/5 -> 5/5) to exactly that clause. The two asks are not the same object: the
-gate's row carries the official question text and routed to a ~1,230-character answer,
-and this probe's 417-character answer is a different (shorter) generation path. So this is
-**not reproduced here either way** — it is a prompt/route difference, not evidence against
-the modality scope, and not evidence for the clause gain. It stays a REPORTED residual.
+#### 6.5a The aim-clause gap, resolved: a TRANSPORT artifact, not a route — and it sticks
+
+The §6.5 single-turn sample (417 chars) omitted Art. 14's *aim* clause, which the R416 easy
+gate had credited to `rg_010` (4/5 -> 5/5). `aim_clause_probe.py` resolved it, and the
+first reading recorded here ("a route difference") was **wrong**:
+
+1. **The clause is not systematically lost.** A cache-busted live ask ("Which article of
+the EU AI Act governs human oversight?") took 21.7 s and returned **783 chars that DO
+state it** — "the oversight must aim to prevent or minimise risks to health, safety or
+fundamental rights" — with `stage2_model=claude-opus-5 complex=False`,
+`answer_route=synthesis:synthesis_default`, intent `article_lookup`, and **no** fallback
+note. Two other live single-turn shapes state it too ("What does Article 14 … require?"
+2,109 chars; "Must … and to what end?" 1,618).
+2. **Every sample WITHOUT the clause coincides with a non-wrapper generation**, and two
+say so in the trace: local KG=1 — `openai_wrapper_truncated_structural …
+(model=claude-opus-5, completion_tokens=1)` -> `bedrock_auto_fallback` -> `tail repair
+failed — shipping deterministic Stage-1 answer` (1,037 chars, no aim); local KG=0 —
+`stage2_model=qwen.qwen3-32b-v1:0 provider=bedrock` + `bedrock_auto_fallback_success`
+(815 chars, no aim). Every wrapper-served sample states it.
+3. **The three production "aim-less" observations were not independent.** Repeated asks of
+the identical question returned in **0.1-0.2 s** (cache hits) while a novel question took
+**38.4 s**. So `rg_010`'s short answer was one non-wrapper generation, cached per worker
+and replayed; 456/493/501 were not three samples.
+
+**Why it sticks — the R28/R78 cache-poisoning class, uncovered for a SUCCESSFUL fallback.**
+`stage2_call_failed` is set only when BOTH legs fail (`enhanced is None`), so a successful
+Bedrock fallback leaves it False; `_cacheable` then passes (`stage2_call_failed` False,
+`confidence` 0.7 >= `_MIN_CACHEABLE_CONFIDENCE` 0.3, `nodes_traversed > 0`) and the
+**fallback answer is `put` into the process-local `_ENGINE_CACHE`**. `graph_stats` carries
+`stage2_call_failed` and `stage2_landed` but **no "which leg served this"** marker, so the
+route cannot tell a wrapper answer from a fallback one when deciding to cache. Measured
+consequence: production replayed a fallback-served `rg_010` answer at 0.1 s across separate
+probes and across both workers.
+
+**Consequence for the lever's narrative.** The R415 pair (arm A 1,125 chars no-aim, arm B
+1,350 aim) is a 1-vs-1 comparison on a **`article_lookup`** question, whose answer is brief
+by construction, so whether the model volunteers 14(2)'s purpose clause is sampling
+variance at that brevity. Fresh local samples show the clause on **both** arms (KG=1 1,387
+aim=True; KG=0 1,201 aim=True). `rg_010` therefore **cannot** be cited as the lever's
+mechanism; the paired judged board delta is unaffected (it is whatever the judge scored),
+but the named-mechanism claim is retracted. The wire reference on the row is
+`ref_grain_deepen Article 14->Article 14.4` — post-processing, not generation.
 
 ### 6.6 The re-score driver's own bug, found and fixed
 
@@ -289,3 +323,4 @@ used `expected_splits`; the driver now does too (`--splits`, default `hard`).
 | `tests/test_r408_kg_context_point_traversal.py` | pins §6.4's modality scope (4 new tests) |
 | `tests/test_r416_audit_remediations.py` | pins the audit remediations |
 | `live_prod_check.py` | §6.5 post-deploy live check of both modalities |
+| `aim_clause_probe.py` | §6.5a the aim-clause resolution (transport, not route) |
