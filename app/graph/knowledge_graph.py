@@ -60,12 +60,38 @@ class ProvisionModel(BaseModel):
 # ---------------------------------------------------------------------------
 # Citation Extractor
 # ---------------------------------------------------------------------------
-_ARTICLE_RE = re.compile(r"Articles?\s+(\d+)((?:\s*\([0-9a-z]+\))*)")
+#: R421 — the tail of an article citation, in EITHER spelling.
+#:
+#: MEASURED: the tail used to require parentheses (``(?:\s*\([0-9a-z]+\))*``),
+#: so the DOT form collapsed to its parent article. ``Article 6.2`` yielded
+#: ``art_6``, ``Article 13.1`` yielded ``art_13`` and ``Annex III.7.b`` yielded
+#: ``annex_III``. The dot form is not incidental: it is the format this system
+#: instructs the model to emit ("Article NUMBER.SUBNUMBER"), it is the format
+#: the benchmark's own reference keys use, and it is the format our wire carries.
+#: Any consumer of :func:`extract_reference_eids` — ``build_graph`` builds
+#: ``CROSS_REFERENCES_INTERNAL`` edges from it — therefore recorded a COARSER
+#: relation than the prose supports, and the loss was silent (provenance
+#: "text" on an edge nobody re-checks).
+#: A dot segment is a paragraph/point index (digits) or a lettered limb of at
+#: most three characters (``.h``, ``.iii``). The letter form is bounded and must
+#: not be followed by another word character, so a sentence-ending period in
+#: "Article 13. The provider" is not read as a group.
+_DOT_SEG = r"[.](?:\d+|[a-z]{1,3}(?![a-z0-9]))"
+#: ``Article``/``Articles`` and the ``Art.`` abbreviation: the repo's other
+#: citation readers accept all three and the model emits all three, so an
+#: extractor that reads only the long form silently misses the short one.
+_ARTICLE_RE = re.compile(rf"(?:Articles?|Art\.)\s+(\d+)((?:{_DOT_SEG}|\s*\([0-9a-z]+\))*)")
 _ANNEX_RE = re.compile(
-    r"Annex\s+([IVXLCDM]+)(?:\s*,?\s*point\s+(\d+))?((?:\s*\([a-z]+\))*)", re.IGNORECASE
+    rf"Annex\s+([IVXLCDM]+)((?:(?:\s*,?\s*point\s+\d+)|{_DOT_SEG}|\s*\([a-z0-9]+\))*)",
+    re.IGNORECASE,
 )
 _RECITAL_RE = re.compile(r"[Rr]ecital\s+\(?(\d+)\)?")
-_PAREN_RE = re.compile(r"\(([0-9a-z]+)\)")
+#: One citation tail as an ordered list of groups: ``point 4``, ``.4`` and
+#: ``(4)`` are the same group, and a tail may mix the spellings.
+_TAIL_GROUP_RE = re.compile(
+    r"point\s+(\d+)|[.](\d+|[a-z]{1,3}(?![a-z0-9]))|\(([0-9a-z]+)\)",
+    re.IGNORECASE,
+)
 
 _EXTERNAL_QUALIFIER_RE = re.compile(
     r"^\s*(?:of\s+)?(?:the\s+)?"
@@ -87,6 +113,29 @@ def _from_citation_safe(citation: str) -> ProvisionId | None:
         return None
 
 
+def _tail_groups(tail: str) -> list[str]:
+    """The citation tail as ordered groups, tolerating mixed spellings."""
+    out: list[str] = []
+    for m in _TAIL_GROUP_RE.finditer(tail or ""):
+        out.append(next(g for g in m.groups() if g))
+    return out
+
+
+def _keep_cascade(prefix: str, groups: list[str]) -> ProvisionId | None:
+    """``prefix`` plus the LONGEST group prefix the id model can represent.
+
+    The id model nests three deep (``_ARTICLE_NEST``), so a four-deep citation
+    cannot be represented in full. Dropping the deepest groups keeps the parent
+    — which is what the extractor returned for every citation before R421 —
+    instead of discarding the provision outright.
+    """
+    for cut in range(len(groups), -1, -1):
+        pid = _from_citation_safe(prefix + "".join(f"({g})" for g in groups[:cut]))
+        if pid is not None:
+            return pid
+    return None
+
+
 def extract_citations(text: str) -> list[ProvisionId]:
     """Return distinct provision ids cited in text, in first-seen order."""
     found: dict[str, ProvisionId] = {}
@@ -99,15 +148,17 @@ def extract_citations(text: str) -> list[ProvisionId]:
         if _is_external(text, m.end()):
             continue
         num, tail = m.group(1), m.group(2)
-        groups = _PAREN_RE.findall(tail)
-        keep(_from_citation_safe(f"Art. {num}" + "".join(f"({g})" for g in groups)))
+        keep(_keep_cascade(f"Art. {num}", _tail_groups(tail)))
 
-    for roman, point, tail in _ANNEX_RE.findall(text):
-        citation = f"Annex {roman.upper()}"
-        if point:
-            citation += f" point {point}"
-        citation += "".join(f"({g})" for g in _PAREN_RE.findall(tail))
-        keep(_from_citation_safe(citation))
+    for roman, tail in _ANNEX_RE.findall(text):
+        head = f"Annex {roman.upper()}"
+        groups = _tail_groups(tail)
+        # ``Annex III point 4(b)`` is the form the id model reads: the first
+        # numeric group is the point, the remainder are the nested letters.
+        if groups and groups[0].isdigit():
+            head += f" point {groups[0]}"
+            groups = groups[1:]
+        keep(_keep_cascade(head, groups))
 
     for num in _RECITAL_RE.findall(text):
         keep(_from_citation_safe(f"Recital ({num})"))
