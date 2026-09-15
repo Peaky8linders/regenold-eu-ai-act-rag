@@ -36,8 +36,11 @@ class GraphContext:
     # "primary" for the Cloudflare-tunnel Claude Max leg, "fallback" when AWS
     # Bedrock took over, "deterministic" when the wrapper was attempted and
     # the deterministic Stage-1 answer shipped (total failure, or the
-    # truncation-repair guard dropping to it). ``stage2_call_failed`` only
-    # ever named the first of those three degradations, so a *successful*
+    # truncation-repair guard dropping to it), and "prior_turn" when Stage-2
+    # produced nothing usable and the guard kept the PREVIOUS turn's answer
+    # rather than regress to the thinner deterministic draft (R420). The last
+    # two are degradations the route must not cache. ``stage2_call_failed`` only
+    # ever named the first of those degradations, so a *successful*
     # Bedrock answer was indistinguishable from a wrapper-served one and the
     # route cached it (the replay measured on rg_010).
     stage2_served_by: str = ""

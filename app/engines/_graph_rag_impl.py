@@ -10595,6 +10595,70 @@ def _stage2_truncation_guard_enabled() -> bool:
     )
 
 
+#: R420 — the "never ship a worse answer than the one we already gave" floor.
+#:
+#: MEASURED (R419 live hard board, the 4 rows that fell to the deterministic
+#: leg): the Claude-Max wrapper returned a degenerate one-token completion, the
+#: Bedrock fallback leg was dead in that environment (``api_key_invalid_403`` on
+#: every model), tail repair failed, and the row shipped the deterministic
+#: Stage-1 draft. On ``rg_036`` and ``rg_037`` the answer the engine had ALREADY
+#: given on turn 1 was materially richer than that draft — re-judged with the
+#: published instrument on the same criteria, turn 1 passes 8 of the 9 criteria
+#: the draft fails (``rg_036`` 2/3 vs 0/3, ``rg_037`` 6/6 vs 0/6, plus the gold
+#: head those two rows dropped). The official pushback turn re-asks the SAME
+#: question, so the previous answer is a valid answer to it: regressing to a
+#: thinner draft is a pure loss with nothing gained in exchange.
+_PRIOR_ANSWER_FLOOR_ENV = "REGENOLD_STAGE2_PRIOR_ANSWER_FLOOR"
+_PRIOR_ANSWER_FLOOR_RATIO_ENV = "REGENOLD_STAGE2_PRIOR_ANSWER_FLOOR_RATIO"
+#: A prior answer under this length cannot be "materially richer" than anything
+#: worth shipping, so the floor stays inert on one-line exchanges.
+_PRIOR_ANSWER_FLOOR_MIN_CHARS = 400
+
+
+def _prior_answer_floor_enabled() -> bool:
+    return os.getenv(_PRIOR_ANSWER_FLOOR_ENV, "1").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _prior_answer_floor_ratio() -> float:
+    try:
+        return float(os.getenv(_PRIOR_ANSWER_FLOOR_RATIO_ENV, "1.2").strip())
+    except Exception:  # noqa: BLE001 — a malformed override must not disable the floor
+        return 1.2
+
+
+def _prior_answer_floor(history_question: str, kg_answer: str) -> str:
+    """The previous turn's answer when it dominates ``kg_answer``, else ``""``.
+
+    Only ever consulted on the truncation guard's LAST rung, where the
+    alternative is the thinner deterministic Stage-1 draft, so this compares two
+    texts already in hand and costs nothing. Returns the prior answer only when
+    it is a complete, materially longer answer to the same conversation.
+    """
+    if not _prior_answer_floor_enabled():
+        return ""
+    try:
+        from app.engines.answer_completeness import previous_answer  # noqa: PLC0415
+
+        prior = (previous_answer(history_question or "") or "").strip()
+    except Exception:  # noqa: BLE001 — a reading aid must never break Stage-2
+        return ""
+    draft = (kg_answer or "").strip()
+    if not prior or prior == draft or len(prior) < _PRIOR_ANSWER_FLOOR_MIN_CHARS:
+        return ""
+    # Never prefer a prior answer that is itself a cut fragment: the floor
+    # exists to stop regressions, not to launder one truncation into another.
+    if _looks_incomplete_final_sentence(prior):
+        return ""
+    if len(prior) < _prior_answer_floor_ratio() * max(len(draft), 1):
+        return ""
+    return prior
+
+
 _TAIL_REPAIR_MODE_ENV = "REGENOLD_STAGE2_TAIL_REPAIR_MODE"
 
 
@@ -11278,7 +11342,11 @@ def _mark_stage2_served_by(context: GraphContext | None, leg: str) -> None:
         return
     try:
         current = str(getattr(context, "stage2_served_by", "") or "")
-        if leg == "deterministic":
+        if leg in ("deterministic", "prior_turn"):
+            # R420 — a DEGRADATION label always wins, exactly like
+            # "deterministic": a primary-leg attempt already marked this row
+            # "primary" before the guard ran, and the leg that actually served
+            # the wire is the degraded one, not the one that tried.
             context.stage2_served_by = leg
         elif current:
             return
@@ -11293,6 +11361,7 @@ def _guard_stage2_truncation(
     enhanced: str,
     kg_answer: str,
     context: GraphContext | None,
+    history_question: str = "",
 ) -> tuple[str, bool]:
     """Post-generation truncation guard for the polished Stage-2 answer.
 
@@ -11303,9 +11372,17 @@ def _guard_stage2_truncation(
         than the deterministic answer → (salvaged prefix, True) — R402, the
         rg_062 fix (an 82-char role-matrix stub shipped while a substantive
         truncated polish was discarded)
+      * repair failed but the PREVIOUS turn's answer dominates the
+        deterministic draft → (prior answer, True) — R420, the prior-answer
+        floor (measured on rg_036/rg_037, where the draft scored 0/9 criteria
+        that the answer this engine had already given passes 8/9)
       * otherwise                   → (kg_answer, False) — the complete
         deterministic Stage-1 answer, so the wire ships it deterministically
         (the route keys the R72 reconcile on ``stage2_landed``).
+
+    ``history_question`` is the history-bearing text (the flattened
+    conversation), which is what :func:`previous_answer` reads; ``question``
+    stays the retrieval-side ask used by the tail-repair call.
     """
     if not _looks_incomplete_final_sentence(enhanced):
         return enhanced, True
@@ -11325,6 +11402,24 @@ def _guard_stage2_truncation(
             len(enhanced),
         )
         return salvaged, True
+    # R420 — before regressing to the deterministic draft, check the answer this
+    # conversation already has. The pushback turn re-asks the same question, so
+    # a materially richer previous answer is strictly the better serve.
+    floored = _prior_answer_floor(history_question, kg_answer)
+    if floored:
+        logger.warning(
+            "stage2_truncation_guard: tail repair failed — keeping the previous "
+            "turn's answer (%d chars vs the %d-char deterministic draft)",
+            len(floored),
+            len(kg_answer),
+        )
+        if context is not None:
+            # A degraded serve in the R417 sense: name it so the route refuses
+            # to cache it, and set the flag too so the refusal does not hinge on
+            # the label alone.
+            context.stage2_call_failed = True
+        _mark_stage2_served_by(context, "prior_turn")
+        return floored, True
     logger.warning(
         "stage2_truncation_guard: tail repair failed — shipping deterministic Stage-1 answer"
     )
@@ -11861,7 +11956,14 @@ def _two_stage_generate_inner(
     # davidath bench is byte-identical.
     if _stage2_truncation_guard_enabled():
         final, stage2_used = _guard_stage2_truncation(
-            resolved_q, enhanced, kg_answer, context
+            resolved_q,
+            enhanced,
+            kg_answer,
+            context,
+            # R420 — the history-bearing text, not the re-ask-focused ask: the
+            # prior-answer floor reads the flattened conversation through
+            # ``previous_answer``.
+            guard_question or question,
         )
     else:
         final, stage2_used = enhanced, True

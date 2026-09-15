@@ -1,0 +1,90 @@
+{
+  "multi_turn_hard": {
+    "ckpt": "evals\\bench\\results\\official-r419-hard-hard.ckpt.jsonl",
+    "axes_served_rows": {
+      "n": 110,
+      "n_ref_scored": 102,
+      "ref_correctness_loose": 96.08,
+      "ref_correctness_strict": 70.59,
+      "ref_conciseness": 44.79,
+      "ans_conciseness": 44.19,
+      "resp_speed": 70.83
+    },
+    "axes_all_rows_incl_transport_failures": {
+      "n": 110,
+      "n_ref_scored": 102,
+      "ref_correctness_loose": 96.08,
+      "ref_correctness_strict": 70.59,
+      "ref_conciseness": 44.79,
+      "ans_conciseness": 44.19,
+      "resp_speed": 70.83
+    },
+    "axes_excl_criteria_unstable": {
+      "n": 106,
+      "n_ref_scored": 98,
+      "ref_correctness_loose": 96.94,
+      "ref_correctness_strict": 72.45,
+      "ref_conciseness": 43.73,
+      "ans_conciseness": 42.98,
+      "resp_speed": 70.47
+    },
+    "n_transport_failures": 0,
+    "n_criteria_unstable": 4,
+    "signals": {
+      "n": 110,
+      "errors": 0,
+      "refusal_rate": 0.0,
+      "leg_mix": {
+        "unrecorded": 25,
+        "primary": 81,
+        "deterministic": 4
+      },
+      "gold_head_dropped_total": 4,
+      "gold_head_dropped_rows": [
+        {
+          "id": "rg_036",
+          "lost": [
+            "Article 42"
+          ]
+        },
+        {
+          "id": "rg_037",
+          "lost": [
+            "Annex VIII"
+          ]
+        },
+        {
+          "id": "rg_088",
+          "lost": [
+            "Article 26"
+          ]
+        },
+        {
+          "id": "rg_100",
+          "lost": [
+            "Article 6"
+          ]
+        }
+      ],
+      "ref_heads_changed_rows": 46,
+      "conceded_rows": 0,
+      "mean_ref_head_jaccard": 0.8298,
+      "turn1_latency_s": {
+        "p50": 33.1,
+        "p95": 57.4,
+        "max": 77.9
+      },
+      "graded_latency_s": {
+        "p50": 33.1,
+        "p95": 56.4,
+        "max": 70.9
+      },
+      "sub_second_graded": 7,
+      "turn1_chars_p50": 2199.0,
+      "graded_chars_p50": 2226.0,
+      "salvage_suspects": [
+        "rg_036"
+      ]
+    }
+  }
+}

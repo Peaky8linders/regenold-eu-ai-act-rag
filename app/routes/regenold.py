@@ -1474,6 +1474,12 @@ def _engine_cache_key(
             # Both branches replace GraphRAGResponse.answer, so a same-process
             # A/B differing only here must not share a cache entry.
             "REGENOLD_STAGE2_TAIL_REPAIR_MODE",
+            # R420 — the prior-answer floor picks a DIFFERENT answer on the
+            # guard's last rung (the previous turn's answer instead of the
+            # deterministic Stage-1 draft), so a same-process flip must not
+            # share a cache entry.
+            "REGENOLD_STAGE2_PRIOR_ANSWER_FLOOR",
+            "REGENOLD_STAGE2_PRIOR_ANSWER_FLOOR_RATIO",
             # R409 — answer-completeness guards and clauses (all default OFF):
             # each can rewrite GraphRAGResponse.answer or the Stage-2 prompt.
             "REGENOLD_CLOSED_SET_COMPLETENESS_GUARD",
@@ -9289,13 +9295,13 @@ def regenold_eu_ai_act_ask(
         _served_by = str(_stats.get("stage2_served_by") or "")
         _cacheable = (
             not _stats.get("stage2_call_failed")
-            and _served_by not in ("fallback", "deterministic")
+            and _served_by not in ("fallback", "deterministic", "prior_turn")
             and rag_res.confidence >= _MIN_CACHEABLE_CONFIDENCE
             and _stats.get("nodes_traversed", 0) > 0
         )
         if _cacheable:
             _ENGINE_CACHE.put(cache_key, rag_res)
-        elif _served_by in ("fallback", "deterministic"):
+        elif _served_by in ("fallback", "deterministic", "prior_turn"):
             # Leave a trace note: a silent cache skip is indistinguishable
             # from a cache miss to the judge-correlation pass.
             try:

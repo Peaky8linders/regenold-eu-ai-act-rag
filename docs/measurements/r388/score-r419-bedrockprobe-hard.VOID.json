@@ -1,0 +1,14 @@
+{
+ "label": "r419-bedrockprobe",
+ "mode": "hard",
+ "ckpt": "evals/bench/results/official-r419-hard-hard.ckpt.jsonl",
+ "judge_identity": "bedrock:qwen.qwen3-235b-a22b-2507-v1:0:t=0.1:grouped:r=3",
+ "judge_valid": false,
+ "judge_void_reason": "2/2 rows (100%) returned NO live judge run and would be scored all-False",
+ "reference_axes": {
+  "ref_correctness_loose": 100.0,
+  "ref_correctness_strict": 100.0,
+  "ref_conciseness": 100.0
+ },
+ "n": 2
+}

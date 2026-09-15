@@ -1,0 +1,121 @@
+{
+ "label": "r419-qwenprobe",
+ "mode": "hard",
+ "ckpt": "evals/bench/results/official-r419-hard-hard.ckpt.jsonl",
+ "judge_identity": "openrouter:qwen/qwen3-235b-a22b-2507:t=0.1:grouped:r=3",
+ "axes": {
+  "ans_correctness_loose": 100.0,
+  "ans_correctness_strict": 100.0,
+  "ans_conciseness": 100.0,
+  "ref_correctness_loose": 100.0,
+  "ref_correctness_strict": 100.0,
+  "ref_conciseness": 100.0,
+  "regulatory_tone": 100.0,
+  "resp_speed": 95.7709,
+  "overall": 99.4613,
+  "n": 2,
+  "n_ref_scored": 1,
+  "_ans_loose_macro": 100.0,
+  "_mean_answer_chars": 384.5,
+  "_mean_reference_chars": 491.0,
+  "_mean_refs_per_row": 1.5,
+  "_mean_expected_per_row": 1.0,
+  "_mean_latency_s": 4.229
+ },
+ "official_reference": {
+  "us": {
+   "ans_correctness_loose": 89.9,
+   "ans_correctness_strict": 80.0,
+   "ans_conciseness": 45.2,
+   "ref_correctness_loose": 89.5,
+   "ref_correctness_strict": 70.7,
+   "ref_conciseness": 49.8,
+   "regulatory_tone": 96.1,
+   "resp_speed": 85.7
+  },
+  "frontier_2026": {
+   "ans_correctness_loose": 92.0,
+   "ans_correctness_strict": 84.8,
+   "ans_conciseness": 71.8,
+   "ref_correctness_loose": 94.6,
+   "ref_correctness_strict": 74.1,
+   "ref_conciseness": 58.5,
+   "regulatory_tone": 100.0,
+   "resp_speed": 86.7
+  },
+  "baseline_2025": {
+   "ans_correctness_loose": 87.6,
+   "ans_correctness_strict": 76.7,
+   "ans_conciseness": 58.8,
+   "ref_correctness_loose": 82.7,
+   "ref_correctness_strict": 55.4,
+   "ref_conciseness": 56.8,
+   "regulatory_tone": 99.7,
+   "resp_speed": 95.9
+  },
+  "overall": {
+   "us": 73.4,
+   "frontier_2026": 81.7,
+   "baseline_2025": 74.8
+  }
+ },
+ "rows": [
+  {
+   "id": "rg_001",
+   "question": "Does the technical documentation of a high-risk AI system require to provide specifications regarding the required hardware?",
+   "answer": "Yes. Under Article 11, a provider must draw up technical documentation containing the information set out in Annex IV, which expressly requires a description of the hardware on which the AI system is intended to run (Annex IV point 1(e)) and, as part of the system's development description, the computational resources used to develop, train, test and validate it (Annex IV point 2(c)).",
+   "criteria_text": [
+    "Yes",
+    "Description of the hardware on which the AI system is intended to run (Annex IV.1.e)"
+   ],
+   "criteria": [
+    true,
+    true
+   ],
+   "criterion_remarks": [
+    "The answer states 'Yes' as the position, which matches the required verdict in criterion 1.",
+    "The answer explicitly states that the technical documentation must include 'a description of the hardware on which the AI system is intended to run', citing Annex IV point 1(e), which conveys the substance of the requirement."
+   ],
+   "n_criteria_passed": 2,
+   "tone_ok": true,
+   "tone_remark": "Professional, neutral third-person register with clear structure and coherent prose suitable for regulatory advice.",
+   "answer_chars": 387,
+   "reference_chars": 479,
+   "refs": [
+    "Article 11.1",
+    "Annex IV.1"
+   ],
+   "expected_refs": [],
+   "latency_s": 7.4760076999955345
+  },
+  {
+   "id": "rg_002",
+   "question": "Does the obligation to indicate that deep-fakes are artificially generated apply when prosecuting a criminal offence?",
+   "answer": "No. Under Article 50(4), the deployer's duty to disclose that image, audio, or video content constituting a deep fake has been artificially generated or manipulated does not apply where the use is authorised by law to detect, prevent, investigate, or prosecute criminal offences. Absent that law-enforcement authorisation, the deployer must disclose that the content is a deep fake.",
+   "criteria_text": [
+    "No",
+    "Deep-fake disclosure exemption covers detection, prevention, investigation or prosecution of criminal offences"
+   ],
+   "criteria": [
+    true,
+    true
+   ],
+   "criterion_remarks": [
+    "The answer clearly states 'No' as its position, which matches the required verdict.",
+    "The answer states the substance of the exemption for criminal offence detection, prevention, investigation, or prosecution as set out in Article 50(4)."
+   ],
+   "n_criteria_passed": 2,
+   "tone_ok": true,
+   "tone_remark": "Professional, neutral register; clear structure with complete sentences and no self-reference or hedging.",
+   "answer_chars": 382,
+   "reference_chars": 503,
+   "refs": [
+    "Article 50.4"
+   ],
+   "expected_refs": [
+    "Article 50.4"
+   ],
+   "latency_s": 0.9821105000009993
+  }
+ ]
+}
