@@ -284,7 +284,12 @@ def main() -> int:
     ap.add_argument("--rejudge", action="store_true", default=False, help="Bypass cache and re-judge all rows")
     ap.add_argument(
         "--judge-provider",
-        choices=("wrapper", "bedrock"),
+        # R419 — ``openrouter`` is a first-class transport: the local wrapper's
+        # Claude Code session can be down while ``/health`` still answers, and
+        # the Bedrock bearer token can be rejected, at which point the third
+        # route is the only one that can judge. Labelling it correctly keeps the
+        # judge identity (and therefore the cache) from conflating transports.
+        choices=("wrapper", "bedrock", "openrouter"),
         default=os.getenv("R388_JUDGE_PROVIDER", "wrapper") or "wrapper",
         help="LLM judge transport (explicitly recorded in cache/output provenance)",
     )

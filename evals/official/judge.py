@@ -51,6 +51,13 @@ except ImportError:
 _base = (os.getenv("OPENAI_API_BASE") or "http://127.0.0.1:8000/v1").rstrip("/")
 if not _base.endswith("/v1") and not _base.endswith("/chat/completions"):
     _base = _base + "/v1"
+#: R419 — the hosted multi-provider endpoint, for when the local wrapper's Claude
+#: Code session is down (measured: ``/health`` 200 but every completion 500 "No
+#: response from Claude Code") and the Bedrock bearer token is rejected. Selected
+#: with ``--judge-provider openrouter``; the provider label is part of the judge
+#: identity, so an OpenRouter verdict is never filed under ``wrapper`` or
+#: ``bedrock`` and cannot be replayed as one.
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 _default_url = _base if _base.endswith("/chat/completions") else f"{_base}/chat/completions"
 URL = os.getenv("R388_WRAPPER_URL") or _default_url
 MODEL = os.getenv("R388_JUDGE_MODEL", "claude-sonnet-5")
@@ -90,7 +97,7 @@ def configure_judge(
     diagnostics read the provider from there on every call.  ``grouped=None``
     leaves ``R388_JUDGE_GROUPED`` as the environment has it.
     """
-    global MODEL
+    global MODEL, URL, _HDRS
     if provider:
         os.environ["R388_JUDGE_PROVIDER"] = provider.strip().lower()
     if model:
@@ -98,6 +105,25 @@ def configure_judge(
         os.environ["R388_JUDGE_MODEL"] = MODEL
     if grouped is not None:
         os.environ["R388_JUDGE_GROUPED"] = "1" if grouped else "0"
+    if os.getenv("R388_JUDGE_PROVIDER", "").strip().lower() == "openrouter":
+        # Point the HTTP path at the hosted endpoint and authenticate with its
+        # own key, so ``--judge-provider openrouter`` is sufficient on its own
+        # and no Cloudflare service-token header is attached. ``_call`` reads
+        # these globals at call time.
+        key = os.getenv("OPENROUTER_API_KEY", "").strip()
+        if not key:
+            raise RuntimeError(
+                "R388_JUDGE_PROVIDER=openrouter needs OPENROUTER_API_KEY"
+            )
+        URL = OPENROUTER_URL
+        if model and "/" not in MODEL:
+            MODEL = f"qwen/{MODEL}"
+            os.environ["R388_JUDGE_MODEL"] = MODEL
+        _HDRS = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {key}",
+        }
 
 
 def _grouped_enabled() -> bool:
@@ -188,19 +214,108 @@ def _call(prompt: str, *, max_tokens: int = 2000, timeout: float = 300.0, retrie
     raise RuntimeError(f"judge call failed after {retries} attempts: {last}")
 
 
+#: R419 — the output budget for a SECOND attempt when the first reply does not
+#: parse. A grouped reply carries one remark per criterion plus the tone object,
+#: and a reply that a reasoning model does not close parses as NOTHING — which
+#: every caller scores as no live run, i.e. the R393 failure shape arriving by a
+#: second route.
+#:
+#: MEASURED (R419 hard board): two rows returned NO live run on ALL THREE
+#: repetitions through the hosted Qwen 235B judge while the SAME prompt over the
+#: same rows parsed cleanly on a correctness-only call — the grouped reply was cut
+#: off. Those rows were scored all-False and the run published (1/108 dead is
+#: under R414's 20 % void threshold), which is exactly the quiet-zero this module
+#: exists to prevent. So the second attempt re-asks the SAME prompt with a bigger
+#: OUTPUT budget, and never a different prompt: a retry must not change what was
+#: asked, only how much room the answer has.
+_RETRY_MAX_TOKENS = int(os.getenv("R388_JUDGE_RETRY_MAX_TOKENS", "8000"))
+
+
+def _call_json(prompt: str) -> dict[str, Any] | None:
+    """One attempt at the default budget, one at :data:`_RETRY_MAX_TOKENS`.
+
+    ``None`` means neither attempt produced a JSON object (a dead transport, or a
+    reply the model would not close). The caller then records no live run, which
+    the R393 banner and the R414 void guard surface rather than scoring silently.
+    """
+    for budget in (2000, _RETRY_MAX_TOKENS):
+        try:
+            payload = _normalise_payload(_parse(_call(prompt, max_tokens=budget)))
+        except Exception:  # noqa: BLE001 — a dead transport is "no live run"
+            continue
+        if payload is not None:
+            return payload
+    return None
+
+
 def _parse(text: str):
+    """The first JSON value in ``text``, tolerating fences and a chatty envelope.
+
+    R419 — the fallback used to take the FIRST opener with the LAST closer, so a
+    reply that emitted two objects in sequence (``{"verdicts": ...}`` and then
+    ``{"tone": ...}``, which this model does) sliced a span that is not JSON, and
+    then fell through to the ``[``/``]`` pair — which returned the INNER verdicts
+    array as if it were the payload. A grouped caller requires a dict, so a
+    perfectly good judgement was recorded as NO LIVE RUN and the row was scored
+    all-False: a valid verdict lost to a slice. MEASURED on the R419 hard board
+    (``rg_045``, ``rg_066``: no live run on all three repetitions, while the same
+    prompt over the same rows parsed on the correctness-only call).
+
+    Now every complete value is decoded in order and multiple objects are MERGED,
+    so a reply that splits the verdicts and the tone into two objects still scores
+    both halves.
+    """
     t = _FENCE.sub("", text or "").strip()
     try:
-        return json.loads(t)
+        d = json.loads(t)
+        if isinstance(d, (dict, list)):
+            return d
     except Exception:  # noqa: BLE001
         pass
-    for opener, closer in (("{", "}"), ("[", "]")):
-        i, j = t.find(opener), t.rfind(closer)
-        if i != -1 and j > i:
+    decoder = json.JSONDecoder()
+    found: list[Any] = []
+    i = 0
+    while i < len(t):
+        if t[i] in "{[":
             try:
-                return json.loads(t[i : j + 1])
+                value, end = decoder.raw_decode(t[i:])
             except Exception:  # noqa: BLE001
+                i += 1
                 continue
+            found.append(value)
+            i += max(end, 1)
+            continue
+        i += 1
+    dicts = [v for v in found if isinstance(v, dict)]
+    if dicts:
+        merged: dict[str, Any] = {}
+        for v in dicts:
+            merged.update(v)
+        return merged
+    for v in found:
+        if isinstance(v, list):
+            return v
+    return None
+
+
+def _normalise_payload(d: Any) -> dict[str, Any] | None:
+    """A judge reply as ONE object the callers can read, or ``None``.
+
+    R419 — two tolerated shapes beyond a plain object, both seen in practice:
+    a bare list of per-criterion verdicts (``[{"n": 1, ...}, ...]``, which
+    :func:`_verdicts_from` already understands) and a list of objects that split
+    ``verdicts`` from ``tone``, which merge back into one payload.
+    """
+    if isinstance(d, dict):
+        return d
+    if isinstance(d, list) and d and all(isinstance(x, dict) for x in d):
+        merged: dict[str, Any] = {}
+        for x in d:
+            merged.update(x)
+        if "verdicts" in merged or "tone" in merged:
+            return merged
+        if all("n" in x for x in d):
+            return {"verdicts": d}
     return None
 
 
@@ -310,12 +425,8 @@ def judge_correctness_once(row: dict) -> list[bool] | None:
         .replace("{criteria}", numbered)
         .replace("{answer}", f"<candidate_answer>\n{ans_text}\n</candidate_answer>")
     )
-    try:
-        raw = _call(prompt)
-    except Exception:
-        return None
-    d = _parse(raw)
-    if not isinstance(d, dict):
+    d = _call_json(prompt)
+    if d is None:
         return None
     verdicts = d.get("verdicts")
     if not isinstance(verdicts, list):
@@ -461,12 +572,8 @@ def judge_grouped_once(row: dict) -> tuple[list[bool] | None, bool | None]:
         .replace("{criteria}", numbered)
         .replace("{answer}", f"<candidate_answer>\n{ans_text}\n</candidate_answer>")
     )
-    try:
-        raw = _call(prompt)
-    except Exception:
-        return None, None
-    d = _parse(raw)
-    if not isinstance(d, dict):
+    d = _call_json(prompt)
+    if d is None:
         return None, None
     corr: list[bool] | None = None
     if isinstance(d.get("verdicts"), list):

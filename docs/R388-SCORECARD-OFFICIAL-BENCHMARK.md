@@ -85,6 +85,9 @@ The benchmark evaluates regulatory question-answering systems across **eight met
 | **Antifragile AI (Aug 25)** | 73.4% | 89.9% | 80.0% | 45.2% | 89.5% | 70.7% | 49.8% | 96.1% | 85.7% |
 | **Antifragile AI (Poisoned Cache)** | 47.7% | 24.5% | 10.9% | 45.2% | 89.5% | 40.0% | 49.8% | 96.1% | 85.7% |
 | **Antifragile AI (R388)** | **74.6%** | 75.8% | 55.5% | **86.8%** | 88.0% | **61.3%** | **59.6%** | 94.5% | 86.5% |
+| **Antifragile AI (R419 LIVE, primary leg)** | 72.5% | **94.2%** | **90.9%** | 44.2% | **96.1%** | 70.6% | 44.8% | 93.6% | 70.8% |
+
+> **R419 LIVE row provenance — different generator, so the verbosity axes are not comparable with the rows above.** The R419 row is the current shipping configuration re-run end to end on 2026-09-15: 110/110 rows, zero transport errors, Stage-2 primary = the Claude-Max wrapper over the cloudflared tunnel (81 of 110 rows primary-served; 4 rows fell to the deterministic Stage-1 draft because the wrapper returned degenerate one-token completions and the Bedrock fallback credentials were rejected in that environment — an operator issue, not a code defect). `Ans. Conciseness` is `min(1, len(reference)/len(candidate))`: this board's mean answer is **2137.9 chars against a 649.3-char reference**, while the R388/R407 boards ran **757–900 chars** because they were served by Qwen-on-Bedrock. The correctness axes are directly comparable and are the ones that moved. Full record: `docs/measurements/r419/CHECKPOINT.md`; per-row questions, answers and verdicts: `docs/reports/r419-live-hard-questions-and-answers.md`.
 
 ### Min–Max Ranges (Hard Mode)
 
@@ -94,6 +97,7 @@ The benchmark evaluates regulatory question-answering systems across **eight met
 | **2025 Search-Integrated** | 74.6–74.9% | 87.2–87.8% | 75.5–77.3% | 99.1–100.0% |
 | **Antifragile AI (Aug 25)** | 73.1–73.7% | 89.6–90.3% | 79.1–80.9% | 94.5–97.3% |
 | **Antifragile AI (R388)** | **74.6–74.6%** | **74.0–75.8%** | **55.5–55.5%** | **94.5–94.5%** |
+| **Antifragile AI (R419 LIVE)** | 72.4–72.6% | 93.9–94.7% | 90.0–90.9% | 93.6–94.5% |
 
 ### Hard Mode Frontier Comparison Highlights:
 1. **Cache Poisoning Eliminated**: An unhandled wrapper 429 timeout had permanently poisoned 78 rows in `judge_cache.jsonl` with 0 criteria passed, dragging recorded performance to 24.5% Loose / 10.9% Strict. Re-judging un-poisoned answers via Sonnet 4.6 yielded a **+51.3 pp** gain in Loose Correctness and **+44.6 pp** gain in Strict Correctness.

@@ -1,0 +1,220 @@
+{
+ "label": "r419-priorfloor",
+ "mode": "hard",
+ "ckpt": "evals/bench/results/official-r419-priorfloor-hard.ckpt.jsonl",
+ "judge_identity": "openrouter:qwen/qwen3-235b-a22b-2507:t=0.1:grouped:r=3",
+ "axes": {
+  "ans_correctness_loose": 75.0,
+  "ans_correctness_strict": 50.0,
+  "ans_conciseness": 55.8095,
+  "ref_correctness_loose": 100.0,
+  "ref_correctness_strict": 58.3333,
+  "ref_conciseness": 51.25,
+  "regulatory_tone": 100.0,
+  "resp_speed": 48.7466,
+  "overall": 64.6453,
+  "n": 4,
+  "n_ref_scored": 4,
+  "_ans_loose_macro": 72.9167,
+  "_mean_answer_chars": 1611.2,
+  "_mean_reference_chars": 745.2,
+  "_mean_refs_per_row": 4.0,
+  "_mean_expected_per_row": 2.0,
+  "_mean_latency_s": 51.253
+ },
+ "official_reference": {
+  "us": {
+   "ans_correctness_loose": 89.9,
+   "ans_correctness_strict": 80.0,
+   "ans_conciseness": 45.2,
+   "ref_correctness_loose": 89.5,
+   "ref_correctness_strict": 70.7,
+   "ref_conciseness": 49.8,
+   "regulatory_tone": 96.1,
+   "resp_speed": 85.7
+  },
+  "frontier_2026": {
+   "ans_correctness_loose": 92.0,
+   "ans_correctness_strict": 84.8,
+   "ans_conciseness": 71.8,
+   "ref_correctness_loose": 94.6,
+   "ref_correctness_strict": 74.1,
+   "ref_conciseness": 58.5,
+   "regulatory_tone": 100.0,
+   "resp_speed": 86.7
+  },
+  "baseline_2025": {
+   "ans_correctness_loose": 87.6,
+   "ans_correctness_strict": 76.7,
+   "ans_conciseness": 58.8,
+   "ref_correctness_loose": 82.7,
+   "ref_correctness_strict": 55.4,
+   "ref_conciseness": 56.8,
+   "regulatory_tone": 99.7,
+   "resp_speed": 95.9
+  },
+  "overall": {
+   "us": 73.4,
+   "frontier_2026": 81.7,
+   "baseline_2025": 74.8
+  }
+ },
+ "rows": [
+  {
+   "id": "rg_036",
+   "question": "Under the EU AI Act, what presumption applies when a high-risk AI system is trained and tested on data that reflects the specific geographical, behavioural, contextual or functional setting in which it is intended to be used?",
+   "answer": "Under Article 42(1), a high-risk AI system trained and tested on data reflecting the specific geographical, behavioural, contextual or functional setting in which it is intended to be used is presumed to comply with the relevant requirements in Article 10(4). What Article 10(4) requires. Data sets must take into account the characteristics or elements particular to the setting in which the system will be used. They only have to do this to the extent the intended purpose requires. The Article 42(1) presumption matches this requirement point for point. If the training and testing data actually reflect the intended setting, the provider is treated as having met Article 10(4) and does not have to show separately that the data sets account for setting-specific characteristics. What the presumption does not cover. It is a presumption of conformity, not a full exemption, and it applies only to the Article 10(4) requirement. It does not relieve the provider of the other data-quality criteria in Article 10, which apply whenever training, validation and testing data sets are used (Article 10(1)). These are. Data governance and management (Article 10(2)): practices appropriate to the intended purpose. These cover design choices, how data is collected and where it comes from, how it is prepared, the assumptions made, and whether enough suitable data is available. They also cover examining possible biases, measures to detect, prevent and reduce those biases, and identifying data gaps. Data quality (Article 10(3)): data sets must be relevant, sufficiently representative, as free of errors and as complete as possible, and have appropriate statistical properties. Special categories of personal data (Article 10(5)): conditions that apply when such data is processed for bias detection and correction. The presumption also covers training and testing data only. It does not certify validation data, and it does not remove the provider's wider obligations for high-risk systems.",
+   "criteria_text": [
+    "Presumed compliant with Article 10(3) representativeness/quality requirement for that setting",
+    "Presumption is limited to the extent required by the intended purpose",
+    "Not an exemption from other Article 10 obligations (e.g., bias examination/mitigation)"
+   ],
+   "criteria": [
+    false,
+    true,
+    true
+   ],
+   "criterion_remarks": [
+    "The candidate answer refers to Article 10(4), not Article 10(3); the criterion requires a presumption of compliance with the representativeness/quality requirement in Article 10(3), which is not stated or substantively addressed.",
+    "The answer states the presumption applies only to the extent required by the intended purpose, which matches the substance of the criterion.",
+    "The answer clearly states the presumption is limited to Article 10(4) and does not relieve providers of other Article 10 obligations, including bias examination and mitigation under Article 10(2) and data quality under Article 10(3)."
+   ],
+   "n_criteria_passed": 2,
+   "tone_ok": true,
+   "tone_remark": "Professional, neutral, and well-structured; presents information in a logical, regulatory-appropriate manner without self-reference or informality.",
+   "answer_chars": 1989,
+   "reference_chars": 605,
+   "refs": [
+    "Article 10.2",
+    "Article 42.1"
+   ],
+   "expected_refs": [
+    "Article 42.1"
+   ],
+   "latency_s": 54.60905450000428
+  },
+  {
+   "id": "rg_037",
+   "question": "When registering a high-risk AI system in the EU database under the EU AI Act, what specific information must the provider submit? List the required items.",
+   "answer": "Under Article 49(1), before a high-risk AI system listed in Annex III is placed on the market or put into service, the provider (or, where applicable, its authorised representative) must register itself and the system in the EU database. Article 71(2) says the provider or authorised representative enters the data. The information required is the 13 items in Section A of Annex VIII. The provider's name, address and contact details. If someone else submits the information on the provider's behalf, that person's name, address and contact details. The authorised representative's name, address and contact details, where applicable. The AI system's trade name and any other unambiguous reference that allows the system to be identified and traced. A description of the system's intended purpose and of the components and functions it supports. A basic and concise description of the information the system uses (data, inputs) and its operating logic. The system's status: on the market or in service, no longer placed on the market or in service, or recalled. Where applicable, the type, number and expiry date of the certificate issued by the notified body, and that body's name or identification number. Where applicable, a scanned copy of that certificate. Any Member States where the system has been placed on the market, put into service or made available in the Union. A copy of the EU declaration of conformity. Electronic instructions for use. A URL for additional information (optional). Article 71(5) adds that the database also holds the names and contact details of the natural persons who register the system and have legal authority to represent the provider. Three limits apply to this list. Critical infrastructure (Annex III, point 2): these systems are not entered in the EU database. Under Article 49(5) they are registered at national level. Law enforcement, migration, asylum and border control (Annex III, points 1, 6 and 7): under Article 49(4)(a), registration goes into a secure non-public section of the database. It covers only Section A, points 1 to 10, without points 6, 8 and 9. Annex VIII, point 12, also expressly excludes instructions for use for these systems. Only the Commission and the national authorities referred to in Article 74(8) can access this section. Annex I products: Article 49(1) covers only Annex III systems. High-risk systems classified under Article 6(1) through the Annex I product legislation are therefore not subject to this registration duty.",
+   "criteria_text": [
+    "Contact details of the provider, of any person submitting on its behalf and of the authorised representative, where applicable (Annex VIII, Section A, points 1 to 3)",
+    "AI system trade name and an unambiguous reference allowing identification and traceability (point 4)",
+    "Intended purpose and the components and functions the system supports (point 5)",
+    "Basic and concise description of the data and inputs used and the operating logic (point 6)",
+    "Market status and the notified body certificate details with a scanned copy, where applicable (points 7 to 9)",
+    "Member States concerned, a copy of the EU declaration of conformity and the electronic instructions for use (points 10 to 12)"
+   ],
+   "criteria": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ],
+   "criterion_remarks": [
+    "The answer lists the provider's contact details, those of any person submitting on its behalf, and the authorised representative where applicable, as required by Annex VIII, Section A, points 1–3.",
+    "The answer includes the AI system trade name and an unambiguous reference for identification and traceability, corresponding to point 4.",
+    "The answer provides a description of the intended purpose and the components and functions supported by the system, as required by point 5.",
+    "The answer gives a basic and concise description of the data, inputs, and operating logic, satisfying point 6.",
+    "The answer includes the system's market status and, where applicable, the notified body certificate details and scanned copy, covering points 7 to 9.",
+    "The answer lists the Member States concerned, a copy of the EU declaration of conformity, and electronic instructions for use, as required by points 10 to 12."
+   ],
+   "n_criteria_passed": 6,
+   "tone_ok": true,
+   "tone_remark": "Professional, neutral register with clear structure and logical flow; avoids self-reference, hedging, or informality; presents information in a coherent, actionable manner.",
+   "answer_chars": 2503,
+   "reference_chars": 795,
+   "refs": [
+    "Article 49.4",
+    "Annex III.7.b",
+    "Article 71.5",
+    "Article 74.3",
+    "Annex VIII.12"
+   ],
+   "expected_refs": [
+    "Annex VIII.a"
+   ],
+   "latency_s": 43.82691209999757
+  },
+  {
+   "id": "rg_085",
+   "question": "Does the AI Act prohibit or classifies as high-risk the use of AI in drones? Can I use AI in a drone to find who's around in town? And what if it's just a toy drone? And what about toy drones used for other applications?",
+   "answer": "The system described is not among the practices prohibited under Article 5 (social scoring, untargeted facial-image scraping, manipulative or exploitative techniques, and the other exhaustively-listed bans). Whether it is high-risk turns on Article 6: it is high-risk only if it is a safety component of a product regulated under Annex I (for example a medical device under the MDR or IVDR) or falls within one of the Annex III use cases. Otherwise it is limited- or minimal-risk, subject mainly to the Article 50 transparency duties where it interacts directly with people.",
+   "criteria_text": [
+    "No blanket prohibition/high-risk classification for drones as such — turns on AI system's intended use under Article 6",
+    "Drone AI identifying people in public = remote biometric identification, high-risk under Annex III(1)(a), not the 1:1 verification exclusion",
+    "Toy status irrelevant — classification depends on intended use, not the device",
+    "Toy drone used for other application is high-risk only if that use matches Annex III (or Article 6(1) safety-component/conformity-assessment criteria)"
+   ],
+   "criteria": [
+    true,
+    false,
+    false,
+    false
+   ],
+   "criterion_remarks": [
+    "States that classification as high-risk depends on intended use under Article 6, not on being a drone per se.",
+    "Does not state that using AI in a drone to identify people in public constitutes remote biometric identification under Annex III(1)(a), nor address the exclusion for 1:1 verification.",
+    "Fails to state that toy status is irrelevant; does not mention device categorization or its irrelevance to risk classification.",
+    "Does not address whether a toy drone used for other applications would be high-risk based on Annex III or Article 6(1) criteria."
+   ],
+   "n_criteria_passed": 1,
+   "tone_ok": true,
+   "tone_remark": "Professional, neutral, and clearly structured without self-reference or hedging.",
+   "answer_chars": 574,
+   "reference_chars": 739,
+   "refs": [
+    "Article 6.2",
+    "Article 5.1.d",
+    "Article 50.4",
+    "Annex III.7.b",
+    "Annex I"
+   ],
+   "expected_refs": [
+    "Article 6.1",
+    "Article 6.2",
+    "Annex III.1.a"
+   ],
+   "latency_s": 70.88454120000097
+  },
+  {
+   "id": "rg_092",
+   "question": "Do Annex I, Annex II, and Annex III all have to deal with high-risk AI classifications? If not, which doesn't/do not, and what is/are it/they about?",
+   "answer": "Union harmonisation legislation list (Section A: New Legislative Framework, machinery, toys, radio equipment, medical devices, lifts, etc.; Section B: civil aviation, motor vehicles, marine equipment, rail, agricultural vehicles), AI safety-components of products covered here are classified high-risk under Article 6(1). List of criminal offences referred to in Article 5(1)(h) permitting real-time remote biometric identification by law enforcement: terrorism, trafficking in human beings, sexual exploitation of children, illicit trafficking in narcotic drugs / weapons / nuclear material, murder, kidnapping, rape, armed robbery, organised crime, participation in a criminal organisation, environmental crime, provided the offence is punishable in the relevant Member State by a custodial sentence of at least 4 years. Eight high-risk AREAS (Annex III numbered headings; each area contains one or more lettered use-cases, and only a listed use-case makes a system high-risk under Article 6(2)): biometrics, critical infrastructure, education + vocational training, employment + worker management (recruitment, task allocation, promotion and termination decisions, and performance evaluation affecting workers' fundamental rights), essential private + public services, law enforcement, migration + asylum + border control, and administration of justice + democratic processes.",
+   "criteria_text": [
+    "No",
+    "Annex II is the one that does not - it lists criminal offences referred to in Article 5(1), first subparagraph, point (h)(iii), a prohibited-practices provision, not high-risk classification",
+    "Annex I and Annex III both relate to high-risk classification - Annex I (Union harmonisation legislation) feeds Article 6(1), Annex III (use-case areas) is referred to in Article 6(2)"
+   ],
+   "criteria": [
+    true,
+    true,
+    true
+   ],
+   "criterion_remarks": [
+    "The answer correctly states that not all annexes deal with high-risk AI classifications by explicitly describing Annex II as listing criminal offences for law enforcement exceptions, not high-risk systems.",
+    "The answer identifies Annex II as listing criminal offences under Article 5(1)(h)(iii) and explains its role in permitting real-time remote biometric identification by law enforcement, thereby showing it is unrelated to high-risk classification.",
+    "The answer correctly states that Annex I relates to high-risk classification via Article 6(1) for safety components in products under Union harmonisation legislation, and that Annex III lists high-risk areas under Article 6(2), specifying its structure and use-case dependency."
+   ],
+   "n_criteria_passed": 3,
+   "tone_ok": true,
+   "tone_remark": "Professional, neutral, and structured in clear prose with no self-reference, hedging, or informality; presents information in a logical, actionable manner for a regulatory context.",
+   "answer_chars": 1379,
+   "reference_chars": 842,
+   "refs": [
+    "Article 6",
+    "Annex I",
+    "Annex II",
+    "Annex III"
+   ],
+   "expected_refs": [
+    "Annex I",
+    "Annex II",
+    "Annex III"
+   ],
+   "latency_s": 35.69316009999602
+  }
+ ]
+}

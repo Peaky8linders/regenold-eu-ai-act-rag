@@ -1,0 +1,14 @@
+{
+ "label": "r419-hard",
+ "mode": "hard",
+ "ckpt": "evals/bench/results/official-r419-hard-hard.ckpt.jsonl",
+ "judge_identity": "openrouter:qwen/qwen3-235b-a22b-2507:t=0.1:grouped:r=3",
+ "judge_valid": false,
+ "judge_void_reason": "1/2 rows (50%) returned NO live judge run and would be scored all-False",
+ "reference_axes": {
+  "ref_correctness_loose": 96.0784,
+  "ref_correctness_strict": 70.5882,
+  "ref_conciseness": 44.7899
+ },
+ "n": 110
+}
