@@ -62,6 +62,49 @@ LENSES: dict[str, str] = {
         "Injection, authentication/authorisation gaps, data exposure, secret handling, "
         "and OWASP top 10, at the changed input/output boundaries."
     ),
+    "euaiac": (
+        "EU AI ACT LEGAL CORRECTNESS. Ground every claim in the statute text this repo "
+        "ships rather than in memory: `app/data/official_eu_ai_act.py` (the EUR-Lex text), "
+        "`app/data/eu_ai_act_tree.py`, `app/data/article_requirements_full.py`, "
+        "`app/data/article_existence.py`, `app/data/definitions.py`, "
+        "`app/data/eu_ai_act_corpus.py`. Hunt: provision numbers that do not exist or are "
+        "misnumbered; a duty attached to the WRONG ROLE (provider / deployer / importer / "
+        "distributor / authorised representative / GPAI provider); prohibitions vs "
+        "high-risk confusion; a rule that cites a parent article where the Act's operative "
+        "limb is a specific subpoint (or vice versa); requirement→article mappings that "
+        "contradict the Act (QMS→Art. 17, technical documentation→Art. 11, data "
+        "governance→Art. 10, human oversight→Art. 14, FRIA→Art. 27, post-market "
+        "monitoring→Art. 72, serious-incident reporting→Art. 73, registration→Art. 49, "
+        "transparency→Art. 50, GPAI→Arts. 53-55); thresholds, dates, Annex III subpoint "
+        "numbers and Annex I legislation that are wrong. Quote the exact provision that "
+        "contradicts the code."
+    ),
+    "kg": (
+        "KNOWLEDGE GRAPH INTEGRITY. The live store is Neo4j Aura; the code is "
+        "`app/engines/kg_context.py`, the graph-expansion/fusion paths in "
+        "`app/engines/_graph_rag_impl.py`, `app/engines/graph_semantic.py`, "
+        "`scripts/seed_neo4j_kb.py`. Hunt: Cypher whose MATCH pattern cannot match the real "
+        "schema (a required node or edge that does not exist for the common case, so the "
+        "query returns 0 rows); label/property names that drifted from the seeder; "
+        "ORDER/LIMIT that silently drops operative provisions; traversal that requires a "
+        "SubPoint where the graph stores bare Points; the in-process mirror and the live "
+        "query disagreeing in shape or budget; connection/timeout paths that swallow the "
+        "error and return an EMPTY context, so retrieval silently produces nothing and the "
+        "failure is indistinguishable from 'no provisions found'."
+    ),
+    "ontology": (
+        "ONTOLOGY AND DATA-MODEL CONSISTENCY. `app/data/ontology.py`, "
+        "`app/data/role_obligations.py`, `app/data/ids.py`, `app/data/eu_ai_act_tree.py`, "
+        "`trustgraph-integration/knowledge/eu-ai-act-core.ttl` and its generator "
+        "`scripts/build_trustgraph_core.py`. Hunt: role→article maps that list provisions "
+        "imposing no duty on that role (or omit ones that do); requirement anchors that "
+        "contradict the Act; identifier/canonicalisation drift — the same provision written "
+        "two ways (`Art. 6` vs `Article 6`, `Annex III.1.a` vs `Annex III(1)(a)` vs "
+        "`Annex III point 1(a)`) — that silently misses a join, a lookup or a de-duplication, "
+        "or that lets one node be cited twice under two spellings; a generated artifact "
+        "disagreeing with the Python it is generated from; alias/vocabulary tables mapping a "
+        "concept to the wrong provision."
+    ),
 }
 
 PROMPT = """You are a specialist code reviewer. Your ONLY lens is:
@@ -141,6 +184,14 @@ def main() -> int:
     ap.add_argument("--app-model", default="opus")
     ap.add_argument("--harness-model", default="sonnet")
     ap.add_argument("--only", default="", help="comma-separated lens keys")
+    # One claude CLI process per job, all at once by default. A saturated
+    # wrapper answers nothing useful, so the cap is explicit and reported.
+    ap.add_argument(
+        "--jobs",
+        type=int,
+        default=0,
+        help="max concurrent agents (0 = all jobs at once)",
+    )
     a = ap.parse_args()
 
     app_files = subprocess.run(
@@ -170,7 +221,9 @@ def main() -> int:
     for name, _key, files, model in jobs:
         print(f"  {name:<20} model={model:<8} files={len(files)}", flush=True)
 
-    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+    workers = len(jobs) if a.jobs <= 0 else min(a.jobs, len(jobs))
+    print(f"concurrency: {workers} of {len(jobs)} jobs", flush=True)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = [
             pool.submit(
                 _run_agent, name, key, files,
