@@ -1,0 +1,226 @@
+{
+  "rg_010|KG=0": {
+    "mean_answer_chars": 1212.8,
+    "answer_chars_range": [
+      603,
+      1492
+    ],
+    "mean_ans_conc": 65.82,
+    "row": "rg_010",
+    "arm": "0",
+    "focal_criterion": 2,
+    "n_samples": 10,
+    "n_primary": 10,
+    "n_fallback_excluded": 0,
+    "focal_credit_majority": "6/10",
+    "focal_credit_atomic_draws": "18/30",
+    "strict_samples": "6/10",
+    "focal_credit_per_sample": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false
+    ],
+    "strict_per_sample": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false
+    ],
+    "answer_chars": [
+      734,
+      603,
+      1478,
+      1466,
+      1492,
+      1060,
+      1374,
+      1380,
+      1466,
+      1075
+    ],
+    "legs": [
+      "primary"
+    ]
+  },
+  "rg_010|KG=1": {
+    "mean_answer_chars": 1026.7,
+    "answer_chars_range": [
+      450,
+      1376
+    ],
+    "mean_ans_conc": 72.53,
+    "row": "rg_010",
+    "arm": "1",
+    "focal_criterion": 2,
+    "n_samples": 10,
+    "n_primary": 10,
+    "n_fallback_excluded": 0,
+    "focal_credit_majority": "5/10",
+    "focal_credit_atomic_draws": "15/30",
+    "strict_samples": "5/10",
+    "focal_credit_per_sample": [
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false
+    ],
+    "strict_per_sample": [
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false
+    ],
+    "answer_chars": [
+      1201,
+      1167,
+      1174,
+      1255,
+      486,
+      556,
+      1376,
+      1273,
+      1329,
+      450
+    ],
+    "legs": [
+      "primary"
+    ]
+  },
+  "rg_045|KG=0": {
+    "mean_answer_chars": 1463.6,
+    "answer_chars_range": [
+      1265,
+      1708
+    ],
+    "mean_ans_conc": 25.59,
+    "row": "rg_045",
+    "arm": "0",
+    "focal_criterion": 3,
+    "n_samples": 10,
+    "n_primary": 10,
+    "n_fallback_excluded": 0,
+    "focal_credit_majority": "2/10",
+    "focal_credit_atomic_draws": "11/30",
+    "strict_samples": "2/10",
+    "focal_credit_per_sample": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ],
+    "strict_per_sample": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ],
+    "answer_chars": [
+      1499,
+      1708,
+      1542,
+      1298,
+      1509,
+      1313,
+      1265,
+      1672,
+      1451,
+      1379
+    ],
+    "legs": [
+      "primary"
+    ]
+  },
+  "rg_045|KG=1": {
+    "mean_answer_chars": 1402.8,
+    "answer_chars_range": [
+      817,
+      2026
+    ],
+    "mean_ans_conc": 28.34,
+    "row": "rg_045",
+    "arm": "1",
+    "focal_criterion": 3,
+    "n_samples": 10,
+    "n_primary": 10,
+    "n_fallback_excluded": 0,
+    "focal_credit_majority": "5/10",
+    "focal_credit_atomic_draws": "17/30",
+    "strict_samples": "5/10",
+    "focal_credit_per_sample": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      false,
+      true
+    ],
+    "strict_per_sample": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      false,
+      true
+    ],
+    "answer_chars": [
+      1214,
+      1285,
+      2026,
+      1256,
+      1285,
+      1711,
+      1026,
+      1535,
+      1873,
+      817
+    ],
+    "legs": [
+      "primary"
+    ]
+  }
+}

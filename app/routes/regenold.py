@@ -102,6 +102,7 @@ from app.integrations.regenold.auth import (
 )
 from app.integrations.regenold.answer_normaliser import answer_has_enumeration
 from app.integrations.regenold.models import (
+    MAX_MESSAGE_CONTENT_CHARS,
     MAX_REFERENCES,
     RegenoldAskRequest,
     RegenoldAskResponse,
@@ -2295,6 +2296,62 @@ _RATE_KEY_PREFIX_ANON = "regenold-anon:"
 # The truncation logic at _build_question_from_history drops the oldest
 # turns first when the budget overflows, so bumping this is safe.
 _HISTORY_TURNS_TO_INCLUDE = 40
+
+
+#: R418 — marker for a trimmed assistant echo. Kept inside the cap so the
+#: trimmed content still validates, and greppable so a post-hoc reader can see
+#: the tail was dropped rather than inferring a short answer.
+_ECHO_TRIM_MARK = " [...]"
+
+
+def _trim_assistant_echoes(messages: list[dict]) -> list[dict]:
+    """Cap over-long ASSISTANT messages BEFORE request validation (R418).
+
+    ``RegenoldChatMessage.content`` is capped at :data:`MAX_MESSAGE_CONTENT_CHARS`
+    (4 000) as a P0 prompt-injection / DoS guard, and Pydantic enforces it — so
+    the whole request 422s before a single line of this route runs. The guard's
+    target is INPUT a caller chooses to send. An assistant turn is not input: it
+    is our own previous answer, replayed by the caller exactly as the official
+    hard-mode protocol does (our answer, then the adversarial pushback).
+
+    One character over the cap used to destroy the request, and in a rolling
+    conversation the damage compounds. Measured on the R418 live sample: a
+    4 011-char answer on ``rg_069`` 422d its own pushback, the failed turn left
+    the history frozen, and the next 16 consecutive rows 422d too — 16 of 44
+    multi-turn rows returned an empty answer, each scoring zero on every axis.
+
+    So: trim the ECHO to the cap, keeping the head (where the verdict and the
+    lead citations are), leave an ``assistant_echo_trimmed=`` trace note so the
+    truncation is a recorded fact rather than an inferred one, and keep the hard
+    422 for over-cap ``user`` / ``system`` content — which is what the guard was
+    built to reject and what the evaluator never sends. Returns a new list; the
+    caller's list and dicts are not mutated.
+    """
+    out: list[dict] = []
+    for msg in messages:
+        if not isinstance(msg, dict):
+            out.append(msg)
+            continue
+        content = msg.get("content")
+        if (
+            str(msg.get("role") or "") == "assistant"
+            and isinstance(content, str)
+            and len(content) > MAX_MESSAGE_CONTENT_CHARS
+        ):
+            keep = MAX_MESSAGE_CONTENT_CHARS - len(_ECHO_TRIM_MARK)
+            msg = {**msg, "content": content[:keep] + _ECHO_TRIM_MARK}
+            try:
+                from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                    record_note,
+                )
+
+                record_note(
+                    f"assistant_echo_trimmed={len(content)}->{len(msg['content'])}"
+                )
+            except Exception:  # noqa: BLE001 — tracing must never break the route
+                pass
+        out.append(msg)
+    return out
 
 
 def _max_question_chars() -> int:
@@ -8900,6 +8957,12 @@ def regenold_eu_ai_act_ask(
             detail={"code": "regenold_invalid_input", "message": "Expected messages array."},
         )
 
+    # R418 — trim ECHOED assistant turns to the per-message cap the model
+    # enforces, before validation sees them. Without this our own >4 000-char
+    # answer 422s the pushback turn that replays it; see
+    # ``_trim_assistant_echoes`` for the measured cascade.
+    raw_messages = _trim_assistant_echoes(raw_messages)
+
     # P0 #5 — Pydantic ValidationError for over-cap content (>4K) or
     # malformed message shape. Wrap so the response is 422 with a stable
     # error code instead of bubbling up as a 500. Same shape as the
@@ -9242,6 +9305,26 @@ def regenold_eu_ai_act_ask(
                 record_note(f"cache_skip_degraded_serve={_served_by}")
             except Exception:  # noqa: BLE001 — tracing must never break the route
                 pass
+
+    # R418 — put the serving leg on the WIRE, not only in ``graph_stats``.
+    # R417 records ``stage2_served_by`` there, but the deployed response
+    # exposes only ``answer`` / ``references`` / ``reasoning``: a live audit
+    # could not separate a wrapper-served polish from a Bedrock fallback
+    # without inferring it from the model name, and that inference is exactly
+    # what mis-read rg_010 as three independent fallback samples. One note,
+    # emitted on BOTH paths (cache hit and fresh ask), makes the leg a
+    # per-row fact an arm can read after the run.
+    try:
+        _served_leg = str((rag_res.graph_stats or {}).get("stage2_served_by") or "")
+        if _served_leg:
+            from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                record_note as _record_leg_note,
+            )
+
+            _record_leg_note(f"stage2_served_by={_served_leg}")
+    except Exception:  # noqa: BLE001 — tracing must never break the route
+        pass
+
     # R50 — surface the engine-side stage-2 outcome into the trace so
     # the judge can correlate "Sonnet polish landed" with output drift.
     # R97 — also captured locally: when Stage-2 synthesis landed (a

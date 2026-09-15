@@ -341,6 +341,43 @@ def _kg_point_text_enabled(history_turn_count: int | None = None) -> bool:
     The cost is answer length (mean 1,425 -> 1,543 chars), which is where the
     -3.3 pp of conciseness comes from.
 
+    R419 RE-SCORE — THE +8.0 IS A SINGLE-DRAW PAIR, NOT A REPRODUCIBLE GAIN
+    ---------------------------------------------------------------------
+    The whole answer-correctness movement above is the same two criteria:
+    across all 25 paired rows (87 criteria) exactly ``rg_010``'s *aim* limb and
+    ``rg_045``'s "without undue delay" limb changed, which is both the +8.0 pp of
+    strict and the +2.3 pp of loose (2/87). Neither survives resampling
+    (``docs/measurements/r418/kg_lever_ans_strict_repro.py``):
+
+    * ``rg_045`` — the judge credited the limb in only 2 of its own 3 repetitions
+      (``F T T``), so the row's strict verdict is draw-dependent. The arm's
+      published min-max bound on Ans Strict (92.0-96.0) is this one row.
+    * ``rg_010`` — judge-stable on that pair, but **10 fresh generations per arm**
+      credit the aim limb at the SAME rate on both arms (KG=0 3/5, KG=1 3/5;
+      9/15 atomic judge draws each). The 4/5 vs 5/5 was two draws from one
+      distribution.
+
+    Re-scored on the surviving rows, Ans Strict is **95.65 vs 95.65 (+0.0 pp)** and
+    Ans Loose is **98.72 vs 98.72 (+0.0 pp)**.
+
+    Nor is the -3.3 pp conciseness "cost" above a measured cost. It is answer
+    length, and on the same 25 paired rows the ON arm is longer on only **14 of
+    25** (mean 1,426 -> 1,543 chars; sign-test p=0.69, Wilcoxon p=0.23) — a few
+    large rows move the mean, and the resample above shows one row returning
+    450-1,492 chars at FIXED input and arm, so a mean-only reading is unsafe.
+    Substituting the corrected correctness axes into the published board moves the
+    combined Overall from +0.6 pp to -0.42 pp, but that residual is itself this
+    unsupported length difference: **on this corpus, every axis of this lever is
+    within single-draw noise.** The deterministic reach evidence below stands
+    unchanged (it describes what the flag puts in the prompt, not what it scored),
+    and so does the hard-split scope: that read is independent of this one.
+
+    CONSEQUENCE FOR THE DEFAULT: this audit does not support - or refute - the
+    flip. It removes the measured JUSTIFICATION for it; the case for ON now rests
+    on the grounding evidence (the legacy query returns 0 units for bare points
+    such as those carrying Art. 5(1)(a)-(h)) rather than on a scored gain, and the
+    case for OFF rests on the same absence. Do not requote the +8.0.
+
     R416 HARD-SPLIT READ — THE LEVER IS MODALITY-RESTRICTED
     ------------------------------------------------------
     R416's residual named this gate and its revert. It was run (paired, 32

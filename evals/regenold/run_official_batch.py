@@ -101,15 +101,22 @@ def _provenance(body: dict[str, Any] | None) -> dict[str, Any]:
         if not isinstance(trace, dict):
             return {}
         model = ""
+        served_by = ""
         for note in trace.get("notes") or []:
-            if isinstance(note, str) and "stage2_model=" in note:
+            if not isinstance(note, str):
+                continue
+            if not model and "stage2_model=" in note:
                 model = note.split("stage2_model=", 1)[1].split()[0]
-                break
+            # R418 — the route now names the leg it shipped. Prefer this over
+            # inferring from the model prefix: ``primary`` / ``fallback`` /
+            # ``deterministic`` is what the cacheability guard actually read.
+            if not served_by and "stage2_served_by=" in note:
+                served_by = note.split("stage2_served_by=", 1)[1].split()[0]
         return {
             "stage2_polish": trace.get("stage2_polish"),
             "retrieval_path": trace.get("retrieval_path"),
             "engine_confidence": trace.get("engine_confidence"),
-            "stage2_model": model,
+            "stage2_model": model,            "stage2_served_by": served_by,
         }
     except Exception:  # noqa: BLE001 — provenance is best-effort telemetry
         return {}
