@@ -1,0 +1,191 @@
+{
+  "lever": "REGENOLD_KG_POINT_TEXT (a=0 vs b=1)",
+  "instrument": "wrapper:claude-sonnet-5:t=0.1:grouped:r=3",
+  "source": {
+    "arm_a": "official-lever-a-paired-kgpt.ckpt.jsonl",
+    "arm_b": "official-lever-b-matched-kgpt.ckpt.jsonl",
+    "verdicts": "docs/measurements/r415/judge-cache-r415-wrapper.jsonl"
+  },
+  "n_rows": 25,
+  "strict_movers": [
+    {
+      "id": "rg_010",
+      "arm_a": "4/5",
+      "arm_b": "5/5",
+      "rep_strict_a": [
+        false,
+        false,
+        false
+      ],
+      "rep_strict_b": [
+        true,
+        true,
+        true
+      ],
+      "unstable_criteria_a": [],
+      "unstable_criteria_b": []
+    },
+    {
+      "id": "rg_045",
+      "arm_a": "3/4",
+      "arm_b": "4/4",
+      "rep_strict_a": [
+        false,
+        false,
+        false
+      ],
+      "rep_strict_b": [
+        false,
+        true,
+        true
+      ],
+      "unstable_criteria_a": [],
+      "unstable_criteria_b": [
+        3
+      ]
+    }
+  ],
+  "excluded_judge_unstable": [
+    "rg_045"
+  ],
+  "excluded_generation_unstable": [
+    "rg_010",
+    "rg_045"
+  ],
+  "generation_rule": {
+    "rg_010": "measured: KG=1 5/10 vs KG=0 6/10 (Fisher two-sided p=1.000, alpha=0.05); atomic draws KG=1 15/30 vs KG=0 18/30",
+    "rg_045": "measured: KG=1 5/10 vs KG=0 2/10 (Fisher two-sided p=0.350, alpha=0.05); atomic draws KG=1 17/30 vs KG=0 11/30"
+  },
+  "generation_rule_bar": "arm-B credit rate higher AND Fisher two-sided p < 0.05",
+  "resample_artifact": "kgpt-credit-resample.json",
+  "variants": {
+    "published_all_rows": {
+      "n": 25,
+      "arm_a": {
+        "n": 25,
+        "ans_correctness_loose": 96.5517,
+        "ans_correctness_strict": 88.0
+      },
+      "arm_b": {
+        "n": 25,
+        "ans_correctness_loose": 98.8506,
+        "ans_correctness_strict": 96.0
+      },
+      "delta_pp": {
+        "ans_correctness_loose": 2.3,
+        "ans_correctness_strict": 8.0
+      }
+    },
+    "excl_judge_unstable": {
+      "n": 24,
+      "arm_a": {
+        "n": 24,
+        "ans_correctness_loose": 97.5904,
+        "ans_correctness_strict": 91.6667
+      },
+      "arm_b": {
+        "n": 24,
+        "ans_correctness_loose": 98.7952,
+        "ans_correctness_strict": 95.8333
+      },
+      "delta_pp": {
+        "ans_correctness_loose": 1.2,
+        "ans_correctness_strict": 4.17
+      }
+    },
+    "excl_generation_unstable": {
+      "n": 23,
+      "arm_a": {
+        "n": 23,
+        "ans_correctness_loose": 98.7179,
+        "ans_correctness_strict": 95.6522
+      },
+      "arm_b": {
+        "n": 23,
+        "ans_correctness_loose": 98.7179,
+        "ans_correctness_strict": 95.6522
+      },
+      "delta_pp": {
+        "ans_correctness_loose": 0.0,
+        "ans_correctness_strict": 0.0
+      }
+    },
+    "excl_both": {
+      "n": 23,
+      "arm_a": {
+        "n": 23,
+        "ans_correctness_loose": 98.7179,
+        "ans_correctness_strict": 95.6522
+      },
+      "arm_b": {
+        "n": 23,
+        "ans_correctness_loose": 98.7179,
+        "ans_correctness_strict": 95.6522
+      },
+      "delta_pp": {
+        "ans_correctness_loose": 0.0,
+        "ans_correctness_strict": 0.0
+      }
+    }
+  },
+  "rep_level_bounds": {
+    "repetitions": 3,
+    "delta_per_rep_pp": [
+      4.0,
+      8.0,
+      8.0
+    ],
+    "delta_min_pp": 4.0,
+    "delta_max_pp": 8.0
+  },
+  "corrected_board": {
+    "0": {
+      "ans_correctness_loose": 98.7179,
+      "ans_correctness_strict": 95.6522,
+      "ans_conciseness": 47.8,
+      "ref_correctness_loose": 100.0,
+      "ref_correctness_strict": 70.8,
+      "ref_conciseness": 51.6,
+      "regulatory_tone": 60.0,
+      "resp_speed": 70.4,
+      "overall": 71.6747
+    },
+    "1": {
+      "ans_correctness_loose": 98.7179,
+      "ans_correctness_strict": 95.6522,
+      "ans_conciseness": 44.5,
+      "ref_correctness_loose": 100.0,
+      "ref_correctness_strict": 70.8,
+      "ref_conciseness": 52.2,
+      "regulatory_tone": 60.0,
+      "resp_speed": 71.3,
+      "overall": 71.2524
+    },
+    "delta_pp": {
+      "ans_correctness_loose": 0.0,
+      "ans_correctness_strict": 0.0,
+      "ans_conciseness": -3.3,
+      "ref_correctness_loose": 0.0,
+      "ref_correctness_strict": 0.0,
+      "ref_conciseness": 0.6,
+      "regulatory_tone": 0.0,
+      "resp_speed": 0.9,
+      "overall": -0.42
+    },
+    "published_overall": {
+      "0": 70.7,
+      "1": 71.3,
+      "delta_pp": 0.5999999999999943
+    }
+  },
+  "conciseness_cost": {
+    "published_delta_pp": -3.299999999999997,
+    "mean_chars_a": 1425.6,
+    "mean_chars_b": 1543.2,
+    "rows_longer_on": 14,
+    "rows_shorter_on": 11,
+    "sign_test_p": 0.69,
+    "wilcoxon_p": 0.2304,
+    "call": "cost NOT supported: the ON arm is not systematically longer"
+  }
+}

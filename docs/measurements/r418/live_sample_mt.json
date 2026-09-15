@@ -1,0 +1,52 @@
+{
+  "multi_turn_hard": {
+    "ckpt": "evals\\bench\\results\\official-r418sense-mt-hard.ckpt.jsonl",
+    "axes_all_rows": {
+      "n": 44,
+      "n_ref_scored": 41,
+      "ref_correctness_loose": 60.98,
+      "ref_correctness_strict": 47.56,
+      "ref_conciseness": 65.23,
+      "ans_conciseness": 33.54,
+      "resp_speed": 85.35
+    },
+    "axes_excl_criteria_unstable": {
+      "n": 41,
+      "n_ref_scored": 38,
+      "ref_correctness_loose": 60.53,
+      "ref_correctness_strict": 46.05,
+      "ref_conciseness": 64.24,
+      "ans_conciseness": 32.71,
+      "resp_speed": 84.93
+    },
+    "n_criteria_unstable": 3,
+    "signals": {
+      "n": 44,
+      "errors": 17,
+      "refusal_rate": 0.0,
+      "leg_mix": {
+        "unrecorded": 25,
+        "wrapper": 19
+      },
+      "gold_head_dropped_total": 0,
+      "gold_head_dropped_rows": [],
+      "ref_heads_changed_rows": 12,
+      "conceded_rows": 0,
+      "mean_ref_head_jaccard": 0.8188,
+      "turn1_latency_s": {
+        "p50": 7.9,
+        "p95": 40.6,
+        "max": 57.4
+      },
+      "graded_latency_s": {
+        "p50": 7.3,
+        "p95": 36.9,
+        "max": 57.3
+      },
+      "sub_second_graded": 20,
+      "turn1_chars_p50": 617.0,
+      "graded_chars_p50": 617.0,
+      "salvage_suspects": []
+    }
+  }
+}

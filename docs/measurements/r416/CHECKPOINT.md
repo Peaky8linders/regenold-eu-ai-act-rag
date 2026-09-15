@@ -90,6 +90,21 @@ verdicts are a judge-cache hit — this round cost one arm, not two.
 
 ## 3. Corrections to prior evidence (so they are not used again)
 
+* **The easy board's `ans_strict` +8.0 pp is a single-draw pair, not a gain.**
+  Re-scored in R419 (`docs/measurements/r418/kg_lever_ans_strict_repro.py`). The
+  entire answer-correctness movement of this lever is **two criteria out of 87**
+  across the 25 paired rows — `rg_010`'s Art. 14 *aim* limb (which is the +2.3 pp
+  of `ans_loose` as well, 2/87) and `rg_045`'s *without undue delay* limb — and
+  neither survives resampling: `rg_045`'s credit appears in only 2 of the judge's
+  3 own repetitions, and **10 fresh generations per arm** credit `rg_010`'s limb
+  at the same rate on both arms (KG=0 6/10, KG=1 5/10; atomic draws 18/30 vs
+  15/30, Fisher p=1.00). On the surviving rows Ans Strict is **95.65 vs 95.65
+  (+0.0 pp)**. The `-3.3 pp` conciseness "cost" in §1 is likewise not supported:
+  the ON arm is longer on only 14 of 25 rows (sign-test p=0.69). **Read every
+  *scored* number in §1 as one draw per row per arm; the reach and mechanism
+  evidence (§6.1, and the deterministic reach in §1) is unaffected, as is §6.4's
+  hard-split scope, which was measured independently.**
+
 * **Roadmap row 4 (sub-point grain) is CLOSED.** Its premise — "keys ~71 % sub-point vs
   our 14.3 %" — is stale. The recount on the frozen ledger (inputs pinned by SHA-256;
   dot-in-coordinate test on both sides; no head folding, which would erase the property)

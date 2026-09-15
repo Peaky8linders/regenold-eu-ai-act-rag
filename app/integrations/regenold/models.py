@@ -24,6 +24,13 @@ from app.integrations.regenold.answer_normaliser import (
 )
 
 
+#: Per-message content cap (P0 #5, 2026-05-09). Named because a second site
+#: now enforces the same bound: the route trims an ECHOED assistant turn to it
+#: instead of letting Pydantic 422 the request (R418). Two literal copies of
+#: 4 000 is how those two rules drift apart, so there is one.
+MAX_MESSAGE_CONTENT_CHARS = 4_000
+
+
 class RegenoldChatMessage(BaseModel):
     """OpenAI/LiteLLM-style message item.
 
@@ -46,7 +53,7 @@ class RegenoldChatMessage(BaseModel):
     # question-building helper, so an empty content field is safely
     # ignored downstream. The route-level guard at ``RegenoldAskRequest``
     # still requires the LIVE user question to be non-empty.
-    content: str = Field(min_length=0, max_length=4_000)
+    content: str = Field(min_length=0, max_length=MAX_MESSAGE_CONTENT_CHARS)
 
 
 class RegenoldAskRequest(BaseModel):
