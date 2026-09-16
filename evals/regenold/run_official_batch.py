@@ -53,6 +53,7 @@ from pathlib import Path
 from typing import Any
 
 from evals.bench import metrics as bench_metrics
+from evals.harness.gate_validity import ArmProbe, assess, lever_changes_system
 from evals.regenold.official_batch import (
     build_hard_messages,
     build_pushback_messages,
@@ -633,11 +634,24 @@ def _arm(
             # the explicit, validated --resume path above.
             with ckpt_path.open(file_mode, encoding="utf-8") as ckpt:
                 runner = _run_easy if m == "easy" else _run_hard
-                fresh = runner(pending, poster, url, api_key, timeout, ckpt)
+                # R422 — record what this arm ACTUALLY dialled and dispatched, so
+                # a transport outage can never be read as a lever delta. The
+                # probe zeros the transport counters, hashes every payload at the
+                # provider seam and snapshots the counters again on exit.
+                with ArmProbe(f"{label}{suffix}") as probe:
+                    fresh = runner(pending, poster, url, api_key, timeout, ckpt)
             by_id = {r["id"]: r for r in previous + fresh}
             got = [by_id[row.id] for row in rows if row.id in by_id]
+            # The GRADED rows carry their own Stage-2 provenance, which is what
+            # `count_deterministic_rows` needs; the request rows do not.
+            provenance = probe.provenance(rows=got)
             strata = _stratify(got)
-            result[m] = {"rows": got, "agg": _aggregate(got), "strata": strata}
+            result[m] = {
+                "rows": got,
+                "agg": _aggregate(got),
+                "strata": strata,
+                "provenance": provenance,
+            }
             _print_agg(f"{label}{suffix} {m}", result[m]["agg"])
             _print_strata(strata)
         return result
@@ -663,6 +677,20 @@ def main() -> None:
     ap.add_argument("--api-key", default=os.environ.get("REGENOLD_API_KEY"))
     ap.add_argument("--timeout", type=float, default=180.0)
     ap.add_argument("--limit", type=int, default=0, help="first N questions only")
+    ap.add_argument(
+        "--stride",
+        type=int,
+        default=0,
+        help=(
+            "take every Nth question instead of the first N — a REPRESENTATIVE sample "
+            "across the send order. The send order is front-loaded with the easy rows, "
+            "so a prefix is NOT the board's mix: the full 110 are 51 easy / 59 hard "
+            "(46% easy) while --limit 40 is 27 easy / 13 hard (68% easy), and "
+            "--stride 6 gives 6 easy / 13 hard. A skewed prefix has already produced "
+            "misleading readings (R422). Applied BEFORE --limit, so the two compose "
+            "as 'every Nth question, first M of those'."
+        ),
+    )
     ap.add_argument(
         "--resume",
         action="store_true",
@@ -700,6 +728,10 @@ def main() -> None:
         raise SystemExit("--cohere-rerank-min-gap requires a Cohere strict mode")
 
     rows = list(load_official_batch())
+    if args.stride:
+        if args.stride < 1:
+            raise SystemExit("--stride must be >= 1")
+        rows = rows[:: args.stride]
     if args.limit:
         rows = rows[: args.limit]
 
@@ -762,10 +794,31 @@ def main() -> None:
             arm_env=branch_env, suffix="-B", resume=args.resume,
         )
         payload["branch"] = {m: v["agg"] for m, v in branch.items()}
+        lever = lever_changes_system(base_env, branch_env)
+        payload["lever_changes_system"] = {"changes": lever[0], "why": lever[1]}
         for m in baseline:
             b, c = baseline[m]["agg"], branch.get(m, {}).get("agg", {})
             if not c:
                 continue
+            # R422 — REFUSE TO PUBLISH A VOID DELTA. This runner printed a
+            # +560-char "skeleton" delta off a run where the wrapper returned
+            # 500 'No response from Claude Code' through the whole baseline arm
+            # and Bedrock's fallback leg answered 403 on every model, so the
+            # baseline arm shipped deterministic Stage-1 drafts on 13 of 19 rows
+            # while the branch arm was polished. The delta was transport
+            # recovery, not the lever. `assess` reads the counters this process
+            # itself incremented (`app.llm.stage2_policy`) plus the payload
+            # hashes, so the same outage can never be read as a result again.
+            base_prov = baseline[m].get("provenance")
+            branch_prov = branch[m].get("provenance")
+            if base_prov is not None and branch_prov is not None:
+                verdict = assess(base=base_prov, branch=branch_prov, lever=lever)
+                payload.setdefault("gate", {})[m] = verdict.as_dict()
+                print(f"\n=== GATE VALIDITY {m} ===")
+                print(verdict.render())
+                if not verdict.valid:
+                    payload["void"] = payload.get("void", []) + [m]
+                    continue
             print(f"\n=== DELTA {m} (baseline -> branch) ===")
             for k in sorted(set(b) & set(c)):
                 if k in ("n", "errors") or not isinstance(b[k], (int, float)):

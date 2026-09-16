@@ -119,6 +119,13 @@ class ArmProvenance:
 
     label: str
     rows: int = 0
+    #: R422 — graded answers that were served by the DETERMINISTIC Stage-1 draft,
+    #: i.e. Stage-2 never landed. Read from each row's own provenance
+    #: (``stage2_served_by == 'deterministic'``, or ``stage2_polish is False`` on
+    #: a checkpoint that predates that field). This is the counter that catches
+    #: the R422 incident: the transport counters said the run was merely quiet
+    #: while 13 of 19 baseline rows had shipped a Stage-1 draft.
+    deterministic_graded: int = 0
     stats: dict[str, Any] = field(default_factory=dict)
     #: Distinct system payload hashes for the graded answer call.
     system_hashes: tuple[str, ...] = ()
@@ -156,11 +163,17 @@ class ArmProvenance:
         err = self.stats.get("_error")
         return str(err) if err else None
 
+    @property
+    def polished_graded(self) -> int:
+        return max(0, self.rows - self.deterministic_graded)
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "label": self.label,
             "rows": self.rows,
             "calls": self.calls,
+            "deterministic_graded": self.deterministic_graded,
+            "polished_graded": self.polished_graded,
             "system_payloads": len(self.system_hashes),
             "system_digest": self.system_digest,
             "system_lengths": sorted(self.system_lengths),
@@ -410,12 +423,38 @@ class ArmProbe:
         return ArmProvenance(
             label=self.label,
             rows=len(rows) if rows is not None else 0,
+            deterministic_graded=count_deterministic_rows(rows),
             stats=stats,
             system_hashes=tuple(r["system"] for r in selected),
             user_hashes=tuple(r["user"] for r in selected),
             system_lengths=tuple(r["system_len"] for r in selected),
             calls=len(selected),
         )
+
+
+def count_deterministic_rows(rows: Any) -> int:
+    """How many graded rows were served by the deterministic Stage-1 draft.
+
+    Reads the row's OWN recorded provenance, so it works on a checkpoint that
+    was written before this gate existed — ``stage2_served_by`` when present,
+    else ``stage2_polish``. Returns 0 for rows that carry neither field (an
+    older checkpoint), because an unknown is not evidence of an outage.
+    """
+    if not rows:
+        return 0
+    n = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        prov = row.get("provenance")
+        if not isinstance(prov, dict):
+            continue
+        served = prov.get("stage2_served_by")
+        if served == "deterministic":
+            n += 1
+        elif served in (None, "") and prov.get("stage2_polish") is False:
+            n += 1
+    return n
 
 
 def assess(
@@ -475,6 +514,18 @@ def assess(
             reasons.append(
                 f"{arm.label}: {arm.rows} rows produced ZERO Stage-2 completions "
                 "on either leg — the answers are deterministic, not the lever's."
+            )
+        # R422 — the transport counters alone are not enough. They counted zero
+        # for the outage that voided the R422 gate, but the SAME outage can leave
+        # a few completions on one arm and none on the other, and then a delta on
+        # POLISH-vs-DETERMINISTIC is published as a lever result. The graded rows
+        # carry their own provenance, so require most of them to have been
+        # polished before either arm can be compared.
+        if arm.rows > 0 and arm.deterministic_graded * 2 > arm.rows:
+            reasons.append(
+                f"{arm.label}: Stage-2 never landed on {arm.deterministic_graded} "
+                f"of {arm.rows} graded rows (deterministic Stage-1 drafts). A "
+                "delta against that arm measures the transport, not the lever."
             )
 
     system_checked = False

@@ -1103,6 +1103,21 @@ differing) the reordered rungs are a **WASH** — OVERALL 72.7 → 72.9 (+0.2 pp
   zero-delta table; system payloads are hashed at the provider seam
   (`OpenAIWrapperRequest.system` — the text the model actually receives), because
   the substitution happens INSIDE `_openai_wrapper_complete_for_graph_rag`.
+* **R422 — the transport counters were not enough, and neither was a prefix sample.**
+  A paired 19-row hard gate for `REGENOLD_CLOSED_SET_SKELETON` reported
+  `answer_chars +560.9` and `stage2_landed_rate +0.5789`; the branch arm was healthy
+  while the BASELINE arm ran through a wrapper 500 (`No response from Claude Code`)
+  and a Bedrock leg answering `api_key_invalid_403` on all five models, so **13 of
+  its 19 rows shipped a deterministic Stage-1 draft**. The transport counters did
+  not flag it (a deterministic fallback still yields an answer), so
+  `gate_validity.count_deterministic_rows` now reads each GRADED row's own
+  provenance (`provenance.stage2_served_by == "deterministic"`, else the legacy
+  `stage2_polish is False`) and `assess` voids an arm whose graded rows are
+  majority-deterministic; `run_official_batch` wraps each arm in `ArmProbe` and
+  withholds the delta, marking the modality `void`. The same runner gained
+  **`--stride N`**, applied BEFORE `--limit`: the send order is front-loaded with
+  easy rows, so `--limit 40` is 68 % easy against the board's 46 %, which is how a
+  skewed prefix produced the R422 reading in the first place.
 * **R358 — curated authoritative intercepts.** Four new curated answers
   (emergency triage `Annex III.5.d`, health-insurance pricing `5(c)`, hospital
   deployer duties, provider pre-market duties) that seed gold-head reference

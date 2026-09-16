@@ -240,6 +240,13 @@ def load_ckpt(path: Path) -> list[dict]:
                 "references": r.get("pred_refs") or r.get("references") or r.get("refs") or [],
                 "latency_s": _graded_latency_ms(r) / 1000.0,
                 "difficulty": r.get("difficulty") or r.get("difficulty_category"),
+                # R422 — CARRY THE STAGE-2 LEG THROUGH. Dropping this is why the
+                # R419 report could not name the transport-degraded rows: the
+                # answer is graded either way, so a checkpoint row served by a
+                # deterministic Stage-1 draft scores like any other, and nothing
+                # downstream could tell them apart. The field is whatever the
+                # checkpoint recorded (`stage2_served_by` / `stage2_polish`).
+                "provenance": r.get("provenance") or {},
             }
         )
     return rows
