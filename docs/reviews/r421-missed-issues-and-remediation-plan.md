@@ -135,6 +135,64 @@ chars against a 649.3-char reference** (3.31×), 30 rows exceed 3,000 chars, and
 lever has failed because 202 of 221 "excess" citations are provisions the prose
 actually discusses. **The lever is the interpreter/prompt, not a filter.**
 
+#### 2.2.1 The metric is not broken, and the regression is measurable
+
+An earlier draft of this analysis explained the gap as a generator change (R407's
+board was served by Qwen-on-Bedrock, R419's by the primary leg). That is true of
+R407 and **it was the wrong headline**, because a like-for-like predecessor exists:
+**R390 live hard was opus-5 over the same wrapper, on the same 110 questions,
+against the same gold.** Against that board:
+
+| measure | R390 hard (opus-5) | R419 hard (opus-5) |
+| :--- | ---: | ---: |
+| mean answer chars | 1139 | **2138** |
+| rows longer than 2x the reference | 45 | **79** |
+| mean cited provisions | 3.09 | **3.56** |
+| ans_conciseness | 62.02% | **44.19%** |
+
+**83 of 110 rows grew by more than 15% (median 1.70×); 6 shrank and 12 are
+byte-identical.** The identical 12 are the curated deterministic subset; **4 of the
+6 shrinking rows are the transport-degraded rows that shipped a Stage-1 draft**
+(`rg_036`, `rg_037`, `rg_085`, `rg_092` — R420's prior-answer floor), so they are
+not evidence of a shortening lever. That localises the change to the Stage-2
+generation path. Two checks rule out the metric itself: the formula has not changed
+(two commits have ever touched `evals/official/rubric.py`), and the reference
+denominator is 649-650 chars on every board in `docs/measurements/r388/`.
+
+Reproduce: `docs/measurements/r422/conciseness_regression_attribution.py` (offline)
+regenerates every figure here into `attribution.json`, including an independent
+recomputation of the axis from the two checkpoints joined to the gold answers.
+
+Which lever did it is a bisect, not an opinion — and the candidate set is bounded
+**from git**: **46 `REGENOLD_*` names exist in `app/` at HEAD that did not exist at
+R390, 15 of them default-ON** by their own literal default (`CLOSED_SET_SKELETON`,
+`COORD_MAP_PROMPT`, `EVIDENCE_CONTRACT`, `REF_COORD_GUARD`,
+`EXTRACT_SHAPE_GUARD`, `REF_GRAIN_DEEPEN`, `KG_POINT_TEXT`, ...), several of which
+exist to make Stage-2 enumerate more (`COORD_MAP_PROMPT`, `CLOSED_SET_SKELETON`,
+`KG_POINT_TEXT` with its 26 → 384 unit grounding block).
+
+**"The prompt got too big" is FALSIFIED** (R422, measured at the provider seam on
+the real request path with the provider stubbed, both arms firing a graded Stage-2
+payload on all 7 sampled rows — non-vacuous and `comparable`): with the five
+post-R390 additions OFF the Stage-2 user payload is **+6,530 chars LARGER** (44,997
+vs 38,467). The smaller prompt produced the longer answer, so the mechanism is the
+scaffold's *instruction* (enumerating every member of every cited head), not its
+size. That is why the fix below is a generation-side shape contract and not prompt
+pruning.
+
+**And the answer length is decoupled from what the row needs**: reference length
+correlates with the gold criteria count at **+0.55** (202 chars/criterion) while our
+answer length correlates at **+0.11**. The 57 rows needing 2–3 limbs are the worst
+axis score (42.0% vs 54.9% for the 5 six-limb rows), and a 1-criteria row still gets
+5,862 chars of member-list scaffold for a 1,122-char answer. The lever to build is a
+need-proportional answer shape, gated on the engaged set — not a shorter prompt. The single lever **measured** to shorten answers — the full 53 kB
+system prompt, 2456 → 1426 chars and +19.2 pp `ans_conc` on the R415 paired arm — is
+single-turn-gated (`REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN`), so hard-mode turns
+run without it by construction. R412 gated it because on pushbacks it dropped
+turn-1 points (`gold_dropped_head` 12 → 18); R420's prior-answer floor and the
+pushback-keep contract are exactly the mitigations for that failure mode, so the
+gate is worth re-testing before anything else is touched.
+
 ### 2.3 Pushback capitulation costs a whole row
 
 `rg_088` (hard, primary leg, healthy ~54 s): turn 1 answers **"No, the operator
@@ -171,7 +229,7 @@ because a lever without a gate is an opinion.
 | # | action | evidence it responds to | gate |
 | :--- | :--- | :--- | :--- |
 | **P0** | Fix the Bedrock credential so the fallback leg exists | 4 rows lost to a dead chain | a live fallback probe per model; then re-run the hard board |
-| **P1** | Redesign the Stage-2 length contract: target the reference length, hold the enumerated limbs | −27.6 pp ans_conc, 3.31× mean ratio | paired hard-split run, ≥3 generations/row per arm, gold-head retention as a hard constraint |
+| **P1** | Make the answer shape need-proportional: modulate the enumeration contract (and the scaffold's instruction, since the prompt-size hypothesis is falsified) on the engaged set, then re-gate the full-system lever for hard turns | 83/110 rows grew, median 1.70× since R390; corr(criteria, answer len) +0.11 vs +0.55 for the reference | paired hard-split run, ≥3 generations/row per arm, gold-head retention as a hard constraint |
 | **P1** | Turn on the pushback-keep contract, or fold its clause into the prior-answer floor | `rg_088`, and the R410 "gold_dropped_head 12 → 18" measurement | paired hard run; hard rule #8 (zero gold-head drops) |
 | **P2** | Close the subpoint-grain gap in generation (not in post-hoc deepening) | 58.1% exact vs 96.1% head; ref_strict −3.5 | paired run on the criteria-bearing corpus |
 | **P2** | Add a tone clause to the Stage-2 prompt against tutorial framing | 7 rows fail tone on advocacy remarks | judge-only gate (cheap: tone is one axis, no reference keys needed) |
