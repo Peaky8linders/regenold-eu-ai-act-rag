@@ -135,3 +135,51 @@ def test_a_subset_with_no_annotated_references_reports_the_instruments_own_zero(
         assert board["axes"][axis]["delta_pp"] == 0.0, axis
     # Whatever the instrument reports must survive a JSON round-trip unaltered.
     assert json.loads(json.dumps(board)) == board
+
+
+def _report_module():
+    path = REPO / "docs" / "measurements" / "r423" / "build_need_report.py"
+    spec = importlib.util.spec_from_file_location("build_need_report_r423", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_verdict_carries_its_scope_from_the_measured_payloads() -> None:
+    """A delta published without its dispatch scope is the R422 failure mode.
+
+    Both R423 arms run hard mode, and hard mode reads ``history_turn_count > 1``,
+    so the single-turn full-system lever cannot fire and both arms were told the
+    61-char persona. That is a fact about the DISPATCHED system payload, so the
+    report must take it from ``leg_system_lengths`` rather than assert it — and it
+    has to appear BEFORE the eight-axis board, because it qualifies every number
+    on it.
+    """
+    # The committed REPORT carries the section, so this half holds in a clean clone
+    # where the gitignored sidecar is absent — it never silently skips.
+    text = (REPO / "docs" / "reports" / "r423-need-proportional-gate.md").read_text(
+        encoding="utf-8"
+    )
+    scope_heading = "## Scope of this verdict"
+    axes_heading = "## All eight official axes, per arm"
+    assert scope_heading in text, "the verdict must state its scope"
+    assert axes_heading in text
+    assert text.index(scope_heading) < text.index(axes_heading), (
+        "the scope must precede the board it qualifies"
+    )
+    assert "dispatched the persona" in text, (
+        "the scope must report the dispatched persona share, not narrate it"
+    )
+
+    # And when the raw payload record IS present, the figure in the report must be
+    # the one the record holds — i.e. the section is measured, not hand-typed.
+    report = _report_module()
+    if not report.SIDECAR.exists():
+        return
+    leg = report._prompt_scope()["legs"]["B:primary"]
+    assert leg["n"] > 0
+    assert leg["persona"] > 0
+    assert f"{leg['persona']} of {leg['n']}" in text, (
+        "the dispatched-persona count must come from the arm's own payload record"
+    )

@@ -1234,8 +1234,12 @@ differing) the reordered rungs are a **WASH** — OVERALL 72.7 → 72.9 (+0.2 pp
   truly have 1 criterion), which is why the next lever is a content-preservation
   contract tied to the Stage-1 draft's own engaged set, not a bigger length target.
   **Scope caveat, measured post-deploy:** a hard-mode request dispatches the
-  **61-char persona** (108 of the gate's 109 primary payloads, against one
-  59,644-char call), so this gate measures hard mode under the STRIPPED prompt —
+  **61-char persona** (97 of the gate's 109 `B:primary` payloads — the rest are
+  that record's auxiliary tail, `61 × 97 · 132 × 2 · 1311 × 1 · 6365 × 8 · 59644
+  × 1`; the recorder wraps the provider, so it counts the Stage-1 parser and the
+  completeness guard too. R423c corrected this row, which said "108 of 109" — a
+  figure no artifact holds), so this gate measures hard mode under the STRIPPED
+  prompt —
   the configuration R411 gap 3.1 names. Live single-turn already answers `rg_010`
   in the lever's ON shape (316 chars, `Article 14.1`, primary-served, verified
   against production `dd87fd45e3ae`) because it gets the full 53 kB system prompt
