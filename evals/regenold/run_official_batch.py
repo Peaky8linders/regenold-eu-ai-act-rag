@@ -289,6 +289,147 @@ def _install_cohere_guard(
     return assert_healthy
 
 
+#: Error substrings that mean the Stage-2 request never reached the wrapper.
+#: Measured shapes from the R423 need-proportional gate, which spent 90 minutes
+#: and 243 Stage-2 calls inside one DNS outage:
+#: ``network_error: [Errno 11001] getaddrinfo failed`` (the wrapper hostname did
+#: not resolve — the Cloudflare tunnel that publishes it was down),
+#: ``[WinError 10065] A socket operation was attempted to an unreachable host``
+#: and ``The read operation timed out``.
+_TRANSPORT_ERROR_MARKERS = (
+    "network_error",
+    "getaddrinfo",
+    "unreachable host",
+    "timed out",
+    "connection refused",
+    "connection reset",
+)
+
+
+class _ConsecutiveTransportFailures:
+    """Count Stage-2 calls that never reached a leg; reset on any success."""
+
+    def __init__(self, limit: int) -> None:
+        self._limit = max(1, int(limit))
+        self._consecutive = 0
+        self._last = ""
+        self._lock = threading.Lock()
+
+    def record_ok(self) -> None:
+        with self._lock:
+            self._consecutive = 0
+            self._last = ""
+
+    def record_failure(self, message: str) -> None:
+        with self._lock:
+            self._consecutive += 1
+            self._last = message
+
+    def tripped(self) -> str:
+        with self._lock:
+            if self._consecutive >= self._limit:
+                return (
+                    f"{self._consecutive} consecutive calls failed "
+                    f"(last: {self._last[:160]})"
+                )
+            return ""
+
+
+def _install_stage2_transport_guard(
+    *,
+    max_consecutive: int = 5,
+) -> tuple[Callable[[], str], Callable[[], None]]:
+    """Refuse to spend a live run on a Stage-2 transport that cannot answer.
+
+    R423 — the ``REGENOLD_NEED_PROPORTIONAL_CONTRACT`` gate ran to completion and
+    was correctly VOIDED, but only after burning ~90 minutes and 243 Stage-2
+    calls inside a single DNS outage (``getaddrinfo failed``: the Cloudflare
+    tunnel that publishes the wrapper hostname was down). Every one of those
+    calls then walked the same dead path — the legacy Groq hatch was refused by
+    the strict-transport policy, the Bedrock credential was invalid, so the row
+    shipped a deterministic Stage-1 draft. Both arms voided for that reason, and
+    the gate's void guard (R412/R422) is what caught it.
+
+    Catching it AFTER the fact is the expensive half. A live run whose Stage-2
+    primary is unreachable measures nothing, so this guard (a) probes the
+    wrapper once before the first row is spent, and (b) aborts the batch as soon
+    as ``max_consecutive`` Stage-2 calls in a row fail to reach it. A single
+    transient miss cannot trip it — the counter resets on any success — so it
+    fires on an outage, not on noise.
+
+    Opt out with ``--allow-degraded-transport`` for a run that deliberately
+    measures the degradation path itself.
+    """
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=False)
+    except ImportError:
+        pass
+
+    from app.llm import openai_wrapper_provider as _wp
+
+    if not _wp.is_openai_wrapper_enabled():
+        raise RuntimeError("--require-stage2-transport needs the openai_wrapper provider")
+
+    transport = _ConsecutiveTransportFailures(int(max_consecutive))
+
+    def preflight() -> str:
+        provider = _wp.get_openai_wrapper_provider()
+        # The probe's job is TRANSPORT reachability (DNS -> CF Access -> OAuth),
+        # not model selection, so it leaves ``model`` at the request default —
+        # which the provider's own alias map resolves to the same effective
+        # model the engine's Stage-2 calls land on.
+        resp = provider.complete(
+            _wp.OpenAIWrapperRequest(
+                user="Reply with the single word: alive",
+                max_tokens=16,
+            )
+        )
+        if resp is None:
+            raise RuntimeError(
+                "Stage-2 transport preflight returned no response; refusing a run "
+                "that would grade deterministic Stage-1 drafts"
+            )
+        if getattr(resp, "error", None):
+            raise RuntimeError(
+                "Stage-2 transport preflight failed "
+                f"({str(resp.error)[:160]}); the wrapper leg cannot answer, so a "
+                "live run would grade Stage-1 drafts. Fix the leg (tunnel / OAuth "
+                "/ quota) or pass --allow-degraded-transport."
+            )
+        return str(getattr(resp, "model", "") or "")
+
+    original_complete = _wp._OpenAIWrapperProvider.complete
+
+    def guarded_complete(self, req):
+        resp = original_complete(self, req)
+        error = getattr(resp, "error", None)
+        if not error:
+            transport.record_ok()
+            return resp
+        message = str(error)
+        if any(marker in message.lower() for marker in _TRANSPORT_ERROR_MARKERS):
+            transport.record_failure(message)
+        else:
+            # A model-side error (quota, 4xx/5xx) is not a network outage, but
+            # five in a row still means every row is shipping a Stage-1 draft.
+            transport.record_failure(message)
+        return resp
+
+    _wp._OpenAIWrapperProvider.complete = guarded_complete
+
+    def assert_healthy() -> None:
+        tripped = transport.tripped()
+        if tripped:
+            raise RuntimeError(
+                f"Stage-2 transport is down: {tripped}. Aborting before the rest "
+                "of the sample is graded on deterministic Stage-1 drafts."
+            )
+
+    return preflight, assert_healthy
+
+
 def _restore_env(saved: dict[str, str | None]) -> None:
     for k, v in saved.items():
         if v is None:
@@ -297,7 +438,9 @@ def _restore_env(saved: dict[str, str | None]) -> None:
             os.environ[k] = v
 
 
-def _run_easy(rows, poster, url, api_key, timeout, ckpt) -> list[dict[str, Any]]:
+def _run_easy(
+    rows, poster, url, api_key, timeout, ckpt, *, sample: int = 0
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for i, row in enumerate(rows, 1):
         body, latency_ms, status, err, attempts, _r = poster(
@@ -307,6 +450,10 @@ def _run_easy(rows, poster, url, api_key, timeout, ckpt) -> list[dict[str, Any]]
         refs = list((body or {}).get("references") or [])
         rec: dict[str, Any] = {
             "id": row.id,
+            # R423 — which independent generation this row is. Written HERE, not
+            # patched on afterwards, so the field is on disk in the checkpoint
+            # the scorer reads (a post-hoc tag left the file without it).
+            "sample": sample,
             "mode": "easy",
             # R293 — official difficulty label. Distinct from `mode`: `mode` is
             # HOW we replayed it, `difficulty` is the evaluator's own label. 59
@@ -351,7 +498,9 @@ def _run_easy(rows, poster, url, api_key, timeout, ckpt) -> list[dict[str, Any]]
     return out
 
 
-def _run_hard(rows, poster, url, api_key, timeout, ckpt) -> list[dict[str, Any]]:
+def _run_hard(
+    rows, poster, url, api_key, timeout, ckpt, *, sample: int = 0
+) -> list[dict[str, Any]]:
     """Rolling multi-turn conversation + the judge's pushback, per question."""
     out: list[dict[str, Any]] = []
     history: list[dict[str, str]] = []
@@ -372,6 +521,8 @@ def _run_hard(rows, poster, url, api_key, timeout, ckpt) -> list[dict[str, Any]]
 
         rec: dict[str, Any] = {
             "id": row.id,
+            # R423 — see ``_run_easy``: the generation index must be on disk.
+            "sample": sample,
             "mode": "hard",
             # R293 — in hard mode every row is HARD / Multi-Turn Context &
             # Coreference by the official taxonomy, so the per-question label
@@ -583,6 +734,68 @@ def _print_agg(title: str, agg: dict[str, Any]) -> None:
             print(f"  {k:<32}{v:>10}")
 
 
+def _clear_engine_cache() -> tuple[int, str | None]:
+    """Empty the route's response cache before a generation runs.
+
+    R423 — ``repeats > 1`` is a claim that every row gets that many
+    INDEPENDENT generations of Stage-2. It was not true. The route answers from
+    ``app.routes.regenold._ENGINE_CACHE`` keyed on
+    (question, context, history depth, env), and every generation of a row sends
+    the same key, so generations 2..K replayed generation 1 without ever
+    dialling a provider.
+
+    MEASURED on the first R423 hard gate (37 rows × 3 generations, both arms):
+    arm B's generations 2 and 3 were byte-identical to generation 1 on **23 of
+    37 rows** at p50 latency **1.6 s** against generation 1's **43.6 s**, and the
+    arm made 73 provider calls across three generations that each constitute 74
+    asks. A median over duplicated values reports draw-to-draw stability it
+    never measured — and it does so invisibly, which is the same failure shape
+    R422 shipped (a void run read as a null).
+
+    Returns ``(entries_cleared, error)``. The cache lives in this process: the
+    harness drives the app in-process (``local://app.main:app``), so a remote
+    ``--endpoint`` run reports the error instead of pretending it cleared one.
+    """
+    try:
+        from app.routes.regenold import _ENGINE_CACHE  # noqa: PLC0415
+    except Exception as exc:  # noqa: BLE001 — reported, never swallowed
+        return 0, f"_ENGINE_CACHE unreachable: {exc!r}"
+    try:
+        cleared = len(getattr(_ENGINE_CACHE, "_data", {}) or {})
+        _ENGINE_CACHE.clear()
+        return cleared, None
+    except Exception as exc:  # noqa: BLE001
+        return 0, f"_ENGINE_CACHE.clear() raised: {exc!r}"
+
+
+def _repeat_independence(
+    replicates: list[list[dict[str, Any]]],
+) -> float | None:
+    """Largest byte-identical rate between CONSECUTIVE generations.
+
+    ``None`` when there is only one generation (nothing to compare). Rows whose
+    answer is a curated deterministic intercept are identical by design, so the
+    floor is the intercept share (~24%% of the official hard split) and only a
+    MAJORITY-identical pair is evidence of replay.
+    """
+    if len(replicates) < 2:
+        return None
+    rates: list[float] = []
+    for first, second in zip(replicates, replicates[1:], strict=False):
+        by_id = {r["id"]: r for r in second}
+        common = [r for r in first if r["id"] in by_id]
+        if not common:
+            continue
+        same = sum(
+            1
+            for row in common
+            if str(row.get("pred_answer") or "").strip()
+            == str(by_id[row["id"]].get("pred_answer") or "").strip()
+        )
+        rates.append(same / len(common))
+    return max(rates) if rates else None
+
+
 def _arm(
     label: str,
     mode: str,
@@ -595,65 +808,134 @@ def _arm(
     arm_env: dict[str, str],
     suffix: str,
     resume: bool = False,
+    repeats: int = 1,
 ) -> dict[str, Any]:
     saved = _apply_env(arm_env)
+    repeats = max(1, int(repeats))
     try:
         result: dict[str, Any] = {}
         for m in ("easy", "hard"):
             if mode not in (m, "both"):
                 continue
-            ckpt_path = _RESULTS / f"official-{label}{suffix}-{m}.ckpt.jsonl"
-            ckpt_path.parent.mkdir(parents=True, exist_ok=True)
-            print(f"\n--- {label}{suffix} :: {m} (n={len(rows)}) -> {ckpt_path.name}")
-            previous: list[dict[str, Any]] = []
-            pending = list(rows)
-            file_mode = "w"
-            if resume and ckpt_path.exists():
-                seen: set[str] = set()
-                for line in ckpt_path.read_text(encoding="utf-8").splitlines():
-                    if not line.strip():
-                        continue
-                    try:
-                        record = json.loads(line)
-                    except json.JSONDecodeError as exc:
-                        raise RuntimeError(
-                            f"invalid resume checkpoint row in {ckpt_path.name}: "
-                            "truncated or corrupt JSON line"
-                        ) from exc
-                    row_id = str(record.get("id") or "")
-                    if not row_id or row_id in seen or record.get("mode") != m:
-                        raise RuntimeError(
-                            f"invalid resume checkpoint row in {ckpt_path.name}: {row_id!r}"
-                        )
-                    seen.add(row_id)
-                    previous.append(record)
-                pending = [row for row in rows if row.id not in seen]
-                file_mode = "a"
-                print(f"  resuming: {len(previous)} complete, {len(pending)} pending")
-            # Default remains overwrite (R292). Append is allowed only through
-            # the explicit, validated --resume path above.
-            with ckpt_path.open(file_mode, encoding="utf-8") as ckpt:
-                runner = _run_easy if m == "easy" else _run_hard
-                # R422 — record what this arm ACTUALLY dialled and dispatched, so
-                # a transport outage can never be read as a lever delta. The
-                # probe zeros the transport counters, hashes every payload at the
-                # provider seam and snapshots the counters again on exit.
-                with ArmProbe(f"{label}{suffix}") as probe:
-                    fresh = runner(pending, poster, url, api_key, timeout, ckpt)
-            by_id = {r["id"]: r for r in previous + fresh}
-            got = [by_id[row.id] for row in rows if row.id in by_id]
-            # The GRADED rows carry their own Stage-2 provenance, which is what
-            # `count_deterministic_rows` needs; the request rows do not.
-            provenance = probe.provenance(rows=got)
-            strata = _stratify(got)
-            result[m] = {
-                "rows": got,
-                "agg": _aggregate(got),
-                "strata": strata,
-                "provenance": provenance,
-            }
+            replicates: list[list[dict[str, Any]]] = []
+            primary: dict[str, Any] = {}
+            # R423 — REPEATS>1 gives every row that many INDEPENDENT generations
+            # on the same arm, which is what a length/shape lever needs: the
+            # judge axes move by a criterion or two (2 of 87 rows on the R416
+            # gate) and R419 already showed two rows whose credited criteria are
+            # draw-dependent, so a single draw cannot separate a real delta from
+            # generation noise. The FIRST sample keeps the shipped checkpoint
+            # path and the shipped --resume contract; later samples land in
+            # sibling ``.r{K}`` files with identical schema, so nothing that
+            # reads the existing checkpoint changes shape.
+            with ArmProbe(f"{label}{suffix}") as probe:
+                for k in range(repeats):
+                    ckpt_path = _RESULTS / (
+                        f"official-{label}{suffix}-{m}.ckpt.jsonl"
+                        if k == 0
+                        else f"official-{label}{suffix}-{m}.r{k}.ckpt.jsonl"
+                    )
+                    ckpt_path.parent.mkdir(parents=True, exist_ok=True)
+                    print(
+                        f"\n--- {label}{suffix} :: {m} sample {k + 1}/{repeats} "
+                        f"(n={len(rows)}) -> {ckpt_path.name}"
+                    )
+                    # R423 — a repeat must be a NEW draw. Clear the route's
+                    # response cache or generation k replays generation 1 (see
+                    # `_clear_engine_cache`).
+                    cleared, cache_error = _clear_engine_cache()
+                    print(
+                        f"  response cache: cleared {cleared} entrie(s)"
+                        + (f" — NOT CLEARED: {cache_error}" if cache_error else "")
+                    )
+                    previous: list[dict[str, Any]] = []
+                    pending = list(rows)
+                    file_mode = "w"
+                    # Resume applies to EVERY sample, not just the primary one.
+                    # A replica's ids repeat ACROSS samples, never within one
+                    # file, and the validator is per file — so the repeated-id
+                    # check that catches a truncated checkpoint still holds.
+                    # (Measured: a restart 15 rows into replica 2 of a 3x2 gate
+                    # discarded both finished replicas of the other arm on
+                    # re-launch, ~1.5 h of live provider draws for nothing.)
+                    if resume and ckpt_path.exists():
+                        seen: set[str] = set()
+                        for line in ckpt_path.read_text(encoding="utf-8").splitlines():
+                            if not line.strip():
+                                continue
+                            try:
+                                record = json.loads(line)
+                            except json.JSONDecodeError as exc:
+                                raise RuntimeError(
+                                    f"invalid resume checkpoint row in {ckpt_path.name}: "
+                                    "truncated or corrupt JSON line"
+                                ) from exc
+                            row_id = str(record.get("id") or "")
+                            if not row_id or row_id in seen or record.get("mode") != m:
+                                raise RuntimeError(
+                                    f"invalid resume checkpoint row in {ckpt_path.name}: "
+                                    f"{row_id!r}"
+                                )
+                            seen.add(row_id)
+                            previous.append(record)
+                        pending = [row for row in rows if row.id not in seen]
+                        file_mode = "a"
+                        print(f"  resuming: {len(previous)} complete, {len(pending)} pending")
+                    # Default remains overwrite (R292). Append is allowed only
+                    # through the explicit, validated --resume path above.
+                    with ckpt_path.open(file_mode, encoding="utf-8") as ckpt:
+                        runner = _run_easy if m == "easy" else _run_hard
+                        fresh = runner(pending, poster, url, api_key, timeout, ckpt, sample=k)
+                    by_id = {r["id"]: r for r in previous + fresh}
+                    got = [by_id[row.id] for row in rows if row.id in by_id]
+                    for record in got:
+                        # Resume can bring back rows written before this field
+                        # existed; the runner sets it on every fresh row.
+                        record.setdefault("sample", k)
+                    replicates.append(got)
+                    if k == 0:
+                        # The GRADED rows carry their own Stage-2 provenance,
+                        # which is what `count_deterministic_rows` needs; the
+                        # request rows do not.
+                        primary = {
+                            "rows": got,
+                            "agg": _aggregate(got),
+                            "strata": _stratify(got),
+                        }
+            # The probe closes once per ARM, not per sample, so its transport
+            # counters and payload hashes cover every generation that ran.
+            got = primary.get("rows") or []
+            identical_rate = _repeat_independence(replicates)
+            # R423 — per-sample determinism, not just sample 0's. The gate's
+            # numbers are medians across the generations, so a generation that
+            # shipped Stage-1 drafts while its siblings were polished has to be
+            # visible on its own; the arm total hides it (measured: arm A read
+            # healthy on 47 primary completions while sample 3 was 28/28 drafts).
+            primary["provenance"] = probe.provenance(
+                rows=got,
+                repeats=repeats,
+                repeat_identical_rate=identical_rate,
+                sample_rows=replicates,
+            )
+            if repeats > 1:
+                primary["samples"] = [[r["id"] for r in sample] for sample in replicates]
+                primary["n_samples"] = len(replicates)
+                primary["agg_first_sample_only"] = True
+                primary["repeat_identical_rate"] = identical_rate
+                print(
+                    f"  generations: {repeats} per row; largest byte-identical "
+                    f"rate between consecutive generations "
+                    f"{'n/a' if identical_rate is None else f'{identical_rate:.0%}'}"
+                )
+                if identical_rate is not None and identical_rate > 0.5:
+                    print(
+                        "  WARNING: most rows were replayed between generations — "
+                        "the generations are NOT independent draws and the gate "
+                        "will void this arm."
+                    )
+            result[m] = primary
             _print_agg(f"{label}{suffix} {m}", result[m]["agg"])
-            _print_strata(strata)
+            _print_strata(result[m]["strata"])
         return result
     finally:
         _restore_env(saved)
@@ -685,7 +967,11 @@ def main() -> None:
             "take every Nth question instead of the first N — a REPRESENTATIVE sample "
             "across the send order. The send order is front-loaded with the easy rows, "
             "so a prefix is NOT the board's mix: the full 110 are 51 easy / 59 hard "
-            "(46% easy) while --limit 40 is 27 easy / 13 hard (68% easy), and "
+            # ``%`` is argparse's help-interpolation character: a bare percent
+            # here makes ``--help`` raise "must be real number, not dict" and
+            # takes the whole runner's CLI down with it. Doubled, as argparse
+            # requires (caught by tests/test_r423_harness_repeats.py).
+            "(46%% easy) while --limit 40 is 27 easy / 13 hard (68%% easy), and "
             "--stride 6 gives 6 easy / 13 hard. A skewed prefix has already produced "
             "misleading readings (R422). Applied BEFORE --limit, so the two compose "
             "as 'every Nth question, first M of those'."
@@ -696,8 +982,30 @@ def main() -> None:
         action="store_true",
         help="validate and continue this label's existing checkpoint",
     )
+    ap.add_argument(
+        "--repeats",
+        type=int,
+        default=1,
+        help=(
+            "R423 — independent generations per row PER ARM. The first sample "
+            "writes the shipped checkpoint; later samples write sibling "
+            ".r{K}.ckpt.jsonl files with the same schema and a `sample` key on "
+            "each row. Use 3+ for a length/shape lever: the judged axes move by "
+            "a criterion or two, and R419 measured rows whose credited criteria "
+            "are draw-dependent, so one draw cannot separate a delta from noise."
+        ),
+    )
     ap.add_argument("--baseline-env", action="append", default=None)
     ap.add_argument("--branch-env", action="append", default=None)
+    ap.add_argument(
+        "--allow-degraded-transport",
+        action="store_true",
+        help=(
+            "skip the Stage-2 transport preflight and the abort-on-outage guard "
+            "(R423). Only for a run that deliberately measures the degradation "
+            "path; without it a live run refuses to grade Stage-1 drafts."
+        ),
+    )
     ap.add_argument(
         "--require-cohere",
         action="store_true",
@@ -739,17 +1047,37 @@ def main() -> None:
 
     local = not args.endpoint
     poster = _post_local if local else _post
+    # Health checks that abort the batch the moment the run stops being
+    # measurable. They are composed into ONE poster wrapper so a run can carry
+    # both without the second replacement discarding the first.
+    health_checks: list[Callable[[], None]] = []
     if require_any_cohere:
-        assert_cohere_healthy = _install_cohere_guard(
-            require_embeddings=args.require_cohere,
-            min_rerank_gap_s=args.cohere_rerank_min_gap,
+        health_checks.append(
+            _install_cohere_guard(
+                require_embeddings=args.require_cohere,
+                min_rerank_gap_s=args.cohere_rerank_min_gap,
+            )
         )
+    if local and not args.allow_degraded_transport:
+        # R423 — a live run whose Stage-2 primary cannot answer grades Stage-1
+        # drafts, so it measures the transport, not the lever. Probe once now
+        # (before a single row is spent) and abort if the leg later goes down.
+        preflight, assert_stage2_healthy = _install_stage2_transport_guard()
+        served_by = preflight()
+        print(
+            "Stage-2 transport preflight OK"
+            + (f" (model={served_by})" if served_by else "")
+            + "; aborting the batch after 5 consecutive Stage-2 failures."
+        )
+        health_checks.append(assert_stage2_healthy)
+    if health_checks:
         base_poster = poster
 
         def guarded_poster(*poster_args, **poster_kwargs):
             slept_before = _PACING_SLEPT_S[0]
             result = base_poster(*poster_args, **poster_kwargs)
-            assert_cohere_healthy()
+            for check in health_checks:
+                check()
             return _net_of_pacing(result, slept_before)
 
         poster = guarded_poster
@@ -775,6 +1103,7 @@ def main() -> None:
         "n_questions": len(rows),
         "mode": args.mode,
         "endpoint": url,
+        "repeats": args.repeats,
         "baseline_env": base_env,
         "branch_env": branch_env,
     }
@@ -783,6 +1112,7 @@ def main() -> None:
         args.label, args.mode, rows,
         poster=poster, url=url, api_key=args.api_key, timeout=args.timeout,
         arm_env=base_env, suffix="-A" if ab else "", resume=args.resume,
+        repeats=args.repeats,
     )
     payload["baseline"] = {m: v["agg"] for m, v in baseline.items()}
 
@@ -792,6 +1122,7 @@ def main() -> None:
             args.label, args.mode, rows,
             poster=poster, url=url, api_key=args.api_key, timeout=args.timeout,
             arm_env=branch_env, suffix="-B", resume=args.resume,
+            repeats=args.repeats,
         )
         payload["branch"] = {m: v["agg"] for m, v in branch.items()}
         lever = lever_changes_system(base_env, branch_env)

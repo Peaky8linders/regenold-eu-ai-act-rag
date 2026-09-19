@@ -8452,7 +8452,30 @@ def _closed_set_min_members() -> int:
         return 3
 
 
-def _render_closed_set_skeleton(ref: str) -> str | None:
+def _need_proportional_contract_enabled() -> bool:
+    """R423 — the need-proportional shape contract (default OFF).
+
+    Delegates to :func:`app.engines.answer_need.need_proportional_contract_enabled`
+    so the flag has ONE reader and cannot drift between the clause and the
+    skeleton scope. Imported lazily, matching how this module already reaches
+    ``answer_completeness``; a failed import returns ``False`` so a broken
+    dependency can never silently change the shipped prompt.
+    """
+    try:
+        from app.engines.answer_need import (  # noqa: PLC0415
+            need_proportional_contract_enabled,
+        )
+
+        return need_proportional_contract_enabled()
+    except Exception:  # noqa: BLE001 — fail closed to the shipped behaviour
+        return False
+
+
+def _render_closed_set_skeleton(
+    ref: str,
+    *,
+    engaged: set[str] | None = None,
+) -> str | None:
     """The exhaustive member list of ``ref``, as ``coordinate: leading clause``.
 
     Returns ``None`` when ``ref`` is not a bare Article/Annex head, does not
@@ -8464,6 +8487,14 @@ def _render_closed_set_skeleton(ref: str) -> str | None:
     invariant #1), which is deliberate: a coordinate the model can read is a
     coordinate it can cite, and the official Ref. Correctness (Strict) axis
     scores sub-points where a bare head scores zero.
+
+    R423 — ``engaged`` is the need-proportional scope from
+    :func:`app.engines.answer_need.engaged_coords`. When it is passed (only when
+    ``REGENOLD_NEED_PROPORTIONAL_CONTRACT`` is ON), the block stops asserting
+    that the whole set must be stated: engaged members keep their lead text, the
+    rest are rendered as coordinates-only context, and the header says so. The
+    member list itself is unchanged, so no citable coordinate is hidden and no
+    new head appears — only the instruction to enumerate shrinks to the ask.
     """
     try:
         from app.data.provision_hierarchy import (  # noqa: PLC0415
@@ -8480,6 +8511,30 @@ def _render_closed_set_skeleton(ref: str) -> str | None:
     if len(members) < _closed_set_min_members():
         return None
     lead = _closed_set_skeleton_lead()
+    if engaged is not None:
+        scoped = [coord for coord, _text in members if coord in engaged]
+        if not scoped:
+            # The ask engages nothing in this provision. Keep the coordinates (so
+            # the model can still cite a member its prose discusses) and drop the
+            # lead text: it is context, and this is where most of the 5,125 mean
+            # scaffold chars are spent on rows that asked for none of it.
+            header = (
+                f"  STRUCTURE of {ref} — {len(members)} members, NOT ENGAGED by "
+                "this question: context only, do NOT enumerate or list them:"
+            )
+            return "\n".join([header, *[f"    {c}" for c, _ in members]])
+        lines = []
+        for coord, text in members:
+            if coord not in engaged:
+                lines.append(f"    {coord}")
+                continue
+            body = text[:lead] + ("..." if lead and len(text) > lead else "")
+            lines.append(f"    {coord}: {body}" if lead else f"    {coord}")
+        header = (
+            f"  ENGAGED members of {ref} — {len(scoped)} of {len(members)} "
+            "asked by this question; the bare coordinates are context only:"
+        )
+        return "\n".join([header, *lines])
     lines = []
     for coord, text in members:
         body = text[:lead] + ("..." if lead and len(text) > lead else "")
@@ -8541,6 +8596,21 @@ def _render_grounding_text(context: GraphContext) -> list[str]:
         return parts
 
     rendered: list[str] = []
+    # R423 — one need estimate per request, computed from the ASK and the refs it
+    # is about to be shown, then handed to every skeleton render. ``None`` when
+    # the lever is OFF, which keeps the shipped heading and lead text exactly.
+    engaged: set[str] | None = None
+    if _need_proportional_contract_enabled():
+        try:
+            from app.engines.answer_need import engaged_coords  # noqa: PLC0415
+
+            context_refs = " ".join(
+                _context_article_refs(context)[:_grounding_max_refs()]
+            )
+            engaged = set(engaged_coords(question, context_refs))
+        except Exception:  # noqa: BLE001 — a scope estimate must not break Stage-2
+            logger.debug("grounding: need estimate failed", exc_info=True)
+            engaged = None
     for ref in _context_article_refs(context)[:_grounding_max_refs()]:
         try:
             body = select_relevant_paragraphs(ref, question, budget)
@@ -8582,7 +8652,7 @@ def _render_grounding_text(context: GraphContext) -> list[str]:
         # the block and a strict no-op when the flag is OFF or the ref is not
         # a multi-member head, so the OFF arm is byte-identical.
         skeleton = (
-            _render_closed_set_skeleton(ref)
+            _render_closed_set_skeleton(ref, engaged=engaged)
             if _closed_set_skeleton_enabled()
             else None
         )
