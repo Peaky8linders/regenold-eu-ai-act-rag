@@ -15,6 +15,7 @@ comparability rule and the median-over-generations arithmetic).
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import statistics
 import sys
@@ -83,6 +84,48 @@ def _transport_shape() -> dict:
         return {}
     payload = json.loads(SIDECAR.read_text(encoding="utf-8"))
     return (payload.get("gate") or {}).get("hard") or {}
+
+
+PERSONA = "You are an expert EU AI Act regulatory compliance specialist."
+
+
+def _prompt_scope() -> dict[str, object]:
+    """What Stage-2 was actually told, read off the arms' own payload records.
+
+    R423b — this verdict's most consequential qualification is that BOTH arms ran
+    the stripped hard-mode persona (the 53 kB system prompt is single-turn-only,
+    ``REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN``, R412). That is a fact about the
+    DISPATCHED payload, so it is measured here from ``leg_system_lengths`` rather
+    than asserted in prose — a report that publishes a delta without its scope is
+    exactly the failure mode the R422 gate was built against.
+    """
+    out: dict[str, object] = {"persona": len(PERSONA), "legs": {}, "measured": False}
+    for arm in ARMS:
+        rec = ((_transport_shape().get("arms") or {}).get(f"{LABEL}-{arm}") or {})
+        for leg, lengths in (rec.get("leg_system_lengths") or {}).items():
+            if not lengths:
+                continue
+            lengths = [int(n) for n in lengths]
+            # The recorder wraps the provider, so this counts EVERY call on the leg
+            # — the Stage-2 polish AND the auxiliary passes (the Stage-1 parser, the
+            # completeness guard) that pass their own system strings. The whole
+            # distribution is published rather than a bare persona share, so the
+            # auxiliary tail is visible and cannot be mistaken for Stage-2 dispatch.
+            dist = {n: lengths.count(n) for n in sorted(set(lengths))}
+            out["legs"][f"{arm}:{leg}"] = {
+                "n": len(lengths),
+                "persona": dist.get(len(PERSONA), 0),
+                "dist": dist,
+                "min": min(lengths),
+                "max": max(lengths),
+            }
+            out["measured"] = True
+    # The single-turn lever's shipped default, read from the process the report runs in.
+    out["single_turn_default"] = (
+        os.getenv("REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN", "1").strip().lower()
+        not in ("0", "false", "no", "off")
+    )
+    return out
 
 
 def _judge_identity() -> str:
@@ -227,6 +270,43 @@ def main() -> None:
                     "short answer, and the criteria the judge credits for them need the "
                     "enumeration the shape clause suppressed.")
     add("")
+
+    # ── scope: what Stage-2 was told, so the delta cannot be read out of context ──
+    scope = _prompt_scope()
+    if scope["measured"]:
+        add("## Scope of this verdict — the STRIPPED-prompt hard path")
+        add("")
+        add("Both arms run hard mode, so both dispatched the stripped persona "
+            f"({scope['persona']} chars) rather than the full system prompt, which "
+            "reaches Stage-2 only on single-turn asks "
+            f"(`REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN` default is "
+            f"{'ON' if scope['single_turn_default'] else 'OFF'}; a hard-mode ask reads "
+            "`history_turn_count > 1`, so it is excluded by the lever's own predicate). "
+            "The dispatched system lengths, measured on the arms' payload records:")
+        add("")
+        add("| arm : leg | calls | dispatched the persona | system-payload distribution (chars × calls) |")
+        add("| :-- | --: | --: | :-- |")
+        for key, rec in sorted(scope["legs"].items()):  # type: ignore[union-attr]
+            dist = " · ".join(f"{n} × {c}" for n, c in rec["dist"].items())
+            add(f"| `{key}` | {rec['n']} | {rec['persona']} of {rec['n']} | {dist} |")
+        add("")
+        add("The payload recorder wraps the provider, so those counts are every call on "
+            "the leg — the Stage-2 polish **and** the auxiliary passes that pass their "
+            "own system strings. The 61-char bucket is the hard-mode Stage-2 dispatch; "
+            "the rest are that tail (and one single-turn full-system call). The arm "
+            "without a bucket recorded was resumed from a pre-restart checkpoint, so "
+            "its dispatch shape is bound by the same configuration but is not itself "
+            "on record here.")
+        add("")
+        add("**So the win and the loss both belong to that configuration.** The "
+            "+45.91 pp answer-conciseness gain and the −7.41 pp strict-correctness loss "
+            "describe hard mode under a stripped prompt. Two things are therefore NOT "
+            "measured here, and neither changes the verdict for the hard board as it "
+            "ships today: the lever's incremental effect on the **live single-turn path** "
+            "(which already receives the full 53 kB prompt, itself measured at ~58 % "
+            "shorter answers, R412), and hard mode with the full prompt delivered "
+            "(R411 gap 3.1).")
+        add("")
 
     # ── the eight axes, per arm ────────────────────────────────────────────
     add("## All eight official axes, per arm")

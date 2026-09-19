@@ -51,6 +51,19 @@ The whole correctness cost, row by row (every row where `ans_strict` fell, with 
 
 2 of 27 comparable rows; the rest are tied, and no row improved on correctness. The cause is length starvation, not the extraction: each of these collapsed to a short answer, and the criteria the judge credits for them need the enumeration the shape clause suppressed.
 
+## Scope of this verdict — the STRIPPED-prompt hard path
+
+Both arms run hard mode, so both dispatched the stripped persona (61 chars) rather than the full system prompt, which reaches Stage-2 only on single-turn asks (`REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN` default is ON; a hard-mode ask reads `history_turn_count > 1`, so it is excluded by the lever's own predicate). The dispatched system lengths, measured on the arms' payload records:
+
+| arm : leg | calls | dispatched the persona | system-payload distribution (chars × calls) |
+| :-- | --: | --: | :-- |
+| `B:fallback` | 1 | 0 of 1 | 1311 × 1 |
+| `B:primary` | 109 | 97 of 109 | 61 × 97 · 132 × 2 · 1311 × 1 · 6365 × 8 · 59644 × 1 |
+
+The payload recorder wraps the provider, so those counts are every call on the leg — the Stage-2 polish **and** the auxiliary passes that pass their own system strings. The 61-char bucket is the hard-mode Stage-2 dispatch; the rest are that tail (and one single-turn full-system call). The arm without a bucket recorded was resumed from a pre-restart checkpoint, so its dispatch shape is bound by the same configuration but is not itself on record here.
+
+**So the win and the loss both belong to that configuration.** The +45.91 pp answer-conciseness gain and the −7.41 pp strict-correctness loss describe hard mode under a stripped prompt. Two things are therefore NOT measured here, and neither changes the verdict for the hard board as it ships today: the lever's incremental effect on the **live single-turn path** (which already receives the full 53 kB prompt, itself measured at ~58 % shorter answers, R412), and hard mode with the full prompt delivered (R411 gap 3.1).
+
 ## All eight official axes, per arm
 
 Median across the three generations of the arm's own board (37 rows), judged by `openrouter:qwen/qwen3-235b-a22b-2507:t=0.1:grouped:r=3` (temp 0.1, grouped criteria, 3 repetitions per row). `ans_conciseness` and `resp_speed` are computed from text and latency, the two `ref_correctness` axes from the reference key; the ref axes exclude rows with no annotated expected references.
