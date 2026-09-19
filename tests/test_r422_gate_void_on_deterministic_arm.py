@@ -153,7 +153,7 @@ class TestTheRunnerRefusesToPublish:
     def test_runner_wraps_each_arm_in_a_probe(self) -> None:
         src = (REPO / "evals" / "regenold" / "run_official_batch.py").read_text(encoding="utf-8")
         assert re.search(r"with ArmProbe\(", src)
-        assert "provenance = probe.provenance(rows=got)" in src
+        assert re.search(r"probe\.provenance\(\s*rows=got,", src)
 
 
 class TestScoreArmCarriesTheLeg:

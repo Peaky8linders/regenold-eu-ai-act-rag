@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import hashlib
 import threading
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -64,6 +65,7 @@ __all__ = [
     "GateVerdict",
     "SYSTEM_SLOT_FLAGS",
     "assess",
+    "count_rows_served_by",
     "lever_changes_system",
     "stage2_transport_snapshot",
 ]
@@ -133,6 +135,43 @@ class ArmProvenance:
     user_hashes: tuple[str, ...] = ()
     system_lengths: tuple[int, ...] = ()
     calls: int = 0
+    #: R423 — provider ids the transport policy refused, with a count each.
+    #: ``refused`` counts the events; this names them, which is what tells an
+    #: operator whether a Groq/Gemini escape hatch was reached (a failure path)
+    #: or the wrapper's own base URL was misconfigured (every call).
+    refused_by_provider: dict[str, int] = field(default_factory=dict)
+    #: R423 — dials per leg as the PAYLOAD RECORDER saw them (``primary`` /
+    #: ``fallback``). The counters above cannot express "the fallback was dialled
+    #: 20 times and answered 0": ``fallback_ok`` is 0 in that case, so an arm
+    #: whose tunnel failed on every retry and whose Bedrock credential is dead
+    #: looks quiet. Measured on the R423 hard gate: arm A dialled Bedrock 20
+    #: times, served 0 answers from it, and the verdict said nothing.
+    legs: dict[str, int] = field(default_factory=dict)
+    #: R423 — system payload lengths per leg, e.g. ``{'fallback': [59644, ...]}``.
+    #: This is how the full 53 kB system prompt is attributed to a leg instead
+    #: of being reported as one merged histogram.
+    leg_system_lengths: dict[str, list[int]] = field(default_factory=dict)
+    #: R423 — generations requested per row, and the largest byte-identical rate
+    #: across consecutive generations. ``repeats > 1`` is a claim of INDEPENDENT
+    #: draws; a high identical rate means they were REPLAYS.
+    repeats: int = 1
+    repeat_identical_rate: float | None = None
+    #: R423 — deterministic Stage-1 drafts per SAMPLE, in sample order.
+    #: ``deterministic_graded`` above describes sample 0 only, but every number
+    #: this gate publishes is a per-row MEDIAN over all samples. So one sample
+    #: that shipped drafts while its siblings were polished biases the median by
+    #: an unknown amount in one direction — measured on the R423 outage run, arm
+    #: A's sample 3 was 28/28 deterministic while samples 1-2 were primary-served,
+    #: and the arm total (47 primary completions) made the arm read healthy.
+    sample_deterministic: tuple[int, ...] = ()
+    #: R423b — which leg served each GRADED row, read off the rows themselves
+    #: (``provenance.stage2_served_by``) rather than off this process's counters.
+    #: The counters only see calls made by THIS process, so an arm resumed from
+    #: its checkpoint reads as having made no calls at all — and the R422
+    #: zero-completion rule then voids a perfectly good arm. The rows are the
+    #: evidence that survives a restart, and they are what the other provenance
+    #: rules already read.
+    rows_served: dict[str, int] = field(default_factory=dict)
 
     @property
     def system_digest(self) -> str:
@@ -159,6 +198,14 @@ class ArmProvenance:
         return int(self.stats.get("refused", 0) or 0)
 
     @property
+    def fallback_attempts(self) -> int:
+        return int(self.stats.get("fallback_attempts", 0) or 0)
+
+    @property
+    def primary_failed(self) -> int:
+        return int(self.stats.get("primary_failed", 0) or 0)
+
+    @property
     def stats_error(self) -> str | None:
         err = self.stats.get("_error")
         return str(err) if err else None
@@ -180,8 +227,20 @@ class ArmProvenance:
             "user_digest": self.user_digest,
             "primary_attempts": self.primary_attempts,
             "primary_ok": self.primary_ok,
+            "primary_failed": self.primary_failed,
+            "fallback_attempts": self.fallback_attempts,
             "fallback_ok": self.fallback_ok,
             "refused": self.refused,
+            "refused_by_provider": dict(self.refused_by_provider),
+            "legs": dict(self.legs),
+            "leg_system_lengths": {
+                leg: sorted(lengths)
+                for leg, lengths in self.leg_system_lengths.items()
+            },
+            "repeats": self.repeats,
+            "repeat_identical_rate": self.repeat_identical_rate,
+            "sample_deterministic": list(self.sample_deterministic),
+            "rows_served": dict(self.rows_served),
             "stats_error": self.stats_error,
         }
 
@@ -283,6 +342,7 @@ class _PayloadRecorder:
         self.lock = threading.Lock()
         self.records: list[dict[str, Any]] = []
         self.legs: dict[str, int] = {}
+        self.leg_lengths: dict[str, list[int]] = {}
         self.errors: list[str] = []
         self.filter_fell_back = False
         self._patched: list[tuple[Any, str, Any]] = []
@@ -290,6 +350,7 @@ class _PayloadRecorder:
     def _record(self, leg: str, system: str, user: str) -> None:
         with self.lock:
             self.legs[leg] = self.legs.get(leg, 0) + 1
+            self.leg_lengths.setdefault(leg, []).append(len(system or ""))
             self.records.append(
                 {
                     "leg": leg,
@@ -413,13 +474,21 @@ class ArmProbe:
         self.transport_after = stage2_transport_snapshot()
         return False
 
-    def provenance(self, *, rows: Any = None) -> ArmProvenance:
+    def provenance(
+        self,
+        *,
+        rows: Any = None,
+        repeats: int = 1,
+        repeat_identical_rate: float | None = None,
+        sample_rows: Iterable[Any] | None = None,
+    ) -> ArmProvenance:
         stats = dict(self.transport_after)
         if self._reset_error:
             stats["_error"] = self._reset_error
         if self._recorder.errors:
             stats.setdefault("_error", "; ".join(self._recorder.errors))
         selected = self._recorder._selected()
+        refused = stats.get("refused_by_provider")
         return ArmProvenance(
             label=self.label,
             rows=len(rows) if rows is not None else 0,
@@ -429,7 +498,55 @@ class ArmProbe:
             user_hashes=tuple(r["user"] for r in selected),
             system_lengths=tuple(r["system_len"] for r in selected),
             calls=len(selected),
+            refused_by_provider=dict(refused) if isinstance(refused, dict) else {},
+            legs=dict(self._recorder.legs),
+            leg_system_lengths={
+                leg: list(lengths)
+                for leg, lengths in self._recorder.leg_lengths.items()
+            },
+            repeats=int(repeats),
+            repeat_identical_rate=repeat_identical_rate,
+            rows_served=count_rows_served_by(rows),
+            sample_deterministic=(
+                tuple(count_deterministic_rows(sample) for sample in sample_rows)
+                if sample_rows is not None
+                else ()
+            ),
         )
+
+
+def count_rows_served_by(rows: Any) -> dict[str, int]:
+    """Which leg served each graded row, counted off the rows' own provenance.
+
+    ``primary`` / ``fallback`` / ``deterministic`` each count rows that name
+    that leg; ``unnamed`` counts rows carrying no leg at all (an older
+    checkpoint, or a row whose trace was empty). The distinction matters for a
+    RESUMED arm: in-process transport counters restart at zero, so a resumed arm
+    looks like one that produced nothing, when in fact every row on disk records
+    a primary completion.
+    """
+    counts: dict[str, int] = {}
+    if not rows:
+        return counts
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        prov = row.get("provenance")
+        if not isinstance(prov, dict):
+            counts["unnamed"] = counts.get("unnamed", 0) + 1
+            continue
+        served = prov.get("stage2_served_by")
+        if served in (None, ""):
+            # A row written before the field existed: ``stage2_polish`` is the
+            # only leg hint it carries.
+            if prov.get("stage2_polish") is False:
+                served = "deterministic"
+            elif prov.get("stage2_polish") is True:
+                served = "primary"
+            else:
+                served = "unnamed"
+        counts[str(served)] = counts.get(str(served), 0) + 1
+    return counts
 
 
 def count_deterministic_rows(rows: Any) -> int:
@@ -498,19 +615,39 @@ def assess(
                 f"{arm.label}: transport provenance unavailable — {arm.stats_error}"
             )
             continue
-        if arm.fallback_ok > 0 and not ignore_fallback_leg:
+        if (arm.fallback_ok + arm.rows_served.get("fallback", 0)) > 0 and not ignore_fallback_leg:
             reasons.append(
                 f"{arm.label} was served by the FALLBACK transport "
-                f"(fallback_ok={arm.fallback_ok}, primary_ok={arm.primary_ok}). "
+                f"(fallback_ok={arm.fallback_ok}, primary_ok={arm.primary_ok}, "
+                f"rows_naming_fallback={arm.rows_served.get('fallback', 0)}). "
                 "Bedrock always receives the full system prompt, so a "
                 "system-slot lever delivers identical bytes to both arms."
             )
         if arm.refused > 0:
+            named = ", ".join(
+                f"{k}×{v}" for k, v in sorted(arm.refused_by_provider.items())
+            )
             reasons.append(
                 f"{arm.label}: {arm.refused} Stage-2 call(s) were refused by the "
-                "transport policy (off-contract provider attempted)."
+                "transport policy (off-contract provider attempted: "
+                f"{named or 'provider not named by the counter'})."
             )
-        if arm.rows > 0 and arm.primary_ok == 0 and arm.fallback_ok == 0:
+        rate = arm.repeat_identical_rate
+        if arm.repeats > 1 and rate is not None and rate > 0.5:
+            reasons.append(
+                f"{arm.label}: {rate:.0%} of rows were BYTE-IDENTICAL between "
+                f"consecutive generations ({arm.repeats} requested). The "
+                "generations were REPLAYS, not independent draws, so nothing "
+                "about draw-to-draw stability can be read from them."
+            )
+        # The evidence is this process's counters PLUS what the graded rows
+        # recorded. R423b: on a ``--resume`` re-launch the counters are empty by
+        # construction, and reading only them voided an arm whose 37 rows each
+        # name the primary leg. The rule is unchanged in the outage it was
+        # written for — there, no row names a leg either.
+        served_primary = arm.primary_ok + arm.rows_served.get("primary", 0)
+        served_fallback = arm.fallback_ok + arm.rows_served.get("fallback", 0)
+        if arm.rows > 0 and served_primary == 0 and served_fallback == 0:
             reasons.append(
                 f"{arm.label}: {arm.rows} rows produced ZERO Stage-2 completions "
                 "on either leg — the answers are deterministic, not the lever's."
@@ -521,6 +658,22 @@ def assess(
         # POLISH-vs-DETERMINISTIC is published as a lever result. The graded rows
         # carry their own provenance, so require most of them to have been
         # polished before either arm can be compared.
+        # R423 — a degraded SAMPLE, not just a degraded arm. The published numbers
+        # are medians over every generation, so a sample that shipped Stage-1
+        # drafts while its siblings were polished moves every median on that arm.
+        # The R423 outage proved the arm-level check below cannot see it: arm A
+        # read healthy on 47 primary completions while its 3rd sample was 28/28
+        # deterministic. Judged per sample, on the same majority rule.
+        for index, deterministic in enumerate(arm.sample_deterministic):
+            if arm.rows > 0 and deterministic * 2 > arm.rows:
+                reasons.append(
+                    f"{arm.label}: Stage-2 never landed on {deterministic} of "
+                    f"{arm.rows} graded rows in generation {index + 1} of "
+                    f"{arm.repeats} (deterministic Stage-1 drafts). Every "
+                    "published number is a median across the generations, so a "
+                    "degraded generation moves the arm's median by an unknown "
+                    "amount — the samples were not measured under one transport."
+                )
         if arm.rows > 0 and arm.deterministic_graded * 2 > arm.rows:
             reasons.append(
                 f"{arm.label}: Stage-2 never landed on {arm.deterministic_graded} "
@@ -529,6 +682,32 @@ def assess(
             )
 
     system_checked = False
+    if branch is not None:
+        # R423 — a FAILED fallback dial is a primary failure on a graded path, and
+        # the counter that can see it is ``fallback_attempts``, not
+        # ``fallback_ok``. With a dead Bedrock credential the fallback answers
+        # nothing, so ``fallback_ok`` stays 0 and the arm reads clean while rows
+        # shipped Stage-1 drafts. Measured on the R423 hard gate: arm A dialled
+        # the fallback 20 times and served 0 from it; the verdict said nothing,
+        # and every dollar of the outage was visible only in the run log.
+        a_attempts, b_attempts = base.fallback_attempts, branch.fallback_attempts
+        if a_attempts != b_attempts and not ignore_fallback_leg:
+            reasons.append(
+                "asymmetric fallback pressure: "
+                f"{base.label} dialled the fallback leg {a_attempts} time(s), "
+                f"{branch.label} {b_attempts} — the primary leg failed on one "
+                "arm's graded path and not the other's, so the two arms were not "
+                "measured under the same transport."
+            )
+        for arm in checked:
+            if arm.fallback_attempts > 0 and arm.fallback_ok == 0:
+                warnings.append(
+                    f"{arm.label}: the fallback leg was dialled "
+                    f"{arm.fallback_attempts} time(s) and answered 0 "
+                    f"(primary_failed={arm.primary_failed}) — a dead or failing "
+                    "fallback credential. Rows that shipped a draft because of "
+                    "it belong in the excluded set, not averaged over."
+                )
     if lever_changes and branch is not None:
         system_checked = True
         if not base.system_hashes or not branch.system_hashes:

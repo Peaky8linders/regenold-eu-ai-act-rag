@@ -1644,6 +1644,14 @@ def _engine_cache_key(
             "REGENOLD_CLOSED_SET_SKELETON",
             "REGENOLD_CLOSED_SET_SKELETON_LEAD",
             "REGENOLD_CLOSED_SET_MIN_MEMBERS",
+            # R423 — the need-proportional contract narrows the CLOSED-SET
+            # skeleton to the engaged members AND adds a shape clause to the
+            # Stage-2 contract, so it changes the evidence block and the answer
+            # (and, via the prose->refs passes, the wire). Same doctrine as the
+            # three knobs above: response-affecting ⇒ keyed. Without this an
+            # in-process A/B serves arm A's cached engine output to arm B, the
+            # R263.2 cache-poisoning bug.
+            "REGENOLD_NEED_PROPORTIONAL_CONTRACT",
             # R399 - rarity-weighted paragraph selection. Decides WHICH
             # verbatim paragraphs reach Stage-2, so it is response- and
             # reference-affecting for the same reason the three above are.

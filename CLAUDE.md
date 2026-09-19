@@ -1118,6 +1118,122 @@ differing) the reordered rungs are a **WASH** — OVERALL 72.7 → 72.9 (+0.2 pp
   **`--stride N`**, applied BEFORE `--limit`: the send order is front-loaded with
   easy rows, so `--limit 40` is 68 % easy against the board's 46 %, which is how a
   skewed prefix produced the R422 reading in the first place.
+* **R423 — the need-proportional answer contract.** `REGENOLD_NEED_PROPORTIONAL_CONTRACT`
+  (**default OFF**) renders ONE deterministic estimate of what a question engages,
+  twice: an ANSWER SHAPE clause in the Stage-2 contract (item count, target word
+  count, and "members outside the engaged list are context, do not enumerate"), and
+  a SCOPED closed-set skeleton (`_render_closed_set_skeleton(engaged=...)` keeps
+  every engaged member's lead text and demotes the rest to bare coordinates). It
+  answers R422's measurement — corr(gold criteria, our answer length) **+0.11**
+  against the reference's **+0.55**, with the skeleton firing on 110/110 rows for a
+  mean 5,125 chars. Measured offline before any live spend: the per-row reference
+  length is **NOT predictable** from the ask (ridge LOO r **0.10–0.14**), so `items`
+  is a monotone FLOOR (`clamp(360, 300 + 75*items, 1000)`, mean 584.8 against a
+  649.3 reference mean) and the axis is moved by LEVEL, not shape — projecting the
+  gold's own references gives **0.4419** for the real R419 answers (reproducing the
+  published board exactly) against **0.897** at this lever's targets. The scoped
+  skeleton saves **26,607 chars over 37 rows' refs (ratio 0.403)** while dropping
+  **zero** engaged coordinates, and the provider-seam probe confirms the clause
+  reaches the wire on both sampled rows that reach Stage-2 at all. Gate:
+  `--stride 3 --repeats 3` hard, scored by `docs/measurements/r423/need_gate.py`
+  on per-row MEDIANS over 3 independent generations (the R416 lever's entire answer
+  movement was 2 criteria of 87, which one draw cannot separate from noise).
+  `run_official_batch` gained **`--repeats`** (sample 0 keeps the shipped
+  checkpoint path and `--resume` contract; replicas are `.r{K}` siblings carrying a
+  `sample` key). Fixed on the way: `--help` was broken for the whole runner —
+  `--stride`'s help string carried a bare `%`, which argparse interpolates.
+  **The first hard gate ran, was VOIDED by its own guard, and falsified two things.**
+  (a) **`--repeats` did not produce independent generations.** The route answers
+  from `_ENGINE_CACHE`, keyed on (question, context, history depth, env) — and every
+  generation of a row sends the same key, so generations 2..K replayed generation 1
+  without dialling a provider. MEASURED (37 rows × 3 generations, both arms): arm B
+  was byte-identical to generation 1 on **23/37 rows** at p50 **1.6 s** against
+  generation 1's **43.6 s**, and made **73** provider calls across three
+  generations of 74 asks each. A median over duplicated values reports a
+  draw-to-draw stability the run never measured — the R422 failure shape exactly.
+  Fixed by clearing the response cache before EVERY sample
+  (`run_official_batch._clear_engine_cache`) plus a `_repeat_independence`
+  self-check: the runner warns, and `assess` **voids** an arm whose consecutive
+  generations are majority-identical (the ~24 % curated-intercept floor is
+  tolerated). Proven live on a 2-row × 2-generation smoke: generation 2 cleared 4
+  entries and `rg_004` came back 3144 vs 3480 chars, both primary-served.
+  (b) **A fallback leg that answers NOTHING was invisible.** Arm A dialled Bedrock
+  **20 times and served 0** (`api_key_invalid_403`) while the verdict said nothing —
+  `fallback_ok` is 0 in that shape, so an arm whose tunnel failed repeatedly and
+  whose fallback is dead read like an arm that never needed either. `ArmProvenance`
+  now carries `fallback_attempts`, `primary_failed`, `refused_by_provider` and
+  per-LEG payload attribution (`legs`, `leg_system_lengths`): asymmetric fallback
+  pressure across arms is a VOID, symmetric pressure is a warning naming the
+  counts, a refusal names its provider (`groq×3`, not "off-contract provider
+  attempted"), and the 53 kB system prompt is attributed to the leg that carried
+  it instead of being merged into one histogram. The void run's own numbers
+  (answer_chars 2171.7 → 1204.9 on the same 37 rows, both arms `claude-opus-5`,
+  `fallback_ok=0`) are kept in `docs/measurements/r423/CHECKPOINT.md` §5.1.
+  **The corrected run (`--label r423-need2`) was VOIDED too, and this time the
+  cause was the tunnel.** Measured from its log: **233**
+  `wrapper_call_failed: network_error: [Errno 11001] getaddrinfo failed`, 8
+  `[WinError 10065] unreachable host`, 2 read timeouts — **243** calls that never
+  left the machine, matching the 243 Groq fallbacks the strict-transport policy
+  then refused, after which the dead Bedrock credential left a deterministic
+  Stage-1 draft. `getaddrinfo failed` means the wrapper hostname did not RESOLVE:
+  the Cloudflare tunnel that publishes it was down. Two more holes came out of it.
+  (a) **An arm-level total hid a fully degraded generation.** `deterministic_graded`
+  is computed from `sample 0` only, while every published number is a per-row
+  MEDIAN across generations — so arm A read HEALTHY (47 primary completions) while
+  its generation 3 was **28/28 drafts** at 1083 mean chars against sample 1's 2285.
+  `ArmProvenance.sample_deterministic` now carries the per-generation counts
+  (`probe.provenance(sample_rows=replicates)`) and `assess` voids a gate when ANY
+  generation is majority-deterministic. (b) **90 minutes and 243 calls were spent
+  finding out.** The runner now pre-flights the wrapper with ONE real 16-token
+  completion before the first row is spent (it exercises DNS + CF Access + OAuth
+  in a single call) and aborts the batch after **5 consecutive** Stage-2 failures,
+  resetting the streak on any success so a blip cannot trip it;
+  `--allow-degraded-transport` is the explicit opt-out for a run that measures the
+  degradation path itself. The third run, `--label r423-need3`, is slower by
+  design — 27 s to 141 s per row, against the voided run's 24 s median, because
+  clearing the route cache per sample turned generations 2..K into real draws
+  instead of 1.6 s replays.
+  **R423b — a restart no longer costs a generation, and the gate reports all eight
+  axes.** Two harness defects made the restart expensive and one made the guard
+  wrong: (a) `--resume` was gated on sample 0, so a re-launch re-drew replicas
+  that were already on disk (measured: four finished generations, ~1.5 h of live
+  provider draws, after a machine restart 2.5 h in). The validator is per FILE and
+  a replica file holds each row id exactly once, so replica resume is safe and now
+  the resumed launch prints `resuming: 37 complete, 0 pending` and spends nothing.
+  (b) The gate's zero-completion rule read only in-process counters, so a resumed
+  arm (`primary_ok=0`, `calls=0`, 37 graded rows) was VOIDed as "ZERO Stage-2
+  completions" — the guard refused a valid run. `ArmProvenance.rows_served` now
+  counts the leg each GRADED ROW names in its own provenance, which is the same
+  evidence the per-sample determinism rules already read; the rule still fires in
+  the outage it was written for (no row names a leg either), and a row naming the
+  fallback leg still VOIDs. (c) The gate judged four axes and published four,
+  while the official aggregate is a GEOMETRIC mean over eight — a lever that
+  shortens answers and pays for it in reference conciseness or speed would have
+  read as a win. `need_gate.official_axes` recomputes
+  `evals.official.rubric.score_rows` on exactly the comparable subset, per arm per
+  generation, and reduces each axis by a MEDIAN over generations, so the gate
+  reports all eight axes plus `overall`, and the ship rule refuses an aggregate
+  regression beyond 0.5 pp.
+  **GATED — the lever is measured and it KEEPS OFF.** The clean gate (`--label
+  r423-need3`: valid, zero fallbacks, zero refusals, byte-identical rates 27 %/24 %
+  at the curated floor) ran 37 strided hard rows x 3 independent generations x 2
+  arms; 27 rows were comparable (primary-served in ≥2 of 3 generations in BOTH
+  arms; the 10 deterministic rows are dropped symmetrically). Result, per-row
+  MEDIAN over generations, on that same 27-row subset, all eight official axes:
+  `ans_conciseness` **+45.91**, `ref_conciseness` **+20.62**, `resp_speed`
+  **+10.37**, `ref_strict` **+5.56**, and **overall (geometric mean) 65.04 → 79.96,
+  +14.91 pp** — against `ans_loose` **−4.04** and `ans_strict` **−7.41**. Arm's own
+  37-row board agrees (overall 72.76 → 82.33, +9.56). The entire correctness cost
+  is **2 of 27 rows** (`rg_010` 2763→379 chars, `rg_106` 2651→442, the latter also
+  dropping `Annex III`), both reproducible in every generation, and both a LENGTH
+  STARVATION: `rg_010` is "which article governs human oversight" — 4 criteria the
+  long answer enumerated — and the shape clause read it as a one-item ask. No row
+  improved on correctness, so the pre-registered rule (correctness no worse than
+  −1.0 pp) refuses the default. The estimator's item count is the defect: the
+  offline calibration already warned (59/110 rows called "1 item" while only 4 rows
+  truly have 1 criterion), which is why the next lever is a content-preservation
+  contract tied to the Stage-1 draft's own engaged set, not a bigger length target.
+  Report: `docs/reports/r423-need-proportional-gate.md`.
 * **R358 — curated authoritative intercepts.** Four new curated answers
   (emergency triage `Annex III.5.d`, health-insurance pricing `5(c)`, hospital
   deployer duties, provider pre-market duties) that seed gold-head reference

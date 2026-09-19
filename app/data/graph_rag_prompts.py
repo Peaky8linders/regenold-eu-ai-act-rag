@@ -1161,6 +1161,25 @@ EVIDENCE_ANSWER_CONTRACT_WITH_COMPLETENESS = (
     EVIDENCE_ANSWER_CONTRACT + "\n\n" + EVIDENCE_COMPLETENESS_BLOCK
 )
 
+#: R423 — the completeness directive, SCOPED to the engaged set.
+#: ``EVIDENCE_COMPLETENESS_BLOCK`` above makes completeness unconditional over
+#: "a cited provision", which is the instruction measured in R422 to inflate the
+#: answer (1139 -> 2138 chars, ``ans_conciseness`` 62.02 -> 44.19) while the
+#: answer's own length tracked the gold criteria count at only +0.11. This block
+#: keeps the rule — an obligation and its exceptions are ONE answer — but binds it
+#: to the items the ANSWER SHAPE block derives from the question. Used ONLY when
+#: :func:`app.engines.answer_need.need_proportional_block` renders a clause, so
+#: the OFF arm keeps the shipped text byte-for-byte.
+EVIDENCE_COMPLETENESS_BLOCK_ENGAGED = """COMPLETENESS DIRECTIVE (scoped to the
+engaged set): an obligation and its exceptions are ONE answer. Within the items
+listed in the ANSWER SHAPE block, state each enumerated limb, sub-point,
+condition and exception rather than the headline duty alone: a transparency duty
+is incomplete without its carve-outs, and a verification duty is incomplete
+without its follow-on steps. When the question is answerable yes/no, give the
+bare verdict FIRST as a complete sentence, then the grounds - never only the
+conditions under which the verdict might change. Completeness applies to those
+items; it is not a licence to state every limb of every provision cited."""
+
 
 def contract_completeness_directives_enabled() -> bool:
     """R403 gate for :data:`EVIDENCE_COMPLETENESS_BLOCK`. Default ON (the
@@ -1325,7 +1344,24 @@ def build_evidence_answer_user(
     if system_description:
         parts.append(f"SYSTEM DESCRIPTION: {system_description}")
     parts.append(f"EU AI ACT REFERENCES:\n{references}")
-    if contract_completeness_directives_enabled():
+    # R423 — the need-proportional contract. One deterministic estimate of the
+    # engaged set drives BOTH renderings: this clause and the skeleton scope in
+    # ``_graph_rag_impl._render_grounding_text``. When it renders nothing (lever
+    # OFF, or a question that engages nothing) the branch below is the shipped
+    # text byte-for-byte, which is what makes the paired gate meaningful.
+    need_clause = ""
+    try:
+        from app.engines.answer_need import (  # noqa: PLC0415
+            need_proportional_block,
+        )
+
+        need_clause = need_proportional_block(question, references)
+    except Exception:  # noqa: BLE001 — a prompt add-on must not break Stage-2
+        need_clause = ""
+    if need_clause:
+        parts.append(EVIDENCE_ANSWER_CONTRACT + "\n\n" + EVIDENCE_COMPLETENESS_BLOCK_ENGAGED)
+        parts.append(need_clause)
+    elif contract_completeness_directives_enabled():
         parts.append(EVIDENCE_ANSWER_CONTRACT_WITH_COMPLETENESS)
     else:
         parts.append(EVIDENCE_ANSWER_CONTRACT)
