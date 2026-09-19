@@ -360,6 +360,41 @@ while only 4 rows truly have 1 criterion). The fix that follows is a
 content-preservation contract tied to the Stage-1 draft's own engaged set, not a
 bigger length target. Report: `docs/reports/r423-need-proportional-gate.md`.
 
+## 5.7 Caveat — the gate measured the STRIPPED-prompt path, and live single-turn
+
+already answers like the lever's ON arm
+
+The post-deploy live check (commit `dd87fd45e3ae`) asked `rg_010`'s question to
+production, single-turn, with no history:
+
+```
+"Which article of the EU AI Act governs human oversight measures?"
+  -> 316 chars, refs ['Article 14.1'], stage2_served_by=primary, 19.9 s
+```
+
+That is the **lever's ON shape**, not its OFF shape. In the gate:
+
+| | turn 1 (3 generations) | pushback (3 generations) |
+| :-- | :-- | :-- |
+| `rg_010` arm A (OFF) | 2772 / 2702 / 2805 | 2776 / 2715 / 2763 |
+| `rg_010` arm B (ON) | 317 / 378 / 460 | 379 / 324 / 467 |
+
+and across the comparable subset the lever compresses both turns by the same
+amount (turn 1: 3111 → 1068 chars mean; pushback: 3092 → 1028). The reason is the
+configuration, not the lever: a hard-mode request dispatches the **61-char
+persona** (`leg_system_lengths` in the gate sidecar is 61 for 108 of 109 primary
+calls, with a single 59,644-char call), while live single-turn gets the FULL
+53 kB system prompt through `REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN=1` (R412) —
+which is itself the prompt that R412 measured as compressing answers ~58 %.
+
+So the honest scope of this gate: **it measures hard mode under the stripped
+prompt.** The +45.91 pp conciseness win and the −7.41 pp strict loss both belong to
+that configuration, and the live single-turn path already reaches a comparable
+shape on this row without the lever. What is NOT measured, and is the next
+question, is the lever's incremental effect where production actually lives (the
+full-prompt single-turn path), and the hard path with the full prompt delivered
+(R411 gap 3.1). Neither changes the verdict for the hard board as it ships today.
+
 ## 6. Defects found and fixed on the way
 
 * **`--help` was broken on the whole runner.** `--stride`'s help contained a bare

@@ -1233,6 +1233,14 @@ differing) the reordered rungs are a **WASH** — OVERALL 72.7 → 72.9 (+0.2 pp
   offline calibration already warned (59/110 rows called "1 item" while only 4 rows
   truly have 1 criterion), which is why the next lever is a content-preservation
   contract tied to the Stage-1 draft's own engaged set, not a bigger length target.
+  **Scope caveat, measured post-deploy:** a hard-mode request dispatches the
+  **61-char persona** (108 of the gate's 109 primary payloads, against one
+  59,644-char call), so this gate measures hard mode under the STRIPPED prompt —
+  the configuration R411 gap 3.1 names. Live single-turn already answers `rg_010`
+  in the lever's ON shape (316 chars, `Article 14.1`, primary-served, verified
+  against production `dd87fd45e3ae`) because it gets the full 53 kB system prompt
+  via `REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN=1`. The lever's incremental effect
+  on that path is NOT measured and is the next question.
   Report: `docs/reports/r423-need-proportional-gate.md`.
 * **R358 — curated authoritative intercepts.** Four new curated answers
   (emergency triage `Annex III.5.d`, health-insurance pricing `5(c)`, hospital
