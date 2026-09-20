@@ -1334,11 +1334,6 @@ def seed_graph(
             MERGE (shadow)-[:EQUIVALENT_TO]->(canonical)
             MERGE (canonical)-[:EQUIVALENT_TO]->(shadow)
             WITH shadow, canonical
-            OPTIONAL MATCH (shadow)-[req:REQUIRES]->(target)
-            FOREACH (_ IN CASE WHEN target IS NOT NULL THEN [1] ELSE [] END |
-                MERGE (canonical)-[:REQUIRES]->(target)
-            )
-            WITH shadow, canonical
             OPTIONAL MATCH (role)-[atr:APPLIES_TO_ROLE]->(shadow)
             FOREACH (_ IN CASE WHEN role IS NOT NULL THEN [1] ELSE [] END |
                 MERGE (role)-[:APPLIES_TO_ROLE]->(canonical)

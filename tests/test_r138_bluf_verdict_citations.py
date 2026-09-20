@@ -238,12 +238,23 @@ def test_citable_base_guard_on_allows_prose_citation_gap(monkeypatch) -> None:
     NOT appear in wire references (because it was not retrieval-grounded).
 
     Specifically: the mock Sonnet answer names Article 73, which is
-    catalog-valid but NOT in the engine's retrieval universe for this
-    question. The guard should block its promotion, the answer should be
-    retained (R274 — never drop a ref the prose describes means never
-    strip the PROSE), and the wire references should NOT contain Article 73.
+    catalog-valid but NOT in the engine's retrieval universe **while the R426
+    ontology citable expansion is OFF**. The guard should block its promotion,
+    the answer should be retained (R274 — never drop a ref the prose describes
+    means never strip the PROSE), and the wire references should NOT contain
+    Article 73.
+
+    R427.1 — the expansion regime is now pinned EXPLICITLY here rather than left
+    to the default. R426 shipped ``REGENOLD_ONTOLOGY_CITABLE_EXPANSION`` default
+    ON, which widens the citable universe with 1-hop ontology neighbours, and
+    Article 73 (incident reporting) is one of them — so this test's premise
+    stopped holding in the shipped regime and it failed on a clean clone.
+    Measured: it passes at ``...=0`` and fails at ``...=1`` (default), which is
+    the expansion doing what R426 shipped it for, not a guard regression. The
+    promotion it now permits is pinned by the test below.
     """
     monkeypatch.setenv("REGENOLD_CITABLE_BASE_GUARD", "1")
+    monkeypatch.setenv("REGENOLD_ONTOLOGY_CITABLE_EXPANSION", "0")
     _stage2_env(monkeypatch)
     body = _post(_Q, _VERDICT_SONNET)
     answer = body.get("answer", "")
@@ -270,6 +281,37 @@ def test_citable_base_guard_on_allows_prose_citation_gap(monkeypatch) -> None:
             f"Article {art_num} is retrieval-grounded and should be in "
             f"references {refs}"
         )
+
+
+def test_ontology_expansion_promotes_the_neighbour_the_guard_alone_blocks(
+    monkeypatch,
+) -> None:
+    """R426's intent, pinned in the regime it actually ships in: a provision the
+    ONTOLOGY reaches is not dropped just because retrieval did not surface it.
+
+    This is the counterpart of the test above and the reason that one is scoped
+    to ``REGENOLD_ONTOLOGY_CITABLE_EXPANSION=0``: same question, same answer, same
+    guard — only the citable universe differs. Article 73 must therefore be
+    PROMOTED here (and the prose mention kept), or the expansion is inert on the
+    one input this file already exercises.
+    """
+    monkeypatch.setenv("REGENOLD_CITABLE_BASE_GUARD", "1")
+    monkeypatch.setenv("REGENOLD_ONTOLOGY_CITABLE_EXPANSION", "1")
+    _stage2_env(monkeypatch)
+    body = _post(_Q, _VERDICT_SONNET)
+    answer = body.get("answer", "")
+    refs = body.get("references", [])
+    ref_art_nums = {
+        m.group(1)
+        for r in refs
+        for m in [_ART_RE.match(str(r).strip())]
+        if m
+    }
+    assert "Article 73" in answer, "the prose mention must survive either way"
+    assert "73" in ref_art_nums, (
+        "the ontology citable expansion is ON, so its 1-hop neighbour Article 73 "
+        f"must survive the guard — references were {refs}"
+    )
 
 
 def test_classification_user_message_leads_with_verdict(monkeypatch) -> None:
