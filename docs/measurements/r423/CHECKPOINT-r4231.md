@@ -311,3 +311,35 @@ Tests added: `tests/test_r423_2_degraded_row_accounting.py` (14) — the degrade
 definition, the accounted exclusion, the unaccounted-refusal refusal, the minority
 cap, the unchanged default, the majority rules surviving, and the artifact
 round-trip.
+
+## 12. Live production verification (post-deploy `536a195aaf1d`)
+
+The lever is ON in production. Two single-turn asks against
+`regenold-eu-ai-act-rag-production.up.railway.app`, both rows the first gate had
+lost:
+
+| row | gold criteria | production answer | wire refs |
+| :--- | --: | --: | :--- |
+| `rg_010` | 5 | **1,213 chars** (gate OFF arm ~2,700; pre-fix live 379) | `Article 14.4`, `Annex III` |
+| `rg_106` | 3 | **864 chars** (gate OFF arm ~3,582) | `Article 5.1.c` (one call also `Annex I.5`) |
+
+`rg_010` now leads with the governing provision and carries `Article 14.4` — the
+limb the first gate's answer never stated.
+
+**Open finding, stated from the evidence rather than the impression.**
+`rg_106`'s production answer reasons correctly about the law-enforcement
+confinement ("which a retailer acting for its own loss-prevention purposes is
+not") but attributes it to "an Annex I product" and does NOT cite `Annex III.6`
+— the gold reference. That is a SINGLE-TURN difference, not a lever regression:
+
+* in the gate's hard-mode comparable set, `rg_106` has `dropped_heads_B: []` and
+  `ans_loose = ans_strict = 1.0` on BOTH arms, so the ON arm kept `Annex III`;
+* the gate's ONLY gold-head drop on the whole comparable set is `rg_100`
+  (`Article 6`) under the OFF arm; the ON arm dropped none.
+
+The two paths differ in the one way already on record: single-turn receives the
+full 53 kB system prompt (`REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN`), hard mode
+receives the 61-char persona. The single-turn ref-reconciliation for a category
+decision whose governing annex is `Annex III` is therefore a concrete, evidenced
+next question — and the same one §11 flags as unmeasured, now with a row that
+shows it.
