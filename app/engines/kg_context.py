@@ -475,6 +475,36 @@ def _allocate_units(rows: list[dict], max_units: int) -> list[dict]:
                 progressed = True
     return [row for k in order for row in groups[k][: kept[k]]]
 
+# R428 — the cite fallback must branch on WHICH node family matched.
+#
+# R426 widened the MATCH to admit legacy ``ART<N>`` shadow nodes alongside the
+# canonical ``article_<N>`` ones, and applied the shadow-only id transform to the
+# RETURN unconditionally. ``substring('article_6', 3)`` is ``'icle_6'``, so any
+# matched node without ``strict_citation`` rendered as the non-provision label
+# **"Article icle_6"** into the Stage-2 context (measured; the canonical nodes get
+# ``strict_citation`` from the seeder, so this is latent today and wrong the
+# moment a node is missing it). The transform is now guarded by the same family
+# test the MATCH uses, and canonical nodes fall back to the value they always did.
+#
+# WHAT THE WIDENED MATCH IS AND IS NOT (R428, measured live on Aura). It is a
+# compatibility shim, not a data unlock:
+#
+# * The 17 shadow nodes carry 125 ``REQUIRES`` and 23 ``APPLIES_TO_ROLE`` edges,
+#   but this query reads PROHIBITED_UNDER / TRIGGERS_HIGH_RISK_UNDER /
+#   HAS_OBLIGATION_ARTICLE / APPLIES_TO, and every one of those counts is **0** on
+#   the shadows. So a shadow contributes no annotation a canonical node does not.
+# * Two nodes can be eligible for one canonical id, yet the result cannot grow:
+#   the projection collects into aggregates keyed on ``cite``, so rows sharing a
+#   cite merge. Verified for the 10 ids whose shadows exist — 10 rows unwidened,
+#   10 widened, zero differing (``tests/test_sota_legal_kg_ontology.py::
+#   test_deontic_widening_cannot_duplicate_a_cite``).
+# * Its residual value is the canonical-missing case: a shadow still yields the
+#   provision's ``cite`` instead of dropping the row entirely.
+#
+# The legacy edges themselves stay unread: no live query reads ``REQUIRES`` (the
+# schema calls that type deliberately unseeded and R99.1 is the bug it caused) and
+# none reads ``APPLIES_TO_ROLE``. Closing that architecture gap is a consumer
+# problem, not a query-widening problem.
 _DEONTIC_CYPHER = """
 CALL () {
     MATCH (a:Article) WHERE a.id IN $ids OR (a.id STARTS WITH 'ART' AND ('article_' + substring(a.id, 3)) IN $ids)
@@ -482,7 +512,12 @@ CALL () {
     OPTIONAL MATCH (cat:AnnexIIICategory)-[:TRIGGERS_HIGH_RISK_UNDER]->(a)
     OPTIONAL MATCH (ro:OperatorRole)-[hoa:HAS_OBLIGATION_ARTICLE]->(a)
     OPTIONAL MATCH (ph:LifecyclePhase)-[:APPLIES_TO]->(a)
-    RETURN coalesce(a.strict_citation, 'Article ' + substring(a.id, 3)) AS cite,
+    RETURN coalesce(
+               a.strict_citation,
+               CASE WHEN a.id STARTS WITH 'ART'
+                    THEN 'Article ' + substring(a.id, 3)
+                    ELSE a.id END
+           ) AS cite,
            collect(DISTINCT coalesce(pr.short_name, pr.id)) AS practices,
            collect(DISTINCT coalesce(cat.label, cat.id)) AS annex_iii,
            collect(DISTINCT coalesce(ro.label, ro.id) + ' (' + coalesce(hoa.tier,'') + ')') AS roles,

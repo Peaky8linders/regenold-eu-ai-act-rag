@@ -112,7 +112,13 @@ REL_INTERPRETS: Final = "INTERPRETS"  # Guideline → Practice/Article
 # the seeder and this module agree EXACTLY; they went undeclared in R426 and the
 # clean-clone suite caught it.
 REL_EQUIVALENT_TO: Final = "EQUIVALENT_TO"  # legacy shadow Article ↔ canonical Article
-REL_APPLIES_TO_ROLE: Final = "APPLIES_TO_ROLE"  # OperatorRole → canonical Article
+# R428 — direction corrected to Article → OperatorRole. Two authorities agree on
+# it: ``app/graph/ontology.py`` (``applies_to_role  # Article → OperatorRole``) and
+# the live graph, where all 23 existing edges are outgoing
+# ``(Article)-[:APPLIES_TO_ROLE]->(OperatorRole)`` and the incoming count is 0. The
+# bridge in ``scripts/seed_neo4j_kb.py`` had read this comment and matched the
+# INCOMING arc, which is why it silently copied nothing.
+REL_APPLIES_TO_ROLE: Final = "APPLIES_TO_ROLE"  # Article → OperatorRole
 
 #: Every relationship type the seeder writes. The single source of truth.
 #: NOTE: ``REQUIRES`` is deliberately ABSENT — the seeder never creates it
