@@ -1,0 +1,592 @@
+{
+ "files": [
+  {
+   "path": "app\\engines\\_graph_rag_impl.py",
+   "loc": 12886,
+   "top_level_defs": 161,
+   "top_level_classes": 0,
+   "unreferenced": [],
+   "unreferenced_decorated": []
+  },
+  {
+   "path": "app\\routes\\regenold.py",
+   "loc": 12849,
+   "top_level_defs": 153,
+   "top_level_classes": 3,
+   "unreferenced": [],
+   "unreferenced_decorated": []
+  },
+  {
+   "path": "app\\data\\eu_ai_act_corpus.py",
+   "loc": 8460,
+   "top_level_defs": 0,
+   "top_level_classes": 0,
+   "unreferenced": [],
+   "unreferenced_decorated": []
+  },
+  {
+   "path": "app\\data\\official_eu_ai_act.py",
+   "loc": 7817,
+   "top_level_defs": 0,
+   "top_level_classes": 0,
+   "unreferenced": [],
+   "unreferenced_decorated": []
+  },
+  {
+   "path": "app\\integrations\\regenold\\scope.py",
+   "loc": 4234,
+   "top_level_defs": 42,
+   "top_level_classes": 3,
+   "unreferenced": [],
+   "unreferenced_decorated": []
+  },
+  {
+   "path": "tests\\test_regenold_scope.py",
+   "loc": 3853,
+   "top_level_defs": 36,
+   "top_level_classes": 32,
+   "unreferenced": [],
+   "unreferenced_decorated": [
+    {
+     "name": "TestExtractReferencedArticles",
+     "line": 38,
+     "lines": 85,
+     "own_uses": 1
+    },
+    {
+     "name": "TestClassifyScopeSingleMessage",
+     "line": 128,
+     "lines": 139,
+     "own_uses": 1
+    },
+    {
+     "name": "TestClassifyConversation",
+     "line": 272,
+     "lines": 87,
+     "own_uses": 1
+    },
+    {
+     "name": "TestKeywordToArticleMapping",
+     "line": 364,
+     "lines": 31,
+     "own_uses": 1
+    },
+    {
+     "name": "TestRouteScopeRefusal",
+     "line": 514,
+     "lines": 166,
+     "own_uses": 1
+    },
+    {
+     "name": "TestRegenoldEvalGate",
+     "line": 685,
+     "lines": 465,
+     "own_uses": 1
+    },
+    {
+     "name": "TestRound3EngReviewRegressionGuards",
+     "line": 1156,
+     "lines": 227,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR531CJudgeDrivenWidening",
+     "line": 1401,
+     "lines": 100,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR541C2WeakScopeKeywordsDoNotFlipGate",
+     "line": 1504,
+     "lines": 38,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR541C2LegitInScopePreserved",
+     "line": 1544,
+     "lines": 57,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR531COosRegressionStillRefused",
+     "line": 1603,
+     "lines": 55,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR531CArticleExistenceForNewKeywords",
+     "line": 1661,
+     "lines": 67,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR54Q1Art101RetrievalAnchors",
+     "line": 1732,
+     "lines": 124,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR55EWeakKeywordRescue",
+     "line": 1862,
+     "lines": 186,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR55ARefusalCopyNoFirstPerson",
+     "line": 2054,
+     "lines": 122,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR57AFactPatternMultiTurnRescue",
+     "line": 2187,
+     "lines": 166,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR57AScopeLeakFixes",
+     "line": 2355,
+     "lines": 124,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR58FollowupMTRescue",
+     "line": 2484,
+     "lines": 171,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR59BareIncidentRemoved",
+     "line": 2657,
+     "lines": 22,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR59PLDCivilLiabilityTightened",
+     "line": 2681,
+     "lines": 71,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR62RefusalRateToZero",
+     "line": 2755,
+     "lines": 177,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR62Stage2RefusalMarkers",
+     "line": 2936,
+     "lines": 24,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR62ZeroRetrievalTopicExtensions",
+     "line": 2963,
+     "lines": 42,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR63ALivePortionAnchorInheritance",
+     "line": 3008,
+     "lines": 111,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR63BGPAIGate",
+     "line": 3122,
+     "lines": 141,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR66ScopeAnchors",
+     "line": 3266,
+     "lines": 146,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR67UnicodeHyphenScopeRescue",
+     "line": 3415,
+     "lines": 114,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR71AssistantAnchorRescue",
+     "line": 3625,
+     "lines": 142,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR273NearOosGrounded",
+     "line": 3769,
+     "lines": 56,
+     "own_uses": 1
+    },
+    {
+     "name": "TestR285GradedRowScopeGaps",
+     "line": 3827,
+     "lines": 26,
+     "own_uses": 1
+    }
+   ]
+  },
+  {
+   "path": "app\\data\\kb.py",
+   "loc": 2613,
+   "top_level_defs": 5,
+   "top_level_classes": 2,
+   "unreferenced": [],
+   "unreferenced_decorated": []
+  },
+  {
+   "path": "evals\\regenold\\scenarios_tricky_extended.py",
+   "loc": 2318,
+   "top_level_defs": 1,
+   "top_level_classes": 0,
+   "unreferenced": [],
+   "unreferenced_decorated": []
+  },
+  {
+   "path": "app\\web_ui.py",
+   "loc": 2254,
+   "top_level_defs": 1,
+   "top_level_classes": 0,
+   "unreferenced": [],
+   "unreferenced_decorated": []
+  },
+  {
+   "path": "evals\\regenold\\scenarios_multiturn_extended.py",
+   "loc": 2072,
+   "top_level_defs": 0,
+   "top_level_classes": 0,
+   "unreferenced": [],
+   "unreferenced_decorated": []
+  },
+  {
+   "path": "evals\\judge\\legal_v2.py",
+   "loc": 1959,
+   "top_level_defs": 35,
+   "top_level_classes": 0,
+   "unreferenced": [],
+   "unreferenced_decorated": []
+  },
+  {
+   "path": "app\\integrations\\regenold\\models.py",
+   "loc": 1911,
+   "top_level_defs": 30,
+   "top_level_classes": 3,
+   "unreferenced": [],
+   "unreferenced_decorated": []
+  },
+  {
+   "path": "app\\main.py",
+   "loc": 1853,
+   "top_level_defs": 23,
+   "top_level_classes": 0,
+   "unreferenced": [
+    {
+     "name": "_redact_probe_payload",
+     "line": 1706,
+     "lines": 5,
+     "own_uses": 1
+    }
+   ],
+   "unreferenced_decorated": [
+    {
+     "name": "healthz_llm",
+     "line": 1758,
+     "lines": 20,
+     "own_uses": 1
+    },
+    {
+     "name": "healthz_email",
+     "line": 1793,
+     "lines": 17,
+     "own_uses": 1
+    }
+   ]
+  },
+  {
+   "path": "scripts\\seed_neo4j_kb.py",
+   "loc": 1788,
+   "top_level_defs": 21,
+   "top_level_classes": 1,
+   "unreferenced": [],
+   "unreferenced_decorated": []
+  },
+  {
+   "path": "app\\engines\\scenario_classifier.py",
+   "loc": 1754,
+   "top_level_defs": 19,
+   "top_level_classes": 1,
+   "unreferenced": [],
+   "unreferenced_decorated": []
+  },
+  {
+   "path": "app\\integrations\\regenold\\grounded_prose.py",
+   "loc": 1657,
+   "top_level_defs": 17,
+   "top_level_classes": 0,
+   "unreferenced": [
+    {
+     "name": "_format_lead_citation_list",
+     "line": 690,
+     "lines": 9,
+     "own_uses": 1
+    }
+   ],
+   "unreferenced_decorated": []
+  },
+  {
+   "path": "app\\engines\\_graph_rag_data.py",
+   "loc": 1573,
+   "top_level_defs": 0,
+   "top_level_classes": 0,
+   "unreferenced": [],
+   "unreferenced_decorated": []
+  },
+  {
+   "path": "evals\\regenold\\run_official_batch.py",
+   "loc": 1482,
+   "top_level_defs": 23,
+   "top_level_classes": 1,
+   "unreferenced": [],
+   "unreferenced_decorated": []
+  },
+  {
+   "path": "app\\engines\\clara_logic.py",
+   "loc": 1474,
+   "top_level_defs": 24,
+   "top_level_classes": 3,
+   "unreferenced": [],
+   "unreferenced_decorated": []
+  },
+  {
+   "path": "app\\engines\\kg_context.py",
+   "loc": 1463,
+   "top_level_defs": 34,
+   "top_level_classes": 1,
+   "unreferenced": [],
+   "unreferenced_decorated": []
+  }
+ ],
+ "duplicates": [
+  {
+   "name": "_aggregate",
+   "sites": [
+    "evals\\judge\\legal_v2.py:1493",
+    "evals\\regenold\\run_official_batch.py:821"
+   ],
+   "max_body_similarity": 0.473
+  },
+  {
+   "name": "_normalise",
+   "sites": [
+    "app\\integrations\\regenold\\scope.py:2994",
+    "app\\engines\\scenario_classifier.py:952"
+   ],
+   "max_body_similarity": 0.247
+  },
+  {
+   "name": "main",
+   "sites": [
+    "evals\\judge\\legal_v2.py:1896",
+    "scripts\\seed_neo4j_kb.py:1708",
+    "evals\\regenold\\run_official_batch.py:1211"
+   ],
+   "max_body_similarity": 0.852
+  }
+ ],
+ "largest_functions": [
+  {
+   "path": "app\\routes\\regenold.py",
+   "name": "regenold_eu_ai_act_ask",
+   "lines": 3660
+  },
+  {
+   "path": "app\\engines\\_graph_rag_impl.py",
+   "name": "_deterministic_answer",
+   "lines": 1083
+  },
+  {
+   "path": "app\\routes\\regenold.py",
+   "name": "_engine_cache_key",
+   "lines": 986
+  },
+  {
+   "path": "app\\engines\\_graph_rag_impl.py",
+   "name": "_claude_max_enhance_answer",
+   "lines": 953
+  },
+  {
+   "path": "app\\engines\\_graph_rag_impl.py",
+   "name": "_openai_wrapper_complete_for_graph_rag",
+   "lines": 854
+  },
+  {
+   "path": "app\\engines\\_graph_rag_impl.py",
+   "name": "_deterministic_parse",
+   "lines": 812
+  },
+  {
+   "path": "app\\integrations\\regenold\\models.py",
+   "name": "normalise_answer_for_regenold",
+   "lines": 574
+  },
+  {
+   "path": "app\\engines\\_graph_rag_impl.py",
+   "name": "ask_compliance_question",
+   "lines": 540
+  },
+  {
+   "path": "scripts\\seed_neo4j_kb.py",
+   "name": "build_payload",
+   "lines": 478
+  },
+  {
+   "path": "tests\\test_regenold_scope.py",
+   "name": "TestRegenoldEvalGate",
+   "lines": 465
+  },
+  {
+   "path": "app\\engines\\_graph_rag_impl.py",
+   "name": "_two_stage_generate_inner",
+   "lines": 406
+  },
+  {
+   "path": "app\\integrations\\regenold\\scope.py",
+   "name": "classify_conversation",
+   "lines": 364
+  },
+  {
+   "path": "app\\routes\\regenold.py",
+   "name": "_build_question_from_history",
+   "lines": 361
+  },
+  {
+   "path": "app\\routes\\regenold.py",
+   "name": "_rewrite_multiturn_query",
+   "lines": 358
+  },
+  {
+   "path": "app\\integrations\\regenold\\scope.py",
+   "name": "classify_scope",
+   "lines": 356
+  },
+  {
+   "path": "app\\engines\\clara_logic.py",
+   "name": "_compute_verdict_inner",
+   "lines": 338
+  },
+  {
+   "path": "app\\integrations\\regenold\\grounded_prose.py",
+   "name": "augment_with_ref_descriptions",
+   "lines": 293
+  },
+  {
+   "path": "app\\integrations\\regenold\\grounded_prose.py",
+   "name": "stitch_grounded_prose",
+   "lines": 287
+  },
+  {
+   "path": "app\\routes\\regenold.py",
+   "name": "_extractive_answer_candidate",
+   "lines": 271
+  },
+  {
+   "path": "evals\\regenold\\run_official_batch.py",
+   "name": "main",
+   "lines": 267
+  },
+  {
+   "path": "app\\main.py",
+   "name": "_healthz_llm_probe",
+   "lines": 262
+  },
+  {
+   "path": "tests\\test_regenold_scope.py",
+   "name": "TestRound3EngReviewRegressionGuards",
+   "lines": 227
+  },
+  {
+   "path": "app\\main.py",
+   "name": "_maybe_auto_seed_neo4j",
+   "lines": 225
+  },
+  {
+   "path": "evals\\regenold\\run_official_batch.py",
+   "name": "_arm",
+   "lines": 197
+  },
+  {
+   "path": "app\\engines\\kg_context.py",
+   "name": "render_kg_context",
+   "lines": 190
+  }
+ ],
+ "giant_functions": {
+  "count": 25,
+  "loc": 14807,
+  "top": [
+   {
+    "path": "app\\routes\\regenold.py",
+    "name": "regenold_eu_ai_act_ask",
+    "lines": 3660
+   },
+   {
+    "path": "app\\engines\\_graph_rag_impl.py",
+    "name": "_deterministic_answer",
+    "lines": 1083
+   },
+   {
+    "path": "app\\routes\\regenold.py",
+    "name": "_engine_cache_key",
+    "lines": 986
+   },
+   {
+    "path": "app\\engines\\_graph_rag_impl.py",
+    "name": "_claude_max_enhance_answer",
+    "lines": 953
+   },
+   {
+    "path": "app\\engines\\_graph_rag_impl.py",
+    "name": "_openai_wrapper_complete_for_graph_rag",
+    "lines": 854
+   },
+   {
+    "path": "app\\engines\\_graph_rag_impl.py",
+    "name": "_deterministic_parse",
+    "lines": 812
+   },
+   {
+    "path": "app\\integrations\\regenold\\models.py",
+    "name": "normalise_answer_for_regenold",
+    "lines": 574
+   },
+   {
+    "path": "app\\engines\\_graph_rag_impl.py",
+    "name": "ask_compliance_question",
+    "lines": 540
+   },
+   {
+    "path": "scripts\\seed_neo4j_kb.py",
+    "name": "build_payload",
+    "lines": 478
+   },
+   {
+    "path": "tests\\test_regenold_scope.py",
+    "name": "TestRegenoldEvalGate",
+    "lines": 465
+   },
+   {
+    "path": "app\\engines\\_graph_rag_impl.py",
+    "name": "_two_stage_generate_inner",
+    "lines": 406
+   },
+   {
+    "path": "app\\integrations\\regenold\\scope.py",
+    "name": "classify_conversation",
+    "lines": 364
+   }
+  ]
+ }
+}
