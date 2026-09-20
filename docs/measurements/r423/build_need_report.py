@@ -109,12 +109,21 @@ PERSONA = "You are an expert EU AI Act regulatory compliance specialist."
 def _prompt_scope() -> dict[str, object]:
     """What Stage-2 was actually told, read off the arms' own payload records.
 
-    R423b — this verdict's most consequential qualification is that BOTH arms ran
-    the stripped hard-mode persona (the 53 kB system prompt is single-turn-only,
+    R423b — this verdict's most consequential qualification is what Stage-2 was
+    actually told (the 53 kB system prompt is single-turn-only,
     ``REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN``, R412). That is a fact about the
     DISPATCHED payload, so it is measured here from ``leg_system_lengths`` rather
     than asserted in prose — a report that publishes a delta without its scope is
     exactly the failure mode the R422 gate was built against.
+
+    R423.3 CORRECTION — the first version of this note claimed both arms
+    "dispatched the stripped persona" as a blanket statement, and that is FALSE.
+    ``run_official_batch._run_hard`` keeps a rolling conversation that starts
+    EMPTY, so the first two rows of any run (or resume) read
+    ``history_turn_count`` 0 and 1 and therefore satisfy the single-turn predicate:
+    their Stage-2 dispatches carry the FULL ~59.6 kB system prompt. Measured on
+    real rows by ``graded_scope_probe.py``. The scope note is now driven by the
+    measured distribution instead of the blanket claim.
     """
     out: dict[str, object] = {"persona": len(PERSONA), "legs": {}, "measured": False}
     for arm in ARMS:
@@ -291,15 +300,19 @@ def main() -> None:
     # ── scope: what Stage-2 was told, so the delta cannot be read out of context ──
     scope = _prompt_scope()
     if scope["measured"]:
-        add("## Scope of this verdict — the STRIPPED-prompt hard path")
+        add("## Scope of this verdict — what Stage-2 was actually told")
         add("")
-        add("Both arms run hard mode, so both dispatched the stripped persona "
-            f"({scope['persona']} chars) rather than the full system prompt, which "
-            "reaches Stage-2 only on single-turn asks "
-            f"(`REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN` default is "
-            f"{'ON' if scope['single_turn_default'] else 'OFF'}; a hard-mode ask reads "
-            "`history_turn_count > 1`, so it is excluded by the lever's own predicate). "
-            "The dispatched system lengths, measured on the arms' payload records:")
+        add("Hard mode is graded on a multi-turn ask, and the shipped single-turn "
+            "lever delivers the full system prompt only when "
+            f"`history_turn_count <= 1` (default "
+            f"{'ON' if scope['single_turn_default'] else 'OFF'}). A hard row deep in "
+            "the rolling conversation reads >= 9, so it gets the stripped persona "
+            f"({scope['persona']} chars) — which is the configuration both arms "
+            "were compared under. **But the rolling history starts empty**, so the "
+            "first two rows of any run (or resume) read 0 and 1 and DO receive the "
+            "full system prompt. That is an artifact of the harness, not of hard "
+            "mode. The dispatched system lengths, measured on the arms' payload "
+            "records:")
         add("")
         add("| arm : leg | calls | dispatched the persona | system-payload distribution (chars × calls) |")
         add("| :-- | --: | --: | :-- |")
@@ -309,18 +322,53 @@ def main() -> None:
         add("")
         add("The payload recorder wraps the provider, so those counts are every call on "
             "the leg — the Stage-2 polish **and** the auxiliary passes that pass their "
-            "own system strings. The 61-char bucket is the hard-mode Stage-2 dispatch; "
-            "the rest are that tail (and one single-turn full-system call). The arm "
-            "without a bucket recorded was resumed from a pre-restart checkpoint, so "
-            "its dispatch shape is bound by the same configuration but is not itself "
-            "on record here.")
+            "own system strings. The 61-char bucket is the hard-mode Stage-2 dispatch "
+            "and the auxiliary tail is the rest. The ~59.6 kB bucket is the full system "
+            "prompt, and it appears on three distinct routes, which is why its count is "
+            "not a Stage-2 measure on its own: the **fallback leg always receives it** "
+            "(R360 — Bedrock is dialled with the full ``system``, and arm A's dead "
+            "credential was dialled 5 times), an auxiliary pass, and the leading rows "
+            "of a run's still-empty rolling history.")
         add("")
-        add("**So the win and the loss both belong to that configuration.** The "
-            "+45.91 pp answer-conciseness gain and the −7.41 pp strict-correctness loss "
-            "describe hard mode under a stripped prompt. Two things are therefore NOT "
-            "measured here, and neither changes the verdict for the hard board as it "
-            "ships today: the lever's incremental effect on the **live single-turn path** "
-            "(which already receives the full 53 kB prompt, itself measured at ~58 % "
+        add("### The one asymmetry this created, and its bound")
+        add("")
+        add("Arm A was **resumed** from a pre-restart checkpoint. ``--resume`` handed "
+            "its pending rows a brand-new empty history, so its first rows were "
+            "re-graded as near-single-turn and it made one full-prompt primary Stage-2 "
+            "dispatch that arm B (continuous) did not. That is a real difference in "
+            "the system slot between the arms — so the result was re-scored "
+            "leaving out each comparable row in turn "
+            "(`need_scope_sensitivity.py`): the overall delta moves only between "
+            "**+13.42 pp** and **+14.50 pp** against **+13.93 pp** as run. No single "
+            "row, degraded or full-prompt, carries the win. The resume defect itself "
+            "is now fixed for future gates: a resumed hard run seeds its rolling "
+            "conversation from the rows already on disk "
+            "(``seed_history_from_records``), so a resume can no longer change a "
+            "row's modality.")
+        add("")
+        # R423.3 — the board this section qualifies must be THIS gate's board.
+        # The earlier text quoted the PREVIOUS gate's +45.91 pp / −7.41 pp, i.e.
+        # numbers from the run whose correctness cost was later fixed. They are
+        # read off the artifact now so they cannot go stale again.
+        _subset = (gate.get("official_board") or {}).get("axes") or {}
+
+        def _axis_delta(name: str) -> str:
+            vals = _subset.get(name) or {}
+            if not vals or vals.get("delta_pp") is None:
+                return "not on this board"
+            return (
+                f"{vals['delta_pp']:+.2f} pp "
+                f"({vals['A']:.2f} → {vals['B']:.2f})"
+            )
+
+        add("**So the measured movement belongs to that configuration.** On the "
+            "comparable subset this gate published an answer-conciseness delta of "
+            f"{_axis_delta('ans_conciseness')} and a strict answer-correctness delta "
+            f"of {_axis_delta('ans_correctness_strict')} — both describe hard mode "
+            "under a stripped prompt. Two things are therefore NOT measured here, "
+            "and neither changes the verdict for the hard board as it ships today: "
+            "the lever's incremental effect on the **live single-turn path** (which "
+            "already receives the full 53 kB prompt, itself measured at ~58 % "
             "shorter answers, R412), and hard mode with the full prompt delivered "
             "(R411 gap 3.1).")
         add("")

@@ -42,9 +42,9 @@ Every official axis on that SAME comparable subset, reduced the same way (median
 
 **Verdict: SHIP (default ON).**
 
-## Scope of this verdict — the STRIPPED-prompt hard path
+## Scope of this verdict — what Stage-2 was actually told
 
-Both arms run hard mode, so both dispatched the stripped persona (61 chars) rather than the full system prompt, which reaches Stage-2 only on single-turn asks (`REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN` default is ON; a hard-mode ask reads `history_turn_count > 1`, so it is excluded by the lever's own predicate). The dispatched system lengths, measured on the arms' payload records:
+Hard mode is graded on a multi-turn ask, and the shipped single-turn lever delivers the full system prompt only when `history_turn_count <= 1` (default ON). A hard row deep in the rolling conversation reads >= 9, so it gets the stripped persona (61 chars) — which is the configuration both arms were compared under. **But the rolling history starts empty**, so the first two rows of any run (or resume) read 0 and 1 and DO receive the full system prompt. That is an artifact of the harness, not of hard mode. The dispatched system lengths, measured on the arms' payload records:
 
 | arm : leg | calls | dispatched the persona | system-payload distribution (chars × calls) |
 | :-- | --: | --: | :-- |
@@ -53,9 +53,13 @@ Both arms run hard mode, so both dispatched the stripped persona (61 chars) rath
 | `B:fallback` | 3 | 0 of 3 | 1311 × 3 |
 | `B:primary` | 293 | 168 of 293 | 61 × 168 · 132 × 5 · 1311 × 3 · 6365 × 117 |
 
-The payload recorder wraps the provider, so those counts are every call on the leg — the Stage-2 polish **and** the auxiliary passes that pass their own system strings. The 61-char bucket is the hard-mode Stage-2 dispatch; the rest are that tail (and one single-turn full-system call). The arm without a bucket recorded was resumed from a pre-restart checkpoint, so its dispatch shape is bound by the same configuration but is not itself on record here.
+The payload recorder wraps the provider, so those counts are every call on the leg — the Stage-2 polish **and** the auxiliary passes that pass their own system strings. The 61-char bucket is the hard-mode Stage-2 dispatch and the auxiliary tail is the rest. The ~59.6 kB bucket is the full system prompt, and it appears on three distinct routes, which is why its count is not a Stage-2 measure on its own: the **fallback leg always receives it** (R360 — Bedrock is dialled with the full ``system``, and arm A's dead credential was dialled 5 times), an auxiliary pass, and the leading rows of a run's still-empty rolling history.
 
-**So the win and the loss both belong to that configuration.** The +45.91 pp answer-conciseness gain and the −7.41 pp strict-correctness loss describe hard mode under a stripped prompt. Two things are therefore NOT measured here, and neither changes the verdict for the hard board as it ships today: the lever's incremental effect on the **live single-turn path** (which already receives the full 53 kB prompt, itself measured at ~58 % shorter answers, R412), and hard mode with the full prompt delivered (R411 gap 3.1).
+### The one asymmetry this created, and its bound
+
+Arm A was **resumed** from a pre-restart checkpoint. ``--resume`` handed its pending rows a brand-new empty history, so its first rows were re-graded as near-single-turn and it made one full-prompt primary Stage-2 dispatch that arm B (continuous) did not. That is a real difference in the system slot between the arms — so the result was re-scored leaving out each comparable row in turn (`need_scope_sensitivity.py`): the overall delta moves only between **+13.42 pp** and **+14.50 pp** against **+13.93 pp** as run. No single row, degraded or full-prompt, carries the win. The resume defect itself is now fixed for future gates: a resumed hard run seeds its rolling conversation from the rows already on disk (``seed_history_from_records``), so a resume can no longer change a row's modality.
+
+**So the measured movement belongs to that configuration.** On the comparable subset this gate published an answer-conciseness delta of +38.86 pp (23.09 → 61.94) and a strict answer-correctness delta of +0.00 pp (92.59 → 92.59) — both describe hard mode under a stripped prompt. Two things are therefore NOT measured here, and neither changes the verdict for the hard board as it ships today: the lever's incremental effect on the **live single-turn path** (which already receives the full 53 kB prompt, itself measured at ~58 % shorter answers, R412), and hard mode with the full prompt delivered (R411 gap 3.1).
 
 ## All eight official axes, per arm
 
