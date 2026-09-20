@@ -1,4 +1,4 @@
-# R423 — need-proportional answer contract: paired hard-split gate (`r423-need4`)
+# R423 — need-proportional answer contract: paired hard-split gate (`r423-need3`)
 
 **Question.** Does `REGENOLD_NEED_PROPORTIONAL_CONTRACT` make the Stage-2 answer shape follow the criteria the ask engages — and does it do so without costing correctness or gold references?
 
@@ -10,37 +10,46 @@ SHIP (default ON) requires, on the comparable subset: `ans_loose` and `ans_stric
 
 | axis (paired, median over 3 generations) | mean Δ | median Δ | 95 % CI | rows up / down / tied |
 | :-- | --: | --: | :-- | :-- |
-| `delta_ans_loose` | +0.00 pp | +0.00 | [+0.00, +0.00] | 0 / 0 / 27 |
-| `delta_ans_strict` | +0.00 pp | +0.00 | [+0.00, +0.00] | 0 / 0 / 27 |
-| `delta_answer_chars` | -2107.96 chars | -1967.00 | [-2499.26, -1751.52] | 0 / 27 / 0 |
+| `delta_ans_loose` | -3.95 pp | +0.00 | [-10.37, +0.00] | 0 / 2 / 25 |
+| `delta_ans_strict` | -7.41 pp | +0.00 | [-18.52, +0.00] | 0 / 2 / 25 |
+| `delta_answer_chars` | -2047.89 chars | -2209.00 | [-2371.07, -1731.30] | 0 / 27 / 0 |
 | `delta_tone` | +0.00 pp | +0.00 | [+0.00, +0.00] | 0 / 0 / 27 |
-| `delta_ref_strict` | +7.41 pp | +0.00 | [+0.00, +18.52] | 2 / 0 / 25 |
+| `delta_ref_strict` | +9.26 pp | +0.00 | [+0.00, +20.37] | 3 / 0 / 24 |
 
-Gold heads dropped on the comparable subset: **A 1 (1 rows)** vs **B 0 (0 rows)**.
+Gold heads dropped on the comparable subset: **A 1 (1 rows)** vs **B 1 (1 rows)**.
 
 Every official axis on that SAME comparable subset, reduced the same way (median over the generations), including the aggregate the benchmark ranks on:
 
 | metric | arm A (OFF) | arm B (ON) | Δ |
 | :-- | --: | --: | --: |
-| Ans. Correctness (Loose) | 96.97 | 96.97 | **+0.00** |
-| Ans. Correctness (Strict) | 92.59 | 92.59 | **+0.00** |
-| Ans. Conciseness | 23.09 | 61.94 | **+38.86** |
-| Ref. Correctness (Loose) | 96.3 | 100.0 | **+3.70** |
-| Ref. Correctness (Strict) | 72.22 | 77.78 | **+5.56** |
-| Ref. Conciseness | 37.44 | 50.25 | **+12.80** |
-| Regulatory Tone | 100.0 | 100.0 | **+0.00** |
-| Resp. Speed | 63.73 | 74.5 | **+10.77** |
-| **OVERALL (geometric mean)** | 65.62 | 79.56 | **+13.93** |
+| Ans. Correctness (Loose) | 96.97 | 92.93 | **-4.04** |
+| Ans. Correctness (Strict) | 92.59 | 85.19 | **-7.41** |
+| Ans. Conciseness | 22.18 | 68.09 | **+45.91** |
+| Ref. Correctness (Loose) | 98.15 | 96.3 | **-1.85** |
+| Ref. Correctness (Strict) | 70.37 | 75.93 | **+5.56** |
+| Ref. Conciseness | 37.35 | 57.96 | **+20.62** |
+| Regulatory Tone | 100.0 | 96.3 | **-3.70** |
+| Resp. Speed | 65.95 | 76.32 | **+10.37** |
+| **OVERALL (geometric mean)** | 65.04 | 79.96 | **+14.91** |
 
 | pre-registered ship condition | met? | measured |
 | :-- | :-- | --: |
-| `ans_loose` no worse than −1.0 pp | yes | +0.00 pp |
-| `ans_strict` no worse than −1.0 pp | yes | +0.00 pp |
-| answer length strictly down | yes | -2108 chars |
-| official overall no worse than −0.5 pp | yes | +13.93 pp |
-| no more gold heads dropped than the baseline | yes | B 0 vs A 1 |
+| `ans_loose` no worse than −1.0 pp | **NO** | -3.95 pp |
+| `ans_strict` no worse than −1.0 pp | **NO** | -7.41 pp |
+| answer length strictly down | yes | -2048 chars |
+| official overall no worse than −0.5 pp | yes | +14.91 pp |
+| no more gold heads dropped than the baseline | yes | B 1 vs A 1 |
 
-**Verdict: SHIP (default ON).**
+**Verdict: KEEP OFF.** 2 pre-registered condition(s) failed: `ans_loose` no worse than −1.0 pp, `ans_strict` no worse than −1.0 pp.
+
+The whole correctness cost, row by row (every row where `ans_strict` fell, with the arm-A answer this was measured against):
+
+| row | A chars | B chars | Δ chars | A loose | B loose | gold head dropped by B |
+| :-- | --: | --: | --: | --: | --: | :-- |
+| `rg_010` | 2763 | 379 | -2384 | 100 % | 60 % | — |
+| `rg_106` | 2651 | 442 | -2209 | 100 % | 33 % | Annex III |
+
+2 of 27 comparable rows; the rest are tied, and no row improved on correctness. The cause is length starvation, not the extraction: each of these collapsed to a short answer, and the criteria the judge credits for them need the enumeration the shape clause suppressed.
 
 ## Scope of this verdict — the STRIPPED-prompt hard path
 
@@ -48,10 +57,8 @@ Both arms run hard mode, so both dispatched the stripped persona (61 chars) rath
 
 | arm : leg | calls | dispatched the persona | system-payload distribution (chars × calls) |
 | :-- | --: | --: | :-- |
-| `A:fallback` | 5 | 0 of 5 | 59644 × 5 |
-| `A:primary` | 21 | 17 of 21 | 61 × 17 · 6365 × 3 · 59644 × 1 |
-| `B:fallback` | 3 | 0 of 3 | 1311 × 3 |
-| `B:primary` | 293 | 168 of 293 | 61 × 168 · 132 × 5 · 1311 × 3 · 6365 × 117 |
+| `B:fallback` | 1 | 0 of 1 | 1311 × 1 |
+| `B:primary` | 109 | 97 of 109 | 61 × 97 · 132 × 2 · 1311 × 1 · 6365 × 8 · 59644 × 1 |
 
 The payload recorder wraps the provider, so those counts are every call on the leg — the Stage-2 polish **and** the auxiliary passes that pass their own system strings. The 61-char bucket is the hard-mode Stage-2 dispatch; the rest are that tail (and one single-turn full-system call). The arm without a bucket recorded was resumed from a pre-restart checkpoint, so its dispatch shape is bound by the same configuration but is not itself on record here.
 
@@ -63,26 +70,26 @@ Median across the three generations of the arm's own board (37 rows), judged by 
 
 | metric | arm A (OFF) | arm B (ON) | Δ (B − A) | A min–max over generations | B min–max |
 | :-- | --: | --: | --: | :-- | :-- |
-| Ans. Correctness (Loose) | 95.56 | 97.78 | **+2.22** | 95.56–95.56 | 97.78–98.52 |
-| Ans. Correctness (Strict) | 91.89 | 94.59 | **+2.70** | 91.89–91.89 | 94.59–94.59 |
-| Ans. Conciseness | 41.84 | 69.04 | **+27.20** | 41.61–42.13 | 68.79–69.41 |
-| Ref. Correctness (Loose) | 97.14 | 100.00 | **+2.86** | 95.71–100.00 | 98.57–100.00 |
-| Ref. Correctness (Strict) | 76.67 | 80.95 | **+4.29** | 72.38–76.67 | 79.52–82.38 |
-| Ref. Conciseness | 40.84 | 50.71 | **+9.88** | 40.03–44.24 | 50.67–52.38 |
-| Regulatory Tone | 100.00 | 100.00 | **+0.00** | 100.00–100.00 | 97.30–100.00 |
-| Resp. Speed | 70.21 | 79.10 | **+8.90** | 70.02–71.16 | 79.10–79.27 |
-| **OVERALL (geometric mean)** | 72.72 | 82.07 | **+9.34** | 71.86–73.94 | 82.01–82.37 |
+| Ans. Correctness (Loose) | 95.56 | 92.59 | **-2.96** | 94.81–95.56 | 88.15–94.81 |
+| Ans. Correctness (Strict) | 91.89 | 86.49 | **-5.41** | 89.19–91.89 | 83.78–89.19 |
+| Ans. Conciseness | 41.18 | 74.59 | **+33.42** | 41.10–43.10 | 73.76–75.01 |
+| Ref. Correctness (Loose) | 98.57 | 95.71 | **-2.86** | 98.57–98.57 | 94.29–97.14 |
+| Ref. Correctness (Strict) | 75.24 | 79.52 | **+4.29** | 72.38–75.24 | 77.62–80.48 |
+| Ref. Conciseness | 43.15 | 58.29 | **+15.14** | 42.19–43.29 | 57.81–58.81 |
+| Regulatory Tone | 100.00 | 97.30 | **-2.70** | 100.00–100.00 | 97.30–100.00 |
+| Resp. Speed | 72.24 | 81.00 | **+8.75** | 70.50–73.07 | 80.69–81.18 |
+| **OVERALL (geometric mean)** | 72.76 | 82.33 | **+9.56** | 72.75–73.88 | 81.10–83.06 |
 
 Per-generation detail (the raw inputs to the medians above):
 
 | arm | generation | Ans. Correctness L | Ans. Correctness S | Ans. Conciseness | Ref. Correctness L | Ref. Correctness S | Ref. Conciseness | Regulatory Tone | Resp. Speed | overall |
 | :-- | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: |
-| A | 1 | 95.56 | 91.89 | 41.84 | 97.14 | 76.67 | 40.84 | 100.00 | 70.02 | 72.72 |
-| A | 2 | 95.56 | 91.89 | 41.61 | 95.71 | 72.38 | 40.03 | 100.00 | 70.21 | 71.86 |
-| A | 3 | 95.56 | 91.89 | 42.13 | 100.00 | 76.67 | 44.24 | 100.00 | 71.16 | 73.94 |
-| B | 1 | 98.52 | 94.59 | 69.04 | 100.00 | 79.52 | 52.38 | 100.00 | 79.10 | 82.37 |
-| B | 2 | 97.78 | 94.59 | 68.79 | 100.00 | 82.38 | 50.71 | 97.30 | 79.10 | 82.01 |
-| B | 3 | 97.78 | 94.59 | 69.41 | 98.57 | 80.95 | 50.67 | 100.00 | 79.27 | 82.07 |
+| A | 1 | 95.56 | 91.89 | 41.18 | 98.57 | 72.38 | 43.15 | 100.00 | 70.50 | 72.75 |
+| A | 2 | 95.56 | 91.89 | 43.10 | 98.57 | 75.24 | 43.29 | 100.00 | 73.07 | 73.88 |
+| A | 3 | 94.81 | 89.19 | 41.10 | 98.57 | 75.24 | 42.19 | 100.00 | 72.24 | 72.76 |
+| B | 1 | 94.81 | 89.19 | 74.59 | 97.14 | 80.48 | 58.29 | 97.30 | 81.00 | 83.06 |
+| B | 2 | 88.15 | 83.78 | 75.01 | 94.29 | 77.62 | 58.81 | 97.30 | 80.69 | 81.10 |
+| B | 3 | 92.59 | 86.49 | 73.76 | 95.71 | 79.52 | 57.81 | 100.00 | 81.18 | 82.33 |
 
 ## Comparable subset (the only rows that can move)
 
@@ -91,25 +98,24 @@ Requested 37 rows → **27 comparable** (floor 20); a row is comparable when the
 * dropped `arm_A_not_primary[none]`: 9 — rg_001, rg_013, rg_019, rg_022, rg_025, rg_031, rg_040, rg_043, rg_076
 * dropped `arm_B_not_primary[none]`: 9 — rg_001, rg_013, rg_019, rg_022, rg_025, rg_031, rg_040, rg_043, rg_076
 * dropped `arm_A_not_primary[deterministic]`: 1 — rg_085
+* comparable but with fewer than 3 primary generations: rg_037 (A=3, B=2), rg_070 (A=2, B=3)
 
 Draw-to-draw dispersion on the comparable subset (why three generations, not one):
 
 | | arm A | arm B |
 | :-- | --: | --: |
-| rows whose criteria credit moved between generations | 0 | 1 |
-| rows whose *all-criteria* verdict flipped | 0 | 0 |
-| mean per-row spread (pp) | 0.0 | 1.23 |
+| rows whose criteria credit moved between generations | 1 | 2 |
+| rows whose *all-criteria* verdict flipped | 1 | 1 |
+| mean per-row spread (pp) | 0.74 | 2.59 |
 
 ## Transport shape (what the arms actually dialled)
 
 | arm | rows | graded calls | deterministic rows | payload legs | fallback dials answered | fallback dials total | primary failed | refusals (named) |
 | :-- | --: | --: | --: | :-- | --: | --: | --: | :-- |
-| r423-need4-A | 37 | 23 | 10 | fallback×5 (system 59644–59644 ch), primary×21 (system 61–59644 ch) | 0 | 1 | 1 | groq×1 |
-| r423-need4-B | 37 | 168 | 9 | fallback×3 (system 1311–1311 ch), primary×293 (system 61–6365 ch) | 0 | 0 | 0 | — |
+| r423-need3-A | 37 | 0 | 10 | — | 0 | 0 | 0 | — |
+| r423-need3-B | 37 | 98 | 9 | fallback×1 (system 1311–1311 ch), primary×109 (system 61–59644 ch) | 0 | 0 | 0 | — |
 
 Gate verdict: **VALID** — no reasons recorded.
-* warning: r423-need4-A: the fallback leg was dialled 1 time(s) and answered 0 (primary_failed=1) — a dead or failing fallback credential. Rows that shipped a draft because of it belong in the excluded set, not averaged over.
-* warning: 1 transport-degraded row(s) were excluded from BOTH arms by the caller (of r423-need4-A 37 row(s), r423-need4-B 37 row(s)); the deltas are reported on the survivors, and the caller owns the drop count.
 
 ## Method notes (what makes this a gate rather than a printout)
 
@@ -121,8 +127,8 @@ Gate verdict: **VALID** — no reasons recorded.
 
 | path | what |
 | :-- | :-- |
-| `evals/bench/results/official-r423-need4-[AB]-hard*.ckpt.jsonl` | the 6 generation checkpoints |
-| `evals/bench/results/official-r423-need4.json` | runner sidecar incl. the gate verdict |
+| `evals/bench/results/official-r423-need3-[AB]-hard*.ckpt.jsonl` | the 6 generation checkpoints |
+| `evals/bench/results/official-r423-need3.json` | runner sidecar incl. the gate verdict |
 | `docs/measurements/r423/need_gate.json` | paired deltas, comparable subset, dispersion |
 | `docs/measurements/r423/judge-cache-r423.jsonl` | the judge's per-answer verdicts |
 | `app/engines/answer_need.py` | the estimator, the clause, the flag |

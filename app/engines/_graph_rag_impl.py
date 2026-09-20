@@ -8475,6 +8475,7 @@ def _render_closed_set_skeleton(
     ref: str,
     *,
     engaged: set[str] | None = None,
+    unanchored: bool = False,
 ) -> str | None:
     """The exhaustive member list of ``ref``, as ``coordinate: leading clause``.
 
@@ -8495,6 +8496,16 @@ def _render_closed_set_skeleton(
     rest are rendered as coordinates-only context, and the header says so. The
     member list itself is unchanged, so no citable coordinate is hidden and no
     new head appears — only the instruction to enumerate shrinks to the ask.
+
+    R423.1 — ``unanchored`` separates the two reasons ``scoped`` can be empty.
+    Either the ask engages a DIFFERENT provision (a real signal, so the shipped
+    "NOT ENGAGED ... do NOT enumerate" framing is justified), or the ask names
+    no provision at all, in which case the estimator has no signal about this
+    provision and a prohibition is unsupported: the gate lost ``rg_106``
+    (``Annex III`` dropped from the wire refs, 1/3 criteria) because the answer
+    was ordered not to enumerate the very annex the question is about. An
+    unanchored ask therefore gets the coordinates as available context — at
+    citation grain — with no order to suppress them.
     """
     try:
         from app.data.provision_hierarchy import (  # noqa: PLC0415
@@ -8518,6 +8529,18 @@ def _render_closed_set_skeleton(
             # the model can still cite a member its prose discusses) and drop the
             # lead text: it is context, and this is where most of the 5,125 mean
             # scaffold chars are spent on rows that asked for none of it.
+            #
+            # R423.1 — an UNANCHORED ask gets the same coordinates and the same
+            # dropped lead text, but no prohibition: absence of signal must not
+            # be read as "out of scope".
+            if unanchored:
+                header = (
+                    f"  STRUCTURE of {ref} — {len(members)} members; this question "
+                    "names no provision, so none is individually required: context "
+                    "for wording and citation grain — state and cite the member "
+                    "your answer relies on:"
+                )
+                return "\n".join([header, *[f"    {c}" for c, _ in members]])
             header = (
                 f"  STRUCTURE of {ref} — {len(members)} members, NOT ENGAGED by "
                 "this question: context only, do NOT enumerate or list them:"
@@ -8600,17 +8623,24 @@ def _render_grounding_text(context: GraphContext) -> list[str]:
     # is about to be shown, then handed to every skeleton render. ``None`` when
     # the lever is OFF, which keeps the shipped heading and lead text exactly.
     engaged: set[str] | None = None
+    #: R423.1 — True when the ask named no coordinate and engaged no closed set.
+    #: Carried alongside ``engaged`` because an empty scope has two causes with
+    #: opposite instructions (a real "not this provision" vs no signal at all).
+    unanchored = False
     if _need_proportional_contract_enabled():
         try:
-            from app.engines.answer_need import engaged_coords  # noqa: PLC0415
+            from app.engines.answer_need import answer_need  # noqa: PLC0415
 
             context_refs = " ".join(
                 _context_article_refs(context)[:_grounding_max_refs()]
             )
-            engaged = set(engaged_coords(question, context_refs))
+            need = answer_need(question, context_refs)
+            engaged = set(need.engaged)
+            unanchored = not need.anchored
         except Exception:  # noqa: BLE001 — a scope estimate must not break Stage-2
             logger.debug("grounding: need estimate failed", exc_info=True)
             engaged = None
+            unanchored = False
     for ref in _context_article_refs(context)[:_grounding_max_refs()]:
         try:
             body = select_relevant_paragraphs(ref, question, budget)
@@ -8652,7 +8682,9 @@ def _render_grounding_text(context: GraphContext) -> list[str]:
         # the block and a strict no-op when the flag is OFF or the ref is not
         # a multi-member head, so the OFF arm is byte-identical.
         skeleton = (
-            _render_closed_set_skeleton(ref, engaged=engaged)
+            _render_closed_set_skeleton(
+                ref, engaged=engaged, unanchored=unanchored
+            )
             if _closed_set_skeleton_enabled()
             else None
         )

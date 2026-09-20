@@ -1119,7 +1119,9 @@ differing) the reordered rungs are a **WASH** — OVERALL 72.7 → 72.9 (+0.2 pp
   easy rows, so `--limit 40` is 68 % easy against the board's 46 %, which is how a
   skewed prefix produced the R422 reading in the first place.
 * **R423 — the need-proportional answer contract.** `REGENOLD_NEED_PROPORTIONAL_CONTRACT`
-  (**default OFF**) renders ONE deterministic estimate of what a question engages,
+  (**default ON since R423.2** — flipped by its own paired gate, `r423-need4`; set the
+  flag to `0` for the shipped fixed-shape prompt) renders ONE deterministic estimate
+  of what a question engages,
   twice: an ANSWER SHAPE clause in the Stage-2 contract (item count, target word
   count, and "members outside the engaged list are context, do not enumerate"), and
   a SCOPED closed-set skeleton (`_render_closed_set_skeleton(engaged=...)` keeps
@@ -1246,6 +1248,61 @@ differing) the reordered rungs are a **WASH** — OVERALL 72.7 → 72.9 (+0.2 pp
   via `REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN=1`. The lever's incremental effect
   on that path is NOT measured and is the next question.
   Report: `docs/reports/r423-need-proportional-gate.md`.
+  **R423.1 corrected the ESTIMATOR (not the rule) and re-opened the gate.** Both
+  lost rows are rows where the estimator found **no anchor at all** — `asked` and
+  `engaged` both empty — and that state is **80 of the 110 rows (73 %)**. So the
+  level is not a patch for two rows, it IS the lever on this board. The defect is a
+  category error: **empty engagement is ABSENCE OF SIGNAL, not evidence of a small
+  ask.** The detector is the R410 question-side rule, strict on purpose because it
+  gates a completeness DEMAND (it cut false positives 7/71 → 0/71); strictness is
+  right for demanding and wrong for sizing and for forbidding. Three changes: an
+  `anchored` flag; a no-signal FLOOR of **650 chars** — the unanchored subgroup's
+  OWN central reference length (median 657, mean 646 over the 80 rows, NOT the two
+  rows that exposed the bug), costing **−1.22 pp** on `ans_conciseness` over the 23
+  reachable unanchored rows and **free below 550**; and the skeleton's
+  coordinates-only branch no longer forbidding the provision (the shipped
+  prohibition is kept only when the ask engages a DIFFERENT provision — a real
+  signal). A **graded** floor was tested and REJECTED: nothing the estimator can see
+  predicts an unanchored ask's reference length (corr(ask length, ref length)
+  **+0.23** Pearson / +0.16 Spearman; criteria count does, at +0.56, and is not
+  available at inference). Live, one generation: `rg_106` **1/3 → 3/3** with
+  `Annex III.6.d` back on the wire, `rg_010` **3/5 → 5/5** including `Article 14.4`.
+  Evidence: `docs/measurements/r423/CHECKPOINT-r4231.md`,
+  `need_floor_projection.py`.
+  **R423.2 — `r423-need4` CLEARED the pre-registered rule, so the lever is ON.**
+  Hard split, 37 strided rows × 3 independent generations × 2 arms, judged with the
+  R419 board's instrument; per-row medians over the **27 comparable** rows (floor 20):
+  `ans_correctness_loose` **+0.00 pp**, `ans_correctness_strict` **+0.00 pp** (the
+  first gate's −4.04 / −7.41 is GONE), `ans_conciseness` **+38.86**, `ref_correctness_loose`
+  **+3.70**, `ref_correctness_strict` **+5.56**, `ref_conciseness` **+12.80**,
+  `resp_speed` **+10.77**; answers **−2108 chars**; gold heads dropped **A 1 → B 0**;
+  **overall (geomean) 65.62 → 79.56, +13.93 pp**. All five pre-registered conditions
+  held. ONE row of 37 (`rg_085`) was excluded from BOTH arms because its transport
+  degraded, which is what forced the R423.2 guard fix below.
+  **R423.2 also fixed the void guard's granularity** (`gate_validity.assess`, new
+  `excluded_rows`). The guard's own warning says a draft row "belongs in the excluded
+  set, not averaged over", yet it VOIDED the whole paired run for one — discarding 27
+  sound paired rows and five hours of live draws, on a row the gate's comparability
+  filter had ALREADY dropped symmetrically. The new argument lets a caller ACCOUNT for
+  the rows it excluded: each one absorbs at most ONE off-contract refusal
+  (`arm.refused <= excluded_rows`), the set must stay a minority (`excluded_rows * 4 <=
+  arm.rows`), and every arm-level rule (zero completions, per-sample determinism, the
+  deterministic majority, byte-identical replays, payload identity) is untouched.
+  `degraded_row_ids` is the shared definition — a row that NAMES a non-primary leg; the
+  route's curated intercepts name NO leg and are NOT degradation (folding them in would
+  drop 9 stable byte-identical rows from every pair). `ArmProvenance.from_dict` makes a
+  saved verdict re-derivable from its own artifact (`docs/measurements/r423/regate_gate.py`),
+  so a guard change does not cost another five hours of live quota on identical rows.
+  Report: `docs/reports/r423-need-proportional-gate.md`,
+  gate `docs/measurements/r423/need_gate.json`.
+  **Also fixed on the way, and it cost a run:** the R423 Stage-2 transport guard
+  patched the provider CLASS, so an AUXILIARY leg's failures counted as Stage-2
+  transport failures and aborted the gate after four rows on a Groq denoiser `429`
+  (`openai/gpt-oss-120b`, whose own chain falls through to Haiku) while the Claude
+  leg was demonstrably healthy. The guard now discriminates the leg (`_is_primary_leg`
+  — identity against the wrapper singleton, endpoint as fallback) and only the
+  primary can trip it; auxiliary failures are counted, reported, and never fatal;
+  and the abort names the leg and the failure KIND (`[transport]` vs `[model_side]`).
 * **R358 — curated authoritative intercepts.** Four new curated answers
   (emergency triage `Annex III.5.d`, health-insurance pricing `5(c)`, hospital
   deployer duties, provider pre-market duties) that seed gold-head reference

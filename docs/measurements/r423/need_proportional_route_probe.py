@@ -91,10 +91,15 @@ class _Recorder:
                 "system_len": len(system),
                 "user_len": len(user),
                 "user_sha": hashlib.sha256(user.encode("utf-8")).hexdigest()[:16],
-                "has_clause": "ANSWER SHAPE (proportional to THIS ask)" in user,
+                # R423.1 — the clause has TWO shapes now (anchored / unanchored),
+                # so detection keys on the invariant marker, not on one branch's
+                # heading. Matching the proportional heading alone reported the
+                # unanchored clause as "no clause" and read as a VACUOUS probe.
+                "has_clause": "ANSWER SHAPE (" in user,
                 "has_engaged_completeness": "COMPLETENESS DIRECTIVE (scoped to the" in user,
                 "has_generic_completeness": "COMPLETENESS DIRECTIVE: an obligation and its" in user,
                 "scoped_heading": "NOT ENGAGED by this question" in user,
+                "unanchored_heading": "names no provision" in user,
                 "engaged_heading": "ENGAGED members of" in user,
                 "exhaustive_heading": "this list is EXHAUSTIVE" in user,
                 "text": user,
@@ -118,7 +123,7 @@ def _sections(text: str) -> dict[str, int]:
     """
     skeleton_chars = 0
     in_skeleton = False
-    headings = {"exhaustive": 0, "engaged": 0, "not_engaged": 0}
+    headings = {"exhaustive": 0, "engaged": 0, "not_engaged": 0, "unanchored": 0}
     for line in text.splitlines():
         if line.startswith("  ") and "members" in line and line.rstrip().endswith(":"):
             in_skeleton = True
@@ -128,18 +133,23 @@ def _sections(text: str) -> dict[str, int]:
                 headings["engaged"] += 1
             elif "NOT ENGAGED by" in line:
                 headings["not_engaged"] += 1
+            elif "names no provision" in line:
+                headings["unanchored"] += 1
             continue
         if in_skeleton and line.startswith("    "):
             skeleton_chars += len(line)
             continue
         in_skeleton = False
     clause_chars = 0
-    clause = text.split("ANSWER SHAPE (proportional to THIS ask)", 1)
+    clause = text.split("ANSWER SHAPE (", 1)
     if len(clause) > 1:
         # The clause is its own bullet block; stop at the first line that is not
         # one of its bullets, otherwise this counts the whole tail as "the clause".
+        # The heading line's remainder is dropped first: detection now splits on
+        # the invariant prefix, not on a whole heading.
+        tail = clause[1].split("\n", 1)
         block: list[str] = []
-        for line in clause[1].splitlines():
+        for line in (tail[1] if len(tail) > 1 else "").splitlines():
             if line.startswith("*") or not line.strip():
                 block.append(line)
                 continue
@@ -211,7 +221,18 @@ def main() -> None:
     n_rows = int(os.environ.get("R423_ROWS", "5"))
     stride = int(os.environ.get("R423_STRIDE", "21"))
     depth = int(os.environ.get("R423_DEPTH", "9"))
-    rows = list(load_official_batch())[::stride][:n_rows]
+    #: R423.1 — the two rows the first gate lost are named explicitly, because a
+    #: stride can only reach them by luck and they are the whole reason for the
+    #: change under test.
+    forced = [x.strip() for x in (os.environ.get("R423_IDS") or "").split(",") if x.strip()]
+    if forced:
+        wanted = set(forced)
+        rows = [r for r in load_official_batch() if r.id in wanted]
+        missing = wanted - {r.id for r in rows}
+        if missing:
+            raise SystemExit(f"R423_IDS not in the official batch: {sorted(missing)}")
+    else:
+        rows = list(load_official_batch())[::stride][:n_rows]
 
     per_row: list[dict[str, Any]] = []
     for row in rows:
@@ -241,6 +262,12 @@ def main() -> None:
                     and not off.get("has_clause")
                     and off.get("has_generic_completeness")
                 ),
+                #: R423.1 — the instruction that lost rg_010's 14(2)/14(4) and
+                #: rg_106's Annex III. Reported per arm so "it stopped forbidding
+                #: the provision" is measured, not asserted.
+                "off_forbids": "do NOT enumerate" in str((off or {}).get("text") or ""),
+                "on_forbids": "do NOT enumerate" in str((on or {}).get("text") or ""),
+                "on_unanchored_header": "names no provision" in str((on or {}).get("text") or ""),
             }
         )
 
@@ -269,6 +296,16 @@ def main() -> None:
         "off_arm_exhaustive_heading_rows": sum(
             1 for r in per_row if (r["off"] or {}).get("exhaustive_heading")
         ),
+        #: R423.1 — the correction under test. The shipped OFF arm never rendered
+        #: this string (its skeleton asserts EXHAUSTIVE instead), so ``off_forbids``
+        #: is the sanity check that the string is unique to the scoped branch, and
+        #: ``on_forbids`` must be FALSE on the unanchored rows or the fix did not
+        #: reach the wire.
+        "on_arm_forbids_rows": sum(1 for r in per_row if r.get("on_forbids")),
+        "off_arm_forbids_rows": sum(1 for r in per_row if r.get("off_forbids")),
+        "on_arm_unanchored_header_rows": sum(
+            1 for r in per_row if r.get("on_unanchored_header")
+        ),
         "per_row": per_row,
     }
     (OUT / "need_proportional_route_probe.json").write_text(
@@ -284,6 +321,10 @@ def main() -> None:
           f"engaged={report['on_arm_engaged_skeleton_rows']} "
           f"exhaustive={report['on_arm_exhaustive_heading_rows']}")
     print(f"OFF arm exhaustive headings: {report['off_arm_exhaustive_heading_rows']}")
+    print(f"'do NOT enumerate' present — OFF {report['off_arm_forbids_rows']}/{report['rows']} "
+          f"ON {report['on_arm_forbids_rows']}/{report['rows']}")
+    print(f"ON unanchored headers ('names no provision'): "
+          f"{report['on_arm_unanchored_header_rows']}")
     for r in per_row:
         off, on = r["off"] or {}, r["on"] or {}
         print(f"  {r['id']:<10} fires={r['fires']!s:<5} control={r['controls']!s:<5} "

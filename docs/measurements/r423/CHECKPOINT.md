@@ -460,3 +460,163 @@ python docs/measurements/r423/need_gate.py --score
 A resumed launch re-uses the generations already on disk for the arm, the sample
 and the row they were drawn for. It re-draws nothing, and the verdict is built
 from the rows rather than from what this process happened to see (§5.5).
+
+---
+
+# R423.1 — the fix that makes the lever shippable: no anchor is NOT a small ask
+
+## 9.1 What the first gate actually lost, read at the criterion level
+
+§3 kept the lever OFF on a two-row correctness cost. Read from the judge cache
+(`judge-cache-r423.jsonl`) rather than from the aggregate, both lost rows are rows
+where the estimator found **no anchor at all** — `asked` and `engaged` are BOTH
+empty — and each failure is a mechanism, not a statistic:
+
+| row | ask | reference | ON arm, all 3 generations | expected criteria |
+| :--- | :--- | ---: | :--- | :--- |
+| `rg_010` | "Which article of the EU AI Act governs human oversight measures?" | 759 ch | `[T,T,F,T,F]`, `[T,T,F,F,F]`, `[T,T,F,T,F]` — 14(2)'s **aim** and 14(4)'s five **overseer capabilities** omitted, in every draw | the substance of Article 14(1)-(4) |
+| `rg_106` | a supermarket bag-check scenario asking whether it is high-risk | 781 ch | `[T,F,F]` ×3 — "focuses on Article 5 instead", **`Annex III` dropped from the wire refs** | Annex III.6's law-enforcement confinement |
+
+So the estimator did not merely mis-size these two asks. It asserted the MINIMUM
+target (375 chars, via a fall-through `items = 1`) **and** — because an empty scope
+was rendered as the shipped "NOT ENGAGED by this question: context only, do NOT
+enumerate or list them" — it ordered the model not to enumerate the members of the
+very provision each question is about. Both rows' whole criteria are those members.
+
+That is a category error in the module, and the honest statement of it is:
+**empty engagement is ABSENCE OF SIGNAL, not evidence of a small ask.** The
+detector is the R410 question-side rule, deliberately strict because it gates a
+completeness DEMAND (it cut false positives 7/71 → 0/71). Strictness is right for
+demanding and wrong for sizing and for forbidding.
+
+## 9.2 The no-signal state is not a corner case
+
+`need_floor_projection.py`, section A, offline:
+
+```
+unanchored rows: 80/110 (73% of the board)
+their reference answers: mean=646 median=657 p25=553 p75=747 min=160 max=985
+```
+
+73 % of the board. So the level is not a patch for two rows — it IS the lever,
+which is exactly why it had to be chosen on the subgroup rather than on the rows
+that exposed the bug. (It also retires a framing from §1: on this board the
+"proportional" mechanism is inert on 73 % of rows and the axis moves on LEVEL.
+`need_gate.json`'s comparable set agrees — 22 of its 27 rows are unanchored.)
+
+## 9.3 The fix (three coordinated changes, one root cause)
+
+1. **`answer_need` gains `anchored`.** False when the ask names no coordinate AND
+   engages no closed set.
+2. **The no-signal target is the subgroup's own central reference length**
+   (`_TARGET_NO_SIGNAL_CHARS = 650`, subgroup median 657 / mean 646), applied as a
+   FLOOR, not a replacement: an unanchored ask that still asks for an exception or
+   a condition keeps the larger of the two. The exception path now fails OPEN
+   (650) rather than to the minimum, because an estimator that could not run has
+   no evidence of a small ask either.
+3. **An unanchored scope is no longer a prohibition.** The skeleton's
+   coordinates-only branch still fires, but its header becomes "this question
+   names no provision, so none is individually required: context for wording and
+   citation grain — state and cite the member your answer relies on". The shipped
+   prohibition is kept for the case that earns it: an ask that engages a DIFFERENT
+   provision (a real signal). The clause gains an unanchored shape that names the
+   governing provision first and demands the limbs of THAT provision, because on
+   these asks the graded criteria ARE those requirements.
+
+## 9.4 The level choice, and the alternatives that were falsified
+
+`need_floor_projection.py` section B, projected with the only measured per-row
+lengths that exist (the first gate's ON arm) and **restricted to rows the lever
+can actually reach** (Stage-2 primary-served; a curated-intercept row is answered
+identically in both arms and no floor can move it — the first cut of the probe
+included 7 such rows and reported `rg_076` as a 75 pp casualty of a floor it never
+sees; the route probe measured **0** Stage-2 dispatches for it in either arm):
+
+| floor | mean Ans. Conciseness | rows moved | worst row |
+| ---: | ---: | ---: | :--- |
+| 375 (shipped) | 71.29 % | 0 | — |
+| 450 | 71.29 % | 2 | `rg_010` +0 pp |
+| 550 | 71.29 % | 4 | `rg_010` +0 pp |
+| **650 (chosen)** | **70.07 %** | 4 | `rg_091` −14 pp |
+| 750 | 67.87 % | 7 | `rg_091` −26 pp |
+| 850 | 64.10 % | 10 | `rg_091` −34 pp |
+
+The cost of the chosen floor is **−1.22 pp on one axis** over the 23 reachable
+unanchored rows, and it is **free below 550** (those rows' own references sit above
+the floor, so the extra room is correctness headroom nobody pays for). It is worth
+stating why the floor survives at all rather than being dropped: `Ans. Conciseness`
+is `min(1, ref/candidate)`, so it **saturates** — a candidate under the reference
+scores exactly what one at the reference scores. Undershooting a reference-length
+answer therefore buys zero conciseness and costs correctness.
+
+**A graded floor was tested and REJECTED** (section C): nothing the estimator can
+see predicts an unanchored ask's reference length — corr(ask length, ref length)
+= **+0.23** Pearson / +0.16 Spearman over the 80 rows, and the one feature that
+does predict it (criteria count, r = **+0.56**) is not available at inference. A
+ridge fit of the ask's own features was already falsified leave-one-out at
+r = 0.10–0.14. A formula keyed on any of that would be a number nobody measured,
+which is the defect the module's first calibration actually was.
+
+## 9.5 Non-vacuity, then two live screens, then the gate
+
+**Provider seam** (`need_proportional_route_probe.py`, stubbed, no live call) —
+`R423_IDS` is new so the rows a gate lost can be revisited by name instead of by
+stride luck. On `rg_010, rg_046, rg_076, rg_106`: clause fires 4/4, OFF arm inert
+4/4, the unanchored header reaches the wire, `do NOT enumerate` appears in neither
+arm (the OFF arm renders the EXHAUSTIVE demand instead), and the OFF arm's
+skeleton is still byte-identical in role. Payload delta −408 / −3,103 / +282 ch
+(skeleton 2,908 → 816 ch on `rg_010`).
+
+**Live screen 1** — `--ids rg_010,rg_106,rg_082,rg_091,rg_094,rg_007,rg_079`,
+one generation per arm. Arm A completed; arm B was aborted at row 5/7 by the R423
+transport guard (5 consecutive read timeouts — the guard doing its job). Both
+target rows completed:
+
+| row | prior gate B | screen 1 B | movement |
+| :--- | :--- | :--- | :--- |
+| `rg_010` | 379 ch, 3/5 | 769 ch, **4/5** | the 14(2) aim clause came back; 14(4) still omitted |
+| `rg_106` | 442 ch, 1/3 | 876 ch, **3/3** | **fixed**, and `Annex III.6.d` is back on the wire |
+
+`rg_010`'s remaining gap was pinned by ask, not assumed: **both arms' dispatched
+payloads already carry Article 14(4)'s verbatim text** ("enabled, as appropriate
+and proportionate"; "understand the relevant capacities"), so it was a budgeting
+failure, not a retrieval one — 4 of 4 draws missed it. The unanchored clause was
+sharpened to name what has to fit ("one short clause each … a limb the evidence
+carries and the answer leaves unstated is a failed criterion").
+
+**Live screen 2** — `--ids rg_010`, judged with the board's own instrument
+(`openrouter:qwen/qwen3-235b-a22b-2507:t=0.1:grouped:r=3`):
+
+| arm | chars | criteria | wire refs |
+| :--- | ---: | :--- | :--- |
+| A (OFF) | 2,563 | **5/5** | `Article 14.4`, `Annex III` |
+| B (ON) | 1,359 | **5/5** | `Article 14.4`, `Annex III` |
+
+Both rows the first gate lost are therefore restored, at 1.36 kb against the OFF
+arm's 2.56 kb on that row.
+
+## 9.6 What is still unproven, and what decides it
+
+The screens are 1 generation on 2–7 rows. The clause change applies to **all 80
+unanchored rows**, so its broad cost is not settled by two rows, and it is the one
+change whose size response cannot be projected offline. The decision instrument is
+the pre-registered gate re-run on the SAME sample and the same instrument as §3
+(37 strided rows × 3 independent generations × 2 arms)
+
+## 10. R423.1 and R423.2
+
+The OFF verdict above was correct and is superseded by a correction of the
+estimator, not of the rule: `docs/measurements/r423/CHECKPOINT-r4231.md`.
+Short version — both lost rows are rows where the estimator found NO anchor, and
+an empty anchor is absence of signal, not a small ask; the re-run gate and its
+pre-registered accept rule are staged there.
+
+**R423.2 — the re-run (`r423-need4`) SHIPPED the lever; it is now default ON.**
+All five pre-registered conditions held on the 27 comparable rows: correctness
+`+0.00 / +0.00` pp (the cost above is gone), answers `−2107.96` chars, official
+aggregate **65.62 → 79.56 (+13.93 pp)**, gold heads dropped `1 → 0`. The same
+re-run also forced a guard fix — a single transport-degraded row (`rg_085`) was
+voiding the whole paired run, so `gate_validity.assess` now accepts an ACCOUNTED
+symmetric exclusion (`excluded_rows`). See `CHECKPOINT-r4231.md` §9–§11,
+`docs/reports/r423-need-proportional-gate.md` (the `r423-need3` KEEP-OFF report is
+preserved verbatim as `docs/reports/r423-need-proportional-gate-need3.md`).

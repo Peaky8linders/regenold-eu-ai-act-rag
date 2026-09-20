@@ -53,7 +53,12 @@ from pathlib import Path
 from typing import Any
 
 from evals.bench import metrics as bench_metrics
-from evals.harness.gate_validity import ArmProbe, assess, lever_changes_system
+from evals.harness.gate_validity import (
+    ArmProbe,
+    assess,
+    degraded_row_ids,
+    lever_changes_system,
+)
 from evals.regenold.official_batch import (
     build_hard_messages,
     build_pushback_messages,
@@ -309,28 +314,46 @@ _TRANSPORT_ERROR_MARKERS = (
 class _ConsecutiveTransportFailures:
     """Count Stage-2 calls that never reached a leg; reset on any success."""
 
-    def __init__(self, limit: int) -> None:
+    def __init__(self, limit: int, *, trip: bool = True, label: str = "") -> None:
         self._limit = max(1, int(limit))
         self._consecutive = 0
         self._last = ""
         self._lock = threading.Lock()
+        #: R423.1 — an auxiliary leg is COUNTED and reported but never aborts the
+        #: batch. See ``_install_stage2_transport_guard`` for why that distinction
+        #: is not cosmetic.
+        self._trip = bool(trip)
+        self._label = label
+        self._total = 0
+        self._last_kind = ""
 
     def record_ok(self) -> None:
         with self._lock:
             self._consecutive = 0
             self._last = ""
 
-    def record_failure(self, message: str) -> None:
+    def record_failure(self, message: str, kind: str = "") -> None:
         with self._lock:
             self._consecutive += 1
+            self._total += 1
             self._last = message
+            self._last_kind = kind
+
+    def counts(self) -> tuple[int, int]:
+        """``(consecutive, total)`` — for the run's provenance."""
+        with self._lock:
+            return self._consecutive, self._total
 
     def tripped(self) -> str:
         with self._lock:
-            if self._consecutive >= self._limit:
+            if self._trip and self._consecutive >= self._limit:
+                # ``label`` and ``kind`` are omitted when unset, so an
+                # unlabelled tracker's reason string is unchanged.
+                who = f" {self._label}" if self._label else ""
+                kind = f" [{self._last_kind}]" if self._last_kind else ""
                 return (
-                    f"{self._consecutive} consecutive calls failed "
-                    f"(last: {self._last[:160]})"
+                    f"{self._consecutive} consecutive{who} calls failed"
+                    f"{kind} (last: {self._last[:160]})"
                 )
             return ""
 
@@ -372,7 +395,35 @@ def _install_stage2_transport_guard(
     if not _wp.is_openai_wrapper_enabled():
         raise RuntimeError("--require-stage2-transport needs the openai_wrapper provider")
 
-    transport = _ConsecutiveTransportFailures(int(max_consecutive))
+    transport = _ConsecutiveTransportFailures(int(max_consecutive), label="primary")
+    #: R423.1 — auxiliary legs (the Groq denoiser / intent classifier, Gemini,
+    #: Mistral) go through the SAME provider class, so patching the class counts
+    #: their failures as Stage-2 transport failures. MEASURED consequence: the
+    #: R423.1 gate aborted after four rows because Groq's free-tier cap answered
+    #: ``429 Rate limit reached for model `openai/gpt-oss-120b``` — on the QUERY
+    #: DENOISER, whose own chain falls through to Haiku. Every row would still
+    #: have been served by a healthy Claude Stage-2 leg, and the run died anyway,
+    #: discarding the rows that were about to be drawn. An abort must mean "the
+    #: Stage-2 primary cannot answer", because that is the only condition under
+    #: which the batch would be graded on Stage-1 drafts. Auxiliary failures are
+    #: counted, reported, and never abort.
+    auxiliary = _ConsecutiveTransportFailures(int(max_consecutive), trip=False, label="aux")
+    primary_provider = _wp.get_openai_wrapper_provider()
+
+    def _is_primary_leg(provider: object) -> bool:
+        """Is this call the Stage-2 primary, or an auxiliary leg?
+
+        Identity first (the real getter returns a process-wide singleton), with
+        the endpoint as the fallback discriminator, because every leg is built
+        from this one class against its own ``base_url``. Both must be non-empty
+        for the endpoint test to apply, so two uninitialised instances cannot
+        match each other by both being ``None``.
+        """
+        if provider is primary_provider:
+            return True
+        mine = getattr(provider, "_base_url", None)
+        theirs = getattr(primary_provider, "_base_url", None)
+        return bool(mine) and bool(theirs) and mine == theirs
 
     def preflight() -> str:
         provider = _wp.get_openai_wrapper_provider()
@@ -405,27 +456,46 @@ def _install_stage2_transport_guard(
     def guarded_complete(self, req):
         resp = original_complete(self, req)
         error = getattr(resp, "error", None)
+        # R423.1 — WHICH LEG this call belongs to, not merely that it failed.
+        # ``self is primary_provider`` is the discriminator: the auxiliary legs
+        # are separate instances built against their own base_url, so this needs
+        # no model-name list to keep in sync. A model-side error (quota, 4xx/5xx)
+        # on the PRIMARY is not a network outage either, but five in a row there
+        # still does mean every row is shipping a Stage-1 draft, so it counts.
+        is_primary = _is_primary_leg(self)
         if not error:
-            transport.record_ok()
+            if is_primary:
+                transport.record_ok()
             return resp
         message = str(error)
-        if any(marker in message.lower() for marker in _TRANSPORT_ERROR_MARKERS):
-            transport.record_failure(message)
+        kind = (
+            "transport"
+            if any(m in message.lower() for m in _TRANSPORT_ERROR_MARKERS)
+            else "model_side"
+        )
+        if is_primary:
+            transport.record_failure(message, kind)
         else:
-            # A model-side error (quota, 4xx/5xx) is not a network outage, but
-            # five in a row still means every row is shipping a Stage-1 draft.
-            transport.record_failure(message)
+            auxiliary.record_failure(message, kind)
         return resp
 
     _wp._OpenAIWrapperProvider.complete = guarded_complete
 
     def assert_healthy() -> None:
         tripped = transport.tripped()
-        if tripped:
-            raise RuntimeError(
-                f"Stage-2 transport is down: {tripped}. Aborting before the rest "
-                "of the sample is graded on deterministic Stage-1 drafts."
-            )
+        if not tripped:
+            return
+        _, aux_total = auxiliary.counts()
+        note = (
+            f" {aux_total} auxiliary-leg failure(s) were seen and did NOT trip this "
+            "guard."
+            if aux_total
+            else ""
+        )
+        raise RuntimeError(
+            f"Stage-2 PRIMARY transport is down: {tripped}. Aborting before the "
+            f"rest of the sample is graded on deterministic Stage-1 drafts.{note}"
+        )
 
     return preflight, assert_healthy
 
@@ -906,6 +976,16 @@ def _arm(
             # counters and payload hashes cover every generation that ran.
             got = primary.get("rows") or []
             identical_rate = _repeat_independence(replicates)
+            # R423.2 — the rows whose graded draw did NOT come from the primary
+            # leg, across EVERY generation. A single primary read-timeout with a
+            # dead fallback credential ships one Stage-1 draft; the guard needs
+            # those ids to EXCLUDE them from both arms instead of voiding a
+            # five-hour paired gate for a hiccup the caller can account for.
+            primary["degraded_ids"] = sorted({
+                row_id
+                for sample in replicates
+                for row_id in degraded_row_ids(sample)
+            })
             # R423 — per-sample determinism, not just sample 0's. The gate's
             # numbers are medians across the generations, so a generation that
             # shipped Stage-1 drafts while its siblings were polished has to be
@@ -951,6 +1031,39 @@ def _parse_env(pairs: list[str] | None) -> dict[str, str]:
     return out
 
 
+def select_rows(
+    rows: list[Any],
+    *,
+    ids: str | None = None,
+    stride: int = 0,
+    limit: int = 0,
+) -> list[Any]:
+    """R423.1 — the row selection, as a function so it can be pinned by a test.
+
+    Order is ``--ids``, then ``--stride``, then ``--limit``.
+
+    ``--ids`` exists because a stride reaches a specific row only by luck, and
+    the rows a gate LOST are the first rows a fix has to be tested on: without
+    it, a targeted regression screen has to run the whole board again. It also
+    must resolve — an unknown id raises rather than silently shrinking the run,
+    which is the R422 failure shape (a sample read as the board).
+    """
+    if ids:
+        wanted = [x.strip() for x in ids.replace(",", " ").split() if x.strip()]
+        by_id = {r.id: r for r in rows}
+        missing = [x for x in wanted if x not in by_id]
+        if missing:
+            raise SystemExit(f"--ids not in the official batch: {missing}")
+        rows = [by_id[x] for x in wanted]
+    if stride:
+        if stride < 1:
+            raise SystemExit("--stride must be >= 1")
+        rows = rows[::stride]
+    if limit:
+        rows = rows[:limit]
+    return rows
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--label", required=True)
@@ -959,6 +1072,15 @@ def main() -> None:
     ap.add_argument("--api-key", default=os.environ.get("REGENOLD_API_KEY"))
     ap.add_argument("--timeout", type=float, default=180.0)
     ap.add_argument("--limit", type=int, default=0, help="first N questions only")
+    ap.add_argument(
+        "--ids",
+        default=None,
+        help=(
+            "R423.1 — comma/space separated question ids to run INSTEAD of a "
+            "stride, so a regression screen can be aimed at the rows a previous "
+            "gate lost. Every id must exist; an unknown id aborts the run."
+        ),
+    )
     ap.add_argument(
         "--stride",
         type=int,
@@ -1035,13 +1157,12 @@ def main() -> None:
     if args.cohere_rerank_min_gap and not require_any_cohere:
         raise SystemExit("--cohere-rerank-min-gap requires a Cohere strict mode")
 
-    rows = list(load_official_batch())
-    if args.stride:
-        if args.stride < 1:
-            raise SystemExit("--stride must be >= 1")
-        rows = rows[:: args.stride]
-    if args.limit:
-        rows = rows[: args.limit]
+    rows = select_rows(
+        list(load_official_batch()),
+        ids=args.ids,
+        stride=args.stride,
+        limit=args.limit,
+    )
 
     from evals.regenold.runner_v2 import _post, _post_local
 
@@ -1143,8 +1264,32 @@ def main() -> None:
             base_prov = baseline[m].get("provenance")
             branch_prov = branch[m].get("provenance")
             if base_prov is not None and branch_prov is not None:
-                verdict = assess(base=base_prov, branch=branch_prov, lever=lever)
+                # R423.2 — EXCLUDE, SYMMETRICALLY, THE ROWS A DEGRADED LEG
+                # SERVED. The void guard's own prescription: "rows that shipped
+                # a draft because of it belong in the excluded set, not averaged
+                # over". A row dropped from one arm must leave the other arm too,
+                # or the comparison stops being paired. ``assess`` then checks
+                # the accounting (each excluded row absorbs at most one
+                # off-contract refusal; the set must stay a minority) and every
+                # arm-level rule still applies to what remains.
+                excluded = sorted(
+                    set(baseline[m].get("degraded_ids") or [])
+                    | set(branch.get(m, {}).get("degraded_ids") or [])
+                )
+                if excluded:
+                    print(
+                        f"\n=== R423.2 EXCLUDED (degraded leg, dropped from BOTH "
+                        f"arms): n={len(excluded)} {', '.join(excluded[:8])}"
+                        f"{'…' if len(excluded) > 8 else ''}"
+                    )
+                verdict = assess(
+                    base=base_prov,
+                    branch=branch_prov,
+                    lever=lever,
+                    excluded_rows=len(excluded),
+                )
                 payload.setdefault("gate", {})[m] = verdict.as_dict()
+                payload["gate"][m]["excluded_rows"] = excluded
                 print(f"\n=== GATE VALIDITY {m} ===")
                 print(verdict.render())
                 if not verdict.valid:
