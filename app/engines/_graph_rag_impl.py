@@ -44,6 +44,18 @@ from app.engines.scenario_classifier import (
     classify_scenario_query,
     _normalise,
 )
+# R427 / R426 T1 — the ONE leg-2 dispatch (``app/llm/stage2.py``). Leg 2 used to
+# be decided in TWO places in this module — the transport's nested
+# ``_try_bedrock_fallback`` and the answer path's inline fallback block — and the
+# copies had drifted (see that module's docstring). Imported at module scope so
+# no call site can diverge about which policy it speaks. ``app.llm.stage2``
+# imports only ``app.llm.stage2_policy``, so there is no import cycle.
+from app.llm.stage2 import (
+    PRESET_ANSWER,
+    PRESET_TRANSPORT,
+    REJECT_TRUNCATED,
+    dispatch_leg2,
+)
 from app.models import (
     AssessmentAnswer,
     CitationNode,
@@ -1129,20 +1141,25 @@ def _openai_wrapper_complete_for_graph_rag(
             # answer was then discarded below WITHOUT correcting the counter, so
             # ``fallback_ok`` counted answers that were never served. Defer the
             # verdict until the answer has survived every guard.
-            if not bedrock_text:
-                _s2pol.record_result(_s2pol.STAGE2_FALLBACK, ok=False)
+            # R427/T1 — the rejection rules AND the ``record_result`` timing now
+            # come from the ONE shared dispatch (``app/llm/stage2.py``, which also
+            # serves the answer path's fallback block). The verdict is recorded
+            # there, on the deferred outcome, so a discarded answer can never be
+            # counted as ``fallback_ok`` (R361) and ``attempts == ok + failed``
+            # holds on both paths. ``_leg2.text`` is ``bedrock_text`` verbatim —
+            # the dispatch never rewrites an answer.
+            _leg2 = dispatch_leg2(
+                bedrock_text,
+                preset=PRESET_TRANSPORT,
+                structurally_truncated=_looks_structurally_truncated,
+            )
+            if _leg2.rejected:
+                if _leg2.rejected == REJECT_TRUNCATED:
+                    logger.warning(
+                        "graph_rag.bedrock_auto_fallback_truncated — discarding "
+                        "a mid-clause Bedrock answer.",
+                    )
                 return None
-            # A truncated Bedrock answer is no better than a truncated tunnel
-            # answer: shipping it would set ``stage2_landed=True`` and let the
-            # R72 reconcile pass prune citations the cut prose never described.
-            if _looks_structurally_truncated(bedrock_text):
-                _s2pol.record_result(_s2pol.STAGE2_FALLBACK, ok=False)
-                logger.warning(
-                    "graph_rag.bedrock_auto_fallback_truncated — discarding a "
-                    "mid-clause Bedrock answer.",
-                )
-                return None
-            _s2pol.record_result(_s2pol.STAGE2_FALLBACK, ok=True)
             # R417 — name the serving leg. A *successful* Bedrock answer left
             # ``stage2_call_failed`` False, so the route's cache-poisoning
             # guard could not distinguish it from a wrapper-served polish and
@@ -10577,10 +10594,25 @@ def _claude_max_enhance_answer(
                     )
                     # R361 — this site counted an ATTEMPT and never a RESULT, so
                     # ``fallback_attempts`` could exceed ``ok + failed`` and the
-                    # counters silently stopped balancing.
-                    _s2pol.record_result(
-                        _s2pol.STAGE2_FALLBACK,
-                        ok=bool((text_raw or "").strip()),
+                    # counters silently stopped balancing. R427/T1 — the verdict
+                    # now comes from the SAME shared dispatch the transport uses.
+                    #
+                    # ``PRESET_ANSWER`` is the behaviour this site has always had
+                    # (stripped-empty is empty; the text passes through untouched),
+                    # and the outcome is deliberately NOT consumed here: this site
+                    # never applied the truncation rule, and equalising that with
+                    # the transport would change WHICH TEXT SHIPS — a behaviour
+                    # change, so it is gated separately (T1b in
+                    # ``docs/measurements/r427``) rather than bundled into this
+                    # pure move. (R427 also MEASURED that this block is currently
+                    # unreachable: it needs leg 1 to return ``None``, and every
+                    # leg-1 failure either returns leg 2's answer or raises. It is
+                    # kept, not deleted, because deleting a fallback is its own
+                    # decision — see CHECKPOINT F1.)
+                    dispatch_leg2(
+                        text_raw,
+                        preset=PRESET_ANSWER,
+                        structurally_truncated=_looks_structurally_truncated,
                     )
             except Exception as e:
                 try:
