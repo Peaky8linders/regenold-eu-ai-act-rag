@@ -179,6 +179,16 @@ class ArmProvenance:
     #: the digest is derived from :attr:`system_hashes` as before.
     recorded_system_digest: str = ""
     recorded_user_digest: str = ""
+    #: R424 — the REQUEST SHAPE the caller declared for this arm, measured at the
+    #: point the messages were built (``"rolling"``, or ``"fixed:<digest>"``).
+    #: Some levers do not touch the engine at all: they change the conversation
+    #: the harness posts (see ``evals.regenold.hard_preamble``), and then the
+    #: system slot is SUPPOSED to be byte-identical in both arms. Comparing
+    #: system digests would void exactly the run that was set up correctly, so a
+    #: request-slot lever is checked here instead — the mirror of
+    #: :func:`lever_changes_system`, and the R422/Task-4 lesson applied to the
+    #: other slot: a flag that never reached the wire must not read as a null.
+    request_shape: str = ""
 
     @property
     def system_digest(self) -> str:
@@ -246,6 +256,7 @@ class ArmProvenance:
             },
             recorded_system_digest=str(data.get("system_digest") or ""),
             recorded_user_digest=str(data.get("user_digest") or ""),
+            request_shape=str(data.get("request_shape") or ""),
         )
 
     @property
@@ -292,6 +303,7 @@ class ArmProvenance:
             "system_digest": self.system_digest,
             "system_lengths": sorted(self.system_lengths),
             "user_digest": self.user_digest,
+            "request_shape": self.request_shape,
             "primary_attempts": self.primary_attempts,
             "primary_ok": self.primary_ok,
             "primary_failed": self.primary_failed,
@@ -322,6 +334,8 @@ class GateVerdict:
     arms: dict[str, dict[str, Any]] = field(default_factory=dict)
     transport_checked: bool = True
     system_checked: bool = False
+    #: R424 — the request slot was the slot under test (see ``assess``).
+    request_checked: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -331,15 +345,21 @@ class GateVerdict:
             "warnings": list(self.warnings),
             "transport_checked": self.transport_checked,
             "system_checked": self.system_checked,
+            "request_checked": self.request_checked,
             "arms": self.arms,
         }
 
     def render(self) -> str:
         lines: list[str] = []
         if self.valid:
-            lines.append("GATE VALID: both arms carried by the primary leg; "
-                         "system-slot identity checked." if self.system_checked
-                         else "GATE VALID: both arms carried by the primary leg.")
+            if self.system_checked:
+                slot = "system-slot identity checked"
+            elif self.request_checked:
+                slot = "request-shape difference confirmed"
+            else:
+                slot = ""
+            lines.append("GATE VALID: both arms carried by the primary leg"
+                         + (f"; {slot}." if slot else "."))
             for w in self.warnings:
                 lines.append(f"  WARNING: {w}")
             return "\n".join(lines)
@@ -359,6 +379,41 @@ class GateVerdict:
         lines.append("  then re-run. The row checkpoints are still on disk.")
         lines.append(bar)
         return "\n".join(lines)
+
+
+#: Flags that move the CONVERSATION the harness posts rather than the engine's
+#: system slot. Kept as literals so this module stays importable without the
+#: eval-side modules; ``tests/test_r424_hard_preamble.py`` asserts the set matches
+#: ``evals.regenold.hard_preamble.HARD_PREAMBLE_ENV``, so it cannot drift.
+REQUEST_SHAPE_FLAGS: frozenset[str] = frozenset({"REGENOLD_HARD_PREAMBLE"})
+
+
+def lever_changes_request(
+    base_env: dict[str, str] | None,
+    branch_env: dict[str, str] | None,
+    *,
+    override: bool | None = None,
+) -> tuple[bool, str]:
+    """Does this A/B claim to change the REQUEST the harness posts?
+
+    The mirror of :func:`lever_changes_system` for a lever that lives above the
+    engine — a different conversation prefix, not a different system prompt. The
+    caller uses the answer to pick ``assess(lever_slot=…)``: for a request-slot
+    lever an identical system payload across the arms is CORRECT, so the guard must
+    check the request shape instead of voiding on the system slot.
+    """
+    base_env = base_env or {}
+    branch_env = branch_env or {}
+    if override is not None:
+        return override, f"operator override: lever_changes_request={override}"
+    diffs: set[str] = set()
+    for key in set(base_env) | set(branch_env):
+        if base_env.get(key) != branch_env.get(key):
+            diffs.add(key)
+    hit = sorted(diffs & REQUEST_SHAPE_FLAGS)
+    if hit:
+        return True, f"arm env differs on request-shape flag(s): {', '.join(hit)}"
+    return False, "arm env does not name a known request-shape flag"
 
 
 def lever_changes_system(
@@ -548,6 +603,7 @@ class ArmProbe:
         repeats: int = 1,
         repeat_identical_rate: float | None = None,
         sample_rows: Iterable[Any] | None = None,
+        request_shape: str = "",
     ) -> ArmProvenance:
         stats = dict(self.transport_after)
         if self._reset_error:
@@ -574,6 +630,7 @@ class ArmProbe:
             repeats=int(repeats),
             repeat_identical_rate=repeat_identical_rate,
             rows_served=count_rows_served_by(rows),
+            request_shape=str(request_shape or ""),
             sample_deterministic=(
                 tuple(count_deterministic_rows(sample) for sample in sample_rows)
                 if sample_rows is not None
@@ -682,12 +739,25 @@ def assess(
     transport_checked: bool = True,
     ignore_fallback_leg: bool = False,
     excluded_rows: int = 0,
+    lever_slot: str = "system",
 ) -> GateVerdict:
     """Decide whether a paired run is eligible to report deltas.
 
     ``lever`` is :func:`lever_changes_system`'s result (or a bare bool). The
     transport leg is checked for BOTH arms; the payload-identity check only
     applies when the lever claims the system slot.
+
+    ``lever_slot`` — R424. WHICH slot the lever claims to edit, ``"system"``
+    (default, every existing caller) or ``"request"``. A harness-level lever —
+    the conversation the harness posts before a question — leaves the engine
+    untouched, so both arms SHOULD dispatch byte-identical system payloads and
+    the system-identity rule would void the run that was built correctly. In
+    ``"request"`` mode the non-vacuity check moves to
+    :attr:`ArmProvenance.request_shape`, with the same standard of proof: the two
+    arms must have RECORDED different request shapes, or the lever never reached
+    the request builder and any delta would be null by construction. The system
+    slot then becomes an expected agreement rather than a suspicious one, so it
+    is neither voided nor warned about.
 
     ``ignore_fallback_leg`` — R416. Set by a caller that has ALREADY excluded
     the fallback-served rows from both arms symmetrically (see
@@ -824,6 +894,7 @@ def assess(
             )
 
     system_checked = False
+    request_checked = False
     if branch is not None:
         # R423 — a FAILED fallback dial is a primary failure on a graded path, and
         # the counter that can see it is ``fallback_attempts``, not
@@ -850,7 +921,28 @@ def assess(
                     "fallback credential. Rows that shipped a draft because of "
                     "it belong in the excluded set, not averaged over."
                 )
-    if lever_changes and branch is not None:
+    if lever_slot == "request" and branch is not None:
+        # R424 — the mirror of the system rule below. Declared request shapes are
+        # the evidence; an arm that recorded none cannot be shown to have run the
+        # shape it claims, which is how a harness flag gets silently dropped.
+        request_checked = True
+        a_shape, b_shape = base.request_shape, branch.request_shape
+        if not a_shape or not b_shape:
+            reasons.append(
+                "arms' request shapes could not be observed "
+                f"({base.label}={a_shape or 'unrecorded'!r}, "
+                f"{branch.label}={b_shape or 'unrecorded'!r}) — a request-slot "
+                "lever that left no record of the shape it posted cannot be "
+                "shown to have reached the request builder."
+            )
+        elif a_shape == b_shape:
+            reasons.append(
+                "arms' request shapes were IDENTICAL "
+                f"({a_shape}; {base.label} and {branch.label} both posted it). "
+                "The lever did not reach the request builder, so any delta is "
+                "null by construction."
+            )
+    elif lever_changes and branch is not None:
         system_checked = True
         if not base.system_hashes or not branch.system_hashes:
             reasons.append(
@@ -867,7 +959,11 @@ def assess(
                 "delta is null by construction."
             )
     elif not lever_changes and branch is not None:
-        if base.system_digest and base.system_digest == branch.system_digest:
+        if (
+            lever_slot != "request"
+            and base.system_digest
+            and base.system_digest == branch.system_digest
+        ):
             warnings.append(
                 "both arms dispatched the same system payload; correct for a "
                 f"non-system lever ({lever_why}), but re-run with "
@@ -893,6 +989,7 @@ def assess(
         arms=arms,
         transport_checked=transport_checked,
         system_checked=system_checked,
+        request_checked=request_checked,
     )
 
 

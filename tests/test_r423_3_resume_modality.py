@@ -28,6 +28,7 @@ from pathlib import Path
 import pytest
 
 import evals.regenold.run_official_batch as ROB
+from evals.regenold import hard_preamble as hp
 from evals.regenold.official_batch import HARD_CONTEXT_EXCHANGES
 
 
@@ -104,7 +105,14 @@ def hard_calls(monkeypatch, tmp_path: Path):
 
     The history length is the whole point: ``history_turn_count`` — and therefore
     which system prompt the engine picks — is a function of it.
+
+    R424 flips the harness DEFAULT to the pre-fixed 9-turn dialogue, whose history
+    is the fixture rather than a rolling window — so the module pins the ROLLING
+    shape explicitly. The invariants below are properties of that shape, and a
+    fixture that let the default drift would have silently stopped testing them
+    (which is exactly what happened before the pin was added).
     """
+    monkeypatch.setenv(hp.HARD_PREAMBLE_ENV, hp.MODE_ROLLING)
     monkeypatch.setattr(ROB, "_RESULTS", tmp_path)
     monkeypatch.setattr(ROB, "_clear_engine_cache", lambda: (0, None))
     history_lengths: list[int] = []
@@ -187,11 +195,20 @@ def test_a_resumed_hard_run_seeds_the_conversation_it_lost(hard_calls) -> None:
 
 
 def test_the_runner_threads_the_seed_only_for_hard_mode(hard_calls) -> None:
-    """Pin the wiring: an easy resume has no rolling conversation to seed."""
+    """Pin the wiring: an easy resume has no rolling conversation to seed.
+
+    R424 — asserted on the SYMBOLS the wiring needs rather than on one line's
+    formatting. The seed is now conditional on the request shape (a ``fixed`` arm
+    has no rolling conversation to restore), so a string match on the old
+    assignment would have failed while the contract still held.
+    """
     src = (
         Path(ROB.__file__).read_text(encoding="utf-8")
     )
-    assert "seed = seed_history_from_records(previous)" in src
+    assert "seed_history_from_records(previous)" in src
+    # The fixed shape must NOT seed: its history is the fixture, which is what
+    # makes a resumed fixed run identical to an uninterrupted one.
+    assert "MODE_FIXED" in src
     assert "resuming hard with" in src
     # Exactly ONE call site threads a seed. If easy mode ever grows one, a
     # format-stable run would start depending on a conversation it does not keep.
