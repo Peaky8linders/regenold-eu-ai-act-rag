@@ -59,6 +59,8 @@ from evals.harness.gate_validity import (
     degraded_row_ids,
     lever_changes_request,
     lever_changes_system,
+    lever_changes_wire,
+    wire_shape_digest,
 )
 from evals.regenold.hard_preamble import (
     DEFAULT_MODE,
@@ -1132,6 +1134,12 @@ def _arm(
                     if preamble == MODE_FIXED
                     else MODE_ROLLING
                 ),
+                # R425 — what this arm actually EMITTED. A route pass that
+                # rewrites the references after Stage-2 leaves every dispatched
+                # byte identical, so this is the only place its effect can be
+                # seen before scoring; without it an inert call site would read
+                # as a clean null (``lever_slot="wire"``).
+                wire_shape=wire_shape_digest(got),
             )
             if repeats > 1:
                 primary["samples"] = [[r["id"] for r in sample] for sample in replicates]
@@ -1390,10 +1398,24 @@ def main() -> None:
         # differ, the system check wins — it is the stronger of the two and
         # relaxing it would be a real weakening.
         request_lever = lever_changes_request(base_env, branch_env)
-        lever_slot = "request" if (request_lever[0] and not lever[0]) else "system"
+        # R425 — the third slot. A route pass that rewrites the emitted
+        # references changes no dispatched byte, so it must be declared here or
+        # the guard has nothing to check non-vacuity against.
+        wire_lever = lever_changes_wire(base_env, branch_env)
+        if lever[0]:
+            lever_slot = "system"  # strongest: the system slot is under test
+        elif wire_lever[0]:
+            lever_slot = "wire"
+        elif request_lever[0]:
+            lever_slot = "request"
+        else:
+            lever_slot = "system"
         payload["lever_changes_system"] = {"changes": lever[0], "why": lever[1]}
         payload["lever_changes_request"] = {
             "changes": request_lever[0], "why": request_lever[1]
+        }
+        payload["lever_changes_wire"] = {
+            "changes": wire_lever[0], "why": wire_lever[1]
         }
         payload["lever_slot"] = lever_slot
         for m in baseline:

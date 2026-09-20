@@ -1,0 +1,919 @@
+{
+ "label": "r425-live",
+ "rows": 9,
+ "lever_slot": "wire",
+ "lever_changes_wire": {
+  "changes": true,
+  "why": "arm env differs on wire-slot flag(s): REGENOLD_GROUND_WIRE_SUBPOINTS"
+ },
+ "gate": {
+  "hard": {
+   "valid": true,
+   "void": false,
+   "reasons": [],
+   "warnings": [],
+   "transport_checked": true,
+   "system_checked": false,
+   "request_checked": false,
+   "wire_checked": true,
+   "arms": {
+    "r425-live-A": {
+     "label": "r425-live-A",
+     "rows": 9,
+     "calls": 18,
+     "deterministic_graded": 0,
+     "polished_graded": 9,
+     "system_payloads": 18,
+     "system_digest": "f46a309464083c54",
+     "system_lengths": [
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61
+     ],
+     "user_digest": "4fa2e096e628800d",
+     "request_shape": "fixed:cb85452c9c041721",
+     "wire_shape": "8174e21f14a0e445",
+     "primary_attempts": 18,
+     "primary_ok": 18,
+     "primary_failed": 0,
+     "fallback_attempts": 0,
+     "fallback_ok": 0,
+     "refused": 0,
+     "refused_by_provider": {},
+     "legs": {
+      "primary": 29,
+      "fallback": 1
+     },
+     "leg_system_lengths": {
+      "primary": [
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       1311,
+       6365,
+       6365,
+       6365,
+       6365,
+       6365,
+       6365,
+       6365,
+       6365,
+       6365,
+       6365
+      ],
+      "fallback": [
+       1311
+      ]
+     },
+     "repeats": 1,
+     "repeat_identical_rate": null,
+     "sample_deterministic": [
+      0
+     ],
+     "rows_served": {
+      "primary": 9
+     },
+     "stats_error": null
+    },
+    "r425-live-B": {
+     "label": "r425-live-B",
+     "rows": 9,
+     "calls": 18,
+     "deterministic_graded": 0,
+     "polished_graded": 9,
+     "system_payloads": 18,
+     "system_digest": "f46a309464083c54",
+     "system_lengths": [
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61,
+      61
+     ],
+     "user_digest": "62393af386a76a0c",
+     "request_shape": "fixed:cb85452c9c041721",
+     "wire_shape": "69c8590fdcffadb9",
+     "primary_attempts": 18,
+     "primary_ok": 18,
+     "primary_failed": 0,
+     "fallback_attempts": 0,
+     "fallback_ok": 0,
+     "refused": 0,
+     "refused_by_provider": {},
+     "legs": {
+      "primary": 30,
+      "fallback": 1
+     },
+     "leg_system_lengths": {
+      "primary": [
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       61,
+       1311,
+       6365,
+       6365,
+       6365,
+       6365,
+       6365,
+       6365,
+       6365,
+       6365,
+       6365,
+       6365,
+       6365
+      ],
+      "fallback": [
+       1311
+      ]
+     },
+     "repeats": 1,
+     "repeat_identical_rate": null,
+     "sample_deterministic": [
+      0
+     ],
+     "rows_served": {
+      "primary": 9
+     },
+     "stats_error": null
+    }
+   },
+   "excluded_rows": []
+  }
+ },
+ "served": {
+  "primary": 18
+ },
+ "answer_identical_rows": 0,
+ "cross_arm_reference_axes": {
+  "loose": {
+   "A": 100.0,
+   "B": 100.0
+  },
+  "strict": {
+   "A": 64.81481481481481,
+   "B": 79.62962962962963
+  },
+  "conc": {
+   "A": 36.85185185185185,
+   "B": 40.0
+  }
+ },
+ "within_draw_counterfactual": {
+  "loose": {
+   "shipped": 100.0,
+   "passed": 100.0,
+   "gain_pp": 0.0
+  },
+  "strict": {
+   "shipped": 72.22222222222221,
+   "passed": 72.22222222222221,
+   "gain_pp": 0.0
+  },
+  "conc": {
+   "shipped": 38.42592592592593,
+   "passed": 38.42592592592593,
+   "gain_pp": 0.0
+  }
+ },
+ "reachability": {
+  "a": {
+   "rows_rewritable": 7,
+   "rows": 9,
+   "substitutions": 9,
+   "sub_wire_gold": 1,
+   "sub_prose_gold": 2,
+   "head_invariant": 9,
+   "count_invariant": 9,
+   "gold_heads_dropped": 24,
+   "gold_heads_dropped_after_pass": 24
+  },
+  "b": {
+   "rows_rewritable": 0,
+   "rows": 9,
+   "substitutions": 0,
+   "sub_wire_gold": 0,
+   "sub_prose_gold": 0,
+   "head_invariant": 9,
+   "count_invariant": 9,
+   "gold_heads_dropped": 25,
+   "gold_heads_dropped_after_pass": 25
+  }
+ },
+ "per_row": [
+  {
+   "id": "rg_007",
+   "turn": "pushback",
+   "expected": [
+    "annex iii.1.a"
+   ],
+   "answer_identical": false,
+   "served_a": "primary",
+   "served_b": "primary",
+   "wire_a": [
+    "Article 5.1.d",
+    "Article 6.2",
+    "Annex III.1.a",
+    "Annex I"
+   ],
+   "passed_a": [
+    "Article 5.1.d",
+    "Article 6.2",
+    "Annex III.1.a",
+    "Annex I"
+   ],
+   "rewritable_a": false,
+   "head_invariant_a": true,
+   "count_invariant_a": true,
+   "gold_heads_dropped_a": [
+    "annex i",
+    "article 5",
+    "article 6"
+   ],
+   "loose_shipped_a": 1.0,
+   "loose_passed_a": 1.0,
+   "loose_gain_a": 0.0,
+   "strict_shipped_a": 1.0,
+   "strict_passed_a": 1.0,
+   "strict_gain_a": 0.0,
+   "conc_shipped_a": 0.25,
+   "conc_passed_a": 0.25,
+   "conc_gain_a": 0.0,
+   "substitutions_a": 0,
+   "sub_wire_gold_a": 0,
+   "sub_prose_gold_a": 0,
+   "wire_b": [
+    "Article 5.1.g",
+    "Article 6.2",
+    "Article 50.3",
+    "Annex III.1.a",
+    "Annex I"
+   ],
+   "passed_b": [
+    "Article 5.1.g",
+    "Article 6.2",
+    "Article 50.3",
+    "Annex III.1.a",
+    "Annex I"
+   ],
+   "rewritable_b": false,
+   "head_invariant_b": true,
+   "count_invariant_b": true,
+   "gold_heads_dropped_b": [
+    "annex i",
+    "article 5",
+    "article 50",
+    "article 6"
+   ],
+   "loose_shipped_b": 1.0,
+   "loose_passed_b": 1.0,
+   "loose_gain_b": 0.0,
+   "strict_shipped_b": 1.0,
+   "strict_passed_b": 1.0,
+   "strict_gain_b": 0.0,
+   "conc_shipped_b": 0.2,
+   "conc_passed_b": 0.2,
+   "conc_gain_b": 0.0,
+   "substitutions_b": 0,
+   "sub_wire_gold_b": 0,
+   "sub_prose_gold_b": 0
+  },
+  {
+   "id": "rg_046",
+   "turn": "pushback",
+   "expected": [
+    "article 13.3"
+   ],
+   "answer_identical": false,
+   "served_a": "primary",
+   "served_b": "primary",
+   "wire_a": [
+    "Article 13.3",
+    "Article 9.5"
+   ],
+   "passed_a": [
+    "Article 13.3",
+    "Article 9.2"
+   ],
+   "rewritable_a": true,
+   "head_invariant_a": true,
+   "count_invariant_a": true,
+   "gold_heads_dropped_a": [
+    "article 9"
+   ],
+   "loose_shipped_a": 1.0,
+   "loose_passed_a": 1.0,
+   "loose_gain_a": 0.0,
+   "strict_shipped_a": 1.0,
+   "strict_passed_a": 1.0,
+   "strict_gain_a": 0.0,
+   "conc_shipped_a": 0.5,
+   "conc_passed_a": 0.5,
+   "conc_gain_a": 0.0,
+   "substitutions_a": 1,
+   "sub_wire_gold_a": 0,
+   "sub_prose_gold_a": 0,
+   "wire_b": [
+    "Article 13.3",
+    "Article 14.4",
+    "Article 12.3"
+   ],
+   "passed_b": [
+    "Article 13.3",
+    "Article 14.4",
+    "Article 12.3"
+   ],
+   "rewritable_b": false,
+   "head_invariant_b": true,
+   "count_invariant_b": true,
+   "gold_heads_dropped_b": [
+    "article 12",
+    "article 14"
+   ],
+   "loose_shipped_b": 1.0,
+   "loose_passed_b": 1.0,
+   "loose_gain_b": 0.0,
+   "strict_shipped_b": 1.0,
+   "strict_passed_b": 1.0,
+   "strict_gain_b": 0.0,
+   "conc_shipped_b": 0.3333333333333333,
+   "conc_passed_b": 0.3333333333333333,
+   "conc_gain_b": 0.0,
+   "substitutions_b": 0,
+   "sub_wire_gold_b": 0,
+   "sub_prose_gold_b": 0
+  },
+  {
+   "id": "rg_061",
+   "turn": "pushback",
+   "expected": [
+    "article 88.1"
+   ],
+   "answer_identical": false,
+   "served_a": "primary",
+   "served_b": "primary",
+   "wire_a": [
+    "Article 88.1",
+    "Article 51.1",
+    "Article 94",
+    "Article 75.1",
+    "Article 53.1"
+   ],
+   "passed_a": [
+    "Article 88.1",
+    "Article 51.1",
+    "Article 94",
+    "Article 75.3",
+    "Article 53.3"
+   ],
+   "rewritable_a": true,
+   "head_invariant_a": true,
+   "count_invariant_a": true,
+   "gold_heads_dropped_a": [
+    "article 51",
+    "article 53",
+    "article 75",
+    "article 94"
+   ],
+   "loose_shipped_a": 1.0,
+   "loose_passed_a": 1.0,
+   "loose_gain_a": 0.0,
+   "strict_shipped_a": 1.0,
+   "strict_passed_a": 1.0,
+   "strict_gain_a": 0.0,
+   "conc_shipped_a": 0.2,
+   "conc_passed_a": 0.2,
+   "conc_gain_a": 0.0,
+   "substitutions_a": 2,
+   "sub_wire_gold_a": 0,
+   "sub_prose_gold_a": 0,
+   "wire_b": [
+    "Article 88.1",
+    "Article 51.1",
+    "Article 94",
+    "Article 75.3",
+    "Article 53.3"
+   ],
+   "passed_b": [
+    "Article 88.1",
+    "Article 51.1",
+    "Article 94",
+    "Article 75.3",
+    "Article 53.3"
+   ],
+   "rewritable_b": false,
+   "head_invariant_b": true,
+   "count_invariant_b": true,
+   "gold_heads_dropped_b": [
+    "article 51",
+    "article 53",
+    "article 75",
+    "article 94"
+   ],
+   "loose_shipped_b": 1.0,
+   "loose_passed_b": 1.0,
+   "loose_gain_b": 0.0,
+   "strict_shipped_b": 1.0,
+   "strict_passed_b": 1.0,
+   "strict_gain_b": 0.0,
+   "conc_shipped_b": 0.2,
+   "conc_passed_b": 0.2,
+   "conc_gain_b": 0.0,
+   "substitutions_b": 0,
+   "sub_wire_gold_b": 0,
+   "sub_prose_gold_b": 0
+  },
+  {
+   "id": "rg_067",
+   "turn": "pushback",
+   "expected": [
+    "article 51.1"
+   ],
+   "answer_identical": false,
+   "served_a": "primary",
+   "served_b": "primary",
+   "wire_a": [
+    "Article 51.1",
+    "Article 3.65",
+    "Annex XIII"
+   ],
+   "passed_a": [
+    "Article 51.1",
+    "Article 3.64",
+    "Annex XIII"
+   ],
+   "rewritable_a": true,
+   "head_invariant_a": true,
+   "count_invariant_a": true,
+   "gold_heads_dropped_a": [
+    "annex xiii",
+    "article 3"
+   ],
+   "loose_shipped_a": 1.0,
+   "loose_passed_a": 1.0,
+   "loose_gain_a": 0.0,
+   "strict_shipped_a": 1.0,
+   "strict_passed_a": 1.0,
+   "strict_gain_a": 0.0,
+   "conc_shipped_a": 0.3333333333333333,
+   "conc_passed_a": 0.3333333333333333,
+   "conc_gain_a": 0.0,
+   "substitutions_a": 1,
+   "sub_wire_gold_a": 0,
+   "sub_prose_gold_a": 0,
+   "wire_b": [
+    "Article 51.1",
+    "Article 3.64",
+    "Annex XIII"
+   ],
+   "passed_b": [
+    "Article 51.1",
+    "Article 3.64",
+    "Annex XIII"
+   ],
+   "rewritable_b": false,
+   "head_invariant_b": true,
+   "count_invariant_b": true,
+   "gold_heads_dropped_b": [
+    "annex xiii",
+    "article 3"
+   ],
+   "loose_shipped_b": 1.0,
+   "loose_passed_b": 1.0,
+   "loose_gain_b": 0.0,
+   "strict_shipped_b": 1.0,
+   "strict_passed_b": 1.0,
+   "strict_gain_b": 0.0,
+   "conc_shipped_b": 0.3333333333333333,
+   "conc_passed_b": 0.3333333333333333,
+   "conc_gain_b": 0.0,
+   "substitutions_b": 0,
+   "sub_wire_gold_b": 0,
+   "sub_prose_gold_b": 0
+  },
+  {
+   "id": "rg_082",
+   "turn": "pushback",
+   "expected": [
+    "article 24.3"
+   ],
+   "answer_identical": false,
+   "served_a": "primary",
+   "served_b": "primary",
+   "wire_a": [
+    "Article 24.4",
+    "Article 79.2"
+   ],
+   "passed_a": [
+    "Article 24.4",
+    "Article 79.1"
+   ],
+   "rewritable_a": true,
+   "head_invariant_a": true,
+   "count_invariant_a": true,
+   "gold_heads_dropped_a": [
+    "article 79"
+   ],
+   "loose_shipped_a": 1.0,
+   "loose_passed_a": 1.0,
+   "loose_gain_a": 0.0,
+   "strict_shipped_a": 0.0,
+   "strict_passed_a": 0.0,
+   "strict_gain_a": 0.0,
+   "conc_shipped_a": 0.5,
+   "conc_passed_a": 0.5,
+   "conc_gain_a": 0.0,
+   "substitutions_a": 1,
+   "sub_wire_gold_a": 0,
+   "sub_prose_gold_a": 0,
+   "wire_b": [
+    "Article 24.3"
+   ],
+   "passed_b": [
+    "Article 24.3"
+   ],
+   "rewritable_b": false,
+   "head_invariant_b": true,
+   "count_invariant_b": true,
+   "gold_heads_dropped_b": [],
+   "loose_shipped_b": 1.0,
+   "loose_passed_b": 1.0,
+   "loose_gain_b": 0.0,
+   "strict_shipped_b": 1.0,
+   "strict_passed_b": 1.0,
+   "strict_gain_b": 0.0,
+   "conc_shipped_b": 1.0,
+   "conc_passed_b": 1.0,
+   "conc_gain_b": 0.0,
+   "substitutions_b": 0,
+   "sub_wire_gold_b": 0,
+   "sub_prose_gold_b": 0
+  },
+  {
+   "id": "rg_085",
+   "turn": "pushback",
+   "expected": [
+    "article 6.1",
+    "article 6.2",
+    "annex iii.1.a"
+   ],
+   "answer_identical": false,
+   "served_a": "primary",
+   "served_b": "primary",
+   "wire_a": [
+    "Article 5.1.h",
+    "Article 6.2",
+    "Article 50.1",
+    "Annex III.7.c",
+    "Annex I"
+   ],
+   "passed_a": [
+    "Article 5.1.h",
+    "Article 6.1",
+    "Article 50.1",
+    "Annex III.1",
+    "Annex I"
+   ],
+   "rewritable_a": true,
+   "head_invariant_a": true,
+   "count_invariant_a": true,
+   "gold_heads_dropped_a": [
+    "annex i",
+    "article 5",
+    "article 50"
+   ],
+   "loose_shipped_a": 1.0,
+   "loose_passed_a": 1.0,
+   "loose_gain_a": 0.0,
+   "strict_shipped_a": 0.3333333333333333,
+   "strict_passed_a": 0.3333333333333333,
+   "strict_gain_a": 0.0,
+   "conc_shipped_a": 0.6,
+   "conc_passed_a": 0.6,
+   "conc_gain_a": 0.0,
+   "substitutions_a": 2,
+   "sub_wire_gold_a": 1,
+   "sub_prose_gold_a": 2,
+   "wire_b": [
+    "Article 5.1.h",
+    "Article 6.1",
+    "Annex III.1.a",
+    "Annex I",
+    "Annex II"
+   ],
+   "passed_b": [
+    "Article 5.1.h",
+    "Article 6.1",
+    "Annex III.1.a",
+    "Annex I",
+    "Annex II"
+   ],
+   "rewritable_b": false,
+   "head_invariant_b": true,
+   "count_invariant_b": true,
+   "gold_heads_dropped_b": [
+    "annex i",
+    "annex ii",
+    "article 5"
+   ],
+   "loose_shipped_b": 1.0,
+   "loose_passed_b": 1.0,
+   "loose_gain_b": 0.0,
+   "strict_shipped_b": 0.6666666666666666,
+   "strict_passed_b": 0.6666666666666666,
+   "strict_gain_b": 0.0,
+   "conc_shipped_b": 0.6,
+   "conc_passed_b": 0.6,
+   "conc_gain_b": 0.0,
+   "substitutions_b": 0,
+   "sub_wire_gold_b": 0,
+   "sub_prose_gold_b": 0
+  },
+  {
+   "id": "rg_088",
+   "turn": "pushback",
+   "expected": [
+    "article 26.1",
+    "article 26.6"
+   ],
+   "answer_identical": false,
+   "served_a": "primary",
+   "served_b": "primary",
+   "wire_a": [
+    "Annex I.5",
+    "Article 26.6",
+    "Article 13.3",
+    "Article 6.1",
+    "Annex III.7.b"
+   ],
+   "passed_a": [
+    "Annex I.5",
+    "Article 26.6",
+    "Article 13.3",
+    "Article 6.1",
+    "Annex III.7.b"
+   ],
+   "rewritable_a": false,
+   "head_invariant_a": true,
+   "count_invariant_a": true,
+   "gold_heads_dropped_a": [
+    "annex i",
+    "annex iii",
+    "article 13",
+    "article 6"
+   ],
+   "loose_shipped_a": 1.0,
+   "loose_passed_a": 1.0,
+   "loose_gain_a": 0.0,
+   "strict_shipped_a": 0.5,
+   "strict_passed_a": 0.5,
+   "strict_gain_a": 0.0,
+   "conc_shipped_a": 0.4,
+   "conc_passed_a": 0.4,
+   "conc_gain_a": 0.0,
+   "substitutions_a": 0,
+   "sub_wire_gold_a": 0,
+   "sub_prose_gold_a": 0,
+   "wire_b": [
+    "Annex I.19",
+    "Article 26.6",
+    "Article 13.3",
+    "Article 6.1",
+    "Annex III.7.b"
+   ],
+   "passed_b": [
+    "Annex I.19",
+    "Article 26.6",
+    "Article 13.3",
+    "Article 6.1",
+    "Annex III.7.b"
+   ],
+   "rewritable_b": false,
+   "head_invariant_b": true,
+   "count_invariant_b": true,
+   "gold_heads_dropped_b": [
+    "annex i",
+    "annex iii",
+    "article 13",
+    "article 6"
+   ],
+   "loose_shipped_b": 1.0,
+   "loose_passed_b": 1.0,
+   "loose_gain_b": 0.0,
+   "strict_shipped_b": 0.5,
+   "strict_passed_b": 0.5,
+   "strict_gain_b": 0.0,
+   "conc_shipped_b": 0.4,
+   "conc_passed_b": 0.4,
+   "conc_gain_b": 0.0,
+   "substitutions_b": 0,
+   "sub_wire_gold_b": 0,
+   "sub_prose_gold_b": 0
+  },
+  {
+   "id": "rg_100",
+   "turn": "pushback",
+   "expected": [
+    "article 6.3"
+   ],
+   "answer_identical": false,
+   "served_a": "primary",
+   "served_b": "primary",
+   "wire_a": [
+    "Article 13.3",
+    "Article 25.4",
+    "Article 8.1",
+    "Article 6.2",
+    "Annex III.7.b"
+   ],
+   "passed_a": [
+    "Article 13.3",
+    "Article 25.1.b",
+    "Article 8.1",
+    "Article 6.2",
+    "Annex III.7.b"
+   ],
+   "rewritable_a": true,
+   "head_invariant_a": true,
+   "count_invariant_a": true,
+   "gold_heads_dropped_a": [
+    "annex iii",
+    "article 13",
+    "article 25",
+    "article 8"
+   ],
+   "loose_shipped_a": 1.0,
+   "loose_passed_a": 1.0,
+   "loose_gain_a": 0.0,
+   "strict_shipped_a": 0.0,
+   "strict_passed_a": 0.0,
+   "strict_gain_a": 0.0,
+   "conc_shipped_a": 0.2,
+   "conc_passed_a": 0.2,
+   "conc_gain_a": 0.0,
+   "substitutions_a": 1,
+   "sub_wire_gold_a": 0,
+   "sub_prose_gold_a": 0,
+   "wire_b": [
+    "Article 6.2",
+    "Annex I.19",
+    "Annex III.7.b",
+    "Article 13.3",
+    "Article 25.1.b"
+   ],
+   "passed_b": [
+    "Article 6.2",
+    "Annex I.19",
+    "Annex III.7.b",
+    "Article 13.3",
+    "Article 25.1.b"
+   ],
+   "rewritable_b": false,
+   "head_invariant_b": true,
+   "count_invariant_b": true,
+   "gold_heads_dropped_b": [
+    "annex i",
+    "annex iii",
+    "article 13",
+    "article 25"
+   ],
+   "loose_shipped_b": 1.0,
+   "loose_passed_b": 1.0,
+   "loose_gain_b": 0.0,
+   "strict_shipped_b": 0.0,
+   "strict_passed_b": 0.0,
+   "strict_gain_b": 0.0,
+   "conc_shipped_b": 0.2,
+   "conc_passed_b": 0.2,
+   "conc_gain_b": 0.0,
+   "substitutions_b": 0,
+   "sub_wire_gold_b": 0,
+   "sub_prose_gold_b": 0
+  },
+  {
+   "id": "rg_103",
+   "turn": "pushback",
+   "expected": [
+    "article 50.4"
+   ],
+   "answer_identical": false,
+   "served_a": "primary",
+   "served_b": "primary",
+   "wire_a": [
+    "Article 5.1.g",
+    "Article 50.4",
+    "Article 3.46"
+   ],
+   "passed_a": [
+    "Article 5.1.g",
+    "Article 50.4",
+    "Article 3.60"
+   ],
+   "rewritable_a": true,
+   "head_invariant_a": true,
+   "count_invariant_a": true,
+   "gold_heads_dropped_a": [
+    "article 3",
+    "article 5"
+   ],
+   "loose_shipped_a": 1.0,
+   "loose_passed_a": 1.0,
+   "loose_gain_a": 0.0,
+   "strict_shipped_a": 1.0,
+   "strict_passed_a": 1.0,
+   "strict_gain_a": 0.0,
+   "conc_shipped_a": 0.3333333333333333,
+   "conc_passed_a": 0.3333333333333333,
+   "conc_gain_a": 0.0,
+   "substitutions_a": 1,
+   "sub_wire_gold_a": 0,
+   "sub_prose_gold_a": 0,
+   "wire_b": [
+    "Article 5.1.g",
+    "Article 50.4",
+    "Article 3.60"
+   ],
+   "passed_b": [
+    "Article 5.1.g",
+    "Article 50.4",
+    "Article 3.60"
+   ],
+   "rewritable_b": false,
+   "head_invariant_b": true,
+   "count_invariant_b": true,
+   "gold_heads_dropped_b": [
+    "article 3",
+    "article 5"
+   ],
+   "loose_shipped_b": 1.0,
+   "loose_passed_b": 1.0,
+   "loose_gain_b": 0.0,
+   "strict_shipped_b": 1.0,
+   "strict_passed_b": 1.0,
+   "strict_gain_b": 0.0,
+   "conc_shipped_b": 0.3333333333333333,
+   "conc_passed_b": 0.3333333333333333,
+   "conc_gain_b": 0.0,
+   "substitutions_b": 0,
+   "sub_wire_gold_b": 0,
+   "sub_prose_gold_b": 0
+  }
+ ]
+}

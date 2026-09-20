@@ -54,6 +54,7 @@ USAGE
 from __future__ import annotations
 
 import hashlib
+import json
 import threading
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -64,10 +65,14 @@ __all__ = [
     "ArmProvenance",
     "GateVerdict",
     "SYSTEM_SLOT_FLAGS",
+    "WIRE_SLOT_FLAGS",
+    "wire_attribution",
     "assess",
     "count_rows_served_by",
     "lever_changes_system",
+    "lever_changes_wire",
     "stage2_transport_snapshot",
+    "wire_shape_digest",
 ]
 
 #: Stage-2 primary (the Claude Max tunnel) and fallback (AWS Bedrock) ids.
@@ -189,6 +194,12 @@ class ArmProvenance:
     #: :func:`lever_changes_system`, and the R422/Task-4 lesson applied to the
     #: other slot: a flag that never reached the wire must not read as a null.
     request_shape: str = ""
+    #: R425 — the digest of the reference sets this arm EMITTED
+    #: (:func:`wire_shape_digest`). The third slot: a post-Stage-2 route pass
+    #: changes the graded ``references`` field and nothing else, so both arms
+    #: correctly dispatch identical system and user payloads AND post the same
+    #: request shape — and then an inert call site would read as a clean null.
+    wire_shape: str = ""
 
     @property
     def system_digest(self) -> str:
@@ -257,6 +268,7 @@ class ArmProvenance:
             recorded_system_digest=str(data.get("system_digest") or ""),
             recorded_user_digest=str(data.get("user_digest") or ""),
             request_shape=str(data.get("request_shape") or ""),
+            wire_shape=str(data.get("wire_shape") or ""),
         )
 
     @property
@@ -304,6 +316,7 @@ class ArmProvenance:
             "system_lengths": sorted(self.system_lengths),
             "user_digest": self.user_digest,
             "request_shape": self.request_shape,
+            "wire_shape": self.wire_shape,
             "primary_attempts": self.primary_attempts,
             "primary_ok": self.primary_ok,
             "primary_failed": self.primary_failed,
@@ -336,6 +349,11 @@ class GateVerdict:
     system_checked: bool = False
     #: R424 — the request slot was the slot under test (see ``assess``).
     request_checked: bool = False
+    #: R425 — the emitted-reference slot was the slot under test.
+    wire_checked: bool = False
+    #: R425 — rows where the two arms drew the SAME answer and emitted DIFFERENT
+    #: references, i.e. the rows that actually license a wire-slot delta.
+    wire_attributed: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -346,6 +364,8 @@ class GateVerdict:
             "transport_checked": self.transport_checked,
             "system_checked": self.system_checked,
             "request_checked": self.request_checked,
+            "wire_checked": self.wire_checked,
+            "wire_attributed": self.wire_attributed,
             "arms": self.arms,
         }
 
@@ -354,6 +374,11 @@ class GateVerdict:
         if self.valid:
             if self.system_checked:
                 slot = "system-slot identity checked"
+            elif self.wire_checked:
+                slot = (
+                    "emitted-reference difference attributed to the lever on "
+                    f"{self.wire_attributed} same-answer row(s)"
+                )
             elif self.request_checked:
                 slot = "request-shape difference confirmed"
             else:
@@ -414,6 +439,131 @@ def lever_changes_request(
     if hit:
         return True, f"arm env differs on request-shape flag(s): {', '.join(hit)}"
     return False, "arm env does not name a known request-shape flag"
+
+
+#: Flags that rewrite the emitted ``references`` list AFTER Stage-2 has landed,
+#: so they change the graded artifact without touching a single dispatched byte
+#: — the system slot, the user slot and the request shape are all correctly
+#: identical across such an arm. Curated on purpose; add a flag here only with
+#: the route call site that reads it.
+WIRE_SLOT_FLAGS: frozenset[str] = frozenset({"REGENOLD_GROUND_WIRE_SUBPOINTS"})
+
+
+def lever_changes_wire(
+    base_env: dict[str, str] | None,
+    branch_env: dict[str, str] | None,
+    *,
+    override: bool | None = None,
+) -> tuple[bool, str]:
+    """Does this A/B claim to change the EMITTED reference list only?
+
+    The third slot. A post-Stage-2 route pass legitimately dispatches the same
+    system payload, the same user payload and the same request shape in both
+    arms, so :func:`lever_changes_system` reads it as a no-op and
+    :func:`lever_changes_request` reads it as a no-op — and then an INERT call
+    site is indistinguishable from a real null. That is the R329/R330/R397
+    failure class, one slot further out, so the non-vacuity check moves here:
+    the two arms must have RECORDED different emitted reference sets.
+    """
+    base_env = base_env or {}
+    branch_env = branch_env or {}
+    if override is not None:
+        return override, f"operator override: lever_changes_wire={override}"
+    diffs: set[str] = set()
+    for key in set(base_env) | set(branch_env):
+        if base_env.get(key) != branch_env.get(key):
+            diffs.add(key)
+    hit = sorted(diffs & WIRE_SLOT_FLAGS)
+    if hit:
+        return True, f"arm env differs on wire-slot flag(s): {', '.join(hit)}"
+    return False, "arm env does not name a known wire-slot flag"
+
+
+def wire_shape_digest(rows: Any) -> str:
+    """What every graded row actually EMITTED, per row: ``(references, answer)``.
+
+    Recorded per arm so a wire-slot lever can be shown to have reached the wire
+    (à la :attr:`ArmProvenance.request_shape`). Reads the same fields the official
+    scorer grades — the pushed-back answer's ``references`` — and falls back to
+    the turn-1 fields for a checkpoint that predates them.
+
+    **Why the ANSWER is part of the record.** The references differ between two
+    arms whenever the two arms drew different Stage-2 samples, so a bare
+    "the emitted sets differ" check can be satisfied by GENERATION VARIANCE with
+    the lever inert — exactly the R329/R330/R397 false-negative it exists to
+    catch. Answer text is the confounder, so it is recorded beside the wire and
+    :func:`wire_attribution` intersects on it. Both fields are canonicalised
+    (whitespace-stripped; the reference list is order-insensitive because the
+    question is only whether the sets differ) and hashed, so the payload stays
+    small and no answer text is written to the artifact.
+    """
+    per_row: dict[str, list[str]] = {}
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        rid = str(row.get("id") or "")
+        if not rid:
+            continue
+        pushed = bool(row.get("pushback_refs") or row.get("pushback_answer"))
+        refs = (
+            (row.get("pushback_refs") or [])
+            if pushed
+            else (row.get("pred_refs") or row.get("references") or [])
+        )
+        answer = (
+            (row.get("pushback_answer") or "")
+            if pushed
+            else (row.get("pred_answer") or row.get("answer") or "")
+        )
+        canon = "|".join(sorted(str(r).strip().lower() for r in refs))
+        per_row[rid] = [_sha(canon), _sha(str(answer))]
+    if not per_row:
+        return ""
+    return json.dumps(
+        {"digest": _sha(json.dumps(per_row, sort_keys=True)), "rows": per_row},
+        sort_keys=True,
+    )
+
+
+def wire_attribution(
+    base_wire: str, branch_wire: str
+) -> tuple[list[str], list[str], str]:
+    """Row ids whose emitted references differ AND whose answers MATCH.
+
+    Returns ``(attributed, drawn_apart, error)``. An attributable row is the only
+    place a wire-slot lever can be SEEN: same answer, different references. A row
+    whose answers differ is a different draw, where the reference difference is
+    explained by the generation and says nothing about the lever. ``error`` is
+    non-empty when either payload is missing or unreadable.
+    """
+    parsed: list[dict[str, Any]] = []
+    for raw in (base_wire, branch_wire):
+        if not raw:
+            return [], [], "unrecorded"
+        try:
+            blob = json.loads(raw)
+            rows = blob["rows"]
+        except (TypeError, ValueError, KeyError):
+            return [], [], "unreadable"
+        if not isinstance(rows, dict):
+            return [], [], "unreadable"
+        parsed.append(rows)
+    a_rows, b_rows = parsed
+    attributed: list[str] = []
+    drawn_aside: list[str] = []
+    for rid in sorted(set(a_rows) & set(b_rows)):
+        a_val, b_val = a_rows[rid], b_rows[rid]
+        if not isinstance(a_val, list) or len(a_val) < 2:
+            return [], [], "unreadable"
+        if not isinstance(b_val, list) or len(b_val) < 2:
+            return [], [], "unreadable"
+        if a_val[0] == b_val[0]:
+            continue  # the arms emitted the same references on this row
+        if a_val[1] == b_val[1]:
+            attributed.append(rid)  # same answer, different wire -> the lever
+        else:
+            drawn_aside.append(rid)  # different draw: not attributable
+    return attributed, drawn_aside, ""
 
 
 def lever_changes_system(
@@ -604,6 +754,7 @@ class ArmProbe:
         repeat_identical_rate: float | None = None,
         sample_rows: Iterable[Any] | None = None,
         request_shape: str = "",
+        wire_shape: str = "",
     ) -> ArmProvenance:
         stats = dict(self.transport_after)
         if self._reset_error:
@@ -631,6 +782,7 @@ class ArmProbe:
             repeat_identical_rate=repeat_identical_rate,
             rows_served=count_rows_served_by(rows),
             request_shape=str(request_shape or ""),
+            wire_shape=str(wire_shape or ""),
             sample_deterministic=(
                 tuple(count_deterministic_rows(sample) for sample in sample_rows)
                 if sample_rows is not None
@@ -747,17 +899,26 @@ def assess(
     transport leg is checked for BOTH arms; the payload-identity check only
     applies when the lever claims the system slot.
 
-    ``lever_slot`` — R424. WHICH slot the lever claims to edit, ``"system"``
-    (default, every existing caller) or ``"request"``. A harness-level lever —
-    the conversation the harness posts before a question — leaves the engine
-    untouched, so both arms SHOULD dispatch byte-identical system payloads and
-    the system-identity rule would void the run that was built correctly. In
-    ``"request"`` mode the non-vacuity check moves to
-    :attr:`ArmProvenance.request_shape`, with the same standard of proof: the two
-    arms must have RECORDED different request shapes, or the lever never reached
-    the request builder and any delta would be null by construction. The system
-    slot then becomes an expected agreement rather than a suspicious one, so it
-    is neither voided nor warned about.
+    ``lever_slot`` — R424/R425. WHICH slot the lever claims to edit:
+    ``"system"`` (default, every existing caller), ``"request"``, or ``"wire"``
+    (the emitted reference list — see :func:`lever_changes_wire`).
+
+    A harness-level lever — the conversation the harness posts before a
+    question — leaves the engine untouched, so both arms SHOULD dispatch
+    byte-identical system payloads and the system-identity rule would void the
+    run that was built correctly. In ``"request"`` mode the non-vacuity check
+    moves to :attr:`ArmProvenance.request_shape`.
+
+    A wire-slot lever is one step further out: a route pass that rewrites the
+    ``references`` field after Stage-2 has landed changes neither slot, so both
+    arms correctly dispatch identical bytes AND post the same request shape. In
+    ``"wire"`` mode the check moves to :attr:`ArmProvenance.wire_shape`.
+
+    All three non-system slots hold the same standard of proof — the two arms
+    must have RECORDED a difference in the slot under test, or the lever never
+    reached its call site and any delta would be null by construction. The
+    system slot then becomes an expected agreement rather than a suspicious one,
+    so it is neither voided nor warned about.
 
     ``ignore_fallback_leg`` — R416. Set by a caller that has ALREADY excluded
     the fallback-served rows from both arms symmetrically (see
@@ -895,6 +1056,8 @@ def assess(
 
     system_checked = False
     request_checked = False
+    wire_checked = False
+    wire_attributed = 0
     if branch is not None:
         # R423 — a FAILED fallback dial is a primary failure on a graded path, and
         # the counter that can see it is ``fallback_attempts``, not
@@ -942,6 +1105,49 @@ def assess(
                 "The lever did not reach the request builder, so any delta is "
                 "null by construction."
             )
+    elif lever_slot == "wire" and branch is not None:
+        # R425 — the same standard of proof as the request slot, for a lever whose
+        # only effect is the reference list the arm EMITS. Identical dispatches
+        # are correct here; the lever must be SEEN in what the arms emitted.
+        #
+        # "Seen" means more than "the sets differ": at ``--repeats 1`` the two
+        # arms draw independent Stage-2 samples, so their references differ even
+        # with the lever inert. The check therefore intersects on the ANSWER —
+        # same answer, different references is the only pair a wire-slot lever
+        # can produce and generation variance cannot. A run with no such row is
+        # void with the fix in the reason (raise ``--repeats``), not a null.
+        wire_checked = True
+        attributed, drawn_aside, err = wire_attribution(
+            base.wire_shape, branch.wire_shape
+        )
+        wire_attributed = len(attributed)
+        if err:
+            reasons.append(
+                "arms' emitted reference sets could not be observed "
+                f"({base.label}={base.wire_shape or 'unrecorded'!r} -> {err}, "
+                f"{branch.label}={branch.wire_shape or 'unrecorded'!r}) — a "
+                "wire-slot lever that left no record of what it emitted cannot "
+                "be shown to have reached the route pass."
+            )
+        elif not attributed:
+            if drawn_aside:
+                reasons.append(
+                    "the arms' emitted reference sets differ on "
+                    f"{len(drawn_aside)} row(s) ({', '.join(drawn_aside[:5])}"
+                    f"{'…' if len(drawn_aside) > 5 else ''}) but EVERY one of those "
+                    "rows also drew a DIFFERENT answer, so the difference is "
+                    "explained by generation variance and cannot be attributed to "
+                    "the lever. Re-run with --repeats >= 2 so some row draws the "
+                    "same answer in both arms; a delta from this run is null by "
+                    "construction."
+                )
+            else:
+                reasons.append(
+                    "arms' emitted reference sets were IDENTICAL "
+                    f"(sha={base.wire_shape[:60]}; {base.label} and {branch.label} "
+                    "both emitted them). The lever did not reach the route pass, "
+                    "so any delta is null by construction."
+                )
     elif lever_changes and branch is not None:
         system_checked = True
         if not base.system_hashes or not branch.system_hashes:
@@ -960,7 +1166,7 @@ def assess(
             )
     elif not lever_changes and branch is not None:
         if (
-            lever_slot != "request"
+            lever_slot not in ("request", "wire")
             and base.system_digest
             and base.system_digest == branch.system_digest
         ):
@@ -990,6 +1196,8 @@ def assess(
         transport_checked=transport_checked,
         system_checked=system_checked,
         request_checked=request_checked,
+        wire_checked=wire_checked,
+        wire_attributed=wire_attributed,
     )
 
 

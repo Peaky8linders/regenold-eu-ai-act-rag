@@ -1361,6 +1361,82 @@ differing) the reordered rungs are a **WASH** — OVERALL 72.7 → 72.9 (+0.2 pp
   `Article 99.4`; prose `Article 3.64`, wire `Article 3.65`). That is a route change
   to the graded `references` field, so it needs its own paired gate, not a bundled
   edit. Evidence: `docs/measurements/r424/refstrict_draw_dependence.py`.
+  **ADDRESSED IN R425** (below).
+* **R425 — the wire grain is grounded in the answer's OWN prose.**
+  The mirror of R133. `_surface_prose_subpoints` ADDS a prose-named leaf when the
+  **bare parent** is on the list — so a wire that already carries a **sibling
+  limb** never receives the grounded one, and the ungrounded limb ships to the
+  graded `references` field: `rg_100`'s answer names `Article 6(3)` and the wire
+  recorded `Article 6.2`; `rg_067` names `Article 3(64)` and shipped `Article 3.65`.
+  `_ground_wire_subpoints` (`regenold.py:~4490`, default ON via
+  `REGENOLD_GROUND_WIRE_SUBPOINTS`, `_stage2_landed`-gated like its ADD twin)
+  rewrites the wire limb **in place** onto the limb the prose names, immediately
+  after the R386 deepener and the R397 coordinate guard and before every pass that
+  can drop.
+  **The direction is measured, not preferred.** Over the R424 gate's six
+  checkpoints (336 comparable row-samples of real draws, real
+  `evals.official.rubric`): 106 substitutions across 20 rows, the wire limb is the
+  gold one in **0** of them and the prose-named limb is gold in **15**, giving
+  `ref_strict` **65.28 → 65.90 (+0.62 pp)** with `ref_loose` and `ref_conciseness`
+  byte-identical and the head set and reference COUNT invariant on every row.
+  A prefix relation is treated as GRAIN DEPTH, not a substitution (prose
+  `Article 13(3)(b)` against a wire `Article 13.3` is left alone), candidates are
+  filtered to `coordinate_exists` so the pass never mints a coordinate the
+  Regulation lacks, and an ungrounded sibling that sits BESIDE a grounded limb is
+  deliberately left alone (dropping it moves Ref. Conciseness and needs its own
+  gate). Hard rule #8 is **+0 by construction**, not by measurement: the rewrite
+  stays inside the same parent, so the folded head set is bit-identical.
+  Verified end-to-end on the live route: OFF ships `['Article 26.5', 'Article 6.2',
+  'Article 73.4']`, ON ships `['Article 26.5', 'Article 6.3', 'Article 73.4']`, with
+  the answer, the head set and the count all byte-identical.
+  **Guard change this forced — a THIRD slot.** This lever changes nothing the
+  transport sees (identical system payloads, identical user payloads, identical
+  request shape), so under the two existing slots an inert call site would read as
+  a clean null. `gate_validity.WIRE_SLOT_FLAGS` + `lever_changes_wire()` +
+  `wire_shape_digest()` + `assess(..., lever_slot="wire")` require the two arms to
+  have EMITTED different reference sets; the runner prioritises
+  `system > wire > request`, and the default stays `"system"` so every existing
+  caller is byte-identical. Measured: the two-row smoke was correctly REFUSED
+  (`arms' emitted reference sets were IDENTICAL`) because those rows were answered
+  deterministically, where the pass is a no-op by design.
+  **The slot then needed a second rule, because "the sets differ" is satisfiable by
+  NOISE.** At `--repeats 1` the arms draw independent Stage-2 samples, so their
+  references differ even with the lever inert — the exact false negative the guard
+  exists to catch. `wire_attribution()` therefore intersects on the ANSWER: the
+  record is now `{row: [refs_sha, answer_sha]}` per arm, and a wire-slot run is
+  valid only if **at least one row drew the SAME answer in both arms and emitted
+  DIFFERENT references** — the only pair a post-Stage-2 pass can produce and
+  generation variance cannot. A run whose differing rows all drew different
+  answers is VOID with the fix in the reason (raise `--repeats`), not a null
+  result. `GateVerdict.wire_attributed` publishes the count.
+  **Two instruments, not one board run — and why.** The rewrite cannot change the
+  ANSWER, so the two answer axes are invariant BY CONSTRUCTION (asserted on a live
+  request) and re-drawing them costs hours to measure exactly `0.00`. What can move
+  is the three REFERENCE axes, which are the emitted `references` against gold —
+  **no LLM involved**. So the population read is a replay over already-drawn
+  samples, where each recorded draw is paired against the pass applied to that
+  same draw: a stronger pairing than two independent live arms, because nothing
+  varies but the pass. A live paired board was launched first
+  (`r425-wiregrain`, 37 strided rows × 3 generations × 2 arms) and **stopped
+  deliberately** once that property was established.
+  **Live reachability** (`live_paired_read.py`, judge-free, 9 targeted rows on the
+  real tunnel): the OFF arm's recorded wires are still rewritable in **7 of 9**
+  rows and the ON arm's shipped wires in **0 of 9** — the per-arm proof that the
+  call site fires, which an inert one could not produce (it would leave both arms
+  rewritable). Head-invariant 9/9, count-invariant 9/9, and `gold heads dropped`
+  moves `24→24` / `25→25` across the pass, both arms: hard rule #8 is preserved by
+  construction AND observed. On those 9 **stress** rows (chosen because the pass
+  fires) the three reference axes move `+0.00 pp` — the population `+0.62 pp`
+  comes from the 336-sample replay, not from this sample. At `--repeats 1` the two
+  arms are independent draws (`answer byte-identical across arms: 0/9`), so the
+  cross-arm numbers in that artifact are labelled DESCRIPTIVE and are not quoted as
+  a lever estimate anywhere.
+  Record: `docs/measurements/r425/CHECKPOINT.md`; replay probe
+  `docs/measurements/r425/wire_grain_grounding_probe.py`; targeted live read
+  `docs/measurements/r425/live_paired_read.py`. Substitution attribution is read
+  off the pass's OWN output (a positional diff of what it returned), never
+  re-derived from its guards — an earlier heuristic enumerated pairs the pass
+  considers and then filters, and over-counted.
 * **R358 — curated authoritative intercepts.** Four new curated answers
   (emergency triage `Annex III.5.d`, health-insurance pricing `5(c)`, hospital
   deployer duties, provider pre-market duties) that seed gold-head reference
@@ -1444,6 +1520,7 @@ the branch arm, at n≥30 per split, before the benchmark window.
 | `REGENOLD_GRAPH_VECTOR_RECALL` | `0` | Additive Neo4j & local SVD vector recall path (R326) |
 | `REGENOLD_PARENT_COLLAPSE` | **`1`** | Collapse parent provisions when sub-points are cited (R325). Dead flag until R366 wired it; **R381 flipped it to default ON on a live paired A/B** — n=20 official questions, 40/40 calls wrapper-served, 0 Bedrock. Four rows are ZERO-VARIANCE paired observations (answer byte-identical between arms, so refs are the only change): `rg_013` 5→4 (drops `Article 53`, keeps `53.2`), `rg_025` 3→2, `rg_029` 4→2 (drops `Article 6` + `Annex III`, keeps `6.2` + `Annex III.5.d`), `rg_041` 4→2. All 6 drops are bare parents whose own sub-point survives; the **head set is unchanged on all four rows**, and `gold_dropped_head` folds both sides onto heads (`metrics.py:572-574`), so **hard rule #8 delta = +0, measured**. Lever-only Ref. Conciseness **51.3 → 56.3 (+5.0 pp) = +0.90 pp Overall**. Free on the other two ref axes: Ref Loose scores at HEAD level (the head survives inside the leaf) and Ref Strict INCLUDES subpoints (the leaf is strictly better). `=0` restores the old behaviour |
 | `REGENOLD_CITABLE_BASE_GUARD` | **`0`** | Restrict prose-named citation promotion to the retrieval-grounded universe. **R403 re-measurement at full n=110 paired (over R401's n=37) CONFIRMS default OFF, now on statistics rather than an underpowered mean**: RefConc +6.72 pp is real (CI [+3.63, +10.22], p<0.0001) but `gold_dropped_head` 5→7 (rg_067, rg_090) trips hard rule #8's veto, and RefLoose −1.50 / RefStrict −2.00 trend negative with CIs touching 0. Do not re-propose without a gold-drop-safe variant. |
+| `REGENOLD_GROUND_WIRE_SUBPOINTS` | **`1`** | R425 — the mirror of R133 `_surface_prose_subpoints`: the ADD pass only fires when the wire carries the BARE parent, so a wire that already held a SIBLING limb shipped an ungrounded one to the graded `references` field (`rg_100` answer names `Article 6(3)`, wire recorded `Article 6.2`). `_ground_wire_subpoints` (`regenold.py:~4490`) rewrites the limb IN PLACE onto the limb the prose names — same parent, same count, so the folded head set is bit-identical and hard rule #8 is +0 by construction. `_stage2_landed`-gated like its ADD twin, ordered after the R386 deepener / R397 coordinate guard and before every pass that can drop. **Measured over the R424 gate's six checkpoints** (336 comparable row-samples, the real `evals.official.rubric`): 106 substitutions on 20 rows, the wire limb is gold in **0**, the prose limb in **15** → Ref Strict **65.28 → 65.90 (+0.62 pp)**, Ref Loose and Ref Conciseness byte-identical. Candidates filtered to `coordinate_exists`; a prefix relation is grain depth, not a substitution (`Article 13(3)(b)` vs wire `Article 13.3` is left alone); an ungrounded sibling BESIDE a grounded one is deliberately left for a separate RefConc gate. `=0` rolls back. See § R425 |
 | `REGENOLD_STAGE2_TRUNCATION_GUARD` | `1` | R357 post-generation truncation repair on the Stage-2 polish |
 | `REGENOLD_STAGE2_PRIOR_ANSWER_FLOOR` | **`1`** | R420 — the "never ship a thinner answer than the one we already gave" floor on the truncation guard's LAST rung. Before regressing to the deterministic Stage-1 draft, the guard compares against the answer this conversation already holds (`previous_answer` on the flattened history) and, if that answer is complete, ≥400 chars and ≥1.2× the draft, ships IT (`stage2_served_by` = **`prior_turn`**, `stage2_used=True`) instead. The pushback turn re-asks the same question, so the previous answer is a valid answer to it. **MEASURED** (`docs/measurements/r419/CHECKPOINT.md` §4): on the R419 live hard board 4 of 110 rows fell to the deterministic leg because the wrapper returned degenerate one-token completions and the Bedrock leg was dead (`api_key_invalid_403`); re-judging those rows' TURN-1 answers with the published instrument gives **12/12 criteria against 4/12 for the drafts** (`rg_036` 2/3 vs 0/3, `rg_037` 6/6 vs 0/6, `rg_085` and `rg_092` level → the floor correctly does not fire), and restores the two gold heads (`Article 42`, `Annex VIII`). Projected on the same board: `ans_loose` 94.15 → **96.28** (+2.13 pp), `ans_strict` 90.91 → **91.82** (+0.91 pp). `=0` (deny-list) restores the bare deterministic fallback. The `prior_turn` serve is a DEGRADATION: it overrides an earlier `primary` marking, sets `stage2_call_failed`, and the route refuses to cache it (R417 policy). Registered in `_engine_cache_key` |
 | `REGENOLD_STAGE2_PRIOR_ANSWER_FLOOR_RATIO` | `1.2` | R420 — how much longer the previous answer must be than the deterministic draft before the floor fires. A malformed value falls back to 1.2 rather than disabling the floor. Registered in `_engine_cache_key` |
