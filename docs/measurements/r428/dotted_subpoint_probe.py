@@ -90,33 +90,49 @@ def _graded_pair(row: dict[str, Any]) -> tuple[str, list[str]]:
 
 
 def _classify_unmet(
-    why: dict[str, int], answer: str, expected: str, refs: list[str], m1: list[str]
+    why: dict[str, int],
+    answer: str,
+    expected: str,
+    refs: list[str],
+    m1: list[str],
+    bump: Any,
 ) -> None:
-    """Why is this gold sub-point unmet? Names the owner of the deficit.
+    """Why is this gold sub-point unmet? Names the OWNER of the deficit.
 
-    Three candid answers, and they route to different engineering work: the
-    answer never names the coordinate (generation-side omission — Stage 2 must
-    say it), the prose names it but its parent is absent from the wire (a
-    retrieval/coverage problem), or the prose names it and R136's
-    ``>=3 sub-points of one parent`` minimal-cover rule suppressed the whole
-    bucket (a deliberate trade, not a bug).
+    Each bucket routes to different engineering work, and the distinction that
+    matters most is whether the wire carries the coordinate's parent at all and
+    at what grain:
+
+    * the prose never names the coordinate → generation-side (Stage 2 must say it),
+    * named, and **no coordinate of that parent is on the wire** → a coverage pass,
+    * named, and the only coordinate present is a **shallower prefix** of the
+      expected one → a DEPTH problem (R386's deepener remit, not coverage),
+    * named, the bare parent head is on the wire, and R136's ``>=3 sub-points of
+      one parent`` minimal-cover rule dropped the bucket → a deliberate trade.
     """
     el = expected.lower()
     named = any(hit.lower() == el or hit.lower().startswith(el + ".") for hit in _prose_coords(answer))
     if not named:
-        why["prose_never_names_it"] += 1
+        bump("prose_never_names_it")
         return
     parent = el.split(".")[0]
-    if not any(str(r).strip().lower() == parent for r in refs):
-        # R136 only ever drops when the parent IS a key of the miner, so an
-        # absent parent rules that out.
-        why["named_but_parent_absent"] += 1
+    present = [
+        str(r).strip().lower()
+        for r in m1
+        if str(r).strip().lower() == parent
+        or str(r).strip().lower().startswith(parent + ".")
+    ]
+    if not present:
+        bump("named_no_coord_of_parent_on_wire")
         return
-    wanted = R._prose_named_subpoints(answer)
-    if len(wanted.get(parent, [])) >= 3:
-        why["named_R136_suppressed"] += 1
+    if any(p == parent for p in present):
+        wanted = R._prose_named_subpoints(answer)
+        if len(wanted.get(parent, [])) >= 3:
+            bump("named_R136_suppressed")
+            return
+        bump("named_bare_head_other")
         return
-    why["named_other"] += 1
+    bump("named_only_a_shallower_grain")
 
 
 def _prose_coords(answer: str) -> list[str]:
@@ -150,7 +166,10 @@ def main() -> int:
     subpoint_unmet = 0
     subpoint_recovered = 0
     # Where an unmet gold sub-point actually lives — the roadmap question.
-    why = {"prose_never_names_it": 0, "named_but_parent_absent": 0, "named_R136_suppressed": 0, "named_other": 0}
+    why: dict[str, int] = {}
+
+    def _bump(k: str) -> None:
+        why[k] = why.get(k, 0) + 1
     n = 0
     examples: list[str] = []
     orig = R._GROUND_PROSE_DOTTED_RE
@@ -209,7 +228,7 @@ def main() -> int:
                     preda = [str(x).lower() for x in a1]
                     if any(p == el or p.startswith(el + ".") for p in preda):
                         subpoint_recovered += 1
-                    _classify_unmet(why, answer, str(e), refs, m1)
+                    _classify_unmet(why, answer, str(e), refs, m1, _bump)
         if m != c:
             rewrite_dotted += 1
 
@@ -236,6 +255,13 @@ def main() -> int:
     print(f"rows whose answer contains a dotted citation: {rows_with_dotted_prose}")
     print(f"R425 rewrite fires on {rewrite_dotted} rows once it can see dotted prose (M != C)")
     print(f"R426 dotted ADD : {dotted_adds} refs  (gold {dotted_gold} / excess {dotted_excess})")
+    if not dotted_adds:
+        print(
+            "  NOTE: 0 because the ADD was REMOVED in R428 — this run measures the shipped\n"
+            "  tree. The pre-removal figures recorded in CHECKPOINT.md (13 refs, 2 gold / 11\n"
+            "  excess, Ref. Conc -0.01 pp) reproduce at commit e879c8d, i.e. with the loop\n"
+            "  back in ``_surface_prose_subpoints``; they are the audit of R426, not of today."
+        )
     print(f"  ... of which survive the R381 parent collapse: {dotted_survives_collapse} refs")
     print(f"rows where the ADD moves Ref. Strict at all: {moved_strict}")
     print(f"rows still short of full Ref. Strict recall: {deficit_rows}; of those, recovered by the ADD: {deficit_recovered}")
@@ -243,9 +269,9 @@ def main() -> int:
         f"gold sub-point coords: {subpoint_gold_rows} rows carry one; {subpoint_unmet} are UNMET "
         f"without the ADD, and the ADD satisfies {subpoint_recovered} of them"
     )
-    print("  why each unmet sub-point is unmet:")
+    print("  why each unmet sub-point is unmet (and who owns the fix):")
     for k, v in sorted(why.items(), key=lambda kv: -kv[1]):
-        print(f"    {k:<24} {v}")
+        print(f"    {k:<36} {v}")
     print()
     print(f"{'arm':<4} {'ref_loose':>10} {'ref_strict':>11} {'ref_conc':>9}")
     for name in ("C", "M", "M1", "A0", "A1"):
