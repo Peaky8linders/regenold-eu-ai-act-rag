@@ -107,11 +107,21 @@ REL_ASSESSES: Final = "ASSESSES"  # Question → Obligation
 # Lawstronaut provenance & official guidance edges
 REL_HAS_PROVENANCE: Final = "HAS_PROVENANCE"  # Article/Annex → LegalInstrument
 REL_INTERPRETS: Final = "INTERPRETS"  # Guideline → Practice/Article
+# R427.1 — the shadow→canonical bridge in ``scripts/seed_neo4j_kb.py`` writes
+# two edge types of its own. Declared here because the gate's whole job is that
+# the seeder and this module agree EXACTLY; they went undeclared in R426 and the
+# clean-clone suite caught it.
+REL_EQUIVALENT_TO: Final = "EQUIVALENT_TO"  # legacy shadow Article ↔ canonical Article
+REL_APPLIES_TO_ROLE: Final = "APPLIES_TO_ROLE"  # OperatorRole → canonical Article
 
 #: Every relationship type the seeder writes. The single source of truth.
 #: NOTE: ``REQUIRES`` is deliberately ABSENT — the seeder never creates it
 #: (the article→obligation edge is :data:`REL_HAS_OBLIGATION`). Any consumer
 #: asserting / matching ``REQUIRES`` is the R99.1 drift bug.
+#: R427.1 — the R426 bridge briefly MIRRORED a legacy ``REQUIRES`` edge onto the
+#: canonical node. That is the drift this note forbids, re-propagated onto the
+#: nodes production reads, so the mirror was removed; the gate would have
+#: refused it either way (``REQUIRES`` must not be in this set).
 SEEDED_REL_TYPES: Final[frozenset[str]] = frozenset(
     {
         REL_HAS_OBLIGATION,
@@ -130,6 +140,8 @@ SEEDED_REL_TYPES: Final[frozenset[str]] = frozenset(
         REL_ASSESSES,
         REL_HAS_PROVENANCE,
         REL_INTERPRETS,
+        REL_EQUIVALENT_TO,
+        REL_APPLIES_TO_ROLE,
     }
 )
 

@@ -1445,6 +1445,40 @@ differing) the reordered rungs are a **WASH** — OVERALL 72.7 → 72.9 (+0.2 pp
   off the pass's OWN output (a positional diff of what it returned), never
   re-derived from its guards — an earlier heuristic enumerated pairs the pass
   considers and then filters, and over-counted.
+* **R427 — R426 T1: ONE Stage-2 leg-2 dispatch (`app/llm/stage2.py`).** The leg-2
+  (Bedrock) verdict was written **twice** — inside `_try_bedrock_fallback` in
+  `_openai_wrapper_complete_for_graph_rag`, and in an inline block in
+  `_claude_max_enhance_answer` — and the copies had drifted in three ways that all
+  matter: the counter was recorded at different TIMES (the transport copy defers
+  the verdict so a discarded answer cannot count as `fallback_ok`, R361; the
+  answer copy recorded `ok=bool(text)` the moment Bedrock replied), the EMPTINESS
+  rule differed (transport `not text` — so `"   "` ships; answer
+  `bool(text.strip())`), and `_looks_structurally_truncated` was applied on ONE
+  path only. `dispatch_leg2(text, preset=..., structurally_truncated=...)` now
+  returns one `Stage2Outcome` `(text, leg, rejected, ok)`; the text is carried
+  verbatim, the recording lives in the dispatch and nowhere else, and the two
+  divergences are named presets (`PRESET_TRANSPORT` / `PRESET_ANSWER`) documented
+  in one table instead of being implicit in two call sites. **This is a PURE
+  MOVE** — no env flag, no answer changes — so it ships on the repo's
+  byte-identical replay rather than a scoreboard: 258 inputs (250 recorded board
+  answers + 8 branch-keying boundaries) × 3 drives, **774/774 byte-identical** on
+  text returned, counter deltas, serve marker and warnings, with each drive's
+  dial counts asserted so a call site that never ran cannot read as equivalence
+  (the first version reported `answer-site dials [1]` and was refused as VOID).
+  The gate is shown to FAIL on the deferred change (`sensitivity.py`: perturbing
+  `PRESET_ANSWER` to apply the truncation rule drops it to 770/774 on two
+  synthetic boundaries and two recorded answers, then restores by SHA-256).
+  **Two findings.** F1: the answer path's inline block is **unreachable today** —
+  it needs leg 1 to return `None`, and every leg-1 failure either returns leg 2's
+  answer or raises — so the retired duplicate was dead code carrying a drifted
+  copy of a policy a future branch change would silently reactivate. F2: 162 of
+  the recorded answer fields are shaped like truncations. Equalising the presets
+  (T1b) changes **which text ships**, so it is explicitly NOT bundled: it needs
+  its own graded gate and must first show it is not redundant with the R357
+  tail-repair path. Record: `docs/measurements/r427/CHECKPOINT.md`; differential
+  `docs/measurements/r427/t1_leg2_differential.py`; falsification
+  `docs/measurements/r427/sensitivity.py`; tests
+  `tests/test_r427_stage2_leg2_dispatch.py`.
 * **R358 — curated authoritative intercepts.** Four new curated answers
   (emergency triage `Annex III.5.d`, health-insurance pricing `5(c)`, hospital
   deployer duties, provider pre-market duties) that seed gold-head reference
