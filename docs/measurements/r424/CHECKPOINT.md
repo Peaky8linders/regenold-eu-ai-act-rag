@@ -189,6 +189,14 @@ was held to. See §7.
 
 ## 7. Open finding (R425 candidate) — wire grain substitutes a neighbouring limb
 
+> **CLOSED IN R425.** Shipped as `REGENOLD_GROUND_WIRE_SUBPOINTS` (default ON,
+> `_stage2_landed`-gated), with the direction measured over this gate's own six
+> checkpoints (336 comparable row-samples, identical-draw pairing): 106 applied
+> substitutions, the wire limb is gold in **0** of them, and Ref. Strict moves
+> `65.28 → 65.90 (+0.62 pp)` with Ref. Loose and Ref. Conciseness byte-identical
+> and the head set and reference count invariant on every row.
+> See `docs/measurements/r425/CHECKPOINT.md`.
+
 **Evidence.** `docs/measurements/r424/refstrict_draw_dependence.py` over the six
 gate checkpoints. Signature: prose sub-points a parent at one limb, the wire
 records another limb of the same parent the prose never names

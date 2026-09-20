@@ -1419,6 +1419,10 @@ def _engine_cache_key(
             # onto its head (`Article 13.9` -> `Article 13`). Changes the wire
             # reference list, so it needs its own cache-key slot.
             "REGENOLD_REF_COORD_GUARD",
+            # R425 — rewrites a wire limb the answer's prose never names onto the
+            # limb it does name (`Article 6.2` -> `Article 6.3`). Same wire
+            # effect as the grain passes above, so its own cache-key slot.
+            "REGENOLD_GROUND_WIRE_SUBPOINTS",
             # R397 — appends the real paragraph range of each cited head to the
             # Stage-2 user message. Prompt-side, so it changes the answer and
             # (invariant #5) the wire references derived from it.
@@ -4374,6 +4378,212 @@ def _repair_nonexistent_coordinates(references: list[str]) -> list[str]:
     return out
 
 
+# ── R425 — prose-grounded reference grain ─────────────────────────────────
+#
+# THE DEFECT (R424 §7, measured in ``docs/measurements/r425``): the wire ships a
+# LIMB of a parent the answer's own prose sub-points at a DIFFERENT limb.
+# ``rg_100``'s answer names ``Article 6(3)`` while the graded ``references``
+# field recorded ``Article 6.2``; ``rg_067`` names ``Article 3(64)`` and shipped
+# ``Article 3.65``. The route's contract is that the wire is recomputed from the
+# final prose, and R133's ``_surface_prose_subpoints`` only ADDS a prose-named
+# leaf when the BARE PARENT is on the list — so a list that already carries a
+# SIBLING limb never receives the grounded one, and the ungrounded limb ships.
+#
+# MEASURED over the R424 gate's six checkpoints (336 comparable row-samples, each
+# paired within its own draw; 106 applied substitutions across 20 rows): the wire
+# limb is the gold one in **0** of them and the prose-named limb is gold in **15**,
+# and rewriting in place moves Ref. Correctness (Strict) **65.28 -> 65.90
+# (+0.62 pp)** under the real ``evals.official.rubric``, with Ref. Loose and Ref.
+# Conciseness byte-identical. (A leaf-exact variant of the same probe reads
+# +2.50 pp; the official axis is the number that counts.)
+#
+# WHY THE DIRECTION IS EVIDENCE, NOT PREFERENCE. The official evaluator grades
+# Ref. Correctness (Strict) off the ``references`` field we ship, so a limb the
+# prose never names is both a fidelity error in the graded artifact and a scoring
+# loss; the prose is the only thing that knows what the answer discussed. It is
+# the mirror of R133: that round taught the pass to ADD a prose-named sub-point,
+# this one stops it SHIPPING a limb the prose does not name.
+#
+# HARD RULE #8 IS +0 BY CONSTRUCTION, and Ref. Conciseness cannot move: the
+# rewrite stays inside the SAME parent, so the folded head set is bit-identical
+# before and after (verified on every row of the probe), and the reference COUNT
+# is unchanged — 1:1 in place. Only Ref. Strict can move, and it moves up.
+# Order-preserving, never empties, never adds, fail-soft. It does NOT drop an
+# ungrounded sibling when a grounded limb is already beside it: that would
+# change the count and needs its own conciseness gate.
+_GROUND_WIRE_LEAF_RE = re.compile(
+    r"^\s*((?:Article\s+\d{1,3})|(?:Annex\s+[IVXLC]+))\.([0-9a-z]+(?:\.[0-9a-z]+)*)\s*$",
+    re.IGNORECASE,
+)
+# The user-facing dotted prose form (``Article 6.3``). ``_PROSE_SUBPOINT_RE``
+# cannot see it — that regex reads only the parenthesised and
+# ``point``/``paragraph`` forms — so the prose-miner reads both.
+_GROUND_PROSE_DOTTED_RE = re.compile(
+    r"\b((?:Article\s+\d{1,3})|(?:Annex\s+[IVXLC]+))\.(\d+[a-z]?(?:\.[a-z\d]+)*)",
+    re.IGNORECASE,
+)
+
+
+def _ground_wire_subpoints_enabled() -> bool:
+    """R425 — prose-ground the wire reference grain. **Default ON.**
+
+    Registered in ``_engine_cache_key``: it rewrites the emitted ``references``
+    list, so a same-process A/B differing only here must not share a cache entry.
+    ``=0`` restores the pre-R425 wire (an ungrounded sibling limb can ship).
+    """
+    return os.getenv("REGENOLD_GROUND_WIRE_SUBPOINTS", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
+def _leaf_coordinate(ref: str) -> tuple[str, tuple[str, ...]] | None:
+    """``"Article 5.1.h"`` -> ``("article 5", ("1", "h"))``; ``None`` for a head.
+
+    The parent is a normalised lowercase key (so ``Annex iii`` groups with
+    ``Annex III``) and the coordinate is split into alnum runs, which folds the
+    two spellings of a sub-letter — the wire's ``Article 5.1.h`` and the prose's
+    ``Article 5(1)(h)`` — onto one coordinate.
+    """
+    m = _GROUND_WIRE_LEAF_RE.match(str(ref or ""))
+    if not m:
+        return None
+    parent = " ".join(m.group(1).split()).lower()
+    coord = tuple(re.findall(r"[0-9]+|[a-z]+", m.group(2).lower()))
+    if not coord:
+        return None
+    return parent, coord
+
+
+def _grain_compatible(a: tuple[str, ...], b: tuple[str, ...]) -> bool:
+    """Same coordinate, or one is a PREFIX of the other.
+
+    A prefix means depth, not substitution: prose ``Article 13(3)(b)`` against a
+    wire ``Article 13.3`` is the same limb at a shallower grain, and rewriting it
+    would replace a graded coordinate with a deeper one the evaluator may not
+    key on. Only a coordinate outside that relation is a substitution.
+    """
+    if a == b:
+        return True
+    short, long_ = (a, b) if len(a) <= len(b) else (b, a)
+    return bool(short) and long_[: len(short)] == short
+
+
+def _prose_named_subpoints(answer: str) -> dict[str, list[str]]:
+    """Parent key -> ordered user-facing leaves the answer's prose names.
+
+    Reads BOTH citation forms: the ``Article 6(1)`` / ``Article 5(1)(a)`` /
+    ``Annex IV point 1(e)`` family through ``_PROSE_SUBPOINT_RE`` and the R133
+    chain builder, and the user-facing dotted family (``Article 6.3``) through
+    ``_GROUND_PROSE_DOTTED_RE``. Fail-soft: an unparseable token is skipped.
+    """
+    out: dict[str, list[str]] = {}
+    try:
+        from app.integrations.regenold import refs as _refs  # noqa: PLC0415
+    except Exception:  # noqa: BLE001 — no refs module: nothing to ground against
+        return out
+
+    def _add(parent_uf: str, leaf_uf: str) -> None:
+        key = " ".join(str(parent_uf).split()).lower()
+        bucket = out.setdefault(key, [])
+        if leaf_uf not in bucket:
+            bucket.append(leaf_uf)
+
+    for m in _PROSE_SUBPOINT_RE.finditer(answer or ""):
+        parent_tok = m.group(1)
+        pt, sub_letter, direct = m.group(2), m.group(3), m.group(4)
+        if pt:
+            chain = f"({pt})({sub_letter})" if sub_letter else f"({pt})"
+        else:
+            chain = direct or ""
+        if not chain:
+            continue
+        try:
+            parent_uf = _refs.to_user_facing(parent_tok)
+            leaf_uf = _refs.to_user_facing(parent_tok + chain)
+        except Exception:  # noqa: BLE001 — skip unparseable token
+            continue
+        if leaf_uf == parent_uf:
+            continue
+        _add(parent_uf, leaf_uf)
+    for m in _GROUND_PROSE_DOTTED_RE.finditer(answer or ""):
+        try:
+            parent_uf = _refs.to_user_facing(m.group(1))
+        except Exception:  # noqa: BLE001 — skip unparseable token
+            continue
+        _add(parent_uf, f"{parent_uf}.{m.group(2)}")
+    return out
+
+
+def _ground_wire_subpoints(answer: str, references: list[str]) -> list[str]:
+    """Replace a wire limb the prose never names with the limb it does name.
+
+    For every reference that is a LEAF of a parent the prose sub-points, when
+    the wire coordinate is neither equal to nor a prefix of any prose-named
+    coordinate (``_grain_compatible``) and a prose-named coordinate for that
+    parent is absent from the wire, the wire leaf is rewritten in place to the
+    prose-named one. Candidates are filtered to coordinates the Regulation
+    actually contains (``coordinate_exists``), so the pass never mints a
+    non-existent coordinate, and to the same parent, so the folded head set is
+    invariant. Among viable candidates the closest grain depth wins (then
+    lexicographic order), and when a prose-named limb is ALREADY on the wire the
+    reference is left alone rather than dropped. In place, order-preserving,
+    count-neutral, fail-soft.
+    """
+    if not answer or not references:
+        return references
+    try:
+        from app.data.provision_coordinates import coordinate_exists  # noqa: PLC0415
+
+        wanted = _prose_named_subpoints(answer)
+        if not wanted:
+            return references
+        present: dict[str, set[tuple[str, ...]]] = {}
+        leaves: list[tuple[int, str, tuple[str, ...]]] = []
+        for idx, raw in enumerate(references):
+            coord = _leaf_coordinate(raw)
+            if coord is None:
+                continue
+            parent, point = coord
+            leaves.append((idx, parent, point))
+            present.setdefault(parent, set()).add(point)
+        if not leaves:
+            return references
+        out = list(references)
+        rewrites: list[str] = []
+        for idx, parent, coord in leaves:
+            named = wanted.get(parent)
+            if not named:
+                continue  # prose does not sub-point this parent: not the defect
+            picks: list[tuple[tuple[str, ...], str]] = []
+            for leaf in named:
+                cand = _leaf_coordinate(leaf)
+                if cand is None or cand[0] != parent:
+                    continue
+                if _grain_compatible(coord, cand[1]):
+                    picks = []  # already the prose's limb at some grain: keep it
+                    break
+                if cand[1] in present.get(parent, set()):
+                    continue  # a grounded limb is already on the wire: not a rewrite
+                if not coordinate_exists(leaf):
+                    continue  # never mint a coordinate the Regulation lacks
+                picks.append((cand[1], leaf))
+            if not picks:
+                continue
+            picks.sort(key=lambda item: (abs(len(item[0]) - len(coord)), item[0]))
+            ground = picks[0][1]
+            out[idx] = ground
+            present.setdefault(parent, set()).add(picks[0][0])
+            rewrites.append(f"{references[idx]}->{ground}")
+        if not rewrites:
+            return references
+        return out
+    except Exception:  # noqa: BLE001 — never 500 the route on a grain rewrite
+        return references
+
+
 #: R385 tuned thresholds. In-sample best on the 110-row round; the two held-out
 #: folds independently chose (8, 0.50) and (5, 0.40), so the surface is flat here
 #: rather than knife-edged — but these ARE fitted on that corpus and a future
@@ -5788,6 +5998,24 @@ def _surface_prose_subpoints(answer: str, references: list[str]) -> list[str]:
                 continue
             if sub_uf == parent_uf:  # no sub-point resolved
                 continue
+            bucket = wanted.setdefault(parent_uf, [])
+            if sub_uf not in bucket:
+                bucket.append(sub_uf)
+
+        for m in _GROUND_PROSE_DOTTED_RE.finditer(answer):
+            try:
+                parent_uf = _refs.to_user_facing(m.group(1))
+                sub_uf = f"{parent_uf}.{m.group(2)}"
+            except Exception:
+                continue
+            if sub_uf == parent_uf:
+                continue
+            try:
+                from app.data.provision_coordinates import coordinate_exists  # noqa: PLC0415
+                if not coordinate_exists(sub_uf):
+                    continue
+            except Exception:
+                pass
             bucket = wanted.setdefault(parent_uf, [])
             if sub_uf not in bucket:
                 bucket.append(sub_uf)
@@ -12346,6 +12574,50 @@ def regenold_eu_ai_act_ask(
                     )
 
                     _rn5("ref_coord_guard " + ",".join(_cg_fixed))
+                except Exception:  # noqa: BLE001 — fail-soft on trace
+                    pass
+
+        # R425 — prose-grounded grain, immediately AFTER the deepener and the
+        # coordinate guard, so it is the last word on WHICH limb of a parent the
+        # wire ships. The deepener mints a coordinate by token overlap at a
+        # measured 77% accuracy (R386) and is forbidden to use the answer alone
+        # (Audit Finding 1), so on rows whose prose names a different limb it can
+        # pin the sibling: `rg_100`'s answer names `Article 6(3)` and the wire
+        # shipped `Article 6.2`. R133's `_surface_prose_subpoints` cannot repair
+        # that, because it only fires when the BARE PARENT is on the list. This
+        # runs before the passes that can DROP (qrel prune, terminal cap) so a
+        # dropped reference is never one that was just grounded, and it reads the
+        # coordinate guard's output so every candidate it accepts is a real
+        # coordinate. Head-preserving and 1:1 in place — hard rule #8 +0 and the
+        # reference count invariant by construction.
+        #
+        # ``_stage2_landed`` — the same gate its ADD twin carries (R133), for the
+        # same reason: the deterministic / curated-interception path has no Stage-2
+        # prose, and its reference set is hand-validated (the R274 doctrine).
+        # Gating here keeps that wire byte-identical by construction — which is
+        # also what keeps every offline instrument neutral — and it costs none of
+        # the measured benefit: all 80 rewritten row-samples on the R424 gate's
+        # checkpoints were served by the PRIMARY leg.
+        if (
+            _stage2_landed
+            and answer_text
+            and references
+            and _ground_wire_subpoints_enabled()
+        ):
+            _gw_refs = _ground_wire_subpoints(answer_text, references)
+            if _gw_refs != references:
+                _gw_changed = [
+                    f"{a}->{b}"
+                    for a, b in zip(references, _gw_refs)
+                    if a != b
+                ]
+                references = _gw_refs
+                try:
+                    from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                        record_note as _rn6,
+                    )
+
+                    _rn6("wire_grain_grounded " + ",".join(_gw_changed))
                 except Exception:  # noqa: BLE001 — fail-soft on trace
                     pass
 
