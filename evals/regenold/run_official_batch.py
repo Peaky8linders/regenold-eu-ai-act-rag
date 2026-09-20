@@ -57,7 +57,17 @@ from evals.harness.gate_validity import (
     ArmProbe,
     assess,
     degraded_row_ids,
+    lever_changes_request,
     lever_changes_system,
+)
+from evals.regenold.hard_preamble import (
+    DEFAULT_MODE,
+    MODE_FIXED,
+    MODE_ROLLING,
+    build_prefixed_messages,
+    build_prefixed_pushback_messages,
+    hard_preamble_mode,
+    preamble_digest,
 )
 from evals.regenold.official_batch import (
     build_hard_messages,
@@ -65,6 +75,11 @@ from evals.regenold.official_batch import (
     load_official_batch,
     trim_history,
 )
+
+#: Digest of the fixed preamble, computed once — recorded on every row of a
+#: ``REGENOLD_HARD_PREAMBLE=fixed`` arm so a reader can prove from the checkpoint
+#: alone which request shape produced it.
+_FIXED_PREAMBLE_DIGEST = preamble_digest()
 
 _RESULTS = Path(__file__).resolve().parents[1] / "bench" / "results"
 
@@ -613,13 +628,40 @@ def _run_hard(
     *,
     sample: int = 0,
     seed_history: list[dict[str, str]] | None = None,
+    preamble: str = DEFAULT_MODE,
 ) -> list[dict[str, Any]]:
-    """Rolling multi-turn conversation + the judge's pushback, per question."""
+    """Multi-turn conversation + the judge's pushback, per question.
+
+    ``preamble`` selects the REQUEST SHAPE, which is the one thing the official
+    hard modality specifies and the previous implementation got wrong:
+
+    * ``fixed`` (DEFAULT since R424) — the official shape: the same pre-fixed
+      9-exchange dialogue (``evals.regenold.hard_preamble``) before EVERY row, so
+      every row is asked as turn 10 of an identical conversation and the modality
+      is a constant of the arm rather than a function of a row's position.
+    * ``rolling`` (explicit opt-in; every board on record before R424) — a window
+      of our own prior questions and answers, starting EMPTY. Row 1 was therefore
+      asked with no context and row 5 with four exchanges of it, so the arm mixed
+      modalities: ``history_turn_count`` read 0 and 1 on the leading rows, which
+      is inside the Stage-2 single-turn predicate, so those rows were dispatched
+      the full system prompt while every later row got the persona. Kept so the
+      pre-R424 boards can be reproduced, and because a probe that MEASURES that
+      leak must be able to ask for it.
+
+    ``seed_history`` is ignored in ``fixed`` mode by construction: the fixture IS
+    the history, which is what makes a resumed fixed run identical to an
+    uninterrupted one (the R423.3 leak cannot recur in this mode).
+    """
+    fixed = preamble == MODE_FIXED
     out: list[dict[str, Any]] = []
-    history: list[dict[str, str]] = list(seed_history or [])
+    history: list[dict[str, str]] = [] if fixed else list(seed_history or [])
     for i, row in enumerate(rows, 1):
         # --- turn 1: the question inside the running conversation ----------
-        msgs1 = build_hard_messages(row, history)
+        msgs1 = (
+            build_prefixed_messages(row.question)
+            if fixed
+            else build_hard_messages(row, history)
+        )
         body1, lat1, st1, err1, att1, _ = poster(url, api_key, msgs1, timeout)
         ans1 = str((body1 or {}).get("answer") or "")
         refs1 = list((body1 or {}).get("references") or [])
@@ -627,7 +669,13 @@ def _run_hard(
         # --- turn 2: pushback ----------------------------------------------
         ans2, refs2, lat2, st2, err2, att2 = "", [], 0.0, None, None, 0
         if ans1:
-            msgs2 = build_pushback_messages(row, history, ans1)
+            msgs2 = (
+                build_prefixed_pushback_messages(
+                    row.question, ans1, row.pushback_content()
+                )
+                if fixed
+                else build_pushback_messages(row, history, ans1)
+            )
             body2, lat2, st2, err2, att2, _ = poster(url, api_key, msgs2, timeout)
             ans2 = str((body2 or {}).get("answer") or "")
             refs2 = list((body2 or {}).get("references") or [])
@@ -637,6 +685,11 @@ def _run_hard(
             # R423 — see ``_run_easy``: the generation index must be on disk.
             "sample": sample,
             "mode": "hard",
+            # R424 — which REQUEST SHAPE produced this row, and the fixture's
+            # digest when there was one. A board is only interpretable if the
+            # shape that produced it is on the row.
+            "hard_preamble": preamble,
+            "hard_preamble_digest": _FIXED_PREAMBLE_DIGEST if fixed else "",
             # R293 — in hard mode every row is HARD / Multi-Turn Context &
             # Coreference by the official taxonomy, so the per-question label
             # from the single-turn export is not the operative one here; keep it
@@ -701,8 +754,10 @@ def _run_hard(
         ckpt.write(json.dumps(rec, ensure_ascii=False) + "\n")
         ckpt.flush()
 
-        # Roll the conversation forward exactly as the judge did.
-        if ans1:
+        # Roll the conversation forward exactly as the judge did. In FIXED mode
+        # there is nothing to roll: every row is asked inside the same fixture,
+        # which is the whole point of the mode.
+        if ans1 and not fixed:
             history = trim_history(
                 [
                     *history,
@@ -925,6 +980,12 @@ def _arm(
 ) -> dict[str, Any]:
     saved = _apply_env(arm_env)
     repeats = max(1, int(repeats))
+    # R424 — the REQUEST SHAPE this arm runs, resolved AFTER ``_apply_env`` so a
+    # ``--baseline-env REGENOLD_HARD_PREAMBLE=…`` declaration is what the harness
+    # actually posts. Raises on an unrecognised value rather than silently
+    # running the other shape (see ``hard_preamble_mode``).
+    preamble = hard_preamble_mode()
+    print(f"  hard-mode request shape: {preamble}")
     try:
         result: dict[str, Any] = {}
         for m in ("easy", "hard"):
@@ -1009,8 +1070,14 @@ def _arm(
                             # first two rows as near-single-turn (see
                             # ``seed_history_from_records``). Continuous runs have
                             # no ``previous`` and keep the shipped empty start.
-                            seed = seed_history_from_records(previous)
-                            if previous:
+                            # R424 — only meaningful for the ROLLING shape; the
+                            # fixed shape's history is the fixture, so a resumed
+                            # fixed run is identical to an uninterrupted one.
+                            seed = (
+                                [] if preamble == MODE_FIXED
+                                else seed_history_from_records(previous)
+                            )
+                            if previous and seed:
                                 print(
                                     f"  resuming hard with {len(seed)} seeded "
                                     f"conversation message(s) from "
@@ -1018,7 +1085,7 @@ def _arm(
                                 )
                             fresh = runner(
                                 pending, poster, url, api_key, timeout, ckpt,
-                                sample=k, seed_history=seed,
+                                sample=k, seed_history=seed, preamble=preamble,
                             )
                     by_id = {r["id"]: r for r in previous + fresh}
                     got = [by_id[row.id] for row in rows if row.id in by_id]
@@ -1060,6 +1127,11 @@ def _arm(
                 repeats=repeats,
                 repeat_identical_rate=identical_rate,
                 sample_rows=replicates,
+                request_shape=(
+                    f"{preamble}:{_FIXED_PREAMBLE_DIGEST}"
+                    if preamble == MODE_FIXED
+                    else MODE_ROLLING
+                ),
             )
             if repeats > 1:
                 primary["samples"] = [[r["id"] for r in sample] for sample in replicates]
@@ -1311,7 +1383,19 @@ def main() -> None:
         )
         payload["branch"] = {m: v["agg"] for m, v in branch.items()}
         lever = lever_changes_system(base_env, branch_env)
+        # R424 — a lever can live ABOVE the engine: the conversation the harness
+        # posts before the question. Then the system slot is SUPPOSED to be
+        # byte-identical across the arms, and the guard's non-vacuity check has to
+        # move to the request shape (see ``gate_validity.assess``). If both slots
+        # differ, the system check wins — it is the stronger of the two and
+        # relaxing it would be a real weakening.
+        request_lever = lever_changes_request(base_env, branch_env)
+        lever_slot = "request" if (request_lever[0] and not lever[0]) else "system"
         payload["lever_changes_system"] = {"changes": lever[0], "why": lever[1]}
+        payload["lever_changes_request"] = {
+            "changes": request_lever[0], "why": request_lever[1]
+        }
+        payload["lever_slot"] = lever_slot
         for m in baseline:
             b, c = baseline[m]["agg"], branch.get(m, {}).get("agg", {})
             if not c:
@@ -1351,6 +1435,7 @@ def main() -> None:
                     branch=branch_prov,
                     lever=lever,
                     excluded_rows=len(excluded),
+                    lever_slot=lever_slot,
                 )
                 payload.setdefault("gate", {})[m] = verdict.as_dict()
                 payload["gate"][m]["excluded_rows"] = excluded

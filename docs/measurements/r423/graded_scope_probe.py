@@ -71,6 +71,7 @@ def _spy(self, req):  # noqa: ANN001, ANN201 - transport seam
 _OWP._OpenAIWrapperProvider.complete = _spy
 
 import evals.regenold.run_official_batch as _R  # noqa: E402
+from evals.regenold.hard_preamble import MODE_ROLLING  # noqa: E402
 from evals.regenold.official_batch import load_official_batch  # noqa: E402
 from evals.regenold.run_official_batch import _run_hard, select_rows  # noqa: E402
 from evals.regenold.runner_v2 import _post_local  # noqa: E402
@@ -121,7 +122,14 @@ def main() -> int:
     rows = select_rows(list(load_official_batch()), ids=ap.parse_args().ids)
     print(f"rows: {[r.id for r in rows]}", flush=True)
     _patch_builders()
-    _run_hard(rows, _post_local, "local", "unused", 300, _DevNull(), sample=0)
+    # R424 flipped the harness default to the pre-fixed dialogue, which does not go
+    # through ``build_hard_messages`` at all. This probe exists to measure the
+    # ROLLING shape's position-dependence, so it must ask for that shape
+    # explicitly — otherwise it would report "no FULL dispatch" as a false negative.
+    _run_hard(
+        rows, _post_local, "local", "unused", 300, _DevNull(),
+        sample=0, preamble=MODE_ROLLING,
+    )
 
     print("\n=== per-dispatch (row, turn, user_chars, system_chars) ===", flush=True)
     full_rows: list[str] = []

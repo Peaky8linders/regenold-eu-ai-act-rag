@@ -1325,6 +1325,42 @@ differing) the reordered rungs are a **WASH** — OVERALL 72.7 → 72.9 (+0.2 pp
   — identity against the wrapper singleton, endpoint as fallback) and only the
   primary can trip it; auxiliary failures are counted, reported, and never fatal;
   and the abort names the leg and the failure KIND (`[transport]` vs `[model_side]`).
+* **R424 — the hard modality is now the OFFICIAL one (harness default flipped).**
+  The official challenge defines hard mode as *"a pre-fixed synthetic 9-turn
+  conversation … the actual question being evaluated appears in the 10th turn"*.
+  `_run_hard` did not do that: it rolled its own prior Q&A, **starting empty**, so
+  row 1 was asked cold and row 5 with four exchanges, and the leading rows read
+  `history_turn_count` 0–1 — inside the Stage-2 single-turn predicate — and were
+  dispatched the **full 59 644-char** system prompt while every later row got the
+  61-char persona. One arm, two system prompts, decided by a row's **position**.
+  `evals/regenold/hard_preamble.py` holds the fixture and `DEFAULT_MODE` is now
+  **`fixed`**: the same 9-exchange dialogue before EVERY row, so the modality is a
+  constant of the run (turn 1 = 18 prior messages, the evaluator's own recorded
+  `history_turns_used`, reproduced exactly). `rolling` stays reachable as an
+  explicit `REGENOLD_HARD_PREAMBLE=rolling` for reproducing the pre-R424 boards.
+  Because the fixture IS the history, the R423.3 `--resume` leak cannot recur in
+  this mode. The paired gate (`r424-preamble`, 37 strided rows × 3 independent
+  generations × 2 arms, judged with the R419/R423 instrument, 28 comparable rows)
+  cleared all four pre-registered conditions: answer correctness **tied at exactly
+  +0.00 pp on all 28 rows**, official overall **78.44 → 78.56 (+0.11 pp)**, gold
+  heads dropped 1 vs 1, `ans_conciseness` +1.86 / `ref_conciseness` +1.86 /
+  `ref_loose` +1.79 / `resp_speed` +0.42.
+  **Guard change this forced:** a lever can live in the **request** slot, where
+  byte-identical system payloads are the CORRECT outcome — so
+  `gate_validity.lever_changes_request` + `REQUEST_SHAPE_FLAGS` and
+  `assess(..., lever_slot="request")` check the recorded `request_shape` instead of
+  voiding a correctly-built run. The default slot stays `"system"`, so every
+  existing caller is byte-identical.
+  Record: `docs/measurements/r424/CHECKPOINT.md`, probe
+  `docs/measurements/r424/hard_preamble_probe.py` (offline, stubbed provider — the
+  dispatch shape is decided before the provider is reached).
+  **Open finding carried forward (R425 candidate):** the `ref_strict` −3.57 pp is
+  two rows plus one partial, and it traces to a **reference-grain substitution** —
+  in 15 arm-row occurrences across 8 rows the graded wire records a neighbouring
+  limb of a parent the prose itself sub-points (prose `Article 99(3)`, wire
+  `Article 99.4`; prose `Article 3.64`, wire `Article 3.65`). That is a route change
+  to the graded `references` field, so it needs its own paired gate, not a bundled
+  edit. Evidence: `docs/measurements/r424/refstrict_draw_dependence.py`.
 * **R358 — curated authoritative intercepts.** Four new curated answers
   (emergency triage `Annex III.5.d`, health-insurance pricing `5(c)`, hospital
   deployer duties, provider pre-market duties) that seed gold-head reference
