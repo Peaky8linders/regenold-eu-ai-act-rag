@@ -1,0 +1,92 @@
+{
+  "head": "a4769372e6b93f1754c3f3f234ab3a5e8d14fb08",
+  "branch": "fix/r409-r408-audit",
+  "files": {
+    "app/routes/regenold.py": {
+      "sha256": "97650416f76d12be16d6f90b2988d6528c45b3b90dc9d91a4e2f1dfd2bd96e90",
+      "lines": 12311,
+      "top_level_functions": 142
+    },
+    "app/engines/_graph_rag_impl.py": {
+      "sha256": "47167548a4dd665ec2bf69019ee9a395985d5ce6afd16d75fa9be8f655e61dea",
+      "lines": 12655,
+      "top_level_functions": 157
+    },
+    "app/engines/graph_rag/models.py": {
+      "sha256": "1e2205187397476df7bf7318ef850ee1382f2e9fdfc990e432a0e8fe462f2333",
+      "lines": 52,
+      "top_level_functions": 0
+    },
+    "app/engines/kg_context.py": {
+      "sha256": "064c0f8f943ee58584938d0193e6d52c24757a34138ad5bc185d00b5408ab555",
+      "lines": 1291,
+      "top_level_functions": 32
+    },
+    "app/engines/graph_semantic.py": {
+      "sha256": "f71b4c4a0b33724672c03092b190fdaffb9916751f97e504de7dc3ea459399da",
+      "lines": 745,
+      "top_level_functions": 15
+    },
+    "app/engines/cohere_rerank.py": {
+      "sha256": "6fb9c5f64221de6ae7cecca4e4e969a62e8533abf20170f63c48db80e3ba50d5",
+      "lines": 902,
+      "top_level_functions": 23
+    },
+    "app/engines/legal_ast.py": {
+      "sha256": "3f16b8eab76f134e9bbc0b44509f9376f1eff8ddd1826068e6862018093894d2",
+      "lines": 134,
+      "top_level_functions": 3
+    },
+    "app/engines/logic_rag.py": {
+      "sha256": "c5157c7ea75b43803082eadc65f6f440b6a6ab7fe32176cf1c60bf03410fd452",
+      "lines": 488,
+      "top_level_functions": 10
+    },
+    "app/llm/bedrock_client.py": {
+      "sha256": "329c12e4a789aa5632541f7c526c73c4e4d5ed879e5e432ab8c2a124a21bde7b",
+      "lines": 1440,
+      "top_level_functions": 32
+    },
+    "evals/official/rubric.py": {
+      "sha256": "331266c6ca6be6e23e1b4f72a0f27b16670fa99ab282eedd81f68f28a2b86bd5",
+      "lines": 363,
+      "top_level_functions": 16
+    },
+    "evals/harness/easyhard_ab.py": {
+      "sha256": "0ed97ed150a2a633af685b3ae4d29dfbbcd10a176d4e416c6c820fa6df5fed2f",
+      "lines": 1148,
+      "top_level_functions": 21
+    }
+  },
+  "ast_alias_probe": {
+    "Art. 5": {
+      "has_ast": true,
+      "result_with_vulnerability_true": true
+    },
+    "Art. 50": {
+      "has_ast": true,
+      "result_with_vulnerability_true": true
+    },
+    "Art. 53": {
+      "has_ast": true,
+      "result_with_vulnerability_true": true
+    },
+    "Article 5": {
+      "has_ast": false,
+      "result_with_vulnerability_true": null
+    }
+  },
+  "metric_example": {
+    "predicted": [
+      "Article 13.3.a",
+      "Article 99"
+    ],
+    "expected": [
+      "Article 13.3"
+    ],
+    "official_strict": 1.0,
+    "official_conciseness": 0.5,
+    "bench_strict": 0.6666666666666666,
+    "bench_conciseness": 0.25
+  }
+}

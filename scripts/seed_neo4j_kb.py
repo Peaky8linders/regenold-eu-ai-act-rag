@@ -1324,6 +1324,31 @@ def seed_graph(
         batch_size=batch_size, label="INTERPRETS", verbose=verbose,
     )
 
+    # Bridge legacy shadow Article nodes (ART4..95) to canonical article_<N> nodes
+    if getattr(client, "enabled", False):
+        try:
+            _bridge_cypher = """
+            MATCH (shadow:Article) WHERE shadow.id STARTS WITH 'ART'
+            WITH shadow, 'article_' + substring(shadow.id, 3) AS canonical_id
+            MATCH (canonical:Article {id: canonical_id})
+            MERGE (shadow)-[:EQUIVALENT_TO]->(canonical)
+            MERGE (canonical)-[:EQUIVALENT_TO]->(shadow)
+            WITH shadow, canonical
+            OPTIONAL MATCH (shadow)-[req:REQUIRES]->(target)
+            FOREACH (_ IN CASE WHEN target IS NOT NULL THEN [1] ELSE [] END |
+                MERGE (canonical)-[:REQUIRES]->(target)
+            )
+            WITH shadow, canonical
+            OPTIONAL MATCH (role)-[atr:APPLIES_TO_ROLE]->(shadow)
+            FOREACH (_ IN CASE WHEN role IS NOT NULL THEN [1] ELSE [] END |
+                MERGE (role)-[:APPLIES_TO_ROLE]->(canonical)
+            )
+            RETURN count(DISTINCT shadow) AS bridged
+            """
+            client.execute_write(_bridge_cypher, {})
+        except Exception:
+            logger.debug("Shadow article node bridging skipped or failed", exc_info=True)
+
     return counts
 
 
