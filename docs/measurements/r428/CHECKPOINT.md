@@ -12,6 +12,8 @@ Round date: 2026-09-21. Dispositions: `docs/reviews/r428-cr-dispositions.md`.
 
 ## The dotted probe, at a glance
 
+Pre-removal run (i.e. the audit of R426; reproduces at `e879c8d`):
+
 ```
 rows scored (graded pair, gold refs present): 630
 rows whose answer contains a dotted citation: 47
@@ -20,10 +22,11 @@ R426 dotted ADD : 13 refs  (gold 2 / excess 11)
 rows where the ADD moves Ref. Strict at all: 0
 rows still short of full Ref. Strict recall: 204; of those, recovered by the ADD: 0
 gold sub-point coords: 594 rows carry one; 223 are UNMET without the ADD, and the ADD satisfies 0
-  why each unmet sub-point is unmet:
-    named_but_parent_absent  140
-    prose_never_names_it      79
-    named_R136_suppressed      4
+  why each unmet sub-point is unmet (CORRECTED — see below):
+    named_only_a_shallower_grain         138
+    prose_never_names_it                  79
+    named_R136_suppressed                  4
+    named_no_coord_of_parent_on_wire       2
 
 arm   ref_loose  ref_strict  ref_conc
 C         98.57       72.65     41.64     (no dotted miner anywhere)
@@ -31,6 +34,14 @@ M         98.57       72.65     41.64     (R425 miner sees dotted prose — coun
 A1        98.57       72.65     42.82     (R426 ADD + R425 rewrite + real R381 collapse)
 A1-M1 (ADD, REAL route order)  loose +0.00  strict +0.00  conc -0.01
 ```
+
+On the **shipped** tree the same probe prints `R426 dotted ADD : 0 refs` — the removal,
+verified — and says so in its own output rather than leaving the 13 unexplained.
+
+**The "why unmet" split was corrected mid-round.** The first classifier asked only whether
+the bare parent string was on the wire, which folded "the parent is present at a shallower
+grain" into "the parent is absent" and reported 140 coverage rows. The real coverage
+population is 2; 138 are depth. Every doc that carried 140 has been corrected.
 
 Arms are per-row paired; `_collapse_parent_when_subpoint_cited` (R381, default ON) is
 modelled because it runs **between** the two passes — reading the ADD without it is the

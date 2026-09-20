@@ -216,10 +216,14 @@ passes, real `evals.official.rubric`, no live calls).
 * **NEVER mirror `REQUIRES`.** It is the R99.1 drift edge — schema says unseeded, R427.1
   removed the mirror, and a test now pins the refusal.
 * **Where the Ref-Strict deficit actually lives** (classification of all 223 unmet gold
-  sub-points): **140** are named in prose whose PARENT is absent from the wire (a coverage
-  pass, which no grain pass can reach — they add only beside a parent already present),
-  **79** are never named in the prose at all (generation-side), **4** are R136's deliberate
-  minimal-cover trade. Another round of reference post-processing cannot move this.
+  sub-points, corrected mid-round after a first classifier folded "parent present at a
+  shallower grain" into "parent absent"): **138** name a parent the wire ALREADY carries,
+  but only at a shallower grain (`Annex IV.1` on the wire, `Annex IV.1.e` in the gold) — a
+  **depth** problem, i.e. R386's deepener remit, and R425's rewrite deliberately abstains
+  because a prefix is depth, not substitution; **79** are never named in the prose at all
+  (generation-side); **4** are R136's deliberate minimal-cover trade; **2** are a genuine
+  coverage gap. So another round of reference post-processing *at the wrong depth* cannot
+  move this axis — the lever is the deepener, not another surfacing pass.
 * **`ci.yml` has no lint job**, which is how 37 ruff errors reached `main`. The files this
   round touched are now ruff-clean.
 

@@ -19,6 +19,12 @@ made for the reference-axis work — it replays draws that are already on disk.
 | # | Claim (as reported) | Verdict | Evidence |
 | :- | :-- | :-- | :-- |
 | 1 | Dotted sub-point recognition "resolved the root cause behind the −10.3 pp Reference Correctness **Strict** deficit" | **Falsified** | 630 recorded hard draws, real passes + real `evals.official.rubric`: the ADD contributes 13 refs (11 excess), moves **Ref. Strict on 0 rows** and **Ref. Loose on 0 rows**, costs **−0.01 pp Ref. Conciseness** under the real route order. 594 of the 630 rows carry a gold **sub-point** coordinate; 223 of those are unmet, and the ADD satisfies **0**. `docs/measurements/r428/dotted_subpoint_probe.py` |
+
+> **Provenance of the 13-ref figure.** It is the audit of R426, so it was measured on
+> the pre-removal tree and reproduces at `e879c8d`. The probe as committed measures the
+> **shipped** tree, where the ADD contributes **0** — which is itself the removal verified.
+> The probe says so in its own output rather than leaving the reader to wonder why a
+> documented 13 became a printed 0.
 | 2 | "17 legacy shadow nodes … unlocking **148** stranded REQUIRES and APPLIES_TO_ROLE relationships" | **Count correct, effect absent** | Aura: 17 shadows ✓, 125 `REQUIRES` + 23 `APPLIES_TO_ROLE` = 148 ✓ — **all 148 outgoing from the shadows**, and **no live query reads either type** (this query reads `PROHIBITED_UNDER` / `TRIGGERS_HIGH_RISK_UNDER` / `HAS_OBLIGATION_ARTICLE` / `APPLIES_TO`, all **0** on shadows). Measured: the widened query returns **10 rows where the unwidened returns 10**, zero rows differing |
 | 3 | Bridge "unlocks 148 … in both query-time Cypher **and** seeding reconciliation" | **Seeding half broken** | The seeder clause was `OPTIONAL MATCH (role)-[:APPLIES_TO_ROLE]->(shadow)` — the **incoming** arc. Live incoming count is **0** (all 23 are outgoing), so it copied nothing; had it matched it would have written an arc nothing uses. **Fixed.** `app/graph/ontology.py:373` and the live graph agree on `Article → OperatorRole`; `app/graph/schema.py`'s comment said the opposite and is corrected |
 | 4 | `REGENOLD_ONTOLOGY_CITABLE_EXPANSION` default ON "so the citable base guard never drops legitimate gold heads" | **Invalid default** | Its only consumer is `REGENOLD_CITABLE_BASE_GUARD`, **default OFF** since R401 rejected it on a full live A/B → the expansion was computed twice per request and discarded. In the state where it *does* fire, it unblocks 191 references of which **1** is gold and **190** excess, moving Ref. Conciseness **−3 pp** and both correctness axes **+0.00**. **Default flipped to 0.** `docs/measurements/r428/ontology_expansion_probe.py` |
@@ -64,6 +70,10 @@ Full suite on the final tree: **8547 passed, 2 skipped, 0 failed**.
   Its cost is provably zero (per-`cite` aggregation merges the twin rows — verified live,
   10 rows either way) and its residual value is real (a shadow still yields a `cite` if a
   canonical node is ever absent). Reverting it would be an opinion, not a finding.
+* **No deepener change either.** The corrected §5 split makes R386's `_deepen_ref_grain` the
+  owner of 138 of the 223, and R386's 77 % coordinate accuracy is itself the known trade
+  from that round. Widening or retuning it here would be a new lever shipped on an
+  unmade gate, which is the exact failure this CR exists to catch.
 * **`REQUIRES` is not mirrored back.** It looks like the fix for the R393 two-island finding,
   and it is not: the schema declares the type deliberately unseeded, no query reads it, and
   R99.1 is exactly the bug that matching it caused.
@@ -87,14 +97,21 @@ digging:
 
 | Owner | Count | What it needs |
 | :-- | --: | :-- |
-| The prose **names** the coordinate, but its **parent is absent from the wire** | **140** | a prose-grounded **coverage** pass. Every post-hoc *grain* pass (R133, R425, R426) is structurally unable to help: they add beside a parent already present, and this population has no parent present |
+| The prose **names** the coordinate, the parent IS on the wire, but only at a **shallower grain** | **138** | a **depth** problem — R386's deepener remit. The wire holds `Annex IV.1` where the gold is `Annex IV.1.e`; R425's rewrite deliberately abstains here, because a prefix is depth, not substitution |
 | The answer **never names** the coordinate | **79** | generation-side: Stage 2 must say it. Not fixable by any wire pass |
-| Named, parent present, suppressed by R136's ≥3-of-one-parent minimal-cover rule | **4** | the deliberate trade R136 documented; leave it |
+| Named, bare parent head present, suppressed by R136's ≥3-of-one-parent minimal-cover rule | **4** | the deliberate trade R136 documented; leave it |
+| Named, and **no coordinate of that parent on the wire at all** | **2** | the only genuine *coverage* rows in the population |
 | Total unmet sub-point expectations | **223** | of which **0** are recovered by the R426 dotted ADD |
 
+⚠ **This table corrects an earlier read in this round.** My first classifier asked only
+whether the bare parent string was on the wire, which folded "the parent is present at a
+shallower grain" into "the parent is absent" and reported 140 coverage rows. The real
+coverage population is **2**; 138 are depth. The corrected owner is the **deepener**, and
+that is a different piece of work from the one the first read implied.
+
 Read against the R411 triage (49 of 51 engine failures had the provision in context already),
-this says the Ref-Strict deficit is **two-thirds a coverage problem and one-third a
-generation problem**, and that another round of reference post-processing cannot move it.
+this says the Ref-Strict deficit is **~62 % grain depth, ~35 % generation-side, ~2 % coverage**
+— and that another round of reference *post-processing at the wrong depth* cannot move it.
 
 ---
 
@@ -112,7 +129,10 @@ generation problem**, and that another round of reference post-processing cannot
 2. **`EQUIVALENT_TO` does not exist in Aura.** The bridge has never been executed against
    production, so the seeding half of the R426 change is un-run (and would need a deliberate,
    reviewed write to the production graph, which this round did not perform).
-3. **Two articles carry their only role data shadow-side**: `article_53` (`gpai_provider`)
+3. **The Ref-Strict deficit is mostly a DEPTH problem** (§5, corrected): 138 of 223 unmet
+   gold sub-points are on a parent the wire already carries at a shallower grain, 79 are
+   never named in the prose, and only 2 are a coverage gap. R386's deepener is the owner.
+4. **Two articles carry their only role data shadow-side**: `article_53` (`gpai_provider`)
    and `article_55` (`gpai_systemic_provider`) have **no** `HAS_OBLIGATION_ARTICLE` roles,
    while their shadows carry the outgoing `APPLIES_TO_ROLE` arcs. The other 15 shadows'
    roles are redundant with their canonical twins'.
