@@ -63,7 +63,7 @@ from app.engines.answer_completeness import (
 )
 
 _ENV = "REGENOLD_NEED_PROPORTIONAL_CONTRACT"
-_TRUTHY = frozenset({"1", "true", "yes", "on"})
+_FALSY = frozenset({"0", "false", "no", "off"})
 
 #: Target-length calibration. MEASURED, and the first version of it was WRONG in
 #: a way worth recording (``docs/measurements/r423/need_proportional_probe.py``):
@@ -94,19 +94,85 @@ _TARGET_MAX_CHARS = 1000
 _CHARS_PER_WORD = 5.4
 _MAX_ITEMS = 12
 
+#: R423.1 — what to target when the ask anchors on NOTHING.
+#:
+#: The first gate measured this lever's whole correctness cost on two rows, and
+#: both are rows where ``asked`` and ``engaged`` are BOTH empty: ``rg_010``
+#: ("Which article of the EU AI Act governs human oversight measures?" — the ask
+#: names no coordinate) and ``rg_106`` (a classification scenario that names no
+#: annex). On those rows the estimator fell through to ``items = 1`` and asserted
+#: the MINIMUM target (375) while the gold references are 759 and 781 chars and
+#: the criteria ARE the substance of the provision the ask is about (Article
+#: 14(1)-(4) in every one of the three generations; Annex III.6's
+#: law-enforcement confinement, with ``Annex III`` dropped from the wire refs).
+#:
+#: That is a category error this module was making: EMPTY ENGAGEMENT IS ABSENCE
+#: OF SIGNAL, NOT EVIDENCE OF A SMALL ASK. The detector is the R410
+#: question-side rule, deliberately strict because it gates a completeness
+#: DEMAND (it cut false positives 7/71 -> 0/71); strictness is right for
+#: demanding, and wrong for sizing.
+#:
+#: Calibrated on the SUBGROUP it applies to — not on the whole gold, and not on
+#: the two rows that exposed the bug. The state is not a corner case: it is 80 of
+#: the 110 rows (73 %), whose references measure mean 646, median 657, p25 553,
+#: p75 747, min 160, max 985. 650 is that subgroup's own central value.
+#:
+#: Measured cost (``need_floor_projection.py`` section B, the ONLY per-row lengths
+#: that exist, restricted to rows the lever can actually reach — a
+#: curated-intercept row is answered identically in both arms, so including one
+#: rigs the projection; the first cut did): 71.29 % -> 70.07 % on
+#: ``Ans. Conciseness`` over the 23 reachable unanchored rows, -1.22 pp. The floor
+#: is FREE below 550, because those rows' references sit above it. It is worth
+#: keeping rather than dropping because ``Ans. Conciseness`` is
+#: ``min(1, ref/candidate)`` and therefore SATURATES: a candidate under the
+#: reference scores exactly what one AT the reference scores, so undershooting a
+#: reference-length answer buys zero conciseness and costs correctness.
+#:
+#: A GRADED floor was tested and REJECTED (section C): nothing the estimator can
+#: see predicts an unanchored ask's reference length — corr(ask length, ref
+#: length) = +0.23 Pearson / +0.16 Spearman over the 80 rows; the feature that
+#: does (criteria count, +0.56) is not available at inference; and a ridge fit of
+#: the ask's own features was already falsified leave-one-out at r = 0.10-0.14. A
+#: formula keyed on any of that would be a number nobody measured, which is the
+#: defect this module's FIRST calibration actually was (see ``_TARGET_BASE_CHARS``
+#: above).
+_TARGET_NO_SIGNAL_CHARS = 650
+
 
 def need_proportional_contract_enabled() -> bool:
-    """``REGENOLD_NEED_PROPORTIONAL_CONTRACT`` — default OFF (opt-in lever).
+    """``REGENOLD_NEED_PROPORTIONAL_CONTRACT`` — default ON, flipped by its gate.
 
-    Default OFF is the house rule for a lever that changes generation shape: it
-    ships behind a paired gate (AGENTS.md hard rule #6), and its OFF arm must be
-    byte-identical to the current prompt. Allow-list form, so a blank or malformed
-    value keeps the shipped behaviour.
+    R423.2 — FLIPPED ON BY EVIDENCE, not by argument. The paired gate
+    (``docs/measurements/r423/need_gate.json``, label ``r423-need4``: hard split,
+    37 strided rows x 3 INDEPENDENT generations x 2 arms, judged with the R419
+    board's own instrument) measured, per-row medians over the 27 comparable
+    rows:
+
+    * ``ans_correctness_loose`` **+0.00 pp** and ``ans_correctness_strict``
+      **+0.00 pp** — the first gate's cost (-4.04 / -7.41, concentrated on two
+      no-anchor rows) is GONE after the R423.1 estimator fix;
+    * ``ans_conciseness`` +38.86, ``ref_correctness_loose`` +3.70,
+      ``ref_correctness_strict`` +5.56, ``ref_conciseness`` +12.80,
+      ``resp_speed`` +10.77;
+    * ``overall`` (geometric mean) 65.62 -> 79.56, **+13.93 pp**;
+    * answers shorten by 2108 chars and gold heads dropped go 1 -> 0.
+
+    Every one of the five pre-registered conditions held (no correctness axis
+    below -1.0 pp, a shorter answer, an aggregate above -0.5 pp, and no more gold
+    drops than the OFF arm). One row of 37 was excluded from BOTH arms because its
+    transport degraded (accounted for and published by the gate).
+
+    Set ``REGENOLD_NEED_PROPORTIONAL_CONTRACT=0`` to restore the fixed-shape
+    prompt exactly. The OFF vocabulary is an explicit deny-list rather than a
+    truthy allow-list, so a malformed value cannot silently disable a shipped
+    lever.
     """
     try:
-        return (os.environ.get(_ENV) or "").strip().lower() in _TRUTHY
+        return (
+            os.environ.get(_ENV, "1").strip().lower() not in _FALSY
+        )
     except Exception:  # noqa: BLE001 — a flag read must never break the route
-        return False
+        return True
 
 
 @dataclass(frozen=True)
@@ -122,6 +188,10 @@ class AnswerNeed:
     asks_exception: bool
     asks_conditions: bool
     is_yes_no: bool
+    #: False when the ask names no coordinate AND engages no closed set. That is
+    #: a NO-SIGNAL state (R423.1), not a small ask: the contract must not
+    #: compress or forbid on it, only answer normally.
+    anchored: bool = True
 
     @property
     def scope(self) -> str:
@@ -144,6 +214,7 @@ class AnswerNeed:
             "asks_exception": self.asks_exception,
             "asks_conditions": self.asks_conditions,
             "is_yes_no": self.is_yes_no,
+            "anchored": self.anchored,
         }
 
 
@@ -255,10 +326,16 @@ def answer_need(question: str, references: str = "") -> AnswerNeed:
         if asks_conditions:
             items += 1
         items = max(1, min(_MAX_ITEMS, items))
-        target = min(
+        proportional = min(
             _TARGET_MAX_CHARS,
             max(_TARGET_MIN_CHARS, _TARGET_BASE_CHARS + _TARGET_PER_ITEM_CHARS * items),
         )
+        # R423.1 — no anchor anywhere is no signal, so the floor applies (see
+        # ``_TARGET_NO_SIGNAL_CHARS``). It is a floor, not a replacement: an
+        # unanchored ask that still asks for an exception/condition limb keeps
+        # whichever target is larger.
+        anchored = bool(ask_coords or engaged)
+        target = proportional if anchored else max(proportional, _TARGET_NO_SIGNAL_CHARS)
         return AnswerNeed(
             asked=tuple(_deepest(ask_coords)),
             engaged=tuple(engaged),
@@ -269,13 +346,16 @@ def answer_need(question: str, references: str = "") -> AnswerNeed:
             asks_exception=asks_exception,
             asks_conditions=asks_conditions,
             is_yes_no=is_yes_no_question(question),
+            anchored=anchored,
         )
     except Exception:  # noqa: BLE001 — the estimate is advisory; never fatal
+        # Fail OPEN on the anchor: an estimator that could not run has no
+        # evidence of a small ask, and the shipped shape is the safe arm.
         return AnswerNeed(
-            asked=(), engaged=(), items=1, target_chars=_TARGET_MIN_CHARS,
-            target_words=max(40, round(_TARGET_MIN_CHARS / _CHARS_PER_WORD)),
+            asked=(), engaged=(), items=1, target_chars=_TARGET_NO_SIGNAL_CHARS,
+            target_words=max(40, round(_TARGET_NO_SIGNAL_CHARS / _CHARS_PER_WORD)),
             asks_list=False, asks_exception=False, asks_conditions=False,
-            is_yes_no=False,
+            is_yes_no=False, anchored=False,
         )
 
 
@@ -286,14 +366,44 @@ def shape_directive(need: AnswerNeed) -> str:
     (``REGENOLD_PROMPT_V3``, the 53 kB full system prompt) was measured to trade
     one axis for another; this one states a number derived from the ask and
     scopes the enumeration surface to the same estimate.
+
+    R423.1 — two shapes, because the no-signal case must not be told to
+    compress. The first gate lost ``rg_010`` and ``rg_106`` to exactly this
+    clause: both were handed "the ask engages 1 statutory item(s): the single
+    provision the ask names" when the ask names no provision at all (it asks
+    WHICH one governs, or whether a category applies), and both were then capped
+    at 375 chars. The unanchored branch instead points the answer at the
+    governing provision's substance — which is what the graded criteria of both
+    rows actually are.
     """
-    items = ", ".join(need.engaged) if need.engaged else ", ".join(need.asked)
-    items = items or "the single provision the ask names"
     lead = (
         "one sentence giving the bare verdict first, then"
         if need.is_yes_no
         else "one sentence giving the direct answer, then"
     )
+    if not need.anchored:
+        return "\n".join([
+            "ANSWER SHAPE (this ask does not name the provision that governs it):",
+            "* Name the governing provision first, at citation grain — the Article, "
+            "or the Annex sub-point when a category is what decides the answer.",
+            f"* Target about {need.target_words} words ({need.target_chars} "
+            "characters) — a concise reference answer's own length. "
+            f"{lead} the limbs of THAT provision the answer relies on, one "
+            "short clause each. The graded criteria ARE the requirements it "
+            "imposes, so a limb the evidence carries and the answer leaves "
+            "unstated is a failed criterion, and a limb restated at length is "
+            "padding.",
+            "* The COMPLETE STRUCTURE lists in the evidence block are context for "
+            "wording and grain. State a member your prose relies on; do not pad "
+            "with members that change nothing about the answer.",
+            "* Length is scored against a concise reference answer: stating a limb "
+            "that does not decide the answer costs exactly what omitting one that "
+            "does costs.",
+            "* If a limb above has no supporting text in the evidence, say so in one "
+            "sentence instead of padding.",
+        ])
+    items = ", ".join(need.engaged) if need.engaged else ", ".join(need.asked)
+    items = items or "the single provision the ask names"
     lines = [
         "ANSWER SHAPE (proportional to THIS ask):",
         f"* The ask engages {need.items} statutory item(s): {items}.",

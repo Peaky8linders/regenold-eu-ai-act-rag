@@ -14,6 +14,11 @@ comment:
 3. **The number is bounded and monotone.** ``target_chars`` inside
    [360, 1000] and non-decreasing in the engaged count, so a many-limb question
    is never asked for less room than a lookup.
+4. **No anchor is not a small ask (R423.1).** An ask that names no coordinate
+   and engages no closed set is a NO-SIGNAL state, and the contract must not
+   read it as "short". The first gate put its entire correctness cost on exactly
+   two such rows, so the floor, the clause and the skeleton's prohibition are all
+   pinned against the two real gold asks below.
 
 The last section pins the harness side: ``--repeats`` exists, ``--help`` renders
 (argparse interpolates ``%`` in help strings and a bare percent there takes the
@@ -63,27 +68,38 @@ _LOOKUP_REFS = "Annex IV.1.e"
 
 
 @pytest.fixture(autouse=True)
-def _clean_flag(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(_ENV, raising=False)
+def _off_arm_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R423.2 — the lever is now default ON, so the OFF arm is pinned explicitly.
+
+    The OFF arm's byte-identity is the contract that makes a paired gate readable
+    at all, so it is set rather than assumed. Tests of the ON arm override this
+    with ``monkeypatch.setenv(_ENV, "1")``.
+    """
+    monkeypatch.setenv(_ENV, "0")
 
 
 # ── 1. OFF is byte-identical ────────────────────────────────────────────────
 
 
-def test_flag_defaults_off() -> None:
-    assert need.need_proportional_contract_enabled() is False
-
-
-@pytest.mark.parametrize("value", ["1", "true", "YES", "on", " True "])
-def test_flag_reads_truthy_forms(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
-    monkeypatch.setenv(_ENV, value)
+def test_flag_defaults_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R423.2 — flipped ON by its own paired gate (see the module docstring)."""
+    monkeypatch.delenv(_ENV, raising=False)
     assert need.need_proportional_contract_enabled() is True
 
 
-@pytest.mark.parametrize("value", ["", "0", "false", "maybe", "2"])
-def test_flag_treats_anything_else_as_off(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+@pytest.mark.parametrize("value", ["0", "false", "no", "off", " Off "])
+def test_flag_reads_the_falsy_forms(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
     monkeypatch.setenv(_ENV, value)
     assert need.need_proportional_contract_enabled() is False
+
+
+@pytest.mark.parametrize("value", ["1", "true", "YES", "on", "", "2", "maybe"])
+def test_anything_else_keeps_the_shipped_lever_on(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    # A malformed value must not silently disable a shipped default-ON lever.
+    monkeypatch.setenv(_ENV, value)
+    assert need.need_proportional_contract_enabled() is True
 
 
 def test_off_arm_block_is_empty() -> None:
@@ -211,6 +227,86 @@ def test_skeleton_scope_marks_a_wholly_unengaged_provision_as_context() -> None:
     assert scoped is not None
     assert "NOT ENGAGED by this question" in scoped
     assert "do NOT enumerate" in scoped
+
+
+# ── 3b. R423.1 — no anchor is NO SIGNAL, not a small ask ────────────────────
+#
+# The first gate (`docs/measurements/r423/CHECKPOINT.md`) put the lever's whole
+# correctness cost on two rows, and both are rows where the estimator found NO
+# anchor: the ask names no coordinate and engages no closed set. Both were then
+# handed the MINIMUM target (375 chars) and an order not to enumerate the members
+# of the provision the question is about — while the gold criteria for those two
+# rows are exactly the substance of that provision:
+#
+#   rg_010  "Which article ... governs human oversight measures?"  ref 759
+#           judge, ON arm, all 3 generations: 14(2)'s aim and 14(4)'s five
+#           overseer capabilities omitted.
+#   rg_106  a supermarket bag-check scenario asking whether it is high-risk
+#           ref 781; ON arm, all 3: "focuses on Article 5 instead", Annex III
+#           dropped from the wire refs.
+#
+# These are the real gold asks, verbatim, because a paraphrase cannot reproduce
+# what the engagement detector actually does with them.
+_RG_010_ASK = "Which article of the EU AI Act governs human oversight measures?"
+_RG_106_ASK = (
+    'A supermarket uses an AI tool that analyzes only current-cart and checkout '
+    'anomalies (no biometrics, no face recognition, no sensitive-trait inference, '
+    'no cross-context social scoring) to flag transactions for optional manual bag '
+    'checks by store staff. The retailer claims this is "high risk like policing", '
+    'as it: resembles investigation of potentially criminal offences (theft) + '
+    'evaluates or classifies persons based on observed behaviour in a way that may '
+    'lead to detrimental or unfavourable treatment. Is this situation potentially '
+    'high-risk?'
+)
+
+
+@pytest.mark.parametrize("ask", [_RG_010_ASK, _RG_106_ASK])
+def test_unanchored_ask_gets_the_reference_norm_not_the_minimum(ask: str) -> None:
+    estimate = need.answer_need(ask)
+    assert estimate.anchored is False
+    assert estimate.engaged == () and estimate.asked == ()
+    assert estimate.target_chars == need._TARGET_NO_SIGNAL_CHARS
+    assert estimate.target_chars > need._TARGET_MIN_CHARS
+    # The floor is the instrument's own central reference length, so it can never
+    # be a value nobody measured.
+    assert need._TARGET_MIN_CHARS < need._TARGET_NO_SIGNAL_CHARS <= need._TARGET_MAX_CHARS
+
+
+def test_anchored_ask_keeps_the_proportional_target() -> None:
+    """R423.1 must not turn every ask into the flat floor."""
+    assert need.answer_need(_ARTICLE_13_ASK, _ARTICLE_13_REFS).anchored is True
+    assert need.answer_need(_ARTICLE_13_ASK, _ARTICLE_13_REFS).target_chars > (
+        need._TARGET_NO_SIGNAL_CHARS
+    )
+    assert need.answer_need(_LOOKUP_ASK, _LOOKUP_REFS).anchored is False
+
+
+def test_unanchored_clause_points_at_the_governing_provision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(_ENV, "1")
+    clause = need.need_proportional_block(_RG_010_ASK)
+    assert "does not name the provision that governs it" in clause
+    assert "Name the governing provision first" in clause
+    # The starvation instruction must be gone: telling the model not to enumerate
+    # the members of the provision it is asking about is what lost 14(2)/14(4).
+    assert "do not enumerate" not in clause
+    assert "do not add adjacent duties" not in clause
+
+
+def test_unanchored_skeleton_does_not_forbid_the_provision() -> None:
+    """An empty scope from a real "not this provision" is still a prohibition."""
+    from app.engines._graph_rag_impl import _render_closed_set_skeleton
+
+    scoped = _render_closed_set_skeleton("Annex III", engaged=set(), unanchored=True)
+    assert scoped is not None
+    assert "do NOT enumerate" not in scoped
+    assert "names no provision" in scoped
+    # Coordinates still reach the model, so nothing citable is hidden.
+    assert "    Annex III.6" in scoped
+    # …and the signalled case is untouched (the same call without the new flag).
+    signalled = _render_closed_set_skeleton("Annex III", engaged=set())
+    assert signalled is not None and "do NOT enumerate" in signalled
 
 
 def test_cache_key_registers_the_lever() -> None:

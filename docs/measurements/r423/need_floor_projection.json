@@ -1,0 +1,31 @@
+{
+ "unanchored_rows": 80,
+ "total_rows": 110,
+ "subgroup_ref_chars": {
+  "mean": 646.5,
+  "median": 657.0,
+  "p25": 553,
+  "p75": 747,
+  "min": 160,
+  "max": 985
+ },
+ "corr_ask_len_ref_len": {
+  "pearson": 0.23,
+  "spearman": 0.161
+ },
+ "corr_criteria_ref_len": {
+  "pearson": 0.558,
+  "spearman": 0.519
+ },
+ "chosen_floor_chars": 650,
+ "measured_rows": 23,
+ "measured_rows_excluded_not_stage2_served": 7,
+ "projected_ans_conc_pct": {
+  "375": 71.29,
+  "450": 71.29,
+  "550": 71.29,
+  "650": 70.07,
+  "750": 67.87,
+  "850": 64.1
+ }
+}

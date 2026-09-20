@@ -66,10 +66,29 @@ class _Stub:
         return self.next
 
 
+#: R423.1 — ONE instance, because that is the real contract: the getter returns a
+#: process-wide singleton, and the guard decides whether a failing call belonged
+#: to the Stage-2 leg by IDENTITY against it. A helper that minted a fresh
+#: instance per call would make every call look auxiliary and no outage could ever
+#: trip the guard — a test that passes for the wrong reason.
+_BARE_SINGLETON: list[object] = []
+
+
 def _bare_provider() -> object:
     """An uninitialised provider, so ``complete`` resolves to the patched class
     method instead of building a real httpx client against the network."""
-    return WP._OpenAIWrapperProvider.__new__(WP._OpenAIWrapperProvider)
+    if not _BARE_SINGLETON:
+        _BARE_SINGLETON.append(
+            WP._OpenAIWrapperProvider.__new__(WP._OpenAIWrapperProvider)
+        )
+    return _BARE_SINGLETON[0]
+
+
+def _auxiliary_provider(base_url: str) -> object:
+    """A leg built against a DIFFERENT endpoint — the Groq/Gemini/Mistral shape."""
+    provider = WP._OpenAIWrapperProvider.__new__(WP._OpenAIWrapperProvider)
+    provider._base_url = base_url
+    return provider
 
 
 def _install(monkeypatch, *, max_consecutive: int = 3, preflight_resp: str | None = None):
@@ -119,7 +138,7 @@ def test_guard_trips_on_the_nth_consecutive_failure(monkeypatch) -> None:
         _call()
         healthy()  # below the threshold: the batch keeps running
     _call()  # third consecutive failure
-    with pytest.raises(RuntimeError, match="consecutive calls failed"):
+    with pytest.raises(RuntimeError, match="consecutive primary calls failed"):
         healthy()
 
 
@@ -137,7 +156,7 @@ def test_a_success_resets_the_streak(monkeypatch) -> None:
         _call()
         healthy()  # the streak restarted, so two more is not yet an outage
     _call()
-    with pytest.raises(RuntimeError, match="3 consecutive calls failed"):
+    with pytest.raises(RuntimeError, match="3 consecutive primary calls failed"):
         healthy()
 
 
@@ -150,8 +169,8 @@ def test_guard_aborts_on_a_sustained_outage(monkeypatch) -> None:
     with pytest.raises(RuntimeError) as excinfo:
         healthy()
     message = str(excinfo.value)
-    assert "Stage-2 transport is down" in message
-    assert "3 consecutive calls failed" in message
+    assert "Stage-2 PRIMARY transport is down" in message
+    assert "3 consecutive primary calls failed" in message
     assert "read operation timed out" in message
 
 
@@ -162,7 +181,7 @@ def test_a_model_side_error_also_counts(monkeypatch) -> None:
     stub.next = _Resp(error="api_status_429: rate limited")
     _call()
     _call()
-    with pytest.raises(RuntimeError, match="consecutive calls failed"):
+    with pytest.raises(RuntimeError, match="consecutive primary calls failed"):
         healthy()
 
 
@@ -195,3 +214,70 @@ def test_degraded_runs_are_opt_in() -> None:
     source = inspect.getsource(ROB.main)
     assert "--allow-degraded-transport" in source
     assert "if local and not args.allow_degraded_transport" in source
+
+
+# ── R423.1 — the guard must mean "the STAGE-2 leg is down" ───────────────────
+#
+# Every leg is an instance of the same class (`get_groq_provider`,
+# `get_gemini_provider`, `get_mistral_provider` all build an
+# `_OpenAIWrapperProvider` against their own base_url), so patching the CLASS
+# counts an auxiliary leg's failures as Stage-2 transport failures. MEASURED
+# consequence, one abort: the R423.1 gate died after four rows with
+#
+#     Stage-2 transport is down: 5 consecutive calls failed
+#     (last: api_status_429: Rate limit reached for model `openai/gpt-oss-120b`
+#      in organization `org_01k...` service tier `on_demand`)
+#
+# `openai/gpt-oss-120b` is `_GROQ_LIVE_VALIDATED_MODEL` — the QUERY DENOISER's
+# first candidate, whose own chain falls through to Haiku. The Claude Stage-2 leg
+# was healthy, so every queued row would have been answered; instead the run
+# aborted and discarded them.
+
+
+def test_an_auxiliary_legs_failure_does_not_trip_the_guard(monkeypatch) -> None:
+    preflight, healthy, stub = _install(monkeypatch, max_consecutive=3)
+    preflight()
+    stub.next = _Resp(error="api_status_429: Rate limit reached for model `openai/gpt-oss-120b`")
+    groq = _auxiliary_provider("https://api.groq.com/openai/v1")
+    for _ in range(8):
+        groq.complete("denoise")  # type: ignore[attr-defined]
+    healthy()  # a healthy Stage-2 leg is not an outage, whatever the denoiser does
+
+
+def test_the_primary_legs_failure_still_trips_the_guard(monkeypatch) -> None:
+    preflight, healthy, stub = _install(monkeypatch, max_consecutive=3)
+    preflight()
+    stub.next = _Resp(error=_OUTAGE)
+    probe = _bare_provider()
+    for _ in range(3):
+        probe.complete("stage2")  # type: ignore[attr-defined]
+    with pytest.raises(RuntimeError, match="PRIMARY"):
+        healthy()
+
+
+def test_the_abort_names_the_failure_kind(monkeypatch) -> None:
+    """R423 §5.3 had to hand-diagnose `getaddrinfo` vs a 429 from the raw log."""
+    preflight, healthy, stub = _install(monkeypatch, max_consecutive=2)
+    preflight()
+    stub.next = _Resp(error=_OUTAGE)
+    probe = _bare_provider()
+    for _ in range(2):
+        probe.complete("stage2")  # type: ignore[attr-defined]
+    with pytest.raises(RuntimeError, match=r"\[transport\]"):
+        healthy()
+
+
+def test_the_abort_says_auxiliary_failures_were_seen(monkeypatch) -> None:
+    """A reader must be able to tell a wrapper outage from a noisy side-leg."""
+    preflight, healthy, stub = _install(monkeypatch, max_consecutive=2)
+    preflight()
+    groq = _auxiliary_provider("https://api.groq.com/openai/v1")
+    stub.next = _Resp(error="api_status_429: rate limit")
+    groq.complete("denoise")  # type: ignore[attr-defined]
+    stub.next = _Resp(error=_OUTAGE)
+    probe = _bare_provider()
+    for _ in range(2):
+        probe.complete("stage2")  # type: ignore[attr-defined]
+    with pytest.raises(RuntimeError) as excinfo:
+        healthy()
+    assert "1 auxiliary-leg failure(s)" in str(excinfo.value)

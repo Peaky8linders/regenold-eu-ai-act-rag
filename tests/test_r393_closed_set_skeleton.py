@@ -28,6 +28,22 @@ from app.data import article_existence
 from app.data.provision_hierarchy import closed_set_members
 from app.engines import _graph_rag_impl as G
 
+@pytest.fixture(autouse=True)
+def _other_block_lever_pinned_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hold the R423 need-proportional scope OFF while testing R393's wording.
+
+    R423.2 turned ``REGENOLD_NEED_PROPORTIONAL_CONTRACT`` ON by default, and that
+    lever rewrites the SAME block: it keeps every member but re-headers the render
+    (``ENGAGED members of X — k of n asked``) instead of the shipped
+    ``COMPLETE STRUCTURE of X ... EXHAUSTIVE``. The assertions in this file are
+    about the R393 lever's own wording, so the other lever is pinned out of the
+    way rather than silently changing what "ON" renders. The INTERACTION is
+    pinned by :func:`test_need_scope_demotes_members_without_hiding_a_coordinate`,
+    so isolating the two cannot hide a coordinate being dropped.
+    """
+    monkeypatch.setenv("REGENOLD_NEED_PROPORTIONAL_CONTRACT", "0")
+
+
 _CLOSED_SET_PROVISIONS = [
     ("Article 13", "Article 13.3.a"),
     ("Article 17", "Article 17.1.a"),
@@ -318,6 +334,26 @@ def test_real_renderer_carries_the_closed_set_when_on(monkeypatch):
         assert coord not in off, f"{coord} unexpectedly already in the OFF block"
     # The verbatim question-relevant text is KEPT, not replaced.
     assert "VERBATIM (question-relevant)" in on
+
+
+def test_need_scope_demotes_members_without_hiding_a_coordinate(monkeypatch):
+    """R423.2 — the need scope may shrink LEAD TEXT, never the member list.
+
+    A coordinate the prose discusses has to stay citable, or the lever would buy
+    conciseness with reference correctness — the R409 §6.8 gold-drop mechanism.
+    Asserted as a subset so it holds whether or not this context happens to
+    engage a group (an unengaged render is byte-identical, which trivially
+    satisfies it).
+    """
+    ctx = _context_for(_LIVE_REFS, _Q)
+    monkeypatch.setenv("REGENOLD_CLOSED_SET_SKELETON", "1")
+    monkeypatch.setenv("REGENOLD_NEED_PROPORTIONAL_CONTRACT", "0")
+    shipped = "".join(G._render_grounding_text(ctx))
+    monkeypatch.setenv("REGENOLD_NEED_PROPORTIONAL_CONTRACT", "1")
+    scoped = "".join(G._render_grounding_text(ctx))
+    for coord in ("Article 13.3.a", "Article 13.3.f", "Annex IV.1.e", "Annex IV.2.c"):
+        assert coord in shipped, f"{coord} missing from the shipped block"
+        assert coord in scoped, f"the need scope dropped the citable {coord}"
 
 
 def test_on_arm_adds_no_new_citable_head(monkeypatch):

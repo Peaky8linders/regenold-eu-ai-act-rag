@@ -10,6 +10,11 @@ comparability rule and the median-over-generations arithmetic).
     .venv/Scripts/python.exe -m evals.official.score_arm --ckpt <ckpt> ...   # warms the judge
     .venv/Scripts/python.exe docs/measurements/r423/need_gate.py             # writes need_gate.json
     .venv/Scripts/python.exe -m docs.measurements.r423.build_need_report
+
+R423.1 — the round that re-ran the gate reuses this generator rather than forking
+it, so the eight-axis arithmetic has ONE implementation. Override the three things
+that name a run (``R423_LABEL``, ``R423_GATE``, ``R423_OUT``) to point it at a
+later label; the defaults reproduce the first gate's report byte for byte.
 """
 
 from __future__ import annotations
@@ -26,14 +31,26 @@ REPO = pathlib.Path(__file__).resolve().parents[3]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-LABEL = "r423-need3"
+#: R423.2 — the default is the label of the gate that FLIPPED the lever, so the
+#: committed report and the committed defaults describe the same run. The earlier
+#: `r423-need3` (KEEP OFF) report is preserved verbatim at
+#: `docs/reports/r423-need-proportional-gate-need3.md`.
+LABEL = os.environ.get("R423_LABEL", "r423-need4")
 ARMS = ("A", "B")
-SAMPLES = 3
+SAMPLES = int(os.environ.get("R423_SAMPLES", "3"))
 ARM_LABEL = {"A": "A — lever OFF (shipped prompt)", "B": "B — lever ON"}
 RESULTS = REPO / "evals" / "bench" / "results"
-GATE = REPO / "docs" / "measurements" / "r423" / "need_gate.json"
+GATE = pathlib.Path(
+    os.environ.get(
+        "R423_GATE", str(REPO / "docs" / "measurements" / "r423" / "need_gate.json")
+    )
+)
 SIDECAR = RESULTS / f"official-{LABEL}.json"
-OUT = REPO / "docs" / "reports" / "r423-need-proportional-gate.md"
+OUT = pathlib.Path(
+    os.environ.get(
+        "R423_OUT", str(REPO / "docs" / "reports" / "r423-need-proportional-gate.md")
+    )
+)
 
 AXIS_LABEL = {
     "ans_correctness_loose": "Ans. Correctness (Loose)",

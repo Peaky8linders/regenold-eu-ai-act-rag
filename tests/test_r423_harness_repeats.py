@@ -38,6 +38,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from evals.harness import gate_validity
 from evals.regenold import run_official_batch as ROB
 
@@ -476,3 +478,50 @@ def test_a_restart_resumes_finished_replica_generations(
     assert len(arm["easy"]["samples"][1]) == 4
     assert len(arm["easy"]["samples"][2]) == 4
     assert len((replica).read_text(encoding="utf-8").splitlines()) == 4
+
+
+# ── R423.1 — a regression screen must be AIMABLE at the rows a gate lost ────
+#
+# The first gate put the whole correctness cost of the need-proportional lever on
+# two rows, and a stride reaches a named row only by luck (rg_010/rg_106 sat in
+# the stride-3 sample here, but nothing guarantees that of the next one). Without
+# a targeted selection the only way to test a fix for those rows is to re-run the
+# whole board, which is why the fix that shipped was gated on a sample that was
+# not chosen for it. `--ids` is that selection; these pin its contract.
+
+
+class _RowStub:
+    def __init__(self, rid: str) -> None:
+        self.id = rid
+
+
+def test_select_rows_ids_is_exact_and_ordered() -> None:
+    from evals.regenold.run_official_batch import select_rows
+
+    rows = [_RowStub(f"rg_{i:03d}") for i in range(1, 11)]
+    got = select_rows(rows, ids="rg_003, rg_007")
+    assert [r.id for r in got] == ["rg_003", "rg_007"]
+    # Whitespace-separated form is accepted too.
+    assert [r.id for r in select_rows(rows, ids="rg_002 rg_009")] == ["rg_002", "rg_009"]
+
+
+def test_select_rows_ids_must_resolve() -> None:
+    """An unknown id aborts: a run silently shrunk is the R422 failure shape."""
+    from evals.regenold.run_official_batch import select_rows
+
+    with pytest.raises(SystemExit) as excinfo:
+        select_rows([_RowStub("rg_001")], ids="rg_001,typo_999")
+    assert "typo_999" in str(excinfo.value)
+
+
+def test_select_rows_ids_then_stride_then_limit() -> None:
+    from evals.regenold.run_official_batch import select_rows
+
+    rows = [_RowStub(f"rg_{i:03d}") for i in range(1, 11)]
+    got = select_rows(rows, ids="rg_001 rg_002 rg_003 rg_004", stride=2, limit=1)
+    assert [r.id for r in got] == ["rg_001"]
+    # No --ids keeps the shipped selection exactly.
+    assert [r.id for r in select_rows(rows, stride=5)] == ["rg_001", "rg_006"]
+    assert [r.id for r in select_rows(rows, limit=2)] == ["rg_001", "rg_002"]
+    with pytest.raises(SystemExit):
+        select_rows(rows, stride=-1)

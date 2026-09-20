@@ -135,8 +135,17 @@ class TestTheRunnerRefusesToPublish:
 
     def test_runner_assesses_and_marks_void(self) -> None:
         src = (REPO / "evals" / "regenold" / "run_official_batch.py").read_text(encoding="utf-8")
-        assert "from evals.harness.gate_validity import ArmProbe, assess, lever_changes_system" in src
-        assert "verdict = assess(base=base_prov, branch=branch_prov, lever=lever)" in src
+        # R423.2 added `degraded_row_ids` to the guard, so match the SYMBOLS the
+        # runner must import rather than one line's formatting.
+        for symbol in ("ArmProbe", "assess", "lever_changes_system", "degraded_row_ids"):
+            assert re.search(rf"\b{symbol}\b", src), symbol
+        assert re.search(
+            r"verdict = assess\(\s*base=base_prov,\s*branch=branch_prov,\s*lever=lever",
+            src,
+        )
+        # R423.2 — the degraded rows the caller excluded from both arms must be
+        # part of the verdict, not an afterthought beside it.
+        assert re.search(r"excluded_rows=len\(excluded\)", src)
         # A refused modality must not fall through to the delta printer.
         assert 'payload["void"] = payload.get("void", []) + [m]' in src
         guard = src.index("verdict = assess(")
@@ -202,11 +211,15 @@ class TestScoreArmCarriesTheLeg:
 class TestStrideSampling:
     def test_stride_precedes_limit(self) -> None:
         # `--stride` must be applied BEFORE `--limit`, or every Nth of the first M
-        # is just the first M/(N) questions again.
-        src = (REPO / "evals" / "regenold" / "run_official_batch.py").read_text(encoding="utf-8")
-        strategy = src.index("rows = rows[:: args.stride]")
-        limit = src.index("rows = rows[: args.limit]")
-        assert strategy < limit
+        # is just the first M/(N) questions again. R423.1 moved the selection into
+        # `select_rows` (so `--ids` could be added and the whole contract pinned);
+        # this asserted on the order of two source lines inside `main`, which the
+        # refactor made unreadable, so it now asserts the ORDER ITSELF.
+        from evals.regenold.run_official_batch import select_rows
+
+        rows = [type("R", (), {"id": f"rg_{i:03d}"})() for i in range(1, 11)]
+        assert [r.id for r in select_rows(rows, stride=3, limit=2)] == ["rg_001", "rg_004"]
+        assert [r.id for r in select_rows(rows, limit=2, stride=3)] == ["rg_001", "rg_004"]
 
     def test_stride_recovers_the_board_mix_that_a_prefix_loses(self) -> None:
         # The 110-row batch is gitignored competition data: on a clean clone this

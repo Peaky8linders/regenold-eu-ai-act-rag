@@ -172,14 +172,81 @@ class ArmProvenance:
     #: evidence that survives a restart, and they are what the other provenance
     #: rules already read.
     rows_served: dict[str, int] = field(default_factory=dict)
+    #: R423.2 — the digests this arm's payloads produced AT RUN TIME. A saved
+    #: payload stores the digest, not the hash list behind it, so
+    #: :meth:`from_dict` carries them across and the payload-identity rule then
+    #: compares exactly the bytes it compared live. Empty on a live arm, where
+    #: the digest is derived from :attr:`system_hashes` as before.
+    recorded_system_digest: str = ""
+    recorded_user_digest: str = ""
 
     @property
     def system_digest(self) -> str:
-        return _digest(list(self.system_hashes))
+        return self.recorded_system_digest or _digest(list(self.system_hashes))
 
     @property
     def user_digest(self) -> str:
-        return _digest(list(self.user_hashes))
+        return self.recorded_user_digest or _digest(list(self.user_hashes))
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ArmProvenance:
+        """Rebuild from :meth:`as_dict`, so a SAVED run can be re-judged.
+
+        R423.2 — when the guard itself changes (here: a caller may now ACCOUNT
+        for the rows a degraded leg served, instead of voiding the whole gate),
+        the verdict must be re-derivable from the draws already on disk rather
+        than recomputed by re-spending hours of live quota on identical rows.
+        The reconstruction is lossless for every rule this module applies:
+        ``stats`` is refilled from the flattened counters the properties read,
+        and the digests are carried verbatim. It cannot invent a draw.
+        """
+        stats: dict[str, Any] = {
+            "primary_attempts": int(data.get("primary_attempts", 0) or 0),
+            "primary_ok": int(data.get("primary_ok", 0) or 0),
+            "primary_failed": int(data.get("primary_failed", 0) or 0),
+            "fallback_attempts": int(data.get("fallback_attempts", 0) or 0),
+            "fallback_ok": int(data.get("fallback_ok", 0) or 0),
+            "fallback_failed": 0,
+            "refused": int(data.get("refused", 0) or 0),
+        }
+        if data.get("stats_error"):
+            stats["_error"] = str(data["stats_error"])
+        return cls(
+            label=str(data.get("label") or ""),
+            rows=int(data.get("rows", 0) or 0),
+            deterministic_graded=int(data.get("deterministic_graded", 0) or 0),
+            stats=stats,
+            # Placeholders of the recorded LENGTH, so the "payloads could not be
+            # observed" rule still sees that the arm dispatched payloads; the
+            # digests below are the recorded ones, so identity is compared on
+            # what ran rather than on these stand-ins.
+            system_hashes=tuple(
+                f"recorded:{i}" for i in range(int(data.get("system_payloads", 0) or 0))
+            ),
+            user_hashes=tuple(
+                f"recorded:{i}" for i in range(int(data.get("system_payloads", 0) or 0))
+            ),
+            system_lengths=tuple(int(x) for x in (data.get("system_lengths") or ())),
+            calls=int(data.get("calls", 0) or 0),
+            refused_by_provider={
+                str(k): int(v) for k, v in (data.get("refused_by_provider") or {}).items()
+            },
+            legs={str(k): int(v) for k, v in (data.get("legs") or {}).items()},
+            leg_system_lengths={
+                str(k): [int(x) for x in v]
+                for k, v in (data.get("leg_system_lengths") or {}).items()
+            },
+            repeats=int(data.get("repeats", 1) or 1),
+            repeat_identical_rate=data.get("repeat_identical_rate"),
+            sample_deterministic=tuple(
+                int(x) for x in (data.get("sample_deterministic") or ())
+            ),
+            rows_served={
+                str(k): int(v) for k, v in (data.get("rows_served") or {}).items()
+            },
+            recorded_system_digest=str(data.get("system_digest") or ""),
+            recorded_user_digest=str(data.get("user_digest") or ""),
+        )
 
     @property
     def primary_ok(self) -> int:
@@ -574,6 +641,39 @@ def count_deterministic_rows(rows: Any) -> int:
     return n
 
 
+def degraded_row_ids(rows: Any) -> list[str]:
+    """Graded rows whose Stage-2 draw did NOT come from the primary leg.
+
+    A row whose provenance NAMES a leg other than ``primary`` was served by a
+    degraded path: a fallback transport, or the deterministic Stage-1 draft the
+    engine ships once the primary AND the fallback have both failed. Those are
+    the rows the R423 hard gate shipped while its transport counters read clean
+    on one arm — the exact class ``assess`` has to see to exclude it.
+
+    A row that names NO leg and did not polish is the route's own deterministic
+    answer (a curated intercept): it is answered without a Stage-2 call in BOTH
+    arms by construction, so it is not a degradation and is left alone. That
+    distinction is the whole point — :func:`count_deterministic_rows` folds the
+    two together, and a caller that excluded the curated rows would drop nine
+    stable, byte-identical rows from every pair.
+    """
+    ids: list[str] = []
+    if not rows:
+        return ids
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        prov = row.get("provenance")
+        if not isinstance(prov, dict):
+            continue
+        served = prov.get("stage2_served_by")
+        if served and str(served) != "primary":
+            row_id = row.get("id")
+            if row_id is not None:
+                ids.append(str(row_id))
+    return ids
+
+
 def assess(
     *,
     base: ArmProvenance,
@@ -581,6 +681,7 @@ def assess(
     lever: tuple[bool, str] | bool = False,
     transport_checked: bool = True,
     ignore_fallback_leg: bool = False,
+    excluded_rows: int = 0,
 ) -> GateVerdict:
     """Decide whether a paired run is eligible to report deltas.
 
@@ -595,6 +696,24 @@ def assess(
     takes on the obligation to publish the drop count and to refuse to report
     when the survivors fall below the gate floor. Default ``False`` keeps every
     existing caller's behaviour byte-identical.
+
+    ``excluded_rows`` — R423.2. The R416 argument generalised: the count of row
+    ids the caller has already excluded from BOTH arms because their graded draw
+    was transport-degraded (:func:`degraded_row_ids`). A single primary
+    read-timeout with a dead fallback credential ships one Stage-1 draft, and
+    voiding a five-hour paired gate for that row discards every sound row beside
+    it. Accounting, not assertion, is what makes the permission safe:
+
+    * each excluded row can absorb at most ONE off-contract refusal, so the
+      refusal reason is suppressed only while ``arm.refused <= excluded_rows``;
+    * the excluded set must stay a minority of the arm (``excluded_rows * 4 <=
+      arm.rows``), so an outage cannot be excluded away;
+    * every rule that reads the arm as a whole (zero completions, per-sample
+      determinism, the deterministic majority, byte-identical replays, payload
+      identity) is untouched.
+
+    The caller keeps the R416 obligations: publish the ids and the survivor
+    count, and refuse to report when the survivors fall below the gate floor.
     """
     if isinstance(lever, tuple):
         lever_changes, lever_why = lever
@@ -609,13 +728,21 @@ def assess(
 
     checked: list[ArmProvenance] = [base] + ([branch] if branch is not None else [])
 
+    # R423.2 — rows the caller has already excluded from BOTH arms because their
+    # graded draw was transport-degraded. ``ignore_fallback_leg`` is the R416
+    # special case of this (a fallback-served row); ``excluded_rows`` generalises
+    # it to any degraded leg, including the deterministic draft a dead fallback
+    # credential leaves behind, and it must be ACCOUNTED for, not merely asserted.
+    accounted = max(0, int(excluded_rows))
+    ignore_fallback = ignore_fallback_leg or accounted > 0
+
     for arm in checked:
         if arm.stats_error:
             reasons.append(
                 f"{arm.label}: transport provenance unavailable — {arm.stats_error}"
             )
             continue
-        if (arm.fallback_ok + arm.rows_served.get("fallback", 0)) > 0 and not ignore_fallback_leg:
+        if (arm.fallback_ok + arm.rows_served.get("fallback", 0)) > 0 and not ignore_fallback:
             reasons.append(
                 f"{arm.label} was served by the FALLBACK transport "
                 f"(fallback_ok={arm.fallback_ok}, primary_ok={arm.primary_ok}, "
@@ -623,7 +750,7 @@ def assess(
                 "Bedrock always receives the full system prompt, so a "
                 "system-slot lever delivers identical bytes to both arms."
             )
-        if arm.refused > 0:
+        if arm.refused > 0 and not (accounted and arm.refused <= accounted):
             named = ", ".join(
                 f"{k}×{v}" for k, v in sorted(arm.refused_by_provider.items())
             )
@@ -681,6 +808,21 @@ def assess(
                 "delta against that arm measures the transport, not the lever."
             )
 
+    accounting_note = ""
+    if accounted:
+        per_arm = ", ".join(f"{a.label} {a.rows} row(s)" for a in checked)
+        accounting_note = (
+            f"{accounted} transport-degraded row(s) were excluded from BOTH arms "
+            f"by the caller (of {per_arm}); the deltas are reported on the "
+            "survivors, and the caller owns the drop count."
+        )
+        if any(a.rows > 0 and accounted * 4 > a.rows for a in checked):
+            reasons.append(
+                f"{accounted} degraded row(s) is more than a quarter of an arm "
+                "— that is an outage, not a hiccup, and the survivors cannot "
+                "carry a delta."
+            )
+
     system_checked = False
     if branch is not None:
         # R423 — a FAILED fallback dial is a primary failure on a graded path, and
@@ -691,7 +833,7 @@ def assess(
         # the fallback 20 times and served 0 from it; the verdict said nothing,
         # and every dollar of the outage was visible only in the run log.
         a_attempts, b_attempts = base.fallback_attempts, branch.fallback_attempts
-        if a_attempts != b_attempts and not ignore_fallback_leg:
+        if a_attempts != b_attempts and not ignore_fallback:
             reasons.append(
                 "asymmetric fallback pressure: "
                 f"{base.label} dialled the fallback leg {a_attempts} time(s), "
@@ -737,6 +879,8 @@ def assess(
             "remote --endpoint run: this process cannot see the server's "
             "transport counters, so the leg is the caller's assertion."
         )
+    if accounting_note:
+        warnings.append(accounting_note)
     if not valid_branch(system_checked, branch):
         warnings.append(
             "single-arm run: no branch arm, so there are no deltas to refuse."
