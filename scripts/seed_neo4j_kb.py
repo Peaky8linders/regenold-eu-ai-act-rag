@@ -36,44 +36,60 @@ import logging
 import os
 import re
 import sys
-from datetime import datetime, timezone
-from typing import Any, Iterable
+from collections.abc import Iterable
+from datetime import UTC, datetime
+from typing import Any
 
 from app.data.article_existence import ARTICLE_EXISTENCE
+from app.data.article_requirements_full import DIMENSION_TO_ARTICLES
 from app.data.definitions import _DEFINITIONS
+from app.data.eu_ai_act_corpus import (
+    ARTICLE_CHAPTER as _ARTICLE_CHAPTER,
+)
 from app.data.eu_ai_act_corpus import (
     ARTICLE_FULL_TEXT,
     ARTICLE_TITLE,
     RECITALS,
-    ARTICLE_CHAPTER as _ARTICLE_CHAPTER,
 )
 from app.data.kb import EC_CHECKER_OBLIGATION_MAP, KB_VERSION, MATURITY_DIMENSIONS
-from app.data.article_requirements_full import DIMENSION_TO_ARTICLES
 from app.data.kb_xrefs import MANUAL_XREFS, _build_xref_graph
+from app.data.lawstronaut_provenance import (
+    OFFICIAL_CELEX as _OFFICIAL_CELEX,
+)
+from app.data.lawstronaut_provenance import (
+    OFFICIAL_EFFECTIVE_DATE as _OFFICIAL_EFFECTIVE_DATE,
+)
+from app.data.lawstronaut_provenance import (
+    OFFICIAL_ELI as _OFFICIAL_ELI,
+)
+from app.data.lawstronaut_provenance import (
+    OFFICIAL_GUIDELINES as _OFFICIAL_GUIDELINES,
+)
+from app.data.lawstronaut_provenance import (
+    OFFICIAL_LEGAL_LINK as _OFFICIAL_LEGAL_LINK,
+)
+from app.data.lawstronaut_provenance import (
+    OFFICIAL_PORTAL as _OFFICIAL_PORTAL,
+)
+from app.data.lawstronaut_provenance import (
+    OFFICIAL_TITLE as _OFFICIAL_TITLE,
+)
+
 # R291 — clean, SHA-pinned verbatim source (replaces the NBSP-laden Ansvar
 # corpus for node prose) + the nesting-aware hierarchy builder + the ontology
 # deontic layer.
 from app.data.official_eu_ai_act import (
-    OFFICIAL_ARTICLE_TITLES,
     OFFICIAL_ANNEX_TITLES,
+    OFFICIAL_ARTICLE_TITLES,
     OFFICIAL_RECITAL_TEXT,
 )
-from app.data.lawstronaut_provenance import (
-    OFFICIAL_CELEX as _OFFICIAL_CELEX,
-    OFFICIAL_EFFECTIVE_DATE as _OFFICIAL_EFFECTIVE_DATE,
-    OFFICIAL_ELI as _OFFICIAL_ELI,
-    OFFICIAL_GUIDELINES as _OFFICIAL_GUIDELINES,
-    OFFICIAL_LEGAL_LINK as _OFFICIAL_LEGAL_LINK,
-    OFFICIAL_PORTAL as _OFFICIAL_PORTAL,
-    OFFICIAL_TITLE as _OFFICIAL_TITLE,
-)
-from app.data.provision_text import article_body as _article_body
-from app.data.provision_text import get_provision_text as _get_provision_text
+from app.data.ontology import ANNEX_III_REGISTRY, PHASE_REGISTRY, PRACTICE_REGISTRY
 from app.data.provision_hierarchy import (
     HierarchyPayload,
     build_hierarchy_payload,
 )
-from app.data.ontology import PRACTICE_REGISTRY, PHASE_REGISTRY, ANNEX_III_REGISTRY
+from app.data.provision_text import article_body as _article_body
+from app.data.provision_text import get_provision_text as _get_provision_text
 
 # ── SEED-02 fix: reconcile MATURITY_DIMENSIONS ids vs DIMENSION_TO_ARTICLES keys ──
 # The upstream module uses 'conformity_assessment' but MATURITY_DIMENSIONS uses 'conformity'.
@@ -111,8 +127,11 @@ assert not _unmapped_dims, (
     f"{sorted(_unmapped_dims)}.  Add entries to DIMENSION_TO_ARTICLES or to "
     "_INTENTIONALLY_UNMAPPED_DIMENSIONS in scripts/seed_neo4j_kb.py."
 )
-from app.data.role_obligations import ROLE_OBLIGATIONS
-from app.integrations.regenold.refs import to_user_facing as _ref_to_user_facing
+# noqa: E402 — deliberately BELOW the dimension-map assertion above, so a broken
+# MATURITY_DIMENSIONS ↔ DIMENSION_TO_ARTICLES mapping fails before the KB modules
+# are imported (the import is what the mapping is validated against).
+from app.data.role_obligations import ROLE_OBLIGATIONS  # noqa: E402
+from app.integrations.regenold.refs import to_user_facing as _ref_to_user_facing  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -315,7 +334,7 @@ class SeedPayload:
     has_obligation_article_edges: list[dict] = dataclasses.field(default_factory=list)
     has_provenance_edges: list[dict] = dataclasses.field(default_factory=list)
     interprets_edges: list[dict] = dataclasses.field(default_factory=list)
-    hierarchy: "HierarchyPayload | None" = None
+    hierarchy: HierarchyPayload | None = None
 
     def _hier_counts(self) -> dict[str, int]:
         if self.hierarchy is None:
@@ -629,7 +648,7 @@ def build_payload() -> SeedPayload:
                 "source_id": q_id,
                 "target_id": dim.id,
             })
-            
+
             # Map question to obligations via articles
             articles = DIMENSION_TO_ARTICLES.get(dim.id, [])
             for art_ref in articles:
@@ -848,7 +867,7 @@ def build_payload() -> SeedPayload:
         "id": "kb_metadata",
         "seed_version": SEED_VERSION,
         "kb_version": KB_VERSION,
-        "seeded_at": datetime.now(timezone.utc).isoformat(),
+        "seeded_at": datetime.now(UTC).isoformat(),
         # total_nodes / total_edges are filled in after the SeedPayload
         # is built (chicken-and-egg) — see ``_finalise_metadata`` below.
         "total_nodes": 0,
@@ -1324,7 +1343,28 @@ def seed_graph(
         batch_size=batch_size, label="INTERPRETS", verbose=verbose,
     )
 
-    # Bridge legacy shadow Article nodes (ART4..95) to canonical article_<N> nodes
+    # Bridge legacy shadow Article nodes (ART4..95) to canonical article_<N> nodes.
+    #
+    # R428 — the ``APPLIES_TO_ROLE`` clause had the arc REVERSED, so it copied
+    # nothing at all. Measured on Aura: 17 shadow nodes carry 23
+    # ``APPLIES_TO_ROLE`` edges and ALL of them are outgoing
+    # ``(Article)-[:APPLIES_TO_ROLE]->(OperatorRole)``; the incoming count is 0,
+    # which is the only thing the old clause could match. The old clause also
+    # MERGEd in that same reversed direction, so had it ever matched it would
+    # have written an arc no reader or writer of this graph uses.
+    #
+    # Direction now follows the two authorities that AGREE: ``app/graph/ontology.py``
+    # (``applies_to_role = "APPLIES_TO_ROLE"  # Article → OperatorRole``) and the
+    # live graph above. ``app/graph/schema.py``'s comment on the same constant says
+    # the opposite and is the stale one; the constant's NAME is unchanged, so the
+    # declared-and-registered edge type set is unaffected.
+    #
+    # NOTE what this bridge does NOT buy: the 125 legacy ``REQUIRES`` edges are
+    # deliberately NOT mirrored (see the R427.1 commit — that edge type is
+    # deprecated, unseeded, and mirroring it re-propagated the R99.1 zero-retrieval
+    # drift onto the nodes production reads), and no live query reads
+    # ``APPLIES_TO_ROLE`` either, so these edges carry no scorecard value until a
+    # consumer exists. It is a data-consistency fix, not a content unlock.
     if getattr(client, "enabled", False):
         try:
             _bridge_cypher = """
@@ -1334,9 +1374,9 @@ def seed_graph(
             MERGE (shadow)-[:EQUIVALENT_TO]->(canonical)
             MERGE (canonical)-[:EQUIVALENT_TO]->(shadow)
             WITH shadow, canonical
-            OPTIONAL MATCH (role)-[atr:APPLIES_TO_ROLE]->(shadow)
+            OPTIONAL MATCH (shadow)-[atr:APPLIES_TO_ROLE]->(role)
             FOREACH (_ IN CASE WHEN role IS NOT NULL THEN [1] ELSE [] END |
-                MERGE (role)-[:APPLIES_TO_ROLE]->(canonical)
+                MERGE (canonical)-[:APPLIES_TO_ROLE]->(role)
             )
             RETURN count(DISTINCT shadow) AS bridged
             """
@@ -1771,7 +1811,7 @@ def main(argv: list[str] | None = None) -> int:
     print("\n---- Seed complete ----")
     for label, count in written.items():
         print(f"    {label:<28} = {count}")
-    print(f"    legal_ast_hierarchy          = ingested (Article/Annex -> Paragraph -> Point -> SubPoint)")
+    print("    legal_ast_hierarchy          = ingested (Article/Annex -> Paragraph -> Point -> SubPoint)")
     print(f"    schema (constraints+indexes) = {schema_tally['schema_ok']} ok, {schema_tally['schema_failed']} skipped")
     print(f"    vector_embeddings            = {n_embedded} nodes")
     client.close()

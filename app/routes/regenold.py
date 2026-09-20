@@ -49,7 +49,6 @@ import hashlib
 import os
 import re
 import threading
-
 import time
 
 # R84 — per-request memoise for ``classify_intent`` (2026-05-24).
@@ -95,12 +94,15 @@ from app.engines.sentence_index import (
 )
 from app.evidence.models import EvidenceEntryType
 from app.evidence.store import get_evidence_store
+from app.integrations.regenold.answer_normaliser import answer_has_enumeration
 from app.integrations.regenold.auth import (
     is_known_regenold_key,
     optional_regenold_api_key,
-    validate_regenold_api_key,
 )
-from app.integrations.regenold.answer_normaliser import answer_has_enumeration
+from app.integrations.regenold.lexy_gate import (
+    classify_safety_intent,
+    decide_ambiguous_oos,
+)
 from app.integrations.regenold.models import (
     MAX_MESSAGE_CONTENT_CHARS,
     MAX_REFERENCES,
@@ -152,18 +154,14 @@ from app.integrations.regenold.reasoning_trace import (
 from app.integrations.regenold.reasoning_trace import (
     record_stage2 as _trace_stage2,
 )
-from app.integrations.regenold.lexy_gate import (
-    classify_safety_intent,
-    decide_ambiguous_oos,
-)
 from app.integrations.regenold.scope import (
     ConversationVerdict,
     ScopeReason,
     classify_conversation,
+    extract_referenced_articles,
     lexy_tailored_oos_refusal,
     refusal_copy_for,
     text_has_injection,
-    extract_referenced_articles,
 )
 from app.integrations.regenold.text_normalize import normalize_unicode_punctuation
 from app.llm.intent_classifier import classify_intent
@@ -387,10 +385,10 @@ _ONTOLOGY_HOP_MAP: dict[str, list[str]] = {
     "Article 26":   ["Article 13", "Article 14", "Article 9"],
     "Article 27":   ["Article 6", "Annex III"],
     "Article 26.5": ["Article 13", "Article 14", "Article 9"],
-    
+
     # Provider Obligations (Section 3)
     "Article 16":   ["Article 11", "Article 13", "Article 17", "Article 18", "Article 21", "Article 23"],
-    
+
     # High-Risk Requirements (Section 2)
     "Article 8":    ["Article 9", "Article 11", "Article 13", "Article 14", "Article 15"],
     "Article 9":    ["Article 11", "Article 13", "Article 14", "Article 15"],
@@ -445,7 +443,7 @@ def _apply_ontology_hops(
 
     label_low = (intent_label or "").lower()
     q_low = (question or "").lower().lstrip()
-    
+
     # Evaluate triggers for different semantic structures
     is_deployer = ("deployer" in label_low) or (label_low == "role_obligations")
     is_provider = ("provider" in label_low) or (label_low == "role_obligations")
@@ -455,7 +453,7 @@ def _apply_ontology_hops(
     # Wh-shape definitions (broad scope questions)
     wh_starts = ("what", "how", "when", "who", "why", "which", "where")
     is_wh_question = q_low.startswith(wh_starts) or q_low.rstrip().endswith("?")
-    
+
     scenario_starts = (
         "we are", "we're", "our company", "our firm", "our organisation",
         "our organization", "i am a", "i'm a", "as a "
@@ -464,14 +462,14 @@ def _apply_ontology_hops(
 
     # Active context flags
     should_hop = False
-    
+
     # Trigger 1: Deployer/Provider obligations
     if is_wh_question and not is_scenario:
         if "deployer" in q_low or is_deployer:
             should_hop = True
         if "provider" in q_low or is_provider:
             should_hop = True
-            
+
     # Trigger 2: Requirements list
     if is_requirements and is_wh_question and not is_scenario:
         should_hop = True
@@ -1170,10 +1168,10 @@ def _apply_fact_state_carry_forward(
     """
     if os.getenv("REGENOLD_FACT_CARRY_FORWARD", "1").strip().lower() not in ("1", "true", "yes", "on"):
         return list(candidates)
-    
+
     if last_user_idx <= 0:
         return list(candidates)
-        
+
     # Check if any prior turn named an article/annex
     refs_seen = False
     prior_messages = dialogue[:last_user_idx]
@@ -1184,10 +1182,10 @@ def _apply_fact_state_carry_forward(
             if k or u:
                 refs_seen = True
                 break
-                
+
     if refs_seen:
         return list(candidates)
-        
+
     # Scan prior user turns for roles and domains
     to_inject = []
     for m in prior_messages:
@@ -1195,7 +1193,7 @@ def _apply_fact_state_carry_forward(
         if role != "user":
             continue
         content = (getattr(m, "content", "") or "").lower()
-        
+
         # Check roles
         if "deployer" in content:
             to_inject.append("Article 26")
@@ -1207,7 +1205,7 @@ def _apply_fact_state_carry_forward(
             to_inject.append("Article 24")
         if "authorized representative" in content or "authorised representative" in content:
             to_inject.append("Article 22")
-            
+
         # Check domains
         if any(w in content for w in ("biometric", "biometrics", "facial recognition", "emotion recognition")):
             to_inject.append("Article 5")
@@ -1224,7 +1222,7 @@ def _apply_fact_state_carry_forward(
         resolved = reference_from_article_ref(item)
         if resolved and resolved not in candidates and resolved not in injected:
             injected.append(resolved)
-            
+
     if injected:
         try:
             from app.integrations.regenold.reasoning_trace import record_note
@@ -1289,16 +1287,6 @@ def _engine_cache_key(
     """
     # Lazy import — keeps the cold-start dependency graph clean. Both
     # flags default OFF, so the resolved value is normally `"00"`.
-    from app.engines.query_complexity_router import (  # noqa: PLC0415
-        is_adaptive_router_enabled,
-    )
-    from app.engines.hybrid_rrf_retriever import (  # noqa: PLC0415
-        is_rrf_retrieval_enabled,
-    )
-    from app.engines.turboquant_index import is_enabled as _dense_enabled  # noqa: PLC0415
-    from app.integrations.regenold.citation_guard import (  # noqa: PLC0415
-        is_enabled as _guard_enabled,
-    )
     # R331 — ``REGENOLD_COHERE_RERANK`` MUST be here. The rerank runs inside
     # ``_render_supplementary_sections`` (engine-level), so it changes the
     # Stage-2 prompt and therefore the CACHED ``GraphRAGResponse``. Omitted
@@ -1311,6 +1299,17 @@ def _engine_cache_key(
     # route post-processing that re-runs on every cache hit. The rule is which
     # side of the cache the code sits on, not how important the flag is.
     from app.engines.cohere_rerank import rerank_enabled as _rerank_enabled  # noqa: PLC0415
+    from app.engines.hybrid_rrf_retriever import (  # noqa: PLC0415
+        is_rrf_retrieval_enabled,
+    )
+    from app.engines.query_complexity_router import (  # noqa: PLC0415
+        is_adaptive_router_enabled,
+    )
+    from app.engines.turboquant_index import is_enabled as _dense_enabled  # noqa: PLC0415
+    from app.integrations.regenold.citation_guard import (  # noqa: PLC0415
+        is_enabled as _guard_enabled,
+    )
+
     # R360 — ``REGENOLD_STAGE2_STRICT_TRANSPORT`` MUST be here. It decides WHICH
     # model writes the Stage-2 prose: strict-ON pins the tunnel (Claude Max
     # Opus) with a Bedrock fallback, strict-OFF re-arms the legacy Groq / Gemini
@@ -1319,7 +1318,11 @@ def _engine_cache_key(
     # +0.0000 on every axis — the R329 unfalsifiable-lever trap.
     from app.llm.stage2_policy import (  # noqa: PLC0415
         allowed_primary_hosts as _s2_hosts,
+    )
+    from app.llm.stage2_policy import (
         stage2_fallback_model as _s2_fb_model,
+    )
+    from app.llm.stage2_policy import (
         strict_transport_enabled as _s2_strict,
     )
     # ``REGENOLD_BEDROCK_WRAPPER_FALLBACK`` is consumed in
@@ -3292,11 +3295,13 @@ def _extractive_answer_candidate(
     # relevance, so the first article yielding a sentence wins.
     # (``preferred_refs`` is handled by the R68 block above.)
     seen_refs: set[str] = set()
-    
+
     # Resolve intent for dynamic score fusion
     intent_label: str | None = None
     try:
-        from app.routes.regenold import _classify_intent_cached  # local import to avoid circular if any
+        from app.routes.regenold import (
+            _classify_intent_cached,  # local import to avoid circular if any
+        )
         intent_obj = _classify_intent_cached(question)
         if intent_obj:
             intent_label = getattr(intent_obj, "intent", None)
@@ -3978,7 +3983,7 @@ def _deepen_within(coord: str, text: str, q_tok: set, a_tok: set, budget: int) -
         won = _pick_unit(q_units, q_tok, a_tok)
         if won is None:
             return coord
-        deeper = "%s.%s" % (coord, won)
+        deeper = f"{coord}.{won}"
         node = nested.get(won)
         subs = node.get("subs") if isinstance(node, dict) else None
         if budget > 1 and isinstance(subs, dict) and len(subs) >= 2:
@@ -3989,7 +3994,7 @@ def _deepen_within(coord: str, text: str, q_tok: set, a_tok: set, budget: int) -
             if q_sub_units:
                 won2 = _pick_unit(q_sub_units, q_tok, a_tok)
                 if won2 is not None:
-                    return "%s.%s" % (deeper, won2)
+                    return f"{deeper}.{won2}"
         return deeper
     except Exception:  # noqa: BLE001 — never break the route on a grain guess
         return coord
@@ -4134,7 +4139,7 @@ def _deepen_one_ref(ref: str, question: str, answer: str) -> str:
 
         if won is None:
             return ref
-        out = "%s.%s" % (ref.strip(), won)
+        out = f"{ref.strip()}.{won}"
         # R388 — descend further while the evidence keeps supporting a single
         # child. Each level re-applies the same abstention test, so an
         # ambiguous level stops the descent and keeps the coordinate we have.
@@ -4640,8 +4645,11 @@ def _qrel_prune_references(
             m = re.match(r"(Article|Annex)\s+([\w.]+)", ref)
             if m and answer:
                 num = m.group(2).split(".")[0]
-                pat = (r"Article\s+0*%s\b" % re.escape(num)) if m.group(1) == "Article" \
-                    else (r"Annex\s+%s\b" % re.escape(num))
+                pat = (
+                    rf"Article\s+0*{re.escape(num)}\b"
+                    if m.group(1) == "Article"
+                    else rf"Annex\s+{re.escape(num)}\b"
+                )
                 hit = re.search(pat, answer)
                 if hit:
                     pos = hit.start() / max(1, len(answer))
@@ -5294,7 +5302,9 @@ def _intent_anchor_set(
     intent = _classify_intent_cached(live_question)
     if intent is not None and getattr(intent, "reasoning", ""):
         try:
-            from app.integrations.regenold.reasoning_trace import record_llm_thinking  # noqa: PLC0415
+            from app.integrations.regenold.reasoning_trace import (
+                record_llm_thinking,  # noqa: PLC0415
+            )
             record_llm_thinking(intent.reasoning, stage="Intent Classifier")
         except Exception:
             pass
@@ -5402,7 +5412,7 @@ def _reference_described_in_prose(ref: str, prose: str) -> bool:
             return True
         return (
             re.search(
-                rf"\b(?:Arts?\.?|Articles)\b", prose, re.IGNORECASE
+                r"\b(?:Arts?\.?|Articles)\b", prose, re.IGNORECASE
             )
             is not None
             and re.search(
@@ -5678,7 +5688,7 @@ def _question_named_head_refs(question: str, references: list[str]) -> set[str]:
 # a VERDICT-shaped assertion counts (``is/constitutes/classified as
 # high-risk``), never an incidental "high-risk AI systems must…" mention, and
 # a preceding negation ("not", "unlike", "rather than") vetoes it.
-_TIER_GATEWAY_SPECS: tuple[tuple[str, "re.Pattern[str]"], ...] = (
+_TIER_GATEWAY_SPECS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "Article 5",
         re.compile(
@@ -6003,23 +6013,20 @@ def _surface_prose_subpoints(answer: str, references: list[str]) -> list[str]:
             if sub_uf not in bucket:
                 bucket.append(sub_uf)
 
-        for m in _GROUND_PROSE_DOTTED_RE.finditer(answer):
-            try:
-                parent_uf = _refs.to_user_facing(m.group(1))
-                sub_uf = f"{parent_uf}.{m.group(2)}"
-            except Exception:
-                continue
-            if sub_uf == parent_uf:
-                continue
-            try:
-                from app.data.provision_coordinates import coordinate_exists  # noqa: PLC0415
-                if not coordinate_exists(sub_uf):
-                    continue
-            except Exception:
-                pass
-            bucket = wanted.setdefault(parent_uf, [])
-            if sub_uf not in bucket:
-                bucket.append(sub_uf)
+        # R428 — the dotted form (``Article 6.3``) is deliberately NOT mined
+        # here; it is mined by ``_prose_named_subpoints`` (:4495), whose consumer
+        # ``_ground_wire_subpoints`` REWRITES a wire limb in place and is
+        # therefore count-neutral. R426 also mined it HERE, and that was measured
+        # to be a net negative: replaying 630 recorded hard draws through the real
+        # passes and the real official rubric (``docs/measurements/r428/
+        # dotted_subpoint_probe.py``), the ADD contributed 13 references of which
+        # 11 are excess, moved Ref. Strict and Ref. Loose on **0 rows**, and cost
+        # Ref. Conciseness. The reason it cannot help is structural: 594 of those
+        # 630 rows carry a gold SUB-POINT coordinate and 223 of them are unmet,
+        # but 140 of those are named in prose whose PARENT is absent from the wire
+        # (this pass only adds beside a parent already present), 79 are never
+        # named in the prose at all, and 4 are suppressed by the R136
+        # minimal-cover rule below — in none of the 223 was the ADD the fix.
         # R136 — minimal-reference over-citation guard. When the prose names
         # >=3 distinct sub-points of the SAME parent, the answer is describing
         # the whole article's structure (e.g. a "what is high-risk" answer
@@ -6379,14 +6386,34 @@ def _citable_base_guard_enabled() -> bool:
 
 
 def _ontology_citable_expansion_enabled() -> bool:
-    """REGENOLD_ONTOLOGY_CITABLE_EXPANSION - default ON.
+    """REGENOLD_ONTOLOGY_CITABLE_EXPANSION — **default OFF** (R428).
 
-    Expands citable bases with 1-hop ontological neighbors (cross-references,
-    role obligations, and risk class mappings) so the citable base guard
-    never drops legitimate gold heads that the LLM correctly identified.
+    Expands citable bases with 1-hop ontological neighbours (cross-references,
+    role obligations, and risk-class mappings).
+
+    R426 shipped this default ON to stop :func:`_add_prose_named_refs` from
+    dropping "legitimate gold heads the LLM correctly identified". Two facts
+    forced the default back to OFF, and both are measured, not preferred:
+
+    1. **Its only consumer is OFF.** ``citable_bases`` is passed only
+       ``if _citable_base_guard_enabled()``, and that guard has defaulted OFF
+       since R401 rejected it on a full live hard-set A/B (ref conciseness
+       +9.61 pp against head-level recall −18.02 pp and ``gold_dropped_head``
+       9 → 19). So at default settings the expansion was computed twice per
+       request and then discarded.
+    2. **In the state where it DOES fire, it re-admits exercise references.**
+       Replaying 457 recorded hard-split draws through the real pass
+       (``docs/measurements/r428/ontology_expansion_probe.py``): the expansion
+       unblocks **191** references of which **1** is gold and **190** are excess,
+       moving Ref. Conciseness **−3 pp** and the two correctness axes **+0.00**.
+       The stated benefit is not observable on any recorded draw.
+
+    ``=1`` remains reachable for a controlled experiment, and such an experiment
+    must gate the expansion and the guard TOGETHER — the guard is the thing it
+    modifies, and the pair has never been gated.
     """
-    return os.getenv("REGENOLD_ONTOLOGY_CITABLE_EXPANSION", "1").strip().lower() not in (
-        "0", "false", "no", "off",
+    return os.getenv("REGENOLD_ONTOLOGY_CITABLE_EXPANSION", "0").strip().lower() in (
+        "1", "true", "yes", "on",
     )
 
 
@@ -6399,8 +6426,8 @@ def _expand_citable_bases_with_ontology(
         return frozenset(bases)
     try:
         from app.data.kb_xrefs import _build_xref_graph  # noqa: PLC0415
-        from app.integrations.regenold import refs as _refs  # noqa: PLC0415
         from app.data.ontology import ROLE_OBLIGATIONS, ActorRole, RiskClass  # noqa: PLC0415
+        from app.integrations.regenold import refs as _refs  # noqa: PLC0415
     except Exception:
         return frozenset(bases)
 
@@ -7154,7 +7181,7 @@ def _collapse_hrais_chain(
         lead = (answer_text or "")[:240].lower()
         q_nums = {int(m) for m in re.findall(r"\barticle\s+(\d{1,3})", ql)}
         kept: list[str] = []
-        for ref, n in zip(references, nums):
+        for ref, n in zip(references, nums, strict=False):
             if n in _HRAIS_DETAIL_DROP:
                 named_in_lead = bool(re.search(rf"\barticle\s+{n}\b", lead))
                 if not named_in_lead and n not in q_nums:
@@ -8266,11 +8293,10 @@ def _extract_reask_tail(live_question: str) -> str | None:
     """
     if not live_question or not _is_reask_focus_enabled():
         return None
-    last = None
-    for last in _REASK_MARKER_RE.finditer(live_question):
-        pass
-    if last is None:
+    markers = list(_REASK_MARKER_RE.finditer(live_question))
+    if not markers:
         return None
+    last = markers[-1]
     tail = (live_question[last.end() :] or "").strip()
     if not tail or not _live_turn_is_self_contained(
         tail, require_anchor=not _reask_anchorless_enabled()
@@ -9365,7 +9391,7 @@ def regenold_eu_ai_act_ask(
     _has_listing_intent = any(t in (resolved_question or question or "").lower() for t in _listing_triggers)
 
     try:
-        from app.integrations.regenold.reasoning_trace import set_multiturn, set_listing_intent
+        from app.integrations.regenold.reasoning_trace import set_listing_intent, set_multiturn
         set_multiturn(_is_multiturn)
         set_listing_intent(_has_listing_intent)
     except Exception:
@@ -9988,7 +10014,7 @@ def regenold_eu_ai_act_ask(
         _boost_intent_res = _classify_intent_cached(question)
     except Exception:  # noqa: BLE001 — defensive (never let intent 500 the route)
         _boost_intent_res = None
-    
+
     try:
         candidates = boost_for_intent(candidates, _boost_intent_res)
     except Exception:  # noqa: BLE001 — defensive
@@ -12387,7 +12413,7 @@ def regenold_eu_ai_act_ask(
                     _keep_thresh = 0.05
 
                 _kept_refs = []
-                for _r, _s, _p in zip(references, _scores, _premises):
+                for _r, _s, _p in zip(references, _scores, _premises, strict=False):
                     if not _p or float(_s) >= _keep_thresh:
                         _kept_refs.append(_r)
 
@@ -12632,8 +12658,8 @@ def regenold_eu_ai_act_ask(
         )
         if _gd_refs != references:
             _gd_changed = [
-                "%s->%s" % (a, b)
-                for a, b in zip(references, _gd_refs)
+                f"{a}->{b}"
+                for a, b in zip(references, _gd_refs, strict=False)
                 if a != b
             ]
             references = _gd_refs
@@ -12654,8 +12680,8 @@ def regenold_eu_ai_act_ask(
             _cg_refs = _repair_nonexistent_coordinates(references)
             if _cg_refs != references:
                 _cg_fixed = [
-                    "%s->%s" % (a, b)
-                    for a, b in zip(references, _cg_refs)
+                    f"{a}->{b}"
+                    for a, b in zip(references, _cg_refs, strict=False)
                     if a != b
                 ]
                 references = _cg_refs
@@ -12699,7 +12725,7 @@ def regenold_eu_ai_act_ask(
             if _gw_refs != references:
                 _gw_changed = [
                     f"{a}->{b}"
-                    for a, b in zip(references, _gw_refs)
+                    for a, b in zip(references, _gw_refs, strict=False)
                     if a != b
                 ]
                 references = _gw_refs

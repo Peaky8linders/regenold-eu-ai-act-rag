@@ -185,6 +185,44 @@ inside the compact branch.** Still default OFF; the A/B is now meaningful for th
 Full evidence: `docs/reviews/r398-invariant-5-audit-2026-09-09.md`.
 
 
+## ⛔ R428 — the R426 (SOTA legal-KG) round, audited by execution
+
+Full evidence: `docs/reviews/r428-cr-dispositions.md`, artefact
+`docs/measurements/r428/dotted_subpoint_probe.py` (630 recorded hard draws, real
+passes, real `evals.official.rubric`, no live calls).
+
+* **Three of R426's four headline claims did not survive measurement.** Dotted
+  sub-point ADD: **Ref. Strict and Ref. Loose moved on 0 rows**, Ref. Conciseness
+  −0.01 pp, and **0 of the 223 unmet gold sub-point expectations** recovered. So it
+  is not "the root cause of the −10.3 pp Ref-Strict deficit" and the ADD is **removed**
+  (the dotted form stays with `_prose_named_subpoints` → `_ground_wire_subpoints`,
+  which rewrites 1:1 and is count- and head-invariant).
+* **`REGENOLD_ONTOLOGY_CITABLE_EXPANSION` is back to default `0`.** Its only consumer,
+  `REGENOLD_CITABLE_BASE_GUARD`, defaults OFF (R401 rejected it), so at default settings
+  the expansion was computed twice per request and thrown away; where it does fire it
+  unblocks 191 references of which **1** is gold and **190** excess.
+* **The 17 shadow `Article` nodes and their 148 edges are real, and reading them is not
+  what unlocks them.** Aura: 125 `REQUIRES` + 23 `APPLIES_TO_ROLE`, all outgoing from the
+  shadows; `PROHIBITED_UNDER` / `TRIGGERS_HIGH_RISK_UNDER` / `HAS_OBLIGATION_ARTICLE` /
+  `APPLIES_TO` are all **0** on them, and **no live query reads either edge type**. The
+  widened `_DEONTIC_CYPHER` MATCH is therefore a canonical-missing **compat shim**: it
+  returns 10 rows where the unwidened returns 10 (the projection collects into aggregates
+  keyed on `cite`, so twins merge — pinned by a test).
+* **Two real bugs, both fixed.** `_DEONTIC_CYPHER` applied the shadow-only id transform to
+  every matched node, so `substring('article_6', 3)` rendered **"Article icle_6"** into the
+  Stage-2 context for any node without `strict_citation`; and the seeder bridge matched
+  `APPLIES_TO_ROLE` in the **reversed** direction (incoming count is 0, so it copied
+  nothing and would have written an unused arc).
+* **NEVER mirror `REQUIRES`.** It is the R99.1 drift edge — schema says unseeded, R427.1
+  removed the mirror, and a test now pins the refusal.
+* **Where the Ref-Strict deficit actually lives** (classification of all 223 unmet gold
+  sub-points): **140** are named in prose whose PARENT is absent from the wire (a coverage
+  pass, which no grain pass can reach — they add only beside a parent already present),
+  **79** are never named in the prose at all (generation-side), **4** are R136's deliberate
+  minimal-cover trade. Another round of reference post-processing cannot move this.
+* **`ci.yml` has no lint job**, which is how 37 ruff errors reached `main`. The files this
+  round touched are now ruff-clean.
+
 ## ⛔ R410 — the R409 defect set, fixed and re-verified on the wire
 
 Full evidence: `docs/reviews/r410-session-handoff.md` §6. Instrument:

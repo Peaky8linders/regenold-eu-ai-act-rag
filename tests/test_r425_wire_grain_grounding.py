@@ -455,24 +455,34 @@ class TestTheResultReachesTheWire:
         assert traced == (body.get("references") or [])
 
 
-class TestTheAddTwinSeesTheDottedForm:
-    """R133's ADD path must read the same prose forms the rewrite reads.
+class TestTheAddTwinDoesNotSeeTheDottedForm:
+    """R428 — the dotted ADD was measured out; the rewrite keeps it.
 
-    The rewrite is the mirror of the ADD pass, so they have to agree about what
-    the prose NAMES. R133 reads the parenthesised and ``point``/``paragraph``
-    forms; this pins that it now also reads the user-facing dotted form, which is
-    the form the rewrite path handles and the form answers actually use.
+    R426 also taught the ADD pass (``_surface_prose_subpoints``, R133) to read the
+    user-facing dotted form. That was measured on 630 recorded hard draws
+    (``docs/measurements/r428/dotted_subpoint_probe.py``): 13 references added, 11
+    of them excess, Ref. Strict and Ref. Loose moved on **0 rows**, Ref.
+    Conciseness −0.01 pp under the real route order, and 0 of the 223 unmet gold
+    sub-point expectations recovered. So the dotted form is mined ONLY by
+    ``_prose_named_subpoints`` → ``_ground_wire_subpoints``, which rewrites 1:1 and
+    is therefore count- and head-invariant. The parenthesised form keeps its R133
+    route, untouched.
     """
 
-    def test_the_dotted_form_adds_the_leaf_the_parenthesised_form_adds(self) -> None:
+    def test_the_dotted_form_does_not_grow_the_wire(self) -> None:
         paren = R._surface_prose_subpoints("see Article 6(3) for this", ["Article 6"])
         dotted = R._surface_prose_subpoints("see Article 6.3 for this", ["Article 6"])
         assert "Article 6.3" in paren, paren
-        assert dotted == paren, f"dotted={dotted} paren={paren}"
+        assert dotted == ["Article 6"], dotted
+
+    def test_the_dotted_form_is_still_seen_by_the_rewrite(self) -> None:
+        """Count-neutral, so it cannot cost the reference axes."""
+        out = R._ground_wire_subpoints("see Article 6.3 for this", ["Article 6", "Article 6.2"])
+        assert out == ["Article 6", "Article 6.3"], out
 
     def test_it_still_only_fires_on_the_bare_parent(self) -> None:
         """The R133 contract is unchanged: no bare parent on the wire, no ADD."""
-        out = R._surface_prose_subpoints("see Article 6.3", ["Article 9"])
+        out = R._surface_prose_subpoints("see Article 6(3)", ["Article 9"])
         assert out == ["Article 9"], out
         head = R._surface_prose_subpoints("see Article 6 for this", ["Article 6"])
         assert head == ["Article 6"], head
