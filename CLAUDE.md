@@ -1420,17 +1420,25 @@ differing) the reordered rungs are a **WASH** — OVERALL 72.7 → 72.9 (+0.2 pp
   (`r425-wiregrain`, 37 strided rows × 3 generations × 2 arms) and **stopped
   deliberately** once that property was established.
   **Live reachability** (`live_paired_read.py`, judge-free, 9 targeted rows on the
-  real tunnel): the OFF arm's recorded wires are still rewritable in **7 of 9**
-  rows and the ON arm's shipped wires in **0 of 9** — the per-arm proof that the
-  call site fires, which an inert one could not produce (it would leave both arms
-  rewritable). Head-invariant 9/9, count-invariant 9/9, and `gold heads dropped`
-  moves `24→24` / `25→25` across the pass, both arms: hard rule #8 is preserved by
-  construction AND observed. On those 9 **stress** rows (chosen because the pass
-  fires) the three reference axes move `+0.00 pp` — the population `+0.62 pp`
-  comes from the 336-sample replay, not from this sample. At `--repeats 1` the two
-  arms are independent draws (`answer byte-identical across arms: 0/9`), so the
-  cross-arm numbers in that artifact are labelled DESCRIPTIVE and are not quoted as
-  a lever estimate anywhere.
+  real tunnel; 27 arm-A draw-samples and 11 arm-B ones recorded): the OFF arm's
+  recorded wires are still rewritable in **7 of 11** draw-samples and the ON arm's
+  shipped wires in **0 of 11** — the per-arm proof that the call site fires, which
+  an inert one could not produce (it would leave both arms rewritable).
+  Head-invariant 11/11, count-invariant 11/11, and `gold heads dropped` moves
+  `30→30` / `33→33` across the pass, both arms: hard rule #8 is preserved by
+  construction AND observed. Generation is not a pairing (`A#s0` vs `B#s0` are
+  different draws — `answer byte-identical across arms: 0/11`), so the cross-arm
+  numbers in that artifact are labelled DESCRIPTIVE and are not quoted as a lever
+  estimate anywhere; on those 9 **stress** rows the within-draw counterfactual is
+  `+0.00 pp` on all three axes, and the population `+0.62 pp` comes from the
+  336-sample replay. The same rows show the guard rule refusing to attribute a
+  cross-arm wire difference on generation 0 (0 same-answer rows, 8 draw-confounded)
+  — the correct verdict for a sample with no same-draw pair.
+  ⚠ **Operational:** the longer live leg (`r425-live3`) was aborted mid-arm-B by
+  the runner's own guard after 5 consecutive primary failures
+  (`api_status_500 "No response from Claude Code"`) — the wrapper backend stops
+  answering while its `/health` still returns 200. The guard refuses to grade the
+  rest on Stage-1 drafts (R417), so a repeats-3 live gate needs the wrapper up.
   Record: `docs/measurements/r425/CHECKPOINT.md`; replay probe
   `docs/measurements/r425/wire_grain_grounding_probe.py`; targeted live read
   `docs/measurements/r425/live_paired_read.py`. Substitution attribution is read

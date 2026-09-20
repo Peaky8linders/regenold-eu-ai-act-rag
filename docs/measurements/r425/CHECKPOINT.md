@@ -197,52 +197,74 @@ That is the `rg_100` defect fixed end-to-end on a real request, with the shipped
 answer untouched. 42 tests cover the rewrite semantics (substitution vs grain
 prefix, both prose citation forms, annex limbs, existence filtering, head/count
 invariance, dedupe, fail-soft), the flag's gating, the cache-key registration, the
-deterministic-path no-op, the trace note, and the wire round-trip.
-
-## 7. The live leg — `live_paired_read.py` (targeted, judge-free)
+deterministic-path no-op, the trace note, and the wire round-trip.## 7. The live leg — `live_paired_read.py` (targeted, judge-free)
 
 The 9 hard rows whose recorded answers make the pass fire, run through the real
 route on the real transport (`claude-opus-4-8`), `--baseline-env …=0` versus
-`--branch-env …=1`:
+`--branch-env …=1`. Two runs: `r425-live` (1 generation, 9 rows) and `r425-live3`
+(3 generations intended; **aborted in arm B generation 2** — see the outage note
+below, so 27 arm-A draw-samples and 11 arm-B ones are on disk).
 
 ```
-lever_slot=wire  lever_changes_wire={'changes': True, 'why': 'arm env differs on wire-slot flag(s): REGENOLD_GROUND_WIRE_SUBPOINTS'}
-stage2 leg that served the rows: {'primary': 18}
+r425-live3, generations present: {'A': {0: 9, 1: 9, 2: 9}, 'B': {0: 9, 1: 2, 2: 0}}
+stage2 leg that served the rows: {'primary': 22}
+
+guard attribution on generation 0: 0 same-answer row(s), 8 draw-confounded row(s)
+   -> a wire delta is NOT attributable
 
 REACHABILITY — is the call site firing on the live route?
-  OFF arm (recorded wire)    rewritable 7/9   substitutions 9   head-invariant 9/9   count-invariant 9/9   gold heads dropped 24 (after the pass: 24)
+  OFF arm (recorded wire)    rewritable 7/11   substitutions 9   head-invariant 11/11   count-invariant 11/11   gold heads dropped 30 (after the pass: 30)
       of those applied rewrites: the limb we shipped was gold 1, the limb we ship instead is gold 2 (limb- or head-level)
-  ON arm (shipped wire)      rewritable 0/9   substitutions 0   head-invariant 9/9   count-invariant 9/9   gold heads dropped 25 (after the pass: 25)
+  ON arm (shipped wire)      rewritable 0/11   substitutions 0   head-invariant 11/11   count-invariant 11/11   gold heads dropped 33 (after the pass: 33)
 
 WITHIN-DRAW COUNTERFACTUAL on these live rows (paired by construction):
   axis          shipped   passed   gain pp
-  ref_loose      100.00   100.00    +0.00
-  ref_strict      72.22    72.22    +0.00
-  ref_conc        38.43    38.43    +0.00
+  ref_loose       90.91    90.91    +0.00
+  ref_strict      81.82    81.82    +0.00
+  ref_conc        35.23    35.23    +0.00
 ```
 
-**The non-vacuity proof is per ARM, and that is deliberate.** At `--repeats 1`
-the two arms draw different Stage-2 samples — `answer byte-identical across arms:
-0/9` — so a cross-arm difference cannot be attributed to the pass. (Its raw
-numbers are in the artifact as *descriptive*; the `+14.81 pp` Ref. Strict there is
-draw variance, not the lever, and is not quoted anywhere as a result.) The read
-that *is* paired is within a draw: apply the pass to the row's own answer and wire.
-On that read the OFF arm's recorded wires are still rewritable in **7 of 9** rows
-while the ON arm's shipped wires are rewritable in **0 of 9** — which is exactly
-what "the call site fired on the live transport" means, and what an inert call
-site could not produce (it would leave both arms rewritable).
+**The non-vacuity proof is per ARM, and that is deliberate.** Generation is not a
+pairing — `A#s0` and `B#s0` are different draws, `answer byte-identical across
+arms: 0/11` — so a cross-arm difference cannot be attributed to the pass. (The
+cross-arm numbers in the artifact are labelled *descriptive*; the `+3.03 pp`
+Ref. Strict there is draw variance, not the lever, and is not quoted as a result
+anywhere.) The read that *is* paired is within a draw: apply the pass to the row's
+own answer and wire. On that read the OFF arm's recorded wires are still
+rewritable in **7 of 11** draw-samples while the ON arm's shipped wires are
+rewritable in **0 of 11** — which is exactly what "the call site fired on the live
+transport" means, and what an inert call site could not produce (it would leave
+both arms rewritable, since both arms' rows run the same code until the pass).
 
-Two honest notes on this sample:
+The same data also shows the R425 guard rule doing its job on real rows: on
+generation 0 it finds **0** same-answer rows and 8 draw-confounded ones, so it
+**refuses to attribute** the arms' wire difference to the lever. That is the
+correct answer for this sample, and it is why the population number comes from the
+336-sample replay where every pair is the same draw.
+
+Three honest notes on this sample:
 
 * On these 9 **stress** rows (chosen *because* the pass fires) the three reference
-  axes are unchanged by the pass: `+0.00 pp` on all three. The rows' gold keys are
-  head-level or the limb that matters is untouched, so the applied rewrites are
-  score-neutral there — the population `+0.62 pp` comes from the 336-sample
-  replay, not from this sample. One of the 9 applied rewrites replaced a limb that
-  matched the gold key at limb- or head-level; its scored effect is still `0.00`,
-  which is what the replay's `wire limb IS gold: 0/106` predicts in aggregate.
-* `gold heads dropped` moves `24 → 24` and `25 → 25` across the pass, on live
+  axes are unchanged by the pass: `+0.00 pp` on all three, in both runs. The rows'
+  gold keys are head-level or the limb that matters is untouched, so the applied
+  rewrites are score-neutral there — the population `+0.62 pp` comes from the
+  336-sample replay, not from this sample. One of the applied rewrites replaced a
+  limb that matched the gold key at limb- or head-level; its scored effect is
+  still `0.00`, which is what the replay's `wire limb IS gold: 0/106` predicts in
+  aggregate.
+* `gold heads dropped` moves `30 → 30` and `33 → 33` across the pass, on live
   prose, in both arms. Hard rule #8 is preserved by construction and **observed**.
+* **Transport outage, recorded because it is the recurring operational risk.**
+  `r425-live3` was aborted by the runner's own guard at 23:12 after 5 consecutive
+  primary failures — `api_status_500 {"error":{"message":"No response from Claude
+  Code"}}` — i.e. the Claude Max wrapper's backend stopped answering while the
+  tunnel itself still returned 200 to `/health`. The guard refused to grade the
+  rest of the sample on deterministic Stage-1 drafts (the R417 policy), which is
+  why arm B generation 2 is empty. A repeats-3 live gate therefore needs the
+  wrapper backend up; the read above is what the recorded draws support.
+  `lever_slot` is `None` in this artifact because the aborted run never wrote its
+  gate payload — the attribution line is computed with the guard's own functions
+  instead.
 
 ## 8. Not in scope (recorded so it is not mistaken for a coverage gap)
 

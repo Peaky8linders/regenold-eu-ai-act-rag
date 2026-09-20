@@ -61,10 +61,16 @@ REPEATS = int(sys.argv[2]) if len(sys.argv) > 2 else 1
 
 
 def _rows(arm: str, sample: int = 0) -> dict[str, dict[str, Any]]:
+    """Rows of one (arm, generation). An absent generation is NOT an error.
+
+    A live leg can be aborted mid-sample by the transport guard (the R417 policy:
+    never grade the rest on deterministic drafts), so a generation that does not
+    exist yet is simply not evidence — the generations that do exist still are.
+    """
     stem = f"official-{LABEL}-{arm}-hard"
     path = RESULTS / (f"{stem}.ckpt.jsonl" if sample == 0 else f"{stem}.r{sample}.ckpt.jsonl")
     if not path.exists():
-        raise SystemExit(f"missing checkpoint {path.name}")
+        return {}
     return {
         r["id"]: r
         for r in (json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip())
@@ -121,6 +127,30 @@ def _gold_matches(leaf: str, expected: list[str]) -> bool:
     )
 
 
+def _guard_attribution(
+    rows_a: dict[str, dict[str, Any]], rows_b: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    """Run the void guard's OWN rule over the recorded rows of one generation.
+
+    The runner writes that verdict into its payload, but a leg aborted by the
+    transport guard never reaches the payload — and the question "could this run
+    have attributed its wire difference to the lever?" is answerable straight from
+    the checkpoints with the shipped functions.
+    """
+    from evals.harness.gate_validity import wire_attribution, wire_shape_digest
+
+    a = wire_shape_digest([rows_a[k] for k in sorted(rows_a)])
+    b = wire_shape_digest([rows_b[k] for k in sorted(rows_b)])
+    attributed, drawn_aside, err = wire_attribution(a, b)
+    return {
+        "rows_compared": len(set(rows_a) & set(rows_b)),
+        "attributed": attributed,
+        "drawn_aside": drawn_aside,
+        "error": err,
+        "would_be_valid": bool(attributed),
+    }
+
+
 def main() -> int:
     gold = {
         r["id"]: r
@@ -130,21 +160,17 @@ def main() -> int:
     # and is paired within a draw, so more generations is more evidence, not
     # duplication. The cross-arm descriptive read needs the arms to line up, so it
     # uses sample 0 only.
-    rows_a = {r["id"]: r for s in range(REPEATS) for r in _rows("A", s).values()}
-    rows_b = {r["id"]: r for s in range(REPEATS) for r in _rows("B", s).values()}
-    if REPEATS > 1:
-        # ``_graded`` keys by row id, so keep the pooled rows under a draw-qualified
-        # key to avoid one generation overwriting another.
-        rows_a = {
-            f"{r['id']}#s{s}": r
-            for s in range(REPEATS)
-            for r in _rows("A", s).values()
-        }
-        rows_b = {
-            f"{r['id']}#s{s}": r
-            for s in range(REPEATS)
-            for r in _rows("B", s).values()
-        }
+    samples_a = {s: _rows("A", s) for s in range(REPEATS)}
+    samples_b = {s: _rows("B", s) for s in range(REPEATS)}
+    # ``_graded`` keys by row id, so pool each draw under a draw-qualified key.
+    rows_a = {
+        f"{r['id']}#s{s}": r for s, ck in samples_a.items() for r in ck.values()
+    }
+    rows_b = {
+        f"{r['id']}#s{s}": r for s, ck in samples_b.items() for r in ck.values()
+    }
+    if not rows_a or not rows_b:
+        raise SystemExit(f"no rows for label {LABEL} (a={len(rows_a)}, b={len(rows_b)})")
     payload_path = RESULTS / f"official-{LABEL}.json"
     payload = (
         json.loads(payload_path.read_text(encoding="utf-8")) if payload_path.exists() else {}
@@ -210,6 +236,13 @@ def main() -> int:
         "lever_slot": payload.get("lever_slot"),
         "lever_changes_wire": payload.get("lever_changes_wire"),
         "gate": payload.get("gate"),
+        "generations": {
+            "A": {s: len(ck) for s, ck in samples_a.items()},
+            "B": {s: len(ck) for s, ck in samples_b.items()},
+        },
+        "guard_attribution": _guard_attribution(
+            samples_a.get(0, {}), samples_b.get(0, {})
+        ),
         "served": dict(served),
         "answer_identical_rows": sum(1 for r in per_row if r["answer_identical"]),
         # cross-arm: descriptive only (independent draws at --repeats 1)
@@ -267,13 +300,23 @@ def main() -> int:
     print("=" * 88)
     print(f"lever_slot={report['lever_slot']}  lever_changes_wire={report['lever_changes_wire']}")
     print(f"stage2 leg that served the rows: {report['served']}")
+    print(f"generations present: {report['generations']}")
+    att = report["guard_attribution"]
+    print(
+        "guard attribution on generation 0: "
+        f"{len(att['attributed'])} same-answer row(s), "
+        f"{len(att['drawn_aside'])} draw-confounded row(s)"
+        f"{'  error=' + att['error'] if att['error'] else ''}"
+        "   -> a wire delta is "
+        + ("attributable to the lever" if att["would_be_valid"] else "NOT attributable")
+    )
     print(
         "answer byte-identical across arms: "
         f"{report['answer_identical_rows']}/{len(per_row)}"
-        "   <-- 0 means the two arms are INDEPENDENT draws (--repeats 1), so the"
+        "   <-- A#sN and B#sN are DIFFERENT DRAWS (generation is not a pairing), so"
     )
     print(
-        "    cross-arm numbers below are DESCRIPTIVE, not a lever estimate."
+        "    the cross-arm numbers below are DESCRIPTIVE, not a lever estimate."
         "  The lever's own"
     )
     print(
