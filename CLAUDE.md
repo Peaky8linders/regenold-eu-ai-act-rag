@@ -1235,14 +1235,36 @@ differing) the reordered rungs are a **WASH** — OVERALL 72.7 → 72.9 (+0.2 pp
   offline calibration already warned (59/110 rows called "1 item" while only 4 rows
   truly have 1 criterion), which is why the next lever is a content-preservation
   contract tied to the Stage-1 draft's own engaged set, not a bigger length target.
-  **Scope caveat, measured post-deploy:** a hard-mode request dispatches the
-  **61-char persona** (97 of the gate's 109 `B:primary` payloads — the rest are
-  that record's auxiliary tail, `61 × 97 · 132 × 2 · 1311 × 1 · 6365 × 8 · 59644
-  × 1`; the recorder wraps the provider, so it counts the Stage-1 parser and the
-  completeness guard too. R423c corrected this row, which said "108 of 109" — a
-  figure no artifact holds), so this gate measures hard mode under the STRIPPED
-  prompt —
-  the configuration R411 gap 3.1 names. Live single-turn already answers `rg_010`
+  **Scope caveat, measured post-deploy — and CORRECTED in R423.3.** A hard-mode
+  request past the first two rows dispatches the **61-char persona**, so this gate
+  measures hard mode under the STRIPPED prompt, the configuration R411 gap 3.1
+  names. The blanket version of this row ("a hard-mode request dispatches the
+  persona") was **FALSE** and is falsified by
+  `docs/measurements/r423/graded_scope_probe.py`, which drives real hard rows
+  through the real route and records (row, turn, user chars, system chars) per
+  dispatch: `run_official_batch._run_hard` keeps a rolling conversation that starts
+  EMPTY, so the **first two rows of any run read `history_turn_count` 0 and 1 and
+  receive the FULL ~59.6 kB system prompt**. Only from row 3 on does a hard run read
+  >= 2. Decisive pair, same row and same harness with only its POSITION varied:
+  `--ids rg_004` dispatches `59644` on turn 1, `--ids rg_001,rg_004` dispatches
+  `61` for that same turn-1 ask. The engine is right (a request carrying 0 prior
+  turns IS a single-turn ask); the claim was wrong — the modality is a property of
+  the caller's conversation, not of the benchmark's name. The gate's own payload record shows the asymmetry that
+  caused: arm A was **resumed**, so `--resume` restarted its rolling history and it
+  made one full-prompt primary dispatch arm B (continuous) did not
+  (`A:primary` `61 × 17 · 6365 × 3 · 59644 × 1` against `B:primary`
+  `61 × 168 · 132 × 5 · 1311 × 3 · 6365 × 117`; A's `fallback` leg is `59644 × 5`
+  because **Bedrock always receives the full ``system``**, R360 — not a Stage-2
+  measure). Bounded rather than asserted:
+  `docs/measurements/r423/need_scope_sensitivity.py` re-scores the gate's judged
+  rows leaving out each of the 27 comparable rows in turn — the overall delta stays
+  in **[+13.42, +14.50] pp** against **+13.93 pp** as run, so no single row carries
+  the win. The resume defect is FIXED generally:
+  `run_official_batch.seed_history_from_records` rebuilds the rolling conversation
+  from the rows already on disk, so a resumed hard run sends the same history an
+  uninterrupted one would (pinned in `tests/test_r423_3_resume_modality.py`,
+  including that a FRESH run still starts empty — that is the shipped baseline).
+  Live single-turn already answers `rg_010`
   in the lever's ON shape (316 chars, `Article 14.1`, primary-served, verified
   against production `dd87fd45e3ae`) because it gets the full 53 kB system prompt
   via `REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN=1`. The lever's incremental effect

@@ -188,8 +188,17 @@ class TestResponseCacheIsClearedBetweenGenerations:
         src = (REPO / "evals" / "regenold" / "run_official_batch.py").read_text(encoding="utf-8")
         loop = src.index("for k in range(repeats):")
         clear = src.index("cleared, cache_error = _clear_engine_cache()")
-        run = src.index("fresh = runner(pending, poster")
-        assert loop < clear < run, "the cache must be cleared before each sample runs"
+        # R423.3 split the dispatch into an easy and a hard call site, so assert
+        # the CONTRACT — every sample dispatch comes after the clear — rather
+        # than one call's literal formatting.
+        dispatches = [
+            i for i in range(len(src))
+            if src.startswith("fresh = runner(", i)
+        ]
+        assert dispatches, "the runner must still dispatch per sample"
+        assert loop < clear < min(dispatches), (
+            "the cache must be cleared before each sample runs"
+        )
 
 
 class TestRepeatIndependence:

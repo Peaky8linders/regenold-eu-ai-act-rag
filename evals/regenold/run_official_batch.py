@@ -568,12 +568,55 @@ def _run_easy(
     return out
 
 
+def seed_history_from_records(records) -> list[dict[str, str]]:
+    """R423.3 — the rolling conversation a RESUMED hard run must start from.
+
+    ``_run_hard``'s rolling history is what makes a row multi-turn: the route
+    reads ``history_turn_count`` off the request, and the engine's single-turn
+    predicate is ``history_turn_count <= 1``. So an EMPTY history does not merely
+    omit context — it changes the MODALITY. Measured with
+    ``docs/measurements/r423/graded_scope_probe.py``: the first two rows of a run
+    with an empty rolling history read 0 and 1, so their Stage-2 dispatches carry
+    the FULL ~59.6 kB system prompt, while every later row carries the 61-char
+    persona.
+
+    ``--resume`` used to hand the pending rows a brand-new empty history, so its
+    first two rows were re-graded as near-single-turn — a modality its
+    uninterrupted counterpart would never have had. In the R423 need gate that
+    cost arm A one full-prompt dispatch that arm B did not make, i.e. it made a
+    resumed arm and a continuous arm differ in the SYSTEM slot. Rebuilding the
+    seed from the rows already on disk makes a resume measure the same thing the
+    first run would have.
+
+    Only rows the runner actually rolled forward are seeded: ``_run_hard`` rolls
+    the history on ``if ans1``, so a record with no turn-1 answer never
+    contributed an exchange and must not be invented here.
+    """
+    seed: list[dict[str, str]] = []
+    for record in records:
+        first = str(record.get("turn1_answer") or record.get("pred_answer") or "")
+        question = str(record.get("question") or "")
+        if not first or not question:
+            continue
+        seed.append({"role": "user", "content": question})
+        seed.append({"role": "assistant", "content": str(record.get("pushback_answer") or first)})
+    return trim_history(seed)
+
+
 def _run_hard(
-    rows, poster, url, api_key, timeout, ckpt, *, sample: int = 0
+    rows,
+    poster,
+    url,
+    api_key,
+    timeout,
+    ckpt,
+    *,
+    sample: int = 0,
+    seed_history: list[dict[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
     """Rolling multi-turn conversation + the judge's pushback, per question."""
     out: list[dict[str, Any]] = []
-    history: list[dict[str, str]] = []
+    history: list[dict[str, str]] = list(seed_history or [])
     for i, row in enumerate(rows, 1):
         # --- turn 1: the question inside the running conversation ----------
         msgs1 = build_hard_messages(row, history)
@@ -954,8 +997,29 @@ def _arm(
                     # Default remains overwrite (R292). Append is allowed only
                     # through the explicit, validated --resume path above.
                     with ckpt_path.open(file_mode, encoding="utf-8") as ckpt:
-                        runner = _run_easy if m == "easy" else _run_hard
-                        fresh = runner(pending, poster, url, api_key, timeout, ckpt, sample=k)
+                        if m == "easy":
+                            runner = _run_easy
+                            fresh = runner(
+                                pending, poster, url, api_key, timeout, ckpt, sample=k
+                            )
+                        else:
+                            runner = _run_hard
+                            # R423.3 — seed the rolling conversation from the rows
+                            # already drawn, or a resumed hard run re-grades its
+                            # first two rows as near-single-turn (see
+                            # ``seed_history_from_records``). Continuous runs have
+                            # no ``previous`` and keep the shipped empty start.
+                            seed = seed_history_from_records(previous)
+                            if previous:
+                                print(
+                                    f"  resuming hard with {len(seed)} seeded "
+                                    f"conversation message(s) from "
+                                    f"{len(previous)} drawn row(s)"
+                                )
+                            fresh = runner(
+                                pending, poster, url, api_key, timeout, ckpt,
+                                sample=k, seed_history=seed,
+                            )
                     by_id = {r["id"]: r for r in previous + fresh}
                     got = [by_id[row.id] for row in rows if row.id in by_id]
                     for record in got:

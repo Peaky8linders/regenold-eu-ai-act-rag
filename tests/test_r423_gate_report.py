@@ -149,12 +149,13 @@ def _report_module():
 def test_the_verdict_carries_its_scope_from_the_measured_payloads() -> None:
     """A delta published without its dispatch scope is the R422 failure mode.
 
-    Both R423 arms run hard mode, and hard mode reads ``history_turn_count > 1``,
-    so the single-turn full-system lever cannot fire and both arms were told the
-    61-char persona. That is a fact about the DISPATCHED system payload, so the
-    report must take it from ``leg_system_lengths`` rather than assert it — and it
-    has to appear BEFORE the eight-axis board, because it qualifies every number
-    on it.
+    R423.3 — the first version of this section claimed both arms "dispatched the
+    stripped persona" as a blanket statement. That is FALSE: ``_run_hard`` keeps a
+    rolling conversation that starts empty, so the first two rows of a run read
+    ``history_turn_count`` 0 and 1 and receive the FULL system prompt. The scope
+    must state the measured distribution, name that artifact, and carry the bound
+    that proves it does not manufacture the result — and it has to appear BEFORE
+    the eight-axis board, because it qualifies every number on it.
     """
     # The committed REPORT carries the section, so this half holds in a clean clone
     # where the gitignored sidecar is absent — it never silently skips.
@@ -170,6 +171,31 @@ def test_the_verdict_carries_its_scope_from_the_measured_payloads() -> None:
     )
     assert "dispatched the persona" in text, (
         "the scope must report the dispatched persona share, not narrate it"
+    )
+    # The falsified blanket claim must not come back.
+    assert "so both dispatched the stripped persona" not in text, (
+        "the scope must not blanket-claim the persona: the leading rows of a "
+        "hard run receive the full system prompt"
+    )
+    # The artifact, its cause, and the bound on it all have to be on the record.
+    assert "rolling history starts empty" in text, (
+        "the scope must name WHY a hard row can read as single-turn"
+    )
+    assert "+13.42 pp" in text and "+14.50 pp" in text, (
+        "the scope must carry the leave-one-out bound on the one full-prompt "
+        "asymmetry between the arms"
+    )
+    # R423.3 — the scope qualifies a board, so it must quote THIS gate's board.
+    # It used to quote the PREVIOUS gate's +45.91 pp / −7.41 pp, i.e. the numbers
+    # from the run whose correctness cost was subsequently fixed.
+    assert "−7.41" not in text and "-7.41" not in text, (
+        "the scope must not quote the pre-fix gate's strict-correctness loss"
+    )
+    assert "+45.91" not in text, (
+        "the scope must not quote the pre-fix gate's conciseness gain"
+    )
+    assert "+38.86 pp" in text, (
+        "the scope must quote the shipped ans-conciseness delta"
     )
 
     # And when the raw payload record IS present, the figure in the report must be

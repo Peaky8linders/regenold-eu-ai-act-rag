@@ -1012,16 +1012,31 @@ def _openai_wrapper_complete_for_graph_rag(
     # the live question"), so it reads **0 for a first ask**, **1 for a two-message
     # request**, and **2 for user/assistant/user (one completed prior exchange)**.
     # The ordinary follow-up therefore receives the capped system. Both hard-mode
-    # asks (the 10-message final and the pushback) read >= 9. Same predicate
+    # asks (the 10-message final and the pushback) read >= 9 **when the caller
+    # actually passes a 9-turn conversation**. Same predicate
     # ``answer_router.is_multi_turn`` uses. MEASURED with
     # ``docs/measurements/r415/pushback_invariance_probe.py``, which reads the
     # real substitution at the provider seam: the graded payload is byte-identical
-    # between the flag's arms on every hard row (61-char persona, sha
-    # 3bc63d065b58812b) and differs on every easy row (59644-char full system), so
-    # the pushback path is untouched and the lever cannot move the hard board.
+    # between the flag's arms (61-char persona, sha 3bc63d065b58812b) and differs
+    # on every easy row (59644-char full system), so the pushback path is
+    # untouched and the lever cannot move the hard board.
     # A DIRECT engine caller that leaves ``GraphRAGRequest``'s default of 1 does
     # read 1, which is why the boundary matters and why the probe asserts the
     # {0, 1} differ-set rather than {1}.
+    #
+    # R423.3 — WHERE THIS CLAIM WAS TOO BROAD. "Hard mode reads >= 9" is a
+    # property of the CALLER, not of the modality. The official harness
+    # (``run_official_batch._run_hard``) keeps a ROLLING conversation that starts
+    # EMPTY, so the first two rows of a run read 0 and 1 and DO receive the full
+    # system prompt; only from the third row on does a hard run read >= 2. The
+    # R423 scope note asserted the blanket version and was falsified by
+    # ``docs/measurements/r423/graded_scope_probe.py``, which drives real hard
+    # rows and records (row, turn, system length) per dispatch. A resume made that
+    # worse by restarting the history, so ``--resume`` now seeds the rolling
+    # conversation from the rows already on disk. The engine is CORRECT here — a
+    # request that genuinely carries 0 prior turns is a single-turn ask — but any
+    # claim that a given benchmark run never sees this predicate must be measured
+    # on the dispatches, not inferred from the modality's name.
     #
     # R412 — GATED AND SHIPPED, default ON.
     #
