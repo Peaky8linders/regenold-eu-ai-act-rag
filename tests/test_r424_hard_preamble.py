@@ -31,6 +31,22 @@ from evals.regenold import hard_preamble as hp
 from evals.regenold.official_batch import load_official_batch
 from evals.regenold.run_official_batch import _run_hard, select_rows
 
+
+def _official_rows(ids: str):
+    """Rows from the July-7 batch, or SKIP on a clean clone.
+
+    That batch is gitignored competition data (``evals.regenold.july7_difficulty``
+    is absent from a fresh checkout), so every test that needs the REAL question
+    text guards here rather than failing the clean-clone CI gate. The fixture,
+    mode-resolution and guard tests above use no batch data and still run.
+    """
+    pytest.importorskip(
+        "evals.regenold.july7_difficulty",
+        reason="gitignored July-7 competition data not present in this checkout",
+    )
+    return select_rows(list(load_official_batch()), ids=ids)
+
+
 # ── 1. The fixture's shape ────────────────────────────────────────────────
 
 
@@ -169,7 +185,7 @@ def _stub_poster(seen: list[list[dict[str, str]]]):
 
 
 def _ask(mode: str, ids: str) -> tuple[list[dict[str, Any]], list[list[dict[str, str]]]]:
-    rows = select_rows(list(load_official_batch()), ids=ids)
+    rows = _official_rows(ids)
     seen: list[list[dict[str, str]]] = []
     out = _run_hard(
         rows, _stub_poster(seen), "local", "k", 30, io.StringIO(), sample=0, preamble=mode
@@ -205,7 +221,7 @@ def test_an_undeclared_run_gets_the_official_shape_by_default() -> None:
     asserts every row posted the 19-message pre-fixed request, so a future default
     change cannot pass by moving only the constant.
     """
-    rows = select_rows(list(load_official_batch()), ids="rg_001,rg_004,rg_007")
+    rows = _official_rows("rg_001,rg_004,rg_007")
     seen: list[list[dict[str, str]]] = []
     _run_hard(rows, _stub_poster(seen), "local", "k", 30, io.StringIO(), sample=0)
     turn1 = [seen[i] for i in (0, 2, 4)]
@@ -224,7 +240,7 @@ def test_rolling_mode_is_still_position_dependent_the_leak_is_real() -> None:
 
 def test_fixed_mode_ignores_a_seed_history_so_resume_cannot_change_modality() -> None:
     """The R423.3 leak cannot recur in fixed mode: the fixture IS the history."""
-    rows = select_rows(list(load_official_batch()), ids="rg_001,rg_004")
+    rows = _official_rows("rg_001,rg_004")
     unseeded: list[list[dict[str, str]]] = []
     seeded: list[list[dict[str, str]]] = []
     seed = [
@@ -246,7 +262,7 @@ def test_fixed_mode_ignores_a_seed_history_so_resume_cannot_change_modality() ->
 
 def test_rolling_mode_still_honours_a_seed_history() -> None:
     """The shipped shape is unchanged: a resumed rolling run still seeds."""
-    rows = select_rows(list(load_official_batch()), ids="rg_001")
+    rows = _official_rows("rg_001")
     seeded: list[list[dict[str, str]]] = []
     seed = [
         {"role": "user", "content": "prior question"},
