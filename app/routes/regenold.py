@@ -2183,6 +2183,7 @@ def _engine_cache_key(
             # costs one extra Stage-2 generation per arm and removes any
             # argument about cross-arm contamination when the number is read.
             "REGENOLD_CITABLE_BASE_GUARD",
+            "REGENOLD_ONTOLOGY_CITABLE_EXPANSION",
             # R365 — Annex III / Article 50 deterministic recall supplements
             # (siblings of REGENOLD_RISK_CLASS_ANNEX, both default OFF). The
             # medical / MSA / EU-database / operator shapes append Annex III
@@ -6375,6 +6376,88 @@ def _citable_base_guard_enabled() -> bool:
     return os.getenv("REGENOLD_CITABLE_BASE_GUARD", "0").strip().lower() in (
         "1", "true", "yes", "on",
     )
+
+
+def _ontology_citable_expansion_enabled() -> bool:
+    """REGENOLD_ONTOLOGY_CITABLE_EXPANSION - default ON.
+
+    Expands citable bases with 1-hop ontological neighbors (cross-references,
+    role obligations, and risk class mappings) so the citable base guard
+    never drops legitimate gold heads that the LLM correctly identified.
+    """
+    return os.getenv("REGENOLD_ONTOLOGY_CITABLE_EXPANSION", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
+def _expand_citable_bases_with_ontology(
+    bases: frozenset[str] | set[str],
+    question: str = "",
+) -> frozenset[str]:
+    """Expand citable bases using ontology cross-references, actor roles, and risk classes."""
+    if not _ontology_citable_expansion_enabled() or not bases:
+        return frozenset(bases)
+    try:
+        from app.data.kb_xrefs import _build_xref_graph  # noqa: PLC0415
+        from app.integrations.regenold import refs as _refs  # noqa: PLC0415
+        from app.data.ontology import ROLE_OBLIGATIONS, ActorRole, RiskClass  # noqa: PLC0415
+    except Exception:
+        return frozenset(bases)
+
+    expanded: set[str] = set(bases)
+    q_lower = (question or "").lower()
+
+    # 1. 1-hop cross-references (both forward and reverse)
+    full_graph = _build_xref_graph()
+    for base in list(bases):
+        try:
+            int_ref = _refs.to_internal(base)
+        except Exception:
+            continue
+        # forward xrefs
+        for target in full_graph.get(int_ref, ()):
+            try:
+                expanded.add(_refs.to_user_facing(target))
+            except Exception:
+                pass
+        # reverse xrefs: provisions that cite this base
+        for src, targets in full_graph.items():
+            if int_ref in targets:
+                try:
+                    expanded.add(_refs.to_user_facing(src))
+                except Exception:
+                    pass
+
+    # 2. Expand role obligations if question mentions operator roles
+    role_map = {
+        "deployer": ActorRole.DEPLOYER,
+        "provider": ActorRole.PROVIDER,
+        "importer": ActorRole.IMPORTER,
+        "distributor": ActorRole.DISTRIBUTOR,
+        "authorised representative": ActorRole.AUTHORISED_REPRESENTATIVE,
+        "authorized representative": ActorRole.AUTHORIZED_REPRESENTATIVE,
+    }
+    for role_kw, role_enum in role_map.items():
+        if role_kw in q_lower:
+            role_obls = ROLE_OBLIGATIONS.get(role_enum, {})
+            for risk_tier_obls in role_obls.values():
+                for obl_ref in risk_tier_obls:
+                    try:
+                        expanded.add(_refs.to_user_facing(obl_ref))
+                    except Exception:
+                        pass
+
+    # 3. Expand GPAI / systemic risk provisions if query mentions GPAI or FLOPs
+    if any(kw in q_lower for kw in ("gpai", "general-purpose ai", "general purpose ai", "systemic risk", "flops")):
+        gpai_obls = ROLE_OBLIGATIONS.get(ActorRole.PROVIDER, {}).get(RiskClass.GPAI_SYSTEMIC, ())
+        for obl_ref in gpai_obls:
+            try:
+                expanded.add(_refs.to_user_facing(obl_ref))
+            except Exception:
+                pass
+        expanded.update(["Article 51", "Article 52", "Article 53", "Article 54", "Article 55", "Annex XI", "Annex XII", "Annex XIII"])
+
+    return frozenset(expanded)
 
 
 def _add_prose_named_refs(
@@ -10844,6 +10927,10 @@ def regenold_eu_ai_act_ask(
             if (base := _canonical_reference_base(candidate)) is not None
         }
     )
+    _stage2_citable_reference_bases = _expand_citable_bases_with_ontology(
+        _stage2_citable_reference_bases,
+        question=question,
+    )
     references: list[str] = candidates[:_effective_max_refs]
 
     # R115 (Antifragile q11 follow-up) — subpoint-aware budget rescue.
@@ -11623,6 +11710,10 @@ def regenold_eu_ai_act_ask(
                 for ref in references
                 if (base := _canonical_reference_base(ref)) is not None
             }
+        )
+        _stage2_citable_reference_bases = _expand_citable_bases_with_ontology(
+            _stage2_citable_reference_bases,
+            question=question,
         )
         references = _add_prose_named_refs(
             references,

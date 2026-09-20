@@ -477,12 +477,12 @@ def _allocate_units(rows: list[dict], max_units: int) -> list[dict]:
 
 _DEONTIC_CYPHER = """
 CALL () {
-    MATCH (a:Article) WHERE a.id IN $ids
+    MATCH (a:Article) WHERE a.id IN $ids OR (a.id STARTS WITH 'ART' AND ('article_' + substring(a.id, 3)) IN $ids)
     OPTIONAL MATCH (pr:Practice)-[:PROHIBITED_UNDER]->(a)
     OPTIONAL MATCH (cat:AnnexIIICategory)-[:TRIGGERS_HIGH_RISK_UNDER]->(a)
     OPTIONAL MATCH (ro:OperatorRole)-[hoa:HAS_OBLIGATION_ARTICLE]->(a)
     OPTIONAL MATCH (ph:LifecyclePhase)-[:APPLIES_TO]->(a)
-    RETURN coalesce(a.strict_citation, a.id) AS cite,
+    RETURN coalesce(a.strict_citation, 'Article ' + substring(a.id, 3)) AS cite,
            collect(DISTINCT coalesce(pr.short_name, pr.id)) AS practices,
            collect(DISTINCT coalesce(cat.label, cat.id)) AS annex_iii,
            collect(DISTINCT coalesce(ro.label, ro.id) + ' (' + coalesce(hoa.tier,'') + ')') AS roles,
