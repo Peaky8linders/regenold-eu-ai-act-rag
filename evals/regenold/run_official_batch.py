@@ -291,7 +291,7 @@ def _install_cohere_guard(
     external_embeddings.get_embedding = guarded_embed
     cohere_rerank.rerank_documents = guarded_rerank
 
-    def assert_healthy() -> None:
+    def assert_healthy(_payload: object | None = None) -> None:
         with failure_lock:
             problem = failures[0] if failures else ""
         if problem:
@@ -373,6 +373,30 @@ class _ConsecutiveTransportFailures:
                     f"{kind} (last: {self._last[:160]})"
                 )
             return ""
+
+
+def _probe_fallback_leg() -> str:
+    """Model id if the Stage-2 FALLBACK leg answers, else ``""`` (R431).
+
+    ``check_connectivity_and_permissions`` is the credential/model-access
+    diagnostic the Bedrock client already exposes, and it walks the SAME probe
+    chain the fallback leg dials, short-circuiting on the first model that
+    answers. Using it here (rather than dialling a model of our own choosing) is
+    what keeps the probe and the runtime from disagreeing about what "the
+    fallback is up" means.
+
+    Fail-soft by design: any import/credential/network problem reports the leg as
+    unavailable, which is exactly the conservative reading.
+    """
+    try:
+        from app.llm import bedrock_client as _bc  # noqa: PLC0415
+
+        result = _bc.check_connectivity_and_permissions()
+        if not isinstance(result, dict) or result.get("status") != "ok":
+            return ""
+        return str(result.get("model") or "")
+    except Exception:  # noqa: BLE001 — an unusable probe means "unavailable"
+        return ""
 
 
 def _install_stage2_transport_guard(
@@ -460,11 +484,28 @@ def _install_stage2_transport_guard(
                 "that would grade deterministic Stage-1 drafts"
             )
         if getattr(resp, "error", None):
+            # R431 — try the FALLBACK leg before refusing the run. A down wrapper
+            # with a healthy Bedrock credential is not a reason to waste the
+            # sample: it is a reason to draw the sample on the fallback and say
+            # so on every row.
+            fallback_model = _probe_fallback_leg()
+            if fallback_model:
+                print(
+                    "\n[transport] PRIMARY preflight failed "
+                    f"({str(resp.error)[:120]}); the FALLBACK leg answers "
+                    f"(model={fallback_model}), so this run proceeds as a "
+                    "FALLBACK-SERVED draw. Every row records "
+                    "`stage2_served_by=fallback`; do not read it as a "
+                    "primary-served measurement."
+                )
+                return f"fallback:{fallback_model}"
             raise RuntimeError(
                 "Stage-2 transport preflight failed "
-                f"({str(resp.error)[:160]}); the wrapper leg cannot answer, so a "
-                "live run would grade Stage-1 drafts. Fix the leg (tunnel / OAuth "
-                "/ quota) or pass --allow-degraded-transport."
+                f"({str(resp.error)[:160]}) and the fallback leg did not answer "
+                "either, so a live run would grade Stage-1 drafts. Fix one of the "
+                "two legs (tunnel / OAuth / quota, or the Bedrock credential) or "
+                "pass --allow-degraded-transport to measure the degradation path "
+                "on purpose."
             )
         return str(getattr(resp, "model", "") or "")
 
@@ -498,7 +539,31 @@ def _install_stage2_transport_guard(
 
     _wp._OpenAIWrapperProvider.complete = guarded_complete
 
-    def assert_healthy() -> None:
+    # ── R431 — the guard is now LEG-AWARE, not primary-or-nothing ─────────────
+    #
+    # The abort exists for ONE condition: the rows stop being served by a Stage-2
+    # leg at all, so the batch would grade deterministic Stage-1 drafts and
+    # measure the transport instead of the lever. A tripped PRIMARY is not that
+    # condition when the Bedrock fallback is answering — the wire is still
+    # Stage-2's, each row records which leg served it, and the degradation is a
+    # fact to REPORT rather than a reason to throw the sample away. Measured cost
+    # of the old behaviour: the R431 hard draw lost its third generation at 12/37
+    # while the fallback was healthy the whole time.
+    leg_state: dict[str, Any] = {"last_leg": "", "fallback_rows": 0, "warned": False}
+
+    def observe(payload: object | None) -> None:
+        """Record which leg served the row that has just landed."""
+        if not isinstance(payload, dict):
+            return
+        served = str((_provenance(payload) or {}).get("stage2_served_by") or "")
+        if not served:
+            return
+        leg_state["last_leg"] = served
+        if served == "fallback":
+            leg_state["fallback_rows"] = int(leg_state["fallback_rows"]) + 1
+
+    def assert_healthy(payload: object | None = None) -> None:
+        observe(payload)
         tripped = transport.tripped()
         if not tripped:
             return
@@ -509,9 +574,20 @@ def _install_stage2_transport_guard(
             if aux_total
             else ""
         )
+        if leg_state["last_leg"] == "fallback":
+            if not leg_state["warned"]:
+                leg_state["warned"] = True
+                print(
+                    "\n[transport] PRIMARY is down ("
+                    f"{tripped}) but the FALLBACK leg is answering: continuing on "
+                    "the fallback and recording `stage2_served_by=fallback` per row "
+                    f"so the draw stays separable.{note}"
+                )
+            return
         raise RuntimeError(
-            f"Stage-2 PRIMARY transport is down: {tripped}. Aborting before the "
-            f"rest of the sample is graded on deterministic Stage-1 drafts.{note}"
+            f"Stage-2 PRIMARY transport is down: {tripped}. The fallback leg is not "
+            "answering either, so the rest of the sample would be graded on "
+            f"deterministic Stage-1 drafts. Aborting.{note}"
         )
 
     return preflight, assert_healthy
@@ -1342,7 +1418,10 @@ def main() -> None:
             slept_before = _PACING_SLEPT_S[0]
             result = base_poster(*poster_args, **poster_kwargs)
             for check in health_checks:
-                check()
+                # R431 — the Stage-2 guard needs the row it just drew in order to
+                # tell "the primary is down" from "the primary is down AND the
+                # fallback is carrying the run". The Cohere guard ignores it.
+                check(result)
             return _net_of_pacing(result, slept_before)
 
         poster = guarded_poster

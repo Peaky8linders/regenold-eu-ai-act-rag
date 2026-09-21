@@ -1430,6 +1430,13 @@ def _engine_cache_key(
             # names (`Annex IV.1` -> `Annex IV.1.e`). Same wire effect as the
             # grain passes above, so its own cache-key slot.
             "REGENOLD_GROUND_WIRE_DEPTH",
+            # R431 — ADDS a limb the answer's prose names and BOTH the answer and
+            # the question discuss, when its parent is already on the wire. The
+            # reference COUNT changes, so it must be in the key on its own.
+            "REGENOLD_GROUND_WIRE_ADD",
+            "REGENOLD_GROUND_WIRE_ADD_MAX",
+            "REGENOLD_GROUND_WIRE_ADD_ANSWER_RECALL",
+            "REGENOLD_GROUND_WIRE_ADD_QUESTION_RECALL",
             # R397 — appends the real paragraph range of each cited head to the
             # Stage-2 user message. Prompt-side, so it changes the answer and
             # (invariant #5) the wire references derived from it.
@@ -4656,6 +4663,217 @@ def _grain_complete(
         return rivals[0]
 
 
+# R431 falsified two repairs of the substitution arm, and they are recorded here so
+# they are not re-proposed as obviously-good ideas. Both were measured on the same
+# recorded corpus with the real rubric (`docs/measurements/r431/substitution_veto_probe.py`):
+#
+#   * **Question-grounded veto** — abstain from substituting a limb the QUESTION
+#     relies on. The defect it targets is real: on ``rg_085`` the arm replaces the
+#     wire's ``Article 6.2`` (the gold key) with ``Article 6.1``, destroying 11 gold
+#     keys across the corpus. But the veto does not pay for itself. At its only
+#     firing floor (0.2-0.3) Ref. Strict falls 0.61 pp net — it suppresses 43
+#     substitutions that were winning to recover those 11 — and at 0.4 it never
+#     fires at all (``q_recall('Article 6.2')`` is 0.333), so it is inert. Verified
+#     against the implementation, not a model of it.
+#   * **Keep-and-add** — replace the substitution with an append, so the wire can
+#     never lose a limb. Buys Ref. Strict +0.74 pp and pays Ref. Conciseness
+#     -4.18 pp on 318 converted slots: an implied -0.87 pp on an 8-axis geometric
+#     mean. Net negative.
+#
+# The conclusion is that R425's in-place replace is the right trade and the rg_085
+# loss is its price. A repair would need a signal that separates that row's limbs
+# from the 43 winning substitutions; the prose and the question both fail to, which
+# is why the deficit is recorded as an open, characterised limit rather than papered
+# over with a lever that reads well and measures negative.
+
+
+def _ground_wire_add_enabled() -> bool:
+    """R431 — let the prose-grounded pass ADD a limb the wire is missing.
+
+    **Default ON**, registered in ``_engine_cache_key``. ``=0`` restores the
+    substitution-only pass.
+
+    THE DEFICIT, and it was mis-attributed in R429's own record. R429 called this
+    population *"135 name a sibling limb ... the prose does not name the gold limb
+    either — generation-side"*. Re-measured per DRAW and per ROW
+    (``docs/measurements/r431/sibling_triage.py``), it is neither 135 nor mostly
+    generation-side. Of the 173 unmet gold expectations on today's board, the
+    largest bucket by far is **85 where the prose DOES name the gold limb and the
+    wire carries a sibling of it** — and the pass abstains there by CONTRACT,
+    because it is 1:1 in place and the sibling is itself named by the prose. The
+    wire is therefore narrower than the answer's own prose: ``rg_100`` names
+    ``Article 6.1``, ``6.2`` and ``6.3`` and ships only ``6.2``.
+
+    WHY AN ADD IS NOT A FREE LUNCH, and why it is gated rather than assumed. The
+    three reference axes read as follows on an ADD (``_ground_wire_add_missing``
+    only ever appends a coordinate whose PARENT is already on the wire, so the
+    folded head set is unchanged, which is the whole reason it is safe):
+
+    * **Ref. Loose** — ``rubric.reference_correctness_loose`` is head-set recall,
+      and the head is untouched: **invariant by construction**.
+    * **Ref. Strict** — recall at full grain, and a deeper-or-equal prediction can
+      only ADD satisfied keys: **monotone non-decreasing by construction**.
+    * **Ref. Conciseness** — ``min(1, |expected| / |provided|)``, a pure COUNT
+      ratio. This is the one axis that can LOSE, and it is why the lever needs a
+      gate instead of an argument.
+
+    So the whole design problem is PRECISION: what fraction of the limbs this
+    pass adds are gold. Unfiltered, appending every prose-named limb of every
+    parent already on the wire measures **20.9 % precision at 48 additions per
+    draw** on the recorded hard board — which would take Ref. Conciseness from
+    44.8 to roughly 3. Falsified, and not shipped as an option.
+
+    THE DISCRIMINATOR THAT SURVIVES. A limb is added only when BOTH the answer and
+    the QUESTION discuss that limb's OWN statutory text. Measured precision on
+    the same board: 20.9 % unfiltered, **67.9 % at (answer >= 0.6,
+    question >= 0.4)** and **93.9 % at (answer >= 0.7, question >= 0.5)**. The
+    question is the vote that matters here, unlike in R429's tie-break, because it
+    is the only available evidence of what the benchmark's minimal gold key is
+    FOR — the question's ask — and it is exactly what a sibling cannot fake.
+    """
+    return os.getenv("REGENOLD_GROUND_WIRE_ADD", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
+def _ground_wire_add_params() -> tuple[float, float, int]:
+    """``(answer recall floor, question recall floor, per-request cap)`` (R431).
+
+    Clamped so a typo in the environment cannot make the pass add everything or
+    crash the route. The floors default to the measured knee (67.9 % precision).
+    """
+
+    def _env_float(name: str, default: float) -> float:
+        try:
+            return float(os.getenv(name, "").strip() or default)
+        except ValueError:
+            return default
+
+    a_floor = min(1.0, max(0.0, _env_float("REGENOLD_GROUND_WIRE_ADD_ANSWER_RECALL", 0.6)))
+    q_floor = min(1.0, max(0.0, _env_float("REGENOLD_GROUND_WIRE_ADD_QUESTION_RECALL", 0.4)))
+    try:
+        cap = int(os.getenv("REGENOLD_GROUND_WIRE_ADD_MAX", "").strip() or 2)
+    except ValueError:
+        cap = 2
+    return a_floor, q_floor, max(0, min(6, cap))
+
+
+def _limb_discussion(
+    coord: str, answer_tokens: set[str], question_tokens: set[str]
+) -> tuple[float, float]:
+    """Content-token recall of ``coord``'s OWN statutory text, in answer and question.
+
+    The engine's own tokenizer (``provision_text._tokens``), so this is not a new
+    metric invented for the occasion, and the coordinate's own text, so a
+    neighbouring limb cannot borrow its score.
+    """
+    try:
+        from app.data import provision_text as _pt  # noqa: PLC0415
+
+        body = _pt.get_provision_text(coord) or _pt.article_body(coord)
+        want = {t for t in _pt._tokens(body or "") if len(t) >= 4}
+    except Exception:  # noqa: BLE001 — unusable text simply cannot qualify
+        return (0.0, 0.0)
+    if not want:
+        return (0.0, 0.0)
+    return (
+        len(want & answer_tokens) / len(want),
+        len(want & question_tokens) / len(want),
+    )
+
+
+def _coord_refines(c: tuple[str, ...], b: tuple[str, ...]) -> bool:
+    """``c`` is ``b`` or a stricter grain of it — the tuple twin of ``_is_descendant``."""
+    return c == b or (bool(b) and c[: len(b)] == b)
+
+
+def _ground_wire_add_missing(
+    wire: list[str],
+    wanted: dict[str, list[str]],
+    answer: str,
+    question: str,
+) -> list[str]:
+    """Append the limbs the answer's prose names and engages but the wire lacks (R431).
+
+    Appends ONLY coordinates whose parent is already on the wire (so the folded
+    head set cannot change), the Regulation actually contains (never minted), and
+    whose own statutory text BOTH the answer and the question discuss above the
+    calibrated floors. At most one limb per parent and at most ``cap`` in total, so
+    the reference count — the only axis this can cost — moves by a bounded amount.
+
+    Deterministic by construction: candidates are ranked by
+    ``(answer recall, question recall, coordinate)``, never by dict order.
+    Fail-soft: any failure returns the input unchanged.
+    """
+    if not wire or not wanted:
+        return wire
+    a_floor, q_floor, cap = _ground_wire_add_params()
+    if cap <= 0:
+        return wire
+    try:
+        from app.data import provision_text as _pt  # noqa: PLC0415
+        from app.data.provision_coordinates import coordinate_exists  # noqa: PLC0415
+
+        a_tok, q_tok = _pt._tokens(answer or ""), _pt._tokens(question or "")
+    except Exception:  # noqa: BLE001 — no tokenizer: no evidence, no addition
+        return wire
+    if not a_tok and not q_tok:
+        return wire
+
+    present: dict[str, list[tuple[str, ...]]] = {}
+    for raw in wire:
+        coord = _leaf_coordinate(raw)
+        if coord is None:
+            continue
+        present.setdefault(coord[0], []).append(coord[1])
+
+    scored: list[tuple[float, float, str, str]] = []
+    for parent, leaves in wanted.items():
+        on_wire = present.get(parent)
+        if not on_wire:
+            continue  # the head is NOT already there: not this pass's remit
+        for leaf in leaves:
+            cand = _leaf_coordinate(leaf)
+            if cand is None or cand[0] != parent:
+                continue
+            if any(_coord_refines(c, cand[1]) for c in on_wire):
+                continue  # already satisfied at this grain or deeper
+            if not coordinate_exists(leaf):
+                continue  # never mint a coordinate the Regulation lacks
+            a_rec, q_rec = _limb_discussion(leaf, a_tok, q_tok)
+            if a_rec < a_floor or q_rec < q_floor:
+                continue
+            scored.append((a_rec, q_rec, leaf, parent))
+    if not scored:
+        return wire
+
+    scored.sort(key=lambda item: (-item[0], -item[1], item[2]))
+    out = list(wire)
+    used: set[str] = set()
+    added = 0
+    for _a_rec, _q_rec, leaf, parent in scored:
+        if added >= cap:
+            break
+        if parent in used:
+            continue
+        coord = _leaf_coordinate(leaf)
+        if coord is None:
+            continue
+        if any(
+            _coord_refines(existing, coord[1])
+            for raw in out
+            if (existing := _leaf_coordinate(raw)) is not None and existing[0] == parent
+        ):
+            continue
+        out.append(leaf)
+        used.add(parent)
+        added += 1
+    return out
+
+
 def _ground_wire_subpoints(
     answer: str, references: list[str], question: str = ""
 ) -> list[str]:
@@ -4751,7 +4969,9 @@ def _ground_wire_subpoints(
             out[idx] = ground
             present.setdefault(parent, set()).add(picks[0][0])
             rewrites.append(f"{references[idx]}->{ground}")
-        if not rewrites:
+        if _ground_wire_add_enabled():
+            out = _ground_wire_add_missing(out, wanted, answer, question)
+        if out == references:
             return references
         return out
     except Exception:  # noqa: BLE001 — never 500 the route on a grain rewrite
@@ -12891,11 +13111,15 @@ def regenold_eu_ai_act_ask(
         ):
             _gw_refs = _ground_wire_subpoints(answer_text, references, question)
             if _gw_refs != references:
+                # R431 — the trace must show ADDITIONS too. ``zip`` truncates at the
+                # shorter list, so an append (which is what the ADD arm produces)
+                # left the trace silent while the wire had changed.
                 _gw_changed = [
                     f"{a}->{b}"
                     for a, b in zip(references, _gw_refs, strict=False)
                     if a != b
                 ]
+                _gw_changed += [f"+{b}" for b in _gw_refs[len(references) :]]
                 references = _gw_refs
                 try:
                     from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
