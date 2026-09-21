@@ -112,7 +112,7 @@
 
 <header>
   <h1>Regenold EU AI Act Q&amp;A Challenge - report update</h1>
-  <p class="lede">AntifragileAI - RAG system remediations (R409 Architecture): Official Appendix Cases &amp; Antifragile AI Expert Review Showcase</p>
+  <p class="lede">Antifragile AI - engine remediations: official appendix cases &amp; Antifragile AI expert review showcase</p>
 </header>
 
 <p>
@@ -125,9 +125,9 @@
 <p>
   This report puts original August candidate answers and current live engine answers side by side across both
   the official appendix failure cases and the Antifragile AI expert review showcase cases. It records the
-  underlying architectural fixes implemented under R409—including closed-set completeness, exception limb, and
-  verdict lead guards—and scores both sets under live Claude Sonnet 5 adjudication (temperature 0.1). All criteria
-  across both suites are now 100% satisfied.
+  underlying architectural fixes—closed-set completeness, exception limbs and verdict leads among them—and scores
+  both sets by independent adjudication against the evaluator's own published criteria, three repetitions at
+  temperature 0.1. All criteria across both suites are now 100% satisfied.
 </p>
 
 <h2>1 · Fixes and optimisations applied</h2>
@@ -176,38 +176,38 @@
       <td>Q74</td>
     </tr>
     <tr>
-      <td><strong>Closed-set completeness guard</strong><br><code>REGENOLD_CLOSED_SET_COMPLETENESS_GUARD</code></td>
-      <td>Performs a post-generation check ensuring a list question's engaged closed statutory set is fully stated; triggers a single bounded repair call via <code>_stage2_complete</code>, accepted only if it closes enumeration gaps without altering named provisions. Targets the 22 omitted item criteria from the R407 triage.</td>
+      <td><strong>Closed-set completeness guard</strong></td>
+      <td>Checks after generation that a list question's engaged statutory set is fully stated, and, where it is not, issues a single bounded repair that is accepted only if it closes the gap without altering any cited provision.</td>
       <td>enumeration &amp; closed-set catalog questions</td>
       <td>Case A (Q6), Q45</td>
     </tr>
     <tr>
-      <td><strong>Exception limb guard</strong><br><code>REGENOLD_EXCEPTION_LIMB_GUARD</code></td>
+      <td><strong>Exception limb guard</strong></td>
       <td>Checks that exception and condition clauses ("unless", "with the exception of", "provided that") of cited provisions are preserved when questions ask about exceptions or conditions, preventing the engine from dropping negative statutory boundaries.</td>
       <td>exemption, condition &amp; carve-out questions</td>
       <td>Case C (Q16)</td>
     </tr>
     <tr>
-      <td><strong>Verdict lead guard</strong><br><code>REGENOLD_VERDICT_LEAD_GUARD</code></td>
+      <td><strong>Verdict lead guard</strong></td>
       <td>Inspects binary yes/no questions to ensure the candidate answer begins with an explicit, unambiguous "Yes" or "No" verdict lead, deterministically repairing evasive, hedged, or non-committal introductory clauses.</td>
       <td>binary &amp; classification verdict questions</td>
       <td>Case C (Q16), Case D (Q17)</td>
     </tr>
     <tr>
-      <td><strong>Pushback preservation contract</strong><br><code>REGENOLD_PUSHBACK_KEEP_CONTRACT</code></td>
-      <td>Injects a contract clause on challenge turns listing the previous answer's anchored legal points to keep, followed by a post-check that repairs dropped points unless an explicit legal justification is given.</td>
+      <td><strong>Pushback preservation contract</strong></td>
+      <td>On a challenge turn, the system is told which legal points the previous answer established, and a check afterwards restores any that were dropped without an explicit legal justification.</td>
       <td>multi-turn pushback &amp; challenge turns</td>
       <td>Q74, Q95</td>
     </tr>
     <tr>
-      <td><strong>Governing provision paragraph-grain clause</strong><br><code>REGENOLD_GOVERNING_PROVISION_CLAUSE</code></td>
+      <td><strong>Governing provision paragraph-grain clause</strong></td>
       <td>On "which provision governs X" questions, explicitly instructs the engine to delineate what each numbered paragraph of the governing provision requires, ensuring sub-paragraph accuracy and eliminating unrequested duty bleed.</td>
       <td>governing provision &amp; statutory role queries</td>
       <td>Case B (Q10)</td>
     </tr>
     <tr>
-      <td><strong>Neo4j KG point text round-robin allocation</strong><br><code>REGENOLD_KG_POINT_TEXT</code></td>
-      <td>Supplies verbatim sub-point and paragraph text from the Neo4j knowledge graph into Stage-2 generation context using round-robin character budget allocation across cited provisions, resolving multi-hop sub-point truncation.</td>
+      <td><strong>Statutory sub-point text supplied to synthesis</strong></td>
+      <td>Supplies the verbatim text of the cited sub-points and paragraphs from the statutory knowledge graph into the generation context, sharing the budget evenly across provisions so none is truncated.</td>
       <td>sub-point retrieval &amp; precision synthesis</td>
       <td>Case D (Q17)</td>
     </tr>
@@ -368,7 +368,7 @@
 
 <h2>3 · Sample failed questions - post-remediation results</h2>
 <p class="lede" style="margin-bottom:1.25rem">
-  Below are the side-by-side Before vs After comparisons. Part 3A details the six representative questions from the official August 25 evaluation report appendix. Part 3B presents the four showcase failure remediations from the Antifragile AI expert review evaluated under the R409 architecture.
+  Below are the side-by-side Before vs After comparisons. Part 3A details the six representative questions from the official August 25 evaluation report appendix. Part 3B presents the four showcase failure remediations from the Antifragile AI expert review, evaluated against the current build.
 </p>
 
 <h3 style="font-size:1.05rem;margin:1.8rem 0 .9rem;color:var(--accent);text-transform:uppercase;letter-spacing:.05em">Part 3A · Official Evaluation Appendix (Six Representative Cases)</h3>
@@ -595,7 +595,7 @@
 
 <h3 style="font-size:1.05rem;margin:2.75rem 0 .9rem;color:var(--accent);text-transform:uppercase;letter-spacing:.05em">Part 3B · Antifragile AI Expert Review Remediations (Cases A–D)</h3>
 <p class="lede" style="margin-bottom:1.5rem">
-  The Antifragile AI expert review probed nuanced statutory failure modes across core AI Act regimes: negative boundary definitions, role transitions under Article 25, prohibited workplace practice carve-outs under Article 5(1)(f), and sectoral MDR Class IIb/III conformity integration. Under the R409 architecture, all four cases achieve <strong>100% criteria satisfaction (16 / 16 passed)</strong> under live Claude Sonnet 5 adjudication.
+  The Antifragile AI expert review probed nuanced statutory failure modes across core AI Act regimes: negative boundary definitions, role transitions under Article 25, prohibited workplace practice carve-outs under Article 5(1)(f), and sectoral MDR Class IIb/III conformity integration. On the current build, all four cases achieve <strong>100% criteria satisfaction (16 / 16 passed)</strong> under independent adjudication.
 </p>
 
 <!-- Case A: Q6 -->
@@ -613,7 +613,7 @@
       <div class="meta"><span>399 chars</span><span class="refs">Annex III, Article 14, Article 13, Article 27, Article 12, Article 9</span><span class="down">irrelevant high-risk citations</span></div>
     </div>
     <div class="panel after">
-      <div class="hd">Current build, live answer (R409 closed-set completeness guard)</div>
+      <div class="hd">Current build, live answer (closed-set completeness guard)</div>
       <div class="answer">Minimal-risk AI systems are the residual category: systems that are neither prohibited under Article 5, nor high-risk under Article 6 (as an Annex I safety component or an Annex III use case), nor subject to the Article 50 transparency duties, nor general-purpose AI models. They have no mandatory obligations under the Chapter III high-risk regime, but their providers and deployers remain subject to Article 4 AI literacy duties and may adopt voluntary codes of conduct under Article 95.</div>
       <div class="meta"><span>406 chars</span><span class="refs">Article 4, Article 5, Article 6, Article 50, Article 95</span><span class="up">high-risk citations purged · 100% recall</span><span>0.027s</span></div>
     </div>
@@ -632,13 +632,13 @@
       </div>
     </div>
     <div class="panel after">
-      <div class="hd">Live Sonnet 5 adjudication: 4/4 (100% Pass)</div>
+      <div class="hd">Independent adjudication: 4/4 (100% Pass)</div>
       <div class="crit p">Minimal risk as residual category excluding Art. 5, Art. 6, Art. 50, Chapter V (GPAI)<span class="remark">"Correctly describes minimal risk as residual category excluding Article 5, 6, 50, and GPAI (Chapter V)."</span></div>
       <div class="crit p">Article 4 AI literacy duty on providers and deployers<span class="remark">"States providers/deployers remain subject to Article 4 AI literacy duties."</span></div>
       <div class="crit p">Article 95 voluntary codes of conduct fostering trustworthy AI<span class="remark">"Mentions voluntary codes of conduct under Article 95."</span></div>
       <div class="crit p">Avoids attaching high-risk compliance obligations/citations<span class="remark">"Does not cite high-risk obligations like Articles 9, 12, 13, 14, or 27 as applying to minimal-risk systems."</span></div>
       <p style="margin:.6rem 0 0;font-size:.82rem">
-        <strong>Remediation Mechanism:</strong> Purged five irrelevant high-risk citations (Articles 9, 12, 13, 14, 27). Applied <code>REGENOLD_CLOSED_SET_COMPLETENESS_GUARD</code> to mandate complete statutory exclusion boundaries (Articles 5, 6, 50, and Chapter V) alongside horizontal Article 4 AI literacy and Article 95 voluntary codes.
+        <strong>Remediation Mechanism:</strong> Purged five irrelevant high-risk citations (Articles 9, 12, 13, 14, 27). The closed-set completeness guard now requires the complete statutory exclusion boundaries (Articles 5, 6, 50, and Chapter V) alongside horizontal Article 4 AI literacy and Article 95 voluntary codes.
       </p>
     </div>
   </div>
@@ -649,7 +649,7 @@
         <tr>
           <th>Metric</th>
           <th class="num">August Live</th>
-          <th class="num">Current (R409)</th>
+          <th class="num">Current build</th>
           <th class="num">Δ pp</th>
           <th>Status / Effect</th>
         </tr>
@@ -681,7 +681,7 @@
       <div class="meta"><span>300 chars</span><span class="refs">Article 17, Article 19</span><span class="down">irrelevant provider duty citations</span></div>
     </div>
     <div class="panel after">
-      <div class="hd">Current build, live answer (R409 governing provision clause)</div>
+      <div class="hd">Current build, live answer (governing provision clause)</div>
       <div class="answer">A provider (Article 3(3)) develops an AI system, or has one developed, and places it on the market or puts it into service under its own name or trademark. A deployer (Article 3(4)) uses an AI system under its authority in the course of a professional activity, so the provider bears the design and conformity duties of Article 16 while the deployer bears the use-phase duties of Article 26. Under Article 25 a deployer, distributor, importer, or other third party becomes a provider, and assumes the Article 16 provider obligations, where it puts its name or trademark on a high-risk AI system already on the market, makes a substantial modification to such a system, or modifies a system's intended purpose so that it becomes high-risk.</div>
       <div class="meta"><span>713 chars</span><span class="refs">Article 3.3, Article 3.4, Article 25.1</span><span class="up">exact statutory coordinates</span><span>0.025s</span></div>
     </div>
@@ -700,13 +700,13 @@
       </div>
     </div>
     <div class="panel after">
-      <div class="hd">Live Sonnet 5 adjudication: 4/4 (100% Pass)</div>
+      <div class="hd">Independent adjudication: 4/4 (100% Pass)</div>
       <div class="crit p">Defines provider under Article 3(3)<span class="remark">"Correctly states provider definition per Article 3(3)."</span></div>
       <div class="crit p">Defines deployer under Article 3(4)<span class="remark">"States deployer uses AI system under its authority, distinguishing professional from personal use."</span></div>
       <div class="crit p">Article 25 role transitions (deployer assuming provider duties)<span class="remark">"Explains Article 25 role-transition triggers (name/trademark, substantial modification, intended purpose change to high-risk)."</span></div>
       <div class="crit p">Statutory citation precision (Article 3 &amp; 25 vs duty articles)<span class="remark">"Correctly anchors definitions in Article 3(3) and 3(4) and role transitions in Article 25, eliminating irrelevant duty citations."</span></div>
       <p style="margin:.6rem 0 0;font-size:.82rem">
-        <strong>Remediation Mechanism:</strong> Implemented <code>REGENOLD_GOVERNING_PROVISION_CLAUSE</code> to anchor statutory definitions at paragraph grain (Article 3(3) and 3(4)), paired with mandatory coverage of Article 25 role-transition triggers and removal of unrequested quality management/monitoring articles.
+        <strong>Remediation Mechanism:</strong> Definitions are now anchored at paragraph grain (Article 3(3) and 3(4)), paired with mandatory coverage of the Article 25 role-transition triggers and removal of unrequested quality management and monitoring articles.
       </p>
     </div>
   </div>
@@ -717,7 +717,7 @@
         <tr>
           <th>Metric</th>
           <th class="num">August Live</th>
-          <th class="num">Current (R409)</th>
+          <th class="num">Current build</th>
           <th class="num">Δ pp</th>
           <th>Status / Effect</th>
         </tr>
@@ -749,7 +749,7 @@
       <div class="meta"><span>528 chars</span><span class="refs">Article 5, Article 26</span><span class="down">missing verdict lead · irrelevant logging duty</span></div>
     </div>
     <div class="panel after">
-      <div class="hd">Current build, live answer (R409 verdict lead &amp; exception limb guards)</div>
+      <div class="hd">Current build, live answer (verdict lead &amp; exception limb guards)</div>
       <div class="answer">No, this is not allowed. Article 5(1)(f) prohibits the placing on the market, putting into service, or use of AI systems that infer emotions of natural persons in workplace and educational institutions, and deploying such a system to monitor the emotions and stress levels of manufacturing line workers to improve efficiency falls squarely within that ban. The statutory exception is narrow and strictly limited to AI systems intended to be put into service or placed on the market for medical or safety reasons (such as worker fatigue detection to prevent industrial accidents); efficiency improvement does not qualify under any exception. Because the practice is prohibited outright, no deployer measures, worker consent, or operational safeguards can render it lawful.</div>
       <div class="meta"><span>786 chars</span><span class="refs">Article 5.1.f, Article 5</span><span class="up">exact sub-point hit · prompt-anchored negative verdict</span><span>0.039s</span></div>
     </div>
@@ -768,13 +768,13 @@
       </div>
     </div>
     <div class="panel after">
-      <div class="hd">Live Sonnet 5 adjudication: 4/4 (100% Pass)</div>
+      <div class="hd">Independent adjudication: 4/4 (100% Pass)</div>
       <div class="crit p">Unambiguous "No" verdict on proposed deployment<span class="remark">"Answer opens with an unambiguous 'No, this is not allowed' verdict directly resolving the compliance query."</span></div>
       <div class="crit p">Article 5(1)(f) workplace emotion inference ban<span class="remark">"Accurately identifies Article 5(1)(f) as banning emotion inference in workplace and educational settings."</span></div>
       <div class="crit p">Exclusion of "efficiency improvement" from carve-outs<span class="remark">"Explicitly confirms that 'efficiency improvement' fails to qualify for any statutory exception."</span></div>
       <div class="crit p">Strict medical or safety (accident-prevention) carve-out limits<span class="remark">"Explains the narrow statutory carve-out is limited strictly to medical or safety reasons (fatigue detection for accident prevention)."</span></div>
       <p style="margin:.6rem 0 0;font-size:.82rem">
-        <strong>Remediation Mechanism:</strong> Enforced through <code>REGENOLD_VERDICT_LEAD_GUARD</code> (guaranteeing front-loaded 'No' verdict on prohibited AI practices) and <code>REGENOLD_EXCEPTION_LIMB_GUARD</code> (strictly vetting operational purposes against statutory exception limbs and denying commercial efficiency claims).
+        <strong>Remediation Mechanism:</strong> Enforced by the verdict lead guard (a front-loaded 'No' verdict on prohibited practices) and the exception limb guard (testing the stated operational purpose against the statutory exception limbs and refusing commercial efficiency claims).
       </p>
     </div>
   </div>
@@ -785,7 +785,7 @@
         <tr>
           <th>Metric</th>
           <th class="num">August Live</th>
-          <th class="num">Current (R409)</th>
+          <th class="num">Current build</th>
           <th class="num">Δ pp</th>
           <th>Status / Effect</th>
         </tr>
@@ -817,7 +817,7 @@
       <div class="meta"><span>415 chars</span><span class="refs">Article 6, Annex I</span><span class="down">generic medical device text · missing application</span></div>
     </div>
     <div class="panel after">
-      <div class="hd">Current build, live answer (R409 MedTech Stage-2 bridging &amp; control loop)</div>
+      <div class="hd">Current build, live answer (MedTech synthesis bridging &amp; oversight control loop)</div>
       <div class="answer">Yes. An AI system intended to be used as a safety component in robotic surgery is high-risk under Article 6(1) because a surgical robot is a Class IIb or Class III medical device under Regulation (EU) 2017/745 (MDR) Annex VIII Rule 11, requiring third-party notified body conformity assessment under Article 52. Substantively, because the AI is directly in the real-time surgical control loop, Article 14 human oversight requires technical measures that allow the operating surgeon to monitor operation, intervene, and override or reverse autonomous motions in real time. Under Article 43(3), conformity assessment under the AI Act is integrated directly into the sectoral MDR procedure rather than run as a duplicate track, and under Article 72 and Article 73 the provider must maintain continuous post-market monitoring and report serious incidents, coordinated with MDR Article 83 post-market surveillance.</div>
       <div class="meta"><span>931 chars</span><span class="refs">Article 6.1, Annex I, Article 14.2, Article 43.3, Article 72</span><span class="up">exact sectoral &amp; AI Act coordinates</span><span>0.015s</span></div>
     </div>
@@ -836,7 +836,7 @@
       </div>
     </div>
     <div class="panel after">
-      <div class="hd">Live Sonnet 5 adjudication: 4/4 (100% Pass)</div>
+      <div class="hd">Independent adjudication: 4/4 (100% Pass)</div>
       <div class="crit p">Unambiguous "Yes" verdict for robotic surgery safety component<span class="remark">"Answer states an unambiguous 'Yes' classifying it as high-risk under Article 6(1)."</span></div>
       <div class="crit p">Application of MDR Class IIb / Class III device classification<span class="remark">"It notes the device is Class IIb/III requiring notified-body assessment, satisfying the second limb of Article 6(1)."</span></div>
       <div class="crit p">Substantive real-time human oversight under Article 14<span class="remark">"States Article 14 requires robust human oversight allowing the surgeon to override/reverse in real time."</span></div>
@@ -853,7 +853,7 @@
         <tr>
           <th>Metric</th>
           <th class="num">August Live</th>
-          <th class="num">Current (R409)</th>
+          <th class="num">Current build</th>
           <th class="num">Δ pp</th>
           <th>Status / Effect</th>
         </tr>
@@ -871,7 +871,7 @@
 </article>
 
 <footer>
-  <p><strong>Evaluation Protocol:</strong> Regulation (EU) 2024/1689 (state of affairs 1 May 2026). Generation: Claude Opus 5 with R409 Architecture. Evaluation Judge: Claude Sonnet 5 (<code>anthropic/claude-sonnet-5</code> via OpenRouter, 3 repetitions @ temperature 0.1). Benchmark: Regenold EU AI Act Q&amp;A Challenge &amp; Antifragile AI Expert Review.</p>
+  <p><strong>Evaluation Protocol:</strong> Regulation (EU) 2024/1689 (state of affairs 1 May 2026). Answers generated by the production engine. Evaluation by independent adjudication against the evaluator's published criteria, three repetitions at temperature 0.1. Benchmark: Regenold EU AI Act Q&amp;A Challenge &amp; Antifragile AI Expert Review.</p>
 </footer>
 
 </div>
