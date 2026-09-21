@@ -63,9 +63,10 @@ def test_annex_dotted_prose_reaches_the_rewrite_too():
     assert "Annex IV.1.e" in out, "a DIFFERENT limb of the same parent is a substitution"
     assert "Annex IV.2" not in out
     assert len(out) == 1
-    # A shallower coordinate of the SAME limb is depth, not substitution: R425
-    # deliberately keeps it, and R428 does not change that.
-    assert _ground_wire_subpoints(answer, ["Annex IV.1"]) == ["Annex IV.1"]
+    # A shallower coordinate of the SAME limb is depth, not substitution. R425
+    # abstained; R429 completes it to the prose's grain, which `rubric.
+    # _is_descendant` makes monotone on every reference axis.
+    assert _ground_wire_subpoints(answer, ["Annex IV.1"]) == ["Annex IV.1.e"]
 
 
 def test_dotted_prose_is_not_surfaced_by_the_additive_pass():
