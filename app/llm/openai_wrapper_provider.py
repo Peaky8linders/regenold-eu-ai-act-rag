@@ -128,13 +128,49 @@ def _model_alias_enabled() -> bool:
     }
 
 
+#: R432 — namespace applied to the PRIMARY transport's Claude models.
+#:
+#: An alternate primary that is not the Claude Max wrapper (the outage remedy
+#: when the tunnel is down or its Max quota is exhausted) serves the SAME model
+#: ids behind a vendor prefix — e.g. ``anthropic/claude-opus-5``. Without this,
+#: every model the app sends (Stage-2, the denoiser, the intent classifier, the
+#: eval preflight) is a 400 ``not a valid model ID``, and the failure mode is
+#: silent degradation rather than a loud error: the engine falls through to a
+#: deterministic Stage-1 draft. One env var keeps the model IDENTITY unchanged
+#: while the transport changes — which is what makes such a draw readable.
+#:
+#: Applied only to ``claude*`` names. This provider class is reused verbatim for
+#: Groq / Gemini / Mistral (see the singletons below), so a blanket prefix would
+#: rewrite ``llama-3.3-70b-versatile`` into a nonsense id on a mixed deployment.
+_WRAPPER_MODEL_PREFIX_ENV = "REGENOLD_WRAPPER_MODEL_PREFIX"
+
+
+def wrapper_model_prefix() -> str:
+    """Namespace prepended to ``claude*`` models, or ``""`` (default)."""
+    return os.getenv(_WRAPPER_MODEL_PREFIX_ENV, "").strip()
+
+
 def resolve_wrapper_model(requested: str) -> str:
     """Return the model name actually sent to the wrapper for ``requested``.
 
     Public so the engine can report the EFFECTIVE model in the reasoning
-    trace instead of the requested one.
+    trace instead of the requested one. That is why this resolves from the env
+    alone and never takes the instance's base URL: the trace and the wire must
+    not be able to disagree (the R300 measurement bug).
+
+    Order: the namespace prefix (R432) wins outright when set; else the alias
+    table when enabled; else verbatim.
     """
     name = (requested or "").strip()
+    prefix = wrapper_model_prefix()
+    if prefix:
+        # A namespaced transport gets the requested id verbatim, namespaced.
+        # The alias table exists to make the WRAPPER accept a name (R263.2);
+        # against a different namespace its targets are simply wrong, so it is
+        # skipped rather than composed.
+        if not name or name.startswith(prefix) or not name.lower().startswith("claude"):
+            return name
+        return f"{prefix}{name}"
     if not _model_alias_enabled():
         return name
     target = _WRAPPER_MODEL_ALIASES.get(name.lower())
@@ -292,48 +328,46 @@ def _host_of(url: str) -> str:
 
 
 def _cf_access_trusted_hosts() -> frozenset[str]:
-    """Hosts the Access service token may be presented to (R365).
+    """Hosts the Access service token may be presented to (R365, R432).
 
     ``CF_ACCESS_HOSTNAME``, when set, is the operator's explicit pin and is the
     ONLY trusted host — it narrows, it never widens.
 
-    Otherwise the anchor is ``stage2_policy.allowed_primary_hosts()``: the
-    R360.7 allowlist that already answers "which hosts ARE the Claude Max
-    path", overridable by the operator via ``REGENOLD_STAGE2_PRIMARY_HOSTS``.
-    Reused rather than re-declared so a renamed tunnel is one edit, not two
-    that can drift.
+    Otherwise the anchor is the hardcoded ``_DEFAULT_WRAPPER_BASE`` host: a
+    constant in this repo naming the Access-protected edge, which can never be
+    a third party.
 
-    Two deliberate departures from that allowlist:
+    ⚠ R432 — the transport allowlist MUST NOT widen this. R365 anchored the
+    token on ``stage2_policy.allowed_primary_hosts()`` so that a renamed tunnel
+    stayed one edit; the consequence was that ``REGENOLD_STAGE2_PRIMARY_HOSTS``
+    silently became the *secret* allowlist too. Measured on the R365 code:
 
-      * ``allowed_primary_hosts`` is read directly, NOT through
-        ``is_primary_base_url_allowed`` — the latter short-circuits ``True``
-        when ``REGENOLD_STAGE2_STRICT_TRANSPORT=0``, which would hand the
-        exfiltration hatch straight back to anyone who turns strict mode off.
-        Secret scoping and the transport contract share the host list; they do
-        not share the off-switch.
-      * ``_DEFAULT_WRAPPER_BASE``'s host is unioned in unconditionally. It is a
-        hardcoded constant in this repo naming the Access-protected edge, so it
-        can never be a third party, and keeping it means a typo'd
-        ``REGENOLD_STAGE2_PRIMARY_HOSTS`` cannot take Stage-2 down — without
-        ``CF_ACCESS_*`` on the wire the edge answers 401 and production serves
-        ZERO Claude Max.
+        CF_ACCESS_* set, REGENOLD_STAGE2_PRIMARY_HOSTS=openrouter.ai
+        _resolve_cf_access_headers("https://openrouter.ai/api/v1")
+          -> {'CF-Access-Client-Id': 'ID', 'CF-Access-Client-Secret': 'SECRET'}
 
-    The local hosts on that allowlist (``127.0.0.1`` et al., there because
-    ``ab_judge`` drives a wrapper on the operator's own machine) are filtered
-    out by the ``_LOCAL_HOSTS`` check in the caller, which runs first.
+    That is the same exfiltration R365 exists to prevent, reached through the
+    one knob an operator sets to point Stage-2 at a working transport — i.e.
+    through the documented outage remedy. Two different questions were sharing
+    an answer: "which hosts may Stage-2 dial" (a routing policy) and "which
+    hosts may be handed a Zero Trust SECRET" (a credential policy). They are
+    separate now.
+
+    Renaming the operator's own tunnel still works: set
+    ``CF_ACCESS_HOSTNAME=<the new host>`` (the pin *arms* the host it names —
+    see ``test_explicit_hostname_arms_that_host``).
+
+    The local hosts that also sit on the transport allowlist (``127.0.0.1`` et
+    al., there because ``ab_judge`` drives a wrapper on the operator's own
+    machine) are filtered out by the ``_LOCAL_HOSTS`` check in the caller,
+    which runs first.
     """
     pinned = _host_of(f"https://{os.getenv(_CF_ACCESS_HOSTNAME_ENV, '').strip()}")
     if pinned:
         return frozenset({pinned})
 
-    try:
-        from app.llm.stage2_policy import allowed_primary_hosts
-
-        allowed = set(allowed_primary_hosts())
-    except Exception:  # noqa: BLE001 — never let policy import break provider init
-        allowed = set()
-    allowed.add(_host_of(_DEFAULT_WRAPPER_BASE))
-    return frozenset(h for h in allowed if h)
+    default = _host_of(_DEFAULT_WRAPPER_BASE)
+    return frozenset({default}) if default else frozenset()
 
 
 def _resolve_cf_access_headers(base_url: str) -> dict[str, str]:

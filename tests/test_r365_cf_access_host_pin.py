@@ -32,6 +32,7 @@ import httpx
 import pytest
 
 from app.llm.openai_wrapper_provider import (
+    _cf_access_trusted_hosts,
     _OpenAIWrapperProvider,
     _resolve_cf_access_headers,
 )
@@ -243,11 +244,14 @@ class TestExplicitHostnamePinStillWorks:
         assert _resolve_cf_access_headers(WRAPPER) == {}
 
 
-class TestOperatorAllowlistIsTheSingleSourceOfTruth:
-    """R365 reuses ``stage2_policy.allowed_primary_hosts()`` rather than minting
-    a second host list. An operator who renames the tunnel edits one place."""
+class TestTransportAllowlistIsNotASecretAllowlist:
+    """R365 reused ``stage2_policy.allowed_primary_hosts()`` so a renamed tunnel
+    was one edit; R432 split the two scopes because that reuse made the
+    *transport* knob the *secret* allowlist (see the R432 note in the module).
+    The default tunnel stays armed unconditionally; everything else must be
+    named explicitly by the operator's own pin."""
 
-    def test_renamed_tunnel_via_stage2_allowlist_gets_the_token(
+    def test_renamed_tunnel_is_dialled_but_not_armed_by_the_transport_allowlist(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _set_token(monkeypatch)
@@ -255,7 +259,31 @@ class TestOperatorAllowlistIsTheSingleSourceOfTruth:
             "REGENOLD_STAGE2_PRIMARY_HOSTS", "tunnel-b.antifragile-ai.net"
         )
         monkeypatch.setenv("OPENAI_API_BASE", "https://tunnel-b.antifragile-ai.net/v1")
+        assert _resolve_cf_access_headers("https://tunnel-b.antifragile-ai.net/v1") == {}
+
+    def test_the_rename_path_still_works_via_the_operator_pin(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The documented remedy for a renamed tunnel: pin it as the secret
+        host. The pin arms exactly the host it names."""
+        _set_token(monkeypatch)
+        monkeypatch.setenv(
+            "REGENOLD_STAGE2_PRIMARY_HOSTS", "tunnel-b.antifragile-ai.net"
+        )
+        monkeypatch.setenv("CF_ACCESS_HOSTNAME", "tunnel-b.antifragile-ai.net")
         assert _resolve_cf_access_headers("https://tunnel-b.antifragile-ai.net/v1") != {}
+
+    def test_allowlisting_the_third_party_itself_does_not_arm_it(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """R432 — the outage remedy (point Stage-2 at a working OpenAI-spec
+        transport) must not ship the Zero Trust token to that transport. This
+        is the exact case the old anchor got wrong."""
+        _set_token(monkeypatch)
+        monkeypatch.setenv("REGENOLD_STAGE2_PRIMARY_HOSTS", "openrouter.ai")
+        monkeypatch.setenv("OPENAI_API_BASE", "https://openrouter.ai/api/v1")
+        assert _resolve_cf_access_headers("https://openrouter.ai/api/v1") == {}
+        assert _cf_access_trusted_hosts() == frozenset({"wrapper.antifragile-ai.net"})
 
     def test_narrowing_the_allowlist_never_disarms_the_default_tunnel(
         self, monkeypatch: pytest.MonkeyPatch

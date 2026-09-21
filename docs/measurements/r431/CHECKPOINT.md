@@ -111,15 +111,15 @@ violations, **0** Ref. Strict regressions, max append on any row **1** (cap 2),
 
 | axis | OFF | ON | Δ | 95% CI (seeded) |
 | :-- | --: | --: | --: | :-- |
-| Ref. Correctness (Loose) | 98.15 | 98.15 | **+0.00** | [0.00, 0.00] |
-| Ref. Correctness (Strict) | 77.16 | 82.72 | **+5.56** | [+0.00, +14.81] |
-| Ref. Conciseness | 45.59 | 45.00 | −0.59 | [−1.36, +0.00] |
+| Ref. Correctness (Loose) | 100.00 | 100.00 | **+0.00** | [0.00, 0.00] |
+| Ref. Correctness (Strict) | 80.86 | 84.57 | **+3.70** | [+0.00, +11.11] |
+| Ref. Conciseness | 44.88 | 44.75 | −0.12 | [−0.37, +0.00] |
 
-27 comparable hard rows, two independent generations. The lever fired on **3 rows**,
-appending **4 coordinates, all 4 of them gold**; Ref. Strict moved up on 2 rows and
-down on none. Asserted per row-sample rather than argued: **0** folded-head-set
+27 comparable hard rows across **three independent generations**. The lever fired on
+**3 rows**, appending **6 coordinates, all 6 of them gold**; Ref. Strict moved up on
+1 row and down on none. Asserted per row-sample rather than argued: **0** folded-head-set
 violations, **0** met→unmet regressions, **0** append-cap violations, gold heads
-dropped unchanged at 0. Appended: `rg_034 +Article 101.5` (both generations),
+dropped unchanged at 0. Appended: `rg_034 +Article 101.5` (all generations),
 `rg_055 +Article 5.1.h.ii`, `rg_082 +Article 24.3`.
 
 ### 4.2 The draw is short of its pre-registered length — and the harness was fixed
@@ -147,13 +147,12 @@ continue-on-fallback, abort-when-no-leg, preflight returns `fallback:<model>`, p
 refuses when neither answers, the probe is fail-soft, and the health checks receive the
 row they just drew).
 
-**Why this draw is still two generations:** in this environment *neither* leg is usable —
-the wrapper's upstream returns 500 and the local Bedrock bearer token is expired
-(`api_key_invalid_403`; the client's own hint notes long-term Bedrock keys expire after
-30 days). With no leg answering, the guard aborts, correctly. The reader therefore uses
-the **two complete generations** and says so on stdout and in the verdict (`repeats: 2`,
-`repeats_pre_registered: 3`); the tolerance criteria are unchanged and were not relaxed.
-Completing generation 3 is a re-run, not the same measurement:
+**The completed result:** the current reader uses all **three complete generations**
+(`repeats: 3`, `repeats_pre_registered: 3`); the tolerance criteria were unchanged and
+were not relaxed. The earlier 12/37 partial artefact remains provenance-only and is not
+mixed into the score.
+
+The reproduction command is:
 
 ```bash
 python -m evals.regenold.run_official_batch --label r431-add --mode hard --stride 3 \
@@ -184,7 +183,30 @@ pinned by the run itself.
 The lesson is recorded rather than the fix alone: both failures were silent, and in each
 case the gate's own criteria — not the axis deltas — are what surfaced them.
 
-### 4.4 Design
+### 4.4 Earlier live check on the deployed build — and what it found
+
+After the merge (`f50b2c8d2cb8` serving), four hard-split questions were asked on the
+deployed service with `include_reasoning=true`. **Every row came back
+`stage2_served_by=deterministic`**, with `cache_skip_degraded_serve=deterministic` in the
+trace. So the deployed build has **no working Stage-2 leg either** — the wrapper upstream
+is returning 500 and the deployed Bedrock leg is not answering — and it is answering from
+deterministic Stage-1 drafts.
+
+Two consequences, stated plainly:
+
+* **The R431 lever is a no-op on those rows, by design.** They are the population §4.3
+describes: the pass does not own a wire that never entered it, so the curated / Stage-1
+wire stays byte-identical. This is the scope correction being exercised in production,
+not a failure of the lever.
+* **The provenance work is doing its job.** The degraded serve is visible per row in the
+trace and suppresses the cache write, so a Bedrock-degraded answer cannot be replayed
+after the leg recovers. Without it, this state would have been indistinguishable from a
+healthy run — which is exactly the failure R292/R418 were written to prevent.
+
+A live behavioural demonstration of the append therefore needs one leg restored; the
+offline probe (554 rows) and the paired gate are the standing evidence until then.
+
+### 4.5 Design
 
 
 **One live arm, both lever states derived.** The pass runs *after* Stage-2 lands and
