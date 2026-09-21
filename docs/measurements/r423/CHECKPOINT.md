@@ -9,7 +9,7 @@ falsification, and the exact resume commands.**
 
 ## 1. What the lever is
 
-`REGENOLD_NEED_PROPORTIONAL_CONTRACT` (**default OFF**) — one deterministic
+`REGENOLD_NEED_PROPORTIONAL_CONTRACT` (**default ON**) — one deterministic
 estimate of what a question actually engages, rendered twice:
 
 | rendering | where | what changes |

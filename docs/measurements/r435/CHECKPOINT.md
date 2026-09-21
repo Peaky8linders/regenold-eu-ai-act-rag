@@ -38,8 +38,25 @@ behavior; no retrieval or answer-quality default was changed.
 - No R435 quality delta is reported because the live sample was incomplete and
   void under the transport/provenance rule.
 
+## Deployment status
+
+Commit `c4756cf` passed CI and is present in the GitHub production deployment
+queue, but the deployment status is still `in_progress`; `/healthz` continues
+to report the prior serving commit `91d40b6`. The full hard run is therefore
+held until `/healthz` reports `c4756cf`. No claim of redeployment is made yet.
+
 ## Next measurement
 
-Re-run a clean, single-owner significant pushback sample with primary and
-Bedrock provenance recorded per row. Only after that sample is complete should
-the full 110-row hard evaluation be launched.
+The six-row live sample completed on the current source with both arms primary
+served and zero errors. Bedrock Qwen-235B judging (three repetitions) completed
+on both arms. OFF → ON was: Ans Loose 95.45 → 95.45 (0.00 pp), Ans Strict
+83.33 → 83.33 (0.00 pp), Ans Conc 45.45 → 46.40 (+0.95 pp), Ref Loose 100.00
+→ 100.00 (0.00 pp), Ref Strict 75.00 → 58.33 (-16.67 pp), Ref Conc 32.50 →
+33.33 (+0.83 pp), Tone 100.00 → 66.67 (-33.33 pp), Speed 64.65 → 69.34
+(+4.70 pp), and Overall 69.90 → 65.33 (-4.57 pp). This is a six-row signal,
+not a ship gate; the correctness and tone regressions mean the contract remains
+OFF pending a larger valid hard gate. The Bedrock judge's row remarks were
+`rg_069` partial correctness/tone fail and `rg_088` tone fail on the ON arm.
+
+Only after deployment is confirmed by `/healthz` should the full 110-row hard
+evaluation be launched.

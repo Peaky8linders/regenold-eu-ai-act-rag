@@ -8485,13 +8485,13 @@ def _closed_set_min_members() -> int:
 
 
 def _need_proportional_contract_enabled() -> bool:
-    """R423 — the need-proportional shape contract (default OFF).
+    """R423 — the need-proportional shape contract (default ON).
 
     Delegates to :func:`app.engines.answer_need.need_proportional_contract_enabled`
     so the flag has ONE reader and cannot drift between the clause and the
     skeleton scope. Imported lazily, matching how this module already reaches
     ``answer_completeness``; a failed import returns ``False`` so a broken
-    dependency can never silently change the shipped prompt.
+    dependency cannot silently change the shipped prompt.
     """
     try:
         from app.engines.answer_need import (  # noqa: PLC0415
