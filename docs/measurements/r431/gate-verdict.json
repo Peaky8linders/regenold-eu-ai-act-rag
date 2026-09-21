@@ -1,0 +1,59 @@
+{
+  "label": "r431-add",
+  "rows": 27,
+  "repeats": 2,
+  "repeats_pre_registered": 3,
+  "generations_note": "only 2 of 3 generations complete; the third was aborted by the harness transport guard when the primary leg returned HTTP 500 on every call",
+  "axes": {
+    "loose": {
+      "off": 98.1481,
+      "on": 98.1481,
+      "delta": 0.0,
+      "ci95": [
+        0.0,
+        0.0
+      ]
+    },
+    "strict": {
+      "off": 77.1605,
+      "on": 82.716,
+      "delta": 5.5556,
+      "ci95": [
+        0.0,
+        14.8148
+      ]
+    },
+    "conc": {
+      "off": 45.5864,
+      "on": 45.0,
+      "delta": -0.5864,
+      "ci95": [
+        -1.358,
+        0.0
+      ]
+    }
+  },
+  "non_vacuous_rows": [
+    "rg_034",
+    "rg_055",
+    "rg_082"
+  ],
+  "appended": 4,
+  "appended_gold": 4,
+  "gold_heads": {
+    "off": 0,
+    "on": 0
+  },
+  "criteria": {
+    "licence: fixed point on every row-sample": true,
+    "the lever is not inert on this draw": true,
+    "strict >= -1.5 pp": true,
+    "loose within -1.5 pp": true,
+    "conc within -2.5 pp": true,
+    "gold heads ON <= OFF": true,
+    "append cap respected": true,
+    "head set invariant": true,
+    "no met->unmet regression": true
+  },
+  "verdict": "SHIP (default stays ON)"
+}

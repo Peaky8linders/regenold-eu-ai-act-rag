@@ -185,6 +185,104 @@ inside the compact branch.** Still default OFF; the A/B is now meaningful for th
 Full evidence: `docs/reviews/r398-invariant-5-audit-2026-09-09.md`.
 
 
+## ⛔ R431 — the sibling-limb deficit is ATTRIBUTION, not generation. The wire gets an ADD.
+
+Full evidence: `docs/measurements/r431/CHECKPOINT.md`. Artefacts: `sibling_triage.py`,
+`add_threshold_sweep.py`, `wire_add_probe.py`, `wire_add_gate.py`.
+
+**R429's handover was wrong, and re-measuring it is the whole finding.** R429 closed
+by naming the next lever as *"135 of the remaining unmet gold sub-points name a sibling
+limb the prose doesn't name either — that is generation-side prompting work"*.
+Measured per draw (`sibling_triage.py`, today's board): of **173** unmet gold
+expectations, **85** are `named_sibling_on_wire` — the prose **does** name the gold limb
+and the **wire** ships a sibling of it (`rg_100` names `Article 6.1`, `6.2` and `6.3`,
+ships only `6.2`). Only **50** are "the prose names neither", the genuinely
+generation-side set. Per ROW the effect is smaller still: of 28 rows with a landed draw,
+16 are met in every draw, 11 are draw-dependent, **5 are structural**.
+
+The pass abstains there **by contract**: `_ground_wire_subpoints` is 1:1 in place, so
+when the prose names the wire's limb *too* it cannot add the missing one.
+
+**The repair — `REGENOLD_GROUND_WIRE_ADD`, default ON.** `_ground_wire_add_missing`
+appends the prose-named limbs the wire lacks, only when the parent is already on the
+wire (so the folded head SET, and Ref. Loose, cannot move), only for coordinates
+`coordinate_exists` admits, and only when **both the answer and the question** discuss
+the limb's *own* statutory text above calibrated floors.
+
+**The floors are a measured TARIFF, not a guess.** Ref. Strict can only gain and Ref.
+Conciseness can only lose, so the operating point is points-of-strict per
+point-of-conciseness. Swept on 554 recorded rows with the real rubric: the **unfiltered
+ADD is net NEGATIVE** (501 additions, 23.6 % precision, ΔStrict +8.84, ΔConc −7.49 →
+**−0.80** implied Overall) and the whole `q = 0.0` column never reaches the plateau
+even at a 0.9 answer floor (+0.14). The optimum is a **plateau** — `(0.5, 0.4)`,
+`(0.6, 0.4)` and `(0.7, 0.4)` all tie at **+0.32** — and the default `(0.6, 0.4)`
+sits on it.
+
+**Measured effect** (`wire_add_probe.py`, 554 rows, real rubric): Ref. Strict 73.13 →
+**76.90 (+3.76)**, Loose **+0.00**, Conc 40.78 → 40.17 **(−0.61)**. R419 board only:
+Strict 65.15 → **70.45 (+5.30)**, Loose +0.00, Conc **−0.86**. 53 rows fired, 53
+coordinates appended, 35 gold (66.0 %). Construction guarantees **asserted per row
+rather than argued**: **0** folded-head-set violations, **0** Strict regressions, max
+append 1/row (cap 2). The head invariant is a **SET** invariant, not a multiset one —
+`reference_correctness_loose` reads `set(_heads(pred))`, and asserting multiset
+equality reported **53 false violations**, every one a correct append under a head
+already present.
+
+**Live gate: 9/9 criteria PASS, `SHIP`** (`wire_add_gate.py`, verdict in
+`docs/measurements/r431/gate-verdict.json`). 27 comparable hard rows, two independent
+generations: Ref. Strict 77.16 → **82.72 (+5.56)**, Loose **+0.00**, Conc **−0.59**.
+The lever fired on 3 rows and appended 4 coordinates, **all 4 of them gold**; Ref. Strict
+moved up on 2 rows and down on none; **0** folded-head-set violations, **0** met→unmet
+regressions, gold heads dropped unchanged at 0. It is the **third** of the three
+pre-registered generations that is missing: the primary leg returned HTTP 500 on every
+call part-way through it and the transport guard aborted that sample at 12/37, so the
+reader uses the two complete generations, says so on stdout, and records it in the
+verdict (`repeats: 2` of 3). The tolerance criteria were not relaxed. **Two silent reader
+defects were found and fixed by this run rather than by the numbers** — the first version
+checked the derivation licence over rows the pass never owns (the deterministic-leg rows:
+out of scope, not a lever fault), and drove the pass with `question=""`, which zeroes the
+ADD's second vote and reported the lever inert on 27 of 27 rows. Both are recorded in
+§4.3 of the checkpoint because the non-vacuity and licence criteria are what caught them,
+not the axis deltas.
+
+**The transport guard is now LEG-AWARE (R431), and this was the round that exposed why it
+had to be.** `_install_stage2_transport_guard` used to abort whenever the PRIMARY tripped
+— but the guard was written to prevent one specific outcome (a batch graded on
+deterministic Stage-1 drafts), and a tripped primary with a *healthy fallback* is not
+that outcome: the wire is still Stage-2's and every row records its leg. Now the
+preflight probes the **fallback** (`bedrock_client.check_connectivity_and_permissions`,
+which walks the same chain the fallback leg dials) and proceeds as a loudly-labelled
+fallback-served draw when the primary probe fails; the mid-run guard reads each row's
+`stage2_served_by` and, with the primary tripped but the row fallback-served, warns once
+and carries on; it still aborts when **neither** leg answers. Pinned by
+`tests/test_r431_fallback_leg_guard.py`. Consequence to know: in an environment where
+the wrapper is down and the Bedrock bearer token has expired, both legs are gone and the
+run still aborts — correctly — and the checkpoint says so.
+
+**Two repairs of the substitution arm were built, measured and REJECTED** — recorded
+in the code beside the function so they are not re-proposed as obvious wins. The defect
+they target is real: on `rg_085` the substitution replaces the wire's `Article 6.2`,
+**which is the gold key**, with `Article 6.1` — 11 gold keys destroyed across the corpus
+(a Hard Rule #8 violation). But:
+
+* **question-grounded veto** (abstain when the question relies on the limb) — at its
+  only firing floor (0.2–0.3) Ref. Strict falls **0.61 pp net**: it suppresses 43
+  substitutions that were winning to recover those 11. At 0.4 it **never fires**, because
+  `q_recall('Article 6.2')` is **0.333**. Inert-or-negative, verified against the
+  implementation rather than a model of it.
+* **keep-and-add** (append the sibling instead of replacing) — Strict **+0.74**,
+  Conciseness **−4.18** across 318 converted slots → **−0.87 pp implied Overall**.
+
+So R425's in-place replace stands and the `rg_085` loss is its price. A repair needs a
+signal separating that row's limb from the 43 winning substitutions; **the prose and
+the question both fail to** — recorded as an open, characterised limit rather than
+papered over.
+
+Also fixed here: the R425 trace reported only positional rewrites (`zip` truncates at
+the shorter list), so an **append left the trace silent while the wire had changed**.
+It now emits `+Article 6.1` entries.
+
+
 ## ⛔ R428 — the R426 (SOTA legal-KG) round, audited by execution
 
 Full evidence: `docs/reviews/r428-cr-dispositions.md`, artefact
@@ -1667,6 +1765,8 @@ the branch arm, at n≥30 per split, before the benchmark window.
 | `REGENOLD_CITABLE_BASE_GUARD` | **`0`** | Restrict prose-named citation promotion to the retrieval-grounded universe. **R403 re-measurement at full n=110 paired (over R401's n=37) CONFIRMS default OFF, now on statistics rather than an underpowered mean**: RefConc +6.72 pp is real (CI [+3.63, +10.22], p<0.0001) but `gold_dropped_head` 5→7 (rg_067, rg_090) trips hard rule #8's veto, and RefLoose −1.50 / RefStrict −2.00 trend negative with CIs touching 0. Do not re-propose without a gold-drop-safe variant. |
 | `REGENOLD_GROUND_WIRE_SUBPOINTS` | **`1`** | R425 — the mirror of R133 `_surface_prose_subpoints`: the ADD pass only fires when the wire carries the BARE parent, so a wire that already held a SIBLING limb shipped an ungrounded one to the graded `references` field (`rg_100` answer names `Article 6(3)`, wire recorded `Article 6.2`). `_ground_wire_subpoints` (`regenold.py:~4490`) rewrites the limb IN PLACE onto the limb the prose names — same parent, same count, so the folded head set is bit-identical and hard rule #8 is +0 by construction. `_stage2_landed`-gated like its ADD twin, ordered after the R386 deepener / R397 coordinate guard and before every pass that can drop. **Measured over the R424 gate's six checkpoints** (336 comparable row-samples, the real `evals.official.rubric`): 106 substitutions on 20 rows, the wire limb is gold in **0**, the prose limb in **15** → Ref Strict **65.28 → 65.90 (+0.62 pp)**, Ref Loose and Ref Conciseness byte-identical. Candidates filtered to `coordinate_exists`; an ungrounded sibling BESIDE a grounded one is deliberately left for a separate RefConc gate. **The prefix (grain-depth) case is now completed rather than abstained on — see `REGENOLD_GROUND_WIRE_DEPTH`, and § R429 for why R425's abstention premise was false.** `=0` rolls back. See § R425 |
 | `REGENOLD_GROUND_WIRE_DEPTH` | **`1`** | R429 — the prefix half of the pass above. R425 abstained when the prose names a DEEPER coordinate of the wire's own limb (`Annex IV.1` on the wire, `Annex IV.1.e` named by the prose), reasoning that the evaluator "may not key on" the deeper one. `rubric._is_descendant` (`pred.startswith(expected + ".")`) says it does, so completion is **monotone on Ref. Strict and free on Ref. Loose / Ref. Conciseness by construction** (same parent, 1:1 in place) — `gold_dropped_head` +0 and the count invariant, not merely measured. Full pass order unchanged (surface → collapse → deepener → coord guard → this). **Offline, paired on 477 recorded hard draws with a landed Stage-2** (real `evals.official.rubric`): Ref. Strict 65.55 → **72.68 (+7.13 pp)**, loose/conc **+0.00**, 162 coordinates completed (94 gold / 68 excess), count/head/regression violations all **0**. The tie-break among several prose-named descendants is by answer-token overlap with the rival's provision text (18/18 of 18 deciding cases). **Live gate: 9/9 criteria PASS, `SHIP`** — 111 fresh hard draws, Ref. Strict 69.75 → 73.46 (**+3.70 pp**), loose/conc ±0.00, 0 count/head violations, artefact `docs/measurements/r429/gate-verdict.json`. `=0` restores R425's abstention and is the gate's baseline arm. Registered in `_engine_cache_key`. See § R429 |
+| `REGENOLD_GROUND_WIRE_ADD` | **`1`** | R431 — the third arm of the same pass: **APPEND** the prose-named limbs the wire is missing. The two arms above are both 1:1 in place, so when the prose names the wire's limb *too* the pass abstains by contract — and that is where the largest bucket of unmet gold sub-points lives (85 of 173: the prose names the gold limb, the wire ships a sibling of it). `_ground_wire_add_missing` appends only coordinates whose **parent is already on the wire** (so the folded head SET, and Ref. Loose, are invariant by construction), only ones `coordinate_exists` admits, and only when **both the answer and the question** discuss the limb's *own* statutory text above the calibrated floors. **554 recorded rows, real rubric**: Ref. Strict 73.13 → **76.90 (+3.76)**, Loose **+0.00**, Conc 40.78 → 40.17 (**−0.61**); R419 board only Strict 65.15 → **70.45 (+5.30)**, Conc −0.86. 53 rows fired, 53 appended, 35 gold (66.0 %); **0** head-set violations, **0** Strict regressions, max 1 append/row. The floors are a measured TARIFF (`add_threshold_sweep.py`) — the unfiltered ADD is net **NEGATIVE** (−0.80 implied Overall at 23.6 % precision), and the optimum is a plateau `(0.5–0.7, 0.4)` all tying at **+0.32**. `=0` restores the substitution-only pass. See § R431 |
+| `REGENOLD_GROUND_WIRE_ADD_MAX` / `_ANSWER_RECALL` / `_QUESTION_RECALL` | **`2` / `0.6` / `0.4`** | R431 — the ADD's cap (clamped to 6) and its two recall floors, all three in `_engine_cache_key`. The question floor is **load-bearing and not luck**: the entire `q = 0.0` column never reaches the plateau even at a 0.9 answer floor (+0.14 vs +0.32), because the answer's own text cannot substitute for the question's — it is the only evidence of what the benchmark's *minimal* gold key is for, and it is exactly what a sibling cannot fake. Lowering `_QUESTION_RECALL` to 0.3 is **falsified** (+0.23 vs +0.32). See § R431 |
 | `REGENOLD_STAGE2_TRUNCATION_GUARD` | `1` | R357 post-generation truncation repair on the Stage-2 polish |
 | `REGENOLD_STAGE2_PRIOR_ANSWER_FLOOR` | **`1`** | R420 — the "never ship a thinner answer than the one we already gave" floor on the truncation guard's LAST rung. Before regressing to the deterministic Stage-1 draft, the guard compares against the answer this conversation already holds (`previous_answer` on the flattened history) and, if that answer is complete, ≥400 chars and ≥1.2× the draft, ships IT (`stage2_served_by` = **`prior_turn`**, `stage2_used=True`) instead. The pushback turn re-asks the same question, so the previous answer is a valid answer to it. **MEASURED** (`docs/measurements/r419/CHECKPOINT.md` §4): on the R419 live hard board 4 of 110 rows fell to the deterministic leg because the wrapper returned degenerate one-token completions and the Bedrock leg was dead (`api_key_invalid_403`); re-judging those rows' TURN-1 answers with the published instrument gives **12/12 criteria against 4/12 for the drafts** (`rg_036` 2/3 vs 0/3, `rg_037` 6/6 vs 0/6, `rg_085` and `rg_092` level → the floor correctly does not fire), and restores the two gold heads (`Article 42`, `Annex VIII`). Projected on the same board: `ans_loose` 94.15 → **96.28** (+2.13 pp), `ans_strict` 90.91 → **91.82** (+0.91 pp). `=0` (deny-list) restores the bare deterministic fallback. The `prior_turn` serve is a DEGRADATION: it overrides an earlier `primary` marking, sets `stage2_call_failed`, and the route refuses to cache it (R417 policy). Registered in `_engine_cache_key` |
 | `REGENOLD_STAGE2_PRIOR_ANSWER_FLOOR_RATIO` | `1.2` | R420 — how much longer the previous answer must be than the deterministic draft before the floor fires. A malformed value falls back to 1.2 rather than disabling the floor. Registered in `_engine_cache_key` |
