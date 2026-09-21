@@ -484,41 +484,30 @@
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs sm:text-sm">
             <thead class="bg-[var(--content)] text-[var(--muted-foreground)] font-medium border-b border-[var(--border)]">
-              <tr><th class="py-2.5 px-4 font-semibold">Change</th><th class="py-2.5 px-4 font-semibold">Effect</th><th class="py-2.5 px-4 font-semibold">Reach</th></tr>
+              <tr><th class="py-2.5 px-4 font-semibold">Change</th><th class="py-2.5 px-4 font-semibold">Reach</th></tr>
             </thead>
             <tbody class="divide-y divide-[var(--border)]">
-              <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Answer shape check</td>
-                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">A question asking for a list receives an enumeration; a question asking how many receives a number.</td>
+              <tr><td class="py-2.5 px-4 text-[var(--muted-foreground)]"><span class="font-medium text-[var(--foreground)]">Answer shape check</span> — a list question gets an enumeration, a count question gets a number.</td>
                 <td class="py-2.5 px-4 text-[var(--muted-foreground)]">Enumeration and count questions</td></tr>
-              <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">False refusal removed</td>
-                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">In-scope classification and scope questions are no longer declined.</td>
+              <tr><td class="py-2.5 px-4 text-[var(--muted-foreground)]"><span class="font-medium text-[var(--foreground)]">False refusal removed</span> — in-scope classification and scope questions are answered rather than declined.</td>
                 <td class="py-2.5 px-4 text-[var(--muted-foreground)]">Classification and scope questions</td></tr>
-              <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Statutory disambiguation</td>
-                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">Four points of law stated explicitly, covering Article 7(1) cumulative conditions, the Article 50(2) and 50(4) split, Annex III structure, and the Annex X to Article 111(1) link.</td>
+              <tr><td class="py-2.5 px-4 text-[var(--muted-foreground)]"><span class="font-medium text-[var(--foreground)]">Statutory disambiguation</span> — four contested points of law stated explicitly (Article 7(1) cumulative conditions, the Article 50(2)/50(4) split, Annex III structure, the Annex X link to Article 111(1)).</td>
                 <td class="py-2.5 px-4 text-[var(--muted-foreground)]">Questions on those provisions</td></tr>
-              <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Citation precision</td>
-                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">Citations name the operative paragraph rather than the bare article, raising subpoint accuracy.</td>
+              <tr><td class="py-2.5 px-4 text-[var(--muted-foreground)]"><span class="font-medium text-[var(--foreground)]">Citation precision</span> — citations name the operative paragraph, not the bare article.</td>
                 <td class="py-2.5 px-4 font-semibold text-[var(--foreground)]">Every answer</td></tr>
-              <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Duplicate citation removal</td>
-                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">A parent article is dropped where its own subpoint is already cited, improving citation conciseness.</td>
+              <tr><td class="py-2.5 px-4 text-[var(--muted-foreground)]"><span class="font-medium text-[var(--foreground)]">Duplicate citation removal</span> — the parent article is dropped where its own subpoint is already cited.</td>
                 <td class="py-2.5 px-4 font-semibold text-[var(--foreground)]">Every answer</td></tr>
-              <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Product route separated from listed uses</td>
-                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">A medical-device safety component is cited to the Annex I product route rather than being relabelled an Annex III listed use. Two captured answers stated the correct route in prose while citing the wrong one.</td>
+              <tr><td class="py-2.5 px-4 text-[var(--muted-foreground)]"><span class="font-medium text-[var(--foreground)]">Product route separated from listed uses</span> — a medical-device safety component is cited to the Annex I product route instead of being relabelled an Annex III listed use.</td>
                 <td class="py-2.5 px-4 font-semibold text-[var(--foreground)]">Classification questions</td></tr>
-              <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Minimal-risk duty statement corrected</td>
-                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">"Minimal risk carries no mandatory duties" was a false statement of law and is now qualified to the Chapter III high-risk regime: the Article 4 AI literacy duty binds providers and deployers at every tier. Present in 2 of 220 captured answers.</td>
+              <tr><td class="py-2.5 px-4 text-[var(--muted-foreground)]"><span class="font-medium text-[var(--foreground)]">Minimal-risk duty statement corrected</span> — "minimal risk carries no mandatory duties" was false and is now qualified: the Article 4 AI literacy duty binds every tier.</td>
                 <td class="py-2.5 px-4 font-semibold text-[var(--foreground)]">Risk-tier questions</td></tr>
-              <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Annex coordinates follow the answer's own prose</td>
-                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">Where an answer names a specific annex point, that point is cited instead of a lexical guess. Corrected 7 coordinates over 655 references in the full live capture, with no reference head changed.</td>
+              <tr><td class="py-2.5 px-4 text-[var(--muted-foreground)]"><span class="font-medium text-[var(--foreground)]">Annex coordinates follow the answer's own prose</span> — the annex point the answer names is cited instead of a lexical guess.</td>
                 <td class="py-2.5 px-4 font-semibold text-[var(--foreground)]">Annex citations</td></tr>
-              <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Spelling-variant evidence recovery</td>
-                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">The adopted text is written in British spelling while questions arrive in American spelling, so a question asking about "jeopardizing" conformity never matched the provision that says "jeopardise". The operative paragraph now reaches the model.</td>
+              <tr><td class="py-2.5 px-4 text-[var(--muted-foreground)]"><span class="font-medium text-[var(--foreground)]">Spelling-variant evidence recovery</span> — an American-spelled question now reaches the British-spelled provision it is asking about.</td>
                 <td class="py-2.5 px-4 font-semibold text-[var(--foreground)]">Every answer</td></tr>
-              <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Citation granularity conflict resolved</td>
-                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">Two citation stages were working against each other and discarding the most exact coordinates. Worth 15.06 pp of strict reference accuracy on its own.</td>
+              <tr><td class="py-2.5 px-4 text-[var(--muted-foreground)]"><span class="font-medium text-[var(--foreground)]">Citation granularity conflict resolved</span> — two citation stages no longer discard each other's most exact coordinates.</td>
                 <td class="py-2.5 px-4 font-semibold text-[var(--foreground)]">Every answer</td></tr>
-              <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Retrieval and grounding repairs</td>
-                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">Missing retrieval anchors added, subpoint letters restored, four incorrect statements of law removed from the generation prompt, incomplete answers repaired, and multi-turn history isolated.</td>
+              <tr><td class="py-2.5 px-4 text-[var(--muted-foreground)]"><span class="font-medium text-[var(--foreground)]">Retrieval and grounding repairs</span> — missing anchors added, subpoint letters restored, false statements of law removed, incomplete answers repaired, multi-turn history isolated.</td>
                 <td class="py-2.5 px-4 font-semibold text-[var(--foreground)]">Every answer</td></tr>
             </tbody>
           </table>

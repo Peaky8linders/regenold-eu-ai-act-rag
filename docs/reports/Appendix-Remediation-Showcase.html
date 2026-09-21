@@ -134,80 +134,60 @@
 
 <div class="scroll">
 <table>
-  <thead><tr><th>Fix</th><th>What it does</th><th>Scope</th><th>Cases closed</th></tr></thead>
+  <thead><tr><th>Fix or optimisation</th><th>Scope</th><th>Cases closed</th></tr></thead>
   <tbody>
     <tr>
-      <td><strong>Answer shape check</strong></td>
-      <td>A question that asks for a list must receive an enumeration, and a question that asks how
-        many must receive a number. Where that test fails the system now returns the enumerated limbs
-        of the governing provision instead of a single unresponsive sentence.</td>
+      <td><strong>Answer shape check</strong> — a list question gets an enumeration, a count question gets a number.</td>
       <td>enumeration and count questions</td>
       <td>Q45, Q95</td>
     </tr>
     <tr>
-      <td><strong>False refusal removed</strong></td>
-      <td>Classification and scope questions were being declined as out of scope. The rule that caused
-        it has been removed.</td>
+      <td><strong>False refusal removed</strong> — classification and scope questions are answered instead of declined.</td>
       <td>classification and scope questions</td>
       <td>Q96</td>
     </tr>
     <tr>
-      <td><strong>Statutory disambiguation</strong></td>
-      <td>Four points of law are now stated explicitly: the two conditions in Article 7(1) are
-        cumulative; the Article 50(2) machine marking duty is distinct from the Article 50(4)
-        disclosure that must not hamper enjoyment; Annex III has eight numbered areas containing
-        lettered use cases; Annex X lists the Freedom, Security and Justice IT acts and drives the
-        Article 111(1) timeline rather than the Article 49 database fields.</td>
+      <td><strong>Statutory disambiguation</strong> — four contested points of law stated explicitly (Article 7(1) conditions are cumulative, the Article 50(2)/50(4) split, Annex III's eight numbered areas, Annex X driving the Article 111(1) timeline).</td>
       <td>questions on those provisions</td>
       <td>Q17, Q74, Q95, Q104</td>
     </tr>
     <tr>
-      <td><strong>Citation precision</strong></td>
-      <td>Citations name the operative paragraph rather than the bare article, so Article 13 becomes
-        Article 13(3).</td>
+      <td><strong>Citation precision</strong> — citations name the operative paragraph, not the bare article (Article 13 becomes Article 13(3)).</td>
       <td><strong>every answer</strong></td>
       <td>Q45, Q104</td>
     </tr>
     <tr>
-      <td><strong>Duplicate citation removal</strong></td>
-      <td>Where a sub-point is already cited, the parent article is dropped, so the list no longer
-        carries Article 50 and Article 50(2) as two separate citations.</td>
+      <td><strong>Duplicate citation removal</strong> — the parent article is dropped where its own sub-point is already cited.</td>
       <td><strong>every answer</strong></td>
       <td>Q74</td>
     </tr>
     <tr>
-      <td><strong>Closed-set completeness guard</strong></td>
-      <td>Checks after generation that a list question's engaged statutory set is fully stated, and, where it is not, issues a single bounded repair that is accepted only if it closes the gap without altering any cited provision.</td>
+      <td><strong>Closed-set completeness guard</strong> — a list question's engaged statutory set is completed after generation, and a gap is repaired only if no cited provision changes.</td>
       <td>enumeration &amp; closed-set catalog questions</td>
       <td>Case A (Q6), Q45</td>
     </tr>
     <tr>
-      <td><strong>Exception limb guard</strong></td>
-      <td>Checks that exception and condition clauses ("unless", "with the exception of", "provided that") of cited provisions are preserved when questions ask about exceptions or conditions, preventing the engine from dropping negative statutory boundaries.</td>
+      <td><strong>Exception limb guard</strong> — exception and condition clauses are preserved whenever a question turns on them.</td>
       <td>exemption, condition &amp; carve-out questions</td>
       <td>Case C (Q16)</td>
     </tr>
     <tr>
-      <td><strong>Verdict lead guard</strong></td>
-      <td>Inspects binary yes/no questions to ensure the candidate answer begins with an explicit, unambiguous "Yes" or "No" verdict lead, deterministically repairing evasive, hedged, or non-committal introductory clauses.</td>
+      <td><strong>Verdict lead guard</strong> — a binary question opens with an explicit Yes or No instead of a hedge.</td>
       <td>binary &amp; classification verdict questions</td>
       <td>Case C (Q16), Case D (Q17)</td>
     </tr>
     <tr>
-      <td><strong>Pushback preservation contract</strong></td>
-      <td>On a challenge turn, the system is told which legal points the previous answer established, and a check afterwards restores any that were dropped without an explicit legal justification.</td>
+      <td><strong>Pushback preservation contract</strong> — points established earlier survive a challenge turn unless the law is explicitly shown otherwise.</td>
       <td>multi-turn pushback &amp; challenge turns</td>
       <td>Q74, Q95</td>
     </tr>
     <tr>
-      <td><strong>Governing provision paragraph-grain clause</strong></td>
-      <td>On "which provision governs X" questions, explicitly instructs the engine to delineate what each numbered paragraph of the governing provision requires, ensuring sub-paragraph accuracy and eliminating unrequested duty bleed.</td>
+      <td><strong>Governing provision paragraph-grain clause</strong> — definitions are anchored at paragraph grain, with each numbered paragraph's requirement stated.</td>
       <td>governing provision &amp; statutory role queries</td>
       <td>Case B (Q10)</td>
     </tr>
     <tr>
-      <td><strong>Statutory sub-point text supplied to synthesis</strong></td>
-      <td>Supplies the verbatim text of the cited sub-points and paragraphs from the statutory knowledge graph into the generation context, sharing the budget evenly across provisions so none is truncated.</td>
+      <td><strong>Statutory sub-point text supplied to synthesis</strong> — the cited sub-points' verbatim text reaches the generator, budgeted evenly so nothing is truncated.</td>
       <td>sub-point retrieval &amp; precision synthesis</td>
       <td>Case D (Q17)</td>
     </tr>
@@ -218,36 +198,21 @@
 <h4>Further fixes affecting correctness and conciseness</h4>
 <div class="scroll">
 <table>
-  <thead><tr><th>Fix</th><th>What it does</th><th>Metric affected</th></tr></thead>
+  <thead><tr><th>Fix or optimisation</th><th>Metric affected</th></tr></thead>
   <tbody>
-    <tr><td><strong>Citation granularity conflict resolved</strong></td>
-      <td>Two citation passes were working against each other. The first collapsed sub-points onto
-        article heads, and those heads were then exempted from the precision pass, so the most exact
-        coordinates were discarded before they reached the answer.</td>
-      <td>Ref. Correctness (Strict), measured at 15.06 pp on its own</td></tr>
-    <tr><td><strong>Sub-point letters restored</strong></td>
-      <td>Point letters were being dropped when coordinates were read from the knowledge graph, so
-        every sub-point citation lost its letter.</td>
+    <tr><td><strong>Citation granularity conflict resolved</strong> — two citation passes no longer discard each other's most exact coordinates, worth 15.06 pp of strict reference accuracy on its own.</td>
       <td>Ref. Correctness (Strict)</td></tr>
-    <tr><td><strong>Retrieval anchors added</strong></td>
-      <td>Several provisions the answer key cites had no retrieval anchor and could not be reached,
-        among them Articles 12, 17, 97 and 98 and Annexes IV, IX and X.</td>
+    <tr><td><strong>Sub-point letters restored</strong> — a sub-point citation keeps its point letter when read from the knowledge graph.</td>
+      <td>Ref. Correctness (Strict)</td></tr>
+    <tr><td><strong>Retrieval anchors added</strong> — provisions the answer key cites but retrieval could not reach are now reachable (Articles 12, 17, 97, 98; Annexes IV, IX, X).</td>
       <td>Ref. Correctness (Loose)</td></tr>
-    <tr><td><strong>Incorrect statements of law removed</strong></td>
-      <td>Four false statements of law were being supplied to the generator on every call, one of
-        which reached answers verbatim.</td>
+    <tr><td><strong>Incorrect statements of law removed</strong> — four false statements of law no longer reach the generator, one of which had reached answers verbatim.</td>
       <td>Ans. Correctness</td></tr>
-    <tr><td><strong>Truncation repair</strong></td>
-      <td>An answer whose final sentence is incomplete is repaired, or replaced by the complete
-        deterministic answer. A fragment is never returned.</td>
+    <tr><td><strong>Truncation repair</strong> — an incomplete final sentence is repaired or replaced; a fragment is never returned.</td>
       <td>Ans. Correctness, Regulatory Tone</td></tr>
-    <tr><td><strong>Multi-turn history isolation</strong></td>
-      <td>Follow-up turns no longer inherit provisions retrieved for earlier questions in the same
-        conversation, which had been adding unrelated citations to hard mode answers.</td>
+    <tr><td><strong>Multi-turn history isolation</strong> — a follow-up turn no longer inherits provisions retrieved for earlier questions in the conversation.</td>
       <td>Ans. Correctness, Ref. Conciseness</td></tr>
-    <tr><td><strong>Pushback focus</strong></td>
-      <td>A re-asked question is answered on its own terms rather than through the disputed answer,
-        including where the follow-up carries no provision reference.</td>
+    <tr><td><strong>Pushback focus</strong> — a re-asked question is answered on its own terms rather than through the disputed answer.</td>
       <td>Ans. Correctness</td></tr>
   </tbody>
 </table>
