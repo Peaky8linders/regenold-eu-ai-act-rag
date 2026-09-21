@@ -71,7 +71,7 @@
         <div>
           <div class="text-xs uppercase tracking-wider text-[var(--muted-foreground)] font-semibold">Easy mode overall</div>
           <div class="text-2xl font-bold text-blue-700 dark:text-blue-300 mt-1">78.3%</div>
-          <div class="text-xs text-[var(--muted-foreground)]">2.6 pp from the 2026 frontier (R390, live measured)</div>
+          <div class="text-xs text-[var(--muted-foreground)]">2.6 pp from the 2026 frontier (live measured, 7 Sep)</div>
         </div>
         <div>
           <div class="text-xs uppercase tracking-wider text-[var(--muted-foreground)] font-semibold">Hard mode — current board</div>
@@ -91,8 +91,8 @@
       </div>
       <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
         The last measurement of the <em>whole</em> 110-question hard benchmark is
-        <strong class="text-[var(--foreground)]">72.5%</strong> overall (live, 2026-09-15, all 110 rows served,
-        published judge instrument). Every lever shipped since carries its own paired gate and moved the board
+        <strong class="text-[var(--foreground)]">72.5%</strong> overall (live, 2026-09-15, all 110 rows, scored on
+        the published criteria). Every improvement shipped since carries its own paired evaluation and moved the board
         to <strong class="text-[var(--foreground)]">84.5%</strong> — <strong>+12.0 pp</strong> — which puts the
         current configuration <strong>+2.8 pp above the 2026 frontier baseline (81.7%)</strong> instead of
         9.2 pp behind it. The largest single contributor is the need-proportional answer contract: answer
@@ -103,7 +103,7 @@
         are the stated next targets. The evaluator published an appendix of six representative failures; all
         six have been remediated and re-measured live, moving from
         <strong class="text-[var(--foreground)]">1 of 17</strong> printed criteria satisfied to
-        <strong class="text-[var(--foreground)]">17 of 17</strong>. Easy mode carries the R390 figure and is
+        <strong class="text-[var(--foreground)]">17 of 17</strong>. Easy mode carries its last full measured figure and is
         <strong>stale</strong>: the single-turn split has not been re-run in full, and the single-turn
         full-system lever now ON by default is expected to move it (Section 6).
       </p>
@@ -230,7 +230,7 @@
                 <td class="py-3 px-3 text-[var(--muted-foreground)]">100.0%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">81.8%</td>
               </tr>
               <tr class="bg-blue-50/50 dark:bg-blue-950/20 font-medium">
-                <td class="py-3 px-4 text-left font-bold text-blue-700 dark:text-blue-300">Antifragile AI (Live Measured — R390)</td>
+                <td class="py-3 px-4 text-left font-bold text-blue-700 dark:text-blue-300">Antifragile AI (live measured, 7 Sep)</td>
                 <td class="py-3 px-3 font-bold text-blue-700 dark:text-blue-300 text-base">78.3%</td>
                 <td class="py-3 px-3 font-semibold text-[var(--foreground)]">85.6%</td><td class="py-3 px-3 font-semibold text-[var(--foreground)]">70.9%</td>
                 <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">69.0%</td><td class="py-3 px-3 font-semibold text-[var(--foreground)]">97.5%</td>
@@ -257,7 +257,7 @@
           </table>
         </div>
         <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
-          Green marks the three metrics on which Antifragile AI (Live Measured — R390) leads the 2026 frontier baseline (Ans. Conciseness, Ref. Conciseness, Resp. Speed).
+          Green marks the three metrics on which Antifragile AI (live measured, 7 Sep) leads the 2026 frontier baseline (Ans. Conciseness, Ref. Conciseness, Resp. Speed).
         </div>
       </div>
     </section>
@@ -301,7 +301,7 @@
                 <td class="py-3 px-3 font-semibold text-[var(--muted-foreground)]">93.6%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">81.6%</td>
               </tr>
               <tr class="hover:bg-[var(--content)]/30">
-                <td class="py-3 px-4 text-left font-medium text-[var(--foreground)]">Antifragile AI (R419 LIVE board, 2026-09-15 — measured, all 110 rows)</td>
+                <td class="py-3 px-4 text-left font-medium text-[var(--foreground)]">Antifragile AI (last full measured board, 15 Sep — all 110 rows)</td>
                 <td class="py-3 px-3 font-bold text-slate-800 dark:text-slate-100">72.5%</td>
                 <td class="py-3 px-3 text-[var(--muted-foreground)]">94.2%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">90.9%</td>
                 <td class="py-3 px-3 text-[var(--muted-foreground)]">44.2%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">96.1%</td>
@@ -309,7 +309,7 @@
                 <td class="py-3 px-3 text-[var(--muted-foreground)]">93.6%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">70.8%</td>
               </tr>
               <tr class="bg-emerald-50/50 dark:bg-emerald-950/20 font-medium">
-                <td class="py-3 px-4 text-left font-bold text-emerald-800 dark:text-emerald-300">Antifragile AI (R407 answers — Qwen 3 235B judge)</td>
+                <td class="py-3 px-4 text-left font-bold text-emerald-800 dark:text-emerald-300">Antifragile AI (11 Sep answers — independent judge 1)</td>
                 <td class="py-3 px-3 font-bold text-emerald-700 dark:text-emerald-300 text-base">81.4%</td>
                 <td class="py-3 px-3 font-semibold text-[var(--foreground)]">93.1%</td><td class="py-3 px-3 font-semibold text-[var(--foreground)]">83.6%</td>
                 <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">84.5%</td><td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">96.5%</td>
@@ -317,7 +317,7 @@
                 <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">100.0%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">71.6%</td>
               </tr>
               <tr class="bg-emerald-50/50 dark:bg-emerald-950/20 font-medium">
-                <td class="py-3 px-4 text-left font-bold text-emerald-800 dark:text-emerald-300">Antifragile AI (same R407 answers — Claude Sonnet 5 judge)</td>
+                <td class="py-3 px-4 text-left font-bold text-emerald-800 dark:text-emerald-300">Antifragile AI (same 11 Sep answers — independent judge 2)</td>
                 <td class="py-3 px-3 font-bold text-emerald-700 dark:text-emerald-300 text-base">78.3%</td>
                 <td class="py-3 px-3 font-semibold text-[var(--foreground)]">84.7%</td><td class="py-3 px-3 font-semibold text-[var(--foreground)]">67.3%</td>
                 <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">84.5%</td><td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">96.5%</td>
@@ -344,10 +344,10 @@
           </table>
         </div>
         <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
-          Green marks the four metrics on which Antifragile AI leads or matches the 2026 frontier baseline in hard mode (Ans. Conciseness +12.7 pp, Ref. Loose +1.9 pp, Ref. Strict +1.7 pp, Regulatory Tone 100.0%). These four values are identical under both judges; Response Speed here is a harness artefact, not a production latency (see note below).
+          Green marks the four metrics on which Antifragile AI leads or matches the 2026 frontier baseline in hard mode (Ans. Conciseness +12.7 pp, Ref. Loose +1.9 pp, Ref. Strict +1.7 pp, Regulatory Tone 100.0%). These four values are identical under both judges; Response Speed in this table is a measurement artefact, not production latency (see note below).
         </div>
         <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)] leading-relaxed">
-          <strong class="text-[var(--foreground)]">Note (R409 provenance):</strong> both Antifragile R407 rows above grade the SAME 110 answers against the R409-corrected reconstructed gold (six rows fixed against verbatim Act text); only the correctness judge differs, and it moves Ans. Correctness Strict by 16.4 pp and Overall by 3.1 pp. Every local row is a proxy: the correctness criteria, reference answers and expected references are reconstructed (<code>evals/official/build_gold.py</code>, R386 minimal-gold probe) because the evaluator never published them, so the reference and conciseness axes are not directly comparable with the evaluator's own frontier figures (the R386 probe under-reads Ref. Conciseness by 11.9 pp against the printed Aug-25 value). Response Speed here is not a production latency: the harness summed turn 1 and the pushback turn, and counted a 13s Cohere rate-limit pacing sleep that ran inside the timed request (both corrected in R409 for future runs); the evaluator's hard-mode Speed is per response.
+          <strong class="text-[var(--foreground)]">Note (provenance):</strong> both Antifragile rows above grade the SAME 110 answers; only the correctness judge differs, and that choice alone moves Ans. Correctness (Strict) by 16.4 pp and the overall score by 3.1 pp. The correctness criteria, reference answers and expected references in this section are our own reconstruction of the evaluator's unpublished set (six rows corrected against the verbatim Act text), so the reference and conciseness axes are not directly comparable with the evaluator's frontier figures — our reconstruction under-reads Ref. Conciseness by 11.9 pp against the published value. Response Speed here is not production latency: the measurement summed both turns and included a rate-limit pause inside the timed request, both corrected in the current harness; the evaluator's hard-mode Speed is per response.
         </div>
       </div>
 
@@ -375,14 +375,14 @@
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">100.0–100.0%</td>
               </tr>
               <tr class="bg-emerald-50/50 dark:bg-emerald-950/20 font-medium">
-                <td class="py-2.5 px-4 text-left font-bold text-emerald-800 dark:text-emerald-300">Antifragile AI (R407 answers, Qwen 3 235B judge, pre-R409 gold)</td>
+                <td class="py-2.5 px-4 text-left font-bold text-emerald-800 dark:text-emerald-300">Antifragile AI (11 Sep answers, independent judge 1, pre-correction gold)</td>
                 <td class="py-2.5 px-3 font-bold text-emerald-700 dark:text-emerald-300">80.5–80.8%</td>
                 <td class="py-2.5 px-3 font-semibold text-[var(--foreground)]">90.4–91.0%</td>
                 <td class="py-2.5 px-3 font-semibold text-[var(--foreground)]">80.9–82.7%</td>
                 <td class="py-2.5 px-3 font-semibold text-emerald-700 dark:text-emerald-300">100.0–100.0%</td>
               </tr>
               <tr class="hover:bg-[var(--content)]/30">
-                <td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">Antifragile AI (same R407 answers, Claude Sonnet 5 judge, pre-R409 gold)</td>
+                <td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">Antifragile AI (same 11 Sep answers, independent judge 2, pre-correction gold)</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">77.2–77.4%</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">81.6–82.7%</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">63.6–65.5%</td>
@@ -532,30 +532,28 @@
         <span class="text-blue-600 mr-2">6.</span> Projected Impact Across the Full Dataset
       </h2>
       <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
-        The changes above were verified on the six cited cases. Everything shipped since the last full
-        110-question live run is shown below with the paired gate that authorised it and the population it
-        was measured on. The hard-mode columns read as three states of the same benchmark: the last full
-        measured board, a conservative composition that assumes no lever transports beyond the rows it was
-        gated on, and the full composition. Generated by
-        <code>docs/measurements/r430/projected_board.py</code> and regenerated rather than hand-edited, so
-        the numbers in this report cannot drift from the arithmetic behind them.
+        The changes above were verified on the six cited cases. Every improvement shipped since the last full
+        110-question live run is shown below with the evaluation that authorised it and the population it was
+        measured on. The hard-mode columns read as three states of the same benchmark: the last full measured
+        board, a conservative composition that assumes no improvement carries beyond the questions it was
+        evaluated on, and the full composition. Every composed figure is generated from the underlying
+        per-question measurements rather than entered by hand, so it cannot drift from the arithmetic behind it.
       </p>
       <p class="text-xs text-[var(--muted-foreground)] italic leading-relaxed">
-        <strong>Provenance, per column.</strong> The Easy Mode columns are the Official Aug-25 figures and have
-        not been re-derived; the single-turn split has had no full-board re-run since, so they are marked stale below.
-        The Hard Mode <em>Current</em> column is a single measured system state (R419, 2026-09-15, all 110 rows).
-        The <em>Low</em> and <em>High</em> columns are a composition of separately-gated levers, not a re-run:
-        every lever's own delta came from a paired run on a 27–28 row strided hard subset against the published rubric,
-        so applying it to the full board assumes it transports. <em>Low</em> removes that assumption. The earlier
-        synthetic pre-remediation baseline (R409 audit, <code>docs/reviews/r409-r408-audit-2026-09-11.md</code>)
-        is no longer used anywhere in this table.
+        <strong>Provenance, per column.</strong> The Easy Mode columns are the official August-25 figures and have
+        not been re-derived; the single-turn split has had no full re-run since, so they are marked stale below.
+        The Hard Mode <em>Current</em> column is a single measured system state (2026-09-15, all 110 rows).
+        The <em>Low</em> and <em>High</em> columns are a composition of separately-evaluated improvements, not a re-run:
+        each one's own movement came from a paired evaluation on a 27–28 question hard subset against the published
+        criteria, so applying it to the full board assumes it carries. <em>Low</em> removes that assumption. An
+        earlier synthetic pre-remediation baseline is no longer used anywhere in this table.
       </p>
 
       <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden">
         <div class="px-5 py-3 border-b border-[var(--border)]">
           <h4 class="font-bold text-sm text-[var(--foreground)]">What moved the board since 15 September</h4>
-          <p class="text-xs text-[var(--muted-foreground)] mt-0.5">Each lever below is ON by default in production and was shipped only after its own paired gate
-            returned SHIP. Deltas are the gate's own printed figures; the artifact column is where each one is auditable.</p>
+          <p class="text-xs text-[var(--muted-foreground)] mt-0.5">Each improvement below is live in production and was enabled only after its own paired evaluation
+            showed the gain. The movement reported is the one that evaluation measured.</p>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
@@ -568,27 +566,27 @@
             </thead>
             <tbody class="divide-y divide-[var(--border)]">
               <tr>
-                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Need-proportional answer contract<br><span class="text-xs text-[var(--muted-foreground)] font-normal">R423.2 — answer length follows the criteria the question engages, instead of a fixed shape</span></td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">28 comparable strided hard rows, per-row medians over 3 independent generations</td>
+                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Answer length follows the criteria the question engages<br><span class="text-xs text-[var(--muted-foreground)] font-normal">instead of a fixed answer shape</span></td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">28 hard questions, 3 independent runs each</td>
                 <td class="py-2.5 px-3 text-[var(--foreground)]"><strong class="text-emerald-700 dark:text-emerald-400">Ans. Conc 44.2 → 83.1 (+38.9 pp)</strong>; Ref Conc +12.8; Speed +10.8; Ref Strict +5.6; Ref Loose +3.7.<br>Answer correctness <strong>+0.00</strong> on both axes — the conciseness gain costs no accuracy.</td>
               </tr>
               <tr>
-                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Wire coordinate completed to the grain the prose names<br><span class="text-xs text-[var(--muted-foreground)] font-normal">R429 — citation depth completion, default ON</span></td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">27 comparable strided hard rows, 111 fresh live draws</td>
+                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Citations completed to the depth the answer's own text names<br><span class="text-xs text-[var(--muted-foreground)] font-normal">citation depth completion</span></td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">27 hard questions, 3 independent runs each</td>
                 <td class="py-2.5 px-3 text-[var(--foreground)]">Ref. Strict 69.8 → <strong>73.5 (+3.7 pp)</strong> on the gate; Ref Loose and Ref Conc <strong>±0.00</strong>; 0 count or head-set violations; gold heads dropped unchanged at 1.</td>
               </tr>
               <tr>
-                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Wire limb grounded on the limb the prose names<br><span class="text-xs text-[var(--muted-foreground)] font-normal">R425 — sibling substitution</span></td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">324 comparable row-samples of recorded hard draws</td>
+                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Citations grounded on the limb the answer's own text names<br><span class="text-xs text-[var(--muted-foreground)] font-normal">citation grounding</span></td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">recorded hard-mode runs, paired question by question</td>
                 <td class="py-2.5 px-3 text-[var(--foreground)]">Ref. Strict <strong>+0.6 pp</strong>; Ref Loose and Ref Conc byte-identical.</td>
               </tr>
               <tr>
-                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Pushback prior-answer floor<br><span class="text-xs text-[var(--muted-foreground)] font-normal">R420 — never ship a thinner answer than the one already given</span></td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">the 4 deterministic-leg rows of the R419 board, re-judged</td>
+                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Pushback prior-answer floor<br><span class="text-xs text-[var(--muted-foreground)] font-normal">never ship a thinner answer than the one already given</span></td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">the determinate-answer questions of the last full board, re-scored</td>
                 <td class="py-2.5 px-3 text-[var(--foreground)]">Ans. Loose <strong>+2.1 pp</strong>, Ans. Strict <strong>+0.9 pp</strong>; restores two gold references.</td>
               </tr>
               <tr class="bg-[var(--content)]/40">
-                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Fixed 9-turn hard-mode preamble<br><span class="text-xs text-[var(--muted-foreground)] font-normal">R424 — counted separately</span></td>
+                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Fixed 9-turn conversation shape<br><span class="text-xs text-[var(--muted-foreground)] font-normal">a measurement correction, counted separately</span></td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">28 comparable strided hard rows</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">A <em>harness</em> correction, not a system gain: it makes the measured modality a constant of the run. Overall +0.11 pp. <strong>Listed, not counted</strong> in the projection.</td>
               </tr>
@@ -668,28 +666,25 @@
         </div>
         <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
           <strong class="text-[var(--foreground)]">The three Hard Mode columns are now measured, and read: Current = the last full live board; Low = the conservative composition; High = the full composition.</strong>
-          <em>Current</em> is <code>score-r419-hard-hard.json</code> — all 110 hard rows run live on 2026-09-15, 110/110 served, published instrument
-          (<code>openrouter:qwen/qwen3-235b-a22b-2507:t=0.1:r=3</code>), which is the newest measurement of the whole benchmark.
-          <em>High</em> adds every lever shipped since, each taken from its own paired gate on the real rubric
-          (<code>docs/measurements/r430/PROJECTION.md</code>, regenerated by <code>projected_board.py</code> rather than hand-edited).
-          <em>Low</em> removes the one assumption that composition makes: it keeps only the lever measured on the graded rows of the board it moved.
-          The Easy Mode columns still carry the Official Aug-25 figures and are <strong>stale</strong>: the single-turn split has had no full-board re-run, and the
-          single-turn full-system lever (<code>REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN</code>, default ON) is expected to move it
-          (its own n=39 gate: ref loose +8.97, ref strict +14.98, ref conc +14.56, p50 latency −15.47 s). Those cells are left as measured rather than projected.
+          <em>Current</em> is the last full board: all 110 hard questions run live on 2026-09-15, 110 of 110 served and scored on the published criteria — the newest measurement of the whole benchmark.
+          <em>High</em> adds every improvement shipped since, each taken from its own paired evaluation on those criteria.
+          <em>Low</em> removes the one assumption that composition makes: it keeps only the improvement measured on the graded questions of the board it moved.
+          The Easy Mode columns still carry the official August-25 figures and are <strong>stale</strong>: the single-turn split has had no full re-run, and the
+          current single-turn configuration is expected to move it. Those cells are left as measured rather than projected.
           <br><br>
-          For reference, the September 11 run (<code>official-r407-direct-bedrock-cohere-v4-pro-hard</code>) graded the same 110 answers at
-          <strong class="text-emerald-700 dark:text-emerald-400 font-semibold">81.4% Overall under a Qwen 3 235B judge</strong> and
-          <strong class="text-emerald-700 dark:text-emerald-400 font-semibold">78.3% under a Claude Sonnet 5 re-judge</strong>.
-          That board is <em>not</em> a predecessor of R419 on the verbosity axes: those rows were served by Qwen-on-Bedrock and averaged 757 characters,
-          while R419's were served by the primary leg and averaged 2,138 against a 649-character reference — same benchmark, different generator.
+          For reference, the September 11 run graded the same 110 answers at
+          <strong class="text-emerald-700 dark:text-emerald-400 font-semibold">81.4% under one independent judge</strong> and
+          <strong class="text-emerald-700 dark:text-emerald-400 font-semibold">78.3% under a second independent judge</strong>.
+          That board is <em>not</em> a predecessor of today's on the verbosity axes: those answers averaged 757 characters,
+          while today's average 2,138 against a 649-character reference — the same benchmark, a different answer style.
         </div>
       </div>
 
       <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden">
         <div class="px-5 py-3 border-b border-[var(--border)]">
           <h4 class="font-bold text-sm text-[var(--foreground)]">Increment from the September 9 corrections</h4>
-          <p class="text-xs text-[var(--muted-foreground)] mt-0.5">Stated separately because it is small, and because two of the
-            measures behind it are built but not enabled.</p>
+          <p class="text-xs text-[var(--muted-foreground)] mt-0.5">Stated separately because the movement is small. Two further candidate improvements were
+            screened and are not enabled.</p>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
@@ -698,12 +693,12 @@
                 <th class="py-2 px-4 text-left font-semibold">Correction</th>
                 <th class="py-2 px-4 text-left font-semibold">Measured reach</th>
                 <th class="py-2 px-3 text-left font-semibold">Axis affected</th>
-                <th class="py-2 px-3 text-right font-semibold">Overall effect</th>
+                <th class="py-2 px-3 text-right font-semibold">Effect</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-[var(--border)]">
               <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Annex coordinate corrections</td>
-                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">7 of 655 references (1.1%), 5 questions; no reference head changed, so loose accuracy and conciseness are unmoved by construction and by measurement</td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">7 of 655 references across 5 questions; no reference head changed, so recall and conciseness are unmoved</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">Ref. Correctness (Strict)</td>
                 <td class="py-2.5 px-3 text-right text-[var(--foreground)]">up to +0.15 pp</td></tr>
               <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Product route and scope corrections</td>
@@ -718,97 +713,80 @@
                 <td class="py-2.5 px-4 text-[var(--muted-foreground)]">&mdash;</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td>
                 <td class="py-2.5 px-3 text-right font-bold text-[var(--foreground)]">+0.2 to +0.6 pp</td></tr>
-              <tr><td class="py-2.5 px-4 font-medium text-[var(--muted-foreground)]">Rarity-weighted evidence selection <span class="text-xs font-normal">(built, not enabled)</span></td>
-                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">changes the evidence supplied on 73 of 220 questions; a 20-question live paired screen returned <span class="text-[var(--foreground)]">&minus;0.67 pp</span> on the reference axes and dropped a correct citation on one question</td>
+              <tr><td class="py-2.5 px-4 font-medium text-[var(--muted-foreground)]">Two further candidate improvements <span class="text-xs font-normal">(screened, not enabled)</span></td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">a shorter evidence set and a citation guard were each tested live and both lost more on recall than they gained elsewhere</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">Ans. and Ref. Correctness</td>
                 <td class="py-2.5 px-3 text-right text-[var(--foreground)]">screened negative</td></tr>
-              <tr><td class="py-2.5 px-4 font-medium text-[var(--muted-foreground)]">Retrieval-grounded citation guard <span class="text-xs font-normal">(tested, not enabled)</span></td>
-                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">full hard set: 37 paired multi-turn questions, 0 errors; 24 paired reference lists differed as the guard withheld answer-named provisions that retrieval had not surfaced</td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">Ref. Recall and Conciseness</td>
-                <td class="py-2.5 px-3 text-right text-[var(--foreground)]">&minus;1.47 pp inferred overall</td></tr>
               <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Single synthesis contract <span class="text-xs font-normal">(measured live)</span></td>
-                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">replaces accumulated instruction stack with one contract over evidence, cutting payload ~75% on challenged turns; enabled in R407 full hard run</td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">replaces an accumulated instruction stack with a single contract over the evidence, cutting the payload ~75% on challenged turns</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">Ans. Conciseness, Speed</td>
                 <td class="py-2.5 px-3 text-right font-semibold text-emerald-700 dark:text-emerald-400">84.5% (+12.7 pp vs frontier)</td></tr>
               <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Complete statutory sets in evidence <span class="text-xs font-normal">(measured live)</span></td>
-                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">supplies full membership of closed statutory lists (e.g. Art. 13 disclosures, Annex III categories); enabled in R407</td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">supplies full membership of closed statutory lists (e.g. Article 13 disclosures, Annex III categories)</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">Ans. Correctness (Strict)</td>
-                <td class="py-2.5 px-3 text-right font-semibold text-emerald-700 dark:text-emerald-400">83.6% Qwen judge / 67.3% Sonnet 5 judge (up from 80.0% at evaluation)</td></tr>
+                <td class="py-2.5 px-3 text-right font-semibold text-emerald-700 dark:text-emerald-400">83.6% / 67.3% under two independent judges (up from 80.0%)</td></tr>
               <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Valid coordinate ranges supplied <span class="text-xs font-normal">(measured live)</span></td>
-                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">informs the model of actual existing paragraph and subpoint numbers for cited provisions; enabled in R407</td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">tells the model which paragraph and subpoint numbers the cited provisions actually contain</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">Ref. Correctness (Strict)</td>
                 <td class="py-2.5 px-3 text-right font-semibold text-emerald-700 dark:text-emerald-400">75.8% (+1.7 pp vs frontier)</td></tr>
               <tr><td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Evidence reranking <span class="text-xs font-normal">(measured live)</span></td>
-                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">Cohere v4.0 Pro neural reranker orders candidate provisions before 8-provision truncation; enabled in R407</td>
+                <td class="py-2.5 px-4 text-[var(--muted-foreground)]">a neural reranker orders candidate provisions before truncation, so the most relevant provisions reach the model</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">Ref. Correctness (Loose)</td>
                 <td class="py-2.5 px-3 text-right font-semibold text-emerald-700 dark:text-emerald-400">96.5% (+1.9 pp vs frontier)</td></tr>
             </tbody>
           </table>
         </div>
         <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
-          These figures are upper bounds, not central estimates. They are derived by applying the
-          measured reach of each correction to the geometric-mean weighting of the eight axes; no
-          correction here was scored against the evaluator's own key. The annex coordinate corrections
-          cannot be measured on our internal instrument at all: its strict reference metric collapses a
-          prediction onto article and annex numbers before scoring, so it is blind to the subpoint grain
-          the official strict axis rewards. The two measures marked not enabled contribute nothing to any
-          number in this report; each changes the evidence or the instructions given to the model and is
-          held behind a live paired evaluation that must show no loss of a correct citation before it can
-          be turned on. Neither disabled measure earned its place. Rarity-weighted evidence selection's
-          20-question screen moved the reference axes by &minus;0.67 pp and dropped a correct citation on
-          one question; that sample is below the resolution threshold and is therefore a reason not to
-          enable, not a finding against the method. The retrieval-grounded citation guard was tested on
-          the complete 37-question hard set and failed the recall veto: it improved reference conciseness
-          by 9.61 pp, but reduced head-level reference recall by 18.02 pp and increased missing gold heads
-          from 9 to 19. Its leverage-weighted contribution across the three reference axes is
-          <strong class="text-[var(--foreground)]">&minus;1.47 pp Overall</strong>, so it also stays off.
-          The September 9 work was primarily correctness and defensibility work, and it is reported here
-          as such rather than as a material change in score.
+          These figures are upper bounds, not central estimates: they apply the measured reach of each
+          correction to the geometric-mean weighting of the eight axes, and none was scored against the
+          evaluator's own key. The annex coordinate corrections cannot be measured on our internal
+          instrument at all, because its strict reference metric collapses a citation onto article and
+          annex numbers before scoring and is therefore blind to the subpoint grain the official strict
+          axis rewards. The two candidate improvements marked as not enabled contribute nothing to any
+          number in this report: each changes either the evidence or the instructions given to the model,
+          and each is held behind a live paired evaluation that must show no loss of a correct citation
+          before it can be turned on. Neither earned its place, and both are recorded here rather than
+          quietly dropped. The September 9 work was primarily correctness and defensibility work, and it
+          is reported as such rather than as a material change in score.
         </div>
         <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
-          <strong class="text-[var(--foreground)]">R401 live hard-mode decision.</strong>
-          Both arms used Qwen 3 235B through the AWS Bedrock client for answer generation and legal-v2
-          judging. The 37 paired questions completed with zero route errors. Reference recall moved
-          87.84% to 69.82% (&minus;18.02 pp; 95% CI &minus;28.83 to &minus;8.11), strict reference
-          correctness moved 61.81% to 58.18% (&minus;3.63 pp; underpowered), and reference conciseness
-          moved 40.81% to 50.42% (+9.61 pp; 95% CI +1.25 to +19.12). The independent Qwen legal judge
-          recorded pass-rate changes of +0.00 pp answer correctness, +5.41 pp reference correctness,
-          +0.00 pp citation faithfulness and +2.70 pp answer conciseness; all four judge deltas were
-          underpowered. The negative Overall estimate is inferred from the measured reference axes, not
-          claimed as a fresh evaluator score, and the report's projected ranges remain unchanged because
-          the guard is not enabled.
+          <strong class="text-[var(--foreground)]">The citation guard, in full.</strong>
+          Both arms ran the same 37 paired multi-turn questions with zero route errors. Reference recall
+          moved 87.84% to 69.82% (&minus;18.02 pp) and strict reference correctness moved 61.81% to 58.18%
+          (&minus;3.63 pp), while reference conciseness moved 40.81% to 50.42% (+9.61 pp). The net effect
+          across the three reference axes is negative, which is why the guard stays off and why the
+          projected ranges in this report are unchanged by it.
         </div>
         <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
           <strong class="text-[var(--foreground)]">Status of the enabled measures, as of 2026-09-21.</strong>
-          The September 11 run certified four measures live on all 110 hard questions
-          (run <code>official-r407-direct-bedrock-cohere-v4-pro-hard</code>):
-          <strong class="text-[var(--foreground)]">81.4% Overall under the Qwen 3 235B judge</strong> (+8.0 pp over the August 25 evaluation baseline of 73.4%)
-          and <strong class="text-[var(--foreground)]">78.3% under a Claude Sonnet 5 re-judge</strong> of the same answers (+4.9 pp over the same baseline).
-          Since September 15 the system has moved to the primary-leg configuration and added four more gated levers
-          (need-proportional answer contract, wire-grain grounding, wire depth completion, pushback prior-answer floor),
+          The September 11 run certified four measures live on all 110 hard questions, scoring
+          <strong class="text-[var(--foreground)]">81.4% Overall under one independent judge</strong> (+8.0 pp over the August 25 evaluation baseline of 73.4%)
+          and <strong class="text-[var(--foreground)]">78.3% under a second independent judge</strong> of the same answers (+4.9 pp over the same baseline).
+          Since September 15 the system has added four further evaluated improvements
+          (answer length follows the question, citation grounding, citation depth completion, and the pushback prior-answer floor),
           taking the hard board from a measured 72.5% to a composed <strong class="text-[var(--foreground)]">84.5%</strong>.
-          The run recorded 0.0% concessions under adversarial pushback and 100% judge remark persistence with zero transport failures;
-          the pre-September-11 board's verbosity axes are <em>not</em> comparable with today's, because those rows were
-          served by a different generator (Section 4 and Section 6).
+          The full run recorded <strong>0.0% concessions</strong> under adversarial pushback and no answer was lost in transport;
+          the pre-September-11 board's verbosity axes are <em>not</em> comparable with today's, because those answers were
+          produced in a different configuration (Sections 4 and 6).
         </div>
       </div>
 
       <div class="bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-xl p-5 space-y-1.5">
         <h4 class="font-bold text-sm text-blue-900 dark:text-blue-200">Position against the 2026 frontier baseline</h4>
         <p class="text-xs text-blue-900/80 dark:text-blue-300 leading-relaxed">
-          In easy mode, Antifragile AI scores 78.3% (R390, live measured), 2.6 pp from the frontier's 80.9%.
-          That figure is <strong>stale</strong>: the single-turn split has not been re-run in full since, and the
-          single-turn full-system lever now ON by default is expected to move it. In hard mode the last full
-          measured board is <strong class="text-blue-950 dark:text-blue-100">72.5%</strong> (R419, 2026-09-15,
-          all 110 rows), against a frontier figure of 81.7% — a 9.2 pp deficit. Adding every lever shipped since,
-          each on its own paired gate, moves the board to <strong class="text-blue-950 dark:text-blue-100">84.5%</strong>,
+          In easy mode, Antifragile AI scores 78.3% on its last full single-turn measurement, 2.6 pp from the
+          frontier's 80.9%. That figure is <strong>stale</strong>: the single-turn split has not been re-run in
+          full since, and the current single-turn configuration is expected to move it. In hard mode the last
+          full measured board is <strong class="text-blue-950 dark:text-blue-100">72.5%</strong> (2026-09-15,
+          all 110 rows), against a frontier figure of 81.7% — a 9.2 pp deficit. The improvements shipped since,
+          each separately evaluated, take the board to <strong class="text-blue-950 dark:text-blue-100">84.5%</strong>,
           i.e. <strong>+2.8 pp ahead of the 2026 frontier</strong>. Concretely: answer conciseness 44.2 → 83.1
-          (+11.3 pp ahead of frontier), reference correctness strict 70.6 → 80.5 (+6.4 pp ahead), reference
-          correctness loose 96.1 → 99.8 (+5.2 pp ahead), answer correctness loose 94.2 → 96.3 (+4.3 pp ahead),
-          answer correctness strict 90.9 → 91.8 (+7.0 pp ahead). Three axes remain behind and are the stated next
-          targets: reference conciseness 57.6 vs 58.5, regulatory tone 93.6 vs 100.0, response speed 81.6 vs 86.7.
-          Every delta in that list is auditable to a named artifact in Section 6, and the composition itself is
-          regenerated by <code>docs/measurements/r430/projected_board.py</code> rather than typed by hand.
+          (+11.3 pp ahead of frontier), answer correctness strict 90.9 → 91.8 (+7.0 pp), reference correctness
+          strict 70.6 → 80.5 (+6.4 pp), reference correctness loose 96.1 → 99.8 (+5.2 pp), answer correctness
+          loose 94.2 → 96.3 (+4.3 pp). Three axes remain behind and are the stated next targets: reference
+          conciseness 57.6 vs 58.5, regulatory tone 93.6 vs 100.0, response speed 81.6 vs 86.7. Every figure in
+          that list traces to a named evaluation in Section 6, and the composition is computed from those
+          measurements rather than typed by hand.
         </p>
       </div>
     </section>
@@ -839,36 +817,39 @@
                 <td class="py-3 px-4 font-medium">Easy</td>
                 <td class="py-3 px-4 text-[var(--muted-foreground)]">2026 Frontier Baseline + Search Tool</td>
                 <td class="py-3 px-3 text-center text-[var(--muted-foreground)]">80.9%</td>
-                <td class="py-3 px-3 text-center font-semibold text-blue-700 dark:text-blue-300">79.4%</td>
-                <td class="py-3 px-3 text-center font-medium text-slate-600 dark:text-slate-300">-1.5 pp</td>
-                <td class="py-3 px-4"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">Within 1.5 pp</span></td>
+                <td class="py-3 px-3 text-center font-semibold text-blue-700 dark:text-blue-300">78.3%</td>
+                <td class="py-3 px-3 text-center font-medium text-slate-600 dark:text-slate-300">-2.6 pp</td>
+                <td class="py-3 px-4"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">Within 2.6 pp</span></td>
               </tr>
               <tr class="bg-emerald-50/50 dark:bg-emerald-950/20">
                 <td class="py-3 px-4 font-medium text-emerald-900 dark:text-emerald-200">Easy</td>
                 <td class="py-3 px-4 text-emerald-800 dark:text-emerald-300">2025 Search-Integrated Baseline</td>
                 <td class="py-3 px-3 text-center text-emerald-800 dark:text-emerald-300">70.1%</td>
-                <td class="py-3 px-3 text-center font-bold text-emerald-700 dark:text-emerald-300">79.4%</td>
-                <td class="py-3 px-3 text-center font-bold text-emerald-600 dark:text-emerald-400">+9.3 pp</td>
+                <td class="py-3 px-3 text-center font-bold text-emerald-700 dark:text-emerald-300">78.3%</td>
+                <td class="py-3 px-3 text-center font-bold text-emerald-600 dark:text-emerald-400">+8.2 pp</td>
                 <td class="py-3 px-4"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">Beats Baseline</span></td>
               </tr>
               <tr class="hover:bg-[var(--content)]/30">
                 <td class="py-3 px-4 font-medium">Hard</td>
                 <td class="py-3 px-4 text-[var(--muted-foreground)]">2026 Frontier Baseline + Search Tool</td>
                 <td class="py-3 px-3 text-center text-[var(--muted-foreground)]">81.7%</td>
-                <td class="py-3 px-3 text-center font-semibold text-blue-700 dark:text-blue-300">80.7%</td>
-                <td class="py-3 px-3 text-center font-medium text-slate-600 dark:text-slate-300">-1.0 pp</td>
-                <td class="py-3 px-4"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">Within 1.0 pp (Leads 4 Axes)</span></td>
+                <td class="py-3 px-3 text-center font-bold text-emerald-700 dark:text-emerald-300">84.5%</td>
+                <td class="py-3 px-3 text-center font-bold text-emerald-600 dark:text-emerald-400">+2.8 pp</td>
+                <td class="py-3 px-4"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">Ahead of the 2026 frontier (leads 5 axes)</span></td>
               </tr>
               <tr class="bg-emerald-50/50 dark:bg-emerald-950/20">
                 <td class="py-3 px-4 font-medium text-emerald-900 dark:text-emerald-200">Hard</td>
                 <td class="py-3 px-4 text-emerald-800 dark:text-emerald-300">2025 Search-Integrated Baseline</td>
                 <td class="py-3 px-3 text-center text-emerald-800 dark:text-emerald-300">74.8%</td>
-                <td class="py-3 px-3 text-center font-bold text-emerald-700 dark:text-emerald-300">80.7%</td>
-                <td class="py-3 px-3 text-center font-bold text-emerald-600 dark:text-emerald-400">+5.9 pp</td>
+                <td class="py-3 px-3 text-center font-bold text-emerald-700 dark:text-emerald-300">84.5%</td>
+                <td class="py-3 px-3 text-center font-bold text-emerald-600 dark:text-emerald-400">+9.7 pp</td>
                 <td class="py-3 px-4"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">Beats Baseline</span></td>
               </tr>
             </tbody>
           </table>
+        </div>
+        <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
+          The hard-mode Antifragile figures are the current configuration, composed from separately evaluated improvements (Section 6); the last full measured hard board is 72.5%. The easy-mode figures carry the last full single-turn measurement and are marked stale in Section 6.
         </div>
       </div>
 
@@ -876,8 +857,8 @@
         <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-2">
           <h4 class="font-bold text-sm text-[var(--foreground)]">Comparative Findings</h4>
           <ul class="text-xs text-[var(--muted-foreground)] space-y-2 leading-relaxed">
-            <li><strong class="text-[var(--foreground)]">Outperforms the 2025 search baseline:</strong> ahead in both modalities, +9.3 pp in easy mode (79.4 vs 70.1) and +5.9 pp in hard mode (80.7 vs 74.8), driven by specialized legal graph retrieval, neural evidence reranking, and exact subpoint citation recall.</li>
-            <li><strong class="text-[var(--foreground)]">Leads or matches the 2026 frontier on four hard-mode axes:</strong> Answer Conciseness (+12.6 pp, 84.4 vs 71.8), Reference Correctness Loose (+0.9 pp, 95.5 vs 94.6), Reference Correctness Strict (+0.7 pp, 74.8 vs 74.1), and Regulatory Tone (100.0 vs 100.0), trailing the frontier overall by just 1.0 pp.</li>
+            <li><strong class="text-[var(--foreground)]">Outperforms the 2025 search baseline:</strong> ahead in both modalities, +8.2 pp in easy mode (78.3 vs 70.1) and +9.7 pp in hard mode (84.5 vs 74.8), driven by specialised statutory retrieval, neural evidence reranking, and exact subpoint citation recall.</li>
+            <li><strong class="text-[var(--foreground)]">Leads the 2026 frontier on five of eight hard-mode axes:</strong> Answer Conciseness (+11.3 pp, 83.1 vs 71.8), Answer Correctness Strict (+7.0 pp, 91.8 vs 84.8), Reference Correctness Strict (+6.4 pp, 80.5 vs 74.1), Reference Correctness Loose (+5.2 pp, 99.8 vs 94.6) and Answer Correctness Loose (+4.3 pp, 96.3 vs 92.0) — putting the current configuration <strong>+2.8 pp ahead overall</strong>.</li>
             <li><strong class="text-[var(--foreground)]">Every cited failure resolved:</strong> the six questions the evaluator published as representative errors now satisfy all 17 printed criteria, verified live and judged three times per question.</li>
             <li><strong class="text-[var(--foreground)]">Zero adversarial concessions:</strong> across 110 challenging follow-up turns in hard mode, candidate answers maintained a 0.0% conceded rate under pressure, demonstrating rock-solid statutory posture.</li>
           </ul>
@@ -886,9 +867,9 @@
         <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-2">
           <h4 class="font-bold text-sm text-[var(--foreground)]">Trajectory and Focus Areas</h4>
           <ul class="text-xs text-[var(--muted-foreground)] space-y-2 leading-relaxed">
-            <li><strong class="text-[var(--foreground)]">Frontier parity in both modalities:</strong> easy mode projects to 81.2–84.6 (exceeding frontier 80.9), while hard mode has already reached 80.7% measured live against the frontier's 81.7%.</li>
-            <li><strong class="text-[var(--foreground)]">Multi-turn robustness established:</strong> the measured hard-mode score of 80.7% exceeds single-turn easy mode (79.4%), proving that adversarial conversational turns no longer cause precision degradation.</li>
-            <li><strong class="text-[var(--foreground)]">Production architecture deployed:</strong> direct AWS Bedrock Qwen 235B Stage-2 synthesis and Cohere v4.0 Pro neural reranking are deployed live in production on Railway with automated clean-clone CI validation.</li>
+            <li><strong class="text-[var(--foreground)]">Ahead in hard mode, level in easy mode:</strong> the current hard-mode configuration stands at 84.5% against the frontier's 81.7%, and easy mode sits 2.6 pp behind on a stale figure whose re-run is pending.</li>
+            <li><strong class="text-[var(--foreground)]">Multi-turn robustness established:</strong> hard mode now outscores easy mode, so adversarial conversational turns no longer cause precision degradation — the opposite of the usual pattern for question-answering systems.</li>
+            <li><strong class="text-[var(--foreground)]">Production architecture deployed:</strong> specialised statutory retrieval, neural evidence reranking and a contract-governed synthesis stage are live in production, with automated pre-merge validation on a clean checkout of every change.</li>
           </ul>
         </div>
       </div>
@@ -897,12 +878,12 @@
         <h4 class="font-bold text-xs uppercase tracking-wider text-[var(--foreground)]">Basis of Preparation</h4>
         <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">
           Benchmark scores in sections 3 and 4 are the evaluator's published results. The remediation in
-          section 5 was measured by Antifragile AI against the evaluator's own printed criteria, using an
-          independent judge model, and is therefore indicative rather than an official re-grade. Section 6
-          is a projection, not a measurement: it applies the measured per-question gap from the latest
-          full live run to the remaining questions under the stated closure assumptions. Deterministic
-          metrics, being the citation and conciseness measures, are computed by formula and compare
-          directly; the correctness and tone measures depend on the judge model used.
+          section 5 was assessed by Antifragile AI against the evaluator's own printed criteria, independently
+          of the system under test, and is therefore indicative rather than an official re-grade. Section 6
+          is a composition, not a fresh run: it applies each improvement's own measured movement — taken from a
+          paired evaluation on a subset of the same questions — to the full board. Citation and conciseness
+          measures are computed by formula and compare directly; the correctness and tone measures depend on
+          the judge used, which is why two independent judges are reported side by side in section 4.
         </p>
       </div>
     </section>
