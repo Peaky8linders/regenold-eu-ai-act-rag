@@ -61,8 +61,32 @@ def _build_prompt(question: str, criteria: list[str], answer: str, expected_refs
 
 
 def _parse_verdict(raw_text: str, n_criteria: int) -> dict:
+    """Parse one or more JSON objects from a model response.
+
+    Bedrock occasionally appends a second JSON object after the requested
+    object. Treating that valid response as ``JSONDecodeError: Extra data``
+    converted a judge transport success into an all-false failure. Decode every
+    complete value and merge dictionaries, matching the official judge parser.
+    """
     clean = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", raw_text.strip(), flags=re.MULTILINE).strip()
-    parsed = json.loads(clean)
+    values: list[object] = []
+    decoder = json.JSONDecoder()
+    try:
+        parsed = json.loads(clean)
+        values.append(parsed)
+    except json.JSONDecodeError:
+        for i, char in enumerate(clean):
+            if char not in "{[":
+                continue
+            try:
+                value, _end = decoder.raw_decode(clean[i:])
+            except json.JSONDecodeError:
+                continue
+            values.append(value)
+    objects = [value for value in values if isinstance(value, dict)]
+    parsed = {}
+    for value in objects:
+        parsed.update(value)
     verdicts = parsed.get("verdicts", [])
     tone = parsed.get("tone", {}) or {}
     return {
@@ -217,7 +241,11 @@ def main() -> int:
         print(f"\n[{r['id']}] {r['question'][:92]}")
         for c in fails:
             print(f"   FAIL: {c[:165]}")
-    print(f"\nwrote {out_path.relative_to(REPO)}")
+    try:
+        display_path = out_path.resolve().relative_to(REPO.resolve())
+    except ValueError:
+        display_path = out_path
+    print(f"\nwrote {display_path}")
     return 0
 
 

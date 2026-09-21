@@ -1,0 +1,1464 @@
+{
+  "label": "r436-graphrag-bedrock-qwen235",
+  "source_sidecar": "evals\\bench\\results\\graphrag-bench-r436-graphrag-live.json",
+  "started_at": "2026-09-21T20:29:53.460768Z",
+  "finished_at": "2026-09-21T20:30:39.602992Z",
+  "elapsed_s": 46.14,
+  "axes": [
+    "correctness",
+    "refs",
+    "conciseness",
+    "tone"
+  ],
+  "provider": "bedrock",
+  "concurrency": 2,
+  "rows": [
+    {
+      "id": "med_1",
+      "category": "medtech_high_risk",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "irrelevant": 0,
+          "missing": 1,
+          "failure_mode": "minor omission in keyword coverage",
+          "factual_score": 0.8333
+        },
+        "refs": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": ""
+        },
+        "conciseness": {
+          "verdict": "pass",
+          "sentences": 5,
+          "boilerplate_sents": [],
+          "failure_mode": "sentence count exceeds limit"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "med_2",
+      "category": "medtech_qms",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 7,
+          "incorrect": 0,
+          "irrelevant": 2,
+          "missing": 0,
+          "failure_mode": "none",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 2,
+          "mismatched": 5,
+          "failure_mode": "excessive irrelevant citations"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 2,
+          "boilerplate_sents": [],
+          "failure_mode": "excessive length and incomplete final sentence"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "med_3",
+      "category": "medtech_deployer_obligations",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "irrelevant": 0,
+          "missing": 1,
+          "failure_mode": "minor omission in references",
+          "factual_score": 0.8333
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 0,
+          "mismatched": 1,
+          "failure_mode": "under-citation and partial reference mismatch"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 4,
+          "boilerplate_sents": [],
+          "failure_mode": "excessive length and citation density"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "med_4",
+      "category": "medtech_scope_research",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "irrelevant": 0,
+          "missing": 1,
+          "failure_mode": "minor omission in reference citation",
+          "factual_score": 0.8
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 0,
+          "mismatched": 2,
+          "failure_mode": "cite-and-mismatch"
+        },
+        "conciseness": {
+          "verdict": "pass",
+          "sentences": 3,
+          "boilerplate_sents": [],
+          "failure_mode": ""
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "med_5",
+      "category": "medtech_transparency_chatbot",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "irrelevant": 1,
+          "missing": 0,
+          "failure_mode": "no incorrect on gold keyword",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 3,
+          "mismatched": 2,
+          "failure_mode": "citation mismatch"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 5,
+          "boilerplate_sents": [],
+          "failure_mode": "exceeds sentence limit"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "med_6",
+      "category": "medtech_classification",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "irrelevant": 1,
+          "missing": 0,
+          "failure_mode": "no incorrect on gold keyword topic",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": ""
+        },
+        "conciseness": {
+          "verdict": "pass",
+          "sentences": 5,
+          "boilerplate_sents": [],
+          "failure_mode": "none"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "med_7",
+      "category": "medtech_technical_documentation",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 8,
+          "incorrect": 1,
+          "irrelevant": 1,
+          "missing": 0,
+          "failure_mode": "minor irrelevant reference",
+          "factual_score": 0.8889
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 2,
+          "mismatched": 2,
+          "failure_mode": "cite-and-mismatch"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 5,
+          "boilerplate_sents": [],
+          "failure_mode": "exceeds sentence limit"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "med_8",
+      "category": "medtech_prohibited_emotion",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "irrelevant": 0,
+          "missing": 1,
+          "failure_mode": "minor omission in keyword coverage",
+          "factual_score": 0.8333
+        },
+        "refs": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": "none"
+        },
+        "conciseness": {
+          "verdict": "pass",
+          "sentences": 5,
+          "boilerplate_sents": [],
+          "failure_mode": "none"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "med_9",
+      "category": "medtech_conformity_assessment",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 7,
+          "incorrect": 0,
+          "irrelevant": 0,
+          "missing": 1,
+          "failure_mode": "minor omission in keyword coverage",
+          "factual_score": 0.875
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 3,
+          "mismatched": 1,
+          "failure_mode": "citation mismatch"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 6,
+          "boilerplate_sents": [],
+          "failure_mode": "excessive length"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "med_10",
+      "category": "medtech_penalties",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "irrelevant": 1,
+          "missing": 0,
+          "failure_mode": "none",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 1,
+          "mismatched": 2,
+          "failure_mode": "citation mismatch"
+        },
+        "conciseness": {
+          "verdict": "pass",
+          "sentences": 3,
+          "boilerplate_sents": [],
+          "failure_mode": ""
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "gt_01",
+      "category": "risk_taxonomy",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "irrelevant": 1,
+          "missing": 0,
+          "failure_mode": "none",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 3,
+          "mismatched": 2,
+          "failure_mode": "cite-and-mismatch"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 6,
+          "boilerplate_sents": [],
+          "failure_mode": "exceeds sentence limit"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "gt_02",
+      "category": "prohibited",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 8,
+          "incorrect": 0,
+          "irrelevant": 0,
+          "missing": 0,
+          "failure_mode": "none",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "pass",
+          "faithful": 1,
+          "mismatched": 0,
+          "failure_mode": ""
+        },
+        "conciseness": {
+          "verdict": "pass",
+          "sentences": 1,
+          "boilerplate_sents": [],
+          "failure_mode": ""
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "gt_03",
+      "category": "high_risk_definition",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "irrelevant": 1,
+          "missing": 3,
+          "failure_mode": "partial keyword coverage",
+          "factual_score": 0.625
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 2,
+          "mismatched": 1,
+          "failure_mode": "citation mismatch"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 3,
+          "boilerplate_sents": [],
+          "failure_mode": "missing gold keywords"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "gt_04",
+      "category": "high_risk_sectors",
+      "verdicts": {
+        "correctness": {
+          "verdict": "fail",
+          "correct": 4,
+          "incorrect": 2,
+          "irrelevant": 1,
+          "missing": 3,
+          "failure_mode": "incorrect on gold-keyword topic",
+          "factual_score": 0.4444
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 1,
+          "mismatched": 1,
+          "failure_mode": "cite-and-mismatch"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 4,
+          "boilerplate_sents": [],
+          "failure_mode": "missing gold keywords"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "gt_05",
+      "category": "transparency",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 3,
+          "incorrect": 0,
+          "irrelevant": 0,
+          "missing": 0,
+          "failure_mode": "none",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 1,
+          "mismatched": 2,
+          "failure_mode": "reference granularity mismatch"
+        },
+        "conciseness": {
+          "verdict": "pass",
+          "sentences": 3,
+          "boilerplate_sents": [],
+          "failure_mode": ""
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "gt_06",
+      "category": "minimal_risk",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "irrelevant": 1,
+          "missing": 3,
+          "failure_mode": "missing keyword focus",
+          "factual_score": 0.625
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 1,
+          "mismatched": 2,
+          "failure_mode": "citation mismatch"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 1,
+          "boilerplate_sents": [],
+          "failure_mode": "missing gold keywords"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "gt_07",
+      "category": "guiding_principles",
+      "verdicts": {
+        "correctness": {
+          "verdict": "fail",
+          "correct": 2,
+          "incorrect": 3,
+          "irrelevant": 1,
+          "missing": 3,
+          "failure_mode": "incorrect on fundamental rights",
+          "factual_score": 0.25
+        },
+        "refs": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 3,
+          "boilerplate_sents": [],
+          "failure_mode": "missing gold keywords"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "gt_08",
+      "category": "definition",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "irrelevant": 1,
+          "missing": 0,
+          "failure_mode": "no incorrect on keyword topic",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 1,
+          "mismatched": 2,
+          "failure_mode": "citation mismatch"
+        },
+        "conciseness": {
+          "verdict": "pass",
+          "sentences": 1,
+          "boilerplate_sents": [],
+          "failure_mode": ""
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "gt_09",
+      "category": "penalties",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "irrelevant": 1,
+          "missing": 0,
+          "failure_mode": "none",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 0,
+          "mismatched": 1,
+          "failure_mode": "citation format mismatch"
+        },
+        "conciseness": {
+          "verdict": "pass",
+          "sentences": 3,
+          "boilerplate_sents": [],
+          "failure_mode": ""
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "gt_10",
+      "category": "roles",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "irrelevant": 0,
+          "missing": 0,
+          "failure_mode": "none",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": ""
+        },
+        "conciseness": {
+          "verdict": "pass",
+          "sentences": 3,
+          "boilerplate_sents": [],
+          "failure_mode": ""
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "ng_01",
+      "category": "risk_assessment",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 7,
+          "incorrect": 0,
+          "irrelevant": 3,
+          "missing": 4,
+          "failure_mode": "partial omission of gold keywords",
+          "factual_score": 0.6364
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 1,
+          "mismatched": 3,
+          "failure_mode": "cite-and-mismatch"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 1,
+          "boilerplate_sents": [],
+          "failure_mode": "excessive length and incomplete sentence"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "ng_02",
+      "category": "sanctions",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "irrelevant": 1,
+          "missing": 1,
+          "failure_mode": "minor omission in keyword coverage",
+          "factual_score": 0.8333
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 1,
+          "mismatched": 1,
+          "failure_mode": "cite-and-mismatch"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 3,
+          "boilerplate_sents": [],
+          "failure_mode": "excessive length and detail"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "ng_03",
+      "category": "deployer_obligations",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 1,
+          "irrelevant": 1,
+          "missing": 0,
+          "failure_mode": "minor incorrect reference",
+          "factual_score": 0.8571
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 2,
+          "mismatched": 3,
+          "failure_mode": "citation mismatch"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 6,
+          "boilerplate_sents": [],
+          "failure_mode": "exceeds sentence limit"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "ng_04",
+      "category": "high_risk_requirements",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "irrelevant": 2,
+          "missing": 0,
+          "failure_mode": "none",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 1,
+          "mismatched": 2,
+          "failure_mode": "cite-and-mismatch"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 1,
+          "boilerplate_sents": [],
+          "failure_mode": "missing citation anchors"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "ng_05",
+      "category": "provider_obligations",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 7,
+          "incorrect": 0,
+          "irrelevant": 1,
+          "missing": 0,
+          "failure_mode": "none",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 3,
+          "mismatched": 2,
+          "failure_mode": "citation mismatch"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 3,
+          "boilerplate_sents": [],
+          "failure_mode": "missing gold keywords"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "ng_06",
+      "category": "conformity_assessment",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 7,
+          "incorrect": 0,
+          "irrelevant": 2,
+          "missing": 0,
+          "failure_mode": "none",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 4,
+          "mismatched": 2,
+          "failure_mode": "citation mismatch"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 6,
+          "boilerplate_sents": [],
+          "failure_mode": "exceeds sentence limit"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "ng_07",
+      "category": "systemic_risk",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "irrelevant": 0,
+          "missing": 0,
+          "failure_mode": "none",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 2,
+          "mismatched": 1,
+          "failure_mode": "cite-and-mismatch"
+        },
+        "conciseness": {
+          "verdict": "pass",
+          "sentences": 1,
+          "boilerplate_sents": [],
+          "failure_mode": ""
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "ng_08",
+      "category": "gpai_definition",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "irrelevant": 0,
+          "missing": 0,
+          "failure_mode": "none",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 0,
+          "mismatched": 3,
+          "failure_mode": "citation mismatch"
+        },
+        "conciseness": {
+          "verdict": "pass",
+          "sentences": 1,
+          "boilerplate_sents": [],
+          "failure_mode": ""
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "ng_09",
+      "category": "qms",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "irrelevant": 2,
+          "missing": 0,
+          "failure_mode": "none",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 1,
+          "mismatched": 3,
+          "failure_mode": "citation mismatch"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 2,
+          "boilerplate_sents": [],
+          "failure_mode": "excessive length and incomplete final sentence"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "ng_10",
+      "category": "bias_mitigation",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "irrelevant": 1,
+          "missing": 0,
+          "failure_mode": "none",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 1,
+          "mismatched": 1,
+          "failure_mode": "mismatched reference"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 3,
+          "boilerplate_sents": [],
+          "failure_mode": "excessive length and overcitation"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "gt_11",
+      "category": "hardware_specs",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 2,
+          "incorrect": 0,
+          "irrelevant": 0,
+          "missing": 0,
+          "failure_mode": "none",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        },
+        "conciseness": {
+          "verdict": "pass",
+          "sentences": 2,
+          "boilerplate_sents": [],
+          "failure_mode": ""
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "gt_12",
+      "category": "emotion_recognition",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "irrelevant": 0,
+          "missing": 1,
+          "failure_mode": "minor omission in keyword coverage",
+          "factual_score": 0.8
+        },
+        "refs": {
+          "verdict": "pass",
+          "faithful": 3,
+          "mismatched": 0,
+          "failure_mode": ""
+        },
+        "conciseness": {
+          "verdict": "pass",
+          "sentences": 3,
+          "boilerplate_sents": [],
+          "failure_mode": ""
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "gt_13",
+      "category": "transcription_classification",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 6,
+          "incorrect": 0,
+          "irrelevant": 1,
+          "missing": 3,
+          "failure_mode": "partial reference mismatch",
+          "factual_score": 0.6667
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 2,
+          "mismatched": 3,
+          "failure_mode": "cite-and-mismatch"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 6,
+          "boilerplate_sents": [],
+          "failure_mode": "exceeds sentence limit"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "med_01",
+      "category": "medtech_high_risk",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "irrelevant": 0,
+          "missing": 0,
+          "failure_mode": "none",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "pass",
+          "faithful": 4,
+          "mismatched": 0,
+          "failure_mode": ""
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 6,
+          "boilerplate_sents": [],
+          "failure_mode": "excessive length"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "med_02",
+      "category": "medtech_triage",
+      "verdicts": {
+        "correctness": {
+          "verdict": "fail",
+          "correct": 4,
+          "incorrect": 1,
+          "irrelevant": 0,
+          "missing": 1,
+          "failure_mode": "incorrect on high-risk classification",
+          "factual_score": 0.6667
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 3,
+          "mismatched": 1,
+          "failure_mode": "cite-and-mismatch"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 5,
+          "boilerplate_sents": [],
+          "failure_mode": "exceeds sentence limit"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "med_03",
+      "category": "lifesciences_gpai",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 7,
+          "incorrect": 0,
+          "irrelevant": 2,
+          "missing": 0,
+          "failure_mode": "no incorrect on gold keyword",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 5,
+          "mismatched": 2,
+          "failure_mode": "cites non-existent provisions"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 2,
+          "boilerplate_sents": [],
+          "failure_mode": "excessive length and incomplete final sentence"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "med_04",
+      "category": "lifesciences_research",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 3,
+          "incorrect": 0,
+          "irrelevant": 1,
+          "missing": 1,
+          "failure_mode": "minor omission in reference citation",
+          "factual_score": 0.75
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 0,
+          "mismatched": 1,
+          "failure_mode": "cite-and-mismatch"
+        },
+        "conciseness": {
+          "verdict": "pass",
+          "sentences": 3,
+          "boilerplate_sents": [],
+          "failure_mode": ""
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "med_05",
+      "category": "medtech_chatbot",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "irrelevant": 1,
+          "missing": 0,
+          "failure_mode": "none",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 2,
+          "mismatched": 2,
+          "failure_mode": "cite-and-mismatch"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 6,
+          "boilerplate_sents": [],
+          "failure_mode": "exceeds sentence limit"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "med_06",
+      "category": "medtech_emotion_workplace",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 5,
+          "incorrect": 0,
+          "irrelevant": 0,
+          "missing": 0,
+          "failure_mode": "none",
+          "factual_score": 1.0
+        },
+        "refs": {
+          "verdict": "pass",
+          "faithful": 2,
+          "mismatched": 0,
+          "failure_mode": "none"
+        },
+        "conciseness": {
+          "verdict": "fail",
+          "sentences": 5,
+          "boilerplate_sents": [],
+          "failure_mode": "exceeds sentence limit"
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    },
+    {
+      "id": "med_07",
+      "category": "medtech_robotic_surgery",
+      "verdicts": {
+        "correctness": {
+          "verdict": "pass",
+          "correct": 4,
+          "incorrect": 0,
+          "irrelevant": 2,
+          "missing": 1,
+          "failure_mode": "no incorrect on gold keywords",
+          "factual_score": 0.8
+        },
+        "refs": {
+          "verdict": "fail",
+          "faithful": 1,
+          "mismatched": 2,
+          "failure_mode": "citation mismatch"
+        },
+        "conciseness": {
+          "verdict": "pass",
+          "sentences": 4,
+          "boilerplate_sents": [],
+          "failure_mode": ""
+        },
+        "tone": {
+          "verdict": "pass",
+          "violations": [],
+          "failure_mode": ""
+        }
+      },
+      "retried_axes": {}
+    }
+  ],
+  "aggregate": {
+    "correctness": {
+      "n": 40,
+      "pass": 37,
+      "fail": 3,
+      "error": 0,
+      "pass_rate": 0.925,
+      "top_failure_modes": [
+        [
+          "incorrect on gold-keyword topic",
+          1
+        ],
+        [
+          "incorrect on fundamental rights",
+          1
+        ],
+        [
+          "incorrect on high-risk classification",
+          1
+        ]
+      ],
+      "mean_factual_score": 0.8755
+    },
+    "refs": {
+      "n": 40,
+      "pass": 10,
+      "fail": 30,
+      "error": 0,
+      "pass_rate": 0.25,
+      "top_failure_modes": [
+        [
+          "cite-and-mismatch",
+          12
+        ],
+        [
+          "citation mismatch",
+          12
+        ],
+        [
+          "excessive irrelevant citations",
+          1
+        ],
+        [
+          "under-citation and partial reference mismatch",
+          1
+        ],
+        [
+          "reference granularity mismatch",
+          1
+        ],
+        [
+          "citation format mismatch",
+          1
+        ],
+        [
+          "mismatched reference",
+          1
+        ],
+        [
+          "cites non-existent provisions",
+          1
+        ]
+      ]
+    },
+    "conciseness": {
+      "n": 40,
+      "pass": 16,
+      "fail": 24,
+      "error": 0,
+      "pass_rate": 0.4,
+      "top_failure_modes": [
+        [
+          "exceeds sentence limit",
+          9
+        ],
+        [
+          "missing gold keywords",
+          5
+        ],
+        [
+          "excessive length and incomplete final sentence",
+          3
+        ],
+        [
+          "excessive length",
+          2
+        ],
+        [
+          "excessive length and citation density",
+          1
+        ],
+        [
+          "excessive length and incomplete sentence",
+          1
+        ],
+        [
+          "excessive length and detail",
+          1
+        ],
+        [
+          "missing citation anchors",
+          1
+        ],
+        [
+          "excessive length and overcitation",
+          1
+        ]
+      ]
+    },
+    "tone": {
+      "n": 40,
+      "pass": 40,
+      "fail": 0,
+      "error": 0,
+      "pass_rate": 1.0,
+      "top_failure_modes": []
+    }
+  },
+  "total_retries": 0,
+  "retried_axes": {
+    "correctness": 0,
+    "refs": 0,
+    "conciseness": 0,
+    "tone": 0
+  },
+  "retry_recovery_rate": 0.0,
+  "retries_recovered": 0
+}
