@@ -229,15 +229,15 @@ equality reported **53 false violations**, every one a correct append under a he
 already present.
 
 **Live gate: 9/9 criteria PASS, `SHIP`** (`wire_add_gate.py`, verdict in
-`docs/measurements/r431/gate-verdict.json`). 27 comparable hard rows, two independent
-generations: Ref. Strict 77.16 → **82.72 (+5.56)**, Loose **+0.00**, Conc **−0.59**.
-The lever fired on 3 rows and appended 4 coordinates, **all 4 of them gold**; Ref. Strict
-moved up on 2 rows and down on none; **0** folded-head-set violations, **0** met→unmet
-regressions, gold heads dropped unchanged at 0. It is the **third** of the three
-pre-registered generations that is missing: the primary leg returned HTTP 500 on every
-call part-way through it and the transport guard aborted that sample at 12/37, so the
-reader uses the two complete generations, says so on stdout, and records it in the
-verdict (`repeats: 2` of 3). The tolerance criteria were not relaxed. **Two silent reader
+`docs/measurements/r431/gate-verdict.json`). 27 comparable hard rows across **three
+independent generations**: Ref. Strict 80.86 → **84.57 (+3.70)**, Loose **+0.00**, Conc
+**−0.12**. The lever fired on 3 rows and appended 6 coordinates, **all 6 of them gold**;
+Ref. Strict moved up on 1 row and down on none; **0** folded-head-set violations, **0**
+met→unmet regressions, gold heads dropped unchanged at 0. The first wrapper-backed attempt
+was incomplete at 12/37 and is retained as provenance only; after Bedrock was restored,
+the completed 37-row × 3-generation draw finished on an alternate transport with the
+same Stage-2 model identity, and the reader uses all three complete generations
+(`repeats: 3`). The tolerance criteria were not relaxed. **Two silent reader
 defects were found and fixed by this run rather than by the numbers** — the first version
 checked the derivation licence over rows the pass never owns (the deterministic-leg rows:
 out of scope, not a lever fault), and drove the pass with `question=""`, which zeroes the
@@ -281,6 +281,57 @@ papered over.
 Also fixed here: the R425 trace reported only positional rewrites (`zip` truncates at
 the shorter list), so an **append left the trace silent while the wire had changed**.
 It now emits `+Article 6.1` entries.
+
+
+## ⛔ R432 — the outage remedy had to be made SAFE and FAITHFUL before it was usable
+
+Full evidence: `docs/measurements/r432/CHECKPOINT.md`.
+
+Use a working transport directly when the tunnel or its Max quota is down — that is the
+instruction, and following it exposed two defects in the path that is supposed to make it
+possible. **Neither is hypothetical; both were reproduced before being fixed.**
+
+**1. The transport allowlist was doubling as the Cloudflare service-token allowlist.**
+`_cf_access_trusted_hosts()` (R365) anchored the secret scope on
+`stage2_policy.allowed_primary_hosts()` — the list edited via
+`REGENOLD_STAGE2_PRIMARY_HOSTS` to point Stage-2 at another transport. So the one knob an
+operator sets to recover from an outage also **handed that host the Zero Trust
+service-token SECRET**: measured on the R365 code,
+`_resolve_cf_access_headers("https://openrouter.ai/api/v1")` returned
+`{'CF-Access-Client-Id': …, 'CF-Access-Client-Secret': …}` whenever the allowlist named
+that host. Routing policy and credential policy were sharing an answer; they are separate
+now — scope is `CF_ACCESS_HOSTNAME` when pinned, else the hardcoded default wrapper host,
+and the transport list cannot widen it. Renaming one's own tunnel still works by pinning
+`CF_ACCESS_HOSTNAME`. The R365 test that had encoded the leak is inverted
+(`TestTransportAllowlistIsNotASecretAllowlist`).
+
+**2. The remedy could not deliver the same model, and failed SILENTLY.** Every model the
+app sends is a bare vendor name (`claude-opus-5`); a namespaced transport requires
+`anthropic/claude-opus-5` and answers **HTTP 400** — after which the engine quietly serves
+a deterministic Stage-1 draft rather than raising. **`REGENOLD_WRAPPER_MODEL_PREFIX`**
+(default `""`) now namespaces `claude*` models at the single choke point
+(`resolve_wrapper_model`), so Stage-2, the denoiser, the intent classifier and the
+preflight all agree. It is scoped to `claude*` on purpose: this provider class is reused
+for Groq / Gemini / Mistral, and a blanket prefix would rewrite their ids into nonsense.
+It supersedes the alias table, which repairs a name *for the wrapper* — against another
+namespace its targets are simply wrong. Separately, the **eval preflight now probes the
+configured Stage-2 model** instead of the request default: it had been sending the literal
+`claude-opus-4-8` on the premise that the alias map resolved it to "the same effective
+model the engine's Stage-2 calls land on", which has been false since R308 turned that map
+off, so the probe could pass or fail on a model no row uses.
+
+**Measured after.** Provider seam on the alternate transport: `anthropic/claude-opus-5`
+→ HTTP 200 in 4.0 s, **zero** CF headers on the wire. Preflight:
+`Stage-2 transport preflight OK (model=anthropic/claude-opus-5)`. A resumed hard draw
+records `stage2_served_by=primary`, `stage2_model=anthropic/claude-opus-5`,
+`stage2_polish=true` — the same model id as the board, on a different serving route. The
+operator's refreshed Bedrock key restores the native fallback leg too
+(`check_connectivity_and_permissions → status ok`), so both recovery paths are live.
+
+**One axis this cannot preserve: latency.** The alternate route has no Max-subscription
+fast path, so a draw taken this way is comparable on the model axis and **not** on
+`resp_speed`. Any speed figure from such a draw is a transport figure, not a production
+one. Pinned by `tests/test_r432_transport_remedy.py`.
 
 
 ## ⛔ R428 — the R426 (SOTA legal-KG) round, audited by execution

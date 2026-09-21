@@ -1,13 +1,13 @@
 {
   "label": "r431-add",
   "rows": 27,
-  "repeats": 2,
+  "repeats": 3,
   "repeats_pre_registered": 3,
-  "generations_note": "only 2 of 3 generations complete; the third was aborted by the harness transport guard when the primary leg returned HTTP 500 on every call",
+  "generations_note": "all pre-registered generations used",
   "axes": {
     "loose": {
-      "off": 98.1481,
-      "on": 98.1481,
+      "off": 100.0,
+      "on": 100.0,
       "delta": 0.0,
       "ci95": [
         0.0,
@@ -15,20 +15,20 @@
       ]
     },
     "strict": {
-      "off": 77.1605,
-      "on": 82.716,
-      "delta": 5.5556,
+      "off": 80.8642,
+      "on": 84.5679,
+      "delta": 3.7037,
       "ci95": [
         0.0,
-        14.8148
+        11.1111
       ]
     },
     "conc": {
-      "off": 45.5864,
-      "on": 45.0,
-      "delta": -0.5864,
+      "off": 44.8765,
+      "on": 44.7531,
+      "delta": -0.1235,
       "ci95": [
-        -1.358,
+        -0.3704,
         0.0
       ]
     }
@@ -38,8 +38,8 @@
     "rg_055",
     "rg_082"
   ],
-  "appended": 4,
-  "appended_gold": 4,
+  "appended": 6,
+  "appended_gold": 6,
   "gold_heads": {
     "off": 0,
     "on": 0

@@ -468,14 +468,26 @@ def _install_stage2_transport_guard(
 
     def preflight() -> str:
         provider = _wp.get_openai_wrapper_provider()
-        # The probe's job is TRANSPORT reachability (DNS -> CF Access -> OAuth),
-        # not model selection, so it leaves ``model`` at the request default —
-        # which the provider's own alias map resolves to the same effective
-        # model the engine's Stage-2 calls land on.
+        # R432 — probe the CONFIGURED Stage-2 model, not the request default.
+        # The old probe left ``model`` unset on the stated premise that "the
+        # provider's alias map resolves it to the same effective model the
+        # engine's Stage-2 calls land on" — true only while the alias table was
+        # ON. It has defaulted OFF since R308, so the probe has been sending the
+        # request default (``claude-opus-4-8``) verbatim: a name the wrapper
+        # happens to accept by luck, and one a namespaced transport rejects with
+        # a 400 — i.e. the preflight could pass (or fail) on a model the run
+        # never uses. It now probes the model the run will actually send.
+        try:
+            from app.config import GraphRAGSettings as _GRS
+
+            probe_model = str(_GRS().stage2_model or "").strip()
+        except Exception:  # noqa: BLE001 — a probe must never break the run
+            probe_model = ""
         resp = provider.complete(
             _wp.OpenAIWrapperRequest(
                 user="Reply with the single word: alive",
                 max_tokens=16,
+                **({"model": probe_model} if probe_model else {}),
             )
         )
         if resp is None:

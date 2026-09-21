@@ -1373,6 +1373,14 @@ def _engine_cache_key(
     # (see ``_claude_max_enhance_answer`` routing rule), so they must
     # have distinct cache identities.
     provider_bit = (os.getenv("P2P_GRAPH_RAG_PROVIDER") or "").strip().lower() or "unset"
+    # R432 — the OpenAI-compatible destination is answer-affecting. The same
+    # provider/model prompt sent through Claude Max, OpenRouter, or a local
+    # wrapper can produce different prose (and a live outage can turn one into
+    # a deterministic Stage-1 answer), so a transport switch must not replay
+    # the old destination's cached GraphRAGResponse. Key the normalized raw
+    # value rather than an allowlist decision: an allowed->refused transition
+    # is still a different cache regime and must be observable.
+    openai_base_bit = os.getenv("OPENAI_API_BASE", "").strip().rstrip("/") or "unset"
     # R79 — fold the ENGINE-behaviour env flags into the key. Same
     # doctrine as the R30/R56 cache-poisoning fixes: any env var that
     # flips the ENGINE output (this cache stores the GraphRAGResponse,
@@ -1680,6 +1688,10 @@ def _engine_cache_key(
             # R300 — the wrapper model alias decides WHICH model generates the
             # Stage-2 answer, so flipping it flips the answer.
             "REGENOLD_WRAPPER_MODEL_ALIAS",
+            # R432 — same reason, and stronger: the namespace prefix changes the
+            # model id the primary transport is asked for, so a cached answer
+            # must never be replayed across it.
+            "REGENOLD_WRAPPER_MODEL_PREFIX",
             "REGENOLD_GRAPH_2HOP",
             "REGENOLD_GRAPH_AWARE",
             # R252 — KB-primary vs legacy Neo4j-primary retrieval flips the
@@ -2234,6 +2246,11 @@ def _engine_cache_key(
         system_context or "",
         f"flags:{flag_bits}",
         f"provider:{provider_bit}",
+        # R432 — OPENAI_API_BASE selects the actual OpenAI-compatible
+        # destination. It can switch between Claude Max, an alternate
+        # transport, or a dead host that degrades to Stage-1; all are distinct
+        # response regimes and must not share a cached GraphRAGResponse.
+        f"openai_base:{openai_base_bit}",
         f"engine:{engine_flags}",
         f"history:{int(history_turn_count)}",
         # R410 — the reask path's flattened history. The completeness repair
