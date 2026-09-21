@@ -279,6 +279,33 @@ Deriving both lever states from the SAME draw is strictly less noisy. The licenc
 for the derivation is the 111/111 fixed-point check above (and it is the same
 reasoning the R425 round used to stop its own two-arm wire gate).
 
+## 6.1 Live production, after the deploy
+
+Merged as PR #447 (`aa30052`); production `/healthz` reports
+`"commit":"aa3005252003"`. Five hard-mode rows that the gate completed were then
+re-asked against the deployed service (`--mode hard --ids … --label r429-live`),
+and the emitted wire carries the completed coordinate on all three where the
+answer's prose named it:
+
+| row | live wire (`pred_refs`) | gold key | strict |
+| :-- | :-- | :-- | --: |
+| `rg_046` | `Article 13.3.e`, `Article 14.4`, `Article 12` | `Article 13.3` | 1.00 |
+| `rg_055` | `Article 5.1.h.i`, …, `Article 49.4.a` | `Article 5.1.h` | 1.00 |
+| `rg_070` | `Annex I.11`, `Article 6.1.b` | `Article 6.1.b` | 1.00 |
+| `rg_025` | `Article 25.1`, `Article 16` | `Article 25.1` | 1.00 |
+| `rg_001` | `Article 11.1`, **`Annex IV.1`** | `Annex IV.1.e` | 0.00 |
+
+**No errors, 5/5 served** (14.8–79.3 s, none fallback-served). n=5 hard rows:
+Ref. Loose **100.00**, Ref. Strict **80.00**, Ref. Conciseness **40.67**. Artefact
+`evals/bench/results/official-r429-live-hard.ckpt.jsonl`.
+
+`rg_001` is the honest reachability limit, not a defect: its live prose did not name
+`Annex IV.1.e`, so there was no prose-named coordinate to complete onto — the pass
+deliberately never invents one. On the gate's draws the same row DID name it and DID
+complete (`Annex IV.1 → Annex IV.1.e`). Reachability here is generation-dependent,
+which is why the offline classifier counts a "no prose-named descendant" bucket
+rather than claiming the whole depth population as reachable.
+
 ## 7. The licence, asserted instead of sampled
 
 Both the probe (477 recorded draws) and the gate (111 fresh draws) are SAMPLES. A
