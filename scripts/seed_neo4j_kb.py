@@ -142,7 +142,10 @@ logger = logging.getLogger(__name__)
 #: new edge type, removed source, etc.). Surfaces in the ``KBMetadata``
 #: node so consumers can detect a graph that's stale relative to the
 #: currently-running code.
-SEED_VERSION = "2026-08-08-r323-annex-sections"
+# R433 — reconcile legacy Aura shadow Articles as well as canonical nodes.
+# This version bump deliberately triggers the normal, idempotent startup
+# migration; it does not clear or delete graph data.
+SEED_VERSION = "2026-09-21-r433-shadow-citation-reconcile"
 
 #: Cap on per-transaction batch size to stay well clear of the Neo4j
 #: 4194304-byte default transaction limit. The shape of our payloads
@@ -1371,6 +1374,11 @@ def seed_graph(
             MATCH (shadow:Article) WHERE shadow.id STARTS WITH 'ART'
             WITH shadow, 'article_' + substring(shadow.id, 3) AS canonical_id
             MATCH (canonical:Article {id: canonical_id})
+            // Normalize legacy shadow properties so every Article node satisfies
+            // the strict-citation contract, not only canonical article_<N> nodes.
+            SET shadow.number = substring(shadow.id, 3),
+                shadow.strict_citation = 'Article ' + substring(shadow.id, 3),
+                shadow.legal_type = coalesce(shadow.legal_type, canonical.legal_type)
             MERGE (shadow)-[:EQUIVALENT_TO]->(canonical)
             MERGE (canonical)-[:EQUIVALENT_TO]->(shadow)
             WITH shadow, canonical

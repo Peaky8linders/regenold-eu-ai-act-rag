@@ -49,7 +49,12 @@ if str(REPO) not in sys.path:
 
 OUT = REPO / "docs" / "measurements" / "r413"
 GOLD = REPO / "docs" / "measurements" / "r388" / "official_gold_n110.jsonl"
-LIVE = REPO / "evals" / "bench" / "results" / "official-r286-easy-live-easy.ckpt.jsonl"
+LIVE_EASY = REPO / "evals" / "bench" / "results" / "official-r286-easy-live-easy.ckpt.jsonl"
+# A hard-split source is selectable for the same guard experiment. It is still
+# an answer-level truncation gate (not a claim that this helper recreates the
+# full route conversation), but it prevents an easy-only result being reported
+# as hard-mode evidence.
+LIVE_HARD = REPO / "evals" / "bench" / "results" / "official-r431-add-A-hard.ckpt.jsonl"
 STAGE1 = OUT / "stage1_answers.jsonl"
 PAPER_CKPTS = (
     REPO / "evals" / "bench" / "results" / "easyhard-r411-fullsys-full-A.ckpt.jsonl",
@@ -117,7 +122,7 @@ def part1_neutrality(verbose: bool) -> tuple[dict, list[dict]]:
     """Complete answers must pass through the guard untouched, with no call."""
     from app.engines import graph_rag as gr
 
-    corpora: list[tuple[str, list[dict]]] = [("official-live", _load_jsonl(LIVE))]
+    corpora: list[tuple[str, list[dict]]] = [("official-live", _load_jsonl(LIVE_EASY))]
     for path in PAPER_CKPTS:
         if path.exists():
             corpora.append((path.stem, _load_jsonl(path)))
@@ -209,6 +214,7 @@ def run_arm(
     *,
     workers: int,
     out_path: Path,
+    mode: str = "easy",
 ) -> list[dict]:
     """Run one arm over every truncation case via the real guard."""
     from app.engines import graph_rag as gr
@@ -234,7 +240,12 @@ def run_arm(
             error = f"{type(exc).__name__}: {exc}"
             used = False
         latency_s = max(0.001, time.time() - t0)
-        diag = _diagnose(shipped, case["truncated"]) if shipped else {"weld": False, "incomplete": False, "chars": 0}
+        # The detector compares a candidate with the CUT FINAL SENTENCE, not
+        # the whole multi-sentence answer. Passing the full truncated answer
+        # made the continuity run meaningless: the candidate cannot contain
+        # the entire prefix, so any weld count was an artefact of the reader.
+        cut_fragment = _sentence_suffix(case["truncated"])
+        diag = _diagnose(shipped, cut_fragment) if shipped else {"weld": False, "incomplete": False, "chars": 0}
         rec = {
             "id": case["id"],
             "question": case["question"],
@@ -285,7 +296,7 @@ def run_arm(
                     "pred_answer": rec["shipped"],
                     "pred_refs": refs,
                     "latency_ms": int(rec["latency_s"] * 1000),
-                    "mode": "easy",
+                    "mode": mode,
                 },
                 ensure_ascii=False,
             )
@@ -318,6 +329,8 @@ def main() -> int:
     # which is what the R388/R390 scorecards were built with; Bedrock is the
     # second read (its Sonnet 5 / Opus 5 profiles are 403 on this account, so
     # ``eu.anthropic.claude-opus-4-6-v1`` is the top model reachable there).
+    ap.add_argument("--mode", default="easy", choices=("easy", "hard"), help="corpus/rubric modality")
+    ap.add_argument("--live-ckpt", type=Path, default=None, help="override the source checkpoint")
     ap.add_argument("--judge-provider", default="wrapper", choices=("bedrock", "wrapper"))
     ap.add_argument("--judge-model", default=os.getenv("R388_JUDGE_MODEL", "claude-sonnet-5"))
     ap.add_argument("--score", action="store_true", help="skip the live arms; score existing ckpts")
@@ -326,11 +339,14 @@ def main() -> int:
 
     OUT.mkdir(parents=True, exist_ok=True)
     gold = {r["id"]: r for r in _load_jsonl(GOLD)}
+    live_path = args.live_ckpt or (LIVE_HARD if args.mode == "hard" else LIVE_EASY)
     for line in _load_jsonl(REPO / "docs" / "measurements" / "r388" / "official_refkey_n110.jsonl"):
         if line["id"] in gold:
             gold[line["id"]]["expected_refs"] = [] if line.get("unstable") else (line.get("expected") or [])
     stage1 = {r["id"]: r for r in _load_jsonl(STAGE1)}
-    live = {r["id"]: r for r in _load_jsonl(LIVE) if r.get("id") in gold}
+    if not live_path.exists():
+        raise SystemExit(f"source checkpoint does not exist: {live_path}")
+    live = {r["id"]: r for r in _load_jsonl(live_path) if r.get("id") in gold}
 
     if not args.score:
         print("\n=== PART 1 — passing rows must be untouched (provider stubbed to fail) ===")
@@ -373,19 +389,23 @@ def main() -> int:
         )
         for arm in ARMS:
             print(f"\n--- arm {arm} ---")
-            run_arm(arm, cases, workers=args.workers, out_path=OUT / f"arm-{arm}.jsonl")
+            run_arm(
+                arm, cases, workers=args.workers,
+                out_path=OUT / f"arm-{args.mode}-{arm}.jsonl",
+                mode=args.mode,
+            )
 
     print("\n=== PART 3 — official rubric, all eight axes ===")
     scores: dict[str, dict[str, float]] = {}
     void: list[str] = []
     for arm in ARMS:
-        ckpt = OUT / f"arm-{arm}.ckpt.jsonl"
+        ckpt = OUT / f"arm-{args.mode}-{arm}.ckpt.jsonl"
         if not ckpt.exists():
             print(f"  missing {ckpt.name}")
             continue
         cmd = [
             sys.executable, "-m", "evals.official.score_arm",
-            "--ckpt", str(ckpt), "--label", f"r413-tail-{arm}", "--mode", "easy",
+            "--ckpt", str(ckpt), "--label", f"r413-tail-{args.mode}-{arm}", "--mode", args.mode,
             "--judge-provider", args.judge_provider, "--judge-model", args.judge_model,
             "--workers", "3",
             "--cache-file", str(OUT / f"judge-cache-r413-{args.judge_provider}.jsonl"),
@@ -435,8 +455,8 @@ def main() -> int:
         )
 
         print("\n=== grammar diagnostics (paired, same inputs) ===")
-        rows_a = {r["id"]: r for r in _load_jsonl(OUT / "arm-splice.jsonl")}
-        rows_b = {r["id"]: r for r in _load_jsonl(OUT / "arm-sentence.jsonl")}
+        rows_a = {r["id"]: r for r in _load_jsonl(OUT / f"arm-{args.mode}-splice.jsonl")}
+        rows_b = {r["id"]: r for r in _load_jsonl(OUT / f"arm-{args.mode}-sentence.jsonl")}
         for name, rows in (("splice", rows_a), ("sentence", rows_b)):
             n = len(rows)
             print(

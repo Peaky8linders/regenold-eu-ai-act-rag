@@ -376,7 +376,7 @@ def articles_for_role(role_id: str, *, include_secondary: bool = True) -> list[s
 
     When ``include_secondary`` is False, only the primary list is returned.
     """
-    entry = ROLE_OBLIGATION_BY_ID.get(role_id)
+    entry = ROLE_OBLIGATION_BY_ID.get(normalize_role_id(role_id))
     if not entry:
         return []
     primaries = list(entry.get("primary_articles", []))
@@ -393,7 +393,7 @@ def applies_to_role(article_ref: str, role_id: str) -> bool:
     """
     if not article_ref or not role_id:
         return False
-    entry = ROLE_OBLIGATION_BY_ID.get(role_id)
+    entry = ROLE_OBLIGATION_BY_ID.get(normalize_role_id(role_id))
     if not entry:
         return False
     candidates = list(entry.get("primary_articles", [])) + list(
