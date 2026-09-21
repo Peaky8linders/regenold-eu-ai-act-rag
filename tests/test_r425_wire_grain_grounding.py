@@ -152,10 +152,21 @@ def test_an_annex_limb_is_grounded() -> None:
     assert out == ["Annex III.7.c"]
 
 
-def test_a_grain_depth_difference_is_left_alone() -> None:
-    """Prose names the SAME limb at a deeper grain: that is depth, not a swap."""
-    refs = ["Article 13.3"]
-    assert _ground_wire_subpoints("Article 13(3)(b) requires instructions.", refs) == refs
+def test_a_grain_depth_difference_is_a_completion_and_never_a_swap() -> None:
+    """R429 — the prose names the SAME limb at a deeper grain.
+
+    R425 abstained here, reasoning that a deeper coordinate is one "the evaluator
+    may not key on" and that rewriting would therefore replace a graded
+    coordinate. The rubric's own ``_is_descendant`` (``pred.startswith(expected +
+    ".")``) says the opposite: a MORE precise prediction satisfies the key it
+    refines. So completion is monotone on Ref. Strict and free on the other two
+    axes, while a SWAP is what must never happen here. ``=0`` restores R425.
+    """
+    answer = "Article 13(3)(b) requires instructions."
+    assert _ground_wire_subpoints(answer, ["Article 13.3"]) == ["Article 13.3.b"]
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("REGENOLD_GROUND_WIRE_DEPTH", "0")
+        assert _ground_wire_subpoints(answer, ["Article 13.3"]) == ["Article 13.3"]
 
 
 def test_the_two_spellings_of_a_sub_letter_are_one_coordinate() -> None:
@@ -345,7 +356,7 @@ class TestTheCallSiteIsReached:
     ) -> None:
         seen: list[list[str]] = []
 
-        def spy(_answer: str, refs: list[str]) -> list[str]:
+        def spy(_answer: str, refs: list[str], _question: str = "") -> list[str]:
             seen.append(list(refs))
             return list(refs)
 
@@ -362,7 +373,7 @@ class TestTheCallSiteIsReached:
     ) -> None:
         seen: list[list[str]] = []
 
-        def spy(_answer: str, refs: list[str]) -> list[str]:
+        def spy(_answer: str, refs: list[str], _question: str = "") -> list[str]:
             seen.append(list(refs))
             return list(refs)
 
@@ -386,7 +397,7 @@ class TestTheCallSiteIsReached:
         """
         seen: list[list[str]] = []
 
-        def spy(_answer: str, refs: list[str]) -> list[str]:
+        def spy(_answer: str, refs: list[str], _question: str = "") -> list[str]:
             seen.append(list(refs))
             return list(refs)
 
@@ -402,7 +413,7 @@ class TestTheCallSiteIsReached:
         """It must see the refs the route is about to ship, not an early draft."""
         seen: list[list[str]] = []
 
-        def spy(_answer: str, refs: list[str]) -> list[str]:
+        def spy(_answer: str, refs: list[str], _question: str = "") -> list[str]:
             seen.append(list(refs))
             return list(refs)
 
@@ -418,7 +429,7 @@ class TestTheResultReachesTheWire:
     ) -> None:
         monkeypatch.setattr(
             "app.routes.regenold._ground_wire_subpoints",
-            lambda _answer, refs: list(refs) + ["Annex IX"],
+            lambda _answer, refs, _question="": list(refs) + ["Annex IX"],
         )
         after = _ask(_client, monkeypatch, flag="1")
         refs = [str(x) for x in after.get("references") or []]
@@ -432,7 +443,7 @@ class TestTheResultReachesTheWire:
     ) -> None:
         monkeypatch.setattr(
             "app.routes.regenold._ground_wire_subpoints",
-            lambda _answer, refs: list(refs) + ["Annex IX"],
+            lambda _answer, refs, _question="": list(refs) + ["Annex IX"],
         )
         after = _ask(_client, monkeypatch, flag="0")
         refs = [str(x) for x in after.get("references") or []]
@@ -494,7 +505,7 @@ class TestFailSoft:
     ) -> None:
         baseline = [str(x) for x in (_ask(_client, monkeypatch, flag="0").get("references") or [])]
 
-        def _boom(_answer: str, refs: list[str]) -> list[str]:
+        def _boom(_answer: str, refs: list[str], _question: str = "") -> list[str]:
             raise RuntimeError("guard blew up")
 
         monkeypatch.setattr("app.routes.regenold._ground_wire_subpoints", _boom)

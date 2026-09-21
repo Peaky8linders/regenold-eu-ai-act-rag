@@ -1,0 +1,121 @@
+{
+  "arms": {
+    "off": {
+      "conc": 45.80246913580247,
+      "loose": 100.0,
+      "strict": 69.75308641975309
+    },
+    "on": {
+      "conc": 45.80246913580247,
+      "loose": 100.0,
+      "strict": 73.45679012345678
+    }
+  },
+  "ci95_strict": [
+    0.0,
+    11.11111111111111
+  ],
+  "comparable_rows": 27,
+  "coordinates_completed": 25,
+  "coordinates_gold": 15,
+  "criteria": {
+    "conc within -1.5 pp": true,
+    "count invariant": true,
+    "gold heads ON <= OFF": true,
+    "head set invariant": true,
+    "licence: fixed point on every row-sample": true,
+    "loose within -1.5 pp": true,
+    "no met->unmet regression": true,
+    "strict >= -1.5 pp": true,
+    "the lever is not inert on this draw": true
+  },
+  "deltas": {
+    "conc": 0.0,
+    "loose": 0.0,
+    "strict": 3.7037037037036953
+  },
+  "dropped": {
+    "rg_001": [
+      "",
+      "",
+      ""
+    ],
+    "rg_010": [
+      "primary",
+      "primary",
+      "primary"
+    ],
+    "rg_013": [
+      "",
+      "",
+      ""
+    ],
+    "rg_019": [
+      "",
+      "",
+      ""
+    ],
+    "rg_022": [
+      "",
+      "",
+      ""
+    ],
+    "rg_025": [
+      "",
+      "",
+      ""
+    ],
+    "rg_031": [
+      "",
+      "",
+      ""
+    ],
+    "rg_040": [
+      "",
+      "",
+      ""
+    ],
+    "rg_043": [
+      "",
+      "",
+      ""
+    ],
+    "rg_076": [
+      "",
+      "",
+      ""
+    ]
+  },
+  "gold_heads_dropped": {
+    "off": 1,
+    "on": 1
+  },
+  "label": "r429-depth",
+  "licence_fixed_point": "111/111",
+  "live_arm": "A",
+  "non_vacuous_rows": [
+    "rg_046",
+    "rg_055",
+    "rg_067",
+    "rg_070",
+    "rg_073",
+    "rg_088",
+    "rg_091",
+    "rg_094",
+    "rg_100",
+    "rg_106",
+    "rg_109"
+  ],
+  "repeats": 3,
+  "rows_moved": {
+    "down": 0,
+    "up": 1
+  },
+  "rows_on_split": 37,
+  "verdict": "SHIP (default stays ON)",
+  "violations": {
+    "count": [],
+    "head": [],
+    "regression": []
+  }
+}

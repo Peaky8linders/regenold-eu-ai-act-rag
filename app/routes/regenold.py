@@ -1426,6 +1426,10 @@ def _engine_cache_key(
             # limb it does name (`Article 6.2` -> `Article 6.3`). Same wire
             # effect as the grain passes above, so its own cache-key slot.
             "REGENOLD_GROUND_WIRE_SUBPOINTS",
+            # R429 — completes a wire coordinate to the DEEPER grain the prose
+            # names (`Annex IV.1` -> `Annex IV.1.e`). Same wire effect as the
+            # grain passes above, so its own cache-key slot.
+            "REGENOLD_GROUND_WIRE_DEPTH",
             # R397 — appends the real paragraph range of each cited head to the
             # Stage-2 user message. Prompt-side, so it changes the answer and
             # (invariant #5) the wire references derived from it.
@@ -4445,6 +4449,53 @@ def _ground_wire_subpoints_enabled() -> bool:
     )
 
 
+def _ground_wire_depth_enabled() -> bool:
+    """R429 — let the prose-grounded pass COMPLETE a shallower wire coordinate.
+
+    **Default ON**, registered in ``_engine_cache_key``. ``=0`` restores R425's
+    abstention on a prefix relation.
+
+    THE DEFICIT. Of the 223 gold sub-point expectations the engine misses on the
+    recorded hard board, **138** have their parent on the wire but only at a
+    shallower grain — ``Annex IV.1`` shipped where the gold key is
+    ``Annex IV.1.e`` (``docs/measurements/r428/dotted_subpoint_probe.py``). R425
+    would not touch them, and it said why: a prefix is ``"depth, not
+    substitution: ... rewriting it would replace a graded coordinate with a
+    deeper one the evaluator may not key on."``
+
+    THAT PREMISE IS FALSE, and the rubric says so in its own source. Ref.
+    Correctness (Strict) is per-question recall of the expected coordinates, and
+    ``rubric._is_descendant``:
+
+        return pred == expected or pred.startswith(expected + ".")
+
+    A prediction STRICTLY MORE PRECISE than the key satisfies the key. So
+    deepening is MONOTONE on all three reference axes, by construction rather
+    than by measurement:
+
+    * **Ref. Strict** — a descendant satisfies every expectation its ancestor
+      satisfied, and additionally satisfies the expectation that IS the
+      descendant. It can only add satisfied keys, never remove one.
+    * **Ref. Loose** — scored through ``rubric.ref_head``, and the rewrite stays
+      inside the SAME parent, so the head set is bit-identical.
+    * **Ref. Conciseness** — ``min(1, |expected| / |provided|)``, a pure COUNT
+      ratio, and the rewrite is 1:1 in place.
+
+    So ``gold_dropped_head`` is ``+0`` and the reference count invariant BY
+    CONSTRUCTION. The candidate coordinate is not minted: it must be one the
+    answer's own prose names (the R425 grounding rule) AND one
+    ``coordinate_exists`` admits, which is why this cannot repeat the R386
+    deepener's measured 77 % coordinate accuracy — that pass guesses from token
+    overlap, this one only ever promotes a coordinate the prose already used.
+    """
+    return os.getenv("REGENOLD_GROUND_WIRE_DEPTH", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
 def _leaf_coordinate(ref: str) -> tuple[str, tuple[str, ...]] | None:
     """``"Article 5.1.h"`` -> ``("article 5", ("1", "h"))``; ``None`` for a head.
 
@@ -4463,18 +4514,38 @@ def _leaf_coordinate(ref: str) -> tuple[str, tuple[str, ...]] | None:
     return parent, coord
 
 
-def _grain_compatible(a: tuple[str, ...], b: tuple[str, ...]) -> bool:
-    """Same coordinate, or one is a PREFIX of the other.
+def _grain_relation(a: tuple[str, ...], b: tuple[str, ...]) -> str:
+    """How a WIRE coordinate (``a``) relates to a PROSE-named one (``b``).
 
-    A prefix means depth, not substitution: prose ``Article 13(3)(b)`` against a
-    wire ``Article 13.3`` is the same limb at a shallower grain, and rewriting it
-    would replace a graded coordinate with a deeper one the evaluator may not
-    key on. Only a coordinate outside that relation is a substitution.
+    Four readings, and the distinction between the middle two is the whole of
+    R429:
+
+    * ``"same"`` — the identical coordinate.
+    * ``"coarser"`` — the wire is a strict PREFIX of the prose, i.e. the same
+      limb at a shallower grain (wire ``Article 13.3``, prose ``Article 13(3)(b)``).
+      R425 read this as "nothing to do"; R429 completes it to the prose grain.
+    * ``"finer"`` — the prose is a strict prefix of the wire: the wire is already
+      the more precise of the two, so it is kept.
+    * ``"sibling"`` — no prefix relation in either direction: a different limb of
+      the same parent, which is the substitution R425 rewrites.
     """
     if a == b:
-        return True
-    short, long_ = (a, b) if len(a) <= len(b) else (b, a)
-    return bool(short) and long_[: len(short)] == short
+        return "same"
+    if a and b[: len(a)] == a:
+        return "coarser"
+    if b and a[: len(b)] == b:
+        return "finer"
+    return "sibling"
+
+
+def _grain_compatible(a: tuple[str, ...], b: tuple[str, ...]) -> bool:
+    """Same coordinate, or one is a PREFIX of the other — i.e. not a sibling.
+
+    A prefix means depth, not substitution. Retained as the boolean summary of
+    :func:`_grain_relation` for the callers that only need "is this the prose's
+    own limb".
+    """
+    return _grain_relation(a, b) != "sibling"
 
 
 def _prose_named_subpoints(answer: str) -> dict[str, list[str]]:
@@ -4523,20 +4594,89 @@ def _prose_named_subpoints(answer: str) -> dict[str, list[str]]:
     return out
 
 
-def _ground_wire_subpoints(answer: str, references: list[str]) -> list[str]:
-    """Replace a wire limb the prose never names with the limb it does name.
+def _grain_complete(
+    candidates: list[tuple[tuple[str, ...], str]], question: str, answer: str
+) -> tuple[tuple[str, ...], str]:
+    """Pick which prose-named coordinate completes a wire limb (R429).
 
-    For every reference that is a LEAF of a parent the prose sub-points, when
-    the wire coordinate is neither equal to nor a prefix of any prose-named
-    coordinate (``_grain_compatible``) and a prose-named coordinate for that
-    parent is absent from the wire, the wire leaf is rewritten in place to the
-    prose-named one. Candidates are filtered to coordinates the Regulation
-    actually contains (``coordinate_exists``), so the pass never mints a
-    non-existent coordinate, and to the same parent, so the folded head set is
-    invariant. Among viable candidates the closest grain depth wins (then
-    lexicographic order), and when a prose-named limb is ALREADY on the wire the
-    reference is left alone rather than dropped. In place, order-preserving,
-    count-neutral, fail-soft.
+    DEEPEST first, and that is a dominance argument rather than a preference:
+    ``rubric._is_descendant`` counts a prediction that is strictly more precise
+    than the key, so a deeper coordinate satisfies every expectation its
+    ancestors satisfy AND its own besides, at an unchanged reference count. Depth
+    is therefore weakly better on Ref. Correctness (Strict) and free on the other
+    two axes, whatever the gold happens to key on.
+
+    Rivals at the SAME depth are decided by how much of the rival's OWN statutory
+    text the ANSWER discusses, with the question as a weaker corroborating vote.
+    That is the R425 doctrine applied to a tie-break — the wire follows the
+    answer's prose, because the answer is the text that actually engages the
+    provision (the round that established it measured citation faithfulness 0.960
+    beside reference correctness 0.480, i.e. the answer is not what drifts). The
+    question is the weaker vote here for the opposite reason than in R386: the
+    question almost never names a sub-limb, so it cannot separate two rivals,
+    while the answer names both by construction.
+
+    The choice can never cost a graded axis — every rival is a descendant of the
+    coordinate it replaces, so Ref. Strict is monotone whichever wins and the
+    count is unchanged. Measured on the recorded hard board's 18 rival cases
+    where the choice DECIDES the gain (``docs/measurements/r429/
+    wire_depth_probe.py``): answer overlap picks a max-gain rival **18/18**,
+    question overlap 13/18, prose order 13/18, and the lexicographic-first rule
+    this replaced 3/18.
+    """
+    ordered = sorted(candidates, key=lambda item: (len(item[0]), item[0]))
+    top_depth = len(ordered[-1][0])
+    rivals = [item for item in ordered if len(item[0]) == top_depth]
+    if len(rivals) == 1:
+        return rivals[0]
+    try:
+        from app.data import provision_text as _pt  # noqa: PLC0415
+
+        a_tok, q_tok = _pt._tokens(answer or ""), _pt._tokens(question or "")
+        if not a_tok and not q_tok:
+            return rivals[0]
+
+        def _affinity(item: tuple[tuple[str, ...], str]) -> tuple[int, int]:
+            try:
+                body = _pt.get_provision_text(item[1]) or _pt.article_body(item[1])
+            except Exception:  # noqa: BLE001 — unusable text: it just cannot win
+                return (-1, -1)
+            toks = _pt._tokens(body or "")
+            return (len(a_tok & toks), len(q_tok & toks))
+
+        best = rivals[0]
+        best_score = _affinity(best)
+        for item in rivals[1:]:
+            score = _affinity(item)
+            if score > best_score:  # strict: a tie stays lexicographically first
+                best_score = score
+                best = item
+        return best
+    except Exception:  # noqa: BLE001 — never break the route on a tie-break
+        return rivals[0]
+
+
+def _ground_wire_subpoints(
+    answer: str, references: list[str], question: str = ""
+) -> list[str]:
+    """Put every wire LEAF on the coordinate the answer's own prose names.
+
+    Two rewrites, both 1:1 in place on a reference that is a LEAF of a parent
+    the prose sub-points, and both reading :func:`_grain_relation`:
+
+    * **substitution** (R425) — the prose names a SIBLING limb, so the wire limb
+      is one the prose never names; the sibling replaces it (`Article 6.2` ->
+      `Article 6.3`).
+    * **depth completion** (R429) — the prose names a DEEPER coordinate of the
+      wire's OWN limb, so the wire ships that limb at a coarser grain; it is
+      completed to the prose's grain (`Annex IV.1` -> `Annex IV.1.e`).
+
+    Candidates are filtered to coordinates the Regulation actually contains
+    (``coordinate_exists``), so the pass never mints a non-existent coordinate,
+    and to the same parent, so the folded head set is invariant. Among viable
+    candidates the closest grain step wins (then lexicographic order), and when
+    the prose-named coordinate is ALREADY on the wire the reference is left alone
+    rather than dropped. In place, order-preserving, count-neutral, fail-soft.
     """
     if not answer or not references:
         return references
@@ -4564,19 +4704,47 @@ def _ground_wire_subpoints(answer: str, references: list[str]) -> list[str]:
             if not named:
                 continue  # prose does not sub-point this parent: not the defect
             picks: list[tuple[tuple[str, ...], str]] = []
+            deeper: list[tuple[tuple[str, ...], str]] = []
+            named_limb = False
             for leaf in named:
                 cand = _leaf_coordinate(leaf)
                 if cand is None or cand[0] != parent:
                     continue
-                if _grain_compatible(coord, cand[1]):
-                    picks = []  # already the prose's limb at some grain: keep it
-                    break
-                if cand[1] in present.get(parent, set()):
+                cc = cand[1]
+                rel = _grain_relation(coord, cc)
+                if rel != "sibling":
+                    # The prose names the wire's OWN limb — at this grain, a
+                    # coarser one, or a deeper one — or the wire is already the
+                    # finer of the two. Either way this is not a substitution.
+                    #
+                    # R429 deliberately does NOT stop here. The prose may name
+                    # the wire's grain AND a deeper coordinate of the same limb
+                    # (rg_070 ships `Article 6.1` while its prose names both
+                    # `6.1` and `Article 6.1.b`); an early break suppressed the
+                    # completion that the deeper mention licenses.
+                    named_limb = True
+                    if (
+                        rel == "coarser"
+                        and cc not in present.get(parent, set())
+                        and coordinate_exists(leaf)
+                    ):
+                        deeper.append((cc, leaf))
+                    continue
+                if cc in present.get(parent, set()):
                     continue  # a grounded limb is already on the wire: not a rewrite
                 if not coordinate_exists(leaf):
                     continue  # never mint a coordinate the Regulation lacks
-                picks.append((cand[1], leaf))
-            if not picks:
+                picks.append((cc, leaf))
+            if deeper and _ground_wire_depth_enabled():
+                pick = _grain_complete(deeper, question, answer)
+                out[idx] = pick[1]
+                present.setdefault(parent, set()).add(pick[0])
+                rewrites.append(f"{references[idx]}->{pick[1]}")
+                continue
+            # The wire limb IS named by the prose (at this grain or a prefix of
+            # it), so it is never a substitution candidate. When the depth lever
+            # is OFF this is exactly R425's abstention.
+            if named_limb or not picks:
                 continue
             picks.sort(key=lambda item: (abs(len(item[0]) - len(coord)), item[0]))
             ground = picks[0][1]
@@ -12721,7 +12889,7 @@ def regenold_eu_ai_act_ask(
             and references
             and _ground_wire_subpoints_enabled()
         ):
-            _gw_refs = _ground_wire_subpoints(answer_text, references)
+            _gw_refs = _ground_wire_subpoints(answer_text, references, question)
             if _gw_refs != references:
                 _gw_changed = [
                     f"{a}->{b}"

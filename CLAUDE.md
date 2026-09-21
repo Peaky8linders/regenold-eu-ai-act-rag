@@ -227,6 +227,67 @@ passes, real `evals.official.rubric`, no live calls).
 * **`ci.yml` has no lint job**, which is how 37 ruff errors reached `main`. The files this
   round touched are now ruff-clean.
 
+## ⛔ R429 — the wire coordinate is COMPLETED to the grain the prose names
+
+Full evidence: `docs/measurements/r429/CHECKPOINT.md`, offline instrument
+`docs/measurements/r429/wire_depth_probe.py` (no live calls), live gate
+`docs/measurements/r429/wire_depth_gate.py`.
+
+* **R425 abstained on a premise the rubric's own source falsifies.** R425 decided
+  that a prefix relation is *"depth, not substitution ... rewriting it would replace a
+  graded coordinate with a deeper one **the evaluator may not key on**"*. But Ref.
+  Correctness (Strict) is recall of the expected coordinates and
+  `rubric._is_descendant` is `pred == expected or pred.startswith(expected + ".")` — a
+  prediction **more precise than the key satisfies the key**. So completing
+  `Annex IV.1` → `Annex IV.1.e` is monotone on Ref. Strict and **free by construction**
+  on the other two: Ref. Loose scores through `ref_head` (parent unchanged) and Ref.
+  Conciseness is a pure COUNT ratio over a 1:1 in-place rewrite.
+* **`REGENOLD_GROUND_WIRE_DEPTH` is default ON.** `_grain_relation` replaces R425's
+  boolean with `same` / **`coarser`** (the R429 population) / `finer` / `sibling` (the
+  R425 substitution population); `_grain_compatible` survives as the boolean summary.
+  The completion candidate must be named by the answer's own prose AND admitted by
+  `coordinate_exists` — it is never minted, so it cannot repeat R386's measured 77 %
+  coordinate accuracy (that pass guesses from token overlap; this one only promotes a
+  coordinate the prose already used).
+* **Two defects in the first draft, both caught by measurement, not by reading the
+  diff.** (1) An early `break` on an exact-grain match suppressed a deeper completion
+  the prose also named (`rg_070` ships `Article 6.1` while its prose names `6.1` AND
+  `6.1.b`): removing it took completions from 79 (**15** gold) to 162 (**78** gold) and
+  the delta from +3.14 to +3.77 pp. (2) The tie-break between several prose-named
+  descendants is a free bet (any rival is a descendant of the coordinate it replaces),
+  so it is spent on the **R425 doctrine** — answer-token overlap with the rival's own
+  provision text — which picks the max-gain rival **18/18** on the 18 deciding cases,
+  against 13/18 for question overlap and 3/18 for the lexicographic-first rule it
+  replaced. ⚠ 18 cases and six rules compared on them: the mechanism justifies the
+  pick, the sample does not prove it.
+* **Offline, paired on 477 recorded hard draws with a landed Stage-2** (the 153
+  deterministic rows are excluded because the route gates this pass on
+  `_stage2_landed`): Ref. Strict 65.55 → **72.68 (+7.13 pp)**, Ref. Loose and Ref.
+  Conciseness **+0.00**, count and folded-head-set violations **0**, and **0 rows**
+  where any expectation went met → unmet — asserted per row, not argued. R425's own
+  already-shipped effect on the same board is +0.63 pp.
+* **Live gate: 9/9 criteria PASS, `SHIP` (default stays ON).** One live arm, 37
+  strided hard rows × 3 independent generations = **111 fresh live draws**, artefact
+  `docs/measurements/r429/gate-verdict.json`. Ref. Strict **69.75 → 73.46 (+3.70 pp)**,
+  Ref. Loose and Ref. Conciseness **±0.00**, 25 coordinates completed (15 gold), 0
+  count/head violations, 0 met→unmet rows, gold heads dropped 1 → 1. Answers are
+  PROVEN invariant across arms rather than re-judged — the pass runs after
+  `_stage2_landed` and edits only `references`, so the reader asserts byte-identity
+  and closes the answer axes by construction. ⚠ The CI is **[0.00, +11.11]** because
+  exactly one of 27 comparable rows moved: the direction rests on
+  `rubric._is_descendant` (a deeper prediction satisfies every expectation its
+  ancestors did), not on this CI.
+* **What it does not reach, so the next round does not re-derive it:** of the 207 unmet
+  gold sub-point expectations on today's board, 63 are a coarser wire coordinate (34
+  reachable and **all 34 now converted**); **22 are a BARE HEAD on the wire**, which is
+  R386's deepener / R133's add remit and deliberately out of scope here; 7 have no
+  prose-named descendant to complete to; 135 name a sibling limb (R425's population,
+  and the prose does not name the gold limb either — generation-side); 9 have no
+  coordinate of the parent on the wire at all.
+* **The 138-depth number in § R428 is now 86**, because the completion repairs those
+  before that classifier sees them. The R428 probe's own conclusions still reproduce
+  unchanged (every R426-ADD delta is +0.00).
+
 ## ⛔ R410 — the R409 defect set, fixed and re-verified on the wire
 
 Full evidence: `docs/reviews/r410-session-handoff.md` §6. Instrument:
@@ -1604,7 +1665,8 @@ the branch arm, at n≥30 per split, before the benchmark window.
 | `REGENOLD_GRAPH_VECTOR_RECALL` | `0` | Additive Neo4j & local SVD vector recall path (R326) |
 | `REGENOLD_PARENT_COLLAPSE` | **`1`** | Collapse parent provisions when sub-points are cited (R325). Dead flag until R366 wired it; **R381 flipped it to default ON on a live paired A/B** — n=20 official questions, 40/40 calls wrapper-served, 0 Bedrock. Four rows are ZERO-VARIANCE paired observations (answer byte-identical between arms, so refs are the only change): `rg_013` 5→4 (drops `Article 53`, keeps `53.2`), `rg_025` 3→2, `rg_029` 4→2 (drops `Article 6` + `Annex III`, keeps `6.2` + `Annex III.5.d`), `rg_041` 4→2. All 6 drops are bare parents whose own sub-point survives; the **head set is unchanged on all four rows**, and `gold_dropped_head` folds both sides onto heads (`metrics.py:572-574`), so **hard rule #8 delta = +0, measured**. Lever-only Ref. Conciseness **51.3 → 56.3 (+5.0 pp) = +0.90 pp Overall**. Free on the other two ref axes: Ref Loose scores at HEAD level (the head survives inside the leaf) and Ref Strict INCLUDES subpoints (the leaf is strictly better). `=0` restores the old behaviour |
 | `REGENOLD_CITABLE_BASE_GUARD` | **`0`** | Restrict prose-named citation promotion to the retrieval-grounded universe. **R403 re-measurement at full n=110 paired (over R401's n=37) CONFIRMS default OFF, now on statistics rather than an underpowered mean**: RefConc +6.72 pp is real (CI [+3.63, +10.22], p<0.0001) but `gold_dropped_head` 5→7 (rg_067, rg_090) trips hard rule #8's veto, and RefLoose −1.50 / RefStrict −2.00 trend negative with CIs touching 0. Do not re-propose without a gold-drop-safe variant. |
-| `REGENOLD_GROUND_WIRE_SUBPOINTS` | **`1`** | R425 — the mirror of R133 `_surface_prose_subpoints`: the ADD pass only fires when the wire carries the BARE parent, so a wire that already held a SIBLING limb shipped an ungrounded one to the graded `references` field (`rg_100` answer names `Article 6(3)`, wire recorded `Article 6.2`). `_ground_wire_subpoints` (`regenold.py:~4490`) rewrites the limb IN PLACE onto the limb the prose names — same parent, same count, so the folded head set is bit-identical and hard rule #8 is +0 by construction. `_stage2_landed`-gated like its ADD twin, ordered after the R386 deepener / R397 coordinate guard and before every pass that can drop. **Measured over the R424 gate's six checkpoints** (336 comparable row-samples, the real `evals.official.rubric`): 106 substitutions on 20 rows, the wire limb is gold in **0**, the prose limb in **15** → Ref Strict **65.28 → 65.90 (+0.62 pp)**, Ref Loose and Ref Conciseness byte-identical. Candidates filtered to `coordinate_exists`; a prefix relation is grain depth, not a substitution (`Article 13(3)(b)` vs wire `Article 13.3` is left alone); an ungrounded sibling BESIDE a grounded one is deliberately left for a separate RefConc gate. `=0` rolls back. See § R425 |
+| `REGENOLD_GROUND_WIRE_SUBPOINTS` | **`1`** | R425 — the mirror of R133 `_surface_prose_subpoints`: the ADD pass only fires when the wire carries the BARE parent, so a wire that already held a SIBLING limb shipped an ungrounded one to the graded `references` field (`rg_100` answer names `Article 6(3)`, wire recorded `Article 6.2`). `_ground_wire_subpoints` (`regenold.py:~4490`) rewrites the limb IN PLACE onto the limb the prose names — same parent, same count, so the folded head set is bit-identical and hard rule #8 is +0 by construction. `_stage2_landed`-gated like its ADD twin, ordered after the R386 deepener / R397 coordinate guard and before every pass that can drop. **Measured over the R424 gate's six checkpoints** (336 comparable row-samples, the real `evals.official.rubric`): 106 substitutions on 20 rows, the wire limb is gold in **0**, the prose limb in **15** → Ref Strict **65.28 → 65.90 (+0.62 pp)**, Ref Loose and Ref Conciseness byte-identical. Candidates filtered to `coordinate_exists`; an ungrounded sibling BESIDE a grounded one is deliberately left for a separate RefConc gate. **The prefix (grain-depth) case is now completed rather than abstained on — see `REGENOLD_GROUND_WIRE_DEPTH`, and § R429 for why R425's abstention premise was false.** `=0` rolls back. See § R425 |
+| `REGENOLD_GROUND_WIRE_DEPTH` | **`1`** | R429 — the prefix half of the pass above. R425 abstained when the prose names a DEEPER coordinate of the wire's own limb (`Annex IV.1` on the wire, `Annex IV.1.e` named by the prose), reasoning that the evaluator "may not key on" the deeper one. `rubric._is_descendant` (`pred.startswith(expected + ".")`) says it does, so completion is **monotone on Ref. Strict and free on Ref. Loose / Ref. Conciseness by construction** (same parent, 1:1 in place) — `gold_dropped_head` +0 and the count invariant, not merely measured. Full pass order unchanged (surface → collapse → deepener → coord guard → this). **Offline, paired on 477 recorded hard draws with a landed Stage-2** (real `evals.official.rubric`): Ref. Strict 65.55 → **72.68 (+7.13 pp)**, loose/conc **+0.00**, 162 coordinates completed (94 gold / 68 excess), count/head/regression violations all **0**. The tie-break among several prose-named descendants is by answer-token overlap with the rival's provision text (18/18 of 18 deciding cases). **Live gate: 9/9 criteria PASS, `SHIP`** — 111 fresh hard draws, Ref. Strict 69.75 → 73.46 (**+3.70 pp**), loose/conc ±0.00, 0 count/head violations, artefact `docs/measurements/r429/gate-verdict.json`. `=0` restores R425's abstention and is the gate's baseline arm. Registered in `_engine_cache_key`. See § R429 |
 | `REGENOLD_STAGE2_TRUNCATION_GUARD` | `1` | R357 post-generation truncation repair on the Stage-2 polish |
 | `REGENOLD_STAGE2_PRIOR_ANSWER_FLOOR` | **`1`** | R420 — the "never ship a thinner answer than the one we already gave" floor on the truncation guard's LAST rung. Before regressing to the deterministic Stage-1 draft, the guard compares against the answer this conversation already holds (`previous_answer` on the flattened history) and, if that answer is complete, ≥400 chars and ≥1.2× the draft, ships IT (`stage2_served_by` = **`prior_turn`**, `stage2_used=True`) instead. The pushback turn re-asks the same question, so the previous answer is a valid answer to it. **MEASURED** (`docs/measurements/r419/CHECKPOINT.md` §4): on the R419 live hard board 4 of 110 rows fell to the deterministic leg because the wrapper returned degenerate one-token completions and the Bedrock leg was dead (`api_key_invalid_403`); re-judging those rows' TURN-1 answers with the published instrument gives **12/12 criteria against 4/12 for the drafts** (`rg_036` 2/3 vs 0/3, `rg_037` 6/6 vs 0/6, `rg_085` and `rg_092` level → the floor correctly does not fire), and restores the two gold heads (`Article 42`, `Annex VIII`). Projected on the same board: `ans_loose` 94.15 → **96.28** (+2.13 pp), `ans_strict` 90.91 → **91.82** (+0.91 pp). `=0` (deny-list) restores the bare deterministic fallback. The `prior_turn` serve is a DEGRADATION: it overrides an earlier `primary` marking, sets `stage2_call_failed`, and the route refuses to cache it (R417 policy). Registered in `_engine_cache_key` |
 | `REGENOLD_STAGE2_PRIOR_ANSWER_FLOOR_RATIO` | `1.2` | R420 — how much longer the previous answer must be than the deterministic draft before the floor fires. A malformed value falls back to 1.2 rather than disabling the floor. Registered in `_engine_cache_key` |
