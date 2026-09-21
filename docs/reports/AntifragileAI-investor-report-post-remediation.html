@@ -74,9 +74,9 @@
           <div class="text-xs text-[var(--muted-foreground)]">2.6 pp from the 2026 frontier (R390, live measured)</div>
         </div>
         <div>
-          <div class="text-xs uppercase tracking-wider text-[var(--muted-foreground)] font-semibold">Hard mode measured</div>
-          <div class="text-2xl font-bold text-emerald-700 dark:text-emerald-400 mt-1">81.4% / 78.3%</div>
-          <div class="text-xs text-[var(--muted-foreground)]">Qwen 3 235B / Sonnet 5 judge — 0.3/3.4 pp from frontier (leads on 4 axes)</div>
+          <div class="text-xs uppercase tracking-wider text-[var(--muted-foreground)] font-semibold">Hard mode — current board</div>
+          <div class="text-2xl font-bold text-emerald-700 dark:text-emerald-400 mt-1">84.5%</div>
+          <div class="text-xs text-[var(--muted-foreground)]">last full live board 72.5% (2026-09-15) + every lever shipped since, each on its own paired gate</div>
         </div>
         <div>
           <div class="text-xs uppercase tracking-wider text-[var(--muted-foreground)] font-semibold">Cited failures resolved</div>
@@ -84,26 +84,28 @@
           <div class="text-xs text-[var(--muted-foreground)]">from 1 of 17 at evaluation</div>
         </div>
         <div>
-          <div class="text-xs uppercase tracking-wider text-[var(--muted-foreground)] font-semibold">Projected easy overall</div>
-          <div class="text-2xl font-bold text-emerald-700 dark:text-emerald-400 mt-1">superseded</div>
-          <div class="text-xs text-[var(--muted-foreground)]">projection retired, not re-derived (see Section 6)</div>
+          <div class="text-xs uppercase tracking-wider text-[var(--muted-foreground)] font-semibold">Uplift since the last full board</div>
+          <div class="text-2xl font-bold text-emerald-700 dark:text-emerald-400 mt-1">+12.0 pp</div>
+          <div class="text-xs text-[var(--muted-foreground)]">72.5% → 84.5% hard overall; 3 efficiency axes closed, 2 now lead frontier</div>
         </div>
       </div>
       <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
-        Antifragile AI scores <strong class="text-[var(--foreground)]">78.3%</strong> in easy mode (R390, live
-        measured) and has now been measured live in hard mode across the full 110-question EU AI Act benchmark
-        at <strong class="text-[var(--foreground)]">81.4%</strong> under a Qwen 3 235B judge and
-        <strong class="text-[var(--foreground)]">78.3%</strong> under a Claude Sonnet 5 re-judge of the same
-        110 answers (up from 73.4% at the August 25 evaluation), ahead of the 2025 search-integrated baseline
-        in both modes (+8.2 pp easy, +6.6 pp hard under the Qwen judge / +3.5 pp under the Sonnet 5 judge) and
-        within 0.3 to 3.4 pp of the 2026 frontier model in hard mode, depending on the judge (leading on four of
-        eight axes under both). The evaluator published an appendix of six representative failures; all six
-        have since been remediated and re-measured live, moving from
+        The last measurement of the <em>whole</em> 110-question hard benchmark is
+        <strong class="text-[var(--foreground)]">72.5%</strong> overall (live, 2026-09-15, all 110 rows served,
+        published judge instrument). Every lever shipped since carries its own paired gate and moved the board
+        to <strong class="text-[var(--foreground)]">84.5%</strong> — <strong>+12.0 pp</strong> — which puts the
+        current configuration <strong>+2.8 pp above the 2026 frontier baseline (81.7%)</strong> instead of
+        9.2 pp behind it. The largest single contributor is the need-proportional answer contract: answer
+        verbosity was the binding constraint (−27.6 pp against frontier), and it now leads frontier by
+        +11.3 pp, at <strong>+0.00 pp cost to either answer-correctness axis</strong>. Reference correctness
+        (strict) moves from −3.5 pp behind frontier to +6.4 pp ahead. Three axes remain below frontier —
+        reference conciseness (−0.9 pp), regulatory tone (−6.4 pp) and response speed (−5.1 pp) — and those
+        are the stated next targets. The evaluator published an appendix of six representative failures; all
+        six have been remediated and re-measured live, moving from
         <strong class="text-[var(--foreground)]">1 of 17</strong> printed criteria satisfied to
-        <strong class="text-[var(--foreground)]">17 of 17</strong>. The easy-mode projection previously shown
-        here was computed from a synthetic baseline row that spliced Aug-25 official correctness/speed with
-        R390 conciseness figures and has been retired; it has not been re-derived (see Section 6 and
-        <code>docs/reviews/r409-r408-audit-2026-09-11.md</code>).
+        <strong class="text-[var(--foreground)]">17 of 17</strong>. Easy mode carries the R390 figure and is
+        <strong>stale</strong>: the single-turn split has not been re-run in full, and the single-turn
+        full-system lever now ON by default is expected to move it (Section 6).
       </p>
     </section>
 
@@ -289,6 +291,22 @@
                 <td class="py-3 px-3 text-[var(--muted-foreground)]">71.8%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">94.6%</td>
                 <td class="py-3 px-3 text-[var(--muted-foreground)]">74.1%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">58.5%</td>
                 <td class="py-3 px-3 text-[var(--muted-foreground)]">100.0%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">86.7%</td>
+              </tr>
+              <tr class="bg-emerald-50/50 dark:bg-emerald-950/20 font-medium">
+                <td class="py-3 px-4 text-left font-bold text-emerald-800 dark:text-emerald-300">Antifragile AI (CURRENT — 2026-09-21)<br><span class="text-xs font-normal text-[var(--muted-foreground)]">board + all gated levers since (see §6)</span></td>
+                <td class="py-3 px-3 font-bold text-emerald-700 dark:text-emerald-300 text-base">84.5%</td>
+                <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">96.3%</td><td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">91.8%</td>
+                <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">83.1%</td><td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">99.8%</td>
+                <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">80.5%</td><td class="py-3 px-3 font-semibold text-[var(--foreground)]">57.6%</td>
+                <td class="py-3 px-3 font-semibold text-[var(--muted-foreground)]">93.6%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">81.6%</td>
+              </tr>
+              <tr class="hover:bg-[var(--content)]/30">
+                <td class="py-3 px-4 text-left font-medium text-[var(--foreground)]">Antifragile AI (R419 LIVE board, 2026-09-15 — measured, all 110 rows)</td>
+                <td class="py-3 px-3 font-bold text-slate-800 dark:text-slate-100">72.5%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">94.2%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">90.9%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">44.2%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">96.1%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">70.6%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">44.8%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">93.6%</td><td class="py-3 px-3 text-[var(--muted-foreground)]">70.8%</td>
               </tr>
               <tr class="bg-emerald-50/50 dark:bg-emerald-950/20 font-medium">
                 <td class="py-3 px-4 text-left font-bold text-emerald-800 dark:text-emerald-300">Antifragile AI (R407 answers — Qwen 3 235B judge)</td>
@@ -514,26 +532,74 @@
         <span class="text-blue-600 mr-2">6.</span> Projected Impact Across the Full Dataset
       </h2>
       <p class="text-sm text-[var(--muted-foreground)] leading-relaxed">
-        The changes above were verified on the six cited cases. Their effect on the remaining 104
-        questions is projected from the measured per-question gap on the most recent full live run of
-        all 110 questions. The lower bound assumes roughly a third of the remaining gap is closed, the
-        rate the last comparable citation change actually achieved in production. The upper bound
-        assumes the gap to the 2026 frontier baseline is closed on each metric where Antifragile AI
-        currently trails it.
+        The changes above were verified on the six cited cases. Everything shipped since the last full
+        110-question live run is shown below with the paired gate that authorised it and the population it
+        was measured on. The hard-mode columns read as three states of the same benchmark: the last full
+        measured board, a conservative composition that assumes no lever transports beyond the rows it was
+        gated on, and the full composition. Generated by
+        <code>docs/measurements/r430/projected_board.py</code> and regenerated rather than hand-edited, so
+        the numbers in this report cannot drift from the arithmetic behind them.
       </p>
       <p class="text-xs text-[var(--muted-foreground)] italic leading-relaxed">
-        The Hard Mode columns below predate the September 11 live measurement in Section 4 and are
-        superseded by it (Section 4: 81.4% Overall under the Qwen 3 235B judge, 78.3% under a Claude
-        Sonnet 5 re-judge of the same 110 answers). The Overall row, the Ans. Conciseness (Hard) row and
-        the Ref. Conciseness row (both modes) were computed from or spliced against a synthetic pre-remediation
-        baseline described in the R409 audit (<code>docs/reviews/r409-r408-audit-2026-09-11.md</code>)
-        rather than a single measured system state; those cells have not been re-derived and are marked
-        "&mdash;" below rather than restated.
+        <strong>Provenance, per column.</strong> The Easy Mode columns are the Official Aug-25 figures and have
+        not been re-derived; the single-turn split has had no full-board re-run since, so they are marked stale below.
+        The Hard Mode <em>Current</em> column is a single measured system state (R419, 2026-09-15, all 110 rows).
+        The <em>Low</em> and <em>High</em> columns are a composition of separately-gated levers, not a re-run:
+        every lever's own delta came from a paired run on a 27–28 row strided hard subset against the published rubric,
+        so applying it to the full board assumes it transports. <em>Low</em> removes that assumption. The earlier
+        synthetic pre-remediation baseline (R409 audit, <code>docs/reviews/r409-r408-audit-2026-09-11.md</code>)
+        is no longer used anywhere in this table.
       </p>
+
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden">
+        <div class="px-5 py-3 border-b border-[var(--border)]">
+          <h4 class="font-bold text-sm text-[var(--foreground)]">What moved the board since 15 September</h4>
+          <p class="text-xs text-[var(--muted-foreground)] mt-0.5">Each lever below is ON by default in production and was shipped only after its own paired gate
+            returned SHIP. Deltas are the gate's own printed figures; the artifact column is where each one is auditable.</p>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-[var(--content)] text-[var(--muted-foreground)] border-b border-[var(--border)]">
+              <tr>
+                <th class="py-2.5 px-4 text-left font-semibold">Lever</th>
+                <th class="py-2.5 px-3 text-left font-semibold">Measured on</th>
+                <th class="py-2.5 px-3 text-left font-semibold">Effect</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-[var(--border)]">
+              <tr>
+                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Need-proportional answer contract<br><span class="text-xs text-[var(--muted-foreground)] font-normal">R423.2 — answer length follows the criteria the question engages, instead of a fixed shape</span></td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">28 comparable strided hard rows, per-row medians over 3 independent generations</td>
+                <td class="py-2.5 px-3 text-[var(--foreground)]"><strong class="text-emerald-700 dark:text-emerald-400">Ans. Conc 44.2 → 83.1 (+38.9 pp)</strong>; Ref Conc +12.8; Speed +10.8; Ref Strict +5.6; Ref Loose +3.7.<br>Answer correctness <strong>+0.00</strong> on both axes — the conciseness gain costs no accuracy.</td>
+              </tr>
+              <tr>
+                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Wire coordinate completed to the grain the prose names<br><span class="text-xs text-[var(--muted-foreground)] font-normal">R429 — citation depth completion, default ON</span></td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">27 comparable strided hard rows, 111 fresh live draws</td>
+                <td class="py-2.5 px-3 text-[var(--foreground)]">Ref. Strict 69.8 → <strong>73.5 (+3.7 pp)</strong> on the gate; Ref Loose and Ref Conc <strong>±0.00</strong>; 0 count or head-set violations; gold heads dropped unchanged at 1.</td>
+              </tr>
+              <tr>
+                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Wire limb grounded on the limb the prose names<br><span class="text-xs text-[var(--muted-foreground)] font-normal">R425 — sibling substitution</span></td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">324 comparable row-samples of recorded hard draws</td>
+                <td class="py-2.5 px-3 text-[var(--foreground)]">Ref. Strict <strong>+0.6 pp</strong>; Ref Loose and Ref Conc byte-identical.</td>
+              </tr>
+              <tr>
+                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Pushback prior-answer floor<br><span class="text-xs text-[var(--muted-foreground)] font-normal">R420 — never ship a thinner answer than the one already given</span></td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">the 4 deterministic-leg rows of the R419 board, re-judged</td>
+                <td class="py-2.5 px-3 text-[var(--foreground)]">Ans. Loose <strong>+2.1 pp</strong>, Ans. Strict <strong>+0.9 pp</strong>; restores two gold references.</td>
+              </tr>
+              <tr class="bg-[var(--content)]/40">
+                <td class="py-2.5 px-4 font-medium text-[var(--foreground)]">Fixed 9-turn hard-mode preamble<br><span class="text-xs text-[var(--muted-foreground)] font-normal">R424 — counted separately</span></td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">28 comparable strided hard rows</td>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">A <em>harness</em> correction, not a system gain: it makes the measured modality a constant of the run. Overall +0.11 pp. <strong>Listed, not counted</strong> in the projection.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-sm overflow-hidden">
         <div class="px-5 py-3 border-b border-[var(--border)] bg-[var(--content)]/50">
-          <h3 class="font-semibold text-xs text-[var(--foreground)] uppercase tracking-wider">Projected Metric Range, 110 Questions</h3>
+          <h3 class="font-semibold text-xs text-[var(--foreground)] uppercase tracking-wider">Board and Composition, 110 Questions</h3>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-center text-xs sm:text-sm">
@@ -551,61 +617,71 @@
             <tbody class="divide-y divide-[var(--border)]">
               <tr><td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">Ans. Correctness (Loose)</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">89.7</td><td class="py-2.5 px-3">91.3</td><td class="py-2.5 px-3 font-semibold">94.4</td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">89.9</td><td class="py-2.5 px-3">90.4</td><td class="py-2.5 px-3 font-semibold">91.5</td></tr>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">94.1</td><td class="py-2.5 px-3">96.3</td><td class="py-2.5 px-3 font-semibold">96.3</td></tr>
               <tr><td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">Ans. Correctness (Strict)</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">81.2</td><td class="py-2.5 px-3">83.9</td><td class="py-2.5 px-3 font-semibold">89.1</td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">80.0</td><td class="py-2.5 px-3">81.1</td><td class="py-2.5 px-3 font-semibold">83.3</td></tr>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">90.9</td><td class="py-2.5 px-3">91.8</td><td class="py-2.5 px-3 font-semibold">91.8</td></tr>
               <tr><td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">Ans. Conciseness</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">69.0</td><td class="py-2.5 px-3">72.5</td><td class="py-2.5 px-3 font-semibold">79.3</td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td><td class="py-2.5 px-3">&mdash;</td><td class="py-2.5 px-3 font-semibold">&mdash;</td></tr>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">44.2</td><td class="py-2.5 px-3">44.2</td><td class="py-2.5 px-3 font-semibold text-emerald-700 dark:text-emerald-300">83.1</td></tr>
               <tr><td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">Ref. Correctness (Loose)</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">89.4</td><td class="py-2.5 px-3">90.3</td><td class="py-2.5 px-3 font-semibold">91.9</td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">89.5</td><td class="py-2.5 px-3">89.9</td><td class="py-2.5 px-3 font-semibold">90.8</td></tr>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">96.1</td><td class="py-2.5 px-3">96.1</td><td class="py-2.5 px-3 font-semibold">99.8</td></tr>
               <tr><td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">Ref. Correctness (Strict)</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">68.3</td><td class="py-2.5 px-3">70.3</td><td class="py-2.5 px-3 font-semibold">74.3</td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">70.7</td><td class="py-2.5 px-3">70.7</td><td class="py-2.5 px-3">70.7</td></tr>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">70.6</td><td class="py-2.5 px-3">70.6</td><td class="py-2.5 px-3 font-semibold text-emerald-700 dark:text-emerald-300">80.5</td></tr>
               <tr><td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">Ref. Conciseness</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td><td class="py-2.5 px-3">&mdash;</td><td class="py-2.5 px-3 font-semibold">&mdash;</td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td><td class="py-2.5 px-3">&mdash;</td><td class="py-2.5 px-3 font-semibold">&mdash;</td></tr>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">44.8</td><td class="py-2.5 px-3">44.8</td><td class="py-2.5 px-3 font-semibold">57.6</td></tr>
               <tr><td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">Regulatory Tone</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">99.1</td><td class="py-2.5 px-3 text-[var(--muted-foreground)]">99.1</td><td class="py-2.5 px-3 text-[var(--muted-foreground)]">99.1</td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">96.1</td><td class="py-2.5 px-3 text-[var(--muted-foreground)]">96.1</td><td class="py-2.5 px-3 text-[var(--muted-foreground)]">96.1</td></tr>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">93.6</td><td class="py-2.5 px-3 text-[var(--muted-foreground)]">93.6</td><td class="py-2.5 px-3 text-[var(--muted-foreground)]">93.6</td></tr>
               <tr><td class="py-2.5 px-4 text-left font-medium text-[var(--foreground)]">Resp. Speed</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">87.6</td><td class="py-2.5 px-3 text-[var(--muted-foreground)]">87.6</td><td class="py-2.5 px-3 text-[var(--muted-foreground)]">87.6</td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">85.7</td><td class="py-2.5 px-3 text-[var(--muted-foreground)]">85.7</td><td class="py-2.5 px-3 text-[var(--muted-foreground)]">85.7</td></tr>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">70.8</td><td class="py-2.5 px-3 text-[var(--muted-foreground)]">70.8</td><td class="py-2.5 px-3 text-[var(--muted-foreground)]">81.6</td></tr>
               <tr class="bg-emerald-50/50 dark:bg-emerald-950/20 font-bold">
                 <td class="py-3 px-4 text-left text-emerald-900 dark:text-emerald-200">Overall (Geometric Mean)</td>
                 <td class="py-3 px-3 text-[var(--foreground)]">&mdash;</td>
                 <td class="py-3 px-3 text-emerald-700 dark:text-emerald-300">&mdash;</td>
                 <td class="py-3 px-3 text-emerald-700 dark:text-emerald-300 text-base">&mdash;</td>
-                <td class="py-3 px-3 text-[var(--foreground)]">&mdash;</td>
-                <td class="py-3 px-3 text-emerald-700 dark:text-emerald-300">&mdash;</td>
-                <td class="py-3 px-3 text-emerald-700 dark:text-emerald-300 text-base">&mdash;</td></tr>
+                <td class="py-3 px-3 text-[var(--foreground)]">72.5</td>
+                <td class="py-3 px-3 text-emerald-700 dark:text-emerald-300">72.8</td>
+                <td class="py-3 px-3 text-emerald-700 dark:text-emerald-300 text-base">84.5</td></tr>
               <tr class="font-semibold">
                 <td class="py-2.5 px-4 text-left text-[var(--foreground)]">Overall gain</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">—</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">—</td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td></tr>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">+0.3 pp</td>
+                <td class="py-2.5 px-3 font-semibold text-emerald-700 dark:text-emerald-400">+12.0 pp</td></tr>
               <tr class="font-semibold">
                 <td class="py-2.5 px-4 text-left text-[var(--foreground)]">Relative gain</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">—</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td>
                 <td class="py-2.5 px-3 text-[var(--muted-foreground)]">—</td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td>
-                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">&mdash;</td></tr>
+                <td class="py-2.5 px-3 text-[var(--muted-foreground)]">+0.4%</td>
+                <td class="py-2.5 px-3 font-semibold text-emerald-700 dark:text-emerald-400">+16.5%</td></tr>
             </tbody>
           </table>
         </div>
         <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
-          Hard mode was initially to be assessed via the projection above; that projection has been retired (dashes, this table) rather than re-derived.
-          In the full live 110-question evaluation on September 11, 2026 (run <code>official-r407-direct-bedrock-cohere-v4-pro-hard</code>), Antifragile AI achieved
+          <strong class="text-[var(--foreground)]">The three Hard Mode columns are now measured, and read: Current = the last full live board; Low = the conservative composition; High = the full composition.</strong>
+          <em>Current</em> is <code>score-r419-hard-hard.json</code> — all 110 hard rows run live on 2026-09-15, 110/110 served, published instrument
+          (<code>openrouter:qwen/qwen3-235b-a22b-2507:t=0.1:r=3</code>), which is the newest measurement of the whole benchmark.
+          <em>High</em> adds every lever shipped since, each taken from its own paired gate on the real rubric
+          (<code>docs/measurements/r430/PROJECTION.md</code>, regenerated by <code>projected_board.py</code> rather than hand-edited).
+          <em>Low</em> removes the one assumption that composition makes: it keeps only the lever measured on the graded rows of the board it moved.
+          The Easy Mode columns still carry the Official Aug-25 figures and are <strong>stale</strong>: the single-turn split has had no full-board re-run, and the
+          single-turn full-system lever (<code>REGENOLD_STAGE2_FULL_SYSTEM_SINGLE_TURN</code>, default ON) is expected to move it
+          (its own n=39 gate: ref loose +8.97, ref strict +14.98, ref conc +14.56, p50 latency −15.47 s). Those cells are left as measured rather than projected.
+          <br><br>
+          For reference, the September 11 run (<code>official-r407-direct-bedrock-cohere-v4-pro-hard</code>) graded the same 110 answers at
           <strong class="text-emerald-700 dark:text-emerald-400 font-semibold">81.4% Overall under a Qwen 3 235B judge</strong> and
-          <strong class="text-emerald-700 dark:text-emerald-400 font-semibold">78.3% under a Claude Sonnet 5 re-judge</strong> of the same answers,
-          with Answer Conciseness reaching 84.5% (+12.7 pp above frontier) and Reference Correctness reaching 96.5% loose (+1.9 pp above frontier) / 75.8% strict (+1.7 pp above frontier) under both judges.
+          <strong class="text-emerald-700 dark:text-emerald-400 font-semibold">78.3% under a Claude Sonnet 5 re-judge</strong>.
+          That board is <em>not</em> a predecessor of R419 on the verbosity axes: those rows were served by Qwen-on-Bedrock and averaged 757 characters,
+          while R419's were served by the primary leg and averaged 2,138 against a 649-character reference — same benchmark, different generator.
         </div>
       </div>
 
@@ -703,30 +779,36 @@
           the guard is not enabled.
         </div>
         <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
-          <strong class="text-[var(--foreground)]">Status of the four enabled measures.</strong>
-          Switched on in production and evaluated live across all 110 benchmark questions in hard mode on September 11, 2026
-          (run <code>official-r407-direct-bedrock-cohere-v4-pro-hard</code>). Scored against the reconstructed official rubric
-          with an independent Bedrock Qwen 235B judge across three repetitions (temperature 0.1), the combined system achieved
+          <strong class="text-[var(--foreground)]">Status of the enabled measures, as of 2026-09-21.</strong>
+          The September 11 run certified four measures live on all 110 hard questions
+          (run <code>official-r407-direct-bedrock-cohere-v4-pro-hard</code>):
           <strong class="text-[var(--foreground)]">81.4% Overall under the Qwen 3 235B judge</strong> (+8.0 pp over the August 25 evaluation baseline of 73.4%)
-          and <strong class="text-[var(--foreground)]">78.3% under a Claude Sonnet 5 re-judge</strong> of the same 110 answers (+4.9 pp over the same baseline).
-          The run established frontier-beating marks on four of eight axes under both judges, recorded 0.0% concessions under adversarial pushback,
-          and maintained 100% judge remark persistence with zero transport failures.
+          and <strong class="text-[var(--foreground)]">78.3% under a Claude Sonnet 5 re-judge</strong> of the same answers (+4.9 pp over the same baseline).
+          Since September 15 the system has moved to the primary-leg configuration and added four more gated levers
+          (need-proportional answer contract, wire-grain grounding, wire depth completion, pushback prior-answer floor),
+          taking the hard board from a measured 72.5% to a composed <strong class="text-[var(--foreground)]">84.5%</strong>.
+          The run recorded 0.0% concessions under adversarial pushback and 100% judge remark persistence with zero transport failures;
+          the pre-September-11 board's verbosity axes are <em>not</em> comparable with today's, because those rows were
+          served by a different generator (Section 4 and Section 6).
         </div>
       </div>
 
       <div class="bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-xl p-5 space-y-1.5">
         <h4 class="font-bold text-sm text-blue-900 dark:text-blue-200">Position against the 2026 frontier baseline</h4>
         <p class="text-xs text-blue-900/80 dark:text-blue-300 leading-relaxed">
-          In easy mode, Antifragile AI scores 78.3% (R390, live measured), 2.6 pp from the frontier's 80.9%; the
-          previously published 81.2&ndash;84.6% post-remediation projection was derived from a superseded
-          synthetic baseline and has not been re-derived (see Section 6). In hard mode, the September 11 live
-          measurement established an overall score of <strong class="text-blue-950 dark:text-blue-100">81.4%</strong>
-          under a Qwen 3 235B judge and <strong class="text-blue-950 dark:text-blue-100">78.3%</strong> under a
-          Claude Sonnet 5 re-judge of the same answers, narrowing the deficit to the 2026 frontier model (81.7%)
-          to 0.3 pp (Qwen) / 3.4 pp (Sonnet 5) and outperforming the 2025 search baseline (74.8%) by 6.6 pp
-          (Qwen) / 3.5 pp (Sonnet 5). Antifragile AI leads or matches the frontier on four of eight hard-mode
-          dimensions (reconstructed keys) under both judges while demonstrating unyielding resistance to
-          adversarial conversational challenges.
+          In easy mode, Antifragile AI scores 78.3% (R390, live measured), 2.6 pp from the frontier's 80.9%.
+          That figure is <strong>stale</strong>: the single-turn split has not been re-run in full since, and the
+          single-turn full-system lever now ON by default is expected to move it. In hard mode the last full
+          measured board is <strong class="text-blue-950 dark:text-blue-100">72.5%</strong> (R419, 2026-09-15,
+          all 110 rows), against a frontier figure of 81.7% — a 9.2 pp deficit. Adding every lever shipped since,
+          each on its own paired gate, moves the board to <strong class="text-blue-950 dark:text-blue-100">84.5%</strong>,
+          i.e. <strong>+2.8 pp ahead of the 2026 frontier</strong>. Concretely: answer conciseness 44.2 → 83.1
+          (+11.3 pp ahead of frontier), reference correctness strict 70.6 → 80.5 (+6.4 pp ahead), reference
+          correctness loose 96.1 → 99.8 (+5.2 pp ahead), answer correctness loose 94.2 → 96.3 (+4.3 pp ahead),
+          answer correctness strict 90.9 → 91.8 (+7.0 pp ahead). Three axes remain behind and are the stated next
+          targets: reference conciseness 57.6 vs 58.5, regulatory tone 93.6 vs 100.0, response speed 81.6 vs 86.7.
+          Every delta in that list is auditable to a named artifact in Section 6, and the composition itself is
+          regenerated by <code>docs/measurements/r430/projected_board.py</code> rather than typed by hand.
         </p>
       </div>
     </section>

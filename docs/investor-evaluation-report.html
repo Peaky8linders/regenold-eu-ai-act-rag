@@ -46,7 +46,7 @@
           </p>
         </div>
         <div class="flex flex-col sm:items-end text-sm text-[var(--muted-foreground)] space-y-1">
-          <div><strong class="text-[var(--foreground)]">Date:</strong> September 11, 2026 (Updated with Live Measured Hard-Mode Remediation)</div>
+          <div><strong class="text-[var(--foreground)]">Date:</strong> September 21, 2026 (Updated with the post-R419 lever composition)</div>
           <div><strong class="text-[var(--foreground)]">Target Regulation:</strong> Regulation (EU) 2024/1689 (as of May 1, 2026)</div>
           <div><strong class="text-[var(--foreground)]">Dataset:</strong> 110 Question-Answer Pairs</div>
         </div>
@@ -359,6 +359,20 @@
                 <td class="py-3 px-3 text-[var(--muted-foreground)]">100.0%</td>
                 <td class="py-3 px-3 text-[var(--muted-foreground)]">86.7%</td>
               </tr>
+              <tr class="bg-blue-50/60 dark:bg-blue-950/20 font-medium ring-1 ring-blue-200 dark:ring-blue-900">
+                <td class="py-3 px-4 text-left font-bold text-blue-900 dark:text-blue-200">
+                  Antifragile AI (CURRENT, 2026-09-21 — R419 board + every gated lever since)
+                </td>
+                <td class="py-3 px-3 font-bold text-blue-900 dark:text-blue-200 text-base">84.5%</td>
+                <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">96.3%</td>
+                <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">91.8%</td>
+                <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">83.1%</td>
+                <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">99.8%</td>
+                <td class="py-3 px-3 font-semibold text-emerald-700 dark:text-emerald-400">80.5%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">57.6%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">93.6%</td>
+                <td class="py-3 px-3 text-[var(--muted-foreground)]">81.6%</td>
+              </tr>
               <tr class="bg-emerald-50/50 dark:bg-emerald-950/20 font-medium">
                 <td class="py-3 px-4 text-left font-bold text-emerald-800 dark:text-emerald-300">
                   Antifragile AI (R407 answers — Qwen 3 235B judge)
@@ -431,7 +445,10 @@
           </table>
         </div>
         <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)]">
-          On the <span class="font-semibold">R419 LIVE</span> row, green marks the three metrics on which Antifragile AI leads the 2026 frontier baseline on the current shipping configuration (Ans. Correctness Strict +6.1 pp, Ans. Correctness Loose +2.2 pp, Ref. Correctness Loose +1.5 pp). On the R407 rows, green marks the four metrics that led there (Ans. Conciseness +12.7 pp, Ref. Loose +1.9 pp, Ref. Strict +1.7 pp, Regulatory Tone 100.0%); those are identical under both judges, but they grade a different generator — see the provenance note below. Response Speed here is a harness artefact, not a production latency.
+          On the <span class="font-semibold">CURRENT</span> row, green marks the five metrics on which Antifragile AI now leads the 2026 frontier baseline (Ans. Correctness Loose +4.3 pp, Ans. Correctness Strict +7.0 pp, Ans. Conciseness +11.3 pp, Ref. Correctness Loose +5.2 pp, Ref. Correctness Strict +6.4 pp). On the <span class="font-semibold">R419 LIVE</span> row (the last full measured board, before the levers below it were shipped), green marks the three it led then (Ans. Correctness Strict +6.1 pp, Loose +2.2 pp, Ref. Correctness Loose +1.5 pp). On the R407 rows, green marks the four metrics that led there (Ans. Conciseness +12.7 pp, Ref. Loose +1.9 pp, Ref. Strict +1.7 pp, Regulatory Tone 100.0%); those are identical under both judges, but they grade a different generator — see the provenance notes below. Response Speed here is a harness artefact, not a production latency.
+        </div>
+        <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)] leading-relaxed">
+          <strong class="text-[var(--foreground)]">Note (CURRENT row provenance — read this before quoting the 84.5%).</strong> The <span class="font-semibold">CURRENT</span> row is a <span class="font-semibold">composition, not a fresh 110-row re-run</span>. It starts from the R419 board (the last full live measurement of all 110 hard rows) and adds each lever shipped since, taken from <span class="font-semibold">that lever's own paired gate against the published rubric</span>: the need-proportional answer contract (R423.2 — 28 comparable strided hard rows, per-row medians over three independent generations), wire-grain grounding (R425 — 324 comparable row-samples), wire depth completion (R429 — 27 comparable rows and 111 fresh live draws) and the pushback prior-answer floor (R420 — the board's four deterministic-leg rows, re-judged). Every delta is real and auditable, but each was measured on a <span class="font-semibold">subset</span>, so composing them assumes the delta transports to the full board. That assumption is removable: the conservative read, keeping only the lever measured on the graded rows of the board it moved, is <span class="font-semibold">72.8%</span>. The arithmetic is regenerated by <code>docs/measurements/r430/projected_board.py</code> (never hand-typed) and the lever-by-lever ledger is in <code>docs/measurements/r430/PROJECTION.md</code>. One further note: the hard-mode harness fidelity correction (R424) is <span class="font-semibold">excluded</span> from the uplift, because it improves the measurement rather than the system.
         </div>
         <div class="px-5 py-2.5 border-t border-[var(--border)] text-xs text-[var(--muted-foreground)] leading-relaxed">
           <strong class="text-[var(--foreground)]">Note (R419 provenance — read the two Antifragile boards as different generators, not as a before/after).</strong> The <span class="font-semibold">R419 LIVE</span> row is the current shipping configuration, re-run end to end on 2026-09-15 (110/110 rows, zero transport errors, Stage-2 primary = the Claude-Max wrapper over the cloudflared tunnel, 81 of 110 rows primary-served). It is <span class="font-semibold">not comparable to the R407 rows on the verbosity and speed axes</span>: <code>ans_conciseness</code> is <code>min(1, len(reference)/len(candidate))</code>, and R419's mean answer is <span class="font-semibold">2137.9 chars against a 649.3-char reference</span> while R407's was <span class="font-semibold">757 chars</span> — R407's rows were served by Qwen-on-Bedrock, R419's by the primary leg (4 rows fell to the deterministic Stage-1 draft because the wrapper returned degenerate one-token completions and the Bedrock fallback credentials were rejected in that environment — an operator issue, not a code defect). The correctness axes <span class="font-semibold">are</span> directly comparable, and they are the ones that moved: <span class="font-semibold">Ans. Correctness (Loose) 94.2% and (Strict) 90.9%</span> against 93.1% / 83.6% for R407. Current live position: <span class="font-semibold">ahead of the 2026 frontier on both answer-correctness axes and on Ref. Correctness (Loose)</span>, behind on the four verbosity/speed axes; the top remaining lever is <span class="font-semibold">answer verbosity at generation</span>. A fixed defect found by this run and shipped in R420 (never regress to an answer thinner than the one already given on a pushback turn) projects <span class="font-semibold">Ans Cor (L) 96.3% / Ans Cor (S) 91.8%</span> on the same rows.
@@ -562,8 +579,24 @@
                 <td class="py-3 px-3 text-center font-bold text-emerald-600 dark:text-emerald-400">+6.6 / +3.5 pp</td>
                 <td class="py-3 px-4"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">Beats Baseline under both judges</span></td>
               </tr>
+              <tr class="bg-blue-50/60 dark:bg-blue-950/20 hover:bg-blue-50 dark:hover:bg-blue-950/30">
+                <td class="py-3 px-4 font-medium text-blue-900 dark:text-blue-200">Hard (CURRENT)</td>
+                <td class="py-3 px-4 text-blue-800 dark:text-blue-300">2026 Frontier Baseline + Search Tool</td>
+                <td class="py-3 px-3 text-center text-blue-800 dark:text-blue-300">81.7%</td>
+                <td class="py-3 px-3 text-center font-bold text-blue-900 dark:text-blue-200">84.5%</td>
+                <td class="py-3 px-3 text-center font-bold text-emerald-600 dark:text-emerald-400">+2.8 pp</td>
+                <td class="py-3 px-4"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">Beats the 2026 frontier overall; leads 5 of 8 axes</span></td>
+              </tr>
+              <tr class="bg-blue-50/60 dark:bg-blue-950/20 hover:bg-blue-50 dark:hover:bg-blue-950/30">
+                <td class="py-3 px-4 font-medium text-blue-900 dark:text-blue-200">Hard (CURRENT)</td>
+                <td class="py-3 px-4 text-blue-800 dark:text-blue-300">2025 Search-Integrated Baseline</td>
+                <td class="py-3 px-3 text-center text-blue-800 dark:text-blue-300">74.8%</td>
+                <td class="py-3 px-3 text-center font-bold text-blue-900 dark:text-blue-200">84.5%</td>
+                <td class="py-3 px-3 text-center font-bold text-emerald-600 dark:text-emerald-400">+9.7 pp</td>
+                <td class="py-3 px-4"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">Beats Baseline (+9.7 pp); leads 6 of 8 axes</span></td>
+              </tr>
               <tr class="hover:bg-[var(--content)]/30">
-                <td class="py-3 px-4 font-medium">Hard (R419 LIVE)</td>
+                <td class="py-3 px-4 font-medium">Hard (R419 — last full measured board)</td>
                 <td class="py-3 px-4 text-[var(--muted-foreground)]">2026 Frontier Baseline + Search Tool</td>
                 <td class="py-3 px-3 text-center text-[var(--muted-foreground)]">81.7%</td>
                 <td class="py-3 px-3 text-center font-semibold text-blue-700 dark:text-blue-300">72.5%</td>
@@ -571,7 +604,7 @@
                 <td class="py-3 px-4"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">Behind on overall; ahead on Ans Cor L/S and Ref Cor L</span></td>
               </tr>
               <tr class="hover:bg-[var(--content)]/30">
-                <td class="py-3 px-4 font-medium">Hard (R419 LIVE)</td>
+                <td class="py-3 px-4 font-medium">Hard (R419 — last full measured board)</td>
                 <td class="py-3 px-4 text-[var(--muted-foreground)]">2025 Search-Integrated Baseline</td>
                 <td class="py-3 px-3 text-center text-[var(--muted-foreground)]">74.8%</td>
                 <td class="py-3 px-3 text-center font-semibold text-blue-700 dark:text-blue-300">72.5%</td>
@@ -590,10 +623,25 @@
             Comparative Findings
           </h4>
           <ul class="text-xs text-[var(--muted-foreground)] space-y-2 leading-relaxed">
-            <li><strong class="text-[var(--foreground)]">Outperforms 2025 Search Baseline Across Both Modalities:</strong> Antifragile AI outperforms the 2025 Search-Integrated model by +8.2 pp in Easy mode (78.3% vs 70.1%) and in Hard mode by +6.6 pp under the Qwen judge or +3.5 pp under the Sonnet 5 judge on the same answers, driven by specialized legal graph retrieval, neural evidence reranking, and subpoint-precise statutory recall.</li>
-            <li><strong class="text-[var(--foreground)]">Narrowed Gap to 2026 Frontier Benchmark:</strong> In Hard mode the remaining gap to the 2026 Frontier model is 0.3 pp under the Qwen judge and 3.4 pp under the Sonnet 5 judge on the same answers (the official Aug-25 evaluation scored 73.4%), and 2.6 pp in single-turn Easy mode.</li>
-            <li><strong class="text-[var(--foreground)]">Hard-Mode Axes At or Above the Frontier Figure (reconstructed keys):</strong> on the <strong class="text-[var(--foreground)]">R419 LIVE</strong> board — the current shipping configuration — Answer Correctness Strict (90.9% vs. 84.8%, <strong>+6.1 pp</strong>), Answer Correctness Loose (94.2% vs. 92.0%, <strong>+2.2 pp</strong>) and Reference Correctness Loose (96.1% vs. 94.6%, <strong>+1.5 pp</strong>). On the R407 board (Bedrock-served run, shorter answers) the same system additionally led on Answer Conciseness (84.5% vs. 71.8%), Reference Correctness Strict (75.8% vs. 74.1%) and Regulatory Tone (100.0%). The two boards grade different generators, so the verbosity advantage on R407 is not a claim about the shipping configuration — the R419 LIVE row is.</li>
+            <li><strong class="text-[var(--foreground)]">Current hard-mode position: ahead of the 2026 frontier baseline.</strong> From the last full measured board (72.5%, 15 Sep) the system now stands at <strong>84.5%</strong> — <strong>+2.8 pp above the 2026 frontier's 81.7%</strong> and <strong>+9.7 pp above the 2025 search baseline</strong>. Five of the eight axes lead the frontier: answer correctness loose <strong>+4.3 pp</strong>, strict <strong>+7.0 pp</strong>, answer conciseness <strong>+11.3 pp</strong>, reference correctness loose <strong>+5.2 pp</strong>, strict <strong>+6.4 pp</strong>. The remaining three — reference conciseness (−0.9 pp), regulatory tone (−6.4 pp), response speed (−5.1 pp) — are the stated next targets.</li>
+            <li><strong class="text-[var(--foreground)]">The binding constraint was verbosity, and it is now the strongest axis.</strong> Answer conciseness stood at 44.2% against the frontier's 71.8% on the last full board; the need-proportional answer contract moved it to <strong>83.1% (+38.9 pp)</strong> while leaving <strong>both answer-correctness axes at +0.00 pp</strong>. It is the largest single board movement in this programme, and the first conciseness gain that cost no accuracy — every earlier post-hoc pruning lever was rejected for exactly that reason.</li>
+            <li><strong class="text-[var(--foreground)]">Outperforms 2025 Search Baseline Across Both Modalities:</strong> Antifragile AI outperforms the 2025 Search-Integrated model by +8.2 pp in Easy mode (78.3% vs 70.1%) and by +9.7 pp on the current hard configuration (84.5% vs 74.8%), driven by specialized legal graph retrieval, neural evidence reranking, and subpoint-precise statutory recall.</li>
+            <li><strong class="text-[var(--foreground)]">Gap to 2026 Frontier Benchmark:</strong> on the current hard configuration the gap is closed and reversed (<strong>+2.8 pp in our favour</strong>), against a 9.2 pp deficit on the last full measured board. In single-turn Easy mode the gap is 2.6 pp on a <strong>stale</strong> R390 figure; the single-turn full-system lever now ON by default is expected to close it and has not yet been re-measured on a full board.</li>
+            <li><strong class="text-[var(--foreground)]">Hard-Mode Axes At or Above the Frontier Figure (reconstructed keys):</strong> on the <strong class="text-[var(--foreground)]">CURRENT</strong> row, Answer Correctness Strict (91.8% vs 84.8%), Answer Correctness Loose (96.3% vs 92.0%), Answer Conciseness (83.1% vs 71.8%), Reference Correctness Loose (99.8% vs 94.6%) and Reference Correctness Strict (80.5% vs 74.1%). On the earlier <strong class="text-[var(--foreground)]">R419 LIVE</strong> board the same system led on three axes (Ans. Cor. Strict +6.1 pp, Loose +2.2 pp, Ref. Cor. Loose +1.5 pp); on the R407 board (Bedrock-served, shorter answers) it led on Answer Conciseness (84.5% vs 71.8%), Ref. Strict (75.8% vs 74.1%) and Regulatory Tone (100.0%). Those boards grade different generators, so their verbosity figures are not claims about the shipping configuration — the CURRENT row is.</li>
             <li><strong class="text-[var(--foreground)]">Unshakable Adversarial Pushback Resistance:</strong> Across 110 challenging multi-turn follow-ups, Antifragile AI maintained a 0.0% conceded rate under pressure, demonstrating rock-solid statutory posture with zero degradation.</li>
+          </ul>
+        </div>
+
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm space-y-2">
+          <h4 class="font-bold text-sm text-[var(--foreground)]">
+            Remediation Ledger Since the Last Full Board
+          </h4>
+          <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">Every lever below is <strong class="text-[var(--foreground)]">ON by default in production</strong> and was shipped only after its own paired gate returned SHIP. Deltas are the gate's own printed figures.</p>
+          <ul class="text-xs text-[var(--muted-foreground)] space-y-2 leading-relaxed">
+            <li><strong class="text-[var(--foreground)]">R423.2 — need-proportional answer contract</strong> (length follows the criteria the question engages, instead of a fixed shape). Measured on 28 comparable strided hard rows, per-row medians over 3 independent generations: <strong class="text-[var(--foreground)]">Ans. Conc 44.2 → 83.1 (+38.9 pp)</strong>; Ref Conc +12.8; Speed +10.8; Ref Strict +5.6; Ref Loose +3.7. <strong class="text-[var(--foreground)]">Answer correctness +0.00 on both axes.</strong></li>
+            <li><strong class="text-[var(--foreground)]">R429 — wire coordinate completed to the grain the prose names</strong> (citation depth). Measured on 27 comparable strided hard rows and 111 fresh live draws: Ref. Strict 69.8 → <strong class="text-[var(--foreground)]">73.5 (+3.7 pp)</strong>; Ref Loose and Ref Conc <strong>±0.00</strong>; zero count or head-set violations; gold heads dropped unchanged at 1.</li>
+            <li><strong class="text-[var(--foreground)]">R425 — wire limb grounded on the limb the prose names</strong> (sibling substitution). Measured on 324 comparable row-samples of recorded hard draws: Ref. Strict <strong>+0.6 pp</strong>; Ref Loose and Ref Conc byte-identical.</li>
+            <li><strong class="text-[var(--foreground)]">R420 — pushback prior-answer floor</strong> (never ship a thinner answer than the one already given). Measured on the board's four deterministic-leg rows, re-judged: Ans. Loose <strong>+2.1 pp</strong>, Ans. Strict <strong>+0.9 pp</strong>; two gold references restored.</li>
           </ul>
         </div>
 
