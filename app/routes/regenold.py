@@ -1480,6 +1480,7 @@ def _engine_cache_key(
             # can differ across the boundary. Keyed per R30/R56 doctrine.
             "REGENOLD_COHERE_RERANK_RETRIES",
             "REGENOLD_EXTERNAL_EMBEDDING_RETRIES",
+            "REGENOLD_EXTERNAL_EMBEDDING_QUOTA_COOLDOWN_S",
             "P2P_GRAPH_RAG_ENABLE_STAGE2",
             "REGENOLD_BEDROCK_MODEL",
             "REGENOLD_BEDROCK_COMPLEX_MODEL",

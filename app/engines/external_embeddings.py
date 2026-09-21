@@ -33,10 +33,13 @@ import atexit
 import logging
 import os
 import threading
+import time
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlparse
 
 import httpx
+
+from app.engines._http_retry import attempts_from_env, post_transient_retry
 
 if TYPE_CHECKING:
     import numpy as np  # type: ignore
@@ -65,8 +68,6 @@ _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "0.0.0.0"})
 # R112 — short, split timeout for the pooled client. connect=3 bounds a
 # black-holed host; read=10 is plenty for a 50-doc embeddings batch.
 _CLIENT_TIMEOUT = httpx.Timeout(10.0, connect=3.0)
-from app.engines._http_retry import attempts_from_env, post_transient_retry
-
 #: R407 — transient-retry ceiling for the embeddings POST (429/5xx with
 #: backoff + Retry-After). Cohere failures were already treated as transient
 #: (never probe-cached, unlike openai); now they are actually retried instead
@@ -84,6 +85,38 @@ _CLIENT: httpx.Client | None = None
 # :func:`_reset_probe_cache_for_tests`.
 _NEGATIVE_PROBE_LOCK = threading.Lock()
 _NEGATIVE_PROBES: set[tuple[str, str]] = set()
+
+# A Cohere 429 can be a durable daily quota exhaustion, not a transient
+# network event.  Retrying every dense query in that state only adds latency
+# and log noise before the deterministic SVD path takes over.
+_COHERE_QUOTA_LOCK = threading.Lock()
+_COHERE_QUOTA_UNTIL = 0.0
+_COHERE_QUOTA_ENV = "REGENOLD_EXTERNAL_EMBEDDING_QUOTA_COOLDOWN_S"
+
+
+def _cohere_quota_active() -> bool:
+    with _COHERE_QUOTA_LOCK:
+        return time.monotonic() < _COHERE_QUOTA_UNTIL
+
+
+def _mark_cohere_quota() -> None:
+    global _COHERE_QUOTA_UNTIL
+    raw = os.getenv(_COHERE_QUOTA_ENV, "60").strip()
+    try:
+        seconds = max(0.0, min(float(raw or "60"), 3600.0))
+    except ValueError:
+        seconds = 60.0
+    with _COHERE_QUOTA_LOCK:
+        _COHERE_QUOTA_UNTIL = time.monotonic() + seconds
+
+
+def _reset_probe_cache_for_tests() -> None:
+    """Clear process-local negative and quota state. Test-only."""
+    global _COHERE_QUOTA_UNTIL
+    with _NEGATIVE_PROBE_LOCK:
+        _NEGATIVE_PROBES.clear()
+    with _COHERE_QUOTA_LOCK:
+        _COHERE_QUOTA_UNTIL = 0.0
 
 
 def _get_client() -> httpx.Client:
@@ -167,12 +200,6 @@ def _record_openai_probe_failure() -> None:
         _NEGATIVE_PROBES.add(_openai_negative_key())
 
 
-def _reset_probe_cache_for_tests() -> None:
-    """Clear the negative-probe cache. Test-only — not public API."""
-    with _NEGATIVE_PROBE_LOCK:
-        _NEGATIVE_PROBES.clear()
-
-
 def is_available() -> bool:
     """True if an external embeddings backend is configured AND usable.
 
@@ -183,6 +210,8 @@ def is_available() -> bool:
     """
     provider = _get_provider()
     if provider is None:
+        return False
+    if provider == "cohere" and _cohere_quota_active():
         return False
     if provider == "openai" and _openai_probe_failed():
         return False
@@ -238,6 +267,8 @@ def get_embedding(
     provider = _get_provider()
     if not provider:
         return None
+    if provider == "cohere" and _cohere_quota_active():
+        return None
     # R112 — negative-probe cache: don't re-pay the timeout per call when
     # this exact openai config already failed in this process.
     if provider == "openai" and _openai_probe_failed():
@@ -274,7 +305,7 @@ def get_embedding(
                     "input_type": input_type,
                 }
                 res = post_transient_retry(
-                    lambda: _get_client().post(
+                    lambda payload=payload: _get_client().post(
                         COHERE_API_URL, headers=headers, json=payload
                     ),
                     max_attempts=attempts_from_env(
@@ -284,6 +315,8 @@ def get_embedding(
                 )
                 if res is None:
                     raise RuntimeError("embedding POST failed after retries")
+                if getattr(res, "status_code", None) == 429:
+                    _mark_cohere_quota()
                 res.raise_for_status()
                 data = res.json()
                 embeddings.extend(data["embeddings"])

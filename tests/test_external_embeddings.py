@@ -104,6 +104,36 @@ def test_get_embedding_openai_mock(monkeypatch):
     assert emb[0] == pytest.approx(0.5)
 
 
+def test_cohere_quota_cooldown_skips_followup_calls(monkeypatch):
+    """A durable 429 must not trigger a network retry on every query."""
+    monkeypatch.setenv("COHERE_API_KEY", "co-testkey")
+    monkeypatch.setenv("REGENOLD_EXTERNAL_EMBEDDING_RETRIES", "1")
+    monkeypatch.setenv("REGENOLD_EXTERNAL_EMBEDDING_QUOTA_COOLDOWN_S", "60")
+    ee._reset_probe_cache_for_tests()
+    calls = {"n": 0}
+
+    class Response:
+        status_code = 429
+        headers = {}
+
+        def raise_for_status(self):
+            raise RuntimeError("429 quota")
+
+    def post(*args, **kwargs):
+        calls["n"] += 1
+        return Response()
+
+    monkeypatch.setattr("httpx.Client.post", post)
+    try:
+        assert ee.get_embedding("first") is None
+        assert calls["n"] == 1
+        assert ee.is_available() is False
+        assert ee.get_embedding("second") is None
+        assert calls["n"] == 1
+    finally:
+        ee._reset_probe_cache_for_tests()
+
+
 def test_get_embedding_graceful_fallback(monkeypatch):
     """get_embedding returns None gracefully on any exception."""
     monkeypatch.setenv("COHERE_API_KEY", "co-testkey")
