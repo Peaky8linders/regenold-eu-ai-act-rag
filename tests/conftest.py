@@ -1050,3 +1050,16 @@ def _restore_global_settings():
                     setattr(obj, attr, value)
             except Exception:  # noqa: BLE001 — restoration is best-effort
                 pass
+
+
+@pytest.fixture(autouse=True)
+def _reset_denoiser_quota_cooldown():
+    """R433: isolate process-local quota state across provider-chain tests."""
+    try:
+        from app.routes import regenold as _regenold
+        _regenold._reset_denoiser_quota_cooldowns()
+    except Exception:  # noqa: BLE001 — keep collection resilient
+        _regenold = None
+    yield
+    if _regenold is not None:
+        _regenold._reset_denoiser_quota_cooldowns()

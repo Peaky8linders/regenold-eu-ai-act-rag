@@ -1804,6 +1804,9 @@ def _engine_cache_key(
             # R380 — the rewrite budget decides whether the de-noiser output
             # survives the R91 truncation guard, i.e. which query is retrieved.
             "REGENOLD_DENOISER_MAX_TOKENS",
+            # R433 — quota cooldown changes which provider is attempted and
+            # therefore the rewritten query/latency regime.
+            "REGENOLD_DENOISER_QUOTA_COOLDOWN",
             # R380 — skipping the rewrite for a self-contained turn changes
             # which query is retrieved on hard-mode turn 1.
             "REGENOLD_DENOISE_SELF_CONTAINED_SKIP",
@@ -8823,6 +8826,69 @@ def _denoiser_bedrock_enabled() -> bool:
     )
 
 
+# R433 — quota-aware denoiser failover. A provider-level daily TPD/quota error is
+# durable for a short operational window, unlike a normal transient 500. Before
+# this cooldown, every multi-turn request retried the exhausted Groq model, paid
+# the same 429, then only reached Bedrock/Gemini after wasting the timeout budget.
+# This is process-local state deliberately: quota is account/provider state, not
+# answer state, and the cache key includes the configured cooldown value below.
+_DENOISER_QUOTA_UNTIL: dict[str, float] = {}
+_DENOISER_QUOTA_LOCK = threading.Lock()
+
+
+def _denoiser_quota_cooldown_seconds() -> float:
+    """Seconds to suppress a provider after a durable quota response."""
+    try:
+        return max(
+            0.0,
+            min(900.0, float(os.getenv("REGENOLD_DENOISER_QUOTA_COOLDOWN", "60"))),
+        )
+    except (TypeError, ValueError):
+        return 60.0
+
+
+def _denoiser_quota_error(error: str | None) -> bool:
+    """Whether an error indicates durable quota exhaustion, not a normal 5xx."""
+    low = (error or "").lower()
+    return any(
+        marker in low
+        for marker in (
+            "tokens per day",
+            "rate limit reached",
+            "quota exceeded",
+            "quota_exceeded",
+            "daily limit",
+            "insufficient_quota",
+        )
+    )
+
+
+def _denoiser_provider_suppressed(provider_name: str) -> bool:
+    """Return true while a provider is in its local quota cooldown."""
+    now = time.monotonic()
+    with _DENOISER_QUOTA_LOCK:
+        until = _DENOISER_QUOTA_UNTIL.get(provider_name, 0.0)
+        if until <= now:
+            _DENOISER_QUOTA_UNTIL.pop(provider_name, None)
+            return False
+        return True
+
+
+def _mark_denoiser_provider_quota(provider_name: str) -> None:
+    """Suppress a quota-exhausted provider without affecting other providers."""
+    cooldown = _denoiser_quota_cooldown_seconds()
+    if cooldown <= 0:
+        return
+    with _DENOISER_QUOTA_LOCK:
+        _DENOISER_QUOTA_UNTIL[provider_name] = time.monotonic() + cooldown
+
+
+def _reset_denoiser_quota_cooldowns() -> None:
+    """Test/operator hook; does not change production defaults."""
+    with _DENOISER_QUOTA_LOCK:
+        _DENOISER_QUOTA_UNTIL.clear()
+
+
 def _rewrite_multiturn_query(
     live_question: str,
     history_turns: list,
@@ -9068,6 +9134,13 @@ def _rewrite_multiturn_query(
     last_provider = ""
     last_latency = 0
     for provider, model, provider_name in candidates:
+        if _denoiser_provider_suppressed(provider_name):
+            last_reason = "quota_cooldown"
+            last_model, last_provider = model, provider_name
+            logger.debug(
+                "query_denoiser: skipping %s during quota cooldown", provider_name
+            )
+            continue
         start_ns = time.monotonic_ns()
         try:
             req = OpenAIWrapperRequest(
@@ -9117,7 +9190,11 @@ def _rewrite_multiturn_query(
             last_latency = (time.monotonic_ns() - start_ns) // 1_000_000
             last_model, last_provider = model, provider_name
             if resp.error or not resp.text.strip():
-                last_reason = "provider_error" if resp.error else "empty_text"
+                if _denoiser_quota_error(resp.error):
+                    _mark_denoiser_provider_quota(provider_name)
+                    last_reason = "quota_cooldown"
+                else:
+                    last_reason = "provider_error" if resp.error else "empty_text"
                 logger.debug(
                     "query_denoiser: %s via %s (error=%s) — trying next provider",
                     last_reason, provider_name, resp.error,
@@ -9158,6 +9235,8 @@ def _rewrite_multiturn_query(
                     model=model,
                     provider_name=provider_name,
                 )
+            with _DENOISER_QUOTA_LOCK:
+                _DENOISER_QUOTA_UNTIL.pop(provider_name, None)
             record_query_denoiser(
                 fired=True,
                 latency_ms=int(last_latency),
