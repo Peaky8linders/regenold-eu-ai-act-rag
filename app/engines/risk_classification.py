@@ -238,21 +238,38 @@ _R365_FINES_PROHIBITED_RE = re.compile(
 
 #: Biometric / patient-interaction classification — the system interacts with
 #: natural persons (verification, recruitment, selection), so the answer must
-#: address the Art. 50 transparency surface. Emotion-inference shapes are
-#: excluded: those are Article 5(1)(f) prohibition questions.
+#: address the Art. 50 transparency surface. Emotion shapes are excluded (see
+#: ``_R365_EMOTION_EXCLUDE_RE``).
+#:
+#: R442 — ``re.DOTALL``: without it ``.*`` stops at a newline, so a live
+#: question that puts the system on one line and the duty on the next ("...a
+#: biometric system.\nMust we inform...") silently never fired, while the
+#: emotion exclusion below already scanned across lines. Both call sites pass
+#: the LIVE question only (text after ``Latest question:\n``), so spanning lines
+#: cannot reach into the conversation history.
 _R365_BIO_PATIENT_RE = re.compile(
     r"(?=.*\b(?:biometric\w*|patient\w*|clinical trial\b|recruit\w*|"
     r"select and recruit\b|eligib\w*)\b)"
     r"(?=.*\b(?:prohibit\w*|verif\w*|interact\w*|directly\b|disclos\w*|"
     r"inform\w*|expos\w*)\b)",
-    re.IGNORECASE,
+    re.IGNORECASE | re.DOTALL,
 )
 
-# Emotion-inference questions are Article 5(1)(f) prohibition questions, not
-# Article 50 transparency questions. This is intentionally checked against the
-# whole input rather than embedded as a negative lookahead: ``re.search`` may
-# start a lookahead match after an earlier emotion term, making the old
-# exclusion dependent on word order.
+# Emotion-recognition questions are excluded from this supplement. NOT because
+# they are never Article 50 questions — Art. 50(3) binds deployers of an emotion
+# recognition system, and Art. 5(1)(f) prohibits emotion inference only in the
+# workplace and education institutions (medical/safety carve-out), so outside
+# those settings the route is Annex III point 1(c) plus Art. 50(3). They are
+# excluded because this supplement can only append a BARE ``Article 50``, which
+# the grain deepener then resolves to the wrong paragraph (MEASURED R442:
+# ``Article 50.4`` / ``Article 50.1`` instead of 50.3 on emotion rows), and the
+# keyword map already anchors Art. 50 wherever "emotion recognition" appears.
+# On the gold-bearing corpus the order-independent exclusion moved 5 of 7
+# flipped rows toward gold and 1 away. A 50(3)-precise route is the open fix.
+#
+# Checked against the whole input rather than embedded as a negative lookahead:
+# ``re.search`` may start a lookahead match after an earlier emotion term,
+# which made the old exclusion depend on word order.
 _R365_EMOTION_EXCLUDE_RE = re.compile(r"\bemotion\w*", re.IGNORECASE)
 
 #: Every head this module can cause to be emitted, in the INTERNAL KB form.
@@ -419,8 +436,9 @@ def is_fines_prohibited_question(question: str) -> bool:
 def is_biometric_patient_interaction_question(question: str) -> bool:
     """Biometric/patient interaction shape for the Art. 50 supplement.
 
-    Emotion-inference shapes are excluded first because they belong to the
-    Article 5(1)(f) prohibition route. The exclusion is order-independent.
+    Emotion shapes are excluded first, order-independently; see
+    ``_R365_EMOTION_EXCLUDE_RE`` for why (a bare-head precision limit of this
+    supplement, not a claim that emotion recognition escapes Art. 50(3)).
     """
     try:
         if _R365_EMOTION_EXCLUDE_RE.search(str(question or "")):
