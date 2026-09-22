@@ -597,6 +597,59 @@ def _resolve_complex_model() -> str:
         return ""
 
 
+def _route_stage_model(
+    *,
+    complex_question: bool,
+    is_stage2: bool,
+    base_model: str,
+    complex_model: str,
+    stage2_model: str,
+) -> str:
+    """R442 — the ONE model-routing rule both Stage-2 transports apply.
+
+    It was written out inline in ``_openai_wrapper_complete_for_graph_rag`` and
+    ``_anthropic_complete_for_graph_rag``, and the eval preflight derived it a
+    third way (``stage2_model`` alone), so it probed a model the run never sent
+    whenever ``P2P_GRAPH_RAG_COMPLEX_MODEL`` was set: the complex-tier model
+    also WINS on the standard Stage-2 path. That env var is how the Opus 5.5
+    option (``claude-opus-5-5``) is selected, so the drift became live.
+
+      * complex question with a complex model → ``complex_model``
+      * any other Stage-2 call → ``complex_model or stage2_model``, floored to an
+        Opus-family model (R139: the Stage-2 ANSWER is always Opus)
+      * Stage-1 parse / auxiliary calls → ``base_model``
+    """
+    if complex_question and complex_model:
+        return complex_model
+    if is_stage2:
+        model = complex_model or stage2_model or "claude-opus-4-8"
+        return model if "opus" in model.lower() else "claude-opus-4-8"
+    return base_model
+
+
+def effective_stage2_model(*, complex_question: bool = False) -> str:
+    """The model a Stage-2 answer call would send right now (fresh env read).
+
+    Public for the eval preflight, which must probe the model the run actually
+    sends rather than re-deriving it (see ``_route_stage_model``).
+    """
+    try:
+        from app.config import settings
+
+        configured = settings.graph_rag.model
+        stage2_model = getattr(settings.graph_rag, "stage2_model", "") or ""
+    except Exception:  # noqa: BLE001 — mirror the transports' fail-soft read
+        configured = ""
+        stage2_model = ""
+    return _route_stage_model(
+        complex_question=complex_question,
+        is_stage2=True,
+        base_model=configured or "claude-opus-4-8",
+        complex_model=_resolve_complex_model(),
+        stage2_model=stage2_model,
+    )
+
+
 def _opus_for_all_enabled() -> bool:
     """R270 — route STANDARD Stage-2 answers to the complex model (Opus 4.8)
     too, not just ``is_complex_question`` hits. **Default OFF** (standard
@@ -847,14 +900,13 @@ def _openai_wrapper_complete_for_graph_rag(
     #   * Stage-1 / other  → ``base_model``    (Sonnet 4.6)
     # R116 removed the Fable 5 ultra tier.
     is_stage2 = "stage 2" in (stage_name or "").lower()
-    if complex_question and complex_model:
-        model = complex_model
-    elif is_stage2:
-        model = complex_model or stage2_model or "claude-opus-4-8"
-        if not model or "opus" not in model.lower():
-            model = "claude-opus-4-8"
-    else:
-        model = base_model
+    model = _route_stage_model(
+        complex_question=complex_question,
+        is_stage2=is_stage2,
+        base_model=base_model,
+        complex_model=complex_model,
+        stage2_model=stage2_model,
+    )
 
     # R135/R139 — extended-thinking budget for THIS call. Complex questions get
     # the EXTENDED (Opus) ``complex_thinking_tokens``; the standard ~80% Stage-2
@@ -1781,14 +1833,13 @@ def _anthropic_complete_for_graph_rag(
     # ``stage2_model`` (Opus); Stage-1 parse / other → ``base_model`` (Sonnet).
     # R116 removed the Fable 5 ultra tier.
     is_stage2 = "stage 2" in (stage_name or "").lower()
-    if complex_question and complex_model:
-        model = complex_model
-    elif is_stage2:
-        model = complex_model or stage2_model or "claude-opus-4-8"
-        if not model or "opus" not in model.lower():
-            model = "claude-opus-4-8"
-    else:
-        model = base_model
+    model = _route_stage_model(
+        complex_question=complex_question,
+        is_stage2=is_stage2,
+        base_model=base_model,
+        complex_model=complex_model,
+        stage2_model=stage2_model,
+    )
 
     # R135/R139 — same Stage-2-only thinking budget as the wrapper path: complex
     # → EXTENDED ``complex_thinking_tokens`` (Opus); standard Stage-2 → MODERATE

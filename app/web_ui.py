@@ -2007,7 +2007,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     else if (/groq|llama|qwen/i.test(n)) detectedModel = 'groq';
                 });
             }
-            if (!detectedModel && trace.stage2_polish === true) detectedModel = 'claude-opus-4-8'; // default
+            if (!detectedModel && trace.stage2_polish === true) detectedModel = 'claude-opus-5'; // default (GraphRAGSettings.stage2_model)
             if (!detectedModel && trace.stage2_polish === false) detectedModel = 'claude-sonnet-5';
 
             function modelClass(m) {
@@ -2025,6 +2025,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             function modelLabel(m) {
                 if (!m) return 'Sonnet 5';
                 if (/opus.*4.*8/i.test(m)) return '★ Opus 4.8';
+                // R442 — Opus 5.5 (claude-opus-5-5) is a tunnel option via
+                // P2P_GRAPH_RAG_COMPLEX_MODEL; name it rather than a bare "Opus".
+                if (/opus[-_.]?5[-_.]5/i.test(m)) return '★ Opus 5.5';
+                if (/opus[-_.]?5(?![-_.]?[0-9])/i.test(m)) return '★ Opus 5';
                 if (/opus/i.test(m)) return '★ Opus';
                 if (/sonnet.*4/i.test(m)) return 'Sonnet 4.6';
                 if (/sonnet/i.test(m)) return 'Sonnet 5';
