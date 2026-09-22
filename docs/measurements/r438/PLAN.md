@@ -486,12 +486,41 @@ the scoped completeness block renders only when the clause does; 34 contract tes
    expose internal graph errors." The substance (state the narrow unresolved
    condition) is kept, so the R399 assertion on it still holds.
 
-   ⚠ **Prompt-side, default ON → not yet a verdict.** Both changed strings ship in
-   the delivered payload of default-ON gates, so AGENTS.md invariant #5 applies:
-   the pair needs the `gold_dropped_head` / paired-judge gate before any number is
-   quoted. Suggested label `r439-lawform`, 37 strided hard rows, both arms on the
-   same leg, `ans_correctness_*` and tone read row-level (the failure mode is one
-   sentence in a minority of rows, so an aggregate-only read cannot see it).
+   ⚠ **Prompt-side, default ON → not yet a verdict.** Both changed strings ship in the
+   delivered payload of default-ON gates, so AGENTS.md invariant #5 applies: the pair
+   needs the `gold_dropped_head` / paired-judge gate before any number is quoted. Suggested label `r439-lawform`, 37 strided hard rows, both arms on the same leg, `ans_correctness_*` and tone read row-level (the failure mode is one sentence in a minority of rows, so an aggregate-only read cannot see it).
+
+   **R439 measurement completed (2026-09-22):** the powered stratified 40-row
+   replacement sample (`docs/measurements/r439/CHECKPOINT.md`) completed 40/40 in
+   each arm with valid primary transport, but two fallback rows were excluded,
+   leaving easy n=20 / hard n=18. The legal-form text defect did not recur: the
+   deterministic tone heuristic was 100% in both arms and no answer used the
+   retired input-state vocabulary. It nevertheless **does not pass the gate**:
+   hard `gold_dropped_head` was 9 -> 12 (+3), hard Ref Loose 76.85 -> 68.52
+   (-8.33 pp), and hard keyword recall 83.33 -> 66.67 (-16.67 pp); Ref Strict
+   39.92 -> 43.69 (+3.77 pp) had a paired bootstrap CI crossing zero. The split is
+   below the n=30 honesty floor after exclusion, so this is an exploratory failure,
+   not a board-level regression claim. Keep the repair as a defect removal, not a
+   measured strictness win; re-gate with >=30 survivors per split before quoting it.
+
+   **R439.1 shipped (2026-09-22).** The same audit's remaining items are delivered in
+   one commit. (a) `build_evidence_answer_user` re-applies the default-ON
+   `REGENOLD_USER_REF_MINIMALITY` and `REGENOLD_SUBPARAGRAPH_ATTRIBUTION` clauses that
+   the wholesale user-message replacement had been bypassing while both flags stayed
+   in the engine cache key. (b) `answer_need.engaged_coords` no longer lets a bare
+   parent coordinate (`Article 26`) engage its whole closed set for a non-list
+   question, which had been pushing those rows to the 1000-char target ceiling.
+   (c) The Groq shrink's tight branch keeps the question and the core evidence
+   contract before the optional precision clauses — measured unreachable at the
+   shipped tail size (4,102-char tail against the 10,000-char budget, 90-char
+   question head) and therefore behaviour-neutral today, but the old order returned
+   the instructions with the question deleted once the tail outgrew the budget.
+   `REGENOLD_GROUNDED_BRANCH_GUARDS` ships default OFF, so it changes no delivered
+   payload until it earns its own hard-mode paired gate. Items (a) and (b) are
+   default-ON defect repairs with pinned tests, not measured wins, so the next live
+   board must report them as part of the arm's payload rather than as a nil
+   difference. Full suite on the shipped tree: 8642 passed, 2 skipped.
+
 2. **Re-gate the contract on tone**, which is judge-gated and therefore needs a live
    pass: the R423.2 gate's own tone axis was 100 -> 100 on 27 comparable rows, so this
    is a targeted six-row-class check, not a full board.

@@ -2,7 +2,10 @@
 
 Validates prompt compression for Groq context budgets across three layouts:
 1. Multi-turn ("Latest question:") -> trims history prefix, preserves question + tail rules
-2. Single-turn ("ORIGINAL QUESTION:") -> preserves question head + tail rules, compresses middle
+2. Single-turn ("ORIGINAL QUESTION:") -> preserves question head + tail rules, compresses middle;
+   when the question head and the protected tail cannot BOTH fit, R439.1 fixes the
+   precedence: question head, then the core evidence contract, then the optional
+   precision clauses
 3. Unrecognised layout -> preserves tail rules, trims front
 4. Edge cases & regressions (old user[:budget] tail chopping bug, missing markers, tight budgets)
 """
@@ -116,8 +119,17 @@ def test_singleturn_preserves_question_compresses_middle_preserves_tail():
     assert " CRITICAL ANSWER RULES" in result
 
 
-def test_singleturn_tight_budget_trims_question_preserves_tail():
-    """When question head + tail rules exceed budget, question is trimmed to keep tail instructions."""
+def test_singleturn_tight_budget_keeps_question_over_tail():
+    """R439.1 precedence: the question outranks the tail when both cannot fit.
+
+    R341 pinned the reverse (trim the question, keep the tail whole). That order
+    is unreachable at the shipped tail size -- the protected evidence-contract
+    tail measures 4,102 chars against a 10,000-char Groq budget and the question
+    head is ~90 chars -- but if the tail ever grows past the budget the old order
+    returned the INSTRUCTIONS WITH THE QUESTION DELETED, which cannot answer the
+    question at all. Precedence is now: question head, core evidence contract,
+    then optional precision clauses.
+    """
     long_question_header = "ORIGINAL QUESTION: " + ("Extremely long question details " * 50) + "\n\n"
     bulky_middle = "Middle context " * 100
     tail_rules = " CRITICAL ANSWER RULES (these override any conflicting instruction):\nCITE-DESCRIBE MANDATE"
@@ -127,9 +139,37 @@ def test_singleturn_tight_budget_trims_question_preserves_tail():
     budget = len(tail_rules) + 60
     result = _shrink_user_for_groq(full_user, budget=budget)
 
-    assert result.endswith(tail_rules)
+    # The question survives; the tail is what gives way.
     assert result.startswith("ORIGINAL QUESTION:")
+    assert result == long_question_header[:budget]
     assert len(result) == budget
+    assert not result.endswith(tail_rules)
+
+
+def test_tight_budget_sacrifices_optional_clauses_before_the_core_contract():
+    """R439.1: the optional precision clauses go first, then the contract, then the question.
+
+    This is the branch the precedence change exists for: the evidence contract
+    followed by the optional precision clauses (the exact shape
+    ``build_evidence_answer_user`` emits) can exceed the budget, and the core
+    contract must outrank the optional clauses rather than the question.
+    """
+    question_header = "ORIGINAL QUESTION: What does Article 26(6) require?\n\n"
+    tail = (
+        " ANSWER CONTRACT (evidence):\nAnswer only from the supplied provisions.\n"
+        "\n\n REFERENCE MINIMALITY: cite only what the question turns on.\n"
+        "\n\n SUB-PARAGRAPH DISCIPLINE: cite the coordinate that supports the claim.\n"
+    )
+    full_user = f"{question_header}{'Mid context ' * 50}{tail}"
+    budget = len(question_header) + 60  # the question plus only part of the tail fits
+
+    result = _shrink_user_for_groq(full_user, budget=budget)
+
+    assert result.startswith(question_header)
+    assert " ANSWER CONTRACT (evidence):" in result
+    assert len(result) == budget
+    assert " REFERENCE MINIMALITY:" not in result
+    assert " SUB-PARAGRAPH DISCIPLINE:" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +289,12 @@ def test_multiple_tail_markers_earliest_is_protected():
 
 
 def test_budget_smaller_than_tail_rules():
-    """When budget is smaller than tail rules, safely returns sliced tail."""
+    """A budget too small even for the question returns the question prefix.
+
+    R341 returned ``tail[:budget]`` here -- instructions with no ask. R439.1 keeps
+    the question: a Groq leg carrying rules but no question cannot answer it at
+    all, whereas a truncated ask at least identifies what is being asked.
+    """
     tail = " CRITICAL ANSWER RULES (these override):\nRule 1: Be concise."
     full_user = f"ORIGINAL QUESTION: Test\n\nSome context\n{tail}"
     budget = 20
@@ -257,4 +302,5 @@ def test_budget_smaller_than_tail_rules():
     result = _shrink_user_for_groq(full_user, budget=budget)
 
     assert len(result) == budget
-    assert result == tail[:budget]
+    assert result == full_user[:budget]
+    assert result.startswith("ORIGINAL QUESTION:")

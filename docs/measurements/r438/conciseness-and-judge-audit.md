@@ -82,6 +82,37 @@ from the request environment rather than infer it from `/healthz`.
   not infer that a new use is permitted simply because the new use is not an
   Annex I/III route.
 
+## Two engine corrections shipped with this audit (R439.1)
+
+**The Groq shrink's tight branch reversed its precedence.** `_shrink_user_for_groq`
+protects a tail that now begins at ` ANSWER CONTRACT (evidence):`. When the question
+head and that tail could not both fit the budget, the R341 order spent whatever was
+left after the tail on the question and returned `protected_tail[:budget]` once
+nothing was left -- that is, the instructions WITH THE QUESTION DELETED. The order is
+now question head, then the core evidence contract, then the optional precision
+clauses, then, as a last resort, a question prefix.
+
+Measured reachability rather than assumed: on the shipped builder output the tail is
+**4,102 chars** for a deployer-logging ask and **4,038** for an Annex III point 6 ask,
+against a 10,000-char Groq budget with question heads of 90 and 82 chars. The tight
+branch does not fire in production today, and both orders take the same "fits" path,
+so this is behaviour-neutral in the current payload and latent robustness against the
+tail outgrowing the budget. `scratch/r439_groq_shrink_evidence.py` prints the numbers
+and the presence of the question, contract, and each optional clause under both
+policies. The two R341 tests that pinned the old order now pin the new precedence, and
+a new test pins the case the change exists for; the R341 invariant that mattered --
+the tail is never chopped when it fits -- still passes unchanged.
+
+**A bare parent coordinate no longer engages a whole closed set.**
+`answer_need.engaged_coords` treated `parent in ask_coords` as proof that every child
+was requested, so a question such as "does Article 26 require logging?" engaged all
+twelve Article 26 paragraphs and raised the answer target to the 1000-char ceiling --
+recreating the verbosity this contract exists to remove. Engagement now additionally
+requires a list-shaped question
+(`answer_completeness.is_list_question`) or an explicitly named child. This is
+default-ON and changes generation, so it is a defect repair with a pinned test, not a
+measured win, and the next live board must report it as part of the arm's payload.
+
 ## Decision and next gate
 
 The safe fix shipped in source is the lost-clause wiring correction and its
