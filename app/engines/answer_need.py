@@ -289,6 +289,16 @@ def engaged_coords(question: str, references: str = "") -> tuple[str, ...]:
         from app.data.provision_hierarchy import closed_set_members  # noqa: PLC0415
 
         engaged: list[str] = []
+        # A bare parent coordinate is not proof that every child is requested.
+        # Only a list-shaped question, an explicitly named child, or a distinctive
+        # statutory chapeau may engage the whole closed set. The old unconditional
+        # ``parent in ask_coords`` path made questions such as "does Article 26
+        # require logging?" engage all twelve Article 26 paragraphs, which raised
+        # the target to the 1000-character ceiling and recreated the verbosity
+        # problem this contract is meant to solve.
+        from app.engines.answer_completeness import is_list_question  # noqa: PLC0415
+
+        asks_for_set = is_list_question(ask)
         for head in heads:
             try:
                 members = closed_set_members(head)
@@ -296,6 +306,14 @@ def engaged_coords(question: str, references: str = "") -> tuple[str, ...]:
                 continue
             for parent, children in _groups(members):
                 if len(children) < _MIN_GROUP_CHILDREN:
+                    continue
+                explicit_child = any(
+                    coord in ask_coords or any(
+                        path.startswith(coord + ".") for path in ask_coords
+                    )
+                    for coord, _text in children
+                )
+                if parent in ask_coords and not (asks_for_set or explicit_child):
                     continue
                 if not _question_engages(parent, head, children, ask_coords, q_bigrams):
                     continue

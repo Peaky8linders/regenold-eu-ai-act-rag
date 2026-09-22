@@ -111,12 +111,29 @@ def _shrink_user_for_groq(user: str, budget: int = 10000) -> str:
                     return question_head + middle_block[:mid_budget - len(banner)] + banner + protected_tail
                 return question_head + middle_block[:mid_budget] + protected_tail
             return question_head + protected_tail
-        # Even head + tail overflow — keep tail rules (they're the instructions),
-        # trim the question.
-        q_budget = budget - len(protected_tail)
-        if q_budget > 0:
-            return question_head[:q_budget] + protected_tail
-        return protected_tail[:budget]
+        # The protected tail can itself exceed the budget when the evidence
+        # contract is followed by optional precision clauses. Never sacrifice
+        # the question to preserve that tail: keep the question plus the core
+        # evidence contract first, then retain as much optional tail as fits.
+        contract_marker = " ANSWER CONTRACT (evidence):"
+        contract_pos = protected_tail.find(contract_marker)
+        core_tail = protected_tail
+        optional_tail = ""
+        if contract_pos >= 0:
+            core_end = protected_tail.find("\n\n REFERENCE MINIMALITY:", contract_pos)
+            if core_end < 0:
+                core_end = protected_tail.find("\n\n SUB-PARAGRAPH DISCIPLINE:", contract_pos)
+            if core_end >= 0:
+                core_tail = protected_tail[:core_end]
+                optional_tail = protected_tail[core_end:]
+        core_budget = budget - len(question_head)
+        if core_budget > 0:
+            core = core_tail[:core_budget]
+            remaining = budget - len(question_head) - len(core)
+            if remaining > 0 and optional_tail:
+                core += optional_tail[:remaining]
+            return question_head + core
+        return question_head[:budget]
 
     # --- Unrecognised layout: preserve tail rules, trim front ---
     if protected_tail and len(protected_tail) < budget:
