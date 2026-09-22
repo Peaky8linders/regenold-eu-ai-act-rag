@@ -4,6 +4,11 @@
 **Lever under test:** `REGENOLD_GROUNDED_BRANCH_GUARDS` (default **OFF**)
 **Production identity at pre-flight:** `391d886a8ffe` (PR #456 merged).
 
+> **RESULT: NO MEASURED WIN — the lever stays OFF.** The rule below was applied
+to a completed six-pass draw; the refuse rule came back clean, no axis separates
+from zero in the ON arm's favour under either read, and answer conciseness
+separates against it. See [`CHECKPOINT.md`](CHECKPOINT.md).
+
 ## 1. Initial coverage defect and correction
 
 The initial pre-flight found the proposed prompt router silent on 8 of 21 frozen

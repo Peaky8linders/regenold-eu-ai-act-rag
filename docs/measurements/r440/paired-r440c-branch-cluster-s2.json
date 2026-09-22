@@ -1,0 +1,122 @@
+{
+ "arm_a": "score-r440c-branch-cluster-A-hard-s2-hard.json",
+ "arm_b": "score-r440c-branch-cluster-B-hard-s2-hard.json",
+ "shared_rows": 21,
+ "only_in_a": [],
+ "only_in_b": [],
+ "axes": {
+  "ans_correctness_loose": {
+   "n": 21,
+   "mean_a": 98.80952380952381,
+   "mean_b": 98.80952380952381,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "b_better": 0,
+   "a_better": 0,
+   "mcnemar_p": 1.0
+  },
+  "ans_correctness_strict": {
+   "n": 21,
+   "mean_a": 95.23809523809524,
+   "mean_b": 95.23809523809524,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "b_better": 0,
+   "a_better": 0,
+   "mcnemar_p": 1.0
+  },
+  "ans_conciseness": {
+   "n": 21,
+   "mean_a": 75.37394503030404,
+   "mean_b": 75.7986658254937,
+   "delta": 0.4247207951896489,
+   "ci95": [
+    -2.844683102950987,
+    3.5612006036487736
+   ],
+   "b_better": 11,
+   "a_better": 8,
+   "mcnemar_p": 0.6476058959960938
+  },
+  "ref_correctness_loose": {
+   "n": 21,
+   "mean_a": 100.0,
+   "mean_b": 100.0,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "b_better": 0,
+   "a_better": 0,
+   "mcnemar_p": 1.0
+  },
+  "ref_correctness_strict": {
+   "n": 21,
+   "mean_a": 95.23809523809524,
+   "mean_b": 95.23809523809524,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "b_better": 0,
+   "a_better": 0,
+   "mcnemar_p": 1.0
+  },
+  "ref_conciseness": {
+   "n": 21,
+   "mean_a": 58.412698412698404,
+   "mean_b": 58.80952380952381,
+   "delta": 0.3968253968253966,
+   "ci95": [
+    -1.1904761904761898,
+    2.3809523809523796
+   ],
+   "b_better": 1,
+   "a_better": 1,
+   "mcnemar_p": 1.0
+  },
+  "regulatory_tone": {
+   "n": 21,
+   "mean_a": 100.0,
+   "mean_b": 100.0,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "b_better": 0,
+   "a_better": 0,
+   "mcnemar_p": 1.0
+  },
+  "resp_speed": {
+   "n": 21,
+   "mean_a": 72.71750989524715,
+   "mean_b": 75.18879196666724,
+   "delta": 2.471282071420103,
+   "ci95": [
+    0.5096056190335994,
+    4.3658504047586275
+   ],
+   "b_better": 15,
+   "a_better": 6,
+   "mcnemar_p": 0.0783538818359375
+  }
+ },
+ "gold_dropped_head": {
+  "arm_a": 0,
+  "arm_b": 0,
+  "new_drops_in_b": []
+ },
+ "mean_answer_chars": {
+  "arm_a": 949.0952380952381,
+  "arm_b": 929.3809523809524
+ }
+}
