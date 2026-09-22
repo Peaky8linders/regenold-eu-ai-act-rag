@@ -85,56 +85,17 @@ from evals.regenold.official_batch import (
 _FIXED_PREAMBLE_DIGEST = preamble_digest()
 
 _RESULTS = Path(__file__).resolve().parents[1] / "bench" / "results"
-_RUN_LOCK: tuple[Path, int] | None = None
-
-
-def _pid_is_alive(pid: int) -> bool:
-    """Best-effort cross-platform liveness check for an evaluation owner."""
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except (OSError, ProcessLookupError):
-        return False
-    return True
-
-
 def acquire_run_lock(label: str) -> Path:
-    """Own a label before any live draw; refuse duplicate local runners.
+    """Own a label before any live draw; refuse a duplicate live runner.
 
-    The checkpoint files are label-addressed. Two Python interpreters using the
-    same label can interleave rows and make a seemingly complete gate invalid.
-    An exclusive lock catches the exact R436/R437/R440 failure before the first
-    request. A stale lock is removed only when its recorded PID is no longer
-    alive; an active owner always fails closed.
+    R442 — an OS-held lock (``evals.regenold.run_lock``) released by the kernel
+    when this process exits by ANY route. The R440 PID check could not see an
+    owner in another Windows console and read it as stale; see that module.
     """
-    global _RUN_LOCK
-    _RESULTS.mkdir(parents=True, exist_ok=True)
-    lock = _RESULTS / f"official-{label}.run.lock"
-    try:
-        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        try:
-            owner = int(lock.read_text(encoding="utf-8").strip().split(" ", 1)[0])
-        except (OSError, ValueError):
-            owner = -1
-        if _pid_is_alive(owner):
-            raise RuntimeError(
-                f"evaluation label {label!r} is already owned by PID {owner}"
-            ) from None
-        lock.unlink(missing_ok=True)
-        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    os.write(fd, f"{os.getpid()} {time.time():.3f}\n".encode("ascii"))
-    os.close(fd)
-    _RUN_LOCK = (lock, os.getpid())
+    from evals.regenold import run_lock  # noqa: PLC0415
 
-    def release() -> None:
-        global _RUN_LOCK
-        if _RUN_LOCK and _RUN_LOCK[0] == lock:
-            lock.unlink(missing_ok=True)
-            _RUN_LOCK = None
-
-    atexit.register(release)
+    lock = run_lock.acquire(_RESULTS, label)
+    atexit.register(run_lock.release)
     return lock
 
 
