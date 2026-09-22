@@ -778,3 +778,22 @@ def test_wire_refs_all_resolve_in_article_existence(
             assert internal in ARTICLE_EXISTENCE, (
                 f"{ref!r} (head {head!r}) is not in the existence catalog"
             )
+
+
+def test_emotion_exclusion_is_independent_of_word_order() -> None:
+    """Emotion recognition must stay on the Article 5 route in either order."""
+    emotion_last = (
+        "Is an AI system that infers patients' emotions for a medical "
+        "purpose prohibited under Article 5?"
+    )
+    emotion_first = (
+        "We use emotion recognition in a medical-device AI to monitor pain "
+        "in non-verbal patients. Is that prohibited?"
+    )
+    assert rc.is_biometric_patient_interaction_question(emotion_last) is False
+    assert rc.is_biometric_patient_interaction_question(emotion_first) is False
+
+
+def test_non_emotion_biometric_interaction_still_triggers() -> None:
+    """The exclusion must not disable the intended biometric trigger."""
+    assert rc.is_biometric_patient_interaction_question(Q_BIOMETRIC) is True

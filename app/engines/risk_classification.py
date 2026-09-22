@@ -244,10 +244,16 @@ _R365_BIO_PATIENT_RE = re.compile(
     r"(?=.*\b(?:biometric\w*|patient\w*|clinical trial\b|recruit\w*|"
     r"select and recruit\b|eligib\w*)\b)"
     r"(?=.*\b(?:prohibit\w*|verif\w*|interact\w*|directly\b|disclos\w*|"
-    r"inform\w*|expos\w*)\b)"
-    r"(?!.*\bemotion\w*)",
+    r"inform\w*|expos\w*)\b)",
     re.IGNORECASE,
 )
+
+# Emotion-inference questions are Article 5(1)(f) prohibition questions, not
+# Article 50 transparency questions. This is intentionally checked against the
+# whole input rather than embedded as a negative lookahead: ``re.search`` may
+# start a lookahead match after an earlier emotion term, making the old
+# exclusion dependent on word order.
+_R365_EMOTION_EXCLUDE_RE = re.compile(r"\bemotion\w*", re.IGNORECASE)
 
 #: Every head this module can cause to be emitted, in the INTERNAL KB form.
 #: AGENTS.md invariant #2 (the 126-reference lint floor) is asserted over
@@ -411,5 +417,14 @@ def is_fines_prohibited_question(question: str) -> bool:
 
 
 def is_biometric_patient_interaction_question(question: str) -> bool:
-    """Biometric/patient system interacting with natural persons (Art. 50)."""
+    """Biometric/patient interaction shape for the Art. 50 supplement.
+
+    Emotion-inference shapes are excluded first because they belong to the
+    Article 5(1)(f) prohibition route. The exclusion is order-independent.
+    """
+    try:
+        if _R365_EMOTION_EXCLUDE_RE.search(str(question or "")):
+            return False
+    except Exception:  # noqa: BLE001 — a trigger must never break parse
+        return False
     return _fires(_R365_BIO_PATIENT_RE, question, "trigger_biometric")
