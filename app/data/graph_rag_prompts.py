@@ -569,6 +569,37 @@ def completeness_verifier_enabled() -> bool:
 # REJECTED as fatally inflationary because it triggered on "when the supplied
 # text names..." (scoped to the over-retrieved block, not to the question),
 # which directly contradicts USER_REF_MINIMALITY_CLAUSE above.
+# ── R438.1 — the UNSETTLED-POINT RULE has ONE form, not two ────────────────
+#
+# Every clause that tells the model what to do when the statute does not settle
+# a point must render THIS string. Two clauses in the delivered Stage-2 payload
+# speak to that act, and before R438.1 they gave opposite instructions:
+#
+#   * ``EVIDENCE_ANSWER_CONTRACT`` (default ON) said "State the narrow unresolved
+#     condition if the evidence is insufficient" -- an INPUT-state trigger;
+#   * ``answer_need.shape_directive``'s last bullet, in BOTH branches, said "If a
+#     limb above has no supporting text in the evidence, say so in one sentence
+#     instead of padding." -- which is precisely the remark-about-your-own-inputs
+#     this clause forbids.
+#
+# The cost is measured, not theoretical. Row-level audit of the R435 need-gate
+# arms (``docs/measurements/r435/CHECKPOINT.md``, arm B = contract ON): the
+# contract's own ON answers emit that sentence -- "the Article 27 limbs
+# identified in the answer shape ... have no supporting text in the evidence
+# supplied" (rg_034), "the engaged items identified as Article 10(5), points (a)
+# to (f), have no supporting text in the evidence before me" (rg_064) -- on 2 of
+# 6 audited rows against 0 of 6 in the OFF arm, and the graded failure that
+# carries the -16.67 pp Ref. Strict and -33.33 pp Tone in that checkpoint is a
+# self-referential commentary failure, not a citation error.
+#
+# Sharing one constant is what makes the two clauses unable to contradict: a
+# reword of either one, independently, now breaks
+# ``tests/test_r423_need_proportional_contract.py``'s §5 pin.
+UNSETTLED_POINT_RULE = (
+    "say so as a matter of LAW -- 'the Act does not specify X' -- and NEVER as a "
+    "matter of your own sources"
+)
+
 USER_ANSWER_COVERAGE_CLAUSE = (
     " ANSWER COVERAGE: cover the content the question actually asks for, in the "
     "Act's own words. This is never a licence to cite or to describe more "
@@ -591,8 +622,7 @@ USER_ANSWER_COVERAGE_CLAUSE = (
     "room by cutting: delete sentences about supplied provisions the question "
     "did not ask about, and keep the whole answer as short as full coverage "
     "allows. Assert only what the supplied text states. If it does not settle a "
-    "point, say so as a matter of LAW -- 'the Act does not specify X' -- and "
-    "NEVER as a matter of your own sources: do not mention the references, "
+    "point, " + UNSETTLED_POINT_RULE + ": do not mention the references, "
     "provisions or material supplied to you, what was or was not retrieved, or "
     "how complete your inputs are. The reader sees only the answer, so a remark "
     "about your inputs is unanswerable to them, and it is self-contradictory "
@@ -771,7 +801,7 @@ USER_SCOPE_STOP_CLAUSE = (
 
 
 # R340 — V2 prompt variants.
-USER_ANSWER_COVERAGE_CLAUSE_V2 = " ANSWER COVERAGE: cover the content the question actually asks for, in the Act's own words. This is never a licence to cite or to describe more provisions, and it does not relax the reference minimality rule. Draw every point below from the supplied text of provisions you were already going to cite. Naming a member, condition, exception or limb inside such a provision adds no new reference. Close the literal question: a yes or no question states Yes or No, a how many or how long question states the number, a which or list question names them, and a question with a second limb answers that limb too. Correct discussion of neighbouring law that never states the thing asked is a failure. Do not announce a count, or say that exceptions or further duties exist, and then leave them unnamed. Where the question's subject IS an enumerated statutory set, name every member the supplied text states, as short labels packed into ONE compact comma-separated sentence, never as lettered or semicolon-separated items. Where the supplied text qualifies something you assert with a proviso, carve-out or exception, state that qualifier in the same sentence: an unqualified statement of a qualified rule is wrong. Where the supplied text of something you name is satisfied by either of two alternative limbs, as in 'either or both of the following', name both limbs in the same clause: naming one states a narrower rule than the Act does. Name obligations, roles and risk tiers as the Act names them rather than paraphrasing. Find the room by cutting: delete sentences about supplied provisions the question did not ask about, but NEVER cut or truncate mandatory statutory criteria, conditions, or exceptions the question asks about, and keep the whole answer as short as full coverage allows. Assert only what the supplied text states. If it does not settle a point, say so as a matter of LAW -- 'the Act does not specify X' -- and NEVER as a matter of your own sources: do not mention the references, provisions or material supplied to you, what was or was not retrieved, or how complete your inputs are. The reader sees only the answer, so a remark about your inputs is unanswerable to them, and it is self-contradictory whenever the answer cites the very provision it claims to be missing. LEGAL VERSION: apply Regulation (EU) 2024/1689 as adopted; the Digital Omnibus (2026/1744) is out of scope. Never adopt its deferred dates, small mid-cap category or lettered articles, even from memory: say they fall outside the version applied here, then answer from the adopted text.\n"
+USER_ANSWER_COVERAGE_CLAUSE_V2 = " ANSWER COVERAGE: cover the content the question actually asks for, in the Act's own words. This is never a licence to cite or to describe more provisions, and it does not relax the reference minimality rule. Draw every point below from the supplied text of provisions you were already going to cite. Naming a member, condition, exception or limb inside such a provision adds no new reference. Close the literal question: a yes or no question states Yes or No, a how many or how long question states the number, a which or list question names them, and a question with a second limb answers that limb too. Correct discussion of neighbouring law that never states the thing asked is a failure. Do not announce a count, or say that exceptions or further duties exist, and then leave them unnamed. Where the question's subject IS an enumerated statutory set, name every member the supplied text states, as short labels packed into ONE compact comma-separated sentence, never as lettered or semicolon-separated items. Where the supplied text qualifies something you assert with a proviso, carve-out or exception, state that qualifier in the same sentence: an unqualified statement of a qualified rule is wrong. Where the supplied text of something you name is satisfied by either of two alternative limbs, as in 'either or both of the following', name both limbs in the same clause: naming one states a narrower rule than the Act does. Name obligations, roles and risk tiers as the Act names them rather than paraphrasing. Find the room by cutting: delete sentences about supplied provisions the question did not ask about, but NEVER cut or truncate mandatory statutory criteria, conditions, or exceptions the question asks about, and keep the whole answer as short as full coverage allows. Assert only what the supplied text states. If it does not settle a point, " + UNSETTLED_POINT_RULE + ": do not mention the references, provisions or material supplied to you, what was or was not retrieved, or how complete your inputs are. The reader sees only the answer, so a remark about your inputs is unanswerable to them, and it is self-contradictory whenever the answer cites the very provision it claims to be missing. LEGAL VERSION: apply Regulation (EU) 2024/1689 as adopted; the Digital Omnibus (2026/1744) is out of scope. Never adopt its deferred dates, small mid-cap category or lettered articles, even from memory: say they fall outside the version applied here, then answer from the adopted text.\n"
 
 USER_REF_MINIMALITY_CLAUSE_V2 = " REFERENCE MINIMALITY: the EU AI ACT REFERENCES block is over-retrieved candidate context, NOT an agenda. Cite and describe ONLY the provisions this question actually turns on, the ones a lawyer would put in the citation line for THIS question. Test every candidate: if removing it would not change the answer, do not cite it and do not describe it. In particular do NOT cite the classification apparatus (Article 6, Annex I, Annex III) or the high-risk requirement chain (Articles 9 to 15) merely because the system happens to be high-risk; cite them only when the question is ABOUT classification or about that specific requirement. Do not append EU database registration (Article 49), declaration of conformity (Article 47), or CE marking (Article 48) unless the question specifically asks about registration, formalities, or market placement procedure. Describing everything supplied is over-citation and is penalised. Name each provision you do cite immediately beside what it requires, in the same clause: a bare number in a list or in a range does not count as cited and does not reach the reader. Cite a provision only where the question's own facts establish the condition that provision itself requires; if the only way to state it is 'where', 'if' or 'to the extent that' some fact the question never gave, leave the provision and its sentence out. This does not restrict the provision supplying the verdict asked for, which may be stated conditionally. When you rule a tier, route or use case OUT, name it in words rather than by number unless the question itself named that provision, because a number you write is a citation whether you affirm the provision or reject it.\n"
 
@@ -1129,7 +1159,8 @@ Preserve the rule's actor, scope, alternatives, exceptions and required dates.
 For a requested statutory list, include every member as a short noun phrase;
 do not replace members with examples. Missing graph links prove neither that
 an exception exists nor that the Act contains none. State the narrow unresolved
-condition if the evidence is insufficient; never expose internal graph errors.
+condition where a point does not settle, but """ + UNSETTLED_POINT_RULE + """: never
+expose internal graph errors.
 
 Answer only the current substantive question, leading with its conclusion.
 Prior turns resolve facts and pronouns; a bare challenge adds no new topic.

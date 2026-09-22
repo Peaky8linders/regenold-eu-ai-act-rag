@@ -49,6 +49,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from app.data.graph_rag_prompts import UNSETTLED_POINT_RULE
 from app.engines.answer_completeness import (
     _MIN_GROUP_CHILDREN,
     _ask_text,
@@ -137,6 +138,26 @@ _MAX_ITEMS = 12
 #: defect this module's FIRST calibration actually was (see ``_TARGET_BASE_CHARS``
 #: above).
 _TARGET_NO_SIGNAL_CHARS = 650
+
+#: R438.1 — the UNSETTLED-POINT bullet, rendered from the ONE shared rule string.
+#:
+#: It used to read "If a limb above has no supporting text in the evidence, say
+#: so in one sentence instead of padding." -- an instruction to describe the
+#: MODEL'S OWN INPUTS, which is the one form the delivered contract forbids (see
+#: :data:`app.data.graph_rag_prompts.UNSETTLED_POINT_RULE`). The cost was
+#: measured on the wrapper arm: the answers that failed R435's Ref. Strict and
+#: Tone axes did it with exactly that sentence ("...have no supporting text in
+#: the evidence supplied"), which is a self-referential-commentary failure, not a
+#: citation error.
+#:
+#: Substance is unchanged -- say what did not settle, once, instead of padding --
+#: and only the FORM moves to the legal one. Rendered from the same constant the
+#: coverage clause and the evidence contract use, so the three cannot drift into
+#: opposite instructions again.
+_UNSETTLED_BULLET = (
+    "* If the supplied text does not settle a limb above, " + UNSETTLED_POINT_RULE
+    + ", and keep it to one sentence instead of padding."
+)
 
 
 def need_proportional_contract_enabled() -> bool:
@@ -399,8 +420,7 @@ def shape_directive(need: AnswerNeed) -> str:
             "* Length is scored against a concise reference answer: stating a limb "
             "that does not decide the answer costs exactly what omitting one that "
             "does costs.",
-            "* If a limb above has no supporting text in the evidence, say so in one "
-            "sentence instead of padding.",
+            _UNSETTLED_BULLET,
         ])
     items = ", ".join(need.engaged) if need.engaged else ", ".join(need.asked)
     items = items or "the single provision the ask names"
@@ -414,8 +434,7 @@ def shape_directive(need: AnswerNeed) -> str:
         "do not enumerate them, and do not add adjacent duties that were not asked.",
         "* Length is scored against a concise reference answer, so stating an "
         "unasked limb lowers the score exactly as omitting an asked one does.",
-        "* If a limb above has no supporting text in the evidence, say so in one "
-        "sentence instead of padding.",
+        _UNSETTLED_BULLET,
     ]
     return "\n".join(lines)
 

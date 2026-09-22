@@ -79,6 +79,15 @@ def test_transport_budget_keeps_the_authority_and_conciseness_contract():
 
 
 def test_missing_evidence_is_not_a_legal_verdict():
+    """An unsettled point is reported as law, never as a remark about inputs.
+
+    R438.1 — the contract's second sentence used to trigger on the model's OWN
+    state ("if the evidence is insufficient"), which is the form the coverage
+    clause forbids and which R435's row-level audit caught the answers using
+    ("...have no supporting text in the evidence supplied"). The instruction to
+    state the narrow unresolved condition is KEPT; only its trigger and its form
+    move to the one shared rule, ``UNSETTLED_POINT_RULE``.
+    """
     user = prompts.build_evidence_answer_user(
         "Does it apply?", "No matching evidence.",
         rewritten_question="Does Article 26 apply to this operator?",
@@ -86,6 +95,8 @@ def test_missing_evidence_is_not_a_legal_verdict():
     assert "REWRITTEN / SEARCH QUESTION: Does Article 26" in user
     assert "State the narrow unresolved" in user
     assert "Recitals interpret rules" in user
+    assert prompts.UNSETTLED_POINT_RULE in prompts.EVIDENCE_ANSWER_CONTRACT
+    assert "if the evidence is insufficient" not in prompts.EVIDENCE_ANSWER_CONTRACT
 
 
 def test_the_legal_version_is_pinned_to_the_adopted_act():

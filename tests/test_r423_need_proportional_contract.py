@@ -19,6 +19,10 @@ comment:
    read it as "short". The first gate put its entire correctness cost on exactly
    two such rows, so the floor, the clause and the skeleton's prohibition are all
    pinned against the two real gold asks below.
+5. **One form for an unsettled point (R438.1).** Every clause that tells the
+   model what to write when the statute does not settle a point renders ONE
+   shared string, because two of them used to give opposite instructions in the
+   same dispatched payload (see section 3c).
 
 The last section pins the harness side: ``--repeats`` exists, ``--help`` renders
 (argparse interpolates ``%`` in help strings and a bare percent there takes the
@@ -314,6 +318,140 @@ def test_cache_key_registers_the_lever() -> None:
     source = (REPO / "app" / "routes" / "regenold.py").read_text(encoding="utf-8")
     marker = source.index("def _engine_cache_key")
     assert _ENV in source[marker : marker + 40000]
+
+
+# ── 3c. R438.1 — ONE form for the unsettled-point rule ──────────────
+#
+# R435's row-level audit (``docs/measurements/r435/CHECKPOINT.md``, arm B = this
+# contract ON) found the delivered Stage-2 payload contradicting itself. The need
+# clause's last bullet told the model to report that a limb "has no supporting
+# text in the evidence", while the delivered clauses forbid exactly that form:
+# the evidence contract asked for "the narrow unresolved condition if the evidence
+# is insufficient", and the coverage clause -- which owns the rule -- requires the
+# legal form and permits no remark about the model's own sources.
+#
+# It is not a wording quibble. The two audited rows that lost Ref. Strict and
+# Tone in that checkpoint emitted precisely that sentence:
+#
+#   rg_034  "the Article 27 limbs identified in the answer shape ... have no
+#            supporting text in the evidence supplied"
+#   rg_064  "the engaged items identified as Article 10(5), points (a) to (f),
+#            have no supporting text in the evidence before me"
+#
+# 2 of 6 audited ON rows, against 0 of 6 in the OFF arm. That is self-referential
+# commentary, which the judge penalises on Tone and which cannot help a citation
+# axis, so the round cost was a defect and not a trade.
+#
+# The repair is one shared string (``UNSETTLED_POINT_RULE``). These tests pin the
+# property that matters -- every clause that speaks to an unsettled point renders
+# the SAME sentence -- because a reword of either clause, independently, is how
+# the contradiction got in.
+
+#: Tell-tale vocabulary of the FORBIDDEN form: a sentence that describes the
+#: model's own inputs (what was retrieved, supplied, or missing) instead of the
+#: law. Asserted NEGATIVELY against the need clause's bullet and against the
+#: specific retired sentences in the dispatched payload -- never against a whole
+#: clause body, because the coverage clause names these things inside its own
+#: prohibition, and the evidence contract says "A retrieved node is a candidate".
+_INPUT_STATE_TELLS = (
+    "supporting text",
+    "in the evidence",
+    "before me",
+    "supplied to you",
+    "inputs are",
+)
+
+#: The retired instruction, verbatim, so a re-introduction is caught wherever it
+#: lands. It is the only sentence that ever told the model to narrate retrieval.
+_RETIRED_BULLET = (
+    "If a limb above has no supporting text in the evidence, say so in one "
+    "sentence instead of padding."
+)
+
+
+def test_the_unsettled_point_rule_is_one_shared_string() -> None:
+    """The norm lives in ONE object, and every clause that needs it renders it.
+
+    Containment of the identical string is the drift guard: rewording any single
+    clause's legal form independently -- which is exactly how the need clause
+    came to contradict the contract -- drops that clause out of this assertion.
+    """
+    from app.data import graph_rag_prompts as prompts
+
+    rule = prompts.UNSETTLED_POINT_RULE
+    assert rule.strip() == rule, "the rule is spliced into prose; no stray space"
+    assert "as a matter of LAW" in rule
+    assert "NEVER as a matter of your own sources" in rule
+    # The coverage clause is the clause that OWNS the rule...
+    assert rule in prompts.USER_ANSWER_COVERAGE_CLAUSE
+    assert rule in prompts.USER_ANSWER_COVERAGE_CLAUSE_V2
+    # ...and these two must state the same rule, not a paraphrase of it.
+    assert rule in prompts.EVIDENCE_ANSWER_CONTRACT
+    assert rule in need._UNSETTLED_BULLET
+
+
+def test_the_coverage_clauses_are_still_byte_identical() -> None:
+    """R438.1 spliced a shared constant into two shipped literals.
+
+    Both coverage clauses are delivered prompt text with their own flag
+    (``REGENOLD_PROMPT_V2``), so the shared-constant refactor had to be a pure
+    no-op on the bytes. These are the pre-refactor hashes.
+    """
+    import hashlib
+
+    from app.data import graph_rag_prompts as prompts
+
+    assert hashlib.sha256(
+        prompts.USER_ANSWER_COVERAGE_CLAUSE.encode()
+    ).hexdigest().startswith("01d083c2c3df156a")
+    assert hashlib.sha256(
+        prompts.USER_ANSWER_COVERAGE_CLAUSE_V2.encode()
+    ).hexdigest().startswith("d2f89bb4cc0bbe77")
+
+
+@pytest.mark.parametrize(
+    "ask,refs",
+    [(_ARTICLE_13_ASK, _ARTICLE_13_REFS), (_RG_010_ASK, "")],
+    ids=["anchored", "unanchored"],
+)
+def test_the_bullet_states_the_law_and_never_the_inputs(
+    monkeypatch: pytest.MonkeyPatch, ask: str, refs: str
+) -> None:
+    """Both branches of ``shape_directive``, because both carried the defect."""
+    monkeypatch.setenv(_ENV, "1")
+    clause = need.need_proportional_block(ask, refs)
+    bullet = [line for line in clause.splitlines() if "does not settle" in line]
+    assert len(bullet) == 1, "the clause must state the unsettled-point rule once"
+    line = bullet[0]
+    # Same object as every other clause's rule, spelled the same way.
+    assert need.UNSETTLED_POINT_RULE in line
+    for tell in _INPUT_STATE_TELLS:
+        assert tell not in line, f"the bullet narrates the inputs: {tell!r}"
+
+
+def test_the_dispatched_payload_cannot_contradict_itself(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The pair that actually ships together: contract + need clause.
+
+    This is the assertion the R435 audit implies: on the wrapper leg the model
+    receives ONE user message, so the contract and the shape clause must not give
+    it opposite instructions about what to write when the statute does not settle
+    a point. Both now carry the legal form, and neither carries the retired
+    input-state sentence.
+    """
+    monkeypatch.setenv(_ENV, "1")
+    message = build_evidence_answer_user(_ARTICLE_13_ASK, _ARTICLE_13_REFS)
+    assert EVIDENCE_ANSWER_CONTRACT in message
+    assert "ANSWER SHAPE" in message
+    assert need.UNSETTLED_POINT_RULE in message
+    assert _RETIRED_BULLET not in message
+    assert "if the evidence is insufficient" not in message
+    # The prohibition survives where it belongs -- the coverage clause still
+    # names the material it forbids mentioning, so this is not a ban on the ban.
+    from app.data.graph_rag_prompts import USER_ANSWER_COVERAGE_CLAUSE
+
+    assert "do not mention the references" in USER_ANSWER_COVERAGE_CLAUSE
 
 
 # ── 4. Harness: independent generations per row per arm ─────────────────────
