@@ -1679,6 +1679,8 @@ def _engine_cache_key(
             # in-process A/B serves arm A's cached engine output to arm B, the
             # R263.2 cache-poisoning bug.
             "REGENOLD_NEED_PROPORTIONAL_CONTRACT",
+            # R438 — branch-specific statutory guard; prompt-side and default OFF.
+            "REGENOLD_GROUNDED_BRANCH_GUARDS",
             # R399 - rarity-weighted paragraph selection. Decides WHICH
             # verbatim paragraphs reach Stage-2, so it is response- and
             # reference-affecting for the same reason the three above are.

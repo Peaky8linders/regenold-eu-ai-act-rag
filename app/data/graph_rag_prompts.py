@@ -1346,6 +1346,102 @@ def evidence_contract_enabled() -> bool:
     )
 
 
+def grounded_branch_guards_enabled() -> bool:
+    """Whether the evidence-backed branch guard is delivered to Stage 2.
+
+    This is deliberately default-OFF: it changes generation and therefore the
+    answer and wire references. It must earn a hard-mode paired gate before
+    becoming a production default, just like the other prompt-side levers.
+    """
+    import os
+
+    return os.getenv("REGENOLD_GROUNDED_BRANCH_GUARDS", "0").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+
+
+def _grounded_branch_guard(question: str) -> str:
+    """Return only the statutory branch guard engaged by this question.
+
+    The evidence contract replaced the old broad instruction stack, but that
+    also removed several high-value branch facts. The latest judge remarks
+    cluster exactly there (Article 50 paragraphs, Article 6 routes, roles and
+    Article 26). Keep the repair narrow: emit a guard only when the question
+    names the branch, and state only facts present in the adopted-text prompt
+    rules above. This is generation guidance, not a new citation source.
+    """
+    low = (question or "").lower()
+    guards: list[str] = []
+    if any(token in low for token in ("article 50", "deepfake", "artificial nature", "ai-generated")):
+        guards.append(
+            "ARTICLE 50 BRANCH: distinguish paragraphs 50(1)–(5) and the actor "
+            "they bind. For a deepfake, Article 50(4) requires disclosure of the "
+            "artificial generation or manipulation; where the content forms part "
+            "of an evidently artistic, creative, satirical, fictional or analogous "
+            "work or programme, the disclosure is limited to the existence of the "
+            "generated content in a manner that does not hamper display or "
+            "enjoyment. The law-enforcement use authorised by law is a separate "
+            "full exception, and Article 50(5) governs when and how information is "
+            "provided. Apply the artistic/analogous condition to the actual work, "
+            "not to the purpose label alone."
+        )
+    if any(token in low for token in ("article 26", "instructions for use", "keep logs", "logging")):
+        guards.append(
+            "DEPLOYER BRANCH: Article 26(1) requires use of a high-risk system "
+            "in accordance with its instructions for use; a new use is not excused "
+            "merely because it would not independently fall under Annex III. "
+            "Article 26(6) requires automatically generated logs under the "
+            "deployer's control to be kept for at least six months, subject to "
+            "the statutory qualification."
+        )
+    if any(token in low for token in ("distributor", "importer", "jeopard", "storage or transport")):
+        guards.append(
+            "ROLE BRANCH: Article 23(4) is the importer limb and Article 24(3) "
+            "is the distributor limb; while the high-risk system is under the "
+            "respective actor's responsibility, storage or transport conditions "
+            "must not jeopardise compliance with Chapter III Section 2. Do not "
+            "collapse importer or distributor into the generic word operator."
+        )
+    if any(token in low for token in ("annex iii", "high-risk classification", "high risk classification", "clinician", "medical decision", "potentially high-risk", "potentially high risk")):
+        guards.append(
+            "CLASSIFICATION BRANCH: keep the two Article 6 routes separate: "
+            "Article 6(1) concerns Annex I product-safety systems requiring "
+            "third-party conformity assessment, while Article 6(2) concerns the "
+            "Annex III use cases. Article 6(3) is a narrow derogation subject to "
+            "its no-significant-risk and no-material-influence conditions and does "
+            "not apply to profiling of natural persons."
+        )
+    if (
+        "law enforcement" in low
+        or "polic" in low
+        or "criminal" in low
+        or ("point 6" in low and "annex iii" in low)
+        or "supermarket" in low
+    ):
+        guards.append(
+            "AUTHORITY-NEXUS BRANCH: Annex III point 6 applies only to systems "
+            "used by or on behalf of law-enforcement authorities, or by Union "
+            "bodies supporting them; resemblance to investigation or policing is "
+            "not itself that authority nexus."
+        )
+    if "article 9" in low or "risk management system" in low:
+        guards.append(
+            "ARTICLE 9 STRUCTURE: Article 9 requires a continuous risk-management "
+            "system for high-risk AI; its four steps are identify and analyse "
+            "risks, estimate and evaluate intended-use and foreseeable-misuse "
+            "risks, evaluate further risks from post-market monitoring, and adopt "
+            "targeted risk-management measures."
+        )
+    if "article 80" in low or "market surveillance authority" in low or "corrective action" in low:
+        guards.append(
+            "ARTICLE 80 BRANCH: under Article 80(2) the market-surveillance "
+            "authority prescribes a period for the provider to bring the system "
+            "into compliance and take corrective action; do not replace that "
+            "authority-set period with an automatic gravity-based deadline."
+        )
+    return "\n\nGROUNDED BRANCH GUARDS (use only the branch the question engages):\n" + "\n".join(guards) if guards else ""
+
+
 def build_evidence_answer_user(
     question: str, references: str, *, rewritten_question: str = "",
     system_description: str = "",
@@ -1396,4 +1492,31 @@ def build_evidence_answer_user(
         parts.append(EVIDENCE_ANSWER_CONTRACT_WITH_COMPLETENESS)
     else:
         parts.append(EVIDENCE_ANSWER_CONTRACT)
+    # The evidence contract replaces the older USER-channel stack in the
+    # engine. Re-apply the two still-supported precision clauses here, otherwise
+    # their default-ON flags are silently bypassed by this replacement path.
+    # This is wiring, not a new policy: both clauses already existed and are
+    # independently cache-keyed. Prompt V3 owns its own consolidated versions.
+    if not _prompt_v2_enabled():
+        # The evidence contract is already a compact replacement for the old
+        # instruction stack. Re-apply the two live-channel disciplines in their
+        # compact forms here; appending the historical ~1.4k of duplicate prose
+        # would undo the very answer-length win this path is meant to preserve.
+        if user_ref_minimality_enabled():
+            parts.append(
+                " REFERENCE MINIMALITY: the references block is candidate context, "
+                "not an agenda. Cite only provisions this question turns on and "
+                "describe each cited provision; do not survey adjacent law or "
+                "cite a provision merely because it was retrieved.\n"
+            )
+        if subparagraph_attribution_enabled():
+            parts.append(
+                " SUB-PARAGRAPH DISCIPLINE: use an exact sub-paragraph only when "
+                "the supplied text supports it; otherwise cite the parent. Do not "
+                "invent coordinates or enumerate a set the question did not ask for.\n"
+            )
+    if grounded_branch_guards_enabled():
+        branch_guard = _grounded_branch_guard(question)
+        if branch_guard:
+            parts.append(branch_guard)
     return "\n\n".join(parts)

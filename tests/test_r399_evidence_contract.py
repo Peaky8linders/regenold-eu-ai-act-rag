@@ -1,5 +1,6 @@
 """The blueprint's synthesis contract must reach the actual Stage-2 dispatch."""
 import pytest
+
 from app.data import graph_rag_prompts as prompts
 from app.engines import _graph_rag_impl as impl
 from app.engines.prompt_budget import _shrink_user_for_groq
@@ -119,6 +120,73 @@ def test_the_legal_version_is_pinned_to_the_adopted_act():
         r"\b(January|February|March|April|May|June|July|August|September|October|November|December)\b",
         body,
     ), "no month name"
+
+
+@pytest.mark.parametrize(
+    ("question", "required", "forbidden"),
+    [
+        (
+            "Can we use the AI system outside its intended use and do we keep logs under Article 26?",
+            "Article 26(1)",
+            "Article 50 BRANCH",
+        ),
+        (
+            "I am a distributor and was not told whether the system is high-risk; what about an importer?",
+            "Article 23(4)",
+            "Article 50 BRANCH",
+        ),
+        (
+            "Is an AI system used by a supermarket high-risk under Annex III point 6?",
+            "AUTHORITY-NEXUS BRANCH",
+            "Article 50 BRANCH",
+        ),
+        (
+            "Does Article 50(4) require disclosure for an artistic deepfake?",
+            "ARTICLE 50 BRANCH",
+            "Article 26(1)",
+        ),
+    ],
+)
+def test_evidence_contract_adds_only_the_engaged_branch_guard(
+    question, required, forbidden, monkeypatch
+):
+    """The judge's branch failures must reach the live user channel without
+    reintroducing the old all-topics prompt stack."""
+    monkeypatch.setenv("REGENOLD_GROUNDED_BRANCH_GUARDS", "1")
+    message = prompts.build_evidence_answer_user(question, "Article 26.1 Article 50.4")
+    assert required in message
+    assert forbidden not in message
+
+
+def test_branch_guard_is_grounded_and_concise():
+    from app.data.graph_rag_prompts import _grounded_branch_guard
+
+    guard = _grounded_branch_guard("Article 50(4) artistic deepfake")
+    assert "display or enjoyment" in guard
+    assert "law-enforcement" in guard
+    assert "Article 50(5)" in guard
+    assert len(guard) < 1100
+    assert "knowledge graph" not in guard.lower()
+
+
+def test_evidence_contract_does_not_drop_existing_precision_clauses(monkeypatch):
+    """The evidence-contract replacement must preserve the default-on clauses.
+
+    Before this assertion, the engine appended reference minimality and
+    sub-paragraph discipline to the old user message, then replaced that entire
+    message with ``build_evidence_answer_user``. The flags were in the cache key
+    but had no effect on the production path.
+    """
+    monkeypatch.delenv("REGENOLD_PROMPT_V2", raising=False)
+    monkeypatch.setenv("REGENOLD_USER_REF_MINIMALITY", "1")
+    monkeypatch.setenv("REGENOLD_SUBPARAGRAPH_ATTRIBUTION", "1")
+    message = prompts.build_evidence_answer_user(
+        "Does Article 50(4) require disclosure for a deepfake?",
+        "Article 50.4\nArticle 50.5",
+    )
+    assert "REFERENCE MINIMALITY" in message
+    assert "SUB-PARAGRAPH DISCIPLINE" in message
+    assert "Article 50(4)" in message
 
 
 def test_the_builder_takes_no_dead_parameters():
