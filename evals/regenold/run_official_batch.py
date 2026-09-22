@@ -85,56 +85,17 @@ from evals.regenold.official_batch import (
 _FIXED_PREAMBLE_DIGEST = preamble_digest()
 
 _RESULTS = Path(__file__).resolve().parents[1] / "bench" / "results"
-_RUN_LOCK: tuple[Path, int] | None = None
-
-
-def _pid_is_alive(pid: int) -> bool:
-    """Best-effort cross-platform liveness check for an evaluation owner."""
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except (OSError, ProcessLookupError):
-        return False
-    return True
-
-
 def acquire_run_lock(label: str) -> Path:
-    """Own a label before any live draw; refuse duplicate local runners.
+    """Own a label before any live draw; refuse a duplicate live runner.
 
-    The checkpoint files are label-addressed. Two Python interpreters using the
-    same label can interleave rows and make a seemingly complete gate invalid.
-    An exclusive lock catches the exact R436/R437/R440 failure before the first
-    request. A stale lock is removed only when its recorded PID is no longer
-    alive; an active owner always fails closed.
+    R442 — an OS-held lock (``evals.regenold.run_lock``) released by the kernel
+    when this process exits by ANY route. The R440 PID check could not see an
+    owner in another Windows console and read it as stale; see that module.
     """
-    global _RUN_LOCK
-    _RESULTS.mkdir(parents=True, exist_ok=True)
-    lock = _RESULTS / f"official-{label}.run.lock"
-    try:
-        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        try:
-            owner = int(lock.read_text(encoding="utf-8").strip().split(" ", 1)[0])
-        except (OSError, ValueError):
-            owner = -1
-        if _pid_is_alive(owner):
-            raise RuntimeError(
-                f"evaluation label {label!r} is already owned by PID {owner}"
-            ) from None
-        lock.unlink(missing_ok=True)
-        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    os.write(fd, f"{os.getpid()} {time.time():.3f}\n".encode("ascii"))
-    os.close(fd)
-    _RUN_LOCK = (lock, os.getpid())
+    from evals.regenold import run_lock  # noqa: PLC0415
 
-    def release() -> None:
-        global _RUN_LOCK
-        if _RUN_LOCK and _RUN_LOCK[0] == lock:
-            lock.unlink(missing_ok=True)
-            _RUN_LOCK = None
-
-    atexit.register(release)
+    lock = run_lock.acquire(_RESULTS, label)
+    atexit.register(run_lock.release)
     return lock
 
 
@@ -519,6 +480,10 @@ def _install_stage2_transport_guard(
         theirs = getattr(primary_provider, "_base_url", None)
         return bool(mine) and bool(theirs) and mine == theirs
 
+    #: R442 — models this run has already proven servable, so re-probing on
+    #: every arm costs one live call per DISTINCT model, not one per arm.
+    probed: dict[str, str] = {}
+
     def preflight() -> str:
         provider = _wp.get_openai_wrapper_provider()
         # R432 — probe the CONFIGURED Stage-2 model, not the request default.
@@ -530,12 +495,23 @@ def _install_stage2_transport_guard(
         # happens to accept by luck, and one a namespaced transport rejects with
         # a 400 — i.e. the preflight could pass (or fail) on a model the run
         # never uses. It now probes the model the run will actually send.
+        #
+        # R442 — "the model the run will actually send" is the ENGINE's routing
+        # rule, not ``GraphRAGSettings().stage2_model``: the complex-tier model
+        # (``P2P_GRAPH_RAG_COMPLEX_MODEL``, a fresh env read) wins on the
+        # standard Stage-2 path too. Reading ``stage2_model`` alone probed
+        # ``claude-opus-5`` for an arm running ``claude-opus-5-5`` — the model
+        # Claude Code < 2.1.280 rejects with a 400 — so the probe passed on a
+        # model the arm never sent. ``_arm`` now calls this AFTER applying its
+        # env, so each arm's model is probed, not only the process default.
         try:
-            from app.config import GraphRAGSettings as _GRS
+            from app.engines._graph_rag_impl import effective_stage2_model
 
-            probe_model = str(_GRS().stage2_model or "").strip()
+            probe_model = str(effective_stage2_model() or "").strip()
         except Exception:  # noqa: BLE001 — a probe must never break the run
             probe_model = ""
+        if probe_model and probe_model in probed:
+            return probed[probe_model]
         resp = provider.complete(
             _wp.OpenAIWrapperRequest(
                 user="Reply with the single word: alive",
@@ -563,7 +539,10 @@ def _install_stage2_transport_guard(
                     "`stage2_served_by=fallback`; do not read it as a "
                     "primary-served measurement."
                 )
-                return f"fallback:{fallback_model}"
+                served = f"fallback:{fallback_model}"
+                if probe_model:
+                    probed[probe_model] = served
+                return served
             raise RuntimeError(
                 "Stage-2 transport preflight failed "
                 f"({str(resp.error)[:160]}) and the fallback leg did not answer "
@@ -572,7 +551,10 @@ def _install_stage2_transport_guard(
                 "pass --allow-degraded-transport to measure the degradation path "
                 "on purpose."
             )
-        return str(getattr(resp, "model", "") or "")
+        served = str(getattr(resp, "model", "") or "")
+        if probe_model:
+            probed[probe_model] = served
+        return served
 
     original_complete = _wp._OpenAIWrapperProvider.complete
 
@@ -1120,6 +1102,7 @@ def _arm(
     suffix: str,
     resume: bool = False,
     repeats: int = 1,
+    preflight: Callable[[], str] | None = None,
 ) -> dict[str, Any]:
     saved = _apply_env(arm_env)
     repeats = max(1, int(repeats))
@@ -1130,6 +1113,13 @@ def _arm(
     preamble = hard_preamble_mode()
     print(f"  hard-mode request shape: {preamble}")
     try:
+        if preflight is not None:
+            # R442 — probe THIS arm's Stage-2 model under THIS arm's env. The
+            # batch-level preflight runs before any arm env is applied, so an
+            # A/B whose lever is the model itself (``P2P_GRAPH_RAG_COMPLEX_MODEL``)
+            # never probed the branch arm's model. Inside the ``try`` so a
+            # refusal still restores the environment.
+            print(f"  Stage-2 preflight for this arm OK (model={preflight()})")
         result: dict[str, Any] = {}
         for m in ("easy", "hard"):
             if mode not in (m, "both"):
@@ -1465,11 +1455,13 @@ def main() -> None:
                 min_rerank_gap_s=args.cohere_rerank_min_gap,
             )
         )
+    arm_preflight: Callable[[], str] | None = None
     if local and not args.allow_degraded_transport:
         # R423 — a live run whose Stage-2 primary cannot answer grades Stage-1
         # drafts, so it measures the transport, not the lever. Probe once now
         # (before a single row is spent) and abort if the leg later goes down.
         preflight, assert_stage2_healthy = _install_stage2_transport_guard()
+        arm_preflight = preflight
         served_by = preflight()
         print(
             "Stage-2 transport preflight OK"
@@ -1522,7 +1514,7 @@ def main() -> None:
         args.label, args.mode, rows,
         poster=poster, url=url, api_key=args.api_key, timeout=args.timeout,
         arm_env=base_env, suffix="-A" if ab else "", resume=args.resume,
-        repeats=args.repeats,
+        repeats=args.repeats, preflight=arm_preflight,
     )
     payload["baseline"] = {m: v["agg"] for m, v in baseline.items()}
 
@@ -1532,7 +1524,7 @@ def main() -> None:
             args.label, args.mode, rows,
             poster=poster, url=url, api_key=args.api_key, timeout=args.timeout,
             arm_env=branch_env, suffix="-B", resume=args.resume,
-            repeats=args.repeats,
+            repeats=args.repeats, preflight=arm_preflight,
         )
         payload["branch"] = {m: v["agg"] for m, v in branch.items()}
         lever = lever_changes_system(base_env, branch_env)

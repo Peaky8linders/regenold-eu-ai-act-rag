@@ -196,3 +196,38 @@ curated deterministic floor). Per the pre-registered rule:
 
 Full numbers: `docs/measurements/r440/gate-verdict.txt` (regenerate with
 `--verdict`).
+
+## ⛔ R442 CORRECTION — this gate is VOID; the verdict above does not stand
+
+Re-audited 2026-09-23 by execution (`docs/measurements/r442/PR-AUDIT-456-460.md`).
+Two independent defects, either of which voids the result. The lever stays
+default OFF, but as **unmeasured**, not as "a powered null".
+
+1. **The run failed its own pre-registered validity rule.** PREFLIGHT §4: *"The
+   gate is valid only with complete checkpoints, zero fallback/degraded graded
+   rows"*. The harness itself wrote `"void": ["hard"]` into
+   `evals/bench/results/official-r440c-branch-cluster.json`, and arm A sample 0
+   carries **13 fallback-served rows** (`stage2_served_by=fallback`; every other
+   pass is primary). The draw ran with `--allow-degraded-transport`, which
+   disables the abort guard, so "the abort-on-outage guard never tripped" (§
+   Validity) is not evidence, and "zero fallback-served" (§ Verdict) is false.
+   `branch_cluster_gate.py` reads neither the void flag nor per-row provenance.
+   Dropping the 13 degraded pairs, the conciseness cost that bound the verdict
+   is gone: `ans_conciseness` **−0.88 [−4.27, +2.11]**, `ref_strict` +0.00.
+2. **The ON arm did not run the designed lever.** `_grounded_branch_guard` was
+   handed the flattened conversation, not the live question, so in hard mode
+   the fixed nine-exchange preamble fired **all 11 guard blocks (5,611 chars) on
+   every one of the 21 rows**, whatever was asked; the live question alone fires
+   2–5 (300–2,636 chars). Measured: `docs/measurements/r442` guard-scope probe.
+   The gate therefore measured "append every guard to every hard prompt".
+
+Smaller record errors: the "median −5.61" conciseness figure is
+`median(B) − median(A)`; the paired median delta is +0.00. "100/100 across both
+arms on all 21 rows" is false (`rg_103` scores 75/0; `rg_008`, `rg_088` read 50
+on ref strict, as § Residual defects itself says). The SHIP rule in the verdict
+first appears in `fe88c59`, after the draw, so it was not pre-registered.
+
+The guard's own text also stated three provisions wrongly (Art. 5(1)(g),
+Art. 6(3), Art. 80(2)) and carried two sentences lifted from our reconstructed
+gold criteria; R442 rewrites it. Any future verdict needs a fresh draw of the
+corrected guard under PREFLIGHT §4 as written.

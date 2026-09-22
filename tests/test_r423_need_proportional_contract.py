@@ -530,3 +530,58 @@ def test_repeat_replica_files_are_named_apart() -> None:
     source = (REPO / "evals" / "regenold" / "run_official_batch.py").read_text(encoding="utf-8")
     assert ".r{k}.ckpt.jsonl" in source
     assert os.sep in source  # cheap sanity that the file was read as source
+
+
+# ─── R442 — the R439 head rule, scoped back to heads ──────────────────────────
+@pytest.mark.parametrize(
+    ("ask", "refs", "letters"),
+    [
+        ("When does the Article 6(3) derogation apply?", "Article 6", "Article 6.3."),
+        ("What does Article 9(2) require?", "Article 9", "Article 9.2."),
+    ],
+)
+def test_a_named_paragraph_that_is_a_list_still_engages_its_list(
+    ask: str, refs: str, letters: str
+) -> None:
+    """R439 withheld 6(3)(a)-(d) and 9(2)(a)-(d) — the very items asked — and
+    the ANSWER SHAPE clause then tells Stage-2 not to enumerate them."""
+    engaged = need.engaged_coords(ask, refs)
+    assert [c for c in engaged if c.startswith(letters)] == [
+        f"{letters}{x}" for x in "abcd"
+    ]
+
+
+def test_a_named_head_still_does_not_engage_every_paragraph() -> None:
+    """R439's own case is kept: a head's paragraphs are separate provisions."""
+    assert need.engaged_coords(
+        "Does Article 26 require the deployer to keep logs?", "Article 26"
+    ) == ()
+    listed = need.engaged_coords("List the deployer obligations under Article 26.", "Article 26")
+    assert len(listed) == 12
+
+
+@pytest.mark.parametrize(
+    ("ask", "refs"),
+    [
+        ("What is Annex X about? What is it used for?", "Annex X"),
+        ("Does Article 26 require the deployer to keep logs?", "Article 26"),
+    ],
+)
+def test_an_ask_about_a_whole_head_gets_the_no_signal_floor(ask: str, refs: str) -> None:
+    """R442 — once R439 withheld the head's paragraphs the estimator fell to one
+    item (375 chars); rg_105's reference answer is 625 chars. Absence of a
+    scope signal takes the R423.1 floor, as an unanchored ask does."""
+    estimate = need.answer_need(ask, refs)
+    assert estimate.engaged == ()
+    assert estimate.target_chars == need._TARGET_NO_SIGNAL_CHARS
+    assert estimate.anchored  # the skeleton branch is unchanged
+
+
+def test_the_floor_does_not_touch_a_named_paragraph() -> None:
+    estimate = need.answer_need("What does Article 13(3) require?", "Article 13")
+    assert estimate.engaged  # engaged, so the proportional target governs
+    assert estimate.target_chars == min(
+        need._TARGET_MAX_CHARS,
+        max(need._TARGET_MIN_CHARS,
+            need._TARGET_BASE_CHARS + need._TARGET_PER_ITEM_CHARS * estimate.items),
+    )

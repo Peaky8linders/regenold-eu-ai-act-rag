@@ -267,7 +267,12 @@ class GraphRAGSettings(BaseSettings):
     ``claude-opus-4-8`` (R280 revert of R279 — Fable 5's only win was on a
     zero-headroom axis and it cost 20-30 s of latency on a scored weak
     axis). Set ``claude-fable-5`` to restore R279; set empty to disable the
-    swap (every Stage-2 polish call uses the base ``model``)."""
+    swap (every Stage-2 polish call uses the base ``model``).
+
+    R442 — ``P2P_GRAPH_RAG_COMPLEX_MODEL=claude-opus-5-5`` selects Opus 5.5 over
+    the tunnel (it also wins on the standard Stage-2 path). The wrapper host
+    needs Claude Code >= 2.1.280; 2.1.269 rejects the id with a 400. See
+    ``docs/measurements/r442/OPUS55-SCREEN.md``."""
 
     complex_thinking_tokens: int = 4000
     """``max_thinking_tokens`` — the **EXTENDED** thinking budget for the

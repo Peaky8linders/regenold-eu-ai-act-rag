@@ -185,6 +185,45 @@ inside the compact branch.** Still default OFF; the A/B is now meaningful for th
 Full evidence: `docs/reviews/r398-invariant-5-audit-2026-09-09.md`.
 
 
+## ⛔ R442 — PRs #456–#460 audited by execution; R440's verdict is VOID; Opus 5.5 option
+
+Full record: `docs/measurements/r442/PR-AUDIT-456-460.md`, `OPUS55-SCREEN.md`.
+
+* **R440's "NO WIN — powered null" is void.** The harness wrote `"void": ["hard"]`
+  and arm A sample 0 carried 13 fallback-served rows, which PREFLIGHT §4 forbids
+  (without them the binding conciseness cost is −0.88 [−4.27, +2.11]); and the ON
+  arm handed `_grounded_branch_guard` the FLATTENED conversation, so the hard
+  preamble fired all 11 blocks (5,611 chars) on every row. The guard also misstated
+  Art. 5(1)(g), 6(3), 26(6) and 80(2) and echoed two of our own gold criteria.
+  Rewritten (live question only, word-bounded triggers, one block per branch,
+  verbatim-checked law). `REGENOLD_GROUNDED_BRANCH_GUARDS` stays default OFF as
+  **unmeasured**; a verdict needs a fresh draw under PREFLIGHT §4.
+* **R439's `engaged_coords` head rule is scoped back to heads.** It withheld the
+  list of a named paragraph (6(3)(a)–(d), 9(2)(a)–(d)) while ANSWER SHAPE told
+  Stage-2 not to enumerate outside the engaged set; a whole-head ask with nothing
+  engaged now takes the R423.1 no-signal floor. Official 110: the only answer-shape
+  change is `rg_105` 375 → 650 target chars (reference answer 625).
+* ⚠ **PR #456's compact REFERENCE MINIMALITY / SUB-PARAGRAPH clauses are default
+  ON and ungated** (+441 chars per Stage-2 request, invariant #5). Left as the
+  operator merged them; gate with `REGENOLD_USER_REF_MINIMALITY=0
+  REGENOLD_SUBPARAGRAPH_ATTRIBUTION=0` as the baseline arm before relying on them.
+  On the evidence-contract path `REGENOLD_PROMPT_V2/V3/COMPACT` are dead flags.
+* **The R440 owner lock did nothing across Windows consoles**: `os.kill(pid, 0)` is
+  `GenerateConsoleCtrlEvent` there, so a runner in a second terminal acquired over
+  a live draw. `evals/regenold/run_lock.py` holds an OS byte-range lock instead.
+* **Opus 5.5 over the tunnel** = `P2P_GRAPH_RAG_COMPLEX_MODEL=claude-opus-5-5`
+  (wins on every Stage-2 call). Requires Claude Code **≥ 2.1.280** on the wrapper
+  host — 2.1.269 answered `400 … does not support this model`. The eval preflight
+  now probes each arm's EFFECTIVE model (`effective_stage2_model()`); it used to
+  probe `stage2_model` once, before any arm env, so a model A/B never probed its
+  branch arm. Live screen (8 easy rows, 5 discriminating): correctness identical,
+  answers 841 → 1050 chars, Overall 80.6 → 79.8 (Sonnet 5 judge). Default unchanged.
+* **Open, needs an operator ruling:** RESERVE — re-serve the verified previous
+  answer on the evaluator's verbatim pushback (Speed 79 → 95, ≈ +2.1 pp Overall
+  locally) contradicts the "always Stage-2" rule and drops gold heads on two replay
+  pools as specified. Not built.
+
+
 ## ⛔ R431 — the sibling-limb deficit is ATTRIBUTION, not generation. The wire gets an ADD.
 
 Full evidence: `docs/measurements/r431/CHECKPOINT.md`. Artefacts: `sibling_triage.py`,

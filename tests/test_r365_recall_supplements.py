@@ -781,7 +781,15 @@ def test_wire_refs_all_resolve_in_article_existence(
 
 
 def test_emotion_exclusion_is_independent_of_word_order() -> None:
-    """Emotion recognition must stay on the Article 5 route in either order."""
+    """The emotion exclusion holds in either word order.
+
+    R442 — this pins the TRIGGER, not a legal route. The earlier docstring said
+    these questions "must stay on the Article 5 route", which is not the law:
+    Art. 5(1)(f) reaches only workplace and education settings, and the pain
+    monitoring case is neither (pain is not an emotion, recital 18). The
+    exclusion exists because this supplement can only append a bare
+    ``Article 50``; see ``rc._R365_EMOTION_EXCLUDE_RE``.
+    """
     emotion_last = (
         "Is an AI system that infers patients' emotions for a medical "
         "purpose prohibited under Article 5?"
@@ -797,3 +805,16 @@ def test_emotion_exclusion_is_independent_of_word_order() -> None:
 def test_non_emotion_biometric_interaction_still_triggers() -> None:
     """The exclusion must not disable the intended biometric trigger."""
     assert rc.is_biometric_patient_interaction_question(Q_BIOMETRIC) is True
+
+
+def test_biometric_trigger_spans_lines_of_a_live_question() -> None:
+    """R442 — the trigger's ``.*`` lookaheads must cross a newline.
+
+    Without ``re.DOTALL`` a live question that names the system on one line and
+    the duty on the next never fired, while the emotion exclusion already
+    scanned the whole input. Two-sided: the same words on one line fire too.
+    """
+    one_line = "We deploy a biometric system. Must we inform the persons?"
+    two_lines = "We deploy a biometric system.\nMust we inform the persons?"
+    assert rc.is_biometric_patient_interaction_question(one_line) is True
+    assert rc.is_biometric_patient_interaction_question(two_lines) is True

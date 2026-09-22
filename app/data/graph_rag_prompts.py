@@ -1366,35 +1366,74 @@ def _grounded_branch_guard(question: str) -> str:
     The evidence contract replaced the old broad instruction stack, but that
     also removed several high-value branch facts. The latest judge remarks
     cluster exactly there (Article 50 paragraphs, Article 6 routes, roles and
-    Article 26). Keep the repair narrow: emit a guard only when the question
-    names the branch, and state only facts present in the adopted-text prompt
-    rules above. This is generation guidance, not a new citation source.
+    Article 26). Keep the repair narrow: emit a guard only when the LIVE question
+    names the branch, and state only what the adopted text says. This is
+    generation guidance, not a new citation source.
+
+    R442 — three defect classes fixed, each MEASURED before the fix:
+
+    * Scope. The caller passed the flattened conversation, so in hard mode the
+      fixed nine-exchange preamble fired ALL eleven blocks (5,611 chars) on
+      every one of the 21 R440 gate rows, whatever the question; the live
+      question alone fires two to five. Only the text after the last
+      ``Latest question:`` marker is read now.
+    * Triggers. Bare substrings matched the wrong provision: ``"article 9"``
+      matched Articles 90-99, ``"polic"`` matched "policy", ``"annex i"`` matched
+      Annex II/III/IV, and the Annex I lookahead matched "annex is". Word-bounded
+      patterns now; the benchmark-specific ``"supermarket"`` cue is gone.
+    * Law. One biometric block called Article 5(1)(g) a ban on categorisation
+      "by sensitive or protected attributes" (that is Annex III point 1(b)'s
+      wording; 5(1)(g) is a closed list), the Article 6(3) conditions, the
+      Article 26(6) period and the Article 80(2) period were misstated, and two
+      sentences echoed our own reconstructed gold criteria rather than the Act.
+      Each block below is checked against ``get_provision_text``.
     """
-    low = (question or "").lower()
+    live = question or ""
+    if "Latest question:\n" in live:
+        live = live.rsplit("Latest question:\n", 1)[-1]
+    low = live.lower()
+
+    def has(*tokens: str) -> bool:
+        return any(token in low for token in tokens)
+
+    def rx(pattern: str) -> bool:
+        return re.search(pattern, low) is not None
+
     guards: list[str] = []
-    if any(token in low for token in ("article 50", "deepfake", "artificial nature", "ai-generated")):
+    if rx(r"\barticle\s+50\b") or has(
+        "deepfake", "deep fake", "deep-fake", "artificial nature", "ai-generated",
+        "artificially generated",
+    ):
         guards.append(
-            "ARTICLE 50 BRANCH: distinguish paragraphs 50(1)–(5) and the actor "
-            "they bind. For a deepfake, Article 50(4) requires disclosure of the "
-            "artificial generation or manipulation; where the content forms part "
-            "of an evidently artistic, creative, satirical, fictional or analogous "
-            "work or programme, the disclosure is limited to the existence of the "
-            "generated content in a manner that does not hamper display or "
-            "enjoyment. The law-enforcement use authorised by law is a separate "
-            "full exception, and Article 50(5) governs when and how information is "
-            "provided. Apply the artistic/analogous condition to the actual work, "
-            "not to the purpose label alone."
+            "ARTICLE 50 BRANCH: distinguish paragraphs 50(1)-(5) and the actor "
+            "each binds. Article 50(4) requires deployers of a deep fake to "
+            "disclose that the content has been artificially generated or "
+            "manipulated; the duty does not apply where the use is authorised by "
+            "law to detect, prevent, investigate or prosecute criminal offences "
+            "(a full law-enforcement exception), "
+            "and where the content forms part of an evidently artistic, creative, "
+            "satirical, fictional or analogous work or programme it is limited to "
+            "disclosing the existence of such content in a manner that does not "
+            "hamper the display or enjoyment of the work. For AI-generated text "
+            "published to inform the public on matters of public interest, the "
+            "duty also falls away where the content has undergone human review or "
+            "editorial control and a person holds editorial responsibility. "
+            "Article 50(5) requires the information to be given clearly and "
+            "distinguishably at the latest at the first interaction or exposure."
         )
-    if any(token in low for token in ("article 26", "instructions for use", "keep logs", "logging")):
+    if rx(r"\barticle\s+26\b") or (
+        has("deployer") and (has("instructions for use") or rx(r"\blogs?\b|\blogging\b"))
+    ):
         guards.append(
-            "DEPLOYER BRANCH: Article 26(1) requires use of a high-risk system "
-            "in accordance with its instructions for use; a new use is not excused "
-            "merely because it would not independently fall under Annex III. "
-            "Article 26(6) requires automatically generated logs under the "
-            "deployer's control to be kept for at least six months, subject to "
-            "the statutory qualification."
+            "DEPLOYER BRANCH: Article 26(1) requires deployers of a high-risk "
+            "system to take appropriate technical and organisational measures to "
+            "use it in accordance with its instructions for use. Article 26(6) "
+            "requires them to keep the automatically generated logs under their "
+            "control for a period appropriate to the system's intended purpose, "
+            "of at least six months, unless applicable Union or national law "
+            "provides otherwise."
         )
-    if any(token in low for token in ("distributor", "importer", "jeopard", "storage or transport")):
+    if has("distributor", "importer", "jeopard", "storage or transport"):
         guards.append(
             "ROLE BRANCH: Article 23(4) is the importer limb and Article 24(3) "
             "is the distributor limb; while the high-risk system is under the "
@@ -1402,80 +1441,28 @@ def _grounded_branch_guard(question: str) -> str:
             "must not jeopardise compliance with Chapter III Section 2. Do not "
             "collapse importer or distributor into the generic word operator."
         )
-    if any(token in low for token in ("annex iii", "high-risk classification", "high risk classification", "clinician", "medical decision", "potentially high-risk", "potentially high risk")):
+    if rx(r"\bannex\s+iii\b") or has(
+        "high-risk classification", "high risk classification", "clinician",
+        "medical decision", "potentially high-risk", "potentially high risk",
+    ):
         guards.append(
             "CLASSIFICATION BRANCH: keep the two Article 6 routes separate: "
             "Article 6(1) concerns Annex I product-safety systems requiring "
             "third-party conformity assessment, while Article 6(2) concerns the "
-            "Annex III use cases. Article 6(3) is a narrow derogation subject to "
-            "its no-significant-risk and no-material-influence conditions and does "
-            "not apply to profiling of natural persons."
+            "Annex III use cases. Article 6(3) is a derogation from paragraph 2 "
+            "for an Annex III system that does not pose a significant risk of "
+            "harm to health, safety or fundamental rights, including by not "
+            "materially influencing the outcome of decision making; it applies "
+            "only where one of the conditions in points (a) to (d) is fulfilled, "
+            "never where the system performs profiling of natural persons, and a "
+            "provider relying on it must document the assessment before placing "
+            "the system on the market and is subject to registration (Article "
+            "6(4), Article 49(2))."
         )
-    if any(token in low for token in (
-        "biometric", "emotion recognition", "emotion-recognition", "facial",
-        "fingerprint", "voice recognition", "identity verification",
-    )):
-        guards.append(
-            "BIOMETRIC BRANCH: distinguish the fact pattern before classifying it. "
-            "Annex III point 1(a) excludes biometric verification used solely to "
-            "confirm that a specific person is who they claim to be; remote "
-            "biometric identification, biometric categorisation by sensitive or "
-            "protected attributes, and emotion recognition are separate routes. "
-            "Article 5(1)(g) is the closed-list prohibition for biometric "
-            "categorisation by sensitive or protected attributes; do not treat a "
-            "mere biometric signal or identity check as that prohibition."
-        )
-    if any(token in low for token in (
-        "medical device", "medical-device", "annex i", "safety component",
-        "mdd", "mdr", "notified body", "treatment recommendation",
-    )):
-        guards.append(
-            "MEDICAL-DEVICE BRANCH: test Article 6(1) separately from Article 6(2). "
-            "The Article 6(1) route requires the system to be a safety component "
-            "of, or itself a product covered by, Annex I Union harmonisation "
-            "legislation and subject to third-party conformity assessment. Do not "
-            "infer high-risk status from a medical context alone; identify the "
-            "regulated product, intended purpose and conformity-assessment "
-            "condition."
-        )
-    if (
-        "law enforcement" in low
-        or "polic" in low
-        or "criminal" in low
-        or ("point 6" in low and "annex iii" in low)
-        or "supermarket" in low
-    ):
-        guards.append(
-            "AUTHORITY-NEXUS BRANCH: Annex III point 6 applies only to systems "
-            "used by or on behalf of law-enforcement authorities, or by Union "
-            "bodies supporting them; resemblance to investigation or policing is "
-            "not itself that authority nexus."
-        )
-    if "article 9" in low or "risk management system" in low:
-        guards.append(
-            "ARTICLE 9 STRUCTURE: Article 9 requires a continuous risk-management "
-            "system for high-risk AI; its four steps are identify and analyse "
-            "risks, estimate and evaluate intended-use and foreseeable-misuse "
-            "risks, evaluate further risks from post-market monitoring, and adopt "
-            "targeted risk-management measures."
-        )
-    if "article 80" in low or "market surveillance authority" in low or "corrective action" in low:
-        guards.append(
-            "ARTICLE 80 BRANCH: under Article 80(2) the market-surveillance "
-            "authority prescribes a period for the provider to bring the system "
-            "into compliance and take corrective action; do not replace that "
-            "authority-set period with an automatic gravity-based deadline."
-        )
-    if any(
-        token in low
-        for token in (
-            "biometric",
-            "emotion recognition",
-            "infer emotions",
-            "facial recognition",
-            "biometric categorisation",
-            "remote identification",
-        )
+    if has(
+        "biometric", "emotion recognition", "emotion-recognition", "infer emotion",
+        "facial", "fingerprint", "voice recognition", "identity verification",
+        "remote identification",
     ):
         guards.append(
             "BIOMETRIC BRANCH: keep the statutory routes apart. Biometric "
@@ -1502,21 +1489,11 @@ def _grounded_branch_guard(question: str) -> str:
             "recognition or biometric categorisation system to inform the natural "
             "persons exposed to it."
         )
-    # NOT ``"annex i" in low``: that substring also matches "Annex II", "Annex
-    # III" and "Annex IV", which is the R438 coordinate-form defect class one
-    # level up. The lookahead admits only the bare Roman numeral I.
-    annex_one = bool(re.search(r"annex\s+i(?![ivx])", low))
-    if annex_one or any(
-        token in low
-        for token in (
-            "medical device",
-            "safety component",
-            "notified body",
-            "in vitro",
-            "2017/745",
-            "union harmonisation",
-            "harmonisation legislation",
-        )
+    # ``\bannex\s+i\b`` admits only the bare Roman numeral I: not "Annex II/III/IV"
+    # (the R438 coordinate-form defect class) and not "annex is/in".
+    if rx(r"\bannex\s+i\b") or rx(r"\bmd[rd]\b") or has(
+        "medical device", "medical-device", "safety component", "notified body",
+        "in vitro", "2017/745", "union harmonisation", "harmonisation legislation",
     ):
         guards.append(
             "ANNEX I / SAFETY-COMPONENT BRANCH: Article 6(1) is a TWO-condition "
@@ -1526,16 +1503,52 @@ def _grounded_branch_guard(question: str) -> str:
             "Annex I; and (b) that product is required to undergo a THIRD-PARTY "
             "conformity assessment, with a view to its placing on the market or "
             "putting into service, pursuant to that legislation. A product that "
-            "needs no notified-body assessment does not satisfy point (b), so "
-            "Article 6(1) is not engaged. Article 6(3) is a derogation from "
-            "PARAGRAPH 2 only -- the Annex III route -- so it cannot be used to "
-            "take an Annex I safety-component system out of Article 6(1). Answer "
-            "an Annex I question from Article 6(1) and the Annex I legislation: "
-            "do not re-route it into the Annex III use-case list, and do not "
-            "treat general product-safety law as the source of the AI Act "
-            "classification."
+            "is not required to undergo third-party conformity assessment under "
+            "that legislation does not satisfy point (b), so Article 6(1) is not "
+            "engaged, and a medical context alone does not make a system "
+            "high-risk. Article 6(3) is a derogation from PARAGRAPH 2 only -- "
+            "the Annex III route -- so it cannot take an Annex I safety-component "
+            "system out of Article 6(1). Decide the Article 6(1) question from "
+            "Annex I and its legislation; the same system can separately be "
+            "high-risk under Annex III where its intended purpose is listed there."
         )
-    return "\n\nGROUNDED BRANCH GUARDS (use only the branch the question engages):\n" + "\n".join(guards) if guards else ""
+    if has("law enforcement", "law-enforcement", "criminal") or rx(r"\bpolic(?:e|ing)\b") or (
+        rx(r"\bpoint\s+6\b") and rx(r"\bannex\s+iii\b")
+    ):
+        guards.append(
+            "AUTHORITY-NEXUS BRANCH: Annex III point 6 covers systems intended to "
+            "be used by or on behalf of law-enforcement authorities, or by Union "
+            "institutions, bodies, offices or agencies in support of them, in so "
+            "far as their use is permitted under relevant Union or national law; "
+            "a system operated by a private party falls under point 6 only when "
+            "it is used by or on behalf of such an authority."
+        )
+    if rx(r"\barticle\s+9\b") or has("risk management system", "risk-management system"):
+        guards.append(
+            "ARTICLE 9 STRUCTURE: Article 9 requires a continuous risk-management "
+            "system for high-risk AI; its four steps are identify and analyse "
+            "risks, estimate and evaluate intended-use and foreseeable-misuse "
+            "risks, evaluate further risks from post-market monitoring, and adopt "
+            "targeted risk-management measures."
+        )
+    if rx(r"\barticle\s+80\b") or (
+        has("market surveillance authority", "market-surveillance authority")
+        and has("non-high-risk", "not high-risk", "article 6(3)", "classified by the provider")
+    ):
+        guards.append(
+            "ARTICLE 80 BRANCH: Article 80 governs a system its provider "
+            "classified as not high-risk under Article 6(3). Where the "
+            "market-surveillance authority finds it is high-risk, it must without "
+            "undue delay require the provider to take all necessary actions to "
+            "bring the system into compliance and to take appropriate corrective "
+            "action within a period the authority may prescribe."
+        )
+    if not guards:
+        return ""
+    return (
+        "\n\nGROUNDED BRANCH GUARDS (use only the branch the question engages):\n"
+        + "\n".join(guards)
+    )
 
 
 def build_evidence_answer_user(
@@ -1592,7 +1605,16 @@ def build_evidence_answer_user(
     # engine. Re-apply the two still-supported precision clauses here, otherwise
     # their default-ON flags are silently bypassed by this replacement path.
     # This is wiring, not a new policy: both clauses already existed and are
-    # independently cache-keyed. Prompt V3 owns its own consolidated versions.
+    # independently cache-keyed.
+    #
+    # ⚠ R442 — on THIS path neither V2 nor V3 has its own clauses: with
+    # ``REGENOLD_PROMPT_V2=1`` both compact clauses are skipped and nothing
+    # replaces them, and ``REGENOLD_PROMPT_V3=1`` / ``REGENOLD_PROMPT_COMPACT=1``
+    # dispatch a request byte-identical to the default (MEASURED at the provider
+    # seam). All three are in the cache key, so an A/B on them under the default
+    # evidence contract measures generation noise. The compact wording below was
+    # also never gold-gated (AGENTS.md invariant #5): it shipped default ON in
+    # R439 as a defect repair. See docs/measurements/r442/PR-AUDIT-456-460.md.
     if not _prompt_v2_enabled():
         # The evidence contract is already a compact replacement for the old
         # instruction stack. Re-apply the two live-channel disciplines in their
