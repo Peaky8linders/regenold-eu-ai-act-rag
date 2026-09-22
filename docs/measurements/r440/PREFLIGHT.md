@@ -4,7 +4,7 @@
 **Lever under test:** `REGENOLD_GROUNDED_BRANCH_GUARDS` (default **OFF**)
 **Production identity at pre-flight:** `391d886a8ffe` (PR #456 merged).
 
-> **RESULT: NO MEASURED WIN — the lever stays OFF.** The rule below was applied
+> **⛔ R442: VOID — see the correction at the end of [`CHECKPOINT.md`](CHECKPOINT.md) (13 fallback-served rows broke §4, and the ON arm fired every guard on every row).** Superseded result: **NO MEASURED WIN — the lever stays OFF.** The rule below was applied
 to a completed six-pass draw; the refuse rule came back clean, no axis separates
 from zero in the ON arm's favour under either read, and answer conciseness
 separates against it. See [`CHECKPOINT.md`](CHECKPOINT.md).

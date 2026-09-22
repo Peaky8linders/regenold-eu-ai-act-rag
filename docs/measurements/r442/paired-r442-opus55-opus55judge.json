@@ -1,0 +1,122 @@
+{
+ "arm_a": "score-r442-opus55-A-j55-easy.json",
+ "arm_b": "score-r442-opus55-B-j55-easy.json",
+ "shared_rows": 8,
+ "only_in_a": [],
+ "only_in_b": [],
+ "axes": {
+  "ans_correctness_loose": {
+   "n": 8,
+   "mean_a": 97.91666666666667,
+   "mean_b": 97.91666666666667,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "b_better": 0,
+   "a_better": 0,
+   "mcnemar_p": 1.0
+  },
+  "ans_correctness_strict": {
+   "n": 8,
+   "mean_a": 87.5,
+   "mean_b": 87.5,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "b_better": 0,
+   "a_better": 0,
+   "mcnemar_p": 1.0
+  },
+  "ans_conciseness": {
+   "n": 8,
+   "mean_a": 83.21803432061783,
+   "mean_b": 73.5462297463089,
+   "delta": -9.67180457430894,
+   "ci95": [
+    -18.716346370064294,
+    -2.3360210588529204
+   ],
+   "b_better": 0,
+   "a_better": 5,
+   "mcnemar_p": 0.0625
+  },
+  "ref_correctness_loose": {
+   "n": 5,
+   "mean_a": 100.0,
+   "mean_b": 100.0,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "b_better": 0,
+   "a_better": 0,
+   "mcnemar_p": 1.0
+  },
+  "ref_correctness_strict": {
+   "n": 5,
+   "mean_a": 46.666666666666664,
+   "mean_b": 53.33333333333333,
+   "delta": 6.666666666666666,
+   "ci95": [
+    0.0,
+    19.999999999999996
+   ],
+   "b_better": 1,
+   "a_better": 0,
+   "mcnemar_p": 1.0
+  },
+  "ref_conciseness": {
+   "n": 5,
+   "mean_a": 66.0,
+   "mean_b": 66.0,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "b_better": 0,
+   "a_better": 0,
+   "mcnemar_p": 1.0
+  },
+  "regulatory_tone": {
+   "n": 8,
+   "mean_a": 100.0,
+   "mean_b": 100.0,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "b_better": 0,
+   "a_better": 0,
+   "mcnemar_p": 1.0
+  },
+  "resp_speed": {
+   "n": 8,
+   "mean_a": 82.66201067499986,
+   "mean_b": 85.97500941249984,
+   "delta": 3.3129987374999814,
+   "ci95": [
+    0.4959467749999362,
+    6.378058049999993
+   ],
+   "b_better": 7,
+   "a_better": 1,
+   "mcnemar_p": 0.0703125
+  }
+ },
+ "gold_dropped_head": {
+  "arm_a": 0,
+  "arm_b": 0,
+  "new_drops_in_b": []
+ },
+ "mean_answer_chars": {
+  "arm_a": 841.125,
+  "arm_b": 1049.5
+ }
+}
