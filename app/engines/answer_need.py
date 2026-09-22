@@ -289,13 +289,21 @@ def engaged_coords(question: str, references: str = "") -> tuple[str, ...]:
         from app.data.provision_hierarchy import closed_set_members  # noqa: PLC0415
 
         engaged: list[str] = []
-        # A bare parent coordinate is not proof that every child is requested.
-        # Only a list-shaped question, an explicitly named child, or a distinctive
-        # statutory chapeau may engage the whole closed set. The old unconditional
-        # ``parent in ask_coords`` path made questions such as "does Article 26
-        # require logging?" engage all twelve Article 26 paragraphs, which raised
-        # the target to the 1000-character ceiling and recreated the verbosity
-        # problem this contract is meant to solve.
+        # A named HEAD is not proof that every paragraph is requested: a head's
+        # own paragraphs are separate provisions (the rule
+        # ``answer_completeness._member_gaps`` already applies). R439 stopped
+        # "does Article 26 require logging?" engaging all twelve Article 26
+        # paragraphs, which had raised the target to the 1000-character ceiling.
+        #
+        # R442 — R439 applied that rule to EVERY parent, so it also withheld the
+        # list of a named PARAGRAPH whose content IS the enumeration: "When does
+        # the Article 6(3) derogation apply?" lost 6(3)(a)-(d) and "What does
+        # Article 9(2) require?" lost 9(2)(a)-(d), and the ANSWER SHAPE clause
+        # then tells Stage-2 not to enumerate what is outside the engaged set.
+        # The rule is scoped back to heads. MEASURED on the route's real inputs
+        # for the official 110: identical to R439 on every row (none has that
+        # shape), so this restores the R423.2-gated behaviour where R439 had
+        # silently removed it and changes nothing the benchmark rows exercise.
         from app.engines.answer_completeness import is_list_question  # noqa: PLC0415
 
         asks_for_set = is_list_question(ask)
@@ -313,7 +321,11 @@ def engaged_coords(question: str, references: str = "") -> tuple[str, ...]:
                     )
                     for coord, _text in children
                 )
-                if parent in ask_coords and not (asks_for_set or explicit_child):
+                if (
+                    "." not in parent
+                    and parent in ask_coords
+                    and not (asks_for_set or explicit_child)
+                ):
                     continue
                 if not _question_engages(parent, head, children, ask_coords, q_bigrams):
                     continue
@@ -321,6 +333,25 @@ def engaged_coords(question: str, references: str = "") -> tuple[str, ...]:
         return tuple(_deepest(set(engaged)))
     except Exception:  # noqa: BLE001 — see docstring
         return ()
+
+
+def _names_whole_listed_head(ask_coords: set[str]) -> bool:
+    """Does the ask name a bare HEAD whose own paragraphs form a closed set?"""
+    from app.data.provision_hierarchy import closed_set_members  # noqa: PLC0415
+
+    for coord in _deepest(ask_coords):
+        if "." in coord:
+            continue
+        try:
+            groups = _groups(closed_set_members(coord))
+        except Exception:  # noqa: BLE001 — unresolvable head: no floor from it
+            continue
+        if any(
+            parent == coord and len(children) >= _MIN_GROUP_CHILDREN
+            for parent, children in groups
+        ):
+            return True
+    return False
 
 
 def answer_need(question: str, references: str = "") -> AnswerNeed:
@@ -374,7 +405,17 @@ def answer_need(question: str, references: str = "") -> AnswerNeed:
         # unanchored ask that still asks for an exception/condition limb keeps
         # whichever target is larger.
         anchored = bool(ask_coords or engaged)
-        target = proportional if anchored else max(proportional, _TARGET_NO_SIGNAL_CHARS)
+        # R442 — an ask about a WHOLE head whose paragraphs the head rule in
+        # ``engaged_coords`` withheld carries no scope signal either: "What is
+        # Annex X about? What is it used for?" fell from 825 to 375 chars
+        # (1 item) against a 625-char reference answer once R439 stopped Annex
+        # X's points engaging — the R423.1 length-starvation shape. Same floor.
+        whole_head = not engaged and _names_whole_listed_head(ask_coords)
+        target = (
+            proportional
+            if anchored and not whole_head
+            else max(proportional, _TARGET_NO_SIGNAL_CHARS)
+        )
         return AnswerNeed(
             asked=tuple(_deepest(ask_coords)),
             engaged=tuple(engaged),
