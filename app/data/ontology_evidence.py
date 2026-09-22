@@ -58,18 +58,36 @@ class OntologyPatchProposal:
     def __post_init__(self) -> None:
         if not self.proposal_id.strip() or not self.parent_snapshot.strip():
             raise ValueError("ontology proposals require an id and parent snapshot")
-        if not self.target_ids or any(not target.strip() for target in self.target_ids):
+        # R442 — a bare string is iterable, so ``target_ids="article:14"`` used
+        # to pass as ten one-character targets; a list made the record unhashable.
+        if (
+            not isinstance(self.target_ids, tuple)
+            or not self.target_ids
+            or any(not isinstance(t, str) or not t.strip() for t in self.target_ids)
+        ):
             raise ValueError("ontology proposals require non-empty target ids")
+        # ``layer="bogus"`` was accepted; a valid string value is coerced.
+        object.__setattr__(self, "layer", OntologyLayer(self.layer))
         if not self.hypothesis.strip():
             raise ValueError("ontology proposals require a falsifiable hypothesis")
         if not self.evidence:
             raise ValueError("legal ontology proposals require supporting evidence")
+        if not isinstance(self.evidence, tuple) or not all(
+            isinstance(item, OntologyEvidence) for item in self.evidence
+        ):
+            raise ValueError("ontology proposal evidence must be a tuple of OntologyEvidence")
 
     @property
-    def evidence_keys(self) -> tuple[tuple[str, str], ...]:
-        """Stable source/version keys for audit and deduplication."""
+    def evidence_keys(self) -> tuple[tuple[str, str, str], ...]:
+        """Stable ``(source, version, locator)`` keys for audit and deduplication.
 
-        return tuple((item.source_id, item.locator) for item in self.evidence)
+        R442 — the version was left out, so the same locator in two versions of
+        a source collapsed to one key, defeating the audit this exists for.
+        """
+
+        return tuple(
+            (item.source_id, item.source_version, item.locator) for item in self.evidence
+        )
 
 
 __all__ = ["OntologyEvidence", "OntologyLayer", "OntologyPatchProposal"]
