@@ -128,17 +128,17 @@ def test_the_legal_version_is_pinned_to_the_adopted_act():
         (
             "Can we use the AI system outside its intended use and do we keep logs under Article 26?",
             "Article 26(1)",
-            "Article 50 BRANCH",
+            "ARTICLE 50 BRANCH",
         ),
         (
             "I am a distributor and was not told whether the system is high-risk; what about an importer?",
             "Article 23(4)",
-            "Article 50 BRANCH",
+            "ARTICLE 50 BRANCH",
         ),
         (
             "Is an AI system used by a supermarket high-risk under Annex III point 6?",
             "AUTHORITY-NEXUS BRANCH",
-            "Article 50 BRANCH",
+            "ARTICLE 50 BRANCH",
         ),
         (
             "Does Article 50(4) require disclosure for an artistic deepfake?",
@@ -152,7 +152,7 @@ def test_the_legal_version_is_pinned_to_the_adopted_act():
         ),
         (
             "Is software that is a safety component of a medical device high-risk under Annex I?",
-            "MEDICAL-DEVICE BRANCH",
+            "ANNEX I / SAFETY-COMPONENT BRANCH",
             "ARTICLE 50 BRANCH",
         ),
         (
@@ -168,7 +168,7 @@ def test_the_legal_version_is_pinned_to_the_adopted_act():
         (
             "Is an AI system used as a safety component in a medical device high-risk?",
             "ANNEX I / SAFETY-COMPONENT BRANCH",
-            "Article 50 BRANCH",
+            "ARTICLE 50 BRANCH",
         ),
     ],
 )
@@ -206,7 +206,10 @@ def test_branch_guard_coverage_for_target_clusters():
     guards = [_grounded_branch_guard(q) for q in questions]
     assert all(guards)
     assert any("BIOMETRIC BRANCH" in guard for guard in guards[:2])
-    assert all("MEDICAL-DEVICE BRANCH" in guard for guard in guards[2:])
+    # R442 — the MEDICAL-DEVICE block duplicated this one (and fired on every
+    # "annex i..." substring); it was merged into the Annex I block.
+    assert all("ANNEX I / SAFETY-COMPONENT BRANCH" in guard for guard in guards[2:])
+    assert not any("MEDICAL-DEVICE BRANCH" in guard for guard in guards)
 
 
 def test_the_annex_one_guard_does_not_fire_on_other_annexes():
@@ -225,8 +228,12 @@ def test_the_annex_one_guard_does_not_fire_on_other_annexes():
         "Does Annex II apply to this system?",
         "What does Annex IV require?",
         "Is the system listed in Annex IX?",
+        "The annex is silent on this, and the annex in question is long.",
     ):
-        assert marker not in _grounded_branch_guard(question), question
+        guard = _grounded_branch_guard(question)
+        assert marker not in guard, question
+        # R442 — the removed MEDICAL-DEVICE block fired on all four of these.
+        assert "MEDICAL-DEVICE BRANCH" not in guard, question
     assert marker in _grounded_branch_guard(
         "A product listed in Annex I where an AI system is a safety component"
     )
@@ -278,3 +285,85 @@ def test_the_builder_takes_no_dead_parameters():
 
     params = set(inspect.signature(prompts.build_evidence_answer_user).parameters)
     assert params == {"question", "references", "rewritten_question", "system_description"}
+
+
+# ─── R442 — the branch guard, re-audited by execution ─────────────────────────
+_HARD_HISTORY = (
+    "Conversation so far:\n"
+    "user: Is biometric identification by the police in Annex III point 6?\n"
+    "assistant: A deepfake needs Article 50 disclosure; Article 9 and Annex I "
+    "and a medical device safety component and emotion recognition apply.\n\n"
+    "Latest question:\n"
+)
+
+
+def test_branch_guard_reads_only_the_live_question():
+    """R442 — hard mode handed the guard the flattened conversation, so the
+    fixed preamble fired ALL eleven blocks on every R440 gate row."""
+    from app.data.graph_rag_prompts import _grounded_branch_guard
+
+    assert _grounded_branch_guard(_HARD_HISTORY + "What is Annex X about?") == ""
+    guard = _grounded_branch_guard(_HARD_HISTORY + "Does Article 26 require logs?")
+    blocks = [line.split(":")[0] for line in guard.strip().splitlines()[1:]]
+    assert blocks == ["DEPLOYER BRANCH"], blocks
+
+
+@pytest.mark.parametrize(
+    ("question", "absent"),
+    [
+        ("Who may draw up codes of conduct under Article 95?", "ARTICLE 9 STRUCTURE"),
+        ("Does Article 90 give the scientific panel a role?", "ARTICLE 9 STRUCTURE"),
+        ("How is a life and health insurance policy priced?", "AUTHORITY-NEXUS BRANCH"),
+        ("Is a supermarket loyalty app high-risk?", "AUTHORITY-NEXUS BRANCH"),
+        ("What corrective action must the provider take under Article 20?", "ARTICLE 80 BRANCH"),
+        ("Must a provider's system keep logs under Article 12?", "DEPLOYER BRANCH"),
+    ],
+)
+def test_branch_guard_triggers_do_not_fire_on_neighbouring_provisions(question, absent):
+    from app.data.graph_rag_prompts import _grounded_branch_guard
+
+    assert absent not in _grounded_branch_guard(question), question
+
+
+def test_branch_guard_positive_triggers_still_fire():
+    from app.data.graph_rag_prompts import _grounded_branch_guard
+
+    assert "ARTICLE 9 STRUCTURE" in _grounded_branch_guard("What does Article 9 require?")
+    assert "ARTICLE 50 BRANCH" in _grounded_branch_guard("Must a deep-fake be labelled?")
+    assert "AUTHORITY-NEXUS BRANCH" in _grounded_branch_guard("Is a police risk tool high-risk?")
+    assert "ARTICLE 80 BRANCH" in _grounded_branch_guard("What happens under Article 80?")
+
+
+def test_branch_guard_states_the_law_as_the_adopted_text_does():
+    """R442 — every block checked against ``get_provision_text``."""
+    from app.data.graph_rag_prompts import _grounded_branch_guard
+
+    biometric = _grounded_branch_guard("biometric categorisation and emotion recognition")
+    # One biometric block, not two blocks that disagreed about Art. 5(1)(g).
+    assert biometric.count("BIOMETRIC BRANCH") == 1
+    assert "closed-list prohibition for biometric categorisation by sensitive" not in biometric
+    assert "sex life or sexual orientation is prohibited" in biometric
+
+    art80 = _grounded_branch_guard("What does Article 80 require?")
+    assert "without undue delay" in art80
+    assert "may prescribe" in art80  # the period is optional, not mandatory
+
+    deployer = _grounded_branch_guard("How long must logs be kept under Article 26?")
+    assert "appropriate to the system's intended purpose" in deployer
+    assert "at least six months" in deployer
+
+    classification = _grounded_branch_guard("Is it high-risk under Annex III?")
+    assert "one of the conditions in points (a) to (d)" in classification
+    assert "Article 6(4)" in classification
+
+
+def test_branch_guard_carries_no_gold_criterion_wording():
+    """Two sentences echoed our reconstructed gold criteria, not the Act."""
+    from app.data.graph_rag_prompts import _grounded_branch_guard
+
+    everything = _grounded_branch_guard(
+        "article 26 instructions for use deployer logs; police; annex iii point 6; "
+        "biometric; annex i; article 9; article 80; article 50; importer"
+    )
+    assert "not excused merely because" not in everything
+    assert "resemblance to investigation" not in everything
