@@ -145,6 +145,31 @@ def test_the_legal_version_is_pinned_to_the_adopted_act():
             "ARTICLE 50 BRANCH",
             "Article 26(1)",
         ),
+        (
+            "Does biometric verification solely confirm that a person is who they claim to be?",
+            "BIOMETRIC BRANCH",
+            "ARTICLE 50 BRANCH",
+        ),
+        (
+            "Is software that is a safety component of a medical device high-risk under Annex I?",
+            "MEDICAL-DEVICE BRANCH",
+            "ARTICLE 50 BRANCH",
+        ),
+        (
+            "We want to use biometric verification solely to confirm that a specific person is who they claim to be; is it prohibited or high-risk?",
+            "BIOMETRIC BRANCH",
+            "ANNEX I / SAFETY-COMPONENT BRANCH",
+        ),
+        (
+            "Are AI systems intended for emotion recognition from biometric data always prohibited?",
+            "BIOMETRIC BRANCH",
+            "DEPLOYER BRANCH",
+        ),
+        (
+            "Is an AI system used as a safety component in a medical device high-risk?",
+            "ANNEX I / SAFETY-COMPONENT BRANCH",
+            "Article 50 BRANCH",
+        ),
     ],
 )
 def test_evidence_contract_adds_only_the_engaged_branch_guard(
@@ -167,6 +192,61 @@ def test_branch_guard_is_grounded_and_concise():
     assert "Article 50(5)" in guard
     assert len(guard) < 1100
     assert "knowledge graph" not in guard.lower()
+
+
+def test_branch_guard_coverage_for_target_clusters():
+    from app.data.graph_rag_prompts import _grounded_branch_guard
+
+    questions = [
+        "biometric verification solely to confirm that a specific person is who they claim to be",
+        "emotion recognition in the workplace",
+        "medical device safety component under Annex I",
+        "treatment recommendation software and notified body assessment",
+    ]
+    guards = [_grounded_branch_guard(q) for q in questions]
+    assert all(guards)
+    assert any("BIOMETRIC BRANCH" in guard for guard in guards[:2])
+    assert all("MEDICAL-DEVICE BRANCH" in guard for guard in guards[2:])
+
+
+def test_the_annex_one_guard_does_not_fire_on_other_annexes():
+    """``"annex i" in question`` also matches Annex II, Annex III and Annex IV.
+
+    A bare substring test would append the Annex I / safety-component branch to
+    every Annex III classification question -- the coordinate-form defect the
+    R438 taxonomy names one level down, where ``Annex I.a.11`` was flattened to
+    ``Annex I.11``. The lookahead admits only the bare Roman numeral I.
+    """
+    from app.data.graph_rag_prompts import _grounded_branch_guard
+
+    marker = "ANNEX I / SAFETY-COMPONENT BRANCH"
+    for question in (
+        "Is a system high-risk under Annex III point 6?",
+        "Does Annex II apply to this system?",
+        "What does Annex IV require?",
+        "Is the system listed in Annex IX?",
+    ):
+        assert marker not in _grounded_branch_guard(question), question
+    assert marker in _grounded_branch_guard(
+        "A product listed in Annex I where an AI system is a safety component"
+    )
+
+
+def test_the_new_branches_state_the_statutory_routes():
+    """The two added branches must carry the facts the judge remarks cluster on."""
+    from app.data.graph_rag_prompts import _grounded_branch_guard
+
+    biometric = _grounded_branch_guard("biometric verification question")
+    assert "EXPRESSLY EXCLUDED" in biometric
+    assert "Article 5(1)(h)" in biometric
+    assert "Article 5(1)(g)" in biometric
+    assert "Article 5(1)(f)" in biometric
+    assert "Article 50(3)" in biometric
+
+    annex_one = _grounded_branch_guard("a safety component of a medical device")
+    assert "THIRD-PARTY" in annex_one
+    assert "derogation from" in annex_one
+    assert "PARAGRAPH 2" in annex_one
 
 
 def test_evidence_contract_does_not_drop_existing_precision_clauses(monkeypatch):

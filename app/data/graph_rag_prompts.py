@@ -1411,6 +1411,33 @@ def _grounded_branch_guard(question: str) -> str:
             "its no-significant-risk and no-material-influence conditions and does "
             "not apply to profiling of natural persons."
         )
+    if any(token in low for token in (
+        "biometric", "emotion recognition", "emotion-recognition", "facial",
+        "fingerprint", "voice recognition", "identity verification",
+    )):
+        guards.append(
+            "BIOMETRIC BRANCH: distinguish the fact pattern before classifying it. "
+            "Annex III point 1(a) excludes biometric verification used solely to "
+            "confirm that a specific person is who they claim to be; remote "
+            "biometric identification, biometric categorisation by sensitive or "
+            "protected attributes, and emotion recognition are separate routes. "
+            "Article 5(1)(g) is the closed-list prohibition for biometric "
+            "categorisation by sensitive or protected attributes; do not treat a "
+            "mere biometric signal or identity check as that prohibition."
+        )
+    if any(token in low for token in (
+        "medical device", "medical-device", "annex i", "safety component",
+        "mdd", "mdr", "notified body", "treatment recommendation",
+    )):
+        guards.append(
+            "MEDICAL-DEVICE BRANCH: test Article 6(1) separately from Article 6(2). "
+            "The Article 6(1) route requires the system to be a safety component "
+            "of, or itself a product covered by, Annex I Union harmonisation "
+            "legislation and subject to third-party conformity assessment. Do not "
+            "infer high-risk status from a medical context alone; identify the "
+            "regulated product, intended purpose and conformity-assessment "
+            "condition."
+        )
     if (
         "law enforcement" in low
         or "polic" in low
@@ -1438,6 +1465,75 @@ def _grounded_branch_guard(question: str) -> str:
             "authority prescribes a period for the provider to bring the system "
             "into compliance and take corrective action; do not replace that "
             "authority-set period with an automatic gravity-based deadline."
+        )
+    if any(
+        token in low
+        for token in (
+            "biometric",
+            "emotion recognition",
+            "infer emotions",
+            "facial recognition",
+            "biometric categorisation",
+            "remote identification",
+        )
+    ):
+        guards.append(
+            "BIOMETRIC BRANCH: keep the statutory routes apart. Biometric "
+            "VERIFICATION -- the sole purpose of which is to confirm that a "
+            "specific natural person is the person he or she claims to be -- is "
+            "EXPRESSLY EXCLUDED from Annex III point 1(a) by the text of that "
+            "point, so it is not high-risk on that basis and it is not a "
+            "prohibited practice. Remote biometric IDENTIFICATION is Annex III "
+            "point 1(a), and real-time remote biometric identification in "
+            "publicly accessible spaces for law-enforcement purposes is "
+            "prohibited by Article 5(1)(h), subject only to the narrow exceptions "
+            "in that Article. Biometric categorisation that deduces or infers "
+            "race, political opinions, trade-union membership, religious or "
+            "philosophical beliefs, sex life or sexual orientation is prohibited "
+            "by Article 5(1)(g); Annex III point 1(b) covers categorisation "
+            "according to sensitive or protected attributes, and the Annex III "
+            "biometrics heading applies only in so far as the use is permitted "
+            "under relevant Union or national law. Inferring emotions of a "
+            "natural person in the areas of workplace and education institutions "
+            "is prohibited by Article 5(1)(f), except where the system is "
+            "intended to be put in place or on the market for medical or safety "
+            "reasons; emotion recognition is otherwise Annex III point 1(c) "
+            "high-risk, and Article 50(3) requires deployers of an emotion "
+            "recognition or biometric categorisation system to inform the natural "
+            "persons exposed to it."
+        )
+    # NOT ``"annex i" in low``: that substring also matches "Annex II", "Annex
+    # III" and "Annex IV", which is the R438 coordinate-form defect class one
+    # level up. The lookahead admits only the bare Roman numeral I.
+    annex_one = bool(re.search(r"annex\s+i(?![ivx])", low))
+    if annex_one or any(
+        token in low
+        for token in (
+            "medical device",
+            "safety component",
+            "notified body",
+            "in vitro",
+            "2017/745",
+            "union harmonisation",
+            "harmonisation legislation",
+        )
+    ):
+        guards.append(
+            "ANNEX I / SAFETY-COMPONENT BRANCH: Article 6(1) is a TWO-condition "
+            "route and both conditions must hold: (a) the AI system is intended "
+            "to be used as a safety component of a product, or is itself a "
+            "product, covered by the Union harmonisation legislation listed in "
+            "Annex I; and (b) that product is required to undergo a THIRD-PARTY "
+            "conformity assessment, with a view to its placing on the market or "
+            "putting into service, pursuant to that legislation. A product that "
+            "needs no notified-body assessment does not satisfy point (b), so "
+            "Article 6(1) is not engaged. Article 6(3) is a derogation from "
+            "PARAGRAPH 2 only -- the Annex III route -- so it cannot be used to "
+            "take an Annex I safety-component system out of Article 6(1). Answer "
+            "an Annex I question from Article 6(1) and the Annex I legislation: "
+            "do not re-route it into the Annex III use-case list, and do not "
+            "treat general product-safety law as the source of the AI Act "
+            "classification."
         )
     return "\n\nGROUNDED BRANCH GUARDS (use only the branch the question engages):\n" + "\n".join(guards) if guards else ""
 
