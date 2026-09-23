@@ -67,6 +67,7 @@ import time
 # different keys (``live_question`` vs the history-flattened
 # ``question``) memo into distinct slots — correct, by design.
 from contextvars import ContextVar  # noqa: E402,PLC0415
+from functools import lru_cache
 from typing import Any
 
 import structlog
@@ -3877,7 +3878,7 @@ _GRAIN_OVERVIEW_RE = re.compile(
 #:    "point"/"item" WORD is REQUIRED and the search stops at the first
 #:    sentence end. A bare number is never accepted across a gap.
 _PROSE_ANNEX_ADJACENT_TMPL = (
-    r"Annex\s+{roman}\b[\s,]*(?:\(\s*)?(?:points?|items?|sections?)?\s*\(?\s*(\d{{1,2}})\b"
+    r"Annex\s+{roman}\b[\s,.]*(?:\(\s*)?(?:points?|items?|sections?)?\s*\(?\s*(\d{{1,2}})\b"
 )
 _PROSE_ANNEX_WINDOW_TMPL = r"Annex\s+{roman}\b"
 _PROSE_ANNEX_POINT_WORD_RE = re.compile(r"\b(?:points?|items?)\s*\(?\s*(\d{1,2})\b", re.I)
@@ -3892,66 +3893,409 @@ _PROSE_ANNEX_WINDOW_CHARS = 120
 #: to a lexical tie: an unresolved grain is correct but imprecise, whereas a
 #: wrong coordinate is a worse citation than the coarser one.
 _PROSE_ANNEX_ENUMERATION_RE = re.compile(
-    r"^(?:\s*,\s*|\s+(?:and|or|to)\s+|\s*[-–]\s*)\d", re.I
+    r"^(?:\s*,\s*|\s+(?:and|or|to)\s+|\s*[-–]\s*)"
+    r"(?:(?:points?|items?)\s*)?\(?\s*\d",
+    re.I,
 )
+_ANNEX_I_INSTRUMENT_RE = re.compile(
+    r"\b(?P<kind>regulation|directive)\s*"
+    r"(?:\(\s*(?:eu|ec|eec)\s*\)\s*)?"
+    r"(?P<no>no\.?\s*)?"
+    r"(?P<year>\d{3,4})\s*/\s*(?P<number>\d{2,4})"
+    r"(?:\s*/\s*(?:eu|ec|eec))?\b",
+    re.I,
+)
+# Common, unambiguous names used in answer prose when the formal instrument
+# number is omitted. These resolve to the same Act entries indexed below.
+_ANNEX_I_ACT_ALIASES: dict[str, tuple[str, str]] = {
+    "mdr": ("regulation", "2017/745"),
+    "ivdr": ("regulation", "2017/746"),
+}
+_ANNEX_I_ACT_ALIAS_RE = re.compile(r"\b(?P<alias>MDR|IVDR)\b", re.I)
+_PROSE_SENTENCE_BOUNDARY_RE = re.compile(r"(?<!\bNo)[.!?]\s+(?=[A-Z])")
+
+
+def _annex_i_instrument_keys(text: str) -> set[tuple[str, str] | None]:
+    """Extract explicit EU Act IDs and the small, unambiguous Annex I aliases."""
+    keys = {
+        _annex_instrument_key(match)
+        for match in _ANNEX_I_INSTRUMENT_RE.finditer(text or "")
+    }
+    keys.update(
+        _ANNEX_I_ACT_ALIASES[match.group("alias").casefold()]
+        for match in _ANNEX_I_ACT_ALIAS_RE.finditer(text or "")
+    )
+    return keys
+
+
+def _nearby_annex_i_instrument_keys(
+    answer: str, point_start: int, point_end: int
+) -> set[tuple[str, str] | None]:
+    """Find Act IDs/aliases in the same sentence and close to a point marker."""
+    left, right = _sentence_bounds(answer, point_start, point_end)
+    keys: set[tuple[str, str] | None] = set()
+    for pattern, get_key in (
+        (_ANNEX_I_INSTRUMENT_RE, _annex_instrument_key),
+        (
+            _ANNEX_I_ACT_ALIAS_RE,
+            lambda match: _ANNEX_I_ACT_ALIASES[match.group("alias").casefold()],
+        ),
+    ):
+        for match in pattern.finditer(answer, left, right):
+            if match.end() <= point_start:
+                distance = point_start - match.end()
+            elif match.start() >= point_end:
+                distance = match.start() - point_end
+            else:
+                distance = 0
+            if distance <= _PROSE_ANNEX_WINDOW_CHARS:
+                keys.add(get_key(match))
+    return keys
+
+
+def _question_names_annex_i_point(question: str, point: int) -> bool:
+    """Whether the question itself explicitly asks about this top-level point."""
+    if not question:
+        return False
+    pattern = re.compile(
+        r"\bAnnex\s+I\b[^.!?]{0,120}?\b(?:points?|items?)\s*\(?\s*(\d{1,2})\b",
+        re.I,
+    )
+    return any(int(match.group(1)) == point for match in pattern.finditer(question))
+
+
+def _annex_i_point_matches_question(
+    point: int,
+    units: dict[int, str],
+    question_tokens: set[str],
+    *,
+    require_unique: bool = False,
+) -> bool:
+    """Require the adopted-text item to be a best question match."""
+    if not question_tokens:
+        return False
+    from app.data import provision_text as _pt  # noqa: PLC0415
+
+    generic = {
+        "act", "ai", "assessment", "component", "conformity", "covered",
+        "eu", "high", "product", "regulation", "risk", "safety", "system",
+        "third", "party",
+    }
+    query_signal = question_tokens - generic
+    scores = {
+        number: len(query_signal & (_pt._tokens(text) - generic))
+        for number, text in units.items()
+    }
+    best = max(scores.values(), default=0)
+    return (
+        best >= 2
+        and scores.get(point, 0) == best
+        and (not require_unique or sum(score == best for score in scores.values()) == 1)
+    )
+
+
+@lru_cache(maxsize=1)
+def _annex_i_listed_instruments() -> dict[tuple[str, str], tuple[tuple[str, int], ...]]:
+    """Index Annex I's listed Acts by their identifiers and sectioned point."""
+    from app.data import provision_text as _pt  # noqa: PLC0415
+
+    body = _pt.article_body("Annex I")
+    if not body:
+        return {}
+    found: dict[tuple[str, str], list[tuple[str, int]]] = {}
+    for section, items in _pt.annex_items_sectioned(body):
+        if section is None:
+            continue
+        for point, item_text in items.items():
+            match = _ANNEX_I_INSTRUMENT_RE.search(item_text)
+            if not match:
+                continue
+            key = _annex_instrument_key(match)
+            if key is not None:
+                found.setdefault(key, []).append((section.upper(), point))
+    return {key: tuple(points) for key, points in found.items()}
+
+
+def _annex_instrument_key(match: re.Match) -> tuple[str, str] | None:
+    """Canonicalise modern and legacy EU instrument number orderings."""
+    first, second = match.group("year"), match.group("number")
+    if match.group("no"):
+        year, number = int(second), int(first)
+    elif len(first) == 4:
+        year, number = int(first), int(second)
+    elif len(second) == 4:
+        year, number = int(second), int(first)
+    else:
+        return None
+    return match.group("kind").casefold(), f"{year}/{number}"
+
+
+def _sentence_bounds(text: str, start: int, end: int) -> tuple[int, int]:
+    """Return the sentence span containing ``start:end`` (preserve ``No.``)."""
+    left = 0
+    for boundary in _PROSE_SENTENCE_BOUNDARY_RE.finditer(text, 0, start):
+        left = boundary.end()
+    right_boundary = _PROSE_SENTENCE_BOUNDARY_RE.search(text, end)
+    return left, right_boundary.start() if right_boundary else len(text)
+
+
+def _resolve_annex_i_point(
+    point: int,
+    answer: str,
+    point_start: int,
+    point_end: int,
+    units: dict[int, str],
+    *,
+    question: str = "",
+    question_tokens: set[str] | None = None,
+    all_units: dict[int, str] | None = None,
+) -> int | None:
+    """Resolve an Annex I point from its named Act and adopted sectioned list.
+
+    If no Act is named, retain a point only when the question explicitly names
+    it or its adopted item is a unique, content-grounded match. Conflicts and
+    ambiguous evidence fail closed to the Annex head.
+    """
+    candidate_units = all_units or units
+    if point not in candidate_units:
+        return None
+    answer_keys = _nearby_annex_i_instrument_keys(answer, point_start, point_end)
+    question_keys = _annex_i_instrument_keys(question)
+    instrument_keys = answer_keys or question_keys
+    if instrument_keys:
+        if None in instrument_keys or len(instrument_keys) != 1:
+            return None
+        key = next(iter(instrument_keys))
+        if question_keys and (len(question_keys) != 1 or key not in question_keys):
+            return None
+        locations = _annex_i_listed_instruments().get(key) or ()
+        resolved = set(locations)
+        if len(resolved) != 1:
+            return None
+        _section, resolved_point = next(iter(resolved))
+        if resolved_point not in candidate_units or (
+            question_tokens is not None and resolved_point not in units
+        ):
+            return None
+        if question_tokens is not None and not _annex_i_point_matches_question(
+            resolved_point, candidate_units, question_tokens
+        ):
+            return None
+        return resolved_point
+    if question_tokens is None:
+        return point if point in units else None
+    if _question_names_annex_i_point(question, point):
+        return point
+    return point if _annex_i_point_matches_question(
+        point, candidate_units, question_tokens, require_unique=True
+    ) else None
+
+
+def _annex_i_context_instrument_keys(text: str) -> set[tuple[str, str] | None]:
+    """Act IDs mentioned in sentences that explicitly cite Annex I."""
+    keys: set[tuple[str, str] | None] = set()
+    for match in re.finditer(r"\bAnnex\s+I\b", text or "", re.I):
+        left, right = _sentence_bounds(text, match.start(), match.end())
+        keys.update(_annex_i_instrument_keys(text[left:right]))
+    return keys
+
+
+def _annex_i_prose_points(
+    answer: str,
+    units: dict[int, str],
+    *,
+    question: str = "",
+    question_tokens: set[str] | None = None,
+    all_units: dict[int, str] | None = None,
+) -> list[tuple[int, int | None, int, int]]:
+    """Return ``(claimed, resolved, start, end)`` for each Annex I point cite."""
+    if not answer:
+        return []
+    all_points = all_units or units
+    adjacent = re.compile(_PROSE_ANNEX_ADJACENT_TMPL.format(roman="I"), re.I)
+    annex_head = re.compile(r"\bAnnex\s+[IVXLCDM]+\b", re.I)
+    points: list[tuple[int, int | None, int, int]] = []
+    for annex_match in re.finditer(r"\bAnnex\s+I\b", answer, re.I):
+        direct = adjacent.match(answer, annex_match.start())
+        if direct:
+            claimed = int(direct.group(1))
+            if claimed not in all_points or _PROSE_ANNEX_ENUMERATION_RE.match(
+                answer[direct.end(1):]
+            ):
+                points.append((claimed, None, direct.start(1), direct.end(1)))
+                continue
+            resolved = _resolve_annex_i_point(
+                claimed, answer, direct.start(1), direct.end(1), units,
+                question=question, question_tokens=question_tokens, all_units=all_points,
+            )
+            points.append((claimed, resolved, direct.start(1), direct.end(1)))
+            continue
+        tail_start = annex_match.end()
+        tail_end = min(len(answer), tail_start + _PROSE_ANNEX_WINDOW_CHARS)
+        sentence_end = _PROSE_SENTENCE_BOUNDARY_RE.search(answer, tail_start, tail_end)
+        if sentence_end:
+            tail_end = sentence_end.start()
+        next_annex = annex_head.search(answer, tail_start, tail_end)
+        if next_annex:
+            tail_end = next_annex.start()
+        tail = answer[tail_start:tail_end]
+        hit = _PROSE_ANNEX_POINT_WORD_RE.search(tail)
+        if not hit:
+            continue
+        claimed = int(hit.group(1))
+        point_start, point_end = tail_start + hit.start(1), tail_start + hit.end(1)
+        if claimed not in all_points or _PROSE_ANNEX_ENUMERATION_RE.match(tail[hit.end(1):]):
+            points.append((claimed, None, point_start, point_end))
+            continue
+        resolved = _resolve_annex_i_point(
+            claimed, answer, point_start, point_end, units,
+            question=question, question_tokens=question_tokens, all_units=all_points,
+        )
+        points.append((claimed, resolved, point_start, point_end))
+    return points
+
+
+def _repair_annex_i_prose_points(answer: str, question: str) -> str:
+    """Correct a prose point only when the adopted Act list proves its number."""
+    if not answer:
+        return answer
+    try:
+        from app.data import provision_text as _pt  # noqa: PLC0415
+        units = _pt._annex_items(_pt.article_body("Annex I") or "")
+        mentions = _annex_i_prose_points(
+            answer, units, question=question or "",
+            question_tokens=_pt._tokens(question or ""), all_units=units,
+        )
+        replacements = sorted(
+            ((start, end, str(resolved)) for claimed, resolved, start, end in mentions
+             if resolved is not None and resolved != claimed),
+            key=lambda item: item[0],
+        )
+        if not replacements:
+            return answer
+        pieces: list[str] = []
+        cursor = 0
+        for start, end, replacement in replacements:
+            if start < cursor:
+                continue
+            pieces.extend((answer[cursor:start], replacement))
+            cursor = end
+        pieces.append(answer[cursor:])
+        return "".join(pieces)
+    except Exception:  # noqa: BLE001 — never break the route
+        return answer
+
+
+def _annex_i_prose_point(
+    answer: str, units: dict[int, str], *, question: str = "",
+    question_tokens: set[str] | None = None, all_units: dict[int, str] | None = None,
+) -> tuple[bool, int | None]:
+    points = _annex_i_prose_points(
+        answer, units, question=question,
+        question_tokens=question_tokens, all_units=all_units,
+    )
+    return (True, points[0][1]) if points else (False, None)
+
+
+def _repair_annex_i_wire_points(
+    references: list[str], question: str, answer: str
+) -> list[str]:
+    """Resolve existing Annex I leaves from the answer and adopted section list."""
+    leaf_pattern = re.compile(r"Annex\s+I\.(\d{1,2})(?P<suffix>(?:\.[a-z0-9]+)*)", re.I)
+    if not references or not any(leaf_pattern.fullmatch(str(raw).strip()) for raw in references):
+        return references
+    try:
+        from app.data import provision_text as _pt  # noqa: PLC0415
+        units = _pt._annex_items(_pt.article_body("Annex I") or "")
+        q_tokens = _pt._tokens(question or "")
+        mentions = _annex_i_prose_points(
+            answer or "", units, question=question or "", question_tokens=q_tokens, all_units=units,
+        )
+        answer_keys = _annex_i_context_instrument_keys(answer or "")
+        question_keys = _annex_i_instrument_keys(question or "")
+        keys = answer_keys or question_keys
+        act_point = None
+        if len(keys) == 1 and None not in keys:
+            key = next(iter(keys))
+            if not question_keys or (len(question_keys) == 1 and key in question_keys):
+                locations = set(_annex_i_listed_instruments().get(key) or ())
+                if len(locations) == 1:
+                    _section, target = next(iter(locations))
+                    if target in units and (not q_tokens or _annex_i_point_matches_question(target, units, q_tokens)):
+                        act_point = target
+        resolved_points = {point for _, point, _, _ in mentions if point is not None}
+        all_resolved = all(point is not None for _, point, _, _ in mentions)
+        out: list[str] = []
+        for raw in references:
+            match = leaf_pattern.fullmatch(str(raw).strip())
+            if not match:
+                out.append(raw)
+                continue
+            claimed = int(match.group(1))
+            suffix = match.group("suffix") or ""
+            same = [point for number, point, _, _ in mentions if number == claimed]
+            if same:
+                targets = {point for point in same if point is not None}
+                target = next(iter(targets)) if all(p is not None for p in same) and len(targets) == 1 else None
+            elif mentions and all_resolved and len(resolved_points) == 1:
+                target = next(iter(resolved_points))
+            elif not mentions:
+                target = act_point
+            else:
+                target = None
+            if target is None or (suffix and target != claimed):
+                out.append("Annex I")
+            elif suffix:
+                out.append(raw)
+            else:
+                out.append(f"Annex I.{target}")
+        return out
+    except Exception:  # noqa: BLE001 — fail-soft, never ship an unverified point
+        return ["Annex I" if leaf_pattern.fullmatch(str(raw).strip()) else raw for raw in references]
+
+
+def _resolve_prose_named_annex_point(
+    roman: str, answer: str, units: dict, *, question: str = "",
+    question_tokens: set[str] | None = None, all_units: dict | None = None,
+) -> tuple[bool, int | None]:
+    """Distinguish no prose coordinate from a named-but-unresolved one."""
+    if not roman or not answer:
+        return False, None
+    if roman.upper() == "I":
+        return _annex_i_prose_point(
+            answer, units, question=question, question_tokens=question_tokens, all_units=all_units,
+        )
+    adjacent = re.compile(_PROSE_ANNEX_ADJACENT_TMPL.format(roman=re.escape(roman)), re.I)
+    window = re.compile(_PROSE_ANNEX_WINDOW_TMPL.format(roman=re.escape(roman)), re.I)
+    for match in adjacent.finditer(answer):
+        if _PROSE_ANNEX_ENUMERATION_RE.match(answer[match.end(1):]):
+            return True, None
+        try:
+            point = int(match.group(1))
+        except (TypeError, ValueError):
+            return True, None
+        return True, point if point in units else None
+    for match in window.finditer(answer):
+        tail = answer[match.end():match.end() + _PROSE_ANNEX_WINDOW_CHARS]
+        stop = _PROSE_SENTENCE_BOUNDARY_RE.search(tail)
+        if stop:
+            tail = tail[:stop.start()]
+        hit = _PROSE_ANNEX_POINT_WORD_RE.search(tail)
+        if not hit:
+            continue
+        if _PROSE_ANNEX_ENUMERATION_RE.match(tail[hit.end(1):]):
+            return True, None
+        try:
+            point = int(hit.group(1))
+        except (TypeError, ValueError):
+            return True, None
+        return True, point if point in units else None
+    return False, None
 
 
 def _prose_named_annex_point(roman: str, answer: str, units: dict):
-    """The first annex point the answer's own prose names, or ``None``.
-
-    R399 — MEASURED on the Sept 7 capture. The deepener is purely lexical, so
-    on rg_008 it emitted ``Annex I.19`` (motor-vehicle type approval) for a
-    medical-device question whose answer says, verbatim, "which includes
-    Regulation (EU) 2017/745 (MDR) **at point 11**". rg_001 shipped
-    ``Annex IV.2`` while its answer answers the hardware question with
-    "(**Annex IV point 1(e)**)". In both rows the correct coordinate was
-    already written in the prose being cited, and token overlap out-voted it.
-
-    FIRST mention wins: the lead citation is the operative one, which is the
-    same rule the Article 6 product-route correction above applies to a lead
-    6(1) explanation.
-
-    Scoped to ANNEX heads on purpose. Articles carry individually measured
-    per-article corrections (6, 26, 3, 44, 60, 61, 111) — R390 had to repair
-    one of them after a hardcode forced ``Article 44.1`` onto validity asks —
-    and overriding a measured correction with an unmeasured prose rule is the
-    trade this repo has paid for before. The article case belongs to the
-    systematic coordinate audit the R399 review asks for separately.
-    """
-    if not roman or not answer:
-        return None
-    try:
-        adjacent = re.compile(
-            _PROSE_ANNEX_ADJACENT_TMPL.format(roman=re.escape(roman)), re.I
-        )
-        window = re.compile(_PROSE_ANNEX_WINDOW_TMPL.format(roman=re.escape(roman)), re.I)
-    except re.error:  # a bad roman must never break the route
-        return None
-    def _accept(match, haystack):
-        """The captured number, unless it opens an enumeration."""
-        if _PROSE_ANNEX_ENUMERATION_RE.match(haystack[match.end(1) :]):
-            return None
-        try:
-            n = int(match.group(1))
-        except (TypeError, ValueError):
-            return None
-        return n if n in units else None
-
-    for m in adjacent.finditer(answer):
-        n = _accept(m, answer)
-        if n is not None:
-            return n
-    for m in window.finditer(answer):
-        tail = answer[m.end() : m.end() + _PROSE_ANNEX_WINDOW_CHARS]
-        stop = re.search(r"(?<!\bNo)\.\s+[A-Z]", tail)  # first sentence boundary
-        if stop:
-            tail = tail[: stop.start()]
-        hit = _PROSE_ANNEX_POINT_WORD_RE.search(tail)
-        if hit:
-            n = _accept(hit, tail)
-            if n is not None:
-                return n
-    return None
+    """Return the safely resolved first point, or None."""
+    return _resolve_prose_named_annex_point(roman, answer, units)[1]
 
 
 def _pick_unit(units: dict, q_tok: set, a_tok: set):
@@ -4102,13 +4446,18 @@ def _deepen_one_ref(ref: str, question: str, answer: str) -> str:
         # named unit inside ``q_units`` preserves Audit Finding 1's invariant
         # (answer drift alone may never select a coordinate) and makes this a
         # tie-breaker rather than an override.
-        prose_pt = (
-            _prose_named_annex_point(m.group(3), answer or "", q_units)
+        prose_point_found, prose_pt = (
+            _resolve_prose_named_annex_point(
+                m.group(3), answer or "", q_units,
+                question=question or "", question_tokens=q_tok, all_units=units,
+            )
             if m.group(3)
-            else None
+            else (False, None)
         )
         if prose_pt is not None:
             won = prose_pt
+        elif prose_point_found and m.group(3).upper() == "I":
+            return ref
         elif (art_num == 6 and not re.search(r"\bannex\s+(?:iii|3)\b", _q_low)
                 and not re.search(r"\b(?:article|art\.?)\s+6\s*(?:\(|\.)\s*[23]\b", _q_low)
                 and product_route and first_art6 and first_art6.group(1) == "1"):
@@ -13228,6 +13577,17 @@ def regenold_eu_ai_act_ask(
                     _rn6("wire_grain_grounded " + ",".join(_gw_changed))
                 except Exception:  # noqa: BLE001 — fail-soft on trace
                     pass
+
+        # Resolve Annex I prose and its wire coordinate against the adopted
+        # sectioned list before any later reference filters run.
+        _annex_i_question = live_user_message or question
+        _annex_i_answer = _repair_annex_i_prose_points(answer_text or "", _annex_i_question)
+        if _annex_i_answer != answer_text:
+            answer_text = _annex_i_answer
+        if references and answer_text:
+            references = _repair_annex_i_wire_points(
+                references, _annex_i_question, answer_text
+            )
 
         # R385 — question-relevance prune, immediately before the terminal cap so
         # it sees the fully assembled list (including everything the three
