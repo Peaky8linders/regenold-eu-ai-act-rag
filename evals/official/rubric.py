@@ -13,7 +13,8 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Any, Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 # -- reference coordinate normalisation --------------------------------------
 
@@ -125,19 +126,47 @@ def reference_correctness_loose(
     return sum(1 for e in exp if e in got) / len(exp)
 
 
+ANNEX_SECTIONS: dict[str, dict[str, tuple[int, int]]] = {
+    "I": {"a": (1, 12), "b": (13, 20)},
+}
+
+
+def canonical_annex_point(coord: str) -> str:
+    """Normalize section-tagged Annex I points to their printed point number."""
+    kind, sep, rest = coord.partition(" ")
+    if not sep or kind != "Annex":
+        return coord
+    head, dot, tail = rest.partition(".")
+    sections = ANNEX_SECTIONS.get(head.upper())
+    if not sections or not dot:
+        return coord
+    parts = tail.split(".")
+    if len(parts) < 2 or len(parts[0]) != 1 or not parts[1].isdigit():
+        return coord
+    bounds = sections.get(parts[0].lower())
+    point = int(parts[1])
+    if bounds is None or not bounds[0] <= point <= bounds[1]:
+        return coord
+    suffix = "." + ".".join(parts[2:]) if len(parts) > 2 else ""
+    return f"Annex {head.upper()}.{point}{suffix}"
+
+
 def reference_correctness_strict(
     pred_refs: Sequence[str], expected_refs: Sequence[str]
 ) -> float | None:
     """As above, but including subpoints within the Articles/Annexes
     (e.g. Article 6.1).
 
-    Per-question recall at FULL grain.  A predicted coordinate counts for an
+    Per-question recall at FULL grain. A predicted coordinate counts for an
     expected one when it equals it or refines it (see :func:`_is_descendant`).
+    Section-tagged Annex I coordinates on either side normalize to statutory
+    printed numbering before comparison.
     """
     exp = _clean(expected_refs)
     if not exp:
         return None
-    got = _clean(pred_refs)
+    exp = [canonical_annex_point(e) for e in exp]
+    got = [canonical_annex_point(p) for p in _clean(pred_refs)]
     return sum(1 for e in exp if any(_is_descendant(p, e) for p in got)) / len(exp)
 
 
