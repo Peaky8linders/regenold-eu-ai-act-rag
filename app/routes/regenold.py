@@ -1514,6 +1514,11 @@ def _engine_cache_key(
             "REGENOLD_EXCEPTION_LIMB_GUARD",
             "REGENOLD_VERDICT_LEAD_GUARD",
             "REGENOLD_PUSHBACK_KEEP_CONTRACT",
+            # R442 — the keep guard's precision floor changes WHEN the repair
+            # loop engages (>= N dropped anchored sentences), so it changes
+            # GraphRAGResponse.answer on exactly the rows between the two
+            # thresholds. Same doctrine as the guard flag above.
+            "REGENOLD_KEEP_MIN_GAPS",
             "REGENOLD_GOVERNING_PROVISION_CLAUSE",
             # R270 — opus-for-all flips the Stage-2 answer MODEL (Sonnet 5 vs
 
