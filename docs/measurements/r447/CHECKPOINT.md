@@ -3,7 +3,8 @@
 **Date:** 2026-09-25. **Base:** `origin/main` = `a0b08c8` (production after PRs #463/#464).
 **Scope:** the follow-ups the R446 engineering review left open: the two weak
 fixed-route answers, the never-judged pushback-keep draws, three P2 review items
-(F5, F8, F9), and the stale Gemini worktree.
+(F5, F8, F9), and the stale Gemini worktree. An independent, execution-based
+review of this round's first two commits then drove a fourth (§5).
 
 ## 1. The two weak fixed-route answers
 
@@ -21,11 +22,11 @@ Wire, before → after (offline, the real route):
 
 | question | before | after |
 | :-- | :-- | :-- |
-| part1_q05 / part2_q04 | 464 chars, `['Article 50.1']` | 1146 chars, `['Article 50.1', 'Article 50.5', 'Article 50.3', 'Article 50.4', 'Article 26.11']` |
-| part1_q10 | 738 chars, `['Article 3.3', 'Article 25.1', 'Article 16', 'Article 26.5']` | 729 chars, `['Article 25.1', 'Article 3.3']` |
+| part1_q05 / part2_q04 | 464 chars, `['Article 50.1']` | 1185 chars, `['Article 50.1', 'Article 50.5', 'Article 50.3', 'Article 50.4', 'Article 26.11']` |
+| part1_q10 | 738 chars, `['Article 3.3', 'Article 25.1', 'Article 16', 'Article 26.5']` | 729 chars, `['Article 3.3', 'Article 3.4', 'Article 25.1']` |
 
-Four route constraints any curated text must satisfy. Each was hit while writing
-these and is pinned in `tests/test_r447_fixed_route_rewrites.py`:
+Four route rules any curated text must satisfy. Each was hit while writing these,
+and each is pinned in `tests/test_r447_fixed_route_rewrites.py`:
 
 1. **At most 3 sentences** (`MAX_ANSWER_SENTENCES`); the cap keeps the first three.
 2. **Every sentence carries an `article`/`annex` token**, or the soft char cap may drop it.
@@ -33,16 +34,17 @@ these and is pinned in `tests/test_r447_fixed_route_rewrites.py`:
    matched `from the context` and deleted the whole lead sentence (the 50(1)/50(5)
    rule). The statutory "reasonably well-informed, observant and circumspect"
    wording carries no such token.
-4. **At most 5 refs, leaf-only, no sibling pair.** A curated intercept's budget is
-   `MAX_REFERENCES` (5), and R87-C appends the parent heads after the declared list.
-   So a sixth leaf is cut. A bare head plus 2+ of its leaves is folded by R287. Two
-   sibling leaves (`Art. 3.3` + `Art. 3.4`) are folded too, because R87-C re-emits
-   their parent and R287 then collapses the cluster. That is why the role answer
-   ships `Article 3.3` without `3.4`. The interaction applies to every curated
-   sibling pair and is left for its own measured change.
+4. **Mind the budget and the leaf clusters.** On a plain question a curated
+   intercept's ref budget is `MAX_REFERENCES` (5); a compound-role or scenario
+   phrasing lifts it to 10 or 12. R87-C appends each leaf's parent, and on a
+   scenario shape `expand_citations` adds heads too. R287 then folds a head plus 2+
+   leaves. Sibling leaves (`Art. 3.3` + `Art. 3.4`) were therefore folded into a
+   manufactured head whenever the budget let that head survive; see
+   `REGENOLD_CURATED_KEEP_DECLARED_LEAVES` (§5).
 
-Both detectors fire on **0/110** official questions and **0/476** davidath rows, so
-the rewrite reaches only these question shapes.
+Both detectors fire on **0/110** official questions and **0/476** davidath rows.
+The Art. 50(5) sentence covers "the information under paragraphs 1 to 4", as the
+Act does, not only the 50(1) disclosure.
 
 ## 2. The three P2 items
 
@@ -52,19 +54,35 @@ the rewrite reaches only these question shapes.
 annex. Outside Annex I an enumeration or an uncorroborated first mention returned
 "named but unresolved". The deepener then fell back to token overlap and discarded a
 later point the answer itself names, which is the evidence R399 built the rule on.
+
 The first-mention-stops rule is now Annex I only. Other annexes are back to R399's
-"first usable mention wins" and keep #462's stricter enumeration and boundary
-regexes. `annex_prose_point_replay.py` replays `_deepen_one_ref` on every recorded
-answer in `docs/measurements/r388/score-*.json`:
+"first usable mention wins", keep #462's stricter enumeration and boundary regexes,
+and gain one guard (review #7): a mention the answer rules out ("It is not Annex III
+point 3; ...") is skipped.
+
+The guard's first cut read the whole clause and treated an affirmed mention as ruled
+out. "It is not a remote biometric identification system and falls under Annex III
+point 4" then deepened to `Annex III.6.d` (second review #2). A negator now counts
+only when it governs the mention:
+
+* at most three words separate them, none of which opens a new predicate (and, but,
+  that, ...);
+* "not only/just/merely" and "no later/doubt/longer" are excluded;
+* the look-back starts on a word, so a clipped "casino" or "cannot" can't match.
+
+`annex_prose_point_replay.py` replays `_deepen_one_ref` on every recorded answer in
+`docs/measurements/r388/score-*.json`:
 
 | head | replays | pre-#462 vs shipped | shipped vs this tree | pre-#462 vs this tree |
 | :-- | --: | --: | --: | --: |
-| Annex I | 318 | 10 | 0 | 10 |
-| Annex III | 316 | 2 | 2 | 0 |
-| Annex VIII | 27 | 0 | 0 | 0 |
+| Annex I | 343 | 10 | **0** | 10 |
+| Annex III | 349 | 2 | 2 | 1 |
+| Annex VIII | 33 | 0 | 0 | 0 |
 | all others | 191 | 0 | 0 | 0 |
 
-Ref. Strict is identical across all three arms on every row that moved.
+Ref. Strict is identical across all three arms on every row that moved. The one
+Annex III row where this tree differs from pre-#462 (`rg_024`, now `Annex III.4`)
+has a bare `Annex III` gold, which any leaf satisfies.
 
 ⚠ **Correction to R446b.** "OFF restores the pre-#462 Annex I behaviour on both
 paths" is not exact for the deepener. With `REGENOLD_ANNEX_I_RESOLUTION=0` the
@@ -78,45 +96,69 @@ Annex I. This round leaves that as it is.
 `is_biometric_patient_interaction_question` (the R365 Art. 50 recall supplement,
 default OFF) was two `.*` lookaheads over the whole live question. So subject and
 signal could sit in different sentences, and since R442's `re.DOTALL` on different
-lines too. Subject and signal must now share a sentence (lines first, then
-`split_legal_sentences`, which keeps `Art. 5` whole). A later sentence completes the
-match only with an Art. 50 duty verb, which is the shape R442's pin needs ("We deploy
-a biometric system. Must we inform the persons?"). Fire-sets, old → new: official
-110 **4 → 4**, probe corpus **3 → 3**, davidath **0 → 0**. The two review repros
-("...shoppers by age. Is it prohibited?", "Patient records ... What information ...
-Article 13?") no longer fire.
+lines too.
+
+Now subject and signal must share a sentence. Another sentence, before or after,
+completes the match only if it is a *question* carrying an Art. 50 duty *verb*
+(inform, disclose, interact, expose).
+
+* The nouns "information", "disclosure" and "interaction" bridged Article 12/13 asks.
+* A statement such as "We were informed that ..." is context, not a duty ask.
+
+Sentence splitting:
+
+* A line break before a capital (optionally after a bullet) ends a sentence; any
+  other line break is a hard wrap.
+* A full stop ends a sentence only before a capital. Hard-wrapped sentences,
+  "approx. 500", "Dir. 2016/680" and "Acme Inc. Germany" therefore stay whole.
+* The abbreviation look-back is bounded, so the split is linear: 40,000 chars in
+  0.04 s, against 9.1 s for the first cut.
+
+Fire-sets, R442 → R447:
+
+| corpus | R442 | R447 | note |
+| :-- | --: | --: | :-- |
+| official 110 | 4 | 4 | same rows |
+| davidath | 0 | 0 | |
+| expert 28 | 0 | 0 | |
+| probe corpus | 3 | 2 | `tp_v4_012` fired only through "disclosure"; its gold is `Annex III` + `Article 6` |
 
 ### F9 — an ungated minimum answer length
 
-R442's whole-head floor (650 target chars on the Stage-2 ANSWER SHAPE clause) had no
-flag, and it fired on any ask that merely named a listed head: "Does Article 26
-require deployers to keep logs?" went 375 → 650. It is now behind
-`REGENOLD_WHOLE_HEAD_FLOOR` (deny-list, default ON, cache-keyed). It needs the head
-to be the subject of the ask ("What is Annex X about?", "What do Articles 14 and 15
-require for high-risk AI systems?", "How do Articles 5 and 6 classify ...
-differently?").
+R442's whole-head floor (650 target chars on the Stage-2 ANSWER SHAPE clause) had
+no flag, and it fired on verdict questions: "Does Article 26 require deployers to
+keep logs?" went 375 → 650. It is now behind `REGENOLD_WHOLE_HEAD_FLOOR` (deny-list,
+default ON, cache-keyed). It is withheld only from a *narrow* verdict ask: yes/no,
+with no sentence that is an open request.
+
+The yes/no test reads the first interrogative, so "Explain Article 50. Does it apply
+to chatbots?" still counts as a whole-head ask (second review #3). R442's head
+detection is otherwise unchanged.
+
+A first cut required a head-as-subject regex instead. The review measured it losing
+the floor on ordinary phrasings ("What is Annex X of the AI Act about?", "Tell me
+about Annex X.") and gaining it on "Articles 4 and 3 percent", so it was replaced.
 
 `whole_head_floor_probe.py` records every `answer_need` call the real route makes
 (offline, Stage-2 stubbed to land) and re-scores it with the shipped module. Over
-242 rows (official 110 + probe corpus), 430 calls:
+242 rows and 430 calls:
 
-* **0 answer-shape changes on the official 110.** rg_105, the row R442 wrote the
-  floor for, keeps 650. The 7 official-110 changes are on the skeleton-scope call,
-  which reads only `engaged`/`anchored`, never the target, so they are inert.
-* **7 probe-corpus answer-shape changes.** All are narrow asks that name a head
-  (yes/no, "does X or Y apply", a follow-up fragment), returning to their pre-R442
-  targets.
+* **0 answer-shape changes on the official 110.** rg_105 keeps its floor.
+* **3 probe-corpus changes, all yes/no:** `tp_v4_002`, `tr_v2_014`, `tr_v2_027`.
+* The other changed calls are the skeleton-scope call, which reads only
+  `engaged`/`anchored`, never the target.
 
 The R442 test that pinned the Article 26 logs question as a whole-head ask now pins
-the opposite, with the reason stated in the test.
+the opposite, with the reason.
 
 ## 3. The pushback-keep threshold draws, scored
 
 R442 drew the `REGENOLD_KEEP_MIN_GAPS=2` gate (14 rows × 3 generations × 2 arms,
 84/84 primary-served, `void: false`) and never judged it. Scored here with R442's
-own pre-registered script (`keep_floor_gate.py`, re-homed, rule unedited). One defect
-fixed: it read `r440.AXES`, which does not exist, so it had never reached a verdict.
-Judge: Bedrock `qwen.qwen3-235b-a22b-2507-v1:0`, 3 repeats (the R436 identity).
+own pre-registered script (`keep_floor_gate.py`, re-homed, rule unedited). One
+defect was fixed: it read `r440.AXES`, which does not exist, so it had never reached
+a verdict. Judge: Bedrock `qwen.qwen3-235b-a22b-2507-v1:0`, 3 repeats (the R436
+identity).
 
 Pooled paired read (row-clustered bootstrap, 3 samples):
 
@@ -148,3 +190,50 @@ Antigravity's `subagent-Frontier-Developer-FrontierDeveloper-662fd768` worktree
 (`5e2afdf`, R284, 0 ahead / 468 behind `origin/main`, 9 abandoned edits) and its
 merged branch are removed. The abandoned diff and its one untracked test were saved
 to the session scratchpad first.
+
+## 5. The adversarial review of this round
+
+An independent reviewer executed probes against the first two commits (`bd8188e`,
+`b349837`). Dispositions:
+
+| # | finding | disposition |
+| :-- | :-- | :-- |
+| 1 | "We are both a provider and a deployer ... how must a natural person be informed ...?" lifts the ref budget to 12. R87-C's re-emitted `Article 50` then survived the cut, R287 folded the four leaves into it, and the wire cited `Article 50.4` (deep fakes) as its only Art. 50 paragraph | **fixed**: `REGENOLD_CURATED_KEEP_DECLARED_LEAVES` (deny-list, default ON, cache-keyed) skips the re-emission for a curated intercept's heads whose declared leaves have no dominating member |
+| 2 | offline multi-turn (no Stage-0 provider): the pushback turn inherits `Annex III` from the prose and deepens it to `Annex III.7.b` | documented; clean in wrapper mode, which is production |
+| 3 | an emotion-recognition phrasing loses `Article 26.11` to a pre-existing `Article 5` anchor prepend inside the 5-ref cut | documented; pre-existing pass |
+| 4 | role route never shipped `Article 3.4` | **fixed** by #1 |
+| 5 | F8 trigger lost hard-wrapped and abbreviated single sentences and either-order asks; noun forms still bridged | **fixed** (§2) |
+| 6 | F9 regexes lost ordinary whole-head phrasings and gained a false positive | **fixed**: rule replaced (§2) |
+| 7 | F5 revert let a ruled-out mention win | **fixed**: negation guard (§2) |
+| 8 | the Art. 50(5) sentence scoped the manner/timing rule to 50(1) only | **fixed** in the text |
+
+`curated_leaves_replay.py` is a two-arm replay through the real route, with the flag
+ON vs OFF, scored against the refkey and the expert `expected_refs`. Curated rows skip
+Stage-2, so it is zero-variance and matches production. Results:
+
+* A blanket skip was measured first and **rejected**. It cost `rg_012` (gold
+  `Annex III.8`) Ref. Conciseness 1.00 → 0.33, the case R287 exists for.
+* The shipped rule: 237 rows, 39 curated, **4 wire changes, all wins, 0 on the
+  official 110.**
+  * `part1_q10` gains `Article 3.4` (strict 0.75 → 1.00, conciseness 1.00 → 1.00).
+  * The compound and scenario phrasings ship the four Art. 50 leaves instead of
+    `Article 50.4` alone.
+
+### The second review (of the fix commit `590bc69`)
+
+A second independent reviewer executed probes against the fix commit:
+
+| # | finding | disposition |
+| :-- | :-- | :-- |
+| 1 | P0: a scenario phrasing ("… used by our bank. What is its risk classification? How must …") still folded the leaves. `expand_citations` adds a bare `Article 50` before R87-C, so a skip set computed there came back empty | **fixed**: the protected set is frozen from the intercept's declared refs, and unioned with the clusters present at R87-C (the declared-refs set alone missed hard-mode emotion rows). A protected bare head is dropped before R287 while its leaves are on the list, the drop R325 makes at the end, done early |
+| 2 | P1: the clause-wide negation test read affirmed mentions as ruled out (wrong `Annex III.6.d`) | **fixed**: adjacency-based test (§2 F5) |
+| 3 | P2: the yes/no test read the first question and ignored an open request elsewhere | **fixed** (§2 F9) |
+| 4 | P2: unpunctuated line breaks re-fired, "Inc." split a sentence, a duty verb in a statement bridged; the splitter was quadratic | **fixed** (§2 F8) |
+
+The reviewer's own sweep (`p2_curated_diff.py`) was re-run on the final code. It
+covers all 33 curated detectors × single, compound strong/weak, scenario, short
+multi-turn and hard turns 1/2, 1,077 variants in all:
+
+* **55 changed, 0 worse on any gold axis.**
+* 0 duplicate refs, 0 new head-plus-leaf pairs, 0 official-110 changes.
+* The only wire that differs from the fix commit's is the scenario phrasing.
