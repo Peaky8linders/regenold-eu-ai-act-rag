@@ -564,6 +564,8 @@ def test_a_named_head_still_does_not_engage_every_paragraph() -> None:
     ("ask", "refs"),
     [
         ("What is Annex X about? What is it used for?", "Annex X"),
+        ("What is Annex X of the AI Act about?", "Annex X"),
+        ("Tell me about Annex X.", "Annex X"),
         ("What does Article 26 require?", "Article 26"),
         ("What do Articles 14 and 15 require for high-risk AI systems?", "Article 14 Article 15"),
         ("How do Articles 5 and 6 classify AI systems differently?", "Article 5 Article 6"),
@@ -586,14 +588,14 @@ def test_an_ask_about_a_whole_head_gets_the_no_signal_floor(ask: str, refs: str)
         # about one duty, and the R446 review (F9) measured it at 375 -> 650.
         ("Does Article 26 require the deployer to keep logs?", "Article 26"),
         ("Under Article 50, must a chatbot disclose that it is an AI system?", "Article 50"),
-        ("What does Article 26 require regarding logs?", "Article 26"),
     ],
 )
-def test_a_narrow_ask_that_names_a_head_keeps_the_proportional_target(
+def test_a_yes_no_ask_that_names_a_head_keeps_the_proportional_target(
     ask: str, refs: str
 ) -> None:
-    """R447 — naming a head is not asking about it; only the latter takes the floor."""
+    """R447 — a verdict ask is a scope signal, so the whole-head floor stays off."""
     estimate = need.answer_need(ask, refs)
+    assert estimate.is_yes_no
     assert estimate.engaged == ()
     assert estimate.anchored
     assert estimate.target_chars == min(

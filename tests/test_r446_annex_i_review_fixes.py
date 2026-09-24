@@ -414,6 +414,37 @@ def test_a_later_prose_point_still_counts_outside_annex_i(answer: str, units: di
     assert R._resolve_prose_named_annex_point("I", annex_i, units) == (True, None)
 
 
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [
+        # R447 review #7: without the guard the ruled-out point 3 won.
+        (
+            "Annex III, points 3 and 4 cover education and employment. It is not "
+            "Annex III point 3; recruitment screening is employment.",
+            (True, None),
+        ),
+        (
+            "This is not Annex III point 1 (biometrics); it is Annex III point 5 "
+            "on essential services.",
+            (True, 5),
+        ),
+        ("Annex III point 5 applies, not Annex III point 3.", (True, 5)),
+        ("Not only Annex III point 5 but also Article 50 applies.", (True, 5)),
+    ],
+)
+def test_a_ruled_out_mention_is_not_the_coordinate(answer: str, expected: tuple) -> None:
+    units = {n: "" for n in range(1, 9)}
+    assert R._resolve_prose_named_annex_point("III", answer, units) == expected
+
+
+def test_the_negation_guard_leaves_annex_i_alone() -> None:
+    """Annex I keeps #462's first-mention rule exactly, negated or not."""
+    units = {n: "" for n in range(1, 21)}
+    assert R._resolve_prose_named_annex_point(
+        "I", "It is not Annex I point 3; it is Annex I point 5.", units
+    ) == (True, 3)
+
+
 # -- F7: the strict axis counts each canonical key once ------------------------
 
 

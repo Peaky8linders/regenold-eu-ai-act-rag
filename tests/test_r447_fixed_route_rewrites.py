@@ -161,6 +161,55 @@ class TestRoleDifferenceRoute:
             assert limb in answer, limb
 
     def test_cites_the_definitions_and_the_transition(self, ask):
-        refs = ask(_Q10)["references"]
-        assert "Article 3.3" in refs
-        assert "Article 25.1" in refs
+        # Both definitions: without REGENOLD_CURATED_KEEP_DECLARED_LEAVES the
+        # R87-C re-emission + R287 fold shipped Article 3.3 alone.
+        assert ask(_Q10)["references"] == ["Article 3.3", "Article 3.4", "Article 25.1"]
+
+
+# ── REGENOLD_CURATED_KEEP_DECLARED_LEAVES (R447 review #1) ────────────────────
+
+_COMPOUND_Q04 = (
+    "We are both a provider and a deployer of a chatbot. How must a natural "
+    "person be informed that they are interacting with an AI system?"
+)
+
+
+class TestCuratedLeavesAreNotFolded:
+    def test_a_compound_role_phrasing_keeps_every_article_50_leaf(self, ask):
+        # A strong compound-role phrasing lifts the ref budget to 12, so the
+        # re-emitted Article 50 survived the cut, R287 folded the four leaves
+        # into it, and the deepener shipped Article 50.4 (deep fakes) alone.
+        assert ask(_COMPOUND_Q04)["references"] == [
+            "Article 50.1",
+            "Article 50.5",
+            "Article 50.3",
+            "Article 50.4",
+            "Article 26.11",
+        ]
+
+    def test_the_flag_restores_the_fold(self, ask, monkeypatch):
+        monkeypatch.setenv("REGENOLD_CURATED_KEEP_DECLARED_LEAVES", "0")
+        refs = ask(_COMPOUND_Q04)["references"]
+        assert sum(ref.startswith("Article 50") for ref in refs) == 1
+
+    def test_a_dominating_leaf_still_folds_its_children(self, ask):
+        # rg_012 declares Annex III.8 + 8.a + 8.b. R287 keeps Annex III.8,
+        # which is the gold; skipping the re-emission there cost Ref.
+        # Conciseness 1.00 -> 0.33 in the R447 replay, so it still runs.
+        refs = ask(
+            "What are the high-risk uses of AI systems listed under "
+            "'Administration of justice and democratic processes' cited in the "
+            "EU AI Act?"
+        )["references"]
+        assert refs == ["Annex III.8"]
+
+    def test_only_undominated_heads_are_skipped(self):
+        from app.routes.regenold import _undominated_leaf_heads
+
+        assert _undominated_leaf_heads(
+            ["Article 50.1", "Article 50.3", "Article 26.11"]
+        ) == frozenset({"Article 50"})
+        assert _undominated_leaf_heads(
+            ["Annex III.8", "Annex III.8.a", "Annex III.8.b"]
+        ) == frozenset()
+        assert _undominated_leaf_heads(["Article 6", "Article 6.1", "Article 6.3"]) == frozenset()

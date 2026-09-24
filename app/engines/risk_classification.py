@@ -251,11 +251,14 @@ _R365_FINES_PROHIBITED_RE = re.compile(
 #: information ... Article 13?" fired on the noun "information".
 #:
 #: The rule now: subject and signal in the SAME sentence, as the trigger was
-#: written for (la_q7: "biometric verification solely to confirm ..."). A
-#: LATER sentence may complete the match only with an Article 50 information
-#: duty itself (``_R365_BIO_DUTY_RE``), which is the shape the R442 pin
-#: exists for: describe the system, then ask whether you must inform. A
-#: later "Is it prohibited?" is a prohibition question and no longer fires.
+#: written for (la_q7: "biometric verification solely to confirm ..."). ANOTHER
+#: sentence, before or after, may complete the match only with an Article 50
+#: information duty itself (``_R365_BIO_DUTY_RE``), which is the shape the R442
+#: pin exists for: describe the system, then ask whether you must inform. A
+#: separate "Is it prohibited?" is a prohibition question and no longer fires.
+#: Lines are joined before splitting, so a hard-wrapped sentence stays one
+#: sentence, and a boundary needs a capital after the full stop, so "approx.
+#: 500" or "Dir. 2016/680" does not split one (review of R447, measured).
 _R365_BIO_SUBJECT_RE = re.compile(
     r"\b(?:biometric\w*|patient\w*|clinical trial\b|recruit\w*|"
     r"select and recruit\b|eligib\w*)\b",
@@ -266,36 +269,50 @@ _R365_BIO_SIGNAL_RE = re.compile(
     r"inform\w*|expos\w*)\b",
     re.IGNORECASE,
 )
-#: Only these may sit in a later sentence than the subject. ``inform`` is the
-#: verb only: the noun "information" is what fired on the Article 13 case.
+#: Only these may sit in another sentence than the subject, and only as VERBS:
+#: the nouns "information", "disclosure" and "interaction" name Article 12/13
+#: duties as readily as Article 50 ones, and they bridged sentences.
 _R365_BIO_DUTY_RE = re.compile(
-    r"\b(?:inform(?:s|ed|ing)?|disclos\w*|interact\w*|expos\w*)\b",
+    r"\b(?:inform(?:s|ed|ing)?|disclos(?:e|es|ed|ing)|interact(?:s|ed|ing)?"
+    r"|expos(?:e|es|ed|ing))\b",
     re.IGNORECASE,
+)
+_R365_SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z])")
+#: A capital after an initialism or a title is not a sentence boundary.
+_R365_ABBREVIATION_END_RE = re.compile(
+    r"(?:\b(?:[A-Za-z]\.){2,}|\b(?:Art|Arts|No|Nos|Mr|Mrs|Ms|Dr|St|cf|vs|etc|"
+    r"approx|incl|esp|Dir|Reg|para)\.)$"
 )
 
 
+def _bio_patient_sentences(question: str) -> list[str]:
+    """The question's sentences, with line breaks treated as spaces."""
+    joined = " ".join(str(question or "").split())
+    sentences: list[str] = []
+    start = 0
+    for boundary in _R365_SENTENCE_BOUNDARY_RE.finditer(joined):
+        left = joined[start:boundary.start()]
+        if _R365_ABBREVIATION_END_RE.search(left):
+            continue
+        sentences.append(left)
+        start = boundary.end()
+    sentences.append(joined[start:])
+    return [sentence for sentence in sentences if sentence.strip()]
+
+
 def _bio_patient_sentence_match(question: str) -> bool:
-    """Subject and signal in one sentence, or subject then a later duty verb.
-
-    Lines are split first, then sentences within each line with the
-    abbreviation-aware legal splitter, so ``Art. 5`` stays one sentence.
-    """
-    from app.engines.sentence_index import split_legal_sentences  # noqa: PLC0415
-
-    sentences = [
-        sentence
-        for line in str(question or "").splitlines()
-        for sentence in split_legal_sentences(line)
-    ]
-    subject_seen = False
-    for sentence in sentences:
-        has_subject = bool(_R365_BIO_SUBJECT_RE.search(sentence))
-        if has_subject and _R365_BIO_SIGNAL_RE.search(sentence):
-            return True
-        if subject_seen and _R365_BIO_DUTY_RE.search(sentence):
-            return True
-        subject_seen = subject_seen or has_subject
-    return False
+    """Subject and signal in one sentence, or a duty verb in another one."""
+    sentences = _bio_patient_sentences(question)
+    subjects = [i for i, s in enumerate(sentences) if _R365_BIO_SUBJECT_RE.search(s)]
+    if not subjects:
+        return False
+    if any(_R365_BIO_SIGNAL_RE.search(sentences[i]) for i in subjects):
+        return True
+    return any(
+        _R365_BIO_DUTY_RE.search(sentence)
+        for i, sentence in enumerate(sentences)
+        if i not in subjects
+    )
 
 # Emotion-recognition questions are excluded from this supplement. NOT because
 # they are never Article 50 questions — Art. 50(3) binds deployers of an emotion

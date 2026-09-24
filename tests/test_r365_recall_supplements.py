@@ -831,6 +831,11 @@ def test_biometric_trigger_spans_lines_of_a_live_question() -> None:
         "Is it prohibited?",
         "Patient records are summarised by the system.\n"
         "What information must the provider give under Article 13?",
+        # The R447 review: noun forms bridged too.
+        "Patient records are summarised by the system.\n"
+        "What disclosure must the provider give under Article 13?",
+        "Patient records are summarised by the system. Is interaction logging "
+        "required under Article 12?",
     ],
 )
 def test_biometric_trigger_does_not_bridge_sentences_without_a_duty_verb(
@@ -847,12 +852,21 @@ def test_biometric_trigger_does_not_bridge_sentences_without_a_duty_verb(
     assert rc.recall_supplement_stats()["trigger_biometric"] == 0
 
 
-def test_biometric_trigger_keeps_same_sentence_and_abbreviated_matches() -> None:
-    """Same-sentence matches are unchanged, and ``Art. 5`` is not a boundary."""
-    assert rc.is_biometric_patient_interaction_question(
-        "Is biometric categorisation under Art. 5 prohibited?"
-    ) is True
-    assert rc.is_biometric_patient_interaction_question(
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Is biometric categorisation under Art. 5 prohibited?",
         "An AI system categorises shoppers by age using biometric data, and it "
-        "is prohibited?"
-    ) is True
+        "is prohibited?",
+        # R447 review: one sentence, hard-wrapped or holding an abbreviation.
+        "Is our biometric categorisation system\nprohibited under Article 5?",
+        "Is a biometric gate that screens approx. 500 travellers per hour prohibited?",
+        "Is biometric categorisation under Dir. 2016/680 prohibited?",
+        "Is a biometric system, incl. the kiosk module, prohibited?",
+        # R447 review: the duty question may come before the subject.
+        "Must we inform anyone? Our tool recruits patients for clinical trials.",
+    ],
+)
+def test_biometric_trigger_keeps_one_sentence_and_either_order(question: str) -> None:
+    """A single sentence still fires however it is wrapped or abbreviated."""
+    assert rc.is_biometric_patient_interaction_question(question) is True

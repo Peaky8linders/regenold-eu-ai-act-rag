@@ -6865,11 +6865,10 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     # unrequested duty articles") and the tone check ("implying duty
     # allocations beyond the definitional scope") both failing on Articles
     # 16 and 26. Refs are now the two definition leaves plus the Article
-    # 25(1) transition. What ships is ``Article 3.3`` + ``Article 25.1``:
-    # the R87-C parent re-emission adds ``Article 3``, R287's
-    # ``_collapse_multi_leaf_clusters`` then folds 3.3 and 3.4 into it, and
-    # the grain deepener picks 3.3. That interaction folds ANY curated
-    # sibling-leaf pair and is left for its own measured change.
+    # 25(1) transition, and all three ship: without
+    # ``_curated_keep_declared_leaves_enabled`` the R87-C parent re-emission
+    # adds ``Article 3``, R287 folds 3.3 and 3.4 into it, and the grain
+    # deepener keeps only 3.3.
     if _detect_role_difference_inquiry(question):
         verdict = {
             "name": "role_difference",
@@ -7537,12 +7536,16 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     #   "from the context provided"), which deleted the whole lead sentence.
     #   The statutory "reasonably well-informed, observant and circumspect"
     #   standard carries no such token.
-    # * A curated intercept ships at most ``MAX_REFERENCES`` (5) refs, and
-    #   the R87-C parent re-emission appends after the declared list. Six
-    #   leaves would silently lose the sixth, so Article 50(2) is described
-    #   but not cited: it is the one paragraph that is not a duty to inform
-    #   a person, and every head the prose names (Article 50, Article 26)
-    #   stays on the wire.
+    # * On the plain question a curated intercept's ref budget is
+    #   ``MAX_REFERENCES`` (5); a sixth leaf would be cut. So Article 50(2) is
+    #   described but not cited: it is the one paragraph that is not a duty
+    #   to inform a person. A compound-role phrasing lifts the budget to 12,
+    #   which used to let R87-C + R287 fold the four Article 50 leaves into
+    #   one paragraph (``Article 50.4``); ``_curated_keep_declared_leaves_enabled``
+    #   in the route now stops that. Known residue (R447 review #3): on
+    #   "How should users be informed about the use of emotion recognition?"
+    #   an emotion anchor prepends Article 5 inside the 5-ref cut, which
+    #   displaces Article 26.11.
     if _detect_user_information_inquiry(question):
         verdict = {
             "name": "user_information_transparency",
@@ -7551,10 +7554,11 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
                 "directly with natural persons so that those persons are informed they "
                 "are interacting with an AI system, unless this is obvious to a "
                 "reasonably well-informed, observant and circumspect person, and "
-                "Article 50(5) requires that information to be given in a clear and "
-                "distinguishable manner at the latest at the time of the first "
-                "interaction or exposure, in line with the applicable accessibility "
-                "requirements. Article 50(2) separately requires providers of "
+                "Article 50(5) requires the information under paragraphs 1 to 4 of "
+                "that Article to be given in a clear and distinguishable manner at "
+                "the latest at the time of the first interaction or exposure, in "
+                "line with the applicable accessibility requirements. Article 50(2) "
+                "separately requires providers of "
                 "generative systems to mark synthetic audio, image, video or text "
                 "outputs in a machine-readable format, while deployers must inform "
                 "persons exposed to an emotion recognition or biometric "
