@@ -149,6 +149,9 @@ def load_tracked_model_config(path: Path | None = None) -> dict[str, str]:
     try:
         raw = json.loads(target.read_text(encoding="utf-8"))
     except FileNotFoundError:
+        # The file ships with the app, so a missing one is a packaging fault that
+        # silently changes the served model; say so rather than fall back quietly.
+        logger.warning("model_config: %s not found; code defaults apply", target)
         return {}
     except (OSError, ValueError) as exc:
         logger.warning("model_config: ignoring %s (%s); code defaults apply", target, exc)

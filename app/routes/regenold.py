@@ -4232,19 +4232,27 @@ def _annex_i_prose_repair_enabled() -> bool:
 
 
 def _annex_i_resolution_enabled() -> bool:
-    """R446 — ``REGENOLD_ANNEX_I_RESOLUTION``. **Default ON** (deny-list).
+    """R446b — ``REGENOLD_ANNEX_I_RESOLUTION``. **Default OFF** (allow-list).
 
-    Gates :func:`_repair_annex_i_wire_points` on the route. The call site is ALSO
-    ``_stage2_landed``-gated, like the other prose->refs passes, so the
-    deterministic / curated wire stays byte-identical to the pre-R445 route.
-    ``=0`` restores that wire on the Stage-2 path too. Registered in
+    Gates both places that bind an Annex I point to an Act the answer names:
+    :func:`_repair_annex_i_wire_points` on the route (also ``_stage2_landed``-gated)
+    and the Annex I branch of :func:`_resolve_prose_named_annex_point`, which the
+    grain deepener uses. OFF restores the pre-R445 Annex I behaviour on both.
+
+    Why OFF: the binding is not clause-aware and its generic-token list misses the
+    boilerplate every Annex I item shares ("European", "Parliament", "Directive").
+    Measured on the R446 build: "Motor vehicles are listed at Annex I point 19,
+    whereas the MDR is point 11." moved a correct ``Annex I.19`` to ``Annex I``, or
+    to ``Annex I.11`` when the question said "Directive"; a Lifts Directive
+    question moved ``Annex I.4`` to ``Annex I.11``. Re-enable only after an
+    adjacency-based binding clears a paired gate. Registered in
     ``_engine_cache_key``.
     """
-    return os.getenv("REGENOLD_ANNEX_I_RESOLUTION", "1").strip().lower() not in (
-        "0",
-        "false",
-        "no",
-        "off",
+    return os.getenv("REGENOLD_ANNEX_I_RESOLUTION", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
     )
 
 
@@ -4404,7 +4412,7 @@ def _resolve_prose_named_annex_point(
     """Distinguish no prose coordinate from a named-but-unresolved one."""
     if not roman or not answer:
         return False, None
-    if roman.upper() == "I":
+    if roman.upper() == "I" and _annex_i_resolution_enabled():
         return _annex_i_prose_point(
             answer, units, question=question, question_tokens=question_tokens, all_units=all_units,
         )

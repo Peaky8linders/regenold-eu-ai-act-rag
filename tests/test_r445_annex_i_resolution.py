@@ -33,6 +33,12 @@ _VEHICLE_Q = (
 _KEY = "r445-annex-i-test-key"
 
 
+@pytest.fixture(autouse=True)
+def _resolver_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R446b — the resolver ships default OFF; this module pins how it behaves ON."""
+    monkeypatch.setenv("REGENOLD_ANNEX_I_RESOLUTION", "1")
+
+
 def test_adopted_list_index_preserves_section_and_printed_numbering() -> None:
     index = R._annex_i_listed_instruments()
     assert index[("regulation", "2017/745")] == (("A", 11),)
