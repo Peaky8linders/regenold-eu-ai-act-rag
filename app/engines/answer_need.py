@@ -47,6 +47,7 @@ from construction.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 
 from app.data.graph_rag_prompts import UNSETTLED_POINT_RULE
@@ -59,6 +60,7 @@ from app.engines.answer_completeness import (
     _paths_in,
     _prefix_closure,
     _question_engages,
+    _sentences,
     _word_bigrams,
     named_heads,
 )
@@ -335,6 +337,53 @@ def engaged_coords(question: str, references: str = "") -> tuple[str, ...]:
         return ()
 
 
+#: R447 — the R442 whole-head floor, gated, and withheld from yes/no asks.
+#:
+#: R442 applied the no-signal floor whenever the ask named a bare listed head
+#: and nothing was engaged, with no flag. The R446 review measured the cost on
+#: verdict questions: "Does Article 26 require deployers to keep logs?" and
+#: "Under Article 50, must a chatbot disclose ...?" both moved 375 -> 650
+#: target chars. A yes/no ask IS a scope signal (a verdict and its reason), so
+#: the floor is withheld there; an open ask about a head keeps it, because its
+#: size is the head's own content (rg_105, "What is Annex X about?").
+#:
+#: A first cut instead required a head-as-subject regex. The R447 review
+#: measured it losing the floor on ordinary phrasings ("What is Annex X of the
+#: AI Act about?", "What's Annex X about?", "Tell me about Annex X.", "What is
+#: in Annex IV?") and gaining it on "Articles 4 and 3 percent", so it was
+#: replaced by this rule, which keeps R442's own head detection.
+#:
+#: The yes/no test reads the FIRST interrogative, so an open request in another
+#: sentence ("Explain Article 50. Does it apply to chatbots?") still counts as
+#: an ask about the whole head (``_OPEN_REQUEST_RE``, review of R447).
+#: ``REGENOLD_WHOLE_HEAD_FLOOR=0`` removes the floor (the R439 behaviour).
+_WHOLE_HEAD_FLOOR_ENV = "REGENOLD_WHOLE_HEAD_FLOOR"
+_OPEN_REQUEST_RE = re.compile(
+    r"^\W*(?:what|which|how|why|explain|describe|summari[sz]e|outline|list|compare"
+    r"|tell\s+me|give\s+me|walk\s+me\s+through|set\s+out)\b",
+    re.IGNORECASE,
+)
+
+
+def _narrow_verdict_ask(question: str, ask: str) -> bool:
+    """A yes/no ask with no open request in any of its sentences."""
+    from app.engines.answer_completeness import is_yes_no_question  # noqa: PLC0415
+
+    return is_yes_no_question(question) and not any(
+        _OPEN_REQUEST_RE.match(sentence) for sentence in _sentences(ask)
+    )
+
+
+def whole_head_floor_enabled() -> bool:
+    """``REGENOLD_WHOLE_HEAD_FLOOR`` — default ON (deny-list), as R442 shipped it."""
+    try:
+        return (
+            os.environ.get(_WHOLE_HEAD_FLOOR_ENV, "1").strip().lower() not in _FALSY
+        )
+    except Exception:  # noqa: BLE001 — a flag read must never break the route
+        return True
+
+
 def _names_whole_listed_head(ask_coords: set[str]) -> bool:
     """Does the ask name a bare HEAD whose own paragraphs form a closed set?"""
     from app.data.provision_hierarchy import closed_set_members  # noqa: PLC0415
@@ -410,7 +459,15 @@ def answer_need(question: str, references: str = "") -> AnswerNeed:
         # Annex X about? What is it used for?" fell from 825 to 375 chars
         # (1 item) against a 625-char reference answer once R439 stopped Annex
         # X's points engaging — the R423.1 length-starvation shape. Same floor.
-        whole_head = not engaged and _names_whole_listed_head(ask_coords)
+        # R447 — not on a narrow yes/no ask, and behind a flag; see
+        # ``_WHOLE_HEAD_FLOOR_ENV``.
+        is_yes_no = is_yes_no_question(question)
+        whole_head = (
+            not engaged
+            and whole_head_floor_enabled()
+            and _names_whole_listed_head(ask_coords)
+            and not (is_yes_no and _narrow_verdict_ask(question, ask))
+        )
         target = (
             proportional
             if anchored and not whole_head
@@ -425,7 +482,7 @@ def answer_need(question: str, references: str = "") -> AnswerNeed:
             asks_list=is_list_question(question),
             asks_exception=asks_exception,
             asks_conditions=asks_conditions,
-            is_yes_no=is_yes_no_question(question),
+            is_yes_no=is_yes_no,
             anchored=anchored,
         )
     except Exception:  # noqa: BLE001 — the estimate is advisory; never fatal

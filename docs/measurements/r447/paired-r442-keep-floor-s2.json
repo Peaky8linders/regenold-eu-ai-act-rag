@@ -1,0 +1,122 @@
+{
+ "arm_a": "score-r442-keep-floor-A-hard-s2-hard.json",
+ "arm_b": "score-r442-keep-floor-B-hard-s2-hard.json",
+ "shared_rows": 14,
+ "only_in_a": [],
+ "only_in_b": [],
+ "axes": {
+  "ans_correctness_loose": {
+   "n": 14,
+   "mean_a": 79.76190476190474,
+   "mean_b": 86.30952380952381,
+   "delta": 6.547619047619049,
+   "ci95": [
+    0.0,
+    13.690476190476193
+   ],
+   "b_better": 3,
+   "a_better": 0,
+   "mcnemar_p": 0.25
+  },
+  "ans_correctness_strict": {
+   "n": 14,
+   "mean_a": 42.857142857142854,
+   "mean_b": 64.28571428571429,
+   "delta": 21.428571428571427,
+   "ci95": [
+    0.0,
+    42.857142857142854
+   ],
+   "b_better": 3,
+   "a_better": 0,
+   "mcnemar_p": 0.25
+  },
+  "ans_conciseness": {
+   "n": 14,
+   "mean_a": 63.54274465121783,
+   "mean_b": 62.07813152949924,
+   "delta": -1.464613121718587,
+   "ci95": [
+    -4.6271122411588665,
+    2.124688368082297
+   ],
+   "b_better": 5,
+   "a_better": 9,
+   "mcnemar_p": 0.4239501953125
+  },
+  "ref_correctness_loose": {
+   "n": 13,
+   "mean_a": 100.0,
+   "mean_b": 100.0,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "b_better": 0,
+   "a_better": 0,
+   "mcnemar_p": 1.0
+  },
+  "ref_correctness_strict": {
+   "n": 13,
+   "mean_a": 62.82051282051282,
+   "mean_b": 62.82051282051282,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "b_better": 0,
+   "a_better": 0,
+   "mcnemar_p": 1.0
+  },
+  "ref_conciseness": {
+   "n": 13,
+   "mean_a": 42.43589743589743,
+   "mean_b": 40.76923076923077,
+   "delta": -1.666666666666667,
+   "ci95": [
+    -4.615384615384617,
+    0.0
+   ],
+   "b_better": 0,
+   "a_better": 2,
+   "mcnemar_p": 0.5
+  },
+  "regulatory_tone": {
+   "n": 14,
+   "mean_a": 100.0,
+   "mean_b": 100.0,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "b_better": 0,
+   "a_better": 0,
+   "mcnemar_p": 1.0
+  },
+  "resp_speed": {
+   "n": 14,
+   "mean_a": 73.97757537857153,
+   "mean_b": 76.38411477142856,
+   "delta": 2.406539392857017,
+   "ci95": [
+    -0.1310391857142739,
+    4.964035728571291
+   ],
+   "b_better": 10,
+   "a_better": 4,
+   "mcnemar_p": 0.1795654296875
+  }
+ },
+ "gold_dropped_head": {
+  "arm_a": 0,
+  "arm_b": 0,
+  "new_drops_in_b": []
+ },
+ "mean_answer_chars": {
+  "arm_a": 1098.2142857142858,
+  "arm_b": 1128.142857142857
+ }
+}

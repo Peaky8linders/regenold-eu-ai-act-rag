@@ -381,6 +381,102 @@ def test_bounded_template_still_reads_the_live_shapes() -> None:
     assert R._prose_named_annex_point("III", "Annex III points 1, 6 and 7 apply", units) is None
 
 
+# -- F5: first-mention-stops is an Annex I rule ----------------------------------
+
+
+@pytest.mark.parametrize(
+    ("answer", "units"),
+    [
+        # The first mention is an enumeration, which names no point in particular.
+        (
+            "Annex III points 1 and 2 are not engaged; the system is listed in "
+            "Annex III point 5 on essential services.",
+            {n: "" for n in range(1, 9)},
+        ),
+        # The first mention is a point the question does not corroborate.
+        (
+            "Annex III point 1 covers biometrics, and the system falls under "
+            "Annex III point 5.",
+            {5: ""},
+        ),
+    ],
+)
+def test_a_later_prose_point_still_counts_outside_annex_i(answer: str, units: dict) -> None:
+    """R447 (R446 review F5) — #462's first-mention rule reached every annex.
+
+    Outside Annex I it discarded the point the answer names later and fell back
+    to token overlap. R399's "first usable mention wins" is restored there, and
+    the replay in ``docs/measurements/r447/annex_prose_point_replay.py`` matches
+    the pre-#462 deepener on all 316 recorded Annex III and 27 Annex VIII rows.
+    """
+    assert R._resolve_prose_named_annex_point("III", answer, units) == (True, 5)
+    annex_i = answer.replace("Annex III", "Annex I")
+    assert R._resolve_prose_named_annex_point("I", annex_i, units) == (True, None)
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [
+        # R447 review #7: without the guard the ruled-out point 3 won.
+        (
+            "Annex III, points 3 and 4 cover education and employment. It is not "
+            "Annex III point 3; recruitment screening is employment.",
+            (True, None),
+        ),
+        (
+            "This is not Annex III point 1 (biometrics); it is Annex III point 5 "
+            "on essential services.",
+            (True, 5),
+        ),
+        ("Annex III point 5 applies, not Annex III point 3.", (True, 5)),
+        ("Not only Annex III point 5 but also Article 50 applies.", (True, 5)),
+        (
+            "The system is not listed in Annex III point 3; it falls under Annex III "
+            "point 4.",
+            (True, 4),
+        ),
+        # The second review: a negator that governs ANOTHER predicate is not a
+        # ruling-out of the mention. The first cut read all of these as negated.
+        (
+            "It is not a remote biometric identification system and falls under "
+            "Annex III point 4 because it is used for recruitment.",
+            (True, 4),
+        ),
+        ("It is not prohibited under Article 5 and falls within Annex III point 5.", (True, 5)),
+        ("Not prohibited under Article 5 — it is high-risk under Annex III point 5.", (True, 5)),
+        ("It is not just Annex III point 5 that applies.", (True, 5)),
+        ("Obligations apply no later than 2 August 2026 under Annex III point 5.", (True, 5)),
+        ("There is no doubt that Annex III point 5 applies.", (True, 5)),
+        # A clipped "casino" or "cannot" in the look-back is not "no"/"not".
+        ("The operator of the casino is regulated under Annex III point 5 here.", (True, 5)),
+        ("The provider cannot rely on it and Annex III point 5 applies.", (True, 5)),
+    ],
+)
+def test_a_ruled_out_mention_is_not_the_coordinate(answer: str, expected: tuple) -> None:
+    units = {n: "" for n in range(1, 9)}
+    assert R._resolve_prose_named_annex_point("III", answer, units) == expected
+
+
+def test_an_affirmed_mention_still_deepens_to_its_point() -> None:
+    """The second review's end-to-end repro: the first cut shipped III.6.d."""
+    assert R._deepen_one_ref(
+        "Annex III",
+        "Is our AI tool that uses facial analysis to rank job candidates in video "
+        "interviews high-risk?",
+        "It is not a remote biometric identification system and falls under Annex "
+        "III point 4 because it is used for the recruitment and selection of "
+        "natural persons.",
+    ) == "Annex III.4"
+
+
+def test_the_negation_guard_leaves_annex_i_alone() -> None:
+    """Annex I keeps #462's first-mention rule exactly, negated or not."""
+    units = {n: "" for n in range(1, 21)}
+    assert R._resolve_prose_named_annex_point(
+        "I", "It is not Annex I point 3; it is Annex I point 5.", units
+    ) == (True, 3)
+
+
 # -- F7: the strict axis counts each canonical key once ------------------------
 
 

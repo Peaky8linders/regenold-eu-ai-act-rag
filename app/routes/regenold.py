@@ -1690,6 +1690,9 @@ def _engine_cache_key(
             # in-process A/B serves arm A's cached engine output to arm B, the
             # R263.2 cache-poisoning bug.
             "REGENOLD_NEED_PROPORTIONAL_CONTRACT",
+            # R447 — the R442 whole-head floor sets the ANSWER SHAPE target
+            # length on the Stage-2 contract, so it is response-affecting.
+            "REGENOLD_WHOLE_HEAD_FLOOR",
             # R438 — branch-specific statutory guard; prompt-side and default OFF.
             "REGENOLD_GROUNDED_BRANCH_GUARDS",
             # R399 - rarity-weighted paragraph selection. Decides WHICH
@@ -1846,6 +1849,9 @@ def _engine_cache_key(
             "REGENOLD_HRAIS_LISTING_BUDGET",
             "REGENOLD_HRAIS_EXPAND",
             "REGENOLD_SUBPOINT_KEEP_PARENT",
+            # R447 — whether a curated intercept's declared leaves skip that
+            # re-emission, which decides what the wire cites for it.
+            "REGENOLD_CURATED_KEEP_DECLARED_LEAVES",
             "REGENOLD_ROLE_DUTY_SEED",
             # R88 — multi-turn coherence: assistant-turn anchor inheritance
             "REGENOLD_ASSISTANT_ANCHOR_INHERIT",
@@ -4409,23 +4415,49 @@ def _resolve_prose_named_annex_point(
     roman: str, answer: str, units: dict, *, question: str = "",
     question_tokens: set[str] | None = None, all_units: dict | None = None,
 ) -> tuple[bool, int | None]:
-    """Distinguish no prose coordinate from a named-but-unresolved one."""
+    """Distinguish no prose coordinate from a named-but-unresolved one.
+
+    R447 (R446 review F5) — the FIRST-MENTION-STOPS rule is Annex I only. #462
+    made the first prose mention decide for every annex: an enumeration or an
+    uncorroborated first mention returned named-but-unresolved, and for any
+    annex but I the caller then fell back to token overlap, discarding a
+    later point the answer itself names (the R399 evidence). That was a side
+    effect on Annex III/VIII of an Annex I change, never gated or announced.
+    Other annexes are back to R399's "first USABLE mention wins"; they keep
+    #462's stricter enumeration and sentence-boundary regexes, which are
+    precision fixes in their own right. Annex I keeps its first-mention rule
+    (the caller abstains to the bare head on it).
+    """
     if not roman or not answer:
         return False, None
-    if roman.upper() == "I" and _annex_i_resolution_enabled():
+    annex_i = roman.upper() == "I"
+    if annex_i and _annex_i_resolution_enabled():
         return _annex_i_prose_point(
             answer, units, question=question, question_tokens=question_tokens, all_units=all_units,
         )
-    adjacent = re.compile(_PROSE_ANNEX_ADJACENT_TMPL.format(roman=re.escape(roman)), re.I)
-    window = re.compile(_PROSE_ANNEX_WINDOW_TMPL.format(roman=re.escape(roman)), re.I)
-    for match in adjacent.finditer(answer):
-        if _PROSE_ANNEX_ENUMERATION_RE.match(answer[match.end(1):]):
-            return True, None
+
+    def _usable(match: re.Match, haystack: str) -> int | None:
+        if _PROSE_ANNEX_ENUMERATION_RE.match(haystack[match.end(1):]):
+            return None
         try:
             point = int(match.group(1))
         except (TypeError, ValueError):
-            return True, None
-        return True, point if point in units else None
+            return None
+        return point if point in units else None
+
+    def _ruled_out(match: re.Match) -> bool:
+        # R447 review — outside Annex I a mention the answer itself rules out
+        # ("It is not Annex III point 3; ...") is not the coordinate it names.
+        return not annex_i and _prose_mention_negated(answer, match.start())
+
+    adjacent = re.compile(_PROSE_ANNEX_ADJACENT_TMPL.format(roman=re.escape(roman)), re.I)
+    window = re.compile(_PROSE_ANNEX_WINDOW_TMPL.format(roman=re.escape(roman)), re.I)
+    named = False
+    for match in adjacent.finditer(answer):
+        named = True
+        point = None if _ruled_out(match) else _usable(match, answer)
+        if point is not None or annex_i:
+            return True, point
     for match in window.finditer(answer):
         tail = answer[match.end():match.end() + _PROSE_ANNEX_WINDOW_CHARS]
         stop = _PROSE_SENTENCE_BOUNDARY_RE.search(tail)
@@ -4434,14 +4466,36 @@ def _resolve_prose_named_annex_point(
         hit = _PROSE_ANNEX_POINT_WORD_RE.search(tail)
         if not hit:
             continue
-        if _PROSE_ANNEX_ENUMERATION_RE.match(tail[hit.end(1):]):
-            return True, None
-        try:
-            point = int(hit.group(1))
-        except (TypeError, ValueError):
-            return True, None
-        return True, point if point in units else None
-    return False, None
+        named = True
+        point = None if _ruled_out(match) else _usable(hit, tail)
+        if point is not None or annex_i:
+            return True, point
+    return named, None
+
+
+#: A negator GOVERNS a mention only when at most three words separate them and
+#: none of those words opens a new predicate. A clause-wide test (the first cut)
+#: read "It is not a remote biometric identification system and falls under
+#: Annex III point 4" as ruling point 4 out, and the deepener then shipped
+#: Annex III.6.d (review of R447, measured).
+_PROSE_NEGATED_MENTION_RE = re.compile(
+    r"\b(?:not(?!\s+(?:only|just|merely|simply)\b)|no(?!\s+(?:later|doubt|longer)\b)"
+    r"|neither|nor|never|isn't|aren't|doesn't|don't|rather\s+than|instead\s+of"
+    r"|other\s+than|excluding)"
+    r"(?:\s+(?!(?:and|but|or|so|because|which|that|while|whereas|as|since|yet)\b)"
+    r"[\w()'-]+){0,3}\s*$",
+    re.I,
+)
+
+
+def _prose_mention_negated(answer: str, start: int) -> bool:
+    """Does a negator govern the annex mention that starts at ``start``?"""
+    lo = max(0, start - 60)
+    if lo:
+        # Start the look-back on a word, so a clipped "casino" or "cannot" can
+        # never read as "no" / "not".
+        lo = answer.rfind(" ", 0, lo) + 1
+    return bool(_PROSE_NEGATED_MENTION_RE.search(answer, lo, start))
 
 
 def _prose_named_annex_point(roman: str, answer: str, units: dict):
@@ -5661,7 +5715,9 @@ def _apply_wire_ref_cap(
     return _rank_refs_for_cap(references, question, answer)[:cap]
 
 
-def _reemit_parents_for_subpoints(refs: list[str]) -> list[str]:
+def _reemit_parents_for_subpoints(
+    refs: list[str], skip_heads: frozenset[str] = frozenset()
+) -> list[str]:
     """R87-C — sub-point parent retention pass.
 
     For every leaf ref (e.g. ``Article 27.1``) emit its TOP-LEVEL parent
@@ -5687,6 +5743,10 @@ def _reemit_parents_for_subpoints(refs: list[str]) -> list[str]:
 
     Pure function — never mutates ``refs``. Append-only — preserves
     the existing rank order at the head of the list.
+
+    R447 — ``skip_heads`` are never re-emitted (see
+    ``_curated_keep_declared_leaves_enabled`` for the one caller that passes
+    any).
     """
     if not refs:
         return refs
@@ -5698,7 +5758,7 @@ def _reemit_parents_for_subpoints(refs: list[str]) -> list[str]:
     ):
         return list(refs)
     out: list[str] = list(refs)
-    seen: set[str] = set(out)
+    seen: set[str] = set(out) | set(skip_heads)
     appended: list[str] = []
     for ref in refs:
         for prefix in ("Article ", "Annex "):
@@ -8438,6 +8498,59 @@ def _curated_ref_protect_enabled() -> bool:
     )
 
 
+def _curated_keep_declared_leaves_enabled() -> bool:
+    """R447 — DEFAULT ON. A curated intercept's sibling leaves are not folded.
+
+    The R87-C parent re-emission appends ``Article N`` for every leaf. When a
+    curated intercept declares two or more leaves of one head and none of them
+    contains the others, the R287 multi-leaf collapse then folds them all into
+    that manufactured head, which the grain deepener resolves to ONE paragraph.
+    Whether it happened depended on the ref budget: at 5 the appended parents
+    were cut, but a compound-role phrasing ("We are both a provider and a
+    deployer ...") lifts it to 12, and the Article 50 information route then
+    shipped ``Article 50.4`` (deep fakes) as its only Article 50 citation.
+
+    Only those heads are skipped (:func:`_undominated_leaf_heads`). Where one
+    declared leaf contains the others (``Annex III.8`` over ``8.a``/``8.b``)
+    R287's fold keeps that leaf, which is the precision it was built for
+    (rg_012, gold ``Annex III.8``), so the re-emission still runs there.
+    MEASURED (``docs/measurements/r447/curated_leaves_replay.py``): skipping it
+    for every curated leaf instead cost rg_012 Ref. Conciseness 1.00 -> 0.33.
+    ``REGENOLD_CURATED_KEEP_DECLARED_LEAVES=0`` restores the re-emission.
+    """
+    return os.getenv(
+        "REGENOLD_CURATED_KEEP_DECLARED_LEAVES", "1"
+    ).strip().lower() not in ("0", "false", "no", "off")
+
+
+def _undominated_leaf_heads(refs: list[str]) -> frozenset[str]:
+    """Absent heads with 2+ leaves of which none contains all the others.
+
+    Exactly the clusters R287's ``_collapse_multi_leaf_clusters`` would fold
+    into the head itself once R87-C re-emits it, losing every leaf.
+    """
+    leaves: dict[str, list[str]] = {}
+    present: set[str] = set()
+    for ref in refs:
+        head = _ref_head_of(ref)
+        if head is None:
+            continue
+        if head == ref:
+            present.add(head)
+        else:
+            leaves.setdefault(head, []).append(ref)
+    return frozenset(
+        head
+        for head, leaf_refs in leaves.items()
+        if head not in present
+        and len(leaf_refs) >= 2
+        and not any(
+            all(other == cand or other.startswith(cand + ".") for other in leaf_refs)
+            for cand in leaf_refs
+        )
+    )
+
+
 def _scope_refusal_active(reason: ScopeReason) -> bool:
     """Whether an out-of-scope ``reason`` should still ship a branded reply.
 
@@ -10975,6 +11088,15 @@ def regenold_eu_ai_act_ask(
         for candidate in candidates
         if (base := _canonical_reference_base(candidate)) is not None
     )
+    # R447 — the curated intercept's own sibling-leaf heads, frozen from its
+    # DECLARED refs before any pass can add the bare head. Read by the R87-C
+    # re-emission and by the curated R287 fold; see
+    # ``_curated_keep_declared_leaves_enabled``.
+    _curated_protected_heads = (
+        _undominated_leaf_heads(candidates)
+        if _is_curated_intercept and _curated_keep_declared_leaves_enabled()
+        else frozenset()
+    )
 
     # Resolve the live user message — used as a topic hint by the
     # anchor-injection helper to suppress broad-anchor overmatch when
@@ -11748,7 +11870,19 @@ def regenold_eu_ai_act_ask(
     # so davidath parent-only gold (qa_028: gold=Article 27, pred=
     # Article 27.1 scored 0) Jaccards as a partial hit (0 → 0.5).
     # Env-gated REGENOLD_SUBPOINT_KEEP_PARENT (default ON).
-    candidates = _reemit_parents_for_subpoints(candidates)
+    # R447 — except, for a curated intercept, the heads whose declared leaves
+    # R287 would fold into the head itself; see
+    # ``_curated_keep_declared_leaves_enabled``. The set frozen from the
+    # declared refs misses leaves a route pass added since (MEASURED: hard-mode
+    # emotion rows gain Annex III.1.c + III.4 here, which then folded to the
+    # wrong Annex III.7.b), so the clusters present now are added to it.
+    if _is_curated_intercept and _curated_keep_declared_leaves_enabled():
+        _curated_protected_heads = _curated_protected_heads | _undominated_leaf_heads(
+            candidates
+        )
+    candidates = _reemit_parents_for_subpoints(
+        candidates, skip_heads=_curated_protected_heads
+    )
 
     # R67 / R68 — QA scope-anchor priority + matrix-dump containment.
     #
@@ -13223,6 +13357,30 @@ def regenold_eu_ai_act_ask(
     # Article 6.3 general-rule-plus-carve-out survives. Real-data sim over all
     # 110 rows: 12 redundant refs dropped across 4 rows, 0 rows losing a head.
     # Env off-switch REGENOLD_INTERCEPT_LEAF_COLLAPSE=0.
+    #
+    # R447 — a protected head that another pass re-added (MEASURED:
+    # ``expand_citations`` on a scenario-shaped phrasing adds a bare
+    # ``Article 50``) is dropped while its declared leaves are on the list, so
+    # the fold below keeps the leaves instead of collapsing them into it. That
+    # is the drop R325's parent collapse makes at the end, done early.
+    if _curated_protected_heads:
+        _kept = [
+            r for r in references
+            if not (
+                r in _curated_protected_heads
+                and any(x.startswith(r + ".") for x in references)
+            )
+        ]
+        if _kept != references:
+            references = _kept
+            try:
+                from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                    record_note as _rn_protect,
+                )
+
+                _rn_protect("curated_protected_head_dropped")
+            except Exception:  # noqa: BLE001 — fail-soft on trace
+                pass
     if (
         _is_curated_intercept
         and os.getenv("REGENOLD_INTERCEPT_LEAF_COLLAPSE", "1").strip().lower()

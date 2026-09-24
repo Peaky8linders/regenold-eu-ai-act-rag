@@ -818,3 +818,62 @@ def test_biometric_trigger_spans_lines_of_a_live_question() -> None:
     two_lines = "We deploy a biometric system.\nMust we inform the persons?"
     assert rc.is_biometric_patient_interaction_question(one_line) is True
     assert rc.is_biometric_patient_interaction_question(two_lines) is True
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # R447 (R446 review F8) — both fired on the R442 build, because the two
+        # lookaheads could be satisfied in different sentences.
+        "An AI system performs biometric categorisation of shoppers by age.\n"
+        "Is it prohibited?",
+        "An AI system performs biometric categorisation of shoppers by age. "
+        "Is it prohibited?",
+        "Patient records are summarised by the system.\n"
+        "What information must the provider give under Article 13?",
+        # The R447 review: noun forms bridged too.
+        "Patient records are summarised by the system.\n"
+        "What disclosure must the provider give under Article 13?",
+        "Patient records are summarised by the system. Is interaction logging "
+        "required under Article 12?",
+        # The second review: a line break before a capital ends a sentence, and
+        # a duty verb in a STATEMENT is context, not an Article 50 ask.
+        "Biometric categorisation of shoppers by age\nIs it prohibited?",
+        "Biometric categorisation of shoppers by age:\n- Is it prohibited?",
+        "We were informed that our AI system is high-risk. Does our "
+        "patient-scheduling tool need a conformity assessment?",
+    ],
+)
+def test_biometric_trigger_does_not_bridge_sentences_without_a_duty_verb(
+    question: str,
+) -> None:
+    """A later sentence may complete the match only with an Art. 50 duty verb.
+
+    "Is it prohibited?" is a prohibition question, and "information" is the
+    Article 13 noun, so neither may pull an Article 50 supplement onto a
+    subject named in an earlier sentence.
+    """
+    rc.reset_recall_supplement_stats()
+    assert rc.is_biometric_patient_interaction_question(question) is False
+    assert rc.recall_supplement_stats()["trigger_biometric"] == 0
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Is biometric categorisation under Art. 5 prohibited?",
+        "An AI system categorises shoppers by age using biometric data, and it "
+        "is prohibited?",
+        # R447 review: one sentence, hard-wrapped or holding an abbreviation.
+        "Is our biometric categorisation system\nprohibited under Article 5?",
+        "Is a biometric gate that screens approx. 500 travellers per hour prohibited?",
+        "Is biometric categorisation under Dir. 2016/680 prohibited?",
+        "Is a biometric system, incl. the kiosk module, prohibited?",
+        "Is the biometric kiosk sold by Acme Inc. Germany prohibited?",
+        # R447 review: the duty question may come before the subject.
+        "Must we inform anyone? Our tool recruits patients for clinical trials.",
+    ],
+)
+def test_biometric_trigger_keeps_one_sentence_and_either_order(question: str) -> None:
+    """A single sentence still fires however it is wrapped or abbreviated."""
+    assert rc.is_biometric_patient_interaction_question(question) is True
