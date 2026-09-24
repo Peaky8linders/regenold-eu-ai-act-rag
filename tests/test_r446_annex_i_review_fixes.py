@@ -381,6 +381,39 @@ def test_bounded_template_still_reads_the_live_shapes() -> None:
     assert R._prose_named_annex_point("III", "Annex III points 1, 6 and 7 apply", units) is None
 
 
+# -- F5: first-mention-stops is an Annex I rule ----------------------------------
+
+
+@pytest.mark.parametrize(
+    ("answer", "units"),
+    [
+        # The first mention is an enumeration, which names no point in particular.
+        (
+            "Annex III points 1 and 2 are not engaged; the system is listed in "
+            "Annex III point 5 on essential services.",
+            {n: "" for n in range(1, 9)},
+        ),
+        # The first mention is a point the question does not corroborate.
+        (
+            "Annex III point 1 covers biometrics, and the system falls under "
+            "Annex III point 5.",
+            {5: ""},
+        ),
+    ],
+)
+def test_a_later_prose_point_still_counts_outside_annex_i(answer: str, units: dict) -> None:
+    """R447 (R446 review F5) — #462's first-mention rule reached every annex.
+
+    Outside Annex I it discarded the point the answer names later and fell back
+    to token overlap. R399's "first usable mention wins" is restored there, and
+    the replay in ``docs/measurements/r447/annex_prose_point_replay.py`` matches
+    the pre-#462 deepener on all 316 recorded Annex III and 27 Annex VIII rows.
+    """
+    assert R._resolve_prose_named_annex_point("III", answer, units) == (True, 5)
+    annex_i = answer.replace("Annex III", "Annex I")
+    assert R._resolve_prose_named_annex_point("I", annex_i, units) == (True, None)
+
+
 # -- F7: the strict axis counts each canonical key once ------------------------
 
 

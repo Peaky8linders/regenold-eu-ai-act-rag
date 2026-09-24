@@ -47,6 +47,7 @@ from construction.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 
 from app.data.graph_rag_prompts import UNSETTLED_POINT_RULE
@@ -335,6 +336,82 @@ def engaged_coords(question: str, references: str = "") -> tuple[str, ...]:
         return ()
 
 
+#: R447 — the R442 whole-head floor, gated and scoped to asks ABOUT the head.
+#:
+#: R442 applied the no-signal floor whenever the ask named a bare listed head
+#: and nothing was engaged, with no flag. Naming a head is not asking about it:
+#: the R446 review measured "Does Article 26 require deployers to keep logs?"
+#: and "Under Article 50, must a chatbot disclose ...?" both moving 375 -> 650
+#: target chars, and on the ask text alone 17 of the official 110 take the
+#: branch, mostly questions where "Annex III" only qualifies a use case. The
+#: shape R442 was written for is the head as the SUBJECT of the ask ("What is
+#: Annex X about? What is it used for?", rg_105), so the floor now needs one of
+#: these predicates, and a head it names must itself be a listed head. Lists
+#: and comparisons of heads count ("What do Articles 14 and 15 require for
+#: high-risk AI systems?", "How do Articles 5 and 6 classify AI systems
+#: differently?"): the answer's size is then the heads' own content.
+#: ``REGENOLD_WHOLE_HEAD_FLOOR=0`` removes the floor (the R439 behaviour).
+_WHOLE_HEAD_FLOOR_ENV = "REGENOLD_WHOLE_HEAD_FLOOR"
+_HEAD_SEP = r"\s*(?:,\s*(?:and\s+|or\s+)?|and\s+|or\s+|&\s*)"
+_BARE_HEADS = (
+    r"(?P<heads>(?:articles?|arts?\.?)\s*\d{1,3}(?:" + _HEAD_SEP + r"\d{1,3})*"
+    r"(?!\d)(?!\s*\()(?!\.\d)"
+    r"|annex(?:es)?\s+[ivx]{1,5}(?:" + _HEAD_SEP + r"[ivx]{1,5})*\b"
+    r"(?!\s*\()(?!\.[\divx])(?!,?\s+points?\b))"
+)
+_WHOLE_HEAD_ASK_RES: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        # "What is Annex X?" / "What is Annex X about?" / "What is Article 50 for?"
+        r"\bwhat\s+(?:is|are)\s+" + _BARE_HEADS + r"\s*(?:about|for)?\s*\?",
+        # "What does Article 26 require?" / "What do Articles 14 and 15 require
+        # for high-risk AI systems?" (only the generic qualifier is allowed: a
+        # narrower tail such as "regarding logs" is a narrower ask).
+        r"\bwhat\s+(?:does|do)\s+" + _BARE_HEADS
+        + r"\s+(?:say|state|require|cover|contain|provide|establish|set\s+out|"
+        r"lay\s+down|regulate|mean|do|deal\s+with|list)"
+        r"(?:\s+for\s+(?:high[- ]risk\s+)?ai\s+systems)?\s*\?",
+        # "Explain Article 50." / "Summarise Annex III" / "Compare Articles 13 and 86"
+        r"\b(?:explain|describe|summari[sz]e|outline|compare)\s+" + _BARE_HEADS
+        + r"\s*(?:[.?!]|$)",
+        # "What is the purpose of Annex IV?"
+        r"\bwhat\s+(?:is|are)\s+the\s+(?:purpose|content|contents|scope|"
+        r"subject(?:\s+matter)?)\s+of\s+" + _BARE_HEADS + r"\s*\?",
+        # "What is the difference between Annexes I and III ...?"
+        r"\bdifferences?\s+between\s+" + _BARE_HEADS + r"\b",
+        # "How do Articles 5 and 6 classify AI systems differently?" /
+        # "How does Article 13 differ from ...?"
+        r"\bhow\s+(?:do|does)\s+" + _BARE_HEADS
+        + r"\s+(?:differ\b|compare\b|(?:\w+\s+){1,4}differently\b)",
+    )
+)
+
+
+def whole_head_floor_enabled() -> bool:
+    """``REGENOLD_WHOLE_HEAD_FLOOR`` — default ON (deny-list), as R442 shipped it."""
+    try:
+        return (
+            os.environ.get(_WHOLE_HEAD_FLOOR_ENV, "1").strip().lower() not in _FALSY
+        )
+    except Exception:  # noqa: BLE001 — a flag read must never break the route
+        return True
+
+
+def _heads_asked_about(ask: str) -> set[str]:
+    """Bare heads that are the SUBJECT of the ask (``Article N`` / ``Annex X``)."""
+    heads: set[str] = set()
+    for pattern in _WHOLE_HEAD_ASK_RES:
+        for match in pattern.finditer(ask):
+            heads.update(named_heads(match.group("heads")))
+    return heads
+
+
+def _asks_about_whole_listed_head(ask: str) -> bool:
+    """R447 — the ask is ABOUT a bare head whose paragraphs form a closed set."""
+    heads = _heads_asked_about(ask)
+    return bool(heads) and _names_whole_listed_head(heads)
+
+
 def _names_whole_listed_head(ask_coords: set[str]) -> bool:
     """Does the ask name a bare HEAD whose own paragraphs form a closed set?"""
     from app.data.provision_hierarchy import closed_set_members  # noqa: PLC0415
@@ -410,7 +487,13 @@ def answer_need(question: str, references: str = "") -> AnswerNeed:
         # Annex X about? What is it used for?" fell from 825 to 375 chars
         # (1 item) against a 625-char reference answer once R439 stopped Annex
         # X's points engaging — the R423.1 length-starvation shape. Same floor.
-        whole_head = not engaged and _names_whole_listed_head(ask_coords)
+        # R447 — only when the ask is ABOUT that head, and behind a flag; see
+        # ``_WHOLE_HEAD_ASK_RES``.
+        whole_head = (
+            not engaged
+            and whole_head_floor_enabled()
+            and _asks_about_whole_listed_head(ask)
+        )
         target = (
             proportional
             if anchored and not whole_head

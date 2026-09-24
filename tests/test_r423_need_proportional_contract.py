@@ -564,7 +564,9 @@ def test_a_named_head_still_does_not_engage_every_paragraph() -> None:
     ("ask", "refs"),
     [
         ("What is Annex X about? What is it used for?", "Annex X"),
-        ("Does Article 26 require the deployer to keep logs?", "Article 26"),
+        ("What does Article 26 require?", "Article 26"),
+        ("What do Articles 14 and 15 require for high-risk AI systems?", "Article 14 Article 15"),
+        ("How do Articles 5 and 6 classify AI systems differently?", "Article 5 Article 6"),
     ],
 )
 def test_an_ask_about_a_whole_head_gets_the_no_signal_floor(ask: str, refs: str) -> None:
@@ -575,6 +577,45 @@ def test_an_ask_about_a_whole_head_gets_the_no_signal_floor(ask: str, refs: str)
     assert estimate.engaged == ()
     assert estimate.target_chars == need._TARGET_NO_SIGNAL_CHARS
     assert estimate.anchored  # the skeleton branch is unchanged
+
+
+@pytest.mark.parametrize(
+    ("ask", "refs"),
+    [
+        # R442 pinned this one as a whole-head ask; it is a yes/no question
+        # about one duty, and the R446 review (F9) measured it at 375 -> 650.
+        ("Does Article 26 require the deployer to keep logs?", "Article 26"),
+        ("Under Article 50, must a chatbot disclose that it is an AI system?", "Article 50"),
+        ("What does Article 26 require regarding logs?", "Article 26"),
+    ],
+)
+def test_a_narrow_ask_that_names_a_head_keeps_the_proportional_target(
+    ask: str, refs: str
+) -> None:
+    """R447 — naming a head is not asking about it; only the latter takes the floor."""
+    estimate = need.answer_need(ask, refs)
+    assert estimate.engaged == ()
+    assert estimate.anchored
+    assert estimate.target_chars == min(
+        need._TARGET_MAX_CHARS,
+        max(need._TARGET_MIN_CHARS,
+            need._TARGET_BASE_CHARS + need._TARGET_PER_ITEM_CHARS * estimate.items),
+    )
+    assert estimate.target_chars < need._TARGET_NO_SIGNAL_CHARS
+
+
+def test_the_whole_head_floor_is_gated(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R447 — R442 shipped the floor with no flag. Deny-list, default ON."""
+    ask, refs = "What is Annex X about? What is it used for?", "Annex X"
+    monkeypatch.delenv("REGENOLD_WHOLE_HEAD_FLOOR", raising=False)
+    assert need.answer_need(ask, refs).target_chars == need._TARGET_NO_SIGNAL_CHARS
+    for blank_or_odd in ("", "yes", "enabled"):
+        monkeypatch.setenv("REGENOLD_WHOLE_HEAD_FLOOR", blank_or_odd)
+        assert need.answer_need(ask, refs).target_chars == need._TARGET_NO_SIGNAL_CHARS
+    monkeypatch.setenv("REGENOLD_WHOLE_HEAD_FLOOR", "0")
+    off = need.answer_need(ask, refs)
+    assert off.target_chars < need._TARGET_NO_SIGNAL_CHARS
+    assert off.anchored and off.engaged == ()
 
 
 def test_the_floor_does_not_touch_a_named_paragraph() -> None:

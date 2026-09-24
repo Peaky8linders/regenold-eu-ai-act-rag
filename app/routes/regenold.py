@@ -1690,6 +1690,9 @@ def _engine_cache_key(
             # in-process A/B serves arm A's cached engine output to arm B, the
             # R263.2 cache-poisoning bug.
             "REGENOLD_NEED_PROPORTIONAL_CONTRACT",
+            # R447 — the R442 whole-head floor sets the ANSWER SHAPE target
+            # length on the Stage-2 contract, so it is response-affecting.
+            "REGENOLD_WHOLE_HEAD_FLOOR",
             # R438 — branch-specific statutory guard; prompt-side and default OFF.
             "REGENOLD_GROUNDED_BRANCH_GUARDS",
             # R399 - rarity-weighted paragraph selection. Decides WHICH
@@ -4409,23 +4412,44 @@ def _resolve_prose_named_annex_point(
     roman: str, answer: str, units: dict, *, question: str = "",
     question_tokens: set[str] | None = None, all_units: dict | None = None,
 ) -> tuple[bool, int | None]:
-    """Distinguish no prose coordinate from a named-but-unresolved one."""
+    """Distinguish no prose coordinate from a named-but-unresolved one.
+
+    R447 (R446 review F5) — the FIRST-MENTION-STOPS rule is Annex I only. #462
+    made the first prose mention decide for every annex: an enumeration or an
+    uncorroborated first mention returned named-but-unresolved, and for any
+    annex but I the caller then fell back to token overlap, discarding a
+    later point the answer itself names (the R399 evidence). That was a side
+    effect on Annex III/VIII of an Annex I change, never gated or announced.
+    Other annexes are back to R399's "first USABLE mention wins"; they keep
+    #462's stricter enumeration and sentence-boundary regexes, which are
+    precision fixes in their own right. Annex I keeps its first-mention rule
+    (the caller abstains to the bare head on it).
+    """
     if not roman or not answer:
         return False, None
-    if roman.upper() == "I" and _annex_i_resolution_enabled():
+    annex_i = roman.upper() == "I"
+    if annex_i and _annex_i_resolution_enabled():
         return _annex_i_prose_point(
             answer, units, question=question, question_tokens=question_tokens, all_units=all_units,
         )
-    adjacent = re.compile(_PROSE_ANNEX_ADJACENT_TMPL.format(roman=re.escape(roman)), re.I)
-    window = re.compile(_PROSE_ANNEX_WINDOW_TMPL.format(roman=re.escape(roman)), re.I)
-    for match in adjacent.finditer(answer):
-        if _PROSE_ANNEX_ENUMERATION_RE.match(answer[match.end(1):]):
-            return True, None
+
+    def _usable(match: re.Match, haystack: str) -> int | None:
+        if _PROSE_ANNEX_ENUMERATION_RE.match(haystack[match.end(1):]):
+            return None
         try:
             point = int(match.group(1))
         except (TypeError, ValueError):
-            return True, None
-        return True, point if point in units else None
+            return None
+        return point if point in units else None
+
+    adjacent = re.compile(_PROSE_ANNEX_ADJACENT_TMPL.format(roman=re.escape(roman)), re.I)
+    window = re.compile(_PROSE_ANNEX_WINDOW_TMPL.format(roman=re.escape(roman)), re.I)
+    named = False
+    for match in adjacent.finditer(answer):
+        named = True
+        point = _usable(match, answer)
+        if point is not None or annex_i:
+            return True, point
     for match in window.finditer(answer):
         tail = answer[match.end():match.end() + _PROSE_ANNEX_WINDOW_CHARS]
         stop = _PROSE_SENTENCE_BOUNDARY_RE.search(tail)
@@ -4434,14 +4458,11 @@ def _resolve_prose_named_annex_point(
         hit = _PROSE_ANNEX_POINT_WORD_RE.search(tail)
         if not hit:
             continue
-        if _PROSE_ANNEX_ENUMERATION_RE.match(tail[hit.end(1):]):
-            return True, None
-        try:
-            point = int(hit.group(1))
-        except (TypeError, ValueError):
-            return True, None
-        return True, point if point in units else None
-    return False, None
+        named = True
+        point = _usable(hit, tail)
+        if point is not None or annex_i:
+            return True, point
+    return named, None
 
 
 def _prose_named_annex_point(roman: str, answer: str, units: dict):

@@ -818,3 +818,41 @@ def test_biometric_trigger_spans_lines_of_a_live_question() -> None:
     two_lines = "We deploy a biometric system.\nMust we inform the persons?"
     assert rc.is_biometric_patient_interaction_question(one_line) is True
     assert rc.is_biometric_patient_interaction_question(two_lines) is True
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # R447 (R446 review F8) — both fired on the R442 build, because the two
+        # lookaheads could be satisfied in different sentences.
+        "An AI system performs biometric categorisation of shoppers by age.\n"
+        "Is it prohibited?",
+        "An AI system performs biometric categorisation of shoppers by age. "
+        "Is it prohibited?",
+        "Patient records are summarised by the system.\n"
+        "What information must the provider give under Article 13?",
+    ],
+)
+def test_biometric_trigger_does_not_bridge_sentences_without_a_duty_verb(
+    question: str,
+) -> None:
+    """A later sentence may complete the match only with an Art. 50 duty verb.
+
+    "Is it prohibited?" is a prohibition question, and "information" is the
+    Article 13 noun, so neither may pull an Article 50 supplement onto a
+    subject named in an earlier sentence.
+    """
+    rc.reset_recall_supplement_stats()
+    assert rc.is_biometric_patient_interaction_question(question) is False
+    assert rc.recall_supplement_stats()["trigger_biometric"] == 0
+
+
+def test_biometric_trigger_keeps_same_sentence_and_abbreviated_matches() -> None:
+    """Same-sentence matches are unchanged, and ``Art. 5`` is not a boundary."""
+    assert rc.is_biometric_patient_interaction_question(
+        "Is biometric categorisation under Art. 5 prohibited?"
+    ) is True
+    assert rc.is_biometric_patient_interaction_question(
+        "An AI system categorises shoppers by age using biometric data, and it "
+        "is prohibited?"
+    ) is True

@@ -241,19 +241,61 @@ _R365_FINES_PROHIBITED_RE = re.compile(
 #: address the Art. 50 transparency surface. Emotion shapes are excluded (see
 #: ``_R365_EMOTION_EXCLUDE_RE``).
 #:
-#: R442 — ``re.DOTALL``: without it ``.*`` stops at a newline, so a live
-#: question that puts the system on one line and the duty on the next ("...a
-#: biometric system.\nMust we inform...") silently never fired, while the
-#: emotion exclusion below already scanned across lines. Both call sites pass
-#: the LIVE question only (text after ``Latest question:\n``), so spanning lines
-#: cannot reach into the conversation history.
-_R365_BIO_PATIENT_RE = re.compile(
-    r"(?=.*\b(?:biometric\w*|patient\w*|clinical trial\b|recruit\w*|"
-    r"select and recruit\b|eligib\w*)\b)"
-    r"(?=.*\b(?:prohibit\w*|verif\w*|interact\w*|directly\b|disclos\w*|"
-    r"inform\w*|expos\w*)\b)",
-    re.IGNORECASE | re.DOTALL,
+#: R447 — matched per SENTENCE of the live question, not across the whole of
+#: it. The R365 form was two ``.*`` lookaheads over the full input, so the
+#: subject and the signal could sit in different sentences, and R442's
+#: ``re.DOTALL`` (added so "...a biometric system.\nMust we inform..." fires)
+#: extended that across lines too. Measured on the R442 build: "...biometric
+#: categorisation of shoppers by age.\nIs it prohibited?" appended Art. 50 to
+#: an Art. 5(1)(g) prohibition question, and "Patient records ...\n...
+#: information ... Article 13?" fired on the noun "information".
+#:
+#: The rule now: subject and signal in the SAME sentence, as the trigger was
+#: written for (la_q7: "biometric verification solely to confirm ..."). A
+#: LATER sentence may complete the match only with an Article 50 information
+#: duty itself (``_R365_BIO_DUTY_RE``), which is the shape the R442 pin
+#: exists for: describe the system, then ask whether you must inform. A
+#: later "Is it prohibited?" is a prohibition question and no longer fires.
+_R365_BIO_SUBJECT_RE = re.compile(
+    r"\b(?:biometric\w*|patient\w*|clinical trial\b|recruit\w*|"
+    r"select and recruit\b|eligib\w*)\b",
+    re.IGNORECASE,
 )
+_R365_BIO_SIGNAL_RE = re.compile(
+    r"\b(?:prohibit\w*|verif\w*|interact\w*|directly\b|disclos\w*|"
+    r"inform\w*|expos\w*)\b",
+    re.IGNORECASE,
+)
+#: Only these may sit in a later sentence than the subject. ``inform`` is the
+#: verb only: the noun "information" is what fired on the Article 13 case.
+_R365_BIO_DUTY_RE = re.compile(
+    r"\b(?:inform(?:s|ed|ing)?|disclos\w*|interact\w*|expos\w*)\b",
+    re.IGNORECASE,
+)
+
+
+def _bio_patient_sentence_match(question: str) -> bool:
+    """Subject and signal in one sentence, or subject then a later duty verb.
+
+    Lines are split first, then sentences within each line with the
+    abbreviation-aware legal splitter, so ``Art. 5`` stays one sentence.
+    """
+    from app.engines.sentence_index import split_legal_sentences  # noqa: PLC0415
+
+    sentences = [
+        sentence
+        for line in str(question or "").splitlines()
+        for sentence in split_legal_sentences(line)
+    ]
+    subject_seen = False
+    for sentence in sentences:
+        has_subject = bool(_R365_BIO_SUBJECT_RE.search(sentence))
+        if has_subject and _R365_BIO_SIGNAL_RE.search(sentence):
+            return True
+        if subject_seen and _R365_BIO_DUTY_RE.search(sentence):
+            return True
+        subject_seen = subject_seen or has_subject
+    return False
 
 # Emotion-recognition questions are excluded from this supplement. NOT because
 # they are never Article 50 questions — Art. 50(3) binds deployers of an emotion
@@ -441,8 +483,12 @@ def is_biometric_patient_interaction_question(question: str) -> bool:
     supplement, not a claim that emotion recognition escapes Art. 50(3)).
     """
     try:
-        if _R365_EMOTION_EXCLUDE_RE.search(str(question or "")):
+        q = str(question or "")
+        if not q.strip() or _R365_EMOTION_EXCLUDE_RE.search(q):
             return False
+        hit = _bio_patient_sentence_match(q)
     except Exception:  # noqa: BLE001 — a trigger must never break parse
         return False
-    return _fires(_R365_BIO_PATIENT_RE, question, "trigger_biometric")
+    if hit:
+        _bump("trigger_biometric")
+    return hit
