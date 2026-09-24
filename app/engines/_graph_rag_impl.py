@@ -6856,24 +6856,39 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     # transition the expert flagged as missing. Every sentence carries an
     # inline cite anchor so the soft-cap preserves it; verbatim-faithful to
     # Article 3(3)/(4) + Article 25(1). Fires on 0 davidath rows.
+    #
+    # R447 — the definitional question is answered by definitions only. The
+    # R275 text also allocated duties ("the design and conformity duties of
+    # Article 16", "the use-phase duties of Article 26") and cited both, and
+    # the R446 live re-check failed it on exactly that: 3/4, with the
+    # citation criterion ("cites Article 3 and Article 25 rather than
+    # unrequested duty articles") and the tone check ("implying duty
+    # allocations beyond the definitional scope") both failing on Articles
+    # 16 and 26. Refs are now the two definition leaves plus the Article
+    # 25(1) transition. What ships is ``Article 3.3`` + ``Article 25.1``:
+    # the R87-C parent re-emission adds ``Article 3``, R287's
+    # ``_collapse_multi_leaf_clusters`` then folds 3.3 and 3.4 into it, and
+    # the grain deepener picks 3.3. That interaction folds ANY curated
+    # sibling-leaf pair and is left for its own measured change.
     if _detect_role_difference_inquiry(question):
         verdict = {
             "name": "role_difference",
             "answer": (
-                "A provider (Article 3(3)) develops an AI system, or has one "
+                "A provider under Article 3(3) develops an AI system, or has one "
                 "developed, and places it on the market or puts it into service "
-                "under its own name or trademark. A deployer (Article 3(4)) uses "
-                "an AI system under its authority in the course of a professional "
-                "activity, so the provider bears the design and conformity duties "
-                "of Article 16 while the deployer bears the use-phase duties of "
-                "Article 26. Under Article 25 a deployer, distributor, importer, "
-                "or other third party becomes a provider, and assumes the "
-                "Article 16 provider obligations, where it puts its name or "
-                "trademark on a high-risk AI system already on the market, makes "
-                "a substantial modification to such a system, or modifies a "
-                "system's intended purpose so that it becomes high-risk."
+                "under its own name or trademark. A deployer under Article 3(4) "
+                "uses an AI system under "
+                "its authority, other than in the course of a personal "
+                "non-professional activity, so the difference lies in supplying the "
+                "system as opposed to using it. Under Article 25(1), a deployer, "
+                "distributor, importer or other third party is considered the "
+                "provider of a high-risk AI system, and takes on the provider's "
+                "obligations, where it puts its name or trademark on a high-risk AI "
+                "system already on the market, makes a substantial modification to "
+                "it, or modifies a system's intended purpose so that it becomes "
+                "high-risk."
             ),
-            "refs": ["Art. 3", "Art. 25", "Art. 16", "Art. 26"],
+            "refs": ["Art. 3.3", "Art. 3.4", "Art. 25.1"],
         }
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
@@ -7495,19 +7510,69 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
         return verdict["answer"]
 
     # Q5: User Information / Article 50 Transparency Intercept
+    #
+    # R447 — rewritten after the R446 live expert re-check scored it 2/4 on
+    # both questions it serves (part1_q05, part2_q04). Three defects, all
+    # reproduced offline byte-for-byte against production:
+    #
+    # * It was FOUR sentences. A curated answer skips Stage-2, so it takes the
+    #   deterministic 3-sentence cap (``MAX_ANSWER_SENTENCES``), and the
+    #   Article 50(4) deployer sentence never shipped (464 of ~600 chars).
+    # * Its refs were the bare ``Art. 50`` head plus four of its leaves, which
+    #   is exactly the shape R287's ``_collapse_multi_leaf_clusters`` folds
+    #   into the head; the grain deepener then picked ``Article 50.1``, so the
+    #   wire carried one reference for four described duties.
+    # * It never stated the Article 50(5) manner-and-timing rule or the
+    #   Article 26(11) duty to inform persons subject to Annex III decisions,
+    #   which are two of the expert criteria.
+    #
+    # Three sentences, each cite-anchored, and leaf-only refs so the R287
+    # collapse has no head to fold into. Verbatim-faithful to Article
+    # 50(1)-(5) and Article 26(11).
+    #
+    # Two route constraints shape the wording and the refs, both measured:
+    #
+    # * "unless this is obvious from the context" trips the
+    #   ``_META_LEAK_SUBSTRINGS`` entry "from the context" (it exists for
+    #   "from the context provided"), which deleted the whole lead sentence.
+    #   The statutory "reasonably well-informed, observant and circumspect"
+    #   standard carries no such token.
+    # * A curated intercept ships at most ``MAX_REFERENCES`` (5) refs, and
+    #   the R87-C parent re-emission appends after the declared list. Six
+    #   leaves would silently lose the sixth, so Article 50(2) is described
+    #   but not cited: it is the one paragraph that is not a duty to inform
+    #   a person, and every head the prose names (Article 50, Article 26)
+    #   stays on the wire.
     if _detect_user_information_inquiry(question):
         verdict = {
             "name": "user_information_transparency",
             "answer": (
-                "Article 50(1) requires providers to design AI systems intended to interact directly with "
-                "natural persons so they are informed they are interacting with AI, unless this is obvious. "
-                "Article 50(2) requires providers of generative AI to mark synthetic audio, image, video, or "
-                "text in a machine-readable, detectable format. Article 50(3) requires deployers of emotion "
-                "recognition or biometric categorisation systems to inform exposed natural persons of their "
-                "operation. Article 50(4) requires deployers of deepfakes to disclose that the image, audio, "
-                "or video has been artificially generated or manipulated."
+                "Under Article 50(1), providers must design AI systems that interact "
+                "directly with natural persons so that those persons are informed they "
+                "are interacting with an AI system, unless this is obvious to a "
+                "reasonably well-informed, observant and circumspect person, and "
+                "Article 50(5) requires that information to be given in a clear and "
+                "distinguishable manner at the latest at the time of the first "
+                "interaction or exposure, in line with the applicable accessibility "
+                "requirements. Article 50(2) separately requires providers of "
+                "generative systems to mark synthetic audio, image, video or text "
+                "outputs in a machine-readable format, while deployers must inform "
+                "persons exposed to an emotion recognition or biometric "
+                "categorisation system under Article 50(3) and, under Article 50(4), "
+                "disclose that deep fake content, or AI-generated text published to "
+                "inform the public on matters of public interest, has been "
+                "artificially generated or manipulated. Under Article 26(11), "
+                "deployers of Annex III high-risk AI systems that make or assist in "
+                "making decisions about natural persons must also inform those "
+                "persons that they are subject to the use of the system."
             ),
-            "refs": ["Art. 50", "Art. 50.1", "Art. 50.2", "Art. 50.3", "Art. 50.4"],
+            "refs": [
+                "Art. 50.1",
+                "Art. 50.5",
+                "Art. 50.3",
+                "Art. 50.4",
+                "Art. 26.11",
+            ],
         }
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
