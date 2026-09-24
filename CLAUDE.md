@@ -112,6 +112,37 @@ them). Treat every local judged number as a PROXY. See § R381.
   pass and the grain deepener's Annex I branch, so OFF is the pre-#462 behaviour. The
   answer-text rewrite (`REGENOLD_ANNEX_I_PROSE_REPAIR`) is OFF for the same reason. Turn
   either on only after an adjacency-based binding clears a paired gate.
+  ⚠ **R447: "OFF is the pre-#462 behaviour" is not exact for the deepener.** It still
+  applies #462's Annex I first-mention rule and abstains to bare `Annex I` when that
+  mention is unusable: 10 of 318 recorded Annex I replays differ from pre-#462, all
+  Ref-Strict-neutral.
+
+## R447 — the R446 follow-ups: two fixed routes rewritten, three P2 items cleared
+
+Full record: `docs/measurements/r447/CHECKPOINT.md`.
+
+* **Curated (fixed-route) answers skip Stage-2, so four route rules bind their text.**
+  All four bit while rewriting `user_information_transparency` and `role_difference`:
+  1. at most 3 sentences;
+  2. every sentence carries an `article`/`annex` token;
+  3. no `_META_LEAK_SUBSTRINGS` phrase ("obvious **from the context**" deleted a whole
+     lead sentence);
+  4. at most 5 refs, leaf-only, no sibling pair. R87-C re-emits the parent head and
+     R287 then folds head+leaves, so `Art. 3.3` + `Art. 3.4` ship as `Article 3.3`.
+
+  Offline wire before → after: Art. 50 route 464 chars / `['Article 50.1']` → 1146
+  chars / 50.1, 50.5, 50.3, 50.4, 26.11. Role route: Articles 16 and 26 gone.
+* **F5:** #462's first-mention-stops rule is Annex I only again. Other annexes equal the
+  pre-#462 deepener on every recorded row (316 Annex III, 27 Annex VIII).
+* **F8:** the R365 biometric Art. 50 trigger (default OFF) matches per sentence. A later
+  sentence counts only with an Art. 50 duty verb. Fire-sets unchanged on every corpus.
+* **F9:** R442's whole-head answer-length floor is behind `REGENOLD_WHOLE_HEAD_FLOOR`
+  (default ON). It needs the head to be the subject of the ask. 0 answer-shape changes
+  on the official 110.
+* **Pushback-keep threshold (`REGENOLD_KEEP_MIN_GAPS=2`) scored: NO WIN.** Strict
+  correctness is +7.14 pp, CI [−2.38, +16.67], 0/3 samples separating. Ref conciseness
+  is −1.03 pp with a CI excluding 0. `REGENOLD_PUSHBACK_KEEP_CONTRACT` stays OFF. The
+  draws predate `--require-cohere`, so this is a screen.
 
 ## ⛔ R398 — the merge gate itself returned a FALSE GREEN, and the R397 lever was inert
 
@@ -1917,6 +1948,7 @@ the branch arm, at n≥30 per split, before the benchmark window.
 | `REGENOLD_DUAL_PASS_RETRIEVAL` | `0` | R380/`f46adb8` — replaces the Stage-0 LLM rewrite with deterministic dual-pass retrieval: pass 1 parses the live user turn (operative provision), pass 2 the prior USER turns only (context anchors, R91: assistant text never reaches entity extraction or BM25), then an ordered dedup fusion. **Default OFF**, and verified so by execution (unset ⇒ 0 `dual_pass_parse` calls; `=1` ⇒ it fires and the fused entity list differs). Registered in `_engine_cache_key`; single-turn is a strict no-op (10/10 byte-identical). ⚠ **Known P0 while ON:** it pre-empts R380's `REGENOLD_DENOISE_SELF_CONTAINED_SKIP`, which re-opens assistant-turn bleed on the wire and drops gold refs — do not flip it on without re-gating |
 | `REGENOLD_REF_GRAIN_DEEPEN` | `1` | **R386/R388 — the reference gap is GRAIN, not precision.** Replaces a bare head with its question-and-answer-relevant paragraph (`Article 13` -> `Article 13.3`). Shipped default ON (R388). The evaluator's own printed answer keys are **~71 % sub-point**; we ship **14.3 %**, and Ref Loose (89.4) is ALREADY level with Ans Loose (89.7) while Ref Strict (68.3) lags Ans Strict (81.2) — a 21-point loose/strict spread that is a grain deficit. **Free by construction, then verified**: `gold_dropped_head` folds onto heads (its own docstring: *"a MORE precise prediction than gold ... does NOT count as a drop here"*), RefConc is a pure COUNT ratio and the count is unchanged, Ref Loose is head-level and the head survives inside the leaf. Gate replay n=129: **gold 37 -> 37 (+0) with every axis byte-identical while 284 references change.** On the R386 minimal-gold set, n=99: **Ref Strict 18.3 -> 36.5 (+18.2 pp)**, RefLoose and RefConc untouched. Coordinate accuracy 77 % (47/61) against 4 rows where gold wanted the bare head; thresholds are a PLATEAU (every `MIN_TOP` 1-6 x `MIN_MARGIN` 1-4 scores 35.5-37.0, none drops a gold head), so the gain is not a fitted parameter. Ordered AFTER parent collapse and BEFORE every pass that can drop, so a dropped ref is never a deepened one. See § R386 |
 | `REGENOLD_REF_GRAIN_DEPTH` | `1` | R388 — maximum sub-level depth for grain deepening (1 = paragraph/item level e.g. `Article 13.3`, >1 = sub-points like `13.3.a`). Defaults to `1` as verified by zero-variance replay against the official rubric answer key. Registered in `_engine_cache_key`. |
+| `REGENOLD_WHOLE_HEAD_FLOOR` | **`1`** | R442 floor, gated in R447. Raises the Stage-2 ANSWER SHAPE target to the 650-char no-signal floor when the ask is ABOUT a bare listed head with nothing engaged ("What is Annex X about?", rg_105). R442 shipped it ungated and firing on any ask that merely named a head ("Does Article 26 require deployers to keep logs?" 375 → 650). R447 requires a head-as-subject predicate (`_WHOLE_HEAD_ASK_RES`). Route replay: 0 answer-shape changes on the official 110. Deny-list; `=0` restores R439's proportional target. Registered in `_engine_cache_key` |
 | `REGENOLD_WIRE_REF_CAP` | `0` (unlimited) | R381 — terminal cap on the emitted reference list, the LAST reference pass. Built to attack the highest-leverage axis (RefConc is `min(1, \|expected\|/\|provided\|)`, a pure COUNT ratio) and **GATED, THEN REJECTED**. Zero-variance simulation over a full live capture of the gold-bearing probe corpus, n=129: cap 5 → gold 37→37 (+0.03 pp), cap 4 → 37→37 (+0.33 pp), **cap 3 → 37→41 FAILS**, cap 2 → 65 FAILS, cap 1 → 113 FAILS. **Every value worth having fails hard rule #8; every value that passes is worth nothing.** ⚠ The verdict REVERSED as n grew — cap=3 read "pass" at n=17/30/34 and fails by 4 at n=129, monotonically worse. Zero-variance removes GENERATION variance, not SAMPLING variance. Kept in the tree at `0`, cache-keyed and tested, so the measurement can be re-run if the evaluator's real expected sets ever land. Malformed value fails OPEN. See § R381 and `docs/reviews/r381-…` |
 | `REGENOLD_EXTRACT_SHAPE_GUARD` | `1` | R381 — the R93 `list`/`numeric` extractive pass must produce an answer of the SHAPE the question asks for: a `numeric` answer must contain a cardinal that is not a provision coordinate, a `list` answer must enumerate. On failure it falls back to the lettered limbs of a retrieved provision (`_enumerated_categories`, 29 provisions render cleanly; Annex III correctly renders `None` because its letters restart inside each numbered area) and then to the engine prose. **Closes official-report Q45 (5/5 criteria FAIL) and Q95 (2/2 FAIL)** — both were data fixes that shipped correctly and were then overwritten on the way to the wire by one unresponsive BM25 sentence |
 | `REGENOLD_DENOISE_SELF_CONTAINED_SKIP` | `1` | R380 — a self-contained live turn (≥6 words, no coreference, its own anchor) is used VERBATIM as the retrieval query instead of being paraphrased by the Stage-0 rewrite: hard-mode turn 1 becomes identical to easy mode for 100/110 official questions and the rewrite leaves the critical path. Live-only (sits after the no-provider exit), so the cli bench is byte-identical |
