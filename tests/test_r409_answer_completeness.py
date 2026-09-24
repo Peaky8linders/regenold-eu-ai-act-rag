@@ -93,6 +93,19 @@ KEEP_PREV = (
 )
 KEEP_NEW = "Under Article 26(1), deployers must use the system in accordance with the instructions for use."
 
+# R442 — a pushback answer that drops BOTH anchored sentences of KEEP_PREV: at
+# or above the measured floor (REGENOLD_KEEP_MIN_GAPS=2), so the gap tests can
+# exercise the engaged path, while KEEP_NEW (one drop) exercises the suppressed
+# path below the floor.
+KEEP_NEW_DROP2 = "The obligations instead rest on the importer under Article 22."
+
+# R442 — the keep detector's measured precision floor is TWO dropped anchored
+# sentences (REGENOLD_KEEP_MIN_GAPS default 2): on the R419/R436 board 13 of the
+# 14 single-drop fires were PASSING rows condensing normally, so a fixture that
+# drops only one sentence now exercises the suppressed (below-floor) path. The
+# gap tests use a previous answer with TWO anchored sentences and a new answer
+# that drops both.
+
 
 def _flatten(first_user: str, assistant: str, live_turn: str) -> str:
     """The concatenation-path format of ``_build_question_from_history``."""
@@ -167,9 +180,30 @@ def test_verdict_flag_gates_collect_gaps_both_ways(flags_off):
 
 def test_keep_flag_gates_collect_gaps_both_ways(flags_off):
     question = _pushback(KEEP_Q, KEEP_PREV)
-    assert ac.collect_gaps(question, KEEP_NEW) == []
+    assert ac.collect_gaps(question, KEEP_NEW_DROP2) == []
     flags_off.setenv("REGENOLD_PUSHBACK_KEEP_CONTRACT", "1")
-    assert [g.kind for g in ac.collect_gaps(question, KEEP_NEW)] == ["keep"]
+    assert {g.kind for g in ac.collect_gaps(question, KEEP_NEW_DROP2)} == {"keep"}
+
+
+# ── R442 keep precision floor ───────────────────────────────────────────────
+
+
+def test_keep_floor_default_suppresses_a_single_drop(flags_off):
+    """Below the floor, a one-sentence drop is normal abridgement, not damage."""
+    question = _pushback(KEEP_Q, KEEP_PREV)
+    flags_off.setenv("REGENOLD_PUSHBACK_KEEP_CONTRACT", "1")
+    # A new answer that keeps Article 26 but drops only the Article 27 sentence.
+    single = "Under Article 26(1), deployers must use the system in accordance with the instructions."
+    assert ac.dropped_pushback_points(question, single) == []
+
+
+def test_keep_floor_is_reachable_and_lowerable(flags_off):
+    """The floor is a measured default, not a hard-coded suppression."""
+    question = _pushback(KEEP_Q, KEEP_PREV)
+    flags_off.setenv("REGENOLD_PUSHBACK_KEEP_CONTRACT", "1")
+    flags_off.setenv("REGENOLD_KEEP_MIN_GAPS", "1")
+    gaps = ac.dropped_pushback_points(question, KEEP_NEW)
+    assert len(gaps) == 1 and gaps[0].coordinate == "Article 27"
 
 
 def test_governing_clause_is_two_sided(flags_off):
@@ -318,10 +352,13 @@ def test_verdict_detector_reads_the_reasked_question_inside_a_pushback():
 
 def test_official_pushback_dropping_an_anchored_sentence_is_a_keep_gap():
     question = _pushback(KEEP_Q, KEEP_PREV)
-    gaps = ac.dropped_pushback_points(question, KEEP_NEW)
-    assert len(gaps) == 1
-    assert gaps[0].kind == "keep" and gaps[0].coordinate == "Article 27"
-    assert gaps[0].text.startswith("Under Article 27(1), deployers that are bodies governed by public law")
+    gaps = ac.dropped_pushback_points(question, KEEP_NEW_DROP2)
+    assert len(gaps) == 2
+    assert {g.kind for g in gaps} == {"keep"}
+    assert {g.coordinate for g in gaps} == {"Article 26", "Article 27"}
+    assert gaps[0].text.startswith("Under Article 26(1), deployers must use the system") or gaps[0].text.startswith(
+        "Under Article 27(1), deployers that are bodies governed by public law"
+    )
 
 
 def test_pushback_that_keeps_every_point_has_no_keep_gap():
@@ -351,7 +388,8 @@ def test_route_flatten_format_is_what_the_keep_detector_parses(monkeypatch):
     flattened = _build_question_from_history(messages)[0]
     assert ac.previous_answer(flattened) == KEEP_PREV
     assert ac.live_question(flattened) == PUSHBACK_TEMPLATE.format(question=KEEP_Q)
-    assert [g.coordinate for g in ac.dropped_pushback_points(flattened, KEEP_NEW)] == ["Article 27"]
+    coords = {g.coordinate for g in ac.dropped_pushback_points(flattened, KEEP_NEW_DROP2)}
+    assert "Article 26" in coords and "Article 27" in coords
 
     # Tripwire: with the R305 re-ask focus ON (production default) the route hands
     # the engine the bare question, on which the keep detector is a no-op. If this

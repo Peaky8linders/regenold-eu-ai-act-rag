@@ -582,8 +582,9 @@ def _resolve_complex_model() -> str:
     ab_judge env arms silently share the imported value). This resolver
     reads ``P2P_GRAPH_RAG_COMPLEX_MODEL`` from the environment on every
     call — when the env var is present it WINS (including an explicit
-    empty string = disable the swap); otherwise the settings default
-    applies. The flag is folded into ``_engine_cache_key`` so a mid-process
+    empty string = disable the swap); otherwise the settings value applies
+    (R446: the tracked ``app/data/model_config.json``, else the field
+    default). The flag is folded into ``_engine_cache_key`` so a mid-process
     flip cannot serve a stale cached answer (R30/R56/R79/R263.2 doctrine).
     """
     env = os.environ.get("P2P_GRAPH_RAG_COMPLEX_MODEL")

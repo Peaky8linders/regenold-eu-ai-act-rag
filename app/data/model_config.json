@@ -1,0 +1,13 @@
+{
+  "_comment": [
+    "R446 - tracked model ids for the Graph-RAG engine (read by app/config.py).",
+    "Precedence, highest first: env var P2P_GRAPH_RAG_<FIELD> > this file > GraphRAGSettings field default.",
+    "Edit this file and merge to main to change the production model; Railway auto-deploys, no dashboard variable needed.",
+    "model = Stage-1 parse and auxiliary calls; stage2_model = Stage-2 answer; complex_model = complex tier, which also wins on the standard Stage-2 path.",
+    "An empty complex_model disables that swap. A non-Opus Stage-2 id is floored to Opus (R139).",
+    "claude-opus-5-5 needs Claude Code >= 2.1.280 on the wrapper host."
+  ],
+  "model": "claude-sonnet-5",
+  "stage2_model": "claude-opus-5-5",
+  "complex_model": "claude-opus-5-5"
+}

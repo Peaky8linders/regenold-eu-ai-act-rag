@@ -1446,6 +1446,11 @@ def _engine_cache_key(
             "REGENOLD_GROUND_WIRE_ADD_MAX",
             "REGENOLD_GROUND_WIRE_ADD_ANSWER_RECALL",
             "REGENOLD_GROUND_WIRE_ADD_QUESTION_RECALL",
+            # R446 — the R445 Annex I wire resolution (rewrites an emitted
+            # ``Annex I.N`` leaf) and its default-OFF prose rewrite (edits the
+            # ANSWER text). Both change the response, so each has its own slot.
+            "REGENOLD_ANNEX_I_RESOLUTION",
+            "REGENOLD_ANNEX_I_PROSE_REPAIR",
             # R397 — appends the real paragraph range of each cited head to the
             # Stage-2 user message. Prompt-side, so it changes the answer and
             # (invariant #5) the wire references derived from it.
@@ -1514,6 +1519,11 @@ def _engine_cache_key(
             "REGENOLD_EXCEPTION_LIMB_GUARD",
             "REGENOLD_VERDICT_LEAD_GUARD",
             "REGENOLD_PUSHBACK_KEEP_CONTRACT",
+            # R442 — the keep guard's precision floor changes WHEN the repair
+            # loop engages (>= N dropped anchored sentences), so it changes
+            # GraphRAGResponse.answer on exactly the rows between the two
+            # thresholds. Same doctrine as the guard flag above.
+            "REGENOLD_KEEP_MIN_GAPS",
             "REGENOLD_GOVERNING_PROVISION_CLAUSE",
             # R270 — opus-for-all flips the Stage-2 answer MODEL (Sonnet 5 vs
 
@@ -3871,14 +3881,22 @@ _GRAIN_OVERVIEW_RE = re.compile(
 #:
 #: Two shapes, because the captured answers use both and the looser one must
 #: not be loose everywhere:
-#:  * ADJACENT — "Annex IV point 1(e)", "Annex III.5", "Annex I (point 11)":
+#:  * ADJACENT — "Annex IV point 1(e)", "Annex I (point 11)", "Annex III 5":
 #:    the number follows the annex name directly, so a bare number is safe.
 #:  * WINDOWED — "in Annex I, which includes Regulation (EU) 2017/745 (MDR)
 #:    at point 11" (rg_008 verbatim): prose separates the two, so an explicit
 #:    "point"/"item" WORD is REQUIRED and the search stops at the first
 #:    sentence end. A bare number is never accepted across a gap.
+#:
+#: R446 — no ``.`` in the leading class (R445 added one, so "Annex I. 12
+#: notified bodies ..." read a head count as point 12), and every whitespace
+#: run is BOUNDED. Three adjacent unbounded ``\s*`` runs backtrack cubically on
+#: a whitespace run with no digit after it: MEASURED "Annex I" + 1000 spaces
+#: took 14.3 s and + 2000 took 115 s per pass. A bounded quantifier is linear
+#: on every Python version (a possessive one would need 3.11+).
 _PROSE_ANNEX_ADJACENT_TMPL = (
-    r"Annex\s+{roman}\b[\s,.]*(?:\(\s*)?(?:points?|items?|sections?)?\s*\(?\s*(\d{{1,2}})\b"
+    r"Annex\s+{roman}\b[\s,]{{0,40}}(?:\(\s{{0,40}})?(?:points?|items?|sections?)?"
+    r"\s{{0,40}}\(?\s{{0,40}}(\d{{1,2}})\b"
 )
 _PROSE_ANNEX_WINDOW_TMPL = r"Annex\s+{roman}\b"
 _PROSE_ANNEX_POINT_WORD_RE = re.compile(r"\b(?:points?|items?)\s*\(?\s*(\d{1,2})\b", re.I)
@@ -3893,8 +3911,9 @@ _PROSE_ANNEX_WINDOW_CHARS = 120
 #: to a lexical tie: an unresolved grain is correct but imprecise, whereas a
 #: wrong coordinate is a worse citation than the coarser one.
 _PROSE_ANNEX_ENUMERATION_RE = re.compile(
-    r"^(?:\s*,\s*|\s+(?:and|or|to)\s+|\s*[-–]\s*)"
-    r"(?:(?:points?|items?)\s*)?\(?\s*\d",
+    # R446 — bounded runs, same reason as ``_PROSE_ANNEX_ADJACENT_TMPL``.
+    r"^(?:\s{0,40},\s{0,40}|\s{1,40}(?:and|or|to)\s{1,40}|\s{0,40}[-–]\s{0,40})"
+    r"(?:(?:points?|items?)\s{0,40})?\(?\s{0,40}\d",
     re.I,
 )
 _ANNEX_I_INSTRUMENT_RE = re.compile(
@@ -3958,10 +3977,34 @@ def _question_names_annex_i_point(question: str, point: int) -> bool:
     if not question:
         return False
     pattern = re.compile(
-        r"\bAnnex\s+I\b[^.!?]{0,120}?\b(?:points?|items?)\s*\(?\s*(\d{1,2})\b",
+        # R446 — bounded runs (see ``_PROSE_ANNEX_ADJACENT_TMPL``): the question
+        # is partner input, so an unbounded ``\s*\(?\s*`` is a quadratic path.
+        r"\bAnnex\s+I\b[^.!?]{0,120}?\b(?:points?|items?)\s{0,40}\(?\s{0,40}(\d{1,2})\b",
         re.I,
     )
     return any(int(match.group(1)) == point for match in pattern.finditer(question))
+
+
+#: Words every Annex I item (or every Annex I question) shares, so they carry
+#: no signal about WHICH listed Act a question is about.
+_ANNEX_I_GENERIC_TOKENS = frozenset({
+    "act", "ai", "assessment", "component", "conformity", "covered",
+    "eu", "high", "product", "regulation", "risk", "safety", "system",
+    "third", "party",
+})
+
+
+def _annex_i_question_scores(
+    units: dict[int, str], question_tokens: set[str]
+) -> dict[int, int]:
+    """Non-generic question-token overlap of each adopted Annex I item."""
+    from app.data import provision_text as _pt  # noqa: PLC0415
+
+    query_signal = question_tokens - _ANNEX_I_GENERIC_TOKENS
+    return {
+        number: len(query_signal & (_pt._tokens(text) - _ANNEX_I_GENERIC_TOKENS))
+        for number, text in units.items()
+    }
 
 
 def _annex_i_point_matches_question(
@@ -3974,24 +4017,35 @@ def _annex_i_point_matches_question(
     """Require the adopted-text item to be a best question match."""
     if not question_tokens:
         return False
-    from app.data import provision_text as _pt  # noqa: PLC0415
-
-    generic = {
-        "act", "ai", "assessment", "component", "conformity", "covered",
-        "eu", "high", "product", "regulation", "risk", "safety", "system",
-        "third", "party",
-    }
-    query_signal = question_tokens - generic
-    scores = {
-        number: len(query_signal & (_pt._tokens(text) - generic))
-        for number, text in units.items()
-    }
+    scores = _annex_i_question_scores(units, question_tokens)
     best = max(scores.values(), default=0)
     return (
         best >= 2
         and scores.get(point, 0) == best
         and (not require_unique or sum(score == best for score in scores.values()) == 1)
     )
+
+
+def _annex_i_point_grounded_in_question(
+    point: int, units: dict[int, str], question_tokens: set[str]
+) -> bool:
+    """R446 (F2) — the test for a point the ANSWER'S OWN named Act proves.
+
+    When the answer names exactly one listed Act beside the point, the adopted
+    list already fixes the point; demanding that the question ALSO single it out
+    at ``best >= 2`` (``_annex_i_point_matches_question``) coarsened correct
+    leaves. MEASURED on the R419 hard board: ``rg_072`` says "Directive
+    2009/48/EC on the safety of toys is listed in Annex I, point 2", the toy
+    question overlaps item 2 on one word, and ``Annex I.2`` (gold
+    ``Annex I.a.2``) was cut to ``Annex I`` — Ref. Strict 0.50 -> 0.00.
+
+    One non-generic overlap is still required, so an Act the answer names only
+    in CONTRAST ("lifts are in Annex I point 4, not under the MDR") cannot move
+    a lift question's wire onto the MDR point: that case abstains, as before.
+    """
+    if not question_tokens or point not in units:
+        return False
+    return _annex_i_question_scores({point: units[point]}, question_tokens)[point] >= 1
 
 
 @lru_cache(maxsize=1)
@@ -4077,8 +4131,15 @@ def _resolve_annex_i_point(
             question_tokens is not None and resolved_point not in units
         ):
             return None
-        if question_tokens is not None and not _annex_i_point_matches_question(
-            resolved_point, candidate_units, question_tokens
+        if question_tokens is not None and not (
+            _annex_i_point_matches_question(resolved_point, candidate_units, question_tokens)
+            # R446 (F2) — an Act named BY THE ANSWER beside the point proves it.
+            or (
+                answer_keys
+                and _annex_i_point_grounded_in_question(
+                    resolved_point, candidate_units, question_tokens
+                )
+            )
         ):
             return None
         return resolved_point
@@ -4155,8 +4216,59 @@ def _annex_i_prose_points(
     return points
 
 
+def _annex_i_prose_repair_enabled() -> bool:
+    """R446 — ``REGENOLD_ANNEX_I_PROSE_REPAIR``. **Default OFF** (allow-list).
+
+    Gates :func:`_repair_annex_i_prose_points`, which rewrites the ANSWER TEXT.
+    Only ``1/true/yes/on`` enables it; see that function for why it is off.
+    Registered in ``_engine_cache_key``.
+    """
+    return os.getenv("REGENOLD_ANNEX_I_PROSE_REPAIR", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _annex_i_resolution_enabled() -> bool:
+    """R446 — ``REGENOLD_ANNEX_I_RESOLUTION``. **Default ON** (deny-list).
+
+    Gates :func:`_repair_annex_i_wire_points` on the route. The call site is ALSO
+    ``_stage2_landed``-gated, like the other prose->refs passes, so the
+    deterministic / curated wire stays byte-identical to the pre-R445 route.
+    ``=0`` restores that wire on the Stage-2 path too. Registered in
+    ``_engine_cache_key``.
+    """
+    return os.getenv("REGENOLD_ANNEX_I_RESOLUTION", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
 def _repair_annex_i_prose_points(answer: str, question: str) -> str:
-    """Correct a prose point only when the adopted Act list proves its number."""
+    """Correct a prose point only when the adopted Act list proves its number.
+
+    ⚠ R446 — the route runs this ONLY under ``REGENOLD_ANNEX_I_PROSE_REPAIR=1``,
+    which stays **OFF** because of review finding F1: it rewrote correct answer
+    text into wrong law, reproduced through the real route. The proximity rule
+    that assigns a nearby Act to a point is too coarse to edit prose with:
+
+    * "Motor vehicles are listed at Annex I point 19, whereas the MDR is point
+      11." shipped as "... Annex I point 11, whereas the MDR is point 11.";
+    * "defined in point (14) of Article 3" (same sentence as "MDR ... Annex I")
+      became "point (11) of Article 3";
+    * "Annex I, item 19 of which is a different Act" became "item 11";
+    * "Annex I, Section B, point 7" with no Act named became "point 19";
+    * "Annex I. 12 notified bodies" (a head count) became "11" — this one is
+      also fixed at the source: the template no longer accepts a period.
+
+    The wire resolution (:func:`_repair_annex_i_wire_points`) does not need it:
+    it reads the same evidence without editing the answer. Do not enable this
+    until the resolver binds an Act to the point it is adjacent to.
+    """
     if not answer:
         return answer
     try:
@@ -4221,7 +4333,16 @@ def _repair_annex_i_wire_points(
                 locations = set(_annex_i_listed_instruments().get(key) or ())
                 if len(locations) == 1:
                     _section, target = next(iter(locations))
-                    if target in units and (not q_tokens or _annex_i_point_matches_question(target, units, q_tokens)):
+                    if target in units and (
+                        not q_tokens
+                        or _annex_i_point_matches_question(target, units, q_tokens)
+                        # R446 (F2) — the answer's own Annex I sentence names
+                        # the Act; see ``_annex_i_point_grounded_in_question``.
+                        or (
+                            answer_keys
+                            and _annex_i_point_grounded_in_question(target, units, q_tokens)
+                        )
+                    ):
                         act_point = target
         resolved_points = {point for _, point, _, _ in mentions if point is not None}
         all_resolved = all(point is not None for _, point, _, _ in mentions)
@@ -4249,9 +4370,31 @@ def _repair_annex_i_wire_points(
                 out.append(raw)
             else:
                 out.append(f"Annex I.{target}")
-        return out
+        return _dedupe_in_order(out)
     except Exception:  # noqa: BLE001 — fail-soft, never ship an unverified point
-        return ["Annex I" if leaf_pattern.fullmatch(str(raw).strip()) else raw for raw in references]
+        return _dedupe_in_order(
+            ["Annex I" if leaf_pattern.fullmatch(str(raw).strip()) else raw for raw in references]
+        )
+
+
+def _dedupe_in_order(references: list[str]) -> list[str]:
+    """R446 (F3) — drop repeats, first occurrence wins.
+
+    The pass maps several leaves onto one coordinate (two unresolved leaves both
+    become ``Annex I``; a miscounted leaf lands on a sibling already present), and
+    it runs after parent collapse, so nothing downstream removed the repeat.
+    MEASURED through the real route: ``['Article 6.1', 'Annex I', 'Annex I',
+    'Annex I']`` and ``['Article 6.1', 'Annex I.11', 'Annex I.11']`` shipped.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for ref in references:
+        key = str(ref).strip()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(ref)
+    return out
 
 
 def _resolve_prose_named_annex_point(
@@ -13578,16 +13721,24 @@ def regenold_eu_ai_act_ask(
                 except Exception:  # noqa: BLE001 — fail-soft on trace
                     pass
 
-        # Resolve Annex I prose and its wire coordinate against the adopted
-        # sectioned list before any later reference filters run.
-        _annex_i_question = live_user_message or question
-        _annex_i_answer = _repair_annex_i_prose_points(answer_text or "", _annex_i_question)
-        if _annex_i_answer != answer_text:
-            answer_text = _annex_i_answer
-        if references and answer_text:
-            references = _repair_annex_i_wire_points(
-                references, _annex_i_question, answer_text
-            )
+        # R445 — resolve an Annex I wire leaf against the adopted sectioned list
+        # before any later reference filter runs.
+        #
+        # R446 — ``_stage2_landed``-gated like every other prose->refs pass (the
+        # deterministic / curated-intercept wire is hand-validated, and the gate
+        # keeps the offline wire byte-identical to the pre-R445 route: MEASURED
+        # 11 of the official 110 changed offline without it), plus its own
+        # deny-list flag. The PROSE rewrite is a separate default-OFF flag,
+        # because it rewrote correct answer text into wrong law (finding F1; see
+        # ``_repair_annex_i_prose_points``).
+        if _stage2_landed and answer_text:
+            _annex_i_question = live_user_message or question
+            if _annex_i_prose_repair_enabled():
+                answer_text = _repair_annex_i_prose_points(answer_text, _annex_i_question)
+            if references and _annex_i_resolution_enabled():
+                references = _repair_annex_i_wire_points(
+                    references, _annex_i_question, answer_text
+                )
 
         # R385 — question-relevance prune, immediately before the terminal cap so
         # it sees the fully assembled list (including everything the three

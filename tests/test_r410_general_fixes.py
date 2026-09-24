@@ -268,11 +268,19 @@ def test_reask_path_keeps_retrieval_bare_but_carries_history_for_the_guard(monke
 def test_pushback_keep_detector_fires_on_the_guard_question(monkeypatch):
     history, _first, _previous = _reask_turn(monkeypatch)
     new_answer = "Under Article 26(1), deployers must use the system in accordance with the instructions for use."
+    # This pins the R410 plumbing, so it runs at the lowest R442 floor: one
+    # dropped anchored sentence is enough for the detector to report it.
+    monkeypatch.setenv("REGENOLD_KEEP_MIN_GAPS", "1")
     # Blinded on the bare question (the pre-R410 defect)...
     assert ac.dropped_pushback_points(str(history[0]), new_answer) == []
     # ...and visible once the flattened history is passed.
     dropped = ac.dropped_pushback_points(history.guard_question, new_answer)
     assert dropped and any("Article 27" in g.text for g in dropped)
+    # R442 — at the shipped floor (2) fewer drops than that read as normal
+    # condensation and the detector stays quiet.
+    monkeypatch.delenv("REGENOLD_KEEP_MIN_GAPS")
+    at_default = ac.dropped_pushback_points(history.guard_question, new_answer)
+    assert at_default == ([] if len(dropped) < 2 else dropped)
 
 
 def test_two_stage_generate_forwards_the_guard_question(monkeypatch):

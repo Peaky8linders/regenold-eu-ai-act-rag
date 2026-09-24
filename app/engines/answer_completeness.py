@@ -162,6 +162,18 @@ def verdict_lead_guard_enabled() -> bool:
     return _flag_is_on(_VERDICT_LEAD_ENV)
 
 
+def _keep_min_gaps() -> int:
+    """R442 — minimum dropped anchored sentences for the keep guard to engage."""
+    try:
+        raw = os.getenv(_KEEP_MIN_GAPS_ENV, "").strip()
+        if not raw:
+            return _KEEP_MIN_GAPS_DEFAULT
+        value = int(raw)
+        return value if value >= 1 else _KEEP_MIN_GAPS_DEFAULT
+    except (TypeError, ValueError):
+        return _KEEP_MIN_GAPS_DEFAULT
+
+
 def pushback_keep_enabled() -> bool:
     """R409 — keep the previous answer's anchored points across a pushback. Default OFF."""
     return _flag_is_on(_PUSHBACK_KEEP_ENV)
@@ -178,6 +190,16 @@ _MAX_MEMBER_GAPS = 10
 _MAX_EXCEPTION_GAPS = 4
 _MAX_KEEP_GAPS = 4
 _MAX_TOTAL_GAPS = 12
+
+# R442 — precision floor for the keep detector. On the current R419/R436 board
+# the detector fires on 17/110 rows; 13 of the 14 single-drop fires are rows the
+# judge passes (normal condensation: one anchored sentence rewritten into the
+# new answer's own words), while every row that dropped >=2 anchored sentences
+# but one is a failing row. A drop pattern below this threshold is therefore
+# treated as normal abridgement, not damage. Read fresh per call; a malformed
+# value keeps the measured default (fail SAFE: fewer repair loops).
+_KEEP_MIN_GAPS_DEFAULT = 2
+_KEEP_MIN_GAPS_ENV = "REGENOLD_KEEP_MIN_GAPS"
 _MAX_EXCEPTION_HEADS = 4
 _MAX_KEEP_CLAUSE_POINTS = 6
 _GAP_TEXT_CHARS = 240
@@ -1162,6 +1184,8 @@ def _keep_gaps(question: str, answer: str, limit: int | None) -> list[Gap]:
         gaps.append(Gap("keep", heads[0], _clip(sentence)))
         if limit is not None and len(gaps) >= limit:
             break
+    if len(gaps) < _keep_min_gaps():
+        return []
     return gaps
 
 
@@ -1172,6 +1196,11 @@ def dropped_pushback_points(question: str, answer: str) -> list[Gap]:
     history. A previous sentence that names a provision is dropped when none of
     its heads is named in the new answer AND < 40 % of its content tokens reach
     it. At most 4 gaps. ⚠ Needs the flattened history (module docstring, 1).
+
+    R442 precision floor: engages only when at least ``REGENOLD_KEEP_MIN_GAPS``
+    (default 2) anchored sentences were dropped — on the R419/R436 board 13 of
+    the 14 single-drop fires are passing rows condensing normally, while the
+    >=2-drop fires carry the failing mass (rg_037 lost 5 of 8 Annex VIII items).
     """
     try:
         return _keep_gaps(question, answer, _MAX_KEEP_GAPS)

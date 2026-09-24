@@ -482,7 +482,14 @@ def _install_stage2_transport_guard(
 
     #: R442 — models this run has already proven servable, so re-probing on
     #: every arm costs one live call per DISTINCT model, not one per arm.
-    probed: dict[str, str] = {}
+    #:
+    #: R446 — keyed on what actually reaches the transport: the WIRE id
+    #: (``resolve_wrapper_model`` applies the R432 namespace prefix and the R300
+    #: alias table, both env-driven per arm) plus the provider's base URL. Keyed
+    #: on the bare configured id, an arm that changed only
+    #: ``REGENOLD_WRAPPER_MODEL_PREFIX`` reused the other arm's verdict and its
+    #: own id was never probed.
+    probed: dict[tuple[str, str], str] = {}
 
     def preflight() -> str:
         provider = _wp.get_openai_wrapper_provider()
@@ -510,8 +517,13 @@ def _install_stage2_transport_guard(
             probe_model = str(effective_stage2_model() or "").strip()
         except Exception:  # noqa: BLE001 — a probe must never break the run
             probe_model = ""
-        if probe_model and probe_model in probed:
-            return probed[probe_model]
+        try:
+            wire_model = _wp.resolve_wrapper_model(probe_model) if probe_model else ""
+        except Exception:  # noqa: BLE001 — a probe must never break the run
+            wire_model = probe_model
+        memo_key = (wire_model, str(getattr(provider, "_base_url", "") or ""))
+        if probe_model and memo_key in probed:
+            return probed[memo_key]
         resp = provider.complete(
             _wp.OpenAIWrapperRequest(
                 user="Reply with the single word: alive",
@@ -541,7 +553,7 @@ def _install_stage2_transport_guard(
                 )
                 served = f"fallback:{fallback_model}"
                 if probe_model:
-                    probed[probe_model] = served
+                    probed[memo_key] = served
                 return served
             raise RuntimeError(
                 "Stage-2 transport preflight failed "
@@ -553,7 +565,7 @@ def _install_stage2_transport_guard(
             )
         served = str(getattr(resp, "model", "") or "")
         if probe_model:
-            probed[probe_model] = served
+            probed[memo_key] = served
         return served
 
     original_complete = _wp._OpenAIWrapperProvider.complete

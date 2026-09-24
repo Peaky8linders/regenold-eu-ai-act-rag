@@ -83,6 +83,27 @@ axes against a *reference answer*; the July-7 batch carries neither (`_official_
 has 8 fields, none of them criteria or a reference answer, because regenold never published
 them). Treat every local judged number as a PROXY. See § R381.
 
+## R446 — the model ids live in a TRACKED file; Fast mode has never engaged
+
+* **Where the model is set.** `app/data/model_config.json` holds `model` (auxiliary
+  non-Stage-2 calls), `stage2_model` and `complex_model` (the complex tier, which also
+  wins on the standard Stage-2 path). Precedence: env var `P2P_GRAPH_RAG_<FIELD>` >
+  the tracked file > the `GraphRAGSettings` field default. To change the production
+  model, edit the file and merge to `main`; Railway auto-deploys, so no dashboard
+  variable is needed. Fail-soft: a missing or malformed file logs a warning and the
+  field defaults apply. Pinned by `tests/test_r446_tracked_model_config.py`.
+* **Shipped value (operator directive 2026-09-24):** `claude-opus-5-5` on every Stage-2
+  answer. `P2P_GRAPH_RAG_MODEL` does NOT move the answer; the Stage-1 LLM parse it
+  names (`_llm_parse_query`) has no caller.
+* **Fast mode is blocked by the account, not the wrapper.** Measured on CLI 2.1.280
+  with `claude-opus-5-5`: every call sent `fastMode: true` returned
+  `fast_mode_state: "off"`, `fast_mode_disabled_reason: "extra_usage_disabled"`. The
+  wrapper's `CLAUDE_CODE_FAST_MODE=1` is therefore a no-op, which also explains the
+  2026-07-04 "fast mode is a wash" reading. It engages only once extra usage is
+  enabled on the Claude account (a billing decision). Check with
+  `claude -p --model claude-opus-5-5 --settings '{"fastMode": true}' --output-format json "hi"`
+  and read `fast_mode_state`.
+
 ## ⛔ R398 — the merge gate itself returned a FALSE GREEN, and the R397 lever was inert
 
 **Executed 2026-09-09.** Two defects in the *instruments*, not in the product. Both are the
