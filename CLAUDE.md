@@ -103,6 +103,15 @@ them). Treat every local judged number as a PROXY. See § R381.
   enabled on the Claude account (a billing decision). Check with
   `claude -p --model claude-opus-5-5 --settings '{"fastMode": true}' --output-format json "hi"`
   and read `fast_mode_state`.
+* **`REGENOLD_ANNEX_I_RESOLUTION` ships OFF (R446b).** #462's Annex I resolver binds a
+  point to the Act the answer names, but the binding is not clause-aware and its generic
+  tokens miss the boilerplate every Annex I item shares ("European", "Parliament",
+  "Directive"). Measured on the deployed build: "Motor vehicles are listed at Annex I point
+  19, whereas the MDR is point 11." moved a correct `Annex I.19` to `Annex I.11`, and a
+  Lifts Directive question moved `Annex I.4` to `Annex I.11`. The flag gates both the wire
+  pass and the grain deepener's Annex I branch, so OFF is the pre-#462 behaviour. The
+  answer-text rewrite (`REGENOLD_ANNEX_I_PROSE_REPAIR`) is OFF for the same reason. Turn
+  either on only after an adjacency-based binding clears a paired gate.
 
 ## ⛔ R398 — the merge gate itself returned a FALSE GREEN, and the R397 lever was inert
 

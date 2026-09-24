@@ -11,7 +11,8 @@ shape of the code. Findings:
 * F3 — the wire pass shipped duplicates (``Annex I`` x3).
 * F4 — the wire pass ran on the deterministic path too (11 of the official 110
   changed offline). Now ``_stage2_landed``-gated plus
-  ``REGENOLD_ANNEX_I_RESOLUTION`` (default ON, deny-list).
+  ``REGENOLD_ANNEX_I_RESOLUTION``, which R446b turned default OFF (allow-list):
+  its Act binding is not clause-aware (see the R446b regression tests below).
 * F6 — cubic backtracking: "Annex I" + 2000 spaces took 115 s per pass.
 * F7 — the strict axis double-counted a key after canonicalising.
 * F10 / F11 — the run lock and the preflight memo (eval harness).
@@ -85,7 +86,8 @@ def _route_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REGENOLD_QUERY_DENOISER", "0")
     monkeypatch.delenv("P2P_GRAPH_RAG_PROVIDER", raising=False)
     monkeypatch.delenv("REGENOLD_ANNEX_I_PROSE_REPAIR", raising=False)
-    monkeypatch.delenv("REGENOLD_ANNEX_I_RESOLUTION", raising=False)
+    # R446b — the wire pass ships default OFF; these route tests exercise it ON.
+    monkeypatch.setenv("REGENOLD_ANNEX_I_RESOLUTION", "1")
     monkeypatch.setattr(settings.regenold, "api_key", SecretStr(_KEY))
     limiter.reset()
 
@@ -269,14 +271,62 @@ def test_route_ships_no_duplicate_annex_i_reference(monkeypatch) -> None:
 
 @pytest.mark.parametrize(
     ("value", "enabled"),
-    [(None, True), ("1", True), ("", True), ("garbage", True), ("0", False), ("off", False), ("false", False)],
+    [(None, False), ("", False), ("garbage", False), ("0", False), ("1", True), ("on", True), ("true", True)],
 )
-def test_resolution_flag_is_default_on_deny_list(monkeypatch, value, enabled) -> None:
+def test_resolution_flag_is_default_off_allow_list(monkeypatch, value, enabled) -> None:
     if value is None:
         monkeypatch.delenv("REGENOLD_ANNEX_I_RESOLUTION", raising=False)
     else:
         monkeypatch.setenv("REGENOLD_ANNEX_I_RESOLUTION", value)
     assert R._annex_i_resolution_enabled() is enabled
+
+
+# -- R446b: the Act binding misreads contrast sentences, so it ships OFF ---------
+
+_CONTRAST_CASES = [
+    # (question, answer, the correct leaf the answer already cites)
+    (
+        "Are AI safety components in motor vehicles high-risk under the EU AI Act, "
+        "given the type-approval Directive?",
+        _LEAD + "Motor vehicles are listed at Annex I point 19, whereas the MDR is point 11.",
+        "Annex I.19",
+    ),
+    (
+        "Is a lift safety component high-risk under the Lifts Directive?",
+        _LEAD + "Lifts are listed in Annex I point 4, not under the MDR.",
+        "Annex I.4",
+    ),
+]
+
+
+@pytest.mark.parametrize(("question", "answer", "leaf"), _CONTRAST_CASES)
+def test_default_route_keeps_a_correct_leaf_beside_a_contrast(monkeypatch, question, answer, leaf) -> None:
+    """Measured on the R446 build: ON moved both leaves to ``Annex I.11`` (wrong law)."""
+    _route_env(monkeypatch)
+    monkeypatch.delenv("REGENOLD_ANNEX_I_RESOLUTION", raising=False)
+    body, calls = _ask(monkeypatch, question=question, answer=answer, seed=[leaf])
+    refs = [str(r) for r in body.get("references") or []]
+    assert calls["wire"] == 0
+    assert leaf in refs and "Annex I.11" not in refs, refs
+
+
+def test_default_deepener_does_not_use_the_act_binding(monkeypatch) -> None:
+    """The grain deepener shared the same binding; OFF must not reach it (call count)."""
+    monkeypatch.delenv("REGENOLD_ANNEX_I_RESOLUTION", raising=False)
+    calls: list[str] = []
+    real = R._annex_i_prose_point
+
+    def spy(*args, **kwargs):
+        calls.append("hit")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(R, "_annex_i_prose_point", spy)
+    question, answer, _leaf = _CONTRAST_CASES[1]
+    R._deepen_one_ref("Annex I", question, answer)
+    assert calls == []
+    monkeypatch.setenv("REGENOLD_ANNEX_I_RESOLUTION", "1")
+    R._deepen_one_ref("Annex I", question, answer)
+    assert calls  # two-sided: ON does reach the binding
 
 
 def test_offline_path_never_calls_the_annex_i_passes(monkeypatch) -> None:
