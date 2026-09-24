@@ -165,7 +165,10 @@ def reference_correctness_strict(
     exp = _clean(expected_refs)
     if not exp:
         return None
-    exp = [canonical_annex_point(e) for e in exp]
+    # R446 — de-duplicate AFTER canonicalising: ``_clean`` de-duplicated the raw
+    # forms, so a key carrying ``Annex I.a.11`` and ``Annex I.11`` counted the
+    # one provision twice in the denominator.
+    exp = list(dict.fromkeys(canonical_annex_point(e) for e in exp))
     got = [canonical_annex_point(p) for p in _clean(pred_refs)]
     return sum(1 for e in exp if any(_is_descendant(p, e) for p in got)) / len(exp)
 

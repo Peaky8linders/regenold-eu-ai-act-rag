@@ -26,8 +26,13 @@ import os
 import time
 from pathlib import Path
 
-#: ``(lock path, fd)`` of the lock this process holds, if any.
-_HELD: tuple[Path, int] | None = None
+#: R446 — every lock this process holds, ``{lock path: fd}``. One global slot
+#: leaked the first fd when a second label was acquired: ``release()`` dropped
+#: only the last one, so the first label stayed locked until the process exited.
+_HELD: dict[Path, int] = {}
+
+#: ``O_BINARY`` keeps Windows from writing the owner note as text (CRLF).
+_OPEN_FLAGS = os.O_CREAT | os.O_RDWR | getattr(os, "O_BINARY", 0)
 
 
 def _try_lock(fd: int) -> None:
@@ -55,10 +60,17 @@ def owner_note(lock: Path) -> str:
 
 def acquire(results: Path, label: str) -> Path:
     """Own ``label`` for this process's lifetime, or raise ``RuntimeError``."""
-    global _HELD
     results.mkdir(parents=True, exist_ok=True)
     lock = results / f"official-{label}.run.lock"
-    fd = os.open(lock, os.O_CREAT | os.O_RDWR)
+    try:
+        fd = os.open(lock, _OPEN_FLAGS)
+    except OSError as exc:
+        # R446 — a read-only or otherwise unopenable lock file used to escape as
+        # a bare ``PermissionError``; callers handle ``RuntimeError`` only.
+        raise RuntimeError(
+            f"cannot open the run lock for label {label!r} ({exc.__class__.__name__}: "
+            f"{exc}); lock file: {lock}"
+        ) from exc
     try:
         _try_lock(fd)
     except OSError:
@@ -71,27 +83,30 @@ def acquire(results: Path, label: str) -> Path:
     note = f"{os.getpid()} {time.time():.3f}\n".encode("ascii")
     os.write(fd, note)
     os.ftruncate(fd, 1 + len(note))
-    _HELD = (lock, fd)
+    _HELD[lock] = fd
     return lock
 
 
-def release() -> None:
-    """Drop the lock early (the OS drops it at exit anyway). Never unlinks."""
-    global _HELD
-    if _HELD is None:
-        return
-    _lock, fd = _HELD
-    _HELD = None
-    try:
-        if os.name == "nt":
-            import msvcrt  # noqa: PLC0415
+def release(lock: Path | None = None) -> None:
+    """Drop ``lock``, or EVERY lock this process holds when ``lock`` is None.
 
-            os.lseek(fd, 0, os.SEEK_SET)
-            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
-    except OSError:
-        pass
-    finally:
-        os.close(fd)
+    The OS drops them at exit anyway. Never unlinks.
+    """
+    targets = list(_HELD) if lock is None else [lock]
+    for path in targets:
+        fd = _HELD.pop(path, None)
+        if fd is None:
+            continue
+        try:
+            if os.name == "nt":
+                import msvcrt  # noqa: PLC0415
+
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        except OSError:
+            pass
+        finally:
+            os.close(fd)
 
 
 __all__ = ["acquire", "owner_note", "release"]

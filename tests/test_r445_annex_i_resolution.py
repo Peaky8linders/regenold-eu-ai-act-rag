@@ -155,6 +155,10 @@ def _live_ask(
 
 
 def test_route_wire_repairs_mdr_miscount_in_answer_refs_and_reasoning(monkeypatch) -> None:
+    # R446 — the prose half of this test needs the regime it was written for:
+    # the answer-text rewrite is now behind a default-OFF flag (review finding
+    # F1; the default-OFF arm is pinned in tests/test_r446_annex_i_review_fixes.py).
+    monkeypatch.setenv("REGENOLD_ANNEX_I_PROSE_REPAIR", "1")
     answer = (
         "Under Article 6(1), an AI safety component in a medical device is high-risk "
         "when third-party conformity assessment is required. Annex I lists "
