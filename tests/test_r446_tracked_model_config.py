@@ -186,3 +186,65 @@ class TestWire:
 
         assert effective_stage2_model() == "claude-opus-5-5"
         assert effective_stage2_model(complex_question=True) == "claude-opus-5-5"
+
+    def test_healthz_llm_probes_the_stage2_model_not_the_auxiliary_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """R446 — /healthz/llm probed ``settings.graph_rag.model`` (Sonnet 5, the
+        auxiliary model) while every answer went to Opus 5.5."""
+        import httpx
+        from fastapi.testclient import TestClient
+
+        from app.llm import openai_wrapper_provider
+        from app.main import app
+
+        for name in (
+            "REGENOLD_HEALTHZ_PROBE_MODEL",
+            "REGENOLD_WRAPPER_MODEL_PREFIX",
+            "P2P_GRAPH_RAG_API_KEY",
+            "AWS_BEARER_TOKEN_BEDROCK",
+            "AWS_BEDROCK_API_KEY",
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+        ):
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv("REGENOLD_SKIP_STARTUP_LOG", "1")
+        monkeypatch.setenv("P2P_GRAPH_RAG_PROVIDER", "openai_wrapper")
+        monkeypatch.setenv("OPENAI_API_BASE", "https://api.test.invalid")
+        monkeypatch.setenv("OPENAI_API_KEY", "dummy")
+
+        sent: list[str] = []
+
+        def _handler(request: httpx.Request) -> httpx.Response:
+            model = json.loads(request.content)["model"]
+            sent.append(model)
+            return httpx.Response(
+                200,
+                json={
+                    "id": "probe",
+                    "object": "chat.completion",
+                    "model": model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant", "content": "OK"},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {"prompt_tokens": 2, "completion_tokens": 1, "total_tokens": 3},
+                },
+            )
+
+        openai_wrapper_provider._SINGLETON = None
+        provider = openai_wrapper_provider.get_openai_wrapper_provider()
+        provider._client = httpx.Client(
+            transport=httpx.MockTransport(_handler), base_url="https://api.test.invalid"
+        )
+        try:
+            body = TestClient(app).get("/healthz/llm").json()
+        finally:
+            openai_wrapper_provider._SINGLETON = None
+
+        assert sent == ["claude-opus-5-5"]
+        assert body["llm_ok"] is True
+        assert body["model"] == "claude-opus-5-5"

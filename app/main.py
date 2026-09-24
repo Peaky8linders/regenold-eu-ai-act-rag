@@ -1299,8 +1299,22 @@ def _healthz_llm_probe(probe_bedrock: str = "0") -> dict[str, object]:
         # limit pool, model-scoped auth scopes on some providers,
         # tunnel routing rules, etc.). Operators can still pin a
         # cheaper probe via REGENOLD_HEALTHZ_PROBE_MODEL.
+        #
+        # R446 — the probe read ``settings.graph_rag.model``, which is the
+        # AUXILIARY model, while Stage-2 sends ``effective_stage2_model()``
+        # (the complex tier wins on the standard path too, R442). With the
+        # tracked model config that probed Sonnet 5 while every answer went
+        # to Opus 5.5, so a model the CLI could not serve would still read
+        # llm_ok. The eval preflight was fixed the same way in R442.
+        try:
+            from app.engines._graph_rag_impl import effective_stage2_model
+
+            stage2_probe_model = effective_stage2_model()
+        except Exception:  # noqa: BLE001 — the health probe must never raise
+            stage2_probe_model = ""
         probe_model = (
             os.getenv("REGENOLD_HEALTHZ_PROBE_MODEL", "").strip()
+            or stage2_probe_model
             or settings.graph_rag.model
             or "claude-opus-5"
         )
