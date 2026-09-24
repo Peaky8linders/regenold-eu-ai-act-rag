@@ -22,6 +22,11 @@ from app.llm.openai_wrapper_provider import (
     OpenAIWrapperResponse,
 )
 
+# R446 — the Stage-2 answer model ships from the tracked app/data/model_config.json
+# (operator directive 2026-09-24: Opus 5.5 on every Stage-2 answer). Pinned on
+# purpose: a model change must update this tripwire deliberately (R300).
+SHIPPED_STAGE2_MODEL = "claude-opus-5-5"
+
 
 @pytest.fixture
 def _mock_wrapper():
@@ -106,9 +111,9 @@ class TestDefaultRouting:
         # have ZERO headroom on under a geometric mean — while its complex rows
         # ran 18.7-51.1s vs 12.8-17.7s standard, taxing Speed, a scored axis
         # where we are WEAK (75.1/61.7). See .planning/R280-CHECKPOINT.md.
-        assert req.model == "claude-opus-5"
-        # Pin the R280 default so a future re-flip is loud, not silent.
-        assert settings.graph_rag.complex_model == "claude-opus-5"
+        assert req.model == SHIPPED_STAGE2_MODEL
+        # Pin the shipped default so a future re-flip is loud, not silent.
+        assert settings.graph_rag.complex_model == SHIPPED_STAGE2_MODEL
         # R139 — EXTENDED thinking budget on the complex tier (was 1024 in R131.2).
         assert settings.graph_rag.complex_thinking_tokens == 4000
         assert req.extra_headers.get("X-Claude-Max-Thinking-Tokens") == "4000"
@@ -254,7 +259,7 @@ class TestStage2AlwaysOpus:
             stage_name="Stage 2 (Polishing)",
         )
         req: OpenAIWrapperRequest = _mock_wrapper.complete.call_args.args[0]
-        assert req.model == settings.graph_rag.stage2_model == "claude-opus-5"
+        assert req.model == settings.graph_rag.stage2_model == SHIPPED_STAGE2_MODEL
         # Thinking-free simple tier (thinking_tokens 0 → no header).
         if settings.graph_rag.thinking_tokens > 0:
             assert req.extra_headers.get("X-Claude-Max-Thinking-Tokens") == str(
@@ -275,7 +280,7 @@ class TestStage2AlwaysOpus:
             stage_name="Stage 2 (Polishing)",
         )
         req: OpenAIWrapperRequest = _mock_wrapper.complete.call_args.args[0]
-        assert req.model == settings.graph_rag.complex_model == "claude-opus-5"
+        assert req.model == settings.graph_rag.complex_model == SHIPPED_STAGE2_MODEL
         assert req.extra_headers.get("X-Claude-Max-Thinking-Tokens") == str(
             settings.graph_rag.complex_thinking_tokens
         )

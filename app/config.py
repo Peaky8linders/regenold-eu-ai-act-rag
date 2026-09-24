@@ -7,11 +7,20 @@ this file small so partners auditing the bundle can read it in one pass.
 """
 from __future__ import annotations
 
+import json
+import logging
 import os
 from pathlib import Path
+from typing import Any
 
 from pydantic import Field, SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def _load_dotenv_once() -> None:
@@ -115,10 +124,84 @@ def _load_dotenv_once() -> None:
 _load_dotenv_once()
 
 
+# R446 — the model ids also live in a TRACKED file, so switching the production
+# model no longer needs a Railway dashboard variable: edit the file, merge to
+# main, and the auto-deploy ships it. Precedence, highest first:
+#
+#   1. environment variable   P2P_GRAPH_RAG_MODEL / _STAGE2_MODEL / _COMPLEX_MODEL
+#   2. app/data/model_config.json   (read once, when the settings are built)
+#   3. the GraphRAGSettings field default below
+#
+# Fail-soft: a missing, unreadable or malformed file logs a warning and falls
+# through to the field defaults, so a bad edit cannot stop the app booting.
+MODEL_CONFIG_PATH = Path(__file__).resolve().parent / "data" / "model_config.json"
+_TRACKED_MODEL_FIELDS = ("model", "stage2_model", "complex_model")
+
+
+def load_tracked_model_config(path: Path | None = None) -> dict[str, str]:
+    """Return the model ids set in the tracked config file (see above).
+
+    Only ``model``, ``stage2_model`` and ``complex_model`` are read; any other
+    key (the ``_comment`` block included) is ignored. An empty string is kept
+    because it carries meaning: an empty ``complex_model`` disables the swap.
+    """
+    target = MODEL_CONFIG_PATH if path is None else path
+    try:
+        raw = json.loads(target.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as exc:
+        logger.warning("model_config: ignoring %s (%s); code defaults apply", target, exc)
+        return {}
+    if not isinstance(raw, dict):
+        logger.warning("model_config: %s is not a JSON object; code defaults apply", target)
+        return {}
+    tracked: dict[str, str] = {}
+    for field_name in _TRACKED_MODEL_FIELDS:
+        value = raw.get(field_name)
+        if value is None:
+            continue
+        if not isinstance(value, str):
+            logger.warning("model_config: %s must be a string, got %r; ignored", field_name, value)
+            continue
+        tracked[field_name] = value.strip()
+    return tracked
+
+
+class _TrackedModelConfigSource(PydanticBaseSettingsSource):
+    """pydantic-settings source for :data:`MODEL_CONFIG_PATH`."""
+
+    def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
+        # Abstract in the base class; ``__call__`` below supplies every value.
+        return None, field_name, False
+
+    def __call__(self) -> dict[str, Any]:
+        return load_tracked_model_config()
+
+
 class GraphRAGSettings(BaseSettings):
     """LLM config for the Graph-RAG engine."""
 
     model_config = SettingsConfigDict(env_prefix="P2P_GRAPH_RAG_", extra="ignore")
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        # R446 — the default source order plus the tracked model file as the
+        # lowest non-default layer: every env var still wins over it.
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+            _TrackedModelConfigSource(settings_cls),
+        )
 
     api_key: SecretStr | None = None
     model: str = "claude-sonnet-5"
@@ -272,7 +355,11 @@ class GraphRAGSettings(BaseSettings):
     R442 — ``P2P_GRAPH_RAG_COMPLEX_MODEL=claude-opus-5-5`` selects Opus 5.5 over
     the tunnel (it also wins on the standard Stage-2 path). The wrapper host
     needs Claude Code >= 2.1.280; 2.1.269 rejects the id with a 400. See
-    ``docs/measurements/r442/OPUS55-SCREEN.md``."""
+    ``docs/measurements/r442/OPUS55-SCREEN.md``.
+
+    R446 — the shipped value comes from the tracked ``app/data/model_config.json``
+    (operator directive 2026-09-24: Opus 5.5 on every Stage-2 answer); this field
+    default applies only when that file is missing or omits the key."""
 
     complex_thinking_tokens: int = 4000
     """``max_thinking_tokens`` — the **EXTENDED** thinking budget for the

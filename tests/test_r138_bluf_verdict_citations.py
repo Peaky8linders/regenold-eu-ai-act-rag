@@ -88,7 +88,9 @@ def test_thinking_tokens_adaptive_r139() -> None:
     # undisclosed model swap that also made the reasoning trace report a
     # model that was never sent). Update this line deliberately when the
     # default changes; do not widen it.
-    assert settings.graph_rag.stage2_model == "claude-opus-5"
+    # R446 — updated deliberately: the operator moved every Stage-2 answer to
+    # Opus 5.5, shipped from the tracked app/data/model_config.json.
+    assert settings.graph_rag.stage2_model == "claude-opus-5-5"
 
 
 # ── Change 1 — BLUF verdict-first prompt ──────────────────────────────────
