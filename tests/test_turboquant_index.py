@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import threading
 
 import pytest
 
@@ -26,21 +27,35 @@ import pytest
 pytestmark = [pytest.mark.usefixtures("_dense_singleton_reset")]
 
 
-@pytest.fixture
-def _dense_singleton_reset(monkeypatch):
-    """Reset the module-level singleton between tests.
-
-    The dense index caches a 1-shot build for the process; tests that
-    flip the env gate need the next call to re-evaluate from scratch.
-    """
-    import app.engines.turboquant_index as ti
-
-    yield
+def _reset_dense_singleton(ti) -> None:
     # Re-init the singleton's internal state — cheaper than
     # importlib.reload and avoids the BM25-import side effects.
     ti._INDEX._loaded = False  # noqa: SLF001
     ti._INDEX._failed = False  # noqa: SLF001
     ti._INDEX._compression_active = False  # noqa: SLF001
+
+
+@pytest.fixture
+def _dense_singleton_reset(monkeypatch):
+    """Reset the module-level singleton around each test.
+
+    The dense index caches a 1-shot build for the process; tests that
+    flip the env gate need the next call to re-evaluate from scratch.
+
+    R446b — the app's startup warm-up thread (``regenold-index-warmup``, started
+    by the first ``TestClient`` in the process) builds this same singleton in the
+    background with the DEFAULT env. When it finished mid-file it overwrote a
+    test's build: CI read ``outlier_channels == 13`` under an env of 15. Join it
+    and reset BEFORE each test, not only after.
+    """
+    import app.engines.turboquant_index as ti
+
+    for thread in threading.enumerate():
+        if thread.name == "regenold-index-warmup":
+            thread.join(timeout=120)
+    _reset_dense_singleton(ti)
+    yield
+    _reset_dense_singleton(ti)
 
 
 # ── Layer 1: env-gate behaviour ──────────────────────────────────────────
