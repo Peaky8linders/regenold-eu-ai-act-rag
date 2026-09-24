@@ -4473,20 +4473,29 @@ def _resolve_prose_named_annex_point(
     return named, None
 
 
-_PROSE_NEGATOR_RE = re.compile(
-    r"\b(?:not(?!\s+only\b)|no|neither|nor|never|isn't|aren't|doesn't|don't"
-    r"|rather\s+than|instead\s+of|other\s+than|excluding)\b",
+#: A negator GOVERNS a mention only when at most three words separate them and
+#: none of those words opens a new predicate. A clause-wide test (the first cut)
+#: read "It is not a remote biometric identification system and falls under
+#: Annex III point 4" as ruling point 4 out, and the deepener then shipped
+#: Annex III.6.d (review of R447, measured).
+_PROSE_NEGATED_MENTION_RE = re.compile(
+    r"\b(?:not(?!\s+(?:only|just|merely|simply)\b)|no(?!\s+(?:later|doubt|longer)\b)"
+    r"|neither|nor|never|isn't|aren't|doesn't|don't|rather\s+than|instead\s+of"
+    r"|other\s+than|excluding)"
+    r"(?:\s+(?!(?:and|but|or|so|because|which|that|while|whereas|as|since|yet)\b)"
+    r"[\w()'-]+){0,3}\s*$",
     re.I,
 )
-_PROSE_CLAUSE_BREAK_RE = re.compile(r"[.;:!?,]|\b(?:but|whereas|however|although|while)\b", re.I)
 
 
 def _prose_mention_negated(answer: str, start: int) -> bool:
-    """Is the annex mention at ``start`` negated inside its own clause?"""
-    head = answer[max(0, start - 80):start]
-    breaks = list(_PROSE_CLAUSE_BREAK_RE.finditer(head))
-    clause = head[breaks[-1].end():] if breaks else head
-    return bool(_PROSE_NEGATOR_RE.search(clause))
+    """Does a negator govern the annex mention that starts at ``start``?"""
+    lo = max(0, start - 60)
+    if lo:
+        # Start the look-back on a word, so a clipped "casino" or "cannot" can
+        # never read as "no" / "not".
+        lo = answer.rfind(" ", 0, lo) + 1
+    return bool(_PROSE_NEGATED_MENTION_RE.search(answer, lo, start))
 
 
 def _prose_named_annex_point(roman: str, answer: str, units: dict):
@@ -11079,6 +11088,15 @@ def regenold_eu_ai_act_ask(
         for candidate in candidates
         if (base := _canonical_reference_base(candidate)) is not None
     )
+    # R447 — the curated intercept's own sibling-leaf heads, frozen from its
+    # DECLARED refs before any pass can add the bare head. Read by the R87-C
+    # re-emission and by the curated R287 fold; see
+    # ``_curated_keep_declared_leaves_enabled``.
+    _curated_protected_heads = (
+        _undominated_leaf_heads(candidates)
+        if _is_curated_intercept and _curated_keep_declared_leaves_enabled()
+        else frozenset()
+    )
 
     # Resolve the live user message — used as a topic hint by the
     # anchor-injection helper to suppress broad-anchor overmatch when
@@ -11854,14 +11872,16 @@ def regenold_eu_ai_act_ask(
     # Env-gated REGENOLD_SUBPOINT_KEEP_PARENT (default ON).
     # R447 — except, for a curated intercept, the heads whose declared leaves
     # R287 would fold into the head itself; see
-    # ``_curated_keep_declared_leaves_enabled``.
+    # ``_curated_keep_declared_leaves_enabled``. The set frozen from the
+    # declared refs misses leaves a route pass added since (MEASURED: hard-mode
+    # emotion rows gain Annex III.1.c + III.4 here, which then folded to the
+    # wrong Annex III.7.b), so the clusters present now are added to it.
+    if _is_curated_intercept and _curated_keep_declared_leaves_enabled():
+        _curated_protected_heads = _curated_protected_heads | _undominated_leaf_heads(
+            candidates
+        )
     candidates = _reemit_parents_for_subpoints(
-        candidates,
-        skip_heads=(
-            _undominated_leaf_heads(candidates)
-            if _is_curated_intercept and _curated_keep_declared_leaves_enabled()
-            else frozenset()
-        ),
+        candidates, skip_heads=_curated_protected_heads
     )
 
     # R67 / R68 — QA scope-anchor priority + matrix-dump containment.
@@ -13337,6 +13357,30 @@ def regenold_eu_ai_act_ask(
     # Article 6.3 general-rule-plus-carve-out survives. Real-data sim over all
     # 110 rows: 12 redundant refs dropped across 4 rows, 0 rows losing a head.
     # Env off-switch REGENOLD_INTERCEPT_LEAF_COLLAPSE=0.
+    #
+    # R447 — a protected head that another pass re-added (MEASURED:
+    # ``expand_citations`` on a scenario-shaped phrasing adds a bare
+    # ``Article 50``) is dropped while its declared leaves are on the list, so
+    # the fold below keeps the leaves instead of collapsing them into it. That
+    # is the drop R325's parent collapse makes at the end, done early.
+    if _curated_protected_heads:
+        _kept = [
+            r for r in references
+            if not (
+                r in _curated_protected_heads
+                and any(x.startswith(r + ".") for x in references)
+            )
+        ]
+        if _kept != references:
+            references = _kept
+            try:
+                from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                    record_note as _rn_protect,
+                )
+
+                _rn_protect("curated_protected_head_dropped")
+            except Exception:  # noqa: BLE001 — fail-soft on trace
+                pass
     if (
         _is_curated_intercept
         and os.getenv("REGENOLD_INTERCEPT_LEAF_COLLAPSE", "1").strip().lower()

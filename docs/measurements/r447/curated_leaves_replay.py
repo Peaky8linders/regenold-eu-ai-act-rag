@@ -50,6 +50,11 @@ EXTRA = [
     ("review_compound_hr", "As both the provider and the deployer of an HR chatbot, how must "
      "a natural person be informed that they are interacting with an AI system?", None),
     ("review_emotion", "How should users be informed about the use of emotion recognition?", None),
+    # The second review: a scenario shape runs expand_citations, which adds a
+    # bare Article 50 BEFORE the R87-C re-emission.
+    ("review2_scenario", "We are both a provider and a deployer of a chatbot used by our bank. "
+     "What is its risk classification? How must a natural person be informed that they "
+     "are interacting with an AI system?", None),
 ]
 
 

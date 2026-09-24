@@ -836,6 +836,12 @@ def test_biometric_trigger_spans_lines_of_a_live_question() -> None:
         "What disclosure must the provider give under Article 13?",
         "Patient records are summarised by the system. Is interaction logging "
         "required under Article 12?",
+        # The second review: a line break before a capital ends a sentence, and
+        # a duty verb in a STATEMENT is context, not an Article 50 ask.
+        "Biometric categorisation of shoppers by age\nIs it prohibited?",
+        "Biometric categorisation of shoppers by age:\n- Is it prohibited?",
+        "We were informed that our AI system is high-risk. Does our "
+        "patient-scheduling tool need a conformity assessment?",
     ],
 )
 def test_biometric_trigger_does_not_bridge_sentences_without_a_duty_verb(
@@ -863,6 +869,7 @@ def test_biometric_trigger_does_not_bridge_sentences_without_a_duty_verb(
         "Is a biometric gate that screens approx. 500 travellers per hour prohibited?",
         "Is biometric categorisation under Dir. 2016/680 prohibited?",
         "Is a biometric system, incl. the kiosk module, prohibited?",
+        "Is the biometric kiosk sold by Acme Inc. Germany prohibited?",
         # R447 review: the duty question may come before the subject.
         "Must we inform anyone? Our tool recruits patients for clinical trials.",
     ],

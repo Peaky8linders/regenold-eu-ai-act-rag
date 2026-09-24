@@ -187,6 +187,18 @@ class TestCuratedLeavesAreNotFolded:
             "Article 26.11",
         ]
 
+    def test_a_scenario_phrasing_keeps_every_article_50_leaf(self, ask):
+        # The second review: a scenario shape runs expand_citations, which adds
+        # a bare Article 50 BEFORE R87-C, so a skip set computed there came back
+        # empty and R287 still folded the leaves into it (wire: Article 50.4).
+        refs = ask(
+            "We are both a provider and a deployer of a chatbot used by our bank. "
+            "What is its risk classification? " + _COMPOUND_Q04.split(". ", 1)[1]
+        )["references"]
+        for leaf in ("Article 50.1", "Article 50.5", "Article 50.3", "Article 50.4"):
+            assert leaf in refs, refs
+        assert "Article 50" not in refs
+
     def test_the_flag_restores_the_fold(self, ask, monkeypatch):
         monkeypatch.setenv("REGENOLD_CURATED_KEEP_DECLARED_LEAVES", "0")
         refs = ask(_COMPOUND_Q04)["references"]

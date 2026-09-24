@@ -569,6 +569,11 @@ def test_a_named_head_still_does_not_engage_every_paragraph() -> None:
         ("What does Article 26 require?", "Article 26"),
         ("What do Articles 14 and 15 require for high-risk AI systems?", "Article 14 Article 15"),
         ("How do Articles 5 and 6 classify AI systems differently?", "Article 5 Article 6"),
+        # An open request in any sentence outweighs a yes/no follow-up.
+        ("Explain Article 50. Does it apply to chatbots?", "Article 50"),
+        ("Does the AI Act apply to us? Explain Article 2.", "Article 2"),
+        # An open ask narrowed by a topic keeps the floor, as it did at a0b08c8.
+        ("What does Article 26 require regarding logs?", "Article 26"),
     ],
 )
 def test_an_ask_about_a_whole_head_gets_the_no_signal_floor(ask: str, refs: str) -> None:

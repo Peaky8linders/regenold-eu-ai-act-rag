@@ -278,30 +278,42 @@ _R365_BIO_DUTY_RE = re.compile(
     re.IGNORECASE,
 )
 _R365_SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z])")
+#: A line break before a capital (optionally a bullet) starts a new sentence
+#: even without a full stop; any other line break is a hard wrap.
+_R365_LINE_BOUNDARY_RE = re.compile(r"\n\s*(?:[-*•]\s*)?(?=[A-Z])")
 #: A capital after an initialism or a title is not a sentence boundary.
 _R365_ABBREVIATION_END_RE = re.compile(
-    r"(?:\b(?:[A-Za-z]\.){2,}|\b(?:Art|Arts|No|Nos|Mr|Mrs|Ms|Dr|St|cf|vs|etc|"
-    r"approx|incl|esp|Dir|Reg|para)\.)$"
+    r"(?:\b(?:[A-Za-z]\.){2,}|\b(?:Art|Arts|No|Nos|Mr|Mrs|Ms|Dr|St|Prof|Jr|Sr|cf|"
+    r"vs|etc|approx|incl|esp|Dir|Reg|para|Inc|Ltd|Co|Corp|Fig|Sec|seq|Vol|pp)\.)$"
 )
 
 
 def _bio_patient_sentences(question: str) -> list[str]:
-    """The question's sentences, with line breaks treated as spaces."""
-    joined = " ".join(str(question or "").split())
+    """The question's sentences; a hard-wrapped line stays in its sentence."""
     sentences: list[str] = []
-    start = 0
-    for boundary in _R365_SENTENCE_BOUNDARY_RE.finditer(joined):
-        left = joined[start:boundary.start()]
-        if _R365_ABBREVIATION_END_RE.search(left):
-            continue
-        sentences.append(left)
-        start = boundary.end()
-    sentences.append(joined[start:])
+    for chunk in _R365_LINE_BOUNDARY_RE.split(str(question or "")):
+        joined = " ".join(chunk.split())
+        start = 0
+        for boundary in _R365_SENTENCE_BOUNDARY_RE.finditer(joined):
+            # Bounded look-back: linear in the input, and ``\b`` still sees
+            # the characters before ``pos``.
+            if _R365_ABBREVIATION_END_RE.search(
+                joined, max(start, boundary.start() - 24), boundary.start()
+            ):
+                continue
+            sentences.append(joined[start:boundary.start()])
+            start = boundary.end()
+        sentences.append(joined[start:])
     return [sentence for sentence in sentences if sentence.strip()]
 
 
 def _bio_patient_sentence_match(question: str) -> bool:
-    """Subject and signal in one sentence, or a duty verb in another one."""
+    """Subject and signal in one sentence, or a duty question in another one.
+
+    The other sentence must be a QUESTION carrying the duty verb ("Must we
+    inform the persons?"): a statement such as "We were informed that ..." is
+    context, not an ask about an Article 50 duty.
+    """
     sentences = _bio_patient_sentences(question)
     subjects = [i for i, s in enumerate(sentences) if _R365_BIO_SUBJECT_RE.search(s)]
     if not subjects:
@@ -309,7 +321,7 @@ def _bio_patient_sentence_match(question: str) -> bool:
     if any(_R365_BIO_SIGNAL_RE.search(sentences[i]) for i in subjects):
         return True
     return any(
-        _R365_BIO_DUTY_RE.search(sentence)
+        sentence.rstrip().endswith("?") and _R365_BIO_DUTY_RE.search(sentence)
         for i, sentence in enumerate(sentences)
         if i not in subjects
     )
