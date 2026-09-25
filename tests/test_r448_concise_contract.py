@@ -78,7 +78,8 @@ def test_evidence_text_no_longer_inflates_the_estimate(monkeypatch):
     assert "Article 18.1" not in on.split("EU AI ACT REFERENCES:")[-1].split("ANSWER SHAPE")[-1]
 
 
-def test_ceiling_is_the_need_estimate_capped():
+def test_ceiling_is_the_need_estimate_capped(monkeypatch):
+    monkeypatch.setenv("REGENOLD_CONCISE_CONTRACT", "1")
     need = answer_need.answer_need("List the categories Article 13(3) requires.", "")
     words, sentences = answer_need.concise_limits(need)
     assert words == min(need.target_words, answer_need._CONCISE_MAX_WORDS)
