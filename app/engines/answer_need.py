@@ -555,6 +555,76 @@ def shape_directive(need: AnswerNeed) -> str:
     return "\n".join(lines)
 
 
+#: R448 — the concise contract. Opus 5.5 (Stage-2 since 2026-09-24) treats the
+#: ANSWER SHAPE "Target about N words" as a suggestion: on the six official
+#: appendix questions it wrote 1,040-2,180 chars against 533-985-char reference
+#: answers (answer conciseness ~48). This block turns the SAME per-question
+#: estimate into a ceiling and bans the unasked material the live answers carry.
+#: It changes no estimate, only how the estimate is stated.
+_CONCISE_ENV = "REGENOLD_CONCISE_CONTRACT"
+
+#: The word ceiling never exceeds ~700 chars. A question that NAMES a listed
+#: head (Annex III, Article 6(2)) engages the whole list, so the estimate rises
+#: to 900-975 chars on rg_018 / rg_096 while their reference answers are 533 and
+#: 596 chars; and Opus 5.5 lands 1.2-1.8x over any stated target (R448
+#: diagnosis), so a ceiling at the reference mean leaves room for the overshoot.
+_CONCISE_MAX_WORDS = 130
+
+
+def concise_contract_enabled() -> bool:
+    """``REGENOLD_CONCISE_CONTRACT`` — default ON (deny-list): a blank or
+    unexpected value keeps the ON behaviour. ``=0`` renders nothing, so the
+    Stage-2 user message is byte-identical to the pre-R448 text."""
+    return (
+        os.environ.get(_CONCISE_ENV, "1").strip().lower() not in _FALSY
+    )
+
+
+def concise_limits(need: AnswerNeed) -> tuple[int, int]:
+    """(max words, max sentences) for :func:`concise_block`.
+
+    The word ceiling IS the need estimate's own word target; the sentence
+    ceiling allows the lead, one sentence per engaged item and one for an
+    exception or condition, capped so a many-item ask still lists its items in
+    one compact sentence instead of one sentence each.
+    """
+    sentences = min(5, max(3, need.items + 2))
+    return min(need.target_words, _CONCISE_MAX_WORDS), sentences
+
+
+def concise_block(question: str, references: str = "") -> str:
+    """The LENGTH LIMIT clause, or ``""`` when the lever is OFF."""
+    if not concise_contract_enabled():
+        return ""
+    try:
+        need = answer_need(question, references)
+    except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
+        return ""
+    words, sentences = concise_limits(need)
+    lead = "the verdict" if need.is_yes_no else "the direct answer"
+    return "\n".join([
+        "LENGTH LIMIT (a ceiling for this reply, not a target):",
+        f"* At most {words} words in at most {sentences} sentences, written as "
+        "plain prose: no bullet points, numbered lists, labels or headings. "
+        "This ceiling overrides any larger word target above. Stop as soon as "
+        "the question is answered.",
+        f"* The first sentence is {lead}.",
+        "* State each asked item once, as a short clause. A requested list is "
+        "one sentence of short noun phrases separated by semicolons.",
+        "* Leave out everything the question did not ask for: other provisions' "
+        "derogations, exceptions or procedures, the Annex I product route on an "
+        "Annex III question (and the reverse), amendment or adoption procedure, "
+        "dates, penalties, background, examples, practical advice, a re-listing "
+        "of a whole list the question did not ask to list, and any closing "
+        "summary.",
+        "* Name only the provisions the answer relies on. Every provision you "
+        "name becomes a citation, so do not mention one just to rule it out or "
+        "to point elsewhere.",
+        "* On a follow-up or a challenge, keep the earlier answer's points and "
+        "length: correct only what is wrong and add nothing new.",
+    ])
+
+
 def need_proportional_block(question: str, references: str = "") -> str:
     """The clause for this question, or ``""`` when the lever is OFF / disabled."""
     if not need_proportional_contract_enabled():
