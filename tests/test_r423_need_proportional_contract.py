@@ -125,6 +125,9 @@ def test_on_arm_swaps_the_completeness_directive_and_adds_the_clause(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(_ENV, "1")
+    # R448 sizes the ask from the question alone when the concise contract is
+    # ON; this test pins the R423 regime, where the estimate reads the refs.
+    monkeypatch.setenv("REGENOLD_CONCISE_CONTRACT", "0")
     message = build_evidence_answer_user(_ARTICLE_13_ASK, _ARTICLE_13_REFS)
     assert "ANSWER SHAPE (proportional to THIS ask)" in message
     assert EVIDENCE_COMPLETENESS_BLOCK_ENGAGED in message

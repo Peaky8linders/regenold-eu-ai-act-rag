@@ -1693,6 +1693,9 @@ def _engine_cache_key(
             # R447 — the R442 whole-head floor sets the ANSWER SHAPE target
             # length on the Stage-2 contract, so it is response-affecting.
             "REGENOLD_WHOLE_HEAD_FLOOR",
+            # R448 — the concise contract appends a LENGTH LIMIT to the Stage-2
+            # user message, so it is response-affecting.
+            "REGENOLD_CONCISE_CONTRACT",
             # R438 — branch-specific statutory guard; prompt-side and default OFF.
             "REGENOLD_GROUNDED_BRANCH_GUARDS",
             # R399 - rarity-weighted paragraph selection. Decides WHICH

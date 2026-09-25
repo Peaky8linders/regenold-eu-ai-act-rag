@@ -1586,12 +1586,26 @@ def build_evidence_answer_user(
     # OFF, or a question that engages nothing) the branch below is the shipped
     # text byte-for-byte, which is what makes the paired gate meaningful.
     need_clause = ""
+    # R448 — with the concise contract ON, size the answer from the QUESTION
+    # alone. Read against this full evidence block, distinctive-bigram matches
+    # engaged heads the ask never named: rg_097 ("Name the areas of high-risk
+    # use cases") was told its items were Article 18(1)(a)-(e) and 49(4)(a)-(d)
+    # and not to list anything else, excluding the Annex III areas it asks for,
+    # and the targets rose to 975-1000 chars against a 650-char skeleton scope.
+    need_refs = references
+    try:
+        from app.engines.answer_need import concise_contract_enabled  # noqa: PLC0415
+
+        if concise_contract_enabled():
+            need_refs = ""
+    except Exception:  # noqa: BLE001
+        need_refs = references
     try:
         from app.engines.answer_need import (  # noqa: PLC0415
             need_proportional_block,
         )
 
-        need_clause = need_proportional_block(question, references)
+        need_clause = need_proportional_block(question, need_refs)
     except Exception:  # noqa: BLE001 — a prompt add-on must not break Stage-2
         need_clause = ""
     if need_clause:
@@ -1637,4 +1651,14 @@ def build_evidence_answer_user(
         branch_guard = _grounded_branch_guard(question)
         if branch_guard:
             parts.append(branch_guard)
+    # R448 — the concise contract is appended last so it is the final
+    # instruction the model reads; ``REGENOLD_CONCISE_CONTRACT=0`` renders "".
+    try:
+        from app.engines.answer_need import concise_block  # noqa: PLC0415
+
+        concise = concise_block(question, "")
+    except Exception:  # noqa: BLE001 — a prompt add-on must not break Stage-2
+        concise = ""
+    if concise:
+        parts.append(concise)
     return "\n\n".join(parts)

@@ -35,6 +35,10 @@ def test_real_dispatch_preserves_evidence_and_coordinate_map(monkeypatch, compac
     monkeypatch.setenv("REGENOLD_PROMPT_COMPACT", compact)
     monkeypatch.setenv("REGENOLD_COORD_MAP_PROMPT", "1")
     monkeypatch.setenv("REGENOLD_FUSION_STAGE2", "0")
+    # R448 — this test pins the R399 evidence contract against the legacy stack.
+    # The concise LENGTH LIMIT block is a separate lever with its own tests
+    # (tests/test_r448_concise_contract.py), so it is held OFF here.
+    monkeypatch.setenv("REGENOLD_CONCISE_CONTRACT", "0")
     evidence = (
         "VERBATIM PROVISION TEXT: [Article 13] REQUIRED MEMBERS: (a) provider; (b) purpose.\n"
         "KNOWLEDGE GRAPH (NON-CITABLE): Recital 47 interprets the rule."
