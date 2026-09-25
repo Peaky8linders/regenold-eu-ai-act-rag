@@ -237,3 +237,109 @@ multi-turn and hard turns 1/2, 1,077 variants in all:
 * **55 changed, 0 worse on any gold axis.**
 * 0 duplicate refs, 0 new head-plus-leaf pairs, 0 official-110 changes.
 * The only wire that differs from the fix commit's is the scenario phrasing.
+
+## 6. Live re-check on production (`bcd78e036689`, 2026-09-25)
+
+`run_live_recheck.py` re-ran R446's live protocol, sequentially, after PR #465
+deployed. It waited until `/healthz` reported the merge SHA and `/healthz/llm`
+reported `llm_ok` on `claude-opus-5-5`. Judge: Bedrock Qwen3-235B, 3 repeats
+(appendix, `score_arm`) and a 3-vote majority (expert rows,
+`live_expert_recheck.py`). Artefacts: `live/`, and
+`docs/measurements/r388/score-r447-live-{easy,hard}.json`.
+
+**Transport.** All 12 appendix calls landed Stage-2 on `claude-opus-5-5`. Of the
+28 expert calls, 16 were primary-served and 12 were curated/deterministic by
+design. There were 0 errors, 0 fallback, and 0 pushback concessions.
+
+**The six official appendix cases (reconstructed gold):**
+
+| mode | R446 | R447 |
+| :-- | :-- | :-- |
+| easy | 20/20 | **19/20** |
+| hard | 20/20 | **20/20**, tone 6/6 |
+
+The one easy miss is rg_075's verdict lead: "No, not in a way that would spoil the
+work" against the gold's "Yes, disclosure still required". Its substance passes, and
+the same row scores 3/3 in hard mode. rg_075 is a live Opus answer that no R447
+change reaches, so this is the known Q74 framing sensitivity drawing differently,
+not a fix outcome.
+
+**The 28 expert-review rows:**
+
+| | R446 | R447 |
+| :-- | :-- | :-- |
+| strict (all criteria) | 24/28 | **27/28** |
+| loose (criterion mean) | 93.2 % | **97.6 %** |
+| tone | 27/28 | 27/28 |
+
+The three rows this round targeted:
+
+| row | R446 | R447 | wire |
+| :-- | :-- | :-- | :-- |
+| part1_q05 | 2/4 | **4/4** | `50.1, 50.5, 50.3, 50.4, 26.11` |
+| part2_q04 | 2/4 | **4/4** | same; ref strict 1.00 |
+| part1_q10 | 3/4, tone FAIL | **4/4, tone pass** | `3.3, 3.4, 25.1, 26.5` (see §7) |
+
+* The remaining strict miss is `part2_q01`, a live Opus answer. It is 1/3 as at
+  R446, on the four-tier-vocabulary criteria, and is out of this round's scope.
+* The tone miss is `part1_q07`. Its answer is byte-identical to R446's, which passed
+  tone, so the flip is judge variance on unchanged text.
+
+**Wire probes:**
+
+* The compound-role phrasing ships the five declared leaves.
+* The scenario phrasing ships all four Art. 50 leaves. It also still carries
+  `expand_citations`' pre-existing extras (6.3.d, 16, 25.4, 13.3, 14.5, 27.1),
+  documented out of scope.
+
+## 7. R447b — the production-only `Article 26.5` on the role verdict
+
+Production still appended `Article 26.5` to part1_q10's wire, although neither the
+rewritten prose nor its declared refs name Article 26, and offline reproduced the
+exact intended wire. Traced with `?include_reasoning=true`, then reproduced locally
+with the full `.env`, which runs the live Stage-0 intent classifier:
+
+* the classifier labels "What is the difference between the deployer and the
+  provider?" as `role_obligations`, confidence 0.93, anchor `Art. 26`, stable over
+  three fresh processes;
+* R66-E `boost_for_intent` then injects `Article 26`, and the grain deepener turns it
+  into `26.5`.
+
+A vector-recall exemption was tried first and measured to be irrelevant: locally the
+lane fires, but its entities (Art. 38, 78) never reach a curated wire. It was
+reverted.
+
+**Blanket skip, rejected.** Skipping the boost for every curated intercept was
+measured with `curated_intent_boost_replay.py`: full `.env`, each row's
+classification retried until it lands in the classifier's LRU, so both arms read the
+same label. It changed 7 of the 31 classifiable curated wires:
+
+* 5 were pure reorders;
+* part1_q10 lost `26.5`;
+* rg_040 changed for the worse. There the injected `Article 43` happens to knock
+  `Annex VII.4` off the wire, which leaves exactly the reconstructed gold
+  (`Article 44.1`). The skip cost that official row Ref. Conciseness 1.00 → 0.50.
+
+**Shipped: `REGENOLD_ROLE_DIFFERENCE_SKIP_INTENT_BOOST`** (deny-list, default ON,
+cache-keyed), scoped to the one intercept whose question the classifier mislabels.
+Its detector fires on 0 official and 0 davidath rows. Offline tests fake the live
+classification and pin both arms.
+
+**Reach of the shipped flag.** It acts only where `_detect_role_difference_inquiry`
+fires, whatever the classifier says, so its reach can be counted:
+
+| corpus | fires |
+| :-- | :-- |
+| official 110 | 0 |
+| expert 28 | 1 (part1_q10) |
+| probe corpus (132) | 0 |
+| davidath (476) | 0 |
+
+A second live-classifier replay of the scoped flag was attempted. The classifier's
+provider answered only 3 of the 36 curated rows, even with retries (rate limits), so
+that run carries no evidence either way. The evidence is instead:
+
+* the reach count above;
+* three fresh-process live reproductions of part1_q10: boost on → `…, Article 26.5`;
+  flag on → `Article 3.3, 3.4, 25.1`;
+* offline tests that fake the live classification and pin both arms.

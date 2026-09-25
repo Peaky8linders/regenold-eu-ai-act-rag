@@ -166,6 +166,52 @@ class TestRoleDifferenceRoute:
         assert ask(_Q10)["references"] == ["Article 3.3", "Article 3.4", "Article 25.1"]
 
 
+# ── REGENOLD_ROLE_DIFFERENCE_SKIP_INTENT_BOOST (R447b) ─────────────────────────
+
+
+def _role_obligations_intent(_question: str):
+    """The live Stage-0 classification production returns for the role question."""
+    from app.llm.intent_classifier import IntentResult
+
+    return IntentResult(
+        intent="role_obligations",
+        primary_anchor="Art. 26",
+        alternate_anchors=(),
+        confidence=0.93,
+        elapsed_ms=0,
+    )
+
+
+class TestRoleDifferenceSkipsTheIntentBoost:
+    def test_the_boost_is_skipped_only_for_the_role_verdict(self, ask, monkeypatch):
+        from app.routes import regenold as route
+
+        calls: list[list[str]] = []
+        real = route.boost_for_intent
+
+        def spy(candidates, intent_result, **kwargs):
+            calls.append(list(candidates))
+            return real(candidates, intent_result, **kwargs)
+
+        monkeypatch.setattr(route, "boost_for_intent", spy)
+        ask(_Q10)
+        assert calls == []
+        ask(_Q05)  # another curated intercept keeps the boost
+        assert len(calls) == 1
+
+    def test_an_injected_article_26_never_reaches_the_role_wire(self, ask, monkeypatch):
+        # Production's classifier labels the question role_obligations at 0.93
+        # with anchor Art. 26; the boost then injected Article 26 and the
+        # deepener shipped Article 26.5. Offline no classifier runs, so fake it.
+        from app.routes import regenold as route
+
+        monkeypatch.setattr(route, "_classify_intent_cached", _role_obligations_intent)
+        assert ask(_Q10)["references"] == ["Article 3.3", "Article 3.4", "Article 25.1"]
+        monkeypatch.setenv("REGENOLD_ROLE_DIFFERENCE_SKIP_INTENT_BOOST", "0")
+        refs = ask(_Q10)["references"]
+        assert any(ref.startswith("Article 26") for ref in refs), refs
+
+
 # ── REGENOLD_CURATED_KEEP_DECLARED_LEAVES (R447 review #1) ────────────────────
 
 _COMPOUND_Q04 = (

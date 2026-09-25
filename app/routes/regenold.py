@@ -1852,6 +1852,9 @@ def _engine_cache_key(
             # R447 — whether a curated intercept's declared leaves skip that
             # re-emission, which decides what the wire cites for it.
             "REGENOLD_CURATED_KEEP_DECLARED_LEAVES",
+            # R447b — whether the role-difference verdict takes the Stage-0
+            # intent boost, which injected Article 26 onto its wire.
+            "REGENOLD_ROLE_DIFFERENCE_SKIP_INTENT_BOOST",
             "REGENOLD_ROLE_DUTY_SEED",
             # R88 — multi-turn coherence: assistant-turn anchor inheritance
             "REGENOLD_ASSISTANT_ANCHOR_INHERIT",
@@ -8498,6 +8501,37 @@ def _curated_ref_protect_enabled() -> bool:
     )
 
 
+def _role_difference_skips_intent_boost(question: str) -> bool:
+    """R447b — DEFAULT ON. The provider-vs-deployer verdict takes no intent boost.
+
+    The Stage-0 classifier labels a provider/deployer CONTRAST as
+    ``role_obligations`` with anchor ``Art. 26`` (0.93, stable over repeated
+    live calls), and the R66-E boost injects that anchor, so the definitional
+    verdict shipped ``Article 26.5``: the unrequested duty citation its R447
+    rewrite removed.
+
+    Scoped to this one intercept on purpose. Skipping the boost for EVERY
+    curated intercept was measured and rejected
+    (``docs/measurements/r447/curated_intent_boost_replay.py``, live
+    classifier): besides 5 pure reorders it changed rg_040, where the
+    injected ``Article 43`` happens to knock ``Annex VII.4`` off the wire and
+    leave the reconstructed gold ``Article 44.1`` alone, so the blanket skip
+    cost that official row Ref. Conciseness 1.00 -> 0.50. The role-difference
+    detector fires on 0 of the official 110 and 0 davidath rows.
+    ``REGENOLD_ROLE_DIFFERENCE_SKIP_INTENT_BOOST=0`` restores the boost.
+    """
+    if os.getenv(
+        "REGENOLD_ROLE_DIFFERENCE_SKIP_INTENT_BOOST", "1"
+    ).strip().lower() in ("0", "false", "no", "off"):
+        return False
+    try:
+        from app.engines.graph_rag import _detect_role_difference_inquiry  # noqa: PLC0415
+
+        return _detect_role_difference_inquiry(question)
+    except Exception:  # noqa: BLE001 — a detector must never break the route
+        return False
+
+
 def _curated_keep_declared_leaves_enabled() -> bool:
     """R447 — DEFAULT ON. A curated intercept's sibling leaves are not folded.
 
@@ -11124,10 +11158,15 @@ def regenold_eu_ai_act_ask(
     except Exception:  # noqa: BLE001 — defensive (never let intent 500 the route)
         _boost_intent_res = None
 
-    try:
-        candidates = boost_for_intent(candidates, _boost_intent_res)
-    except Exception:  # noqa: BLE001 — defensive
-        pass
+    # R447b — not for the provider-vs-deployer verdict; see
+    # ``_role_difference_skips_intent_boost``. MEASURED on production: the
+    # boost injected Article 26 there and the wire shipped Article 26.5. The
+    # classifier does not run offline, which is why no offline probe showed it.
+    if not _role_difference_skips_intent_boost(resolved_question or question):
+        try:
+            candidates = boost_for_intent(candidates, _boost_intent_res)
+        except Exception:  # noqa: BLE001 — defensive
+            pass
 
     # R87-D — role-duty seed (must run BEFORE the Deployer Hop so the
     # hop has Art. 26 to attach to). Detects "When must {role} {verb}…?"
