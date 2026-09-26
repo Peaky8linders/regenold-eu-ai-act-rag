@@ -580,14 +580,40 @@ def concise_contract_enabled() -> bool:
     )
 
 
-def concise_limits(need: AnswerNeed) -> tuple[int, int]:
+#: R448 v3 — a fact-pattern (scenario) ask gets a larger ceiling. The first
+#: production re-check lost one criterion on each of three scenario rows
+#: (part2_q07 notified-body competence under Art. 31, part2_q08's clinical-
+#: parameter branch, part2_q11's Art. 50(3) exclusion) at ~700 chars: a
+#: classification scenario has to walk several branches, and 130 words was too
+#: tight for them. Short direct asks keep the 130-word ceiling.
+_CONCISE_SCENARIO_MAX_WORDS = 180
+#: A described deployment: someone uses / deploys / builds / monitors / sorts
+#: with an AI system. "use case" is a statutory term, not a deployment.
+_SCENARIO_RE = re.compile(
+    r"\b(?:use|uses|using|deploy(?:s|ed|ing)?|build(?:s|ing)?|"
+    r"develop(?:s|ed|ing)?|monitor(?:s|ed|ing)?|analy[sz](?:e|es|ed|ing)|"
+    r"sort(?:s|ed|ing)?|screen(?:s|ed|ing)?)\s+(?:[\w-]+\s+){0,3}?"
+    r"(?:AI|system|systems|tool|software|model)\b",
+    re.IGNORECASE,
+)
+
+
+def is_scenario_question(question: str) -> bool:
+    """A fact-pattern ask: a described AI deployment in a 15+ word question."""
+    q = question or ""
+    return len(q.split()) >= 15 and bool(_SCENARIO_RE.search(q))
+
+
+def concise_limits(need: AnswerNeed, question: str = "") -> tuple[int, int]:
     """(max words, max sentences) for :func:`concise_block`.
 
-    The word ceiling IS the need estimate's own word target; the sentence
-    ceiling allows the lead, one sentence per engaged item and one for an
-    exception or condition, capped so a many-item ask still lists its items in
-    one compact sentence instead of one sentence each.
+    The word ceiling IS the need estimate's own word target, capped at 130
+    words; a fact-pattern ask may use up to 180 words and 6 sentences so every
+    deciding branch fits. The sentence ceiling allows the lead, one sentence
+    per engaged item and one for an exception or condition.
     """
+    if is_scenario_question(question):
+        return max(need.target_words, _CONCISE_SCENARIO_MAX_WORDS), 6
     sentences = min(5, max(3, need.items + 2))
     return min(need.target_words, _CONCISE_MAX_WORDS), sentences
 
@@ -600,7 +626,7 @@ def concise_block(question: str, references: str = "") -> str:
         need = answer_need(question, references)
     except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
         return ""
-    words, sentences = concise_limits(need)
+    words, sentences = concise_limits(need, question)
     lead = "the verdict" if need.is_yes_no else "the direct answer"
     return "\n".join([
         "LENGTH LIMIT (a ceiling for this reply, not a target):",
@@ -611,15 +637,17 @@ def concise_block(question: str, references: str = "") -> str:
         f"* The first sentence is {lead}.",
         "* State each asked item once, as a short clause. A requested list is "
         "one sentence of short noun phrases separated by semicolons.",
-        "* Leave out everything the question did not ask for: other provisions' "
-        "derogations, exceptions or procedures, the Annex I product route on an "
-        "Annex III question (and the reverse), amendment or adoption procedure, "
-        "dates, penalties, background, examples, practical advice, a re-listing "
+        "* Keep every route, branch, condition or exception that decides the "
+        "answer, including a provision the facts make relevant and then rule "
+        "out, in one short clause each. When the question asks which systems "
+        "or sectors are high-risk, give both routes: Article 6(1) with Annex I "
+        "and Article 6(2) with Annex III.",
+        "* Leave out what does not decide the answer: background, purpose, "
+        "procedures, dates, penalties, examples, practical advice, a re-listing "
         "of a whole list the question did not ask to list, and any closing "
         "summary.",
-        "* Name only the provisions the answer relies on. Every provision you "
-        "name becomes a citation, so do not mention one just to rule it out or "
-        "to point elsewhere.",
+        "* Name only the provisions the answer relies on; every provision you "
+        "name becomes a citation.",
         "* On a follow-up or a challenge, keep the earlier answer's points and "
         "length: correct only what is wrong and add nothing new.",
     ])

@@ -94,3 +94,24 @@ def test_cache_key_registers_the_flag(monkeypatch):
     on = _engine_cache_key("What must a deployer do?", None)
     monkeypatch.setenv("REGENOLD_CONCISE_CONTRACT", "0")
     assert _engine_cache_key("What must a deployer do?", None) != on
+
+
+def test_scenario_question_ceiling_expanded(monkeypatch):
+    monkeypatch.setenv("REGENOLD_CONCISE_CONTRACT", "1")
+    # A multi-part scenario deployment question
+    scenario_q = (
+        "A hospital uses an AI system to triage emergency room patients based on vital signs. "
+        "What risk category applies and what specific notified body requirements exist?"
+    )
+    assert answer_need.is_scenario_question(scenario_q)
+    need = answer_need.answer_need(scenario_q, "")
+    words, sentences = answer_need.concise_limits(need, scenario_q)
+    assert words >= answer_need._CONCISE_SCENARIO_MAX_WORDS
+    assert sentences == 6
+
+    # Direct short questions must NOT be classified as scenarios
+    direct_q = "List the categories Article 13(3) requires."
+    assert not answer_need.is_scenario_question(direct_q)
+    words_direct, sentences_direct = answer_need.concise_limits(need, direct_q)
+    assert words_direct <= answer_need._CONCISE_MAX_WORDS
+    assert sentences_direct <= 5

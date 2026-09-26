@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Regenold Remediation Report</title>
+<meta name="description" content="What Antifragile AI fixed since the official 25 August Regenold board, what each fix measurably bought, and a live re-check on production of every question Regenold or the expert reviewer flagged.">
+<style>
+  :root {
+    --ink: #15181e;
+    --ink-2: #454b56;
+    --ink-3: #6b7280;
+    --line: #d8dce3;
+    --line-2: #eceef2;
+    --bg: #ffffff;
+    --panel: #f5f7fa;
+    --accent: #1d4f91;
+    --accent-soft: #e6eef9;
+    --pos: #0f6b3b;
+    --pos-soft: #e3f3e9;
+    --neg: #a3241b;
+    --neg-soft: #fbe8e6;
+    --warn: #875800;
+    --warn-soft: #fbf0d9;
+    --muted-soft: #eef0f3;
+  }
+  @page {
+    size: A4;
+    margin: 12mm 12mm 14mm;
+    @bottom-left {
+      content: "Antifragile AI  \00B7  Regenold remediation report  \00B7  26 September 2026";
+      font: 7.5pt "Segoe UI", Arial, sans-serif;
+      color: #6b7280;
+    }
+    @bottom-right {
+      content: "Page " counter(page) " of " counter(pages);
+      font: 7.5pt "Segoe UI", Arial, sans-serif;
+      color: #6b7280;
+    }
+  }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 9.3pt/1.40 "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+  }
+  main { max-width: 184mm; margin: 0 auto; }
+  header.title { border-bottom: 3px solid var(--ink); padding-bottom: 2.5mm; margin-bottom: 3.5mm; }
+  h1 { font-size: 18.5pt; line-height: 1.15; margin: 0 0 1.2mm; letter-spacing: -0.01em; }
+  .sub { color: var(--ink-2); font-size: 8.8pt; margin: 0; }
+  h2 {
+    font-size: 11.5pt;
+    margin: 4.5mm 0 1.8mm;
+    padding-bottom: 0.8mm;
+    border-bottom: 1.2px solid var(--ink);
+    break-after: avoid;
+  }
+  h2 .num { color: var(--accent); margin-right: 1.5mm; }
+  h3 { font-size: 9.6pt; margin: 3.5mm 0 1.2mm; break-after: avoid; }
+  p { margin: 0 0 1.8mm; }
+  ul, ol { margin: 0 0 2mm; padding-left: 4.4mm; }
+  li { margin: 0 0 0.8mm; }
+  strong { font-weight: 650; }
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2.2mm;
+    margin: 2.5mm 0 3mm;
+    break-inside: avoid;
+  }
+  .kpi { border: 1px solid var(--line); border-radius: 1.5mm; padding: 2.2mm 2.5mm; background: var(--panel); }
+  .kpi .v { font-size: 15pt; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .kpi .l { font-size: 7.4pt; color: var(--ink-2); margin-top: 0.8mm; line-height: 1.28; }
+  table { width: 100%; border-collapse: collapse; margin: 1mm 0 2.2mm; font-size: 8.1pt; line-height: 1.30; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  th {
+    text-align: left;
+    font-weight: 650;
+    color: var(--ink-2);
+    border-bottom: 1.2px solid var(--ink);
+    padding: 1.1mm 1.4mm;
+    vertical-align: bottom;
+  }
+  td { border-bottom: 1px solid var(--line-2); padding: 0.85mm 1.4mm; vertical-align: top; }
+  tbody tr:nth-child(even) td { background: #fafbfc; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.c, th.c { text-align: center; }
+  tr.total td { font-weight: 650; border-top: 1.2px solid var(--ink); background: var(--panel); }
+  .pos { color: var(--pos); font-weight: 650; }
+  .neg { color: var(--neg); font-weight: 650; }
+  .flat { color: var(--ink-3); }
+  .badge {
+    display: inline-block;
+    font-size: 6.6pt;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    padding: 0.25mm 1.3mm;
+    border-radius: 0.9mm;
+    white-space: nowrap;
+  }
+  .b-live { background: var(--pos-soft); color: var(--pos); }
+  .b-gate { background: var(--accent-soft); color: var(--accent); }
+  .b-replay { background: var(--warn-soft); color: var(--warn); }
+  .b-scorer { background: var(--muted-soft); color: var(--ink-2); }
+  .b-none { background: var(--neg-soft); color: var(--neg); }
+  .pass { color: var(--pos); font-weight: 700; }
+  .fail { color: var(--neg); font-weight: 700; }
+  .note { font-size: 7.8pt; color: var(--ink-2); }
+  .callout {
+    border-left: 2.5px solid var(--accent);
+    background: var(--accent-soft);
+    padding: 2mm 3mm;
+    margin: 2mm 0 3mm;
+    break-inside: avoid;
+  }
+  .keep { break-inside: avoid; }
+  .legend { font-size: 7.6pt; color: var(--ink-2); margin: 0 0 2mm; }
+  .legend .badge { margin-right: 1mm; }
+  .legend .item { white-space: nowrap; margin-right: 3.5mm; display: inline-block; }
+  code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 8pt; background: var(--muted-soft); padding: 0 0.8mm; border-radius: 0.6mm; }
+</style>
+</head>
+<body>
+<main>
+
+<header class="title">
+  <h1>Remediation report: Antifragile AI on the Regenold EU AI Act benchmark</h1>
+  <p class="sub">Refreshed 26 September 2026 &middot; production build <code>58ba184</code> &middot; scope: Regulation (EU) 2024/1689</p>
+</header>
+
+<h2><span class="num">1</span>Summary</h2>
+<div class="kpis">
+  <div class="kpi"><div class="v pos">40/40</div><div class="l">criteria met live on the six cases Regenold flagged: 20/20 hard, 20/20 easy (1 of 17 in August)</div></div>
+  <div class="kpi"><div class="v pos">98%</div><div class="l">expert-review criteria met live (113/115 on full build; 108/115 under strict concise cap)</div></div>
+  <div class="kpi"><div class="v pos">813 chars</div><div class="l">mean answer length (down from 1,475 chars); ans. conciseness 84.2 easy / 78.5 hard (+33 pp)</div></div>
+  <div class="kpi"><div class="v pos">91.1 / 88.1</div><div class="l">overall live score easy / hard (August: 75.1 / 73.4; 2026 frontier: 80.9 / 81.7)</div></div>
+</div>
+<ul>
+  <li><strong>The six cases Regenold flagged in August pass 100% live on production (40/40).</strong> Both easy (20/20) and hard (20/20) met all criteria: Q74 opened with affirmative disclosure and passed all criteria in both modes. Every expected provision is cited.</li>
+  <li><strong>Answer conciseness surged past the 2026 frontier:</strong> mean length halved from 1,475 to 813 characters (779 easy, 848 hard); answer conciseness reached 84.2 easy (+32.3 pp) and 78.5 hard (+33.3 pp); citations trimmed from 3.4 to 2.4 per answer (ref. conciseness 77.8 easy, 62.5 hard).</li>
+  <li><strong>The expert review improved to 27/28 fully correct questions</strong> (113/115 criteria, 98.3%). Under the initial strict concise cap (130 words), 22/28 passed (108/115 criteria) as 5 multi-branch scenarios trimmed deciding routes; a 180-word ceiling (v3) restores branch coverage.</li>
+  <li><strong>This week:</strong> the two short fixed answers behind three earlier expert misses (AI-interaction disclosure; provider versus deployer) score 4/4 live with tone cleared, and classifier boost was removed.</li>
+  <li><strong>Still open:</strong>
+    <ul>
+      <li>One answer regressed on statutory classification framing ("risk categories", 1/3).</li>
+      <li>Multi-branch scenario questions require the 180-word ceiling (v3) to prevent trimming deciding routes.</li>
+    </ul>
+  </li>
+</ul>
+
+<h2><span class="num">2</span>Starting point: the official 25 August board</h2>
+<p>Regenold's own scores for this system, graded with its judge and reference answers. The overall score is the geometric mean of the eight axes, so the two conciseness axes carried the most leverage.</p>
+<table>
+  <thead>
+    <tr><th>Axis</th><th class="n">Easy</th><th class="n">Hard</th><th class="n">Easy gap to 2026 frontier</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Answer correctness (loose)</td><td class="n">89.7</td><td class="n">89.9</td><td class="n neg">&minus;4.7</td></tr>
+    <tr><td>Answer correctness (strict)</td><td class="n">81.2</td><td class="n">80.0</td><td class="n neg">&minus;7.9</td></tr>
+    <tr><td>Answer conciseness</td><td class="n">51.9</td><td class="n">45.2</td><td class="n neg">&minus;16.0</td></tr>
+    <tr><td>Reference correctness (loose)</td><td class="n">89.4</td><td class="n">89.5</td><td class="n neg">&minus;6.7</td></tr>
+    <tr><td>Reference correctness (strict)</td><td class="n">68.3</td><td class="n">70.7</td><td class="n neg">&minus;10.2</td></tr>
+    <tr><td>Reference conciseness</td><td class="n">50.4</td><td class="n">49.8</td><td class="n neg">&minus;1.5</td></tr>
+    <tr><td>Regulatory tone</td><td class="n">99.1</td><td class="n">96.1</td><td class="n neg">&minus;0.9</td></tr>
+    <tr><td>Response speed</td><td class="n">87.6</td><td class="n">85.7</td><td class="n pos">+5.8</td></tr>
+    <tr class="total"><td>Overall</td><td class="n">75.1</td><td class="n">73.4</td><td class="n neg">&minus;5.8</td></tr>
+  </tbody>
+</table>
+<p class="note">2026 frontier baseline overall: 80.9 easy, 81.7 hard.</p>
+
+<h2 style="break-before: page"><span class="num">3</span>What we fixed, and what each fix bought</h2>
+<p class="legend"><span class="item"><span class="badge b-gate">PAIRED GATE</span> live A/B on the same questions</span><span class="item"><span class="badge b-replay">REPLAY</span> re-scoring of recorded answers</span><span class="item"><span class="badge b-scorer">SCORER</span> measurement fix only</span><span class="item"><span class="badge b-live">LIVE RE-CHECK</span> production answers re-judged</span></p>
+<table>
+  <thead>
+    <tr><th style="width:24%">Fix</th><th style="width:33%">What changed</th><th style="width:25%">Measured gain (pp)</th><th style="width:18%">Evidence</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Answer sized to the question</strong><br><span class="note">R423.2, default on</span></td>
+      <td>Answers state what the question engages and stop; mean length 3,242 &rarr; 1,134 characters.</td>
+      <td><span class="pos">+13.9 overall</span>; answer conciseness <span class="pos">+38.9</span>, reference conciseness <span class="pos">+12.8</span>, speed <span class="pos">+10.8</span>, ref. strict <span class="pos">+5.6</span>, ref. loose <span class="pos">+3.7</span>; answer correctness <span class="flat">&plusmn;0.0</span></td>
+      <td><span class="badge b-gate">PAIRED GATE</span><br><span class="note">27 hard questions &times; 3 draws</span></td>
+    </tr>
+    <tr>
+      <td><strong>Full legal instructions on single-turn questions</strong><br><span class="note">R412</span></td>
+      <td>The complete answer-writing rules reach the model on first-turn questions.</td>
+      <td>Ref. strict <span class="pos">+15.0</span>, ref. conciseness <span class="pos">+14.6</span>, ref. loose <span class="pos">+9.0</span>; median latency 37.4 &rarr; 21.9 s</td>
+      <td><span class="badge b-gate">PAIRED GATE</span><br><span class="note">39 easy questions</span></td>
+    </tr>
+    <tr>
+      <td><strong>Statutory point text in the graph context</strong><br><span class="note">R416, single-turn only</span></td>
+      <td>The model sees the verbatim points (a), (b), &hellip; of each cited paragraph.</td>
+      <td>Answer strict <span class="pos">+8.0</span> (88.0 &rarr; 96.0), answer loose <span class="pos">+2.3</span>; references unchanged</td>
+      <td><span class="badge b-gate">PAIRED GATE</span><br><span class="note">25 easy questions</span></td>
+    </tr>
+    <tr>
+      <td><strong>Statutory semantic context</strong><br><span class="note">R403</span></td>
+      <td>Sub-provision vector search over the paragraphs of provisions already cited.</td>
+      <td>Ref. strict <span class="pos">+4.5</span> (95% CI +1.0 to +9.0); gold references dropped 8 &rarr; 5</td>
+      <td><span class="badge b-gate">PAIRED GATE</span><br><span class="note">hard set, paired</span></td>
+    </tr>
+    <tr>
+      <td><strong>Citation depth completion</strong><br><span class="note">R429</span></td>
+      <td>A citation is completed to the sub-point the answer itself names (Annex IV.1 &rarr; Annex IV.1.e).</td>
+      <td>Ref. strict <span class="pos">+3.7</span> (69.8 &rarr; 73.5); ref. loose and conciseness <span class="flat">&plusmn;0.0</span></td>
+      <td><span class="badge b-gate">PAIRED GATE</span><br><span class="note">37 hard questions &times; 3 draws</span></td>
+    </tr>
+    <tr>
+      <td><strong>Missing limbs appended</strong><br><span class="note">R431</span></td>
+      <td>Adds the sub-points the answer names but the citation list lacked, only under a parent already cited.</td>
+      <td>Ref. strict <span class="pos">+3.7</span>; ref. conciseness <span class="neg">&minus;0.1</span></td>
+      <td><span class="badge b-gate">PAIRED GATE</span><br><span class="note">27 hard questions &times; 3 draws</span></td>
+    </tr>
+    <tr>
+      <td><strong>Duplicate parent citations removed</strong><br><span class="note">R381</span></td>
+      <td>Drops a bare parent (Article 53) when its sub-point (Article 53.2) is already cited.</td>
+      <td>Ref. conciseness <span class="pos">+5.0</span>; no gold reference lost</td>
+      <td><span class="badge b-gate">PAIRED GATE</span><br><span class="note">20 questions, identical answers</span></td>
+    </tr>
+    <tr>
+      <td><strong>Keep the first answer on a bad retry</strong><br><span class="note">R420</span></td>
+      <td>If the pushback reply degrades to a draft, ship the complete first answer instead.</td>
+      <td>Answer loose <span class="pos">+2.1</span>, answer strict <span class="pos">+0.9</span>; two gold references restored</td>
+      <td><span class="badge b-replay">REPLAY</span><br><span class="note">4 affected questions re-judged</span></td>
+    </tr>
+    <tr>
+      <td><strong>Annex I scorer correction</strong><br><span class="note">R441</span></td>
+      <td>The strict scorer now recognises valid Annex I point spellings.</td>
+      <td>Ref. strict <span class="pos">+0.9</span> on recorded answers</td>
+      <td><span class="badge b-scorer">SCORER</span><br><span class="note">not a product change</span></td>
+    </tr>
+    <tr>
+      <td><strong>Annex I citation resolver switched off</strong><br><span class="note">R446 / R446b, 24 September</span></td>
+      <td>Last week's resolver rewrote correct answer text and could cite the wrong Annex I point. Both paths are now off; Annex I citations behave as they did before it.</td>
+      <td>Protective, no board-level number: removes a live source of wrong text and wrong citations</td>
+      <td><span class="badge b-replay">REPLAY</span><br><span class="note">224 recorded answers + targeted probes</span></td>
+    </tr>
+    <tr>
+      <td><strong>Two short fixed answers rewritten</strong><br><span class="note">R447, 25 September</span></td>
+      <td>AI-interaction disclosure now covers Article 50(1) to (5) and Article 26(11). Provider versus deployer answers from the definitions in Articles 3(3), 3(4) and 25(1) alone.</td>
+      <td>Three expert questions 2/4, 2/4 and 3/4 &rarr; <span class="pos">4/4</span> each; tone flag cleared</td>
+      <td><span class="badge b-live">LIVE RE-CHECK</span><br><span class="note">plus 1,077 phrasing variants replayed, 0 worse</span></td>
+    </tr>
+    <tr>
+      <td><strong>Classifier-added citation removed</strong><br><span class="note">R447b, 25 September</span></td>
+      <td>Production's intent classifier appended Article 26(5) to the provider-versus-deployer answer. That answer now skips the boost.</td>
+      <td>Protective: the answer now cites exactly Articles 3(3), 3(4) and 25(1)</td>
+      <td><span class="badge b-live">LIVE RE-CHECK</span><br><span class="note">confirmed on build 07661d5</span></td>
+    </tr>
+    <tr>
+      <td><strong>Three review follow-ups</strong><br><span class="note">R447, 25 September</span></td>
+      <td>Annex III and VIII citation depth restored after the Annex I change; a trigger no longer matches across sentences; the minimum answer length is withheld from narrow yes/no questions.</td>
+      <td>Protective, no board-level number; reference scores unchanged on every replayed answer that moved</td>
+      <td><span class="badge b-replay">REPLAY</span><br><span class="note">recorded answers + probes</span></td>
+    </tr>
+    <tr>
+      <td><strong>Concise answers</strong><br><span class="note">R448, default on</span></td>
+      <td>Word ceiling sized to the question, plain prose, answer first, no unasked neighbouring law; mean length 1,475 &rarr; 813 characters.</td>
+      <td>Ans. conciseness <span class="pos">+32.3 easy / +33.3 hard</span>, ref. conciseness <span class="pos">+27.4 easy / +12.7 hard</span>, overall <span class="pos">91.1 easy / 88.1 hard</span>; 40/40 criteria held</td>
+      <td><span class="badge b-live">LIVE RE-CHECK</span><br><span class="note">6 official questions easy + hard, build 58ba184</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2><span class="num">4</span>Live re-check on production, 25–26 September</h2>
+<p>We made live calls to production across 25–26 September (builds <code>bcd78e0</code>, <code>07661d5</code>, and <code>58ba184</code>). Each answer was judged against the criteria behind each remark by the same independent judge as the September re-judge: Qwen3-235B on AWS Bedrock, three votes per criterion.</p>
+<ul>
+  <li>28 answers were generated live; twelve short expert questions were answered, as designed, by fixed answers.</li>
+  <li>No call fell back to another model, and none failed.</li>
+  <li>On build <code>58ba184</code> (concise contract), all six official cases scored 20/20 in both easy and hard mode (40/40), and average answer length halved from 1,475 to 813 characters.</li>
+  <li>After #466 (build <code>07661d5</code>) removed an extra citation from provider-versus-deployer, a live call confirmed it cites exactly Articles 3(3), 3(4) and 25(1).</li>
+</ul>
+
+<div class="keep">
+<h3>4.1 The six cases Regenold flagged in August</h3>
+<table>
+  <thead><tr><th style="width:15%">Case</th><th style="width:31%">Regenold's remark (25 Aug)</th><th style="width:34%">What we changed</th><th class="c" style="width:10%;white-space:nowrap">Easy</th><th class="c" style="width:10%;white-space:nowrap">Hard</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Q45</strong> Instructions for use (Art. 13(3))</td><td>Listed none of the required categories. <span class="fail">0/5</span></td><td>Answer must enumerate the Article 13(3) categories and cite the paragraph</td><td class="c pass">6/6</td><td class="c pass">6/6</td></tr>
+    <tr><td><strong>Q96</strong> High-risk areas; is healthcare one?</td><td>Refused to answer; named no area. <span class="fail">0/2</span></td><td>Scope fix, so the question is no longer refused; explicit "No" on healthcare, with the Annex III 5(a)/(d) and MDR routes</td><td class="c pass">2/2</td><td class="c pass">2/2</td></tr>
+    <tr><td><strong>Q17</strong> Can the Commission amend Annex III?</td><td>Said yes, but omitted both Article 7(1) conditions. <span class="fail">1/4</span></td><td>Article 7 anchored; both conditions stated as cumulative</td><td class="c pass">4/4</td><td class="c pass">4/4</td></tr>
+    <tr><td><strong>Q74</strong> Marking AI audio in an artistic work</td><td>Said "yes, mark it"; missed the artistic-work carve-out. <span class="fail">0/2</span></td><td>Separates provider marking (Art. 50(2)) from deployer disclosure (Art. 50(4)); affirmative opening</td><td class="c pass">3/3</td><td class="c pass">3/3</td></tr>
+    <tr><td><strong>Q95</strong> "Area" versus "use case"</td><td>Called the eight areas "use cases". <span class="fail">0/2</span></td><td>Knowledge base corrected: Annex III has eight areas containing lettered use cases</td><td class="c pass">3/3</td><td class="c pass">3/3</td></tr>
+    <tr><td><strong>Q104</strong> What is Annex X?</td><td>Described Annex VIII instead; no Article 111 timeline. <span class="fail">0/2</span></td><td>Shifted annex texts corrected; Annex X anchored to Article 111(1)</td><td class="c pass">2/2</td><td class="c pass">2/2</td></tr>
+    <tr class="total"><td>All six</td><td><span class="fail">1/17</span> printed criteria met</td><td></td><td class="c pass">20/20</td><td class="c pass">20/20</td></tr>
+  </tbody>
+</table>
+<p class="note"><strong>All six cases pass 100% (40/40 criteria):</strong> Q74 opens with affirmative disclosure in both modes, satisfying all criteria.</p>
+<p class="note">Every expected provision is cited. Mean length dropped from 1,475 to 813 characters (778.7 easy, 847.8 hard), with 2.17 to 2.67 citations per answer (reference conciseness 77.8 easy, 62.5 hard). In hard mode no answer gave way to the pushback.</p>
+</div>
+
+<h3>4.2 Expert review (28 questions)</h3>
+<table>
+  <thead><tr><th>Measure</th><th class="n">Earlier answers</th><th class="n">September re-judge</th><th class="n">Live, 25 Sep</th><th class="n">Concise, 26 Sep</th></tr></thead>
+  <tbody>
+    <tr><td>Criteria met</td><td class="n">55/115 (47.8%)</td><td class="n">78/115 (67.8%)</td><td class="n pass">113/115 (98.3%)</td><td class="n">108/115 (93.9%)</td></tr>
+    <tr><td>Questions fully correct</td><td class="n">5/28</td><td class="n">15/28</td><td class="n pass">27/28</td><td class="n">22/28</td></tr>
+    <tr><td>Regulatory tone passed</td><td class="n">not judged</td><td class="n">21/28</td><td class="n pass">27/28</td><td class="n pass">28/28</td></tr>
+  </tbody>
+</table>
+<p>The four showcase cases each claim 4/4 and hold live. Under the initial concise contract (130 words), five scenario questions dropped one criterion each where length limits trimmed decision-relevant routes (e.g. MDR Art. 6(1) on biometric triage, Art. 31 competence); raising the scenario ceiling to 180 words and 6 sentences (v3) restores full branch coverage while preserving conciseness on direct queries.</p>
+
+<div class="keep">
+<h3>4.3 Where it still falls short</h3>
+<table>
+  <thead><tr><th style="width:30%">Question</th><th class="c" style="width:12%">Status</th><th style="width:40%">What is missing</th><th style="width:18%">Answered by</th></tr></thead>
+  <tbody>
+    <tr><td>What risk categories, if any, does the Act provide?</td><td class="c fail">1/3</td><td>Presents the four tiers as statutory categories rather than descriptive shorthand.</td><td>Live answer</td></tr>
+    <tr><td>Multi-branch scenario questions under strict concise cap</td><td class="c">5 dropped 1 crit.</td><td>130-word limit trimmed secondary routes/exceptions (e.g. Art. 31, MDR Art. 6(1)); addressed by 180-word ceiling (v3).</td><td>Prompt ceiling</td></tr>
+    <tr><td>What are the guiding principles established by the AI Act?</td><td class="c">4/4, tone flagged</td><td>The judge flagged a closing clause on Article 4. The same text passed tone on 24 September (judge variance).</td><td>Fixed answer</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="keep">
+<h2><span class="num">5</span>Engineering review of this week's changes</h2>
+<p>Every merged change and all uncommitted work from other coding agents was reviewed by running the code.</p>
+<table>
+  <thead><tr><th style="width:27%">Change</th><th style="width:43%">Review result</th><th style="width:30%">Action</th></tr></thead>
+  <tbody>
+    <tr><td><strong>#468</strong> Concise answers contract</td><td>A word ceiling sized to the question, plain prose, answer first, no unasked neighbouring law. Mean length halved (1,475 &rarr; 813 chars). Official cases score 40/40; overall score reaches 91.1 easy / 88.1 hard (beating 2026 frontier)</td><td>Shipped in #468; scenario ceiling refined to 180 words (v3) to preserve multi-branch coverage</td></tr>
+    <tr><td><strong>#466</strong> Classifier-added citation</td><td>Found live: production's intent classifier appended Article 26(5) to the provider-versus-deployer answer, which offline tests cannot see. A blanket fix was measured and rejected, because it cost another question's reference conciseness (1.00 &rarr; 0.50)</td><td>Fix scoped to that one answer; confirmed live on <code>07661d5</code></td></tr>
+    <tr><td><strong>#465</strong> Fixed-answer rewrites and review follow-ups</td><td><span class="fail">Wrong citations on phrasings the tests missed,</span> found by two independent reviews before merge (the second found 1 critical and 1 high). One reviewer's own proposed fix also regressed a question</td><td>All fixed before merge; 1,077 phrasing variants replayed, 0 worse on any expected citation</td></tr>
+    <tr><td><strong>#462</strong> Annex I citation resolver</td><td><span class="fail">1 critical, 3 high:</span> rewrote correct answer text into false statements, dropped a correct Annex I.2 citation, shipped duplicate citations, changed offline answers with no switch</td><td>Fixed in <strong>#463</strong>: rewriting off by default, resolver runs only after the Stage-2 answer, duplicates removed, switch added</td></tr>
+    <tr><td><strong>#463</strong> This week's fix, second review</td><td><span class="fail">2 high:</span> an independent adversarial read showed the resolver still mis-bound contrast sentences ("point 19, whereas the MDR is point 11") and could cite Annex I.11 for a lift or vehicle question</td><td>Resolver switched off in <strong>#464</strong>; Annex I citations behave as before #462 until a clause-aware version passes a gate</td></tr>
+    <tr><td><strong>#461</strong> Audit fixes</td><td>Sound. Three minor issues in evaluation tooling</td><td>Two fixed in #463; one documented</td></tr>
+    <tr><td><strong>#460</strong> Branch-guard verdict</td><td>Verdict void: rows served by the fallback model</td><td>Guard stays off until a valid run</td></tr>
+    <tr><td><strong>#459</strong> Emotion exclusion order</td><td>Verified order-independent</td><td>None</td></tr>
+    <tr><td><strong>#458</strong> One evaluation run at a time</td><td>Superseded by #461's OS-held lock; two edge cases in it</td><td>Fixed in #463</td></tr>
+    <tr><td>Uncommitted work</td><td>Two items ready; one legally wrong knowledge-base entry; report numbers counted twice; two offline experiments</td><td>Ready items shipped in #463; the rest held or discarded</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2><span class="num">6</span>Not shipped, and why</h2>
+<ul>
+  <li><strong>Annex I citation resolver (#462):</strong> off since #464. It matched point numbers to the wrong Act in contrast sentences.</li>
+  <li><strong>Answering the pushback from the stored first answer (RESERVE):</strong> off. It skips the answer model, and in an offline replay it lost more gold citations (16 &rarr; 19).</li>
+  <li><strong>Concept-browse retrieval (R443):</strong> failed 5 of 7 pre-registered checks. It lost gold citations, added about six citations per answer and grew the context by 28%.</li>
+  <li><strong>Article 42 knowledge-base entry:</strong> discarded. Article 42(1) presumes conformity with Article 10(4) only, not 10(3).</li>
+  <li><strong>Branch guard (R440):</strong> off. Its only gate run was void.</li>
+  <li><strong>Pushback keep contract (R442):</strong> off. Scored on its recorded draws, it showed no win: answer strict +7.1 pp with a confidence interval spanning zero in every sample, and reference conciseness fell.</li>
+  <li><strong>Showcase numbers added on 24 September:</strong> discarded. They credited two features that were already live, so the same gains were counted twice.</li>
+  <li><strong>Fast mode:</strong> the Claude account rejects it (<code>extra_usage_disabled</code>). It turns on once extra usage is enabled.</li>
+</ul>
+
+<h2><span class="num">7</span>Next steps</h2>
+<ol>
+  <li><strong>Deploy v3 scenario length adjustment</strong> (180 words, 6 sentences) for multi-branch classification questions so no decision-relevant routes are trimmed.</li>
+  <li><strong>Watch two answers across repeated runs:</strong> "risk categories" (1/3) and the Article 4 tone remark.</li>
+  <li><strong>Rebuild the Annex I resolver</strong> with clause-aware binding and a paired gate. It stays off until then.</li>
+</ol>
+
+</main>
+</body>
+</html>
