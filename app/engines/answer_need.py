@@ -563,11 +563,12 @@ def shape_directive(need: AnswerNeed) -> str:
 #: It changes no estimate, only how the estimate is stated.
 _CONCISE_ENV = "REGENOLD_CONCISE_CONTRACT"
 
-#: The word ceiling never exceeds ~700 chars. A question that NAMES a listed
-#: head (Annex III, Article 6(2)) engages the whole list, so the estimate rises
-#: to 900-975 chars on rg_018 / rg_096 while their reference answers are 533 and
-#: 596 chars; and Opus 5.5 lands 1.2-1.8x over any stated target (R448
-#: diagnosis), so a ceiling at the reference mean leaves room for the overshoot.
+#: The direct-question ceiling never exceeds about 700 chars. A question that
+#: NAMES a listed head (Annex III, Article 6(2)) engages the whole list, so the
+#: need estimate can rise to 900-975 chars on rg_018 / rg_096 while their
+#: reference answers are 533 and 596 chars. Opus 5.5 also landed 1.2-1.8x over
+#: stated targets (R448 diagnosis), which is why v3 separately reserves up to
+#: 180 words for a described multi-branch scenario.
 _CONCISE_MAX_WORDS = 130
 
 
@@ -613,7 +614,9 @@ def concise_limits(need: AnswerNeed, question: str = "") -> tuple[int, int]:
     per engaged item and one for an exception or condition.
     """
     if is_scenario_question(question):
-        return max(need.target_words, _CONCISE_SCENARIO_MAX_WORDS), 6
+        # Keep the v3 scenario allowance a hard ceiling. The need estimate can
+        # round 1,000 characters up to 185 words, but that must not exceed 180.
+        return _CONCISE_SCENARIO_MAX_WORDS, 6
     sentences = min(5, max(3, need.items + 2))
     return min(need.target_words, _CONCISE_MAX_WORDS), sentences
 
@@ -635,8 +638,10 @@ def concise_block(question: str, references: str = "") -> str:
         "This ceiling overrides any larger word target above. Stop as soon as "
         "the question is answered.",
         f"* The first sentence is {lead}.",
-        "* State each asked item once, as a short clause. A requested list is "
-        "one sentence of short noun phrases separated by semicolons.",
+        "* State each asked item once as a short clause. For a requested "
+        "statutory list, include every required member exactly once in one "
+        "compact sentence of short noun phrases separated by commas; never "
+        "substitute examples or a summary for the complete list.",
         "* Keep every route, branch, condition or exception that decides the "
         "answer, including a provision the facts make relevant and then rule "
         "out, in one short clause each. When the question asks which systems "
