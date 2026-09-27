@@ -5,6 +5,8 @@ grepping source (the R398 dead-lever lesson): ON puts the LENGTH LIMIT block in
 the dispatched user message, OFF leaves the message byte-identical to the
 pre-R448 text.
 """
+from dataclasses import replace
+
 import pytest
 
 from app.data import graph_rag_prompts as prompts
@@ -106,7 +108,7 @@ def test_scenario_question_ceiling_expanded(monkeypatch):
     assert answer_need.is_scenario_question(scenario_q)
     need = answer_need.answer_need(scenario_q, "")
     words, sentences = answer_need.concise_limits(need, scenario_q)
-    assert words >= answer_need._CONCISE_SCENARIO_MAX_WORDS
+    assert words == answer_need._CONCISE_SCENARIO_MAX_WORDS
     assert sentences == 6
 
     # Direct short questions must NOT be classified as scenarios
@@ -115,3 +117,62 @@ def test_scenario_question_ceiling_expanded(monkeypatch):
     words_direct, sentences_direct = answer_need.concise_limits(need, direct_q)
     assert words_direct <= answer_need._CONCISE_MAX_WORDS
     assert sentences_direct <= 5
+
+
+def test_diagnostic_rg085_scenario_keeps_the_v3_ceiling_on_pushback(monkeypatch):
+    monkeypatch.setenv("REGENOLD_CONCISE_CONTRACT", "1")
+    scenario_q = (
+        "Does the AI Act prohibit or classify as high-risk the use of AI in drones? "
+        "Can I use AI in a drone to find who's around in town? And what if it's "
+        "just a toy drone? And what about toy drones used for other applications?"
+    )
+    assert answer_need.is_scenario_question(scenario_q)
+
+    need = answer_need.answer_need(scenario_q, "")
+    assert answer_need.concise_limits(need, scenario_q) == (180, 6)
+    block = answer_need.concise_block(scenario_q)
+    assert "At most 180 words in at most 6 sentences" in block
+    assert "keep the earlier answer's points and length" in block
+
+
+def test_scenario_ceiling_is_a_hard_180_word_maximum(monkeypatch):
+    monkeypatch.setenv("REGENOLD_CONCISE_CONTRACT", "1")
+    scenario_q = (
+        "A hospital uses an AI system to triage emergency room patients based on vital signs. "
+        "What risk category applies and what specific notified body requirements exist?"
+    )
+    need = replace(answer_need.answer_need(scenario_q, ""), target_words=185)
+
+    assert answer_need.concise_limits(need, scenario_q) == (180, 6)
+
+
+def test_diagnostic_rg037_list_contract_is_compact_and_complete(monkeypatch):
+    list_q = (
+        "When registering a high-risk AI system in the EU database under the EU AI Act, "
+        "what specific information must the provider submit? List the required items."
+    )
+    need = answer_need.answer_need(list_q, "")
+    words, sentences = answer_need.concise_limits(need, list_q)
+    user = _dispatch(monkeypatch, "1", list_q)
+
+    assert not answer_need.is_scenario_question(list_q)
+    assert words <= answer_need._CONCISE_MAX_WORDS
+    assert sentences <= 5
+    assert f"At most {words} words" in user
+    assert "include every required member exactly once" in user
+    assert "separated by commas" in user
+    assert "never substitute examples or a summary" in user
+    assert "separated by semicolons" not in user
+
+
+def test_diagnostic_rg085_scenario_contract_reaches_provider_on_pushback(monkeypatch):
+    scenario_q = (
+        "Does the AI Act prohibit or classify as high-risk the use of AI in drones? "
+        "Can I use AI in a drone to find who's around in town? And what if it's "
+        "just a toy drone? And what about toy drones used for other applications?"
+    )
+    user = _dispatch(monkeypatch, "1", scenario_q)
+
+    assert "LENGTH LIMIT" in user
+    assert "At most 180 words in at most 6 sentences" in user
+    assert "keep the earlier answer's points and length" in user
