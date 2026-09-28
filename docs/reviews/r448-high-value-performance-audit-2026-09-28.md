@@ -1,179 +1,221 @@
-# R448 — high-value architecture and performance audit
+# R448 — quality-first architecture and optimization audit
 
 **Date:** 2026-09-28  
-**Status:** Recommendations only; no application behavior changed.
+**Status:** Evidence-led recommendations only; no application behavior changed.
 
-## Executive summary
+## Executive decision
 
-The highest-value optimization target is the **remote answer-generation path and the work sent to it**, not line-count reduction or speculative retrieval pruning. The current request can combine local lexical/ontology retrieval, vector and graph-semantic supplements, bounded KG context, conditional Stage-2 generation, transport fallback, and route-level reference repair. The expensive parts are remote calls and their prompt/output tokens; however, current artifacts do not provide a representative end-to-end latency/cost distribution. Measure that path first, then reduce calls and context behind paired quality gates.
+Optimize in this order, and do not trade a higher-priority result for a lower-priority one:
 
-Recommended order:
+1. **Answer correctness:** the answer must state the right legal substance, cover the question’s required parts and conditions, and avoid unsupported or contradictory claims. This is the primary quality gate.
+2. **Reference correctness:** the emitted references must identify the governing provisions at the needed grain, support the claims made, and retain every required gold head. A shorter answer or faster response cannot excuse a wrong, missing, or misleading citation.
+3. **All remaining evaluation metrics:** report the complete rubric, not just its aggregate—answer conciseness, reference conciseness, regulatory tone, response speed, and any applicable multi-turn/coherence checks. These are secondary to correctness, not substitutes for it.
+4. **Latency, token use, cache behavior, and cost:** use them to diagnose and optimize only among candidates that pass the quality gates above. Telemetry proves execution and resource use; it does not prove legal correctness.
 
-1. **Instrument the full request and establish a latency/token/cost baseline.** Attribute wall time, tokens, retries, cache hits, and degradation to each lane and model leg.
-2. **Make Stage-2 dispatch a single policy boundary.** Apply one end-to-end deadline/retry budget across primary and fallback; test a lower-cost default composer and narrow deterministic skips against a held-out, stratified cohort. Do not assume model/token settings fix transport latency.
-3. **Use the R448 concision signal to investigate token savings, not claim a quality or latency win.** The sampled answers became materially shorter, but these experiments did not measure tokens, dollars, or request latency and are too small to establish broad non-inferiority.
-4. **Keep retrieval local-first and evidence-preserving.** Let BM25/ontology and TurboQuant discover candidate provisions; use KG relations for constrained expansion; resolve every answerable claim to canonical statutory text. Use a reranker only after mandatory evidence is protected. Do not promote graph dumps or apply an unmeasured global top-K cap.
-5. **After measuring, make behavior-preserving architectural extractions.** Unify Stage-2 transport first, then establish a typed evidence/claim interface and one reference finalizer. Do not expect dead-code deletion to produce meaningful savings.
+The R448 concision runs show a substantial reduction in answer characters on two small reconstructed-gold cohorts. They do **not** establish better answer correctness, reference correctness, broad non-inferiority, token savings, lower cost, or a production latency win. The R403 semantic-layer sidecar is a promising reference-correctness result, but its answer-correctness intervals cross zero and it needs to clear an answer-first gate before being treated as a safe quality improvement. The R403 gloss comparison offers no established correctness or reference benefit and shows slower responses in most paired rows.
 
-The target is a small, predictable pipeline: **local evidence retrieval → source-resolved evidence bundle → one low-cost synthesis call when needed → deterministic citation finalization**. More capable generation or optional remote retrieval should be reserved for query classes where a controlled evaluation demonstrates value.
+**Decision:** do not promote a prompt, retrieval, model, reference, or context change on a concision/latency/cost result alone. First validate the evaluator and the exact answer-correctness result; next validate references and gold-head retention; then review every other rubric axis and relevant multi-turn behavior. Only then use measured performance to rank otherwise acceptable options.
 
 ## Scope and confidence
 
-This is a targeted audit of the current request path, selected runtime modules, prior reviews, and measurement artifacts—not a line-by-line re-verification of every round. `docs/ROUNDS.md` is append-only and the inspected file ends at R403; later R448 evidence is in separate measurement artifacts. The audit checkout was `fix/r448-conciseness-followup`, one commit behind `origin/main` at review time. It already contained a modification to `app/engines/answer_completeness.py` and untracked R448 measurement material; those shared artifacts were preserved. No application file or measurement was changed or run for this report.
+This is a targeted review of the current request path, evaluation instruments, selected historical findings, and R403/R448 measurement artifacts—not a fresh line-by-line re-verification of every R1–R448 change. The inspected `docs/ROUNDS.md` history ends at R403; R448 evidence is recorded in separate measurement directories. The checkout observed for this review was `feat/r448-reports-showcase-and-evals`. Shared, untracked R448 measurement artifacts were left untouched.
 
-There was no production telemetry/credential check, representative deployed latency study, or controlled comparison to an external frontier system. Findings below distinguish observed results from hypotheses. Historical module-size and round findings are explicitly labeled as such; they are not asserted to be fresh measurements of this checkout.
+The review did not inspect production telemetry, credentials, or a representative deployed latency distribution. It does not establish superiority to an external frontier system. Historical findings are labeled as such and are not presented as new measurements of the current deployment.
 
-## Current path and constraints
+## Quality hierarchy and evaluation interpretation
 
-The active shape is approximately:
+### 1. Answer correctness is the primary outcome
 
-```text
-route history/scope handling
-  → deterministic query parsing
-  → KB/ontology retrieval, with vector and constrained graph-semantic support
-  → deterministic/curated answer where applicable
-  → conditional Stage-2 synthesis/transport fallback
-  → route normalization and reference reconciliation
-```
+Assess substance against independently grounded statutory text and the actual demands of the question: correct legal rule, conditions and exceptions; coverage of every requested list item or scenario branch; no material false or unsupported claims; no internal contradiction. Track both per-criterion results and per-answer all-criteria success. An aggregate micro-average alone can hide an answer that misses one decisive condition.
 
-The KB has lexical BM25 over statutory summaries and typed ontology/corpus material; SVD/TurboQuant and sentence-level vector components provide semantic recall. Graph-semantic functions add provision/hierarchy/definition context under constraints. `kg_context.py` supplies bounded, memoized, **non-citable** Stage-2 context. The route then normalizes the answer and reconciles wire references against the final prose. Consequently, generation-context changes can affect both answer text and the references ultimately emitted.
+The reconstructed R388 rubric has two answer-correctness axes: loose is a micro-average over criterion checks, while strict requires every criterion for an answer to pass. Its judge repeats answer/tone judgments three times at temperature 0.1 and grounds the prompt in verbatim provision text, but the criteria and reference answers are reconstructed—not the original evaluator’s annotations. The judge prompt also says extra material neither satisfies nor breaks a criterion. Consequently, a criteria pass by itself is not a complete audit for an incorrect extra assertion or a missing criterion in the reconstructed key. Keep row-level legal review and independent claim grounding for consequential changes.
 
-The project’s most important invariants remain sound:
+Where available, prefer original, independently adjudicated criteria and gold answers. Where they are unavailable, label the instrument “reconstructed” on every report, pin its version, and treat its results as comparative evidence about that fixed proxy—not as an official score or proof of legal correctness.
 
-- The pinned/canonical Act text, not a generated graph summary, is the citable legal authority.
-- KG is additive; graph-primary retrieval has previously buried operative provisions.
-- Mandatory/anchored evidence must survive any candidate budget or reranking.
-- No global top-K trimming or positional reference cap: historical full-corpus simulations showed gold-reference loss.
-- Keep heavy neural NLI/PyTorch out of the runtime path; historical testing found NLI slower and less accurate than lexical checks.
-- Treat a flag or module as active only after confirming the production callsite. The history contains inert flags and retrieval layers that did not execute until wired.
+### 2. Reference correctness comes second
 
-## Evidence with direct optimization relevance
+Evaluate the references emitted on the wire, separately from answer prose:
 
-### R448 concision measurements
+- **Loose/head coverage:** are all required Article/Annex heads present?
+- **Strict/grain coverage:** are the required coordinates/subpoints present at the needed specificity?
+- **Citation validity and faithfulness:** are the references real and do they support the claims they accompany? Flag missing governing provisions, irrelevant extras, and cite-and-mismatch cases.
+- **Gold-head safety:** for behavior-changing proposals, require **zero newly dropped gold heads**. Do not let a gain on one row or split offset a new loss on another.
 
-The paid paired screen used two reconstructed-gold questions with three draws per arm. It produced 12 valid answers, all triple-judged; 15 attempts were made, with three invalid/degraded attempts. All 30 criterion observations per arm passed, with no criterion changes. Mean answer length fell from **2,126.33 to 1,193.50 characters (−43.87%)**. With only two questions, this is a useful signal, not a general quality result.
+The reconstructed rubric’s loose reference axis is head recall and strict is coordinate recall (a more-specific descendant can satisfy an expected coordinate). Reference conciseness is a separate, count-based axis; it is not a substitute for citation precision or faithfulness. Never impose a citation cap or remove a reference to improve a count metric without first clearing correctness and reference gates.
 
-The stratified list/scenario run used 12 questions (six per stratum), three draws per arm and yielded 72 valid answers and 216 grouped judge calls. Each arm had 144 criterion observations: 141 passed, three failed, and none were unknown. The same Article 50(4) criterion failed on `rg_103` in both arms; there were no gains or losses. Mean length fell from **1,657.56 to 983.58 characters (−40.66%; −673.97 characters)**. The fixed cohort and repeated draws are useful, but the cohort is small and there is no confidence interval.
+### 3. Report the rest of the evaluation after the two correctness gates
 
-Both runs use **reconstructed** gold, not the original evaluator annotations. They establish a sizeable observed length difference with no observed criterion movement in these cohorts; they do **not** establish correctness improvement, broad non-inferiority, token/cost savings, or lower latency. Character count is not a substitute for provider-reported token counts. In the stratified results, all valid runs were labeled `kb_fallback`; that label alone does not establish that ontology, graph, or other supplements were absent.
+Publish all eight reconstructed axes individually: answer correctness loose/strict, answer conciseness, reference correctness loose/strict, reference conciseness, regulatory tone, and response speed. Also report relevant multi-turn/coherence checks separately; they are not a substitute for the eight-axis scorecard. Do not rely on the geometric-mean `overall` alone: a favorable aggregate can mask a material answer or reference failure.
 
-### Latency clues and older controlled work
+Conciseness is a secondary constraint. In the reconstructed official formula, answer conciseness is a one-sided length ratio: being shorter than the reference answer is not penalized by that axis, so omissions must be caught by correctness. Reference conciseness is also a count ratio, not a relevance judge. A shorter answer or smaller reference list is not inherently better.
 
-- The R448 Stage-2-primary preflight reported **6,645 ms** for a tiny 10-input-token/1-completion-token request. A judge preflight reported 866 ms. These are single preflight observations, not normal-answer latency distributions, but they are a strong reason to measure network/transport overhead before tuning generation settings.
-- The repository’s operational notes record that fast-mode/thinking-token changes did not resolve the wrapper/CLI latency floor. Avoid repeating that as an unmeasured latency experiment.
-- R403’s 110-row graph-semantic comparison reported RefStrict **+4.50 percentage points** (95% CI [+1, +9]) and `gold_dropped_head` improving 8→5; answer-axis intervals crossed zero. Keep the measured useful layer unless a larger controlled study changes the trade-off.
-- In a separate R403 gloss comparison, gloss-on had marginal/unproven quality impact and slower responses on 72/110 rows; the response-speed difference was −0.95 pp (95% CI [−1.88, +0.06]). Gloss remains OFF. This is a useful example of not paying for an optional context layer without demonstrated benefit.
-- R421’s historical sample attributed 49/51 engine-gap criteria to evidence already present in emitted references—suggesting generation/context use rather than raw recall was often the remaining failure. This is a sample, not a current population estimate; it argues against solving every miss by adding more retrieval.
-- R423 reported a positive need-proportional answer-contract result in a 27-row hard split with three generations (+13.93 pp overall in that sample). R422 attributed verbosity to a closed-set skeleton instruction rather than prompt size. Together these favor answering to the requested evidence/number of items, not imposing a universal short-answer template.
+## Measurement evidence
 
-## Ranked findings and proposals
+### R448: shorter answers, but no correctness or reference win established
 
-### 1. Remote Stage-2 transport is the first latency/cost investigation
+The paid screen compared a concise-answer contract OFF/ON on two reconstructed-gold questions (`rg_037`, `rg_085`), with three generations per arm per question. There were 15 attempts and 12 valid generations; the three invalid/degraded attempts were excluded by the artifact’s primary-serving and Stage-2 validity checks. The recorded answers were judged three times per answer by grouped Qwen judgments. On the ten listed criterion checks across the six valid draws in each arm, each arm passed **30/30**; there were no criterion changes. Mean answer length fell from **2,126.33 to 1,193.50 characters (−43.87%)**.
 
-**Impact:** Very high potential. **Confidence:** High that it merits measurement; medium on the size of production impact.
+This is a useful signal that the contract shortened these answers without changing the listed reconstructed criteria on this tiny sample. It is not evidence of an answer-correctness improvement, broad non-inferiority, complete legal factuality, reference correctness, token/cost savings, or a latency improvement. The artifact does not publish a paired reference-correctness result. The tracked gold is reconstructed, and two questions cannot support broad generalization.
 
-The path has a primary Stage-2 transport and Bedrock fallback, and Stage-2 model choice, context, retries, and fallback all affect latency/cost. R448’s single 6.6-second preflight is not enough to estimate p50/p95, but it shows the fixed cost can be material even for a tiny payload. Repeated retry/fallback policy spread across two wrappers is also a reliability and tail-latency risk.
+The stratified list/scenario run used 12 fixed questions (six per stratum), three draws per arm, and produced 72 valid generations and 216 grouped Qwen judgments. Each arm passed **141/144** criterion observations; the same Article 50(4) criterion failed on `rg_103` in both arms, with no gains or losses. Mean answer length fell from **1,657.56 to 983.58 characters (−40.66%; −673.97 characters)**. This is still a small cohort with reconstructed gold and no confidence intervals; it does not establish quality non-inferiority or a reference-correctness result. All valid generations were labeled `kb_fallback`; that label alone does not prove ontology, graph, vector, or other supplemental retrieval was absent.
 
-**Proposal:**
+The Stage-2 preflights—about **6.3–6.65 seconds** for a 10-input-token/1-completion-token request—are single observations, not a p50/p95 distribution and not representative answer latency. The runs capture answer length, not a controlled end-to-end cost or performance benefit.
 
-- Add per-request spans for route/engine, retrieval lanes, prompt assembly, primary Stage-2, fallback, retries, post-processing, and total wall time. Record provider/model/leg, prompt and completion tokens, retry count, cache status, and degraded outcome; aggregate p50/p95 and dollar cost by question class.
-- Introduce one Stage-2 dispatch contract with a **single total deadline** and explicit per-leg budget. Retry only within that budget; record why fallback occurred and which leg produced the answer. Keep the existing tunnel-primary → Bedrock fallback semantics until a measured policy change is approved.
-- In the same harness, compare the current model to a lower-cost default composer on a fixed, stratified paired cohort. Route to a higher-capability model only when the query class and evaluation show the extra spend is justified. This is a proposal, not a claim that a smaller model is already adequate.
-- Retain deterministic/curated Stage-2 skips that have an explicit guard and evidence. Test additional narrow skips only as an isolated treatment. Do **not** disable Stage-2 globally for “simple” questions: prior universal skip proposals are unsupported and can lose multi-part obligations or caveats.
+### R403 paired evidence: inspect answer correctness before taking a reference gain
 
-The R426 architecture review had already identified duplicated Stage-2 transport as its highest-value pure extraction (roughly 1,400 lines in that historical snapshot). That extraction should preserve behavior first; the measured optimization is the deadline/model/call policy, not the code move itself.
+The R403 `paired-L0-vs-L1.json` comparison has 110 shared rows. It reports:
 
-### 2. Turn the R448 concision signal into an actual cost experiment
+- Answer correctness loose: **−0.77 pp**, 95% CI **[−4.18, +2.48]**.
+- Answer correctness strict: **−0.91 pp**, 95% CI **[−5.45, +3.64]**.
+- Reference correctness loose: **+2.33 pp**, 95% CI **[0, +5.33]**.
+- Reference correctness strict: **+4.50 pp**, 95% CI **[+1, +9]**.
+- `gold_dropped_head`: **8 → 5**, with no new drops in B.
 
-**Impact:** High potential for output-token and downstream UX savings. **Confidence:** Medium for shorter outputs on these cohorts; low for cost/latency or broad safety impact.
+This is a meaningful candidate reference signal, not a demonstrated answer-correctness win. The answer intervals cross zero; that does not establish non-inferiority. Under the priority order in this review, validate answer correctness first, inspect row-level criterion regressions, then decide whether the reference gain is sufficient to retain the lever. The missing `docs/measurements/r403/CHECKPOINT.md` means the paired sidecar is the available record; do not imply a broader checkpoint analysis than exists.
 
-A roughly 41–44% reduction in answer characters is promising. It may lower completion tokens and improve usability, but the current runs do not include token usage, actual cost, or request timing. Shortening also risks omitting a limb in list/scenario questions; the unchanged Article 50(4) failure shows that concision did not repair the known gap.
+The R403 `paired-G0-vs-G1.json` comparison also has 110 shared rows. Answer correctness loose is **+1.55 pp** (95% CI **[−0.91, +3.97]**) and strict **+0.91 pp** (**[−2.73, +4.55]**); reference correctness loose is **+1.0 pp** (**[−2, +4]**) and strict **+0.5 pp** (**[−2.5, +3.5]**). Although aggregate `gold_dropped_head` improves **5 → 4**, the artifact identifies a **new drop on `rg_090`**. A better aggregate total does not erase that row-level loss under the zero-new-head-loss gate. Response speed changes **−0.95 pp** (95% CI **[−1.88, +0.06]**); B is slower on **72/110** rows (McNemar p=.00153). There is no established correctness/reference benefit to offset that performance cost.
 
-**Proposal:** Continue paired ON/OFF measurements on a larger, fixed cohort stratified by definition, direct article, list, exception, scenario, and multi-turn questions. Capture actual input/output tokens, provider cost, end-to-end latency, and judge criteria. Review failure cases manually, especially statutory lists and exception limbs. Keep each prompt/answer change isolated; do not infer that fewer characters imply fewer prompt tokens or faster completion.
+These R403 results are paired evidence under the reconstructed evaluation instrument; they do not prove official-scale correctness or non-inferiority. In particular, “the interval includes zero” is not a pass. No statistical margin or power claim should be invented after seeing the result.
 
-The desired policy is **need-proportional completeness**: cover every requested item and legal condition, but do not pad with unrelated provisions or restate the same evidence. Preserve explicit list coverage and exact caveats over a character target.
+### Older evidence that informs hypotheses, not current population estimates
 
-### 3. Make retrieval local-first, staged, and evidence-preserving
+- R421’s historical sample attributed **49/51** engine-gap criteria to evidence already present in emitted references. That suggests some observed misses arose from synthesis/use of retrieved evidence rather than recall alone; it is a sample, not a current rate. It argues for auditing answer claims against the evidence bundle before adding retrieval lanes.
+- R423 reported a positive need-proportional answer-contract result on a 27-row hard split with three generations (**+13.93 pp overall in that sample**). This supports testing question-proportional completeness; it does not override the primary correctness gates or establish a general result.
+- Historical retrieval findings remain relevant constraints: graph-primary retrieval has buried operative provisions; global top-K/reference trimming has dropped gold references; neural NLI was much slower and less accurate than lexical checks in its historical test. Revalidate callsites and current conditions before relying on an old flag or module description.
 
-**Impact:** Medium-to-high potential; reduces avoidable network work and context noise. **Confidence:** Medium for architecture; low for any specific lane removal without fresh ablation.
+## Evaluation instruments and their limits
 
-Current components cover lexical BM25, typed ontology material, TurboQuant/SVD semantic recall, constrained graph semantics, optional external embeddings, and reranking. The source review confirms gated/optional remote retrieval exists; this audit does not assert every lane runs on every request. Adding a lane indiscriminately can add latency and noise, while removing one without callsite and recall tests can silently drop rare provisions.
+| Instrument | Useful evidence | Does **not** establish |
+|---|---|---|
+| `evals.official.score_arm` + `paired_ab` | Reconstructed eight-axis rubric; paired row deltas, bootstrap CIs, per-row strict flips, and gold-head reporting when arms share rows and judge cache. | Original evaluator annotations or official score. The gold/criteria are reconstructed; the LLM judge is a proxy. A nonsignificant difference is not evidence of non-inferiority. |
+| Live `evals.harness.ab_judge` | Position-swapped pairwise live comparison of correctness, references, conciseness, and tone; useful for the prompt/answer path when the primary Stage-2 call and judge are demonstrably live. | Official criteria correctness: its correctness prompt uses expected keywords/references, and its reference prompt uses KB summaries, not a complete independent Act-grounded reference audit. The deterministic mode checks exact references/keywords and cannot validate prose changes. |
+| `evals.harness.easyhard_ab` | Gold-scored reference recall/strictness, count conciseness, keyword/tone proxies, row-level provenance, and the enforced gold-head-drop gate. | Full substantive answer correctness. It must be live/provenance-valid for Stage-2-dependent changes. Read the exit code: **0 PASS, 1 gold-head hard fail, 2 indeterminate, 3 VOID**; 30 rows is only a smoke-run floor, not evidence of statistical power. |
+| `evals.judge.grounded` | Post-hoc answer correctness, reference correctness, and citation faithfulness judgments against verbatim Act text. | Independent completeness when the available gold context is incomplete. Its answer axis can fall back to text selected by predicted citations unless strict independent grounding is required; its reference recall cannot be complete without independent gold coverage. |
+| Request telemetry | Actual request/call liveness, serving leg, retries, cache events, wall time, reported usage, and bounded resource diagnostics. | Any answer or citation correctness, completeness, grounding, or quality lift. |
 
-**Proposal:** Evaluate a cascade against the actual active call graph:
+For answer-changing work, run the repository-mandated **live** `ab_judge` and `easyhard_ab` merge gates and inspect their sidecars, status, and exit codes. They are necessary project checks, not a replacement for the answer-first criteria/factuality review and the separate reference-correctness gate described here. Verify that the intended arm actually reached the wire, that Stage-2 was served by the expected leg, and that all judged rows have live results; a dead judge, deterministic fallback, stale cache, or fallback-served arm can make a plausible-looking delta vacuous.
 
-1. Start with exact article/annex anchors plus local BM25 and ontology expansion.
-2. Use TurboQuant/SVD semantic recall where lexical coverage is weak or the question requires paraphrase/concept matching; keep its candidates tied to canonical source IDs.
-3. Expand via KG only from relevant/anchored candidates; use it for relations, subpoints, hierarchy, or useful non-citable explanation—not as the primary legal-text ranker.
-4. Apply a reranker only to a bounded candidate pool **after protecting explicit anchors and mandatory related provisions**. Compare local ranking to any Cohere/external call on both quality and cost. Keep external embeddings separately opt-in unless they have a demonstrated net benefit.
-5. Resolve selected evidence to exact operative text before generation; send a deduplicated, token-budgeted evidence bundle. Budget optional summaries/context first, never silently cut required statutory limbs.
+## Quality-first experiment and release gates
 
-This is a measurement hypothesis, not authorization to turn off vector/graph/reranking flags. Use relevance/recall and gold-reference retention at each stage; no global top-K cap.
+Measurement validity is a prerequisite for every gate, not a competing quality objective. Before interpreting a result, pin the cohort and its source, gold/rubric/judge versions, arm code/config, Stage-2 model and serving leg, and cache policy. Use the same question IDs and comparable draws in both arms; preserve per-row outputs and criterion verdicts; use the same judge identity/cache for paired answer judgments; prove the relevant treatment changed at the actual callsite/wire. Do not run concurrent wrapper-bound jobs against the single local proxy.
 
-### 4. Separate evidence selection, answer claims, and wire-reference finalization
+### Gate 1 — answer correctness
 
-**Impact:** High correctness/debuggability; indirect performance impact via less duplicate work and clearer token budgeting. **Confidence:** High on architectural duplication from prior audit; exact current savings unmeasured.
+- Score substance and completeness before conciseness or speed. Report loose and strict criteria axes plus per-question pass/fail flips and criterion-level changes.
+- Independently audit material false, unsupported, contradictory, or missing claims against the relevant Act text. Do not let a citation chosen by the candidate be the sole source of “independent” answer grounding.
+- Investigate every candidate-side criterion loss and every material new factual error. A confirmed substantive regression blocks promotion. If the evidence is too uncertain to determine safety, hold or expand/adjudicate the evaluation; do not convert “not statistically significant” into “safe.” Define any non-inferiority margin and decision procedure before the run, based on the application’s risk and an adequate study—not a post-hoc guess.
 
-The engine drafts/grounds an answer, while the route applies separate answer and reference passes. This makes the reference result depend on prose and has historically required fixes in multiple layers. A typed evidence object can also stop graph summaries and candidate snippets from being confused with canonical legal text.
+### Gate 2 — reference correctness
 
-**Proposal:** Define a behavior-preserving interface around a single request-scoped `EvidenceBundle`: canonical source ID, exact text/version, provision/subpoint, retrieval provenance, and mandatory/optional status. Have a claim plan refer to evidence IDs; let one finalizer produce prose-linked wire references from the claim/evidence structure. Keep a compatibility adapter for the existing response contract during migration. This is a staged extraction, not a rewrite of citation rules in the same change.
+- On the same rows, score head recall and full-coordinate recall, inspect wrong/irrelevant citations and cite-and-mismatch cases, and verify emitted references against canonical statutory text.
+- Require zero newly dropped gold heads. Report row IDs and dropped coordinates; do not net a new loss against an improvement elsewhere.
+- Evaluate reference correctness before reference conciseness. A lower reference count is not a win if a governing head or needed subpoint is lost.
 
-Use byte-for-byte replay of recorded draws to gate the move. Only then test a structured claim-output format or changes to reference reconciliation as separate behavior changes.
+### Gate 3 — all other quality metrics
 
-### 5. Simplify large modules by extracting seams, not deleting code
+Report each remaining reconstructed-rubric axis, sample sizes, uncertainty, and per-row direction; also run the relevant multi-turn/coherence checks. Do not let the geometric mean, answer length, or a tone pass conceal an answer/reference failure. Call out that conciseness formulas are reconstructed and do not independently detect omissions.
 
-**Impact:** High maintenance and change-safety value; low direct request-time savings. **Confidence:** High for the historical snapshot; current LOC should be re-counted before implementation.
+### Gate 4 — performance and cost
 
-The R426 audit found that two large modules were dominated by a few oversized functions; only two unused top-level functions totalling 14 LOC were identified in its top-20 scan. It measured a 3,660-line route handler, a 986-line cache-key function, and substantial duplicated Stage-2 transport (historical counts). This is not a large dead-code cleanup opportunity. `_engine_cache_key` being long is a maintainability risk, but computing fewer Python lines is unlikely to move latency beside a remote model call.
+Only after Gates 1–3 pass, compare end-to-end and per-stage latency distributions, provider-reported input/output token distributions, retries/fallbacks, cache effects, and known metered cost coverage. Use a representative unbiased sample for p50/p95; do not infer latency from one preflight or character count, and keep flat-subscription use separate from metered spend. If multiple candidates meet the quality bar, these measurements can select the more efficient one. If they do not, performance does not compensate.
 
-**Proposal/order:**
+## Ranked recommendations
 
-1. Extract one Stage-2 transport/policy seam, behavior-preserving.
-2. Establish the evidence/claim bundle and finalizer seam.
-3. Derive cache identity from an explicit registry of response-changing inputs instead of hand-transcribing a very large key. Preserve the existing cache-key completeness test and include all engine-side response-changing flags; do not key route-only passes that always run on cache hits unless they change the cached object.
-4. Split the route orchestration into typed phases after concurrent edits to that module are clear.
+### 1. Strengthen answer-correctness evidence before tuning the answer path
 
-Do not do a big-bang route rewrite, speculative dead-code deletion, or behavioral changes bundled with pure moves. Existing cache identity invariants remain mandatory.
+**Quality impact:** Highest. **Evidence confidence:** High that the current instrument has limits; no claim that a specific fix has already improved production answers.
+
+Create and version an answer-evaluation set whose question, criteria, full gold answer or independently grounded claim set, and relevant Act-text coverage can be audited. Prefer original evaluator annotations if they are available; otherwise maintain the reconstructed gold with provenance, revision history, and independent adjudication for critical rows. Pin judge identity/repeats and fail closed on missing/dead judgments. Report per-row strict correctness and factuality issues, not only a mean or geometric score.
+
+This is the prerequisite for trustworthy optimization: the current judge can miss errors in unscored extra claims, and reconstructed criteria can omit a required condition.
+
+### 2. Make reference correctness a separate second-stage gate
+
+Track head recall, coordinate/grain recall, valid canonical form, citation faithfulness, governing-provision precision, and every row-level gold-head loss. Keep mandatory/anchored evidence protected through retrieval and reranking. Reference transformations must prove zero new gold-head loss and be evaluated independently from answer prose when possible.
+
+Do not conflate the reconstructed strict recall axis with full citation precision: separately inspect irrelevant citations and claims unsupported by their cited text. Do not use reference-count reduction as the target until this gate passes.
+
+### 3. Test need-proportional completeness; treat R448 shortening as a hypothesis
+
+The R448 answer-length change merits a larger paired follow-up, not rollout on the strength of characters saved. Use a fixed, stratified set covering direct provision, definitions, explicit lists, exceptions, scenarios, semantic/paraphrase questions, and multi-turn follow-ups. Preserve requested list members, conditions, exceptions, and branches. Judge answer correctness first, references second, then all remaining axes; keep each answer-contract change isolated and inspect failures such as the recurring Article 50(4) miss.
+
+Measure actual output tokens and end-to-end latency only as later outcomes. Do not claim that fewer characters imply fewer billable tokens, lower latency, or equivalent legal coverage.
+
+### 4. Separate evidence selection, answer claims, and reference finalization
+
+**Quality impact:** High potential for correctness and auditability; runtime savings are unmeasured.
+
+Define a request-scoped, typed `EvidenceBundle` with canonical source ID/version, exact operative text, provision/subpoint, retrieval provenance, and mandatory/optional status. Let answer claims point to evidence IDs, then finalize wire references from the claim/evidence structure rather than inferring the entire reference set from generated prose. Keep generated summaries non-citable and retain a compatibility adapter for the response contract.
+
+First extract the existing behavior without changing it and require byte-identical recorded-draw replay (answer, reference set/order, and relevant trace). Only after that should a separately gated experiment alter claim planning or reference reconciliation. The separation makes answer correctness the first inspection and citation correctness the next, while preserving their real coupling.
+
+### 5. Keep retrieval staged and evidence-preserving
+
+**Quality impact:** Potentially high; no individual lane should be removed based on architecture intuition alone.
+
+Evaluate the active call graph, then compare one retrieval treatment at a time:
+
+1. Preserve exact article/annex anchors and mandatory provisions.
+2. Use local BM25/ontology recall as appropriate; evaluate semantic vector recall for genuine paraphrase/concept coverage.
+3. Expand through KG only from relevant/anchored candidates; treat KG summaries as non-citable context, not statutory authority or a generic primary ranker.
+4. Apply a reranker only after required evidence is protected; compare the actual external call to local ranking for correctness/reference value and later cost.
+5. Resolve selected evidence to exact operative text before generation; optional summaries/context are the first material to budget, never silently cut required statutory limbs.
+
+No global top-K clamp, graph dump, or flag removal is authorized by this review. Verify production callsites and stage-by-stage gold retention; component construction or a `kb_fallback` label does not prove a lane did or did not execute.
+
+### 6. Make Stage-2 dispatch and degraded answers auditable before changing model policy
+
+Unify the primary/fallback transport behind one explicit dispatch/deadline policy as a behavior-preserving reliability seam. Record the actual serving leg and distinguish a successful completion from a deterministic degraded answer. A pure extraction should be replay-equivalent; a change to model, retry, timeout, fallback, prompt, or skip policy is a behavior change and must pass the quality gates.
+
+Do not choose a cheaper default model, disable Stage-2 globally, or add a “simple question” skip until the candidate has passed answer correctness first and reference correctness second on a valid paired evaluation. R448’s single preflight is not a basis for a model or deadline decision.
+
+### 7. Establish operational performance data, then optimize a measured hotspot
+
+**Performance impact:** Potentially high. **Current evidence:** insufficient for production distributions or savings.
+
+Use bounded request-local telemetry to attribute wall time, physical provider calls/retries, serving leg, reported usage, cache result, and selected retrieval work. Once a quality-qualified baseline exists, use an unbiased sample for p50/p95 and price-schedule coverage; then target one demonstrated hotspot per experiment. Do not assign per-call marginal cost to a flat Claude Max subscription, and do not mistake process-global counters or warmed shared cache effects for per-request measurements.
+
+The companion `docs/reviews/r448-request-telemetry-design-2026-09-28.md` is an observability design only. Its events are not a quality score and cannot satisfy Gates 1–3.
+
+### 8. Extract large-module seams for change safety, not imagined speed
+
+Prior architecture audits found large functions and duplicated transport, but historical line counts are not current request-time evidence. Prefer behavior-preserving Stage-2/evidence/finalizer seams, then derive cache identity from an explicit set of response-changing inputs while retaining the cache-key completeness tests. Avoid a big-bang route rewrite, speculative dead-code deletion, or bundling a behavior change with an extraction. Recount the current files and prove tracked imports before implementation.
 
 ## Target architecture
 
 ```text
-request + short history
-  → typed intent / answer need
-  → local exact + BM25 + ontology recall
-  → conditional TurboQuant semantic recall
-  → constrained KG expansion and optional reranking
-  → source-resolved, deduplicated EvidenceBundle
-  → deterministic answer OR one low-cost LLM composition call
-  → deterministic claim/reference finalizer
-  → response + trace
+question + relevant history
+  → typed intent and explicit answer requirements
+  → exact anchors + staged local/semantic recall
+  → constrained, evidence-preserving KG expansion
+  → source-resolved EvidenceBundle (canonical text + provenance)
+  → deterministic answer or quality-qualified synthesis
+  → answer correctness review against independent evidence
+  → claim-linked reference finalization and reference correctness checks
+  → complete response scorecard / relevant multi-turn checks
+  → operational telemetry for latency, calls, usage, cache, and cost
 ```
 
-A low-cost LLM should arrange grounded evidence, not decide what the law says from a risk-tier graph dump. Preserve exact Act text and source-version identity. Use semantic retrieval to find candidates, ontology/KG to express relationships, and reranking to order candidates—not to erase mandatory evidence. Keep agent loops out of the default path unless a measured use case requires them.
-
-## Measurement and rollout gates
-
-For every behavior-changing optimization, compare one lever at a time on the same fixed question set with randomized/paired arms and repeated generations. Stratify at minimum by direct provision, definitional, list, exception, scenario, semantic/paraphrase, and multi-turn questions. Record:
-
-- p50/p95 end-to-end and per-stage latency, not just model-reported time;
-- input/output tokens and cost per request, model/provider/leg, retries, timeouts, cache hits, and degraded/fallback rate;
-- exact answer criteria, required-list/exception coverage, reference precision/recall and `gold_dropped_head`, answer need/conciseness, and unchanged-vs-changed cases.
-
-Pre-register a non-inferiority margin for correctness and reference retention before comparing cost/latency. The R448 cohorts are too small to establish one. Use the project’s live `ab_judge` and `easyhard_ab` gates for prompt/answer changes, reading `easyhard_ab`’s exit code (only 0 passes; 1 fails; 2 is indeterminate). These instruments are still proxies: the reconstructed R388 gold is not the original official annotation, and neither harness alone proves superiority to the competition frontier. For pure extractions, run recorded-draw byte-identical replay (answer, reference set/order, and relevant trace), tracked-module/import checks, cache-key AST checks, and tests before any behavior experiment.
+This is a quality architecture, not a mandate to add a verifier call to every request. First preserve behavior and establish where errors originate. Any online validator, model escalation, retrieval cascade, or extra call must itself be evaluated for answer and reference quality before its latency/cost is considered.
 
 ## Explicit non-recommendations
 
-- No graph-primary retrieval or generic risk-tier graph dump.
-- No global top-K/reference cap or positional trimming.
-- No universal Stage-2 skip, blind switch to a cheaper model, or conclusion that a smaller prompt automatically improves latency.
-- No external embedding/reranking enablement without a measured value/cost comparison.
-- No NLI/PyTorch dependency, agent loop, or broad rewrite to make modules look smaller.
-- No claim of official-frontier superiority, production p95, correctness lift, or cost reduction from the current R448 artifacts.
+- Do not optimize response speed, token count, cost, character count, reference count, or the geometric-mean `overall` ahead of answer correctness and reference correctness.
+- Do not call R448 “non-inferior” or a correctness win; it has short samples, reconstructed criteria, and no paired reference-correctness result.
+- Do not treat a p-value above a threshold, a confidence interval crossing zero, or a smoke-run floor as proof of safety.
+- Do not let fewer citations, an overall gold-drop reduction, or a gain on one row mask a newly dropped gold head on another.
+- Do not claim `ab_judge`, `easyhard_ab`, a deterministic keyword/ref check, or telemetry alone proves substantive legal answer correctness.
+- Do not promote graph-primary retrieval, generic context dumps, a global top-K/reference cap, universal Stage-2 skip, or a cheaper model without an active-callsite and valid quality evaluation.
+- Do not add NLI/PyTorch, an agent loop, broad rewrite, or speculative dead-code cleanup as a performance shortcut.
 
 ## Source map
 
-- Runtime path and contracts: `app/routes/regenold.py`, `app/engines/_graph_rag_impl.py`, `app/llm/stage2.py`, `app/llm/stage2_policy.py`.
-- Retrieval and evidence: `app/data/kb_search.py`, `app/engines/turboquant_index.py`, `app/engines/embeddings_index.py`, `app/engines/vector_recall.py`, `app/engines/graph_semantic.py`, `app/engines/kg_context.py`, `app/engines/cohere_rerank.py`.
-- Historical architecture: `docs/reviews/r426-bigfile-architecture-audit.md`, `docs/reviews/r421-missed-issues-and-remediation-plan.md`, `docs/reviews/r411-architecture-audit.md`.
-- Controlled findings: `docs/measurements/r403/CHECKPOINT.md`, `docs/measurements/r403/paired-G0-vs-G1.json`, `docs/measurements/r403/paired-L0-vs-L1.json`, `docs/measurements/r423/CHECKPOINT.md`.
-- R448 paired artifacts: `docs/measurements/r448/paid-screen-rg037-rg085-20260927/` and `docs/measurements/r448/paid-stratified-list-scenario-20260928/`.
-- Project gates and invariants: `AGENTS.md`.
+- Evaluation rules/invariants: `AGENTS.md`, `CLAUDE.md`.
+- Reconstructed rubric and paired scorer: `evals/official/rubric.py`, `evals/official/judge.py`, `evals/official/score_arm.py`, `evals/official/paired_ab.py`.
+- Live proxy and reference gate: `evals/harness/ab_judge.py`, `evals/harness/pairwise_prompts.py`, `evals/harness/easyhard_ab.py`, `evals/harness/gate_validity.py`.
+- Act-grounded post-hoc judge: `evals/judge/grounded.py`.
+- R403 paired evidence: `docs/measurements/r403/paired-L0-vs-L1.json`, `docs/measurements/r403/paired-G0-vs-G1.json` (no consolidated R403 `CHECKPOINT.md` was present in this review).
+- R448 paid screen: `docs/measurements/r448/paid-screen-rg037-rg085-20260927/`.
+- R448 stratified list/scenario run: `docs/measurements/r448/paid-stratified-list-scenario-20260928/`.
+- Runtime seams to verify at implementation time: `app/routes/regenold.py`, `app/engines/_graph_rag_impl.py`, `app/engines/kg_context.py`, `app/llm/openai_wrapper_provider.py`, `app/llm/bedrock_client.py`, `app/llm/stage2_policy.py`, `app/engines/cohere_rerank.py`.
+- Prior architecture/evidence: `docs/reviews/r426-bigfile-architecture-audit.md`, `docs/reviews/r421-missed-issues-and-remediation-plan.md`, `docs/reviews/r411-architecture-audit.md`, `docs/measurements/r423/CHECKPOINT.md`.
