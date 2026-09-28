@@ -1427,6 +1427,10 @@ def _engine_cache_key(
             # wire (`Article 13` -> `Article 13.3`), so a same-process A/B
             # differing only here must not share a cache entry.
             "REGENOLD_REF_GRAIN_DEEPEN",
+            # R452 — vetoes a deepened coordinate supported only by Act-wide
+            # vocabulary or by an answer that lists the annex's points, so the
+            # wire keeps the bare head (`Annex III.7.b` -> `Annex III`).
+            "REGENOLD_GRAIN_QUESTION_SUPPORT",
             # R397 — folds a coordinate the Regulation does not contain back
             # onto its head (`Article 13.9` -> `Article 13`). Changes the wire
             # reference list, so it needs its own cache-key slot.
@@ -3763,6 +3767,35 @@ def _ref_grain_deepen_enabled() -> bool:
     )
 
 
+def _grain_question_support_enabled() -> bool:
+    """R452 — the deepener abstains when its evidence is vocabulary, not content.
+
+    Two live citation defects on production ``8700e15``, both reproduced
+    offline and traced through :func:`_pick_unit`:
+
+    * ``What are AI systems with minimal risks?`` shipped ``Article 5.1.d``
+      (predictive policing) and ``Article 6.3.d`` (preparatory task) for an
+      answer that uses Article 5 and Article 6 as WHOLE provisions. At every
+      pick the only question token shared with the chosen unit was ``risk``,
+      which occurs in 31 % of the Regulation's paragraphs and points.
+    * The Annex III amendment question (rg_018) and the area/use-case question
+      (rg_096) shipped ``Annex III.7.b`` (migration risk assessment). Both
+      answers LIST the eight Annex III areas, so point 7's heading words are in
+      the answer; the question contributes ``risk`` again.
+
+    Audit Finding 1 already requires question support for a candidate; the
+    defect is that any shared token counted. The guard is VETO-ONLY: it can turn
+    a deepened coordinate back into the bare head, never pick a different unit
+    and never add or remove a provision, so the folded head set, the reference
+    count, Ref. Loose and Ref. Conciseness are invariant by construction.
+
+    Default ON with deny-list opt-out (=0 / =false / no / off disables it).
+    """
+    return os.getenv("REGENOLD_GRAIN_QUESTION_SUPPORT", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
 #: A winning paragraph must carry at least this much question+answer overlap
 #: (``_GRAIN_MIN_TOP``) and beat the runner-up by this margin
 #: (``_GRAIN_MIN_MARGIN``) before we commit to a coordinate.
@@ -3809,6 +3842,15 @@ def _ref_grain_deepen_enabled() -> bool:
 #: finding. It is kept as a degenerate-case floor, not as a tuned parameter.
 _GRAIN_MIN_TOP = 3
 _GRAIN_MIN_MARGIN = 1
+
+#: R452 — a token found in at least this share of the Regulation's paragraphs,
+#: points and definitions cannot single one of them out (``risk`` 0.31,
+#: ``provider`` 0.27, ``high`` 0.25, ``purpose`` 0.25, ``commission`` 0.22 of
+#: 655 units). Question support built only from such tokens is no support.
+_GRAIN_GENERIC_DF = 0.2
+#: R452 — an answer naming this many of an annex's points by their heading is
+#: describing the annex as a whole, so no single point is its coordinate.
+_GRAIN_ENUMERATION_MIN = 3
 
 _GRAIN_HEAD_RE = re.compile(r"^(Article\s+(\d{1,3})|Annex\s+([IVXL]+))$")
 _GRAIN_LEAF_RE = re.compile(r"^(Article\s+\d{1,3}|Annex\s+[IVXL]+)\.")
@@ -4509,7 +4551,7 @@ def _prose_named_annex_point(roman: str, answer: str, units: dict):
     return _resolve_prose_named_annex_point(roman, answer, units)[1]
 
 
-def _pick_unit(units: dict, q_tok: set, a_tok: set):
+def _pick_unit(units: dict, q_tok: set, a_tok: set, *, require_support: bool = True):
     """The one unit the question+answer point at, or ``None`` to abstain.
 
     The QUESTION decides which rule is operative and is weighted double; the
@@ -4538,7 +4580,73 @@ def _pick_unit(units: dict, q_tok: set, a_tok: set):
     second = scored[1][1] if len(scored) > 1 else 0
     if top[1] < _GRAIN_MIN_TOP or (len(scored) > 1 and top[1] - second < _GRAIN_MIN_MARGIN):
         return None
+    if require_support and _grain_question_support_enabled() and not (
+        (q_tok - _grain_generic_tokens()) & _pt._tokens(units[top[0]])
+    ):
+        return None  # R452 — the question shares only Act-wide vocabulary with it
     return top[0]
+
+
+@lru_cache(maxsize=1)
+def _grain_generic_tokens() -> frozenset[str]:
+    """R452 — tokens in at least ``_GRAIN_GENERIC_DF`` of the Regulation's units.
+
+    Computed once from the same provision text the deepener scores against:
+    every Article's paragraphs (Article 3's definitions) and every Annex's
+    points. Empty on any failure, which leaves the veto inert rather than
+    blocking every pick.
+    """
+    try:
+        from app.data import provision_text as _pt  # noqa: PLC0415
+
+        texts: list[str] = []
+        for n in range(1, 114):
+            body = _pt.article_body(f"Article {n}")
+            if body:
+                units = _pt._definitions(body) if n == 3 else _pt._paragraphs(body)
+                texts.extend(str(t) for t in (units or {}).values())
+        for roman in ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII"):
+            body = _pt.article_body(f"Annex {roman}")
+            if body:
+                texts.extend(str(t) for t in (_pt._annex_items(body) or {}).values())
+        if not texts:
+            return frozenset()
+        df: dict[str, int] = {}
+        for t in texts:
+            for tok in _pt._tokens(t):
+                df[tok] = df.get(tok, 0) + 1
+        floor = _GRAIN_GENERIC_DF * len(texts)
+        return frozenset(tok for tok, c in df.items() if c >= floor)
+    except Exception:  # noqa: BLE001 — a missing corpus must not block the route
+        return frozenset()
+
+
+def _answer_enumerates_units(units: dict, answer: str) -> bool:
+    """R452 — does the answer name ``_GRAIN_ENUMERATION_MIN`` units by heading?
+
+    An annex point opens with its heading, ending at the first colon (``Law
+    enforcement, in so far as their use is permitted ...:``). A heading counts
+    as named when at least half of its tokens are in the answer. Headings are
+    read only where the colon comes early, so a unit without one never counts.
+    """
+    from app.data import provision_text as _pt  # noqa: PLC0415
+
+    a_tok = _pt._tokens(answer or "")
+    if not a_tok:
+        return False
+    named = 0
+    for text in units.values():
+        t = str(text)
+        colon = t.find(":")
+        if colon <= 0 or colon > 160:
+            continue
+        heading = re.split(r",?\s+in so far as\b", t[:colon], maxsplit=1, flags=re.I)[0]
+        toks = _pt._tokens(heading)
+        if toks and 2 * len(toks & a_tok) >= len(toks):
+            named += 1
+            if named >= _GRAIN_ENUMERATION_MIN:
+                return True
+    return False
 
 
 def _deepen_within(coord: str, text: str, q_tok: set, a_tok: set, budget: int) -> str:
@@ -4688,12 +4796,15 @@ def _deepen_one_ref(ref: str, question: str, answer: str) -> str:
             else:
                 won = _pick_unit(q_units, q_tok, a_tok)
         elif art_num == 3:
+            # R452 — a definition is selected by its defined term, and a question
+            # that names the term ("how is 'risk' defined?") supports it even
+            # when the term is Act-wide vocabulary, so the vocabulary veto is off.
             if "conformity assessment body" in _q_low:
-                won = 21 if 21 in units else _pick_unit(q_units, q_tok, a_tok)
+                won = 21 if 21 in units else _pick_unit(q_units, q_tok, a_tok, require_support=False)
             elif "conformity assessment" in _q_low and "body" not in _q_low:
-                won = 20 if 20 in units else _pick_unit(q_units, q_tok, a_tok)
+                won = 20 if 20 in units else _pick_unit(q_units, q_tok, a_tok, require_support=False)
             else:
-                won = _pick_unit(q_units, q_tok, a_tok)
+                won = _pick_unit(q_units, q_tok, a_tok, require_support=False)
         elif art_num == 44:
             # R390 — cea6cba forced Article 44.1 on any question containing
             # "validity". Verbatim: 44(1) is the LANGUAGE rule ("drawn-up in a
@@ -4729,6 +4840,12 @@ def _deepen_one_ref(ref: str, question: str, answer: str) -> str:
             else:
                 won = _pick_unit(q_units, q_tok, a_tok)
         else:
+            if (
+                m.group(3)
+                and _grain_question_support_enabled()
+                and _answer_enumerates_units(units, answer)
+            ):
+                return ref  # R452 — the answer describes the annex as a whole
             won = _pick_unit(q_units, q_tok, a_tok)
 
         if won is None:

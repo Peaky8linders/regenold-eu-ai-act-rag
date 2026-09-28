@@ -6956,7 +6956,12 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
                 "and deployers remain subject to Article 4 AI literacy duties and "
                 "may adopt voluntary codes of conduct under Article 95."
             ),
-            "refs": ["Art. 5", "Art. 6", "Art. 50"],
+            # R452 — Articles 4 and 95 are seeded, not left to the prose pass.
+            # The earlier premise was that _add_prose_named_refs adds them on the
+            # live path, but that pass is _stage2_landed-gated and this curated
+            # answer skips Stage-2, so production shipped only the three
+            # contrast refs while the answer states both duties.
+            "refs": ["Art. 4", "Art. 5", "Art. 6", "Art. 50", "Art. 95"],
         }
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]

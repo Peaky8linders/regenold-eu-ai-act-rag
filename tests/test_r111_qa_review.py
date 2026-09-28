@@ -76,11 +76,12 @@ class TestR111MinimalRisk:
         # Must NOT be the old high-risk risk-management / FRIA dump.
         assert "risk-management system" not in low
         assert "fundamental rights impact" not in low
-        # Clean contrast refs only — no high-risk Chapter III articles. The
-        # Article 4 / 95 anchors are stated in the prose and reach the wire via
-        # _add_prose_named_refs on the live path; seeding them here as well
-        # would double-count against the pure-count Ref. Conciseness axis.
-        assert set(refs) == {"Art. 5", "Art. 6", "Art. 50"}
+        # Contrast refs plus the two duties the answer states — no high-risk
+        # Chapter III articles. R452 corrected the earlier premise that the
+        # Article 4 / 95 anchors reach the wire via _add_prose_named_refs on the
+        # live path: that pass is _stage2_landed-gated and this curated answer
+        # skips Stage-2, so production shipped Articles 5, 6 and 50 only.
+        assert set(refs) == {"Art. 4", "Art. 5", "Art. 6", "Art. 50", "Art. 95"}
 
 
 # ── Q7 — guiding principles (all 7, incl. accountability) ────────────────
