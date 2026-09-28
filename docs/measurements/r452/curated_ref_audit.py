@@ -3,40 +3,48 @@
 A curated intercept skips Stage-2, and every prose->refs pass is
 ``_stage2_landed``-gated, so a provision the curated answer names reaches the
 wire only if the intercept seeds it (the minimal-risk Articles 4 and 95 miss).
-This walks every dict literal carrying constant ``"answer"`` and ``"refs"`` keys
-in the engine and prints each head the answer names that the refs lack, with the
-sentence it sits in, so each can be judged operative or contrastive.
+This walks every dict literal carrying ``"answer"`` and ``"refs"`` keys in the
+engine and the route and prints each head the answer names that the refs lack,
+with the sentence it sits in, so each can be judged operative or contrastive.
+Heads are read with ``answer_completeness.named_heads`` (the route's own parser),
+so plural and range forms ("Articles 13 and 50", "Articles 9 to 15") count.
+Dicts whose answer or refs are not literals are listed rather than skipped
+silently.
 
     py -3.12 docs/measurements/r452/curated_ref_audit.py
 """
 from __future__ import annotations
 
 import ast
+import os
 import re
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPO))
+os.environ.setdefault("REGENOLD_SKIP_DOTENV", "1")
+
+from app.engines.answer_completeness import named_heads  # noqa: E402
+
 FILES = [REPO / "app" / "engines" / "_graph_rag_impl.py", REPO / "app" / "routes" / "regenold.py"]
-_HEAD_RE = re.compile(r"\b(?:Article|Art\.)\s+(\d{1,3})\b|\bAnnex\s+([IVXL]+)\b")
 
 
 def _heads(text: str) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for sent in re.split(r"(?<=[.;])\s+", text):
-        for m in _HEAD_RE.finditer(sent):
-            head = f"Article {m.group(1)}" if m.group(1) else f"Annex {m.group(2)}"
+        for head in named_heads(sent):
             out.setdefault(head, []).append(sent.strip())
     return out
 
 
 def _ref_head(ref: str) -> str:
-    ref = ref.strip().replace("Art. ", "Article ")
-    return ref.split(".")[0] if ref.startswith("Article") else ref.split(".")[0]
+    return ref.strip().replace("Art. ", "Article ").split(".")[0]
 
 
 def main() -> int:
     findings = 0
+    skipped: list[str] = []
     for path in FILES:
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
@@ -47,9 +55,10 @@ def main() -> int:
                 continue
             answer = node.values[keys.index("answer")]
             refs = node.values[keys.index("refs")]
-            if not (isinstance(answer, ast.Constant) and isinstance(answer.value, str)):
-                continue
-            if not isinstance(refs, ast.List) or not all(isinstance(e, ast.Constant) for e in refs.elts):
+            if not (isinstance(answer, ast.Constant) and isinstance(answer.value, str)) or not (
+                isinstance(refs, ast.List) and all(isinstance(e, ast.Constant) for e in refs.elts)
+            ):
+                skipped.append(f"{path.name}:{node.lineno}")
                 continue
             name = node.values[keys.index("name")].value if "name" in keys and isinstance(
                 node.values[keys.index("name")], ast.Constant) else "?"
@@ -62,6 +71,7 @@ def main() -> int:
                 for head, sents in missing.items():
                     print(f"    missing {head}: {sents[0][:160]}")
     print(f"\ncurated dicts with answer-named heads missing from refs: {findings}")
+    print(f"dicts not audited (non-literal answer or refs): {len(skipped)} {skipped}")
     return 0
 
 

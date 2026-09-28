@@ -1,20 +1,24 @@
-"""R452 — replay the question-support veto over every recorded live answer.
+"""R452/R452b/R452c — the grain-deepener guards, measured on every recorded live answer.
 
-For each recorded graded turn (answer + wire references) whose question has a
-reconstructed gold key, every wire sub-point is traced back to its head, and the
-head is re-deepened with the veto OFF and ON. Where OFF reproduces the shipped
-coordinate and ON returns something else, the shipped coordinate is replaced by
-the ON result. The three reference axes are then scored with the REAL
-``evals.official.rubric`` on both reference lists.
+Counterfactual method (from the R452c review): every graded turn's wire references
+are folded onto their heads, and the heads are re-deepened through the real
+``_deepen_ref_grain`` with ALL R452-family guards off (the pre-R452 deepener) and
+with the flags at their defaults. Both arms see the same question, answer and
+heads, so the difference is the guards alone. Scored with the real
+``evals.official.rubric`` against the reconstructed gold keys. The earlier replay
+only re-examined references the deepener had produced and could not see gold
+leaves the enumeration veto removed from recorded bare heads (rg_093, rg_029).
 
-Upper bound on the cost: a vetoed coordinate the answer's prose names explicitly
-would be restored by the prose sub-point passes on the live path; this replay
-does not credit that.
+Per-coordinate accounting: a coordinate the guards change is a WRONG pick removed
+when it met no gold key more precisely than its head, and a CORRECT pick lost when
+it did. The ``live`` arm leaves heads whose sub-points the answer's own prose names
+to the prose: on the live path ``_surface_prose_subpoints`` puts those leaves on the
+wire BEFORE the deepener runs, so the deepener never decides them there.
 
-    py -3.12 docs/measurements/r452/grain_question_support_replay.py [RESULTS_DIR] [--flag=NAME]
+    py -3.12 docs/measurements/r452/grain_question_support_replay.py RESULTS_DIR
 
-``--flag`` picks the veto to measure; every other flag keeps its default, so
-``--flag=REGENOLD_GRAIN_DISCRIMINATING_SUPPORT`` reads R452b's increment over R452.
+RESULTS_DIR is required (``evals/bench/results`` is gitignored and holds the recorded
+live checkpoints; a worktree has none). The run refuses fewer than 1,000 turns.
 """
 from __future__ import annotations
 
@@ -37,8 +41,13 @@ from evals.official.rubric import (  # noqa: E402
 )
 
 GOLD = REPO / "docs" / "measurements" / "r388" / "official_gold_n110.jsonl"
-FLAG = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--flag=")),
-            "REGENOLD_GRAIN_QUESTION_SUPPORT")
+#: every deepener-side guard of the R452 family; OFF pins them all to 0
+FLAGS = (
+    "REGENOLD_GRAIN_QUESTION_SUPPORT",
+    "REGENOLD_GRAIN_DISCRIMINATING_SUPPORT",
+    "REGENOLD_GRAIN_SUBJECT_HEAD",
+)
+MIN_TURNS = 1000
 
 
 def _graded(row: dict) -> tuple[str, list[str]]:
@@ -47,114 +56,100 @@ def _graded(row: dict) -> tuple[str, list[str]]:
     return row.get("pred_answer") or "", [str(x) for x in row.get("pred_refs") or []]
 
 
-def _deepen(head: str, question: str, answer: str, on: bool) -> str:
-    os.environ[FLAG] = "1" if on else "0"
-    return R._deepen_one_ref(head, question, answer)
-
-
-def _mean(xs: list[float]) -> float:
-    return 100.0 * sum(xs) / len(xs) if xs else float("nan")
+def _arm(on: bool) -> None:
+    for f in FLAGS:
+        if on:
+            os.environ.pop(f, None)  # code default
+        else:
+            os.environ[f] = "0"
 
 
 def main() -> int:
-    positional = [a for a in sys.argv[1:] if not a.startswith("--")]
-    results = Path(positional[0]) if positional else REPO / "evals" / "bench" / "results"
-    print(f"flag measured: {FLAG}")
+    if len(sys.argv) < 2:
+        raise SystemExit("usage: grain_question_support_replay.py RESULTS_DIR")
+    results = Path(sys.argv[1])
     gold = {}
     for line in GOLD.read_text(encoding="utf-8").splitlines():
         if line.strip():
             g = json.loads(line)
             gold[str(g["id"])] = g.get("expected_refs") or []
-
     seen: set[tuple] = set()
     rows = []
     for path in sorted(results.glob("official-*.ckpt.jsonl")):
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            if not line.strip():
-                continue
             try:
-                row = json.loads(line)
+                row = json.loads(line) if line.strip() else None
             except json.JSONDecodeError:
+                row = None
+            if not row:
                 continue
             rid = str(row.get("id"))
             answer, refs = _graded(row)
             if rid not in gold or not gold[rid] or not answer or not refs:
                 continue
             key = (rid, answer, tuple(refs))
-            if key in seen:
-                continue
-            seen.add(key)
-            rows.append((rid, row.get("question") or "", answer, refs))
+            if key not in seen:
+                seen.add(key)
+                rows.append((rid, row.get("question") or "", answer, refs))
+    if len(rows) < MIN_TURNS:
+        raise SystemExit(f"only {len(rows)} graded turns under {results}; need >= {MIN_TURNS}")
 
-    axes = {arm: {"loose": [], "strict": [], "conc": []} for arm in ("off", "on", "credited")}
-    changed_rows = changed_refs = gold_lost = wrong_removed = head_bad = count_bad = 0
-    prose_named_vetoes = gold_lost_credited = 0
-    examples: list[str] = []
+    axes = {arm: {"loose": [], "strict": [], "conc": []} for arm in ("off", "on", "live")}
+    changed = wrong_removed = gold_lost = gold_gained = head_bad = 0
+    live_lost = 0
+    lost_rows: dict[str, int] = {}
+    live_lost_rows: dict[str, int] = {}
     for rid, question, answer, refs in rows:
-        new_refs: list[str] = []
-        credited_refs: list[str] = []
-        named = {leaf.lower() for leaves in R._prose_named_subpoints(answer).values() for leaf in leaves}
-        for ref in refs:
-            head = ref_head(ref)
-            out = ref
-            credited = ref
-            if head and head != ref:
-                off = _deepen(head, question, answer, on=False)
-                if off == ref:
-                    on = _deepen(head, question, answer, on=True)
-                    if on != off:
-                        out = on
-                        changed_refs += 1
-                        prose_named = ref.lower() in named or any(n.startswith(ref.lower() + ".") for n in named)
-                        if prose_named:
-                            prose_named_vetoes += 1
-                        else:
-                            credited = on
-                        exp = gold[rid]
-                        met_before = reference_correctness_strict([ref], exp) or 0.0
-                        met_after = reference_correctness_strict([on], exp) or 0.0
-                        if met_after < met_before:
-                            gold_lost += 1
-                            if not prose_named:
-                                gold_lost_credited += 1
-                        else:
-                            wrong_removed += 1
-                        if len(examples) < 40:
-                            examples.append(f"{rid}: {ref} -> {on}  (expected {exp})")
-            if out not in new_refs:
-                new_refs.append(out)
-            if credited not in credited_refs:
-                credited_refs.append(credited)
-        if new_refs != refs:
-            changed_rows += 1
-        if {ref_head(r) for r in refs} != {ref_head(r) for r in new_refs}:
-            head_bad += 1
-        if len(new_refs) != len(refs):
-            count_bad += 1
+        heads: list[str] = []
+        for r in refs:
+            h = ref_head(r) or r
+            if h not in heads:
+                heads.append(h)
+        wires = {}
+        for arm, on in (("off", False), ("on", True)):
+            _arm(on)
+            wires[arm] = R._deepen_ref_grain(list(heads), question, answer)
         exp = gold[rid]
-        for arm, pred in (("off", refs), ("on", new_refs), ("credited", credited_refs)):
-            for axis, fn in (
-                ("loose", reference_correctness_loose),
-                ("strict", reference_correctness_strict),
-                ("conc", reference_conciseness),
-            ):
-                v = fn(pred, exp)
+        prose_named = {" ".join(str(k).split()).lower() for k in R._prose_named_subpoints(answer)}
+        wires["live"] = []
+        for h, a, b in zip(heads, wires["off"], wires["on"], strict=True):
+            by_prose = h.lower() in prose_named
+            wires["live"].append(a if by_prose else b)
+            if a == b:
+                continue
+            changed += 1
+            before = reference_correctness_strict([a], exp) or 0.0
+            after = reference_correctness_strict([b], exp) or 0.0
+            if after < before:
+                gold_lost += 1
+                lost_rows[rid] = lost_rows.get(rid, 0) + 1
+                if not by_prose:
+                    live_lost += 1
+                    live_lost_rows[rid] = live_lost_rows.get(rid, 0) + 1
+            elif after > before:
+                gold_gained += 1
+            else:
+                wrong_removed += 1
+        if {ref_head(x) for x in wires["off"]} != {ref_head(x) for x in wires["on"]}:
+            head_bad += 1
+        for arm in ("off", "on", "live"):
+            for axis, fn in (("loose", reference_correctness_loose),
+                             ("strict", reference_correctness_strict),
+                             ("conc", reference_conciseness)):
+                v = fn(wires[arm], exp)
                 if v is not None:
                     axes[arm][axis].append(v)
-
-    print(f"recorded graded turns with gold: {len(rows)} (unique answer+refs)")
-    print(f"rows changed: {changed_rows}   refs vetoed: {changed_refs}")
-    print(f"  vetoed refs that met a gold key more precisely than the head (Ref Strict loss): {gold_lost}")
-    print(f"  vetoed refs that met no gold key at that grain (wrong picks removed): {wrong_removed}")
-    print(f"head-set violations: {head_bad}   count changes: {count_bad} (dedup only)")
-    print(f"vetoes on leaves the prose names (the live route restores them): {prose_named_vetoes};"
-          f" Ref Strict losses left after crediting them: {gold_lost_credited}")
+    _arm(True)
+    print(f"graded turns with gold: {len(rows)} (unique answer+refs)")
+    print(f"coordinates changed by the guards: {changed}")
+    print(f"  wrong picks removed: {wrong_removed}   correct picks lost: {gold_lost}   gained: {gold_gained}")
+    print(f"  rows losing a correct pick: {dict(sorted(lost_rows.items()))}")
+    print(f"  correct picks lost where the answer's prose does not name the point: {live_lost}"
+          f" {dict(sorted(live_lost_rows.items()))}")
+    print(f"head-set violations: {head_bad}")
     for axis in ("loose", "strict", "conc"):
-        a, b, c = (_mean(axes[k][axis]) for k in ("off", "on", "credited"))
-        print(f"  ref_{axis:6}  off {a:6.2f}   on {b:6.2f} ({b - a:+.2f})   credited {c:6.2f} ({c - a:+.2f})")
-    print("\nexamples:")
-    for e in examples:
-        print("  ", e)
+        a, b, c = (100 * sum(axes[k][axis]) / len(axes[k][axis]) for k in ("off", "on", "live"))
+        print(f"  ref_{axis:6}  off {a:6.2f}   on {b:6.2f} ({b - a:+.2f})   live {c:6.2f} ({c - a:+.2f}) pp")
     return 0
 
 

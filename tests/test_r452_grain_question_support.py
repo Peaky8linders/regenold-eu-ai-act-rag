@@ -103,14 +103,18 @@ def test_grounded_deepening_is_untouched(monkeypatch, flag):
     assert R._deepen_one_ref("Article 13", Q45, A45) == "Article 13.3"
 
 
+def _is_ancestor_or_same(on: str, off: str) -> bool:
+    return on == off or off.startswith(on + ".")
+
+
 def test_the_guard_is_veto_only(monkeypatch):
-    """ON either matches OFF or returns the bare head; it never picks another unit."""
+    """ON equals OFF or is an ancestor coordinate of it: never a different unit."""
     for head, question, answer, *_ in DEFECTS + [("Article 13", Q45, A45, None, None)]:
         monkeypatch.setenv("REGENOLD_GRAIN_QUESTION_SUPPORT", "0")
         off = R._deepen_one_ref(head, question, answer)
         monkeypatch.setenv("REGENOLD_GRAIN_QUESTION_SUPPORT", "1")
         on = R._deepen_one_ref(head, question, answer)
-        assert on in (off, head), (head, off, on)
+        assert _is_ancestor_or_same(on, off), (head, off, on)
 
 
 def test_generic_tokens_are_the_acts_own_vocabulary():
@@ -182,11 +186,17 @@ A85 = (
 
 
 def test_rg_105_whole_article_mention_keeps_the_bare_head(monkeypatch):
-    """ "used" is in Article 5(1) and 5(2) alike, so it cannot choose 5(1)."""
-    monkeypatch.setenv("REGENOLD_GRAIN_DISCRIMINATING_SUPPORT", "0")
+    """ "used" is in Article 5(1) and 5(2) alike, so it cannot choose 5(1).
+
+    R452c also lists ``used`` as a function word, so the R452 guard alone now
+    keeps the head as well; the defect reproduces only with every guard off.
+    """
+    monkeypatch.setenv("REGENOLD_GRAIN_QUESTION_SUPPORT", "0")
     assert R._deepen_one_ref("Article 5", Q104, A104) == "Article 5.1.d"
-    monkeypatch.setenv("REGENOLD_GRAIN_DISCRIMINATING_SUPPORT", "1")
-    assert R._deepen_one_ref("Article 5", Q104, A104) == "Article 5"
+    monkeypatch.setenv("REGENOLD_GRAIN_QUESTION_SUPPORT", "1")
+    for flag in ("0", "1"):
+        monkeypatch.setenv("REGENOLD_GRAIN_DISCRIMINATING_SUPPORT", flag)
+        assert R._deepen_one_ref("Article 5", Q104, A104) == "Article 5"
 
 
 @pytest.mark.parametrize("flag", ["0", "1"])
@@ -202,7 +212,7 @@ def test_discriminating_rule_is_veto_only(monkeypatch):
         monkeypatch.setenv("REGENOLD_GRAIN_DISCRIMINATING_SUPPORT", "0")
         off = R._deepen_one_ref(head, question, answer)
         monkeypatch.setenv("REGENOLD_GRAIN_DISCRIMINATING_SUPPORT", "1")
-        assert R._deepen_one_ref(head, question, answer) in (off, head)
+        assert _is_ancestor_or_same(R._deepen_one_ref(head, question, answer), off)
 
 
 def test_discriminating_flag_reaches_the_engine_cache_key(monkeypatch):
@@ -210,3 +220,110 @@ def test_discriminating_flag_reaches_the_engine_cache_key(monkeypatch):
     off = R._engine_cache_key("q", "", 0)
     monkeypatch.setenv("REGENOLD_GRAIN_DISCRIMINATING_SUPPORT", "1")
     assert R._engine_cache_key("q", "", 0) != off
+
+
+# -- R452c: the review findings, pinned ---------------------------------------
+
+Q_AMEND_BIO = "Can the European Commission amend Annex III to add new biometric identification use cases?"
+A_AMEND_BIO = (
+    "Yes. Under Article 7(1) the Commission may amend Annex III by delegated act to add use cases, "
+    "for example new remote biometric identification or emotion recognition systems, where they are "
+    "intended for use in an area Annex III already lists and pose an equivalent risk."
+)
+
+
+@pytest.mark.parametrize("flag", ["0", "1"])
+def test_a_question_about_the_whole_annex_keeps_the_head(monkeypatch, flag):
+    """The question amends Annex III as a whole; its topic words must not pick a point."""
+    monkeypatch.setenv("REGENOLD_GRAIN_SUBJECT_HEAD", flag)
+    out = R._deepen_ref_grain(["Annex III", "Article 7.1"], Q_AMEND_BIO, A_AMEND_BIO)
+    if flag == "1":
+        assert out == ["Annex III", "Article 7.1"]
+    else:
+        assert out[0] == "Annex III.1.a"  # the defect this rule removes
+
+
+A_ANNEX_X = (
+    "Annex X lists the Union legislative acts on large-scale IT systems in the area of freedom, "
+    "security and justice, such as the Schengen Information System, the Visa Information System and "
+    "Eurodac. Article 111(1) applies to AI systems that are components of those systems and were "
+    "placed on the market before 2 August 2027: they must comply by 31 December 2030."
+)
+
+
+@pytest.mark.parametrize("head,question,answer,before", [
+    ("Annex X", "What is Annex X for, and when does it apply?", A_ANNEX_X, "Annex X.3"),
+    ("Article 5", "What does Annex X cover and how is it used?", A104, "Article 5.1.g"),
+    ("Article 6", "Which AI applications are considered minimal risk?", A_MIN, "Article 6.3.d"),
+])
+def test_review_paraphrases_keep_the_bare_head(monkeypatch, head, question, answer, before):
+    """R452c review: paraphrases that still leaked a coordinate through function words."""
+    monkeypatch.setenv("REGENOLD_GRAIN_QUESTION_SUPPORT", "0")
+    assert R._deepen_one_ref(head, question, answer) == before
+    monkeypatch.delenv("REGENOLD_GRAIN_QUESTION_SUPPORT")
+    assert R._deepen_one_ref(head, question, answer) == head
+
+
+@pytest.mark.parametrize("question,subject", [
+    ("Can the European Commission amend Annex III to add use cases?", {"Annex III"}),
+    ("What does Annex X cover and how is it used?", {"Annex X"}),
+    ("What is Annex X for, and when does it apply?", {"Annex X"}),
+    ("Can the Commission amend Article 6(3) conditions?", set()),
+    ("Is emergency triage high-risk under Annex III?", set()),
+])
+def test_provision_subject_detection(question, subject):
+    assert R._question_subject_provisions(question) == subject
+
+
+def test_function_words_are_not_question_support():
+    from app.data import provision_text as pt
+
+    fw = R._grain_function_tokens()
+    for word in ("under", "used", "considered", "apply", "provide"):
+        assert pt._tokens(word) <= fw, word
+    for word in ("emotion", "instruction", "migration", "healthcare"):
+        assert not pt._tokens(word) & fw, word
+
+
+def test_enumeration_veto_yields_to_a_question_that_picks_a_point(monkeypatch):
+    """rg_093: 'irregular migration' names point 7 even if the answer walks other areas."""
+    monkeypatch.delenv("REGENOLD_GRAIN_QUESTION_SUPPORT", raising=False)
+    q = ("Is irregular migration a topic considered in the AI Act? If so, to what risk category "
+         "does it belong?")
+    a = ("Yes. Annex III lists eight areas, from biometrics, education and employment to law "
+         "enforcement, migration, asylum and border control and administration of justice. AI "
+         "systems used to assess a risk of irregular migration posed by a natural person are "
+         "high-risk under that area.")
+    assert R._deepen_one_ref("Annex III", q, a).startswith("Annex III.7")
+
+
+def test_article_3_exemption_needs_the_defined_term():
+    assert R._deepen_one_ref("Article 3", Q_MIN, A_MIN) == "Article 3"  # not 3.65 systemic risk
+
+
+def test_generic_token_failure_is_not_cached(monkeypatch):
+    from app.data import provision_text as pt
+
+    R._grain_generic_tokens_cached.cache_clear()
+    real = pt.article_body
+
+    def boom(*_a, **_k):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(pt, "article_body", boom)
+    assert R._grain_generic_tokens() == frozenset()
+    monkeypatch.setattr(pt, "article_body", real)
+    assert "risk" in R._grain_generic_tokens()  # recovered: the failure was not pinned
+
+
+def test_curated_answer_backs_only_stated_points():
+    assert not R._curated_answer_backs("Article 5.1.f", A_MIN)
+    assert not R._curated_answer_backs("Article 6.3.d", A_MIN)
+    assert R._curated_answer_backs("Article 13.3", A45)
+
+
+def test_curated_budget_cut_keeps_declared_refs_first():
+    cands = ["Article 5", "Article 4", "Article 5.1.f", "Article 6", "Article 50.3", "Article 50.1",
+             "Article 95", "Annex III.1.c", "Annex III"]
+    declared = ("Article 4", "Article 5", "Article 6", "Article 50", "Article 95")
+    assert R._curated_budget_cut(cands, declared, A_MIN, 5) == list(declared)
