@@ -151,3 +151,62 @@ def test_definitions_are_picked_by_their_defined_term(monkeypatch, flag):
     a = ("Article 3(2) defines risk as the combination of the probability of an occurrence of "
          "harm and the severity of that harm.")
     assert R._deepen_one_ref("Article 3", q, a) == "Article 3.2"
+
+
+# ── R452b — question support must also separate the candidates ─────────────
+
+Q104 = "What is Annex X about? What is it used for?"
+A104 = (
+    "Annex X of Regulation (EU) 2024/1689 lists the EU laws that set up large-scale IT systems in "
+    "the area of Freedom, Security and Justice, and it imposes no obligations of its own. The acts "
+    "it lists cover the Schengen Information System, the Visa Information System, Eurodac, the "
+    "Entry/Exit System, ETIAS, ECRIS-TCN, and the interoperability framework Regulations. Annex X "
+    "is used by Article 111(1): AI systems that are components of these large-scale IT systems and "
+    "were placed on the market or put into service before 2 August 2027 must be brought into "
+    "compliance by 31 December 2030, without prejudice to the Article 5 prohibitions, and the Act's "
+    "requirements must also be taken into account when each system is evaluated."
+)
+Q85 = (
+    "Does the AI Act prohibit or classifies as high-risk the use of AI in drones? Can I use AI in a "
+    "drone to find who's around in town? And what if it's just a toy drone? And what about toy "
+    "drones used for other applications?"
+)
+A85 = (
+    "No, the AI Act does not ban drones or make them high-risk just because they use AI. Identifying "
+    "people by face or other biometrics: When done by or for police in real time in public places, "
+    "this is banned. Private or non-police identification: It is not banned, but remote biometric "
+    "identification is high-risk under Article 6(2) and Annex III, point 1(a). Sorting people by "
+    "biometrics to infer race, political opinions, union membership, religious or philosophical "
+    "beliefs, sex life or sexual orientation is banned (Article 5(1)(g))."
+)
+
+
+def test_rg_105_whole_article_mention_keeps_the_bare_head(monkeypatch):
+    """ "used" is in Article 5(1) and 5(2) alike, so it cannot choose 5(1)."""
+    monkeypatch.setenv("REGENOLD_GRAIN_DISCRIMINATING_SUPPORT", "0")
+    assert R._deepen_one_ref("Article 5", Q104, A104) == "Article 5.1.d"
+    monkeypatch.setenv("REGENOLD_GRAIN_DISCRIMINATING_SUPPORT", "1")
+    assert R._deepen_one_ref("Article 5", Q104, A104) == "Article 5"
+
+
+@pytest.mark.parametrize("flag", ["0", "1"])
+def test_point_level_answer_evidence_still_decides(monkeypatch, flag):
+    """rg_085: the question is generic, the answer is about remote biometric identification."""
+    monkeypatch.setenv("REGENOLD_GRAIN_DISCRIMINATING_SUPPORT", flag)
+    assert R._deepen_one_ref("Annex III", Q85, A85) == "Annex III.1.a"
+
+
+def test_discriminating_rule_is_veto_only(monkeypatch):
+    for head, question, answer in [("Article 5", Q104, A104), ("Annex III", Q85, A85),
+                                   ("Article 13", Q45, A45), ("Annex III", Q17, A17)]:
+        monkeypatch.setenv("REGENOLD_GRAIN_DISCRIMINATING_SUPPORT", "0")
+        off = R._deepen_one_ref(head, question, answer)
+        monkeypatch.setenv("REGENOLD_GRAIN_DISCRIMINATING_SUPPORT", "1")
+        assert R._deepen_one_ref(head, question, answer) in (off, head)
+
+
+def test_discriminating_flag_reaches_the_engine_cache_key(monkeypatch):
+    monkeypatch.setenv("REGENOLD_GRAIN_DISCRIMINATING_SUPPORT", "0")
+    off = R._engine_cache_key("q", "", 0)
+    monkeypatch.setenv("REGENOLD_GRAIN_DISCRIMINATING_SUPPORT", "1")
+    assert R._engine_cache_key("q", "", 0) != off

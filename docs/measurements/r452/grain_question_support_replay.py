@@ -11,7 +11,10 @@ Upper bound on the cost: a vetoed coordinate the answer's prose names explicitly
 would be restored by the prose sub-point passes on the live path; this replay
 does not credit that.
 
-    py -3.12 docs/measurements/r452/grain_question_support_replay.py [RESULTS_DIR]
+    py -3.12 docs/measurements/r452/grain_question_support_replay.py [RESULTS_DIR] [--flag=NAME]
+
+``--flag`` picks the veto to measure; every other flag keeps its default, so
+``--flag=REGENOLD_GRAIN_DISCRIMINATING_SUPPORT`` reads R452b's increment over R452.
 """
 from __future__ import annotations
 
@@ -34,7 +37,8 @@ from evals.official.rubric import (  # noqa: E402
 )
 
 GOLD = REPO / "docs" / "measurements" / "r388" / "official_gold_n110.jsonl"
-FLAG = "REGENOLD_GRAIN_QUESTION_SUPPORT"
+FLAG = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--flag=")),
+            "REGENOLD_GRAIN_QUESTION_SUPPORT")
 
 
 def _graded(row: dict) -> tuple[str, list[str]]:
@@ -53,7 +57,9 @@ def _mean(xs: list[float]) -> float:
 
 
 def main() -> int:
-    results = Path(sys.argv[1]) if len(sys.argv) > 1 else REPO / "evals" / "bench" / "results"
+    positional = [a for a in sys.argv[1:] if not a.startswith("--")]
+    results = Path(positional[0]) if positional else REPO / "evals" / "bench" / "results"
+    print(f"flag measured: {FLAG}")
     gold = {}
     for line in GOLD.read_text(encoding="utf-8").splitlines():
         if line.strip():
@@ -80,14 +86,18 @@ def main() -> int:
             seen.add(key)
             rows.append((rid, row.get("question") or "", answer, refs))
 
-    axes = {arm: {"loose": [], "strict": [], "conc": []} for arm in ("off", "on")}
+    axes = {arm: {"loose": [], "strict": [], "conc": []} for arm in ("off", "on", "credited")}
     changed_rows = changed_refs = gold_lost = wrong_removed = head_bad = count_bad = 0
+    prose_named_vetoes = gold_lost_credited = 0
     examples: list[str] = []
     for rid, question, answer, refs in rows:
         new_refs: list[str] = []
+        credited_refs: list[str] = []
+        named = {leaf.lower() for leaves in R._prose_named_subpoints(answer).values() for leaf in leaves}
         for ref in refs:
             head = ref_head(ref)
             out = ref
+            credited = ref
             if head and head != ref:
                 off = _deepen(head, question, answer, on=False)
                 if off == ref:
@@ -95,17 +105,26 @@ def main() -> int:
                     if on != off:
                         out = on
                         changed_refs += 1
+                        prose_named = ref.lower() in named or any(n.startswith(ref.lower() + ".") for n in named)
+                        if prose_named:
+                            prose_named_vetoes += 1
+                        else:
+                            credited = on
                         exp = gold[rid]
                         met_before = reference_correctness_strict([ref], exp) or 0.0
                         met_after = reference_correctness_strict([on], exp) or 0.0
                         if met_after < met_before:
                             gold_lost += 1
+                            if not prose_named:
+                                gold_lost_credited += 1
                         else:
                             wrong_removed += 1
                         if len(examples) < 40:
                             examples.append(f"{rid}: {ref} -> {on}  (expected {exp})")
             if out not in new_refs:
                 new_refs.append(out)
+            if credited not in credited_refs:
+                credited_refs.append(credited)
         if new_refs != refs:
             changed_rows += 1
         if {ref_head(r) for r in refs} != {ref_head(r) for r in new_refs}:
@@ -113,7 +132,7 @@ def main() -> int:
         if len(new_refs) != len(refs):
             count_bad += 1
         exp = gold[rid]
-        for arm, pred in (("off", refs), ("on", new_refs)):
+        for arm, pred in (("off", refs), ("on", new_refs), ("credited", credited_refs)):
             for axis, fn in (
                 ("loose", reference_correctness_loose),
                 ("strict", reference_correctness_strict),
@@ -128,9 +147,11 @@ def main() -> int:
     print(f"  vetoed refs that met a gold key more precisely than the head (Ref Strict loss): {gold_lost}")
     print(f"  vetoed refs that met no gold key at that grain (wrong picks removed): {wrong_removed}")
     print(f"head-set violations: {head_bad}   count changes: {count_bad} (dedup only)")
+    print(f"vetoes on leaves the prose names (the live route restores them): {prose_named_vetoes};"
+          f" Ref Strict losses left after crediting them: {gold_lost_credited}")
     for axis in ("loose", "strict", "conc"):
-        a, b = _mean(axes["off"][axis]), _mean(axes["on"][axis])
-        print(f"  ref_{axis:6}  off {a:6.2f}   on {b:6.2f}   delta {b - a:+.2f} pp")
+        a, b, c = (_mean(axes[k][axis]) for k in ("off", "on", "credited"))
+        print(f"  ref_{axis:6}  off {a:6.2f}   on {b:6.2f} ({b - a:+.2f})   credited {c:6.2f} ({c - a:+.2f})")
     print("\nexamples:")
     for e in examples:
         print("  ", e)

@@ -1431,6 +1431,9 @@ def _engine_cache_key(
             # vocabulary or by an answer that lists the annex's points, so the
             # wire keeps the bare head (`Annex III.7.b` -> `Annex III`).
             "REGENOLD_GRAIN_QUESTION_SUPPORT",
+            # R452b — the same veto, extended to question tokens every candidate
+            # unit carries (`Article 5.1.d` -> `Article 5` on rg_105).
+            "REGENOLD_GRAIN_DISCRIMINATING_SUPPORT",
             # R397 — folds a coordinate the Regulation does not contain back
             # onto its head (`Article 13.9` -> `Article 13`). Changes the wire
             # reference list, so it needs its own cache-key slot.
@@ -3796,6 +3799,24 @@ def _grain_question_support_enabled() -> bool:
     )
 
 
+def _grain_discriminating_support_enabled() -> bool:
+    """R452b — question support must also separate the chosen unit from the others.
+
+    rg_105 (Annex X) shipped ``Article 5.1.d`` for "without prejudice to the
+    Article 5 prohibitions": the question's "What is it used for?" contributes
+    ``use`` (0.12 of the Act's units, so not generic), but every point of
+    Article 5(1) carries it, so it cannot favour point (d). With two or more
+    candidates, a question token they ALL carry no longer counts as support.
+    A single candidate is exempt: there the token is what separates it from the
+    siblings that lack it. Veto-only, like R452.
+
+    Default ON with deny-list opt-out (=0 / =false / no / off disables it).
+    """
+    return os.getenv("REGENOLD_GRAIN_DISCRIMINATING_SUPPORT", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
 #: A winning paragraph must carry at least this much question+answer overlap
 #: (``_GRAIN_MIN_TOP``) and beat the runner-up by this margin
 #: (``_GRAIN_MIN_MARGIN``) before we commit to a coordinate.
@@ -3851,6 +3872,10 @@ _GRAIN_GENERIC_DF = 0.2
 #: R452 — an answer naming this many of an annex's points by their heading is
 #: describing the annex as a whole, so no single point is its coordinate.
 _GRAIN_ENUMERATION_MIN = 3
+#: R452b — when the question cannot separate the candidates, the answer may still
+#: choose one if it shares this many tokens with that unit and with no other
+#: candidate. Point level only (rg_085 keeps Annex III.1.a; rg_105 loses 5.1.d at paragraph level).
+_GRAIN_ANSWER_DISTINCTIVE_MIN = 2
 
 _GRAIN_HEAD_RE = re.compile(r"^(Article\s+(\d{1,3})|Annex\s+([IVXL]+))$")
 _GRAIN_LEAF_RE = re.compile(r"^(Article\s+\d{1,3}|Annex\s+[IVXL]+)\.")
@@ -4551,7 +4576,10 @@ def _prose_named_annex_point(roman: str, answer: str, units: dict):
     return _resolve_prose_named_annex_point(roman, answer, units)[1]
 
 
-def _pick_unit(units: dict, q_tok: set, a_tok: set, *, require_support: bool = True):
+def _pick_unit(
+    units: dict, q_tok: set, a_tok: set, *, require_support: bool = True,
+    answer_may_decide: bool = False,
+):
     """The one unit the question+answer point at, or ``None`` to abstain.
 
     The QUESTION decides which rule is operative and is weighted double; the
@@ -4580,10 +4608,22 @@ def _pick_unit(units: dict, q_tok: set, a_tok: set, *, require_support: bool = T
     second = scored[1][1] if len(scored) > 1 else 0
     if top[1] < _GRAIN_MIN_TOP or (len(scored) > 1 and top[1] - second < _GRAIN_MIN_MARGIN):
         return None
-    if require_support and _grain_question_support_enabled() and not (
-        (q_tok - _grain_generic_tokens()) & _pt._tokens(units[top[0]])
-    ):
-        return None  # R452 — the question shares only Act-wide vocabulary with it
+    if require_support and _grain_question_support_enabled():
+        top_tok = frozenset(_pt._tokens(units[top[0]]))
+        informative = q_tok - _grain_generic_tokens()
+        if not (informative & top_tok):
+            return None  # R452 — the question shares only Act-wide vocabulary with it
+        if len(units) >= 2 and _grain_discriminating_support_enabled():
+            others = [frozenset(_pt._tokens(t)) for n, t in units.items() if n != top[0]]
+            if not ((informative - top_tok.intersection(*others)) & top_tok):
+                # R452b — every question token this unit shares, every other
+                # candidate shares too ("used" is in Article 5(1) and 5(2)),
+                # so the question cannot choose it. Below paragraph level an
+                # answer that names this point's own content may still choose
+                # it; paragraphs share too much procedural wording for that.
+                distinctive = (a_tok & top_tok) - frozenset().union(*others) - _grain_generic_tokens()
+                if not answer_may_decide or len(distinctive) < _GRAIN_ANSWER_DISTINCTIVE_MIN:
+                    return None
     return top[0]
 
 
@@ -4677,7 +4717,7 @@ def _deepen_within(coord: str, text: str, q_tok: set, a_tok: set, budget: int) -
         q_units = {k: t for k, t in units.items() if len(q_tok & _pt._tokens(t)) > 0}
         if not q_units:
             return coord
-        won = _pick_unit(q_units, q_tok, a_tok)
+        won = _pick_unit(q_units, q_tok, a_tok, answer_may_decide=True)
         if won is None:
             return coord
         deeper = f"{coord}.{won}"
@@ -4689,7 +4729,7 @@ def _deepen_within(coord: str, text: str, q_tok: set, a_tok: set, budget: int) -
                 k: t for k, t in sub_units.items() if len(q_tok & _pt._tokens(t)) > 0
             }
             if q_sub_units:
-                won2 = _pick_unit(q_sub_units, q_tok, a_tok)
+                won2 = _pick_unit(q_sub_units, q_tok, a_tok, answer_may_decide=True)
                 if won2 is not None:
                     return f"{deeper}.{won2}"
         return deeper
