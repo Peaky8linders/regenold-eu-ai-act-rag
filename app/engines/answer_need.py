@@ -621,12 +621,25 @@ def concise_limits(need: AnswerNeed, question: str = "") -> tuple[int, int]:
     return min(need.target_words, _CONCISE_MAX_WORDS), sentences
 
 
-def concise_block(question: str, references: str = "") -> str:
-    """The LENGTH LIMIT clause, or ``""`` when the lever is OFF."""
+def concise_block(
+    question: str,
+    references: str = "",
+    *,
+    estimated_need: AnswerNeed | None = None,
+) -> str:
+    """The LENGTH LIMIT clause, or ``""`` when the lever is OFF.
+
+    A caller that already estimated this question can pass that result so all
+    answer-shape clauses use one identical scope and target.
+    """
     if not concise_contract_enabled():
         return ""
     try:
-        need = answer_need(question, references)
+        need = (
+            estimated_need
+            if estimated_need is not None
+            else answer_need(question, references)
+        )
     except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
         return ""
     words, sentences = concise_limits(need, question)
@@ -658,8 +671,18 @@ def concise_block(question: str, references: str = "") -> str:
     ])
 
 
-def need_proportional_block(question: str, references: str = "") -> str:
+def need_proportional_block(
+    question: str,
+    references: str = "",
+    *,
+    estimated_need: AnswerNeed | None = None,
+) -> str:
     """The clause for this question, or ``""`` when the lever is OFF / disabled."""
     if not need_proportional_contract_enabled():
         return ""
-    return shape_directive(answer_need(question, references))
+    need = (
+        estimated_need
+        if estimated_need is not None
+        else answer_need(question, references)
+    )
+    return shape_directive(need)

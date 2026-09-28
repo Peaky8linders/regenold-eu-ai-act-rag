@@ -66,6 +66,33 @@ def test_on_appends_the_block_last_and_sizes_from_the_question(monkeypatch):
     assert answer_need.need_proportional_block(q, "") in on
 
 
+def test_both_need_contracts_reuse_one_estimate(monkeypatch):
+    """Scope and sizing share the same single deterministic estimate."""
+    q = "What must Article 13 instructions for use contain?"
+    refs = "VERBATIM PROVISION TEXT: [Article 13] (a) identity; (b) characteristics."
+    monkeypatch.setenv("REGENOLD_NEED_PROPORTIONAL_CONTRACT", "1")
+    monkeypatch.setenv("REGENOLD_CONCISE_CONTRACT", "1")
+    original_answer_need = answer_need.answer_need
+    calls = []
+
+    def counted_answer_need(question, references=""):
+        estimate = original_answer_need(question, references)
+        calls.append((question, references, estimate))
+        return estimate
+
+    monkeypatch.setattr(answer_need, "answer_need", counted_answer_need)
+    user = prompts.build_evidence_answer_user(q, refs)
+
+    assert len(calls) == 1
+    question, used_refs, estimate = calls[0]
+    assert question == q
+    assert used_refs == ""  # R448 sizes both clauses from the ask, not retrieved heads.
+    assert answer_need.shape_directive(estimate) in user
+    assert user.endswith(
+        "\n\n" + answer_need.concise_block(q, "", estimated_need=estimate)
+    )
+
+
 def test_evidence_text_no_longer_inflates_the_estimate(monkeypatch):
     """The R448 diagnosis: read against the full evidence block, heads the ask
     never named were counted as engaged items. ON sizes from the question."""

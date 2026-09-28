@@ -1580,12 +1580,13 @@ def build_evidence_answer_user(
     if system_description:
         parts.append(f"SYSTEM DESCRIPTION: {system_description}")
     parts.append(f"EU AI ACT REFERENCES:\n{references}")
-    # R423 — the need-proportional contract. One deterministic estimate of the
-    # engaged set drives BOTH renderings: this clause and the skeleton scope in
-    # ``_graph_rag_impl._render_grounding_text``. When it renders nothing (lever
-    # OFF, or a question that engages nothing) the branch below is the shipped
-    # text byte-for-byte, which is what makes the paired gate meaningful.
+    # R423 — the need-proportional policy is shared with skeleton scoping in
+    # ``_graph_rag_impl._render_grounding_text`` (which estimates from its own
+    # grounding refs). Within this user message, reuse one estimate for the
+    # answer-shape clause and R448 length ceiling so their scope and sizing agree.
+    # If neither contract renders, the shipped text remains byte-for-byte.
     need_clause = ""
+    answer_need_estimate = None
     # R448 — with the concise contract ON, size the answer from the QUESTION
     # alone. Read against this full evidence block, distinctive-bigram matches
     # engaged heads the ask never named: rg_097 ("Name the areas of high-risk
@@ -1594,20 +1595,26 @@ def build_evidence_answer_user(
     # and the targets rose to 975-1000 chars against a 650-char skeleton scope.
     need_refs = references
     try:
-        from app.engines.answer_need import concise_contract_enabled  # noqa: PLC0415
-
-        if concise_contract_enabled():
-            need_refs = ""
-    except Exception:  # noqa: BLE001
-        need_refs = references
-    try:
         from app.engines.answer_need import (  # noqa: PLC0415
+            answer_need,
+            concise_contract_enabled,
             need_proportional_block,
+            need_proportional_contract_enabled,
         )
 
-        need_clause = need_proportional_block(question, need_refs)
+        concise_enabled = concise_contract_enabled()
+        need_enabled = need_proportional_contract_enabled()
+        if concise_enabled:
+            need_refs = ""
+        if concise_enabled or need_enabled:
+            answer_need_estimate = answer_need(question, need_refs)
+        if need_enabled:
+            need_clause = need_proportional_block(
+                question, need_refs, estimated_need=answer_need_estimate
+            )
     except Exception:  # noqa: BLE001 — a prompt add-on must not break Stage-2
         need_clause = ""
+        answer_need_estimate = None
     if need_clause:
         parts.append(EVIDENCE_ANSWER_CONTRACT + "\n\n" + EVIDENCE_COMPLETENESS_BLOCK_ENGAGED)
         parts.append(need_clause)
@@ -1656,7 +1663,9 @@ def build_evidence_answer_user(
     try:
         from app.engines.answer_need import concise_block  # noqa: PLC0415
 
-        concise = concise_block(question, "")
+        concise = concise_block(
+            question, "", estimated_need=answer_need_estimate
+        )
     except Exception:  # noqa: BLE001 — a prompt add-on must not break Stage-2
         concise = ""
     if concise:
