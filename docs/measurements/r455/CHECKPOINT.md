@@ -99,3 +99,18 @@ two skeptics, confirmed three defects:
   `Annex III(1)(c)`. No official question selects the workplace entry.
 * **rule 2's wording** said "the way the Regulation does"; the Regulation drafts "point (f) of
   Article 5(1)". It now says "the conventional legal citation form".
+
+## R455c — a curated answer ships only the references it declares or states
+
+Production smoke after R455b: the workplace emotion answer now states only Article 5(1)(f), but the
+wire still carried `Annex III.1.c` and `Article 50.3`. Curated answers skip Stage-2, so the reconcile
+pass that drops references the prose does not describe never runs on them, and the keyword anchors
+for "emotion recognition" (upgraded by the sub-point emitter) rode along.
+`REGENOLD_CURATED_PROSE_SCOPE` (default ON, cache-keyed), after parent collapse: keep a reference
+whose head the curated answer declares or whose provision its prose names.
+
+Offline route, all 110 official questions + the expert cases + the workplace question, flag off vs
+on: 115 questions, 3 lists change, every answer byte-identical. Dropped: workplace `Annex III.1.c`,
+`Article 50.3` (gold 5.1.f kept); rg_031 bare `Annex III` (gold 6.3.a kept); rg_027 `Article 50.1`
+(no expected refs). No dropped reference shares a head with gold. Ref Strict and Loose +0.00, Ref
+Conciseness 56.38 -> 57.18 (+0.80). No expert card changes.
