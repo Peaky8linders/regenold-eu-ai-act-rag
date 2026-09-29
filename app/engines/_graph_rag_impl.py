@@ -10495,11 +10495,13 @@ def _claude_max_enhance_answer(
         # R456 — name only the provisions that answer the question: every named
         # provision becomes a citation. Appended last, after every replacement.
         # Not under REGENOLD_PROMPT_V3, whose block carries its own citation rules
-        # and withholds the other minimality clauses by design (R380).
+        # and withholds the other minimality clauses by design (R380). Single-turn
+        # only (R456b): the paired gate measured single-turn asks, and hard mode
+        # (a pushback over a nine-exchange history) has not been gated.
         try:
             from app.data.graph_rag_prompts import provisions_to_name_clause  # noqa: PLC0415
 
-            if not _prompt_v3_enabled():
+            if not _prompt_v3_enabled() and (history_turn_count or 0) <= 1:
                 user_message += provisions_to_name_clause()
         except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
             pass

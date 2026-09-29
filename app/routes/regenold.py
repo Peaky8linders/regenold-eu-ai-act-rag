@@ -4973,39 +4973,84 @@ def _curated_answer_backs(coord: str, answer: str) -> bool:
 
 
 def _definition_cite_scope_enabled() -> bool:
-    """R456 — an Article 3 definition is cited only when the question asks what a term is. **Default ON.**
+    """R456 — an Article 3 definition is cited only when the question uses the term. **Default ON.**
 
     Answers name the definition of a term they use ("a deep fake, as defined in
     Article 3(60)", "an emotion recognition system under Article 3(39)"), and the
     prose-consistency pass cites every provision the prose names, so the wire
-    carried a definition the question never asked for (Q74, Case C). The official
-    questions whose gold cites Article 3 all ask what a term is or means (rg_019,
-    rg_048, rg_076). Counterfactual over 1,839 recorded graded turns: 41 changed,
-    0 gold-satisfying references dropped, Ref Conciseness +0.45 pp, Strict and
-    Loose +0.00. Registered in ``_engine_cache_key``.
+    carried a definition the question never raised (Q74, Case C). R456b replaced
+    the first cut's question-wording cue, which missed "Are we a provider or a
+    deployer?" and matched "definitely" or "What are the fines", with the defined
+    term itself (``_article_3_terms``). Registered in ``_engine_cache_key``.
     """
     return os.getenv("REGENOLD_DEFINITION_CITE_SCOPE", "1").strip().lower() not in (
         "0", "false", "no", "off",
     )
 
 
-_DEFINITION_ASK_RE = re.compile(
-    r"\b(?:what\s+(?:is|are|does|do|counts?)|who\s+(?:is|are|counts?)|defin\w*|mean(?:s|ing|t)?|"
-    r"terms?|notions?|concepts?|difference\s+between|distinguish\w*|qualif\w*\s+as|counts?\s+as|"
-    r"considered\s+(?:a|an|to\s+be))\b|\bArt(?:icle|\.)?\s*3\b(?!\s*\d)|\bArt(?:icle|\.)?\s*3\s*\(",
-    re.IGNORECASE,
-)
-_ARTICLE_3_REF_RE = re.compile(r"^\s*Article\s+3(?:\.|$)")
+_ARTICLE_3_REF_RE = re.compile(r"^\s*Article\s+3(?:\.(\d+))?(?:\.|$)")
 
 
-def _definition_cite_scope(references: list[str], question: str, protected: tuple = ()) -> list[str]:
-    """R456 — drop Article 3 references unless the question asks what a term is or
-    names Article 3. A curated answer's declared references are kept. Never empties."""
-    if _DEFINITION_ASK_RE.search(question or ""):
+@lru_cache(maxsize=1)
+def _article_3_terms() -> dict[int, "re.Pattern[str]"]:
+    """R456b — point number -> a pattern for the term that point of Article 3 defines,
+    read from the official text ("(60) 'deep fake' means ..."). A hyphen and a space
+    are interchangeable, a plural counts, and a term never matches inside a longer
+    hyphenated word ("risk" is not in "high-risk")."""
+    from app.data.official_eu_ai_act import OFFICIAL_ARTICLE_TEXT  # noqa: PLC0415
+
+    out: dict[int, re.Pattern[str]] = {}
+    for num, term in re.findall(r"\((\d+)\)\s*[\u2018']([^\u2019']+)[\u2019']\s+means",
+                                OFFICIAL_ARTICLE_TEXT.get("Article 3", "")):
+        words = [re.escape(w) for w in re.split(r"[\s-]+", term.strip()) if w]
+        if words:
+            out[int(num)] = re.compile(
+                r"(?<![\w-])" + r"[\s-]+".join(words) + r"(?:s|es)?(?![\w-])", re.IGNORECASE
+            )
+    return out
+
+
+def _definition_cite_scope(references: list[str], questions: tuple, protected: tuple = ()) -> list[str]:
+    """R456b — keep an Article 3 point only when a question the answer answers uses the
+    term it defines, or names Article 3. An unasked point is rewritten IN PLACE to the
+    definition the resolved or live question does use (a wire ``Article 3.61``,
+    "widespread infringement", on "Are we a provider or just a deployer?" becomes
+    ``Article 3.3``), so the Article 3 head survives where the question turns on a
+    definition; otherwise it is dropped. ``AI system`` (3(1)) is never a rewrite target,
+    because nearly every question uses it. A curated answer's declared references and a
+    point whose term is unknown are kept. Never empties."""
+    text = " ".join(q for q in questions if q)
+    if re.search(r"\bArt(?:icle|\.)?\s*3\b(?![\d.])|\bArt(?:icle|\.)?\s*3\s*\(", text):
         return references
-    keep = {" ".join(re.sub(r"^\s*Art\.\s*", "Article ", str(r)).split()) for r in protected}
-    kept = [r for r in references if not _ARTICLE_3_REF_RE.match(str(r)) or " ".join(str(r).split()) in keep]
-    return kept or references
+    asked = " ".join(q for q in questions[:2] if q)
+    if _EXPLICIT_DEFINITION_ASK_RE.search(asked):
+        return references  # an explicit definition ask ("definition of", "how is X defined")
+    terms = _article_3_terms()
+    keep = {" ".join(re.sub(r"^\s*Art\.\s*", "Article ", str(p)).split()) for p in protected}
+    hits = sorted(
+        ((m.start(), n) for n, pat in terms.items() if n != 1 and (m := pat.search(asked))),
+    )
+    targets = [f"Article 3.{n}" for _, n in hits]
+    present = {" ".join(str(r).split()) for r in references}
+    out: list[str] = []
+    for ref in references:
+        norm = " ".join(str(ref).split())
+        m = _ARTICLE_3_REF_RE.match(norm)
+        if not m or norm in keep:
+            out.append(ref)
+            continue
+        if m.group(1) is None:  # bare Article 3: kept when the conversation uses a defined term
+            if any(pat.search(text) for pat in terms.values()):
+                out.append(ref)
+            continue
+        pat = terms.get(int(m.group(1)))
+        if pat is None or pat.search(text):
+            out.append(ref)
+            continue
+        alt = next((t for t in targets if t not in present and t not in out), None)
+        if alt is not None:
+            out.append(alt)
+    return out or references
 
 
 def _curated_prose_scope_enabled() -> bool:
@@ -14545,30 +14590,6 @@ def regenold_eu_ai_act_ask(
         except Exception:  # noqa: BLE001 — never 500 the route on a guard
             pass
 
-    # R456 — cite an Article 3 definition only when the question asks what a term
-    # is. Reads the question the answer answers (a pushback's re-ask resolves to
-    # the original question), as the grain deepener below does.
-    if _definition_cite_scope_enabled():
-        try:
-            _dcs_refs = _definition_cite_scope(
-                references,
-                (resolved_question or live_user_message or question),
-                _curated_declared_refs,
-            )
-            if _dcs_refs != references:
-                _dcs_dropped = [r for r in references if r not in _dcs_refs]
-                references = _dcs_refs
-                try:
-                    from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
-                        record_note as _rn,
-                    )
-
-                    _rn("definition_cite_scope dropped=" + ",".join(_dcs_dropped))
-                except Exception:  # noqa: BLE001 — fail-soft on trace
-                    pass
-        except Exception:  # noqa: BLE001 — never 500 the route on a guard
-            pass
-
     # R381 — the terminal reference cap, LAST of all reference passes and
     # immediately before the trace finalisation, so the trace still equals the
     # wire. Ordered by grounding signal first and emission position last (see
@@ -14731,6 +14752,30 @@ def regenold_eu_ai_act_ask(
                 pass
     except Exception:  # noqa: BLE001 — never 500 the route on a guard
         pass
+
+    # R456 — an Article 3 definition is cited only when a question the answer
+    # answers uses the term it defines. Last of all reference passes, so no later
+    # pass can re-add or deepen what it drops.
+    if _definition_cite_scope_enabled():
+        try:
+            _dcs_refs = _definition_cite_scope(
+                references,
+                (resolved_question, live_user_message, question),
+                _curated_declared_refs,
+            )
+            if _dcs_refs != references:
+                _dcs_dropped = [r for r in references if r not in _dcs_refs]
+                references = _dcs_refs
+                try:
+                    from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                        record_note as _rn,
+                    )
+
+                    _rn("definition_cite_scope dropped=" + ",".join(_dcs_dropped))
+                except Exception:  # noqa: BLE001 — fail-soft on trace
+                    pass
+        except Exception:  # noqa: BLE001 — never 500 the route on a guard
+            pass
 
     # R50 / R131 — finalise the reasoning trace AFTER every reference pass
     # so ``?include_reasoning=true`` surfaces the exact wire ``references``
