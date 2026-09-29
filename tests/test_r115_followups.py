@@ -284,8 +284,9 @@ class TestR115Art43IntegratedProcedure:
         # UNRELATED stub edit. v20 -> v21 is R380 (a9fb598, "close July 7
         # legal failures"), which rewrote the Art. 26 / Annex X stubs.
         # The bump rule itself is enforced by the content-hash snapshot in
-        # tests/test_kb_consistency.py::test_kb_version_bump_lint.
-        assert KB_VERSION == "2024.1689.v22"
+        # tests/test_kb_consistency.py::test_kb_version_bump_lint. v22 -> v23 is
+        # R453 (Art. 50 / 50.4 stubs: disclose, not label; marking is Art. 50(2)).
+        assert KB_VERSION == "2024.1689.v23"
         # A silent REVERT of that content bump must fail here too, not just a
         # future forward bump: pin the version as monotonically >= v21.
         assert int(KB_VERSION.rsplit(".v", 1)[1]) >= 21, KB_VERSION

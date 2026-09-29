@@ -7592,14 +7592,18 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
         verdict = {
             "name": "robotic_surgery_high_risk",
             "answer": (
-                "Yes. An AI system intended as a safety component of a robotic surgical device is high-risk under "
-                "Article 6(1) because a surgical robot is a Class IIb or Class III medical device requiring notified-body "
-                "conformity assessment under Article 43. Since the AI operates in a real-time control loop, Article 14 "
-                "requires robust human oversight measures to allow the surgeon to override or reverse decisions. Under "
-                "Article 72 and Article 73, the provider must establish post-market monitoring and report serious "
-                "incidents, coordinating with the Medical Device Regulation Article 83 for layered surveillance."
+                "Yes: under Article 6(1), an AI system intended as a safety component of a robotic surgical "
+                "device is high-risk, because the device is covered by the Medical Device Regulation listed in "
+                "Annex I and, as a Class IIb or Class III device, must undergo third-party conformity assessment "
+                "by a notified body under that Regulation. Under Article 43(3) the provider follows the MDR "
+                "conformity assessment procedure, the Chapter III Section 2 requirements apply as part of that "
+                "assessment, and the MDR notified body may check the AI system's compliance with them, while "
+                "Article 14(4) requires oversight that lets the surgeon monitor the system, override or reverse "
+                "its output and bring it to a safe stop. Under Article 72(4) the provider may integrate the AI "
+                "Act post-market monitoring into the surveillance system and plan the MDR already requires "
+                "(MDR Article 83), provided it achieves an equivalent level of protection."
             ),
-            "refs": ["Art. 6", "Art. 6.1", "Art. 14", "Art. 43", "Art. 72", "Art. 73"],
+            "refs": ["Art. 6.1", "Annex I", "Art. 43.3", "Art. 14.4", "Art. 72.4"],
         }
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]

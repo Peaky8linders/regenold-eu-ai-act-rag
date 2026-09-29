@@ -1440,6 +1440,10 @@ def _engine_cache_key(
             "REGENOLD_GRAIN_LIVE_QUESTION",
             "REGENOLD_CURATED_HEAD_GRAIN",
             "REGENOLD_CURATED_DECLARED_FIRST",
+            # R453 — R311 route exclusivity keeps a curated answer's declared heads.
+            "REGENOLD_CURATED_ROUTE_KEEP",
+            # R453 — a curated answer backs an Annex I point only by naming its Act.
+            "REGENOLD_CURATED_ANNEX_I_ACT_BACKING",
             # R397 — folds a coordinate the Regulation does not contain back
             # onto its head (`Article 13.9` -> `Article 13`). Changes the wire
             # reference list, so it needs its own cache-key slot.
@@ -3876,6 +3880,22 @@ def _curated_head_grain_enabled() -> bool:
     )
 
 
+def _curated_route_keep_enabled() -> bool:
+    """R453 — R311 route exclusivity never drops a curated answer's declared head.
+
+    R311 drops ``Article 43`` on a purely classificatory Annex I ask because a
+    GENERATED answer that names the conformity procedure has drifted past the
+    question. A curated answer is authored: when it declares ``Article 43.3`` it
+    states that provision operatively (the robotic-surgery answer explains how
+    Article 43(3) folds the AI Act requirements into the MDR procedure), and
+    curated answers skip Stage-2, so nothing restores the citation. Default ON,
+    deny-list opt-out.
+    """
+    return os.getenv("REGENOLD_CURATED_ROUTE_KEEP", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
 def _curated_declared_first_enabled() -> bool:
     """R452c — a curated answer's declared refs survive the reference budget cut.
 
@@ -4771,6 +4791,28 @@ def _grain_uninformative_tokens() -> frozenset[str]:
     return _grain_generic_tokens() | _grain_function_tokens()
 
 
+def _curated_annex_i_act_backing_enabled() -> bool:
+    """R453 — a curated answer backs an Annex I point only by naming its Act.
+
+    Annex I points are the titles of the Acts it lists, full of words any
+    Article 6(1) answer uses ("requirements", "safety", "protection"), so
+    the token test of :func:`_curated_answer_backs` let the robotic-surgery
+    answer back point 19 (vehicle type-approval) and ship ``Annex I.19`` for
+    an MDR device. The point is backed only when the answer names that
+    point's Act (``Regulation (EU) 2017/745`` or ``MDR``), read with the
+    route's own :func:`_annex_i_instrument_keys`. Default ON, deny-list.
+
+    The same Article 6(1) vocabulary problem exists in the deepener's
+    question support for generated answers. Removing Article 6(1)'s words
+    there removed 112 wrong Annex I picks and 10 correct ones (rg_004
+    ``Annex I.11``: "medical device" matches the MDR and the IVDR alike) over
+    3,438 recorded turns, Ref. Strict −0.15 pp, so that form is not shipped.
+    """
+    return os.getenv("REGENOLD_CURATED_ANNEX_I_ACT_BACKING", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
 @lru_cache(maxsize=1)
 def _grain_function_tokens() -> frozenset[str]:
     """R452c — ``_GRAIN_FUNCTION_WORDS`` in the deepener's own token form."""
@@ -4834,6 +4876,13 @@ def _curated_answer_backs(coord: str, answer: str) -> bool:
             units = _pt._paragraphs(body)
         else:
             units = _pt._annex_items(body)
+        if m.group(3) and m.group(3).upper() == "I" and _curated_annex_i_act_backing_enabled():
+            first = m.group(4).split(".")[0]
+            item = (units or {}).get(int(first)) if first.isdigit() else None
+            if item is None:
+                return True
+            item_acts = {k for k in _annex_i_instrument_keys(str(item)) if k}
+            return bool(item_acts & {k for k in _annex_i_instrument_keys(answer or "") if k})
         a_tok = frozenset(_pt._tokens(answer or "")) - _grain_uninformative_tokens()
         for step in m.group(4).split("."):
             key = int(step) if step.isdigit() else step
@@ -8335,13 +8384,14 @@ def _annex_i_product_route_question(question: str) -> bool:
 
 
 def _apply_annex_i_route_exclusivity(
-    references: list[str], question: str
+    references: list[str], question: str, protected_heads: frozenset[str] = frozenset(),
 ) -> list[str]:
     """Drop the ALTERNATIVE high-risk route on an Annex I product question.
 
     Gold-protected and floor-protected: ``Article 6`` and ``Annex I`` (the
     governing pair on every measured row) are never candidates for removal,
-    and the pass is a no-op if it would empty the list.
+    and the pass is a no-op if it would empty the list. R453: neither is a
+    head in ``protected_heads`` (a curated answer's declared heads).
     """
     if not references or not _annex_i_route_exclusivity_enabled():
         return references
@@ -8358,6 +8408,7 @@ def _apply_annex_i_route_exclusivity(
     drop_heads = set(_ANNEX_I_ROUTE_DROP_HEADS)
     if pure_classification:
         drop_heads.add("Article 43")
+    drop_heads -= set(protected_heads)
 
     kept = [r for r in references if (_clamp_ref_head(r) or r) not in drop_heads]
     if not kept or kept == references:
@@ -14007,7 +14058,12 @@ def regenold_eu_ai_act_ask(
     # above for the measurement and the R142.1 safety argument.
     try:
         _r311_refs = _apply_annex_i_route_exclusivity(
-            list(references), live_user_message or question
+            list(references),
+            live_user_message or question,
+            protected_heads=frozenset(
+                h for r in _curated_declared_refs
+                if (h := _clamp_ref_head(re.sub(r"^\s*Art\.\s*", "Article ", str(r))))
+            ) if _curated_route_keep_enabled() else frozenset(),
         )
         if _r311_refs != references:
             _dropped = [r for r in references if r not in _r311_refs]
