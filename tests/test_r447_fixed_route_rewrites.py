@@ -208,6 +208,13 @@ class TestRoleDifferenceSkipsTheIntentBoost:
         monkeypatch.setattr(route, "_classify_intent_cached", _role_obligations_intent)
         assert ask(_Q10)["references"] == ["Article 3.3", "Article 3.4", "Article 25.1"]
         monkeypatch.setenv("REGENOLD_ROLE_DIFFERENCE_SKIP_INTENT_BOOST", "0")
+        # R455c is a second, independent defence: the curated role answer never
+        # states Article 26, so the curated prose scope drops it even with the
+        # boost back on.
+        assert ask(_Q10)["references"] == ["Article 3.3", "Article 3.4", "Article 25.1"]
+        # With both defences off, the injected Article 26 reaches the wire, so
+        # the R447 skip is still what keeps it out on its own.
+        monkeypatch.setenv("REGENOLD_CURATED_PROSE_SCOPE", "0")
         refs = ask(_Q10)["references"]
         assert any(ref.startswith("Article 26") for ref in refs), refs
 
