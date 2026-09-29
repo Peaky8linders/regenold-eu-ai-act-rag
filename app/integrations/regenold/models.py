@@ -1334,6 +1334,40 @@ def _cap_readable_units(text: str, max_units: int = 4) -> str:
     return out
 
 
+# R455d — internal evidence / obligation identifiers the Stage-2 dossier carries
+# ("role-obligation-provider-high_risk_annex_iii-Art. 13", "kb-transparency-Article
+# 50.2"). System-prompt rule 3 used to tell the model to "include the obligation ID
+# for traceability", and on production the rg_046 answer shipped "(obligation
+# role-obligation-provider-high_risk_annex_iii-Art." mid-sentence. Only the ID shapes
+# match, so ordinary prose such as "(obligation to inform)" is untouched.
+_EVIDENCE_LABEL_CLOSED_RE = re.compile(
+    r"\s*(?:\((?:obligation\s+)?(?:kb|role-obligation)-[^()]{0,160}?\)"
+    r"|\[(?:obligation\s+)?(?:kb|role-obligation)-[^\[\]]{0,160}?\])",
+    re.IGNORECASE,
+)
+_EVIDENCE_LABEL_OPEN_RE = re.compile(
+    r"\s*[(\[](?:obligation\s+)?(?:kb|role-obligation)-[^\s()\[\]]*",
+    re.IGNORECASE,
+)
+
+
+def _strip_evidence_labels(text: str) -> str:
+    """Remove leaked internal evidence IDs; close the sentence an unclosed one cut."""
+    if not text or ("kb-" not in text and "role-obligation-" not in text):
+        return text
+    text = _EVIDENCE_LABEL_CLOSED_RE.sub("", text)
+
+    def _open(m: re.Match) -> str:
+        before = text[: m.start()].rstrip()
+        after = text[m.end():]
+        if before and before[-1].isalnum() and re.match(r"\s+[A-Z]", after):
+            return "."
+        return ""
+
+    text = _EVIDENCE_LABEL_OPEN_RE.sub(_open, text)
+    return re.sub(r"[ \t]{2,}", " ", text)
+
+
 def normalise_answer_for_regenold(
     text: str, max_sentences: int | None = None, question: str = ""
 ) -> str:
@@ -1551,7 +1585,7 @@ def normalise_answer_for_regenold(
     if _is_multi or _is_enum:
         char_cap = max(char_cap, 1500)
 
-    cleaned = _strip_markdown(text)
+    cleaned = _strip_markdown(_strip_evidence_labels(text))
     sentences = _split_sentences(cleaned)
     # Drop label-only sentences (``Direct Answer.`` / ``Key Requirements.``).
     sentences = [s for s in sentences if not _is_label_only_sentence(s)]
