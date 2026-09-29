@@ -15,7 +15,7 @@ it did. The ``live`` arm leaves heads whose sub-points the answer's own prose na
 to the prose: on the live path ``_surface_prose_subpoints`` puts those leaves on the
 wire BEFORE the deepener runs, so the deepener never decides them there.
 
-    py -3.12 docs/measurements/r452/grain_question_support_replay.py RESULTS_DIR
+    py -3.12 docs/measurements/r452/grain_question_support_replay.py RESULTS_DIR [--only FLAG]
 
 RESULTS_DIR is required (``evals/bench/results`` is gitignored and holds the recorded
 live checkpoints; a worktree has none). The run refuses fewer than 1,000 turns.
@@ -56,8 +56,11 @@ def _graded(row: dict) -> tuple[str, list[str]]:
     return row.get("pred_answer") or "", [str(x) for x in row.get("pred_refs") or []]
 
 
+ONLY: str | None = None  # --only FLAG: the OFF arm switches off just that flag
+
+
 def _arm(on: bool) -> None:
-    for f in FLAGS:
+    for f in ([ONLY] if ONLY else FLAGS):
         if on:
             os.environ.pop(f, None)  # code default
         else:
@@ -65,9 +68,12 @@ def _arm(on: bool) -> None:
 
 
 def main() -> int:
+    global ONLY
     if len(sys.argv) < 2:
-        raise SystemExit("usage: grain_question_support_replay.py RESULTS_DIR")
+        raise SystemExit("usage: grain_question_support_replay.py RESULTS_DIR [--only FLAG]")
     results = Path(sys.argv[1])
+    if "--only" in sys.argv:
+        ONLY = sys.argv[sys.argv.index("--only") + 1]
     gold = {}
     for line in GOLD.read_text(encoding="utf-8").splitlines():
         if line.strip():

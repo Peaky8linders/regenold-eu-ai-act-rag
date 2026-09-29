@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 # (Art. 25(2) cooperation-duty re-anchor + real 25(4) written-agreement
 # clause, Art. 99(4) closed enumeration, Art. 79/109 Reg-2019/1020
 # Art. 3(19) qualification).
-KB_VERSION = "2024.1689.v22"
+KB_VERSION = "2024.1689.v23"
 
 
 @dataclass(frozen=True)
@@ -889,12 +889,13 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "AI-generated content in a machine-readable, detectable format "
             "(Art. 50(2)); deployers must inform exposed persons when "
             "operating emotion-recognition or biometric-categorisation "
-            "systems (Art. 50(3)) and must label deepfakes as artificially "
-            "generated or manipulated (Art. 50(4)). For deepfakes forming part "
-            "of an evidently artistic, creative, satirical, fictional or analogous "
-            "work, transparency is limited to disclosure in an appropriate manner "
-            "that does not hamper display or enjoyment of the work (Art. 50(4) third "
-            "subparagraph). Art. 50(4) fourth subparagraph also requires deployers who use "
+            "systems (Art. 50(3)) and must disclose that deep fake content has been "
+            "artificially generated or manipulated (Art. 50(4)). For a deep fake forming "
+            "part of an evidently artistic, creative, satirical, fictional or analogous "
+            "work, transparency is limited to disclosing the existence of such content in "
+            "an appropriate manner that does not hamper the display or enjoyment of the "
+            "work (Art. 50(4), first subparagraph). The second subparagraph of Art. 50(4) "
+            "also requires deployers who use "
             "an AI system to generate or manipulate text published to inform the public "
             "on matters of public interest to disclose that the text was artificially "
             "generated or manipulated; this text disclosure duty does not apply where the "
@@ -1636,15 +1637,20 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     "Art. 50.4": {
         "dimension": "transparency",
         "summary": (
-            "Deployer obligation: deployers of AI that generates deep fakes "
-            "must disclose the content is artificially generated. Deployers "
-            "of AI that generates / manipulates text published to inform "
-            "the public on matters of public interest must disclose AI "
-            "origin. Exceptions: artistic / creative / satirical / fictional "
-            "works (relaxed disclosure that doesn't disrupt the work); "
-            "legal authorisation for criminal investigation; AI-generated "
-            "text where a human reviewer or editor takes editorial "
-            "responsibility."
+            "Deployer obligation: deployers of an AI system that generates or "
+            "manipulates deep fake image, audio or video content must disclose that "
+            "it has been artificially generated or manipulated. This is a disclosure "
+            "duty; machine-readable marking is the provider's duty under Art. 50(2). "
+            "Where the deep fake forms part of an evidently artistic, creative, "
+            "satirical, fictional or analogous work or programme, the duty is limited "
+            "to disclosing the existence of such content in an appropriate manner that "
+            "does not hamper the display or enjoyment of the work. The duty does not "
+            "apply where the use is authorised by law to detect, prevent, investigate "
+            "or prosecute criminal offences. Deployers of AI that generates or "
+            "manipulates text published to inform the public on matters of public "
+            "interest must disclose its AI origin, unless the text has undergone human "
+            "review or editorial control and a person holds editorial responsibility, "
+            "or the use is authorised by law for those criminal-offence purposes."
         ),
     },
     # ─── Title VI: Sandbox + real-world testing detail (Arts. 58, 59, 61, 62, 63) ─
