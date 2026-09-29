@@ -1444,6 +1444,10 @@ def _engine_cache_key(
             "REGENOLD_CURATED_ROUTE_KEEP",
             # R453 — a curated answer backs an Annex I point only by naming its Act.
             "REGENOLD_CURATED_ANNEX_I_ACT_BACKING",
+            # R454 — Annex I points are chosen by the Act the question describes.
+            "REGENOLD_GRAIN_ANNEX_I_ACT_SUBJECT",
+            # R454 — the ACT TERMS clause on the Stage-2 user message.
+            "REGENOLD_ACT_TERMS_CLAUSE",
             # R397 — folds a coordinate the Regulation does not contain back
             # onto its head (`Article 13.9` -> `Article 13`). Changes the wire
             # reference list, so it needs its own cache-key slot.
@@ -4706,7 +4710,7 @@ def _prose_named_annex_point(roman: str, answer: str, units: dict):
 
 def _pick_unit(
     units: dict, q_tok: set, a_tok: set, *, require_support: bool = True,
-    answer_may_decide: bool = False,
+    answer_may_decide: bool = False, extra_uninformative: frozenset = frozenset(),
 ):
     """The one unit the question+answer point at, or ``None`` to abstain.
 
@@ -4737,7 +4741,7 @@ def _pick_unit(
     if top[1] < _GRAIN_MIN_TOP or (len(scored) > 1 and top[1] - second < _GRAIN_MIN_MARGIN):
         return None
     if require_support and _grain_question_support_enabled():
-        uninformative = _grain_uninformative_tokens()
+        uninformative = _grain_uninformative_tokens() | extra_uninformative
         unit_tok = {n: frozenset(_pt._tokens(t)) for n, t in units.items()}
         top_tok = unit_tok[top[0]]
         informative = frozenset(q_tok) - uninformative
@@ -4802,13 +4806,67 @@ def _curated_annex_i_act_backing_enabled() -> bool:
     point's Act (``Regulation (EU) 2017/745`` or ``MDR``), read with the
     route's own :func:`_annex_i_instrument_keys`. Default ON, deny-list.
 
-    The same Article 6(1) vocabulary problem exists in the deepener's
-    question support for generated answers. Removing Article 6(1)'s words
-    there removed 112 wrong Annex I picks and 10 correct ones (rg_004
-    ``Annex I.11``: "medical device" matches the MDR and the IVDR alike) over
-    3,438 recorded turns, Ref. Strict −0.15 pp, so that form is not shipped.
+    The same Article 6(1) vocabulary problem in the deepener's question
+    support for generated answers is fixed by R454
+    (``REGENOLD_GRAIN_ANNEX_I_ACT_SUBJECT``).
     """
     return os.getenv("REGENOLD_CURATED_ANNEX_I_ACT_BACKING", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
+_ANNEX_I_SUBJECT_RE = re.compile(
+    r"\bof\s+\d{1,2}\s+\w+\s+\d{4}\s+on\s+(?P<s>.*?)"
+    r"(?=,?\s+(?:and\s+)?(?:amending|repealing|establishing)\b|\s*\(OJ\b|\.?\s*$)",
+    re.I | re.S,
+)
+#: Framing every few Annex I titles share around the product they regulate.
+_ANNEX_I_SUBJECT_FRAMING_RE = re.compile(
+    r"the harmonisation of the laws of the Member States relating to|"
+    r"the making available on the market of|the approval and market surveillance of|"
+    r"common rules in the field of|type-approval requirements for|"
+    r"within the European Union",
+    re.I,
+)
+
+
+@lru_cache(maxsize=1)
+def _annex_i_route_tokens() -> frozenset[str]:
+    """R454 — Article 6(1)'s own wording, which cannot pick an Annex I point.
+
+    Every Annex I question restates the Article 6(1) test ("intended to be used
+    as a safety component of a product ... third-party conformity
+    assessment"), and point 19 (vehicle type-approval) happens to contain
+    "intended", "safety" and "components", so a robotic-surgery question
+    picked ``Annex I.19``.
+    """
+    from app.data import provision_text as _pt  # noqa: PLC0415
+
+    return frozenset(_pt._tokens(_pt.get_provision_text("Article 6.1") or ""))
+
+
+@lru_cache(maxsize=64)
+def _annex_i_subject_tokens(item_text: str) -> frozenset[str]:
+    """R454 — the tokens naming what an Annex I Act regulates ("medical devices")."""
+    from app.data import provision_text as _pt  # noqa: PLC0415
+
+    m = _ANNEX_I_SUBJECT_RE.search(item_text or "")
+    if not m:
+        return frozenset()
+    subject = _ANNEX_I_SUBJECT_FRAMING_RE.sub(" ", m.group("s"))
+    return frozenset(_pt._tokens(subject)) - _grain_uninformative_tokens() - _annex_i_route_tokens()
+
+
+def _grain_annex_i_act_subject_enabled() -> bool:
+    """R454 — an Annex I point is chosen by the Act the question describes.
+
+    Article 6(1)'s wording never counts as question support for an Annex I
+    point, and when the question states the whole subject of one or more of
+    the listed Acts only those compete. Veto-only apart from that narrowing,
+    which removes a rival whose Act the question does not describe. Default ON,
+    deny-list opt-out.
+    """
+    return os.getenv("REGENOLD_GRAIN_ANNEX_I_ACT_SUBJECT", "1").strip().lower() not in (
         "0", "false", "no", "off",
     )
 
@@ -5208,7 +5266,26 @@ def _deepen_one_ref(ref: str, question: str, answer: str) -> str:
                 # "irregular migration" keeps Annex III.7.b even in an answer
                 # that also walks through other areas.
                 return ref
-            won = _pick_unit(q_units, q_tok, a_tok)
+            _annex_i_act = bool(
+                m.group(3) and m.group(3).upper() == "I" and _grain_annex_i_act_subject_enabled()
+            )
+            if _annex_i_act:
+                # R454 — only the Acts whose whole subject the question states
+                # compete ("medical device" states point 11's subject, not point
+                # 12's "in vitro diagnostic medical devices").
+                _q_act = (
+                    frozenset(q_tok) - _grain_uninformative_tokens() - _annex_i_route_tokens()
+                )
+                _stated = {
+                    n: t for n, t in q_units.items()
+                    if (subj := _annex_i_subject_tokens(str(t))) and subj <= _q_act
+                }
+                if _stated:
+                    q_units = _stated
+            won = _pick_unit(
+                q_units, q_tok, a_tok,
+                extra_uninformative=_annex_i_route_tokens() if _annex_i_act else frozenset(),
+            )
 
         if won is None:
             return ref
