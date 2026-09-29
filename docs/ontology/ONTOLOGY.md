@@ -36,9 +36,9 @@ The eight operator roles defined by the AI Act value chain (Art. 3 definitions +
 | `importer` | Art. 3(6) | Art. 23 |
 | `distributor` | Art. 3(7) | Art. 24 |
 | `authorised_representative` | Art. 3(5) | Art. 22 |
-| `downstream_provider` | Recital 85 | Art. 89 |
-| `notified_body` | Art. 29 | Annex VII |
-| `affected_person` | Art. 86 | (remedy-holder, not obligation-bearer) |
+| `downstream_provider` | Art. 3(2) | No Chapter V duty in the role matrix; Art. 89(2) gives a complaint right |
+| `notified_body` | Art. 3(21) | Arts. 31, 33, 34 + Annex VII |
+| `affected_person` | Arts. 85-86 | (right-holder, not obligation-bearer) |
 
 ### `RiskClass`
 
@@ -60,7 +60,7 @@ GPAI classes are orthogonal to the AI-system risk classes — a model can be bot
 
 Each prohibited practice under Article 5 is a first-class entity. Before the ontology, all eight prohibitions lived inside one `EC_CHECKER_OBLIGATION_MAP["Art. 5"]` summary blob and had to be re-extracted by regex for every classification verdict.
 
-The registry currently contains nine `Practice` entries: the eight from Art. 5(1)(a)–(h) plus the pending Digital Omnibus 9th prohibition (`omnibus_csam_ncii`).
+The registry currently contains the eight adopted prohibitions in Art. 5(1)(a)–(h). It does not include a proposed Digital Omnibus prohibition: this ontology is scoped to the pinned adopted text, not proposals or future amendments.
 
 Each `Practice` carries:
 
@@ -68,7 +68,7 @@ Each `Practice` carries:
 - `citation` — tuple of internal-form refs (`("Art. 5", "Art. 5.1.f")`)
 - `exceptions` — narrative of the carve-outs that LET the practice through
 - `related_high_risk_anchor` — when the carve-out exists, the high-risk path that may still apply
-- `effective_phase` — points to a `Phase` (`"phase_2025_02_02"` for Art. 5(1)(a)-(h); `"phase_omnibus_2026_12_02"` for the 9th)
+- `effective_phase` — points to an adopted `Phase` (`"phase_2025_02_02"` for Art. 5(1)(a)-(h))
 - `keywords` — phrases that anchor a question to this practice
 
 ### `AnnexIIICategory`
@@ -86,13 +86,13 @@ Each `AnnexIIICategory` carries:
 
 ### `Phase`
 
-Each applicability date in the AI Act rollout (`phase_2025_02_02`, `phase_2025_08_02`, `phase_2026_08_02`, `phase_2027_08_02`) plus Digital Omnibus deferrals (`phase_omnibus_2026_12_02`, `phase_omnibus_2028_08_02`).
+The registry currently models four application phases in the pinned Regulation (EU) 2024/1689 text: `phase_2025_02_02`, `phase_2025_08_02`, `phase_2026_08_02`, and `phase_2027_08_02`. Proposed amendments or deferrals are not modeled as applicable law here.
 
 Each `Phase` carries:
 
 - `effective_date` — concrete date the phase obligations take effect
 - `articles` — which articles' obligations come into force at this phase
-- `superseded_by` — pointer to a later phase when Digital Omnibus moves the goalposts (e.g. `phase_2027_08_02` is superseded by `phase_omnibus_2028_08_02` in some sectors)
+- `superseded_by` — pointer to a later adopted phase only when the Regulation has formally changed an earlier application date
 
 ---
 
@@ -110,7 +110,7 @@ The ontology models relationships as typed tuple fields on the dataclasses rathe
 | Phase → deferral | `Phase` | `Phase.id` | `Phase.superseded_by: Optional[str]` |
 | ActorRole × RiskClass → obligations | (Role, Class) | tuple of article refs | `ROLE_OBLIGATIONS: dict[Role, dict[Class, tuple[str, ...]]]` |
 
-The most important relationship is the **role × risk-class → obligations matrix**. It encodes the answer to "I'm an X handling a system in risk class Y — what do I owe?" without requiring an LLM, regex, or graph traversal. It's computed once at module load.
+The most important relationship is the **role × risk-class → obligations matrix**. It encodes a coarse article-level answer to "I'm an X handling a system in risk class Y — what duties may apply?" without requiring an LLM, regex, or graph traversal. It is not an exhaustive duty-level model: exceptions, scope limits and conditional triggers may require checking the cited provision.
 
 ---
 
@@ -135,12 +135,11 @@ The ontology is **additive**. The legacy tables stay live because they encode ha
 
 ### Adding a new prohibited practice
 
-1. Add a new `Practice` to `PRACTICE_REGISTRY` in `app/data/ontology.py`.
-2. Pick a stable `id` (snake_case, e.g. `new_practice_x`).
-3. Fill `citation`, `description`, `exceptions`, `keywords` from the regulation text.
-4. If the carve-out lands the practice in a high-risk category, set `related_high_risk_anchor`.
-5. If the practice activates on a Digital Omnibus date, point `effective_phase` to the right `Phase.id`.
-6. Run `pytest tests/test_kb_consistency.py` to verify every citation resolves in `ARTICLE_EXISTENCE`.
+1. Confirm the practice appears in the adopted, pinned legal source; proposals and political agreements are not enough.
+2. Add a `Practice` to `PRACTICE_REGISTRY` in `app/data/ontology.py` with a stable `id` and citation, description, exceptions and keywords grounded in that text.
+3. If the carve-out lands the practice in a high-risk category, set `related_high_risk_anchor`.
+4. Add or update official-gold competency-question coverage and a focused regression test for the affected question/evidence path.
+5. Run `pytest tests/test_kb_consistency.py tests/test_ontology_coverage.py tests/test_ontology_signature.py`; update the semantic snapshot only with a reviewed, adopted-text change.
 
 ### Adding a new Annex III category
 
@@ -154,14 +153,17 @@ The ontology is **additive**. The legacy tables stay live because they encode ha
 1. Edit `ROLE_OBLIGATIONS[role][risk_class]` — append the article refs the role owes in that risk-class regime.
 2. Verify the addition reads correctly via `obligations_for(role, risk_class)`.
 
-### Adding a new Phase (Digital Omnibus or future amendment)
+### Adding a new Phase
 
-1. Add a `Phase` to `PHASE_REGISTRY` with the effective date + which articles come into force.
-2. Update upstream `Phase.superseded_by` pointers if the new phase defers existing obligations.
+1. Confirm the date and affected provisions in an adopted source version.
+2. Add a `Phase` to `PHASE_REGISTRY` with the effective date and articles that come into force.
+3. Update `Phase.superseded_by` only where an adopted amendment actually supersedes an existing date.
 
 ---
 
-## Invariants (enforced by `tests/test_kb_consistency.py`)
+## Invariants and question coverage
+
+The runtime schema checks in `tests/test_kb_consistency.py` remain complemented by the offline competency-question coverage report in `evals.official.ontology_coverage`. Run `python -m evals.official.ontology_coverage` to link each gold question and answer criterion to its expected legal coordinates. The report marks unannotated rows explicitly and distinguishes exact, parent-only and invalid coordinates; it does not infer runtime behavior or replace the evaluation gates.
 
 The lint suite verifies these on every CI run:
 
@@ -177,13 +179,13 @@ The lint suite verifies these on every CI run:
 10. Every key in `EC_CHECKER_OBLIGATION_MAP` resolves in `ARTICLE_EXISTENCE`.
 11. The cross-reference graph in `kb_xrefs.py::all_edges()` only contains targets that resolve in `ARTICLE_EXISTENCE`.
 
-Breaking any invariant is a hard CI failure.
+Breaking any invariant is a hard CI failure. Separately, the offline coverage report distinguishes exact, parent-only, invalid and unannotated question evidence; it does not infer concept/relation coverage or claim runtime support from registry presence alone.
 
 ---
 
 ## Forward direction
 
-The ontology is intentionally narrow today: 9 practices + 8 Annex III categories + 8 roles + 7 risk classes + 6 phases. Future expansion candidates (in priority order):
+The ontology is intentionally narrow today: 8 adopted practices + 8 Annex III categories + 9 role enum members (including a spelling alias) + 7 risk classes + 4 official phases. Future expansion candidates (in priority order):
 
 1. **GPAI obligation matrix** — break out Art. 53/55 obligations per sub-paragraph so questions like "what training-data summary does Art. 53(1)(d) demand?" resolve precisely.
 2. **Article 13 transparency sub-obligations** — Art. 13 has ~10 distinct instruction-for-use items; today they're one summary blob.
@@ -191,6 +193,6 @@ The ontology is intentionally narrow today: 9 practices + 8 Annex III categories
 4. **Crosswalks to NIST AI RMF + ISO 42001** — already half-modelled in `graph_rag_prompts.py` Cypher templates; needs typed nodes.
 5. **Penalty-tier matrix** — Art. 99 has three tiers (35M/7%, 15M/3%, 7.5M/1%); a typed `PenaltyTier` entity would let date+violation queries resolve a precise ceiling.
 
-When the regulation evolves (Digital Omnibus formal adoption, future delegated acts), the ontology evolves with it. Every change to `PRACTICE_REGISTRY`, `ANNEX_III_REGISTRY`, `ROLE_OBLIGATIONS`, or `PHASE_REGISTRY` should be accompanied by a CHANGELOG entry citing the source (regulation text section, Commission guidance date, Digital Omnibus reference).
+When the regulation or authoritative guidance evolves, update the ontology only after classifying the source as adopted law or guidance within the product's documented scope. Every change to `PRACTICE_REGISTRY`, `ANNEX_III_REGISTRY`, `ROLE_OBLIGATIONS`, or `PHASE_REGISTRY` should identify the source/version and be paired with relevant coverage and regression updates. The CI snapshot at `tests/_snapshots/ontology_signature.txt` fingerprints the semantic registries, legal coordinate catalogs, source pin and evidence-record schema; bump its signature version for an intentional snapshot-contract change.
 
 The ontology is the schema. The schema is the product.
