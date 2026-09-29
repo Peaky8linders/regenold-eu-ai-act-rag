@@ -1431,6 +1431,15 @@ def _engine_cache_key(
             # vocabulary or by an answer that lists the annex's points, so the
             # wire keeps the bare head (`Annex III.7.b` -> `Annex III`).
             "REGENOLD_GRAIN_QUESTION_SUPPORT",
+            # R452b — the same veto, extended to question tokens every candidate
+            # unit carries (`Article 5.1.d` -> `Article 5` on rg_105).
+            "REGENOLD_GRAIN_DISCRIMINATING_SUPPORT",
+            # R452c — question-side subject exemption, the live question at the
+            # deepener, and the two curated-intercept reference guards.
+            "REGENOLD_GRAIN_SUBJECT_HEAD",
+            "REGENOLD_GRAIN_LIVE_QUESTION",
+            "REGENOLD_CURATED_HEAD_GRAIN",
+            "REGENOLD_CURATED_DECLARED_FIRST",
             # R397 — folds a coordinate the Regulation does not contain back
             # onto its head (`Article 13.9` -> `Article 13`). Changes the wire
             # reference list, so it needs its own cache-key slot.
@@ -3784,14 +3793,100 @@ def _grain_question_support_enabled() -> bool:
       the answer; the question contributes ``risk`` again.
 
     Audit Finding 1 already requires question support for a candidate; the
-    defect is that any shared token counted. The guard is VETO-ONLY: it can turn
-    a deepened coordinate back into the bare head, never pick a different unit
-    and never add or remove a provision, so the folded head set, the reference
+    defect is that any shared token counted. R452c adds function words
+    (``_GRAIN_FUNCTION_WORDS``) to the tokens that never count. Below paragraph
+    level, where the question cannot choose between points, the answer may
+    (``_GRAIN_ANSWER_DISTINCTIVE_MIN``). The guard is VETO-ONLY: it can turn a
+    deepened coordinate back into an ancestor, never pick a different unit and
+    never add or remove a provision, so the folded head set, the reference
     count, Ref. Loose and Ref. Conciseness are invariant by construction.
 
     Default ON with deny-list opt-out (=0 / =false / no / off disables it).
     """
     return os.getenv("REGENOLD_GRAIN_QUESTION_SUPPORT", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
+def _grain_discriminating_support_enabled() -> bool:
+    """R452b — question support must also separate the chosen unit from the others.
+
+    rg_105 (Annex X) shipped ``Article 5.1.d`` for "without prejudice to the
+    Article 5 prohibitions": the question's "What is it used for?" contributes
+    ``used`` (not generic), but Article 5(1) and 5(2) both carry it, so it
+    cannot favour either. With two or more candidates, a question token that
+    every RIVAL (a candidate with its own informative question support) also
+    carries no longer counts as support. Below paragraph level the answer may
+    still choose a point with two or more non-generic tokens no other candidate
+    has. Veto-only, like R452, and nested under it:
+    ``REGENOLD_GRAIN_QUESTION_SUPPORT=0`` switches this check off as well, so a
+    replay that wants the pre-R452 deepener sets that one flag.
+
+    Default ON with deny-list opt-out (=0 / =false / no / off disables it).
+    """
+    return os.getenv("REGENOLD_GRAIN_DISCRIMINATING_SUPPORT", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
+def _grain_subject_head_enabled() -> bool:
+    """R452c — a provision the QUESTION is about as a whole stays at head grain.
+
+    "Can the Commission amend Annex III ...?" and "What does Annex X cover?" ask
+    about the provision itself, so no single point of it is the answer's
+    coordinate. With the function-word list the other guards already keep all
+    36 recorded rg_018 answers at ``Annex III``, so this rule decides only when
+    the question also names a topic: "amend Annex III to add new biometric
+    identification use cases" otherwise ships ``Annex III.1.a``. It changes none of
+    the 3,438 recorded graded turns with a gold key. Veto-only. Default ON, deny-list opt-out.
+    """
+    return os.getenv("REGENOLD_GRAIN_SUBJECT_HEAD", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
+def _grain_live_question_enabled() -> bool:
+    """R452c — the deepener reads the live question, not the flattened transcript.
+
+    On a multi-turn request ``question`` is the whole "Conversation so far:" block,
+    assistant turns included, so hundreds of history tokens counted as question
+    support and the R452 vetoes were near-vacuous (hard-mode turn 1 of the
+    minimal-risk question shipped ``Article 5.1.h`` / ``6.2`` / ``50.1``). The
+    sibling passes already read ``resolved_question`` / ``live_user_message``.
+    Default ON, deny-list opt-out.
+    """
+    return os.getenv("REGENOLD_GRAIN_LIVE_QUESTION", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
+def _curated_head_grain_enabled() -> bool:
+    """R452c — a curated answer's declared heads are not deepened by guesswork.
+
+    A curated intercept skips Stage-2 and states its provisions in authored
+    text; the grain deepener then guessed sub-points that text never mentions
+    (the minimal-risk answer shipped ``Article 6.3.d`` / ``6.4`` / ``6.6`` /
+    ``95.2`` depending on the phrasing). For a declared head whose sub-points
+    the curated prose never names, a deepened pick survives only when the answer
+    states that unit's own content (:func:`_curated_answer_backs`: rg_009 keeps
+    ``Article 18.1``). Default ON, deny-list.
+    """
+    return os.getenv("REGENOLD_CURATED_HEAD_GRAIN", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
+def _curated_declared_first_enabled() -> bool:
+    """R452c — a curated answer's declared refs survive the reference budget cut.
+
+    The minimal-risk intercept declares five refs, exactly the plain budget, so
+    on a phrasing that adds anchors ("..., such as chatbots and emotion
+    recognition tools?") the head cut ``candidates[:5]`` evicted ``Article 95``
+    although the answer states it, and nothing restores it because curated
+    answers skip Stage-2. The declared refs are now ordered first before the
+    cut. Default ON, deny-list opt-out.
+    """
+    return os.getenv("REGENOLD_CURATED_DECLARED_FIRST", "1").strip().lower() not in (
         "0", "false", "no", "off",
     )
 
@@ -3811,6 +3906,10 @@ def _grain_question_support_enabled() -> bool:
 #:                                              head BOTH miss, identically
 #:
 #: So abstaining buys nothing on any axis, while committing can only win.
+#: (R452 qualifies this: the scores do not see a wrong coordinate, but a reader
+#: does. ``Annex III.7.b`` on an amendment question is a visible citation error,
+#: so the R452 guards veto coordinates the question gives no support for, at a
+#: measured Ref. Strict cost recorded in their CLAUDE.md rows.)
 #: Measured (``evals.official.gate_grain_depth`` sweep, zero-variance replay of
 #: the r387 live capture, n=110 per mode, key and prediction both truncated to
 #: the evaluator's observed one-sub-level depth)::
@@ -3851,6 +3950,40 @@ _GRAIN_GENERIC_DF = 0.2
 #: R452 — an answer naming this many of an annex's points by their heading is
 #: describing the annex as a whole, so no single point is its coordinate.
 _GRAIN_ENUMERATION_MIN = 3
+#: R452b — when the question cannot choose between the candidates (no informative
+#: support, or none that separates them), the answer may still choose one if it
+#: shares this many tokens with that unit and with no other candidate. Point
+#: level only (rg_085 keeps Annex III.1.a; rg_105 loses 5.1.d at paragraph level).
+_GRAIN_ANSWER_DISTINCTIVE_MIN = 2
+#: R452c — function and auxiliary words ``provision_text._tokens`` keeps. They
+#: carry no statutory content yet sit just under the 0.2 document-frequency cut
+#: (``under`` 0.18, ``not`` 0.17, ``use`` 0.12, ``used`` 0.09), so on their own they let a
+#: paraphrase ("... considered minimal risk?", "... under the AI Act?") keep a
+#: coordinate the question never asked about.
+_GRAIN_FUNCTION_WORDS = (
+    "about above across after against along also among any apply applies applied applying "
+    "are be been before being below between both can cannot case cases concern concerning "
+    "consider considered considering could cover covers covered does each either every fall "
+    "falls for from give given has have having here how however into its make makes made "
+    "many may might more most must not only other others over per provide provided provides "
+    "regard regarding relate related relates relating same shall should some such take taken "
+    "than that their them then there these they this those through under upon use used uses "
+    "using very what when where whether which while who whose why will with within without would"
+)
+#: R452c — questions whose SUBJECT is a provision as a whole. The named provision
+#: keeps head grain; a paragraph-qualified mention ("amend Article 6(3)") does not match.
+_GRAIN_PROVISION_SUBJECT_RES = (
+    re.compile(
+        r"\b(?:amend\w*|modif\w*|updat\w*|add(?:ing)?\s+to|remov\w*\s+from)\b[^.?!]{0,40}?"
+        r"\b(Article\s+\d{1,3}|Annex\s+[IVXLC]+)\b(?!\s*(?:\(|\.\s?\d|point\b|paragraph\b))",
+        re.I,
+    ),
+    re.compile(
+        r"\bwhat\s+(?:is|are|does|do)\s+(Article\s+\d{1,3}|Annex\s+[IVXLC]+)\s+"
+        r"(?:about|for|used\s+for|cover|covers|contain|contains|list|lists|say|says|mean|means)\b",
+        re.I,
+    ),
+)
 
 _GRAIN_HEAD_RE = re.compile(r"^(Article\s+(\d{1,3})|Annex\s+([IVXL]+))$")
 _GRAIN_LEAF_RE = re.compile(r"^(Article\s+\d{1,3}|Annex\s+[IVXL]+)\.")
@@ -4551,7 +4684,10 @@ def _prose_named_annex_point(roman: str, answer: str, units: dict):
     return _resolve_prose_named_annex_point(roman, answer, units)[1]
 
 
-def _pick_unit(units: dict, q_tok: set, a_tok: set, *, require_support: bool = True):
+def _pick_unit(
+    units: dict, q_tok: set, a_tok: set, *, require_support: bool = True,
+    answer_may_decide: bool = False,
+):
     """The one unit the question+answer point at, or ``None`` to abstain.
 
     The QUESTION decides which rule is operative and is weighted double; the
@@ -4580,45 +4716,207 @@ def _pick_unit(units: dict, q_tok: set, a_tok: set, *, require_support: bool = T
     second = scored[1][1] if len(scored) > 1 else 0
     if top[1] < _GRAIN_MIN_TOP or (len(scored) > 1 and top[1] - second < _GRAIN_MIN_MARGIN):
         return None
-    if require_support and _grain_question_support_enabled() and not (
-        (q_tok - _grain_generic_tokens()) & _pt._tokens(units[top[0]])
-    ):
-        return None  # R452 — the question shares only Act-wide vocabulary with it
+    if require_support and _grain_question_support_enabled():
+        uninformative = _grain_uninformative_tokens()
+        unit_tok = {n: frozenset(_pt._tokens(t)) for n, t in units.items()}
+        top_tok = unit_tok[top[0]]
+        informative = frozenset(q_tok) - uninformative
+        support = informative & top_tok
+        # R452 — the question must share more than vocabulary with the unit.
+        chooses = bool(support)
+        if chooses and len(units) >= 2 and _grain_discriminating_support_enabled():
+            # R452b — a RIVAL is another candidate with its own informative
+            # question support. A token every rival also carries cannot choose
+            # this unit ("used" is in Article 5(1) and 5(2)). Candidates that
+            # share only vocabulary with the question are not rivals, or any
+            # verb they happen to lack would read as discriminating.
+            rivals = [tok for n, tok in unit_tok.items() if n != top[0] and informative & tok]
+            chooses = not rivals or bool(support - frozenset.intersection(*rivals))
+        if not chooses:
+            # Below paragraph level, where the question cannot separate the
+            # points ("intended to be used" opens every Annex III(1) point), an
+            # answer that names this point's own content may still choose it:
+            # rg_085 keeps Annex III.1.a. Paragraphs share too much procedural
+            # wording for that. The pick is the unguarded one, so this only
+            # ever withholds a veto.
+            others = frozenset().union(*(tok for n, tok in unit_tok.items() if n != top[0]))
+            distinctive = (frozenset(a_tok) & top_tok) - others - uninformative
+            if not answer_may_decide or len(distinctive) < _GRAIN_ANSWER_DISTINCTIVE_MIN:
+                return None
     return top[0]
 
 
-@lru_cache(maxsize=1)
+_GRAIN_GENERIC_FAILURE_LOGGED = False
+
+
 def _grain_generic_tokens() -> frozenset[str]:
     """R452 — tokens in at least ``_GRAIN_GENERIC_DF`` of the Regulation's units.
 
-    Computed once from the same provision text the deepener scores against:
-    every Article's paragraphs (Article 3's definitions) and every Annex's
-    points. Empty on any failure, which leaves the veto inert rather than
-    blocking every pick.
+    A failure is logged once and returns an empty set for that call only. It is
+    never cached, so a transient error cannot pin the guard off for the worker's
+    lifetime (R452c review finding).
     """
+    global _GRAIN_GENERIC_FAILURE_LOGGED
     try:
-        from app.data import provision_text as _pt  # noqa: PLC0415
-
-        texts: list[str] = []
-        for n in range(1, 114):
-            body = _pt.article_body(f"Article {n}")
-            if body:
-                units = _pt._definitions(body) if n == 3 else _pt._paragraphs(body)
-                texts.extend(str(t) for t in (units or {}).values())
-        for roman in ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII"):
-            body = _pt.article_body(f"Annex {roman}")
-            if body:
-                texts.extend(str(t) for t in (_pt._annex_items(body) or {}).values())
-        if not texts:
-            return frozenset()
-        df: dict[str, int] = {}
-        for t in texts:
-            for tok in _pt._tokens(t):
-                df[tok] = df.get(tok, 0) + 1
-        floor = _GRAIN_GENERIC_DF * len(texts)
-        return frozenset(tok for tok, c in df.items() if c >= floor)
+        return _grain_generic_tokens_cached()
     except Exception:  # noqa: BLE001 — a missing corpus must not block the route
+        if not _GRAIN_GENERIC_FAILURE_LOGGED:
+            _GRAIN_GENERIC_FAILURE_LOGGED = True
+            logger.warning("r452_grain_generic_tokens_unavailable", exc_info=True)
         return frozenset()
+
+
+def _grain_uninformative_tokens() -> frozenset[str]:
+    """R452c — Act-wide vocabulary plus function words: never question support."""
+    return _grain_generic_tokens() | _grain_function_tokens()
+
+
+@lru_cache(maxsize=1)
+def _grain_function_tokens() -> frozenset[str]:
+    """R452c — ``_GRAIN_FUNCTION_WORDS`` in the deepener's own token form."""
+    from app.data import provision_text as _pt  # noqa: PLC0415
+
+    return frozenset(_pt._tokens(_GRAIN_FUNCTION_WORDS))
+
+
+@lru_cache(maxsize=1)
+def _grain_generic_tokens_cached() -> frozenset[str]:
+    """Compute the generic set. Raises on failure, so ``lru_cache`` never stores one.
+
+    Built from the same provision text the deepener scores against: every
+    Article's paragraphs (Article 3's definitions) and every Annex's points.
+    """
+    from app.data import provision_text as _pt  # noqa: PLC0415
+
+    texts: list[str] = []
+    for n in range(1, 114):
+        body = _pt.article_body(f"Article {n}")
+        if body:
+            units = _pt._definitions(body) if n == 3 else _pt._paragraphs(body)
+            texts.extend(str(t) for t in (units or {}).values())
+    for roman in ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII"):
+        body = _pt.article_body(f"Annex {roman}")
+        if body:
+            texts.extend(str(t) for t in (_pt._annex_items(body) or {}).values())
+    if not texts:
+        raise RuntimeError("provision text unavailable")
+    df: dict[str, int] = {}
+    for t in texts:
+        for tok in _pt._tokens(t):
+            df[tok] = df.get(tok, 0) + 1
+    floor = _GRAIN_GENERIC_DF * len(texts)
+    return frozenset(tok for tok, c in df.items() if c >= floor)
+
+
+def _curated_answer_backs(coord: str, answer: str) -> bool:
+    """R452c — does a curated answer state the chosen coordinate's own content?
+
+    At every level of ``coord`` the answer must share at least
+    ``_GRAIN_ANSWER_DISTINCTIVE_MIN`` non-generic tokens with the chosen unit and
+    with none of its siblings. rg_009's answer describes the ten-year retention
+    duty, so ``Article 18.1`` stands; the minimal-risk answer never discusses
+    emotion recognition, so ``Article 5.1.f`` does not. Undecidable input
+    (unknown coordinate, missing text) backs the coordinate: veto-only.
+    """
+    from app.data import provision_text as _pt  # noqa: PLC0415
+
+    m = re.match(r"^(Article\s+(\d{1,3})|Annex\s+([IVXL]+))\.(.+)$", " ".join(str(coord).split()))
+    if not m:
+        return True
+    try:
+        body = _pt.article_body(m.group(1))
+        if not body:
+            return True
+        art_num = int(m.group(2)) if m.group(2) else None
+        if art_num == 3:
+            units = _pt._definitions(body)
+        elif art_num is not None:
+            units = _pt._paragraphs(body)
+        else:
+            units = _pt._annex_items(body)
+        a_tok = frozenset(_pt._tokens(answer or "")) - _grain_uninformative_tokens()
+        for step in m.group(4).split("."):
+            key = int(step) if step.isdigit() else step
+            if not units or key not in units:
+                return True
+            mine = frozenset(_pt._tokens(str(units[key])))
+            others = frozenset().union(
+                *(frozenset(_pt._tokens(str(t))) for k, t in units.items() if k != key)
+            )
+            if len((a_tok & mine) - others) < _GRAIN_ANSWER_DISTINCTIVE_MIN:
+                return False
+            nested = _pt.subpoints_nested(str(units[key])) or {}
+            units = {
+                k: (f"{v.get('text', '')} {' '.join(str(x) for x in (v.get('subs') or {}).values())}"
+                    if isinstance(v, dict) else str(v))
+                for k, v in nested.items()
+            }
+        return True
+    except Exception:  # noqa: BLE001 — never break the route on a grain check
+        return True
+
+
+def _curated_fold_heads(declared: tuple, answer_text: str) -> set[str]:
+    """R452c — declared bare heads whose sub-points the curated prose never names."""
+    if not declared or not _curated_head_grain_enabled():
+        return set()
+    named = {" ".join(str(k).split()).lower() for k in _prose_named_subpoints(answer_text or "")}
+    return {
+        d for d in (" ".join(str(r).split()) for r in declared)
+        if _GRAIN_HEAD_RE.match(d) and d.lower() not in named
+    }
+
+
+def _curated_budget_cut(
+    candidates: list[str], declared: tuple, answer_text: str, budget: int,
+) -> list[str]:
+    """R452c — the reference budget cut for a curated intercept.
+
+    Other passes add question-driven anchors to a curated answer's refs and can
+    replace a declared head with sub-points the curated text never states
+    (``Article 50`` -> ``Article 50.3`` / ``50.1``, plus ``Article 5.1.f``, on
+    "..., such as chatbots and emotion recognition tools?"). With
+    ``REGENOLD_CURATED_HEAD_GRAIN`` on, such a sub-point folds back into its
+    declared head unless the curated prose names a sub-point of that head. The
+    declared refs then come first, in their declared order, so the ``[:budget]``
+    cut can never evict one in favour of an anchor.
+    """
+    norm = [" ".join(str(r).split()) for r in declared]
+    declared_set = set(norm)
+    fold_heads = _curated_fold_heads(declared, answer_text)
+    folded: list[str] = []
+    for c in candidates:
+        cn = " ".join(str(c).split())
+        head = next((h for h in fold_heads if cn.startswith(h + ".")), None)
+        item = head if head and not _curated_answer_backs(cn, answer_text) else c
+        if item not in folded:
+            folded.append(item)
+    present = {" ".join(str(c).split()) for c in folded}
+    first = [d for d in norm if d in present]
+    rest = [c for c in folded if " ".join(str(c).split()) not in declared_set]
+    return (first + rest)[:budget]
+
+
+def _question_subject_provisions(question: str) -> set[str]:
+    """R452c — provisions the question is about AS A WHOLE, in wire form."""
+    out: set[str] = set()
+    for rx in _GRAIN_PROVISION_SUBJECT_RES:
+        for m in rx.finditer(question or ""):
+            kind, num = m.group(1).split()[:2]
+            out.add(f"Annex {num.upper()}" if kind.lower() == "annex" else f"Article {num}")
+    return out
+
+
+_DEFINED_TERM_RE = re.compile(r"^\s*[\u2018'\u201c\"]([^\u2019'\u201d\"]{1,80})[\u2019'\u201d\"]\s+means\b")
+
+
+def _question_names_defined_term(definition: str, q_tok: set) -> bool:
+    """R452c — does the question carry every token of this definition's term?"""
+    from app.data import provision_text as _pt  # noqa: PLC0415
+
+    m = _DEFINED_TERM_RE.match(str(definition or ""))
+    term = frozenset(_pt._tokens(m.group(1))) if m else frozenset()
+    return bool(term) and term <= frozenset(q_tok)
 
 
 def _answer_enumerates_units(units: dict, answer: str) -> bool:
@@ -4677,7 +4975,7 @@ def _deepen_within(coord: str, text: str, q_tok: set, a_tok: set, budget: int) -
         q_units = {k: t for k, t in units.items() if len(q_tok & _pt._tokens(t)) > 0}
         if not q_units:
             return coord
-        won = _pick_unit(q_units, q_tok, a_tok)
+        won = _pick_unit(q_units, q_tok, a_tok, answer_may_decide=True)
         if won is None:
             return coord
         deeper = f"{coord}.{won}"
@@ -4689,7 +4987,7 @@ def _deepen_within(coord: str, text: str, q_tok: set, a_tok: set, budget: int) -
                 k: t for k, t in sub_units.items() if len(q_tok & _pt._tokens(t)) > 0
             }
             if q_sub_units:
-                won2 = _pick_unit(q_sub_units, q_tok, a_tok)
+                won2 = _pick_unit(q_sub_units, q_tok, a_tok, answer_may_decide=True)
                 if won2 is not None:
                     return f"{deeper}.{won2}"
         return deeper
@@ -4805,6 +5103,16 @@ def _deepen_one_ref(ref: str, question: str, answer: str) -> str:
                 won = 20 if 20 in units else _pick_unit(q_units, q_tok, a_tok, require_support=False)
             else:
                 won = _pick_unit(q_units, q_tok, a_tok, require_support=False)
+                if (
+                    won is not None
+                    and _grain_question_support_enabled()
+                    and not _question_names_defined_term(units.get(won), q_tok)
+                ):
+                    # R452c — the exemption is for a question that names the
+                    # defined term ("how is 'risk' defined?"); otherwise the
+                    # ordinary vocabulary veto applies ("minimal risks" must not
+                    # pick 'systemic risk').
+                    won = _pick_unit(q_units, q_tok, a_tok)
         elif art_num == 44:
             # R390 — cea6cba forced Article 44.1 on any question containing
             # "validity". Verbatim: 44(1) is the LANGUAGE rule ("drawn-up in a
@@ -4844,8 +5152,13 @@ def _deepen_one_ref(ref: str, question: str, answer: str) -> str:
                 m.group(3)
                 and _grain_question_support_enabled()
                 and _answer_enumerates_units(units, answer)
+                and _pick_unit(q_units, q_tok, set()) is None
             ):
-                return ref  # R452 — the answer describes the annex as a whole
+                # R452 — the answer describes the annex as a whole. R452c: only
+                # when the question alone does not choose a point, so rg_093's
+                # "irregular migration" keeps Annex III.7.b even in an answer
+                # that also walks through other areas.
+                return ref
             won = _pick_unit(q_units, q_tok, a_tok)
 
         if won is None:
@@ -4882,6 +5195,7 @@ def _deepen_ref_grain(
     question: str,
     answer: str,
     exempt_heads: set[str] | None = None,
+    curated_heads: set[str] | None = None,
 ) -> list[str]:
     """Apply :func:`_deepen_one_ref` across the list, with two list-level guards.
 
@@ -4923,6 +5237,8 @@ def _deepen_ref_grain(
         exempt = set(exempt_heads or ())
         if exempt_target:
             exempt.add(exempt_target)
+        if _grain_subject_head_enabled():
+            exempt.update(_question_subject_provisions(question))
         out: list[str] = []
         for r in references:
             deep = (
@@ -4930,6 +5246,13 @@ def _deepen_ref_grain(
                 if (r.strip() in pinned or r.strip() in exempt)
                 else _deepen_one_ref(r, question, answer)
             )
+            if (
+                curated_heads
+                and r.strip() in curated_heads
+                and deep != r
+                and not _curated_answer_backs(deep, answer)
+            ):
+                deep = r  # R452c — the curated answer does not state this sub-point
             if deep not in out:
                 out.append(deep)
         return out or list(references)
@@ -11251,6 +11574,11 @@ def regenold_eu_ai_act_ask(
         if _is_curated_intercept and _curated_keep_declared_leaves_enabled()
         else frozenset()
     )
+    # R452c — the curated intercept's DECLARED refs, frozen before any pass can
+    # add anchors. Read by the budget cut (declared first) and by the grain
+    # deepener (declared heads stay bare unless the curated prose names a
+    # sub-point).
+    _curated_declared_refs = tuple(candidates) if _is_curated_intercept else ()
 
     # Resolve the live user message — used as a topic hint by the
     # anchor-injection helper to suppress broad-anchor overmatch when
@@ -12237,7 +12565,12 @@ def regenold_eu_ai_act_ask(
         _stage2_citable_reference_bases,
         question=question,
     )
-    references: list[str] = candidates[:_effective_max_refs]
+    if _curated_declared_refs and _curated_declared_first_enabled():
+        references: list[str] = _curated_budget_cut(
+            candidates, _curated_declared_refs, answer_text, _effective_max_refs
+        )
+    else:
+        references = candidates[:_effective_max_refs]
 
     # R115 (Antifragile q11 follow-up) — subpoint-aware budget rescue.
     # ``upgrade_references`` inserts emitted leaf sub-points immediately
@@ -12250,6 +12583,19 @@ def regenold_eu_ai_act_ask(
     # topic ships at most 5 refs — the historical MAX_REFERENCES).
     # Never reorders the capped head, never adds an orphan sub-point.
     _r115_tail = candidates[_effective_max_refs:]
+    # R452c — never rescue a sub-point of a curated head the curated text keeps
+    # whole; the curated budget cut folded those back into the head on purpose.
+    _r115_fold_heads = (
+        _curated_fold_heads(_curated_declared_refs, answer_text)
+        if _curated_declared_refs and _curated_declared_first_enabled()
+        else set()
+    )
+    if _r115_fold_heads:
+        _r115_tail = [
+            r for r in _r115_tail
+            if not any(" ".join(str(r).split()).startswith(h + ".") for h in _r115_fold_heads)
+            or _curated_answer_backs(r, answer_text)
+        ]
     if _r115_tail:
         _r115_head_set = set(references)
         _r115_rescue: list[str] = []
@@ -13952,14 +14298,24 @@ def regenold_eu_ai_act_ask(
         # list with the head+leaf duplicates already resolved, and before every
         # pass that can DROP, so a dropped reference is never a deepened one.
         # It is not a filter: it changes a coordinate, never the provision set.
-        _gd_refs = _deepen_ref_grain(
-            references,
-            question,
-            answer_text,
-            exempt_heads=(
-                set() if _deepen_collapsed_heads_enabled() else _collapsed_to_heads
-            ),
-        )
+        try:
+            _gd_refs = _deepen_ref_grain(
+                references,
+                (resolved_question or live_user_message or question)
+                if _grain_live_question_enabled()
+                else question,
+                answer_text,
+                exempt_heads=(
+                    set() if _deepen_collapsed_heads_enabled() else _collapsed_to_heads
+                ),
+                # R452c — a curated answer's declared heads (whose sub-points its
+                # prose does not name) deepen only where the curated answer backs
+                # the chosen point.
+                curated_heads=_curated_fold_heads(_curated_declared_refs, answer_text),
+            )
+        except Exception:  # noqa: BLE001 — R452c: a deepener failure must not skip the passes below
+            logger.warning("r452c_grain_deepen_failed", exc_info=True)
+            _gd_refs = references
         if _gd_refs != references:
             _gd_changed = [
                 f"{a}->{b}"

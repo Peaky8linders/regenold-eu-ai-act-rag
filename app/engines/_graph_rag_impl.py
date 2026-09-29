@@ -6937,8 +6937,9 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     # Chapter III Section 2 articles (the only strong token is "risk") and
     # ships them as the answer + citations (a minimal-risk question answered
     # with high-risk content). Emit the residual-tier verdict and seed the
-    # three contrast refs so the wire ships exactly those. Fires on 0 davidath
-    # rows -> bench byte-identical.
+    # three contrast refs plus the two duties it states (Articles 4 and 95) so
+    # the wire ships exactly those. Fires on 0 davidath rows -> bench
+    # byte-identical.
     if _detect_minimal_risk_inquiry(question):
         verdict = {
             "name": "minimal_risk",

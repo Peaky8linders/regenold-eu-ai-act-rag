@@ -272,6 +272,31 @@ def build_rows(ckpt_rows: list[dict], gold: dict[str, dict]) -> list[dict]:
     return out
 
 
+_DEEPEN_FLAGS = (
+    "REGENOLD_REF_GRAIN_DEEPEN", "REGENOLD_REF_GRAIN_DEPTH", "REGENOLD_GRAIN_QUESTION_SUPPORT",
+    "REGENOLD_GRAIN_DISCRIMINATING_SUPPORT", "REGENOLD_GRAIN_SUBJECT_HEAD",
+)
+
+
+def _reference_pass_provenance(deepen: bool, redeepened: int) -> dict:
+    """R452c — which deepener re-scored the recorded references, if any."""
+    import subprocess  # noqa: PLC0415
+
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "--short=12", "HEAD"], capture_output=True, text=True,
+            cwd=str(Path(__file__).resolve().parents[2]), timeout=10,
+        ).stdout.strip() or None
+    except Exception:  # noqa: BLE001 — provenance must not fail a scoring run
+        commit = None
+    return {
+        "redeepen": bool(deepen),
+        "rows_changed": int(redeepened),
+        "commit": commit,
+        "flags": {f: os.environ.get(f) for f in _DEEPEN_FLAGS if os.environ.get(f) is not None},
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", required=True)
@@ -332,10 +357,16 @@ def main() -> int:
     if not rows:
         raise SystemExit("no rows matched the reconstructed gold")
 
+    # R452c — the re-deepen rewrites recorded references with THIS checkout's
+    # deepener and flags, so its provenance goes into the payload. A production
+    # board already carries the shipped pass; score it with --no-deepen.
+    redeepened = 0
     if a.deepen:
         from app.routes.regenold import _deepen_ref_grain  # noqa: PLC0415
         for r in rows:
-            r["references"] = _deepen_ref_grain(list(r["references"]), r.get("question") or "", r.get("answer") or "")
+            before = list(r["references"])
+            r["references"] = _deepen_ref_grain(before, r.get("question") or "", r.get("answer") or "")
+            redeepened += r["references"] != before
 
     cache = {} if a.rejudge else load_cache(cache_target)
     todo, cached = [], []
@@ -577,6 +608,7 @@ def main() -> int:
         "mode": a.mode,
         "ckpt": str(a.ckpt),
         "judge_identity": judge_id,
+        "reference_pass": _reference_pass_provenance(a.deepen, redeepened),
         "axes": res,
         "official_reference": ref,
         "rows": [

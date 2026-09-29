@@ -135,8 +135,8 @@ def _live_ask(
     _stage2_env(monkeypatch)
     original_deepen = R._deepen_ref_grain
 
-    def seed_leaf(refs, q, prose, exempt_heads=None):
-        deepened = original_deepen(refs, q, prose, exempt_heads=exempt_heads)
+    def seed_leaf(refs, q, prose, exempt_heads=None, **kwargs):
+        deepened = original_deepen(refs, q, prose, exempt_heads=exempt_heads, **kwargs)
         return [r for r in deepened if not str(r).lower().startswith("annex i.")] + initial_refs
 
     with ExitStack() as stack:

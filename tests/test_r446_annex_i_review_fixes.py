@@ -119,8 +119,8 @@ def _ask(
         calls["wire"] += 1
         return real_wire(*args, **kwargs)
 
-    def seed_leaf(refs, q, prose, exempt_heads=None):
-        deepened = original_deepen(refs, q, prose, exempt_heads=exempt_heads)
+    def seed_leaf(refs, q, prose, exempt_heads=None, **kwargs):
+        deepened = original_deepen(refs, q, prose, exempt_heads=exempt_heads, **kwargs)
         if seed is None:
             return deepened
         return [r for r in deepened if not str(r).lower().startswith("annex i.")] + seed
