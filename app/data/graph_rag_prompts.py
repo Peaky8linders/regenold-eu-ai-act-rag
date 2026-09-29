@@ -1322,6 +1322,60 @@ def prompt_budget_flex_enabled() -> bool:
     )
 
 
+#: R454 — a word in the question that the Act uses for a DIFFERENT duty or actor.
+#: "Marking" is the provider's Article 50(2) duty; what a deployer owes under
+#: Article 50(3)/(4) is disclosure. Asked "do I need to provide some marking?",
+#: Stage-2 answered "Yes, but only in a limited form ..." and then said itself
+#: that marking falls on the provider, so the verdict contradicted its own law
+#: (official Q74). "CE marking" is a different duty (Article 48) and is excluded.
+_ACT_TERMS_MARKING_RE = re.compile(
+    r"(?<!\bCE )(?<!\bce )\b(?:mark(?:s|ed|ing)?|label(?:s|led|ling|ing)?|watermark(?:s|ed|ing)?)\b"
+)
+_ACT_TERMS_MARKING_CLAUSE = (
+    "\n\nACT TERMS: the question speaks of \"{term}\". Answer in the Act's own terms. "
+    "Under Article 50(2) marking AI-generated audio, image, video or text in a "
+    "machine-readable, detectable format is the PROVIDER's duty. A deployer's duty is "
+    "disclosure: under Article 50(4), that deep fake content has been artificially "
+    "generated or manipulated, limited, for an evidently artistic, creative, satirical, "
+    "fictional or analogous work, to disclosing the existence of such content in an "
+    "appropriate manner that does not hamper its display or enjoyment; and under "
+    "Article 50(3), the operation of an emotion recognition or biometric categorisation "
+    "system. Where the person asking is a deployer, open by saying that no marking is "
+    "required of them. Then state the disclosure the Act still requires of them in "
+    "the case the question describes: for an artistic work Article 50(4) LIMITS the "
+    "duty to disclosing the existence of the content; it does not remove it. Name the "
+    "deep-fake condition it depends on, and keep the answer on the asker's case rather "
+    "than closing on cases where no duty arises. Do not open by affirming a marking duty "
+    "the Act places on someone else."
+)
+
+
+def act_terms_enabled() -> bool:
+    """R454 — see ``_ACT_TERMS_MARKING_RE``. Default ON, deny-list opt-out."""
+    import os
+
+    return os.getenv("REGENOLD_ACT_TERMS_CLAUSE", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
+def act_terms_clause(question: str) -> str:
+    """R454 — the ACT TERMS clause for a live question that uses a marking term.
+
+    Reads only the live turn of a flattened conversation, so a marking word in
+    history never fires it. Empty when the flag is off or nothing matches.
+    """
+    if not act_terms_enabled():
+        return ""
+    live = question or ""
+    if "Latest question:" in live:
+        live = live.split("Latest question:", 1)[-1]
+    m = _ACT_TERMS_MARKING_RE.search(live)
+    if not m or re.search(r"\bCE[\s-]+mark", live, re.I):
+        return ""
+    return _ACT_TERMS_MARKING_CLAUSE.replace("{term}", m.group(0).lower())
+
+
 def evidence_contract_enabled() -> bool:
     """R399 synthesis contract — R400 flipped it to DEFAULT ON.
 

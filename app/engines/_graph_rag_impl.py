@@ -10482,6 +10482,16 @@ def _claude_max_enhance_answer(
             user_message += pushback_keep_clause(history_q)
         except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
             pass
+        # R454 — ACT TERMS: a question worded with a term the Act gives to a
+        # different duty or actor ("marking" is the provider's Art. 50(2) duty)
+        # is answered in the Act's terms. After every wholesale replacement
+        # above, so it reaches every arm.
+        try:
+            from app.data.graph_rag_prompts import act_terms_clause  # noqa: PLC0415
+
+            user_message += act_terms_clause(orig_q)
+        except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
+            pass
 
         try:
             max_tokens = settings.graph_rag.max_tokens
