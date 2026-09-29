@@ -1467,6 +1467,8 @@ def _engine_cache_key(
             # R455b — the R133 surface pass no longer adds a SIBLING of a limb
             # already on the wire; the reference count changes, so its own slot.
             "REGENOLD_SURFACE_SIBLING_GUARD",
+            # R455c — a curated answer ships only the refs it declares or states.
+            "REGENOLD_CURATED_PROSE_SCOPE",
             "REGENOLD_GROUND_WIRE_ADD_MAX",
             "REGENOLD_GROUND_WIRE_ADD_ANSWER_RECALL",
             "REGENOLD_GROUND_WIRE_ADD_QUESTION_RECALL",
@@ -4964,6 +4966,36 @@ def _curated_answer_backs(coord: str, answer: str) -> bool:
         return True
     except Exception:  # noqa: BLE001 — never break the route on a grain check
         return True
+
+
+def _curated_prose_scope_enabled() -> bool:
+    """R455c — a curated answer ships only the references it declares or states. **Default ON.**
+
+    Curated answers skip Stage-2, so ``_reconcile_references_to_prose`` (which
+    drops a wire reference the prose does not describe) never runs on them, and
+    question-keyword anchors ride along: the R455b workplace emotion answer states
+    only Article 5(1)(f), yet ``emotion recognition`` anchored ``Annex III`` and
+    ``Article 50``, which the sub-point emitter upgraded to ``Annex III.1.c`` and
+    ``Article 50.3``. Registered in ``_engine_cache_key``.
+    """
+    return os.getenv("REGENOLD_CURATED_PROSE_SCOPE", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
+def _curated_prose_scope(references: list[str], declared: tuple, answer_text: str) -> list[str]:
+    """R455c — keep a reference whose head the curated answer declares or whose
+    provision its prose names; drop the anchors it neither declares nor states.
+    Never empties the list."""
+    declared_heads = {
+        h for r in declared
+        if (h := _clamp_ref_head(re.sub(r"^\s*Art\.\s*", "Article ", str(r))))
+    }
+    kept = [
+        r for r in references
+        if _clamp_ref_head(str(r)) in declared_heads or _reference_described_in_prose(str(r), answer_text or "")
+    ]
+    return kept or references
 
 
 def _curated_fold_heads(declared: tuple, answer_text: str) -> set[str]:
@@ -14450,6 +14482,24 @@ def regenold_eu_ai_act_ask(
                     )
 
                     _rn("parent_collapse dropped=" + ",".join(_pc_dropped))
+                except Exception:  # noqa: BLE001 — fail-soft on trace
+                    pass
+        except Exception:  # noqa: BLE001 — never 500 the route on a guard
+            pass
+
+    # R455c — a curated answer ships only the references it declares or states.
+    if _curated_declared_refs and _curated_prose_scope_enabled():
+        try:
+            _cps_refs = _curated_prose_scope(references, _curated_declared_refs, answer_text)
+            if _cps_refs != references:
+                _cps_dropped = [r for r in references if r not in _cps_refs]
+                references = _cps_refs
+                try:
+                    from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                        record_note as _rn,
+                    )
+
+                    _rn("curated_prose_scope dropped=" + ",".join(_cps_dropped))
                 except Exception:  # noqa: BLE001 — fail-soft on trace
                     pass
         except Exception:  # noqa: BLE001 — never 500 the route on a guard
