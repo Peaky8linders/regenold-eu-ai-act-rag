@@ -44,8 +44,11 @@ user 54,789 chars. Both instructions are in the SYSTEM slot only:
   only where the stated purpose is itself medical or safety.
 
 Which official questions need the both-sides treatment (criteria naming both tiers): rg_074
-("always prohibited?"), rg_085 and rg_089 ("prohibit or high-risk?"). All three leave the context
-open or ask about more than one tier, so the scoped rule still reaches them. rg_007 (a concrete
+("always prohibited?"), rg_085 and rg_089 ("prohibit or high-risk?"). rg_085 and rg_089 leave the
+context open or ask about more than one tier, so the scoped rule still reaches them. **Corrected in
+R455b:** rg_074 never reaches Stage-2. It selects the curated `emotion_recognition_general` answer,
+which skips Stage-2, so no system-prompt rule applies to it (its identical 321-character answer in
+every draw is that curated text). rg_007 (a concrete
 1:1 verification deployment) needs one verdict. No official question with a concrete deployment
 inside a prohibited context asks for the other tiers.
 
@@ -69,3 +72,30 @@ rg_089   2/3, 2/3   fails the Article 6(3)(a) reason
 rg_089 has failed that same criterion in 30 of 32 recorded runs, so it is not this change. rg_085 is
 fully met in 36 of 57 recorded runs and 4/4 on the recent production runs; a paired local draw on
 the old prompt was still running at merge time. Production re-runs follow the deploy.
+
+## Production (2dc9b53), all ten showcase questions
+
+Sonnet 5.5 judge over the wrapper, grouped, 3 repeats: every card meets all its criteria, and no
+answer carries dotted coordinates in its prose. Case C cites `Article 5.1.f`, `Article 3.39` and
+no longer drifts into Annex III or Article 26(7).
+
+## R455b — follow-ups from the adversarial review of R455
+
+A four-lens review (legal, scope, reference pipeline, channel consistency), each finding put to
+two skeptics, confirmed three defects:
+
+* **the R133 surface pass reads the parenthesised form**, which R455 made the model's default, so
+  its unfiltered sibling add (kept out of the dotted form by R428 as net negative) reached more
+  answers: rg_050 gained `Annex III.5.c`. `REGENOLD_SURFACE_SIBLING_GUARD` (default ON): when a
+  parent already has a limb on the wire, a sibling is left to the R431 add and its calibrated
+  recall floors. Replay of 176 recorded single-turn answers (parenthesised, Stage-2 scripted as
+  landed, real route, real rubric): 4 rows changed, 0 gold-satisfying citations removed, removed
+  `Annex III.5.c` x2 (rg_050) and `Article 6.3` x2 (rg_096); Ref Strict and Loose +0.00, Ref
+  Conciseness 45.48 -> 45.69 (+0.22). The guard changes none of the seven Stage-2 showcase answers.
+* **the curated emotion answers skip Stage-2**, so the new rules never reached them. The workplace
+  entry now gives the Article 5(1)(f) verdict and its carve-out (Recital 44's example, therapeutic
+  use; fatigue is not an emotion under Recital 18) and cites `Art. 5.1.f` instead of the bare
+  parent and the other tiers. The general entry (rg_074's) keeps all three tiers, written
+  `Annex III(1)(c)`. No official question selects the workplace entry.
+* **rule 2's wording** said "the way the Regulation does"; the Regulation drafts "point (f) of
+  Article 5(1)". It now says "the conventional legal citation form".

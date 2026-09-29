@@ -192,7 +192,7 @@ class TestDetectClassificationTopic:
         #   * elsewhere the system is high-risk under Annex III.1(c);
         #   * and it triggers the Article 50(3) deployer transparency duty.
         assert "Article 5 only applies in workplaces" in answer
-        assert "Annex III.1(c)" in answer
+        assert "Annex III(1)(c)" in answer
         assert "Article 50(3)" in answer
 
     def test_cv_screening_routes_to_hiring(self) -> None:

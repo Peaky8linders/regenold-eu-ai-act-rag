@@ -1015,14 +1015,22 @@ _CLASSIFICATION_TOPICS: list[dict] = [
                 re.IGNORECASE,
             ),
         ],
+        # R455b — a concrete workplace or education deployment gets the Article
+        # 5(1)(f) verdict and its carve-out. The former second sentence stated
+        # how emotion recognition is treated OUTSIDE those settings, law the
+        # question did not ask (the expert review flagged exactly that drift),
+        # and ``Art. 5`` was the over-broad parent R330 replaced with 5.1.f on
+        # the general entry below. Every sentence carries a cite anchor (R410), and
+        # the example is Recital 44's; fatigue is not an emotion (Recital 18).
+        # No official question selects this entry.
         "answer": (
-            "Emotion recognition is prohibited under Article 5 when deployed in "
-            "workplaces or educational institutions, except for narrow medical or "
-            "safety purposes. Outside those settings it is not categorically prohibited "
-            "but qualifies as high-risk under Annex III and carries the transparency "
-            "duty in Article 50 toward exposed persons."
+            "Emotion recognition in the workplace or in an education institution is "
+            "prohibited under Article 5(1)(f), which bans placing on the market, putting "
+            "into service or using AI systems to infer the emotions of a natural person in "
+            "those settings. Article 5(1)(f) excepts only a system intended for medical or "
+            "safety reasons, such as one intended for therapeutic use."
         ),
-        "refs": ["Art. 5", "Annex III", "Art. 50"],
+        "refs": ["Art. 5.1.f"],
     },
     {
         "name": "emotion_recognition_general",
@@ -1033,7 +1041,7 @@ _CLASSIFICATION_TOPICS: list[dict] = [
             "Emotion recognition is not categorically prohibited under the AI Act; the "
             "prohibition in Article 5 only applies in workplaces and educational "
             "institutions, with a narrow medical/safety exception. Elsewhere the system "
-            "is high-risk under Annex III.1(c) and triggers Article 50(3) transparency duties "
+            "is high-risk under Annex III(1)(c) and triggers Article 50(3) transparency duties "
             "toward exposed persons."
         ),
         # R330 §3.3 — ``Art. 5`` -> ``Art. 5.1.f``. The R329 judge marked bare

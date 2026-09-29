@@ -213,15 +213,24 @@ def test_route_ships_prose_subpoint_when_question_names_it(monkeypatch) -> None:
     does not. Strictly stronger than the original, which never checked that
     the head/leaf choice was principled.
     """
+    # R455b re-pin: with ``Article 6.1`` already on the wire (the question names
+    # it), a SIBLING the prose names is left to the calibrated R431 add rather
+    # than appended here (``REGENOLD_SURFACE_SIBLING_GUARD``, measured over 176
+    # recorded single-turn answers: 4 rows changed, 0 gold citations removed,
+    # Ref. Conciseness +0.22 pp). With the guard OFF, R133's sibling add is
+    # unchanged, so both arms are pinned.
+    refs_off = _wire_refs(monkeypatch, _Q_NAMES_SUBPOINT, REGENOLD_SURFACE_SIBLING_GUARD="0")
+    assert "Article 6.1" in refs_off and "Article 6.2" in refs_off, refs_off
     refs = _wire_refs(monkeypatch, _Q_NAMES_SUBPOINT)
-    # R133: both sub-points the Stage-2 prose names reach the wire.
+    # R133: the sub-point the question and the prose both name reaches the wire.
     assert "Article 6.1" in refs, refs
-    assert "Article 6.2" in refs, refs
     # R276-D1 auto / R381 parent collapse: the redundant bare head does not.
     assert "Article 6" not in refs, refs
     # Nothing else the answer cites is lost.
     for r in ("Article 5", "Annex III", "Annex I", "Article 50"):
         assert any(x == r or x.startswith(r + ".") for x in refs), refs
+    for arm in (refs, refs_off):
+        assert "Article 6" not in arm, arm
 
 
 def test_route_keeps_head_when_question_does_not_name_the_subpoint(
