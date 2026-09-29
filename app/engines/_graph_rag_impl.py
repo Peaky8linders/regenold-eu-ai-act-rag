@@ -10494,10 +10494,13 @@ def _claude_max_enhance_answer(
             pass
         # R456 — name only the provisions that answer the question: every named
         # provision becomes a citation. Appended last, after every replacement.
+        # Not under REGENOLD_PROMPT_V3, whose block carries its own citation rules
+        # and withholds the other minimality clauses by design (R380).
         try:
             from app.data.graph_rag_prompts import provisions_to_name_clause  # noqa: PLC0415
 
-            user_message += provisions_to_name_clause()
+            if not _prompt_v3_enabled():
+                user_message += provisions_to_name_clause()
         except Exception:  # noqa: BLE001 — a prompt add-on must never break Stage-2
             pass
 
