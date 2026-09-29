@@ -1464,6 +1464,9 @@ def _engine_cache_key(
             # the question discuss, when its parent is already on the wire. The
             # reference COUNT changes, so it must be in the key on its own.
             "REGENOLD_GROUND_WIRE_ADD",
+            # R455b — the R133 surface pass no longer adds a SIBLING of a limb
+            # already on the wire; the reference count changes, so its own slot.
+            "REGENOLD_SURFACE_SIBLING_GUARD",
             "REGENOLD_GROUND_WIRE_ADD_MAX",
             "REGENOLD_GROUND_WIRE_ADD_ANSWER_RECALL",
             "REGENOLD_GROUND_WIRE_ADD_QUESTION_RECALL",
@@ -7507,6 +7510,28 @@ _PROSE_SUBPOINT_RE = re.compile(
 
 _MAX_PROSE_SUBPOINT_ADDS = 3
 
+
+def _surface_sibling_guard_enabled() -> bool:
+    """R455b — the R133 surface pass adds no sibling of a limb already cited. **Default ON.**
+
+    R428 kept the dotted prose form out of this pass because its ADD was
+    measured net negative (13 references added, 11 excess). R455 made the
+    Stage-2 prose parenthesised, which this pass DOES read, so the same
+    unfiltered additions came back: ``rg_050`` asks about Annex III(5)(b),
+    the wire held ``Annex III.5.b`` beside a bare ``Annex III``, and the
+    prose's mention of point 5(c) appended ``Annex III.5.c``. When the parent
+    already has a limb on the wire, a sibling is left to
+    ``_ground_wire_add_missing`` (R431), which applies the calibrated answer
+    and question recall floors. A parent cited bare, with no limb, is still
+    deepened here as before. Registered in ``_engine_cache_key``.
+    """
+    return os.getenv("REGENOLD_SURFACE_SIBLING_GUARD", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
 # R138 — upper bound for the final citation-consistency pass. Uncapped in
 # spirit (every provision the shipped answer names must be cited), but a
 # backstop against a pathological prose. A wire answer is a few sentences, so
@@ -7588,10 +7613,18 @@ def _surface_prose_subpoints(answer: str, references: list[str]) -> list[str]:
             return references
 
         existing = set(references)
+        # R455b — parents that already carry a limb on the incoming wire.
+        limbed = (
+            {r.strip().split(".", 1)[0] for r in references if "." in r.strip()}
+            if _surface_sibling_guard_enabled()
+            else set()
+        )
         out: list[str] = []
         added = 0
         for ref in references:
             out.append(ref)
+            if ref.strip() in limbed:
+                continue
             for sub in wanted.get(ref.strip(), ()):  # noqa: PLR1730
                 if added >= _MAX_PROSE_SUBPOINT_ADDS:
                     break
