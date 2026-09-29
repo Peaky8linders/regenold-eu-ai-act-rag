@@ -1376,6 +1376,39 @@ def act_terms_clause(question: str) -> str:
     return _ACT_TERMS_MARKING_CLAUSE.replace("{term}", m.group(0).lower())
 
 
+#: R456 — the provisions an answer NAMES become its citations (the prose-consistency
+#: pass cites every provision the prose names), so naming adjacent law is
+#: over-citation. Measured on production 95b7a74: Q45 named Articles 15, 14 and 12
+#: because Article 13(3) refers to them; Q17 named Article 97 (the delegated-act
+#: procedure); Q95 named Articles 7(1) and 112; Q74 and Case C named the Article 3
+#: definition of a term they used. Deliberately NOT "tiers the question did not
+#: raise": rg_084's criteria require ruling out neighbouring tiers, and rg_059's
+#: require the Article 98(2) procedure the question asks about.
+_PROVISIONS_TO_NAME_CLAUSE = (
+    "\n\nPROVISIONS TO NAME: name only the provisions that answer this question. When a "
+    "provision you rely on refers to another article (for example the levels of accuracy, "
+    "robustness and cybersecurity that Article 13(3) takes from Article 15), state that "
+    "content without naming the other article. Name the Article 3 definition of a term only "
+    "when the question asks what the term means, and name the procedure around a rule "
+    "(delegated or implementing acts, consultation, evaluation or review clauses) only when "
+    "the question asks about it."
+)
+
+
+def provisions_to_name_enabled() -> bool:
+    """R456 — see ``_PROVISIONS_TO_NAME_CLAUSE``. Deny-list; cache-keyed in the route."""
+    import os
+
+    return os.getenv("REGENOLD_PROVISIONS_TO_NAME", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
+def provisions_to_name_clause() -> str:
+    """R456 — the PROVISIONS TO NAME clause, or ``""`` when the flag is off."""
+    return _PROVISIONS_TO_NAME_CLAUSE if provisions_to_name_enabled() else ""
+
+
 def evidence_contract_enabled() -> bool:
     """R399 synthesis contract — R400 flipped it to DEFAULT ON.
 
