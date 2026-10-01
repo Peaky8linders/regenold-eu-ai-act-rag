@@ -209,6 +209,24 @@ def _verdict_complete(v: dict, repeats: int) -> bool:
     return v.get("_judge_runs", 0) >= repeats and (tone is None or tone >= repeats)
 
 
+def _length_controlled_rows(rows: list[dict]) -> list[dict]:
+    """The same rows with each answer cut to the row's own reference length.
+
+    Rows whose answer is already at or under the reference length are returned
+    verbatim: the conciseness axis is one-sided, so there is no excess to remove,
+    and cutting would only damage the answer.
+    """
+    from evals.official.rubric import truncate_to_chars  # noqa: PLC0415
+
+    out = []
+    for r in rows:
+        ref = r.get("reference_answer") or ""
+        ans = r.get("answer") or ""
+        capped = ans if (not ref or len(ans) <= len(ref)) else truncate_to_chars(ans, len(ref))
+        out.append({**r, "answer": capped})
+    return out
+
+
 def _graded_latency_ms(r: dict) -> float:
     """R409 — latency of the GRADED response, not of the whole exchange.
 
@@ -337,6 +355,16 @@ def main() -> int:
         help="Legacy two judge calls per repetition (correctness, then tone). "
         "Grouped is the default; use this to re-score an arm against a cache "
         "written before R408.",
+    )
+    ap.add_argument(
+        "--length-control",
+        action="store_true",
+        default=False,
+        help="R460 - also re-judge every answer CUT to its reference answer's "
+        "length, and report those answer axes next to the raw ones. Separates a "
+        "real correctness edge from one that lives in extra sentences (the "
+        "length-controlled-debiasing idea applied to a criteria rubric). Not "
+        "cached: this pass re-judges on every run.",
     )
     a = ap.parse_args()
 
@@ -486,6 +514,54 @@ def main() -> int:
     by_id = {r["id"]: r for r in all_rows}
     ordered = [by_id[r["id"]] for r in rows if r["id"] in by_id]
 
+    # R460 - LENGTH CONTROL (opt-in, not cached). Re-judge the answers cut to
+    # their reference length, so a correctness edge that exists only because the
+    # answer is longer cannot be read as knowledge. Both sets of axes ship.
+    length_controlled: dict | None = None
+    if a.length_control:
+        capped = _length_controlled_rows(ordered)
+        cut = sum(
+            1 for r, c in zip(ordered, capped, strict=True) if r["answer"] != c["answer"]
+        )
+        raw_res = score_rows(ordered)
+        print(
+            f"\nlength control: re-judging {len(capped)} rows with {cut} answers cut "
+            f"to their reference length (not cached -- this pass re-judges each run)"
+        )
+        lc_judged = official_judge.judge_rows(
+            capped, workers=a.workers, repeats=a.repeats
+        )
+        lc_dead = [j for j in lc_judged if not j.get("_judge_runs", 0)]
+        if lc_dead:
+            print(
+                f"  {'!' * 68}\n  LENGTH-CONTROL PASS DEGRADED: "
+                f"{len(lc_dead)}/{len(lc_judged)} rows returned NO live judge run and "
+                f"were scored all-False.\n  The controlled axes below are NOT a "
+                f"measurement; re-run with --workers 1.\n  {'!' * 68}"
+            )
+        by_lc = {r["id"]: r for r in capped}
+        for j in lc_judged:
+            if j.get("id") in by_lc:
+                by_lc[j["id"]].update(j)
+        lc_order = [by_lc[r["id"]] for r in ordered if r["id"] in by_lc]
+        lc_res = score_rows(lc_order)
+        length_controlled = {
+            "answers_cut": cut,
+            "cached": False,
+            "axes": {
+                k: lc_res[k]
+                for k in (
+                    "ans_correctness_loose",
+                    "ans_correctness_strict",
+                    "ans_conciseness",
+                    "regulatory_tone",
+                )
+            },
+        }
+        print("  length-controlled (answer cut to the reference length):")
+        for k, v in length_controlled["axes"].items():
+            print(f"    {k:<26}{v:>8.2f}   (raw {raw_res[k]:.2f})")
+
     void_reason = judge_void_reason(judged, a.repeats)
     if void_reason:
         # R414 — REFUSE, do not warn. The reference axes are computed from the
@@ -610,6 +686,7 @@ def main() -> int:
         "judge_identity": judge_id,
         "reference_pass": _reference_pass_provenance(a.deepen, redeepened),
         "axes": res,
+        "length_controlled": length_controlled,
         "official_reference": ref,
         "rows": [
             {

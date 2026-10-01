@@ -94,6 +94,19 @@ def _short_to_long(short: str) -> str | None:
     return None
 
 
+def title_for_ref(ref: str) -> str:
+    """Official title of an article/annex, or ``""`` when unknown.
+
+    Accepts every shorthand the rest of the system uses
+    (``"Art. 13"`` / ``"Article 13"`` / ``"Annex IV"``). Used to build the
+    index-time context prefix for R449 contextual BM25 fields — the title is
+    the cheapest genuine "where does this chunk come from" signal the corpus
+    already carries, and it needs no model call.
+    """
+    long_key = _short_to_long(ref) or ref.strip()
+    return (_TITLES.get(long_key, "") or "").strip()
+
+
 def _strip_title(long_key: str, text: str) -> str:
     title = (_TITLES.get(long_key, "") or "").strip()
     body = text.strip()
@@ -576,8 +589,103 @@ def _overlap_score(q_tok: set, u_tok: set, weights: dict | None) -> float:
     return sum(1.0 / weights.get(tok, 1) for tok in shared)
 
 
+#: R450 — which allocation policy spends the per-provision character budget.
+_EMIT_ALLOC_ENV = "REGENOLD_EMIT_ALLOC"
+_EMIT_ALLOC_POLICIES = frozenset({"rank", "pack", "density", "top1", "split"})
+
+#: R450 — ``split`` only: the share of the budget the TOP unit may keep for
+#: itself when it is oversized AND a sibling unit could otherwise be bought
+#: whole with the remainder. Default 0.6 (measured grid: 0.5/0.6/0.7).
+_EMIT_SPLIT_TOP_ENV = "REGENOLD_EMIT_SPLIT_TOP"
+_EMIT_SPLIT_TOP_DEFAULT = 0.6
+
+
+def emit_split_top() -> float:
+    """R450 — clamped top-unit share for the ``split`` policy (never raises)."""
+    try:
+        value = float(os.getenv(_EMIT_SPLIT_TOP_ENV, ""))
+    except (TypeError, ValueError):
+        return _EMIT_SPLIT_TOP_DEFAULT
+    if not 0.3 <= value <= 0.9:
+        return _EMIT_SPLIT_TOP_DEFAULT
+    return value
+
+
+def emit_alloc() -> str:
+    """R450 — the allocation policy for ``select_relevant_paragraphs``.
+
+    ``rank`` (default) is the shipped behaviour, byte-identical. An unknown
+    value falls back to ``rank`` rather than raising: a typo in an env var must
+    never change which verbatim paragraphs the model is shown.
+    """
+    value = os.getenv(_EMIT_ALLOC_ENV, "rank").strip().lower()
+    return value if value in _EMIT_ALLOC_POLICIES else "rank"
+
+
+def _choose_units(
+    ranked: list[tuple[int, str, float]], max_chars: int, alloc: str
+) -> dict[int, str]:
+    """Whole units to emit within ``max_chars``, under one allocation policy.
+
+    Every policy is bounded by the SAME ``max_chars`` and emits COMPLETE units
+    (never a mid-sentence fragment); they differ only in which complete units
+    that budget buys. That is the R450 question: on the 110-row gold set the
+    shipped selector's top paragraph is right ~72% of the time, but its output
+    carries >=80% of the gold paragraph on far fewer rows (0.41 at the 500-char
+    verbatim-answer budget) *without any retrieval loss* — so the loss is in
+    EMISSION, and emission is exactly what this function decides.
+
+    * ``rank`` (shipped): walk the score ranking, skip a unit that does not fit,
+      stop once the budget is spent.
+    * ``pack``: emit the top-scoring unit first (it is what the model reads as
+      the operative text, and it is the one the selector got right), then spend
+      the REMAINING budget smallest-unit-first. Same characters; more complete
+      sibling paragraphs. R391 measured the gap this closes: drilling hands
+      Stage-2 a PROPER SUBSET of a closed statutory set (Annex IV 0/8 members,
+      Article 17 4/13), and a member that is not in the prompt cannot be
+      recovered by any instruction.
+    * ``density``: as ``pack``, but fill by relevance bought per character
+      (score/len) instead of by size.
+    * ``top1``: the top-scoring unit alone — a context-REDUCING control that
+      says what the coverage floor costs in characters.
+    * ``split``: emit the top unit (drilled if oversized) under a capped share
+      of the budget and spend the REST on whole siblings by density. This is
+      the one policy that attacks the measured dominant loss: on the gold set,
+      on rows where the gold unit is not the top scorer, the top unit is often
+      oversized and eats the entire budget on its own, so the correctly
+      provisioned sibling never arrives. The cap only applies when it buys
+      something — an oversized top with no sibling that fits whole in the
+      remainder falls back to the shipped emission, so rows with nothing to
+      trade cannot lose.
+    """
+    first = ranked[0]
+    if alloc == "top1":
+        return {first[0]: first[1]}
+    if alloc == "pack":
+        order = [first, *sorted(ranked[1:], key=lambda x: (len(x[1]), x[0]))]
+    elif alloc == "density":
+        order = [
+            first,
+            *sorted(ranked[1:], key=lambda x: (-(x[2] / max(1, len(x[1]))), -x[2], x[0])),
+        ]
+    else:  # "rank" (shipped) and any unrecognised value
+        order = list(ranked)
+
+    chosen: dict[int, str] = {}
+    total = 0
+    for num, txt, _score in order:
+        rendered_len = len(txt) + 4  # "N. " + gap
+        if chosen and total + rendered_len > max_chars:
+            continue
+        chosen[num] = txt
+        total += rendered_len
+        if total >= max_chars:
+            break
+    return chosen or {first[0]: first[1]}
+
+
 def select_relevant_paragraphs(
-    ref: str, question: str = "", max_chars: int = 500
+    ref: str, question: str = "", max_chars: int = 500, *, alloc: str | None = None
 ) -> str | None:
     """Return the verbatim, question-RELEVANT paragraph(s) of an article/annex.
 
@@ -598,6 +706,12 @@ def select_relevant_paragraphs(
     question signal, falls back to the leading paragraph / the whole body
     if it already fits. Returns ``None`` when the base ref doesn't resolve
     (caller keeps the full-body path).
+
+    R450 — ``alloc`` (default: the ``REGENOLD_EMIT_ALLOC`` env gate, itself
+    defaulting to ``rank``) decides how the same budget is SPENT across
+    paragraphs; see :func:`_choose_units`. Only the budget allocation changes:
+    the units are whole paragraphs either way, so the verbatim contract and the
+    ``max_chars`` bound are untouched.
     """
     try:
         spec = _refs.parse(ref)
@@ -651,21 +765,25 @@ def select_relevant_paragraphs(
     # level: quote the paragraph preamble + the question-relevant
     # sub-point(s) verbatim rather than the whole enumeration.
     top_num, top_txt, _top_score = ranked[0]
+    policy = alloc or emit_alloc()
+    if policy == "split" and len(top_txt) > max_chars:
+        # Reserve room for whole siblings, but only when one actually fits:
+        # otherwise this row has nothing to trade and stays byte-identical.
+        top_cap = max(1, int(max_chars * emit_split_top()))
+        reserve = max_chars - top_cap
+        if any(len(txt) + 4 <= reserve for _n, txt, _s in ranked[1:]):
+            drilled = _drill_subpoints(top_num, top_txt, q_tok, top_cap)
+            if drilled is not None:
+                tail_units = _choose_units(ranked[1:], reserve, "density")
+                tail = " ".join(f"{num}. {tail_units[num]}" for num in sorted(tail_units))
+                return f"{drilled} {tail}".strip()
+
     if len(top_txt) > max_chars:
         drilled = _drill_subpoints(top_num, top_txt, q_tok, max_chars)
         if drilled is not None:
             return drilled
 
-    chosen: dict[int, str] = {}
-    total = 0
-    for num, txt, _score in ranked:
-        rendered_len = len(txt) + 4  # "N. " + gap
-        if chosen and total + rendered_len > max_chars:
-            continue
-        chosen[num] = txt
-        total += rendered_len
-        if total >= max_chars:
-            break
+    chosen = _choose_units(ranked, max_chars, policy)
     # Emit in document order with paragraph numbers preserved (verbatim shape).
     return " ".join(f"{num}. {chosen[num]}" for num in sorted(chosen))
 

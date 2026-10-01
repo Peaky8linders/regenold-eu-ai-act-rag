@@ -93,6 +93,7 @@ import math
 import os
 import re
 from dataclasses import dataclass
+from dataclasses import field as dataclasses_field
 from functools import lru_cache
 from typing import Literal
 
@@ -187,6 +188,121 @@ def _tokenize(text: str) -> list[str]:
     return tokens
 
 
+#: R449 — contextual (fielded) BM25. When ON, every indexed provision carries an
+#: index-time context prefix split into its own ``title`` field, scored as
+#: BM25F (per-field weights + per-field length normalisation) alongside the
+#: ``body`` field. Default OFF: the deterministic baseline ranking must stay
+#: byte-identical until a live gate accepts the change.
+_CONTEXTUAL_FIELDS_ENV = "REGENOLD_CONTEXTUAL_FIELDS"
+_CONTEXTUAL_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+#: BM25F field weights and per-field ``b``. The title field is short, so it
+#: gets a lower length-normalisation slope and a higher weight — a term in the
+#: official title should outrank the same term buried in 10k chars of prose.
+_FIELD_WEIGHTS: dict[str, float] = {"title": 2.0, "body": 1.0}
+_FIELD_B: dict[str, float] = {"title": 0.6, "body": 0.75}
+
+#: R451 — the field NAMES are fixed (the index stores per-field counts under these
+#: keys); only the numbers are sweepable. Keeping the name set independent of the
+#: weights is what lets an in-process weight sweep reuse ONE built index instead
+#: of rebuilding per arm — a rebuild per arm would re-measure the build, not the
+#: weights.
+_FIELD_NAMES: tuple[str, ...] = ("title", "body")
+
+#: R451 — env overrides, read per SCORE call (the stored counts are weight-free).
+_FIELD_WEIGHT_ENVS: dict[str, str] = {
+    "title": "REGENOLD_FIELD_WEIGHT_TITLE",
+    "body": "REGENOLD_FIELD_WEIGHT_BODY",
+}
+_FIELD_B_ENVS: dict[str, str] = {
+    "title": "REGENOLD_FIELD_B_TITLE",
+    "body": "REGENOLD_FIELD_B_BODY",
+}
+_FIELD_WEIGHT_BOUNDS: tuple[float, float] = (0.1, 10.0)
+_FIELD_B_BOUNDS: tuple[float, float] = (0.0, 0.999)
+
+
+def _field_env(
+    envs: dict[str, str],
+    field: str,
+    defaults: dict[str, float],
+    lo: float,
+    hi: float,
+) -> float:
+    """Read one swept BM25F parameter, clamped, never raising.
+
+    An unset, empty, non-numeric or non-finite value falls back to the shipped
+    default rather than to a guess: a typo in an env var must not silently
+    change rankings. Out-of-range values are CLAMPED rather than rejected so a
+    sweep grid can probe the edges (weight 0.1 ≈ field ignored, b 0.999 ≈ no
+    length normalisation) without the harness having to encode the bounds.
+    """
+    name = envs.get(field)
+    default = defaults.get(field, 1.0)
+    if not name:
+        return default
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    if value != value or value in (float("inf"), float("-inf")):  # NaN / inf
+        return default
+    return min(hi, max(lo, value))
+
+
+def field_weight(field: str) -> float:
+    """R451 — BM25F weight for ``field`` (``REGENOLD_FIELD_WEIGHT_*``)."""
+    return _field_env(
+        _FIELD_WEIGHT_ENVS, field, _FIELD_WEIGHTS, *_FIELD_WEIGHT_BOUNDS
+    )
+
+
+def field_b(field: str) -> float:
+    """R451 — BM25F length-normalisation slope for ``field`` (``REGENOLD_FIELD_B_*``)."""
+    return _field_env(_FIELD_B_ENVS, field, _FIELD_B, *_FIELD_B_BOUNDS)
+
+
+def contextual_fields_enabled() -> bool:
+    """True when R449 contextual (BM25F) fields are requested."""
+    return (
+        os.getenv(_CONTEXTUAL_FIELDS_ENV, "0").strip().lower()
+        in _CONTEXTUAL_TRUTHY
+    )
+
+
+def _context_prefix(article_ref: str) -> str:
+    """Deterministic index-time context for one provision.
+
+    Title + chapter + section + the reference itself. This is the
+    repository's available substitute for a model-generated context sentence:
+    it is the information the Act already prints above the provision, it costs
+    nothing at query time, and it cannot fabricate a rule. Kept separate from
+    the body under BM25F so the prefix cannot inflate the body's length
+    normalisation or dilute the IDF of the terms it adds (see
+    ``docs/reviews/r449-contextual-bm25-rerank-sota-2026-09-28.md`` §G3).
+    """
+    try:
+        from app.data.article_sections import ARTICLE_SECTION  # noqa: PLC0415
+        from app.data.eu_ai_act_corpus import ARTICLE_CHAPTER  # noqa: PLC0415
+        from app.data.provision_text import title_for_ref  # noqa: PLC0415
+
+        title = title_for_ref(article_ref)
+        chapter = ARTICLE_CHAPTER.get(article_ref) or ""
+        section = ARTICLE_SECTION.get(article_ref) or ""
+    except Exception:  # noqa: BLE001 — the prefix is additive, never required
+        return article_ref
+    parts = [
+        article_ref,
+        title,
+        f"chapter {chapter}" if chapter else "",
+        f"section {section}" if section else "",
+    ]
+    return " ".join(p for p in parts if p.strip())
+
+
 @dataclass(frozen=True)
 class _BM25Index:
     """Pre-computed BM25 statistics over the KB obligation corpus +
@@ -207,6 +323,13 @@ class _BM25Index:
     idf: dict[str, float]  # term → inverse document frequency
     k1: float = 1.5
     b: float = 0.75
+    #: R449 contextual fields — empty (the default) means "score as plain BM25".
+    #: Parallel to ``docs`` when populated: term → count per field name.
+    field_freqs: tuple[dict[str, dict[str, int]], ...] = ()
+    #: Parallel to ``field_freqs``: token count per field for that document.
+    field_lens: tuple[dict[str, int], ...] = ()
+    #: Field name → mean token count across the corpus (for normalisation).
+    field_avg_len: dict[str, float] = dataclasses_field(default_factory=dict)
 
 
 def _build_ontology_docs() -> list[tuple[str, DocSource, str]]:
@@ -313,6 +436,16 @@ def _build_index() -> _BM25Index:
     sources: list[DocSource] = []
     docs: list[tuple[str, ...]] = []
     doc_freqs: list[dict[str, int]] = []
+    #: R449 — populated only when contextual fields are requested.
+    _contextual = contextual_fields_enabled()
+    field_freqs_out: list[dict[str, dict[str, int]]] = []
+    field_lens_out: list[dict[str, int]] = []
+
+    def _counts(tokens: tuple[str, ...]) -> dict[str, int]:
+        out: dict[str, int] = {}
+        for tok in tokens:
+            out[tok] = out.get(tok, 0) + 1
+        return out
 
     def _add(article_ref: str, source: DocSource, text: str) -> None:
         tokens = _tokenize(text)
@@ -325,6 +458,14 @@ def _build_index() -> _BM25Index:
         for tok in tokens:
             freqs[tok] = freqs.get(tok, 0) + 1
         doc_freqs.append(freqs)
+        if _contextual:
+            title_tokens = tuple(_tokenize(_context_prefix(article_ref)))
+            field_freqs_out.append(
+                {"title": _counts(title_tokens), "body": dict(freqs)}
+            )
+            field_lens_out.append(
+                {"title": len(title_tokens), "body": len(tokens)}
+            )
 
     # KB obligation corpus — the legacy ~82 docs. Index these first so
     # if a query ties between a KB doc and an ontology doc for the same
@@ -382,13 +523,31 @@ def _build_index() -> _BM25Index:
             idf={},
         )
 
+    field_avg_len: dict[str, float] = {}
+    if _contextual and field_lens_out:
+        for fname in _FIELD_NAMES:
+            total = sum(lens.get(fname, 0) for lens in field_lens_out)
+            field_avg_len[fname] = total / len(field_lens_out)
+
     avg_doc_len = sum(len(d) for d in docs) / n_docs
 
     # Per-term document frequency (in how many docs does this term appear).
+    # BM25F treats a term as present when it occurs in ANY field, counting the
+    # document once even when it occurs in both title and body. Keep the body-only
+    # path's insertion order and statistics unchanged when contextual fields are off.
     df: dict[str, int] = {}
-    for freqs in doc_freqs:
-        for term in freqs:
+    for doc_idx, freqs in enumerate(doc_freqs):
+        terms = list(freqs)
+        if _contextual:
+            seen_terms = set(terms)
+            for field_freqs in field_freqs_out[doc_idx].values():
+                for term in field_freqs:
+                    if term not in seen_terms:
+                        seen_terms.add(term)
+                        terms.append(term)
+        for term in terms:
             df[term] = df.get(term, 0) + 1
+
 
     # BM25 IDF with the standard "+1" smoothing so the value never goes
     # negative (Lucene-style). Terms that appear in every doc still get
@@ -405,11 +564,55 @@ def _build_index() -> _BM25Index:
         doc_freqs=tuple(doc_freqs),
         avg_doc_len=avg_doc_len,
         idf=idf,
+        field_freqs=tuple(field_freqs_out),
+        field_lens=tuple(field_lens_out),
+        field_avg_len=field_avg_len,
     )
+
+
+def _score_fielded(
+    index: _BM25Index, doc_idx: int, query_tokens: list[str]
+) -> float:
+    """BM25F score: per-field saturated term frequencies, then one saturation.
+
+        t̃f(t) = Σ_f w_f · tf_f(t) / (1 − b_f + b_f · len_f / avg_len_f)
+        score = Σ_t idf(t) · t̃f · (k1 + 1) / (k1 + t̃f)
+
+    With a single ``body`` field at weight 1.0 this reduces algebraically to
+    :func:`_score`, so the fielded path is a strict generalisation of the
+    shipped formula rather than a second, incomparable ranker.
+    """
+    fields = index.field_freqs[doc_idx]
+    lens = index.field_lens[doc_idx]
+    avg = index.field_avg_len
+    score = 0.0
+    for term in query_tokens:
+        idf = index.idf.get(term, 0.0)
+        if idf <= 0.0:
+            continue
+        combined = 0.0
+        for fname in _FIELD_NAMES:
+            weight = field_weight(fname)
+            tf_f = fields.get(fname, {}).get(term, 0)
+            if not tf_f:
+                continue
+            len_f = float(lens.get(fname, 0))
+            avg_f = avg.get(fname) or 0.0
+            b_f = field_b(fname)
+            norm = 1.0 - b_f + (b_f * len_f / avg_f if avg_f > 0.0 else 0.0)
+            if norm <= 0.0:  # pragma: no cover — defensive, b < 1 by construction
+                continue
+            combined += weight * tf_f / norm
+        if combined <= 0.0:
+            continue
+        score += idf * (combined * (index.k1 + 1.0)) / (index.k1 + combined)
+    return score
 
 
 def _score(index: _BM25Index, doc_idx: int, query_tokens: list[str]) -> float:
     """BM25 score of a single document against the query tokens."""
+    if index.field_freqs:
+        return _score_fielded(index, doc_idx, query_tokens)
     doc = index.docs[doc_idx]
     freqs = index.doc_freqs[doc_idx]
     doc_len = len(doc)
@@ -441,7 +644,7 @@ def _score_fusion_enabled() -> bool:
 
 
 def _rrf_fusion_enabled() -> bool:
-    """R69 — ``REGENOLD_RRF_FUSION`` env gate.
+    """R69/R450 — ``REGENOLD_RRF_FUSION`` env gate.
 
     The proposed Hybrid-RAG architecture's retrieval centrepiece is
     Reciprocal Rank Fusion across the BM25, dense and graph routes.
@@ -452,8 +655,33 @@ def _rrf_fusion_enabled() -> bool:
     rankings via weighted RRF (BM25-dominant, dense as a close-tie
     reshaper) rather than additive fill.
 
-    Default OFF — preserves the R31 default, so the deterministic
-    davidath path is byte-identical when the flag is unset.
+    **Default ON (R450 candidate flip).** Of every fusion arm measured on the
+    110-row gold set, rank-level fusion is the only one that changes ORDER while
+    leaving membership untouched — the R449 harness scored it at identical head
+    recall/precision/added-reference counts against the shipped additive fill
+    (0.805 / 30 refs both) with a higher nDCG@k (0.625 vs 0.612). R450
+    re-measured that premise row by row on all 110 official questions: the
+    retrieved SET differs on **0/110** rows at both k=8 and k=15, the ORDER
+    differs on **110/110**, and the first-8 slice that Stage-2 grounding and
+    ``kg_context`` cut positionally differs on **110/110**. So the lever cannot
+    move which provisions are cited, and it does move which of them the model is
+    shown first and which get verbatim grounding text.
+
+    A flip of an ordering default still needs the live paired gate (the same
+    read R415 ran for the single-turn lever). R450 ran it and the run **VOIDED**:
+    both arms generated cleanly on the 27 reachable rows (0 errors, 0 fallback
+    rows, transport healthy) but ``evals.official.score_arm`` refused to grade
+    them — ``missing_provenance`` on rg_003/rg_004/… — so no paired table exists
+    and no axis was measured. The provisional flip was therefore reverted, per
+    the accept rule fixed before the run. Two independent pins also failed under
+    the flip and are the reason it is not simply re-run blind: on the sanctions
+    question rank-level fusion returns ``Art. 13`` ahead of ``Art. 99``, and the
+    k=5 fused-path ranking table moves.
+
+    So this stays a measured candidate with, as of R450, **no axis evidence**:
+    ``REGENOLD_RRF_FUSION=1`` selects it for the next gate, ``"0"`` (default)
+    keeps the additive-fill ranking byte-for-byte. See
+    ``docs/measurements/r450/CHECKPOINT.md`` §7.
     """
     return os.getenv("REGENOLD_RRF_FUSION", "0").strip().lower() in (
         "1", "true", "yes", "on",
@@ -472,7 +700,17 @@ def _fuse_dense(
     1. Score Fusion: When REGENOLD_SCORE_FUSION is enabled, normalise and blend
        raw BM25 scores and dense cosine similarities.
     2. RRF Fusion: When REGENOLD_RRF_FUSION is enabled, weighted rank reciprocal fusion.
-    3. Additive Fill (Default): Keep BM25 order exactly, append dense-only candidates.
+    3. Additive Fill (Default): preserve the order of the ``bm25_refs`` it is
+       handed and append dense-only candidates into vacant ``k`` slots.
+
+    "Additive" is relative to *its arguments*: the caller may already have
+    reshaped the BM25 ranking before calling. ``top_articles_by_relevance``
+    multiplies a matching article's BM25 score by 1.20 for every sentence-index
+    hit at similarity ≥ 0.50 **before** its ``[:k]`` cut, so a reference that
+    looks "added" by fill can in fact be a displaced BM25 winner. See the
+    Round-32 note at that call site, and do not read the purity claim on
+    :func:`app.engines.turboquant_index.additive_dense_fill` as covering this
+    stage.
     """
     from app.engines.turboquant_index import (  # noqa: PLC0415
         additive_dense_fill,
@@ -742,7 +980,8 @@ def top_articles_by_relevance(
         # admitted — only their ranking.
         entity_b = entity_boosts.get(article_ref, 1.0)
 
-        # Component A — Embeddings sentence-level high-similarity boost (20% priority boost)
+        # Sentence-level high similarity boosts BM25 before the top-k cut;
+        # this can displace a lower-scoring BM25 candidate.
         emb_boost = 1.20 if article_ref in high_sim_articles else 1.0
 
         # Component B — Prevent role/context drift by damping mismatched role articles
@@ -852,13 +1091,12 @@ def top_articles_by_relevance(
     bm25_top = [ref for ref, _ in scored[:k]]
 
     # Round 31 — when the TurboQuant dense path is enabled
-    # (``REGENOLD_TURBOQUANT_DENSE=1``), use the dense ranking to APPEND
-    # recall candidates BM25 didn't surface — never to reshape BM25's
-    # ranking. First-cut Round-31 benchmark showed RRF (symmetric
-    # fusion) traded ~0.004 Ref Correctness Strict for ~0.004 Ans
-    # Correctness Strict — wash. Additive fill is purely recall-positive:
-    # if BM25 already filled ``k`` slots, the dense path is a no-op;
-    # otherwise dense refs fill the remaining slots in dense-rank order.
+    # (``REGENOLD_TURBOQUANT_DENSE=1``), fuse its ranking with BM25.
+    # The default additive-fill policy preserves BM25 order and fills only
+    # vacant slots; the optional RRF and score-fusion policies can reorder.
+    # First-cut Round-31 benchmark showed symmetric RRF trading ~0.004 Ref
+    # Correctness Strict for ~0.004 Ans Correctness Strict — wash — so additive
+    # fill remains the default. With k BM25 winners, default fill is a no-op.
     #
     # Lazy import — the module imports numpy + optional turboquant at
     # build time. Skipping the import when the env-flag is off keeps the
@@ -885,12 +1123,32 @@ def top_articles_by_relevance(
     except Exception:  # noqa: BLE001 — numpy missing on a stripped install
         pass
 
-    # Round 32 — Embeddings sentence-index additive recall (Layer A+D
-    # dense path). Aggregates sentence hits → article refs taking max
-    # cosine sim. Purely additive (never displaces a BM25 winner). Env-
-    # gated REGENOLD_EMBEDDINGS_INDEX=1 (default ON when assets are
-    # present; the asset-presence check inside ``is_available`` makes
-    # this a no-op on stripped installs).
+    # Round 32 — sentence-index stage. It has TWO mechanisms, and only one of
+    # them is additive:
+    #
+    #   1. DISPLACEMENT (the ``emb_boost`` line in the scoring loop above): every
+    #      article with a sentence hit at similarity ≥ 0.50 gets
+    #      ``emb_boost = 1.20``, a multiplier applied to its BM25 score BEFORE
+    #      the ``scored[:k]`` cut. This reorders ``best`` and therefore evicts
+    #      lower-ranked BM25 winners from the top-k. It is NOT additive.
+    #   2. FILL (below): aggregate the same hits to article-level candidates
+    #      (max cosine per article) and hand them to the configured fusion
+    #      policy, which by default only appends into vacant ``k`` slots.
+    #
+    # Measured R449 (``docs/measurements/r449/UNIT-GRAIN-k8.md``, k=8, the real
+    # 110-row gold set, production entry point): the sparse control returns
+    # exactly 8 refs on every row and the article-level SVD stage adds 0, i.e.
+    # there is no vacant slot anywhere — yet this stage changes the top-8
+    # MEMBERSHIP on 27 rows (+30 refs, 3 of them gold) with the length
+    # unchanged at 8. Every one of those additions is therefore mechanism 1.
+    # Older notes in this file, ROUNDS.md and the ``additive_dense_fill``
+    # docstring called this stage "purely additive (never displaces a BM25
+    # winner)" — false as written; ``tests/test_r449_dense_boost_displacement.py``
+    # now fails if the boost stops reaching the cut.
+    #
+    # Env-gated REGENOLD_EMBEDDINGS_INDEX=1 (default ON when assets are present;
+    # the asset-presence check inside ``is_available`` makes this a no-op on
+    # stripped installs).
     if emb_hits:
         # Aggregate sentence hits → article-level candidates, max sim per article.
         article_max: dict[str, float] = {}

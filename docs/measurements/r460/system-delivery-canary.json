@@ -1,0 +1,34 @@
+{
+  "reps": 3,
+  "models": [
+    "claude-sonnet-5",
+    "claude-opus-5-5"
+  ],
+  "cells": {
+    "claude-sonnet-5:short": {
+      "obeyed": 3,
+      "n": 3
+    },
+    "claude-sonnet-5:mid": {
+      "obeyed": 3,
+      "n": 3
+    },
+    "claude-sonnet-5:long": {
+      "obeyed": 1,
+      "n": 3
+    },
+    "claude-opus-5-5:short": {
+      "obeyed": 3,
+      "n": 3
+    },
+    "claude-opus-5-5:mid": {
+      "obeyed": 3,
+      "n": 3
+    },
+    "claude-opus-5-5:long": {
+      "obeyed": 3,
+      "n": 3
+    }
+  },
+  "verdict": "system DELIVERED (at least at some sizes)"
+}

@@ -1564,6 +1564,25 @@ def _engine_cache_key(
             # (the fable-5 vs opus-4.8 A/B arms) flips the engine answer and
             # must be in the key (R30/R56/R79/R263.2 doctrine).
             "P2P_GRAPH_RAG_COMPLEX_MODEL",
+            # R460 - the allow-non-opus escape flips the Stage-2 answer MODEL
+            # (Sonnet 5 vs Opus 5.5) exactly as COMPLEX_MODEL does above, so
+            # it flips GraphRAGResponse.answer. Read fresh per call in
+            # ``_route_stage_model``, so it MUST be in the key (R263.2).
+            "REGENOLD_STAGE2_ALLOW_NON_OPUS",
+            "REGENOLD_STAGE2_WRAPPER_TIMEOUT_S",
+            # R460 - transplant of the R449/R450/R451 contextual-field knobs.
+            # Each changes the BM25 admission ranking, hence query.entities,
+            # hence the wire references and the cached answer. The R451
+            # harness sweeps them IN-PROCESS, so an unkeyed knob would serve
+            # arm A cached response to every later cell and read as "weights
+            # do not matter". R263.2 / R288.1 doctrine.
+            "REGENOLD_CONTEXTUAL_FIELDS",
+            "REGENOLD_EMIT_ALLOC",
+            "REGENOLD_EMIT_SPLIT_TOP",
+            "REGENOLD_FIELD_WEIGHT_TITLE",
+            "REGENOLD_FIELD_WEIGHT_BODY",
+            "REGENOLD_FIELD_B_TITLE",
+            "REGENOLD_FIELD_B_BODY",
             "REGENOLD_COMPLEX_GATE_WIDE",
             # R276-D2 — the abbreviation-aware complexity scan changes
             # is_complex_question ⇒ the Stage-2 tier (complex_model +
@@ -1726,6 +1745,11 @@ def _engine_cache_key(
             # R448 — the concise contract appends a LENGTH LIMIT to the Stage-2
             # user message, so it is response-affecting.
             "REGENOLD_CONCISE_CONTRACT",
+            # R460 - the calibration block appends a counted ceiling to the same
+            # Stage-2 user message ⇒ flips the polished answer AND its
+            # citations. R263.2 / R288.1 doctrine: an unkeyed knob lets an
+            # in-process two-arm A/B serve arm A's cached answer to arm B.
+            "REGENOLD_CONCISE_CALIBRATION",
             # R438 — branch-specific statutory guard; prompt-side and default OFF.
             "REGENOLD_GROUNDED_BRANCH_GUARDS",
             # R399 - rarity-weighted paragraph selection. Decides WHICH
