@@ -119,6 +119,15 @@ the **last** instruction in the Stage-2 user message:
 Registered in `_engine_cache_key`. Off → the user message is byte-identical
 (asserted).
 
+**Generator: `REGENOLD_CONCISE_COUNT_ONLY` (R461)** — the citation-budget half of
+the block above, rendered alone by `answer_need.count_only_block()`: three lines,
+331 chars, the numeric budget, the rule that a provision the facts engage and the
+answer rules out still counts, and the citation-order line. It deliberately calls
+neither `answer_need` nor `concise_limits`, so the length battery cannot leak back
+in and a broken length estimate cannot take the budget down with it. Allow-list,
+default OFF, registered in `_engine_cache_key`, and byte-identically additive to
+the shipped contract (asserted). Section 5.1 is its gate.
+
 **Instrument: `--length-control`** —
 `rubric.truncate_to_chars()` + `score_arm._length_controlled_rows()` re-judge
 every answer **cut to its own reference answer's length** (at a sentence
@@ -179,6 +188,54 @@ Replicates 2-3 of the wrapper gate were not spent: the tunnel's quota is the
 scarce resource this round, and the deciding delta is systematic at the row level
 rather than marginal. The launcher resumes them in one command
 (`run_gate_wrapper.sh 3`).
+
+
+### 5.1 The count-only variant, gated alone (R461) — every target met but the hard rule
+
+The sub-lever section 5 identified was built and gated on its own transport run.
+`REGENOLD_CONCISE_COUNT_ONLY` (`answer_need.count_only_block`, 331 chars) emits the
+budget, the rule-out rule and the citation-order line and **nothing else**: no
+sentence ceiling, no word count, no shape skeleton, and no call into
+`answer_need`/`concise_limits`. `COUNT-ONLY-CONFIRM.md` is the round record.
+
+`--mode hard --stride 3`, `claude-opus-5-5`, same judge identity, both arms fresh,
+37/37 rows and 0 errors each, and arm A drawn fresh so the OFF arm is re-drawn on
+**byte-identical prompts** (`verify_byte_identity.py` proves the bytes; the earlier
+OFF arm loads as a second module from `git show` and renders identically on all 64
+board questions).
+
+| axis | OFF | COUNT-ONLY | Δ | CI |
+| :-- | --: | --: | --: | :-- |
+| ans_correctness_loose / _strict | 94.82 / 91.89 | 94.82 / 91.89 | **+0.00 / +0.00** | [-8.11, +8.11] |
+| ans_conciseness | 81.95 | 82.05 | +0.10 | [-2.71, +3.18] |
+| ref_conciseness | 56.62 | 64.31 | **+7.69** | **[+1.41, +15.05]** |
+| regulatory_tone | 97.30 | 97.30 | +0.00 | flat |
+| resp_speed | 86.81 | 86.19 | -0.62 | [-2.52, +1.45] |
+| answers (chars) | 813.5 | 820.2 | +6.6 | [-32.4, +41.9] |
+| **overall** (per-row) | 73.98 | 77.78 | **+3.80** | **[+0.58, +9.01]** |
+
+The count mechanism reproduces a third time (+7.69 against +5.52 here and +4.76 on
+Bedrock), and **the full block's two costs disappear**: answers no longer grow
+(+6.6 vs +64.0, whose CI excluded zero) and speed no longer moves. On the same
+method, the noise-floor pair (OFF re-drawn, byte-identical prompts) reads -0.56
+[-6.99, +5.79], so **+3.80 is the first overall delta in this program whose paired
+CI excludes zero.**
+
+**Verdict: NOT PROMOTED.** Hard rule #8 is tripped on one row, `rg_037`, whose
+provenance is `served_by=deterministic` / `polish=False` — both Stage-2 legs failed
+and the deterministic Stage-1 draft shipped, so the block never ran on it (its 7
+refs and 1,474 chars contradict the budget of 2 it was given). On the 36 rows where
+the lever ran, the count-only arm drops ZERO gold heads against its OFF arm's two.
+
+**And the rule itself was measured.** That same noise-floor pair drops two gold
+heads on byte-identical prompts — `rg_061`, and `rg_088` at 0/3 criteria on an
+UNDEGRADED row — and moves `resp_speed` -3.35 [-4.59, -2.07]. So rule #8 as
+written is not draw-stable at n=37, a single-draw gate can trip it with no lever
+present, and the R460 gate's speed reading was a draw artifact rather than a lever
+effect. The fix the evidence supports is to evaluate the veto only on rows where
+the lever ran, or to require the drop to persist across an OFF re-draw — a change
+to the instrument, to be made on its own merits and not as a retro-fit exemption
+for this lever.
 
 ## 6. Caveats
 

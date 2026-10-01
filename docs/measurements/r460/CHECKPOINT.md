@@ -390,3 +390,55 @@ errors each, p50 21.4 s / 22.0 s. `WRAPPER-CONFIRM.md`; launcher
 * Replicates 2-3 were not spent (tunnel quota is the scarce resource; the
   deciding delta is systematic, not marginal). `run_gate_wrapper.sh 3` resumes
   them from the existing checkpoints if a draw-stability check is wanted.
+
+
+---
+
+## 2026-10-01 (R461 — the COUNT-ONLY conciseness gate on the SHIPPED transport) -- REFUSED on the hard rule, and the rule measured
+
+The R460 refusal's stated next step, executed: the citation budget alone (no
+sentence ceiling, no word count, no shape skeleton, and no call into
+`answer_need`/`concise_limits` at all) behind `REGENOLD_CONCISE_COUNT_ONLY`,
+allow-list default OFF and keyed. `COUNT-ONLY-CONFIRM.md`; lever
+`apply_count_only.py`, 12 tests, launcher `run_gate_count_only.sh`, scorer
+`score_gate_count_only.sh`, attribution `count_only_attribution.py`.
+
+* Byte-identity was checked, not assumed (`verify_byte_identity.py`, 64 real board
+  questions): the full block's rendering is byte-identical to `ca71879`'s
+  (64/64, 705 chars, old module loaded via `git show`), every count-only line is a
+  line of the full block, and 0 length clauses leak. 140 tests passed.
+* Gate: `r461-countoff-s3` vs `r461-counton-s3`, `--mode hard --stride 3
+  --require-cohere-rerank --cohere-rerank-min-gap 7`, `claude-opus-5-5`, same
+  judge identity and `--length-control` as R460, 37/37 rows and 0 errors each,
+  20.1/20.6 min. Arm A drawn FRESH so the OFF arm could be re-drawn on
+  byte-identical prompts - which is what made the noise floor a measurement.
+* **ref_conciseness 56.62 -> 64.31 (+7.69 [+1.41, +15.05], McNemar 10/2
+  p=0.0386)**, refs/row 2.84 -> 2.51, `refs<=2` compliance 22/37 -> 27/37 (the
+  full block reached the same 2.51 without the length battery).
+* **The full block's two costs are gone**: ans_conciseness +0.10 [-2.71, +3.18]
+  (full block -4.49 [-8.77, -0.68]), answers +6.6 chars [-32.4, +41.9] (full
+  block +64.0 [+16.9, +114.6]), ans_loose and ans_strict exactly +0.00, tone flat,
+  and **overall +3.80 [+0.58, +9.01] on 20/35 rows - the first overall CI in this
+  program to exclude zero**, against a noise-floor pair (R461-OFF vs R460-OFF,
+  byte-identical prompts) of -0.56 [-6.99, +5.79].
+* **Verdict: NOT PROMOTED.** Hard rule #8 is tripped on one row, `rg_037` - and
+  its provenance says `served_by=deterministic`, `polish=False`: both Stage-2 legs
+  failed, tail repair failed, the deterministic Stage-1 draft shipped, so the
+  block never ran (7 refs and 1,474 chars against a stated budget of 2). On the 36
+  rows where the lever ran, B drops ZERO gold heads against A's two. The degraded
+  leg is a lottery present in block-free arms too (R460-OFF shipped a
+  `deterministic` draft on `rg_049`; R460-FULL a `prior_turn` on `rg_037`).
+* **Instrument finding, and the reason the refusal is not a regression**: the
+  noise-floor pair drops two gold heads on byte-identical prompts (`rg_061`, and
+  `rg_088` at 0/3 criteria on an undegraded row), and moves `resp_speed` by -3.35
+  [-4.59, -2.07] - so (a) the R460 gate's speed reading was never a lever effect,
+  and (b) rule #8 as written is not draw-stable at n=37: a single-draw gate can
+  trip it with no lever present. Proposed fix, NOT applied: evaluate the veto on
+  rows where the lever ran (`stage2_polish` / `stage2_served_by`), or require the
+  drop to persist across an OFF re-draw. Waiving the rule for this lever would be
+  the construction argument AGENTS.md invariant #5 forbids in its place.
+* Two ways forward, in order: fix the veto's operating definition and re-read this
+  gate from the checkpoints on its own merits, or spend one replicate
+  (`run_gate_count_only.sh 3`) so `rg_037` can run the lever. Nothing default-ON;
+  `promote_conciseness_calibration.py` still unapplied, and no
+  `promote_count_only.py` written.
