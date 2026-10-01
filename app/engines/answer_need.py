@@ -671,6 +671,84 @@ def concise_block(
     ])
 
 
+#: R460 — the calibration lever. Every prior length attempt in this engine was
+#: MEASURED to under-deliver: the R448 notes record Opus 5.5 writing 1,040-2,180
+#: chars against a per-question estimate that is itself accurate to a median of
+#: -36 chars of the reference answer, and the live Cohere boards shipped 1.25x
+#: the reference length with 2.0x its citations. The research consensus is that
+#: this is a COMPLIANCE problem, not an estimation problem: numeric ceilings plus
+#: a COUNTED self-check plus a shape example at the target size is what converts.
+#: Default OFF: it changes the answer, so it needs its own gate.
+_CALIBRATION_ENV = "REGENOLD_CONCISE_CALIBRATION"
+
+#: The citation budget. The key's own count is ~1.26 refs/row on EVERY shape
+#: (110 gold rows: description 1.25, boolean 1.32, list 1.08, definition 1.33),
+#: and |expected| <= 2 covers 97% of rows, so 2 is the number that costs no
+#: recall for a direct ask. A fact-pattern ask walks several branches and gets 3.
+_CALIBRATION_CITATIONS = 2
+_CALIBRATION_SCENARIO_CITATIONS = 3
+
+
+def calibration_enabled() -> bool:
+    """``REGENOLD_CONCISE_CALIBRATION`` - allow-list, default OFF."""
+    return os.environ.get(_CALIBRATION_ENV, "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+def calibration_citation_budget(question: str = "") -> int:
+    """How many provisions the answer may NAME (the Ref Conciseness count)."""
+    return (
+        _CALIBRATION_SCENARIO_CITATIONS
+        if is_scenario_question(question or "")
+        else _CALIBRATION_CITATIONS
+    )
+
+
+def calibration_block(
+    question: str,
+    references: str = "",
+    *,
+    estimated_need: AnswerNeed | None = None,
+) -> str:
+    """The COUNT-BEFORE-YOU-ANSWER block, or ``""`` when the lever is OFF.
+
+    Deliberately SHORT. A large steering block has already traded one axis for
+    another twice in this engine (the 53 kB system prompt; the R423.1 shape
+    directive), so this states two counts, one skeleton and nothing else. It
+    never contradicts :func:`concise_block`: the sentence ceiling comes from the
+    same :func:`concise_limits` call, and the citation budget keeps the rule that
+    a provision the facts engage and the answer rules out still counts.
+    """
+    if not calibration_enabled():
+        return ""
+    try:
+        need = (
+            estimated_need
+            if estimated_need is not None
+            else answer_need(question, references)
+        )
+        words, sentences = concise_limits(need, question)
+        budget = calibration_citation_budget(question)
+    except Exception:  # noqa: BLE001 - a prompt add-on must never break Stage-2
+        return ""
+    lead = "the verdict" if need.is_yes_no else "the direct answer"
+    shape = [
+        f"* Draft, then COUNT its sentences: keep {sentences} at most. Delete the "
+        "sentence that decides least, not the last one you wrote.",
+        f"* COUNT the provisions the draft NAMES: at most {budget} for this "
+        "question. Above that, keep the ones its answer rests on and drop the "
+        "clauses about the rest. A provision the facts engage and the answer rules "
+        "out still counts.",
+        f"* Match this shape ({sentences} sentences, about {words} words, then the "
+        "references):",
+        f"    1. {lead}, naming the provision it rests on.",
+        "    2. the limb of that provision the facts engage.",
+        "    3. the condition, exception or branch that decides the answer.",
+        f"    References: at most {budget} provisions, in citation order.",
+    ]
+    return "\n".join(["LENGTH AND CITATION COUNTS (count both before you answer):", *shape])
+
 def need_proportional_block(
     question: str,
     references: str = "",

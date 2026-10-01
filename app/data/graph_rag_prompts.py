@@ -1759,4 +1759,18 @@ def build_evidence_answer_user(
         concise = ""
     if concise:
         parts.append(concise)
+    # R460 - the calibration block, appended LAST so it is the final instruction
+    # the model reads. It restates the SAME ceiling as ``concise_block`` as a
+    # counted self-check plus a citation budget, which is the form the length
+    # control literature measures as obeyed (see CONCISENESS-PROGRAM.md).
+    try:
+        from app.engines.answer_need import calibration_block  # noqa: PLC0415
+
+        calibration = calibration_block(
+            question, "", estimated_need=answer_need_estimate
+        )
+    except Exception:  # noqa: BLE001 - a prompt add-on must not break Stage-2
+        calibration = ""
+    if calibration:
+        parts.append(calibration)
     return "\n\n".join(parts)

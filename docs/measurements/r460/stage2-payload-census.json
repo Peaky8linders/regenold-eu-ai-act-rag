@@ -1,0 +1,337 @@
+{
+ "config": {
+  "rows": 10,
+  "stride": 3,
+  "depth": 0,
+  "difficulty": "HARD",
+  "baseline": {
+   "REGENOLD_QUERY_DENOISER": "0",
+   "REGENOLD_EXTERNAL_EMBEDDINGS": "0"
+  }
+ },
+ "graded_rows": 7,
+ "vacuous_rows": [
+  "rg_033",
+  "rg_038",
+  "rg_074"
+ ],
+ "system_chars": {
+  "median": 60643,
+  "min": 60643,
+  "max": 60643
+ },
+ "user_chars": {
+  "median": 31101,
+  "min": 15975,
+  "max": 40700
+ },
+ "total_chars": {
+  "median": 91744,
+  "min": 76618,
+  "max": 101343
+ },
+ "user_section_median_chars": {
+  "evidence": 24272,
+  "answer_contract": 2722,
+  "length_limit": 1307,
+  "answer_shape": 1133,
+  "provisions_to_name": 451,
+  "final_sentence": 363,
+  "coordinates": 297,
+  "ref_minimality": 242,
+  "header": 237,
+  "subparagraph": 199
+ },
+ "evidence_section_median_chars": {
+  "VERBATIM PROVISION TEXT": 9772,
+  "APPLICABLE OBLIGATIONS": 5800,
+  "KNOWLEDGE-GRAPH SUB-POINT DETAIL": 4497,
+  "ARTICLE-SPECIFIC OBLIGATIONS": 1263,
+  "DIMENSION DETAILS": 730,
+  "REFERENCED ANNEXES AND RECITALS": 497,
+  "KNOWLEDGE-GRAPH CROSS-REGULATORY MAPPINGS": 289.5
+ },
+ "evidence_redundancy": {
+  "median_duplicate_bullet_chars": 0,
+  "median_duplicate_bullet_lines": 0,
+  "median_not_engaged_headings": 4,
+  "median_not_engaged_coord_chars": 851
+ },
+ "per_row": [
+  {
+   "vacuous": false,
+   "system_chars": 60643,
+   "user_chars": 40700,
+   "total_chars": 101343,
+   "user_sections": {
+    "header": 255,
+    "evidence": 34089,
+    "answer_contract": 2722,
+    "answer_shape": 778,
+    "ref_minimality": 242,
+    "subparagraph": 199,
+    "length_limit": 1307,
+    "coordinates": 294,
+    "provisions_to_name": 451,
+    "final_sentence": 363
+   },
+   "evidence": {
+    "sections": {
+     "APPLICABLE OBLIGATIONS": 15019,
+     "ARTICLE-SPECIFIC OBLIGATIONS": 1263,
+     "DIMENSION DETAILS": 730,
+     "KNOWLEDGE-GRAPH SUB-POINT DETAIL": 4497,
+     "KNOWLEDGE-GRAPH CROSS-REGULATORY MAPPINGS": 332,
+     "VERBATIM PROVISION TEXT": 11729,
+     "REFERENCED ANNEXES AND RECITALS": 497
+    },
+    "not_engaged_headings": 6,
+    "not_engaged_coord_lines": 77,
+    "not_engaged_coord_chars": 1387,
+    "duplicate_bullet_lines": 1,
+    "duplicate_bullet_chars": 1061,
+    "total_chars": 34089
+   },
+   "evidence_share": 0.8376,
+   "id": "rg_003",
+   "difficulty": "HARD"
+  },
+  {
+   "vacuous": false,
+   "system_chars": 60643,
+   "user_chars": 15975,
+   "total_chars": 76618,
+   "user_sections": {
+    "header": 211,
+    "evidence": 9030,
+    "answer_contract": 2722,
+    "answer_shape": 1133,
+    "ref_minimality": 242,
+    "subparagraph": 199,
+    "length_limit": 1307,
+    "coordinates": 317,
+    "provisions_to_name": 451,
+    "final_sentence": 363
+   },
+   "evidence": {
+    "sections": {
+     "APPLICABLE OBLIGATIONS": 557,
+     "DIMENSION DETAILS": 730,
+     "KNOWLEDGE-GRAPH SUB-POINT DETAIL": 2717,
+     "KNOWLEDGE-GRAPH CROSS-REGULATORY MAPPINGS": 247,
+     "VERBATIM PROVISION TEXT": 4757
+    },
+    "not_engaged_headings": 0,
+    "not_engaged_coord_lines": 0,
+    "not_engaged_coord_chars": 0,
+    "duplicate_bullet_lines": 0,
+    "duplicate_bullet_chars": 0,
+    "total_chars": 9030
+   },
+   "evidence_share": 0.5653,
+   "id": "rg_008",
+   "difficulty": "HARD"
+  },
+  {
+   "vacuous": false,
+   "system_chars": 60643,
+   "user_chars": 25556,
+   "total_chars": 86199,
+   "user_sections": {
+    "header": 220,
+    "evidence": 18863,
+    "answer_contract": 2722,
+    "answer_shape": 871,
+    "ref_minimality": 242,
+    "subparagraph": 199,
+    "length_limit": 1307,
+    "coordinates": 318,
+    "provisions_to_name": 451,
+    "final_sentence": 363
+   },
+   "evidence": {
+    "sections": {
+     "APPLICABLE OBLIGATIONS": 4215,
+     "DIMENSION DETAILS": 730,
+     "KNOWLEDGE-GRAPH SUB-POINT DETAIL": 5753,
+     "VERBATIM PROVISION TEXT": 8143
+    },
+    "not_engaged_headings": 4,
+    "not_engaged_coord_lines": 60,
+    "not_engaged_coord_chars": 988,
+    "duplicate_bullet_lines": 0,
+    "duplicate_bullet_chars": 0,
+    "total_chars": 18863
+   },
+   "evidence_share": 0.7381,
+   "id": "rg_018",
+   "difficulty": "HARD"
+  },
+  {
+   "vacuous": true,
+   "status": 200,
+   "err": null,
+   "skip_note": null,
+   "id": "rg_033",
+   "difficulty": "HARD"
+  },
+  {
+   "vacuous": true,
+   "status": 200,
+   "err": null,
+   "skip_note": null,
+   "id": "rg_038",
+   "difficulty": "HARD"
+  },
+  {
+   "vacuous": false,
+   "system_chars": 60643,
+   "user_chars": 30040,
+   "total_chars": 90683,
+   "user_sections": {
+    "header": 237,
+    "evidence": 23089,
+    "answer_contract": 2722,
+    "answer_shape": 1133,
+    "ref_minimality": 242,
+    "subparagraph": 199,
+    "length_limit": 1307,
+    "coordinates": 297,
+    "provisions_to_name": 451,
+    "final_sentence": 363
+   },
+   "evidence": {
+    "sections": {
+     "APPLICABLE OBLIGATIONS": 5800,
+     "DIMENSION DETAILS": 92,
+     "KNOWLEDGE-GRAPH SUB-POINT DETAIL": 4915,
+     "VERBATIM PROVISION TEXT": 12260
+    },
+    "not_engaged_headings": 0,
+    "not_engaged_coord_lines": 0,
+    "not_engaged_coord_chars": 0,
+    "duplicate_bullet_lines": 0,
+    "duplicate_bullet_chars": 0,
+    "total_chars": 23089
+   },
+   "evidence_share": 0.7686,
+   "id": "rg_046",
+   "difficulty": "HARD"
+  },
+  {
+   "vacuous": false,
+   "system_chars": 60643,
+   "user_chars": 35360,
+   "total_chars": 96003,
+   "user_sections": {
+    "header": 228,
+    "evidence": 28438,
+    "answer_contract": 2722,
+    "answer_shape": 1133,
+    "ref_minimality": 242,
+    "subparagraph": 199,
+    "length_limit": 1307,
+    "coordinates": 277,
+    "provisions_to_name": 451,
+    "final_sentence": 363
+   },
+   "evidence": {
+    "sections": {
+     "APPLICABLE OBLIGATIONS": 13527,
+     "ARTICLE-SPECIFIC OBLIGATIONS": 701,
+     "DIMENSION DETAILS": 86,
+     "KNOWLEDGE-GRAPH SUB-POINT DETAIL": 4330,
+     "VERBATIM PROVISION TEXT": 9772
+    },
+    "not_engaged_headings": 4,
+    "not_engaged_coord_lines": 50,
+    "not_engaged_coord_chars": 851,
+    "duplicate_bullet_lines": 0,
+    "duplicate_bullet_chars": 0,
+    "total_chars": 28438
+   },
+   "evidence_share": 0.8042,
+   "id": "rg_052",
+   "difficulty": "HARD"
+  },
+  {
+   "vacuous": false,
+   "system_chars": 60643,
+   "user_chars": 31101,
+   "total_chars": 91744,
+   "user_sections": {
+    "header": 299,
+    "evidence": 24272,
+    "answer_contract": 2722,
+    "answer_shape": 945,
+    "ref_minimality": 242,
+    "subparagraph": 199,
+    "length_limit": 1307,
+    "coordinates": 301,
+    "provisions_to_name": 451,
+    "final_sentence": 363
+   },
+   "evidence": {
+    "sections": {
+     "APPLICABLE OBLIGATIONS": 2541,
+     "DIMENSION DETAILS": 13999,
+     "KNOWLEDGE-GRAPH SUB-POINT DETAIL": 742,
+     "VERBATIM PROVISION TEXT": 6968
+    },
+    "not_engaged_headings": 3,
+    "not_engaged_coord_lines": 20,
+    "not_engaged_coord_chars": 342,
+    "duplicate_bullet_lines": 0,
+    "duplicate_bullet_chars": 0,
+    "total_chars": 24272
+   },
+   "evidence_share": 0.7804,
+   "id": "rg_062",
+   "difficulty": "HARD"
+  },
+  {
+   "vacuous": false,
+   "system_chars": 60643,
+   "user_chars": 39663,
+   "total_chars": 100306,
+   "user_sections": {
+    "header": 249,
+    "evidence": 32706,
+    "answer_contract": 2722,
+    "answer_shape": 1138,
+    "ref_minimality": 242,
+    "subparagraph": 199,
+    "length_limit": 1301,
+    "coordinates": 292,
+    "provisions_to_name": 451,
+    "final_sentence": 363
+   },
+   "evidence": {
+    "sections": {
+     "APPLICABLE OBLIGATIONS": 13764,
+     "ARTICLE-SPECIFIC OBLIGATIONS": 1573,
+     "DIMENSION DETAILS": 730,
+     "KNOWLEDGE-GRAPH SUB-POINT DETAIL": 6054,
+     "VERBATIM PROVISION TEXT": 10563
+    },
+    "not_engaged_headings": 6,
+    "not_engaged_coord_lines": 60,
+    "not_engaged_coord_chars": 1088,
+    "duplicate_bullet_lines": 1,
+    "duplicate_bullet_chars": 1027,
+    "total_chars": 32706
+   },
+   "evidence_share": 0.8246,
+   "id": "rg_069",
+   "difficulty": "HARD"
+  },
+  {
+   "vacuous": true,
+   "status": 200,
+   "err": null,
+   "skip_note": null,
+   "id": "rg_074",
+   "difficulty": "HARD"
+  }
+ ]
+}

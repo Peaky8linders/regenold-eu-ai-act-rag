@@ -1,0 +1,64 @@
+{
+  "draws": [
+    "rg_003",
+    "rg_062",
+    "rg_008",
+    "rg_069"
+  ],
+  "models": [
+    "claude-opus-5-5",
+    "claude-sonnet-5"
+  ],
+  "max_tokens": 2048,
+  "calls": 10,
+  "errors": 0,
+  "usage_available": true,
+  "per_model": {
+    "claude-opus-5-5": {
+      "full": {
+        "n": 4,
+        "prompt_tokens_median": 8845.5,
+        "completion_tokens_median": 220.5,
+        "elapsed_ms_median": 8954.5,
+        "text_chars_median": 882.5
+      },
+      "persona": {
+        "n": 1,
+        "prompt_tokens_median": 10175,
+        "completion_tokens_median": 283,
+        "elapsed_ms_median": 7805,
+        "text_chars_median": 1134
+      }
+    },
+    "claude-sonnet-5": {
+      "full": {
+        "n": 4,
+        "prompt_tokens_median": 8845.5,
+        "completion_tokens_median": 227.5,
+        "elapsed_ms_median": 6618.5,
+        "text_chars_median": 910.0
+      },
+      "persona": {
+        "n": 1,
+        "prompt_tokens_median": 10175,
+        "completion_tokens_median": 205,
+        "elapsed_ms_median": 6614,
+        "text_chars_median": 820
+      }
+    }
+  },
+  "delivery": {
+    "claude-opus-5-5:rg_003": {
+      "system_chars": 60643,
+      "prompt_tokens_full": 10175,
+      "prompt_tokens_persona": 10175,
+      "delta": 0
+    },
+    "claude-sonnet-5:rg_003": {
+      "system_chars": 60643,
+      "prompt_tokens_full": 10175,
+      "prompt_tokens_persona": 10175,
+      "delta": 0
+    }
+  }
+}

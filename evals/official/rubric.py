@@ -206,6 +206,29 @@ def reference_conciseness(
 # -- axis 3: answer conciseness ----------------------------------------------
 
 
+def truncate_to_chars(text: str, limit: int) -> str:
+    """Cut ``text`` to at most ``limit`` characters AT A SENTENCE BOUNDARY.
+
+    R460 - the length-control primitive. A correctness edge can be verbosity:
+    the answer axes are judged from the answer text, and judges credit length.
+    Re-judging an answer cut to its reference answer's own length separates the
+    two. The cut lands on the last sentence terminator that fits, because a
+    mid-sentence cut would measure fluency damage rather than verbosity; an
+    answer already at or under the limit is returned unchanged (the axis is
+    one-sided, so there is nothing to control for below it).
+    """
+    text = text or ""
+    if limit <= 0:
+        return ""
+    if len(text) <= limit:
+        return text
+    window = text[:limit]
+    cut = max(window.rfind("."), window.rfind("!"), window.rfind("?"))
+    if cut <= 0:
+        return window.strip()
+    return window[: cut + 1].strip()
+
+
 def answer_conciseness(answer: str, reference_answer: str) -> float | None:
     """Inverted measure of answer verbosity relative to the reference answers.
 

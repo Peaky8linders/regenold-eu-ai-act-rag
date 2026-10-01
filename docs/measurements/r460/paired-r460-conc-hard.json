@@ -1,0 +1,122 @@
+{
+ "arm_a": "score-r460-bedrock-hard-s3-hard.json",
+ "arm_b": "score-r460-bedrockconc-hard-s3-hard.json",
+ "shared_rows": 37,
+ "only_in_a": [],
+ "only_in_b": [],
+ "axes": {
+  "ans_correctness_loose": {
+   "n": 37,
+   "mean_a": 93.69369369369369,
+   "mean_b": 95.94594594594595,
+   "delta": 2.2522522522522523,
+   "ci95": [
+    -2.7027027027027026,
+    7.207207207207209
+   ],
+   "b_better": 3,
+   "a_better": 1,
+   "mcnemar_p": 0.625
+  },
+  "ans_correctness_strict": {
+   "n": 37,
+   "mean_a": 89.1891891891892,
+   "mean_b": 89.1891891891892,
+   "delta": 0.0,
+   "ci95": [
+    -8.108108108108109,
+    8.108108108108109
+   ],
+   "b_better": 1,
+   "a_better": 1,
+   "mcnemar_p": 1.0
+  },
+  "ans_conciseness": {
+   "n": 37,
+   "mean_a": 82.99431421108831,
+   "mean_b": 84.96213928828138,
+   "delta": 1.967825077193073,
+   "ci95": [
+    -0.7444230107916472,
+    4.589618857011068
+   ],
+   "b_better": 15,
+   "a_better": 8,
+   "mcnemar_p": 0.21003961563110352
+  },
+  "ref_correctness_loose": {
+   "n": 35,
+   "mean_a": 95.71428571428571,
+   "mean_b": 95.71428571428571,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "b_better": 0,
+   "a_better": 0,
+   "mcnemar_p": 1.0
+  },
+  "ref_correctness_strict": {
+   "n": 35,
+   "mean_a": 80.47619047619047,
+   "mean_b": 77.61904761904762,
+   "delta": -2.857142857142857,
+   "ci95": [
+    -8.571428571428571,
+    0.0
+   ],
+   "b_better": 0,
+   "a_better": 1,
+   "mcnemar_p": 1.0
+  },
+  "ref_conciseness": {
+   "n": 35,
+   "mean_a": 59.142857142857146,
+   "mean_b": 63.9047619047619,
+   "delta": 4.761904761904762,
+   "ci95": [
+    0.2857142857142857,
+    10.428571428571429
+   ],
+   "b_better": 7,
+   "a_better": 1,
+   "mcnemar_p": 0.0703125
+  },
+  "regulatory_tone": {
+   "n": 37,
+   "mean_a": 100.0,
+   "mean_b": 100.0,
+   "delta": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ],
+   "b_better": 0,
+   "a_better": 0,
+   "mcnemar_p": 1.0
+  },
+  "resp_speed": {
+   "n": 37,
+   "mean_a": 85.45153695135112,
+   "mean_b": 85.56297202432384,
+   "delta": 0.11143507297271532,
+   "ci95": [
+    -1.2468579135136286,
+    1.371435121621412
+   ],
+   "b_better": 22,
+   "a_better": 15,
+   "mcnemar_p": 0.3240086000878364
+  }
+ },
+ "gold_dropped_head": {
+  "arm_a": 2,
+  "arm_b": 2,
+  "new_drops_in_b": []
+ },
+ "mean_answer_chars": {
+  "arm_a": 786.6756756756756,
+  "arm_b": 755.7567567567568
+ }
+}
