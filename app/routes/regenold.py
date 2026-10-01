@@ -1750,6 +1750,11 @@ def _engine_cache_key(
             # citations. R263.2 / R288.1 doctrine: an unkeyed knob lets an
             # in-process two-arm A/B serve arm A's cached answer to arm B.
             "REGENOLD_CONCISE_CALIBRATION",
+            # R461 — the count-only variant of that same block. It renders a
+            # DIFFERENT block (the citation budget alone, no length battery and no
+            # skeleton) and takes precedence when both are set, so an A/B that
+            # flips it must never replay the other arm's cached answer.
+            "REGENOLD_CONCISE_COUNT_ONLY",
             # R438 — branch-specific statutory guard; prompt-side and default OFF.
             "REGENOLD_GROUNDED_BRANCH_GUARDS",
             # R399 - rarity-weighted paragraph selection. Decides WHICH
