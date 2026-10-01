@@ -1,0 +1,662 @@
+[
+ {
+  "title": "THE GATE",
+  "arm_a": "r461-countoff-s3",
+  "arm_b": "r461-counton-s3",
+  "shared_rows": 37,
+  "gold_dropped_head": {
+   "arm_a": 2,
+   "arm_b": 1,
+   "new_drops_in_b": [
+    "rg_037"
+   ]
+  },
+  "mean_answer_chars": {
+   "arm_a": 813.5405405405405,
+   "arm_b": 820.1891891891892
+  },
+  "verdict_all": "VETO",
+  "verdict_lever": "CLEAN",
+  "veto_all": {
+   "rule": "hard rule #8 \u2014 a lever that drops a gold HEAD on a row it actually served is vetoed regardless of means",
+   "verdict": "VETO",
+   "fires": true,
+   "scope": "all",
+   "scope_requested": "all",
+   "scope_supported": [
+    "lever",
+    "all"
+   ],
+   "scope_downgraded": false,
+   "downgrade_reason": "",
+   "contract": "arm-under-test provenance in ('primary','fallback') = the legs that carried the lever's payload (else stage2_polish is True on a pre-stage2_served_by checkpoint)",
+   "rows_considered": 35,
+   "shared_rows": 37,
+   "eligible_rows": 35,
+   "excluded_rows": 0,
+   "levers_evaluated": 35,
+   "excluded": [],
+   "by_reason_a": {
+    "primary": 28,
+    "unpolished": 7
+   },
+   "by_reason_b": {
+    "primary": 27,
+    "unpolished": 7,
+    "deterministic": 1
+   },
+   "n_dropped_in_b": 1,
+   "drops_in_scope": [
+    {
+     "id": "rg_037",
+     "arm_a": "primary",
+     "arm_b": "deterministic"
+    }
+   ],
+   "drops_in_scope_confounded_a": [],
+   "drops_out_of_scope": [],
+   "drops_undecided": [],
+   "provenance": {
+    "arm_a": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r461-countoff-s3-hard.ckpt.jsonl",
+    "arm_b": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r461-counton-s3-hard.ckpt.jsonl",
+    "join": "ckpt row id -> score row id",
+    "bootstrap_seed": 403
+   },
+   "reasons": {
+    "primary": "served by the primary Stage-2 leg (lever in force)",
+    "fallback": "served by the fallback leg \u2014 same request payload",
+    "deterministic": "degraded: the Stage-1 draft shipped, Stage-2 output discarded",
+    "prior_turn": "degraded: the truncation guard kept the previous turn's answer",
+    "unpolished": "no Stage-2 call on this row (curated/intercepted answer)",
+    "unknown": "provenance names no leg and no polish flag: NOT evidence the lever ran",
+    "no_provenance": "no per-row provenance for this row: it cannot testify (reported UNDECIDED)"
+   }
+  },
+  "veto_lever": {
+   "rule": "hard rule #8 \u2014 a lever that drops a gold HEAD on a row it actually served is vetoed regardless of means",
+   "verdict": "CLEAN",
+   "fires": false,
+   "scope": "lever",
+   "scope_requested": "lever",
+   "scope_supported": [
+    "lever",
+    "all"
+   ],
+   "scope_downgraded": false,
+   "downgrade_reason": "",
+   "contract": "arm-under-test provenance in ('primary','fallback') = the legs that carried the lever's payload (else stage2_polish is True on a pre-stage2_served_by checkpoint)",
+   "rows_considered": 35,
+   "shared_rows": 37,
+   "eligible_rows": 27,
+   "excluded_rows": 8,
+   "levers_evaluated": 27,
+   "excluded": [
+    {
+     "id": "rg_013",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    },
+    {
+     "id": "rg_019",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    },
+    {
+     "id": "rg_025",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    },
+    {
+     "id": "rg_031",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    },
+    {
+     "id": "rg_037",
+     "arm_a": "primary",
+     "arm_b": "deterministic"
+    },
+    {
+     "id": "rg_040",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    },
+    {
+     "id": "rg_043",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    },
+    {
+     "id": "rg_076",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    }
+   ],
+   "by_reason_a": {
+    "primary": 28,
+    "unpolished": 7
+   },
+   "by_reason_b": {
+    "primary": 27,
+    "unpolished": 7,
+    "deterministic": 1
+   },
+   "n_dropped_in_b": 1,
+   "drops_in_scope": [],
+   "drops_in_scope_confounded_a": [],
+   "drops_out_of_scope": [
+    {
+     "id": "rg_037",
+     "arm_a": "primary",
+     "arm_b": "deterministic"
+    }
+   ],
+   "drops_undecided": [],
+   "provenance": {
+    "arm_a": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r461-countoff-s3-hard.ckpt.jsonl",
+    "arm_b": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r461-counton-s3-hard.ckpt.jsonl",
+    "join": "ckpt row id -> score row id",
+    "bootstrap_seed": 403
+   },
+   "reasons": {
+    "primary": "served by the primary Stage-2 leg (lever in force)",
+    "fallback": "served by the fallback leg \u2014 same request payload",
+    "deterministic": "degraded: the Stage-1 draft shipped, Stage-2 output discarded",
+    "prior_turn": "degraded: the truncation guard kept the previous turn's answer",
+    "unpolished": "no Stage-2 call on this row (curated/intercepted answer)",
+    "unknown": "provenance names no leg and no polish flag: NOT evidence the lever ran",
+    "no_provenance": "no per-row provenance for this row: it cannot testify (reported UNDECIDED)"
+   }
+  },
+  "excluded": [
+   {
+    "id": "rg_013",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_019",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_025",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_031",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_037",
+    "arm_a": "primary",
+    "arm_b": "deterministic"
+   },
+   {
+    "id": "rg_040",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_043",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_076",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   }
+  ],
+  "ref_conciseness": {
+   "delta": 7.693877551020408,
+   "ci95": [
+    1.4081632653061218,
+    15.054421768707483
+   ]
+  }
+ },
+ {
+  "title": "NOISE FLOOR  (byte-identical prompts)",
+  "arm_a": "r460-tunnel-off-s3",
+  "arm_b": "r461-countoff-s3",
+  "shared_rows": 37,
+  "gold_dropped_head": {
+   "arm_a": 0,
+   "arm_b": 2,
+   "new_drops_in_b": [
+    "rg_061",
+    "rg_088"
+   ]
+  },
+  "mean_answer_chars": {
+   "arm_a": 803.3513513513514,
+   "arm_b": 813.5405405405405
+  },
+  "verdict_all": "VETO",
+  "verdict_lever": "VETO",
+  "veto_all": {
+   "rule": "hard rule #8 \u2014 a lever that drops a gold HEAD on a row it actually served is vetoed regardless of means",
+   "verdict": "VETO",
+   "fires": true,
+   "scope": "all",
+   "scope_requested": "all",
+   "scope_supported": [
+    "lever",
+    "all"
+   ],
+   "scope_downgraded": false,
+   "downgrade_reason": "",
+   "contract": "arm-under-test provenance in ('primary','fallback') = the legs that carried the lever's payload (else stage2_polish is True on a pre-stage2_served_by checkpoint)",
+   "rows_considered": 35,
+   "shared_rows": 37,
+   "eligible_rows": 35,
+   "excluded_rows": 0,
+   "levers_evaluated": 35,
+   "excluded": [],
+   "by_reason_a": {
+    "primary": 27,
+    "unpolished": 7,
+    "deterministic": 1
+   },
+   "by_reason_b": {
+    "primary": 28,
+    "unpolished": 7
+   },
+   "n_dropped_in_b": 2,
+   "drops_in_scope": [
+    {
+     "id": "rg_061",
+     "arm_a": "primary",
+     "arm_b": "primary"
+    },
+    {
+     "id": "rg_088",
+     "arm_a": "primary",
+     "arm_b": "primary"
+    }
+   ],
+   "drops_in_scope_confounded_a": [],
+   "drops_out_of_scope": [],
+   "drops_undecided": [],
+   "provenance": {
+    "arm_a": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r460-tunnel-off-s3-hard.ckpt.jsonl",
+    "arm_b": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r461-countoff-s3-hard.ckpt.jsonl",
+    "join": "ckpt row id -> score row id",
+    "bootstrap_seed": 403
+   },
+   "reasons": {
+    "primary": "served by the primary Stage-2 leg (lever in force)",
+    "fallback": "served by the fallback leg \u2014 same request payload",
+    "deterministic": "degraded: the Stage-1 draft shipped, Stage-2 output discarded",
+    "prior_turn": "degraded: the truncation guard kept the previous turn's answer",
+    "unpolished": "no Stage-2 call on this row (curated/intercepted answer)",
+    "unknown": "provenance names no leg and no polish flag: NOT evidence the lever ran",
+    "no_provenance": "no per-row provenance for this row: it cannot testify (reported UNDECIDED)"
+   }
+  },
+  "veto_lever": {
+   "rule": "hard rule #8 \u2014 a lever that drops a gold HEAD on a row it actually served is vetoed regardless of means",
+   "verdict": "VETO",
+   "fires": true,
+   "scope": "lever",
+   "scope_requested": "lever",
+   "scope_supported": [
+    "lever",
+    "all"
+   ],
+   "scope_downgraded": false,
+   "downgrade_reason": "",
+   "contract": "arm-under-test provenance in ('primary','fallback') = the legs that carried the lever's payload (else stage2_polish is True on a pre-stage2_served_by checkpoint)",
+   "rows_considered": 35,
+   "shared_rows": 37,
+   "eligible_rows": 28,
+   "excluded_rows": 7,
+   "levers_evaluated": 28,
+   "excluded": [
+    {
+     "id": "rg_013",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    },
+    {
+     "id": "rg_019",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    },
+    {
+     "id": "rg_025",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    },
+    {
+     "id": "rg_031",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    },
+    {
+     "id": "rg_040",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    },
+    {
+     "id": "rg_043",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    },
+    {
+     "id": "rg_076",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    }
+   ],
+   "by_reason_a": {
+    "primary": 27,
+    "unpolished": 7,
+    "deterministic": 1
+   },
+   "by_reason_b": {
+    "primary": 28,
+    "unpolished": 7
+   },
+   "n_dropped_in_b": 2,
+   "drops_in_scope": [
+    {
+     "id": "rg_061",
+     "arm_a": "primary",
+     "arm_b": "primary"
+    },
+    {
+     "id": "rg_088",
+     "arm_a": "primary",
+     "arm_b": "primary"
+    }
+   ],
+   "drops_in_scope_confounded_a": [],
+   "drops_out_of_scope": [],
+   "drops_undecided": [],
+   "provenance": {
+    "arm_a": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r460-tunnel-off-s3-hard.ckpt.jsonl",
+    "arm_b": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r461-countoff-s3-hard.ckpt.jsonl",
+    "join": "ckpt row id -> score row id",
+    "bootstrap_seed": 403
+   },
+   "reasons": {
+    "primary": "served by the primary Stage-2 leg (lever in force)",
+    "fallback": "served by the fallback leg \u2014 same request payload",
+    "deterministic": "degraded: the Stage-1 draft shipped, Stage-2 output discarded",
+    "prior_turn": "degraded: the truncation guard kept the previous turn's answer",
+    "unpolished": "no Stage-2 call on this row (curated/intercepted answer)",
+    "unknown": "provenance names no leg and no polish flag: NOT evidence the lever ran",
+    "no_provenance": "no per-row provenance for this row: it cannot testify (reported UNDECIDED)"
+   }
+  },
+  "excluded": [
+   {
+    "id": "rg_013",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_019",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_025",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_031",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_040",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_043",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_076",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   }
+  ],
+  "ref_conciseness": {
+   "delta": -1.8095238095238093,
+   "ci95": [
+    -7.857142857142857,
+    3.5714285714285716
+   ]
+  }
+ },
+ {
+  "title": "R460 FULL BLOCK  (recomputed)",
+  "arm_a": "r460-tunnel-off-s3",
+  "arm_b": "r460-tunnel-on-s3",
+  "shared_rows": 37,
+  "gold_dropped_head": {
+   "arm_a": 0,
+   "arm_b": 1,
+   "new_drops_in_b": [
+    "rg_037"
+   ]
+  },
+  "mean_answer_chars": {
+   "arm_a": 803.3513513513514,
+   "arm_b": 867.3783783783783
+  },
+  "verdict_all": "VETO",
+  "verdict_lever": "CLEAN",
+  "veto_all": {
+   "rule": "hard rule #8 \u2014 a lever that drops a gold HEAD on a row it actually served is vetoed regardless of means",
+   "verdict": "VETO",
+   "fires": true,
+   "scope": "all",
+   "scope_requested": "all",
+   "scope_supported": [
+    "lever",
+    "all"
+   ],
+   "scope_downgraded": false,
+   "downgrade_reason": "",
+   "contract": "arm-under-test provenance in ('primary','fallback') = the legs that carried the lever's payload (else stage2_polish is True on a pre-stage2_served_by checkpoint)",
+   "rows_considered": 35,
+   "shared_rows": 37,
+   "eligible_rows": 35,
+   "excluded_rows": 0,
+   "levers_evaluated": 35,
+   "excluded": [],
+   "by_reason_a": {
+    "primary": 27,
+    "unpolished": 7,
+    "deterministic": 1
+   },
+   "by_reason_b": {
+    "primary": 27,
+    "unpolished": 7,
+    "prior_turn": 1
+   },
+   "n_dropped_in_b": 1,
+   "drops_in_scope": [
+    {
+     "id": "rg_037",
+     "arm_a": "primary",
+     "arm_b": "prior_turn"
+    }
+   ],
+   "drops_in_scope_confounded_a": [],
+   "drops_out_of_scope": [],
+   "drops_undecided": [],
+   "provenance": {
+    "arm_a": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r460-tunnel-off-s3-hard.ckpt.jsonl",
+    "arm_b": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r460-tunnel-on-s3-hard.ckpt.jsonl",
+    "join": "ckpt row id -> score row id",
+    "bootstrap_seed": 403
+   },
+   "reasons": {
+    "primary": "served by the primary Stage-2 leg (lever in force)",
+    "fallback": "served by the fallback leg \u2014 same request payload",
+    "deterministic": "degraded: the Stage-1 draft shipped, Stage-2 output discarded",
+    "prior_turn": "degraded: the truncation guard kept the previous turn's answer",
+    "unpolished": "no Stage-2 call on this row (curated/intercepted answer)",
+    "unknown": "provenance names no leg and no polish flag: NOT evidence the lever ran",
+    "no_provenance": "no per-row provenance for this row: it cannot testify (reported UNDECIDED)"
+   }
+  },
+  "veto_lever": {
+   "rule": "hard rule #8 \u2014 a lever that drops a gold HEAD on a row it actually served is vetoed regardless of means",
+   "verdict": "CLEAN",
+   "fires": false,
+   "scope": "lever",
+   "scope_requested": "lever",
+   "scope_supported": [
+    "lever",
+    "all"
+   ],
+   "scope_downgraded": false,
+   "downgrade_reason": "",
+   "contract": "arm-under-test provenance in ('primary','fallback') = the legs that carried the lever's payload (else stage2_polish is True on a pre-stage2_served_by checkpoint)",
+   "rows_considered": 35,
+   "shared_rows": 37,
+   "eligible_rows": 27,
+   "excluded_rows": 8,
+   "levers_evaluated": 27,
+   "excluded": [
+    {
+     "id": "rg_013",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    },
+    {
+     "id": "rg_019",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    },
+    {
+     "id": "rg_025",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    },
+    {
+     "id": "rg_031",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    },
+    {
+     "id": "rg_037",
+     "arm_a": "primary",
+     "arm_b": "prior_turn"
+    },
+    {
+     "id": "rg_040",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    },
+    {
+     "id": "rg_043",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    },
+    {
+     "id": "rg_076",
+     "arm_a": "unpolished",
+     "arm_b": "unpolished"
+    }
+   ],
+   "by_reason_a": {
+    "primary": 27,
+    "unpolished": 7,
+    "deterministic": 1
+   },
+   "by_reason_b": {
+    "primary": 27,
+    "unpolished": 7,
+    "prior_turn": 1
+   },
+   "n_dropped_in_b": 1,
+   "drops_in_scope": [],
+   "drops_in_scope_confounded_a": [],
+   "drops_out_of_scope": [
+    {
+     "id": "rg_037",
+     "arm_a": "primary",
+     "arm_b": "prior_turn"
+    }
+   ],
+   "drops_undecided": [],
+   "provenance": {
+    "arm_a": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r460-tunnel-off-s3-hard.ckpt.jsonl",
+    "arm_b": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r460-tunnel-on-s3-hard.ckpt.jsonl",
+    "join": "ckpt row id -> score row id",
+    "bootstrap_seed": 403
+   },
+   "reasons": {
+    "primary": "served by the primary Stage-2 leg (lever in force)",
+    "fallback": "served by the fallback leg \u2014 same request payload",
+    "deterministic": "degraded: the Stage-1 draft shipped, Stage-2 output discarded",
+    "prior_turn": "degraded: the truncation guard kept the previous turn's answer",
+    "unpolished": "no Stage-2 call on this row (curated/intercepted answer)",
+    "unknown": "provenance names no leg and no polish flag: NOT evidence the lever ran",
+    "no_provenance": "no per-row provenance for this row: it cannot testify (reported UNDECIDED)"
+   }
+  },
+  "excluded": [
+   {
+    "id": "rg_013",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_019",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_025",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_031",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_037",
+    "arm_a": "primary",
+    "arm_b": "prior_turn"
+   },
+   {
+    "id": "rg_040",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_043",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_076",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   }
+  ],
+  "ref_conciseness": {
+   "delta": 5.523809523809523,
+   "ci95": [
+    0.7142857142857139,
+    11.904761904761902
+   ]
+  }
+ }
+]

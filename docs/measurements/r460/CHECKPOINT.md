@@ -442,3 +442,42 @@ allow-list default OFF and keyed. `COUNT-ONLY-CONFIRM.md`; lever
   (`run_gate_count_only.sh 3`) so `rg_037` can run the lever. Nothing default-ON;
   `promote_conciseness_calibration.py` still unapplied, and no
   `promote_count_only.py` written.
+
+
+---
+
+## 2026-10-01 (R461.1 — hard rule #8's OPERATING DEFINITION fixed, and the gate re-read from its checkpoints)
+
+The R461 refusal's stated first next step, taken on its own merits and in its own
+commit: rule #8 read "any row", so a row whose Stage-2 output the transport
+discarded could veto a lever that was never in the answer. The veto now reads the
+rows where the lever actually served the arm under test.
+`RULE8-SCOPE-REREAD.md` (+ `rule8-scope-reread.json`); harness
+`rule8_scope_reread.py`, tests `tests/test_r461_rule8_lever_scope.py` (24).
+
+* **The contract.** `evals/official/paired_ab.py` joins each arm's checkpoint
+  (`provenance.stage2_served_by`, else `stage2_polish is True` on a pre-R417
+  checkpoint) to the score rows by id, over the `ckpt` path each score payload
+  records (`--a-ckpt`/`--b-ckpt` override). Eligible = arm B served by
+  `primary`/`fallback` — the legs that carried the lever's payload. `deterministic`,
+  `prior_turn` and "no Stage-2 call" rows cannot testify; every excluded row and
+  every drop on one is REPORTED, and the all-rows `gold_dropped_head` block is
+  unchanged. `--veto-scope all` reproduces the pre-R461 reading exactly.
+* **Fail-closed, three ways**, because a scope that can only narrow a veto is an
+  exemption: unreadable provenance - no checkpoint, a checkpoint that names no leg
+  on any row (the pre-R417 arms on disk), or no eligible row at all - falls back
+  to `all` with `scope_downgraded` set; a row whose provenance is missing or names
+  nothing reads UNDECIDED, which is not CLEAN; and the axes, drop counts and answer
+  lengths are asserted identical under both scopes.
+* **Re-read, before -> after.** THE GATE R461-COUNT vs R461-OFF: VETO (`rg_037`,
+  B=`deterministic`) -> **CLEAN**, 27/35 gold rows evaluated with the excluded row
+  reported. NOISE FLOOR R461-OFF vs R460-OFF: VETO -> **VETO** (`rg_061`, `rg_088`,
+  both `primary`/`primary`) - the draw-instability finding survives the fix, which
+  is the test of whether the fix removed rows rather than drops. R460-FULL vs
+  R460-OFF: VETO (`rg_037`, B=`prior_turn`) -> **CLEAN** - a SHIPPED round's
+  rule-#8 reason was also a degraded row; its other targets (ans_conciseness -4.49
+  pp, +64.0 chars) are untouched, so R460-FULL is still not promoted.
+* **Verdict for the count-only block: five of five acceptance targets met on this
+  draw, still NOT PROMOTED.** Nothing default-ON, `promote_conciseness_calibration.py`
+  still unapplied, still no `promote_count_only.py` written: what remains is the
+  promotion decision (or one replicate to price the draw band), not a measurement.

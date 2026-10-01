@@ -1,11 +1,11 @@
 # R461 — the count-only conciseness gate, on the SHIPPED transport
 
-**Verdict: NOT PROMOTED on this draw — every measured acceptance target is met
-except hard rule #8, which one TRANSPORT-DEGRADED row trips, and this gate
-demonstrates that rule #8's per-row veto is not itself draw-stable at n=37.**
-Read the refusal as a rule application, not as a measured regression: on the
-substance this is the strongest arm the conciseness program has produced, and the
-§7 decision is stated for the reader rather than buried.
+**Verdict: every measured acceptance target is now met, and the arm is still NOT
+PROMOTED.** The one failing criterion was hard rule #8, tripped by a row whose
+Stage-2 legs both failed — and §5.1 records the fix to the rule's OPERATING
+DEFINITION plus the re-read of this gate under it: **rule #8 no longer fires on
+this arm, the noise floor still does, and no drop leaves the record.** What
+remains is a promotion decision, not a measurement (§7).
 
 The R460 wrapper gate refused the whole calibration block, but recorded that its
 two halves behaved differently: the counted CITATION BUDGET reproduced on two
@@ -77,7 +77,7 @@ every delta on it is noise, measured instead of assumed.**
 | answers (chars) | 813.5 | 820.2 | +6.6 | [-32.4, +41.9] | flat |
 | refs / row | 2.84 | 2.51 | -0.33 | [-0.6, -0.1] | budget obeyed in part |
 | **overall** (per-row geo-mean) | 73.98 | **77.78** | **+3.80** | **[+0.58, +9.01]** | 20/35 rows better |
-| gold heads dropped | 2 | 1 | | | new in B: `rg_037` |
+| gold heads dropped | 2 | 1 | | | new in B: `rg_037`, reported OUT OF SCOPE (§5.1) |
 
 Board `overall` (macro geo-mean of the eight axis means): **85.08 → 86.47**, both
 above the 2026 frontier's 81.7. `ans_loose` macro 94.82 in both arms.
@@ -165,6 +165,10 @@ drops **ZERO** gold heads against its OFF arm's two:
 | 36 rows, same leg label | +8.09 [+1.91, +15.49] | +2.78 | +0.3 | **A=2 B=0** |
 | 27 rows, PRIMARY in both | +10.19 [+2.41, +19.20] | +3.70 | +0.4 | **A=2 B=0** |
 
+§4's row is not a veto any more: §5.1 re-reads this gate under rule #8's fixed
+operating definition, where a row the lever never served cannot testify and
+`rg_037` is excluded from the veto and reported in full.
+
 ## 5. The instrument finding: rule #8 is not draw-stable at n=37
 
 This is the round's most consequential result, because it applies to every future
@@ -192,6 +196,61 @@ unconditional rule on a one-row transport lottery is exactly the "argument from
 construction" AGENTS.md invariant #5 forbids in place of the
 `gold_dropped_head` check, and the fix belongs in the rule, not in this lever.
 
+## 5.1 The fix, applied, and this gate re-read under it
+
+Rule #8's operating definition was "any row", and that is what made a transport
+event a lever verdict. It now reads **the rows where the lever actually served the
+arm under test**: `evals/official/paired_ab.py` joins each arm's checkpoint
+(`provenance.stage2_served_by`, the field `run_official_batch` writes) to the score
+rows by id, and a row is eligible iff the arm under test was served by `primary`
+or `fallback` — the two legs that carried the block's payload. On a checkpoint
+written before `stage2_served_by` existed the only hint is `stage2_polish`, and
+`True` is read as a Stage-2 leg.
+
+Four properties were built in rather than assumed, because a scope that can only
+narrow a veto is indistinguishable from an exemption:
+
+* **every excluded row, and every drop on one, is reported** — with its reason, in
+  the `veto` block of the payload and in the printed line; the all-rows
+  `gold_dropped_head` counts are untouched, so the R461 refusal's own evidence is
+  still in the artifact;
+* **`--veto-scope all` reproduces the pre-R461 definition exactly**, so every
+  published verdict stays re-derivable;
+* **unreadable provenance does not lift a veto**: no checkpoint, a checkpoint that
+  names no leg on any row (pre-R417), or a pair with no eligible row at all falls
+  back to `all` and flags `scope_downgraded`; a single row whose provenance is
+  missing or names nothing reads UNDECIDED, which is not CLEAN;
+* **the axes, the all-rows drop counts and the answer lengths are identical under
+  both scopes** (asserted per pair by the re-read), so the change moves the veto
+  and nothing else.
+
+Re-read from the round's existing checkpoints (`rule8_scope_reread.py` →
+`RULE8-SCOPE-REREAD.md`, raw payloads in `rule8-scope-reread.json`):
+
+| pair | scope=all (pre-R461) | scope=lever (now) |
+| :-- | :-- | :-- |
+| **the gate** R461-COUNT vs R461-OFF | **VETO** — `rg_037`, B=`deterministic` | **CLEAN** — 27/35 gold rows evaluated, `rg_037` reported out of scope |
+| **noise floor** R461-OFF vs R460-OFF | **VETO** — `rg_061`, `rg_088` | **VETO** — both `primary`/`primary`, unchanged |
+| **R460-FULL** vs R460-OFF | **VETO** — `rg_037`, B=`prior_turn` | **CLEAN** — same row, same reason |
+
+The middle row is the one that matters: the fix removes the rows that cannot
+testify and retains every drop that can. The rule stays undecidable at n=37 with
+one draw — the noise floor still vetoes two gold heads with no lever present — and
+that is the honest reading of it, not a reason to have left the definition alone.
+
+The third row is a re-read of a SHIPPED round's record, not just of this one: the
+full block's rule-#8 refusal rested on the same row id, where `prior_turn` means
+the truncation guard kept the previous turn's answer. That refusal now reads
+CLEAN — and it still does not promote the full block, which failed its other
+targets (ans_conciseness -4.49 pp [-8.77, -0.68], answers +64.0 chars). What the
+re-read corrects is the reason given, which is the part of the record a next
+reader would otherwise trust.
+
+Tests: `tests/test_r461_rule8_lever_scope.py`, 24 of them, pinning the reason
+table, both scopes, the three downgrade paths, the UNDECIDED path, the legacy call
+signature, and the three measured pairs above (skipped where the gitignored
+checkpoints are absent).
+
 ## 6. Acceptance, against the targets CONCISENESS-PROGRAM.md §5 wrote in advance
 
 | target | measured | met |
@@ -199,11 +258,13 @@ construction" AGENTS.md invariant #5 forbids in place of the
 | ref_conciseness CI excludes zero | +7.69 **[+1.41, +15.05]**, McNemar 10/2 p=0.0386 | **yes** |
 | ans_conciseness not down | +0.10 [-2.71, +3.18]; full block was -4.49 | **yes** |
 | answer axes flat | ans_loose +0.00, ans_strict +0.00, LC ans_strict +0.00 | **yes** |
-| no gold heads dropped | 0 new drops on the 36 rows the lever ran; 1 on a row the lever never ran | **no** |
+| no gold heads dropped | 0 in scope on the 27 lever-served gold rows; 1 reported out of scope (§5.1) | **yes** |
 | overall ≥ 0 | +3.80 [+0.58, +9.01], 20/35 rows | **yes** |
 
-Four of five, and the fifth is a rule application rather than a measurement. For
-comparison on the same instrument, the full block met two of five.
+Five of five under the rule as fixed in §5.1 — and the fifth was a rule
+application, not a measurement: it is now the rule that was fixed rather than the
+lever that was waived. For comparison on the same instrument, the full block met
+two of five.
 
 Length control (the R460 instrument) does not separate the arms, as it should not:
 answers are the same length (+6.6 chars). A = 62.96 / 56.76, B = 60.00 / 56.76
@@ -211,24 +272,31 @@ answers are the same length (+6.6 chars). A = 62.96 / 56.76, B = 60.00 / 56.76
 
 ## 7. The decision
 
-**Not promoted in this commit.** `calibration_enabled()` and
-`count_only_enabled()` both keep their allow-lists; nothing default-ON, nothing
-promoted. `promote_conciseness_calibration.py` stays unapplied, and a
-`promote_count_only.py` is deliberately NOT written: the honest next step is not a
-promotion script, it is one of these two, in this order.
+**Not promoted in this commit** — `calibration_enabled()` and `count_only_enabled()`
+both keep their allow-lists, nothing is default-ON, and
+`promote_conciseness_calibration.py` stays unapplied. What has changed is that the
+RULE is no longer the reason.
 
-1. **Fix the veto's operating definition, then re-read this gate from the
-   checkpoints.** The count-only arm's own numbers say the lever cost no gold head
-   anywhere it ran; the failing row is a degraded transport leg. Making rule #8
-   conditional on `stage2_polish`/`stage2_served_by` is a change to the
-   INSTRUMENT, it is justified by §5's measurement, and it must be made and
-   reviewed on its own — not used as a retro-fit exemption for this lever.
-2. **Spend one replicate when the tunnel allows.** `run_gate_count_only.sh 3`
-   tops the gate up from the existing checkpoints one replicate at a time. If
-   `rg_037` runs the lever in replicate 2, the veto lifts on the merits.
-
-Only then does the count-only block become a promotion candidate, and the
-evidence to promote it is already on disk.
+1. **Done: the veto's operating definition, and this gate re-read under it.** See
+   §5.1. The instrument change is `evals/official/paired_ab.py`; the tests are
+   `tests/test_r461_rule8_lever_scope.py` (24); the re-read is
+   `rule8_scope_reread.py` → `RULE8-SCOPE-REREAD.md`. It was made on §5's
+   measurement — a missing gold head on a row the lever never served is not
+   evidence about the lever — and it is explicitly NOT an exemption written for
+   this lever: under it the noise-floor pair still vetoes, an unreadable checkpoint
+   still vetoes, and a drop on a row whose provenance is unknown reads UNDECIDED,
+   which is not a pass.
+2. **Optional, and the only remaining measurement: one replicate.**
+   `run_gate_count_only.sh 3` tops the gate up from the existing checkpoints one
+   replicate at a time. It is no longer what lifts the veto — §5.1 does that, on
+   the evidence — it is what would price the draw band on the deciding axis.
+3. **Then the promotion decision, on the evidence already on disk.** Every target
+   the program wrote in advance is met on this draw (§6, five of five under the
+   fixed rule), the ref_conciseness mechanism reproduces three times (+7.69 here,
+   +5.52 on this transport in R460, +4.76 on Bedrock), and the full block's two
+   costs are gone. A `promote_count_only.py` is still deliberately NOT written:
+   the next commit should either promote on the record or spend the replicate,
+   not do both at once.
 
 ## 8. Caveats
 
@@ -244,3 +312,7 @@ evidence to promote it is already on disk.
   provisions prime citations).
 * Arm A of this gate is a second OFF draw, not the recorded one. The R460 OFF arm
   remains the arm of record for R460's own verdict; §2's third pair is the bridge.
+* §5.1's scope fix does not make rule #8 decidable at n=37: it removes the rows
+  that cannot testify about the lever, and the noise floor still vetoes on two gold
+  heads with no lever present. One draw still cannot decide the rule, and the
+  replicate in §7.2 is what would price it.

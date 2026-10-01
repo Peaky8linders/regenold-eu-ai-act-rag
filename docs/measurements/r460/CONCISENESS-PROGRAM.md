@@ -237,6 +237,30 @@ the lever ran, or to require the drop to persist across an OFF re-draw — a cha
 to the instrument, to be made on its own merits and not as a retro-fit exemption
 for this lever.
 
+**The fix, applied, and the same gate re-read (R461.1).** `paired_ab` now reads
+rule #8 on the rows where the lever's payload served the arm under test
+(`stage2_served_by` in `primary`/`fallback`; `stage2_polish is True` on a
+pre-`stage2_served_by` checkpoint), joined off the checkpoint each score payload
+records. Every excluded row and every drop on one is reported; a drop on a row
+whose provenance is missing or names nothing reads UNDECIDED, never CLEAN; an
+unreadable checkpoint falls back to the pre-R461 definition (the stricter one) and
+says so; `--veto-scope all` reproduces the old reading exactly.
+`RULE8-SCOPE-REREAD.md`, `rule8_scope_reread.py`,
+`tests/test_r461_rule8_lever_scope.py`.
+
+| pair, re-read from the existing checkpoints | scope=all | scope=lever |
+| :-- | :-- | :-- |
+| the gate, R461-COUNT vs R461-OFF | VETO (`rg_037`, B=`deterministic`) | **CLEAN** |
+| noise floor, R461-OFF vs R460-OFF | VETO (`rg_061`, `rg_088`) | **VETO**, unchanged |
+| R460-FULL vs R460-OFF | VETO (`rg_037`, B=`prior_turn`) | **CLEAN** |
+
+So the fifth acceptance target in this section is met on this draw: the fix
+removes the rows that cannot testify and retains every drop that can, and the
+axes, drop counts and answer lengths are asserted identical under both scopes.
+Still nothing default-ON — promoting the count-only block is now a decision on the
+record (`COUNT-ONLY-CONFIRM.md` §7), and one replicate remains the way to price
+the draw band.
+
 ## 6. Caveats
 
 * The plans/deferrals above are measured on n=37 stride-3 boards; the analysis
