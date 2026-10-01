@@ -624,8 +624,34 @@ def _route_stage_model(
         return complex_model
     if is_stage2:
         model = complex_model or stage2_model or "claude-opus-4-8"
-        return model if "opus" in model.lower() else "claude-opus-4-8"
+        if "opus" in model.lower() or _stage2_allow_non_opus():
+            return model
+        return "claude-opus-4-8"
     return base_model
+
+
+def _stage2_allow_non_opus() -> bool:
+    """R460 - opt-in escape from the R139 Opus floor. **Default OFF.**
+
+    The floor is why the DOCUMENTED override in ``GraphRAGSettings.stage2_model``
+    ("Restore the Sonnet-5 simple tier per-deploy with
+    ``P2P_GRAPH_RAG_STAGE2_MODEL=claude-sonnet-5``") has never worked: any
+    non-Opus Stage-2 id is rewritten to ``claude-opus-4-8``, and a set
+    ``complex_model`` wins the standard path as well. MEASURED 2026-09-30 at
+    the provider seam and pinned by
+    ``tests/test_r442_opus55_model_option.py``.
+
+    OFF is byte-identical to the shipped routing, including those floor
+    assertions. ON is how a Sonnet-as-Stage-2 candidate reaches the wire for
+    an A/B; flipping it in production needs the R448 gate order (answer
+    correctness, then gold references, then the other axes, then latency).
+    """
+    return os.environ.get("REGENOLD_STAGE2_ALLOW_NON_OPUS", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def effective_stage2_model(*, complex_question: bool = False) -> str:
@@ -1290,6 +1316,18 @@ def _openai_wrapper_complete_for_graph_rag(
         )
 
     _s2pol.record_attempt(_s2pol.STAGE2_PRIMARY)
+    # R460 — the wrapper Stage-2 call had NO explicit timeout, so it inherited
+    # the provider singleton's 60 s default. Measured 2026-09-30: Opus's p100
+    # turn was already 46.2 s, and five consecutive Sonnet generations crossed
+    # 60 s, which tripped the official harness's five-failure guard and aborted
+    # a 28/37 run. The Bedrock leg has had its own knob since R139
+    # (REGENOLD_BEDROCK_STAGE2_TIMEOUT_S, 180 s); the primary gets the same.
+    try:
+        _stage2_wrapper_timeout = float(
+            os.getenv("REGENOLD_STAGE2_WRAPPER_TIMEOUT_S", "150")
+        )
+    except (TypeError, ValueError):
+        _stage2_wrapper_timeout = 150.0
     try:
         response = _wrapper_provider.complete(
             OpenAIWrapperRequest(
@@ -1299,6 +1337,7 @@ def _openai_wrapper_complete_for_graph_rag(
                 max_tokens=safe_max_tokens,
                 temperature=temperature,
                 extra_headers=extra_headers,
+                timeout_seconds=_stage2_wrapper_timeout,
             )
         )
     except Exception as exc:  # noqa: BLE001 — a RAISE is a primary failure too
@@ -1339,6 +1378,24 @@ def _openai_wrapper_complete_for_graph_rag(
         if bedrock_answer is not None:
             return bedrock_answer
         raise
+    # R460 — per-dispatch usage + SHAPE on the channel the row writer reads.
+    # The wrapper's usage is a character heuristic over the user message
+    # (round(len(user)/4.0) to the digit); recording it next to the payload
+    # sizes is what lets a board say WHICH shape was sent and what the
+    # transport counted it as. run_official_batch._provenance parses this into
+    # the checkpoint row; the seam probe stays the controlled cross-check.
+    if not getattr(response, "error", None):
+        try:
+            from app.integrations.regenold.reasoning_trace import record_note
+            _usage_in = int(getattr(response, "prompt_tokens", 0) or 0)
+            _usage_out = int(getattr(response, "completion_tokens", 0) or 0)
+            record_note(
+                f"stage2_usage in={_usage_in} out={_usage_out} "
+                f"system_chars={len(wrapper_system or '')} "
+                f"user_chars={len(user or '')} turns={history_turn_count}"
+            )
+        except Exception:  # noqa: BLE001 — trace is best-effort telemetry
+            pass
     # R417 — the wrapper INTERMITTENTLY relays an interim/empty Claude-CLI
     # assistant message as an HTTP-200 "completion" (measured: one token, a
     # 1-2 char body). The structural guard below classified that as a model
@@ -1380,6 +1437,7 @@ def _openai_wrapper_complete_for_graph_rag(
                     max_tokens=safe_max_tokens,
                     temperature=temperature,
                     extra_headers=extra_headers,
+                    timeout_seconds=_stage2_wrapper_timeout,
                 )
             )
             try:
