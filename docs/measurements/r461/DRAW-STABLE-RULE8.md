@@ -177,3 +177,21 @@ wording, which post-dated its first write.
 4. report the replicate-stable verdict, not the best replicate;
 5. after a green deploy, `docs/measurements/r461/production_canary.py
    --phase post --expect-commit <merge sha>` and `--phase compare`.
+
+## 8. Round close (R461.7): the replicate is closed without new draws
+
+SS5's block lifted (the wrapper token was alive, re-verified), but the
+replicate still never ran: the wrapper top-up was stopped by operator
+directive (quota) and the Bedrock cross-transport attempt hit the Cohere
+trial RERANK monthly cap (HTTP 429, '1000 API calls / month'; all three
+keys found in the projects are capped; the embed endpoint still answers
+200). Rerank reorders the emitted reference list, so a rerank-OFF arm is a
+different retrieval condition, not the gate's; the operator elected to
+skip the caveated read. The SS4 verdict stands as the R461 record: CLEAN
+draw-stable, `ref_conciseness` 4.2x the floor but `ci_excludes_floor:
+false`, i.e. the replicate-stable criterion is NOT met.
+
+The production canary then ran and PASSED on all five gates - on the
+Bedrock fallback leg in both phases, production's primary still being
+offline - see `PROMOTION.md` SS6 and `CANARY.md`.
+

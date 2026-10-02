@@ -12,3 +12,10 @@ DONE 2026-10-01T11:54:43+03:00
   sample 1 already on disk; --repeats 3 --resume draws samples 2 and 3
 START arm A 2026-10-02T10:04:22+03:00
 ARM A EXIT=1 2026-10-02T10:06:24+03:00
+--- R461.3 TOP-UP to 3 replicates (retry after token recovery) 2026-10-02T11:59:54+03:00
+  arm A = REGENOLD_CONCISE_COUNT_ONLY=0 | arm B = REGENOLD_CONCISE_COUNT_ONLY=1
+  both arms: REGENOLD_CONCISE_CALIBRATION unset (the count-only mode)
+  wrapper probe re-verified alive before the top-up; --repeats 3 --resume draws samples 2 and 3
+START arm A 2026-10-02T11:59:54+03:00
+ABORTED (operator directive: tunnel quota) 2026-10-02T12:58:23+03:00
+  partial r1 removed (rows=31); tunnel top-up abandoned, published read stays 1 draw/arm

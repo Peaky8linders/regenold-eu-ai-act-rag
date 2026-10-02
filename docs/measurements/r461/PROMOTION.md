@@ -106,19 +106,50 @@ deploy, and are summarised in `CHECKPOINT.md`.
   the length control and the whole-head floor are untouched, and the promotion
   suite pins that only one default moved.
 
-## 6. Canary status (2026-10-02): BLOCKED on the shipped transport
+## 6. Canary status (2026-10-02): RUN, PASS
 
-The PRE canary was captured (commit `ca71879d7059`, mean refs 2.50, 6/8 in
-budget, mean chars 629.2). The POST canary has NOT run, and it must not:
-`/healthz/llm` reports `primary offline (api_status_500: "No response from
-Claude Code"); bedrock fallback active`. The shipped Stage-2 leg is down,
-so a POST canary would measure the BEDROCK FALLBACK, not the configuration
-this promotion changes - the same reason the local replicate top-up aborted
-(`Stage-2 PRIMARY transport is down ... aborted`, the R423 guard refusing to
-grade deterministic drafts). See `DRAW-STABLE-RULE8.md` SS5.
+The POST canary ran against the deployed merge `e1fba9733755` (deployment
+`5d8b7dcf-8e18-4d59-a947-7424ebb23fae`). All five gates PASS (`CANARY.md`,
+`canary-compare.json`, `canary-post.jsonl`):
 
-Nothing about the promotion decision changes: it rests on the R461 gate read
-(five-of-five targets, noise floor -0.56), which was drawn while the primary
-was up. What is blocked is the *confirmation on the shipped endpoint*, and
-the R461.3 replicate top-up that was to put a draw band on the deciding
-axis. Both resume with the same action: re-seed the wrapper token.
+* `deploy` - the served commit is the expected `e1fba9733755` (PRE was
+  `ca71879d7059`);
+* `health` - `/healthz` 200, `/healthz/llm` `llm_ok`;
+* `transport` - 8/8 answered 200, non-empty, no refusal;
+* `budget` - mean refs 2.50 -> 1.875, in budget 6/8 -> 7/8;
+* `integrity` - mean chars 629.2 -> 667.8 (answers did not collapse).
+
+Transport caveat, recorded because it bounds the claim: BOTH health reads
+(PRE and POST) report `provider: openai_wrapper (bedrock fallback)` with
+`primary offline (api_status_500: 'No response from Claude Code'); bedrock
+fallback active`. The two phases therefore measured the promotion on the
+SAME served leg - the Bedrock fallback - so the pre/post delta is
+transport-consistent, but it is not yet a confirmation on the
+primary-wrapper leg the board gate measured. Re-check on the next deploy
+that serves the primary. (`stage2_transport.stats` read 0/0 on the sampled
+worker both times, pid 4; it is process-local and not evidence either way.)
+
+The replicate top-up was attempted twice and is CLOSED without new draws:
+
+* the wrapper top-up (`r461-countoff-s3`, samples 2-3) was stopped by
+  operator directive - wrapper quota burned - and its 31-row partial was
+  removed, not resumed into;
+* the Bedrock cross-transport replica drew arm A complete (2 draws,
+  rerank-ON) and aborted arm B twice at the Cohere trial RERANK monthly
+  cap: HTTP 429, 'You are using a Trial key, which is limited to 1000 API
+  calls / month', the same on all three keys found across the projects (the
+  embed endpoint still answers 200; the per-minute
+  `x-trial-endpoint-call-remaining` header is a red herring). Rerank
+  reorders the emitted reference list (`rerank_pool`) and the KG-context
+  block, so a rerank-OFF arm is a different retrieval condition, not the
+  gate's - the operator elected to skip rather than publish a caveated
+  read. Arm B partial (7 rows, rerank-ON) is retained for a resume under an
+  uncapped key.
+
+**The standing verdict is therefore the one-draw draw-stable read above**:
+rule #8 CLEAN, `ref_conciseness` +7.69 (CI [+1.41, +15.05]) against a floor
+of +1.81 - 4.2x the floor point estimate, but `ci_excludes_floor: false`,
+so the replicate-stable criterion is NOT met. `DRAW-STABLE-RULE8.md`
+SS5/SS8; `GATE-RUN-BEDROCK.log` (local; `*.log` is gitignored) carries the
+attempt-by-attempt record.
+
