@@ -481,3 +481,104 @@ rows where the lever actually served the arm under test.
   draw, still NOT PROMOTED.** Nothing default-ON, `promote_conciseness_calibration.py`
   still unapplied, still no `promote_count_only.py` written: what remains is the
   promotion decision (or one replicate to price the draw band), not a measurement.
+
+
+---
+
+## 2026-10-01 (R461.2 — REGENOLD_CONCISE_COUNT_ONLY PROMOTED to default ON, with a live canary)
+
+The R461.1 re-read left one thing undone: the arm met every target and the rule
+that refused it had been fixed, so the decision was a promotion, not another
+measurement. `PROMOTION.md`; applier `promote_count_only.py` (idempotent,
+verifies its own effect from a fresh interpreter); contract tests
+`tests/test_r461_count_only_promoted.py`.
+
+* **The flip.** No env means ON; the OFF switch is a DENY-LIST
+  (`0`/`false`/`no`/`off`, case/space tolerant) so a malformed value cannot
+  silently disable a shipped lever, and the kill switch is byte-identical to the
+  pre-lever Stage-2 user message. The other levers are untouched:
+  `REGENOLD_CONCISE_CALIBRATION` stays default OFF and
+  `promote_conciseness_calibration.py` stays unapplied.
+* **Cache invalidation, the part a default flip needs.** `_engine_cache_key`
+  folded the RAW env spelling, which is `""` both before and after the flip, so a
+  pre-promotion entry (block OFF) would have answered a block-ON question for the
+  same text — the R263.2 stale-hit class with the promotion itself as the flip.
+  The RESOLVED mode is now keyed (`|concise=off|count|full`), which invalidates
+  the pre-promotion cache wholesale (the R81-N.1 effect, deliberately) and keeps
+  the three regimes distinct; the raw entry stays for operator intent.
+* **Two owned consequences, both fixed rather than suffered.** The full R460
+  block is reachable now only as the explicit pair (`COUNT_ONLY=0
+  CALIBRATION=1`), because count-only wins a mis-set one; and both gate launchers
+  NAME their arms, because their OFF arms were "flags absent", which after the
+  flip renders the block — a re-run of either gate would have measured the block
+  against itself. The R460 suite's autouse fixture kills the promoted block, so
+  it still tests the R460 arm.
+* **Canary.** `production_canary.py`, 8 fixed official-board questions against the
+  published endpoint, PRE and POST around the deploy, gates on deploy commit,
+  health, transport, budget and answer integrity. Results in `CANARY.md` and
+  section 4 of `PROMOTION.md`; rollback is one env var.
+* **What is not claimed.** n=37 decides direction, rule #8 is still not
+  draw-stable at that n, production passes through the route's own reference
+  budget (the canary reads the wire, which is what a user sees), and one
+  replicate remains the way to price the draw band.
+
+## 2026-10-02 (R461.3 - rule #8 read DRAW-STABLE, and the noise floor priced)
+
+R461.1 fixed WHICH ROWS rule #8 may read; this round fixes whether the drop
+on them is a FACT. `--redraw` names an INDEPENDENT draw of arm A's own
+configuration: a gold head arm B lacks vetoes only if the re-draw carries it
+too, the re-draw is verified per row on `hard_preamble_digest` (read from the
+CHECKPOINT - the score payload does not carry it), and a drop the re-draw
+clears is reported in `draw_stability.drops_unstable`, never deleted. Without
+a re-draw the single-draw reading stands, which is the stricter one.
+
+The same flag prices the NOISE FLOOR: arm A against its own re-draw is two
+draws of ONE configuration (declared, and refutable only on the request-shape
+digest: 37/37 rows match - a match is necessary, never sufficient).
+`run_official_batch` now draws that control arm itself (-C, the baseline env,
+`--no-control` to refuse and record), so no lever delta has to be read
+without a floor. `paired_ab --control` reads a pair as the control.
+
+Re-read of the R461 gate (`paired-r461-count-only-wrapper-drawstable.json`):
+CLEAN, 27/35 gold rows, its one raw drop (`rg_037`, `Annex VIII`) PERSISTED in
+the re-draw and is still out of scope (arm B was `deterministic`); floor usable;
+`ref_conciseness` +7.69 against a floor of +1.81 (4.2x) but the lever CI covers
+the floor value, and four of eight axes move less than the OFF/OFF floor.
+
+BLOCKED: the top-up to 3 replicates and the production POST canary. The Claude
+Code wrapper's token is dead locally AND in production (`No response from
+Claude Code`; prod serving through the Bedrock fallback), so the top-up aborted
+2 rows in (R423 guard) and a canary would measure the fallback. Resume by
+re-seeding the token; see `docs/measurements/r461/DRAW-STABLE-RULE8.md` SS7.
+
+## 2026-10-02 (R461.5 — one shared row-provenance predicate for every gate)
+
+The last three rounds each taught a gate to read the same checkpoint fields its
+own way: rule #8's row eligibility, the R422 void guard, the R423 exclusion
+list, the resume census. Read three ways, the same row could narrow a veto on
+one gate and widen an exclusion on another without either gate saying so. The
+reading now lives in ONE leaf module (`evals/bench/row_provenance.py`), with the
+gate names kept as aliases and asserted identical by `is`.
+
+* The asymmetries are the design, not accidents, and each is pinned: a
+  `fallback` row is lever evidence for rule #8 AND a degraded transport for R423
+  (same payload, different question); a curated intercept is an R422 draft and
+  NOT an R423 degradation; a leg name the vocabulary does not know is a serve
+  for rule #8 (no silent exemption) and non-primary for R423.
+* The raw fields now have one home: an AST scan over `evals/**/*.py` fails on
+  any other module that reads `stage2_served_by` / `stage2_polish`, allowlisting
+  only the named producer / monitor / report functions, and the allowlist itself
+  is tested for staleness.
+* Preservation, measured: the old readers are carried verbatim as an oracle and
+  match on every shape and on all 378 rows of the 16 checkpoints on disk; the
+  gate-verdict audit re-runs BYTE-IDENTICAL (`gate-verdict-audit.json`, md5
+  091103ee); the draw-stable re-read reproduces every number (artifact
+  regenerated for the digest-is-shape wording that post-dated its first write).
+  Full suite 27 failed / 9226 passed, the 27 being the known davidath-egress
+  environment failures.
+* One deliberate divergence: a present-but-falsy leg value (`0`/`False`) now
+  lands in the R423 exclusion list (it used to be skipped); rule #8's reading is
+  unchanged and no on-disk row carries one.
+* `PROVENANCE-UNIFICATION.md`; 11 tests. Nothing committed yet (R461.2-5 all in
+  the working tree).
+
