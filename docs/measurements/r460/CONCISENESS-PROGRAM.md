@@ -125,8 +125,11 @@ the block above, rendered alone by `answer_need.count_only_block()`: three lines
 answer rules out still counts, and the citation-order line. It deliberately calls
 neither `answer_need` nor `concise_limits`, so the length battery cannot leak back
 in and a broken length estimate cannot take the budget down with it. Allow-list,
-default OFF, registered in `_engine_cache_key`, and byte-identically additive to
-the shipped contract (asserted). Section 5.1 is its gate.
+PROMOTED to default ON (R461, 2026-10-01, §5.2): registered in
+`_engine_cache_key` twice over — the raw spelling for operator intent and the
+RESOLVED mode for the invalidation a default flip requires — and byte-identically
+additive to the shipped contract when killed (asserted). Section 5.1 is its gate,
+`PROMOTION.md` the record.
 
 **Instrument: `--length-control`** —
 `rubric.truncate_to_chars()` + `score_arm._length_controlled_rows()` re-judge
@@ -260,6 +263,27 @@ axes, drop counts and answer lengths are asserted identical under both scopes.
 Still nothing default-ON — promoting the count-only block is now a decision on the
 record (`COUNT-ONLY-CONFIRM.md` §7), and one replicate remains the way to price
 the draw band.
+
+### 5.2 Promoted, on the evidence (R461, 2026-10-01)
+
+`REGENOLD_CONCISE_COUNT_ONLY` is default ON. The refusal this program carried
+through R460 and R461 was never a measured regression — the count half reproduced
+on every transport it was tried on — and after §5.1's rule fix the arm meets
+every target this program wrote in advance (five of five, §5.1's table), with the
+one drop on the board landing on a row the block never served.
+
+The promotion's record is `docs/measurements/r461/PROMOTION.md`: the deny-list OFF
+switch, the cache invalidation (the RESOLVED mode in `_engine_cache_key`, because
+a raw-spelling-only key cannot see a default flip and would serve pre-promotion
+answers), the full block's new reachability as the explicit pair, the rollback
+(`REGENOLD_CONCISE_COUNT_ONLY=0`, one variable, no redeploy), and the live canary
+on the published endpoint. `tests/test_r461_count_only_promoted.py` pins the
+promotion contract; the R460 suite's autouse fixture kills the promoted block so
+that suite still tests the R460 arm, and both gate launchers now name their arms
+instead of relying on "flags absent".
+
+The refuted half is untouched: `REGENOLD_CONCISE_CALIBRATION` stays default OFF
+and `promote_conciseness_calibration.py` stays unapplied.
 
 ## 6. Caveats
 

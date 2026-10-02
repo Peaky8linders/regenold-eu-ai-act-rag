@@ -695,8 +695,17 @@ _CALIBRATION_SCENARIO_CITATIONS = 3
 #: battery (sentence ceiling, word ceiling, shape skeleton) helped on opus-4-6 and
 #: made the answer LONGER on opus-5-5 (-4.49 pp ans_conciseness). So the budget is
 #: re-gated ALONE, with no length clause of any kind, on the shipped transport.
-#: Default OFF and an allow-list like every R460 lever: it changes the answer, so
-#: it needs its own gate.
+#: R461 PROMOTION (2026-10-01) - default ON (deny-list), promoted on evidence, not
+#: on argument. The paired hard gate on the SHIPPED transport
+#: (``COUNT-ONLY-CONFIRM.md``), read under hard rule #8's fixed operating
+#: definition (the rows the lever actually served): ref_conciseness 56.62 ->
+#: 64.31 (+7.69, CI [+1.41, +15.05], McNemar 10/2 p=0.0386), ans_correctness
+#: flat to +0.00, ans_conciseness +0.10 where the full block lost 4.49, answers
+#: +6.6 chars where the full block added 64.0, overall +3.80 [+0.58, +9.01]
+#: against a noise floor of -0.56 [-6.99, +5.79] on byte-identical prompts: five
+#: of five pre-registered targets, and no gold head dropped on any row the block
+#: served. ``REGENOLD_CONCISE_COUNT_ONLY=0`` restores the pre-lever bytes exactly
+#: and is the rollback; the live evidence is ``docs/measurements/r461/PROMOTION.md``.
 _COUNT_ONLY_ENV = "REGENOLD_CONCISE_COUNT_ONLY"
 
 #: The clauses the full block and the count-only variant SHARE. Factored so the
@@ -721,10 +730,21 @@ def calibration_enabled() -> bool:
 
 
 def count_only_enabled() -> bool:
-    """``REGENOLD_CONCISE_COUNT_ONLY`` - allow-list, default OFF."""
-    return os.environ.get(_COUNT_ONLY_ENV, "").strip().lower() in {
-        "1", "true", "yes", "on",
-    }
+    """``REGENOLD_CONCISE_COUNT_ONLY`` - default ON (deny-list), R461 promotion.
+
+    Mirrors :func:`need_proportional_contract_enabled`: a blank or unexpected
+    value keeps the ON behaviour, so a malformed value cannot silently disable a
+    shipped lever, and only ``0``/``false``/``no``/``off`` render nothing - which
+    leaves the Stage-2 user message byte-identical to the pre-lever text.
+
+    Promoted on the round's own hard gate (see the constant above). The RESOLVED
+    mode is keyed in ``_engine_cache_key``, so the flip invalidates the
+    pre-promotion cache rather than serving its block-OFF answers.
+    """
+    try:
+        return os.environ.get(_COUNT_ONLY_ENV, "1").strip().lower() not in _FALSY
+    except Exception:  # noqa: BLE001 - a flag read must never break the route
+        return True
 
 
 def conciseness_mode() -> str:
@@ -732,7 +752,12 @@ def conciseness_mode() -> str:
 
     COUNT-ONLY WINS when both flags are set. The two blocks are alternatives, not
     layers - the full one is the arm whose paired verdict was negative on this
-    transport - so a mis-set pair must not silently re-run the refuted arm.
+    transport - so a mis-set pair must not silently re-run the refuted arm. After
+    the R461 promotion (count-only default ON) that precedence is what keeps the
+    refuted arm off the wire: it is reachable only as the explicit pair
+    ``REGENOLD_CONCISE_COUNT_ONLY=0 REGENOLD_CONCISE_CALIBRATION=1``, and it is
+    keyed as ``concise=full``. This function is the cache key's own term for the
+    promotion: the raw env spelling is empty both before and after the flip.
     """
     if count_only_enabled():
         return "count"

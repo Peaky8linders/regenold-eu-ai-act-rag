@@ -1,0 +1,88 @@
+{
+ "phase": "pre",
+ "commit": "ca71879d7059",
+ "summary": {
+  "rows": 8,
+  "mean_refs": 2.5,
+  "mean_answer_chars": 629.2,
+  "in_budget": 6,
+  "in_budget_pct": 75.0,
+  "refs_by_row": {
+   "rg_028": 1,
+   "rg_034": 2,
+   "rg_040": 2,
+   "rg_043": 1,
+   "rg_049": 1,
+   "rg_052": 2,
+   "rg_004": 6,
+   "rg_007": 5
+  },
+  "budgets": {
+   "rg_028": 2,
+   "rg_034": 2,
+   "rg_040": 2,
+   "rg_043": 2,
+   "rg_049": 2,
+   "rg_052": 2,
+   "rg_004": 2,
+   "rg_007": 3
+  }
+ },
+ "health": {
+  "healthz": {
+   "status": 200,
+   "error": "",
+   "body": {
+    "status": "ok",
+    "version": "1.2.3",
+    "commit": "ca71879d7059",
+    "deployment_id": "265adb3e-2047-49e1-86bf-51bc49c6a2e2",
+    "is_groq_enabled": true,
+    "fallback_test": {
+     "status": null,
+     "error": null,
+     "finish_reason": null,
+     "model": null,
+     "text": null
+    }
+   }
+  },
+  "llm": {
+   "status": 200,
+   "error": "",
+   "body": {
+    "version": "1.2.3",
+    "commit": "ca71879d7059",
+    "deployment_id": "265adb3e-2047-49e1-86bf-51bc49c6a2e2",
+    "pid": 4,
+    "counters_scope": "per-worker \u2014 stage2_transport.stats is process-local and the service runs --workers 2, so a single read samples ONE worker. Do not alert on one read; poll until the same pid repeats.",
+    "provider": "openai_wrapper (bedrock fallback)",
+    "llm_ok": true,
+    "detail": "primary offline (api_status_500: {\"error\":{\"message\":\"No response from Claude Code\",\"type\":\"api_error\",\"code\":\"500\"}}); bedrock fallback active",
+    "stage2_transport": {
+     "strict": true,
+     "chain": [
+      "openai_wrapper",
+      "bedrock"
+     ],
+     "stats": {
+      "primary_attempts": 0,
+      "primary_ok": 0,
+      "primary_failed": 0,
+      "fallback_attempts": 0,
+      "fallback_ok": 0,
+      "fallback_failed": 0,
+      "refused": 0,
+      "refused_by_provider": {}
+     }
+    },
+    "cf_access": {
+     "client_id_set": true,
+     "client_secret_set": true,
+     "headers_attached": true
+    },
+    "elapsed_ms": 3739
+   }
+  }
+ }
+}

@@ -1,11 +1,11 @@
 # R461 — the count-only conciseness gate, on the SHIPPED transport
 
-**Verdict: every measured acceptance target is now met, and the arm is still NOT
-PROMOTED.** The one failing criterion was hard rule #8, tripped by a row whose
-Stage-2 legs both failed — and §5.1 records the fix to the rule's OPERATING
-DEFINITION plus the re-read of this gate under it: **rule #8 no longer fires on
-this arm, the noise floor still does, and no drop leaves the record.** What
-remains is a promotion decision, not a measurement (§7).
+**Verdict: PROMOTED — `REGENOLD_CONCISE_COUNT_ONLY` is default ON
+(2026-10-01).** Every target this round wrote in advance is met (§6), the one
+that was failing was a rule rather than a measurement and the rule is fixed
+(§5.1), and §9 records the promotion itself: the deny-list OFF switch, the cache
+invalidation the flip requires, and the live canary on the published endpoint.
+`PROMOTION.md` is the full record.
 
 The R460 wrapper gate refused the whole calibration block, but recorded that its
 two halves behaved differently: the counted CITATION BUDGET reproduced on two
@@ -272,10 +272,11 @@ answers are the same length (+6.6 chars). A = 62.96 / 56.76, B = 60.00 / 56.76
 
 ## 7. The decision
 
-**Not promoted in this commit** — `calibration_enabled()` and `count_only_enabled()`
-both keep their allow-lists, nothing is default-ON, and
-`promote_conciseness_calibration.py` stays unapplied. What has changed is that the
-RULE is no longer the reason.
+**PROMOTED (2026-10-01).** `REGENOLD_CONCISE_COUNT_ONLY` is default ON — see
+§9 and `PROMOTION.md`. `calibration_enabled()` (the R460 full block) keeps its
+allow-list and `promote_conciseness_calibration.py` stays unapplied, so exactly
+one default moved and the refuted arm stays refuted by default. The three steps
+below are the record of how the decision was reached, now closed.
 
 1. **Done: the veto's operating definition, and this gate re-read under it.** See
    §5.1. The instrument change is `evals/official/paired_ab.py`; the tests are
@@ -290,13 +291,38 @@ RULE is no longer the reason.
    `run_gate_count_only.sh 3` tops the gate up from the existing checkpoints one
    replicate at a time. It is no longer what lifts the veto — §5.1 does that, on
    the evidence — it is what would price the draw band on the deciding axis.
-3. **Then the promotion decision, on the evidence already on disk.** Every target
-   the program wrote in advance is met on this draw (§6, five of five under the
-   fixed rule), the ref_conciseness mechanism reproduces three times (+7.69 here,
-   +5.52 on this transport in R460, +4.76 on Bedrock), and the full block's two
-   costs are gone. A `promote_count_only.py` is still deliberately NOT written:
-   the next commit should either promote on the record or spend the replicate,
-   not do both at once.
+3. **Done: promoted on that evidence.** `promote_count_only.py` applied the flip
+   (deny-list OFF switch, resolved mode in the cache key, arms named),
+   `PROMOTION.md` is the record, and `production_canary.py` measured it on the
+   published endpoint. The evidence is unchanged from the two steps above — five
+   of five targets, three reproductions of the mechanism, the full block's costs
+   gone — which is why the decision could be taken on the record rather than on
+   another draw.
+
+## 9. The promotion — default ON (2026-10-01)
+
+`REGENOLD_CONCISE_COUNT_ONLY` is promoted: no env means the citation budget is in
+force, and `PROMOTION.md` is the record (evidence, doctrine, cache invalidation,
+rollback, canary). Three mechanical consequences, all pinned by
+`tests/test_r461_count_only_promoted.py`:
+
+* **the OFF switch is a deny-list** — `0`/`false`/`no`/`off` (case/space
+  tolerant) and nothing else, so a typo cannot silently disable a shipped lever,
+  and the kill switch is byte-identical to the pre-lever Stage-2 message;
+* **the cache key carries the RESOLVED mode** (`|concise=off|count|full`). The
+  raw env spelling is empty both before and after a default flip, so without that
+  term the promotion would have served pre-promotion (block-OFF) answers for the
+  same question — the R263.2 stale-hit class with the promotion as the flip. The
+  addition invalidates the pre-promotion cache wholesale, deliberately, and the
+  raw entry stays in `engine_flags` for operator intent;
+* **the R460 full block is now the explicit pair** (`COUNT_ONLY=0
+  CALIBRATION=1`), because count-only still wins a mis-set one. Both gate
+  launchers NAME their arms for the same reason: their OFF arms used to be "flags
+  absent", which after this flip renders the block, so a re-run would have
+  measured the block against itself.
+
+Rollback is one environment variable, `REGENOLD_CONCISE_COUNT_ONLY=0`, with no
+code deploy; it restores the pre-lever bytes and is a distinct cache regime.
 
 ## 8. Caveats
 
@@ -316,3 +342,6 @@ RULE is no longer the reason.
   that cannot testify about the lever, and the noise floor still vetoes on two gold
   heads with no lever present. One draw still cannot decide the rule, and the
   replicate in §7.2 is what would price it.
+* The canary (§9) is 8 fixed questions, one draw each, on the wire: a sanity gate
+  with a rollback attached, not a board. The promotion's evidence is §2 and §6;
+  the canary is what says the deployed build serves the promoted behaviour.

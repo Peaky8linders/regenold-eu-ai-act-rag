@@ -29,13 +29,13 @@ COMMON="--mode hard --stride 3 --require-cohere-rerank --cohere-rerank-min-gap 7
 : > "$LOG"
 echo "WRAPPER CONFIRMATION GATE -- repeats=$REPS start $(date -Is)" >> "$LOG"
 
-echo "START arm A (flag OFF) repeats=$REPS $(date -Is)" >> "$LOG"
-$PY -m evals.regenold.run_official_batch --label r460-tunnel-off-s3 $COMMON \
+echo "START arm A (REGENOLD_CONCISE_COUNT_ONLY=0) repeats=$REPS $(date -Is)" >> "$LOG"
+REGENOLD_CONCISE_COUNT_ONLY=0 $PY -m evals.regenold.run_official_batch --label r460-tunnel-off-s3 $COMMON \
   > evals/bench/results/r460-tunnel-off-s3.log 2>&1
 echo "ARM A EXIT=$? $(date -Is)" >> "$LOG"
 
-echo "START arm B (REGENOLD_CONCISE_CALIBRATION=1) repeats=$REPS $(date -Is)" >> "$LOG"
-REGENOLD_CONCISE_CALIBRATION=1 $PY -m evals.regenold.run_official_batch \
+echo "START arm B (REGENOLD_CONCISE_COUNT_ONLY=0 REGENOLD_CONCISE_CALIBRATION=1) repeats=$REPS $(date -Is)" >> "$LOG"
+REGENOLD_CONCISE_COUNT_ONLY=0 REGENOLD_CONCISE_CALIBRATION=1 $PY -m evals.regenold.run_official_batch \
   --label r460-tunnel-on-s3 $COMMON \
   > evals/bench/results/r460-tunnel-on-s3.log 2>&1
 echo "ARM B EXIT=$? $(date -Is)" >> "$LOG"

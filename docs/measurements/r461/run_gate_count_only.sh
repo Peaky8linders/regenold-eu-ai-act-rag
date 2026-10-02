@@ -40,11 +40,11 @@ COMMON="--mode hard --stride 3 --require-cohere-rerank --cohere-rerank-min-gap 7
 
 : > "$LOG"
 echo "R461 COUNT-ONLY GATE -- repeats=$REPS start $(date -Is)" >> "$LOG"
-echo "  arm A = flags absent | arm B = REGENOLD_CONCISE_COUNT_ONLY=1" >> "$LOG"
+echo "  arm A = REGENOLD_CONCISE_COUNT_ONLY=0 | arm B = REGENOLD_CONCISE_COUNT_ONLY=1" >> "$LOG"
 echo "  both arms: REGENOLD_CONCISE_CALIBRATION unset (the count-only mode)" >> "$LOG"
 
-echo "START arm A (flags absent) repeats=$REPS $(date -Is)" >> "$LOG"
-$PY -m evals.regenold.run_official_batch --label r461-countoff-s3 $COMMON \
+echo "START arm A (REGENOLD_CONCISE_COUNT_ONLY=0) repeats=$REPS $(date -Is)" >> "$LOG"
+REGENOLD_CONCISE_COUNT_ONLY=0 $PY -m evals.regenold.run_official_batch --label r461-countoff-s3 $COMMON \
   > evals/bench/results/r461-countoff-s3.log 2>&1
 echo "ARM A EXIT=$? $(date -Is)" >> "$LOG"
 

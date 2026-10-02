@@ -7,9 +7,11 @@ as hard as they pin the presence of the budget, and they pin that the shared
 clauses are byte-identical to the full block's - otherwise the gate would be
 comparing a re-wording, not a removal.
 
-Default OFF: the flag is an allow-list, so every rendering
-assertion is paired with the byte-identical-when-off check the house doctrine
-requires.
+Default ON since the R461 promotion (deny-list), so the
+byte-identical-when-off check the house doctrine requires is taken against the
+explicit ``=0`` kill switch, and the default itself is pinned. The promotion's own
+contract - the resolved mode in the cache key, the full block's new reachability -
+is pinned in ``test_r461_count_only_promoted.py``.
 """
 from __future__ import annotations
 
@@ -17,6 +19,7 @@ import pytest
 
 from app.data.graph_rag_prompts import build_evidence_answer_user
 from app.engines.answer_need import (
+    answer_need,
     calibration_block,
     calibration_citation_budget,
     calibration_enabled,
@@ -25,7 +28,6 @@ from app.engines.answer_need import (
     count_only_block,
     count_only_enabled,
 )
-from app.engines.answer_need import answer_need
 
 QUESTION = "What transparency obligations does Article 13 impose on providers?"
 SCENARIO = (
@@ -54,22 +56,25 @@ def _clean_env(monkeypatch):
     monkeypatch.delenv("REGENOLD_USER_REF_MINIMALITY", raising=False)
 
 
-def test_flag_is_an_allow_list(monkeypatch):
-    assert count_only_enabled() is False
-    for value in ("1", "true", "yes", "on", "ON"):
-        monkeypatch.setenv("REGENOLD_CONCISE_COUNT_ONLY", value)
-        assert count_only_enabled() is True
-    for value in ("0", "false", "no", "off", ""):
+def test_flag_is_a_deny_list_and_defaults_on(monkeypatch):
+    """Promoted: no env means ON, and only a falsy value turns it off."""
+    assert count_only_enabled() is True
+    for value in ("0", "false", "no", "off", "FALSE", " off "):
         monkeypatch.setenv("REGENOLD_CONCISE_COUNT_ONLY", value)
         assert count_only_enabled() is False
+    for value in ("1", "true", "yes", "on", "", "banana"):
+        monkeypatch.setenv("REGENOLD_CONCISE_COUNT_ONLY", value)
+        assert count_only_enabled() is True
 
 
-def test_off_renders_nothing_and_the_user_message_is_byte_identical(monkeypatch):
-    """The off arm of the gate must be the shipped bytes, exactly."""
+def test_the_kill_switch_renders_nothing_and_the_bytes_are_the_shipped_ones(monkeypatch):
+    """The rollback must be the pre-lever bytes, exactly."""
+    monkeypatch.setenv("REGENOLD_CONCISE_COUNT_ONLY", "0")
     message = build_evidence_answer_user(QUESTION, "Article 13 obligations...")
     assert count_only_block(QUESTION) == ""
     assert calibration_block(QUESTION) == ""
-    for value in ("0", "false", "off", ""):
+    assert conciseness_mode() == "off"
+    for value in ("0", "false", "no", "off"):
         monkeypatch.setenv("REGENOLD_CONCISE_COUNT_ONLY", value)
         assert count_only_block(QUESTION) == ""
         assert build_evidence_answer_user(
@@ -103,7 +108,9 @@ def test_shared_clauses_are_byte_identical_to_the_full_block(monkeypatch):
     """The gate compares a REMOVAL, not a re-wording."""
     monkeypatch.setenv("REGENOLD_CONCISE_COUNT_ONLY", "1")
     count = count_only_block(QUESTION)
-    monkeypatch.delenv("REGENOLD_CONCISE_COUNT_ONLY")
+    # The full block is reachable only as the explicit pair after the promotion:
+    # count-only is ON by default, so the kill switch has to come first.
+    monkeypatch.setenv("REGENOLD_CONCISE_COUNT_ONLY", "0")
     monkeypatch.setenv("REGENOLD_CONCISE_CALIBRATION", "1")
     full = calibration_block(QUESTION)
     count_lines = [ln for ln in count.splitlines() if ln.startswith("* COUNT the provisions")]
@@ -116,13 +123,17 @@ def test_shared_clauses_are_byte_identical_to_the_full_block(monkeypatch):
 def test_count_only_wins_when_both_flags_are_set(monkeypatch):
     """The full block is the arm this transport REFUTED; a mis-set pair must not
     silently re-run it."""
-    assert conciseness_mode() == "off"
+    assert conciseness_mode() == "count"  # promoted default, no env set at all
     monkeypatch.setenv("REGENOLD_CONCISE_COUNT_ONLY", "1")
     assert conciseness_mode() == "count"
     assert "LENGTH AND CITATION" not in calibration_block(QUESTION)
     monkeypatch.setenv("REGENOLD_CONCISE_CALIBRATION", "1")
     assert conciseness_mode() == "count"
     assert "LENGTH AND CITATION" not in calibration_block(QUESTION)
+    # The refuted arm is still reachable, but only as an explicit pair.
+    monkeypatch.setenv("REGENOLD_CONCISE_COUNT_ONLY", "0")
+    assert conciseness_mode() == "full"
+    assert "LENGTH AND CITATION" in calibration_block(QUESTION)
 
 
 def test_count_only_does_not_depend_on_the_length_estimator(monkeypatch):
@@ -161,28 +172,32 @@ def test_block_is_short_and_lands_last_in_the_user_message(monkeypatch):
 
 def test_the_block_is_additive_to_the_shipped_contract(monkeypatch):
     """Turning the lever on appends the block and changes nothing else."""
+    monkeypatch.setenv("REGENOLD_CONCISE_COUNT_ONLY", "0")
     base = build_evidence_answer_user(QUESTION, "Article 13 obligations...")
-    monkeypatch.setenv("REGENOLD_CONCISE_COUNT_ONLY", "1")
+    monkeypatch.delenv("REGENOLD_CONCISE_COUNT_ONLY")
     on = build_evidence_answer_user(QUESTION, "Article 13 obligations...")
     block = count_only_block(QUESTION)
     assert on == base + "\n\n" + block
 
 
-def test_concise_contract_defaults_are_untouched(monkeypatch):
-    """This lever moves no other default: R447's ceiling is still the one the
-    full block quotes, and the calibration flag is still OFF."""
+def test_the_promotion_moves_one_default_and_no_other(monkeypatch):
+    """Count-only ON, the refuted full block still OFF, and R447's ceiling still
+    the one that block quotes."""
+    assert count_only_enabled() is True
     assert calibration_enabled() is False
-    assert count_only_enabled() is False
     need = answer_need(QUESTION)
     words, sentences = concise_limits(need, QUESTION)
+    monkeypatch.setenv("REGENOLD_CONCISE_COUNT_ONLY", "0")
     monkeypatch.setenv("REGENOLD_CONCISE_CALIBRATION", "1")
     full = calibration_block(QUESTION, estimated_need=need)
     assert f"keep {sentences} at most" in full
     assert f"about {words} words" in full
 
 
-def test_both_flags_are_in_the_engine_cache_key():
-    """An unkeyed prompt knob serves the wrong cached answer in an A/B."""
+def test_both_flags_and_the_resolved_mode_are_in_the_engine_cache_key():
+    """An unkeyed prompt knob serves the wrong cached answer in an A/B — and after
+    the promotion the RESOLVED mode is the term that makes the flip invalidate,
+    because the raw spelling is empty both before and after it."""
     import inspect
 
     from app.routes import regenold
@@ -190,3 +205,5 @@ def test_both_flags_are_in_the_engine_cache_key():
     source = inspect.getsource(regenold._engine_cache_key)
     assert "REGENOLD_CONCISE_COUNT_ONLY" in source
     assert "REGENOLD_CONCISE_CALIBRATION" in source
+    assert "conciseness_mode" in source
+    assert "|concise=" in source

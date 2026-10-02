@@ -39,6 +39,11 @@ def test_real_dispatch_preserves_evidence_and_coordinate_map(monkeypatch, compac
     # The concise LENGTH LIMIT block is a separate lever with its own tests
     # (tests/test_r448_concise_contract.py), so it is held OFF here.
     monkeypatch.setenv("REGENOLD_CONCISE_CONTRACT", "0")
+    # R461 - same rule for the count-only CITATION COUNT block: it is a
+    # separate lever with its own tests (tests/test_r461_count_only_*.py) and
+    # it is default ON since R461, so this fixture has to name it OFF to keep
+    # pinning the legacy stack the R399 contract is asserted against.
+    monkeypatch.setenv("REGENOLD_CONCISE_COUNT_ONLY", "0")
     evidence = (
         "VERBATIM PROVISION TEXT: [Article 13] REQUIRED MEMBERS: (a) provider; (b) purpose.\n"
         "KNOWLEDGE GRAPH (NON-CITABLE): Recital 47 interprets the rule."
