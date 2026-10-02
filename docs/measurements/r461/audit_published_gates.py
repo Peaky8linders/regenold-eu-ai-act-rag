@@ -16,8 +16,10 @@ instead of by re-reading each report by hand:
    canonical reads written by ``evals.official.paired_ab``.
 2. RESOLVE PROVENANCE - the checkpoint each arm's score payload records; if that
    path is gone (``evals/bench/results`` is gitignored), an exact-BASENAME copy
-   preserved inside the round's own directory. Nothing is matched fuzzily: a
-   guessed checkpoint is not provenance.
+   preserved inside the round's own directory, else the read's own CAPTURED
+   roster (R461.6, ``veto.roster`` - reads published before it carry none, and
+   a live checkpoint always wins over the capture). Nothing is matched
+   fuzzily: a guessed checkpoint is not provenance.
 3. RE-READ - through the CURRENT instrument, three ways:
      ``all``    the pre-R461 definition,
      ``lever``  the fixed scope (the rows arm B's provenance says the lever served),
@@ -212,10 +214,33 @@ def audit_read(
         return out
     ckpt_a, why_a = resolve_ckpt(score_a, index)
     ckpt_b, why_b = resolve_ckpt(score_b, index)
+    # R461.6 - a read published since the roster was captured carries the
+    # per-row provenance it was decided on. It is a FALLBACK, not a source: the
+    # instrument prefers a live checkpoint, so this only answers when the file
+    # is gone - which is exactly the case that made old verdicts unauditable.
+    captured = (d.get("veto") or {}).get("roster") or {}
+
+    def _captured(arm: str) -> dict[str, str] | None:
+        block = captured.get(arm) or {}
+        if not block.get("captured"):
+            return None
+        return dict(block.get("reasons") or {})
+
+    roster_a, roster_b = _captured("arm_a"), _captured("arm_b")
+    if roster_a is not None and ckpt_a is None:
+        why_a = f"{why_a}; re-read from the read's CAPTURED roster"
+    if roster_b is not None and ckpt_b is None:
+        why_b = f"{why_b}; re-read from the read's CAPTURED roster"
     out["provenance"] = {"arm_a": why_a, "arm_b": why_b}
 
-    res_all = compare(score_a, score_b, veto_scope="all", a_ckpt=ckpt_a, b_ckpt=ckpt_b)
-    res_lever = compare(score_a, score_b, veto_scope="lever", a_ckpt=ckpt_a, b_ckpt=ckpt_b)
+    res_all = compare(
+        score_a, score_b, veto_scope="all",
+        a_ckpt=ckpt_a, b_ckpt=ckpt_b, a_roster=roster_a, b_roster=roster_b,
+    )
+    res_lever = compare(
+        score_a, score_b, veto_scope="lever",
+        a_ckpt=ckpt_a, b_ckpt=ckpt_b, a_roster=roster_a, b_roster=roster_b,
+    )
     reaudit: dict[str, Any] = {"all": _verdict(res_all), "lever": _verdict(res_lever)}
 
     redraw, why_redraw = find_redraw(

@@ -582,3 +582,16 @@ gate names kept as aliases and asserted identical by `is`.
 * `PROVENANCE-UNIFICATION.md`; 11 tests. Nothing committed yet (R461.2-5 all in
   the working tree).
 
+## 2026-10-02 (R461.6 — the scope decision's evidence now rides in the record)
+
+The R461.4 audit's own finding, closed: per-row provenance lived only in the
+gitignored checkpoints, so a published refusal's scope question died with the
+file (r403's three VETOs are unanswerable forever). Every new read now embeds
+`veto.roster` — per arm, the row-id to reason map it was decided on, the
+considered row set, and the checkpoint it came from — and the audit falls back
+to it when the file is gone. A live checkpoint always wins; a read published
+before the capture stays exactly as auditable as it was, and its absence is
+still reported as UNVERIFIABLE. `gate-verdict-audit.json` re-runs
+byte-identical; the canonical R461 read was regenerated with the capture
+attached (the roster block is the only change; every number equal); 6 tests.
+
