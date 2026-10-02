@@ -1,0 +1,371 @@
+{
+ "arm_a": "score-r461-countoff-s3-hard.json",
+ "arm_b": "score-r461-counton-s3-hard.json",
+ "shared_rows": 37,
+ "only_in_a": [],
+ "only_in_b": [],
+ "axes": {
+  "ans_correctness_loose": {
+   "n": 37,
+   "mean_a": 94.81981981981983,
+   "mean_b": 94.81981981981983,
+   "delta": 0.0,
+   "ci95": [
+    -8.108108108108109,
+    8.108108108108109
+   ],
+   "b_better": 1,
+   "a_better": 1,
+   "mcnemar_p": 1.0
+  },
+  "ans_correctness_strict": {
+   "n": 37,
+   "mean_a": 91.89189189189189,
+   "mean_b": 91.89189189189189,
+   "delta": 0.0,
+   "ci95": [
+    -8.108108108108109,
+    8.108108108108109
+   ],
+   "b_better": 1,
+   "a_better": 1,
+   "mcnemar_p": 1.0
+  },
+  "ans_conciseness": {
+   "n": 37,
+   "mean_a": 81.948443305032,
+   "mean_b": 82.05185451575731,
+   "delta": 0.10341121072530993,
+   "ci95": [
+    -2.709498425482275,
+    3.1790588482553384
+   ],
+   "b_better": 12,
+   "a_better": 14,
+   "mcnemar_p": 0.8450189828872681
+  },
+  "ref_correctness_loose": {
+   "n": 35,
+   "mean_a": 95.71428571428571,
+   "mean_b": 97.14285714285714,
+   "delta": 1.4285714285714286,
+   "ci95": [
+    -7.142857142857143,
+    10.0
+   ],
+   "b_better": 2,
+   "a_better": 1,
+   "mcnemar_p": 1.0
+  },
+  "ref_correctness_strict": {
+   "n": 35,
+   "mean_a": 83.33333333333333,
+   "mean_b": 84.76190476190476,
+   "delta": 1.4285714285714286,
+   "ci95": [
+    0.0,
+    4.285714285714286
+   ],
+   "b_better": 1,
+   "a_better": 0,
+   "mcnemar_p": 1.0
+  },
+  "ref_conciseness": {
+   "n": 35,
+   "mean_a": 56.61904761904762,
+   "mean_b": 64.31292517006803,
+   "delta": 7.693877551020408,
+   "ci95": [
+    1.4081632653061218,
+    15.054421768707483
+   ],
+   "b_better": 10,
+   "a_better": 2,
+   "mcnemar_p": 0.03857421875
+  },
+  "regulatory_tone": {
+   "n": 37,
+   "mean_a": 97.29729729729729,
+   "mean_b": 97.29729729729729,
+   "delta": 0.0,
+   "ci95": [
+    -8.108108108108109,
+    8.108108108108109
+   ],
+   "b_better": 1,
+   "a_better": 1,
+   "mcnemar_p": 1.0
+  },
+  "resp_speed": {
+   "n": 37,
+   "mean_a": 86.81107130540555,
+   "mean_b": 86.18923693243218,
+   "delta": -0.6218343729733778,
+   "ci95": [
+    -2.52440482432438,
+    1.4523154648639909
+   ],
+   "b_better": 15,
+   "a_better": 22,
+   "mcnemar_p": 0.3240086000878364
+  }
+ },
+ "gold_dropped_head": {
+  "arm_a": 2,
+  "arm_b": 1,
+  "new_drops_in_b": [
+   "rg_037"
+  ]
+ },
+ "draw_stability": {
+  "rule": "hard rule #8 is read draw-stable: a gold head arm B lacks vetoes only if an INDEPENDENT re-draw of arm A carries that head too",
+  "stabilized": true,
+  "redraw": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r460-tunnel-off-s3-hard.ckpt.jsonl",
+  "redraw_rows": 37,
+  "raw_drop_rows": [
+   "rg_037"
+  ],
+  "raw_drop_heads": 1,
+  "verified_rows": [
+   "rg_037"
+  ],
+  "unverified": [],
+  "survived": {
+   "rg_037": [
+    "Annex VIII"
+   ]
+  },
+  "drops_unstable": [],
+  "reason": "0 of 1 raw drop head(s) did not persist across the re-draw (D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r460-tunnel-off-s3-hard.ckpt.jsonl) and are reported, not vetoed",
+  "survived_rows": [
+   "rg_037"
+  ],
+  "survived_heads": 1,
+  "cleared_rows": [],
+  "cleared_heads": 0,
+  "digests": {
+   "arm_a": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r461-countoff-s3-hard.ckpt.jsonl",
+   "redraw": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r460-tunnel-off-s3-hard.ckpt.jsonl"
+  }
+ },
+ "redraw": "docs/measurements/r388/score-r460-tunnel-off-s3-hard.json",
+ "veto": {
+  "rule": "hard rule #8 \u2014 a lever that drops a gold HEAD on a row it actually served is vetoed regardless of means; a drop is READ DRAW-STABLE (R461.3), so it vetoes only if an independent re-draw of arm A carries the head too",
+  "verdict": "CLEAN",
+  "fires": false,
+  "scope": "lever",
+  "scope_requested": "lever",
+  "scope_supported": [
+   "lever",
+   "all"
+  ],
+  "scope_downgraded": false,
+  "downgrade_reason": "",
+  "contract": "arm-under-test provenance in ('primary','fallback') = the legs that carried the lever's payload (else stage2_polish is True on a pre-stage2_served_by checkpoint)",
+  "rows_considered": 35,
+  "shared_rows": 37,
+  "eligible_rows": 27,
+  "excluded_rows": 8,
+  "levers_evaluated": 27,
+  "excluded": [
+   {
+    "id": "rg_013",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_019",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_025",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_031",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_037",
+    "arm_a": "primary",
+    "arm_b": "deterministic"
+   },
+   {
+    "id": "rg_040",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_043",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   },
+   {
+    "id": "rg_076",
+    "arm_a": "unpolished",
+    "arm_b": "unpolished"
+   }
+  ],
+  "by_reason_a": {
+   "primary": 28,
+   "unpolished": 7
+  },
+  "by_reason_b": {
+   "primary": 27,
+   "unpolished": 7,
+   "deterministic": 1
+  },
+  "n_dropped_in_b": 1,
+  "drops_in_scope": [],
+  "drops_in_scope_confounded_a": [],
+  "draw_stable": true,
+  "draw_stability": {
+   "rule": "hard rule #8 is read draw-stable: a gold head arm B lacks vetoes only if an INDEPENDENT re-draw of arm A carries that head too",
+   "stabilized": true,
+   "redraw": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r460-tunnel-off-s3-hard.ckpt.jsonl",
+   "redraw_rows": 37,
+   "raw_drop_rows": [
+    "rg_037"
+   ],
+   "raw_drop_heads": 1,
+   "verified_rows": [
+    "rg_037"
+   ],
+   "unverified": [],
+   "survived": {
+    "rg_037": [
+     "Annex VIII"
+    ]
+   },
+   "drops_unstable": [],
+   "reason": "0 of 1 raw drop head(s) did not persist across the re-draw (D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r460-tunnel-off-s3-hard.ckpt.jsonl) and are reported, not vetoed",
+   "survived_rows": [
+    "rg_037"
+   ],
+   "survived_heads": 1,
+   "cleared_rows": [],
+   "cleared_heads": 0,
+   "digests": {
+    "arm_a": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r461-countoff-s3-hard.ckpt.jsonl",
+    "redraw": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r460-tunnel-off-s3-hard.ckpt.jsonl"
+   }
+  },
+  "drops_out_of_scope": [
+   {
+    "id": "rg_037",
+    "arm_a": "primary",
+    "arm_b": "deterministic"
+   }
+  ],
+  "drops_undecided": [],
+  "provenance": {
+   "arm_a": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r461-countoff-s3-hard.ckpt.jsonl",
+   "arm_b": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r461-counton-s3-hard.ckpt.jsonl",
+   "join": "ckpt row id -> score row id",
+   "bootstrap_seed": 403
+  },
+  "reasons": {
+   "primary": "served by the primary Stage-2 leg (lever in force)",
+   "fallback": "served by the fallback leg \u2014 same request payload",
+   "deterministic": "degraded: the Stage-1 draft shipped, Stage-2 output discarded",
+   "prior_turn": "degraded: the truncation guard kept the previous turn's answer",
+   "unpolished": "no Stage-2 call on this row (curated/intercepted answer)",
+   "unknown": "provenance names no leg and no polish flag: NOT evidence the lever ran",
+   "no_provenance": "no per-row provenance for this row: it cannot testify (reported UNDECIDED)"
+  }
+ },
+ "mean_answer_chars": {
+  "arm_a": 813.5405405405405,
+  "arm_b": 820.1891891891892
+ },
+ "noise_floor": {
+  "rule": "the paired OFF/OFF control: two independent draws of one configuration, priced before any lever delta is read",
+  "pair": {
+   "arm_a": "score-r461-countoff-s3-hard.json",
+   "arm_b": "score-r460-tunnel-off-s3-hard.json"
+  },
+  "usable": true,
+  "reason": "all 37 shared rows carry the same request-shape digest, so the declaration is not refuted - which is not the same as established: the digest cannot establish it",
+  "config_identity": {
+   "same_configuration": true,
+   "rows_compared": 37,
+   "mismatched": [],
+   "undigested": [],
+   "checked": "hard_preamble_digest, per shared row, on each arm's own checkpoint - the REQUEST SHAPE only. Identity of CONFIGURATION is the caller's declaration (--control, or the harness drawing the arm at the baseline env); this check can REFUTE that declaration, never establish it",
+   "arm_a": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r461-countoff-s3-hard.ckpt.jsonl",
+   "arm_b": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r460-tunnel-off-s3-hard.ckpt.jsonl",
+   "reason": "all 37 shared rows carry the same request-shape digest, so the declaration is not refuted - which is not the same as established: the digest cannot establish it"
+  },
+  "floor_veto": "CLEAN",
+  "floor_draw_stability": {
+   "rule": "hard rule #8 is read draw-stable: a gold head arm B lacks vetoes only if an INDEPENDENT re-draw of arm A carries that head too",
+   "stabilized": false,
+   "redraw": "no --redraw",
+   "redraw_rows": 0,
+   "raw_drop_rows": [],
+   "raw_drop_heads": 0,
+   "verified_rows": [],
+   "unverified": [],
+   "survived": {},
+   "drops_unstable": [],
+   "reason": "no independent re-draw of arm A supplied (no --redraw); the single-draw reading stands (the stricter of the two)",
+   "digests": {
+    "arm_a": "D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r461-countoff-s3-hard.ckpt.jsonl",
+    "redraw": "no --redraw"
+   }
+  },
+  "axes": {
+   "ans_correctness_loose": {
+    "lever_delta": 0.0,
+    "floor_delta": 0.9009009009009008,
+    "beyond_floor": false,
+    "ci_excludes_floor": false
+   },
+   "ans_correctness_strict": {
+    "lever_delta": 0.0,
+    "floor_delta": 0.0,
+    "beyond_floor": false,
+    "ci_excludes_floor": false
+   },
+   "ans_conciseness": {
+    "lever_delta": 0.10341121072530993,
+    "floor_delta": 0.37317467265985305,
+    "beyond_floor": false,
+    "ci_excludes_floor": false
+   },
+   "ref_correctness_loose": {
+    "lever_delta": 1.4285714285714286,
+    "floor_delta": 4.285714285714286,
+    "beyond_floor": false,
+    "ci_excludes_floor": false
+   },
+   "ref_correctness_strict": {
+    "lever_delta": 1.4285714285714286,
+    "floor_delta": 1.4285714285714286,
+    "beyond_floor": false,
+    "ci_excludes_floor": false
+   },
+   "ref_conciseness": {
+    "lever_delta": 7.693877551020408,
+    "floor_delta": 1.8095238095238093,
+    "beyond_floor": true,
+    "ci_excludes_floor": false
+   },
+   "regulatory_tone": {
+    "lever_delta": 0.0,
+    "floor_delta": 2.7027027027027026,
+    "beyond_floor": false,
+    "ci_excludes_floor": false
+   },
+   "resp_speed": {
+    "lever_delta": -0.6218343729733778,
+    "floor_delta": 3.3514956729742225,
+    "beyond_floor": false,
+    "ci_excludes_floor": true
+   }
+  }
+ }
+}

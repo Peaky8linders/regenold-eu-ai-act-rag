@@ -5,6 +5,11 @@ Stage-2 user message: a sentence ceiling that equals the shipped concise
 contract's own ceiling, a numeric citation budget, and a structural skeleton at
 the target size. Default OFF, so every assertion here is paired with the
 byte-identical-when-off check that the house doctrine requires.
+
+R461 PROMOTION: ``REGENOLD_CONCISE_COUNT_ONLY`` is default ON and outranks this
+block, so the autouse fixture below kills it. Every test here selects the R460
+arm explicitly instead of silently measuring the count block;
+``test_r461_count_only_promoted.py`` pins the precedence itself.
 """
 from __future__ import annotations
 
@@ -28,6 +33,9 @@ SCENARIO = (
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
+    # R461 PROMOTION — reaching the R460 block is an explicit pair now: the
+    # count-only block is default ON and wins when both flags are set.
+    monkeypatch.setenv("REGENOLD_CONCISE_COUNT_ONLY", "0")
     monkeypatch.delenv("REGENOLD_CONCISE_CALIBRATION", raising=False)
     monkeypatch.delenv("REGENOLD_CONCISE_CONTRACT", raising=False)
     monkeypatch.delenv("REGENOLD_NEED_PROPORTIONAL_CONTRACT", raising=False)

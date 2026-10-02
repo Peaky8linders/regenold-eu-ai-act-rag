@@ -119,6 +119,18 @@ the **last** instruction in the Stage-2 user message:
 Registered in `_engine_cache_key`. Off → the user message is byte-identical
 (asserted).
 
+**Generator: `REGENOLD_CONCISE_COUNT_ONLY` (R461)** — the citation-budget half of
+the block above, rendered alone by `answer_need.count_only_block()`: three lines,
+331 chars, the numeric budget, the rule that a provision the facts engage and the
+answer rules out still counts, and the citation-order line. It deliberately calls
+neither `answer_need` nor `concise_limits`, so the length battery cannot leak back
+in and a broken length estimate cannot take the budget down with it. Allow-list,
+PROMOTED to default ON (R461, 2026-10-01, §5.2): registered in
+`_engine_cache_key` twice over — the raw spelling for operator intent and the
+RESOLVED mode for the invalidation a default flip requires — and byte-identically
+additive to the shipped contract when killed (asserted). Section 5.1 is its gate,
+`PROMOTION.md` the record.
+
 **Instrument: `--length-control`** —
 `rubric.truncate_to_chars()` + `score_arm._length_controlled_rows()` re-judge
 every answer **cut to its own reference answer's length** (at a sentence
@@ -179,6 +191,99 @@ Replicates 2-3 of the wrapper gate were not spent: the tunnel's quota is the
 scarce resource this round, and the deciding delta is systematic at the row level
 rather than marginal. The launcher resumes them in one command
 (`run_gate_wrapper.sh 3`).
+
+
+### 5.1 The count-only variant, gated alone (R461) — every target met but the hard rule
+
+The sub-lever section 5 identified was built and gated on its own transport run.
+`REGENOLD_CONCISE_COUNT_ONLY` (`answer_need.count_only_block`, 331 chars) emits the
+budget, the rule-out rule and the citation-order line and **nothing else**: no
+sentence ceiling, no word count, no shape skeleton, and no call into
+`answer_need`/`concise_limits`. `COUNT-ONLY-CONFIRM.md` is the round record.
+
+`--mode hard --stride 3`, `claude-opus-5-5`, same judge identity, both arms fresh,
+37/37 rows and 0 errors each, and arm A drawn fresh so the OFF arm is re-drawn on
+**byte-identical prompts** (`verify_byte_identity.py` proves the bytes; the earlier
+OFF arm loads as a second module from `git show` and renders identically on all 64
+board questions).
+
+| axis | OFF | COUNT-ONLY | Δ | CI |
+| :-- | --: | --: | --: | :-- |
+| ans_correctness_loose / _strict | 94.82 / 91.89 | 94.82 / 91.89 | **+0.00 / +0.00** | [-8.11, +8.11] |
+| ans_conciseness | 81.95 | 82.05 | +0.10 | [-2.71, +3.18] |
+| ref_conciseness | 56.62 | 64.31 | **+7.69** | **[+1.41, +15.05]** |
+| regulatory_tone | 97.30 | 97.30 | +0.00 | flat |
+| resp_speed | 86.81 | 86.19 | -0.62 | [-2.52, +1.45] |
+| answers (chars) | 813.5 | 820.2 | +6.6 | [-32.4, +41.9] |
+| **overall** (per-row) | 73.98 | 77.78 | **+3.80** | **[+0.58, +9.01]** |
+
+The count mechanism reproduces a third time (+7.69 against +5.52 here and +4.76 on
+Bedrock), and **the full block's two costs disappear**: answers no longer grow
+(+6.6 vs +64.0, whose CI excluded zero) and speed no longer moves. On the same
+method, the noise-floor pair (OFF re-drawn, byte-identical prompts) reads -0.56
+[-6.99, +5.79], so **+3.80 is the first overall delta in this program whose paired
+CI excludes zero.**
+
+**Verdict: NOT PROMOTED.** Hard rule #8 is tripped on one row, `rg_037`, whose
+provenance is `served_by=deterministic` / `polish=False` — both Stage-2 legs failed
+and the deterministic Stage-1 draft shipped, so the block never ran on it (its 7
+refs and 1,474 chars contradict the budget of 2 it was given). On the 36 rows where
+the lever ran, the count-only arm drops ZERO gold heads against its OFF arm's two.
+
+**And the rule itself was measured.** That same noise-floor pair drops two gold
+heads on byte-identical prompts — `rg_061`, and `rg_088` at 0/3 criteria on an
+UNDEGRADED row — and moves `resp_speed` -3.35 [-4.59, -2.07]. So rule #8 as
+written is not draw-stable at n=37, a single-draw gate can trip it with no lever
+present, and the R460 gate's speed reading was a draw artifact rather than a lever
+effect. The fix the evidence supports is to evaluate the veto only on rows where
+the lever ran, or to require the drop to persist across an OFF re-draw — a change
+to the instrument, to be made on its own merits and not as a retro-fit exemption
+for this lever.
+
+**The fix, applied, and the same gate re-read (R461.1).** `paired_ab` now reads
+rule #8 on the rows where the lever's payload served the arm under test
+(`stage2_served_by` in `primary`/`fallback`; `stage2_polish is True` on a
+pre-`stage2_served_by` checkpoint), joined off the checkpoint each score payload
+records. Every excluded row and every drop on one is reported; a drop on a row
+whose provenance is missing or names nothing reads UNDECIDED, never CLEAN; an
+unreadable checkpoint falls back to the pre-R461 definition (the stricter one) and
+says so; `--veto-scope all` reproduces the old reading exactly.
+`RULE8-SCOPE-REREAD.md`, `rule8_scope_reread.py`,
+`tests/test_r461_rule8_lever_scope.py`.
+
+| pair, re-read from the existing checkpoints | scope=all | scope=lever |
+| :-- | :-- | :-- |
+| the gate, R461-COUNT vs R461-OFF | VETO (`rg_037`, B=`deterministic`) | **CLEAN** |
+| noise floor, R461-OFF vs R460-OFF | VETO (`rg_061`, `rg_088`) | **VETO**, unchanged |
+| R460-FULL vs R460-OFF | VETO (`rg_037`, B=`prior_turn`) | **CLEAN** |
+
+So the fifth acceptance target in this section is met on this draw: the fix
+removes the rows that cannot testify and retains every drop that can, and the
+axes, drop counts and answer lengths are asserted identical under both scopes.
+Still nothing default-ON — promoting the count-only block is now a decision on the
+record (`COUNT-ONLY-CONFIRM.md` §7), and one replicate remains the way to price
+the draw band.
+
+### 5.2 Promoted, on the evidence (R461, 2026-10-01)
+
+`REGENOLD_CONCISE_COUNT_ONLY` is default ON. The refusal this program carried
+through R460 and R461 was never a measured regression — the count half reproduced
+on every transport it was tried on — and after §5.1's rule fix the arm meets
+every target this program wrote in advance (five of five, §5.1's table), with the
+one drop on the board landing on a row the block never served.
+
+The promotion's record is `docs/measurements/r461/PROMOTION.md`: the deny-list OFF
+switch, the cache invalidation (the RESOLVED mode in `_engine_cache_key`, because
+a raw-spelling-only key cannot see a default flip and would serve pre-promotion
+answers), the full block's new reachability as the explicit pair, the rollback
+(`REGENOLD_CONCISE_COUNT_ONLY=0`, one variable, no redeploy), and the live canary
+on the published endpoint. `tests/test_r461_count_only_promoted.py` pins the
+promotion contract; the R460 suite's autouse fixture kills the promoted block so
+that suite still tests the R460 arm, and both gate launchers now name their arms
+instead of relying on "flags absent".
+
+The refuted half is untouched: `REGENOLD_CONCISE_CALIBRATION` stays default OFF
+and `promote_conciseness_calibration.py` stays unapplied.
 
 ## 6. Caveats
 

@@ -1,0 +1,194 @@
+=== scoring r461-countoff-s3 2026-10-01T11:56:23+03:00
+judge identity: bedrock:qwen.qwen3-235b-a22b-2507-v1:0:t=0.1:grouped:r=3
+expected-ref key: official_refkey_n110.jsonl (R388 grain-calibrated, 110 rows)
+37 rows: 0 cached, 37 to judge (cache: judge-cache-r461-bedrock.jsonl)
+  [  1/37] checkpointed rg_001 (criteria: 2/2, tone: PASS)
+  [  2/37] checkpointed rg_004 (criteria: 4/4, tone: PASS)
+  [  3/37] checkpointed rg_007 (criteria: 3/3, tone: PASS)
+  [  4/37] checkpointed rg_016 (criteria: 2/2, tone: PASS)
+  [  5/37] checkpointed rg_010 (criteria: 5/5, tone: PASS)
+  [  6/37] checkpointed rg_013 (criteria: 5/5, tone: PASS)
+  [  7/37] checkpointed rg_019 (criteria: 4/4, tone: PASS)
+  [  8/37] checkpointed rg_022 (criteria: 4/4, tone: PASS)
+  [  9/37] checkpointed rg_025 (criteria: 4/4, tone: PASS)
+  [ 10/37] checkpointed rg_028 (criteria: 4/4, tone: PASS)
+  [ 11/37] checkpointed rg_031 (criteria: 4/4, tone: PASS)
+  [ 12/37] checkpointed rg_034 (criteria: 4/4, tone: PASS)
+  [ 13/37] checkpointed rg_040 (criteria: 2/2, tone: PASS)
+  [ 14/37] checkpointed rg_037 (criteria: 6/6, tone: PASS)
+  [ 15/37] checkpointed rg_043 (criteria: 6/6, tone: PASS)
+  [ 16/37] checkpointed rg_049 (criteria: 3/3, tone: PASS)
+  [ 17/37] checkpointed rg_046 (criteria: 6/6, tone: PASS)
+  [ 18/37] checkpointed rg_052 (criteria: 6/6, tone: PASS)
+  [ 19/37] checkpointed rg_055 (criteria: 3/3, tone: PASS)
+  [ 20/37] checkpointed rg_064 (criteria: 1/1, tone: PASS)
+  [ 21/37] checkpointed rg_061 (criteria: 2/2, tone: PASS)
+  [ 22/37] checkpointed rg_058 (criteria: 5/5, tone: PASS)
+  [ 23/37] checkpointed rg_067 (criteria: 3/3, tone: PASS)
+  [ 24/37] checkpointed rg_070 (criteria: 4/4, tone: PASS)
+  [ 25/37] checkpointed rg_073 (criteria: 4/4, tone: PASS)
+  [ 26/37] checkpointed rg_076 (criteria: 1/1, tone: PASS)
+  [ 27/37] checkpointed rg_082 (criteria: 3/3, tone: PASS)
+  [ 28/37] checkpointed rg_079 (criteria: 4/4, tone: PASS)
+  [ 29/37] checkpointed rg_085 (criteria: 4/4, tone: PASS)
+  [ 30/37] checkpointed rg_091 (criteria: 1/3, tone: PASS)
+  [ 31/37] checkpointed rg_088 (criteria: 0/3, tone: FAIL)
+  [ 32/37] checkpointed rg_094 (criteria: 5/5, tone: PASS)
+  [ 33/37] checkpointed rg_097 (criteria: 2/2, tone: PASS)
+  [ 34/37] checkpointed rg_100 (criteria: 4/4, tone: PASS)
+  [ 35/37] checkpointed rg_106 (criteria: 3/3, tone: PASS)
+  [ 36/37] checkpointed rg_103 (criteria: 3/4, tone: PASS)
+  [ 37/37] checkpointed rg_109 (criteria: 3/3, tone: PASS)
+
+length control: re-judging 37 rows with 29 answers cut to their reference length (not cached -- this pass re-judges each run)
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  LENGTH-CONTROL PASS DEGRADED: 11/37 rows returned NO live judge run and were scored all-False.
+  The controlled axes below are NOT a measurement; re-run with --workers 1.
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  length-controlled (answer cut to the reference length):
+    ans_correctness_loose        62.96   (raw 95.56)
+    ans_correctness_strict       56.76   (raw 91.89)
+    ans_conciseness             100.00   (raw 81.95)
+    regulatory_tone              94.59   (raw 97.30)
+
+========================================================================================
+R388 reconstructed official rubric  |  arm=r461-countoff-s3  mode=hard  n=37
+========================================================================================
+axis                        THIS ARM   us(off)  2026 frontier  gap->frontier
+----------------------------------------------------------------------------------------
+ans_correctness_loose           95.6      89.9           92.0           +3.6  BEATS
+ans_correctness_strict          91.9      80.0           84.8           +7.1  BEATS
+ans_conciseness                 81.9      45.2           71.8          +10.1  BEATS
+ref_correctness_loose           95.7      89.5           94.6           +1.1  BEATS
+ref_correctness_strict          83.3      70.7           74.1           +9.2  BEATS
+ref_conciseness                 56.6      49.8           58.5           -1.9
+regulatory_tone                 97.3      96.1          100.0           -2.7
+resp_speed                      86.8      85.7           86.7           +0.1  BEATS
+----------------------------------------------------------------------------------------
+OVERALL (geo mean)              85.1      73.4           81.7           +3.4  BEATS
+
+----------------------------------------------------------------------------------------
+Min–Max Uncertainty Bounds across 3 Repetitions (Temperature 0.1)
+----------------------------------------------------------------------------------------
+Metric                                   Range         Spread
+Ans Cor L                        95.6% – 95.6%        +0.0 pp
+Ans Cor S                        91.9% – 91.9%        +0.0 pp
+Regulatory Tone                  94.6% – 97.3%        +2.7 pp
+Overall (geo mean)               84.8% – 85.1%        +0.3 pp
+----------------------------------------------------------------------------------------
+
+diagnostics:
+  _ans_loose_macro          94.8198
+  _mean_answer_chars        813.5
+  _mean_reference_chars     657.8
+  _mean_refs_per_row        2.838
+  _mean_expected_per_row    1.257
+  _mean_latency_s           13.189
+  n_ref_scored              35
+  gold rows flagged unstable1
+
+NOTE: criteria and reference answers are RECONSTRUCTED, not the evaluator's.
+      Compare ARMS under this instrument; do not read a number as an official score.
+wrote D:\Claude Projects\regenold-eu-ai-act-rag\scratch\r460-evidence-bundle\docs\measurements\r388\score-r461-countoff-s3-hard.json
+=== scoring r461-counton-s3 2026-10-01T12:01:26+03:00
+judge identity: bedrock:qwen.qwen3-235b-a22b-2507-v1:0:t=0.1:grouped:r=3
+expected-ref key: official_refkey_n110.jsonl (R388 grain-calibrated, 110 rows)
+37 rows: 9 cached, 28 to judge (cache: judge-cache-r461-bedrock.jsonl)
+  [  1/28] checkpointed rg_007 (criteria: 3/3, tone: PASS)
+  [  2/28] checkpointed rg_010 (criteria: 5/5, tone: PASS)
+  [  3/28] checkpointed rg_004 (criteria: 4/4, tone: PASS)
+  [  4/28] checkpointed rg_016 (criteria: 2/2, tone: PASS)
+  [  5/28] checkpointed rg_028 (criteria: 4/4, tone: PASS)
+  [  6/28] checkpointed rg_034 (criteria: 4/4, tone: PASS)
+  [  7/28] checkpointed rg_049 (criteria: 3/3, tone: PASS)
+  [  8/28] checkpointed rg_037 (criteria: 0/6, tone: FAIL)
+  [  9/28] checkpointed rg_046 (criteria: 6/6, tone: PASS)
+  [ 10/28] checkpointed rg_055 (criteria: 3/3, tone: PASS)
+  [ 11/28] checkpointed rg_052 (criteria: 6/6, tone: PASS)
+  [ 12/28] checkpointed rg_058 (criteria: 5/5, tone: PASS)
+  [ 13/28] checkpointed rg_064 (criteria: 1/1, tone: PASS)
+  [ 14/28] checkpointed rg_061 (criteria: 2/2, tone: PASS)
+  [ 15/28] checkpointed rg_067 (criteria: 3/3, tone: PASS)
+  [ 16/28] checkpointed rg_070 (criteria: 4/4, tone: PASS)
+  [ 17/28] checkpointed rg_073 (criteria: 4/4, tone: PASS)
+  [ 18/28] checkpointed rg_079 (criteria: 4/4, tone: PASS)
+  [ 19/28] checkpointed rg_082 (criteria: 3/3, tone: PASS)
+  [ 20/28] checkpointed rg_085 (criteria: 4/4, tone: PASS)
+  [ 21/28] checkpointed rg_091 (criteria: 1/3, tone: PASS)
+  [ 22/28] checkpointed rg_088 (criteria: 3/3, tone: PASS)
+  [ 23/28] checkpointed rg_097 (criteria: 2/2, tone: PASS)
+  [ 24/28] checkpointed rg_094 (criteria: 5/5, tone: PASS)
+  [ 25/28] checkpointed rg_100 (criteria: 4/4, tone: PASS)
+  [ 26/28] checkpointed rg_106 (criteria: 3/3, tone: PASS)
+  [ 27/28] checkpointed rg_103 (criteria: 3/4, tone: PASS)
+  [ 28/28] checkpointed rg_109 (criteria: 3/3, tone: PASS)
+
+length control: re-judging 37 rows with 27 answers cut to their reference length (not cached -- this pass re-judges each run)
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  LENGTH-CONTROL PASS DEGRADED: 12/37 rows returned NO live judge run and were scored all-False.
+  The controlled axes below are NOT a measurement; re-run with --workers 1.
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  length-controlled (answer cut to the reference length):
+    ans_correctness_loose        60.00   (raw 93.33)
+    ans_correctness_strict       56.76   (raw 91.89)
+    ans_conciseness             100.00   (raw 82.05)
+    regulatory_tone              94.59   (raw 97.30)
+
+========================================================================================
+R388 reconstructed official rubric  |  arm=r461-counton-s3  mode=hard  n=37
+========================================================================================
+axis                        THIS ARM   us(off)  2026 frontier  gap->frontier
+----------------------------------------------------------------------------------------
+ans_correctness_loose           93.3      89.9           92.0           +1.3  BEATS
+ans_correctness_strict          91.9      80.0           84.8           +7.1  BEATS
+ans_conciseness                 82.1      45.2           71.8          +10.3  BEATS
+ref_correctness_loose           97.1      89.5           94.6           +2.5  BEATS
+ref_correctness_strict          84.8      70.7           74.1          +10.7  BEATS
+ref_conciseness                 64.3      49.8           58.5           +5.8  BEATS
+regulatory_tone                 97.3      96.1          100.0           -2.7
+resp_speed                      86.2      85.7           86.7           -0.5
+----------------------------------------------------------------------------------------
+OVERALL (geo mean)              86.5      73.4           81.7           +4.8  BEATS
+
+----------------------------------------------------------------------------------------
+Min–Max Uncertainty Bounds across 3 Repetitions (Temperature 0.1)
+----------------------------------------------------------------------------------------
+Metric                                   Range         Spread
+Ans Cor L                        93.3% – 94.8%        +1.5 pp
+Ans Cor S                        91.9% – 91.9%        +0.0 pp
+Regulatory Tone                  97.3% – 97.3%        +0.0 pp
+Overall (geo mean)               86.5% – 86.6%        +0.2 pp
+----------------------------------------------------------------------------------------
+
+diagnostics:
+  _ans_loose_macro          94.8198
+  _mean_answer_chars        820.2
+  _mean_reference_chars     657.8
+  _mean_refs_per_row        2.514
+  _mean_expected_per_row    1.257
+  _mean_latency_s           13.811
+  n_ref_scored              35
+  gold rows flagged unstable1
+
+NOTE: criteria and reference answers are RECONSTRUCTED, not the evaluator's.
+      Compare ARMS under this instrument; do not read a number as an official score.
+wrote D:\Claude Projects\regenold-eu-ai-act-rag\scratch\r460-evidence-bundle\docs\measurements\r388\score-r461-counton-s3-hard.json
+=== paired A/B 2026-10-01T12:05:45+03:00
+
+PAIRED A/B  (n=37 shared rows)
+  arm A = score-r461-countoff-s3-hard.json   arm B = score-r461-counton-s3-hard.json
+axis                             A       B    delta  95% CI                   +/-  McNemar p
+--------------------------------------------------------------------------------------------
+ans_correctness_loose        94.82   94.82    +0.00  [-8.11, +8.11]         1/1       1.0000
+ans_correctness_strict       91.89   91.89    +0.00  [-8.11, +8.11]         1/1       1.0000
+ans_conciseness              81.95   82.05    +0.10  [-2.71, +3.18]        12/14      0.8450
+ref_correctness_loose        95.71   97.14    +1.43  [-7.14, +10.00]        2/1       1.0000
+ref_correctness_strict       83.33   84.76    +1.43  [+0.00, +4.29]         1/0       1.0000
+ref_conciseness              56.62   64.31    +7.69  [+1.41, +15.05]       10/2       0.0386 B>
+regulatory_tone              97.30   97.30    +0.00  [-8.11, +8.11]         1/1       1.0000
+resp_speed                   86.81   86.19    -0.62  [-2.52, +1.45]        15/22      0.3240
+
+gold_dropped_head: A=2  B=1  NEW DROPS IN B: ['rg_037']
+mean answer chars: A=814  B=820
+wrote docs/measurements/r461/paired-r461-count-only-wrapper.json
+DONE 2026-10-01T12:05:48+03:00

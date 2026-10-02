@@ -60,6 +60,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from evals.bench import row_provenance
+
 __all__ = [
     "ArmProbe",
     "ArmProvenance",
@@ -127,9 +129,10 @@ class ArmProvenance:
     label: str
     rows: int = 0
     #: R422 — graded answers that were served by the DETERMINISTIC Stage-1 draft,
-    #: i.e. Stage-2 never landed. Read from each row's own provenance
-    #: (``stage2_served_by == 'deterministic'``, or ``stage2_polish is False`` on
-    #: a checkpoint that predates that field). This is the counter that catches
+    #: i.e. Stage-2 never landed. Read from each row's own provenance through
+    #: ``evals.bench.row_provenance.deterministic_draft`` (a named
+    #: ``deterministic`` leg, or the legacy ``stage2_polish is False`` on a
+    #: checkpoint that predates the leg field). This is the counter that catches
     #: the R422 incident: the transport counters said the run was merely quiet
     #: while 13 of 19 baseline rows had shipped a Stage-1 draft.
     deterministic_graded: int = 0
@@ -791,96 +794,22 @@ class ArmProbe:
         )
 
 
-def count_rows_served_by(rows: Any) -> dict[str, int]:
-    """Which leg served each graded row, counted off the rows' own provenance.
-
-    ``primary`` / ``fallback`` / ``deterministic`` each count rows that name
-    that leg; ``unnamed`` counts rows carrying no leg at all (an older
-    checkpoint, or a row whose trace was empty). The distinction matters for a
-    RESUMED arm: in-process transport counters restart at zero, so a resumed arm
-    looks like one that produced nothing, when in fact every row on disk records
-    a primary completion.
-    """
-    counts: dict[str, int] = {}
-    if not rows:
-        return counts
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        prov = row.get("provenance")
-        if not isinstance(prov, dict):
-            counts["unnamed"] = counts.get("unnamed", 0) + 1
-            continue
-        served = prov.get("stage2_served_by")
-        if served in (None, ""):
-            # A row written before the field existed: ``stage2_polish`` is the
-            # only leg hint it carries.
-            if prov.get("stage2_polish") is False:
-                served = "deterministic"
-            elif prov.get("stage2_polish") is True:
-                served = "primary"
-            else:
-                served = "unnamed"
-        counts[str(served)] = counts.get(str(served), 0) + 1
-    return counts
+#: R461.5 — the row-scoped rules are shared: one resolution of a row's
+#: provenance (``evals/bench/row_provenance``), three predicates over it. These
+#: names stay the harness-facing API; the reading has exactly one home.
+count_rows_served_by = row_provenance.count_rows_served_by
 
 
-def count_deterministic_rows(rows: Any) -> int:
-    """How many graded rows were served by the deterministic Stage-1 draft.
-
-    Reads the row's OWN recorded provenance, so it works on a checkpoint that
-    was written before this gate existed — ``stage2_served_by`` when present,
-    else ``stage2_polish``. Returns 0 for rows that carry neither field (an
-    older checkpoint), because an unknown is not evidence of an outage.
-    """
-    if not rows:
-        return 0
-    n = 0
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        prov = row.get("provenance")
-        if not isinstance(prov, dict):
-            continue
-        served = prov.get("stage2_served_by")
-        if served == "deterministic":
-            n += 1
-        elif served in (None, "") and prov.get("stage2_polish") is False:
-            n += 1
-    return n
+#: R422's void guard over the shared classification: the rows served by the
+#: deterministic Stage-1 draft (``evals/bench/row_provenance``).
+count_deterministic_rows = row_provenance.count_deterministic_rows
 
 
-def degraded_row_ids(rows: Any) -> list[str]:
-    """Graded rows whose Stage-2 draw did NOT come from the primary leg.
-
-    A row whose provenance NAMES a leg other than ``primary`` was served by a
-    degraded path: a fallback transport, or the deterministic Stage-1 draft the
-    engine ships once the primary AND the fallback have both failed. Those are
-    the rows the R423 hard gate shipped while its transport counters read clean
-    on one arm — the exact class ``assess`` has to see to exclude it.
-
-    A row that names NO leg and did not polish is the route's own deterministic
-    answer (a curated intercept): it is answered without a Stage-2 call in BOTH
-    arms by construction, so it is not a degradation and is left alone. That
-    distinction is the whole point — :func:`count_deterministic_rows` folds the
-    two together, and a caller that excluded the curated rows would drop nine
-    stable, byte-identical rows from every pair.
-    """
-    ids: list[str] = []
-    if not rows:
-        return ids
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        prov = row.get("provenance")
-        if not isinstance(prov, dict):
-            continue
-        served = prov.get("stage2_served_by")
-        if served and str(served) != "primary":
-            row_id = row.get("id")
-            if row_id is not None:
-                ids.append(str(row_id))
-    return ids
+#: R423's exclusion list over the shared classification: the graded rows whose
+#: named leg is not the primary one (``evals/bench/row_provenance``). A
+#: fallback row is degraded HERE even though rule #8 counts the same serve as
+#: lever evidence; a curated intercept (no leg named) is not degraded at all.
+degraded_row_ids = row_provenance.degraded_row_ids
 
 
 def assess(

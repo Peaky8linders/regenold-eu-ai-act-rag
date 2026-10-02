@@ -4,6 +4,12 @@ Asserted on the bytes handed to the provider seam, two-sided, never by
 grepping source (the R398 dead-lever lesson): ON puts the LENGTH LIMIT block in
 the dispatched user message, OFF leaves the message byte-identical to the
 pre-R448 text.
+
+R461 PROMOTION: ``REGENOLD_CONCISE_COUNT_ONLY`` is now default ON and the
+count-only block is appended AFTER this one, so "the block is last" is an R448
+claim only with the promoted block killed. The autouse fixture below names that
+arm; the promoted ordering itself is pinned in
+``tests/test_r461_count_only_promoted.py``.
 """
 from dataclasses import replace
 
@@ -12,6 +18,16 @@ import pytest
 from app.data import graph_rag_prompts as prompts
 from app.engines import _graph_rag_impl as impl
 from app.engines import answer_need
+
+
+@pytest.fixture(autouse=True)
+def _r448_arm_only(monkeypatch):
+    """Kill the promoted count-only block so this suite tests the R448 arm.
+
+    Without it the R461 block is the last instruction the model reads and the
+    "appended last" assertions would be asserting the promotion, not R448.
+    """
+    monkeypatch.setenv("REGENOLD_CONCISE_COUNT_ONLY", "0")
 
 
 def _dispatch(monkeypatch, flag: str, question: str) -> str:

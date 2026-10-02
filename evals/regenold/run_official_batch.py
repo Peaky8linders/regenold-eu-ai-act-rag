@@ -54,10 +54,10 @@ from pathlib import Path
 from typing import Any
 
 from evals.bench import metrics as bench_metrics
+from evals.bench.row_provenance import degraded_row_ids
 from evals.harness.gate_validity import (
     ArmProbe,
     assess,
-    degraded_row_ids,
     lever_changes_request,
     lever_changes_system,
     lever_changes_wire,
@@ -1332,10 +1332,13 @@ def _arm(
             got = primary.get("rows") or []
             identical_rate = _repeat_independence(replicates)
             # R423.2 — the rows whose graded draw did NOT come from the primary
-            # leg, across EVERY generation. A single primary read-timeout with a
-            # dead fallback credential ships one Stage-1 draft; the guard needs
-            # those ids to EXCLUDE them from both arms instead of voiding a
-            # five-hour paired gate for a hiccup the caller can account for.
+            # leg, across EVERY generation, decided by the SHARED row-provenance
+            # predicate (evals.bench.row_provenance): one reading for every gate,
+            # so this list cannot diverge from the rows gate_validity excludes
+            # with. A single primary read-timeout with a dead fallback credential
+            # ships one Stage-1 draft; the guard needs those ids to EXCLUDE them
+            # from both arms instead of voiding a five-hour paired gate for a
+            # hiccup the caller can account for.
             primary["degraded_ids"] = sorted({
                 row_id
                 for sample in replicates
@@ -1485,6 +1488,18 @@ def main() -> None:
     )
     ap.add_argument("--baseline-env", action="append", default=None)
     ap.add_argument("--branch-env", action="append", default=None)
+    ap.add_argument(
+        "--no-control",
+        action="store_true",
+        help=(
+            "R461.3 - do NOT draw the paired OFF/OFF control arm. A lever gate "
+            "draws one automatically: the BASELINE env, suffix -C, an independent "
+            "draw under the same protocol, repeats and resume contract, so the "
+            "reading step can price the draw floor and read rule #8 draw-stable. "
+            "Refusing it leaves the gate with no null, and the payload records "
+            "that it was refused"
+        ),
+    )
     ap.add_argument(
         "--allow-degraded-transport",
         action="store_true",
@@ -1699,6 +1714,48 @@ def main() -> None:
                 if k in ("n", "errors") or not isinstance(b[k], (int, float)):
                     continue
                 print(f"  {k:<32}{b[k]:>10.4f}{c[k]:>10.4f}{c[k]-b[k]:>+10.4f}")
+
+    # R461.3 - THE PAIRED OFF/OFF CONTROL, DRAWN BY THE HARNESS.
+    #
+    # Why it is not optional: ``paired_ab`` reads a lever delta against what the
+    # SAME configuration does against itself, because a second draw of an
+    # UNCHANGED arm moves axes and even drops gold heads the first draw did not
+    # (R461; ``docs/measurements/r461/COUNT-ONLY-CONFIRM.md`` SS5). A floor that
+    # has to be assembled by hand after the fact is one nobody can check, so the
+    # arm is drawn here, at the BASELINE env, under this run's own protocol,
+    # repeats and resume contract. It is deliberately NOT a lever arm: suffix
+    # ``-C``, never scored as a branch, and ``run_official_batch`` makes no claim
+    # from it beyond "this is what one configuration does twice".
+    if ab and not args.no_control:
+        print()
+        print("=== CONTROL ARM (baseline config, independent draw) -- suffix -C ===")
+        control = _arm(
+            args.label, args.mode, rows,
+            poster=poster, url=url, api_key=args.api_key, timeout=args.timeout,
+            arm_env=base_env, suffix="-C", resume=args.resume,
+            repeats=args.repeats, preflight=arm_preflight,
+        )
+        payload["control"] = {
+            "drawn": True,
+            "suffix": "-C",
+            "env": base_env,
+            "why": (
+                "an independent draw of the BASELINE configuration: the paired "
+                "OFF/OFF control that prices the draw floor and supplies the "
+                "re-draw rule #8 is read draw-stable against"
+            ),
+            "agg": {m: v["agg"] for m, v in control.items()},
+            "degraded_ids": {
+                m: sorted(v.get("degraded_ids") or []) for m, v in control.items()
+            },
+        }
+    elif ab:
+        print()
+        print("=== NO CONTROL ARM (--no-control): this gate has no draw floor ===")
+        payload["control"] = {
+            "drawn": False,
+            "why": "--no-control was passed: the gate has no paired OFF/OFF floor",
+        }
 
     out = _RESULTS / f"official-{args.label}.json"
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")

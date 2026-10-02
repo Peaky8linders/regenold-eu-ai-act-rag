@@ -1,0 +1,1132 @@
+{
+ "rule": "every published paired read re-read through the fixed instrument: rule #8's scope (the rows the lever served) and its draw-stability",
+ "reads": [
+  {
+   "read": "docs\\measurements\\r403\\paired-C0-vs-C1.json",
+   "arms": {
+    "a": "score-r403-L1G0C0-hard.json",
+    "b": "score-r403-L1G0C1-hard.json"
+   },
+   "published": {
+    "veto_block": false,
+    "veto": null,
+    "scope": null,
+    "gold_dropped_head": {
+     "arm_a": 5,
+     "arm_b": 7,
+     "new_drops_in_b": [
+      "rg_067",
+      "rg_090"
+     ]
+    }
+   },
+   "provenance": {
+    "arm_a": "checkpoint gone: official-r403-L1G0C0-hard.ckpt.jsonl",
+    "arm_b": "checkpoint gone: official-r403-L1G0C1-hard.ckpt.jsonl"
+   },
+   "reaudit": {
+    "all": {
+     "verdict": "VETO",
+     "scope": "all",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 100,
+     "eligible_rows": 100,
+     "fires": true,
+     "deciding_rows": [
+      {
+       "id": "rg_067",
+       "arm_a": "no_provenance",
+       "arm_b": "no_provenance"
+      },
+      {
+       "id": "rg_090",
+       "arm_a": "no_provenance",
+       "arm_b": "no_provenance"
+      }
+     ],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 5,
+      "arm_b": 7,
+      "new_drops_in_b": [
+       "rg_067",
+       "rg_090"
+      ]
+     }
+    },
+    "lever": {
+     "verdict": "VETO",
+     "scope": "all",
+     "scope_downgraded": true,
+     "downgrade_reason": "no per-row provenance for arm A (checkpoint not found: D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r403-L1G0C0-hard.ckpt.jsonl); scope fell back to 'all' (the stricter definition)",
+     "rows_considered": 100,
+     "eligible_rows": 100,
+     "fires": true,
+     "deciding_rows": [
+      {
+       "id": "rg_067",
+       "arm_a": "no_provenance",
+       "arm_b": "no_provenance"
+      },
+      {
+       "id": "rg_090",
+       "arm_a": "no_provenance",
+       "arm_b": "no_provenance"
+      }
+     ],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 5,
+      "arm_b": 7,
+      "new_drops_in_b": [
+       "rg_067",
+       "rg_090"
+      ]
+     }
+    },
+    "redraw": "no DECLARED re-draw: the digest identifies the request SHAPE only, so a re-draw cannot be inferred from it - pass --declared-redraw"
+   },
+   "classification": "unverifiable",
+   "why": "no per-row provenance for arm A (checkpoint not found: D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r403-L1G0C0-hard.ckpt.jsonl); scope fell back to 'all' (the stricter definition)"
+  },
+  {
+   "read": "docs\\measurements\\r403\\paired-G0-vs-G1.json",
+   "arms": {
+    "a": "score-r403-L1G0C0-hard.json",
+    "b": "score-r403-L1G1C0-hard.json"
+   },
+   "published": {
+    "veto_block": false,
+    "veto": null,
+    "scope": null,
+    "gold_dropped_head": {
+     "arm_a": 5,
+     "arm_b": 4,
+     "new_drops_in_b": [
+      "rg_090"
+     ]
+    }
+   },
+   "provenance": {
+    "arm_a": "checkpoint gone: official-r403-L1G0C0-hard.ckpt.jsonl",
+    "arm_b": "checkpoint gone: official-r403-L1G1C0-hard.ckpt.jsonl"
+   },
+   "reaudit": {
+    "all": {
+     "verdict": "VETO",
+     "scope": "all",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 100,
+     "eligible_rows": 100,
+     "fires": true,
+     "deciding_rows": [
+      {
+       "id": "rg_090",
+       "arm_a": "no_provenance",
+       "arm_b": "no_provenance"
+      }
+     ],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 5,
+      "arm_b": 4,
+      "new_drops_in_b": [
+       "rg_090"
+      ]
+     }
+    },
+    "lever": {
+     "verdict": "VETO",
+     "scope": "all",
+     "scope_downgraded": true,
+     "downgrade_reason": "no per-row provenance for arm A (checkpoint not found: D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r403-L1G0C0-hard.ckpt.jsonl); scope fell back to 'all' (the stricter definition)",
+     "rows_considered": 100,
+     "eligible_rows": 100,
+     "fires": true,
+     "deciding_rows": [
+      {
+       "id": "rg_090",
+       "arm_a": "no_provenance",
+       "arm_b": "no_provenance"
+      }
+     ],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 5,
+      "arm_b": 4,
+      "new_drops_in_b": [
+       "rg_090"
+      ]
+     }
+    },
+    "redraw": "no DECLARED re-draw: the digest identifies the request SHAPE only, so a re-draw cannot be inferred from it - pass --declared-redraw"
+   },
+   "classification": "unverifiable",
+   "why": "no per-row provenance for arm A (checkpoint not found: D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r403-L1G0C0-hard.ckpt.jsonl); scope fell back to 'all' (the stricter definition)"
+  },
+  {
+   "read": "docs\\measurements\\r403\\paired-L0-vs-L1.json",
+   "arms": {
+    "a": "score-r403-L0G0C0-hard.json",
+    "b": "score-r403-L1G0C0-hard.json"
+   },
+   "published": {
+    "veto_block": false,
+    "veto": null,
+    "scope": null,
+    "gold_dropped_head": {
+     "arm_a": 8,
+     "arm_b": 5,
+     "new_drops_in_b": []
+    }
+   },
+   "provenance": {
+    "arm_a": "checkpoint gone: official-r403-L0G0C0-hard.ckpt.jsonl",
+    "arm_b": "checkpoint gone: official-r403-L1G0C0-hard.ckpt.jsonl"
+   },
+   "reaudit": {
+    "all": {
+     "verdict": "CLEAN",
+     "scope": "all",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 100,
+     "eligible_rows": 100,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 8,
+      "arm_b": 5,
+      "new_drops_in_b": []
+     }
+    },
+    "lever": {
+     "verdict": "CLEAN",
+     "scope": "all",
+     "scope_downgraded": true,
+     "downgrade_reason": "no per-row provenance for arm A (checkpoint not found: D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r403-L0G0C0-hard.ckpt.jsonl); scope fell back to 'all' (the stricter definition)",
+     "rows_considered": 100,
+     "eligible_rows": 100,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 8,
+      "arm_b": 5,
+      "new_drops_in_b": []
+     }
+    },
+    "redraw": "no DECLARED re-draw: the digest identifies the request SHAPE only, so a re-draw cannot be inferred from it - pass --declared-redraw"
+   },
+   "classification": "unverifiable",
+   "why": "no per-row provenance for arm A (checkpoint not found: D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r403-L0G0C0-hard.ckpt.jsonl); scope fell back to 'all' (the stricter definition)"
+  },
+  {
+   "read": "docs\\measurements\\r440\\paired-r440c-branch-cluster-s0.json",
+   "arms": {
+    "a": "score-r440c-branch-cluster-A-hard-s0-hard.json",
+    "b": "score-r440c-branch-cluster-B-hard-s0-hard.json"
+   },
+   "published": {
+    "veto_block": false,
+    "veto": null,
+    "scope": null,
+    "gold_dropped_head": {
+     "arm_a": 0,
+     "arm_b": 0,
+     "new_drops_in_b": []
+    }
+   },
+   "provenance": {
+    "arm_a": "recorded path exists",
+    "arm_b": "recorded path exists"
+   },
+   "reaudit": {
+    "all": {
+     "verdict": "CLEAN",
+     "scope": "all",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 21,
+     "eligible_rows": 21,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 0,
+      "arm_b": 0,
+      "new_drops_in_b": []
+     }
+    },
+    "lever": {
+     "verdict": "CLEAN",
+     "scope": "lever",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 21,
+     "eligible_rows": 19,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 0,
+      "arm_b": 0,
+      "new_drops_in_b": []
+     }
+    },
+    "redraw": "no DECLARED re-draw: the digest identifies the request SHAPE only, so a re-draw cannot be inferred from it - pass --declared-redraw"
+   },
+   "classification": "no_rule8_refusal",
+   "why": "rule #8 does not fire under either definition"
+  },
+  {
+   "read": "docs\\measurements\\r440\\paired-r440c-branch-cluster-s1.json",
+   "arms": {
+    "a": "score-r440c-branch-cluster-A-hard-s1-hard.json",
+    "b": "score-r440c-branch-cluster-B-hard-s1-hard.json"
+   },
+   "published": {
+    "veto_block": false,
+    "veto": null,
+    "scope": null,
+    "gold_dropped_head": {
+     "arm_a": 0,
+     "arm_b": 0,
+     "new_drops_in_b": []
+    }
+   },
+   "provenance": {
+    "arm_a": "recorded path exists",
+    "arm_b": "recorded path exists"
+   },
+   "reaudit": {
+    "all": {
+     "verdict": "CLEAN",
+     "scope": "all",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 21,
+     "eligible_rows": 21,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 0,
+      "arm_b": 0,
+      "new_drops_in_b": []
+     }
+    },
+    "lever": {
+     "verdict": "CLEAN",
+     "scope": "lever",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 21,
+     "eligible_rows": 19,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 0,
+      "arm_b": 0,
+      "new_drops_in_b": []
+     }
+    },
+    "redraw": "no DECLARED re-draw: the digest identifies the request SHAPE only, so a re-draw cannot be inferred from it - pass --declared-redraw"
+   },
+   "classification": "no_rule8_refusal",
+   "why": "rule #8 does not fire under either definition"
+  },
+  {
+   "read": "docs\\measurements\\r440\\paired-r440c-branch-cluster-s2.json",
+   "arms": {
+    "a": "score-r440c-branch-cluster-A-hard-s2-hard.json",
+    "b": "score-r440c-branch-cluster-B-hard-s2-hard.json"
+   },
+   "published": {
+    "veto_block": false,
+    "veto": null,
+    "scope": null,
+    "gold_dropped_head": {
+     "arm_a": 0,
+     "arm_b": 0,
+     "new_drops_in_b": []
+    }
+   },
+   "provenance": {
+    "arm_a": "recorded path exists",
+    "arm_b": "recorded path exists"
+   },
+   "reaudit": {
+    "all": {
+     "verdict": "CLEAN",
+     "scope": "all",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 21,
+     "eligible_rows": 21,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 0,
+      "arm_b": 0,
+      "new_drops_in_b": []
+     }
+    },
+    "lever": {
+     "verdict": "CLEAN",
+     "scope": "lever",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 21,
+     "eligible_rows": 19,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 0,
+      "arm_b": 0,
+      "new_drops_in_b": []
+     }
+    },
+    "redraw": "no DECLARED re-draw: the digest identifies the request SHAPE only, so a re-draw cannot be inferred from it - pass --declared-redraw"
+   },
+   "classification": "no_rule8_refusal",
+   "why": "rule #8 does not fire under either definition"
+  },
+  {
+   "read": "docs\\measurements\\r442\\paired-r442-opus55-opus55judge.json",
+   "arms": {
+    "a": "score-r442-opus55-A-j55-easy.json",
+    "b": "score-r442-opus55-B-j55-easy.json"
+   },
+   "published": {
+    "veto_block": false,
+    "veto": null,
+    "scope": null,
+    "gold_dropped_head": {
+     "arm_a": 0,
+     "arm_b": 0,
+     "new_drops_in_b": []
+    }
+   },
+   "provenance": {
+    "arm_a": "checkpoint gone: official-r442-opus55-A-easy.ckpt.jsonl",
+    "arm_b": "checkpoint gone: official-r442-opus55-B-easy.ckpt.jsonl"
+   },
+   "reaudit": {
+    "all": {
+     "verdict": "CLEAN",
+     "scope": "all",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 5,
+     "eligible_rows": 5,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 0,
+      "arm_b": 0,
+      "new_drops_in_b": []
+     }
+    },
+    "lever": {
+     "verdict": "CLEAN",
+     "scope": "all",
+     "scope_downgraded": true,
+     "downgrade_reason": "no per-row provenance for arm A (checkpoint not found: D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r442-opus55-A-easy.ckpt.jsonl); scope fell back to 'all' (the stricter definition)",
+     "rows_considered": 5,
+     "eligible_rows": 5,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 0,
+      "arm_b": 0,
+      "new_drops_in_b": []
+     }
+    },
+    "redraw": "no DECLARED re-draw: the digest identifies the request SHAPE only, so a re-draw cannot be inferred from it - pass --declared-redraw"
+   },
+   "classification": "unverifiable",
+   "why": "no per-row provenance for arm A (checkpoint not found: D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r442-opus55-A-easy.ckpt.jsonl); scope fell back to 'all' (the stricter definition)"
+  },
+  {
+   "read": "docs\\measurements\\r442\\paired-r442-opus55-sonnet5judge.json",
+   "arms": {
+    "a": "score-r442-opus55-A-easy.json",
+    "b": "score-r442-opus55-B-easy.json"
+   },
+   "published": {
+    "veto_block": false,
+    "veto": null,
+    "scope": null,
+    "gold_dropped_head": {
+     "arm_a": 0,
+     "arm_b": 0,
+     "new_drops_in_b": []
+    }
+   },
+   "provenance": {
+    "arm_a": "checkpoint gone: official-r442-opus55-A-easy.ckpt.jsonl",
+    "arm_b": "checkpoint gone: official-r442-opus55-B-easy.ckpt.jsonl"
+   },
+   "reaudit": {
+    "all": {
+     "verdict": "CLEAN",
+     "scope": "all",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 5,
+     "eligible_rows": 5,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 0,
+      "arm_b": 0,
+      "new_drops_in_b": []
+     }
+    },
+    "lever": {
+     "verdict": "CLEAN",
+     "scope": "all",
+     "scope_downgraded": true,
+     "downgrade_reason": "no per-row provenance for arm A (checkpoint not found: D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r442-opus55-A-easy.ckpt.jsonl); scope fell back to 'all' (the stricter definition)",
+     "rows_considered": 5,
+     "eligible_rows": 5,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 0,
+      "arm_b": 0,
+      "new_drops_in_b": []
+     }
+    },
+    "redraw": "no DECLARED re-draw: the digest identifies the request SHAPE only, so a re-draw cannot be inferred from it - pass --declared-redraw"
+   },
+   "classification": "unverifiable",
+   "why": "no per-row provenance for arm A (checkpoint not found: D:\\Claude Projects\\regenold-eu-ai-act-rag\\scratch\\r460-evidence-bundle\\evals\\bench\\results\\official-r442-opus55-A-easy.ckpt.jsonl); scope fell back to 'all' (the stricter definition)"
+  },
+  {
+   "read": "docs\\measurements\\r447\\paired-r442-keep-floor-s0.json",
+   "arms": {
+    "a": "score-r442-keep-floor-A-hard-s0-hard.json",
+    "b": "score-r442-keep-floor-B-hard-s0-hard.json"
+   },
+   "published": {
+    "veto_block": false,
+    "veto": null,
+    "scope": null,
+    "gold_dropped_head": {
+     "arm_a": 1,
+     "arm_b": 0,
+     "new_drops_in_b": []
+    }
+   },
+   "provenance": {
+    "arm_a": "checkpoint gone: official-r442-keep-floor-A-hard.ckpt.jsonl",
+    "arm_b": "checkpoint gone: official-r442-keep-floor-B-hard.ckpt.jsonl"
+   },
+   "reaudit": {
+    "all": {
+     "verdict": "CLEAN",
+     "scope": "all",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 13,
+     "eligible_rows": 13,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 1,
+      "arm_b": 0,
+      "new_drops_in_b": []
+     }
+    },
+    "lever": {
+     "verdict": "CLEAN",
+     "scope": "all",
+     "scope_downgraded": true,
+     "downgrade_reason": "no per-row provenance for arm A (checkpoint not found: D:\\Claude Projects\\regenold-r447-wt\\evals\\bench\\results\\official-r442-keep-floor-A-hard.ckpt.jsonl); scope fell back to 'all' (the stricter definition)",
+     "rows_considered": 13,
+     "eligible_rows": 13,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 1,
+      "arm_b": 0,
+      "new_drops_in_b": []
+     }
+    },
+    "redraw": "no DECLARED re-draw: the digest identifies the request SHAPE only, so a re-draw cannot be inferred from it - pass --declared-redraw"
+   },
+   "classification": "unverifiable",
+   "why": "no per-row provenance for arm A (checkpoint not found: D:\\Claude Projects\\regenold-r447-wt\\evals\\bench\\results\\official-r442-keep-floor-A-hard.ckpt.jsonl); scope fell back to 'all' (the stricter definition)"
+  },
+  {
+   "read": "docs\\measurements\\r447\\paired-r442-keep-floor-s1.json",
+   "arms": {
+    "a": "score-r442-keep-floor-A-hard-s1-hard.json",
+    "b": "score-r442-keep-floor-B-hard-s1-hard.json"
+   },
+   "published": {
+    "veto_block": false,
+    "veto": null,
+    "scope": null,
+    "gold_dropped_head": {
+     "arm_a": 0,
+     "arm_b": 0,
+     "new_drops_in_b": []
+    }
+   },
+   "provenance": {
+    "arm_a": "checkpoint gone: official-r442-keep-floor-A-hard.r1.ckpt.jsonl",
+    "arm_b": "checkpoint gone: official-r442-keep-floor-B-hard.r1.ckpt.jsonl"
+   },
+   "reaudit": {
+    "all": {
+     "verdict": "CLEAN",
+     "scope": "all",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 13,
+     "eligible_rows": 13,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 0,
+      "arm_b": 0,
+      "new_drops_in_b": []
+     }
+    },
+    "lever": {
+     "verdict": "CLEAN",
+     "scope": "all",
+     "scope_downgraded": true,
+     "downgrade_reason": "no per-row provenance for arm A (checkpoint not found: D:\\Claude Projects\\regenold-r447-wt\\evals\\bench\\results\\official-r442-keep-floor-A-hard.r1.ckpt.jsonl); scope fell back to 'all' (the stricter definition)",
+     "rows_considered": 13,
+     "eligible_rows": 13,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 0,
+      "arm_b": 0,
+      "new_drops_in_b": []
+     }
+    },
+    "redraw": "no DECLARED re-draw: the digest identifies the request SHAPE only, so a re-draw cannot be inferred from it - pass --declared-redraw"
+   },
+   "classification": "unverifiable",
+   "why": "no per-row provenance for arm A (checkpoint not found: D:\\Claude Projects\\regenold-r447-wt\\evals\\bench\\results\\official-r442-keep-floor-A-hard.r1.ckpt.jsonl); scope fell back to 'all' (the stricter definition)"
+  },
+  {
+   "read": "docs\\measurements\\r447\\paired-r442-keep-floor-s2.json",
+   "arms": {
+    "a": "score-r442-keep-floor-A-hard-s2-hard.json",
+    "b": "score-r442-keep-floor-B-hard-s2-hard.json"
+   },
+   "published": {
+    "veto_block": false,
+    "veto": null,
+    "scope": null,
+    "gold_dropped_head": {
+     "arm_a": 0,
+     "arm_b": 0,
+     "new_drops_in_b": []
+    }
+   },
+   "provenance": {
+    "arm_a": "checkpoint gone: official-r442-keep-floor-A-hard.r2.ckpt.jsonl",
+    "arm_b": "checkpoint gone: official-r442-keep-floor-B-hard.r2.ckpt.jsonl"
+   },
+   "reaudit": {
+    "all": {
+     "verdict": "CLEAN",
+     "scope": "all",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 13,
+     "eligible_rows": 13,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 0,
+      "arm_b": 0,
+      "new_drops_in_b": []
+     }
+    },
+    "lever": {
+     "verdict": "CLEAN",
+     "scope": "all",
+     "scope_downgraded": true,
+     "downgrade_reason": "no per-row provenance for arm A (checkpoint not found: D:\\Claude Projects\\regenold-r447-wt\\evals\\bench\\results\\official-r442-keep-floor-A-hard.r2.ckpt.jsonl); scope fell back to 'all' (the stricter definition)",
+     "rows_considered": 13,
+     "eligible_rows": 13,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 0,
+      "arm_b": 0,
+      "new_drops_in_b": []
+     }
+    },
+    "redraw": "no DECLARED re-draw: the digest identifies the request SHAPE only, so a re-draw cannot be inferred from it - pass --declared-redraw"
+   },
+   "classification": "unverifiable",
+   "why": "no per-row provenance for arm A (checkpoint not found: D:\\Claude Projects\\regenold-r447-wt\\evals\\bench\\results\\official-r442-keep-floor-A-hard.r2.ckpt.jsonl); scope fell back to 'all' (the stricter definition)"
+  },
+  {
+   "read": "docs\\measurements\\r460\\paired-r460-conc-hard.json",
+   "arms": {
+    "a": "score-r460-bedrock-hard-s3-hard.json",
+    "b": "score-r460-bedrockconc-hard-s3-hard.json"
+   },
+   "published": {
+    "veto_block": false,
+    "veto": null,
+    "scope": null,
+    "gold_dropped_head": {
+     "arm_a": 2,
+     "arm_b": 2,
+     "new_drops_in_b": []
+    }
+   },
+   "provenance": {
+    "arm_a": "recorded path exists",
+    "arm_b": "recorded path exists"
+   },
+   "reaudit": {
+    "all": {
+     "verdict": "CLEAN",
+     "scope": "all",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 35,
+     "eligible_rows": 35,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 2,
+      "arm_b": 2,
+      "new_drops_in_b": []
+     }
+    },
+    "lever": {
+     "verdict": "CLEAN",
+     "scope": "lever",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 35,
+     "eligible_rows": 28,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 2,
+      "arm_b": 2,
+      "new_drops_in_b": []
+     }
+    },
+    "redraw": "no DECLARED re-draw: the digest identifies the request SHAPE only, so a re-draw cannot be inferred from it - pass --declared-redraw"
+   },
+   "classification": "no_rule8_refusal",
+   "why": "rule #8 does not fire under either definition"
+  },
+  {
+   "read": "docs\\measurements\\r460\\paired-r460-conc-wrapper.json",
+   "arms": {
+    "a": "score-r460-tunnel-off-s3-hard.json",
+    "b": "score-r460-tunnel-on-s3-hard.json"
+   },
+   "published": {
+    "veto_block": false,
+    "veto": null,
+    "scope": null,
+    "gold_dropped_head": {
+     "arm_a": 0,
+     "arm_b": 1,
+     "new_drops_in_b": [
+      "rg_037"
+     ]
+    }
+   },
+   "provenance": {
+    "arm_a": "recorded path exists",
+    "arm_b": "recorded path exists"
+   },
+   "reaudit": {
+    "all": {
+     "verdict": "VETO",
+     "scope": "all",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 35,
+     "eligible_rows": 35,
+     "fires": true,
+     "deciding_rows": [
+      {
+       "id": "rg_037",
+       "arm_a": "primary",
+       "arm_b": "prior_turn"
+      }
+     ],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 0,
+      "arm_b": 1,
+      "new_drops_in_b": [
+       "rg_037"
+      ]
+     }
+    },
+    "lever": {
+     "verdict": "CLEAN",
+     "scope": "lever",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 35,
+     "eligible_rows": 27,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [
+      {
+       "id": "rg_037",
+       "arm_a": "primary",
+       "arm_b": "prior_turn"
+      }
+     ],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 0,
+      "arm_b": 1,
+      "new_drops_in_b": [
+       "rg_037"
+      ]
+     }
+    },
+    "redraw": "no DECLARED re-draw: the digest identifies the request SHAPE only, so a re-draw cannot be inferred from it - pass --declared-redraw"
+   },
+   "classification": "scope_decided_refusal",
+   "why": "rule #8 fires under the legacy all-rows definition and is CLEAN on the rows the lever served; 1 deciding row(s) moved out of scope"
+  },
+  {
+   "read": "docs\\measurements\\r460\\paired-r460-sonnet-vs-opus55-hard.json",
+   "arms": {
+    "a": "score-r460-hard-s3-hard.json",
+    "b": "score-r460-sonnet-hard-s3-hard.json"
+   },
+   "published": {
+    "veto_block": false,
+    "veto": null,
+    "scope": null,
+    "gold_dropped_head": {
+     "arm_a": 2,
+     "arm_b": 0,
+     "new_drops_in_b": []
+    }
+   },
+   "provenance": {
+    "arm_a": "recorded path exists",
+    "arm_b": "recorded path exists"
+   },
+   "reaudit": {
+    "all": {
+     "verdict": "CLEAN",
+     "scope": "all",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 35,
+     "eligible_rows": 35,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 2,
+      "arm_b": 0,
+      "new_drops_in_b": []
+     }
+    },
+    "lever": {
+     "verdict": "CLEAN",
+     "scope": "lever",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 35,
+     "eligible_rows": 28,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 2,
+      "arm_b": 0,
+      "new_drops_in_b": []
+     }
+    },
+    "redraw": "no DECLARED re-draw: the digest identifies the request SHAPE only, so a re-draw cannot be inferred from it - pass --declared-redraw"
+   },
+   "classification": "no_rule8_refusal",
+   "why": "rule #8 does not fire under either definition"
+  },
+  {
+   "read": "docs\\measurements\\r461\\paired-r461-count-only-wrapper-drawstable.json",
+   "arms": {
+    "a": "score-r461-countoff-s3-hard.json",
+    "b": "score-r461-counton-s3-hard.json"
+   },
+   "published": {
+    "veto_block": true,
+    "veto": "CLEAN",
+    "scope": "lever",
+    "gold_dropped_head": {
+     "arm_a": 2,
+     "arm_b": 1,
+     "new_drops_in_b": [
+      "rg_037"
+     ]
+    }
+   },
+   "provenance": {
+    "arm_a": "recorded path exists",
+    "arm_b": "recorded path exists"
+   },
+   "reaudit": {
+    "all": {
+     "verdict": "VETO",
+     "scope": "all",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 35,
+     "eligible_rows": 35,
+     "fires": true,
+     "deciding_rows": [
+      {
+       "id": "rg_037",
+       "arm_a": "primary",
+       "arm_b": "deterministic"
+      }
+     ],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 2,
+      "arm_b": 1,
+      "new_drops_in_b": [
+       "rg_037"
+      ]
+     }
+    },
+    "lever": {
+     "verdict": "CLEAN",
+     "scope": "lever",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 35,
+     "eligible_rows": 27,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [
+      {
+       "id": "rg_037",
+       "arm_a": "primary",
+       "arm_b": "deterministic"
+      }
+     ],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 2,
+      "arm_b": 1,
+      "new_drops_in_b": [
+       "rg_037"
+      ]
+     }
+    },
+    "redraw": "no DECLARED re-draw: the digest identifies the request SHAPE only, so a re-draw cannot be inferred from it - pass --declared-redraw"
+   },
+   "classification": "clean_read_already_scoped",
+   "why": "published under the fixed scope; rule #8 fires only under the legacy all-rows definition, on rows the lever never served"
+  },
+  {
+   "read": "docs\\measurements\\r461\\paired-r461-count-only-wrapper.json",
+   "arms": {
+    "a": "score-r461-countoff-s3-hard.json",
+    "b": "score-r461-counton-s3-hard.json"
+   },
+   "published": {
+    "veto_block": true,
+    "veto": "CLEAN",
+    "scope": "lever",
+    "gold_dropped_head": {
+     "arm_a": 2,
+     "arm_b": 1,
+     "new_drops_in_b": [
+      "rg_037"
+     ]
+    }
+   },
+   "provenance": {
+    "arm_a": "recorded path exists",
+    "arm_b": "recorded path exists"
+   },
+   "reaudit": {
+    "all": {
+     "verdict": "VETO",
+     "scope": "all",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 35,
+     "eligible_rows": 35,
+     "fires": true,
+     "deciding_rows": [
+      {
+       "id": "rg_037",
+       "arm_a": "primary",
+       "arm_b": "deterministic"
+      }
+     ],
+     "out_of_scope_rows": [],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 2,
+      "arm_b": 1,
+      "new_drops_in_b": [
+       "rg_037"
+      ]
+     }
+    },
+    "lever": {
+     "verdict": "CLEAN",
+     "scope": "lever",
+     "scope_downgraded": false,
+     "downgrade_reason": "",
+     "rows_considered": 35,
+     "eligible_rows": 27,
+     "fires": false,
+     "deciding_rows": [],
+     "out_of_scope_rows": [
+      {
+       "id": "rg_037",
+       "arm_a": "primary",
+       "arm_b": "deterministic"
+      }
+     ],
+     "undecided_rows": [],
+     "draw_stable": false,
+     "cleared_by_redraw": [],
+     "gold_dropped_head": {
+      "arm_a": 2,
+      "arm_b": 1,
+      "new_drops_in_b": [
+       "rg_037"
+      ]
+     }
+    },
+    "redraw": "no DECLARED re-draw: the digest identifies the request SHAPE only, so a re-draw cannot be inferred from it - pass --declared-redraw"
+   },
+   "classification": "clean_read_already_scoped",
+   "why": "published under the fixed scope; rule #8 fires only under the legacy all-rows definition, on rows the lever never served"
+  }
+ ]
+}

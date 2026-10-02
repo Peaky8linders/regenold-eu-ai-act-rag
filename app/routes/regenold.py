@@ -1338,6 +1338,16 @@ def _engine_cache_key(
         not in {"0", "false", "no", "off"}
     )
     hypa_bits = f"{int(is_adaptive_router_enabled())}{int(is_rrf_retrieval_enabled())}"
+    # R461 PROMOTION — the conciseness block's RESOLVED mode belongs in the key,
+    # not only the raw env spelling. ``engine_flags`` below folds raw values (so
+    # an unset flag contributes ""), which means a DEFAULT FLIP is invisible to
+    # it: an entry cached pre-promotion with the block OFF would answer a
+    # block-ON request for the same question — the R263.2 stale-hit class, with
+    # the promotion itself as the flip. Keying the resolved mode invalidates the
+    # pre-promotion cache wholesale (the R81-N.1 effect, deliberately), keeps a
+    # rolled-back build distinct from a promoted one, and covers the
+    # count/full/off precedence as well.
+    from app.engines.answer_need import conciseness_mode as _conciseness_mode  # noqa: PLC0415
     flag_bits = (
         f"{int(_dense_enabled())}{int(_guard_enabled())}{hypa_bits}"
         f"{int(_rerank_enabled())}{int(_s2_strict())}"
@@ -1358,6 +1368,8 @@ def _engine_cache_key(
         # deterministic fallback.  Key the resolved boolean, not raw spelling,
         # so equivalent deny-list values share an entry.
         f"|bedrock_wrapper_fallback={int(_bedrock_wrapper_fallback)}"
+        # R461 — 'off' | 'count' | 'full', resolved (see the comment above).
+        f"|concise={_conciseness_mode()}"
     )
     # R56 — fold the resolved LLM provider into the cache key. Stage-2
     # polish produces provider-specific prose; without this bit, a
@@ -1750,6 +1762,15 @@ def _engine_cache_key(
             # citations. R263.2 / R288.1 doctrine: an unkeyed knob lets an
             # in-process two-arm A/B serve arm A's cached answer to arm B.
             "REGENOLD_CONCISE_CALIBRATION",
+            # R461 — the count-only variant of that same block. It renders a
+            # DIFFERENT block (the citation budget alone, no length battery and no
+            # skeleton) and takes precedence when both are set, so an A/B that
+            # flips it must never replay the other arm's cached answer. This
+            # entry tracks the operator's RAW spelling; since the R461 promotion
+            # the value is empty both before and after the default flip, so the
+            # invalidation that flip requires comes from the RESOLVED mode keyed
+            # in ``flag_bits`` below.
+            "REGENOLD_CONCISE_COUNT_ONLY",
             # R438 — branch-specific statutory guard; prompt-side and default OFF.
             "REGENOLD_GROUNDED_BRANCH_GUARDS",
             # R399 - rarity-weighted paragraph selection. Decides WHICH

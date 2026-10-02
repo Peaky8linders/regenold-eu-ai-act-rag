@@ -688,12 +688,82 @@ _CALIBRATION_ENV = "REGENOLD_CONCISE_CALIBRATION"
 _CALIBRATION_CITATIONS = 2
 _CALIBRATION_SCENARIO_CITATIONS = 3
 
+#: R461 - the COUNT-ONLY variant. The R460 wrapper gate (``WRAPPER-CONFIRM.md``)
+#: split the block above into two halves that behaved differently on the model
+#: that ships: the counted citation budget reproduced on BOTH transports
+#: (+5.52 pp ref_conciseness on the wrapper, +4.76 pp on Bedrock) while the length
+#: battery (sentence ceiling, word ceiling, shape skeleton) helped on opus-4-6 and
+#: made the answer LONGER on opus-5-5 (-4.49 pp ans_conciseness). So the budget is
+#: re-gated ALONE, with no length clause of any kind, on the shipped transport.
+#: R461 PROMOTION (2026-10-01) - default ON (deny-list), promoted on evidence, not
+#: on argument. The paired hard gate on the SHIPPED transport
+#: (``COUNT-ONLY-CONFIRM.md``), read under hard rule #8's fixed operating
+#: definition (the rows the lever actually served): ref_conciseness 56.62 ->
+#: 64.31 (+7.69, CI [+1.41, +15.05], McNemar 10/2 p=0.0386), ans_correctness
+#: flat to +0.00, ans_conciseness +0.10 where the full block lost 4.49, answers
+#: +6.6 chars where the full block added 64.0, overall +3.80 [+0.58, +9.01]
+#: against a noise floor of -0.56 [-6.99, +5.79] on byte-identical prompts: five
+#: of five pre-registered targets, and no gold head dropped on any row the block
+#: served. ``REGENOLD_CONCISE_COUNT_ONLY=0`` restores the pre-lever bytes exactly
+#: and is the rollback; the live evidence is ``docs/measurements/r461/PROMOTION.md``.
+_COUNT_ONLY_ENV = "REGENOLD_CONCISE_COUNT_ONLY"
+
+#: The clauses the full block and the count-only variant SHARE. Factored so the
+#: difference between the two gated arms is exactly "which clauses are emitted"
+#: and never an accidental re-wording of the same instruction. ``{budget}`` is
+#: filled per question. Byte-identical to the R460 full block's own text, which
+#: the R460 suite pins.
+_COUNT_CLAUSE = (
+    "* COUNT the provisions the draft NAMES: at most {budget} for this "
+    "question. Above that, keep the ones its answer rests on and drop the "
+    "clauses about the rest. A provision the facts engage and the answer rules "
+    "out still counts."
+)
+_REFERENCES_CLAUSE = "References: at most {budget} provisions, in citation order."
+
 
 def calibration_enabled() -> bool:
     """``REGENOLD_CONCISE_CALIBRATION`` - allow-list, default OFF."""
     return os.environ.get(_CALIBRATION_ENV, "").strip().lower() in {
         "1", "true", "yes", "on",
     }
+
+
+def count_only_enabled() -> bool:
+    """``REGENOLD_CONCISE_COUNT_ONLY`` - default ON (deny-list), R461 promotion.
+
+    Mirrors :func:`need_proportional_contract_enabled`: a blank or unexpected
+    value keeps the ON behaviour, so a malformed value cannot silently disable a
+    shipped lever, and only ``0``/``false``/``no``/``off`` render nothing - which
+    leaves the Stage-2 user message byte-identical to the pre-lever text.
+
+    Promoted on the round's own hard gate (see the constant above). The RESOLVED
+    mode is keyed in ``_engine_cache_key``, so the flip invalidates the
+    pre-promotion cache rather than serving its block-OFF answers.
+    """
+    try:
+        return os.environ.get(_COUNT_ONLY_ENV, "1").strip().lower() not in _FALSY
+    except Exception:  # noqa: BLE001 - a flag read must never break the route
+        return True
+
+
+def conciseness_mode() -> str:
+    """Which calibration block renders: ``"off"``, ``"count"`` or ``"full"``.
+
+    COUNT-ONLY WINS when both flags are set. The two blocks are alternatives, not
+    layers - the full one is the arm whose paired verdict was negative on this
+    transport - so a mis-set pair must not silently re-run the refuted arm. After
+    the R461 promotion (count-only default ON) that precedence is what keeps the
+    refuted arm off the wire: it is reachable only as the explicit pair
+    ``REGENOLD_CONCISE_COUNT_ONLY=0 REGENOLD_CONCISE_CALIBRATION=1``, and it is
+    keyed as ``concise=full``. This function is the cache key's own term for the
+    promotion: the raw env spelling is empty both before and after the flip.
+    """
+    if count_only_enabled():
+        return "count"
+    if calibration_enabled():
+        return "full"
+    return "off"
 
 
 def calibration_citation_budget(question: str = "") -> int:
@@ -713,6 +783,10 @@ def calibration_block(
 ) -> str:
     """The COUNT-BEFORE-YOU-ANSWER block, or ``""`` when the lever is OFF.
 
+    Dispatches on :func:`conciseness_mode`: ``"count"`` renders
+    :func:`count_only_block` (the R461 variant - citation budget only), ``"full"``
+    renders the R460 block below, ``"off"`` renders nothing.
+
     Deliberately SHORT. A large steering block has already traded one axis for
     another twice in this engine (the 53 kB system prompt; the R423.1 shape
     directive), so this states two counts, one skeleton and nothing else. It
@@ -720,7 +794,10 @@ def calibration_block(
     same :func:`concise_limits` call, and the citation budget keeps the rule that
     a provision the facts engage and the answer rules out still counts.
     """
-    if not calibration_enabled():
+    mode = conciseness_mode()
+    if mode == "count":
+        return count_only_block(question)
+    if mode == "off":
         return ""
     try:
         need = (
@@ -736,18 +813,42 @@ def calibration_block(
     shape = [
         f"* Draft, then COUNT its sentences: keep {sentences} at most. Delete the "
         "sentence that decides least, not the last one you wrote.",
-        f"* COUNT the provisions the draft NAMES: at most {budget} for this "
-        "question. Above that, keep the ones its answer rests on and drop the "
-        "clauses about the rest. A provision the facts engage and the answer rules "
-        "out still counts.",
+        _COUNT_CLAUSE.format(budget=budget),
         f"* Match this shape ({sentences} sentences, about {words} words, then the "
         "references):",
         f"    1. {lead}, naming the provision it rests on.",
         "    2. the limb of that provision the facts engage.",
         "    3. the condition, exception or branch that decides the answer.",
-        f"    References: at most {budget} provisions, in citation order.",
+        f"    {_REFERENCES_CLAUSE.format(budget=budget)}",
     ]
     return "\n".join(["LENGTH AND CITATION COUNTS (count both before you answer):", *shape])
+
+
+def count_only_block(question: str = "") -> str:
+    """The CITATION-COUNT-only block, or ``""`` when the knob is OFF.
+
+    R461. The half of the R460 calibration block that survived TWO transports: a
+    numeric budget on the provisions the answer may NAME, the rule that a
+    provision the facts engage and the answer rules out still counts, and the
+    citation-order line - and nothing else.
+
+    It deliberately calls NEITHER :func:`answer_need` NOR :func:`concise_limits`,
+    so the length battery cannot leak back in and a broken length estimate cannot
+    take the citation budget down with it. Same fail-soft rule as the full block:
+    a prompt add-on must never break Stage-2.
+    """
+    if not count_only_enabled():
+        return ""
+    try:
+        budget = calibration_citation_budget(question)
+    except Exception:  # noqa: BLE001 - a prompt add-on must never break Stage-2
+        return ""
+    return "\n".join([
+        "CITATION COUNT (count the provisions before you answer):",
+        _COUNT_CLAUSE.format(budget=budget),
+        f"* {_REFERENCES_CLAUSE.format(budget=budget)}",
+    ])
+
 
 def need_proportional_block(
     question: str,
