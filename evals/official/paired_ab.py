@@ -272,18 +272,30 @@ def _resolve_ckpt(score_path: Path, override: str | Path | None) -> Path | None:
 
 
 def _provenance_roster(
-    score_path: Path, override: str | Path | None
+    score_path: Path,
+    override: str | Path | None,
+    provided: dict[str, str] | None = None,
 ) -> tuple[dict[str, str] | None, str]:
     """Map row id -> eligibility reason, from the arm's own checkpoint.
 
     Returns ``(roster, source)``; ``roster`` is ``None`` when the checkpoint
     cannot be read, and the source string always names what was tried, so the
     report can say which file the scope was decided on.
+
+    ``provided`` is a roster CAPTURED by an earlier read (its ``veto.roster``
+    block, R461.6). A live checkpoint always wins; the captured roster is used
+    only when the file cannot be read, so a published scope stays re-applicable
+    to a verdict whose gitignored checkpoint is gone.
     """
     rows, source = _ckpt_rows(score_path, override)
-    if rows is None:
-        return None, source
-    return {qid: _row_scope_reason(row.get("provenance")) for qid, row in rows.items()}, source
+    if rows is not None:
+        return {qid: _row_scope_reason(row.get("provenance")) for qid, row in rows.items()}, source
+    if provided is not None:
+        return (
+            dict(provided),
+            f"captured roster in the published read (checkpoint: {source})",
+        )
+    return None, source
 
 
 def _reason_of(roster: dict[str, str] | None, qid: str) -> str:
@@ -426,6 +438,8 @@ def _veto_block(
     veto_scope: str,
     seed: int,
     draw_stability: dict | None = None,
+    a_roster: dict[str, str] | None = None,
+    b_roster: dict[str, str] | None = None,
 ) -> dict:
     """Hard rule #8, read on the rows the lever actually ran.
 
@@ -434,8 +448,8 @@ def _veto_block(
     gold head arm A did not.
     """
     scope = veto_scope if veto_scope in VETO_SCOPES else DEFAULT_VETO_SCOPE
-    roster_a, src_a = _provenance_roster(a_path, a_ckpt)
-    roster_b, src_b = _provenance_roster(b_path, b_ckpt)
+    roster_a, src_a = _provenance_roster(a_path, a_ckpt, a_roster)
+    roster_b, src_b = _provenance_roster(b_path, b_ckpt, b_roster)
     downgraded = False
     downgrade_reason = ""
 
@@ -557,6 +571,24 @@ def _veto_block(
             "join": "ckpt row id -> score row id",
             "bootstrap_seed": seed,
         },
+        # R461.6 - the per-row provenance this scope was read FROM, captured so
+        # the rule can be re-applied to this verdict after the gitignored
+        # checkpoint is gone. `captured` is False and `reasons` empty when the
+        # checkpoint could not be read; `considered` is the row set the scope
+        # was actually decided on, which no roster lookup can reconstruct.
+        "roster": {
+            "arm_a": {
+                "captured": roster_a is not None,
+                "source": src_a,
+                "reasons": dict(roster_a or {}),
+            },
+            "arm_b": {
+                "captured": roster_b is not None,
+                "source": src_b,
+                "reasons": dict(roster_b or {}),
+            },
+            "considered": list(considered),
+        },
         "reasons": dict(SCOPE_REASONS),
     }
 
@@ -654,6 +686,8 @@ def compare(
     veto_scope: str = DEFAULT_VETO_SCOPE,
     a_redraw: str | Path | None = None,
     a_redraw_ckpt: str | Path | None = None,
+    a_roster: dict[str, str] | None = None,
+    b_roster: dict[str, str] | None = None,
 ) -> dict:
     """Full paired comparison; ``a`` = baseline arm, ``b`` = branch arm.
 
@@ -669,6 +703,11 @@ def compare(
     in ``draw_stability.drops_unstable`` rather than silently skipped. Without
     it the single-draw reading stands - the stricter one - and the payload says
     ``stabilized: false``.
+
+    ``a_roster``/``b_roster`` are rosters CAPTURED by an earlier read (its
+    ``veto.roster`` block, R461.6). They are used ONLY when that arm's
+    checkpoint cannot be read, so a verdict stays re-auditable after a
+    gitignored checkpoint is gone; a live checkpoint always wins.
     """
     from evals.official.rubric import (
         answer_conciseness,
@@ -775,6 +814,8 @@ def compare(
         veto_scope=veto_scope,
         seed=seed,
         draw_stability=draw_stability,
+        a_roster=a_roster,
+        b_roster=b_roster,
     )
 
     # Conciseness headroom bookkeeping (axis 3): mean answer chars.

@@ -110,6 +110,11 @@ question answerable from the record alone. The proposal that follows from this
 audit: embed the CAPTURED roster in the veto block, so a future vision of the
 rule can be re-applied to an old verdict without the checkpoint.
 
+Implemented in R461.6: reads published since carry the captured roster
+(`veto.roster`) and the audit falls back to it when the checkpoint is gone —
+see `CAPTURED-ROSTER.md`. The eight verdicts above predate the capture and
+remain unauditable: the fix is prospective, not a recovery.
+
 ## 6. Defects this audit found in the instrument it audits
 
 1. **The digest was over-claimed.** R461.3 described `hard_preamble_digest` as
