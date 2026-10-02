@@ -1,0 +1,59 @@
+{
+ "pre": {
+  "rows": 8,
+  "mean_refs": 2.5,
+  "mean_answer_chars": 629.2,
+  "in_budget": 6,
+  "in_budget_pct": 75.0,
+  "refs_by_row": {
+   "rg_028": 1,
+   "rg_034": 2,
+   "rg_040": 2,
+   "rg_043": 1,
+   "rg_049": 1,
+   "rg_052": 2,
+   "rg_004": 6,
+   "rg_007": 5
+  },
+  "budgets": {
+   "rg_028": 2,
+   "rg_034": 2,
+   "rg_040": 2,
+   "rg_043": 2,
+   "rg_049": 2,
+   "rg_052": 2,
+   "rg_004": 2,
+   "rg_007": 3
+  }
+ },
+ "post": {
+  "rows": 8,
+  "mean_refs": 1.875,
+  "mean_answer_chars": 667.8,
+  "in_budget": 7,
+  "in_budget_pct": 87.5,
+  "refs_by_row": {
+   "rg_028": 1,
+   "rg_034": 1,
+   "rg_040": 2,
+   "rg_043": 1,
+   "rg_049": 1,
+   "rg_052": 4,
+   "rg_004": 2,
+   "rg_007": 3
+  },
+  "budgets": {
+   "rg_028": 2,
+   "rg_034": 2,
+   "rg_040": 2,
+   "rg_043": 2,
+   "rg_049": 2,
+   "rg_052": 2,
+   "rg_004": 2,
+   "rg_007": 3
+  }
+ },
+ "pre_commit": "ca71879d7059",
+ "post_commit": "e1fba9733755",
+ "pass": true
+}

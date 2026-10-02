@@ -595,3 +595,35 @@ still reported as UNVERIFIABLE. `gate-verdict-audit.json` re-runs
 byte-identical; the canonical R461 read was regenerated with the capture
 attached (the roster block is the only change; every number equal); 6 tests.
 
+## 2026-10-02 (R461.7 -- round close: canary PASS on the fallback leg, replicate closed without new draws)
+
+Both R461.3 leftovers are closed.
+
+* POST canary RUN against the deployed merge `e1fba9733755`: all five gates
+  PASS - `deploy` (expected commit), `health`, `transport` (8/8, no
+  refusals), `budget` (mean refs 2.50 -> 1.875, in budget 6/8 -> 7/8),
+  `integrity` (mean chars 629.2 -> 667.8). `CANARY.md` /
+  `canary-compare.json` / `canary-post.jsonl`; PRE commit `ca71879d7059`.
+* Recorded caveat: both phases' `/healthz/llm` report `provider:
+  openai_wrapper (bedrock fallback)` + `primary offline ('No response from
+  Claude Code')`, so the canary measured the promotion on the fallback leg
+  in BOTH phases - transport-consistent, but not the primary-wrapper leg
+  the board gate measured. Production's primary is still down even though
+  the wrapper answers locally; re-run the POST read on the next
+  primary-serving deploy.
+* Replicate CLOSED without new draws. The wrapper top-up was stopped by
+  operator directive (quota) and its 31-row partial removed; the Bedrock
+  cross-transport attempt drew arm A complete (2 draws, rerank-ON) and
+  aborted arm B at the Cohere trial RERANK monthly cap (429 '1000 API
+  calls / month'; all three keys found in the projects capped; the embed
+  endpoint still answers 200). Rerank reorders the emitted reference list,
+  so rerank-OFF is a different retrieval condition, not the gate's; the
+  operator elected to skip the caveated read. Standing verdict = the
+  one-draw draw-stable read (rule #8 CLEAN; ref_conciseness +7.69 vs floor
+  +1.81, 4.2x, `ci_excludes_floor: false` -> replicate-stable criterion NOT
+  met). Arm-B partial (7 rows, rerank-ON) kept for a resume under an
+  uncapped key.
+* No harness or app code touched this round; docs and canary artifacts
+  only. `PROMOTION.md` SS6, `DRAW-STABLE-RULE8.md` SS8;
+  `GATE-RUN-BEDROCK.log` is local-only (`*.log` gitignored).
+
