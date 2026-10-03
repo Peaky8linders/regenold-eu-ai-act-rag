@@ -17,3 +17,5 @@ pre commit `ca71879d7059` → post commit `e1fba9733755`.
 mean refs **2.5 → 1.875**, in budget **6/8 → 7/8**, mean chars 629.2 → 667.8.
 
 Gates: **PASS** — pre `ca71879d7059`, post `e1fba9733755`.
+
+Primary-leg re-run on the round-close merge `7fbd46737548`: see `CANARY-PRIMARY.md` (PASS 5/5, `openai_wrapper` serving).

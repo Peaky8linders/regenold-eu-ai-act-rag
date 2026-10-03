@@ -195,3 +195,12 @@ The production canary then ran and PASSED on all five gates - on the
 Bedrock fallback leg in both phases, production's primary still being
 offline - see `PROMOTION.md` SS6 and `CANARY.md`.
 
+The primary-leg re-run (2026-10-02 15:49-15:56, `CANARY-PRIMARY.md`) closed
+that caveat: on merge `7fbd46737548` the wrapper leg answered (`detail:
+ok`, 8/8 health reads across both workers), all five gates PASSED again
+(mean refs 2.50 -> 1.875, in budget 6/8 -> 7/8, mean chars 629.2 ->
+862.1), and the transport counters moved 0/0 -> primary 6/7 ok, the one
+failure served by the fallback. The outage was a Max-plan session-limit
+window (`api_error_status: 429`) in the wrapper's Claude Code CLI, not a
+deploy fault.
+
