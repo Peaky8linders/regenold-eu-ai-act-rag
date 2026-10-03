@@ -627,3 +627,30 @@ Both R461.3 leftovers are closed.
   only. `PROMOTION.md` SS6, `DRAW-STABLE-RULE8.md` SS8;
   `GATE-RUN-BEDROCK.log` is local-only (`*.log` gitignored).
 
+## 2026-10-02 (R461.8 -- the primary leg is restored and the canary is re-read on it)
+
+The R461.7 caveat is closed. Production's primary wrapper leg was down
+because the Claude Code CLI behind `claude-code-openai-wrapper` was inside
+a Max-plan session-limit window: the wrapper's stderr shows
+`api_error_status: 429` / `result: "You've hit your session limit -
+resets 1:40pm"` at 10:04 and the same at 13:39-13:42 - exactly the canary
+window - and the wrapper maps an `is_error` CLI result with no assistant
+content to the HTTP 500 `No response from Claude Code` that `/healthz/llm`
+reported. A second, transient failure at 09:00 was an OAuth refresh race
+('another Claude Code process is refreshing it'). No config changed; the
+15:30 session-window reset restored the leg.
+
+* POST canary re-run on `7fbd46737548` with the primary serving: PASS 5/5
+  again (`deploy` `7fbd46737548`, `health`, `transport` 8/8, `budget`
+  2.50 -> 1.875 and 6/8 -> 7/8, `integrity` 629.2 -> 862.1).
+  `CANARY-PRIMARY.md`, `canary-post-primary.*`,
+  `canary-compare-primary.json`; the recorded fallback-era POST stays
+  `canary-post.*` / `CANARY.md`.
+* Leg evidence: 8/8 `/healthz/llm` reads across both workers (pid 3, 4)
+  read `openai_wrapper` + `detail: ok`; `stage2_transport.stats` moved
+  0/0 -> pid 3: primary 2/3 ok + 1 fallback, pid 4: 4/4 -
+  primary-dominated with one row served by the fallback.
+* Same-code contrast (docs-only commit between): fallback POST vs primary
+  POST - refs 1.875 -> 1.875, in budget 7/8 -> 7/8, chars 667.8 -> 862.1
+  (+29%), latency 19.7 s -> 22.0 s. Direction matches the R360.9 measured
+  fallback cliff.

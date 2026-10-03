@@ -125,9 +125,19 @@ Transport caveat, recorded because it bounds the claim: BOTH health reads
 fallback active`. The two phases therefore measured the promotion on the
 SAME served leg - the Bedrock fallback - so the pre/post delta is
 transport-consistent, but it is not yet a confirmation on the
-primary-wrapper leg the board gate measured. Re-check on the next deploy
-that serves the primary. (`stage2_transport.stats` read 0/0 on the sampled
-worker both times, pid 4; it is process-local and not evidence either way.)
+primary-wrapper leg the board gate measured. That gap is CLOSED: the
+primary-leg re-run on the round-close merge `7fbd46737548` (2026-10-02
+15:49-15:56) PASSED all five gates again (`CANARY-PRIMARY.md`,
+`canary-post-primary.*`). Before the run 8/8 `/healthz/llm` reads across
+BOTH workers read `provider: openai_wrapper` with `detail: ok`; the
+re-run's gates are `deploy` `7fbd46737548`, `health`, `transport` 8/8,
+`budget` 2.50 -> 1.875 and 6/8 -> 7/8, `integrity` 629.2 -> 862.1, and
+the transport counters moved 0/0 -> primary 6/7 ok with the one failure
+served by the fallback. Root cause of the outage: a Max-plan session-limit
+window in the wrapper's Claude Code CLI (`api_error_status: 429`,
+'resets 3:30pm'), which the wrapper surfaces as the HTTP 500 'No response
+from Claude Code'; the 15:30 window reset restored the leg with no config
+change.
 
 The replicate top-up was attempted twice and is CLOSED without new draws:
 
