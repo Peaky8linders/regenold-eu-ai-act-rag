@@ -138,12 +138,20 @@ Why it cannot be one, kept here so the decision is not re-litigated:
 * its token-overlap axes diverge from the live judge (R99.2).
 
 **Measured, so the retirement is not an assumption.** At the R461 close the same
-474 rows were replayed deterministically through `main` and through the branch
-(`git archive` of each, `provider=cli`, Stage-2 pinned off): **every aggregate
-axis is identical to four decimals** (`qa` RefL 0.8467 / RefS 0.5488, `scenarios`
-RefC 0.4253, Ans Strict 0.3692), and the only per-row field that moved is
-float-level noise in `scores`. The instrument is flat by construction, which is
-precisely why it cannot price this class of change.
+474 keyed rows were replayed deterministically through `main` and through the
+branch (`git archive` of each, `provider=cli`, Stage-2 pinned off):
+
+* **every per-row `answer` and `references` value is byte-identical** (0 rows
+  differ on any text field);
+* **every aggregate axis is identical to four decimals** (`qa` RefL 0.8467 /
+  RefS 0.5488, `scenarios` RefC 0.4253, Ans Strict 0.3692);
+* the only field that moves at all is `latency_ms` — 461 rows, mean 12.0 ms,
+  max 130.6 ms, i.e. wall-clock noise.
+
+So the instrument is flat BY CONSTRUCTION, and that is the point: a code change
+that rewires the whole Stage-2 path and the citation grammar reads exactly like
+a change that does nothing. It cannot price this class of change, and neither
+can a flat reading be cited as evidence that a lever is inert.
 
 The dataset and its tests stay in the tree (the pin in
 `tests/test_r394_2_tracked_module_imports.py`'s sibling checks and the
