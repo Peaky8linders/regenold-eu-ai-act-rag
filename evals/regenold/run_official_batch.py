@@ -635,16 +635,31 @@ def _install_stage2_transport_guard(
     # fact to REPORT rather than a reason to throw the sample away. Measured cost
     # of the old behaviour: the R431 hard draw lost its third generation at 12/37
     # while the fallback was healthy the whole time.
-    leg_state: dict[str, Any] = {"last_leg": "", "fallback_rows": 0, "warned": False}
+    #: ``rescue_spent`` — the R460 slow-not-down probe may rescue a tripped guard
+    #: ONCE per outage; only a row the PRIMARY actually served earns the next one.
+    leg_state: dict[str, Any] = {
+        "last_leg": "",
+        "fallback_rows": 0,
+        "warned": False,
+        "rescue_spent": False,
+    }
 
     def observe(payload: object | None) -> None:
         """Record which leg served the row that has just landed."""
+        # ``guarded_poster`` hands over the poster's own result, a
+        # ``(body, ms, status, err, attempts, retried)`` tuple, not the body.
+        # Reading only a dict left ``last_leg`` unset in every real batch, so the
+        # leg-aware branch below (R431) never ran outside a hand-built payload.
+        if isinstance(payload, tuple) and payload:
+            payload = payload[0]
         if not isinstance(payload, dict):
             return
         served = str((_provenance(payload) or {}).get("stage2_served_by") or "")
         if not served:
             return
         leg_state["last_leg"] = served
+        if served == "primary":
+            leg_state["rescue_spent"] = False
         if served == "fallback":
             leg_state["fallback_rows"] = int(leg_state["fallback_rows"]) + 1
 
@@ -679,7 +694,13 @@ def _install_stage2_transport_guard(
                     **({"model": model} if model else {}),
                 )
             )
-            return bool(resp is not None and not getattr(resp, "error", None))
+            if resp is None or getattr(resp, "error", None):
+                return False
+            # An HTTP-200 with an empty body is the wrapper's relayed-nothing
+            # shape (R417), not proof a Stage-2 leg is answering. Plain
+            # non-empty, NOT the R417 degenerate test: the expected one-word
+            # reply is 1 token, which that rule would reject.
+            return bool(str(getattr(resp, "text", "") or "").strip())
         except Exception:  # noqa: BLE001 — a failed probe is a failed probe
             return False
 
@@ -713,15 +734,31 @@ def _install_stage2_transport_guard(
         # reachable? A probe that answers means the failure was latency, so
         # reset the counter and keep drawing — every degraded row still records
         # its own leg (R423.1/R431), so the draw stays separable.
-        if _primary_liveness_probe():
-            transport.record_ok()
-            print(
-                "\n[transport] PRIMARY tripped the failure guard ("
-                f"{tripped}) but a direct probe answered: treating it as SLOW, "
-                "not DOWN, and continuing. Raise "
-                "REGENOLD_STAGE2_WRAPPER_TIMEOUT_S if this repeats."
+        #
+        # The rescue is ONE per outage. A 16-token ping is a far weaker question
+        # than "can a 20-100k-char Stage-2 request be served", so a failure that
+        # spares the ping but not the real request (read timeouts at the request
+        # budget, ``No response from Claude Code``, a size-dependent 429, an empty
+        # 200) answered every trip and reset the counter forever: 40 rows drawn on
+        # deterministic drafts, no abort. Only a row the primary actually served
+        # (``observe``) earns the next rescue.
+        if not leg_state["rescue_spent"]:
+            if _primary_liveness_probe():
+                leg_state["rescue_spent"] = True
+                transport.record_ok()
+                print(
+                    "\n[transport] PRIMARY tripped the failure guard ("
+                    f"{tripped}) but a direct probe answered: treating it as SLOW, "
+                    "not DOWN, and continuing. Raise "
+                    "REGENOLD_STAGE2_WRAPPER_TIMEOUT_S if this repeats. This is "
+                    "the one rescue allowed until the primary serves a row again."
+                )
+                return
+        else:
+            note += (
+                " The one SLOW-not-DOWN probe rescue was already spent and no row "
+                "has been served by the primary since."
             )
-            return
         raise RuntimeError(
             f"Stage-2 PRIMARY transport is down: {tripped}. The fallback leg is not "
             "answering either, so the rest of the sample would be graded on "
@@ -884,6 +921,7 @@ def _run_hard(
 
         # --- turn 2: pushback ----------------------------------------------
         ans2, refs2, lat2, st2, err2, att2 = "", [], 0.0, None, None, 0
+        body2 = None
         if ans1:
             msgs2 = (
                 build_prefixed_pushback_messages(
@@ -917,12 +955,20 @@ def _run_hard(
             # turn 1 alongside so the flip is measurable.
             "pred_answer": ans2 or ans1,
             "pred_refs": refs2 or refs1,
-            # Provenance of the GRADED turn (post-pushback when it landed).
+            # Preserve provenance for both turns; the graded answer on a hard
+            # row is the pushback answer when it landed, otherwise turn 1.
+            "graded_turn": "pushback" if ans2 else "turn1",
             "provenance": _provenance(body2 if ans2 else body1),
             "turn1_answer": ans1,
             "turn1_refs": refs1,
+            "turn1_provenance": _provenance(body1),
             "pushback_answer": ans2,
             "pushback_refs": refs2,
+            "pushback_provenance": (
+                _provenance(body2)
+                if body2 is not None
+                else ({"stage2_degraded_reason": "stage2_pushback_not_served"} if ans1 else {})
+            ),
             "jul07_answer": row.jul07_answer,
             "jul07_refs": list(row.jul07_refs),
             "latency_ms": (lat1 or 0) + (lat2 or 0),

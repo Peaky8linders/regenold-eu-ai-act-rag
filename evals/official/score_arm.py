@@ -29,6 +29,7 @@ os.environ.setdefault("REGENOLD_SKIP_DOTENV", "1")
 os.environ.setdefault("REGENOLD_EXTERNAL_EMBEDDINGS", "0")
 sys.path.insert(0, str(REPO))
 
+from evals.bench.row_provenance import leg_label, polish_flag  # noqa: E402
 from evals.official import judge as official_judge  # noqa: E402
 from evals.official.rubric import AXIS_ORDER, _clean, score_rows  # noqa: E402
 
@@ -93,7 +94,13 @@ def load_gold() -> dict[str, dict]:
     return out
 
 
-def _key(qid: str, answer: str, judge_id: str = "legacy") -> str:
+def _key(
+    qid: str,
+    answer: str,
+    judge_id: str = "legacy",
+    *,
+    turn: str = "graded",
+) -> str:
     """Cache key scoped to answer *and* judge configuration.
 
     The legacy key omitted the judge identity, so a Qwen verdict could be
@@ -103,7 +110,17 @@ def _key(qid: str, answer: str, judge_id: str = "legacy") -> str:
     """
     digest = hashlib.sha256((answer or "").encode("utf-8")).hexdigest()[:16]
     judge_digest = hashlib.sha256(judge_id.encode("utf-8")).hexdigest()[:12]
-    return f"{qid}:{digest}:{judge_digest}"
+    turn_suffix = f":turn={turn}" if turn != "graded" else ""
+    return f"{qid}:{digest}:{judge_digest}{turn_suffix}"
+
+
+def _row_cache_key(row: dict, judge_id: str) -> str:
+    return _key(
+        row["id"],
+        row.get("answer") or "",
+        judge_id,
+        turn=str(row.get("answer_turn") or "graded"),
+    )
 
 
 def load_cache(cache_path: Path | None = None) -> dict[str, dict]:
@@ -209,12 +226,35 @@ def _verdict_complete(v: dict, repeats: int) -> bool:
     return v.get("_judge_runs", 0) >= repeats and (tone is None or tone >= repeats)
 
 
-def _length_controlled_rows(rows: list[dict]) -> list[dict]:
-    """The same rows with each answer cut to the row's own reference length.
+# Everything ``judge_row`` / ``judge_rows`` writes onto a row. The length-control
+# pass must start from the GOLD, not from the first pass's verdicts: ``judge_row``
+# replaces ``criteria`` with booleans, and a second pass handed those numbers the
+# strings "True" / "False" as the criteria to grade the answer against.
+_VERDICT_KEYS = (
+    "criterion_remarks",
+    "tone_ok",
+    "tone_remark",
+    "_judge_runs",
+    "_criteria_rate_min",
+    "_criteria_rate_max",
+    "_judge_errors",
+    "_judge_exception",
+    "_corr_runs",
+    "_tone_runs",
+    "_tone_runs_raw",
+)
 
-    Rows whose answer is already at or under the reference length are returned
-    verbatim: the conciseness axis is one-sided, so there is no excess to remove,
-    and cutting would only damage the answer.
+
+def _length_controlled_rows(rows: list[dict]) -> list[dict]:
+    """The same GOLD rows with each answer cut to the row's own reference length.
+
+    Rows come back unjudged: the first pass's verdict fields are dropped and
+    ``criteria`` is rebuilt from ``criteria_text``, the gold criterion strings the
+    judge numbers into its prompt. Rows whose answer is already at or under the
+    reference length keep their answer verbatim: the conciseness axis is
+    one-sided, so there is no excess to remove, and cutting would only damage the
+    answer. A row that has verdict booleans but no gold text to rebuild them from
+    cannot be re-judged, and raises rather than grade against ``True``/``False``.
     """
     from evals.official.rubric import truncate_to_chars  # noqa: PLC0415
 
@@ -223,7 +263,16 @@ def _length_controlled_rows(rows: list[dict]) -> list[dict]:
         ref = r.get("reference_answer") or ""
         ans = r.get("answer") or ""
         capped = ans if (not ref or len(ans) <= len(ref)) else truncate_to_chars(ans, len(ref))
-        out.append({**r, "answer": capped})
+        fresh = {k: v for k, v in r.items() if k not in _VERDICT_KEYS}
+        if "criteria_text" in r:
+            fresh["criteria"] = list(r["criteria_text"])
+        elif any(not isinstance(c, str) for c in r.get("criteria") or []):
+            raise ValueError(
+                f"row {r.get('id')!r} carries verdicts but no criteria_text; "
+                "the length-control pass has no gold criteria to judge against"
+            )
+        fresh["answer"] = capped
+        out.append(fresh)
     return out
 
 
@@ -243,31 +292,194 @@ def _graded_latency_ms(r: dict) -> float:
     return float(r.get("latency_ms") or 0.0)
 
 
-def load_ckpt(path: Path) -> list[dict]:
+def load_ckpt(path: Path, *, turn: str = "graded") -> list[dict]:
+    """Load the requested answer turn without borrowing another turn's lineage."""
+    if turn not in {"graded", "turn1", "pushback"}:
+        raise ValueError(f"unknown answer turn: {turn!r}")
     rows = []
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line:
             continue
         r = json.loads(line)
+        if turn == "graded":
+            answer = r.get("pred_answer") or r.get("answer") or ""
+            references = r.get("pred_refs") or r.get("references") or r.get("refs") or []
+            latency_ms = _graded_latency_ms(r)
+            provenance = r.get("provenance") or {}
+        else:
+            answer = r.get(f"{turn}_answer") or ""
+            references = r.get(f"{turn}_refs") or []
+            latency_ms = float(r.get(f"{turn}_latency_ms") or 0.0)
+            provenance = r.get(f"{turn}_provenance") or {}
         rows.append(
             {
                 "id": r.get("id"),
                 "question": r.get("question") or "",
-                "answer": r.get("pred_answer") or r.get("answer") or "",
-                "references": r.get("pred_refs") or r.get("references") or r.get("refs") or [],
-                "latency_s": _graded_latency_ms(r) / 1000.0,
+                "answer": answer,
+                "references": references,
+                "latency_s": latency_ms / 1000.0,
                 "difficulty": r.get("difficulty") or r.get("difficulty_category"),
-                # R422 — CARRY THE STAGE-2 LEG THROUGH. Dropping this is why the
-                # R419 report could not name the transport-degraded rows: the
-                # answer is graded either way, so a checkpoint row served by a
-                # deterministic Stage-1 draft scores like any other, and nothing
-                # downstream could tell them apart. The field is whatever the
-                # checkpoint recorded (`stage2_served_by` / `stage2_polish`).
-                "provenance": r.get("provenance") or {},
+                "provenance": provenance,
+                "answer_turn": turn,
             }
         )
     return rows
+
+
+_DEGRADED_STAGE2_LEGS = frozenset({"deterministic", "fallback", "prior_turn"})
+_INTENTIONAL_STAGE2_SKIPS = frozenset(
+    {
+        "stage2_skipped_simple_question_deterministic_ship",
+        "stage2_skipped_curated_authoritative",
+        "stage2_skipped_pure_definitional",
+    }
+)
+
+
+def _stage2_row_rejection_reason(row: dict) -> str | None:
+    """Fail closed unless this answer has evidence of a healthy or intentional serve.
+
+    A primary-polished answer is scoreable. A deterministic Stage-2 skip is
+    scoreable only when its exact, engine-emitted reason is recorded. Missing,
+    contradictory, or unknown provenance is not evidence of a healthy answer
+    and cannot contribute to a published board number.
+
+    R461.5 — this gate decides a graded row's scope, so it reads the two
+    provenance fields through the ONE home, ``evals.bench.row_provenance``
+    (:func:`leg_label`, :func:`polish_flag`), never off the row. The comparison
+    stays on the folded LABEL rather than on ``RowProvenance.kind``: the gate
+    has always folded case, so a checkpoint spelling ``Fallback`` must still be
+    refused, and ``kind`` would read an unknown spelling as ``unrecognised``.
+    """
+    provenance = row.get("provenance")
+    if not isinstance(provenance, dict):
+        return "missing_provenance"
+    served_by = leg_label(provenance)
+    skip_reason = str(provenance.get("stage2_skip_reason") or "").strip()
+    polish = polish_flag(provenance)
+
+    if provenance.get("stage2_degraded_reason"):
+        return f"stage2_degraded_reason={provenance['stage2_degraded_reason']}"
+    if served_by in _DEGRADED_STAGE2_LEGS:
+        return f"stage2_served_by={served_by}"
+    if polish is True:
+        if served_by != "primary":
+            return f"unverified_stage2_served_by={served_by or 'missing'}"
+        if skip_reason:
+            return f"contradictory_stage2_skip_reason={skip_reason}"
+        return None
+    if polish is False and not served_by and skip_reason in _INTENTIONAL_STAGE2_SKIPS:
+        return None
+    if skip_reason and skip_reason not in _INTENTIONAL_STAGE2_SKIPS:
+        return f"unrecognized_stage2_skip_reason={skip_reason}"
+    if polish is False:
+        return "stage2_polish=false"
+    return "stage2_polish_unknown"
+
+
+def _rejected_rows(rows: list[dict]) -> list[tuple[str, str]]:
+    return [
+        (str(row.get("id") or "<unknown>"), reason)
+        for row in rows
+        if (reason := _stage2_row_rejection_reason(row)) is not None
+    ]
+
+
+# A checkpoint written before provenance was recorded, a hand-built fixture, or a
+# row captured before ``stage2_skip_reason`` existed carries NO evidence about
+# whether its serve was healthy. That is not evidence of degradation, and R422
+# pins "a ckpt without provenance is zero, not an error", so a graded run scores
+# such rows as recorded and says so; otherwise every older checkpoint (a curated
+# row shipped by design has ``stage2_polish`` False and no recorded reason) and
+# every ``--resume`` of one would be refused. Only POSITIVE evidence of a
+# degraded, contradictory or unrecognised serve refuses the run, and a per-turn
+# run (whose capture always records provenance) refuses missing evidence too.
+_NO_STAGE2_EVIDENCE = frozenset({"missing_provenance", "stage2_polish_unknown"})
+_LEGACY_UNVERIFIABLE = frozenset({"stage2_polish=false", "unverified_stage2_served_by=missing"})
+
+
+def _stage2_row_is_unverifiable(row: dict, reason: str) -> bool:
+    """True when ``reason`` is the absence of evidence, not evidence of a problem."""
+    if reason in _NO_STAGE2_EVIDENCE:
+        return True
+    provenance = row.get("provenance")
+    return (
+        reason in _LEGACY_UNVERIFIABLE
+        and isinstance(provenance, dict)
+        and "stage2_skip_reason" not in provenance  # captured before skip reasons existed
+        and not leg_label(provenance)  # R461.5 — via the one home, never off the row
+    )
+
+
+def _partition_stage2_rows(
+    rows: list[dict], *, lenient: bool
+) -> tuple[list[tuple[str, str]], list[str]]:
+    """Split rows into ``(refused, unverified)``; ``lenient`` tolerates missing evidence."""
+    if not lenient:
+        return _rejected_rows(rows), []
+    refused: list[tuple[str, str]] = []
+    unverified: list[str] = []
+    for row in rows:
+        reason = _stage2_row_rejection_reason(row)
+        if reason is None:
+            continue
+        row_id = str(row.get("id") or "<unknown>")
+        if _stage2_row_is_unverifiable(row, reason):
+            unverified.append(row_id)
+        else:
+            refused.append((row_id, reason))
+    return refused, unverified
+
+
+def _atomic_write_new(path: Path, payload: dict) -> None:
+    """Write a JSON artifact atomically, refusing to clobber any existing file."""
+    import tempfile
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        raise SystemExit(f"refusing to overwrite score artifact: {path}")
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temp = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=1, ensure_ascii=False)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(temp, path)
+        except FileExistsError:
+            raise SystemExit(f"refusing to overwrite score artifact: {path}") from None
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+def _score_output_path(label: str, mode: str, turn: str, *, void: bool = False) -> Path:
+    clean = re.sub(r"[^a-zA-Z0-9_-]", "_", label)
+    turn_suffix = "" if turn == "graded" else f"-{turn}"
+    void_suffix = ".VOID" if void else ""
+    return OUT_DIR / f"score-{clean}-{mode}{turn_suffix}{void_suffix}.json"
+
+
+def _resolve_out(a: argparse.Namespace, *, void: bool = False) -> Path:
+    out = Path(a.out) if a.out else _score_output_path(a.label, a.mode, a.turn, void=void)
+    return out if out.is_absolute() else REPO / out
+
+
+def _validate_turn_rows(rows: list[dict], *, mode: str, turn: str) -> None:
+    if mode != "hard" and turn != "graded":
+        raise SystemExit("--turn turn1/pushback requires --mode hard")
+    if turn != "graded":
+        missing = [
+            str(row.get("id") or "<unknown>")
+            for row in rows
+            if not str(row.get("answer") or "").strip()
+        ]
+        if missing:
+            raise SystemExit(
+                f"--turn {turn} has no captured answer for rows: "
+                f"{', '.join(missing[:12])}"
+            )
 
 
 def build_rows(ckpt_rows: list[dict], gold: dict[str, dict]) -> list[dict]:
@@ -331,7 +543,15 @@ def main() -> int:
     ap.add_argument("--deepen", action="store_true", default=True, help="Apply R388 grain deepening")
     ap.add_argument("--no-deepen", dest="deepen", action="store_false")
     ap.add_argument("--cache-file", default=None, help="Custom judge cache JSONL path")
+    ap.add_argument("--out", type=Path, default=None, help="Custom score artifact path (must not exist)")
+    ap.add_argument(
+        "--turn",
+        choices=("graded", "turn1", "pushback"),
+        default="graded",
+        help="Answer in the checkpoint to judge; turn1/pushback require per-turn provenance",
+    )
     ap.add_argument("--rejudge", action="store_true", default=False, help="Bypass cache and re-judge all rows")
+    ap.add_argument("--judge-only", action="store_true", default=False, help="Write judge-cache entries without publishing a score artifact")
     ap.add_argument(
         "--judge-provider",
         # R419 — ``openrouter`` is a first-class transport: the local wrapper's
@@ -378,8 +598,41 @@ def main() -> int:
 
     cache_target = Path(a.cache_file) if a.cache_file else CACHE
 
+    if not a.judge_only:
+        # Fail before the judge runs, not after it: the artifact write refuses to
+        # clobber, and finding that out once the live calls are spent wastes them.
+        for existing in (_resolve_out(a), _resolve_out(a, void=True)):
+            if existing.exists():
+                raise SystemExit(
+                    f"refusing to overwrite score artifact: {existing} "
+                    "(use a new --label or pass --out)"
+                )
+
     gold = load_gold()
-    rows = build_rows(load_ckpt(Path(a.ckpt)), gold)
+    ckpt_rows = load_ckpt(Path(a.ckpt), turn=a.turn)
+    _validate_turn_rows(ckpt_rows, mode=a.mode, turn=a.turn)
+    rejected, unverified = _partition_stage2_rows(ckpt_rows, lenient=a.turn == "graded")
+    if unverified:
+        print(
+            f"WARNING: {len(unverified)} row(s) carry no evidence of a healthy Stage-2 serve "
+            "(older capture); their serve leg is UNVERIFIED and they are scored as recorded: "
+            f"{', '.join(unverified[:12])}" + ("..." if len(unverified) > 12 else "")
+        )
+    if rejected:
+        details = ", ".join(f"{row_id} ({reason})" for row_id, reason in rejected[:12])
+        more = f"; and {len(rejected) - 12} more" if len(rejected) > 12 else ""
+        if not a.judge_only:
+            raise SystemExit(
+                "refusing to grade rows without evidence of healthy primary polish or "
+                "a recognized intentional Stage-2 skip: "
+                f"{details}{more}. Re-serve degraded rows on a healthy leg before scoring."
+            )
+        print(
+            "judge-only comparative mode: scoring artifacts are disabled; "
+            "Stage-2 provenance remains attached to every answer. "
+            f"Non-primary rows: {details}{more}"
+        )
+    rows = build_rows(ckpt_rows, gold)
     if a.limit:
         rows = rows[: a.limit]
     if not rows:
@@ -399,7 +652,7 @@ def main() -> int:
     cache = {} if a.rejudge else load_cache(cache_target)
     todo, cached = [], []
     for r in rows:
-        v = cache.get(_key(r["id"], r["answer"], judge_id))
+        v = cache.get(_row_cache_key(r, judge_id))
         if v and _verdict_complete(v, a.repeats) and _criteria_match(v, r) and len(v.get("criteria") or []) == len(r["criteria_text"]):
             cached.append({**r, **v})
         else:
@@ -420,8 +673,10 @@ def main() -> int:
                     fh.write(
                         json.dumps(
                             {
-                                "key": _key(j["id"], j["answer"], judge_id),
+                                "key": _row_cache_key(j, judge_id),
+                                "answer_turn": j.get("answer_turn") or "graded",
                                 "judge_identity": judge_id,
+                                "provenance": j.get("provenance"),
                                 "verdict": {
                                     **{
                                         k: j[k]
@@ -518,6 +773,7 @@ def main() -> int:
     # their reference length, so a correctness edge that exists only because the
     # answer is longer cannot be read as knowledge. Both sets of axes ship.
     length_controlled: dict | None = None
+    lc_void = ""
     if a.length_control:
         capped = _length_controlled_rows(ordered)
         cut = sum(
@@ -532,6 +788,16 @@ def main() -> int:
             capped, workers=a.workers, repeats=a.repeats
         )
         lc_dead = [j for j in lc_judged if not j.get("_judge_runs", 0)]
+        lc_tone_dead = [
+            j for j in lc_judged if j.get("_judge_runs", 0) and not j.get("_tone_runs", 0)
+        ]
+        lc_partial = [
+            j["id"] for j in lc_judged
+            if j.get("_judge_runs", 0) and not _verdict_complete(j, a.repeats)
+        ]
+        # R414 applies to this pass too: a degraded second pass is withheld, not
+        # printed as a measurement. The raw pass is independently valid.
+        lc_void = judge_void_reason(lc_judged, a.repeats)
         if lc_dead:
             print(
                 f"  {'!' * 68}\n  LENGTH-CONTROL PASS DEGRADED: "
@@ -539,16 +805,32 @@ def main() -> int:
                 f"were scored all-False.\n  The controlled axes below are NOT a "
                 f"measurement; re-run with --workers 1.\n  {'!' * 68}"
             )
+        if lc_partial:
+            print(
+                f"  LENGTH-CONTROL PARTIAL VERDICTS: {len(lc_partial)}/{len(lc_judged)} rows "
+                f"lost at least one repetition and were scored on the live runs: "
+                f"{lc_partial[:8]}"
+            )
         by_lc = {r["id"]: r for r in capped}
         for j in lc_judged:
             if j.get("id") in by_lc:
                 by_lc[j["id"]].update(j)
         lc_order = [by_lc[r["id"]] for r in ordered if r["id"] in by_lc]
-        lc_res = score_rows(lc_order)
         length_controlled = {
             "answers_cut": cut,
             "cached": False,
-            "axes": {
+            "n": len(lc_judged),
+            "dead_rows": len(lc_dead),
+            "tone_dead_rows": len(lc_tone_dead),
+            "partial_rows": len(lc_partial),
+        }
+        if lc_void:
+            length_controlled["void"] = lc_void
+            length_controlled["axes"] = None
+            print(f"  length-controlled axes WITHHELD (exit 3): {lc_void}")
+        else:
+            lc_res = score_rows(lc_order)
+            length_controlled["axes"] = {
                 k: lc_res[k]
                 for k in (
                     "ans_correctness_loose",
@@ -556,38 +838,49 @@ def main() -> int:
                     "ans_conciseness",
                     "regulatory_tone",
                 )
-            },
-        }
-        print("  length-controlled (answer cut to the reference length):")
-        for k, v in length_controlled["axes"].items():
-            print(f"    {k:<26}{v:>8.2f}   (raw {raw_res[k]:.2f})")
+            }
+            print("  length-controlled (answer cut to the reference length):")
+            for k, v in length_controlled["axes"].items():
+                print(f"    {k:<26}{v:>8.2f}   (raw {raw_res[k]:.2f})")
 
     void_reason = judge_void_reason(judged, a.repeats)
+    if a.judge_only:
+        incomplete = [
+            str(row.get("id") or "<unknown>")
+            for row in judged
+            if not _verdict_complete(row, a.repeats)
+        ]
+        if void_reason or incomplete:
+            print(
+                f"judge-only run incomplete/void: {void_reason or 'incomplete live repetitions'}; "
+                f"rows={incomplete[:12]}"
+            )
+            return 3
+        if todo and len(judged) != len(todo):
+            raise SystemExit(f"judge-only run returned {len(judged)}/{len(todo)} live rows")
+        print(f"judge-only complete: {len(rows)} rows, cache={cache_target}")
+        return 0
     if void_reason:
         # R414 — REFUSE, do not warn. The reference axes are computed from the
         # reference LISTS and never touch the judge, so they remain valid and are
         # the only numbers this artifact may carry.
         res = score_rows(ordered)
         ref_only = {k: v for k, v in res.items() if k.startswith("ref_")}
-        clean = re.sub(r"[^a-zA-Z0-9_\-]", "_", a.label)
-        out = OUT_DIR / f"score-{clean}-{a.mode}.VOID.json"
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(
-            json.dumps(
-                {
-                    "label": clean,
-                    "mode": a.mode,
-                    "ckpt": str(a.ckpt),
-                    "judge_identity": judge_id,
-                    "judge_valid": False,
-                    "judge_void_reason": void_reason,
-                    "reference_axes": ref_only,
-                    "n": res.get("n"),
-                },
-                indent=1,
-                ensure_ascii=False,
-            ),
-            encoding="utf-8",
+        clean = re.sub(r"[^a-zA-Z0-9_-]", "_", a.label)
+        out = _resolve_out(a, void=True)
+        _atomic_write_new(
+            out,
+            {
+                "label": clean,
+                "mode": a.mode,
+                "turn": a.turn,
+                "ckpt": str(a.ckpt),
+                "judge_identity": judge_id,
+                "judge_valid": False,
+                "judge_void_reason": void_reason,
+                "reference_axes": ref_only,
+                "n": res.get("n"),
+            },
         )
         print("\n" + "!" * 88)
         print("VOID JUDGE RUN — THE JUDGED AXES ARE WITHHELD (exit 3).")
@@ -602,7 +895,7 @@ def main() -> int:
 
     print()
     print("=" * 88)
-    print(f"R388 reconstructed official rubric  |  arm={a.label}  mode={a.mode}  n={res['n']}")
+    print(f"R388 reconstructed official rubric  |  arm={a.label}  mode={a.mode}  turn={a.turn}  n={res['n']}")
     print("=" * 88)
     hdr = f"{'axis':<26}{'THIS ARM':>10}{'us(off)':>10}{'2026 frontier':>15}{'gap->frontier':>15}"
     print(hdr)
@@ -676,13 +969,14 @@ def main() -> int:
     print("NOTE: criteria and reference answers are RECONSTRUCTED, not the evaluator's.")
     print("      Compare ARMS under this instrument; do not read a number as an official score.")
 
-    clean_label = re.sub(r"[^a-zA-Z0-9_\-]", "_", a.label)
-    out = OUT_DIR / f"score-{clean_label}-{a.mode}.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
+    clean_label = re.sub(r"[^a-zA-Z0-9_-]", "_", a.label)
+    out = _resolve_out(a)
     payload = {
         "label": clean_label,
         "mode": a.mode,
+        "turn": a.turn,
         "ckpt": str(a.ckpt),
+        "stage2_unverified_rows": unverified,
         "judge_identity": judge_id,
         "reference_pass": _reference_pass_provenance(a.deepen, redeepened),
         "axes": res,
@@ -691,6 +985,8 @@ def main() -> int:
         "rows": [
             {
                 "id": r["id"],
+                "answer_turn": r.get("answer_turn") or "graded",
+                "provenance": r.get("provenance"),
                 "question": r.get("question") or "",
                 "answer": r.get("answer") or "",
                 "criteria_text": r["criteria_text"],
@@ -708,8 +1004,13 @@ def main() -> int:
             for r in ordered
         ],
     }
-    out.write_text(json.dumps(payload, indent=1, ensure_ascii=False), encoding="utf-8")
+    _atomic_write_new(out, payload)
     print(f"wrote {out}")
+    if lc_void:
+        # The raw axes above are valid and on disk; the controlled ones were asked
+        # for and withheld, so the run must not read as a success to its caller.
+        print(f"length-control pass VOID, controlled axes withheld: {lc_void}")
+        return 3
     return 0
 
 

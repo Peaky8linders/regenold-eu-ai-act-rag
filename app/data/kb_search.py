@@ -423,21 +423,22 @@ def _build_ontology_docs() -> list[tuple[str, DocSource, str]]:
     return rows
 
 
-@lru_cache(maxsize=1)
-def _build_index() -> _BM25Index:
+@lru_cache(maxsize=2)
+def _build_index_for(contextual: bool) -> _BM25Index:
     """Build the BM25 index from :data:`EC_CHECKER_OBLIGATION_MAP` +
     the typed ontology registries.
 
-    Memoised so the index is built once per process. Re-computing on
-    every request would burn ~5-10ms per call needlessly; the index is
-    immutable for the lifetime of the process.
+    Memoised so the index is built once per process per ``contextual`` value.
+    Re-computing on every request would burn ~5-10ms per call needlessly; each
+    index is immutable for the lifetime of the process. Call it through
+    :func:`_build_index`, which supplies the flag from the environment.
     """
     article_refs: list[str] = []
     sources: list[DocSource] = []
     docs: list[tuple[str, ...]] = []
     doc_freqs: list[dict[str, int]] = []
     #: R449 — populated only when contextual fields are requested.
-    _contextual = contextual_fields_enabled()
+    _contextual = contextual
     field_freqs_out: list[dict[str, dict[str, int]]] = []
     field_lens_out: list[dict[str, int]] = []
 
@@ -570,6 +571,24 @@ def _build_index() -> _BM25Index:
     )
 
 
+def _build_index() -> _BM25Index:
+    """The BM25 index for the CURRENT ``REGENOLD_CONTEXTUAL_FIELDS`` value.
+
+    R461 — the memo is keyed on the flag. It used to be one
+    ``lru_cache(maxsize=1)`` entry with the flag read at build time, so a flip
+    in a warm process kept serving the first value's index in both directions
+    while ``_engine_cache_key`` recorded the new one: every in-process A/B of the
+    flag (and of the ``REGENOLD_FIELD_*`` knobs, which only bite on a fielded
+    index) read a false null. A process with a static env still builds once.
+    """
+    return _build_index_for(contextual_fields_enabled())
+
+
+# The invalidation / introspection hooks callers and tests already use.
+_build_index.cache_clear = _build_index_for.cache_clear  # type: ignore[attr-defined]
+_build_index.cache_info = _build_index_for.cache_info  # type: ignore[attr-defined]
+
+
 def _score_fielded(
     index: _BM25Index, doc_idx: int, query_tokens: list[str]
 ) -> float:
@@ -585,6 +604,11 @@ def _score_fielded(
     fields = index.field_freqs[doc_idx]
     lens = index.field_lens[doc_idx]
     avg = index.field_avg_len
+    # R461 — read the env-backed parameters once per call, not per token x field
+    # (318,607 parses on a 4,000-char question). Still per call, so the R451
+    # in-process sweep sees an env change between two rankings.
+    weights = {fname: field_weight(fname) for fname in _FIELD_NAMES}
+    slopes = {fname: field_b(fname) for fname in _FIELD_NAMES}
     score = 0.0
     for term in query_tokens:
         idf = index.idf.get(term, 0.0)
@@ -592,13 +616,13 @@ def _score_fielded(
             continue
         combined = 0.0
         for fname in _FIELD_NAMES:
-            weight = field_weight(fname)
+            weight = weights[fname]
             tf_f = fields.get(fname, {}).get(term, 0)
             if not tf_f:
                 continue
             len_f = float(lens.get(fname, 0))
             avg_f = avg.get(fname) or 0.0
-            b_f = field_b(fname)
+            b_f = slopes[fname]
             norm = 1.0 - b_f + (b_f * len_f / avg_f if avg_f > 0.0 else 0.0)
             if norm <= 0.0:  # pragma: no cover — defensive, b < 1 by construction
                 continue
@@ -655,7 +679,7 @@ def _rrf_fusion_enabled() -> bool:
     rankings via weighted RRF (BM25-dominant, dense as a close-tie
     reshaper) rather than additive fill.
 
-    **Default ON (R450 candidate flip).** Of every fusion arm measured on the
+    **Default OFF (R450 candidate flip, reverted).** Of every fusion arm measured on the
     110-row gold set, rank-level fusion is the only one that changes ORDER while
     leaving membership untouched — the R449 harness scored it at identical head
     recall/precision/added-reference counts against the shipped additive fill

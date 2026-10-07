@@ -27,9 +27,9 @@ caller sees the same `dense_top_k(question, k)` surface.
 
 ## Integration
 
-* :func:`dense_top_k` is the public retrieval call. The route + engine fuse
-  its output with BM25 ranks via Reciprocal Rank Fusion in
-  :func:`app.data.kb_search.top_articles_by_relevance_hybrid`.
+* :func:`dense_top_k` is the public retrieval call. The production consumer,
+  :func:`app.data.kb_search.top_articles_by_relevance`, combines its output
+  with BM25 using additive fill by default or the configured fusion policy.
 * :func:`is_enabled` is the cheap env-gate. Default ON; set
   ``REGENOLD_TURBOQUANT_DENSE=0`` to disable (e.g. to reproduce a
   deterministic BM25-only benchmark run).
@@ -594,16 +594,26 @@ def additive_dense_fill(
     *,
     k: int = 5,
 ) -> list[str]:
-    """Purely additive fusion — never displace a BM25 winner.
+    """Purely additive fusion — relative to the arguments it is given.
 
     Returns the BM25 ranking as-is, then APPENDS dense-only refs (those
-    BM25 didn't surface) until ``k`` is reached. This is the safer of
-    the two fusion strategies: it can only ADD recall, never lose
-    precision. Use when the benchmark shows the dense rerank trades
-    precision for recall (Round 31 first cut found BM25 saturation
-    means RRF re-shuffling slightly hurts Ref Correctness).
+    BM25 didn't surface) until ``k`` is reached. It never reorders or drops a
+    ref it is given, which makes it the safer of the two fusion strategies. Use
+    when the benchmark shows the dense rerank trades precision for recall
+    (Round 31 first cut found BM25 saturation means RRF re-shuffling slightly
+    hurts Ref Correctness).
 
     The order of dense-only fills follows their dense rank.
+
+    ⚠ Additivity is relative to ``bm25_refs`` as passed in. The production
+    caller, ``app.data.kb_search.top_articles_by_relevance``, reshapes the BM25
+    ranking before this call: it multiplies the score of every article that has
+    a sentence-index hit at similarity ≥ 0.50 by 1.20 ahead of the ``[:k]`` cut,
+    which can evict lower-ranked BM25 winners. That displacement happens in the
+    caller, not here. Measured R449 (k=8, 110 gold rows): ``bm25_refs`` already
+    holds 8 refs on every row, so this function appends **0**, while the
+    pipeline's top-8 membership still changes on 27 rows. Cite a stage's own
+    contract, not this docstring, when calling a pipeline stage additive.
     """
     out: list[str] = list(bm25_refs[:k])
     seen = set(out)

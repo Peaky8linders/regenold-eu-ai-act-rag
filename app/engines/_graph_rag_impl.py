@@ -866,11 +866,72 @@ def _bedrock_complete_for_graph_rag(
         return None
 
 
+_STAGE2_WRAPPER_TIMEOUT_DEFAULT_S = 150.0
+_STAGE2_WRAPPER_TIMEOUT_MIN_S = 5.0
+_STAGE2_WRAPPER_TIMEOUT_MAX_S = 600.0
+
+
+def _env_deadline_s(name: str) -> float | None:
+    """A usable per-call deadline from env var ``name``, else ``None``.
+
+    Usable means finite and > 0, clamped into [5, 600] s. Unset or blank is
+    ``None`` silently; an unusable or clamped value is logged, because a
+    malformed deadline used to reach httpx verbatim: ``0`` / a negative / ``nan``
+    / ``inf`` / ``1e9`` made every primary dial raise (read as a tunnel failure,
+    so the answer silently came from the Bedrock leg) or, where the platform
+    accepts it, left the read effectively unbounded.
+    """
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        value = float("nan")
+    if value != value or value in (float("inf"), float("-inf")) or value <= 0:
+        logger.warning(
+            "graph_rag.stage2_timeout_env_unusable %s=%r — ignoring it "
+            "(need a finite number of seconds > 0).", name, raw[:40],
+        )
+        return None
+    clamped = min(_STAGE2_WRAPPER_TIMEOUT_MAX_S, max(_STAGE2_WRAPPER_TIMEOUT_MIN_S, value))
+    if clamped != value:
+        logger.warning(
+            "graph_rag.stage2_timeout_env_clamped %s=%r -> %.0fs (bounds %.0f-%.0f s).",
+            name, raw[:40], clamped,
+            _STAGE2_WRAPPER_TIMEOUT_MIN_S, _STAGE2_WRAPPER_TIMEOUT_MAX_S,
+        )
+    return clamped
+
+
+def _stage2_wrapper_timeout_s() -> float:
+    """R460 read deadline for the Stage-2 ANSWER dial on the wrapper (the polish
+    and its R417 degenerate-completion retry). A fresh env read per call: the
+    knob is cache-keyed and A/B harnesses flip it in-process.
+
+    Precedence, first USABLE one wins (see :func:`_env_deadline_s`):
+
+    1. ``REGENOLD_STAGE2_WRAPPER_TIMEOUT_S`` — the dedicated knob;
+    2. ``OPENAI_TIMEOUT_SECONDS`` — the operator's own provider-wide budget. R460
+       must not silently replace a value somebody set on purpose, so the 150 s
+       below is only the answer for a deploy that set neither;
+    3. 150 s.
+
+    The auxiliary repair passes (``_stage2_complete``) do not take this at all:
+    they keep the provider's own per-call default, as they did before R460.
+    """
+    value = _env_deadline_s("REGENOLD_STAGE2_WRAPPER_TIMEOUT_S")
+    if value is None:
+        value = _env_deadline_s("OPENAI_TIMEOUT_SECONDS")
+    return value if value is not None else _STAGE2_WRAPPER_TIMEOUT_DEFAULT_S
+
+
 def _openai_wrapper_complete_for_graph_rag(
 
     *, system: str, user: str, max_tokens: int, temperature: float,
     complex_question: bool = False, stage_name: str = "Stage",
     history_turn_count: int | None = None,
+    use_stage2_deadline: bool = True,
 ) -> str | None:
     """One OpenAI-compatible call (Claude Max via wrapper, etc.).
 
@@ -879,6 +940,11 @@ def _openai_wrapper_complete_for_graph_rag(
     variant of the full-system gate can read the modality. Every other caller
     (Stage-1 parsing, auxiliary passes) leaves it ``None`` and is therefore never
     treated as single-turn.
+
+    ``use_stage2_deadline=False`` sends NO explicit read budget, so the provider's
+    own per-call default governs (``OPENAI_TIMEOUT_SECONDS``, 60 s fallback) — the
+    auxiliary repair passes use it so the R460 answer deadline does not stretch
+    their own budget. See :func:`_stage2_wrapper_timeout_s`.
 
     Returns ``None`` on any error so callers fall back to deterministic.
     The model picks up the deploy's ``graph_rag.model`` knob; defaults
@@ -1322,12 +1388,15 @@ def _openai_wrapper_complete_for_graph_rag(
     # 60 s, which tripped the official harness's five-failure guard and aborted
     # a 28/37 run. The Bedrock leg has had its own knob since R139
     # (REGENOLD_BEDROCK_STAGE2_TIMEOUT_S, 180 s); the primary gets the same.
-    try:
-        _stage2_wrapper_timeout = float(
-            os.getenv("REGENOLD_STAGE2_WRAPPER_TIMEOUT_S", "150")
-        )
-    except (TypeError, ValueError):
-        _stage2_wrapper_timeout = 150.0
+    # The value is validated (a bad one used to make every dial fail and silently
+    # move the traffic to Bedrock), an operator-set OPENAI_TIMEOUT_SECONDS is
+    # honoured when the dedicated knob is unset, and the auxiliary repair passes
+    # send no explicit budget at all: ``None`` is the provider's own default, as
+    # it was before R460. One local feeds both dials, so the R417 retry is
+    # held to the same deadline as the first call.
+    _stage2_wrapper_timeout = (
+        _stage2_wrapper_timeout_s() if use_stage2_deadline else None
+    )
     try:
         response = _wrapper_provider.complete(
             OpenAIWrapperRequest(
@@ -1378,24 +1447,6 @@ def _openai_wrapper_complete_for_graph_rag(
         if bedrock_answer is not None:
             return bedrock_answer
         raise
-    # R460 — per-dispatch usage + SHAPE on the channel the row writer reads.
-    # The wrapper's usage is a character heuristic over the user message
-    # (round(len(user)/4.0) to the digit); recording it next to the payload
-    # sizes is what lets a board say WHICH shape was sent and what the
-    # transport counted it as. run_official_batch._provenance parses this into
-    # the checkpoint row; the seam probe stays the controlled cross-check.
-    if not getattr(response, "error", None):
-        try:
-            from app.integrations.regenold.reasoning_trace import record_note
-            _usage_in = int(getattr(response, "prompt_tokens", 0) or 0)
-            _usage_out = int(getattr(response, "completion_tokens", 0) or 0)
-            record_note(
-                f"stage2_usage in={_usage_in} out={_usage_out} "
-                f"system_chars={len(wrapper_system or '')} "
-                f"user_chars={len(user or '')} turns={history_turn_count}"
-            )
-        except Exception:  # noqa: BLE001 — trace is best-effort telemetry
-            pass
     # R417 — the wrapper INTERMITTENTLY relays an interim/empty Claude-CLI
     # assistant message as an HTTP-200 "completion" (measured: one token, a
     # 1-2 char body). The structural guard below classified that as a model
@@ -1485,6 +1536,30 @@ def _openai_wrapper_complete_for_graph_rag(
                 "OpenAI wrapper returned a degenerate completion "
                 f"(model={response.model}, completion_tokens={_deg_tokens_2})"
             )
+
+    # R460 — per-dispatch usage + SHAPE on the channel the row writer reads.
+    # The wrapper's usage is a character heuristic over the user message
+    # (round(len(user)/4.0) to the digit); recording it next to the payload
+    # sizes is what lets a board say WHICH shape was sent and what the
+    # transport counted it as. run_official_batch._provenance parses this into
+    # the checkpoint row; the seam probe stays the controlled cross-check.
+    # Written HERE, after the R417 retry, so it describes the response that is
+    # actually shipped: ``_provenance`` keeps the FIRST note, and a note written
+    # from the discarded one-token blip made a retry-served row read ``out=1``.
+    # A reply the R361 check below rejects still gets its note (Stage-2 ran);
+    # a persisted degenerate reply returned above and records none.
+    if not getattr(response, "error", None):
+        try:
+            from app.integrations.regenold.reasoning_trace import record_note
+            _usage_in = int(getattr(response, "prompt_tokens", 0) or 0)
+            _usage_out = int(getattr(response, "completion_tokens", 0) or 0)
+            record_note(
+                f"stage2_usage in={_usage_in} out={_usage_out} "
+                f"system_chars={len(wrapper_system or '')} "
+                f"user_chars={len(user or '')} turns={history_turn_count}"
+            )
+        except Exception:  # noqa: BLE001 — trace is best-effort telemetry
+            pass
 
     # R361 — an HTTP-200 completion with EMPTY content is a primary FAILURE,
     # not a success. ``openai_wrapper_provider`` does ``msg.get("content") or ""``
@@ -1831,10 +1906,12 @@ def _stage2_complete(
                 temperature=temperature, complex_question=complex_question,
                 stage_name=stage_name,
             )
+        # The repair passes keep the provider's own per-call budget; the R460
+        # answer deadline (``_stage2_wrapper_timeout_s``) is for the polish.
         return _openai_wrapper_complete_for_graph_rag(
             system=system, user=user, max_tokens=max_tokens,
             temperature=temperature, complex_question=complex_question,
-            stage_name=stage_name,
+            stage_name=stage_name, use_stage2_deadline=False,
         )
 
     except Exception:  # noqa: BLE001 — an auxiliary call must never break Stage-2
@@ -4801,6 +4878,101 @@ _PREMATCH_ARTICLE_6_3_DESIGNATION = re.compile(
     re.IGNORECASE,
 )
 
+# R461 — the canned Article 6(3) verdict is an answer about ONE system: it opens
+# "No. Structuring or deduplicating information is a narrow procedural task, so
+# the system ... is not high-risk". It is right for that system and for a
+# question that describes no system at all, and wrong for every other one.
+# Before R461 any "can <system> benefit from the Article 6(3) derogation?" got
+# it: a credit-scoring or a CV-screening system was told it is "not high-risk"
+# because it structures information, which it was never said to do. Both are
+# Annex III uses that profile natural persons, and Article 6(3), last
+# subparagraph (verbatim, ``get_provision_text("Article 6.3")``): "an AI system
+# referred to in Annex III shall always be considered to be high-risk where the
+# AI system performs profiling of natural persons".
+#
+# What the verdict says the system DOES: a narrow procedural task (point (a))
+# or a preparatory task (point (d)), stated as structuring or deduplicating.
+_ART63_VERDICT_TASK_RE = re.compile(
+    r"\b(?:narrow\s+procedural|procedural|preparatory)\s+tasks?\b"
+    r"|\bde-?duplicat\w*"
+    r"|\b(?:structur(?:e|es|ed|ing)|organi[sz](?:e|es|ed|ing))\b.{0,80}?"
+    r"\b(?:information|data|records?|files?|documents?|entries)\b"
+)
+# A system the question DESCRIBES, either after the noun ("an AI system that
+# evaluates students", "a tool used to rank applicants", "an AI tool flags
+# cells") or before it ("a credit scoring AI system", "a CV-screening AI").
+_ART63_AI = r"ai(?!\s+(?:act|office|board|literacy|pact)\b)"
+_ART63_SYSTEM = (
+    r"(?:systems?|tools?|models?|software|components?|algorithms?|apps?|platforms?|"
+    r"engines?|assistants?|chatbots?)"
+)
+_ART63_ONLY = r"(?:only\s+|merely\s+|solely\s+|just\s+|also\s+)?"
+# A finite or -ing verb; "-ss" / "-is" / "-us" endings are nouns ("analysis").
+_ART63_VERB = r"(?![a-z-]*(?:ss|is|us)\b)[a-z][a-z-]*(?:s|ing)\b"
+# Words that follow a system noun without saying what the system does.
+_ART63_NOT_A_FUNCTION = (
+    r"is|are|was|were|be|been|being|has|have|had|does|do|did|can|could|may|might|"
+    r"must|shall|should|will|would|its|this|thus|as|always|"
+    r"falls?|falling|qualif\w*|meets?|satisf\w*|poses?|relies?|relying|benefits?|"
+    r"benefiting|counts?|counting|appears?|belongs?|remains?|becomes?|seems?|"
+    r"compl\w*|needs?|requir\w*|exempt\w*|including|regarding|concerning|according|"
+    r"providers?|deployers?|operators?|users?|developers?|manufacturers?|importers?|"
+    r"distributors?|owners?|systems|tools|models|components|algorithms|apps|"
+    r"platforms|engines|assistants|chatbots"
+)
+_ART63_FUNCTION_AFTER_RE = re.compile(
+    rf"\b(?:{_ART63_AI}|{_ART63_SYSTEM})\s+(?:that|which)\s+(?:(?:is|are)\s+)?"
+    rf"{_ART63_ONLY}(?!(?:{_ART63_NOT_A_FUNCTION})\b){_ART63_VERB}"
+    rf"|\b{_ART63_SYSTEM}\s+{_ART63_ONLY}(?!(?:{_ART63_NOT_A_FUNCTION})\b){_ART63_VERB}"
+    rf"|\b(?:{_ART63_AI}|{_ART63_SYSTEM})\s+(?:(?:that|which)\s+(?:is|are)\s+)?"
+    r"(?:used|intended|designed|deployed|meant|built|developed|trained)\s+(?:to|for)\s+"
+    r"(?!(?:an?|the|any)\s+(?:annex\s+iii\s+)?(?:use\s+case|purpose)\b)"
+)
+_ART63_DET = r"a|an|the|our|my|their|its|this|these|those|your|any|such|each|every"
+_ART63_AUX = r"can|could|do|does|did|is|are|was|were|would|will|may|might|should|must|shall"
+_ART63_NOT_A_MODIFIER = (
+    rf"{_ART63_DET}|{_ART63_AUX}|for|to|of|in|on|at|by|with|from|under|into|as|or|"
+    r"and|but|if|be|apply|applies|available|exempt|eligible|whether|than|not|what|"
+    r"which|who|how|when|why|where|i|we|you|they|it|act"
+)
+_ART63_FUNCTION_BEFORE_RE = re.compile(
+    rf"(?:\b(?:{_ART63_DET})\s+|(?:^|[.?!]\s+)(?:{_ART63_AUX})\s+)"
+    rf"((?:(?!(?:{_ART63_NOT_A_MODIFIER})\b)[a-z][\w'’-]*\s+){{1,4}}?)"
+    rf"(?:ai\s+)?(?:{_ART63_AI}|{_ART63_SYSTEM})\b"
+)
+# Premodifiers that name no use: "our Annex III system", "a high-risk AI system".
+_ART63_GENERIC_MODIFIERS = frozenset(
+    "ai annex iii annex-iii i ii high-risk high risk low-risk non-high-risk eu union "
+    "listed given such specific certain particular new existing same other own "
+    "standalone stand-alone ai-based ai-powered ai-driven automated relevant entire "
+    "whole single simple".split()
+)
+
+
+def _art63_question_describes_another_system(q: str) -> bool:
+    """R461 — True when the (lower-cased) live turn describes its system by a
+    function other than the one the canned Article 6(3) verdict asserts.
+
+    Not a list of Annex III uses: the test is structural, so credit scoring,
+    recruitment, biometrics, education, essential services, law enforcement,
+    migration and justice are all covered by the same two patterns, and a use
+    nobody listed is covered too. A question that names the verdict's own task
+    anywhere keeps the verdict. The limit is the head noun: a system named by a
+    noun outside ``_ART63_SYSTEM`` ("a lie detector") is not recognised and keeps
+    the pre-R461 behaviour.
+    """
+    if _ART63_VERDICT_TASK_RE.search(q):
+        return False
+    if _ART63_FUNCTION_AFTER_RE.search(q):
+        return True
+    for m in _ART63_FUNCTION_BEFORE_RE.finditer(q):
+        if any(
+            t not in _ART63_GENERIC_MODIFIERS and "'" not in t and "’" not in t
+            for t in m.group(1).split()
+        ):
+            return True
+    return False
+
 
 def _detect_article_6_3_inquiry(question: str) -> bool:
     """True if the question specifically targets the Article 6(3) high-risk exceptions/exemptions.
@@ -4809,6 +4981,9 @@ def _detect_article_6_3_inquiry(question: str) -> bool:
     an ancillary data-preparation function is a 6(3)(a)/(d) task, not the Annex III
     use case itself. Deliberately does NOT match the substantive "detect
     decision-making patterns or deviations" shape (la_q32), which is high-risk.
+    R461: nor a 6(3) ask about a system the question describes by any other
+    function (``_art63_question_describes_another_system``), because the canned
+    verdict this gates says the system structures or deduplicates information.
     """
     raw_q = question or ""
     _FLATTEN_MARKER = "Latest question:\n"
@@ -4882,11 +5057,15 @@ def _detect_article_6_3_inquiry(question: str) -> bool:
     if _bare_mention and _PREMISE_OPENER_RE.match(q):
         _protasis_end = q.find(",")
         _premise = _protasis_end < 0 or _bare_mention.start() < _protasis_end
-    return (
-        bool(_task_shape)
-        or bool(_topic_phrase)
-        or bool(_bare_mention and _topic_ask and not _premise)
-    )
+    if _task_shape:
+        return True
+    if not (_topic_phrase or (_bare_mention and _topic_ask and not _premise)):
+        return False
+    # R461 — a 6(3) ask about a system described by another function is not the
+    # question the canned verdict answers. Returning False here also keeps
+    # Stage-2 for it (``_is_curated_authoritative_intercept``) and lets the
+    # normal classification path draft it, as for any other system.
+    return not _art63_question_describes_another_system(q)
 
 
 # R356 - GPAI transparency-exception intercept (la_q13). "Under what conditions
@@ -9990,6 +10169,7 @@ def _claude_max_enhance_answer(
             user_message += f"REWRITTEN / SEARCH QUESTION: {sanitized_q}\n"
         user_message += "\n"
         reference_block = ""
+        evidence_block = ""
 
         # R69 — structured query profile (proposed architecture, Section
         # 3A). A one-line deterministic intent payload {actor, actor
@@ -10018,9 +10198,20 @@ def _claude_max_enhance_answer(
         # in the supplied references" clause has nothing to constrain.
         if context is not None:
             reference_block = _build_context_references_block(context, question=question)
+            # R460/R461 — the gated evidence minifier (REGENOLD_EVIDENCE_BUNDLE,
+            # default OFF, when it returns the block unchanged). It is handed the
+            # bare engine block, never the user message (the partner's question
+            # precedes the header there), and only the EMBEDDED copy is minified:
+            # _valid_coordinate_line keeps reading reference_block, because at
+            # level 2 a minified block would shrink the coordinate map.
+            from app.engines.evidence_bundle import (  # noqa: PLC0415
+                minify_evidence_block,
+            )
+
+            evidence_block = minify_evidence_block(reference_block)
             user_message += (
                 f"EU AI ACT REFERENCES:\n"
-                f"{reference_block}\n\n"
+                f"{evidence_block}\n\n"
             )
             # R398 — wire the coordinate-map prompt into the REAL Stage-2 path.
             # Before R398, _valid_coordinate_line was only called from
@@ -10444,7 +10635,7 @@ def _claude_max_enhance_answer(
         if prompt_compact_enabled():
             user_message = build_compact_answer_user(
                 sanitized_orig_q,
-                reference_block,
+                evidence_block,
                 system_description=(
                     sanitize_for_llm(system_description, context_type="system_description")
                     if system_description else ""
@@ -10491,7 +10682,7 @@ def _claude_max_enhance_answer(
         )
         if evidence_contract_enabled():
             user_message = build_evidence_answer_user(
-                sanitized_orig_q, reference_block,
+                sanitized_orig_q, evidence_block,
                 rewritten_question=sanitized_q if sanitized_q != sanitized_orig_q else "",
                 system_description=(sanitize_for_llm(system_description, context_type="system_description")
                                     if system_description else ""),

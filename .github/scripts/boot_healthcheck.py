@@ -110,8 +110,19 @@ def main() -> int:
                 proc.kill()
 
     print("\n--- server log " + ("(startup)" if ok else "(FULL — this is the failure)") + " ---")
-    print("\n".join(captured[-25:] if ok else captured))
+    # A log line can carry a byte the console's own encoding cannot represent
+    # (uvicorn writes the worker's raw stderr; a cp1252 Windows console raises
+    # UnicodeEncodeError). Unhandled, that aborted the script AFTER the verdict
+    # was printed, so the exit code said 1 on a green run and the CI-parity
+    # check could not be trusted locally. Print through `errors="replace"`.
+    print(_console_safe("\n".join(captured[-25:] if ok else captured)))
     return 0 if ok else 1
+
+
+def _console_safe(text: str) -> str:
+    """``text`` losslessly where the console can, lossily where it cannot."""
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    return text.encode(encoding, errors="replace").decode(encoding, errors="replace")
 
 
 if __name__ == "__main__":

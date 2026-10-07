@@ -40,6 +40,7 @@ os.environ.setdefault("REGENOLD_SKIP_DOTENV", "1")
 sys.path.insert(0, str(REPO))
 
 from app.data.provision_text import get_provision_text  # noqa: E402
+from app.llm.model_compatibility import rejects_sampling_parameters  # noqa: E402
 from evals.official.rubric import normalise_ref, ref_head  # noqa: E402
 
 try:
@@ -72,15 +73,27 @@ _token = (
     or (os.getenv("OPENROUTER_API_KEY") if "openrouter.ai" in URL else None)
     or os.getenv("OPENAI_API_KEY", "dummy")
 )
+
+
+def _cf_access_headers(url: str) -> dict[str, str]:
+    """Cloudflare Access service-token headers for ``url``, or ``{}``.
+
+    Scoped by the host pin the app's own wrapper provider uses (R365/R432): the
+    token is a Zero Trust SECRET, so it must not ride to a host merely because
+    ``OPENAI_API_BASE`` or ``R388_WRAPPER_URL`` names it. A renamed tunnel is
+    armed by pinning ``CF_ACCESS_HOSTNAME``.
+    """
+    from app.llm.openai_wrapper_provider import _resolve_cf_access_headers  # noqa: PLC0415
+
+    return _resolve_cf_access_headers(url)
+
+
 _HDRS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     "Content-Type": "application/json",
     "Authorization": f"Bearer {_token}",
+    **_cf_access_headers(URL),
 }
-if os.getenv("CF_ACCESS_CLIENT_ID"):
-    if "127.0.0.1" not in URL and "localhost" not in URL and "openrouter.ai" not in URL:
-        _HDRS["CF-Access-Client-Id"] = os.environ["CF_ACCESS_CLIENT_ID"]
-        _HDRS["CF-Access-Client-Secret"] = os.environ.get("CF_ACCESS_CLIENT_SECRET", "")
 
 
 def configure_judge(
@@ -103,9 +116,23 @@ def configure_judge(
     if model:
         MODEL = model.strip()
         os.environ["R388_JUDGE_MODEL"] = MODEL
+    if provider and provider.strip().lower() == "wrapper":
+        URL = os.getenv("R388_WRAPPER_URL") or _default_url
+        token = os.getenv("R388_JUDGE_API_KEY") or os.getenv("OPENAI_API_KEY", "dummy")
+        _HDRS = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+            **_cf_access_headers(URL),
+        }
     if grouped is not None:
         os.environ["R388_JUDGE_GROUPED"] = "1" if grouped else "0"
-    if os.getenv("R388_JUDGE_PROVIDER", "").strip().lower() == "openrouter":
+    provider_name = os.getenv("R388_JUDGE_PROVIDER", "wrapper").strip().lower() or "wrapper"
+    if rejects_sampling_parameters(MODEL) and provider_name != "wrapper":
+        raise ValueError(
+            "claude-sonnet-5-5 is supported only with the wrapper/tunnel judge provider"
+        )
+    if provider_name == "openrouter":
         # Point the HTTP path at the hosted endpoint and authenticate with its
         # own key, so ``--judge-provider openrouter`` is sufficient on its own
         # and no Cloudflare service-token header is attached. ``_call`` reads
@@ -146,7 +173,11 @@ def judge_identity() -> str:
     """
     provider = os.getenv("R388_JUDGE_PROVIDER", "wrapper").strip().lower() or "wrapper"
     mode = ":grouped" if _grouped_enabled() else ""
-    return f"{provider}:{MODEL}:t={TEMPERATURE}{mode}:r={REPEATS}"
+    sampling = (
+        "t=provider-default" if rejects_sampling_parameters(MODEL)
+        else f"t={TEMPERATURE}"
+    )
+    return f"{provider}:{MODEL}:{sampling}{mode}:r={REPEATS}"
 
 
 def _parse_bool(val: Any) -> bool:
@@ -164,8 +195,13 @@ _remark_state = threading.local()
 
 
 def _call(prompt: str, *, max_tokens: int = 2000, timeout: float = 300.0, retries: int = 3) -> str:
-    provider_name = os.getenv("R388_JUDGE_PROVIDER", "").strip().lower()
-    if provider_name == "bedrock" or URL.strip().lower() == "bedrock":
+    provider_name = os.getenv("R388_JUDGE_PROVIDER", "wrapper").strip().lower() or "wrapper"
+    uses_bedrock = provider_name == "bedrock" or URL.strip().lower() == "bedrock"
+    if rejects_sampling_parameters(MODEL) and (provider_name != "wrapper" or uses_bedrock):
+        raise RuntimeError(
+            "claude-sonnet-5-5 is supported only with the wrapper/tunnel judge provider"
+        )
+    if uses_bedrock:
         from app.llm.bedrock_client import BedrockRequest, get_bedrock_provider
         provider = get_bedrock_provider()
         # Use the requested model exactly.  The former Claude-name special case
@@ -194,14 +230,14 @@ def _call(prompt: str, *, max_tokens: int = 2000, timeout: float = 300.0, retrie
                 last = exc
         raise RuntimeError(f"judge call via bedrock failed after {retries} attempts: {last}")
 
-    body = json.dumps(
-        {
-            "model": MODEL,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": max_tokens,
-            "temperature": TEMPERATURE,
-        }
-    ).encode()
+    request_body = {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+    }
+    if not rejects_sampling_parameters(MODEL):
+        request_body["temperature"] = TEMPERATURE
+    body = json.dumps(request_body).encode()
     last: Exception | None = None
     for _ in range(retries):
         try:

@@ -1340,14 +1340,23 @@ def _cap_readable_units(text: str, max_units: int = 4) -> str:
 # for traceability", and on production the rg_046 answer shipped "(obligation
 # role-obligation-provider-high_risk_annex_iii-Art." mid-sentence. Only the ID shapes
 # match, so ordinary prose such as "(obligation to inform)" is untouched.
-_EVIDENCE_LABEL_CLOSED_RE = re.compile(
-    r"\s*(?:\((?:obligation\s+)?(?:kb|role-obligation)-[^()]{0,160}?\)"
-    r"|\[(?:obligation\s+)?(?:kb|role-obligation)-[^\[\]]{0,160}?\])",
-    re.IGNORECASE,
+#
+# The id is matched by the GRAMMAR the engine mints (``kb-<dim>-<entity>``,
+# ``kb-art-<entity>-<pid>``, ``role-obligation-<role>-<risk>-<ref>``), not by
+# "anything up to the bracket". Measured on the 29 label windows recorded under
+# docs/measurements: the pid's own parentheses stopped the bracket form, so 9 shipped
+# "...must do 26-26(5))." from "(obligation kb-art-Article 26-26(5))"; and an id
+# listed after a citation or another id ("(Article 14.1, kb-art-Article 14-14(1))")
+# matched neither form, so 3 shipped the id itself.
+_EVIDENCE_ID = (
+    r"(?<![\w-])(?:obligation\s+)?(?:kb|role-obligation)-(?:[a-z0-9_]+-)+?"
+    r"(?:art(?:icle)?(?![a-z])\.?(?:\s*-?\s*\d+[a-z]?(?:[.-]\d+[a-z]?|\([a-z0-9]{1,4}\))*)?"
+    r"|annex(?![a-z_])(?:\s+[ivxl]+\b(?:\.[a-z0-9]+|\([a-z0-9]{1,4}\))*)?)"
 )
+_EVIDENCE_IDS = rf"{_EVIDENCE_ID}(?:\s*[,;]\s*{_EVIDENCE_ID})*"
+_EVIDENCE_LABEL_CLOSED_RE = re.compile(rf"\s*[(\[]\s*{_EVIDENCE_IDS}\s*[)\]]", re.IGNORECASE)
 _EVIDENCE_LABEL_OPEN_RE = re.compile(
-    r"\s*[(\[](?:obligation\s+)?(?:kb|role-obligation)-[^\s()\[\]]*",
-    re.IGNORECASE,
+    rf"\s*(?P<lead>[(\[]|[,;])?\s*{_EVIDENCE_IDS}", re.IGNORECASE
 )
 
 
@@ -1360,11 +1369,20 @@ def _strip_evidence_labels(text: str) -> str:
     def _open(m: re.Match) -> str:
         before = text[: m.start()].rstrip()
         after = text[m.end():]
-        if before and before[-1].isalnum() and re.match(r"\s+[A-Z]", after):
+        new_sentence = re.match(r"\s+[A-Z]", after)
+        if m.group("lead") in (",", ";"):
+            # Listed after a citation inside a bracket: keep the citation, and close
+            # the bracket only when the cut left it open.
+            if re.match(r"\s*[)\]]", after) or before.rfind("(") <= before.rfind(")"):
+                return ""
+            return ")." if new_sentence else ")"
+        if before and before[-1].isalnum() and new_sentence:
             return "."
         return ""
 
     text = _EVIDENCE_LABEL_OPEN_RE.sub(_open, text)
+    # "([kb-...])" leaves the outer bracket behind.
+    text = re.sub(r"\s*(?:\(\s*\)|\[\s*\])", "", text)
     return re.sub(r"[ \t]{2,}", " ", text)
 
 

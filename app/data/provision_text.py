@@ -657,6 +657,10 @@ def _choose_units(
       something — an oversized top with no sibling that fits whole in the
       remainder falls back to the shipped emission, so rows with nothing to
       trade cannot lose.
+
+    ``ranked[0]`` is admitted unconditionally (the top-unit exception), so a
+    caller may only pass the top-scoring unit first; a caller spending a
+    remainder on siblings must pre-filter them to ones that fit.
     """
     first = ranked[0]
     if alloc == "top1":
@@ -767,16 +771,23 @@ def select_relevant_paragraphs(
     top_num, top_txt, _top_score = ranked[0]
     policy = alloc or emit_alloc()
     if policy == "split" and len(top_txt) > max_chars:
-        # Reserve room for whole siblings, but only when one actually fits:
-        # otherwise this row has nothing to trade and stays byte-identical.
+        # R461 — drill the top under its capped share, then spend only what is
+        # ACTUALLY left on siblings that fit whole. The drilled top always keeps
+        # its first sub-point, so it can overshoot its cap, and ``_choose_units``
+        # admits its first unit unconditionally — the old pre-drill ``reserve``
+        # let an oversized sibling through (Article 5 @500 emitted 2,386 chars).
+        # Nothing to buy, or a trade over budget, keeps the shipped emission.
         top_cap = max(1, int(max_chars * emit_split_top()))
-        reserve = max_chars - top_cap
-        if any(len(txt) + 4 <= reserve for _n, txt, _s in ranked[1:]):
-            drilled = _drill_subpoints(top_num, top_txt, q_tok, top_cap)
-            if drilled is not None:
-                tail_units = _choose_units(ranked[1:], reserve, "density")
+        drilled = _drill_subpoints(top_num, top_txt, q_tok, top_cap)
+        if drilled is not None:
+            room = max_chars - len(drilled) - 1  # the joining space
+            fits = [unit for unit in ranked[1:] if len(unit[1]) + 4 <= room]
+            if fits:
+                tail_units = _choose_units(fits, room, "density")
                 tail = " ".join(f"{num}. {tail_units[num]}" for num in sorted(tail_units))
-                return f"{drilled} {tail}".strip()
+                traded = f"{drilled} {tail}".strip()
+                if len(traded) <= max_chars:
+                    return traded
 
     if len(top_txt) > max_chars:
         drilled = _drill_subpoints(top_num, top_txt, q_tok, max_chars)

@@ -1735,6 +1735,12 @@ def _engine_cache_key(
             # passes, the wire references too (AGENTS.md invariant #5).
             "REGENOLD_FULL_PROVISION_EVIDENCE",
             "REGENOLD_FULL_PROVISION_MAX_CHARS",
+            # R460/R461 - the evidence-bundle minifier rewrites the Stage-2
+            # EVIDENCE block (level 1 drops verbatim same-kind twins, level 2
+            # also the NOT ENGAGED member lines), so both knobs change the
+            # answer and, via the prose->refs passes, the wire references.
+            "REGENOLD_EVIDENCE_BUNDLE",
+            "REGENOLD_EVIDENCE_BUNDLE_LEVEL",
             # R393 - the closed-set skeleton changes the EVIDENCE block (it
             # prepends the exhaustive member list of a cited head), so it
             # changes the answer and, via the prose->refs passes, the wire

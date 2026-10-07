@@ -22,9 +22,12 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Iterator
 
 import httpx
 from pydantic import BaseModel, Field
+
+from app.llm.model_compatibility import rejects_sampling_parameters
 
 logger = logging.getLogger(__name__)
 
@@ -273,6 +276,35 @@ _MAX_RETRY_AFTER_SECONDS = float(os.getenv("OPENAI_MAX_RETRY_AFTER", "8"))
 # caller's full budget.
 _CONNECT_TIMEOUT_SECONDS = 5.0
 
+# R461 — the provider-wide per-call default, from ``OPENAI_TIMEOUT_SECONDS``.
+_DEFAULT_TIMEOUT_SECONDS = 60.0
+_MAX_DEFAULT_TIMEOUT_SECONDS = 600.0
+
+
+def _env_default_timeout() -> float:
+    """``OPENAI_TIMEOUT_SECONDS`` as the budget of a call that passes none.
+
+    It was a bare ``float()`` handed to httpx: a non-numeric value crashed the
+    singleton's construction (every wrapper dial raised), and ``0`` / a negative /
+    ``nan`` / ``inf`` / ``1e9`` made every dial fail with a ``network_error`` or an
+    OverflowError. Anything that is not a finite number > 0 falls back to 60 s and
+    a huge one is capped at 600 s.
+    """
+    raw = os.getenv("OPENAI_TIMEOUT_SECONDS", "").strip()
+    if not raw:
+        return _DEFAULT_TIMEOUT_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        value = float("nan")
+    if not 0 < value < float("inf"):
+        logger.warning(
+            "openai_wrapper.timeout_env_unusable OPENAI_TIMEOUT_SECONDS=%r — using %.0f s",
+            raw[:40], _DEFAULT_TIMEOUT_SECONDS,
+        )
+        return _DEFAULT_TIMEOUT_SECONDS
+    return min(value, _MAX_DEFAULT_TIMEOUT_SECONDS)
+
 
 # R277 — Cloudflare Access service-token support.
 #
@@ -437,6 +469,46 @@ def _split_connect_timeout(budget_seconds: float) -> _BudgetTimeout:
     )
 
 
+# R461 — a wall-clock bound on the response BODY. An httpx timeout is per
+# OPERATION (connect / each socket read / write / pool), never a total: a
+# server that answers its headers and then drips the body one chunk inside each
+# read window kept a "2 s" call alive for 8 s, and a Stage-2 call on its 150 s
+# budget for as long as the upstream cared to drip. ``complete()`` hands the
+# call's deadline to the request as an extension; this hook, installed on the
+# pooled client, wraps the body stream so that a chunk arriving after it raises.
+_DEADLINE_EXTENSION = "regenold_deadline"
+
+
+class _DeadlineStream(httpx.SyncByteStream):
+    """A response body that raises ``httpx.ReadTimeout`` once ``deadline`` passes.
+
+    A chunk that arrives AFTER the deadline is not delivered, so a body that
+    finishes inside it is byte-identical to the unwrapped one. The check runs on
+    chunk arrival: a body that stalls outright is still bounded only by httpx's
+    own per-read timeout (see ``complete()``).
+    """
+
+    def __init__(self, inner: httpx.SyncByteStream, deadline: float) -> None:
+        self._inner = inner
+        self._deadline = deadline
+
+    def __iter__(self) -> Iterator[bytes]:
+        for chunk in self._inner:
+            if time.perf_counter() > self._deadline:
+                raise httpx.ReadTimeout("wall-clock deadline exceeded")
+            yield chunk
+
+    def close(self) -> None:
+        self._inner.close()
+
+
+def _enforce_wall_clock_deadline(response: httpx.Response) -> None:
+    """``httpx.Client`` response hook: bound the body by the request's deadline."""
+    deadline = response.request.extensions.get(_DEADLINE_EXTENSION)
+    if deadline is not None:
+        response.stream = _DeadlineStream(response.stream, deadline)
+
+
 def _parse_retry_after(header_value: str | None) -> float:
     """Parse the Retry-After header per RFC 7231 §7.1.3.
 
@@ -514,7 +586,7 @@ class _OpenAIWrapperProvider:
         # ``OpenAIWrapperRequest.timeout_seconds``, not by mutating env.
         self._timeout = (
             timeout if timeout is not None
-            else float(os.getenv("OPENAI_TIMEOUT_SECONDS", "60"))
+            else _env_default_timeout()
         )
         # Pooled long-lived client = one TLS handshake + persistent
         # connection pool. Per-request `httpx.post` opens a fresh TLS
@@ -545,6 +617,10 @@ class _OpenAIWrapperProvider:
                 # never a 500; that one request just pays a fallback instead.
                 keepalive_expiry=90.0,
             ),
+            # R461 — total wall-clock bound on the response body (see
+            # ``_DeadlineStream``). The default transport is kept, so proxies
+            # and the limits above behave exactly as before.
+            event_hooks={"response": [_enforce_wall_clock_deadline]},
         )
         import atexit
         atexit.register(self._close)
@@ -584,6 +660,14 @@ class _OpenAIWrapperProvider:
             "temperature": req.temperature,
             "stream": False,
         }
+        # Claude Sonnet 5.5 documents non-default sampling parameters as a 400,
+        # temperature=0 included: drop the field and take the provider default.
+        # ``temperature`` keeps its original slot in the dict above, so every
+        # other model's payload is byte-for-byte what it was. (The Claude Max
+        # wrapper never forwards temperature; there this only drops its
+        # system-prompt sampling hint. See model_compatibility.)
+        if rejects_sampling_parameters(model_name):
+            del body["temperature"]
         body["messages"] = [m for m in body["messages"] if m is not None]
 
         # R264 — reasoning_effort for Groq open reasoning models. Explicit
@@ -610,6 +694,14 @@ class _OpenAIWrapperProvider:
         # is a budget for the WHOLE call (including any 429 backoff),
         # not just one HTTP attempt. Track a wall-clock deadline so a
         # Retry-After sleep can't blow past the caller's budget.
+        # R461 — the same deadline also bounds the response BODY (the client's
+        # response hook, ``_DeadlineStream``): a chunk that arrives after it
+        # raises ReadTimeout, which the ``except httpx.HTTPError`` below turns
+        # into an ordinary ``network_error``. The exact bound: connect, write
+        # and the wait for the first byte are httpx per-operation timeouts, so
+        # a silent upstream is cut at about the budget; a body that STALLS
+        # after its headers is cut by the per-read timeout, so there the worst
+        # case is the deadline plus one read window, not exactly 1x.
         budget_seconds = (
             float(req.timeout_seconds) if req.timeout_seconds is not None
             else self._timeout
@@ -635,6 +727,7 @@ class _OpenAIWrapperProvider:
                 headers=merged_headers,
                 json=body,
                 timeout=request_timeout,
+                extensions={_DEADLINE_EXTENSION: deadline},
             )
         except httpx.HTTPError as exc:
             return OpenAIWrapperResponse(
@@ -687,6 +780,7 @@ class _OpenAIWrapperProvider:
                             headers=merged_headers,
                             json=body,
                             timeout=_split_connect_timeout(retry_budget),
+                            extensions={_DEADLINE_EXTENSION: deadline},
                         )
                     except httpx.HTTPError as exc:
                         return OpenAIWrapperResponse(
