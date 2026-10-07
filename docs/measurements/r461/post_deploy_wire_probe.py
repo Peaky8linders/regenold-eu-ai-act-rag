@@ -12,7 +12,15 @@ and writes nothing into the repository.
 It gates exactly what a deploy verdict needs, and nothing it cannot support:
 
 * ``deploy`` — the served commit is the expected one;
-* ``health`` — ``/healthz`` ok and ``/healthz/llm`` ``llm_ok``;
+* ``health`` — ``/healthz`` ok and ``/healthz/llm`` ``llm_ok``, judged on a
+  reading taken **after** this probe's own POSTs. On a freshly booted worker
+  ``llm_ok`` reads ``True`` whenever Bedrock credentials are merely PRESENT and
+  the leg has not been dialled yet — the R360.9/R361 false positive
+  (``_degraded_to_bedrock`` in ``app/main.py``: *"Zero attempts is 'unknown',
+  not 'broken'"*, measured live on ``1cab8f0`` reporting ``llm_ok:true`` beside
+  ``fallback_ok:0``). Reading it BEFORE generating traffic therefore reports a
+  down deploy as healthy, so a reading with no attempts on either leg is
+  reported INCONCLUSIVE instead of PASS;
 * ``transport`` — every question answered 200, non-empty, not a refusal;
 * ``lint`` — every emitted reference resolves: the HEAD in the canonical table
   (AGENTS.md invariant #2 — ``ARTICLE_EXISTENCE`` holds bare heads, ``Art. N`` /
@@ -85,19 +93,12 @@ def main() -> int:
     a = ap.parse_args()
 
     health = _get("/healthz")
-    llm = _get("/healthz/llm")
     served = str(health.get("commit") or "")
     gates: list[tuple[str, bool, str]] = []
     gates.append((
         "deploy",
         served.startswith(a.expect_commit[:12]),
         f"served {served or '?'} (expected {a.expect_commit[:12]})",
-    ))
-    gates.append((
-        "health",
-        bool(health.get("status") == "ok") and bool(llm.get("llm_ok")),
-        f"/healthz {health.get('status')} · /healthz/llm llm_ok={llm.get('llm_ok')} "
-        f"· provider {llm.get('provider')} · {str(llm.get('detail'))[:80]}",
     ))
 
     from app.data.article_existence import ARTICLE_EXISTENCE
@@ -129,6 +130,32 @@ def main() -> int:
         print(f"  {row_id}: {out['status']} {round(out['ms'])}ms chars={len(answer)} refs={refs}",
               flush=True)
 
+    # Judge the LLM path on a reading taken AFTER the traffic above: on a fresh
+    # worker the pre-traffic reading is green by construction (see the module
+    # docstring). Both legs at zero attempts is "unknown", never "healthy".
+    llm = _get("/healthz/llm")
+    stats = (llm.get("stage2_transport") or {}).get("stats") or {}
+    dialled = int(stats.get("primary_attempts", 0) or 0) + int(
+        stats.get("fallback_attempts", 0) or 0
+    )
+    if dialled == 0:
+        gates.append((
+            "health",
+            False,
+            f"INCONCLUSIVE — /healthz {health.get('status')} but neither Stage-2 leg recorded an "
+            f"attempt after {len(rows)} rows, so llm_ok={llm.get('llm_ok')} proves nothing "
+            f"(a freshly booted worker reads green while down, R361)",
+        ))
+    else:
+        gates.append((
+            "health",
+            bool(health.get("status") == "ok") and bool(llm.get("llm_ok")),
+            f"/healthz {health.get('status')} — llm_ok={llm.get('llm_ok')} on the post-traffic "
+            f"read · primary {stats.get('primary_ok')}/{stats.get('primary_attempts')}, "
+            f"fallback {stats.get('fallback_ok')}/{stats.get('fallback_attempts')} "
+            f"(pid {llm.get('pid')}) · {str(llm.get('detail'))[:60]}",
+        ))
+
     transport_ok = all(
         r["status"] == 200 and not r["empty"] and not r["refusal"] and not r["error"] for r in rows
     )
@@ -149,7 +176,7 @@ def main() -> int:
     print(f"\n  references: mean {statistics.mean([len(r['refs']) for r in rows]):.2f}/row"
           f"  median chars {statistics.median([r['chars'] for r in rows]):.0f}"
           f"  median latency {statistics.median([r['ms'] for r in rows]):.0f}ms")
-    print(f"  leg: {llm.get('provider')} · {llm.get('detail')}")
+    print(f"  leg (post-traffic): {llm.get('provider')} · {llm.get('detail')}")
     print()
     ok = True
     for name, passed, detail in gates:
