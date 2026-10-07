@@ -197,6 +197,34 @@ def lever_ran_reason(reason: str) -> bool:
     return reason not in CLOSED_KINDS
 
 
+def leg_label(prov: Any) -> str:
+    """The leg name coerced the way a GATE compares it: stripped, casefolded.
+
+    ``RowProvenance.leg`` is the verbatim spelling, which is what a report
+    prints; a refusal or exclusion decision needs the folded form, because a
+    checkpoint's capitalisation must not decide it. ``""`` when the checkpoint
+    names no leg (a falsy non-string included), so a caller can test the
+    absence with a plain ``not``.
+
+    Use this rather than reading :data:`FIELD_LEG`: the one-home contract in
+    ``tests/test_r461_5_provenance_unification.py`` scans for the raw read, and
+    only this module is allowed to do it.
+    """
+    if not isinstance(prov, dict):
+        return ""
+    return str(prov.get(FIELD_LEG) or "").strip().casefold()
+
+
+def polish_flag(prov: Any) -> bool | None:
+    """The legacy ``stage2_polish`` as a strict tri-state, safe on any shape.
+
+    The counterpart of :func:`leg_label` for the second field: :func:`classify`
+    already exposes it as ``RowProvenance.polished``, and this is the same
+    reading for a caller that needs the flag without a leg decision.
+    """
+    return _polish(prov) if isinstance(prov, dict) else None
+
+
 def served_leg(prov: Any) -> str:
     """The leg label the resume census counts this row under.
 

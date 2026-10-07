@@ -589,19 +589,52 @@ def concise_contract_enabled() -> bool:
 #: tight for them. Short direct asks keep the 130-word ceiling.
 _CONCISE_SCENARIO_MAX_WORDS = 180
 #: A described deployment: someone uses / deploys / builds / monitors / sorts
-#: with an AI system. "use case" is a statutory term, not a deployment.
+#: with an AI system. R461 — three statutory NOUN PHRASES read as a deployment
+#: and are carved out, because a direct ask about them is not a fact pattern
+#: and does not need the 180-word ceiling:
+#:
+#: * a verb form directly followed by "of" is a nominalisation, not an action
+#:   ("the use of an AI system", "the high-risk uses of AI", "monitoring of AI
+#:   systems"); "use case(s)" is the statutory term the original comment
+#:   promised to exclude;
+#: * monitor / analyse / sort / screen immediately followed by a noun head is a
+#:   compound noun ("the post-market monitoring system", "a screening tool"),
+#:   so those four verbs need a word between them and ``system|tool|...``. A bare
+#:   ``AI`` after them is still an object ("screening AI").
+#:
+#: Generic-subject verb forms ("a deployer that uses an AI system must ...") are
+#: NOT separable from a described deployment by pattern and stay a documented
+#: limit; telling them apart needs an actor-subject rule.
+_SCENARIO_OBJECT = r"(?:AI|system|systems|tool|software|model)\b"
 _SCENARIO_RE = re.compile(
-    r"\b(?:use|uses|using|deploy(?:s|ed|ing)?|build(?:s|ing)?|"
-    r"develop(?:s|ed|ing)?|monitor(?:s|ed|ing)?|analy[sz](?:e|es|ed|ing)|"
-    r"sort(?:s|ed|ing)?|screen(?:s|ed|ing)?)\s+(?:[\w-]+\s+){0,3}?"
-    r"(?:AI|system|systems|tool|software|model)\b",
+    r"\b(?:"
+    r"(?:use|uses|using|deploy(?:s|ed|ing)?|build(?:s|ing)?|develop(?:s|ed|ing)?)"
+    r"\s+(?!(?:of|cases?)\b)(?:[\w-]+\s+){0,3}?" + _SCENARIO_OBJECT +
+    r"|"
+    r"(?:monitor(?:s|ed|ing)?|analy[sz](?:e|es|ed|ing)|sort(?:s|ed|ing)?|"
+    r"screen(?:s|ed|ing)?)"
+    r"\s+(?!of\b)(?:AI\b|(?:[\w-]+\s+){1,3}?" + _SCENARIO_OBJECT + r")"
+    r")",
     re.IGNORECASE,
 )
 
 
 def is_scenario_question(question: str) -> bool:
-    """A fact-pattern ask: a described AI deployment in a 15+ word question."""
-    q = question or ""
+    """A fact-pattern ask: a described AI deployment in a 15+ word LIVE ask.
+
+    Judged on :func:`_ask_text`, the live turn (and, after a "Let's try again:"
+    re-ask, its asked part), exactly as :func:`answer_need` reads the question.
+    Prior turns of a flattened "Conversation so far:" block do not describe THIS
+    ask: the hard-mode preamble alone hits the pattern six times, so judging the
+    whole string lifted every follow-up to the 180-word / 6-sentence scenario
+    ceiling. A single-turn string has no marker and is read unchanged.
+
+    Deliberately NOT the route's ``graphrag_expand.should_expand_for_question``:
+    that predicate gates multi-article REFERENCE expansion, is role-declaration
+    only and conservative. This one sizes an answer ceiling and is looser. Merging
+    them would move wire references.
+    """
+    q = _ask_text(question or "")
     return len(q.split()) >= 15 and bool(_SCENARIO_RE.search(q))
 
 
@@ -619,6 +652,16 @@ def concise_limits(need: AnswerNeed, question: str = "") -> tuple[int, int]:
         return _CONCISE_SCENARIO_MAX_WORDS, 6
     sentences = min(5, max(3, need.items + 2))
     return min(need.target_words, _CONCISE_MAX_WORDS), sentences
+
+
+#: The one rule of the LENGTH LIMIT block that mandates MORE provisions than the
+#: R460 citation budget allows (four against two). It is a constant shared with
+#: :func:`calibration_block`, which names it as its single exception, so the two
+#: blocks cannot drift into asking for 4 provisions and capping at 2 (R461).
+_BOTH_ROUTES_RULE = (
+    "When the question asks which systems or sectors are high-risk, give both "
+    "routes: Article 6(1) with Annex I and Article 6(2) with Annex III."
+)
 
 
 def concise_block(
@@ -657,9 +700,7 @@ def concise_block(
         "substitute examples or a summary for the complete list.",
         "* Keep every route, branch, condition or exception that decides the "
         "answer, including a provision the facts make relevant and then rule "
-        "out, in one short clause each. When the question asks which systems "
-        "or sectors are high-risk, give both routes: Article 6(1) with Annex I "
-        "and Article 6(2) with Annex III.",
+        "out, in one short clause each. " + _BOTH_ROUTES_RULE,
         "* Leave out what does not decide the answer: background, purpose, "
         "procedures, dates, penalties, examples, practical advice, a re-listing "
         "of a whole list the question did not ask to list, and any closing "

@@ -206,27 +206,44 @@ def reference_conciseness(
 # -- axis 3: answer conciseness ----------------------------------------------
 
 
+# A real sentence end: a terminator, any closing quote or bracket, then whitespace
+# or the end of the text. The whitespace requirement alone keeps the cut out of
+# "Article 13.3" and "Annex XII.1(f)"; the lookbehinds keep it out of "Art. 5".
+_SENTENCE_END = re.compile(
+    r"(?<!\bArt)(?<!\bArts)(?<!\bpara)(?<!\bparas)(?<!\bcf)(?<!\be\.g)(?<!\bi\.e)"
+    r"[.!?][\"')\]]*(?=\s|\Z)"
+)
+
+
 def truncate_to_chars(text: str, limit: int) -> str:
     """Cut ``text`` to at most ``limit`` characters AT A SENTENCE BOUNDARY.
 
     R460 - the length-control primitive. A correctness edge can be verbosity:
     the answer axes are judged from the answer text, and judges credit length.
     Re-judging an answer cut to its reference answer's own length separates the
-    two. The cut lands on the last sentence terminator that fits, because a
-    mid-sentence cut would measure fluency damage rather than verbosity; an
-    answer already at or under the limit is returned unchanged (the axis is
-    one-sided, so there is nothing to control for below it).
+    two. The cut lands on the last real sentence end that fits (a terminator
+    followed by whitespace or the end of the text, not a citation coordinate or
+    an abbreviation), because a mid-sentence cut would measure fluency damage
+    rather than verbosity. When no sentence end fits it falls back to a whole-word
+    prefix, never a mid-word cut. The result never exceeds ``limit``; an answer
+    already at or under it is returned unchanged (the axis is one-sided, so there
+    is nothing to control for below it).
     """
     text = text or ""
     if limit <= 0:
         return ""
     if len(text) <= limit:
         return text
+    # Search one character past the window so a terminator that ENDS the window is
+    # judged against the real next character, not against the end of the slice.
+    ends = [m.end() for m in _SENTENCE_END.finditer(text[: limit + 1]) if m.end() <= limit]
+    if ends:
+        return text[: ends[-1]].strip()
     window = text[:limit]
-    cut = max(window.rfind("."), window.rfind("!"), window.rfind("?"))
-    if cut <= 0:
+    if window[-1].isspace() or text[limit].isspace():
         return window.strip()
-    return window[: cut + 1].strip()
+    head = window.rsplit(None, 1)
+    return head[0].strip() if len(head) == 2 else window.strip()
 
 
 def answer_conciseness(answer: str, reference_answer: str) -> float | None:

@@ -111,9 +111,9 @@ python -m evals.harness.easyhard_ab --local --label r360 --timeout 180
 | dataset | path | rows | what it scores |
 | :--- | :--- | ---: | :--- |
 | A/B probe set (**merge gate**) | `evals/harness/probe_set.py` | **132** | pairwise win-rate per axis, sign-test p |
-| davidath scenarios | `evals/bench/data/scenarios.json` | 339 | deterministic answer/ref axes |
-| davidath QA | `evals/bench/data/qa_pairs.json` | 137 | deterministic answer/ref axes |
-| davidath total | — | **476** | the regression guard |
+| davidath scenarios | `evals/bench/data/scenarios.json` | 339 | **RETIRED — not an instrument.** See below |
+| davidath QA | `evals/bench/data/qa_pairs.json` | 137 | **RETIRED — not an instrument** |
+| davidath total | — | **476** | **RETIRED — not an instrument** |
 | regenold scenarios | `evals/regenold/scenarios.py` | **255** | legacy scenario suite |
 | antifragile ground truth | `evals/regenold/antifragile_groundtruth.py` | 20 | multi-turn coherence |
 | OOS / adversarial probes | `runner_v2 --probe-oos --oos-suite all` | 51 | scope gate |
@@ -121,12 +121,42 @@ python -m evals.harness.easyhard_ab --local --label r360 --timeout 180
 > `CLAUDE.md` calls the regenold suite "the 276 scenarios". It is **255** today.
 > Minor doc drift, recorded here rather than silently corrected.
 
-## 4. Deterministic suites — only if you mean to
+⚠ **DAVIDATH IS RETIRED AS AN INSTRUMENT (operator directive, R461 close).**
+`CLAUDE.md` § *The merge gate is ALWAYS the live pairwise A/B* already says
+*"They are retired. The ONLY evaluation instrument is the live pairwise A/B
+judge"* — this table was the last artefact still presenting the 476 rows as a
+verification step, so it no longer does.
 
-`CLAUDE.md` R330 turns these **off as gates**. R360 changes live LLM routing
-only, and that was verified: 60 scenarios through `provider=cli` hash
-byte-identical to `main` (sha256 `46bfad25c96c72b5…`). So there is nothing here
-for davidath to see, and running it would cost ~9 min to confirm a null.
+Why it cannot be one, kept here so the decision is not re-litigated:
+
+* it runs `provider=cli`, so it cannot see Stage-2, synthesis or any live win —
+  `evals/bench/runner.py` stamps its own sidecar `role: "regression_guard"` for
+  exactly that reason;
+* it is **BM25-saturated**, so it is structurally blind to a hop's cost: R110.1
+  read a change "davidath byte-identical" and shipped it ON, and the same change
+  was later found to cost 19 extra non-gold refs (R318);
+* its token-overlap axes diverge from the live judge (R99.2).
+
+**Measured, so the retirement is not an assumption.** At the R461 close the same
+474 rows were replayed deterministically through `main` and through the branch
+(`git archive` of each, `provider=cli`, Stage-2 pinned off): **every aggregate
+axis is identical to four decimals** (`qa` RefL 0.8467 / RefS 0.5488, `scenarios`
+RefC 0.4253, Ans Strict 0.3692), and the only per-row field that moved is
+float-level noise in `scores`. The instrument is flat by construction, which is
+precisely why it cannot price this class of change.
+
+The dataset and its tests stay in the tree (the pin in
+`tests/test_r394_2_tracked_module_imports.py`'s sibling checks and the
+`dataset.ensure_dataset()` SHA pin are untouched), so nothing else churns and a
+recorded draw can still be replayed. Running it is allowed; **quoting it as
+evidence for or against a lever is not.**
+
+## 4. Deterministic suites — retired as instruments
+
+`CLAUDE.md` R330 turns these **off as gates**, and R461 retires them as
+instruments outright (§3). Use one only to answer "did the deterministic wire
+move at all?", never "is this lever a win". A flat reading is the expected
+result and is **not** evidence the lever is inert.
 
 ```bash
 # Only if a later change is EXPECTED to move deterministic retrieval.

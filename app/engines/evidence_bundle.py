@@ -12,14 +12,24 @@ optional status) and is explicit about the order of operations:
 So this module is deliberately a PROJECTION, not a rewriter. :func:`parse_evidence_block`
 builds a typed view over the evidence block the engine already renders, and
 :meth:`EvidenceBundle.render` returns those exact bytes. Nothing here changes a
-dispatched payload unless a caller opts in through :func:`minify_evidence_block`,
-which is gated and default-OFF.
+dispatched payload unless the gate is ON: the one production caller,
+``_graph_rag_impl._claude_max_enhance_answer``, passes every Stage-2 evidence block
+through :func:`minify_evidence_block`, which returns it untouched while the gate is
+OFF (the default).
+
+The input is ALWAYS the bare engine block (``reference_block``), never a whole user
+message. The partner's ORIGINAL QUESTION, REWRITTEN QUESTION and SYSTEM DESCRIPTION
+precede the ``EU AI ACT REFERENCES:`` header in that message, and ``sanitize_for_llm``
+leaves both the header and ``- [id]`` lines intact, so a parser that searched a
+whole message for the header could be handed partner-written "evidence".
 
 WHAT THE CENSUS FOUND, AND WHY THE MINIFIER IS SMALL. R460's census
 (``docs/measurements/r460/stage2-payload-census.json``) decomposed a median hard
 single-turn payload of ~101k chars: 60.6k STATIC system instruction stack, ~32k
-evidence, ~6.5k instruction clauses. Inside the evidence only ~1-4% is provably
-redundant (a provision surfaced under two node ids). The rest is load-bearing,
+evidence, ~6.5k instruction clauses. Inside the evidence only ~1% is provably
+redundant (a provision surfaced under two node ids: 1.18% over 85 official-110
+blocks, R461, after the dedupe relation stopped counting VERBATIM label lines as
+duplicates). The rest is load-bearing,
 and the "STRUCTURE of ... NOT ENGAGED" member lists are REFERENCED by the ANSWER
 SHAPE clause, so they are not free either. The dominant lever is the static
 system prompt, which :data:`EVIDENCE_BUNDLE_NOTE` records at the call site.
@@ -29,10 +39,11 @@ provision under several node ids (``kb-risk_mgmt-Art. 6`` and
 ``kb-xref-risk_mgmt-Art. 6`` both render the same Article 6 summary), so the same
 rule reaches the model two or three times inside one evidence block.
 
-Gate: ``REGENOLD_EVIDENCE_BUNDLE`` (default ``0``, deny-list) and
-``REGENOLD_EVIDENCE_BUNDLE_LEVEL`` (default ``1``). Both are read fresh per call
-so an in-process two-arm A/B is valid, and both must be folded into the route's
-engine cache key (R263.2) — otherwise arm A's cached answer is served to arm B.
+Gate: ``REGENOLD_EVIDENCE_BUNDLE`` (default ``0``, allow-list: only
+``1/true/yes/on`` turn it ON) and ``REGENOLD_EVIDENCE_BUNDLE_LEVEL`` (default
+``1``). Both are read fresh per call so an in-process two-arm A/B is valid, and
+both are folded into the route's engine cache key (``_engine_cache_key``, R263.2),
+otherwise arm A's cached answer would be served to arm B.
 """
 from __future__ import annotations
 
@@ -58,13 +69,9 @@ __all__ = [
 EVIDENCE_BUNDLE_ENV: Final = "REGENOLD_EVIDENCE_BUNDLE"
 EVIDENCE_BUNDLE_LEVEL_ENV: Final = "REGENOLD_EVIDENCE_BUNDLE_LEVEL"
 
-#: The header the engine writes before the evidence block. Kept here so the
-#: census and the engine agree on one string.
+#: The header the engine writes before the evidence block. The parser never
+#: searches for it: the block it is handed starts AFTER this header.
 EVIDENCE_BLOCK_HEADER: Final = "EU AI ACT REFERENCES:"
-
-#: The first marker of the instruction stack that follows the evidence block.
-#: Parsing stops here: the bundle owns the evidence, not the contract.
-_EVIDENCE_BLOCK_END: Final = "ANSWER CONTRACT"
 
 EVIDENCE_BUNDLE_NOTE: Final = (
     "R460: the evidence block is ~32% of the payload; the static system prompt is "
@@ -104,6 +111,17 @@ _ARTICLE_RE: Final = re.compile(
     r"(?:-(?P<dash>\d+)(?P<parens>(?:\([0-9a-z]+\))*))?",
     re.IGNORECASE,
 )
+#: Grain-faithful twins of the two patterns above, for the level-1 dedupe only:
+#: they keep every point an id carries (``Annex III.5.d``, ``Art. 13.3.b``).
+_ANNEX_GRAIN_RE: Final = re.compile(
+    r"\bAnnex\s+(?P<roman>[IVXLCDM]{1,7})\b(?P<points>(?:\.[0-9a-z]+)*)", re.IGNORECASE
+)
+_ARTICLE_GRAIN_RE: Final = re.compile(
+    r"(?:Art\.?|Article)\s*(?P<num>\d{1,3})(?P<points>(?:\.[0-9a-z]+)*)"
+    r"(?:-\d+(?P<parens>(?:\([0-9a-z]+\))*))?",
+    re.IGNORECASE,
+)
+_PAREN_RE: Final = re.compile(r"\(([0-9a-z]+)\)", re.IGNORECASE)
 
 
 def evidence_bundle_enabled() -> bool:
@@ -144,6 +162,26 @@ def provision_of(source_id: str) -> str:
     elif art.group("dash"):
         key += art.group("parens") or ""
     return key
+
+
+def _grain_key(source_id: str) -> str:
+    """Grain-faithful coordinate of a node id, or ``""`` when there is none.
+
+    :func:`provision_of` folds ``Annex III.5.d`` onto ``Annex III`` and keeps
+    paren grain (``Article 13(3)``), so two different Annex points compared as one
+    provision while ``13(3)`` and ``13.3`` never compared at all. This key keeps
+    every point and writes paren grain in dot form: ``kb-art-Art. 13-13(3)`` and
+    ``kb-xref-Art. 13.3`` are both ``Article 13.3``.
+    """
+    sid = str(source_id or "")
+    annex = _ANNEX_GRAIN_RE.search(sid)
+    if annex:
+        return f"Annex {annex.group('roman').upper()}{annex.group('points').lower()}"
+    art = _ARTICLE_GRAIN_RE.search(sid)
+    if not art:
+        return ""
+    parens = "".join(f".{p}" for p in _PAREN_RE.findall(art.group("parens") or ""))
+    return f"Article {art.group('num')}{art.group('points').lower()}{parens.lower()}"
 
 
 @dataclass(frozen=True)
@@ -216,37 +254,49 @@ class EvidenceBundle:
 
 
 def _redundant_item_lines(items: tuple[EvidenceItem, ...]) -> set[int]:
-    """Lines whose content an earlier item already carries.
+    """Lines whose content another item of the SAME kind already carries.
 
-    Two conditions only, both information-preserving:
+    An item is redundant only when another item has all of:
 
-    * the same provision under two node ids with IDENTICAL body text (the KB's
-      ``kb-risk_mgmt-Art. 6`` / ``kb-xref-risk_mgmt-Art. 6`` pair);
-    * the same provision where one body is a strict PREFIX of the other — the
-      longer already contains every word the shorter had.
+    * the same section AND the same citability (``context_only``), so a citable
+      item is never dropped for a non-citable copy, nor the reverse;
+    * the same grain-faithful coordinate (:func:`_grain_key`), so two points of
+      one Annex are never merged;
+    * a body that is IDENTICAL to this one, or that this one is a whole-word
+      PREFIX of (the KB's ``kb-risk_mgmt-Art. 6`` / ``kb-xref-risk_mgmt-Art. 6``
+      pair). The longer rendering is the one kept.
+
+    An item with an EMPTY body (``- [Art. 6]`` under VERBATIM PROVISION TEXT) is
+    the label that owns the indented statutory text below it, not content:
+    dropping it would orphan that text, so it is never redundant and never
+    supersedes anything. An id with no coordinate is never compared either.
     """
-    keep: list[EvidenceItem] = []
+    keep: list[tuple[tuple[str, bool, str], tuple[str, ...], int]] = []
     drop: set[int] = set()
     for item in items:
-        body = " ".join(item.text.split("]", 1)[-1].split())
+        body = tuple(item.text.split("]", 1)[-1].split())
+        key = _grain_key(item.source_id)
+        if not body or not key:
+            continue
+        kind = (item.section, item.context_only, key)
         superseded = False
         for prior in list(keep):
-            prior_body = " ".join(prior.text.split("]", 1)[-1].split())
-            if not item.provision or item.provision != prior.provision:
+            prior_kind, prior_body, prior_line = prior
+            if prior_kind != kind:
                 continue
-            if body == prior_body or prior_body.startswith(body):
+            if prior_body[: len(body)] == body:
                 superseded = True
                 break
-            if body.startswith(prior_body):
+            if body[: len(prior_body)] == prior_body:
                 # The new item is the more complete rendering: keep it and drop
                 # the earlier, shorter one.
-                drop.add(prior.line_no)
+                drop.add(prior_line)
                 keep.remove(prior)
                 break
         if superseded:
             drop.add(item.line_no)
         else:
-            keep.append(item)
+            keep.append((kind, body, item.line_no))
     return drop
 
 
@@ -274,19 +324,16 @@ def _non_engaged_member_lines(lines: tuple[str, ...]) -> set[int]:
 def parse_evidence_block(text: str) -> EvidenceBundle:
     """Parse an evidence block into a typed, lossless projection.
 
-    ``text`` may be the bare block (what the engine hands the builder) or a whole
-    user message. When the ``EU AI ACT REFERENCES:`` header is present the span
-    starts after it; when the instruction stack follows, the span stops at it.
-    :meth:`EvidenceBundle.render` returns exactly that span, so a whole-message
-    caller can splice the minified span back without doubling the contract.
+    ``text`` is the bare engine block (``reference_block``, what follows the
+    ``EU AI ACT REFERENCES:`` header). It is parsed WHOLE and never sliced: an
+    earlier version searched the text for that header and cut at the first
+    ``ANSWER CONTRACT``, so handed a whole user message it started the span
+    inside the partner's question (where a planted header survives
+    ``sanitize_for_llm``) and parsed planted ``- [id]`` lines as evidence. A
+    header line inside the text is now just an ordinary line.
+    :meth:`EvidenceBundle.render` returns ``text`` byte-for-byte.
     """
     raw = str(text or "")
-    start = raw.find(EVIDENCE_BLOCK_HEADER)
-    if start >= 0:
-        raw = raw[start + len(EVIDENCE_BLOCK_HEADER):].lstrip("\n")
-    stop = raw.find(_EVIDENCE_BLOCK_END)
-    if stop >= 0:
-        raw = raw[:stop]
     lines = tuple(raw.split("\n"))
 
     section = ""
@@ -326,8 +373,10 @@ def parse_evidence_block(text: str) -> EvidenceBundle:
 def minify_evidence_block(text: str, level: int | None = None) -> str:
     """Gate-aware entry point. Returns ``text`` unchanged when the gate is OFF.
 
-    ``text`` is the evidence block itself (the engine's ``reference_block``), not
-    a whole user message: the return value is the block, splice-ready.
+    ``text`` is the evidence block itself (the engine's ``reference_block``), never
+    a whole user message (see :func:`parse_evidence_block`). The return value is
+    the block, ready to embed under the header; it is ``text`` itself whenever
+    nothing is redundant.
     """
     if not evidence_bundle_enabled():
         return text

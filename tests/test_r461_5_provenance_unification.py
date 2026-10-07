@@ -386,10 +386,40 @@ def _raw_reads(path: Path):
     return found
 
 
+def _tracked_evals_modules() -> set[str] | None:
+    """``evals/**/*.py`` as a CLONE of the repo would have it, or ``None``.
+
+    A gitignored module cannot ship, cannot run in CI and cannot move a
+    published number, so it must not turn this contract red. That is the same
+    rule the sibling suites follow when the gitignored draws are not on disk.
+    ``None`` means git could not answer (an exported tree, e.g. the CI-parity
+    check in AGENTS.md § 1b): the caller then scans every file on disk, which is
+    the conservative direction. ``test_the_scan_covers_every_tracked_module``
+    asserts this skip can never hide a module that IS in git.
+    """
+    import subprocess
+
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(REPO), "ls-files", "-z", "--", "evals"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except Exception:  # noqa: BLE001 — no git is a valid environment
+        return None
+    if proc.returncode != 0:
+        return None
+    return {p for p in proc.stdout.split("\0") if p}
+
+
 def test_the_raw_fields_have_one_home():
+    tracked = _tracked_evals_modules()
     offenders = {}
     for path in sorted((REPO / "evals").rglob("*.py")):
         rel = path.relative_to(REPO).as_posix()
+        if tracked is not None and rel not in tracked:
+            continue
         if rel in RAW_READ_ALLOWLIST and RAW_READ_ALLOWLIST[rel] is None:
             continue
         allowed = RAW_READ_ALLOWLIST.get(rel)
@@ -401,6 +431,96 @@ def test_the_raw_fields_have_one_home():
         if bad:
             offenders[rel] = bad
     assert offenders == {}, offenders
+
+
+def test_the_scan_covers_every_tracked_module():
+    """The untracked-file skip above must not be able to hide a shippable module."""
+    tracked = _tracked_evals_modules()
+    if tracked is None:
+        pytest.skip("git is unavailable: the scan covers every file on disk")
+    on_disk = {
+        p.relative_to(REPO).as_posix() for p in (REPO / "evals").rglob("*.py")
+    }
+    missing = {rel for rel in tracked if rel.endswith(".py") and rel not in on_disk}
+    assert missing == set(), missing
+
+
+def test_the_refusal_gate_reads_through_the_leaf():
+    """R461.5 — ``score_arm``'s refuse/unverified partition, held to the raw read.
+
+    The AST scan above only proves the fields are not read off the row. This
+    proves the move changed no verdict: the pre-move expressions are re-derived
+    here and asserted equal over every shape a checkpoint can carry, including
+    the spellings that separate a folded label from ``RowProvenance.kind``
+    (``Fallback``, an unknown leg) and the legacy flag's non-bool values.
+    """
+    from evals.official import score_arm as sa
+
+    def old_served(prov):
+        return str(prov.get(rp.FIELD_LEG) or "").strip().casefold()
+
+    def old_reason(prov):
+        served, polish = old_served(prov), prov.get(rp.FIELD_POLISH)
+        skip = str(prov.get("stage2_skip_reason") or "").strip()
+        if prov.get("stage2_degraded_reason"):
+            return f"stage2_degraded_reason={prov['stage2_degraded_reason']}"
+        if served in sa._DEGRADED_STAGE2_LEGS:
+            return f"stage2_served_by={served}"
+        if polish is True:
+            if served != "primary":
+                return f"unverified_stage2_served_by={served or 'missing'}"
+            return f"contradictory_stage2_skip_reason={skip}" if skip else None
+        if polish is False and not served and skip in sa._INTENTIONAL_STAGE2_SKIPS:
+            return None
+        if skip and skip not in sa._INTENTIONAL_STAGE2_SKIPS:
+            return f"unrecognized_stage2_skip_reason={skip}"
+        if polish is False:
+            return "stage2_polish=false"
+        return "stage2_polish_unknown"
+
+    def old_unverifiable(prov, reason):
+        if reason in sa._NO_STAGE2_EVIDENCE:
+            return True
+        return (
+            reason in sa._LEGACY_UNVERIFIABLE
+            and "stage2_skip_reason" not in prov
+            and not str(prov.get(rp.FIELD_LEG) or "").strip()
+        )
+
+    base = [
+        {},
+        {"stage2_served_by": "primary"},
+        {"stage2_served_by": " Primary "},
+        {"stage2_served_by": "Fallback"},
+        {"stage2_served_by": "fallback"},
+        {"stage2_served_by": "deterministic"},
+        {"stage2_served_by": "prior_turn"},
+        {"stage2_served_by": "weird-new-leg"},
+        {rp.FIELD_LEG: ""},
+        {rp.FIELD_LEG: None},
+        {rp.FIELD_LEG: 0},
+        {rp.FIELD_POLISH: True},
+        {rp.FIELD_POLISH: False},
+        {rp.FIELD_POLISH: "yes"},
+        {rp.FIELD_POLISH: 1},
+        {rp.FIELD_POLISH: None},
+        {rp.FIELD_POLISH: True, rp.FIELD_LEG: "primary"},
+        {rp.FIELD_POLISH: True, rp.FIELD_LEG: "fallback"},
+        {rp.FIELD_POLISH: True, rp.FIELD_LEG: "bedrock"},
+        {"stage2_degraded_reason": "stage2_timeout"},
+    ]
+    skips = ({}, {"stage2_skip_reason": next(iter(sa._INTENTIONAL_STAGE2_SKIPS))}, {"stage2_skip_reason": "junk"})
+
+    for prov in base:
+        assert rp.leg_label(prov) == old_served(prov), prov
+        for extra in skips:
+            shaped = {**prov, **extra}
+            reason = sa._stage2_row_rejection_reason({"provenance": shaped})
+            assert reason == old_reason(shaped), shaped
+            if reason is not None:
+                assert sa._stage2_row_is_unverifiable({"provenance": shaped}, reason) == (
+                    old_unverifiable(shaped, reason)
+                ), shaped
 
 
 def test_the_allowlist_is_live():

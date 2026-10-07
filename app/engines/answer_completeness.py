@@ -109,7 +109,6 @@ __all__ = [
     "build_repair_user_message",
     "closed_set_completeness_enabled",
     "collect_gaps",
-    "scenario_branch_gaps",
     "dropped_pushback_points",
     "exception_limb_guard_enabled",
     "governing_provision_clause",
@@ -191,11 +190,6 @@ _MAX_MEMBER_GAPS = 10
 _MAX_EXCEPTION_GAPS = 4
 _MAX_KEEP_GAPS = 4
 _MAX_TOTAL_GAPS = 12
-#: R449 — keep the deterministic scenario contract deliberately small. At most
-#: six grounded branch/route pairs are checked; the v3 answer ceiling is six
-#: sentences, so larger sets are better handled by the existing deterministic
-#: fallback rather than asking a repair pass to rewrite an unbounded answer.
-_MAX_SCENARIO_BRANCHES = 6
 
 # R442 — precision floor for the keep detector. On the current R419/R436 board
 # the detector fires on 17/110 rows; 13 of the 14 single-drop fires are rows the
@@ -1074,106 +1068,6 @@ def _exception_gaps(question: str, answer: str, limit: int | None) -> list[Gap]:
     return gaps
 
 
-def scenario_branch_gaps(
-    question: str,
-    answer: str,
-    *,
-    deterministic_answer: str = "",
-    reference_text: str = "",
-) -> list[Gap]:
-    """Find explicit multi-branch scenario points that were dropped.
-
-    This deliberately does NOT infer branches from scenario-question grammar or
-    from general-purpose reference text. A candidate branch must be grounded in
-    the engine's already-built deterministic answer and in an operative, cited
-    provision's verbatim text. The explicit route/condition cue must occur in
-    both sources, while answer coverage is measured against the original
-    deterministic branch sentence (excluding its own citation label). On any
-    ambiguity or failed source lookup, return no gaps; callers keep the answer.
-
-    This catches loss of an explicit branch such as "under Article 5(1)(h)
-    when used for law enforcement" if the deterministic answer already states
-    it, but it intentionally does not attempt to decide legal applicability.
-    """
-    try:
-        from app.data.provision_text import get_provision_text  # noqa: PLC0415
-
-        ask = _ask_text(question)
-        answer_text = _s(answer).strip()
-        source = _s(deterministic_answer).strip()
-        refs_text = _s(reference_text)
-        if not answer_text or not source or not refs_text:
-            return []
-        if not is_scenario_question(ask):
-            return []
-
-        # Avoid firing on a free-standing structured classifier scenario. This
-        # guard is aimed at multi-part fact patterns, where a single polished
-        # sentence may otherwise omit one of the question's explicit branches.
-        if ask.count("?") < 2 and len(re.findall(r"\b(?:and|or)\b", ask, re.I)) < 2:
-            return []
-
-        # Only hard, explicit decision-boundary language is considered. Each
-        # captured sentence must be present in both the deterministic source
-        # and the full text of a provision named by that sentence.
-        cue = re.compile(
-            r"\b(?:unless|except(?:\s+where|\s+when|\s+for)?|"
-            r"only\s+(?:where|when|if)|where\s+(?:the|a|an|it|this|they)|"
-            r"if\s+(?:the|a|an|it|this|they)|when\s+(?:the|a|an|it|this|they))\b",
-            re.IGNORECASE,
-        )
-        citation_re = re.compile(
-            r"\b(?:Article|Art\\.?|Annex)\\s+(?:\\d{1,3}(?:[.(]\\d+[a-z]?[).]?)*|[IVXLCDM]+(?:[.(]\\d+[a-z]?[).]?)*)(?:\\s*(?:,|and)\\s*(?:Article|Art\\.?|Annex)?\\s*(?:\\d{1,3}(?:[.(]\\d+[a-z]?[).]?)*|[IVXLCDM]+(?:[.(]\\d+[a-z]?[).]?)*))?",
-            re.IGNORECASE,
-        )
-        cue_chunks = [chunk.strip() for chunk in re.split(r"(?<=[.!?;])\\s+", source) if chunk.strip()]
-        source_tokens = _token_set(source)
-        answer_tokens = _token_set(answer_text)
-        gaps: list[Gap] = []
-        seen: set[tuple[str, str]] = set()
-
-        for chunk in cue_chunks:
-            if not cue.search(chunk):
-                continue
-            cue_match = cue.search(chunk)
-            assert cue_match is not None
-            # The branch needs lexical support from the actual ask; this keeps
-            # unrelated qualifications in an over-inclusive Stage-1 draft out.
-            branch_tokens = _content_tokens(chunk[cue_match.start():])
-            ask_tokens = set(_content_tokens(ask))
-            if len(branch_tokens) < 2 or len(set(branch_tokens) & ask_tokens) < 2:
-                continue
-
-            cited = citation_re.findall(chunk)
-            if not cited:
-                continue
-            ref = cited[-1].strip(" ,.;:")
-            # Resolve only text that exists in the adopted Act corpus. The
-            # citation is local to this clause so it cannot borrow grounding
-            # from an unrelated citation elsewhere in the answer.
-            provision = get_provision_text(ref) or ""
-            if not provision:
-                continue
-            provision_tokens = set(_content_tokens(provision))
-            if not provision_tokens or len(set(branch_tokens) & provision_tokens) < 2:
-                continue
-            if not set(branch_tokens) & source_tokens:
-                continue
-            coverage = _coverage(branch_tokens, answer_tokens)
-            if coverage >= 0.55:
-                continue
-            key = (ref, chunk.lower())
-            if key in seen:
-                continue
-            seen.add(key)
-            gaps.append(Gap("scenario", ref, _clip(chunk)))
-            if len(gaps) >= _MAX_SCENARIO_BRANCHES:
-                break
-        return gaps
-    except Exception:  # noqa: BLE001 — uncertain detector result must not break Stage-2
-        return []
-
-
 def missing_exception_limbs(question: str, answer: str) -> list[Gap]:
     """Exception/condition clauses of the paragraphs the answer relies on, left out.
 
@@ -1446,8 +1340,6 @@ def build_repair_user_message(question: str, answer: str, gaps: list[Gap]) -> st
                 "Write no preamble. Do not comment on these rules, on the missing items, on an "
                 "earlier answer or on the materials you were given.",
                 "Do not use a bulleted list unless the current answer already uses one.",
-                "For a scenario gap, keep the branch wording and its conditions from the current answer; "
-                "do not infer an outcome, exception, or legal route from the gap text alone.",
                 "Keep a neutral regulatory tone. Do not use dashes as punctuation and do not use ellipses.",
             ]
         )
