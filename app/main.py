@@ -1113,6 +1113,35 @@ def _probe_bedrock_leg() -> dict[str, object]:
     return out
 
 
+# R462 — a named diagnostic in a provider error must survive ``detail[:N]``.
+#
+# The provider appends its remedy AFTER the response body (which is already
+# capped at 200 chars), so every slice in ``_degraded_to_bedrock`` — 100, 120,
+# 150 — lands in the middle of the JSON body and cuts the one sentence that
+# says which edge refused the request. Measured live on 07f8cc0 minutes after
+# R462 shipped: the note was present in the error string and absent from
+# ``/healthz/llm``, i.e. the fix was real everywhere an operator does not look.
+# The marker is the whole point of the round, so it is appended outside the
+# budget, in a single bounded span.
+_NAMED_ERROR_MARKERS = ("cf_access_denied",)
+
+
+def _named_error_marker(detail: str, limit: int = 360) -> str:
+    """Return the ``[name: ...]`` diagnostic ``detail`` carries, or ``""``.
+
+    ``""`` for every ordinary provider error, so a plain outage reads exactly
+    as it read before R462 — only a named condition buys the extra characters.
+    """
+    for name in _NAMED_ERROR_MARKERS:
+        start = detail.find(f"[{name}: ")
+        if start == -1:
+            continue
+        end = detail.find("]", start)
+        end = len(detail) if end == -1 else end + 1
+        return " " + detail[start:min(end, start + limit)]
+    return ""
+
+
 def _degraded_to_bedrock(base: dict[str, object], detail: str) -> dict[str, object]:
     """R360.9 — a down tunnel is not a down service while Bedrock is armed.
 
@@ -1151,22 +1180,24 @@ def _degraded_to_bedrock(base: dict[str, object], detail: str) -> dict[str, obje
         _fb_dead = _fb_att > 0 and _fb_ok == 0
     except Exception:  # noqa: BLE001 — a probe must never 500
         _fb_dead = False
+    # R462 — the named marker is appended outside each budget (see above).
+    note = _named_error_marker(detail)
     if armed and _fb_dead:
         base["llm_ok"] = False
         base["provider"] = f"{base.get('provider', 'openai_wrapper')} (bedrock fallback FAILING)"
         base["detail"] = (
-            f"primary offline ({detail[:100]}); bedrock credentials ARE wired but "
+            f"primary offline ({detail[:100]}{note}); bedrock credentials ARE wired but "
             f"the fallback leg has {_fb_att} attempt(s) and 0 successes — Stage-2 "
             "is serving deterministic fallback answers"
         )
     elif armed:
         base["llm_ok"] = True
         base["provider"] = f"{base.get('provider', 'openai_wrapper')} (bedrock fallback)"
-        base["detail"] = f"primary offline ({detail[:120]}); bedrock fallback active"
+        base["detail"] = f"primary offline ({detail[:120]}{note}); bedrock fallback active"
     else:
         base["llm_ok"] = False
         base["detail"] = (
-            f"{detail[:150]} — and NO bedrock credentials are wired, so Stage-2 "
+            f"{detail[:150]}{note} — and NO bedrock credentials are wired, so Stage-2 "
             "is serving deterministic fallback answers"
         )
     return base

@@ -486,18 +486,24 @@ def _cf_access_denial_note(response: httpx.Response, token_attached: bool) -> st
         return ""
     if not aud and not any(s in body for s in _CF_ACCESS_BODY_SENTINELS):
         return ""
+    # The REMEDY comes first. Every consumer of this string slices it —
+    # ``/healthz/llm`` at 100/120/150 chars, ``response.error[:200]`` in the
+    # engine's log line — so an ordering that puts the explanation before the
+    # action loses the action. Measured: the first cut ended its visible form at
+    # "...on this Access appli".
     if token_attached:
         return (
-            " [cf_access_denied: the Cloudflare Access EDGE refused this request even "
-            "though the CF-Access-* service token WAS attached, so the token is not an "
-            "Include -> Service Auth principal on this Access application — it was "
-            "rotated/revoked, or the application was re-created. Issue a new service "
-            "token and set CF_ACCESS_CLIENT_ID + CF_ACCESS_CLIENT_SECRET.]"
+            " [cf_access_denied: issue a new Cloudflare service token, add it to this "
+            "Access application as an Include -> Service Auth principal, then set "
+            "CF_ACCESS_CLIENT_ID + CF_ACCESS_CLIENT_SECRET. The Access EDGE refused "
+            "this request even though the token WAS attached, so the token is not a "
+            "principal on the application (rotated/revoked, or the app was "
+            "re-created).]"
         )
     return (
-        " [cf_access_denied: no CF-Access-* service token reached this host "
-        "(CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET unset, or the base host is not "
-        "the pinned CF_ACCESS_HOSTNAME) — set both and redeploy.]"
+        " [cf_access_denied: set CF_ACCESS_CLIENT_ID + CF_ACCESS_CLIENT_SECRET and "
+        "redeploy. No CF-Access-* service token reached this host — either the env is "
+        "unset, or the base host is not the pinned CF_ACCESS_HOSTNAME.]"
     )
 
 

@@ -66,7 +66,7 @@ class TestNoteClassification:
     def test_html_block_page_without_token_names_the_env_remedy(self) -> None:
         note = _cf_access_denial_note(_resp(401, ACCESS_HTML), token_attached=False)
         assert "cf_access_denied" in note
-        assert "no CF-Access-* service token reached this host" in note
+        assert "CF-Access-* service token reached this host" in note
         assert "Service Auth principal" not in note
 
     def test_json_block_page_is_detected_too(self) -> None:
@@ -163,7 +163,7 @@ class TestErrorStringContract:
     ) -> None:
         err = self._complete(_resp(401, ACCESS_HTML), token=False, monkeypatch=monkeypatch)
         assert "cf_access_denied" in err
-        assert "no CF-Access-* service token reached this host" in err
+        assert "CF-Access-* service token reached this host" in err
 
     def test_ordinary_wrapper_401_gains_nothing(
         self, monkeypatch: pytest.MonkeyPatch
@@ -213,3 +213,71 @@ def test_a_provider_built_without_init_degrades_instead_of_raising() -> None:
     assert result.error is not None
     assert result.error.startswith("api_status_401")
     assert "cf_access_denied" in result.error
+
+
+class TestTheNoteSurvivesTheHealthBudget:
+    """The note must reach ``/healthz/llm``, which is where an operator looks.
+
+    Measured live on 07f8cc0, minutes after R462 first shipped: the note was in
+    the error string and **absent from the health detail**, because
+    ``_degraded_to_bedrock`` slices the error to 100/120/150 chars and the note
+    sits past the 200-char body. A fix that is real everywhere an operator does
+    not look is not a fix.
+    """
+
+    def _long_error(self) -> str:
+        """A realistic provider error: body capped at 200, then the note."""
+        body = (
+            '{"message":"Unauthorized. You don\'t have permission to view this. '
+            'Please contact your system administrator.","status_code":401,'
+            '"aud":"9bb8182c1d75191d35338987fc8e24db3191376290337de0b709e2cc496e4e9c"}'
+        )
+        return (
+            f"api_status_401: {body[:200]}"
+            + _cf_access_denial_note(_resp(401, ACCESS_HTML), token_attached=True)
+        )
+
+    def test_marker_is_extracted_from_an_error(self) -> None:
+        from app.main import _named_error_marker
+
+        note = _named_error_marker(self._long_error())
+        assert note.startswith(" [cf_access_denied: ")
+        assert note.endswith("]")
+
+    def test_marker_is_empty_for_an_unnamed_error(self) -> None:
+        from app.main import _named_error_marker
+
+        assert _named_error_marker('api_status_500: {"error":"boom"}') == ""
+        assert _named_error_marker("") == ""
+
+    def test_marker_respects_its_own_bound(self) -> None:
+        from app.main import _named_error_marker
+
+        assert len(_named_error_marker(self._long_error(), limit=40)) <= 42
+
+    @pytest.mark.parametrize("attempts,expect_failing", [(0, False), (3, True)])
+    def test_health_detail_keeps_the_marker_past_the_slice(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        attempts: int,
+        expect_failing: bool,
+    ) -> None:
+        """Both ``armed`` arms slice the body — neither may cut the marker."""
+        from app import main as app_main
+        from app.llm import bedrock_client, stage2_policy
+
+        monkeypatch.setattr(bedrock_client, "is_bedrock_provider_enabled", lambda: True)
+        monkeypatch.setattr(
+            stage2_policy,
+            "transport_stats",
+            lambda: {"fallback_attempts": attempts, "fallback_ok": 0},
+        )
+
+        out = app_main._degraded_to_bedrock({}, self._long_error())
+        detail = str(out["detail"])
+
+        assert "cf_access_denied" in detail
+        # The status prefix must still be there, and the body still sliced.
+        assert "api_status_401" in detail
+        assert "(bedrock fallback FAILING)" in str(out["provider"]) or expect_failing is False
+        assert out["llm_ok"] is (not expect_failing)
