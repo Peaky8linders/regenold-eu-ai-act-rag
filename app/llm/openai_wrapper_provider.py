@@ -435,6 +435,72 @@ def _resolve_cf_access_headers(base_url: str) -> dict[str, str]:
     }
 
 
+# R462 — name the edge denial in the error string itself.
+#
+# R277 taught the /healthz/llm probe to report ``cf_access.headers_attached`` so
+# an operator could tell "no token configured" from "token configured but". What
+# it did NOT do is name the denial in the ERROR, which is the string that
+# actually reaches the logs, the stage-2 counters and every captured row.
+#
+# Measured 2026-10-08 in production: every Stage-2 dial returned
+#
+#     api_status_401: {"message":"Unauthorized. You don't have permission to
+#     view this. Please contact you
+#
+# truncated at 200 chars — i.e. exactly one character past the point where it
+# becomes legible. Nothing in the string says whether the 401 came from the
+# Cloudflare Access edge (a credential/console action) or from the wrapper app
+# (a wrapper-side action). Those need opposite fixes, and the only way to tell
+# them apart was to independently fetch the block page and diff it. Same class
+# of forensic detour R277 exists to cut short, one layer deeper.
+_CF_ACCESS_BODY_SENTINELS = (
+    "Cloudflare Access",
+    "You don't have permission to view this",
+)
+
+
+def _cf_access_denial_note(response: httpx.Response, token_attached: bool) -> str:
+    """An actionable suffix when ``response`` is a Cloudflare Access refusal.
+
+    Returns ``""`` for anything that is not an Access denial, so an ordinary
+    wrapper-side 401/403/500 is byte-identical to what it was before this round.
+
+    The note is APPENDED, never substituted: ``api_status_<code>`` stays at the
+    start of the string, so every existing consumer reads exactly what it read
+    before — ``str.startswith("api_status_5xx")`` in ``tests/test_llm_providers``
+    and the ``"api_status_401" in _err_low`` provider-outage branch in
+    ``app/engines/_graph_rag_impl.py``. That branch exists to make a silent
+    Stage-2 outage LOUD, and the Access denial is precisely the case it must not
+    stop matching.
+
+    ``token_attached`` selects the remedy, because the two denials are not the
+    same bug: a token that WAS sent and was still refused means the identity is
+    not an ``Include -> Service Auth`` principal on the application (rotated,
+    revoked, or the app was re-created), whereas no token at all means the env
+    never arrived.
+    """
+    try:
+        body = response.text or ""
+        aud = (response.headers.get("Cf-Access-Aud") or "").strip()
+    except Exception:  # noqa: BLE001 — a diagnostic must never break the dial
+        return ""
+    if not aud and not any(s in body for s in _CF_ACCESS_BODY_SENTINELS):
+        return ""
+    if token_attached:
+        return (
+            " [cf_access_denied: the Cloudflare Access EDGE refused this request even "
+            "though the CF-Access-* service token WAS attached, so the token is not an "
+            "Include -> Service Auth principal on this Access application — it was "
+            "rotated/revoked, or the application was re-created. Issue a new service "
+            "token and set CF_ACCESS_CLIENT_ID + CF_ACCESS_CLIENT_SECRET.]"
+        )
+    return (
+        " [cf_access_denied: no CF-Access-* service token reached this host "
+        "(CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET unset, or the base host is not "
+        "the pinned CF_ACCESS_HOSTNAME) — set both and redeploy.]"
+    )
+
+
 class _BudgetTimeout(httpx.Timeout):
     """``httpx.Timeout`` that compares equal to its read-budget float.
 
@@ -790,8 +856,15 @@ class _OpenAIWrapperProvider:
                         )
 
         if response.status_code != 200:
+            # R462 — append a named remedy when the edge, not the wrapper, said no.
+            # ``getattr`` because tests (and any future partial construction) can
+            # build the provider without running ``__init__`` — an AttributeError on
+            # the failure path would turn a diagnosable 401 into a crash.
             return OpenAIWrapperResponse(
-                error=f"api_status_{response.status_code}: {response.text[:200]}",
+                error=(
+                    f"api_status_{response.status_code}: {response.text[:200]}"
+                    f"{_cf_access_denial_note(response, bool(getattr(self, '_cf_access_headers', None)))}"
+                ),
                 model=req.model,
                 elapsed_ms=int((time.perf_counter() - start) * 1000),
             )
