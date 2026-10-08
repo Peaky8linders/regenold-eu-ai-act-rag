@@ -50,6 +50,40 @@ curl -s https://wrapper.antifragile-ai.net/v1/auth/status \
 curl -s http://127.0.0.1:8000/healthz/llm | jq .stage2_transport
 ```
 
+### A 401 from the tunnel is three different bugs (measured 2026-10-08, R462)
+
+Do **not** read `api_status_401` as "the tunnel is down". An Access-protected
+host gives the same 401 when the credential is *configured but refused*, and the
+fixes are not interchangeable. Tell them apart in one command:
+
+```bash
+# same status and the same body as with no headers at all
+curl -s -o /dev/null -w '%{http_code}\n' https://wrapper.antifragile-ai.net/v1/models \
+  -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+  -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET"
+```
+
+* `cf_access.headers_attached: false` — the env never arrived, or the base host
+  is not the `CF_ACCESS_HOSTNAME` pin. **Fix: set the env.**
+* `headers_attached: true` and the token does not change the response — the
+  token is not an `Include -> Service Auth` principal on the Access app. It was
+  rotated/revoked, or the app was re-created (re-keying the tunnel on 2026-10-07
+  09:11 did exactly this and broke a token that had worked on 2026-10-02).
+  **Fix: issue a new service token in Zero Trust, add it to the app as a Service
+  Auth principal, then set both Railway variables and redeploy.** Note that a
+  *valid* token alone is not sufficient — the policy must list it.
+* both legs up and the tunnel still 401s — the wrapper origin on this machine
+  (`127.0.0.1:8000`) is not running, so the tunnel has nothing to serve.
+  **Fix: start it.** `start.bat` in `claude-code-openai-wrapper`; confirm with
+  `/v1/auth/status` (`"valid":true`).
+
+Since R462 the error string says which of the three it is — look for the
+`[cf_access_denied: ...]` suffix rather than re-deriving it. For a local leg you
+need none of this: point `OPENAI_API_BASE` at `http://127.0.0.1:8000/v1` and
+`_resolve_cf_access_headers` attaches nothing, because loopback is filtered out
+before the allowlist (`tests/test_r277_cf_access.py`). Full write-up:
+`docs/measurements/r462/CF-ACCESS-401-DIAGNOSIS.md`.
+
 ## 0. Prove the contract fires before reading any number
 
 This is the R329 rule the hard way: a routing lever that reads correctly and
