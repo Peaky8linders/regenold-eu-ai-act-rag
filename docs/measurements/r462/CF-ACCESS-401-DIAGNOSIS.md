@@ -126,9 +126,36 @@ application was re-created. Issue a new service token and set CF_ACCESS_CLIENT_I
 + CF_ACCESS_CLIENT_SECRET.]
 ```
 
-Pinned by `tests/test_r462_cf_access_denial_named.py` (14 tests), including the
-negative controls: an ordinary wrapper 401/403/500, an empty body and a 200 all
-gain **nothing**, and the secret never reaches the string.
+Pinned by `tests/test_r462_cf_access_denial_named.py`, including the negative
+controls: an ordinary wrapper 401/403/500, an empty body and a 200 all gain
+**nothing**, and the secret never reaches the string.
+
+### 5b. The first cut of this shipped a fix nobody could see
+
+Measured on `07f8cc0` **minutes after the deploy landed**: the note was present
+in the error string and **absent from `/healthz/llm`** — the one place an operator
+looks. `_degraded_to_bedrock` summarises the provider error with
+`detail[:100]` / `detail[:120]` / `detail[:150]`, and the note is appended after a
+200-char body, so every slice landed mid-body:
+
+```
+primary offline (api_status_401: {"message":"Unauthorized. You don't have
+permission to view this. Please contact your system administrat); bedrock
+fallback active
+```
+
+Two fixes, both because the truncation told me something about the design:
+
+1. `_degraded_to_bedrock` now lifts a bounded `[name: ...]` marker **outside**
+the byte budget (`_named_error_marker`), so a named condition buys its own
+characters and an unnamed one reads byte-identically to before.
+2. The marker is **remedy-first**. Every consumer of this string slices it, so
+an ordering that explains before it instructs loses the instruction — the first
+cut's visible form ended at `...on this Access appli`, precisely one word short
+of the action.
+
+The lesson generalises: adding detail to an error is only a diagnosis if it
+survives the narrowest slice that carries it to a human.
 
 ## 6. What is NOT restorable from here — the operator action
 
