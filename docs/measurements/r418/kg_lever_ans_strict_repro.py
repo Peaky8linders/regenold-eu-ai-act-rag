@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 from pathlib import Path
@@ -116,13 +117,94 @@ def _frac(text: str) -> tuple[int, int]:
 
 
 def _fisher_p(kb: int, nb: int, ka: int, na: int) -> float:
-    """Two-sided Fisher exact p for ``kb/nb`` vs ``ka/na`` (scipy, as the repo has it)."""
-    try:
-        from scipy.stats import fisher_exact  # noqa: PLC0415
+    """Two-sided Fisher exact p for ``kb/nb`` vs ``ka/na``.
 
-        return float(fisher_exact([[kb, nb - kb], [ka, na - ka]])[1])
+    R463: implemented in ``math.comb`` rather than scipy. The previous body was a
+    lazy ``from scipy.stats import fisher_exact``; scipy is not a declared
+    dependency (``requirements.txt`` names it only inside a transitive-note
+    comment) and no CI job installs it, so every call in this environment took the
+    except branch and returned ``1.0`` — the audit then printed "Fisher two-sided
+    p=1.000" for a perfect 10/10 vs 0/10 separation and rule G could never credit
+    a gain. Exact two-sided definition, as scipy's: sum the hypergeometric mass of
+    every table no more likely than the observed one.
+    """
+    try:
+        a, b = int(kb), int(nb) - int(kb)
+        c, d = int(ka), int(na) - int(ka)
+        if min(a, b, c, d) < 0:  # a malformed cell is not a separation
+            return 1.0
+        n = a + b + c + d
+        row1, row2, col1 = a + b, c + d, a + c
+        if n == 0:
+            return 1.0
+        denom = math.comb(n, col1)
+        observed = math.comb(row1, a) * math.comb(row2, c)
+        total = 0
+        for x in range(max(0, col1 - row2), min(row1, col1) + 1):
+            num = math.comb(row1, x) * math.comb(row2, col1 - x)
+            if num <= observed:
+                total += num
+        return min(1.0, total / denom)
     except Exception:  # noqa: BLE001 — audit degrades to a conservative reading
         return 1.0
+
+
+def _sign_test_p(longer: int, shorter: int) -> float | None:
+    """Exact two-sided sign test for ``longer`` wins out of ``longer + shorter``.
+
+    R463: ``math.comb``, scipy ``binomtest``'s definition. The previous body was a
+    lazy scipy import whose absence returned ``None``; the caller read ``None`` as
+    "cost supported", so a re-run on a machine without scipy printed the OPPOSITE
+    of the committed R418 reading. The R418 pair is 14/25 rows longer, and the exact
+    two-sided p for that is 0.69 — the value the artifact recorded with scipy.
+    """
+    n = int(longer) + int(shorter)
+    if n <= 0:
+        return None
+    k = min(int(longer), int(shorter))
+    tail = sum(math.comb(n, i) for i in range(k + 1)) / 2**n
+    return round(min(1.0, 2.0 * tail), 4)
+
+
+def _wilcoxon_p(diffs: list[int]) -> float | None:
+    """Exact two-sided Wilcoxon signed-rank p for ``diffs``, without scipy.
+
+    R463. The null distribution of ``W+`` is the subset-sum distribution of the
+    average ranks (each sign equally likely), i.e. the coefficients of
+    ``prod(1 + x**r)``, so the exact p is a DP over that polynomial. Ranks are
+    doubled to stay exact under ties. On the R418 arm pair this returns 0.2304,
+    the value the committed artifact holds; the normal approximation gives 0.226,
+    which is why the exact route is kept. Zero diffs drop out, as scipy's default.
+    """
+    nz = [abs(int(d)) for d in diffs if d]
+    signed = [int(d) for d in diffs if d]  # same filter and order as ``nz``
+    if not nz:
+        return None
+    order = sorted(range(len(nz)), key=nz.__getitem__)
+    ranks = [0.0] * len(nz)
+    i = 0
+    while i < len(nz):
+        j = i
+        while j + 1 < len(nz) and nz[order[j + 1]] == nz[order[i]]:
+            j += 1
+        avg = (i + j + 2) / 2.0
+        for t in range(i, j + 1):
+            ranks[order[t]] = avg
+        i = j + 1
+    doubled = [int(round(r * 2)) for r in ranks]
+    dist: dict[int, int] = {0: 1}
+    for r in doubled:
+        nxt = dict(dist)
+        for s, c in dist.items():
+            nxt[s + r] = nxt.get(s + r, 0) + c
+        dist = nxt
+    # ``ranks`` is indexed like ``signed``, NOT like ``diffs``: pairing it with the
+    # zero-keeping list puts the wrong rank on the wrong sign (R463).
+    w = int(round(sum(r for r, d in zip(ranks, signed, strict=True) if d > 0) * 2))
+    denom = 2 ** len(doubled)
+    p_le = sum(c for s, c in dist.items() if s <= w) / denom
+    p_ge = sum(c for s, c in dist.items() if s >= w) / denom
+    return round(min(1.0, 2.0 * min(p_le, p_ge)), 4)
 
 
 def _generation_rule(rid: str) -> tuple[bool, str]:
@@ -311,16 +393,8 @@ def main() -> int:
             diffs.append(len(arms["b"][rid]["answer"]) - len(arms["a"][rid]["answer"]))
         longer = sum(1 for x in diffs if x > 0)
         shorter = sum(1 for x in diffs if x < 0)
-        try:
-            from scipy.stats import binomtest, wilcoxon  # noqa: PLC0415
-
-            sign_p = round(float(binomtest(longer, longer + shorter, 0.5).pvalue), 4) if longer + shorter else None
-            try:
-                wilcoxon_p = round(float(wilcoxon(diffs).pvalue), 4)
-            except Exception:  # noqa: BLE001 — all-zero diffs
-                wilcoxon_p = None
-        except Exception:  # noqa: BLE001
-            sign_p = wilcoxon_p = None
+        sign_p = _sign_test_p(longer, shorter)
+        wilcoxon_p = _wilcoxon_p(diffs)
         conciseness = {
             "published_delta_pp": published["delta_pp"]["ans_conciseness"],
             "mean_chars_a": round(sum(len(arms["a"][r]["answer"]) for r in ids) / len(ids), 1),
@@ -329,9 +403,14 @@ def main() -> int:
             "rows_shorter_on": shorter,
             "sign_test_p": sign_p,
             "wilcoxon_p": wilcoxon_p,
+            # R463: a p that was never computed is not evidence of support. The old
+            # form read the scipy-absent ``None`` as "cost supported", so a re-run
+            # without scipy printed the opposite of the committed artifact. An
+            # uncomputed test (no nonzero diffs) can only mean the lengthening is
+            # not established; the JSON still shows the p as null.
             "call": (
                 "cost NOT supported: the ON arm is not systematically longer"
-                if (sign_p is not None and sign_p > 0.05)
+                if (sign_p is None or sign_p > 0.05)
                 else "cost supported by the paired test"
             ),
         }

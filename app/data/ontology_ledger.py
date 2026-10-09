@@ -65,12 +65,16 @@ plausible.
 """
 from __future__ import annotations
 
-import hashlib
 import re
 from dataclasses import asdict, dataclass, field, replace
 from enum import StrEnum
 
-from app.data.ontology_evidence import OntologyEvidence, OntologyLayer, OntologyPatchProposal
+from app.data.ontology_evidence import (
+    OntologyEvidence,
+    OntologyLayer,
+    OntologyPatchProposal,
+    content_hash_for,
+)
 
 LEDGER_VERSION = "r444.1"
 
@@ -1016,7 +1020,7 @@ def fabricated_targets(proposal: OntologyPatchProposal) -> tuple[str, ...]:
     """
     from app.data.article_existence import ARTICLE_EXISTENCE
     from app.data.ontology import ANNEX_III_REGISTRY, PRACTICE_REGISTRY
-    from app.data.ontology_browse import resolve_concept
+    from app.data.ontology_browse import resolve_concept, to_internal
     from app.data.provision_coordinates import coordinate_exists
     from app.data.role_obligations import ROLE_OBLIGATION_BY_ID
 
@@ -1025,7 +1029,11 @@ def fabricated_targets(proposal: OntologyPatchProposal) -> tuple[str, ...]:
         if target.startswith("+"):
             continue
         known = (
-            target in ARTICLE_EXISTENCE
+            # R463 — internal form. ``target`` is wire form ("Article 26"), so
+            # this leg was False for every input and the only thing keeping a
+            # real provision out of ``fabricated`` was ``coordinate_exists``:
+            # a second, independent-looking gate that was in fact vacuous.
+            to_internal(target) in ARTICLE_EXISTENCE
             or target in PRACTICE_REGISTRY
             or target in ANNEX_III_REGISTRY
             or target in ROLE_OBLIGATION_BY_ID
@@ -1037,6 +1045,12 @@ def fabricated_targets(proposal: OntologyPatchProposal) -> tuple[str, ...]:
     return tuple(fabricated)
 
 
+#: Truncation cap for this producer's quotes. Kept at 400: the R463 fix is
+#: that the hash covers the STORED bytes, not that every producer truncates
+#: identically.
+_LEDGER_QUOTE_CAP = 400
+
+
 def evidence_record(
     *,
     source_id: str,
@@ -1045,12 +1059,16 @@ def evidence_record(
     quote: str,
 ) -> OntologyEvidence:
     """Build a versioned evidence record for one quoted fact."""
-    digest = hashlib.sha256(quote.encode("utf-8")).hexdigest()[:16]
+    # R463 — one shared helper, over the bytes that are STORED. This producer
+    # used 16 hex characters while ``ontology_browse`` used 64, and both hashed
+    # the untruncated text: neither hash could verify its own record and the
+    # two were not comparable.
+    stored, digest = content_hash_for(quote, cap=_LEDGER_QUOTE_CAP)
     return OntologyEvidence(
         source_id=source_id,
         source_version=source_version,
         locator=locator,
-        quote=quote[:400],
+        quote=stored,
         content_hash=digest,
     )
 

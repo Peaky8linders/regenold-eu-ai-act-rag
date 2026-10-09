@@ -87,6 +87,39 @@ def test_fisher_bar_separates_a_tie_from_a_separation() -> None:
     assert krs._fisher_p(10, 10, 0, 10) < krs.GEN_ALPHA
 
 
+def test_the_paired_tests_are_exact_without_scipy() -> None:
+    # R463: ``binomtest``/``wilcoxon`` were lazy scipy imports. scipy is not a
+    # declared dependency (nothing in requirements*.txt or CI installs it), so a
+    # machine without it produced sign_p=wilcoxon_p=None and the conciseness caller
+    # read that as "cost supported" — the OPPOSITE of the committed artifact. Both
+    # tests are now exact and scipy-free; these are the artifact's own numbers.
+    assert krs._sign_test_p(14, 11) == 0.69
+    assert krs._sign_test_p(10, 10) == 1.0
+    assert krs._sign_test_p(0, 0) is None
+
+    # The 25 signed (ON - OFF) answer-length diffs of the R418 arm pair, in row
+    # order: the input the artifact's Wilcoxon reading was computed from.
+    diffs = [
+        -317, -295, -218, -191, -160, -134, -106, -98, -88, -77, -8,
+        62, 63, 76, 114, 122, 141, 225, 243, 440, 517, 518, 587, 604, 920,
+    ]
+    assert krs._wilcoxon_p(diffs) == 0.2304
+    assert krs._wilcoxon_p([0, 0]) is None
+    # A zero diff must drop out, not shift the rank/sign pairing: the misaligned
+    # form (ranks from the nonzero list zipped against the zero-keeping one) reads
+    # the +1 sign off the wrong rank and answers 0.25 instead of 0.5.
+    assert krs._wilcoxon_p([0, -6, -4, 1]) == krs._wilcoxon_p([-6, -4, 1]) == 0.5
+
+    # And the recorded reading is what the artifact holds, so a future re-run that
+    # moves either number fails here instead of quietly changing the conclusion.
+    cost = _load(REPRO_JSON)["conciseness_cost"]
+    assert krs._sign_test_p(cost["rows_longer_on"], cost["rows_shorter_on"]) == cost[
+        "sign_test_p"
+    ]
+    assert krs._wilcoxon_p(diffs) == cost["wilcoxon_p"]
+    assert cost["call"].startswith("cost NOT supported")
+
+
 def test_rule_g_is_measured_from_the_resample_and_degrades_honestly(monkeypatch) -> None:
     assert RESAMPLE_JSON.exists(), "the resample artifact is required by the audit"
     data = json.loads(RESAMPLE_JSON.read_text(encoding="utf-8"))

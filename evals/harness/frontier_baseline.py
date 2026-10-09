@@ -107,16 +107,45 @@ def _parse(text: str) -> tuple[str, list[str]]:
     return (text or "").strip(), sorted(set(_REF_RE.findall(text or "")))
 
 
+def _cf_access_headers(url: str) -> dict[str, str]:
+    """Cloudflare Access service-token headers for ``url``, or ``{}`` (R463).
+
+    Scoped by the host pin the app's own wrapper provider uses (R365/R432).
+
+    Before R463 this module built the ``CF-Access-*`` pair straight from the env
+    and attached it to whatever base the caller passed — no host test at all —
+    so ``OPENAI_API_BASE=https://third-party/v1`` exfiltrated the org's Zero
+    Trust service-token SECRET to that third party. That is the same leak R365
+    closed inside the provider and R419 closed in ``evals/official/judge.py``;
+    this caller was left behind.
+
+    ``_resolve_cf_access_headers`` returns ``{}`` unless both env vars are set
+    AND the host is not loopback AND the host is the trusted pin: the
+    ``CF_ACCESS_HOSTNAME`` declaration when set, else the hardcoded Access edge
+    (``wrapper.antifragile-ai.net``). A renamed tunnel is therefore armed by
+    pinning ``CF_ACCESS_HOSTNAME``, never by pointing ``OPENAI_API_BASE`` at it.
+    """
+    from app.llm.openai_wrapper_provider import _resolve_cf_access_headers  # noqa: PLC0415
+
+    return _resolve_cf_access_headers(url)
+
+
+def _headers_for(base: str) -> dict[str, str]:
+    """The exact request headers ``_ask`` sends to ``base`` (R463).
+
+    Extracted from ``_ask`` so the pin can be asserted without network I/O.
+    """
+    key = os.getenv("OPENAI_API_KEY", "dummy")
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    headers.update(_cf_access_headers(base))
+    return headers
+
+
 def _ask(model: str, question: str, timeout: float) -> dict:
     import httpx
 
     base = os.getenv("OPENAI_API_BASE", "http://127.0.0.1:8000/v1").rstrip("/")
-    key = os.getenv("OPENAI_API_KEY", "dummy")
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    for h in ("CF_ACCESS_CLIENT_ID", "CF_ACCESS_CLIENT_SECRET"):
-        v = os.getenv(h)
-        if v:
-            headers[h.replace("_", "-").title().replace("Cf-", "CF-")] = v
+    headers = _headers_for(base)
     payload = {
         "model": model,
         "messages": [

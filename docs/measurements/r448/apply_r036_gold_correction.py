@@ -35,7 +35,10 @@ test_unstable_gold_is_source_corrected_with_history_preserved`.
 **Serialization.** The file is one `json.dumps` (default separators,
 `ensure_ascii=True`) object per CRLF-terminated line. This script rewrites the
 single matching line byte-identically in that form and leaves the other 109
-lines untouched, so the diff is one line.
+lines untouched, so the diff is one line. R463: the split is newline-agnostic
+and is asserted lossless before anything is written, and the write itself goes
+through a sibling temp file + `os.replace` so an interrupt cannot leave a
+partial corpus.
 
 Usage::
 
@@ -45,7 +48,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
+import re
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
@@ -117,8 +122,17 @@ def main() -> int:
     a = ap.parse_args()
 
     raw = GOLD.read_bytes()
-    # CRLF-terminated lines; `split` keeps the trailing empty element.
-    lines = raw.split(b"\r\n")
+    # R463 - newline-agnostic, with a byte-identity guard. This was
+    # ``raw.split(b"\r\n")``: exact on the CRLF tree the repo ships, but on the LF
+    # tree AGENTS.md tells agents to reproduce (``git -c core.autocrlf=false
+    # archive``) it returns the WHOLE file as one element and the script exits 2
+    # "found 0". Splitting on the newline-agnostic pattern and rejoining with this
+    # checkout's own newline reproduces the bytes exactly (asserted right below),
+    # so the rewrite stays a one-line diff on both trees, and a mixed-ending file
+    # fails loudly instead of being silently normalised.
+    newline = b"\r\n" if b"\r\n" in raw else b"\n"
+    lines = re.split(rb"\r?\n", raw)
+    assert newline.join(lines) == raw, "split/join is not lossless for this checkout"
     hits = [i for i, b in enumerate(lines) if b.startswith(b'{"id": "%s"' % ROW_ID.encode())]
     if len(hits) != 1:
         print(f"expected exactly one {ROW_ID} line, found {len(hits)}", file=sys.stderr)
@@ -135,10 +149,18 @@ def main() -> int:
 
     new = corrected_row(row)
     lines[idx] = json.dumps(new).encode("utf-8")
-    GOLD.write_bytes(b"\r\n".join(lines))
+    # R463 - ATOMIC. This truncated and rewrote all 110 rows in place, so an
+    # interrupt mid-write left a partial corpus; and this file is the source of
+    # every gold ``expected_refs``/``criteria`` decision, so the damage would be
+    # silent and total rather than a failed run. Write a sibling temp file and
+    # ``os.replace`` it, which is atomic on one filesystem.
+    tmp = GOLD.with_suffix(GOLD.suffix + ".tmp")
+    tmp.write_bytes(newline.join(lines))
+    os.replace(tmp, GOLD)
+    print(f"{ROW_ID}: wrote {GOLD}")
 
     # Verify the effect from a fresh read, not from `new`.
-    for b in GOLD.read_bytes().split(b"\r\n"):
+    for b in re.split(rb"\r?\n", GOLD.read_bytes()):
         if not b.startswith(b'{"id": "%s"' % ROW_ID.encode()):
             continue
         got = json.loads(b)

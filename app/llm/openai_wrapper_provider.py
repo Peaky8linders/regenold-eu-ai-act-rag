@@ -484,7 +484,14 @@ def _cf_access_denial_note(response: httpx.Response, token_attached: bool) -> st
         aud = (response.headers.get("Cf-Access-Aud") or "").strip()
     except Exception:  # noqa: BLE001 — a diagnostic must never break the dial
         return ""
-    if not aud and not any(s in body for s in _CF_ACCESS_BODY_SENTINELS):
+    # R463 — case-fold before the scan. Every other marker scan in this module
+    # compares against a lowered copy (``lowered`` in ``complete()``); this one
+    # compared raw, so an Access block page or Access-Worker JSON differing
+    # only in case lost the remedy note. The ``Cf-Access-Aud`` header leg above
+    # still covers today's HTML page, which is why this is hardening and not a
+    # live miss.
+    body_lower = body.lower()
+    if not aud and not any(s.lower() in body_lower for s in _CF_ACCESS_BODY_SENTINELS):
         return ""
     # The REMEDY comes first. Every consumer of this string slices it —
     # ``/healthz/llm`` at 100/120/150 chars, ``response.error[:200]`` in the
@@ -595,6 +602,21 @@ def _parse_retry_after(header_value: str | None) -> float:
         return max(0.0, float(header_value.strip()))
     except (TypeError, ValueError):
         return 0.0
+
+
+def _token_count(value: object) -> int:
+    """A non-negative ``int`` for one token count from an unvalidated body.
+
+    R463 — ``int(x or 0)`` in the caller covers a missing key and a null, not
+    a non-numeric one: a facade sending ``"n/a"`` raised ValueError and a
+    nested object raised TypeError, both OUTSIDE the decode guard and (until
+    R360.12) over a telemetry field nothing downstream reads. Telemetry must
+    never be able to fail a call that already has its answer.
+    """
+    try:
+        return max(0, int(value))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
 
 
 def is_openai_wrapper_enabled() -> bool:
@@ -879,10 +901,29 @@ class _OpenAIWrapperProvider:
             payload = response.json()
             choice = payload["choices"][0]
             msg = choice["message"]
-            text = msg.get("content") or ""
-            thinking = msg.get("reasoning_content") or ""
+            # R463 — ``message`` is external data. OpenAI-compatible facades
+            # send ``null`` (content filter / upstream error) or a bare
+            # string, and ``.get`` on either raised AttributeError, which the
+            # tuple below did not catch: the contract of ``complete()`` is
+            # "return an error string, never raise", so a fail-soft Stage-2
+            # miss escaped as a crash instead of falling back.
+            if not isinstance(msg, dict):
+                raise TypeError(
+                    f"completion message is {type(msg).__name__}, expected object"
+                )
+            text = msg.get("content")
+            if isinstance(text, list):
+                # The content-parts variant of the same field.
+                text = "".join(
+                    part.get("text") or "" for part in text if isinstance(part, dict)
+                )
+            if not isinstance(text, str):
+                text = ""
+            thinking = msg.get("reasoning_content")
+            if not isinstance(thinking, str):
+                thinking = ""
             finish_reason = choice.get("finish_reason")
-        except (KeyError, IndexError, TypeError, ValueError) as exc:
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError) as exc:
             return OpenAIWrapperResponse(
                 error=f"decode_error: {exc!s}"[:200],
                 model=req.model,
@@ -918,7 +959,14 @@ class _OpenAIWrapperProvider:
                     elapsed_ms=int((time.perf_counter() - start) * 1000),
                 )
 
-        usage = payload.get("usage") or {}
+        # R463 — ``payload.get("usage") or {}`` covers a MISSING key and a
+        # null, not a non-dict truthy value: a facade sending ``"usage": []``
+        # or ``"usage": "n/a"`` reached ``[].get`` and raised AttributeError
+        # OUTSIDE the guarding try — the same kill-a-Stage-2-call-over-
+        # telemetry shape R360.12 fixed one layer in.
+        usage = payload.get("usage")
+        if not isinstance(usage, dict):
+            usage = {}
         return OpenAIWrapperResponse(
             text=text,
             thinking=thinking,
@@ -929,8 +977,8 @@ class _OpenAIWrapperProvider:
             # returns None, and ``int(None)`` raises TypeError. This sits
             # OUTSIDE the guarding try, so the exception killed the entire
             # Stage-2 call over a telemetry field nothing downstream reads.
-            prompt_tokens=int(usage.get("prompt_tokens") or 0),
-            completion_tokens=int(usage.get("completion_tokens") or 0),
+            prompt_tokens=_token_count(usage.get("prompt_tokens")),
+            completion_tokens=_token_count(usage.get("completion_tokens")),
             elapsed_ms=int((time.perf_counter() - start) * 1000),
             finish_reason=finish_reason,
         )

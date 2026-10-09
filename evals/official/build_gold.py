@@ -83,6 +83,21 @@ if not _base.endswith("/v1") and not _base.endswith("/chat/completions"):
     _base = _base + "/v1"
 _default_url = _base if _base.endswith("/chat/completions") else f"{_base}/chat/completions"
 URL = os.getenv("R388_WRAPPER_URL") or _default_url
+
+
+def _cf_access_headers(url: str) -> dict[str, str]:
+    """Cloudflare Access service-token headers for ``url``, or ``{}`` (R463).
+
+    Scoped by the host pin the app's own wrapper provider uses (R365/R432): the
+    token is a Zero Trust SECRET, so it must not ride to a host merely because
+    an env var (``OPENAI_API_BASE`` / ``R388_WRAPPER_URL``) names it. A renamed
+    tunnel is armed by pinning ``CF_ACCESS_HOSTNAME``.
+    """
+    from app.llm.openai_wrapper_provider import _resolve_cf_access_headers  # noqa: PLC0415
+
+    return _resolve_cf_access_headers(url)
+
+
 MODEL = os.getenv("R388_GOLD_MODEL", "claude-sonnet-4-6")
 
 _token = os.getenv("OPENAI_API_KEY", "dummy")
@@ -93,10 +108,15 @@ _HDRS = {
     "Content-Type": "application/json",
     "Authorization": f"Bearer {_token}",
 }
-if os.getenv("CF_ACCESS_CLIENT_ID"):
-    if "127.0.0.1" not in URL and "localhost" not in URL:
-        _HDRS["CF-Access-Client-Id"] = os.environ["CF_ACCESS_CLIENT_ID"]
-        _HDRS["CF-Access-Client-Secret"] = os.environ.get("CF_ACCESS_CLIENT_SECRET", "")
+# R463 — the Access token pair is host-pinned, not merely "not-local". The guard
+# that used to live here was a SUBSTRING test on the URL
+# (``"127.0.0.1" not in URL and "localhost" not in URL``), which is not a host
+# pin: every other base — a third party included — received the SECRET, so one
+# env var exfiltrated it. ``_resolve_cf_access_headers`` returns ``{}`` unless
+# both env vars are set AND the host is not loopback AND the host is the trusted
+# pin (R365/R432). ``evals/official/judge.py`` was migrated in R419; this caller
+# was left behind.
+_HDRS.update(_cf_access_headers(URL))
 
 
 

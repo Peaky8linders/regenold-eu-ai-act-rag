@@ -7,6 +7,7 @@ Stripped-down extract — only the surface needed to exercise
 from __future__ import annotations
 
 import logging
+import math
 import os
 import threading as _threading
 from typing import Annotated, Any
@@ -1019,6 +1020,11 @@ def _healthz_email_probe(
 
 
 _HEALTHZ_TRUTHY = ("1", "true", "yes", "on")
+# R463 — the inverse set, for a probe that must fail toward NOT spending.
+# REGENOLD_HEALTHZ_PROBE_ANTHROPIC was compared against the literal "0", so the
+# conventional falsy spellings ("false", "no", "off") left the live (billable)
+# network probe ON while the operator believed it was off.
+_HEALTHZ_FALSY = ("0", "false", "no", "off")
 
 
 def _probe_bedrock_leg() -> dict[str, object]:
@@ -1363,6 +1369,15 @@ def _healthz_llm_probe(probe_bedrock: str = "0") -> dict[str, object]:
             )
         except ValueError:
             probe_timeout = 30.0
+        # R463 — ``float()`` accepts "inf", "-inf" and "nan" happily and only
+        # ValueError was caught. "=inf" handed the probe an infinite deadline
+        # (the R461 wall-clock guard can never fire and the request holds the
+        # worker), "=nan" disarmed the guard, and "=0"/"=-1" made every probe
+        # read as a network error. A health endpoint must not be able to hang:
+        # anything that is not a usable positive, finite number falls back to
+        # the documented 30 s.
+        if not math.isfinite(probe_timeout) or probe_timeout <= 0:
+            probe_timeout = 30.0
         try:
             prov = get_openai_wrapper_provider()
             response = prov.complete(
@@ -1407,7 +1422,10 @@ def _healthz_llm_probe(probe_bedrock: str = "0") -> dict[str, object]:
         # 10-second timeout caps the probe latency. Operators who want
         # the old "don't touch the network at health-check time"
         # behaviour can set REGENOLD_HEALTHZ_PROBE_ANTHROPIC=0.
-        if os.getenv("REGENOLD_HEALTHZ_PROBE_ANTHROPIC", "1").strip() == "0":
+        if (
+            os.getenv("REGENOLD_HEALTHZ_PROBE_ANTHROPIC", "1").strip().lower()
+            in _HEALTHZ_FALSY
+        ):
             base["llm_ok"] = True
             base["detail"] = (
                 "anthropic SDK installed + API key configured "

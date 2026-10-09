@@ -32,7 +32,6 @@ conversion explicit in one place.
 """
 from __future__ import annotations
 
-import hashlib
 import re
 import time
 from collections.abc import Iterable
@@ -49,7 +48,7 @@ from app.data.ontology import (
     RiskClass,
     obligations_for,
 )
-from app.data.ontology_evidence import OntologyEvidence
+from app.data.ontology_evidence import OntologyEvidence, content_hash_for
 from app.data.provision_coordinates import coordinate_exists
 
 # ── hard caps ────────────────────────────────────────────────────────────
@@ -146,7 +145,14 @@ def anchor_exists(ref: str) -> bool:
     candidate = to_wire(ref)
     if coordinate_exists(candidate):
         return True
-    return candidate in ARTICLE_EXISTENCE
+    # R463 — the tolerant second leg was DEAD: ``candidate`` is wire form
+    # ("Article 26") while ARTICLE_EXISTENCE is keyed internally ("Art. 26"),
+    # so the membership test was False for every input and the documented
+    # "tolerating the short form" tolerance never existed. The precedent is
+    # ``provision_coordinates._head_of``, which converts before its lookup. A
+    # future narrowing of ``coordinate_exists`` would otherwise have turned the
+    # existence gate off silently instead of failing loudly.
+    return to_internal(candidate) in ARTICLE_EXISTENCE
 
 
 # ── deterministic role / risk hints ──────────────────────────────────────
@@ -601,12 +607,15 @@ def _evidence_for(ref: str) -> OntologyEvidence | None:
     if not text or not text.strip():
         return None
     quote = " ".join(text.split())
-    digest = hashlib.sha256(quote.encode("utf-8")).hexdigest()
+    # R463 — one shared producer: the hash covers the STORED bytes, so the
+    # record can be verified from itself. This site used to hash the whole
+    # quote and then store a 240-character prefix of it.
+    stored, digest = content_hash_for(quote)
     return OntologyEvidence(
         source_id="eur-lex-ai-act-consolidated",
         source_version=KB_VERSION,
         locator=ref,
-        quote=quote[:240],
+        quote=stored,
         content_hash=digest,
     )
 
@@ -654,11 +663,26 @@ def resolve_concept(
     are opt-in because they read the corpus.
     """
     started = time.perf_counter()
-    kind, _, rest = str(concept_id or "").partition(":")
-    if kind not in CONCEPT_KINDS or not rest:
+
+    def _miss(*, label: str = "") -> ConceptRecord:
+        """Record the call, then report the miss.
+
+        R463 — five of this function's seven exits returned BEFORE the
+        ``calls``/``elapsed_ms`` bookkeeping (only the malformed-id branch and
+        the success path counted), so ``ShadowTrace`` under-counted exactly
+        the lookups that MISS: a manifest that resolves nothing looked cheaper
+        than one that resolves everything, which is the wrong direction for an
+        adapter-cost instrument.
+        """
         _TRACE.calls += 1
         _TRACE.elapsed_ms += (time.perf_counter() - started) * 1000.0
-        return ConceptRecord(concept_id=str(concept_id), kind=kind or "", label="", anchors=(), resolved=False)
+        return ConceptRecord(
+            concept_id=str(concept_id), kind=kind, label=label, anchors=(), resolved=False
+        )
+
+    kind, _, rest = str(concept_id or "").partition(":")
+    if kind not in CONCEPT_KINDS or not rest:
+        return _miss()
 
     role: str | None = None
     risk: str | None = None
@@ -666,7 +690,7 @@ def resolve_concept(
     if kind == KIND_PRACTICE:
         practice = PRACTICE_REGISTRY.get(rest)
         if practice is None:
-            return ConceptRecord(concept_id=concept_id, kind=kind, label="", anchors=(), resolved=False)
+            return _miss()
         label = practice.short_name
         raw = list(practice.citation)
         if practice.related_high_risk_anchor:
@@ -674,19 +698,19 @@ def resolve_concept(
     elif kind == KIND_ANNEX_III:
         category = ANNEX_III_REGISTRY.get(rest)
         if category is None:
-            return ConceptRecord(concept_id=concept_id, kind=kind, label="", anchors=(), resolved=False)
+            return _miss()
         label = category.short_name
         raw = ["Art. 6", "Annex III", f"Annex III.{category.number}"]
     elif kind == KIND_PHASE:
         phase = PHASE_REGISTRY.get(rest)
         if phase is None:
-            return ConceptRecord(concept_id=concept_id, kind=kind, label="", anchors=(), resolved=False)
+            return _miss()
         label = phase.label
         raw = list(phase.articles)
     elif kind == KIND_RISK:
         risk_enum = next((item for item in RiskClass if item.value == rest), None)
         if risk_enum is None:
-            return ConceptRecord(concept_id=concept_id, kind=kind, label="", anchors=(), resolved=False)
+            return _miss()
         risk = risk_enum.value
         label = risk_enum.value
         raw = list(obligations_for(ActorRole.PROVIDER, risk_enum))
@@ -694,7 +718,7 @@ def resolve_concept(
         role, _, risk = rest.partition(":")
         role_enum = next((item for item in ActorRole if item.value == role), None)
         if role_enum is None:
-            return ConceptRecord(concept_id=concept_id, kind=kind, label="", anchors=(), resolved=False)
+            return _miss()
         risk_enum = next((item for item in RiskClass if item.value == risk), None)
         if risk_enum is None:
             # The browse surface emits an explicit "no risk hint" role row so a
