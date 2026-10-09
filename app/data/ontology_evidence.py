@@ -8,6 +8,7 @@ mutate the legal ontology directly.
 """
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -42,6 +43,29 @@ class OntologyEvidence:
             )
         ):
             raise ValueError("ontology evidence requires source, locator, quote, and hash")
+
+
+#: Truncation cap for a quoted provision body in an evidence record.
+EVIDENCE_QUOTE_CAP = 240
+
+
+def content_hash_for(quote: str, *, cap: int = EVIDENCE_QUOTE_CAP) -> tuple[str, str]:
+    """``(stored_quote, content_hash)`` for one evidence quote.
+
+    R463 — this field had two producers and two answers: the browse adapter
+    emitted 64 hex characters and the phase-3 ledger 16, and BOTH hashed the
+    UNTRUNCATED text while storing only a prefix of it. So ``content_hash``
+    could not verify the record it lived on, and the two producers' hashes
+    were neither comparable nor joinable. Nothing caught it because the only
+    assertion anywhere pinned one producer's width
+    (``len(item.content_hash) == 64``) and never related hash to quote.
+
+    The hash now covers EXACTLY the bytes that get stored, so any consumer can
+    re-derive it from the record — the whole point of carrying it. Producers
+    must call this rather than ``hashlib`` directly.
+    """
+    stored = quote[:cap]
+    return stored, hashlib.sha256(stored.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)

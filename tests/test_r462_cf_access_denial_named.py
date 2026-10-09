@@ -279,5 +279,12 @@ class TestTheNoteSurvivesTheHealthBudget:
         assert "cf_access_denied" in detail
         # The status prefix must still be there, and the body still sliced.
         assert "api_status_401" in detail
-        assert "(bedrock fallback FAILING)" in str(out["provider"]) or expect_failing is False
+        if expect_failing:
+            assert "(bedrock fallback FAILING)" in str(out["provider"])
+        else:
+            # R463 — this arm used to read `... or expect_failing is False`,
+            # which made the whole statement assert the literal True whenever
+            # expect_failing was False: half of the parametrization was never
+            # checked. Assert the negative explicitly instead.
+            assert "FAILING" not in str(out["provider"])
         assert out["llm_ok"] is (not expect_failing)

@@ -238,6 +238,12 @@ class EvidenceBundle:
             "redundant_item_lines": len(redundant),
             "redundant_item_chars": sum(len(self.lines[ln]) + 1 for ln in redundant),
             "non_engaged_blocks": non_engaged,
+            # R463 — the DROPPED-member count, which is what level 2 acts on.
+            # ``non_engaged_blocks`` counts HEADERS (a different predicate), so
+            # a census row could report 12 blocks and have removed zero
+            # characters: the two numbers disagreeing is precisely the
+            # evidence a gate needs to prove the lever fired.
+            "non_engaged_member_lines": len(_non_engaged_member_lines(self.lines)),
         }
 
     def minified(self, level: int = 1) -> str:
@@ -305,6 +311,18 @@ def _non_engaged_member_lines(lines: tuple[str, ...]) -> set[int]:
 
     The heading, which carries the member count and the do-not-enumerate
     instruction, is kept: the ANSWER SHAPE clause points at these lists.
+
+    R463 — the FOUR-space membership test STAYS: it is load-bearing, not
+    incidental. ``tests/test_r460_evidence_bundle`` pins that the two-space
+    ``VERBATIM (question-relevant)`` line inside the same region is NOT a
+    member, so widening this to any indentation deleted verbatim prompt
+    content (measured on this round's first cut, and caught by that pin).
+
+    What was genuinely wrong is that the coupling is SILENT: a producer whose
+    members are indented differently makes level 2 a no-op that still reports
+    as applied. ``EvidenceBundle.stats`` therefore reports
+    ``non_engaged_member_lines`` next to ``non_engaged_blocks``, so a header
+    count with a ZERO drop is visible instead of invisible.
     """
     drop: set[int] = set()
     pending = False

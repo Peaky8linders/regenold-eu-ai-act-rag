@@ -8,7 +8,6 @@ reference length is returned verbatim).
 """
 from __future__ import annotations
 
-import inspect
 import json
 import re
 import sys
@@ -53,7 +52,8 @@ def test_non_positive_limit_is_empty():
 
 def test_row_builder_cuts_only_over_length_answers():
     rows = [
-        {"id": "a", "answer": "One. Two. Three.", "reference_answer": "One."},
+        {"id": "a", "question": "Q?", "answer": "One. Two. Three.",
+         "reference_answer": "One."},
         {"id": "b", "answer": "Short.", "reference_answer": "A much longer reference answer."},
         {"id": "c", "answer": "", "reference_answer": "Reference."},
         {"id": "d", "answer": "Answer without a reference answer.", "reference_answer": ""},
@@ -64,8 +64,12 @@ def test_row_builder_cuts_only_over_length_answers():
     assert out[2]["answer"] == ""                # empty stays empty
     assert out[3]["answer"] == rows[3]["answer"]  # no reference: no control
     assert [r["id"] for r in out] == ["a", "b", "c", "d"]
+    # R463 - this used to read `assert capped["question"] if "question" in capped
+    # else True`. No row carried a "question", so the condition was always False and
+    # the statement asserted the literal True: it could never fail. Row a now
+    # carries one, so the carry-through the old line claimed to guard is real.
+    assert out[0]["question"] == "Q?", "row fields carried through survive the copy"
     for original, capped in zip(rows, out, strict=True):
-        assert capped["question"] if "question" in capped else True
         assert original is not capped  # a copy, never an in-place mutation
 
 
@@ -134,13 +138,51 @@ def test_length_control_block_runs_end_to_end(monkeypatch, tmp_path):
     assert payload["axes"]["ans_correctness_loose"] == 100.0
 
 
-def test_flag_is_wired_and_reported_in_the_payload():
-    import evals.official.score_arm as score_arm
+def test_the_flag_wires_the_length_controlled_payload_field(monkeypatch, tmp_path):
+    """The flag must be WIRED to the payload field, not merely present in the file.
 
-    source = inspect.getsource(score_arm)
-    assert "--length-control" in source
-    assert '"length_controlled": length_controlled' in source
-    assert "LENGTH-CONTROL PASS DEGRADED" in source, "a dead judge must be loud"
+    R463: this test used to scan ``inspect.getsource(score_arm)`` for the literals
+    ``"length_controlled": length_controlled`` and ``--length-control``. A source
+    scan fails on a harmless rename and passes on a behavioural regression (right
+    key, wrong value), which is the opposite of what this file's other tests do —
+    the house rule is to assert on the WRITTEN payload. So drive ``main()`` twice
+    over one checkpoint: with the flag off the field is the pre-R460 ``None``, with
+    it on the field carries the pass's own accounting.
+    """
+    score_arm, ckpt = _stage(monkeypatch, tmp_path, [LONG_ANSWER, "Short."])
+
+    def fake_call_json(prompt, *a, **k):
+        return {
+            "verdicts": [{"n": 1, "satisfied": True, "why": "x"},
+                         {"n": 2, "satisfied": True, "why": "y"}],
+            "tone": {"appropriate": True, "clear": True, "why": "ok"},
+        }
+
+    monkeypatch.setattr(score_arm.official_judge, "_call_json", fake_call_json)
+
+    def run(label, *extra):
+        monkeypatch.setattr(sys, "argv", [
+            "score_arm", "--ckpt", str(ckpt), "--label", label, "--mode", "easy",
+            "--workers", "1", "--repeats", "1", *extra,
+        ])
+        assert score_arm.main() == 0
+        return json.loads(
+            (tmp_path / f"score-{label}-easy.json").read_text(encoding="utf-8")
+        )
+
+    assert run("lc-off")["length_controlled"] is None, (
+        "flag off: the pre-R460 payload shape, no controlled axes field"
+    )
+    on = run("lc-on", "--length-control")["length_controlled"]
+    assert on["cached"] is False
+    assert on["n"] == 2
+    assert on["answers_cut"] == 1
+    assert set(on["axes"]) == {
+        "ans_correctness_loose",
+        "ans_correctness_strict",
+        "ans_conciseness",
+        "regulatory_tone",
+    }
 
 
 # -- R461: the pass must grade against the GOLD, not against the first verdicts --

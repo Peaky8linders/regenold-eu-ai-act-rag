@@ -1582,6 +1582,16 @@ def _engine_cache_key(
             # ``_route_stage_model``, so it MUST be in the key (R263.2).
             "REGENOLD_STAGE2_ALLOW_NON_OPUS",
             "REGENOLD_STAGE2_WRAPPER_TIMEOUT_S",
+            # R463 — the knob above is only HALF the deadline: the RESOLVED
+            # value is ``_stage2_wrapper_timeout_s()``, which falls through to
+            # OPENAI_TIMEOUT_SECONDS when the dedicated knob is unset — the
+            # shipped default. That deadline decides whether the primary dial
+            # lands, and a read timeout is read as a leg FAILURE, so flipping
+            # it flips which leg SERVES the answer: i.e. it flips
+            # GraphRAGResponse.answer, the object _ENGINE_CACHE stores. An
+            # unkeyed flip replays arm A's cached answer and reads as "the
+            # deadline does not matter" (R263.2 / R288.1 doctrine).
+            "OPENAI_TIMEOUT_SECONDS",
             # R460 - transplant of the R449/R450/R451 contextual-field knobs.
             # Each changes the BM25 admission ranking, hence query.entities,
             # hence the wire references and the cached answer. The R451

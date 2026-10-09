@@ -90,6 +90,13 @@ def test_sonnet_55_rejected_for_other_judge_providers(
     monkeypatch: pytest.MonkeyPatch, provider: str
 ) -> None:
     monkeypatch.setattr(judge, "MODEL", judge.MODEL)
+    # R463 - ``configure_judge`` writes R388_JUDGE_PROVIDER and R388_JUDGE_MODEL
+    # into os.environ BEFORE it raises, so the rejected model used to stay in the
+    # process env (and in the judge identity, which is read from there) for every
+    # later test module: a leak that makes the suite order-dependent. Registering
+    # the two names with monkeypatch makes teardown restore the pre-call state.
+    monkeypatch.delenv("R388_JUDGE_PROVIDER", raising=False)
+    monkeypatch.delenv("R388_JUDGE_MODEL", raising=False)
     with pytest.raises(ValueError, match="wrapper/tunnel"):
         judge.configure_judge(provider=provider, model="claude-sonnet-5-5")
 
