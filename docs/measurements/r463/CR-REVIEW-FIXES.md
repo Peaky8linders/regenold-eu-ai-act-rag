@@ -72,8 +72,13 @@ not in `requirements*.txt`.
 ## Validation performed
 
 * `pytest tests/test_r463_cr_findings.py tests/test_r463_eval_cf_access_host_pin.py`
-  — new tests for C1/C3/I1/I2/I3/I4/I5/I6; each was run against the pre-R463 code
-  and fails there (the two-sided proof script is `scratch/r463-review/`).
+  — new tests for C1/C3/I1/I2/I3/I4/I5/I6. Each was run **twice**: with the fix in
+  place it passes, and with that fix's hunk reverted in the working tree it fails,
+  so none of them is a test that would have passed anyway. Durable form of the
+  proof: the assertions themselves — revert the hunk named for the finding in the
+  review report and re-run the file. (The throwaway revert-and-rerun walker was
+  written under `scratch/`, which is gitignored, and is not part of the commit;
+  `git show 1aa130f -- <file>` is the hunk to revert.)
 * R418 driver re-run → structurally identical JSON; `tests/test_r419_ans_strict_repro.py`
   11 passed.
 * `ruff check` on every touched file: clean for the files whose findings are this
