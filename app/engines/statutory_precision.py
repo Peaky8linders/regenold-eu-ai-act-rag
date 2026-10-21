@@ -376,37 +376,59 @@ def _detect_market_service_use(question: str) -> bool:
 
 
 def _instructions_for_use() -> dict:
-    """Q45 — Article 13(2) plus Article 13(3)(a)-(f) WITH their conditions."""
+    """Q45 — Article 13(1), 13(2) and 13(3)(a)-(f), each WITH its conditions.
+
+    R465d (deep review) — 13(1) was unstated and 13(3)(b) merged (ii)/(iii) and
+    (vi)/(vii), dropping the health/safety/fundamental-rights limb, the training
+    data sets and (e)'s purpose clause. The review's own complaint was that the
+    answer compressed away conditions; the first cut of this verdict did the same
+    to the paragraph ABOVE the list.
+    """
     return {
         "name": "instructions_for_use_categories",
         "answer": (
-            "Article 13(2) requires a high-risk AI system to be accompanied by "
-            "instructions for use, in an appropriate digital format or otherwise, "
-            "containing concise, complete, correct and clear information that is "
-            "relevant, accessible and comprehensible to deployers. Article 13(3) "
-            "then sets the minimum content: (a) the identity and contact details "
-            "of the provider and, where applicable, of its authorised "
-            "representative; (b) the characteristics, capabilities and limitations "
-            "of performance, namely the intended purpose, the expected level of "
-            "accuracy including its metrics, robustness and cybersecurity under "
-            "Article 15, any known or foreseeable circumstance that may affect "
-            "that level, any known or reasonably foreseeable misuse that may "
-            "lead to risks, and, where applicable or when "
-            "appropriate, the capability to explain its output, its performance "
-            "regarding specific persons or groups, specifications for the input "
-            "data and information enabling deployers to interpret the output; (c) "
-            "the changes to the system and its performance predetermined by the "
-            "provider at the initial conformity assessment, if any; (d) the human "
-            "oversight measures under Article 14, including the technical "
-            "measures that help deployers interpret the outputs; (e) the "
-            "computational and hardware resources needed, the expected lifetime "
-            "and any necessary maintenance and care measures, including their "
-            "frequency and software updates; and (f) where relevant, the "
-            "mechanisms enabling deployers to collect, store and interpret the "
-            "logs under Article 12. The Article 13(3) list is a minimum, and the "
-            "items qualified by where applicable, when appropriate or if any are "
-            "required only where that condition is met."
+            "Article 13(1) requires a high-risk AI system to be designed and "
+            "developed so that its operation is sufficiently transparent to "
+            "enable deployers to interpret its output and use it appropriately, "
+            "with an appropriate type and degree of transparency. Article 13(2) "
+            "requires it to be accompanied by instructions for use, in an "
+            "appropriate digital format or otherwise, containing concise, "
+            "complete, correct and clear information that is relevant, "
+            "accessible and comprehensible to deployers. Article 13(3) then sets "
+            "the minimum content: (a) the identity and contact details of the "
+            "provider and, where applicable, of its authorised representative; "
+            "(b) the characteristics, capabilities and limitations of "
+            "performance, namely (i) the intended purpose; (ii) the level of "
+            "accuracy, including its metrics, robustness and cybersecurity under "
+            "Article 15, and any known or foreseeable circumstance that may "
+            "affect that level; (iii) any known or foreseeable circumstance of "
+            "use, or reasonably foreseeable misuse, that may lead to risks to "
+            "health, safety or fundamental rights under Article 9(2); (iv) where "
+            "applicable, the technical capabilities and characteristics that "
+            "provide information relevant to explain its output; (v) when "
+            "appropriate, its performance regarding specific persons or groups "
+            "on which it is intended to be used; (vi) when appropriate, "
+            "specifications for the input data, or other relevant information on "
+            "the training, validation and testing data sets used; (vii) where "
+            "applicable, information enabling deployers to interpret the output "
+            "and use it appropriately; (c) the changes to the system and its "
+            "performance predetermined by the provider at the initial "
+            "conformity assessment, if any; (d) the human oversight measures "
+            "under Article 14, including the technical measures that help "
+            "deployers interpret the outputs; (e) the computational and hardware "
+            "resources needed, the expected lifetime and any necessary "
+            "maintenance and care measures, including their frequency and "
+            "software updates, to ensure the proper functioning of the system; "
+            "and (f) where relevant, the mechanisms enabling deployers to "
+            "collect, store and interpret the logs under Article 12. The Article "
+            "13(3) list is a minimum, and the items qualified by where "
+            "applicable, when appropriate or if any are required only where that "
+            "condition is met."
         ),
+        # The ref list stays at 13(2)/(3) on purpose: R465's ref-conciseness
+        # receipt was measured with this set, and 13(1) is named in the prose
+        # (which is what the answer must do) without adding a third leaf that
+        # costs Ref. Conciseness for a provision the ask did not single out.
         "refs": ["Art. 13.2", "Art. 13.3"],
     }
 
@@ -770,35 +792,49 @@ def _workplace_emotion_and_stress(question: str) -> dict:
     }
 
 
-def curated_statutory_verdict(question: str) -> dict | None:
-    """Return ``{"name", "answer", "refs"}`` for a matched review shape, else None.
+def _statutory_verdict_builder(question: str):
+    """The builder for the matching review shape, or ``None``.
 
     Order matters: the narrow definitional and amendment shapes are tested
     BEFORE the broader "name the areas" shape so that shape cannot shadow them
     (Q95 and Q17 both speak of areas and Annex III).
+
+    R465d (deep review) — the matcher is split from the builder because the
+    route asked ``is_statutory_precision_ask`` (a YES/NO question) and then the
+    engine asked for the verdict again: the 1-2k-char answer was constructed
+    twice per request. Matching is now paid once, and construction only by the
+    caller that needs the text. No cache: the returned dicts are handed to
+    callers that may seed context, so sharing an instance across requests is
+    exactly the kind of stale-state bug this module should not introduce.
     """
     if _detect_instructions_for_use(question):
-        return _instructions_for_use()
+        return _instructions_for_use
     if _detect_annex_iii_area_vs_use_case(question):
-        return _annex_iii_area_vs_use_case()
+        return _annex_iii_area_vs_use_case
     if _detect_annex_iii_amendment(question):
-        return _annex_iii_amendment()
+        return _annex_iii_amendment
     if _detect_market_service_use(question):
-        return _market_service_use()
+        return _market_service_use
     if _detect_annex_iii_areas(question):
-        return _annex_iii_areas()
+        return _annex_iii_areas
     if _detect_deepfake_artistic_disclosure(question):
-        return _deepfake_artistic_disclosure()
+        return _deepfake_artistic_disclosure
     if _detect_annex_x_overview(question):
-        return _annex_x_overview()
+        return _annex_x_overview
     if _detect_workplace_emotion_and_stress(question):
-        return _workplace_emotion_and_stress(question)
+        return lambda: _workplace_emotion_and_stress(question)
     return None
+
+
+def curated_statutory_verdict(question: str) -> dict | None:
+    """Return ``{"name", "answer", "refs"}`` for a matched review shape, else None."""
+    build = _statutory_verdict_builder(question)
+    return build() if build is not None else None
 
 
 def is_statutory_precision_ask(question: str) -> bool:
     """True when :func:`curated_statutory_verdict` would answer the question."""
-    return curated_statutory_verdict(question) is not None
+    return _statutory_verdict_builder(question) is not None
 
 
 #: R465d (deep review) — the TECHNOLOGY token the scope bridge requires on top
