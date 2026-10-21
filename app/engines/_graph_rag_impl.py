@@ -704,6 +704,97 @@ BEDROCK_COMPLEX_MODEL = "qwen.qwen3-235b-a22b-2507-v1:0"
 """Complex tier — the ~20% of questions ``complex_question`` flags (Qwen 3 235B)."""
 
 
+def bedrock_fallback_model_chain(
+    *, stage_name: str = "Stage", complex_question: bool = False,
+    model_override: str | None = None,
+) -> list[str]:
+    """The ordered Bedrock model list a completion would dial, resolved ONCE.
+
+    R464 — this function is the single definition of that ordering. Two callers
+    depend on it agreeing with itself:
+
+    * :func:`_bedrock_complete_for_graph_rag`, which walks it to serve a request,
+    * ``/healthz/llm?probe_bedrock=1`` (``app/main.py::_probe_bedrock_leg``),
+      which walks the same list to answer "is leg 2 up?".
+
+    They used to disagree. The probe dialled a hand-mirrored two-entry constant
+    (``BEDROCK_FALLBACK_PROBE_MODELS``) while the engine derived its list from
+    ``REGENOLD_BEDROCK_MODEL`` / ``REGENOLD_STAGE2_BEDROCK_MODEL`` /
+    ``REGENOLD_BEDROCK_COMPLEX_MODEL`` / ``REGENOLD_BEDROCK_FALLBACK_CHAIN``, so
+    an operator who set a custom chain (or moved the Stage-2 pin off Qwen) could
+    read ``status: ok`` from a model the fallback would never dial, while every
+    model it WOULD dial was denied. The mirror is now structural instead of
+    manual: both callers get this list.
+
+    Order is the fallback's own precedence: the resolved tier model first, then
+    the rollover chain, deduped with order preserved. An empty list means the
+    entry model could not be resolved at all — callers treat that as "no Bedrock
+    answer", never as "no Bedrock credential".
+    """
+    try:
+        from app.llm.bedrock_client import resolve_bedrock_model
+
+        is_stage2 = "stage 2" in (stage_name or "").lower()
+        default_model = os.getenv(
+            "REGENOLD_BEDROCK_MODEL", BEDROCK_RAG_MODEL
+        ).strip() or BEDROCK_RAG_MODEL
+
+        if model_override:
+            model = model_override
+        elif complex_question:
+            model = (
+                os.getenv("REGENOLD_BEDROCK_COMPLEX_MODEL", "").strip()
+                or BEDROCK_COMPLEX_MODEL
+            )
+        elif is_stage2:
+            if _opus_for_all_enabled():
+                model = (
+                    os.getenv("REGENOLD_BEDROCK_COMPLEX_MODEL", "").strip()
+                    or BEDROCK_COMPLEX_MODEL
+                )
+            else:
+                model = os.getenv("REGENOLD_BEDROCK_STAGE2_MODEL", "").strip() or default_model
+        else:
+            model = os.getenv("REGENOLD_BEDROCK_STAGE1_MODEL", "").strip() or default_model
+
+        model_id = resolve_bedrock_model(model)
+
+        # Multi-tier Bedrock rollover chain (Qwen 3 235B / 32B, Claude, open models)
+        try:
+            _chain_env = os.getenv("REGENOLD_BEDROCK_FALLBACK_CHAIN", "").strip()
+            if _chain_env:
+                _chain = [resolve_bedrock_model(m.strip()) for m in _chain_env.split(",") if m.strip()]
+            else:
+                if complex_question:
+                    _default_fallback_models = (
+                        "qwen.qwen3-235b-a22b-2507-v1:0",
+                        "qwen.qwen3-32b-v1:0",
+                        "claude-opus-4-6",
+                        "nvidia.nemotron-super-3-120b",
+                        "mistral.devstral-2-123b",
+                    )
+                else:
+                    _default_fallback_models = (
+                        "qwen.qwen3-32b-v1:0",
+                        "qwen.qwen3-235b-a22b-2507-v1:0",
+                        "claude-opus-4-6",
+                        "nvidia.nemotron-super-3-120b",
+                        "mistral.devstral-2-123b",
+                    )
+                _chain = [resolve_bedrock_model(m) for m in _default_fallback_models]
+        except Exception:
+            _chain = []
+
+        ordered: list[str] = []
+        for _cand in (model_id, *_chain):
+            if _cand and _cand not in ordered:
+                ordered.append(_cand)
+        return ordered
+    except Exception as exc:
+        logger.warning("graph_rag.bedrock_chain_unresolved: %s", exc)
+        return []
+
+
 def _bedrock_complete_for_graph_rag(
     *, system: str, user: str, max_tokens: int, temperature: float,
     complex_question: bool = False, stage_name: str = "Stage",
@@ -720,7 +811,6 @@ def _bedrock_complete_for_graph_rag(
             complete_with_fallback,
             get_bedrock_provider,
             is_bedrock_provider_enabled,
-            resolve_bedrock_model,
         )
     except Exception:
         return None
@@ -729,60 +819,13 @@ def _bedrock_complete_for_graph_rag(
         return None
 
     is_stage2 = "stage 2" in (stage_name or "").lower()
-    default_model = os.getenv(
-        "REGENOLD_BEDROCK_MODEL", BEDROCK_RAG_MODEL
-    ).strip() or BEDROCK_RAG_MODEL
-
-    if model_override:
-        model = model_override
-    elif complex_question:
-        model = (
-            os.getenv("REGENOLD_BEDROCK_COMPLEX_MODEL", "").strip()
-            or BEDROCK_COMPLEX_MODEL
-        )
-    elif is_stage2:
-        if _opus_for_all_enabled():
-            model = (
-                os.getenv("REGENOLD_BEDROCK_COMPLEX_MODEL", "").strip()
-                or BEDROCK_COMPLEX_MODEL
-            )
-        else:
-            model = os.getenv("REGENOLD_BEDROCK_STAGE2_MODEL", "").strip() or default_model
-    else:
-        model = os.getenv("REGENOLD_BEDROCK_STAGE1_MODEL", "").strip() or default_model
-
-    model_id = resolve_bedrock_model(model)
-
-    # Multi-tier Bedrock rollover chain (Qwen 3 235B / 32B, Claude, open models)
-    try:
-        _chain_env = os.getenv("REGENOLD_BEDROCK_FALLBACK_CHAIN", "").strip()
-        if _chain_env:
-            _chain = [resolve_bedrock_model(m.strip()) for m in _chain_env.split(",") if m.strip()]
-        else:
-            if complex_question:
-                _default_fallback_models = (
-                    "qwen.qwen3-235b-a22b-2507-v1:0",
-                    "qwen.qwen3-32b-v1:0",
-                    "claude-opus-4-6",
-                    "nvidia.nemotron-super-3-120b",
-                    "mistral.devstral-2-123b",
-                )
-            else:
-                _default_fallback_models = (
-                    "qwen.qwen3-32b-v1:0",
-                    "qwen.qwen3-235b-a22b-2507-v1:0",
-                    "claude-opus-4-6",
-                    "nvidia.nemotron-super-3-120b",
-                    "mistral.devstral-2-123b",
-                )
-            _chain = [resolve_bedrock_model(m) for m in _default_fallback_models]
-    except Exception:
-        _chain = []
-
-    ordered: list[str] = []
-    for _cand in (model_id, *_chain):
-        if _cand and _cand not in ordered:
-            ordered.append(_cand)
+    # R464 — the ordering is resolved by the shared helper so the probe in
+    # ``app/main.py`` cannot report on a model this loop would not dial.
+    ordered = bedrock_fallback_model_chain(
+        stage_name=stage_name,
+        complex_question=complex_question,
+        model_override=model_override,
+    )
 
     try:
         _stage2_ceiling = int(os.getenv("REGENOLD_BEDROCK_MAX_TOKENS", "4096"))

@@ -179,7 +179,9 @@ class TestProbeBedrockOptIn:
         # "leg 2 is down" is only true once every model the engine would dial
         # has been tried. (On SUCCESS it short-circuits at the first ok — see
         # test_probe_reports_ok_when_bedrock_answers, still exactly 1 call.)
-        assert boto.converse_calls == len(bc.BEDROCK_FALLBACK_PROBE_MODELS), (
+        # R464 — "the whole chain" is the ENGINE-resolved chain
+        # (``stage2_probe_models()``), not the hand-mirrored literal.
+        assert boto.converse_calls == len(bc.stage2_probe_models()), (
             "a failing probe must try every chain model, and no more"
         )
 

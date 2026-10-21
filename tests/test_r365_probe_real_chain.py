@@ -12,6 +12,12 @@ operator reaches for during an outage.
 
 Every test here is offline: ``check_connectivity_and_permissions`` is exercised
 through a stubbed single-model probe, never against AWS.
+
+R464 — the walk is no longer the literal. It is resolved by the engine
+(``bedrock_client.stage2_probe_models()``), so these tests assert the DIAL ORDER
+they always meant to assert (the fallback's own order) instead of a hard-coded
+235B-first, and the equivalence between the walk and the fallback's chain is
+pinned in ``test_r464_bedrock_probe_model_fidelity.py``.
 """
 
 from __future__ import annotations
@@ -22,10 +28,13 @@ from app.llm import bedrock_client as bc
 
 
 def test_the_probe_chain_is_the_engine_fallback_chain() -> None:
-    """The constant must mirror ``_default_fallback_models`` in the engine.
+    """The pinned literal must mirror ``_default_fallback_models`` in the engine.
 
     Pinned as a literal rather than imported so a silent edit to either side
-    fails here instead of drifting apart unnoticed.
+    fails here instead of drifting apart unnoticed. R464 — this constant is now
+    only the fallback-of-last-resort walk (used when the engine cannot be
+    imported); the default walk is :func:`stage2_probe_models`, pinned in
+    ``test_r464_bedrock_probe_model_fidelity.py``.
     """
     assert bc.BEDROCK_FALLBACK_PROBE_MODELS == (
         "qwen.qwen3-235b-a22b-2507-v1:0",
@@ -63,38 +72,49 @@ def _stub(monkeypatch, outcomes: dict[str, str]) -> list[str]:
 
 
 class TestChainWalking:
+    """R464 — the walk is the fallback's resolved chain, in the fallback's order.
+
+    These assertions used to read "must try 235b first", which was the pinned
+    literal's order and not the engine's: a standard Stage-2 call dials the
+    resolved tier model first (``REGENOLD_BEDROCK_MODEL``, else 32B).
+    """
+
     def test_reports_ok_when_the_first_chain_model_answers(self, monkeypatch) -> None:
-        seen = _stub(monkeypatch, {"qwen.qwen3-235b-a22b-2507-v1:0": "ok"})
+        walk = bc.stage2_probe_models()
+        _stub(monkeypatch, {walk[0]: "ok"})
         res = bc.check_connectivity_and_permissions()
         assert res["status"] == "ok"
-        assert res["model"] == "qwen.qwen3-235b-a22b-2507-v1:0"
+        assert res["model"] == walk[0]
         assert [c["status"] for c in res["chain"]][0] == "ok"
+        assert res["resolved_models"] == list(walk)
+        assert res["models_source"] == "stage2_fallback"
 
-    def test_reports_ok_when_only_the_SECOND_chain_model_answers(
+    def test_reports_ok_when_only_a_LATER_chain_model_answers(
         self, monkeypatch
     ) -> None:
         """"The fallback leg works" means SOME chain model answers."""
-        seen = _stub(monkeypatch, {"qwen.qwen3-32b-v1:0": "ok"})
+        walk = bc.stage2_probe_models()
+        assert len(walk) >= 2, "this test needs a walk with a second entry"
+        seen = _stub(monkeypatch, {walk[1]: "ok"})
         res = bc.check_connectivity_and_permissions()
         assert res["status"] == "ok"
-        assert res["model"] == "qwen.qwen3-32b-v1:0"
-        assert seen[0] == "qwen.qwen3-235b-a22b-2507-v1:0", "must try 235b first"
+        assert res["model"] == walk[1]
+        assert seen[0] == walk[0], "must dial the fallback's first model first"
 
     def test_reports_error_only_when_NO_chain_model_answers(self, monkeypatch) -> None:
         _stub(monkeypatch, {})
         res = bc.check_connectivity_and_permissions()
         assert res["status"] != "ok"
-        assert len(res["chain"]) == len(bc.BEDROCK_FALLBACK_PROBE_MODELS)
+        assert len(res["chain"]) == len(bc.stage2_probe_models())
         assert all(c["status"] != "ok" for c in res["chain"])
 
     def test_every_attempt_is_surfaced_even_on_success(self, monkeypatch) -> None:
         """A partial entitlement must stay visible, not be hidden by the first ok."""
-        _stub(monkeypatch, {"qwen.qwen3-235b-a22b-2507-v1:0": "ok"})
+        walk = bc.stage2_probe_models()
+        _stub(monkeypatch, {walk[0]: "ok"})
         res = bc.check_connectivity_and_permissions()
         assert "chain" in res
-        assert {c["model"] for c in res["chain"]} <= set(
-            bc.BEDROCK_FALLBACK_PROBE_MODELS
-        )
+        assert {c["model"] for c in res["chain"]} <= set(walk)
 
 
 class TestExplicitModelStillWorks:

@@ -178,3 +178,86 @@ The Bedrock fallback leg is a separate credential outage — its local
 `AWS_BEARER_TOKEN_BEDROCK` returns `api_key_invalid_403` — so the service is
 currently answering Stage-2 deterministically. Fixing either leg restores
 synthesis; fixing only the tunnel requires §4 to stay satisfied.
+
+## 7. Resolution — measured 2026-10-09
+
+The operator rotated the Access service token and minted a fresh Bedrock API
+key, both set on the Railway service. Final state, measured against the live
+deploy (`deployment_id cd847b7e-28b4-4389-91a2-508a67fa5c43`, `version 1.2.3`):
+
+| probe | reading |
+| :-- | :-- |
+| `/healthz/llm`, **both** workers | `llm_ok: true`, `detail: "ok"` on pid 3 and pid 4; the anonymous probe fires a live wrapper completion (15.03 s / 12.37 s) |
+| `/healthz/llm?probe_bedrock=1` | `status: "ok"`, `error: null`, `qwen.qwen3-235b-a22b-2507-v1:0`, **567 ms** — a real Converse call, not an auth rejection |
+| transport contract | `strict: true`, `chain: ["openai_wrapper", "bedrock"]` |
+| `POST /ask?include_telemetry=true` | **no `warning`** (the field is set only when Stage-2 failed), 27.35 s, `references: [Article 26.2, Article 27.1.e]` |
+| serving-worker counters | `primary 1/1, fallback 0/0, refused 0` |
+
+§1 is reversed and the chain is **2/2**: the tunnel carries Stage-2, and Bedrock
+accepts the credential and returns a completion. Scope note on that second half —
+at the time of this reading the probe called `check_connectivity_and_permissions()`
+over the pinned `BEDROCK_FALLBACK_PROBE_MODELS`, not the fallback's own
+`_bedrock_complete_for_graph_rag` path. With `REGENOLD_STAGE2_BEDROCK_MODEL`
+unset both resolve to the same Qwen tier (`stage2_policy.stage2_fallback_model()`
+returns `""` → Qwen 3 32B/235B), so the credential was cleared **on the model the
+fallback actually serves**, and the completion path itself is pinned by
+`tests/test_r431_fallback_leg_guard.py` rather than exercised live — forcing the
+primary down for real would mean mutating the production env.
+
+**R464 correction to that scope note.** The two sides are no longer compared by
+hand: the probe resolves its walk through
+`_graph_rag_impl.bedrock_fallback_model_chain()`, the same function
+`_bedrock_complete_for_graph_rag` walks, and dials each candidate through
+`complete_with_fallback(..., fallbacks=())` — the fallback's own transport. So
+the "same tier by coincidence of defaults" argument above is superseded, not
+merely still true: the walk follows every `REGENOLD_BEDROCK_*` override, and a
+custom chain now moves the diagnostic with it. See
+[../r464/PROBE-MODEL-FIDELITY.md](../r464/PROBE-MODEL-FIDELITY.md) §4 for the
+live reading on the resolved walk (2026-10-21).
+
+Two further reading notes, both measured:
+
+* The health probe does **not** move the transport counters (pid 3 read `0/0`
+  while `llm_ok: true`), so they are only evidence of real traffic — read them
+  after an `/ask`, not after a probe. `--workers 2` makes them per-worker as
+  well, so poll until the pid that served the request repeats.
+* The new Bedrock key only took effect **after the process was recreated**: the
+  `deployment_id` moved `0b58565b-…` → `cd847b7e-…` and every per-worker counter
+  reset to `0/0` between two probes minutes apart, while the console already held
+  the new value. That is the probe's own hint (`a new value … is NOT in
+  os.environ until the process restarts`) observed rather than assumed — a
+  Railway variable change that does not restart the worker reads `key_invalid`
+  indefinitely.
+
+### 7b. What the operator still owns
+
+**`.env` on this machine still carries both revoked credentials** — the Access
+pair unchanged from §3 (`8f40386f9a26` / `f30ef1bbb10a`) and the old Bedrock key
+(`3b788124822d`), the file untouched since 2026-09-30. Production succeeds
+because Railway holds the new values: a direct tunnel call from this box returns
+the §2 block page, and a locally-run Bedrock call still gets
+`api_key_invalid_403`. Paste both new values into `.env` before running anything
+locally that dials a leg. The tunnel also terminates on this machine
+(`127.0.0.1:8000`, §4), so production's primary leg depends on this box staying
+up.
+
+**Re-measured 2026-10-21 — half of that warning has expired.** A local
+`/healthz/llm?probe_bedrock=1` returned `status: ok`,
+`qwen.qwen3-32b-v1:0`, 1077 ms, `response_text: "OK."` with real token counts,
+so the local `AWS_BEARER_TOKEN_BEDROCK` in `.env` is **live**, not the revoked
+`3b788124822d`. The Access half still holds: the same process's base
+`/healthz/llm` reported `api_status_401` with `cf_access_denied: … the token is
+not a principal on the application`, so `CF_ACCESS_CLIENT_ID` /
+`CF_ACCESS_CLIENT_SECRET` still need replacing. Only that pair is outstanding.
+
+### 7c. Two traps found while re-testing
+
+- **The hostname now carries a WAF UA rule.** A non-browser client gets
+  `403 {"title":"Error 1010: Access denied"}` *before* Access is evaluated —
+  with or without a valid service token. Production is unaffected (the provider
+  pins a Chrome UA), but any `curl`/urllib retest must send one or it reports a
+  failure that does not exist. §2's table only ever saw the 401 shape.
+- **The legacy Groq hatch armed and was counted.** While the primary was down,
+  the serving worker showed `refused_by_provider {groq: N}` — the engine tried to
+  answer Stage-2 off-contract and the R360 guard blocked it. That is the policy
+  working, not a new bug; with the tunnel restored the count is 0.
