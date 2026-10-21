@@ -104,7 +104,7 @@ class TestR304InterceptsRemoved:
     # misstated Article 7(3); the replacement states BOTH of its limbs, so the
     # defect that motivated the removal is not back.
     @pytest.mark.parametrize("question", [Q_SANDBOX, Q_MIGRATION])
-    def test_no_curated_intercept_on_the_three_rows(self, question: str) -> None:
+    def test_no_curated_intercept_on_the_other_two_rows(self, question: str) -> None:
         assert _is_curated_authoritative_intercept(question) is False
 
     def test_the_amendment_row_is_curated_by_the_statutory_verdict(self) -> None:

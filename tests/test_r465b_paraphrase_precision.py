@@ -31,6 +31,10 @@ import os
 
 import pytest
 
+# R465d (deep review) — ``setdefault`` here runs BEFORE the fixture snapshots,
+# so restoring the snapshot only restores "1" and the key stays set for the
+# whole session. Record the real prior value first and put it back in teardown.
+_PRIOR_SKIP_DOTENV = os.environ.get("REGENOLD_SKIP_DOTENV")
 os.environ.setdefault("REGENOLD_SKIP_DOTENV", "1")
 
 DETERMINISTIC_ENV = {
@@ -112,6 +116,10 @@ def ask():
             os.environ.pop(key, None)
         else:
             os.environ[key] = value
+    if _PRIOR_SKIP_DOTENV is None:
+        os.environ.pop("REGENOLD_SKIP_DOTENV", None)
+    else:
+        os.environ["REGENOLD_SKIP_DOTENV"] = _PRIOR_SKIP_DOTENV
 
 
 def _low(s: str) -> str:
@@ -436,3 +444,38 @@ class TestDeepReviewRegressions:
         text = _low(_ART_SUBPOINT_DESCRIBERS["Article 50"])
         for token in ("50(1)", "50(2)", "50(3)", "50(4)", "50(5)"):
             assert token in text, token
+
+    def test_the_three_framings_are_actually_different(self):
+        # R465d (deep review) — the branch assertions elsewhere check text that
+        # EVERY branch emits (the prohibition sentence, the exception, the
+        # dates), so they would pass with the framing hard-coded. This diffs the
+        # tails instead: the own-setup, employer and provider framings must be
+        # distinguishable sentences, not three copies of one.
+        own = _answer("Our factory monitors worker emotions - is that allowed?")
+        employer = _answer("Is emotion recognition of employees allowed?")
+        provider = _answer(
+            "We are a provider of emotion-recognition software sold to employers - is it allowed?"
+        )
+        assert "manufacturing line" in own
+        assert "manufacturing line" not in employer
+        assert "first two" in provider
+        assert "first two" not in employer
+        assert own.split("as well,")[-1] != employer.split("as well,")[-1]
+
+    def test_history_does_not_activate_the_verdict(self):
+        # R465d (deep review) — ``_live_turn`` is the whole gate discipline and
+        # had no pin: a detector that read the flattened conversation would
+        # answer a follow-up from the PREVIOUS turn's subject.
+        from app.engines.statutory_precision import _detect_workplace_emotion_and_stress
+
+        carried = (
+            "User: our factory monitors worker emotions\n"
+            "Assistant: Article 5(1)(f) prohibits that.\n"
+            "Latest question: what are the penalties?"
+        )
+        assert not _detect_workplace_emotion_and_stress(carried)
+        live = (
+            "User: hello\n"
+            "Latest question: our factory monitors worker emotions - is that allowed?"
+        )
+        assert _detect_workplace_emotion_and_stress(live)

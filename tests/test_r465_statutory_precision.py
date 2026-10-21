@@ -19,6 +19,10 @@ import re
 
 import pytest
 
+# R465d (deep review) — record the real prior value: ``setdefault`` here runs
+# before the fixture snapshots, so the snapshot alone would restore "1" and
+# leak the key for the whole session.
+_PRIOR_SKIP_DOTENV = os.environ.get("REGENOLD_SKIP_DOTENV")
 os.environ.setdefault("REGENOLD_SKIP_DOTENV", "1")
 
 
@@ -120,6 +124,10 @@ def ask():
             os.environ.pop(key, None)
         else:
             os.environ[key] = value
+    if _PRIOR_SKIP_DOTENV is None:
+        os.environ.pop("REGENOLD_SKIP_DOTENV", None)
+    else:
+        os.environ["REGENOLD_SKIP_DOTENV"] = _PRIOR_SKIP_DOTENV
 
 
 def _norm(s: str) -> str:

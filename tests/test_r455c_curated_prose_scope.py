@@ -89,8 +89,13 @@ def test_flag_is_deny_list_and_cache_keyed(monkeypatch):
 WORKPLACE_DECLARED_HEADS = ["Article 5", "Article 6", "Article 26", "Annex III"]
 
 
+#: R465d (deep review) — this is a FLAG-INVARIANCE test, not a wiring test.
+#: The verdict states every provision it declares, so both arms must agree; the
+#: wiring itself is pinned behaviourally by ``test_flag_is_deny_list_and_cache_keyed``
+#: (the gate flips) and by the unit tests above (the prune drops an unstated
+#: anchor). The old name claimed more than the assertions can show.
 @pytest.mark.parametrize("flag,expected", [("1", WORKPLACE_DECLARED_HEADS), ("0", WORKPLACE_DECLARED_HEADS)])
-def test_route_workplace_emotion_wire(monkeypatch, flag, expected):
+def test_route_workplace_emotion_wire_is_flag_invariant(monkeypatch, flag, expected):
     from fastapi.testclient import TestClient
     from pydantic import SecretStr
 
