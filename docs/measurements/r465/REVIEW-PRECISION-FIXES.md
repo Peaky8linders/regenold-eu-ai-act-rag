@@ -444,3 +444,50 @@ class R465 exists to close, so each now has a pin in
   describer cap and keyword pins. The R465b A/B receipt above therefore covers the
   code *before* §4; a fresh A/B is the honest instrument for these edits and is
   the next step, not a claim made here.
+
+## 5. The residual remarks, closed
+
+Section 4 left six remarks open (the text-completeness one, the double
+construction, and four test-quality items). All six are now addressed rather
+than argued away.
+
+**Article 13(1) was unstated, and 13(3)(b) was still compressed.** The verdict
+the review asked for had itself dropped the paragraph *above* the list and
+merged four sub-limbs. It now states 13(1)'s design duty ("sufficiently
+transparent to enable deployers to interpret a system's output"), splits
+13(3)(b)(i)-(vii) with the health/safety/fundamental-rights limb, the training /
+validation / testing data sets and the interpret-the-output information each
+named, and keeps (e)'s "to ensure the proper functioning of that system". The
+ref list deliberately stays at 13(2)/(3): 13(1) is named in the prose, and the
+R465 conciseness receipt was measured with this set.
+
+**The verdict was built twice per request.** `is_statutory_precision_ask` built
+the full 1-2k-char answer only to answer a yes/no, and the engine built it again.
+The matcher is now split from the builders, so matching is paid once and
+construction only by the caller that needs the text. No memoisation: the dicts
+are handed to callers that seed context, and sharing an instance across requests
+would be a stale-state bug.
+
+**Four test-quality remarks.** The branch assertions now have a companion test
+that *diffs* the three framings (they previously checked text every branch
+emits, so a hard-coded framing would have passed). `_live_turn`'s gate discipline
+— the whole reason detectors read the live turn — has its first pin: a follow-up
+after a monitored-emotions turn must not activate the verdict, while the same
+sentence as the live turn must. The parametrised route test is renamed
+`…_is_flag_invariant`, because the verdict states everything it declares and the
+two arms therefore agree by construction. The import-time `REGENOLD_SKIP_DOTENV`
+now records the real prior value, so teardown unsets it instead of leaving "1"
+set for the session. The misleading `…_three_rows` name (two rows) is corrected.
+
+**Two remarks stay open, and they are environment limits, not oversights.** The
+route's extractive-pass skip has no behavioural test: deleting the call site
+leaves every offline assertion green, because the effect only appears when the
+extractive pass runs, and the only portable way to observe it is a source-order
+assertion, which is exactly the weak instrument this round removed elsewhere. The
+Stage-2-landed reference regime is likewise untested here by design — every R465
+wire test forces `P2P_GRAPH_RAG_ENABLE_STAGE2=0`, so
+`_reconcile_references_to_prose` / `_add_prose_named_refs` /
+`_surface_prose_subpoints` never touch these answers offline. Both need a live
+arm; neither is claimed as covered.
+
+**Verification.** `pytest tests/` → 9738 passed, 23 skipped, 0 failed.
