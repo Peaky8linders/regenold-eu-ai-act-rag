@@ -4,7 +4,8 @@ Two endpoints let an anonymous caller spend someone else's money or someone
 else's sending reputation. Both were publicly reachable on production —
 verified with an unauthenticated request that returned HTTP 200.
 
-  * ``/healthz/llm?probe_bedrock=1`` — walks ``BEDROCK_FALLBACK_PROBE_MODELS``
+  * ``/healthz/llm?probe_bedrock=1`` — walks the Stage-2 fallback's chain
+    (``bedrock_client.stage2_probe_models()``; a pinned literal before R464)
     and issues real AWS Bedrock Converse calls. Billable by a stranger.
   * ``/healthz/email?probe=1&to=…``  — fires ONE real Resend send to an
     ARBITRARY caller-supplied address. An open relay; the target is the
