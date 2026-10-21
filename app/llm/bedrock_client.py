@@ -260,6 +260,15 @@ def _resolve_region() -> str:
 #: Policy (operator directive): these Qwen models are for TESTS, the Stage-2
 #: FALLBACK, and JUDGES — and only when the cloudflared tunnel is down or out
 #: of quota. They are never the primary. See ``app/llm/stage2_policy.py``.
+#:
+#: R464 — this is now the **fallback of last resort**, not the walk. The default
+#: diagnostic resolves its model list from the engine
+#: (``stage2_probe_models()`` → ``_graph_rag_impl.bedrock_fallback_model_chain``),
+#: because a hand-mirrored literal cannot follow ``REGENOLD_BEDROCK_MODEL`` /
+#: ``REGENOLD_BEDROCK_COMPLEX_MODEL`` / ``REGENOLD_BEDROCK_FALLBACK_CHAIN``, and
+#: a probe that dials a mirror can report ``ok`` for a chain the fallback does
+#: not have. The literal is dialled only when the engine cannot be imported, and
+#: ``models_source`` says so on the wire.
 BEDROCK_FALLBACK_PROBE_MODELS: Final = (
     "qwen.qwen3-235b-a22b-2507-v1:0",
     "qwen.qwen3-32b-v1:0",
@@ -949,24 +958,106 @@ the behaviour in step — the test fails if they drift apart.
 """
 
 
+def _stage2_probe_models_and_source() -> tuple[tuple[str, ...], str]:
+    """The models the Stage-2 fallback would dial, plus where the list came from.
+
+    R464 — resolution is DELEGATED to the engine
+    (``app.engines._graph_rag_impl.bedrock_fallback_model_chain``), which is the
+    same function the serving path walks. The two used to be kept in sync by
+    hand: the diagnostic dialled the literal :data:`BEDROCK_FALLBACK_PROBE_MODELS`
+    while the fallback derived its list from ``REGENOLD_BEDROCK_MODEL``,
+    ``REGENOLD_STAGE2_BEDROCK_MODEL``, ``REGENOLD_BEDROCK_COMPLEX_MODEL`` and
+    ``REGENOLD_BEDROCK_FALLBACK_CHAIN``. None of those env vars touches the
+    literal, so an operator who set a custom rollover chain could read
+    ``status: ok`` off a model the fallback would never serve while every model
+    it WOULD serve was denied — the false-negative that matters most, since this
+    is the one instrument an operator reaches for mid-outage.
+
+    Both question classes are covered, because the fallback is invoked for both:
+    a standard Stage-2 call dials the non-complex chain first and a
+    ``complex_question`` one dials the 235B tier first, so the walk is the union
+    of the two orders. Leg 2 is up if ANY model the fallback could dial answers.
+
+    Never raises. The engine import can fail in a lean deployment or under a
+    test that stubs it away, and a health probe that throws is worse than one
+    that reports a failure, so the pinned literal is the fallback of last resort
+    and the source string says so.
+    """
+    try:
+        from app.engines._graph_rag_impl import bedrock_fallback_model_chain
+        from app.llm import stage2_policy as _s2pol
+
+        # The operator override the fallback's own call site passes:
+        # ``_try_bedrock_fallback`` calls ``_bedrock_complete_for_graph_rag(
+        # ..., model_override=_s2pol.stage2_fallback_model() or None)``. Omitting
+        # it would leave the probe blind to the one lever that moves leg 2's
+        # FIRST dial, which is the exact class of drift this round removes.
+        override = _s2pol.stage2_fallback_model() or None
+
+        ordered: list[str] = []
+        for _complex in (False, True):
+            for _m in bedrock_fallback_model_chain(
+                stage_name="Stage 2", complex_question=_complex,
+                model_override=override,
+            ):
+                if _m and _m not in ordered:
+                    ordered.append(_m)
+        if ordered:
+            return tuple(ordered), "stage2_fallback"
+        raise ValueError("the engine resolved an empty fallback chain")
+    except Exception as exc:  # noqa: BLE001 — a probe must never raise
+        logger.warning(
+            "bedrock.stage2_probe_models_unresolved: %s — falling back to the "
+            "pinned probe list, which may not match what the fallback serves",
+            exc,
+        )
+        return tuple(BEDROCK_FALLBACK_PROBE_MODELS), "pinned_probe_list"
+
+
+def stage2_probe_models() -> tuple[str, ...]:
+    """The model walk the default diagnostic uses. See
+    :func:`_stage2_probe_models_and_source`."""
+    return _stage2_probe_models_and_source()[0]
+
+
 def check_connectivity_and_permissions(
     model_id: str | None = None,
+    models: tuple[str, ...] | list[str] | None = None,
 ) -> dict[str, Any]:
     """Diagnostic: verify Bedrock credentials and model access.
 
-    With no ``model_id`` this walks :data:`BEDROCK_FALLBACK_PROBE_MODELS` —
-    the models the Stage-2 fallback leg actually dials — and reports ``ok``
-    as soon as one answers, because "the fallback leg works" means *some*
-    chain model answers, not that a particular one does. The per-model
+    With no ``model_id`` this walks :func:`stage2_probe_models` — the models the
+    Stage-2 fallback leg actually dials, resolved by the engine (R464) — and
+    reports ``ok`` as soon as one answers, because "the fallback leg works" means
+    *some* chain model answers, not that a particular one does. The per-model
     outcomes are returned under ``chain`` so a partial entitlement is still
-    visible. R365: it used to probe ``eu.anthropic.claude-opus-4-8``, which
-    is not in the chain and returns ``api_access_denied_403`` even on a
-    healthy credential.
+    visible. R365: it used to probe ``eu.anthropic.claude-opus-4-8``, which is
+    not in the chain and returns ``api_access_denied_403`` even on a healthy
+    credential.
+
+    ``models`` overrides the walk order explicitly. It exists so a caller can
+    probe a chain it resolved itself, and so tests can drive the walk without
+    touching the engine; ``None`` (the default) means "ask the engine".
+    ``resolved_models`` / ``models_source`` are echoed back so a reader can see
+    WHICH list was dialled and whether it came from the fallback or from the
+    pinned fallback-of-last-resort literal.
+
+    Two side effects of borrowing the serving transport are suppressed R464:
+    the single-model dial is issued with ``record_stage2=False`` (a probe must
+    not move the Stage-2 liveness counters ``easyhard_ab`` and ``gate_validity``
+    read), and a completion whose ``model`` is tagged ``wrapper:`` — the
+    cross-provider last resort masking a dead Bedrock chain — is reported as
+    ``bedrock_exhausted_served_by_wrapper``, never as ``ok``.
     """
     if model_id is None:
+        explicit = tuple(_m for _m in (models or ()) if _m)
+        if explicit:
+            walk, source = explicit, "explicit"
+        else:
+            walk, source = _stage2_probe_models_and_source()
         chain: list[dict[str, Any]] = []
         first: dict[str, Any] | None = None
-        for _m in BEDROCK_FALLBACK_PROBE_MODELS:
+        for _m in walk:
             _r = check_connectivity_and_permissions(model_id=_m)
             if first is None:
                 first = _r
@@ -982,25 +1073,69 @@ def check_connectivity_and_permissions(
             # health probe must not spend an extra billable Converse call — nor
             # an extra round-trip — proving something it already knows.
             if _r.get("status") == "ok":
-                return {**_r, "chain": chain}
+                return {
+                    **_r,
+                    "chain": chain,
+                    "resolved_models": list(walk),
+                    "models_source": source,
+                }
         # Nothing answered. Surface the FIRST failure — the model the engine
         # would have dialled first — with every attempt attached.
-        return {**(first or {"status": "error", "model": None}), "chain": chain}
+        return {
+            **(first or {"status": "error", "model": None}),
+            "chain": chain,
+            "resolved_models": list(walk),
+            "models_source": source,
+        }
 
     target = model_id
-    provider = BedrockProvider()
 
     t0 = time.monotonic()
     try:
-        result = provider.complete(
+        # R464 — dial through the SAME transport the Stage-2 fallback uses
+        # (``complete_with_fallback`` with an empty fallback tuple, which is
+        # exactly how ``_bedrock_complete_for_graph_rag`` calls it per
+        # candidate). A probe that dialled ``BedrockProvider.complete`` directly
+        # tested a different path than the one that has to work at 3am.
+        result = complete_with_fallback(
             BedrockRequest(
                 user="Say OK.",
                 model=target,
                 max_tokens=5,
                 temperature=0.0,
-            )
+            ),
+            fallbacks=(),
+            # R464 — a DIAGNOSTIC is not Stage-2 traffic. ``_try_wrapper_fallback``
+            # counts the wrapper hop as a PRIMARY Stage-2 completion, and
+            # ``easyhard_ab._transport_liveness`` / ``gate_validity`` read those
+            # process-global counters. Letting an operator health probe move them
+            # manufactures the exact false-green R418 removed for the Stage-0
+            # de-noiser: a run in which Stage-2 never landed, reading live.
+            record_stage2=False,
         )
         elapsed_ms = int((time.monotonic() - t0) * 1000)
+
+        # R464 — the wrapper hop is reachable from THIS transport. When every
+        # Bedrock model refuses, ``_try_wrapper_fallback`` serves the call and
+        # returns it as a SUCCESS tagged ``wrapper:<model>``. Reporting that as
+        # ``ok`` would name a Bedrock model as the answering model while a
+        # different provider served the completion — the mirror image of the bug
+        # this round fixes. The question this diagnostic answers is "is the
+        # BEDROCK leg alive?", so a masked call is a refusal, and it says which
+        # provider did the masking.
+        if (result.model or "").startswith("wrapper:"):
+            return {
+                "status": "error",
+                "model": target,
+                "error": "bedrock_exhausted_served_by_wrapper",
+                "served_by": result.model,
+                "elapsed_ms": elapsed_ms,
+                "hint": (
+                    "Every Bedrock model in the chain refused, and the Stage-2 "
+                    "wrapper hop served the call instead. This reading says "
+                    "nothing about the credential's health: leg 2 is DOWN."
+                ),
+            }
 
         if result.error:
             if result.error == "api_key_invalid_403":

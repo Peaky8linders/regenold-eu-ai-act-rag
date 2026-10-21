@@ -1041,6 +1041,16 @@ def _probe_bedrock_leg() -> dict[str, object]:
 
     Never raises — a health probe that 500s is worse than one that reports a
     failure, so every path returns a dict.
+
+    **R464 — the probe dials the FALLBACK's chain, not a mirror of it.** The
+    walk comes from ``bedrock_client.stage2_probe_models()``, which resolves
+    through ``_graph_rag_impl.bedrock_fallback_model_chain`` — the same function
+    the serving path walks — and the reading carries ``resolved_models`` /
+    ``models_source`` so an operator can see which list was dialled. Before
+    this, the walk was a hand-mirrored two-entry literal that no
+    ``REGENOLD_BEDROCK_*`` override moves, so a deployment with a custom
+    rollover chain could read ``status: ok`` from a model the fallback would
+    never serve.
     """
     try:
         from app.llm.bedrock_client import (
@@ -1085,6 +1095,13 @@ def _probe_bedrock_leg() -> dict[str, object]:
     for key in (
         "status", "model", "error", "hint", "elapsed_ms",
         "response_text", "input_tokens", "output_tokens",
+        # R464 — where the dialled model list came from
+        # (``stage2_fallback`` | ``explicit`` | ``pinned_probe_list``).
+        "models_source",
+        # R464 — set only when the wrapper hop masked a dead Bedrock leg: the
+        # provider that actually served the probe's call (``wrapper:<model>``).
+        # Without it the reading says "error" without saying who answered.
+        "served_by",
     ):
         if key in raw:
             value = raw[key]
@@ -1100,12 +1117,14 @@ def _probe_bedrock_leg() -> dict[str, object]:
             "api_key_invalid_403 is a dead credential."
         )
     out.setdefault("hint", None)
-    # R365 — forward the per-model chain. The probe walks
-    # ``BEDROCK_FALLBACK_PROBE_MODELS`` and this is the only place an operator
-    # can see WHICH chain models answered: a partial entitlement (235b denied,
-    # 32b ok) is a very different situation from a dead credential, and the
-    # top-level status alone cannot distinguish them. Redacted per entry, and
-    # defensively typed because it comes from the same dict as everything else.
+    # R365 — forward the per-model chain. The probe walks the chain the Stage-2
+    # fallback itself dials (``stage2_probe_models()``; R464 — it used to walk
+    # the hand-mirrored ``BEDROCK_FALLBACK_PROBE_MODELS``) and this is the only
+    # place an operator can see WHICH chain models answered: a partial
+    # entitlement (235b denied, 32b ok) is a very different situation from a dead
+    # credential, and the top-level status alone cannot distinguish them.
+    # Redacted per entry, and defensively typed because it comes from the same
+    # dict as everything else.
     _chain = raw.get("chain")
     if isinstance(_chain, list):
         out["chain"] = [
@@ -1115,6 +1134,16 @@ def _probe_bedrock_leg() -> dict[str, object]:
             }
             for entry in _chain
             if isinstance(entry, dict)
+        ]
+    # R464 — the models the walk was RESOLVED to, in order. ``model`` above is
+    # only the one that answered, so without this an operator cannot tell that the
+    # diagnostic probed the fallback's real chain (and which entry is the tier the
+    # fallback dials first) rather than the pinned literal.
+    _resolved = raw.get("resolved_models")
+    if isinstance(_resolved, list):
+        out["resolved_models"] = [
+            redact_credential_like(v) if isinstance(v, str) else v
+            for v in _resolved
         ]
     return out
 
@@ -1701,9 +1730,11 @@ def _healthz_graph_probe() -> dict[str, object]:
 #
 #   * ``/healthz/llm``                  — one LIVE Claude Max completion per
 #                                         request through the tunnel.
-#   * ``/healthz/llm?probe_bedrock=1``  — walks BEDROCK_FALLBACK_PROBE_MODELS
-#                                         and issues real AWS Bedrock Converse
-#                                         calls. BILLABLE by a stranger.
+#   * ``/healthz/llm?probe_bedrock=1``  — walks the Stage-2 fallback's chain
+#                                         (``stage2_probe_models()``; a pinned
+#                                         literal before R464) and issues real
+#                                         AWS Bedrock Converse calls. BILLABLE
+#                                         by a stranger.
 #   * ``/healthz/email?probe=1&to=…``   — fires ONE real Resend send to an
 #                                         ARBITRARY address. An open relay:
 #                                         the abuse target is the sending
