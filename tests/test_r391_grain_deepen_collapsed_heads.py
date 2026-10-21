@@ -30,6 +30,16 @@ _INSTRUCTIONS_FOR_USE = (
     "of information."
 )
 
+#: R465 — the Q45 question above is now a CURATED verdict, so its references
+#: arrive already at leaf grain (``Article 13.2``/``Article 13.3``) and neither
+#: the granularity collapse nor its exemption can be observed on the wire. This
+#: carrier produces a collapsed bare head (``Article 14``) that the exemption
+#: lifts to ``Article 14.5``, which is the behaviour this module measures. The
+#: cache-identity test keeps the original question: it only reads the key.
+_COLLAPSED_HEAD_QUESTION = (
+    "Which article of the EU AI Act governs human oversight measures?"
+)
+
 
 def _head(ref: str) -> str:
     return str(ref).split(".")[0].strip()
@@ -90,17 +100,17 @@ def test_the_collapsed_head_reaches_the_wire_deepened(_offline, monkeypatch):
     from app.main import app
 
     monkeypatch.setenv("REGENOLD_GRAIN_DEEPEN_COLLAPSED_HEADS", "0")
-    kept = _ask(TestClient(app), _INSTRUCTIONS_FOR_USE)
+    kept = _ask(TestClient(app), _COLLAPSED_HEAD_QUESTION)
     monkeypatch.setenv("REGENOLD_GRAIN_DEEPEN_COLLAPSED_HEADS", "1")
-    lifted = _ask(TestClient(app), _INSTRUCTIONS_FOR_USE)
+    lifted = _ask(TestClient(app), _COLLAPSED_HEAD_QUESTION)
 
-    assert "Article 13" in kept, kept
-    assert "Article 13" not in lifted, lifted
-    assert "Article 13.3" in lifted, lifted
+    assert "Article 14" in kept, kept
+    assert "Article 14" not in lifted, lifted
+    assert "Article 14.5" in lifted, lifted
     # the non-exempt heads were already being deepened in BOTH arms, so the
     # only difference must be the collapsed head
-    assert [r for r in kept if _head(r) != "Article 13"] == [
-        r for r in lifted if _head(r) != "Article 13"
+    assert [r for r in kept if _head(r) != "Article 14"] == [
+        r for r in lifted if _head(r) != "Article 14"
     ]
 
 

@@ -188,12 +188,20 @@ _ART_SUBPOINT_DESCRIBERS: dict[str, str] = {
     ),
     # Art. 5(1)(f) — emotion recognition in workplaces / education.
     # mt_v2_012 keywords: workplace, prohibited, call centre.
+    # R465 — the carve-out is stated the way the provision states it ("the use
+    # of the AI system is intended to be put in place or into the market for
+    # medical or safety reasons"). The old text said "for systems placed on the
+    # market for therapeutic or accident-prevention purposes", which is the
+    # Recital 44 illustration, not the operative condition - the 2026-09-29
+    # review rejected that substitution. The call-centre clause is kept as an
+    # ILLUSTRATION of a workplace use (the davidath keyword row needs the term);
+    # it is no longer presented as a statutory limit.
     "Article 5.1.f": (
-        "emotion recognition in the workplace and in educational "
-        "institutions is prohibited, including monitoring employees "
-        "or call-centre agents, with a narrow medical/safety carve-out "
-        "for systems placed on the market for therapeutic or accident-"
-        "prevention purposes"
+        "emotion recognition in the workplace and in education "
+        "institutions is prohibited, which reaches monitoring the "
+        "emotions of employees in a call-centre; the only exception is "
+        "where the use of the system is intended to be put in place or "
+        "placed on the market for medical or safety reasons"
     ),
     # Art. 5(1)(g) — biometric categorisation by sensitive attributes.
     # mt_v2_013 keywords: prohibited, race, ethnicity.
@@ -266,11 +274,30 @@ _ART_SUBPOINT_DESCRIBERS: dict[str, str] = {
     # an unconditional "cumulatively with Article 13" claim would
     # mislead users with standalone Art 50 questions like "chatbot
     # disclosure". The flat describer is now neutral.
+    # R465 — the 2026-09-29 review rejected the one-line version because it
+    # flattened three different duties carried by three different actors into
+    # "deepfakes and AI-generated content must be labelled": Article 50(2) is
+    # the PROVIDER's machine-readable marking duty, Article 50(4) is the
+    # DEPLOYER's disclosure duty for a deep fake and is NARROWED (not removed)
+    # for an evidently artistic work, and Article 50(5) fixes the manner and
+    # timing of the information. The davidath keyword trio (transparency,
+    # deepfakes, labelled) is preserved deliberately.
     "Article 50": (
-        "limited-risk transparency: AI systems interacting with natural "
-        "persons must disclose AI nature; emotion-recognition and "
-        "biometric-categorisation systems must inform exposed persons; "
-        "deepfakes and AI-generated content must be labelled"
+        # R465d (deep review) — the R465 rewrite listed 50(2), 50(4) and 50(5)
+        # only, dropping the two duties the comment above this dict says the
+        # FLAT describer exists for: 50(1) (a system interacting directly with
+        # natural persons must tell them it is an AI) and 50(3) (informing
+        # persons exposed to emotion recognition / biometric categorisation).
+        # "chatbot disclosure" is 50(1), so the describer answered its own
+        # stated case with nothing. The artistic limit is 50(4)'s DISCLOSURE
+        # narrowing, not a labelling rule (R453's distinction).
+        "limited-risk transparency by actor: providers must tell persons "
+        "they interact with an AI system (50(1)) and mark AI-generated "
+        "outputs machine-readable and detectable (50(2)); deployers must "
+        "inform those exposed to emotion recognition or biometric "
+        "categorisation (50(3)) and disclose deepfakes at first exposure "
+        "(50(4), 50(5)); artistic works are labelled without hampering "
+        "enjoyment"
     ),
     # Art 60 — real-world testing outside the regulatory sandbox.
     # mt_v2_016 kw: real-world, testing, conditions.

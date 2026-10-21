@@ -152,11 +152,23 @@ def test_clause_is_not_sent_on_a_multi_turn_request(monkeypatch):
     assert seen and all("PROVISIONS TO NAME" not in s for s in seen)
 
 
+#: R465 — this test used ``Q74`` as its carrier. Q74's shape (marking duty for
+#: AI audio made for an artistic work) is now a CURATED verdict, so the route
+#: skips Stage-2 and the stubbed answer never lands. The pass under test is
+#: generic (drop a definition the question did not ask for), so the carrier is
+#: now a deep-fake disclosure ask of the same shape that is NOT the curated
+#: artistic-work shape.
+Q_DEEPFAKE_VIDEO = (
+    "We published an AI-generated video of our CEO. Must we disclose that it "
+    "is synthetic?"
+)
+
+
 @pytest.mark.parametrize("flag,cited", [("1", False), ("0", True)])
 def test_route_drops_an_unasked_definition_from_the_wire(monkeypatch, flag, cited):
     monkeypatch.setenv("REGENOLD_DEFINITION_CITE_SCOPE", flag)
     answer = ("No. As a deployer you have no marking duty. Under Article 50(4), if the audio is a deep fake, as "
               "defined in Article 3(60), you must disclose that such content exists without hampering its enjoyment.")
-    refs = _route(monkeypatch, [{"role": "user", "content": Q74}], answer)["references"]
+    refs = _route(monkeypatch, [{"role": "user", "content": Q_DEEPFAKE_VIDEO}], answer)["references"]
     assert any(r.startswith("Article 50") for r in refs), refs
     assert any(r.startswith("Article 3.60") or r == "Article 3" for r in refs) is cited, refs

@@ -50,19 +50,31 @@ def _ask(client, q):
 
 
 def test_case_d_states_the_law_it_cites(client):
+    """R465 — the 2026-09-29 review changed WHICH law this answer states.
+
+    The old text asserted a device class the question does not give ("as a
+    Class IIb or Class III device") and answered Article 43(3)/14(4)/72(4)
+    duties the question never asked for. The corrected answer keys the class on
+    the MDR's own rule, which the question leaves open, so its two AI Act
+    anchors are the classification limbs themselves.
+    """
     body = _ask(client, CASE_D)
-    assert body["references"] == ["Article 6.1", "Annex I", "Article 43.3", "Article 14.4", "Article 72.4"]
+    assert body["references"] == ["Article 6.1", "Annex I"]
     ans = body["answer"]
     assert ans.startswith("Yes")
-    assert "Article 43(3)" in ans and "MDR" in ans
+    # The sectoral instrument and its Annex I point, not an AI Act duty article.
+    assert "Regulation (EU) 2017/745" in ans and "point 11" in ans
+    assert "Article 51(1)" in ans and "the question does not state" in ans
+    assert "Article 52(6), (4) and (3)" in ans
     assert "under Article 43." not in ans  # the notified-body duty comes from the MDR
 
 
 @pytest.mark.parametrize("flag", ["0", "1"])
 def test_r311_keeps_a_curated_answers_declared_head(client, monkeypatch, flag):
+    """The declared heads survive the route's ref passes on BOTH arms."""
     monkeypatch.setenv("REGENOLD_CURATED_ROUTE_KEEP", flag)
     refs = _ask(client, CASE_D)["references"]
-    assert ("Article 43.3" in refs) is (flag == "1")
+    assert refs == ["Article 6.1", "Annex I"], refs
 
 
 def test_r311_still_drops_article_43_on_a_generated_classification_answer(client):

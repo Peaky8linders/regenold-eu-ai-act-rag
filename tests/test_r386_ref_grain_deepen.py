@@ -79,6 +79,17 @@ os.environ.setdefault("REGENOLD_SKIP_DOTENV", "1")
 # coordinate, so a synthetic answer is not a valid fixture for it.
 Q = 'Under the EU AI Act, what must a provider of a high-risk AI system supply to the deployer in the instructions for use? List the required categories of information.'
 
+#: R465 — ``Q`` above is now a CURATED verdict that ships leaf refs
+#: (``Article 13.2``/``Article 13.3``) directly, so on the WIRE the deepener has
+#: nothing to deepen and the two-sided wire test read ``off == on``. The unit
+#: tests keep ``Q``/``A`` (they call ``_deepen_one_ref`` directly); the wire test
+#: uses this carrier, which still reaches the deepener: OFF ships the bare
+#: ``Article 13`` head, ON ships ``Article 13.1``.
+Q_WIRE_DEEPEN_CARRIER = (
+    "What transparency obligations does Article 13 impose on providers of "
+    "high-risk AI systems?"
+)
+
 A = 'Under Article 13, which requires high-risk AI systems to be sufficiently transparent and to be accompanied by instructions for use that are concise, complete, correct and clear, the provider must supply the deployer with six categories of information. These are the identity and contact details of the provider and, where applicable, of its authorised representative, the characteristics, capabilities and limitations of performance of the system, any changes to the system and its performance pre-determined by the provider at the moment of the initial conformity assessment, the human oversight measures including the technical measures facilitating interpretation of outputs, the computational and hardware resources needed together with the expected lifetime and any necessary maintenance and care measures including software updates, and, where relevant, a description of the mechanisms allowing'
 
 
@@ -346,7 +357,7 @@ class TestRegisteredAndWired:
         def refs() -> list[str]:
             r = client.post(
                 "/api/v1/regenold/eu-ai-act/ask",
-                json={"messages": [{"role": "user", "content": Q}]},
+                json={"messages": [{"role": "user", "content": Q_WIRE_DEEPEN_CARRIER}]},
                 headers={"X-API-Key": key, "Authorization": "Bearer " + key},
             )
             assert r.status_code == 200, r.text[:300]

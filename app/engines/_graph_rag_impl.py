@@ -5392,7 +5392,18 @@ _MINIMAL_RISK_RE = re.compile(
     r"|(?:considered|classified\s+as|counts?\s+as|falls?\s+under|"
     r"deemed|qualif(?:y|ies)\s+as)\s+(?:an?\s+|the\s+)?"
     r"(?:minimal|low)[-\s]?risk" + _MINIMAL_RISK_NEG +
-    r"|low[-\s]?risk\s+ai\b)",
+    r"|low[-\s]?risk\s+ai\b"
+    # R465b (A/B paraphrase audit) — the RESIDUAL-CLASS shapes name the tier by
+    # exclusion rather than by label, which is how the statutory question is
+    # usually put: "which systems are neither prohibited nor high-risk", "if my
+    # system is not high-risk, do any duties still apply?". Neither carries the
+    # words "minimal" or "low-risk", so both fell to generic retrieval: the
+    # first shipped a live-biometric-identification answer, the second an answer
+    # that never mentioned Article 4 or Article 95. Both are answered exactly by
+    # the minimal-risk verdict (residual class + Art. 4 literacy + Art. 95 codes).
+    r"|neither\s+prohibited\s+nor\s+(?:high[-\s]?risk|a\s+high)"
+    r"|not\s+(?:a\s+)?high[-\s]?risk\b[^?.]{0,60}?"
+    r"\b(?:duties?|obligations?|obliged|apply|applies|still|remain)\b)",
     re.IGNORECASE,
 )
 
@@ -5405,6 +5416,18 @@ _MINIMAL_RISK_SCENARIO_OPENER_RE = re.compile(
     r"startup|start-up|hospital|bank|team)|i\s+am|i'm)\b",
     re.IGNORECASE,
 )
+#: R465d (deep review) — the residual-class branch above fires on any
+#: "not high-risk … obligations" clause, including a LIMITED-risk ask: "our
+#: chatbot is not high-risk, so which transparency obligations apply?" matched
+#: and was answered by this residual-tier verdict, whose prose says the class is
+#: "nor subject to the Article 50 transparency duties" — denying the very duty
+#: the asker has under 50(1). A transparency ask is not a tier ask, so it bails
+#: unless the text also uses the tier's own vocabulary.
+_LIMITED_RISK_ASK_RE = re.compile(
+    r"\barticle\s*50\b|\btransparen\w*|\bdeep[-\s]?fake\w*|\blabel\w*|\bdisclos\w*",
+    re.IGNORECASE,
+)
+_RESIDUAL_TIER_WORD_RE = re.compile(r"\bminimal[-\s]?risk\b|\blow[-\s]?risk\b", re.IGNORECASE)
 
 
 def _detect_minimal_risk_inquiry(question: str) -> bool:
@@ -5416,7 +5439,11 @@ def _detect_minimal_risk_inquiry(question: str) -> bool:
         raw_q = raw_q[idx + len(marker):]
     if _MINIMAL_RISK_SCENARIO_OPENER_RE.search(raw_q):
         return False
-    return bool(_MINIMAL_RISK_RE.search(raw_q))
+    if not _MINIMAL_RISK_RE.search(raw_q):
+        return False
+    if _LIMITED_RISK_ASK_RE.search(raw_q) and not _RESIDUAL_TIER_WORD_RE.search(raw_q):
+        return False
+    return True
 
 
 # Scientific-R&D pre-market SCOPE-EXCLUSION intercept (R111 Q17; Art. 2(6) +
@@ -6447,6 +6474,16 @@ def _detect_deviation_detection_inquiry(question: str) -> bool:
 # Art. 16/26 obligation handling). Scans the LIVE turn only. Fires on 0
 # davidath rows (none carry both role nouns + a contrast marker WITHOUT an
 # obligation noun) -> byte-identical.
+#: "both the provider and the deployer" / "the same system" — the dual-capacity
+#: phrasing, which names one party in two roles rather than contrasting two.
+_ROLE_BOTH_CAPACITIES_RE = re.compile(
+    r"\bboth\s+(?:the\s+|a\s+)?(?:provider|deployer)\b"
+    r"|\bprovider\s+and\s+(?:also\s+)?(?:a\s+|the\s+)?deployer\b"
+    r"|\bdeployer\s+and\s+(?:also\s+)?(?:a\s+|the\s+)?provider\b",
+    re.IGNORECASE,
+)
+
+
 def _detect_role_difference_inquiry(question: str) -> bool:
     """True when the question contrasts the provider and deployer ROLES at the
     definition level, not their obligations."""
@@ -6458,6 +6495,18 @@ def _detect_role_difference_inquiry(question: str) -> bool:
     low = raw_q.lower()
     if "provider" not in low or "deployer" not in low:
         return False
+    # R465b — the DUAL-CAPACITY shape. "Can a company be both the provider and
+    # the deployer of the same AI system?" carries both role nouns but no
+    # contrast marker (no "difference"/"vs"), so the marker gate rejected it and
+    # the wire shipped a 12-reference transparency dump that never named
+    # Article 3(3)/(4)/(11) or Article 25(1). The shape is the same statutory
+    # question — can one party hold both capacities — and the curated answer's
+    # central point is that it can. The "We are a provider and a deployer"
+    # SCENARIO opener stays out: it asks for obligations, not for the role split.
+    if _ROLE_BOTH_CAPACITIES_RE.search(low):
+        if _MINIMAL_RISK_SCENARIO_OPENER_RE.search(raw_q):
+            return False
+        return not _ROLE_CONTRAST_OBLIGATION_RE.search(low)
     if not _ROLE_CONTRAST_MARKER_RE.search(low):
         return False
     # Obligation-CONTRAST shapes stay on the R137 path (Art. 16/26 handling).
@@ -6709,6 +6758,10 @@ def _is_curated_authoritative_intercept(question: str) -> bool:
     gates — the risk-framework regex is end-anchored + 0-fire-verified), so the
     deterministic bench is byte-identical.
     """
+    from app.engines.statutory_precision import (
+        is_statutory_precision_ask as _is_statutory_precision_ask,
+    )
+
     return (
         _detect_guiding_principles_inquiry(question)
         or _detect_minimal_risk_inquiry(question)
@@ -6743,6 +6796,10 @@ def _is_curated_authoritative_intercept(question: str) -> bool:
         or _detect_hospital_deployer_inquiry(question)
         or _detect_provider_pre_market_inquiry(question)
         or _detect_robotic_surgery_inquiry(question)
+        # R465 — the statutory-precision verdicts. Stage-2 must not rewrite
+        # them, and the route reads this gate to skip its extractive pass
+        # (which is what truncated the Article 13(3) limbs on Q45).
+        or _is_statutory_precision_ask(question)
     )
 
 
@@ -6839,6 +6896,24 @@ def _lead_rank_obligations(question: str, obligations: list[dict]) -> list[dict]
 
 def _deterministic_answer(question: str, context: GraphContext) -> str:
     """Generate a structured answer without LLM, using graph data directly."""
+    # R465 — statutory-precision verdicts for the 2026-09-29 expert review.
+    # The review found answers that named the right provision and the right
+    # categories but DROPPED THE CONDITIONS the statute attaches to them (the
+    # Article 13(2) format/quality sentence and the "where applicable"
+    # qualifiers, the Article 97(6) objection window, Article 50(5)'s manner
+    # and timing, Article 25(1)'s "remains high-risk" limb, Article 111(1)'s
+    # "without prejudice to Article 5"). They are curated, so the route's
+    # extractive pass (which truncates each Article 13(3) limb to a 175-char
+    # category head) and Stage-2 polish cannot compress them again. Dispatch
+    # sits first because the shapes are narrow and their own gate is what keeps
+    # them off davidath (see the module docstring).
+    from app.engines.statutory_precision import curated_statutory_verdict
+
+    _statutory = curated_statutory_verdict(question)
+    if _statutory is not None:
+        _seed_classification_obligations(context, _statutory, question)
+        return _statutory["answer"]
+
     # Article 6(3) "Not-High-Risk" Exception Intercept
     if _detect_article_6_3_inquiry(question):
         verdict = {
@@ -7109,22 +7184,52 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     if _detect_role_difference_inquiry(question):
         verdict = {
             "name": "role_difference",
+            # R465 — the 2026-09-29 review rejected the R447 text on three
+            # points, all of them conditions the statute states and the answer
+            # dropped: (1) "the difference lies in supplying the system as
+            # opposed to using it" presents the two roles as ALTERNATIVES, which
+            # Article 3(11) ("putting into service" includes supply for OWN use)
+            # and Recital 83 (operators "could act in more than one role at the
+            # same time and should therefore fulfil cumulatively all relevant
+            # obligations") contradict; (2) Article 25(1)(a) dropped "or put
+            # into service" and the express reservation for contractual
+            # allocation; (3) Article 25(1)(b) dropped "in such a way that it
+            # remains a high-risk AI system pursuant to Article 6", so the text
+            # read as if ANY substantial modification moved the provider role.
+            # Article 25(1)(c)'s "including a general-purpose AI system" limb is
+            # now stated too. Refs stay the two definition leaves plus the
+            # Article 25(1) transition (R447's criterion excludes duty articles
+            # that the definitional question did not ask for).
             "answer": (
-                "A provider under Article 3(3) develops an AI system, or has one "
-                "developed, and places it on the market or puts it into service "
-                "under its own name or trademark. A deployer under Article 3(4) "
-                "uses an AI system under "
-                "its authority, other than in the course of a personal "
-                "non-professional activity, so the difference lies in supplying the "
-                "system as opposed to using it. Under Article 25(1), a deployer, "
-                "distributor, importer or other third party is considered the "
-                "provider of a high-risk AI system, and takes on the provider's "
-                "obligations, where it puts its name or trademark on a high-risk AI "
-                "system already on the market, makes a substantial modification to "
-                "it, or modifies a system's intended purpose so that it becomes "
-                "high-risk."
+                "A provider under Article 3(3) is a natural or legal person, "
+                "public authority, agency or other body that develops an AI "
+                "system, or has one developed, and places it on the market or "
+                "puts it into service under its own name or trademark, whether "
+                "for payment or free of charge, while a deployer under Article "
+                "3(4) is one that uses an AI system under its authority, except "
+                "where the system is used in the course of a personal "
+                "non-professional activity. The roles are not alternatives: "
+                "putting into service includes the supply of a system for own "
+                "use (Article 3(11)), so a party that develops a system and puts "
+                "it into service for its own use under its own name or trademark "
+                "is both its provider and its deployer, and an operator acting in "
+                "more than one role must fulfil cumulatively all the obligations "
+                "of those roles (Recital 83). Under Article 25(1) a distributor, "
+                "importer, deployer or other third party is considered to be the "
+                "provider of a high-risk AI system, and is subject to the "
+                "obligations of the provider, where it puts its name or trademark "
+                "on a high-risk AI system already placed on the market or put "
+                "into service, without prejudice to contractual arrangements "
+                "stipulating that the obligations are otherwise allocated; where "
+                "it makes a substantial modification to such a system in such a "
+                "way that it remains a high-risk AI system pursuant to Article 6; "
+                "or where it modifies the intended purpose of an AI system, "
+                "including a general-purpose AI system, that has not been "
+                "classified as high-risk and has already been placed on the "
+                "market or put into service, so that the system becomes "
+                "high-risk in accordance with Article 6."
             ),
-            "refs": ["Art. 3.3", "Art. 3.4", "Art. 25.1"],
+            "refs": ["Art. 3.3", "Art. 3.4", "Art. 3.11", "Art. 25.1"],
         }
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]
@@ -7184,8 +7289,11 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
                 "The EU AI Act does not establish a formal minimal-risk category; "
                 "minimal risk is descriptive shorthand for the residual class of "
                 "systems that are neither prohibited under Article 5, nor "
-                "high-risk under Article 6 (as an Annex I safety component or an "
-                "Annex III use case), nor subject to the Article 50 transparency "
+                "high-risk under Article 6 (a safety component of, or itself, a "
+                "product covered by the Union harmonisation legislation listed in "
+                "Annex I and required to undergo a third-party conformity "
+                "assessment, or an Annex III use case), nor subject to the "
+                "Article 50 transparency "
                 "duties, nor general-purpose AI models. Typical examples are "
                 "AI-enabled spam "
                 "filters, inventory-management tools, and AI in video games. They "
@@ -7828,19 +7936,29 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     if _detect_robotic_surgery_inquiry(question):
         verdict = {
             "name": "robotic_surgery_high_risk",
+            # R465 — the 2026-09-29 review rejected the previous text because it
+            # ASSERTED a device class ("as a Class IIb or Class III device") that
+            # the question does not state, instead of deriving the class from the
+            # intended purpose and the notified-body rule, and because it answered
+            # Article 43/14/72 duties the question did not ask for while omitting
+            # the conditions of Article 6(1) itself and its application date.
             "answer": (
-                "Yes: under Article 6(1), an AI system intended as a safety component of a robotic surgical "
-                "device is high-risk, because the device is covered by the Medical Device Regulation listed in "
-                "Annex I and, as a Class IIb or Class III device, must undergo third-party conformity assessment "
-                "by a notified body under that Regulation. Under Article 43(3) the provider follows the MDR "
-                "conformity assessment procedure, the Chapter III Section 2 requirements apply as part of that "
-                "assessment, and the MDR notified body may check the AI system's compliance with them, while "
-                "Article 14(4) requires oversight that lets the surgeon monitor the system, override or reverse "
-                "its output and bring it to a safe stop. Under Article 72(4) the provider may integrate the AI "
-                "Act post-market monitoring into the surveillance system and plan the MDR already requires "
-                "(MDR Article 83), provided it achieves an equivalent level of protection."
+                "Yes, where the surgical robot itself is required to undergo a "
+                "third-party conformity assessment. Under Article 6(1) an AI "
+                "system intended to be used as a safety component of a product, "
+                "or which is itself a product, is high-risk where that product is "
+                "covered by the Union harmonisation legislation listed in Annex I "
+                "and is required to undergo a third-party conformity assessment "
+                "under that legislation, and Regulation (EU) 2017/745 on medical "
+                "devices is listed in Section A of Annex I at point 11. Under "
+                "that Regulation the robot's class follows its intended purpose "
+                "(Article 51(1)), which the question does not state, and a "
+                "notified body takes part in the conformity assessment of devices "
+                "in classes IIa, IIb and III (Article 52(6), (4) and (3)), so the "
+                "condition is met for a robot in any of those classes. Article "
+                "6(1) and the corresponding obligations apply from 2 August 2027."
             ),
-            "refs": ["Art. 6.1", "Annex I", "Art. 43.3", "Art. 14.4", "Art. 72.4"],
+            "refs": ["Art. 6.1", "Annex I"],
         }
         _seed_classification_obligations(context, verdict, question)
         return verdict["answer"]

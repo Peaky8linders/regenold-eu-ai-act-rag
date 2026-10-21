@@ -163,7 +163,17 @@ class TestRoleDifferenceRoute:
     def test_cites_the_definitions_and_the_transition(self, ask):
         # Both definitions: without REGENOLD_CURATED_KEEP_DECLARED_LEAVES the
         # R87-C re-emission + R287 fold shipped Article 3.3 alone.
-        assert ask(_Q10)["references"] == ["Article 3.3", "Article 3.4", "Article 25.1"]
+        # R465 — Article 3.11 joined the set: the 2026-09-29 review rejected the
+        # old "supplying the system as opposed to using it" framing, and the
+        # corrected answer says why the roles are NOT alternatives, which is
+        # Article 3(11)'s "supply ... for own use". The leaf is declared, so
+        # the curated budget cut keeps it.
+        assert ask(_Q10)["references"] == [
+            "Article 3.3",
+            "Article 3.4",
+            "Article 3.11",
+            "Article 25.1",
+        ]
 
 
 # ── REGENOLD_ROLE_DIFFERENCE_SKIP_INTENT_BOOST (R447b) ─────────────────────────
@@ -206,12 +216,15 @@ class TestRoleDifferenceSkipsTheIntentBoost:
         from app.routes import regenold as route
 
         monkeypatch.setattr(route, "_classify_intent_cached", _role_obligations_intent)
-        assert ask(_Q10)["references"] == ["Article 3.3", "Article 3.4", "Article 25.1"]
+        # R465 — Article 3.11 added to the expected set (see the note on
+        # ``test_cites_the_definitions_and_the_transition``).
+        _EXPECTED = ["Article 3.3", "Article 3.4", "Article 3.11", "Article 25.1"]
+        assert ask(_Q10)["references"] == _EXPECTED
         monkeypatch.setenv("REGENOLD_ROLE_DIFFERENCE_SKIP_INTENT_BOOST", "0")
         # R455c is a second, independent defence: the curated role answer never
         # states Article 26, so the curated prose scope drops it even with the
         # boost back on.
-        assert ask(_Q10)["references"] == ["Article 3.3", "Article 3.4", "Article 25.1"]
+        assert ask(_Q10)["references"] == _EXPECTED
         # With both defences off, the injected Article 26 reaches the wire, so
         # the R447 skip is still what keeps it out on its own.
         monkeypatch.setenv("REGENOLD_CURATED_PROSE_SCOPE", "0")
