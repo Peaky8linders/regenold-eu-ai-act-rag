@@ -30,7 +30,12 @@ from dataclasses import dataclass, field
 # (Art. 25(2) cooperation-duty re-anchor + real 25(4) written-agreement
 # clause, Art. 99(4) closed enumeration, Art. 79/109 Reg-2019/1020
 # Art. 3(19) qualification).
-KB_VERSION = "2024.1689.v23"
+# R465 (2026-09-29 expert review) bumps v23 -> v24: the Annex III, Annex X,
+# Art. 111 and Art. 7 stubs were rewritten to carry the statutory conditions
+# they had compressed away (the eight official area headings; "without
+# prejudice to Article 5" + 2 February 2025 on Annex X; Art. 111(2)'s
+# significant-change test; the Art. 97(4)/(6) procedure on Art. 7).
+KB_VERSION = "2024.1689.v24"
 
 
 @dataclass(frozen=True)
@@ -1013,16 +1018,40 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     },
     "Annex III": {
         "dimension": "risk_mgmt",
+        # R465 — the eight headings are quoted with the names the OJ text uses.
+        # The earlier summary compressed them ("education + vocational",
+        # "employment + worker management", "essential private + public
+        # services"), and the 2026-09-29 expert review rejected those compressed
+        # forms on Q96, Q95 and Q17: they are the annex's operative labels, not
+        # shorthand. Only a listed use case makes a system high-risk, and for
+        # area 2 the heading itself states the use (there are no lettered
+        # points there).
         "summary": (
             "Eight high-risk AREAS (Annex III numbered headings; each area "
-            "contains one or more lettered use-cases, and only a listed "
-            "use-case makes a system high-risk under Art. 6(2)): "
-            "biometrics, critical infrastructure, "
-            "education + vocational training, employment + worker management "
-            "(recruitment, task allocation, promotion and termination decisions, and "
-            "performance evaluation affecting workers' fundamental rights), "
-            "essential private + public services, law enforcement, migration + asylum "
-            "+ border control, and administration of justice + democratic processes."
+            "contains one or more use-cases listed mostly as lettered points, "
+            "and only a listed use-case makes a system high-risk under Art. "
+            "6(2)): (1) biometrics, in so far as their use is permitted under "
+            "relevant Union or national law; (2) critical infrastructure, where "
+            "the heading itself states the use (AI systems intended to be used "
+            "as safety components in the management and operation of critical "
+            "digital infrastructure, road traffic, or in the supply of water, "
+            "gas, heating or electricity); (3) education and vocational "
+            "training; (4) employment, workers' management and access to "
+            "self-employment (recruitment, task allocation, promotion and "
+            "termination decisions, and performance evaluation affecting "
+            "workers' fundamental rights); (5) access to and enjoyment of essential private "
+            "services and essential public services and benefits; (6) law "
+            "enforcement, in so far as their use is permitted under relevant "
+            "Union or national law; (7) migration, asylum and border control "
+            "management, in so far as their use is permitted under relevant "
+            "Union or national law; and (8) administration of justice and "
+            "democratic processes. Healthcare decision making is NOT an area: "
+            "healthcare appears at 5(a) (eligibility for essential public "
+            "assistance benefits and services, including healthcare services, "
+            "evaluated by or on behalf of public authorities and granted, "
+            "reduced, revoked or reclaimed), at 5(c) (risk assessment and "
+            "pricing in life and health insurance) and at 5(d) (emergency "
+            "healthcare patient triage systems)."
         ),
     },
     # ─── Title I: Scope + Definitions (Arts. 1-4) ────────────────────────────
@@ -1086,7 +1115,14 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
             "(intended purpose, extent of use, nature and amount of data "
             "processed, autonomy, severity and reversibility of harm, "
             "availability of redress, and others). Art. 7(3) governs "
-            "REMOVING a use-case from Annex III."
+            "REMOVING a use-case from Annex III. The procedure is Art. 97's: "
+            "before adopting the delegated act the Commission must consult "
+            "experts designated by each Member State (Art. 97(4)), and under "
+            "Art. 97(6) the act enters into force only if neither the European "
+            "Parliament nor the Council has objected within three months of "
+            "notification, a period extended by three months at the initiative "
+            "of either of them, or earlier where both inform the Commission "
+            "that they will not object."
         ),
     },
     "Art. 8": {
@@ -1831,14 +1867,29 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     # ─── Title XII: Transition + review (Arts. 111, 112) ─────────────────────
     "Art. 111": {
         "dimension": "governance",
+        # R465 — Art. 111(1) is "without prejudice to Article 5" (the
+        # prohibitions have applied since 2 February 2025), and Art. 111(2)'s
+        # significant-change condition governs whether the Regulation applies
+        # at all to a pre-2 August 2026 high-risk system; the 2 August 2030
+        # date is the public-authority compliance deadline, not a general
+        # deferral. Both were compressed away here.
         "summary": (
-            "Transitional provisions for AI systems and GPAI models already "
-            "on the market / in service: high-risk AI for public-authority "
-            "use placed on the market before 2 August 2026 must comply "
-            "from 2 August 2030 (only if significant design change); pre-"
-            "2 August 2025 GPAI models brought into compliance by 2 August "
-            "2027; large-scale IT systems listed in Annex X covered by the "
-            "Regulation from 31 December 2030."
+            "Transitional provisions. Art. 111(1): without prejudice to Article "
+            "5 as referred to in Art. 113, third paragraph, point (a), AI "
+            "systems that are components of the large-scale IT systems "
+            "established by the legal acts listed in Annex X and were placed on "
+            "the market or put into service before 2 August 2027 must be "
+            "brought into compliance with the Regulation by 31 December 2030, "
+            "and the Regulation's requirements must be taken into account in "
+            "the evaluation of each of those IT systems under those legal acts "
+            "and where they are replaced or amended. Art. 111(2): for other "
+            "high-risk AI systems placed on the market or put into service "
+            "before 2 August 2026, the Regulation applies only if, as from that "
+            "date, they are subject to significant changes in their design, "
+            "while providers and deployers of high-risk systems intended to be "
+            "used by public authorities must comply by 2 August 2030. Art. "
+            "111(3): providers of general-purpose AI models placed on the "
+            "market before 2 August 2025 must comply by 2 August 2027."
         ),
     },
     "Art. 112": {
@@ -2069,24 +2120,34 @@ EC_CHECKER_OBLIGATION_MAP: dict[str, dict[str, str]] = {
     },
     "Annex X": {
         "dimension": "governance",
+        # R465 — two corrections from the 2026-09-29 review. (1) Annex X does
+        # not SET anything: it is the list Article 111(1) uses to identify the
+        # systems that receive the transitional rule. (2) "only by 31 December
+        # 2030" read as if the whole Regulation, Article 5 included, waited for
+        # 2030; Article 111(1) opens "Without prejudice to the application of
+        # Article 5 as referred to in Article 113(3), point (a)", and those
+        # prohibitions have applied since 2 February 2025.
         "summary": (
-            "Annex X is a LIST OF UNION LEGISLATIVE ACTS on large-scale IT "
-            "systems in the area of Freedom, Security and Justice. It "
-            "contains no obligations of its own; it identifies seven "
-            "systems: the Schengen Information System (SIS), the Visa "
-            "Information System (VIS), Eurodac, the Entry/Exit System "
-            "(EES), the European Travel Information and Authorisation "
-            "System (ETIAS), the European Criminal Records Information "
-            "System on third-country nationals (ECRIS-TCN), and the "
-            "interoperability Regulations. Its function is to fix the "
-            "TRANSITION AND COMPLIANCE TIMELINE in Art. 111(1): AI systems "
-            "that are components of the large-scale IT systems established "
-            "by the acts listed in Annex X and placed on the market or put "
-            "into service before 2 August 2027 must be brought into "
-            "compliance only by 31 December 2030, rather than on the "
-            "Regulation's general dates. It is not the annex that lists the "
-            "EU-database registration fields; that is a separate annex on "
-            "registration."
+            "Annex X lists the Union legislative acts establishing large-scale "
+            "IT systems in the area of freedom, security and justice, under "
+            "seven headings: the Schengen Information System (SIS); the Visa "
+            "Information System (VIS); Eurodac; the Entry/Exit System (EES); "
+            "the European Travel Information and Authorisation System "
+            "(ETIAS); the European Criminal Records Information System on "
+            "third-country nationals and stateless persons (ECRIS-TCN); and "
+            "interoperability. It imposes no obligation of its own: Article "
+            "111(1) USES it to identify the AI systems that receive a "
+            "transitional rule. Under Art. 111(1), AI systems that are "
+            "components of those large-scale IT systems and were placed on the "
+            "market or put into service before 2 August 2027 must be brought "
+            "into compliance with the Regulation by 31 December 2030, and this "
+            "is without prejudice to Article 5, whose prohibitions have "
+            "applied to them since 2 February 2025 under Article 113, third "
+            "paragraph, point (a). The Regulation's requirements must also be "
+            "taken into account in the evaluation of each of those IT systems "
+            "under the legal acts listed in Annex X, and where those acts are "
+            "replaced or amended. Annex X is not the annex that lists the "
+            "EU-database registration fields; that is Annex VIII."
         ),
     },
     # ─── Title III Ch. 4: Notified-body lifecycle gap-fill (Arts. 30, 32) ────

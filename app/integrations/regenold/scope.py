@@ -3346,6 +3346,39 @@ def classify_scope(question: str) -> ScopeVerdict:
             referenced_articles=known,
             near_oos_framework=near_oos_fw,
         )
+    # R465b — the one statutory shape that carries no anchor at all. "Our
+    # factory wants to detect worker stress to optimise the production line. Is
+    # that prohibited?" names no AI system and no anchor keyword, so the gate
+    # refused it as CONVERSATIONAL; on a live deployment the out-of-scope branch
+    # then answered it from a general model, which called stress detection
+    # "biometric categorisation" and asserted a high-risk classification the
+    # Act does not give. The question IS an Article 5(1)(f) ask — the curated
+    # workplace-emotion verdict answers it exactly — so the gate asks that one
+    # detector rather than a keyword list. Import is local: the engine imports
+    # this module, and only the recognised shape crosses the boundary.
+    #
+    # R465d (deep review) — the except is ``ImportError`` only, not ``Exception``.
+    # The bridge must fail CLOSED (a refusal, never a wrong in-scope verdict), but
+    # a blanket swallow also reverted the fix to a refusal with no signal at all
+    # if anything inside the detector raised, while this comment and the
+    # statutory module both describe the case as fixed — the R366/R329
+    # "described as live, silently inert" failure class. A detector bug is now a
+    # 500 on the ask path instead of an invisible policy change.
+    try:
+        from app.engines.statutory_precision import is_workplace_monitoring_ask
+
+        if is_workplace_monitoring_ask(cleaned_text):
+            return ScopeVerdict(
+                in_scope=True,
+                reason=ScopeReason.IN_SCOPE,
+                evidence=(
+                    "Article 5(1)(f) workplace emotion/stress monitoring "
+                    "question (statutory-precision shape)."
+                ),
+                referenced_articles=known,
+            )
+    except ImportError:  # a scope gate must not fail on an import cycle
+        pass
     if _has_ai_act_anchor(cleaned_text):
         return ScopeVerdict(
             in_scope=True,

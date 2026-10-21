@@ -5129,18 +5129,82 @@ def _curated_prose_scope_enabled() -> bool:
     )
 
 
+def _curated_ref_key(ref: str) -> str:
+    """``Art. 5.1.f`` / ``article 5(1)(f)`` -> ``article 5.1.f`` for comparison.
+
+    R465d — head-only comparison was the R455c hole: a verdict that declares
+    ``Annex III`` licensed EVERY ``Annex III.*`` anchor the keyword pass minted,
+    so ``Annex III.1.c`` (remote biometric identification, a different area)
+    survived the very pass written to drop it. Same for a declared bare
+    ``Article 6`` beside an anchored ``Article 6.3``.
+    """
+    key = " ".join(str(ref).replace("(", ".").replace(")", "").split())
+    # ``articles?`` BEFORE ``arts?``: an alternation tried in the other order
+    # matches the "Art" inside "Article" (``\s*\.?\s*`` allows zero
+    # separators) and turns "Article 5.1.f" into "article icle 5.1.f".
+    key = re.sub(r"^\s*(?:articles?|arts?)\s*\.?\s*", "article ", key, flags=re.IGNORECASE)
+    key = re.sub(r"^\s*(?:annexes|annex)\s+", "annex ", key, flags=re.IGNORECASE)
+    key = re.sub(r"\s*\.\s*", ".", key)
+    key = re.sub(r"\.{2,}", ".", key).strip(". ")
+    return key.lower()
+
+
 def _curated_prose_scope(references: list[str], declared: tuple, answer_text: str) -> list[str]:
-    """R455c — keep a reference whose head the curated answer declares or whose
-    provision its prose names; drop the anchors it neither declares nor states.
-    Never empties the list."""
+    """R455c — keep a reference the curated answer declares or its prose names;
+    drop the anchors it neither declares nor states. Never empties the list.
+
+    R465d — the comparison is per PROVISION, not per head. A declared BARE head
+    (``Annex III``) is a coarse declaration and still licenses its sub-points;
+    a declared LEAF (``Art. 5.1.f``) licenses only itself and its own bare
+    parent, so ``Article 5.3`` no longer rides along on it. A sub-pointed wire
+    ref the verdict does not declare must be NAMED by the prose
+    (``_prose_named_subpoints`` reads both ``Annex III, point 4(b)`` and
+    ``Article 6.2``), which is the property this pass was written for.
+    """
+    text = answer_text or ""
+    declared_keys = {_curated_ref_key(r) for r in declared}
     declared_heads = {
         h for r in declared
-        if (h := _clamp_ref_head(re.sub(r"^\s*Art\.\s*", "Article ", str(r))))
+        if (h := _clamp_ref_head(_curated_ref_key(r)))
     }
-    kept = [
-        r for r in references
-        if _clamp_ref_head(str(r)) in declared_heads or _reference_described_in_prose(str(r), answer_text or "")
-    ]
+    # ``_PROSE_SUBPOINT_RE`` wants "Annex III point 4(b)", but the statute is
+    # cited with a comma ("Annex III, point 4(b)") — the form every curated
+    # verdict uses. Normalise the separator on a COPY so the shared parser (and
+    # the R452c fold / R133 surface passes that read it) keep their behaviour.
+    named_text = re.sub(r",\s*(?=(?:point|paragraph)\b)", " ", text, flags=re.IGNORECASE)
+    try:
+        named_leaves = {
+            _curated_ref_key(leaf)
+            for leaves in (_prose_named_subpoints(named_text) or {}).values()
+            for leaf in leaves
+        }
+    except Exception:  # noqa: BLE001 — a scope guard must not fail the route
+        named_leaves = set()
+
+    def _keep(ref: str) -> bool:
+        key = _curated_ref_key(ref)
+        if key in declared_keys:
+            return True
+        head = _clamp_ref_head(ref)
+        if head is not None and key == _curated_ref_key(head):  # bare head
+            return bool(
+                _curated_ref_key(head) in declared_heads
+                or _reference_described_in_prose(str(ref), text)
+            )
+        # A sub-point: the curated prose must name that provision, at the SAME
+        # grain or a finer one. The wire grain can be COARSER than the prose —
+        # the sub-point emitter writes ``Annex III.4`` while the verdict cites
+        # "Annex III, point 4(b)" — and an exact-match test dropped the annex
+        # verdicts declare (caught by this file's own route test). Prefix
+        # comparison in both directions keeps that ref, while ``Annex III.1.c``
+        # still fails against a named 4(b), which is the R455c hole this
+        # narrowing exists to close.
+        return any(
+            key == leaf or leaf.startswith(key + ".") or key.startswith(leaf + ".")
+            for leaf in named_leaves
+        )
+
+    kept = [r for r in references if _keep(str(r))]
     return kept or references
 
 
