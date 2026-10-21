@@ -22,8 +22,9 @@ from app.routes.regenold import _surface_prose_subpoints, _PROSE_SUBPOINT_RE
 
 
 def test_kb_version_is_v21() -> None:
-    # R453 bumped v22 -> v23 (Art. 50 / 50.4 stubs).
-    assert KB_VERSION == "2024.1689.v23"
+    # R453 bumped v22 -> v23 (Art. 50 / 50.4 stubs); R465 bumped v23 -> v24
+    # (Annex III / Annex X / Art. 111 / Art. 7 stubs, 2026-09-29 review).
+    assert KB_VERSION == "2024.1689.v24"
 
 
 def test_art27_critical_infrastructure_carveout() -> None:

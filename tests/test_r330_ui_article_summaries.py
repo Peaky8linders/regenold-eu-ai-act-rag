@@ -39,7 +39,11 @@ ANNEX_III_AREAS = (
     "critical infrastructure",
     "education",
     "employment",
-    "essential private and public services",
+    # R465 — the heading is the OJ's "Access to and enjoyment of essential
+    # private services and essential public services and benefits"; the token
+    # follows that wording so the guard still proves area 5 is named without
+    # forcing the template back to a compressed label.
+    "essential private services and essential public services",
     "law enforcement",
     "migration, asylum and border control",
     "administration of justice and democratic processes",

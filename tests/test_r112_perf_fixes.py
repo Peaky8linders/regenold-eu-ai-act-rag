@@ -390,8 +390,18 @@ _EXPECTED_BM25_ONLY: dict[str, list[str]] = {
     # is gone and ``Art. 50.3`` (chatbot transparency) enters the top-5.
     # Same documented refactor-equivalence pin reacting to a deliberate
     # content edit, not a regression in the refactor it guards.
+    # R465 re-capture: the Art. 111 stub gained Art. 111(1)'s full text
+    # ("large-scale IT systems", "placed on the market or put into service",
+    # "brought into compliance ... by 31 December 2030") for the 2026-09-29
+    # review, (2 August 2030 is Article 111(2)'s public-authority deadline, not
+    # 111(1)'s; R465d review) which
+    # which raises its BM25 score against this row's "placed on the market" /
+    # "provider" vocabulary and pushes it into the top-5, displacing the
+    # chatbot-transparency leaf. A deliberate content edit, not a refactor
+    # regression: the pin exists to catch ranking DRIFT, so it is re-captured
+    # with the cause named, as every earlier re-capture on this table was.
     "We are a provider of an AI chatbot for customer service.": [
-        "Art. 16", "Art. 49", "Art. 3", "Art. 1", "Art. 50.3",
+        "Art. 16", "Art. 49", "Art. 111", "Art. 3", "Art. 1",
     ],
     # R263 Fix 3 lengthened the bare ``Art. 50`` KB stub's summary (new
     # public-interest text-generation duty + exceptions sentence). BM25's

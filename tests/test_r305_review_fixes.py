@@ -97,9 +97,24 @@ class TestR304InterceptsRemoved:
                 "Stage-2 (so no LLM could correct them)."
             )
 
-    @pytest.mark.parametrize("question", [Q_SANDBOX, Q_MIGRATION, Q_AMEND])
+    # R465 — Q_AMEND is curated again, deliberately and for the opposite reason
+    # R305 removed it: the 2026-09-29 review found the un-curated answer dropped
+    # the Article 97(4) consultation and the Article 97(6) objection window
+    # (three months, extendable by three months). The R304 text R305 rejected
+    # misstated Article 7(3); the replacement states BOTH of its limbs, so the
+    # defect that motivated the removal is not back.
+    @pytest.mark.parametrize("question", [Q_SANDBOX, Q_MIGRATION])
     def test_no_curated_intercept_on_the_three_rows(self, question: str) -> None:
         assert _is_curated_authoritative_intercept(question) is False
+
+    def test_the_amendment_row_is_curated_by_the_statutory_verdict(self) -> None:
+        from app.engines.statutory_precision import curated_statutory_verdict
+
+        verdict = curated_statutory_verdict(Q_AMEND)
+        assert verdict is not None
+        assert verdict["name"] == "annex_iii_amendment"
+        assert "97(4)" in verdict["answer"] and "97(6)" in verdict["answer"]
+        assert "overall level of protection is not reduced" in verdict["answer"]
 
     def test_removed_verdict_prose_is_gone(self) -> None:
         """The amendment verdict misstated Article 7(3).
@@ -109,7 +124,7 @@ class TestR304InterceptsRemoved:
         level of protection under Union law. The removed hardcode asserted
         only (a) — a confidently-wrong legal claim (hard rule #4).
         """
-        for question in (Q_AMEND, Q_SANDBOX, Q_MIGRATION):
+        for question in (Q_SANDBOX, Q_MIGRATION):
             answer = _answer(question)
             assert "Article 7(3) permits removing a use-case where it no longer" not in answer
             assert "controlled environment established by national competent" not in answer
