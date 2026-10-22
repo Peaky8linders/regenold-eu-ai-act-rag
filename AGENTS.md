@@ -79,6 +79,22 @@ $env:OPENAI_API_BASE = "http://127.0.0.1:1/v1"; $env:P2P_GRAPH_RAG_PROVIDER = "c
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload (start local API server)
 ```
 
+⚠ **The three flags above are for the SERVICE and the eval harnesses, not for
+`pytest`.** `tests/conftest.py` drops `P2P_GRAPH_RAG_PROVIDER` and
+`REGENOLD_EXTERNAL_EMBEDDINGS` at import and warns once if your shell exported
+them (R466). Before that, the same exported shell failed **57 tests** — 51 from
+`cli` (intent, Stage-2 and CLARA gates read `is_openai_wrapper_enabled()`, which
+is False for `cli`) and 6 from `=0` (`external_embeddings` force-disables both
+providers) — and each reproduces **alone**, in one file:
+
+```bash
+P2P_GRAPH_RAG_PROVIDER=cli pytest tests/test_bridging_taxonomy.py (fails 1 without the R466 drop)
+REGENOLD_EXTERNAL_EMBEDDINGS=0 pytest tests/test_external_embeddings.py (fails 3 without it)
+```
+
+A full-suite red of roughly that size with a clean tree is an inherited
+environment, not order dependence: check that warning before bisecting.
+
 ---
 
 ## File-Scoped Iteration & Fast Development

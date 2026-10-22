@@ -36,6 +36,21 @@ import ipaddress as _ipaddress
 import logging
 import os
 import socket as _socket
+import warnings
+
+import pytest
+
+# R466 — flags the documented offline recipe exports that silently configure
+# the whole suite if they are inherited. Neutralised inside the R105 block
+# below, under the same ``REGENOLD_TEST_ALLOW_LIVE`` guard as the credentials.
+_AMBIENT_OFFLINE_FLAGS: tuple[str, ...] = (
+    "P2P_GRAPH_RAG_PROVIDER",
+    "REGENOLD_EXTERNAL_EMBEDDINGS",
+)
+
+# name -> the value that was dropped, so the run can say so instead of
+# silently ignoring what the operator deliberately set.
+_NEUTRALISED_AMBIENT_ENV: dict[str, str] = {}
 
 # ── R105 — deterministic offline test environment ────────────────────────
 #
@@ -67,10 +82,13 @@ import socket as _socket
 # forcing ``cli`` would make ``_stage2_provider_enabled()`` short-circuit
 # before their patch. The Stage-2 master gate below is the safe lever — it
 # short-circuits ``_two_stage_generate`` ahead of the provider check, and the
-# Stage-2-exercising tests set it back to ``1`` themselves.
+# Stage-2-exercising tests set it back to ``1`` themselves. R466 below DROPS an
+# inherited value instead of forcing one, so an ambient ``cli`` is not honoured
+# either.
 #
 # Escape hatch: ``REGENOLD_TEST_ALLOW_LIVE=1`` skips the neutralisation
 # entirely (e.g. an intentional live-integration smoke run from pytest).
+
 if os.getenv("REGENOLD_TEST_ALLOW_LIVE", "").strip().lower() not in (
     "1",
     "true",
@@ -120,9 +138,62 @@ if os.getenv("REGENOLD_TEST_ALLOW_LIVE", "").strip().lower() not in (
     # disabled in tests — only the backend *selector* reads neo4j here.
     os.environ["REGENOLD_GRAPH_BACKEND"] = "neo4j"
 
-import pytest
+    # ── R466 — the documented OFFLINE RECIPE, inherited from the shell ─────
+    #
+    # ``AGENTS.md`` and ``CLAUDE.md`` hand the operator
+    # ``OPENAI_API_BASE=http://127.0.0.1:1/v1 P2P_GRAPH_RAG_PROVIDER=cli
+    # REGENOLD_EXTERNAL_EMBEDDINGS=0`` as the deterministic local-testing
+    # environment. The block above neutralises the *credentials* but not these
+    # two behavioural flags, so a shell (or IDE task, or parent process) that
+    # exports the recipe runs a DIFFERENT suite than a clean clone does.
+    #
+    # MEASURED R466 — the account for 57 "passes alone, fails in-suite"
+    # failures that had been read as order dependence:
+    #
+    #     P2P_GRAPH_RAG_PROVIDER=cli      → 51 failures
+    #     REGENOLD_EXTERNAL_EMBEDDINGS=0   →  6 failures
+    #     union                            → 57, EXACTLY the observed set
+    #
+    # and each reproduces ALONE, in a single file, on a clean tree:
+    #
+    #     P2P_GRAPH_RAG_PROVIDER=cli pytest tests/test_bridging_taxonomy.py
+    #         → test_intent_classifier_attaches_bridging_context
+    #     REGENOLD_EXTERNAL_EMBEDDINGS=0 pytest tests/test_external_embeddings.py
+    #         → test_is_available_logic
+    #
+    # So no earlier test was leaking anything into a later one: the leak is the
+    # process environment the suite INHERITS. Mechanism, both first-class
+    # contracts rather than accidents -- ``is_openai_wrapper_enabled()`` returns
+    # False for ``cli`` (so Stage-0 intent, Stage-2 polish and the CLARA gate all
+    # short-circuit before their own mocks), and ``external_embeddings``
+    # force-disables BOTH providers on ``=0`` (so a test that sets a Cohere key
+    # and expects ``is_available()`` to follow it gets False).
+    #
+    # Dropped rather than pinned to a value: the code default is what a clean
+    # CI clone runs, and the two differ. Tests that need either value own it via
+    # ``monkeypatch.setenv`` (auto-reverted), and the R361 per-test snapshot
+    # keeps it. The names are a module constant so a test can pin the list.
+    for _var in _AMBIENT_OFFLINE_FLAGS:
+        _prior = os.environ.pop(_var, None)
+        if _prior is not None:
+            _NEUTRALISED_AMBIENT_ENV[_var] = _prior
 
 logger = logging.getLogger(__name__)
+
+# R466 — say so, once, when the operator's shell environment was overridden.
+# Silent on a clean run (and on CI); on a poisoned one it turns "57 unexplained
+# failures" into a stated cause in the warnings summary, so the next person does
+# not re-diagnose this as test-order dependence. A ``logger`` call would not be
+# seen: this fires at collection time, before any test's log is displayed.
+if _NEUTRALISED_AMBIENT_ENV:
+    warnings.warn(
+        "R466 — ignored ambient offline-recipe flag(s) "
+        + ", ".join(f"{k}={v!r}" for k, v in sorted(_NEUTRALISED_AMBIENT_ENV.items()))
+        + ". The suite runs the code defaults (what a clean CI clone sees); "
+        "tests that need these set them with monkeypatch.setenv. Keeping them "
+        "would fail ~57 tests for reasons unrelated to the code under test.",
+        stacklevel=1,
+    )
 
 # ══════════════════════════════════════════════════════════════════════════
 # R382 — COLLECTION-TIME environment pollution.
