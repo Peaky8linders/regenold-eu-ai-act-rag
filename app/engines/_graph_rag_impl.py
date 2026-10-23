@@ -7243,21 +7243,31 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
             # now stated too. Refs stay the two definition leaves plus the
             # Article 25(1) transition (R447's criterion excludes duty articles
             # that the definitional question did not ask for).
+            # R467 — two residual differences from the review's corrected
+            # answer, disclosed in the appendix and now closed: Article 3(3)
+            # covers a general-purpose AI model too, and Recital 83 says
+            # operators "should" fulfil the obligations cumulatively (the text
+            # had "must", turning a recital into a rule). The corrected answer
+            # also names Article 16; this text deliberately does not, because a
+            # definitional answer that names duty articles failed the citation
+            # criterion and the tone check (R447, pinned by
+            # ``test_does_not_allocate_duties_on_a_definitional_question``).
             "answer": (
                 "A provider under Article 3(3) is a natural or legal person, "
                 "public authority, agency or other body that develops an AI "
-                "system, or has one developed, and places it on the market or "
-                "puts it into service under its own name or trademark, whether "
-                "for payment or free of charge, while a deployer under Article "
-                "3(4) is one that uses an AI system under its authority, except "
-                "where the system is used in the course of a personal "
-                "non-professional activity. The roles are not alternatives: "
-                "putting into service includes the supply of a system for own "
-                "use (Article 3(11)), so a party that develops a system and puts "
-                "it into service for its own use under its own name or trademark "
-                "is both its provider and its deployer, and an operator acting in "
-                "more than one role must fulfil cumulatively all the obligations "
-                "of those roles (Recital 83). Under Article 25(1) a distributor, "
+                "system or a general-purpose AI model, or has one developed, and "
+                "places it on the market or puts the AI system into service under "
+                "its own name or trademark, whether for payment or free of charge, "
+                "while a deployer under Article 3(4) is one that uses an AI system "
+                "under its authority, except where the system is used in the "
+                "course of a personal non-professional activity. The roles are not "
+                "alternatives: putting into service includes the supply of a system "
+                "for own use (Article 3(11)), so a party that develops a system and "
+                "puts it into service for its own use under its own name or "
+                "trademark is both its provider and its deployer, and Recital 83 "
+                "states that an operator acting in more than one role at the same "
+                "time should fulfil cumulatively all relevant obligations "
+                "associated with those roles. Under Article 25(1) a distributor, "
                 "importer, deployer or other third party is considered to be the "
                 "provider of a high-risk AI system, and is subject to the "
                 "obligations of the provider, where it puts its name or trademark "
@@ -7576,22 +7586,48 @@ def _deterministic_answer(question: str, context: GraphContext) -> str:
     # operator becomes a provider under Article 25(1); the operative basis, not
     # the deployer duties (Art. 26/27) or post-market articles the live wire cited.
     if _detect_reclassification_inquiry(question):
+        from app.engines.answer_completeness import (  # noqa: PLC0415
+            is_yes_no_question as _is_yes_no_question,
+        )
+
+        # R467 — each Article 25(1) limb now carries the condition the Act
+        # attaches to it, which the review asked for on Q10 and the R467 live
+        # check found missing on "When does a deployer become a provider under
+        # Article 25(1)?": (a) "or put into service" and the contractual
+        # reservation, (b) "remains a high-risk AI system pursuant to Article 6",
+        # (c) a system "not classified as high-risk" and already on the market.
+        # Article 25(2) keeps its carve-out. The "Yes" lead is given only to a
+        # yes/no question and sits inside the cited sentence, so the char cap
+        # (which drops the longest uncited sentence) cannot remove it.
+        _lead = "Yes: under" if _is_yes_no_question(question) else "Under"
         verdict = {
             "name": "reclassification_scope",
             "answer": (
-                "Yes. Under Article 25(1), a distributor, importer, deployer or "
-                "other third party is deemed to be the provider of a high-risk "
-                "AI system, and takes on the provider obligations in Article 16, "
-                "in any of three cases. First, if it puts its name or trademark "
-                "on a high-risk AI system already placed on the market (Article "
-                "25(1)(a)). Second, if it makes a substantial modification to a "
-                "high-risk AI system that remains high-risk (Article 25(1)(b)). "
-                "Third, if it modifies the intended purpose of an AI system, "
-                "including a general-purpose AI system, so that it becomes "
-                "high-risk (Article 25(1)(c)). In each of these three cases the "
-                "operator assumes the provider obligations in Article 16, and "
-                "the initial provider is no longer considered the provider of "
-                "that specific system under Article 25(2)."
+                f"{_lead} Article 25(1), a distributor, importer, deployer or "
+                "other third party is considered to be the provider of a "
+                "high-risk AI system, and is subject to the obligations of the "
+                "provider under Article 16, in any of three cases. First, if it "
+                "puts its name or trademark on a high-risk AI system already "
+                "placed on the market or put into service, without prejudice to "
+                "contractual arrangements stipulating that the obligations are "
+                "otherwise allocated (Article 25(1)(a)). Second, if it makes a "
+                "substantial modification to a high-risk AI system that has "
+                "already been placed on the market or put into service, in such "
+                "a way that it remains a high-risk AI system pursuant to Article "
+                "6 (Article 25(1)(b)). Third, if it modifies the intended purpose "
+                "of an AI system, including a general-purpose AI system, which has "
+                "not been classified as high-risk and has already been placed on "
+                "the market or put into service, in such a way that it becomes a "
+                "high-risk AI system in accordance with Article 6 (Article "
+                # ⚠ Not "that paragraph does not apply": the normaliser's
+                # meta-leak list holds "graph does not" (for "the knowledge
+                # graph does not ..."), matched as a substring, so it deleted
+                # this whole sentence.
+                "25(1)(c)). Under Article 25(2) the initial provider is then no "
+                "longer considered the provider of that specific system and must "
+                "cooperate closely with the new provider, unless it has clearly "
+                "specified that its system is not to be changed into a high-risk "
+                "AI system."
             ),
             "refs": ["Art. 25", "Art. 25.1", "Art. 16"],
         }

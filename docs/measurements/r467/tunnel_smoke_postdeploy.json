@@ -1,0 +1,52 @@
+{
+ "stage2_smoke": {
+  "question": "What does Article 4 of the EU AI Act require regarding AI literacy?",
+  "latency_s": 11.0,
+  "answer": "Article 4 requires providers and deployers of AI systems to take measures to ensure, to their best extent, a sufficient level of AI literacy among their staff and other persons dealing with the operation and use of AI systems on their behalf. Those measures must take into account those persons' technical knowledge, experience, education and training, the context in which the AI systems are used, and the persons or groups on whom the systems are used.",
+  "references": [
+   "Article 4"
+  ],
+  "reasoning": "Confidence: 0.70; KB 2024.1689.v24; retrieval: kb_fallback; references: 1",
+  "warning": null,
+  "retrieval_path": "kb_fallback"
+ },
+ "q74_short_paraphrase": {
+  "question": "Must I label AI-generated audio in my artistic work?",
+  "latency_s": 0.7,
+  "answer": "Making AI-generated audio does not by itself put a marking duty on the person who made it: the Article 50(2) duty to mark outputs in a machine-readable format and make them detectable as artificially generated belongs to the provider of the system. A person using the system is a deployer under Article 3(4) only where the use is not in the course of a personal non-professional activity, and the Act does not apply to the obligations of a natural person using an AI system in the course of a purely personal non-professional activity (Article 2(10)); a person who develops the system, or has it developed, and puts it into service for their own use under their own name or trademark is instead its provider (Article 3(3) and Article 3(11)) and does bear that marking duty. Where the audio is a deep fake, meaning AI-generated or manipulated content that resembles existing persons, objects, places, entities or events and would falsely appear to a person to be authentic or truthful (Article 3(60)), the deployer must disclose that it has been artificially generated or manipulated (Article 50(4)), and where it forms part of an evidently artistic, creative, satirical, fictional or analogous work that duty is limited to disclosing the existence of the generated content in an appropriate manner that does not hamper the display or enjoyment of the work.",
+  "references": [
+   "Article 50.4",
+   "Article 50.2",
+   "Article 50.5",
+   "Article 3.60",
+   "Article 3.4"
+  ],
+  "reasoning": "Confidence: 0.85; KB 2024.1689.v24; retrieval: kb_fallback; references: 5",
+  "warning": null,
+  "retrieval_path": "kb_fallback"
+ },
+ "healthz_llm": {
+  "llm_ok": true,
+  "provider": "openai_wrapper",
+  "model": "claude-opus-5-5",
+  "detail": "ok",
+  "pid": 4,
+  "stage2_transport": {
+   "strict": true,
+   "chain": [
+    "openai_wrapper",
+    "bedrock"
+   ],
+   "stats": {
+    "primary_attempts": 1,
+    "primary_ok": 1,
+    "primary_failed": 0,
+    "fallback_attempts": 0,
+    "fallback_ok": 0,
+    "fallback_failed": 0,
+    "refused": 0,
+    "refused_by_provider": {}
+   }
+  }
+ }
+}

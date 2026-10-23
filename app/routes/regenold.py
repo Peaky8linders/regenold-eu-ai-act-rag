@@ -115,6 +115,7 @@ from app.integrations.regenold.models import (
     question_hash,
     reference_from_article_ref,
     set_answer_no_cap,
+    set_curated_full_text,
 )
 from app.integrations.regenold.reasoning_trace import (
     activate as _activate_reasoning_trace,
@@ -1454,6 +1455,10 @@ def _engine_cache_key(
             "REGENOLD_CURATED_DECLARED_FIRST",
             # R453 — R311 route exclusivity keeps a curated answer's declared heads.
             "REGENOLD_CURATED_ROUTE_KEEP",
+            # R467 — a curated answer ships whole, and a statutory-precision
+            # answer cites exactly its declared references.
+            "REGENOLD_CURATED_FULL_TEXT",
+            "REGENOLD_STATUTORY_REFS_PINNED",
             # R453 — a curated answer backs an Annex I point only by naming its Act.
             "REGENOLD_CURATED_ANNEX_I_ACT_BACKING",
             # R454 — Annex I points are chosen by the Act the question describes.
@@ -3952,6 +3957,69 @@ def _curated_head_grain_enabled() -> bool:
     return os.getenv("REGENOLD_CURATED_HEAD_GRAIN", "1").strip().lower() not in (
         "0", "false", "no", "off",
     )
+
+
+def _curated_full_text_enabled() -> bool:
+    """R467 — a statutory verdict is not cut by the sentence cap.
+
+    The statutory verdicts are drafted complete, but ``normalise_answer_for_regenold``
+    keeps ``MAX_ANSWER_SENTENCES`` (3) unless the question bundles more than one
+    ask. The reviewed questions bundle two, so their answers shipped whole, while
+    single-ask rephrasings lost the final sentence: the Article 97(4)/(6) sentence
+    on Q17, Article 50(5) and the application date on Q74 (R467 live check, 8 of
+    20 statutory answers cut). ON gives those verdicts the multi-part sentence
+    ceiling. Scoped to the pinned verdicts (``_pinned_verdict_names``), every
+    sentence of which carries a provision anchor, so the soft char cap cannot then
+    drop one: applied to every curated answer, the longer text tipped rg_041 over
+    that cap and it dropped the sentence on who must accept the SME form.
+    Default ON, deny-list.
+    """
+    return os.getenv("REGENOLD_CURATED_FULL_TEXT", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
+def _statutory_refs_pinned_enabled() -> bool:
+    """R467 — a statutory-precision answer cites exactly the references it declares.
+
+    The R465 verdicts are drafted together with their reference lists, but the
+    grain deepener runs after the curated guards and re-deepened them by token
+    overlap: ``Annex III.7.b`` on "... what must happen before the delegated act
+    enters into force?" (``enter`` is in point 7(b)), ``Article 26.5`` / ``26.7``
+    on answers that state "the Article 26 deployer obligations". ON replaces the
+    final list with the verdict's declared list, canonicalised, in order and with
+    the parent-collapse rule, but only when the shipped answer is that verdict.
+    Covers the statutory module's verdicts and the two Article 25(1) engine
+    verdicts (``_PINNED_ENGINE_VERDICTS``). Default ON, deny-list.
+    """
+    return os.getenv("REGENOLD_STATUTORY_REFS_PINNED", "1").strip().lower() not in (
+        "0", "false", "no", "off",
+    )
+
+
+#: R467 — the verdict name the engine stamps on a seeded citation's node id.
+_VERDICT_NODE_RE = re.compile(r"^classification-([a-z0-9_]+)-")
+
+#: R467 — engine verdicts outside the statutory module whose declared references
+#: are final too: the two Article 25(1) answers (Case B and "When does a deployer
+#: become a provider under Article 25(1)?").
+_PINNED_ENGINE_VERDICTS = frozenset({"reclassification_scope", "role_difference"})
+
+
+def _pinned_verdict_names() -> frozenset:
+    from app.engines.statutory_precision import STATUTORY_VERDICT_NAMES  # noqa: PLC0415
+
+    return STATUTORY_VERDICT_NAMES | _PINNED_ENGINE_VERDICTS
+
+
+def _seeded_verdict_name(rag_res: Any) -> str:
+    """R467 — the one curated verdict the engine seeded this answer from, or ``""``."""
+    names = {
+        m.group(1)
+        for c in (getattr(rag_res, "citations", None) or [])
+        if (m := _VERDICT_NODE_RE.match(str(getattr(c, "node_id", "") or "")))
+    }
+    return next(iter(names)) if len(names) == 1 else ""
 
 
 def _curated_route_keep_enabled() -> bool:
@@ -11800,6 +11868,21 @@ def regenold_eu_ai_act_ask(
     except Exception:  # noqa: BLE001 — answer shaping must never break the route
         logger.warning("answer_no_cap_set_failure", exc_info=True)
 
+    # R467 — a statutory verdict (the statutory module's and the two Article
+    # 25(1) engine verdicts) ships whole: every later re-normalise (citation
+    # guard, recital and description augmentation) reads the same request-scoped
+    # switch. Set unconditionally so a reused worker thread can never carry a
+    # stale True into the next request.
+    try:
+        _r467_verdict = _seeded_verdict_name(rag_res) if _is_curated_intercept else ""
+    except Exception:  # noqa: BLE001 — answer shaping must never break the route
+        _r467_verdict = ""
+    _r467_statutory = bool(_r467_verdict) and _r467_verdict in _pinned_verdict_names()
+    try:
+        set_curated_full_text(_r467_statutory and _curated_full_text_enabled())
+    except Exception:  # noqa: BLE001 — answer shaping must never break the route
+        logger.warning("curated_full_text_set_failure", exc_info=True)
+
     if _is_classification_topic and not _stage2_landed_for_answer:
         answer_text = rag_res.answer
     else:
@@ -14899,6 +14982,37 @@ def regenold_eu_ai_act_ask(
                     _rn("definition_cite_scope dropped=" + ",".join(_dcs_dropped))
                 except Exception:  # noqa: BLE001 — fail-soft on trace
                     pass
+        except Exception:  # noqa: BLE001 — never 500 the route on a guard
+            pass
+
+    # R467 — a statutory answer cites exactly the references it declares. Last
+    # of all, after the R456 scope, because the passes above can still deepen or
+    # add to a curated list (``Annex III.7.b`` from "enters into force";
+    # ``Article 6.2`` on rg_025 once its answer states the Article 6 conditions).
+    # The verdict is recognised by the name the engine stamps on its seeded
+    # citations, and the pin applies only when the shipped answer is the engine's
+    # verdict, so a pushback turn or any other path keeps its own references.
+    if _r467_statutory and answer_text and _statutory_refs_pinned_enabled():
+        try:
+            _engine_head = " ".join(str(rag_res.answer or "").split())[:120]
+            if _engine_head and _engine_head in " ".join(answer_text.split()):
+                # Declared order, with the parent-collapse rule applied: a bare
+                # head is dropped when its own sub-point is declared too.
+                _declared = [str(r) for r in _curated_declared_refs]
+                _pinned = [
+                    r for r in _declared
+                    if not any(o != r and o.startswith(r + ".") for o in _declared)
+                ]
+                if _pinned and _pinned != references:
+                    try:
+                        from app.integrations.regenold.reasoning_trace import (  # noqa: PLC0415
+                            record_note as _rn,
+                        )
+
+                        _rn("statutory_refs_pinned " + ",".join(references) + "->" + ",".join(_pinned))
+                    except Exception:  # noqa: BLE001 — fail-soft on trace
+                        pass
+                    references = _pinned
         except Exception:  # noqa: BLE001 — never 500 the route on a guard
             pass
 

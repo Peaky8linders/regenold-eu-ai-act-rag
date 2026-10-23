@@ -1,0 +1,26 @@
+{
+ "written": "2026-10-23, before any R467 code change, and committed ahead of it",
+ "purpose": "Out-of-sample check for the R467 fixes. Two questions per reviewed family, written in natural wording without reference to the detectors. They are not to be used to tune detectors, verdict texts or reference lists; if a later change is motivated by one of them, that row stops being held out and the record must say so.",
+ "rows": [
+  {"id": "H45_a", "family": "Q45", "question": "As a provider of a high-risk AI system, what do I have to put in the instructions for use I give to deployers?"},
+  {"id": "H45_b", "family": "Q45", "question": "Under Article 13, does the instructions-for-use document need to mention logging and human oversight?"},
+  {"id": "H96_a", "family": "Q96", "question": "Which sectors does Annex III cover, and is a clinical decision-support AI in a hospital one of them?"},
+  {"id": "H96_b", "family": "Q96", "question": "Does Annex III include healthcare as a high-risk area?"},
+  {"id": "H17_a", "family": "Q17", "question": "Could the Commission add a brand-new area to Annex III through a delegated act?"},
+  {"id": "H17_b", "family": "Q17", "question": "What procedure applies when the Commission wants to update the list of high-risk use cases?"},
+  {"id": "H74_a", "family": "Q74", "question": "I'm a musician and use an AI tool to create backing vocals for my album. Do I have to label the tracks as AI-generated?"},
+  {"id": "H74_b", "family": "Q74", "question": "Does the AI Act require me to watermark an AI-generated short film I am releasing as a fiction piece?"},
+  {"id": "H95_a", "family": "Q95", "question": "In the AI Act's high-risk list, what is the difference between an area and a use case?"},
+  {"id": "H95_b", "family": "Q95", "question": "How many high-risk areas does Annex III define?"},
+  {"id": "H104_a", "family": "Q104", "question": "Why does the AI Act have an annex listing EU large-scale IT systems like SIS and Eurodac?"},
+  {"id": "H104_b", "family": "Q104", "question": "When do AI systems inside the Schengen Information System have to comply with the AI Act?"},
+  {"id": "H6_a", "family": "Q6", "question": "Is there a minimal-risk tier in the AI Act, and what obligations apply to it?"},
+  {"id": "H6_b", "family": "Q6", "question": "My company's spam filter uses AI. Which AI Act obligations apply to it?"},
+  {"id": "H10_a", "family": "Q10", "question": "How does the AI Act distinguish a provider from a deployer?"},
+  {"id": "H10_b", "family": "Q10", "question": "We bought an AI recruitment tool and rebranded it under our name. Do we become its provider?"},
+  {"id": "H16_a", "family": "Q16", "question": "Can an employer use webcams with AI to detect whether call-centre staff are frustrated or stressed?"},
+  {"id": "H16_b", "family": "Q16", "question": "Is AI-based monitoring of employee fatigue for safety reasons allowed under Article 5?"},
+  {"id": "HD_a", "family": "CASE_D", "question": "Would an AI module that controls a surgical robot's movements be a high-risk AI system?"},
+  {"id": "HD_b", "family": "CASE_D", "question": "Is AI software that is itself a medical device classified as high-risk under the AI Act?"}
+ ]
+}

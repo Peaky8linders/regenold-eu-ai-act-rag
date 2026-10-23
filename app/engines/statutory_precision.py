@@ -223,7 +223,12 @@ def _detect_annex_iii_amendment(question: str) -> bool:
 
 _DEEPFAKE_WORD_RE = re.compile(r"\bdeep[\s-]?fake\b", re.IGNORECASE)
 _ARTISTIC_WORD_RE = re.compile(
-    r"\b(?:artistic|satir\w*|creative|fiction\w*|work\s+of\s+art|my\s+art)\b",
+    # R467 — "AI-generated images in an art project" missed the verdict and was
+    # answered by Stage-2 with the deployer assumption the review criticised.
+    # ``art`` alone would take "state-of-the-art watermarking", so only the
+    # compounds that name an artistic work or its author are added.
+    r"\b(?:artistic|satir\w*|creative|fiction\w*|work\s+of\s+art|my\s+art"
+    r"|art\s+(?:projects?|pieces?|works?)|artworks?|artists?)\b",
     re.IGNORECASE,
 )
 _MARKING_WORD_RE = re.compile(
@@ -400,16 +405,20 @@ def _instructions_for_use() -> dict:
             "(b) the characteristics, capabilities and limitations of "
             "performance, namely (i) the intended purpose; (ii) the level of "
             "accuracy, including its metrics, robustness and cybersecurity under "
-            "Article 15, and any known or foreseeable circumstance that may "
-            "affect that level; (iii) any known or foreseeable circumstance of "
-            "use, or reasonably foreseeable misuse, that may lead to risks to "
-            "health, safety or fundamental rights under Article 9(2); (iv) where "
+            "Article 15 against which the system has been tested and validated and "
+            "which can be expected, and any known and foreseeable circumstances "
+            "that may affect that expected level; (iii) any known or foreseeable "
+            "circumstance, related to the use of the system in accordance with its "
+            "intended purpose or under conditions of reasonably foreseeable misuse, "
+            "that may lead to risks to health and safety or fundamental rights "
+            "under Article 9(2); (iv) where "
             "applicable, the technical capabilities and characteristics that "
             "provide information relevant to explain its output; (v) when "
             "appropriate, its performance regarding specific persons or groups "
             "on which it is intended to be used; (vi) when appropriate, "
-            "specifications for the input data, or other relevant information on "
-            "the training, validation and testing data sets used; (vii) where "
+            "specifications for the input data, or any other relevant information "
+            "on the training, validation and testing data sets used, taking into "
+            "account the intended purpose; (vii) where "
             "applicable, information enabling deployers to interpret the output "
             "and use it appropriately; (c) the changes to the system and its "
             "performance predetermined by the provider at the initial "
@@ -520,16 +529,50 @@ def _annex_iii_amendment() -> dict:
             "both inform the Commission that they will not object (Article "
             "97(6))."
         ),
-        "refs": ["Art. 7.1", "Art. 97"],
+        # R467 — the list the reviewed question shipped, now declared: the route
+        # pins a statutory answer's citations to this list, and the old ``Art. 97``
+        # only reached ``97.6`` (and ``Annex III`` only arrived) through later
+        # passes, one of which deepened ``Annex III`` to point 7(b) on a rephrasing.
+        "refs": ["Art. 7.1", "Art. 97.6", "Annex III"],
     }
 
 
-def _deepfake_artistic_disclosure() -> dict:
-    """Q74 — who owes the marking/disclosure, on what conditions, from when."""
+#: R467 — the medium the question names. The verdict was written for audio and
+#: said "audio" twice, so an image or video question was either missed or would
+#: have been answered about audio. Video is tested first so that "a music video"
+#: is a video.
+_MEDIUM_VIDEO_RE = re.compile(r"\b(?:videos?|films?|movies?|footage|clips?)\b", re.IGNORECASE)
+_MEDIUM_IMAGE_RE = re.compile(
+    r"\b(?:images?|pictures?|photo(?:graph)?s?|illustrations?|artworks?|paintings?|drawings?)\b",
+    re.IGNORECASE,
+)
+_MEDIUM_AUDIO_RE = re.compile(r"\b(?:audio|sounds?|songs?|music|voices?|podcasts?)\b", re.IGNORECASE)
+
+
+def _artistic_medium(question: str) -> tuple[str, str]:
+    """``(noun, deep-fake subject)`` for the medium the question names."""
+    low = _live_turn(question).lower()
+    if _MEDIUM_VIDEO_RE.search(low):
+        return "video", "the video is"
+    if _MEDIUM_IMAGE_RE.search(low):
+        return "images", "an image is"
+    if _MEDIUM_AUDIO_RE.search(low):
+        return "audio", "the audio is"
+    return "content", "the content is"
+
+
+def _deepfake_artistic_disclosure(question: str = "") -> dict:
+    """Q74 — who owes the marking/disclosure, on what conditions, from when.
+
+    R467 — the provider sentence said "is instead its provider", which reads the
+    roles as alternatives (the Q10 defect): a person who puts a system into
+    service for own use is its provider and, in using it, also its deployer.
+    """
+    noun, subject = _artistic_medium(question)
     return {
         "name": "deepfake_artistic_disclosure",
         "answer": (
-            "Making AI-generated audio does not by itself put a marking duty on "
+            f"Making AI-generated {noun} does not by itself put a marking duty on "
             "the person who made it: the Article 50(2) duty to mark outputs in a "
             "machine-readable format and make them detectable as artificially "
             "generated belongs to the provider of the system. A person using the "
@@ -539,8 +582,8 @@ def _deepfake_artistic_disclosure() -> dict:
             "in the course of a purely personal non-professional activity "
             "(Article 2(10)); a person who develops the system, or has it "
             "developed, and puts it into service for their own use under their "
-            "own name or trademark is instead its provider (Article 3(3) and "
-            "Article 3(11)) and does bear that marking duty. Where the audio is a "
+            "own name or trademark is also its provider (Article 3(3) and "
+            f"Article 3(11)) and so bears that marking duty. Where {subject} a "
             "deep "
             "fake, meaning AI-generated or manipulated content that resembles "
             "existing persons, objects, places, entities or events and would "
@@ -788,7 +831,10 @@ def _workplace_emotion_and_stress(question: str) -> dict:
             "attaching to a high-risk Annex III system apply from 2 August 2026."
             f"{education}"
         ),
-        "refs": ["Art. 5.1.f", "Art. 6.2", "Annex III", "Art. 26"],
+        # R467 — ``Annex III.4.b`` is the point the answer states; ``Art. 26`` stays a
+        # head because the answer states "the Article 26 deployer obligations" as a
+        # whole (the deepener had shipped ``26.5`` or ``26.7`` by token overlap).
+        "refs": ["Art. 5.1.f", "Art. 6.2", "Annex III.4.b", "Art. 26"],
     }
 
 
@@ -818,12 +864,27 @@ def _statutory_verdict_builder(question: str):
     if _detect_annex_iii_areas(question):
         return _annex_iii_areas
     if _detect_deepfake_artistic_disclosure(question):
-        return _deepfake_artistic_disclosure
+        return lambda: _deepfake_artistic_disclosure(question)
     if _detect_annex_x_overview(question):
         return _annex_x_overview
     if _detect_workplace_emotion_and_stress(question):
         return lambda: _workplace_emotion_and_stress(question)
     return None
+
+
+#: R467 — the names the verdicts above carry. The engine stamps the name on every
+#: citation it seeds (``classification-<name>-<ref>``), and the route pins a
+#: statutory answer's references to the list the verdict declares by matching it.
+STATUTORY_VERDICT_NAMES = frozenset({
+    "instructions_for_use_categories",
+    "annex_iii_areas_healthcare",
+    "annex_iii_area_vs_use_case",
+    "annex_iii_amendment",
+    "deepfake_artistic_disclosure",
+    "market_service_use_contrast",
+    "annex_x_overview",
+    "workplace_emotion_and_stress",
+})
 
 
 def curated_statutory_verdict(question: str) -> dict | None:

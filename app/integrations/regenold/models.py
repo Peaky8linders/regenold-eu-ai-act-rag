@@ -323,6 +323,32 @@ def answer_no_cap_active() -> bool:
         return False
 
 
+# R467 — request-scoped: this request's answer is a curated authoritative
+# intercept, drafted complete, so the sentence cap must not cut its tail. The
+# default cap is 3 unless the question bundles more than one ask, which is why
+# the reviewed questions shipped whole while their single-ask rephrasings lost
+# their final sentence (the Article 97(4)/(6) sentence on Q17, Article 50(5) and
+# the date on Q74). A ContextVar rather than a parameter for the same reason as
+# ``_ANSWER_NO_CAP``: the route re-normalises in several places, and one set
+# point covers every call site.
+_CURATED_FULL_TEXT: ContextVar[bool] = ContextVar(
+    "regenold_curated_full_text", default=False
+)
+
+
+def set_curated_full_text(active: bool) -> None:
+    """Mark (or unmark) this request's answer as a curated answer that ships whole."""
+    _CURATED_FULL_TEXT.set(bool(active))
+
+
+def curated_full_text_active() -> bool:
+    """True when this request's answer is a curated answer that must ship whole."""
+    try:
+        return bool(_CURATED_FULL_TEXT.get())
+    except Exception:  # noqa: BLE001 — never break answer shaping on a probe
+        return False
+
+
 _QUESTION_HASH_SALT = "regenold_question_hash_v1"
 
 # ── Input parsing regexes (accept both `Art.` and `Article` forms) ────────
@@ -1430,6 +1456,8 @@ def normalise_answer_for_regenold(
     _skip_char_cap = False
     _apply_shape_escalation = False
 
+    _curated_full = max_sentences is None and curated_full_text_active()
+
     if max_sentences is None:
         # Operator-directed (2026-06-18): REGENOLD_MAX_ANSWER_SENTENCES=0
         # (or off / none / unlimited) removes the sentence cap ENTIRELY so a
@@ -1572,6 +1600,17 @@ def normalise_answer_for_regenold(
                 pass
 
             max_sentences = max(1, min(max_sentences, 12))
+
+    # R467 — a curated answer gets the sentence ceiling a multi-part question
+    # already gets (12), whatever the question's shape. Applied AFTER the block
+    # above so ``_is_multi`` / ``_is_enum`` (which set the char floor below) are
+    # computed exactly as before; skipping the block dropped the uncited
+    # sentences of the reviewed Q95 answer. The soft char cap itself is left
+    # alone: lifting it restored sentences other curated answers had been
+    # shipping without (an uncited "Typical examples are AI-enabled spam
+    # filters ..." on the minimal-risk answer), a separate change to measure.
+    if _curated_full and not _no_cap:
+        max_sentences = 12
 
     # R112 — defensive env parse (mirrors the max_sentences pattern
     # above). REGENOLD_QA_LENGTH_CAP is an operator-tuned Railway knob
