@@ -388,6 +388,9 @@ def _instructions_for_use() -> dict:
     data sets and (e)'s purpose clause. The review's own complaint was that the
     answer compressed away conditions; the first cut of this verdict did the same
     to the paragraph ABOVE the list.
+
+    R467d — point (b) introduces its items with "including", as the Act does: an
+    open list. "namely" read (i) to (vii) as the whole of point (b).
     """
     return {
         "name": "instructions_for_use_categories",
@@ -403,7 +406,7 @@ def _instructions_for_use() -> dict:
             "the minimum content: (a) the identity and contact details of the "
             "provider and, where applicable, of its authorised representative; "
             "(b) the characteristics, capabilities and limitations of "
-            "performance, namely (i) the intended purpose; (ii) the level of "
+            "performance, including (i) the intended purpose; (ii) the level of "
             "accuracy, including its metrics, robustness and cybersecurity under "
             "Article 15 against which the system has been tested and validated and "
             "which can be expected, and any known and foreseeable circumstances "

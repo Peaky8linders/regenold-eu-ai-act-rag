@@ -319,6 +319,17 @@ def test_q45_states_the_article_13_3_b_items_in_full(ask, phrase):
     assert phrase in _norm(ask(Q45_ARTICLE_13_3)["answer"])
 
 
+def test_q45_keeps_point_b_an_open_list(ask):
+    """R467d — Article 13(3)(b) introduces its items with "including", an open list.
+
+    The verdict said "namely", which reads (i) to (vii) as the whole of point (b);
+    the independent fact-check of the appendix caught it.
+    """
+    answer = _norm(ask(Q45_ARTICLE_13_3)["answer"])
+    assert "limitations of performance, including (i) the intended purpose" in answer
+    assert "namely" not in answer
+
+
 # ── 5. The Q74 verdict covers images and video, not only audio ─────────────
 
 
