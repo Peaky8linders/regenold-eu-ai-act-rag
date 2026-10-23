@@ -1,6 +1,8 @@
 # R460 — the Stage-2 payload census, and what the evidence bundle can actually cut
 
 **Status: measurement + mechanism. Nothing is flipped, no default moved, nothing wired.**
+(R461: the evidence minifier is now wired at the Stage-2 call site, still default
+OFF; see § 6, step 1.)
 
 The request was to cut the Stage-2 prompt and context payload down from the measured
 ~115k characters with an evidence-bundle design, gated so correctness and gold
@@ -66,8 +68,12 @@ Inside the evidence block (same sample, medians):
 
 **The payload is not dominated by redundant context. It is dominated by a static
 system prompt.** The evidence block is 26% of the payload, and inside it only
-**0.2–1.6% is provably removable** (a provision rendered twice under two node ids, or
-member lines under a heading that itself says "NOT ENGAGED ... do NOT enumerate").
+**0.0–1.4% is provably removable** on these seven draws (a provision rendered twice
+under two node ids, or member lines under a heading that itself says "NOT ENGAGED
+... do NOT enumerate"). ⚠ R461 corrected this from 0.2–1.6%: the first dedupe
+relation counted empty-body `- [Art. N]` label lines under VERBATIM PROVISION TEXT
+as duplicates of the same provision's APPLICABLE OBLIGATIONS item (41 drops on the
+seven draws, 3 genuine). See the R461 note in § 5.
 
 Even the "NOT ENGAGED" member lists are **not free**: the ANSWER SHAPE clause
 explicitly says "the COMPLETE STRUCTURE lists in the evidence block describe whole
@@ -110,9 +116,11 @@ stack is dropped, cutting it is free; if it is delivered, cutting it is a qualit
 `app/engines/evidence_bundle.py` is a typed, **lossless** projection, not a rewriter:
 
 * `parse_evidence_block(text) -> EvidenceBundle` carries per-item `section`,
-  `source_id`, canonical `provision`, exact `text`, `context_only` and `line_no`; the
-  span stops at the `ANSWER CONTRACT`, so a whole-message caller can splice the
-  minified span back without doubling the contract.
+  `source_id`, canonical `provision`, exact `text`, `context_only` and `line_no`. It
+  takes the bare engine block (`reference_block`) and never slices it. (R461: it used
+  to search its input for the `EU AI ACT REFERENCES:` header and cut at `ANSWER
+  CONTRACT`; handed a whole user message, the span then began inside the partner's
+  question, where a planted header and `- [id]` lines survive `sanitize_for_llm`.)
 * `render()` returns the parsed bytes verbatim; `verify()` raises unless the typed view
   reproduces `raw` line-for-line (the R448 "byte-identical replay" requirement).
 * `minified(level)` drops **only** bytes that are provably redundant, and is a strict
@@ -136,6 +144,29 @@ Measured over the seven recorded draws (`evidence-bundle-cut.json`):
 
 Evidence-only cut: **L1 0.2%, L2 1.6%**. All draws lossless at both levels.
 
+⚠ **R461 — the level-1 relation was wrong, and these figures overstate it.** It
+compared items across sections and citability classes, folded `Annex III.5.d` onto
+`Annex III`, matched prefixes mid-word, and treated an EMPTY body as a prefix of
+every body, so each `- [Art. N]` label under VERBATIM PROVISION TEXT was "superseded"
+by the same provision's APPLICABLE OBLIGATIONS item and dropped, orphaning the
+statutory text it owns. Now an item is dropped only for a twin in the same section,
+of the same citability, with the same grain-faithful coordinate (`13(3)` = `13.3`),
+whose body it equals or is a whole-word prefix of; an empty-body label never drops.
+Re-run with the fixed script (`evidence-bundle-cut.json` still holds the pre-R461
+run until it is regenerated): median total + bundle L2 **31,046 (−66.2%)**, worst
+case 101,343 → 38,539, evidence-only cut **L1 0.0%, L2 1.4%**, 2 genuine level-1
+drops (`rg_003`, `rg_069`) where there were 41.
+
+**R461 sample, 85 official-110 blocks** (every row that reaches Stage-2, real route,
+Stage-2 stubbed at the seam, both arms the same engine block): level 1 changes 14/85
+rows, evidence 2,157,558 → 2,132,126 chars (−1.18%), 24 items dropped, every one an
+identical-body KB twin in APPLICABLE OBLIGATIONS (`kb-risk_mgmt-` / `kb-xref-risk_mgmt-`
+style), 0 labels; level 2 changes 43/85 rows, −3.26% (the same 24 items plus 2,606
+NOT ENGAGED member lines). The pre-R461 relation changed 85/85 rows at level 1, 431
+of its 468 drops being label lines. Zero rows lose a citable coordinate at either
+level, and the text after the evidence (contract, ANSWER SHAPE) is byte-identical
+in all 85 rows at both levels.
+
 So: the bundle is the right structure for the R448 recommendation (canonical id,
 provision, mandatory/optional, claim↔evidence wiring) and it is the honest, small,
 second lever. It is **not** the big cut.
@@ -150,9 +181,18 @@ latency/tokens last, and only among candidates that passed the first three:
    `minify_evidence_block(reference_block)` once at the production reference-block
    call site in `_graph_rag_impl._claude_max_enhance_answer` (~L9962), before
    `build_evidence_answer_user`. Default OFF, so the shipped payload is byte-identical.
-   One guarded call site, no other behaviour change. (Not done in this round: R448's
-   order puts the extraction + replay ahead of the wired experiment, and the gate has
-   not been run.)
+   One guarded call site, no other behaviour change. **Done in R461**, after the
+   level-1 relation was fixed (§ 5): both knobs are in `_engine_cache_key` (and the
+   R355 AST gate, which could not see the module's annotated `Final` constants or a
+   by-name `os.getenv`, now can and fails without them); the one call minifies the
+   block that all three user builders (legacy, compact, evidence contract) embed,
+   while `_valid_coordinate_line` keeps reading the unminified block (at level 2 the
+   minified one shrinks the coordinate map). Proven by call count and dispatched
+   bytes in `tests/test_r460_evidence_bundle_wired.py`; on the 85-row sample the OFF
+   arm is byte-identical to the pre-wiring capture in 85/85 rows. The gate below has
+   still not been run, so the default stays OFF. ⚠ When it is run, register the flag
+   with `evals/harness/gate_validity.py`: it is a USER-payload lever, which none of
+   the existing slots (system, request, wire) covers.
 2. **Gate 1 (correctness) → Gate 2 (gold references).** Run the two candidates as
    separate levers — `REGENOLD_PROMPT_COMPACT` alone, and `REGENOLD_EVIDENCE_BUNDLE`
    alone. Do **not** stack them: a stacked arm cannot attribute a regression. This
@@ -306,9 +346,10 @@ reference answer is a per-row existence proof that it fits.
 * Implemented, default OFF: `--length-control` on `evals/official/score_arm.py`
   (`rubric.truncate_to_chars` + `_length_controlled_rows`) re-judges every answer
   CUT to its reference length and reports those axes beside the raw ones in the
-  console and the payload, so a correctness edge cannot be verbosity; loud when
-  the judge transport dies; end-to-end tested with a faked transport
-  (`test_r460_length_control.py`, 7).
+  console and the payload, so a correctness edge cannot be verbosity (as first
+  written the second pass graded against verdict booleans, not the gold; fixed
+  and its numbers retracted in R461, see the retraction below); a degraded pass is
+  withheld with exit 3; tested in `test_r460_length_control.py`.
 * 207 tests pass across the touched suites; ruff clean on every file touched
   (the one UP037 in `regenold.py` is pre-existing at HEAD).
 * Gate design in the doc: paired hard board with the flag ON vs the recorded
@@ -342,11 +383,23 @@ row records `stage2_served_by=fallback`.
 * First launch died on a Cohere rerank failure at row 1 - my own smoke rows had
   spent the trial key's minute. Re-run paced at `--cohere-rerank-min-gap 7`; the
   harness nets the pacer out of latency (R409), so Speed stays clean.
-* NEW measurement finding (`--length-control`): cutting answers to their
-  reference length drops ans_loose 94.07 -> 54.81 (A) and 96.30 -> 51.85 (B), i.e.
-  ~40 pp of our answer correctness is LENGTH-MEDIATED. The frontier prints
-  ans_conc 71.8 (~1.39x the reference length), so their correctness was also
-  measured long; the instrument can now measure any arm at equal length.
+* RETRACTED (R461): the `--length-control` finding. This bullet claimed that
+  cutting answers to their reference length drops ans_loose 94.07 -> 54.81 (A) and
+  96.30 -> 51.85 (B), i.e. ~40 pp of our correctness is length-mediated. That
+  measurement is VOID. The second judge pass was built from rows the first pass had
+  already judged, and `judge_row` replaces `criteria` with verdict booleans, so the
+  judge was asked whether each cut answer satisfied the strings "True" and "False"
+  instead of the gold criteria. The 54.81 / 51.85 (and the wrapper gate's 55.56 /
+  42.96) measure that, not length. The instrument now rebuilds every row from the
+  gold criteria, withholds the controlled axes and exits 3 when its pass is
+  degraded, records dead / partial row counts in the payload, and cuts at a real
+  sentence end or word boundary instead of inside `Article 13.3`, `Art. 5` or a
+  word. No length-controlled number exists yet; a live re-measure (same judge
+  identity, `--length-control`) is outstanding, and until it runs nothing here
+  supports a claim about how much of our correctness is length-mediated. Both
+  `length_controlled` blocks in the two Bedrock score artefacts are marked
+  `invalid`. Unaffected: the frontier prints ans_conc 71.8 (~1.39x the reference
+  length).
 * Not promoted: n=37, one draw per row, and a different model vintage than the
   shipped Opus 5.5-over-wrapper. Next confirmation: the same paired A/B on the
   wrapper transport with `--repeats 3`.

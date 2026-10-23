@@ -21,6 +21,7 @@ from app.engines.answer_need import (
     calibration_block,
     calibration_citation_budget,
     calibration_enabled,
+    concise_block,
     concise_limits,
 )
 
@@ -33,8 +34,7 @@ SCENARIO = (
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
-    # R461 PROMOTION — reaching the R460 block is an explicit pair now: the
-    # count-only block is default ON and wins when both flags are set.
+    # The promoted count-only block wins unless this full-mode suite opts out.
     monkeypatch.setenv("REGENOLD_CONCISE_COUNT_ONLY", "0")
     monkeypatch.delenv("REGENOLD_CONCISE_CALIBRATION", raising=False)
     monkeypatch.delenv("REGENOLD_CONCISE_CONTRACT", raising=False)
@@ -44,25 +44,29 @@ def _clean_env(monkeypatch):
     monkeypatch.delenv("REGENOLD_PROMPT_V3", raising=False)
 
 
-def test_flag_is_deny_list(monkeypatch):
+def test_flag_is_allow_list_default_off(monkeypatch):
+    """Default OFF, so an allow-list: only an explicit truthy token turns it on. A
+    deny-list would read ``garbage`` as ON, which is the distinguishing property."""
     assert calibration_enabled() is False
     for value in ("1", "true", "yes", "on", "ON"):
         monkeypatch.setenv("REGENOLD_CONCISE_CALIBRATION", value)
         assert calibration_enabled() is True
-    for value in ("0", "false", "no", "off", ""):
+    for value in ("0", "false", "no", "off", "", "garbage"):
         monkeypatch.setenv("REGENOLD_CONCISE_CALIBRATION", value)
         assert calibration_enabled() is False
 
 
 def test_off_renders_nothing_and_user_message_is_byte_identical(monkeypatch):
     assert calibration_block(QUESTION) == ""
+    message = build_evidence_answer_user(QUESTION, "Article 13 obligations...")  # flag absent
     monkeypatch.setenv("REGENOLD_CONCISE_CALIBRATION", "0")
     assert calibration_block(QUESTION) == ""
-    message = build_evidence_answer_user(QUESTION, "Article 13 obligations...")
+    assert build_evidence_answer_user(QUESTION, "Article 13 obligations...") == message
     monkeypatch.setenv("REGENOLD_CONCISE_CALIBRATION", "1")
-    assert build_evidence_answer_user(
-        QUESTION, "Article 13 obligations..."
-    ) != message
+    on = build_evidence_answer_user(QUESTION, "Article 13 obligations...")
+    assert on != message
+    # ON is OFF plus exactly one appended block, so nothing else moved.
+    assert on == message + "\n\n" + calibration_block(QUESTION)
 
 
 def test_ceiling_matches_the_shipped_concise_contract(monkeypatch):
@@ -100,14 +104,15 @@ def test_block_is_short_and_lands_in_the_user_message(monkeypatch):
     assert message.rstrip().endswith(block.splitlines()[-1])
 
 
-def test_flag_is_in_the_engine_cache_key():
-    """An unkeyed prompt knob serves the wrong cached answer in an A/B."""
-    import inspect
-
+def test_flag_is_in_the_engine_cache_key(monkeypatch):
+    """An unkeyed prompt knob serves the wrong cached answer in an A/B. Asserted on
+    the key the route computes, not on its source text: a source search is still
+    satisfied by the flag name sitting in a comment."""
     from app.routes import regenold
 
-    source = inspect.getsource(regenold._engine_cache_key)
-    assert "REGENOLD_CONCISE_CALIBRATION" in source
+    off = regenold._engine_cache_key(QUESTION, None)
+    monkeypatch.setenv("REGENOLD_CONCISE_CALIBRATION", "1")
+    assert regenold._engine_cache_key(QUESTION, None) != off
 
 
 def test_fail_soft_on_a_broken_estimator(monkeypatch):
@@ -117,3 +122,23 @@ def test_fail_soft_on_a_broken_estimator(monkeypatch):
         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")),
     )
     assert calibration_block(QUESTION) == ""
+
+
+# -- R461 / V16: the both-routes sentence a citation budget must respect ----------
+# The calibration carve-out for this rule was held back: it re-worded the COUNT
+# clause, which breaks the R461 count-only gate's removal invariant
+# (tests/test_r461_count_only_concise.py), and the shipped count-only block carries
+# the same budget. A fix there changes the shipped prompt, so it needs its own gate.
+
+_HIGH_RISK_WHICH = "Which AI systems are classified as high-risk under the AI Act?"
+
+
+def test_the_concise_block_still_carries_the_both_routes_sentence_verbatim(monkeypatch):
+    """The dispatched LENGTH LIMIT bytes must not have moved."""
+    monkeypatch.setenv("REGENOLD_CONCISE_CONTRACT", "1")
+    block = concise_block(_HIGH_RISK_WHICH)
+    assert (
+        "in one short clause each. When the question asks which systems or sectors are "
+        "high-risk, give both routes: Article 6(1) with Annex I and Article 6(2) with "
+        "Annex III.\n* Leave out what does not decide the answer"
+    ) in block

@@ -35,6 +35,26 @@ of Sonnet arm while the tunnel was answering ~7 s calls minutes later.
   stays reachable.
 * The R431 leg-awareness is untouched: a fallback-served row still continues
   loudly, and every degraded row keeps recording its own leg.
+* The rescue is ONE per outage. A 16-token ping is a far weaker question than
+  "can a 20-100k-char Stage-2 request be served", so a failure that spares the
+  ping but not the real request (read timeouts at the request budget,
+  `api_status_500 No response from Claude Code`, a size-dependent 429) answered
+  every trip and reset the counter for ever: a simulated 40-row outage drew all
+  40 rows on deterministic drafts with 8 rescues and never aborted. Only a row
+  the PRIMARY actually served earns the next rescue, so a genuinely slow tunnel
+  keeps its protection across separate slow patches while an outage aborts at the
+  second trip (row 10 in the 40-row simulation, one ping dialled).
+* An HTTP-200 with an empty body does not count as alive (the wrapper's
+  relayed-nothing shape, R417): that ping aborts at the first trip.
+* The guard now unwraps the poster's `(body, ms, status, err, attempts, retried)`
+  tuple. `guarded_poster` hands `check` that tuple and `observe()` only read
+  dicts, so in a real batch `last_leg` was never set and the R431 leg-aware branch
+  (continue loudly while the fallback answers) was dead outside hand-built test
+  payloads. Pinned by `tests/test_r460_probe_rescue_is_bounded.py`.
+* Replayed over 217 recorded checkpoint sequences (6,560 rows) with the 16-token
+  ping answering: before, 0 aborts, including all five real outage runs (R422
+  skeleton-A, R423 need2 A.r2 and B x3: 13 and 28 deterministic rows); after,
+  those five abort and the other 212 sequences do not.
 
 ## 3. Usage and payload shape per dispatch (engine + row schema)
 

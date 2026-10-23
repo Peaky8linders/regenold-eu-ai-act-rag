@@ -96,6 +96,48 @@ class TestProbeFollowsTheConfiguredWrapper:
             completion["headers"]
         )
 
+    def test_sonnet_55_completion_probe_uses_model_and_omits_temperature(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import json as _json
+
+        monkeypatch.setenv("OPENAI_API_BASE", "https://wrapper.antifragile-ai.net/v1")
+        calls: list[dict[str, object]] = []
+
+        class _Resp:
+            status = 200
+
+            def __init__(self, body: bytes = b"{}") -> None:
+                self._body = body
+
+            def read(self):
+                return self._body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def fake_urlopen(req, timeout=None):
+            calls.append({"url": req.full_url, "data": req.data})
+            if "auth/status" in req.full_url:
+                return _Resp()
+            return _Resp(_json.dumps(
+                {"choices": [{"message": {"content": "OK"}}]}
+            ).encode())
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            assert ab_judge._wrapper_up(
+                timeout=90.0, probe_model="claude-sonnet-5-5"
+            ) is True
+
+        completion = next(c for c in calls if "chat/completions" in str(c["url"]))
+        body = _json.loads(completion["data"])
+        assert body["model"] == "claude-sonnet-5-5"
+        assert body["max_tokens"] >= 1024
+        assert "temperature" not in body
+
     def test_no_service_token_leaks_to_a_foreign_host(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -153,6 +195,70 @@ class TestBedrockJudgeIsSelectable:
 
         assert rc == 0
         assert seen["judge_provider"] == provider
+
+    def test_sonnet_55_cli_option_reaches_run_ab(self, tmp_path) -> None:
+        seen: dict[str, object] = {}
+
+        def fake_run(**kwargs):
+            seen.update(kwargs)
+            return {"label": kwargs["label"]}
+
+        with (
+            patch.object(ab_judge, "run_ab", side_effect=fake_run),
+            patch.object(ab_judge, "_format", return_value=""),
+            patch.object(ab_judge, "_RESULTS", tmp_path),
+        ):
+            rc = ab_judge.main(
+                [
+                    "--label", "unit", "--judge-provider", "wrapper",
+                    "--judge-model", "claude-sonnet-5-5", "--limit", "1",
+                ]
+            )
+
+        assert rc == 0
+        assert seen["judge_provider"] == "wrapper"
+        assert seen["judge_model"] == "claude-sonnet-5-5"
+
+    def test_run_ab_probes_selected_wrapper_judge_model(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from evals.judge import runner as judge_runner
+
+        rows = ab_judge.load_probe_set(limit=1)
+        captured: dict[str, object] = {}
+
+        def fake_capture(rows, _env, *, timeout, label):
+            del timeout, label
+            return {
+                row.id: ab_judge.ArmAnswer("answer", [], 1.0, 200)
+                for row in rows
+            }
+
+        def fake_probe(timeout=4.0, *, probe_model=None):
+            captured.update(timeout=timeout, probe_model=probe_model)
+            return True
+
+        monkeypatch.setattr(ab_judge, "_capture_arm", fake_capture)
+        monkeypatch.setattr(judge_runner, "set_judge_model", lambda _model: None)
+        monkeypatch.setattr(judge_runner, "_resolve_caller", lambda *_a, **_k: object())
+        monkeypatch.setattr(judge_runner, "_load_article_summaries", lambda: {})
+        monkeypatch.setattr(ab_judge, "_pairwise_verdict_detail", lambda *_a: ("tie", True))
+        monkeypatch.setattr(ab_judge, "_wrapper_up", fake_probe)
+
+        result = ab_judge.run_ab(
+            baseline_env={},
+            branch_env={},
+            rows=rows,
+            deterministic=False,
+            judge_provider="wrapper",
+            timeout=90.0,
+            label="unit",
+            judge_model="claude-sonnet-5-5",
+        )
+
+        assert captured == {"timeout": 90.0, "probe_model": "claude-sonnet-5-5"}
+        assert result["judge_model"] == "claude-sonnet-5-5"
+        assert result["judge_provider"] == "wrapper"
 
     def test_cli_still_rejects_an_unknown_provider(self, tmp_path) -> None:
         """The choices list is a real allow-list, not decoration."""

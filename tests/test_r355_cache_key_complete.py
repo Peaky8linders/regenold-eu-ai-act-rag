@@ -44,17 +44,15 @@ def _is_flag(s: str) -> bool:
     return bool(_FLAG_RE.match(s))
 
 
-def _flag_from_call(node: ast.Call) -> str | None:
-    """Flag literal if this Call is an env read (os.getenv / helpers)."""
-    func = node.func
-    name: str | None = None
-    if isinstance(func, ast.Name):
-        name = func.id
-    elif isinstance(func, ast.Attribute):
-        name = func.attr
-    if not name:
-        return None
-    lowered = name.lower()
+def _flag_from_call(node: ast.Call, consts: dict[str, str]) -> str | None:
+    """Flag read by this Call if it is an env read (os.getenv / os.environ.get /
+    helpers). The name may be a literal or a module-level constant passed BY NAME
+    (``os.getenv(EVIDENCE_BUNDLE_ENV, "0")``), resolved through ``consts``.
+
+    The callee is matched on its full dotted text, so ``os.environ.get`` counts
+    (its last attribute alone, ``get``, does not look like an env read).
+    """
+    lowered = ast.unparse(node.func).lower()
     if "getenv" not in lowered and "environ" not in lowered and "env_" not in lowered and "_env" not in lowered:
         return None
     if not node.args:
@@ -62,6 +60,8 @@ def _flag_from_call(node: ast.Call) -> str | None:
     first = node.args[0]
     if isinstance(first, ast.Constant) and isinstance(first.value, str) and _is_flag(first.value):
         return first.value
+    if isinstance(first, ast.Name):
+        return consts.get(first.id)
     return None
 
 
@@ -77,19 +77,49 @@ def _flag_from_subscript(node: ast.Subscript) -> str | None:
     return None
 
 
-def _flag_from_assign(node: ast.Assign) -> str | None:
-    """Module-level env-name constant assignment."""
-    if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-        if _ENV_CONST_RE.match(node.targets[0].id):
-            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str) and _is_flag(node.value.value):
-                return node.value.value
+def _assigned_flag(node: ast.Assign | ast.AnnAssign) -> tuple[str, str] | None:
+    """``(name, flag)`` for ``NAME = "REGENOLD_X"`` and the annotated form
+    ``NAME: Final = "REGENOLD_X"`` (an ``ast.AnnAssign``, not an ``ast.Assign``)."""
+    if isinstance(node, ast.Assign):
+        if len(node.targets) != 1:
+            return None
+        target = node.targets[0]
+    else:
+        target = node.target
+    value = node.value
+    if (
+        isinstance(target, ast.Name)
+        and isinstance(value, ast.Constant)
+        and isinstance(value.value, str)
+        and _is_flag(value.value)
+    ):
+        return target.id, value.value
+    return None
+
+
+def _flag_from_assign(node: ast.Assign | ast.AnnAssign) -> str | None:
+    """Module-level env-name constant assignment, plain or annotated."""
+    named = _assigned_flag(node)
+    if named and _ENV_CONST_RE.match(named[0]):
+        return named[1]
     return None
 
 
 class _EnvReadCollector(ast.NodeVisitor):
     def __init__(self) -> None:
         self._stack: list[str] = []
+        self._consts: dict[str, str] = {}
         self.reads: dict[str, list[tuple[Path, int, str | None]]] = {}
+
+    def visit_Module(self, node: ast.Module) -> None:  # noqa: N802
+        # Module-level flag constants first, so a read that passes one by name
+        # resolves wherever it sits in the file.
+        for stmt in node.body:
+            if isinstance(stmt, (ast.Assign, ast.AnnAssign)):
+                named = _assigned_flag(stmt)
+                if named:
+                    self._consts[named[0]] = named[1]
+        self.generic_visit(node)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802
         self._stack.append(node.name)
@@ -104,7 +134,7 @@ class _EnvReadCollector(ast.NodeVisitor):
             self.reads.setdefault(flag, []).append((node.lineno, fn))
 
     def visit_Call(self, node: ast.Call) -> None:  # noqa: N802
-        self._record(_flag_from_call(node), node)
+        self._record(_flag_from_call(node, self._consts), node)
         self.generic_visit(node)
 
     def visit_Subscript(self, node: ast.Subscript) -> None:  # noqa: N802
@@ -114,6 +144,8 @@ class _EnvReadCollector(ast.NodeVisitor):
     def visit_Assign(self, node: ast.Assign) -> None:  # noqa: N802
         self._record(_flag_from_assign(node), node)
         self.generic_visit(node)
+
+    visit_AnnAssign = visit_Assign  # noqa: N815
 
 
 def _collect_engine_reads() -> dict[str, list[tuple[str, int, str | None]]]:
@@ -155,19 +187,27 @@ def _keyed_literals(key_src: str) -> set[str]:
     return tuple_flags | direct
 
 
-def _helper_covered(key_src: str) -> set[str]:
-    """Flags read inside helper functions that _engine_cache_key calls.
+def _helper_covered(key_src: str) -> set[tuple[str, str]]:
+    """``(module, function)`` of each reader helper that _engine_cache_key calls.
 
-    Resolves the key's lazy ``from X import Y as Z`` aliases, then checks
-    which imported reader names are actually called in the key body.
+    Resolves the key's lazy imports with ``ast``, so the parenthesised
+    multi-name form (``from m import (\\n a,\\n b as c,\\n)``) yields every name,
+    not just the first, then keeps the imported names actually called in the key
+    body. Coverage is per MODULE: a flag read in ``cite_describe_guard.is_enabled``
+    is not covered by the key calling ``citation_guard.is_enabled``.
     """
     imports: dict[str, tuple[str, str]] = {}  # local-name -> (module, real-name)
-    for m in re.finditer(r"from\s+([\w.]+)\s+import\s+(\w+)(?:\s+as\s+(\w+))?", key_src):
-        mod, real, alias = m.group(1), m.group(2), m.group(3)
-        imports[alias or real] = (mod, real)
+    for node in ast.walk(ast.parse(key_src)):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                imports[alias.asname or alias.name] = (node.module, alias.name)
     called = set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", key_src))
-    imported_reader_names = {real for local, (mod, real) in imports.items() if local in called}
-    return imported_reader_names
+    return {pair for local, pair in imports.items() if local in called}
+
+
+def _module_of(path: str) -> str:
+    """``app\\engines\\x.py`` (as recorded by the collector) -> ``app.engines.x``."""
+    return path.replace("\\", "/").removesuffix(".py").replace("/", ".")
 
 
 # Flags that are correctly NOT keyed. Every entry must name a flag that IS
@@ -211,6 +251,12 @@ _JUSTIFIED_EXCLUSIONS: dict[str, str] = {
     "REGENOLD_AI_USECASE_RESCUE": "route-side jailbreak-refusal rescue gate",
     "REGENOLD_SAFETY_GATE": "route-side safety gate",
     "REGENOLD_LEXY_LLM_GATE": "route-side safety gate (lexy)",
+    # Read through a module constant (os.getenv(_ENV_TIMEOUT)); the lexy gate
+    # decides refusal before the engine cache key is even computed.
+    "REGENOLD_LEXY_GATE_TIMEOUT": "route-side safety gate timeout (lexy, pre-cache)",
+    # Read through an annotated constant (_ENV_FLAG: str = ...). The R66-B guard
+    # prunes the wire refs after the engine result, on every request.
+    "REGENOLD_CITE_DESCRIBE_GUARD": "route post-processing; re-runs on every cache hit",
     "REGENOLD_SCOPE_STICKINESS": "route-side conversation-scope classification (in/out-of-scope refusal)",
     "REGENOLD_APP_URL": "route-side app configuration (email links)",
     "REGENOLD_USER_DB_URL": "infrastructure configuration (user-store backend selection)",
@@ -236,7 +282,7 @@ def test_every_engine_env_flag_is_accounted_for() -> None:
     for flag in sorted(reads):
         if flag in keyed or flag in _JUSTIFIED_EXCLUSIONS:
             continue
-        if any(fn in helper_covered for _, _, fn in reads[flag]):
+        if any((_module_of(file), fn) in helper_covered for file, _, fn in reads[flag]):
             continue
         sites = ", ".join(f"{file}:{line} ({fn or '<module>'})" for file, line, fn in reads[flag])
         unaccounted.append(f"  {flag} — read at {sites}")
@@ -247,6 +293,65 @@ def test_every_engine_env_flag_is_accounted_for() -> None:
         "unfalsifiable). Add each to the engine_flags tuple in _engine_cache_key, or "
         "justify it in _JUSTIFIED_EXCLUSIONS:\n" + "\n".join(unaccounted)
     )
+
+
+def test_collector_sees_annotated_and_name_argument_env_reads() -> None:
+    """R461 — the gate was blind to the idioms ``evidence_bundle`` uses, so its two
+    unkeyed flags passed CI: an annotated constant (``X: Final = "REGENOLD_..."``
+    is an ``ast.AnnAssign``) read by NAME (``os.getenv(X)``). ``os.environ.get``
+    was invisible too, because only the callee's last attribute (``get``) was
+    inspected."""
+    src = "\n".join(
+        [
+            "import os",
+            "from typing import Final",
+            'A_ENV: Final = "REGENOLD_S_ANNOTATED"',
+            '_ENV_FLAG: str = "REGENOLD_S_ANNOTATED_STR"',
+            'FLAGNAME = "REGENOLD_S_BY_NAME"',
+            "def by_name():",
+            '    return os.getenv(FLAGNAME, "0")',
+            "def environ_get():",
+            '    return os.environ.get("REGENOLD_S_ENVIRON_GET", "")',
+            "def read_before_declared():",
+            "    return os.getenv(LATE_FLAG)",
+            'LATE_FLAG = "REGENOLD_S_LATE"',
+        ]
+    )
+    collector = _EnvReadCollector()
+    collector.visit(ast.parse(src))
+    for flag in (
+        "REGENOLD_S_ANNOTATED",
+        "REGENOLD_S_ANNOTATED_STR",
+        "REGENOLD_S_BY_NAME",
+        "REGENOLD_S_ENVIRON_GET",
+        "REGENOLD_S_LATE",
+    ):
+        assert flag in collector.reads, f"collector cannot see {flag}"
+    # A by-name read is attributed to the function that performs it, which is
+    # what helper coverage keys on.
+    assert [fn for _, fn in collector.reads["REGENOLD_S_BY_NAME"]] == ["by_name"]
+
+
+def test_helper_covered_reads_parenthesised_imports_per_module() -> None:
+    """R461 — the import regex captured only the first name of ``from m import (a, b)``,
+    and coverage matched a bare function NAME, so ``cite_describe_guard.is_enabled``
+    counted as keyed because the key calls ``citation_guard.is_enabled``."""
+    key_src = "\n".join(
+        [
+            "def _engine_cache_key(q, ctx):",
+            "    from app.engines.alpha import (",
+            "        reader_a,",
+            "        reader_b as _rb,",
+            "    )",
+            "    from app.engines.beta import is_enabled",
+            '    return f"{reader_a()}:{_rb()}"',
+        ]
+    )
+    assert _helper_covered(key_src) == {
+        ("app.engines.alpha", "reader_a"),
+        ("app.engines.alpha", "reader_b"),
+    }
+    assert _module_of("app\\engines\\alpha.py") == "app.engines.alpha"
 
 
 def test_justified_exclusions_are_still_real_engine_reads() -> None:

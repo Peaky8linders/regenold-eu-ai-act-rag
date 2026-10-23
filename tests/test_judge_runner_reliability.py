@@ -196,6 +196,44 @@ class TestAnthropicProviderRouting:
         caller("hello")
         assert calls == [("hello", 42.0)]
 
+    def test_sonnet_55_is_selectable_through_wrapper_caller(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import evals.judge.runner as runner_mod
+        from app.llm import openai_wrapper_provider as wrapper_mod
+
+        captured = []
+
+        class Provider:
+            def complete(self, request):
+                captured.append(request)
+                return wrapper_mod.OpenAIWrapperResponse(
+                    text='{"winner":"A"}', model=request.model
+                )
+
+        monkeypatch.setattr(runner_mod, "_JUDGE_MODEL", "claude-sonnet-5-5")
+        monkeypatch.setattr(wrapper_mod, "is_openai_wrapper_enabled", lambda: True)
+        monkeypatch.setattr(wrapper_mod, "get_openai_wrapper_provider", lambda: Provider())
+
+        caller = runner_mod._resolve_caller("wrapper", timeout_s=90.0)
+        result = caller("probe")
+
+        assert result == {"winner": "A"}
+        assert captured[0].model == "claude-sonnet-5-5"
+        assert captured[0].timeout_seconds == 90.0
+        assert captured[0].temperature == 0.0
+
+    def test_sonnet_55_is_rejected_on_non_wrapper_provider(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import evals.judge.runner as runner_mod
+
+        monkeypatch.setattr(runner_mod, "_JUDGE_MODEL", "claude-sonnet-5-5")
+        with pytest.raises(ValueError, match="wrapper/tunnel"):
+            runner_mod._resolve_caller("bedrock")
+        with pytest.raises(ValueError, match="wrapper/tunnel"):
+            runner_mod._resolve_caller("anthropic")
+
     def test_resolve_caller_unknown_falls_back_to_wrapper(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -209,6 +247,41 @@ class TestAnthropicProviderRouting:
         caller = runner_mod._resolve_caller("nonsense", timeout_s=42.0)
         caller("hello")
         assert calls == [("hello", 42.0)]
+
+    def test_runner_cli_selects_sonnet_55_wrapper_and_records_model(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path,
+    ) -> None:
+        from evals.judge import runner as runner_mod
+
+        captured: dict[str, Any] = {}
+
+        def fake_run(**kwargs):
+            captured.update(kwargs)
+            return {
+                "label": kwargs["label"],
+                "source_sidecar": str(kwargs["bench_sidecar"]),
+                "axes": [],
+                "elapsed_s": 0.0,
+                "aggregate": {},
+            }
+
+        monkeypatch.setattr(runner_mod, "run", fake_run)
+        monkeypatch.setattr(runner_mod, "_format", lambda _summary: "")
+        monkeypatch.setattr(runner_mod, "_JUDGE_MODEL", "claude-sonnet-4-6")
+        monkeypatch.setattr(runner_mod, "Path", lambda *_args, **_kwargs: tmp_path / "judge.json")
+
+        rc = runner_mod.main([
+            "--bench-sidecar", "unused.json",
+            "--label", "smoke",
+            "--provider", "wrapper",
+            "--model", "claude-sonnet-5-5",
+            "--timeout", "90",
+        ])
+
+        assert rc == 0
+        assert captured["provider"] == "wrapper"
+        assert captured["timeout_s"] == 90.0
+        assert runner_mod._JUDGE_MODEL == "claude-sonnet-5-5"
 
     def test_resolve_caller_default_timeout_is_30s(self) -> None:
         """No explicit timeout_s arg -> the historical 30s default, so

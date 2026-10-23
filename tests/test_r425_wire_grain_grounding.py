@@ -511,3 +511,88 @@ class TestFailSoft:
         monkeypatch.setattr("app.routes.regenold._ground_wire_subpoints", _boom)
         after = _ask(_client, monkeypatch, flag="1")
         assert [str(x) for x in (after.get("references") or [])] == baseline
+
+
+class TestAnnexISectionResolver:
+    """The R445 Annex I resolver, run after this module's grounding pass.
+
+    Both of its passes ship default OFF (R446 F1: the answer-text rewrite; R446b:
+    the wire binding), so the shipped wire is pinned beside the repaired one.
+    """
+
+    _QUESTION = (
+        "Are AI safety components within medical devices of MDR class IIa, "
+        "IIb, or III high-risk under the EU AI Act?"
+    )
+    _ANSWER = (
+        "Under Article 6(1), an AI safety component in a medical device is "
+        "high-risk when third-party conformity assessment is required. Annex I "
+        "includes Regulation (EU) 2017/745 (MDR) at point 19."
+    )
+    _FLAGS = ("REGENOLD_ANNEX_I_RESOLUTION", "REGENOLD_ANNEX_I_PROSE_REPAIR")
+
+    def _ask_seeded(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, *, on: bool
+    ) -> tuple[dict[str, Any], list[tuple[list[str], list[str]]]]:
+        for name in self._FLAGS:
+            if on:
+                monkeypatch.setenv(name, "1")
+            else:
+                monkeypatch.delenv(name, raising=False)
+        R._ENGINE_CACHE.clear()
+        original_deepen = R._deepen_ref_grain
+        original_resolve = R._repair_annex_i_wire_points
+        observed: list[tuple[list[str], list[str]]] = []
+
+        def seed_the_preexisting_wrong_leaf(refs, q, a, exempt_heads=None, **kwargs):
+            deepened = original_deepen(refs, q, a, exempt_heads=exempt_heads, **kwargs)
+            # Model the exact upstream failure shape: an earlier ref pass put
+            # the point-number leaf on the wire before the Act/list resolver.
+            return [r for r in deepened if not str(r).lower().startswith("annex i.")] + [
+                "Annex I.19"
+            ]
+
+        def observe_resolver(refs, q, a):
+            resolved = original_resolve(refs, q, a)
+            observed.append((list(refs), list(resolved)))
+            return resolved
+
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch.object(R, "_deepen_ref_grain", side_effect=seed_the_preexisting_wrong_leaf)
+            )
+            stack.enter_context(
+                patch.object(R, "_repair_annex_i_wire_points", side_effect=observe_resolver)
+            )
+            body = _ask(
+                client,
+                monkeypatch,
+                flag="1",
+                answer=self._ANSWER,
+                question=self._QUESTION,
+                reasoning=True,
+            )
+        wire_refs = [str(ref) for ref in body.get("references") or []]
+        traced = json.loads(body.get("reasoning") or "{}").get("references")
+        assert traced == wire_refs
+        return body, observed
+
+    def test_miscounted_mdr_point_is_corrected_on_the_real_route_wire(
+        self, _client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        off, off_observed = self._ask_seeded(_client, monkeypatch, on=False)
+        off_refs = [str(ref) for ref in off.get("references") or []]
+        assert off_observed == []
+        assert "Annex I.19" in off_refs, off_refs
+        assert "at point 19" in str(off.get("answer") or ""), off.get("answer")
+
+        body, observed = self._ask_seeded(_client, monkeypatch, on=True)
+        wire_refs = [str(ref) for ref in body.get("references") or []]
+        output_answer = str(body.get("answer") or "")
+
+        assert any("Annex I.19" in before and "Annex I.11" in after for before, after in observed)
+        assert "Annex I.11" in wire_refs, wire_refs
+        assert "Annex I.19" not in wire_refs, wire_refs
+        assert "at point 11" in output_answer, output_answer
+        assert "at point 19" not in output_answer, output_answer
+        assert not any(str(ref).startswith("Annex I.") and str(ref) != "Annex I.11" for ref in wire_refs)

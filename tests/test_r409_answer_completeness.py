@@ -468,6 +468,69 @@ def test_build_repair_user_message_carries_question_answer_items_and_rules():
     assert ac.build_repair_user_message(RG046_Q, RG046_A, []) == ""
 
 
+@pytest.mark.parametrize(
+    "gaps",
+    [
+        [Gap("member", "Article 13.3.a", "the identity and contact details of the provider")],
+        [Gap("exception", "Article 50.1", "unless this is obvious from the point of view of a person")],
+        [Gap("keep", "Article 27", "a prior point")],
+        [Gap("verdict", "", "Is it required?")],
+    ],
+    ids=lambda gaps: gaps[0].kind,
+)
+def test_repair_rules_name_no_gap_kind_the_detectors_cannot_produce(gaps):
+    """R461 / V02 — the repair prompt carried "For a scenario gap, keep the branch
+    wording ..." UNCONDITIONALLY, so every member/exception/keep/verdict repair
+    dispatched a rule for a gap kind nothing can emit. The rules block must be
+    exactly the pre-R449 bytes for every gap kind that exists."""
+    msg = ac.build_repair_user_message(RG046_Q, RG046_A, gaps)
+    assert msg  # not vacuous: a real gap still renders a prompt
+    rules = msg.split("RULES:\n", 1)[1].split("\n")
+    expected = [
+        "Return the complete revised answer only.",
+        "Keep every correct statement and every citation already in the current answer. "
+        "Rephrase or merge them if that keeps the answer shorter, but drop none of them.",
+        "Add one short clause for each missing item, grounded in the quoted text.",
+        f"The revision must be at most {ac.repair_char_budget(RG046_A, gaps)} characters. "
+        "Compress duplicated wording so the additions fit; never restate the question or a "
+        "citation already given.",
+    ]
+    if gaps[0].kind == "verdict":
+        expected.append("Open with Yes or No, followed by the qualifying condition the Act states.")
+    expected += [
+        "Write no preamble. Do not comment on these rules, on the missing items, on an "
+        "earlier answer or on the materials you were given.",
+        "Do not use a bulleted list unless the current answer already uses one.",
+        "Keep a neutral regulatory tone. Do not use dashes as punctuation and do not use ellipses.",
+    ]
+    assert rules == expected
+    assert "scenario" not in msg.lower()
+
+
+def test_scenario_branch_detector_is_gone_rather_than_swallowing_a_name_error(flags_off):
+    """R461 / V02 — ``scenario_branch_gaps`` called ``is_scenario_question``, a name this
+    module never defined or imported, and a broad ``except`` turned the NameError into
+    ``[]`` for every input (its regexes also carried doubled backslashes, so it could not
+    match even with the name fixed). It had no caller, flag or test; it was deleted.
+    Every exported name must resolve, and the dead one must not be re-exported."""
+    assert "scenario_branch_gaps" not in ac.__all__
+    assert not hasattr(ac, "scenario_branch_gaps")
+    for name in ac.__all__:
+        assert hasattr(ac, name), f"__all__ exports {name!r} but the module does not define it"
+    # collect_gaps stays a pure union of the four detectors: a scenario-shaped ask with
+    # a dropped branch yields no gap of any invented kind, with every lever ON.
+    for flag in _FLAGS:
+        flags_off.setenv(flag, "1")
+    scenario_q = (
+        "A company deploys an AI system that screens job applicants and tracks their movement. "
+        "Is this prohibited under Article 6 and what applies when used for law enforcement? "
+        "Does it count as high-risk?"
+    )
+    assert {g.kind for g in ac.collect_gaps(scenario_q, "The system is regulated.")} <= {
+        "member", "exception", "keep", "verdict",
+    }
+
+
 _RG046_REPAIR = RG046_A + (
     " Article 13(3) also requires (a) the identity and contact details of the provider and of its "
     "authorised representative, (c) the changes to the system and its performance pre-determined by the "

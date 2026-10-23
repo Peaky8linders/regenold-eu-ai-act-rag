@@ -72,6 +72,7 @@ def test_general_duty_and_scope_corrections_follow_adopted_text():
 def test_corrections_survive_the_real_route(monkeypatch, question, required):
     from fastapi.testclient import TestClient
     from pydantic import SecretStr
+
     from app.config import settings
     from app.main import app
     from app.rate_limit import limiter
@@ -242,3 +243,247 @@ def test_the_prose_rule_never_changes_a_reference_head():
     for head, q, a in cases:
         out = _deepen_one_ref(head, q, a)
         assert _re.match(r"^Annex\s+[IVXL]+", out).group(0) == head
+
+
+_RG_008_QUESTION = (
+    "Are AI safety components within medical devices of MDR class IIa, IIb, "
+    "or III considered high-risk under the EU AI Act?"
+)
+_VEHICLE_QUESTION = (
+    "Are AI safety components in vehicles covered by Regulation (EU) 2019/2144 "
+    "high-risk under the EU AI Act?"
+)
+
+
+def _annex_i_resolution(monkeypatch, on: bool) -> None:
+    """R446b — the deepener's Act binding ships default OFF (allow-list flag).
+
+    OFF the deepener reads the prose point as it did before R445, so each test
+    below asserts the shipped default first and the binding with the flag ON.
+    """
+    if on:
+        monkeypatch.setenv("REGENOLD_ANNEX_I_RESOLUTION", "1")
+    else:
+        monkeypatch.delenv("REGENOLD_ANNEX_I_RESOLUTION", raising=False)
+
+
+@pytest.mark.parametrize(
+    "question,answer,expected,shipped",
+    [
+        (
+            _RG_008_QUESTION,
+            "Annex I includes Regulation (EU) 2017/745 (MDR) at point 11, the "
+            "medical-device route.",
+            "Annex I.11",
+            "Annex I.11",
+        ),
+        (
+            _RG_008_QUESTION,
+            "Annex I includes Regulation (EU) 2017/745 (MDR) at point 19, the "
+            "medical-device route.",
+            "Annex I.11",
+            "Annex I.19",
+        ),
+        (
+            _VEHICLE_QUESTION,
+            "Annex I includes Regulation (EU) 2019/2144 at point 19, the "
+            "vehicle-safety route.",
+            "Annex I.19",
+            "Annex I.19",
+        ),
+    ],
+)
+def test_annex_i_point_is_resolved_from_the_adopted_sectioned_list(
+    monkeypatch, question, answer, expected, shipped
+):
+    """An Act identifier beats a prose miscount without renumbering Section B."""
+    _annex_i_resolution(monkeypatch, on=False)
+    assert _deepen_one_ref("Annex I", question, answer) == shipped
+    _annex_i_resolution(monkeypatch, on=True)
+    assert _deepen_one_ref("Annex I", question, answer) == expected
+
+
+def test_already_emitted_annex_i_leaf_is_corrected_before_the_wire():
+    from app.routes.regenold import _repair_annex_i_wire_points
+
+    answer = (
+        "The legislation listed in Annex I includes Regulation (EU) 2017/745 "
+        "(MDR) at point 19 for the medical-device route."
+    )
+    assert _repair_annex_i_wire_points(
+        ["Annex I.19"], _RG_008_QUESTION, answer
+    ) == ["Annex I.11"]
+
+
+def test_already_emitted_section_b_coordinate_keeps_its_printed_number():
+    from app.routes.regenold import _repair_annex_i_wire_points
+
+    answer = "Annex I includes Regulation (EU) 2019/2144 at point 11 for vehicles."
+    assert _repair_annex_i_wire_points(
+        ["Annex I.11"], _VEHICLE_QUESTION, answer
+    ) == ["Annex I.19"]
+
+
+def test_ambiguous_prose_coarsens_existing_annex_i_leaf():
+    from app.routes.regenold import _repair_annex_i_wire_points
+
+    answer = (
+        "Annex I includes Regulation (EU) 2017/745 and Regulation (EU) "
+        "2019/2144 at point 19 for this product."
+    )
+    assert _repair_annex_i_wire_points(
+        ["Annex I.19"], _RG_008_QUESTION, answer
+    ) == ["Annex I"]
+
+
+def test_annex_i_index_uses_adopted_section_labels_and_printed_points():
+    from app.routes.regenold import _annex_i_listed_instruments
+
+    index = _annex_i_listed_instruments()
+    assert index[("regulation", "2017/745")] == (("A", 11),)
+    assert index[("regulation", "2019/2144")] == (("B", 19),)
+    assert index[("regulation", "2008/300")] == (("B", 13),)
+
+
+def test_unlisted_annex_i_instrument_abstains_instead_of_guessing_a_point(monkeypatch):
+    answer = "Annex I includes Regulation (EU) 2099/1234 at point 19 for medical devices."
+    _annex_i_resolution(monkeypatch, on=False)
+    assert _deepen_one_ref("Annex I", _RG_008_QUESTION, answer) == "Annex I.19"
+    _annex_i_resolution(monkeypatch, on=True)
+    assert _deepen_one_ref("Annex I", _RG_008_QUESTION, answer) == "Annex I"
+
+
+def test_adopted_annex_i_list_contains_the_wire_coordinate_before_emitting_it():
+    from app.data.provision_coordinates import coordinate_exists
+    from app.routes.regenold import _annex_i_listed_instruments
+
+    index = _annex_i_listed_instruments()
+    emitted_points = {
+        f"Annex I.{point}"
+        for locations in index.values()
+        for _section, point in locations
+    }
+    assert {"Annex I.11", "Annex I.19"} <= emitted_points
+    assert coordinate_exists("Annex I.11")
+    assert coordinate_exists("Annex I.19")
+
+
+def test_annex_i_point_without_a_nearby_instrument_keeps_legacy_behavior():
+    answer = "Annex I point 11 covers the medical-device regulation."
+    assert _deepen_one_ref("Annex I", _RG_008_QUESTION, answer) == "Annex I.11"
+
+
+def test_question_side_act_identifier_resolves_an_unannotated_prose_point():
+    from app.routes.regenold import _repair_annex_i_wire_points
+
+    answer = "Annex I point 19 applies to the vehicle-safety route."
+    assert _repair_annex_i_wire_points(
+        ["Annex I.11"], _VEHICLE_QUESTION, answer
+    ) == ["Annex I.19"]
+
+
+def test_legacy_no_number_order_is_normalized_from_the_adopted_text():
+    from app.routes.regenold import _ANNEX_I_INSTRUMENT_RE, _annex_instrument_key
+
+    match = _ANNEX_I_INSTRUMENT_RE.search("Regulation (EU) No 168/2013")
+    assert match is not None
+    assert _annex_instrument_key(match) == ("regulation", "2013/168")
+
+
+def test_ambiguous_nearby_annex_i_acts_abstain(monkeypatch):
+    from app.data.provision_text import _annex_items, article_body
+    from app.routes.regenold import _resolve_prose_named_annex_point
+
+    units = _annex_items(article_body("Annex I") or "")
+    answer = (
+        "Annex I includes Regulation (EU) 2017/745 and Regulation (EU) "
+        "2019/2144 at point 19 for this product."
+    )
+    from app.data.provision_text import _tokens
+
+    def resolve():
+        return _resolve_prose_named_annex_point(
+            "I", answer, units, question_tokens=_tokens(_RG_008_QUESTION), all_units=units
+        )
+
+    _annex_i_resolution(monkeypatch, on=False)
+    assert resolve() == (True, 19)
+    assert _deepen_one_ref("Annex I", _RG_008_QUESTION, answer) == "Annex I.19"
+    _annex_i_resolution(monkeypatch, on=True)
+    found, point = resolve()
+    assert found is True
+    assert point is None
+    assert _deepen_one_ref("Annex I", _RG_008_QUESTION, answer) == "Annex I"
+
+
+def test_mdr_miscount_regression_from_r440_resolves_before_shipping(monkeypatch):
+    from app.routes.regenold import _repair_annex_i_prose_points
+
+    answer = (
+        "The product is covered by the Union harmonisation legislation listed in "
+        "Annex I, which includes Regulation (EU) 2017/745 (MDR) at point 19, and "
+        "a device of MDR class IIa must undergo third-party conformity assessment."
+    )
+    _annex_i_resolution(monkeypatch, on=False)
+    assert _deepen_one_ref("Annex I", _RG_008_QUESTION, answer) == "Annex I.19"
+    _annex_i_resolution(monkeypatch, on=True)
+    assert _deepen_one_ref("Annex I", _RG_008_QUESTION, answer) == "Annex I.11"
+    # The rewrite itself; the route applies it only under the default-OFF
+    # REGENOLD_ANNEX_I_PROSE_REPAIR (R446 F1, pinned in test_r446_annex_i_review_fixes).
+    corrected = _repair_annex_i_prose_points(answer, _RG_008_QUESTION)
+    assert "at point 11" in corrected
+    assert "at point 19" not in corrected
+
+
+def test_correct_annex_i_prose_coordinates_are_preserved():
+    from app.routes.regenold import _repair_annex_i_prose_points
+
+    answer = (
+        "Annex I includes Regulation (EU) 2017/745 (MDR) at point 11 and "
+        "Regulation (EU) 2019/2144 at point 19."
+    )
+    assert _repair_annex_i_prose_points(answer, _RG_008_QUESTION) == answer
+
+
+def test_ambiguous_multi_point_prose_is_not_rewritten():
+    from app.routes.regenold import _repair_annex_i_prose_points
+
+    answer = "Annex I points 11 and 19 include the MDR and vehicle legislation."
+    assert _repair_annex_i_prose_points(answer, _RG_008_QUESTION) == answer
+
+
+def test_annex_i_act_not_supported_by_question_is_not_emitted(monkeypatch):
+    answer = "Annex I includes Regulation (EU) 2019/2144 at point 19."
+    _annex_i_resolution(monkeypatch, on=False)
+    assert _deepen_one_ref("Annex I", _RG_008_QUESTION, answer) == "Annex I.19"
+    _annex_i_resolution(monkeypatch, on=True)
+    assert _deepen_one_ref("Annex I", _RG_008_QUESTION, answer) == "Annex I"
+
+
+def test_resolver_failure_coarsens_annex_i_leaf_instead_of_shipping_unverified_point(
+    monkeypatch,
+):
+    from app.routes import regenold as route
+
+    def fail_index():
+        raise RuntimeError("corpus unavailable")
+
+    monkeypatch.setattr(route, "_annex_i_listed_instruments", fail_index)
+    assert route._repair_annex_i_wire_points(
+        ["Annex I.19"],
+        _RG_008_QUESTION,
+        "Annex I includes Regulation (EU) 2017/745 (MDR) at point 19.",
+    ) == ["Annex I"]
+
+
+def test_multi_point_enumeration_remains_unresolved_for_annex_i():
+    answer = (
+        "Annex I points 11 and 19 cover Regulation (EU) 2017/745 and "
+        "Regulation (EU) 2019/2144."
+    )
+    assert _deepen_one_ref("Annex I", _RG_008_QUESTION, answer) == "Annex I"
+
+
+def test_annex_i_resolver_does_not_rewrite_other_annexes():
+    answer = "Annex IV point 2 lists the development description."
+    assert _deepen_one_ref("Annex IV", "What does Annex IV point 2 say?", answer) == "Annex IV.2"

@@ -137,6 +137,24 @@ class TestGuardShipsThePriorAnswer:
             lambda *a, **k: None,
         )
 
+    def test_complete_current_answer_is_never_replaced_by_the_prior_floor(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The floor is reachable only from an incomplete, unrepaired Stage-2 answer."""
+        self._no_repair(monkeypatch)
+        ctx = _ctx()
+        complete = (
+            "Under Article 42(1), the system is presumed to comply with Article "
+            "10(4) when its training and testing data reflect the intended "
+            "setting. Article 10(2) obligations remain applicable."
+        )
+        out, used = _guard_stage2_truncation(
+            "q", complete, DRAFT, ctx, _history(PRIOR)
+        )
+        assert out == complete
+        assert used is True
+        assert ctx.stage2_served_by == ""
+
     def test_tail_repair_failure_ships_the_prior_answer(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -152,6 +170,16 @@ class TestGuardShipsThePriorAnswer:
         assert ctx.stage2_served_by == "prior_turn"
         # A degraded serve: the route must refuse to cache it (R417).
         assert ctx.stage2_call_failed is True
+        from evals.official.score_arm import _stage2_row_rejection_reason
+
+        assert _stage2_row_rejection_reason(
+            {
+                "provenance": {
+                    "stage2_polish": True,
+                    "stage2_served_by": ctx.stage2_served_by,
+                }
+            }
+        ) == "stage2_served_by=prior_turn"
 
     def test_without_a_prior_it_still_ships_the_deterministic_draft(
         self, monkeypatch: pytest.MonkeyPatch

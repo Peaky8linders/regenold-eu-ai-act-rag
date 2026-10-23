@@ -16,11 +16,12 @@ that must not drift:
 3. **The weights are read per score call.** That is what lets one built index
    serve a whole in-process grid; a cached weight would make the sweep report
    "weights do not matter" for every cell.
-4. **The sparse control is genuinely un-fielded.** ``_build_index`` is
-   ``lru_cache(maxsize=1)`` and the fielded/plain choice is baked in at build
-   time, so a control run in a warm process silently scores through the fielded
-   index. That confound would make the whole sweep uninterpretable, so it is
-   pinned directly.
+4. **The sparse control is genuinely un-fielded.** The fielded/plain choice is
+   baked in at build time, and until R461 ``_build_index`` was one
+   ``lru_cache(maxsize=1)`` entry, so a control run in a warm process silently
+   scored through the fielded index. That confound would make the whole sweep
+   uninterpretable, so it is pinned directly (the memo is now keyed on the flag;
+   ``tests/test_r449_contextual_fields.py`` pins the warm flip itself).
 5. **The paired delta's sign convention.** An earlier revision computed
    ``baseline - cell`` while the callers passed cells first, which inverted every
    verdict while leaving the aggregate columns correct. The two must agree.
@@ -245,9 +246,8 @@ def test_explicit_shipped_env_is_a_no_op(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_sparse_control_is_genuinely_un_fielded(monkeypatch: pytest.MonkeyPatch) -> None:
     """The confound that would make the whole sweep uninterpretable.
 
-    ``_build_index`` memoises and decides fielded-vs-plain AT BUILD TIME, so a
-    control that only flips the env var in a warm process would score through the
-    fielded index and read exactly like the shipped cell.
+    ``_build_index`` decides fielded-vs-plain AT BUILD TIME, so a control that
+    reached the fielded build would read exactly like the shipped cell.
     """
     fws._fresh_index(contextual=True)  # noqa: SLF001
     assert kb._build_index().field_freqs, "fielded build must carry per-field counts"  # noqa: SLF001
@@ -258,6 +258,83 @@ def test_sparse_control_is_genuinely_un_fielded(monkeypatch: pytest.MonkeyPatch)
     assert kb._build_index().docs, "sparse build must still be a real index"  # noqa: SLF001
     sparse = {q: _top8(q) for q in _QUESTIONS}
     assert any(sparse[q] != fielded[q] for q in _QUESTIONS), "control equals the fielded arm"
+
+
+def _long_query(index, n_tokens: int = 400) -> str:
+    """~``n_tokens`` distinct corpus terms: a long, anchorless partner question."""
+    vocab = sorted(t for t, v in index.idf.items() if v > 0 and t.isalpha())
+    step = max(1, len(vocab) // n_tokens)
+    return " ".join(vocab[::step][:n_tokens])
+
+
+def test_bm25f_parameter_reads_do_not_scale_with_query_length(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R461 (V20) — the four parameters cost O(documents), not O(docs x tokens x fields).
+
+    ``_score_fielded`` re-read and re-parsed two env vars inside its term loop:
+    318,607 reads and ~0.7 s on a 4,000-char question against 1,380 reads once
+    hoisted. 2 fields x (weight + slope) = 4 reads per scored document is the bound.
+    """
+    monkeypatch.setenv("REGENOLD_CONTEXTUAL_FIELDS", "1")
+    index = kb._build_index()  # noqa: SLF001
+    assert index.field_freqs, "fielded build expected"
+    question = _long_query(index)
+    assert len(kb._tokenize(question)) >= 300  # noqa: SLF001
+
+    reads = {"n": 0}
+    real = kb._field_env  # noqa: SLF001
+
+    def _spy(*args, **kwargs):
+        reads["n"] += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(kb, "_field_env", _spy)
+    kb.top_articles_by_relevance(question, k=8, min_score=1.0)
+    assert 0 < reads["n"] <= 4 * len(index.docs), reads["n"]
+
+
+def test_bm25f_score_is_the_formula_and_follows_the_env_per_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R461 (V20) — hoisting the reads moved no score and kept the per-call contract."""
+    monkeypatch.setenv("REGENOLD_CONTEXTUAL_FIELDS", "1")
+    index = kb._build_index()  # noqa: SLF001
+    tokens = kb._tokenize(  # noqa: SLF001
+        "conformity assessment notified body high-risk provider documentation"
+    )
+
+    def _reference(doc_idx: int, w: dict[str, float], b: dict[str, float]) -> float:
+        fields, lens = index.field_freqs[doc_idx], index.field_lens[doc_idx]
+        score = 0.0
+        for term in tokens:
+            idf = index.idf.get(term, 0.0)
+            if idf <= 0:
+                continue
+            combined = 0.0
+            for f in ("title", "body"):
+                tf = fields.get(f, {}).get(term, 0)
+                if not tf:
+                    continue
+                avg = index.field_avg_len.get(f) or 0.0
+                norm = 1 - b[f] + (b[f] * lens.get(f, 0) / avg if avg > 0 else 0.0)
+                combined += w[f] * tf / norm
+            if combined > 0:
+                score += idf * combined * (index.k1 + 1) / (index.k1 + combined)
+        return score
+
+    docs = range(0, len(index.docs), 17)
+    monkeypatch.setenv("REGENOLD_FIELD_WEIGHT_TITLE", "3.5")
+    monkeypatch.setenv("REGENOLD_FIELD_B_BODY", "0.3")
+    weights, slopes = {"title": 3.5, "body": 1.0}, {"title": 0.6, "body": 0.3}
+    first = [kb._score_fielded(index, i, tokens) for i in docs]  # noqa: SLF001
+    assert first == pytest.approx([_reference(i, weights, slopes) for i in docs], rel=1e-12)
+
+    monkeypatch.setenv("REGENOLD_FIELD_B_BODY", "0.9")
+    slopes["body"] = 0.9
+    second = [kb._score_fielded(index, i, tokens) for i in docs]  # noqa: SLF001
+    assert second != first
+    assert second == pytest.approx([_reference(i, weights, slopes) for i in docs], rel=1e-12)
 
 
 # ── The sweep's arithmetic ───────────────────────────────────────────────────

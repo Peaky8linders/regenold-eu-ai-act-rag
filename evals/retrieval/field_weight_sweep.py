@@ -67,17 +67,18 @@ cheap. The CIs are per-cell and multiplicity-unadjusted: with ~13 comparisons a
 single marginal CI is a lead, not a result, and the verdict column says so by
 refusing to promote on one.
 
-THE SPARSE CONTROL NEEDS A REBUILD
-==================================
+THE SPARSE CONTROL NEEDS ITS OWN INDEX
+======================================
 
-``app.data.kb_search._build_index`` is ``lru_cache(maxsize=1)`` and the
-fielded/plain decision is baked in AT BUILD TIME (``_score`` dispatches on
-``index.field_freqs`` being non-empty, not on the env var). Flipping
-``REGENOLD_CONTEXTUAL_FIELDS`` in a warm process therefore does nothing: a
-control run after the fielded arm scores through the *fielded* index. The
-control pass here clears the cache and rebuilds, and the fielded grid then shares
-one build. Getting this wrong would make the control silently equal to a fielded
-cell.
+The fielded/plain decision is baked in AT BUILD TIME (``_score`` dispatches on
+``index.field_freqs`` being non-empty, not on the env var). Until R461
+``app.data.kb_search._build_index`` was one ``lru_cache(maxsize=1)`` entry, so
+flipping ``REGENOLD_CONTEXTUAL_FIELDS`` in a warm process did nothing and a
+control run after the fielded arm scored through the *fielded* index. The memo
+is now keyed on the flag, so the env selects the index; the control pass still
+sets the flag and builds eagerly so each pass's configuration is fixed where it
+starts, and the fielded grid then shares one build. Getting this wrong would make
+the control silently equal to a fielded cell.
 
 WHAT IT DOES NOT DO
 ===================
@@ -461,9 +462,9 @@ def vs_control(
 def _fresh_index(*, contextual: bool) -> None:
     """Force ``kb_search`` to rebuild its index under ``contextual`` fields.
 
-    ``_build_index`` is ``lru_cache(maxsize=1)`` and the fielded/plain choice is
-    baked in at build time, so this is the only way to get a genuine sparse
-    control in the same process as the fielded grid.
+    The fielded/plain choice is baked in at build time. Since R461 the memo is
+    keyed on the flag, so setting the env alone already selects the right index;
+    the clear + eager build keeps each pass's build inside the pass that uses it.
     """
     from app.data import kb_search  # noqa: PLC0415
 

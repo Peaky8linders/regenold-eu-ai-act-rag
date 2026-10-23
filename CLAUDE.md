@@ -1127,9 +1127,10 @@ exist. What follows is the wiring that is actually on `main`.
 
 **Where it is wired (R331):** `app/engines/_graph_rag_impl.py::_render_supplementary_sections`,
 reordering the graph-context ref list immediately before `render_kg_context`, using
-`context.question` as the query. Gate `REGENOLD_COHERE_RERANK`, default OFF pending the
-A/B; needs `COHERE_API_KEY` (present in `.env` and on Railway); registered in
-`_engine_cache_key`.
+`context.question` as the query. `REGENOLD_COHERE_RERANK` defaults ON in code when
+`COHERE_API_KEY` is present (R400); set it to `0` to disable. This sends partner
+questions to Cohere, so operator egress/privacy approval remains required; the flag is
+registered in `_engine_cache_key`.
 
 It composes with R330's repair of the same call site (which passes `context.question` so
 the R327 semantic layers stop being dead code): the rerank sits between the two, so with

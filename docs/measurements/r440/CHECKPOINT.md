@@ -124,8 +124,26 @@ This is a coordinate-form defect in the key/scorer, and the corpus's own flat
 numbering is what the system is matching. Two keys also disagree with each
 other on these rows: the **refkey** (what `score_arm` serves) says `Annex I.a.11`
 on `rg_008` and no Annex head on `rg_004`, while `official_gold_n110.jsonl` says
-`Annex I.A.11` on `rg_004` and no Annex head on `rg_008` — differing in both
-membership and letter case, and case alone defeats `_is_descendant`.
+`Annex I.A.11` on `rg_004` and no Annex head on `rg_008`. The membership
+disagreement is real: the MDR coordinate sits on `rg_004` in gold and on `rg_008`
+in the refkey, one row apart. The **letter case is not what defeats the matcher**
+— `normalise_ref` lowercases every coordinate part, so `Annex I.A.11` and
+`Annex I.a.11` were already the same string. The un-sectioned flat form was.
+
+> **REPAIRED IN R441** — see `docs/measurements/r441/ANNEX-SECTION-ALIAS.md`. The
+> instrument half of this defect is fixed: the strict axis now canonicalises a
+> flat annex point to the key's sectioned form, so these two readings no longer
+> score alike (arm A's wrong point 19 stays 0.50, arm B's right point 11 reads
+> **1.00**). Measured on the recorded n=110 hard board: Ref. Strict 70.56 →
+> **71.50** (+0.93 pp), exactly 2 of 107 rows moved, both upward, zero
+> regressions, Ref. Loose and Ref. Conciseness bit-identical. `rg_088` below is
+> unaffected — that one is an answer gap, not a coordinate form.
+>
+> Re-read on the repaired axis, **this gate's own numbers hold**: the ref-strict
+> delta widens from +1.59 to +2.38 pp, CI [+0.00, +6.35], still not separated from
+> zero, and the alias awarded 5 of the 6 `rg_008` readings while withholding the
+> one whose refs were a wrong Section B point. The verdict above stands, for the
+> same binding reason (the conciseness cost).
 
 ### 2. `rg_088` — a genuine recall miss the guards do not address
 
@@ -139,9 +157,11 @@ The wrong-point emission itself is the model's prose count promoted verbatim by
 the Component-D augmentation pass (`app/routes/regenold.py:12350-12374`), which
 appends a prose citation as-is; the corpus carries no numbered `Annex I.<n>` keys
 to resolve it against. **Next lever: resolve an Annex I point citation against
-the sectioned list and normalise key/corpus coordinate forms** — a lever the
-branch guards cannot substitute for, because they add prose and this defect is in
-the coordinate the prose produces.
+the sectioned list** — a lever the branch guards cannot substitute for, because
+they add prose and this defect is in the coordinate the prose produces. The
+*measurement* half of that lever landed in R441 (see the note in §1 above), which
+is what makes the remaining app-side half observable: today the axis would now
+charge a Section B coordinate against an Annex I key instead of shrugging at it.
 
 ## Run conditions and caveats
 

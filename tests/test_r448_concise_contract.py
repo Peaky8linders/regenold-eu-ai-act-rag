@@ -219,3 +219,152 @@ def test_diagnostic_rg085_scenario_contract_reaches_provider_on_pushback(monkeyp
     assert "LENGTH LIMIT" in user
     assert "At most 180 words in at most 6 sentences" in user
     assert "keep the earlier answer's points and length" in user
+
+
+# -- R461 / V06: the scenario predicate reads the LIVE ask, not the flatten -------
+
+_PRIOR_SCENARIO_TURN = (
+    "We are a deployer and we use an AI system to screen job applicants for a large "
+    "employer in the EU."
+)
+_FLATTEN_HEAD = (
+    "Conversation so far:\n"
+    f"User: {_PRIOR_SCENARIO_TURN}\n"
+    "Assistant: Annex III lists recruitment and selection systems as high-risk, so "
+    "Article 26 deployer duties apply.\n"
+    "\n"
+    "Latest question:\n"
+)
+_DIRECT_FOLLOW_UP = "And what does that article require of deployers?"
+_HOSPITAL_SCENARIO = (
+    "A hospital uses an AI system to triage emergency room patients based on vital signs. "
+    "What risk category applies and what specific notified body requirements exist?"
+)
+
+
+def _ceiling(user: str) -> tuple[str, str]:
+    """(words, sentences) of the LENGTH LIMIT line in the DISPATCHED user message."""
+    import re
+
+    match = re.search(r"At most (\d+) words in at most (\d+) sentences", user)
+    assert match, "the dispatched message must carry the LENGTH LIMIT ceiling"
+    return match.groups()
+
+
+def test_prior_scenario_turn_does_not_lift_the_ceiling_of_a_direct_follow_up(monkeypatch):
+    # Not vacuous: the earlier turn IS scenario-shaped on its own.
+    assert answer_need.is_scenario_question(_PRIOR_SCENARIO_TURN)
+    flat = _FLATTEN_HEAD + _DIRECT_FOLLOW_UP
+
+    flat_ceiling = _ceiling(_dispatch(monkeypatch, "1", flat))
+    alone_ceiling = _ceiling(_dispatch(monkeypatch, "1", _DIRECT_FOLLOW_UP))
+
+    assert flat_ceiling == alone_ceiling
+    assert flat_ceiling != ("180", "6")
+    assert not answer_need.is_scenario_question(flat)
+    assert answer_need.calibration_citation_budget(flat) == 2
+
+
+def test_hard_mode_preamble_does_not_lift_a_direct_follow_up_to_the_scenario_ceiling(
+    monkeypatch,
+):
+    """The route's concatenation branch (Stage-0 de-noiser down, or a rewrite that
+    dropped a scenario shape) puts the fixed 9-exchange hard-mode preamble into
+    ``question``; the follow-up must be sized as the same ask would be on its own."""
+    from types import SimpleNamespace
+
+    from app.routes import regenold
+    from evals.regenold import hard_preamble
+
+    monkeypatch.setattr(regenold, "_rewrite_multiturn_query", lambda *a, **k: None)
+    history = [
+        SimpleNamespace(role=m["role"], content=m["content"])
+        for m in hard_preamble.preamble_messages()
+    ]
+    history.append(SimpleNamespace(role="user", content=_DIRECT_FOLLOW_UP))
+    flat = regenold._build_question_from_history(history)[0]
+    assert "Conversation so far:" in flat and flat.rstrip().endswith(_DIRECT_FOLLOW_UP)
+
+    assert _ceiling(_dispatch(monkeypatch, "1", flat)) == _ceiling(
+        _dispatch(monkeypatch, "1", _DIRECT_FOLLOW_UP)
+    )
+    assert not answer_need.is_scenario_question(flat)
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        _HOSPITAL_SCENARIO,
+        _FLATTEN_HEAD + _HOSPITAL_SCENARIO,
+        _FLATTEN_HEAD
+        + "I don't think this is correct. Perhaps your answer contains hallucinations. "
+        "Let's try again: " + _HOSPITAL_SCENARIO,
+    ],
+    ids=["bare", "behind-history", "behind-history-reask-tail"],
+)
+def test_scenario_in_the_live_ask_keeps_the_180_ceiling_with_or_without_history(
+    monkeypatch, question
+):
+    assert answer_need.is_scenario_question(question)
+    assert _ceiling(_dispatch(monkeypatch, "1", question)) == ("180", "6")
+
+
+def test_short_reask_tail_is_not_a_scenario_just_because_the_dispute_preamble_is_long():
+    reask = (
+        _FLATTEN_HEAD
+        + "I don't think this is correct. Perhaps your answer contains hallucinations. "
+        f"Let's try again: {_DIRECT_FOLLOW_UP}"
+    )
+    assert not answer_need.is_scenario_question(reask)
+
+
+@pytest.mark.parametrize("question", ["", None, "Does Article 6 apply?"])
+def test_empty_and_short_asks_are_not_scenarios(question):
+    assert answer_need.is_scenario_question(question) is False
+
+
+# -- R461 / V14: statutory noun phrases are not a described deployment -----------
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What are the high-risk uses of AI systems listed under the Annex III headings of the "
+        "EU AI Act, and how often can the Commission amend that list?",
+        "When the intended use of an AI system is listed in Annex III, is it automatically "
+        "high-risk, or can the provider rebut that classification?",
+        "Who must establish the post-market monitoring system for a high-risk AI system, and "
+        "may that monitoring system also cover other AI systems?",
+        "Does the monitoring of AI systems by market surveillance authorities include access to "
+        "training data, and on what conditions does that access apply?",
+        "Which use cases of AI in the area of employment are listed as high-risk in Annex III, "
+        "and which obligations follow for providers?",
+    ],
+    ids=["uses-of-AI", "use-of-an-AI-system", "monitoring-system", "monitoring-of", "use-cases"],
+)
+def test_statutory_noun_phrases_do_not_buy_the_scenario_ceiling(monkeypatch, question):
+    assert len(question.split()) >= 15  # past the length gate: the regex alone decides
+    assert not answer_need.is_scenario_question(question)
+    assert _ceiling(_dispatch(monkeypatch, "1", question)) != ("180", "6")
+    need = answer_need.answer_need(question, "")
+    assert answer_need.concise_limits(need, question) != (180, 6)
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        _HOSPITAL_SCENARIO,
+        "We want to deploy an AI system that screens CVs for our HR department. Is it "
+        "high-risk, and what must we do before we put it into service?",
+        "Can I use AI in a drone to find who is around in town, and what if it is just a toy "
+        "drone used for other applications?",
+        "Our SaaS lets enterprise customers configure a CV-screening AI for their hiring, so "
+        "are we the provider or are they?",
+        "A bank monitors the third-party AI system that flags unusual trades. Is that "
+        "high-risk, and which obligations apply to the bank?",
+    ],
+    ids=["hospital-uses", "we-deploy", "can-I-use", "screening-AI", "monitors-with-tool"],
+)
+def test_described_deployments_keep_the_scenario_ceiling(monkeypatch, question):
+    assert answer_need.is_scenario_question(question)
+    assert _ceiling(_dispatch(monkeypatch, "1", question)) == ("180", "6")

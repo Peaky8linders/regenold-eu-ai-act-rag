@@ -102,10 +102,8 @@ _JUDGE_SYSTEM = (
 )
 
 # Default judge model — overridable via the CLI ``--model`` flag.
-# ``claude-sonnet-4-6`` is the historical default the R66-C pipeline
-# was tuned against; operators wanting a stronger (and more expensive)
-# judge can pass ``--model claude-opus-4-7`` for runs where the
-# additional reasoning quality is worth the extra latency + spend.
+# ``claude-sonnet-4-6`` remains the compatible historical default; wrapper
+# users may select newer models such as ``claude-sonnet-5-5`` explicitly.
 _DEFAULT_JUDGE_MODEL = "claude-sonnet-4-6"
 _JUDGE_MODEL: str = _DEFAULT_JUDGE_MODEL
 
@@ -733,10 +731,22 @@ def _resolve_caller(provider: str, timeout_s: float = 30.0) -> Callable[[str], d
 
     R263 — ``timeout_s`` is now threaded through (default unchanged at
     30s, matching the historical ``claude-sonnet-4-6`` tuning). Newer /
-    reasoning-enabled judge models (e.g. ``claude-sonnet-5``) routinely
-    run 20-60s+ per call over the live wrapper/tunnel — pass a larger
-    value via ``--timeout`` for those.
+    reasoning-enabled judge models (e.g. ``claude-sonnet-5`` and
+    ``claude-sonnet-5-5``) can run 20-90s per call over the live wrapper/tunnel;
+    pass a larger value via ``--timeout`` for those.
     """
+    from app.llm.model_compatibility import rejects_sampling_parameters  # noqa: PLC0415
+
+    uses_bedrock = provider == "bedrock" or (
+        provider in ("", "auto", None)
+        and os.getenv("P2P_GRAPH_RAG_PROVIDER", "").strip().lower() == "bedrock"
+    )
+    if rejects_sampling_parameters(_JUDGE_MODEL) and (
+        provider in {"anthropic", "groq", "gemini"} or uses_bedrock
+    ):
+        raise ValueError(
+            "claude-sonnet-5-5 is supported only with the wrapper/tunnel judge provider"
+        )
     if provider == "anthropic":
         return lambda p: _call_judge_anthropic(p, timeout_s=timeout_s)
     if provider == "groq":
@@ -1018,6 +1028,7 @@ def run(
     summary = {
         "label": label,
         "source_sidecar": str(bench_sidecar),
+        "judge_model": _JUDGE_MODEL,
         "started_at": started_at,
         "finished_at": finished_at,
         "elapsed_s": elapsed_s,
@@ -1044,6 +1055,7 @@ def _format(summary: dict[str, Any]) -> str:
     out.append(f"source: {summary['source_sidecar']}")
     out.append(
         f"provider={summary.get('provider', '?')} "
+        f"model={summary.get('judge_model', _JUDGE_MODEL)} "
         f"concurrency={summary.get('concurrency', '?')}"
     )
     out.append(f"elapsed: {summary['elapsed_s']}s")
@@ -1115,21 +1127,22 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
-        "--model", default=_DEFAULT_JUDGE_MODEL,
+        "--model",
+        default=_DEFAULT_JUDGE_MODEL,
         help=(
             f"Judge model id (default {_DEFAULT_JUDGE_MODEL}). Pass "
-            "'claude-opus-4-7' for higher-quality reasoning runs at extra "
-            "latency / cost. The model id is forwarded verbatim to the "
-            "selected provider — operators are responsible for matching "
-            "what the provider accepts."
+            "'claude-sonnet-5-5' with --provider wrapper for the Cloudflare "
+            "tunnel or 'claude-opus-4-7' for higher-quality reasoning. Sonnet "
+            "5.5 is tunnel-only here; the id is forwarded verbatim to the "
+            "selected provider."
         ),
     )
     parser.add_argument(
         "--timeout", type=float, default=30.0,
         help=(
             "Per-call timeout in seconds (default 30, tuned for "
-            "claude-sonnet-4-6). Newer/reasoning-enabled judge models "
-            "(e.g. claude-sonnet-5) routinely need 60-90s over the live "
+            "claude-sonnet-4-6). Newer judge models (e.g. claude-sonnet-5 "
+            "or claude-sonnet-5-5) can need 60-90s over the live "
             "wrapper/tunnel — raise this accordingly."
         ),
     )
