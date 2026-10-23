@@ -72,9 +72,14 @@ Q16_EMPLOYEES = (
 )
 Q10_ORIGINAL = "What is the difference between the deployer and the provider?"
 ARTICLE_25_1 = "When does a deployer become a provider under Article 25(1)?"
+Q95_SINGLE = "What is an area in Annex III, as opposed to a use case?"
+Q95_AREA_DEFINITION = "An area is one of those eight numbered headings."
+Q95_USE_CASE_DEFINITION = "A use case is a specific intended use listed within an area"
 
-#: Single-ask rephrasings whose statutory answer the three-sentence cap cut.
-SINGLE_ASK_STATUTORY = [Q17_ENTRY_INTO_FORCE, Q45_ARTICLE_13_3, Q96_WHERE, Q104_ARTICLE_111, Q74_SHORT]
+#: Single-ask rephrasings whose statutory answer the three-sentence cap cut, plus
+#: (R467b) the Q95 phrasing whose two uncited sentences the char cap dropped.
+SINGLE_ASK_STATUTORY = [Q17_ENTRY_INTO_FORCE, Q45_ARTICLE_13_3, Q96_WHERE, Q104_ARTICLE_111, Q74_SHORT,
+                        Q95_SINGLE]
 
 
 def _norm(text: str) -> str:
@@ -161,6 +166,26 @@ def test_the_full_text_rule_is_two_sided(ask, monkeypatch):
     answer = ask(Q17_ENTRY_INTO_FORCE)["answer"]
     assert _norm(answer) != _norm(curated_statutory_verdict(Q17_ENTRY_INTO_FORCE)["answer"])
     assert "(Article 97(6))" not in answer
+
+
+def test_the_area_answer_keeps_its_definitions_on_a_single_ask(ask):
+    """R467b — the soft char cap dropped the sentences that define the two terms.
+
+    They are the only sentences of a pinned verdict without a provision anchor,
+    and the cap drops the longest uncited sentence until the reply fits its 400
+    characters. A held-out single-ask rephrasing shipped the eight headings and
+    the closing sentence: the definitions the question asked for were gone.
+    """
+    answer = ask(Q95_SINGLE)["answer"]
+    assert Q95_AREA_DEFINITION in answer
+    assert Q95_USE_CASE_DEFINITION in answer
+
+
+def test_the_char_cap_half_of_the_rule_is_two_sided(ask, monkeypatch):
+    monkeypatch.setenv("REGENOLD_CURATED_FULL_TEXT", "0")
+    answer = ask(Q95_SINGLE)["answer"]
+    assert Q95_AREA_DEFINITION not in answer
+    assert Q95_USE_CASE_DEFINITION not in answer
 
 
 # ── 2. The Article 25(1) answer states each condition ──────────────────────

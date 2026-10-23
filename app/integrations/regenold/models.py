@@ -1601,16 +1601,24 @@ def normalise_answer_for_regenold(
 
             max_sentences = max(1, min(max_sentences, 12))
 
-    # R467 — a curated answer gets the sentence ceiling a multi-part question
-    # already gets (12), whatever the question's shape. Applied AFTER the block
-    # above so ``_is_multi`` / ``_is_enum`` (which set the char floor below) are
-    # computed exactly as before; skipping the block dropped the uncited
-    # sentences of the reviewed Q95 answer. The soft char cap itself is left
-    # alone: lifting it restored sentences other curated answers had been
-    # shipping without (an uncited "Typical examples are AI-enabled spam
-    # filters ..." on the minimal-risk answer), a separate change to measure.
+    # R467 — a pinned statutory verdict gets the sentence ceiling a multi-part
+    # question already gets (12), whatever the question's shape. Applied AFTER
+    # the block above so ``_is_multi`` / ``_is_enum`` (which set the char floor
+    # below) are computed exactly as before; skipping the block dropped the
+    # uncited sentences of the reviewed Q95 answer.
+    #
+    # R467b — and it skips the soft char cap. The R467 version left that cap on,
+    # on the premise that every sentence of a pinned verdict carries a provision
+    # anchor, so the cap would have nothing to drop. The Q95 verdict's two
+    # definition sentences carry none: on a single-ask rephrasing the cap's
+    # 400-char budget dropped both and shipped the headings and the closing
+    # sentence. The switch is set only for the pinned verdicts, so the other
+    # curated answers keep the cap (lifting it for them restored an uncited
+    # "Typical examples are AI-enabled spam filters ..." on the minimal-risk
+    # answer, a separate change to measure).
     if _curated_full and not _no_cap:
         max_sentences = 12
+        _skip_char_cap = True
 
     # R112 — defensive env parse (mirrors the max_sentences pattern
     # above). REGENOLD_QA_LENGTH_CAP is an operator-tuned Railway knob
@@ -1885,6 +1893,7 @@ def normalise_answer_for_regenold(
     if (
         len(result) > char_cap
         and not _enum_present
+        and not _curated_full  # R467b — a pinned verdict ships as drafted
         and os.getenv("REGENOLD_HARD_CHAR_CAP", "0").strip().lower()
         in ("1", "true", "yes", "on")
     ):
