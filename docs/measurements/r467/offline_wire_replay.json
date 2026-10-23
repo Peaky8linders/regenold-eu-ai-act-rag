@@ -1,0 +1,112 @@
+[
+ {
+  "id": "Q45",
+  "status": 200,
+  "answer_identical": true,
+  "references_identical": true,
+  "offline_references": [
+   "Article 13.2",
+   "Article 13.3"
+  ]
+ },
+ {
+  "id": "Q96",
+  "status": 200,
+  "answer_identical": true,
+  "references_identical": true,
+  "offline_references": [
+   "Annex III"
+  ]
+ },
+ {
+  "id": "Q17",
+  "status": 200,
+  "answer_identical": true,
+  "references_identical": true,
+  "offline_references": [
+   "Article 7.1",
+   "Article 97.6",
+   "Annex III"
+  ]
+ },
+ {
+  "id": "Q74",
+  "status": 200,
+  "answer_identical": true,
+  "references_identical": true,
+  "offline_references": [
+   "Article 50.4",
+   "Article 50.2",
+   "Article 50.5",
+   "Article 3.60",
+   "Article 3.4"
+  ]
+ },
+ {
+  "id": "Q95",
+  "status": 200,
+  "answer_identical": true,
+  "references_identical": true,
+  "offline_references": [
+   "Article 6.2",
+   "Annex III"
+  ]
+ },
+ {
+  "id": "Q104",
+  "status": 200,
+  "answer_identical": true,
+  "references_identical": true,
+  "offline_references": [
+   "Article 111.1",
+   "Annex X"
+  ]
+ },
+ {
+  "id": "Q6 (Case A)",
+  "status": 200,
+  "answer_identical": true,
+  "references_identical": true,
+  "offline_references": [
+   "Article 4",
+   "Article 5",
+   "Article 6",
+   "Article 50",
+   "Article 95"
+  ]
+ },
+ {
+  "id": "Q10 (Case B)",
+  "status": 200,
+  "answer_identical": true,
+  "references_identical": true,
+  "offline_references": [
+   "Article 3.3",
+   "Article 3.4",
+   "Article 3.11",
+   "Article 25.1"
+  ]
+ },
+ {
+  "id": "Q16 (Case C)",
+  "status": 200,
+  "answer_identical": true,
+  "references_identical": true,
+  "offline_references": [
+   "Article 5.1.f",
+   "Article 6.2",
+   "Annex III.4",
+   "Article 26.5"
+  ]
+ },
+ {
+  "id": "Q17 (Case D)",
+  "status": 200,
+  "answer_identical": true,
+  "references_identical": true,
+  "offline_references": [
+   "Article 6.1",
+   "Annex I"
+  ]
+ }
+]

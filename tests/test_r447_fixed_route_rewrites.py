@@ -225,9 +225,13 @@ class TestRoleDifferenceSkipsTheIntentBoost:
         # states Article 26, so the curated prose scope drops it even with the
         # boost back on.
         assert ask(_Q10)["references"] == _EXPECTED
-        # With both defences off, the injected Article 26 reaches the wire, so
-        # the R447 skip is still what keeps it out on its own.
+        # R467 — the statutory reference pin is a third, independent defence: it
+        # alone keeps the injection out with both defences above switched off.
         monkeypatch.setenv("REGENOLD_CURATED_PROSE_SCOPE", "0")
+        assert ask(_Q10)["references"] == _EXPECTED
+        # With all three defences off, the injected Article 26 reaches the wire, so
+        # the R447 skip is still what keeps it out on its own.
+        monkeypatch.setenv("REGENOLD_STATUTORY_REFS_PINNED", "0")
         refs = ask(_Q10)["references"]
         assert any(ref.startswith("Article 26") for ref in refs), refs
 
