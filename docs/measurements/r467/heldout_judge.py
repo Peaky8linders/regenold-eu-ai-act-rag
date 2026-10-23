@@ -15,6 +15,10 @@ given). Sequential, one call per answer, temperature 0.
 
 Usage (repo root, wrapper on 127.0.0.1:8000):
     .venv/Scripts/python.exe docs/measurements/r467/heldout_judge.py RUN.json OUT.json
+
+When OUT.json already exists, its judgements are kept for rows whose answer is
+unchanged, and only the rows without a verdict (a wrapper error or an unparsed
+reply) are judged again.
 """
 from __future__ import annotations
 
@@ -80,13 +84,32 @@ def _judge(question: str, reference: str, answer: str) -> dict:
     return parsed
 
 
+_VERDICTS = {"correct", "partly", "incorrect"}
+
+
+def _previous(path: Path) -> dict[str, dict]:
+    """Judgements already on disk, keyed by row id, for answers that have a verdict."""
+    if not path.exists():
+        return {}
+    kept = {}
+    for item in json.loads(path.read_text(encoding="utf-8"))["rows"]:
+        if item.get("judgement", {}).get("verdict") in _VERDICTS:
+            kept[item["id"]] = item
+    return kept
+
+
 def main() -> int:
     run = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
     refs = _references()
+    previous = _previous(Path(sys.argv[2]))
     out = {"run": sys.argv[1], "commit": run.get("commit"), "judge_model": MODEL, "rows": []}
     for row in run["rows"]:
         if "error" in row:
             out["rows"].append({**row, "judgement": {"verdict": "no_answer"}})
+            continue
+        done = previous.get(row["id"])
+        if done is not None and done.get("answer") == row["answer"]:
+            out["rows"].append({**row, "judgement": done["judgement"]})
             continue
         t0 = time.time()
         try:

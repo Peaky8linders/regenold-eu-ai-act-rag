@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Regenold EU AI Act Q&amp;A Challenge: expert review appendix</title>
+<style>
+  :root{
+    --bg:#fbfaf9; --fg:#1c1a18; --muted:#6b645d; --line:#e2ddd7; --card:#ffffff;
+    --ok:#1a7f52; --ok-bg:#eaf6f0; --ok-line:#b6e0cb;
+    --bad:#a8341f; --bad-bg:#fbeeea; --bad-line:#f0cec4;
+    --note:#7a5c12; --note-bg:#fdf6e3; --note-line:#ecd9a3;
+    --accent:#2b5c8a; --accent-bg:#eef4fa; --accent-line:#c2d8ea;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#16151a; --fg:#eceaf0; --muted:#a09aa8; --line:#33303a; --card:#1e1d23;
+      --ok:#5fd39b; --ok-bg:#12261d; --ok-line:#2a5a42;
+      --bad:#f0907a; --bad-bg:#2a1714; --bad-line:#5e2f26;
+      --note:#e0bd6a; --note-bg:#282010; --note-line:#5a4a24;
+      --accent:#8ab6de; --accent-bg:#152230; --accent-line:#2e4a63;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#16151a; --fg:#eceaf0; --muted:#a09aa8; --line:#33303a; --card:#1e1d23;
+    --ok:#5fd39b; --ok-bg:#12261d; --ok-line:#2a5a42;
+    --bad:#f0907a; --bad-bg:#2a1714; --bad-line:#5e2f26;
+    --note:#e0bd6a; --note-bg:#282010; --note-line:#5a4a24;
+    --accent:#8ab6de; --accent-bg:#152230; --accent-line:#2e4a63;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--fg);margin:0;
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:none;margin:0;padding:2.5rem 2rem 5rem}
+  h1{font-size:1.75rem;line-height:1.25;margin:.2rem 0 .5rem;letter-spacing:-.02em}
+  h2{font-size:1.15rem;margin:2.75rem 0 .75rem;letter-spacing:-.01em}
+  h3{font-size:1rem;margin:0}
+  h3.sub{margin:1.2rem 0 .2rem}
+  p{margin:.6rem 0}
+  .lede{color:var(--muted);font-size:1rem;margin:.35rem 0 0}
+  header{border-bottom:1px solid var(--line);padding-bottom:1.25rem;margin-bottom:1.25rem}
+  .scores{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:1.1rem}
+  .score{flex:1 1 9rem;border:1px solid var(--line);border-radius:.7rem;padding:.75rem .9rem;background:var(--card)}
+  .score .lab{font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700}
+  .score .val{font-size:1.3rem;font-weight:700;margin-top:.15rem;font-variant-numeric:tabular-nums}
+  .score .sub2{font-size:.78rem;color:var(--muted);margin-top:.1rem}
+  .val.ok{color:var(--ok)}
+  table{width:100%;border-collapse:collapse;font-size:.85rem;margin:.5rem 0 0}
+  th,td{text-align:left;padding:.5rem .6rem;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  td.num .hand{color:var(--muted)}
+  tr.legend td{font-size:.7rem;color:var(--muted);padding-top:.2rem;padding-bottom:.2rem}
+  td.ok{color:var(--ok);font-weight:700;white-space:nowrap}
+  td.nw{white-space:nowrap}
+  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  ol.steps,ul.steps{margin:.5rem 0 0;padding-left:1.3rem} ol.steps li,ul.steps li{margin:.4rem 0}
+  .part{font-size:1.05rem;margin:1.6rem 0 .9rem;color:var(--accent);text-transform:uppercase;letter-spacing:.05em}
+  .case{border:1px solid var(--line);border-radius:.9rem;background:var(--card);padding:1.4rem;margin:1.1rem 0}
+  .case-head{display:flex;flex-wrap:wrap;gap:.6rem;align-items:baseline;justify-content:space-between;
+    border-bottom:1px solid var(--line);padding-bottom:.8rem;margin-bottom:1rem}
+  .tag{font-family:var(--mono);font-size:.7rem;font-weight:700;padding:.15rem .5rem;border-radius:.35rem;
+    border:1px solid var(--accent-line);background:var(--accent-bg);color:var(--accent)}
+  .pill{font-size:.75rem;font-weight:700;padding:.2rem .6rem;border-radius:999px;white-space:nowrap}
+  .pill.ok{color:var(--ok);background:var(--ok-bg);border:1px solid var(--ok-line)}
+  .pill.bad{color:var(--bad);background:var(--bad-bg);border:1px solid var(--bad-line)}
+  .pill.warn{color:var(--note);background:var(--note-bg);border:1px solid var(--note-line)}
+  .pills{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center}
+  .q{font-weight:600;margin:0 0 .9rem}
+  .cols{display:grid;grid-template-columns:1fr;gap:.9rem}
+  @media(min-width:48rem){.cols{grid-template-columns:1fr 1fr}}
+  .panel{border-radius:.6rem;padding:.85rem 1rem;font-size:.83rem}
+  .panel.before{border:1px solid var(--bad-line);background:var(--bad-bg)}
+  .panel.after{border:1px solid var(--ok-line);background:var(--ok-bg)}
+  .panel .hd{font-weight:700;font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem}
+  .panel.before .hd{color:var(--bad)} .panel.after .hd{color:var(--ok)}
+  .answer{border:1px solid var(--line);border-radius:.6rem;background:var(--card);
+    padding:.9rem 1rem;font-size:.82rem;line-height:1.62;margin:.35rem 0 0}
+  .meta{font-family:var(--mono);font-size:.72rem;color:var(--muted);margin-top:.45rem;
+    display:flex;flex-wrap:wrap;gap:.3rem .8rem;align-items:baseline;padding-top:.35rem;border-top:1px dashed var(--line)}
+  .meta strong{font-family:inherit;font-weight:700;color:var(--fg);text-transform:uppercase;font-size:.65rem;letter-spacing:.04em;margin-right:.2rem}
+  .refs{font-family:var(--mono);font-size:.72rem;color:var(--fg)}
+  .req{font-family:var(--mono);font-size:.72rem;color:var(--accent)}
+  .pt{margin:.5rem 0;line-height:1.5}
+  .pt b{font-weight:600}
+  .tg{display:inline-block;font-family:var(--mono);font-size:.58rem;font-weight:700;letter-spacing:.03em;
+    padding:.05rem .32rem;border-radius:.25rem;margin-right:.35rem;vertical-align:.08em}
+  .tg.def{color:var(--bad);border:1px solid var(--bad-line);background:var(--card)}
+  .tg.prc{color:var(--note);border:1px solid var(--note-line);background:var(--card)}
+  .tg.part{color:var(--note);border:1px solid var(--note-line);background:var(--card)}
+  .tg.met{color:var(--ok);border:1px solid var(--ok-line);background:var(--card)}
+  .tg.fix{color:var(--ok);border:1px solid var(--ok-line);background:var(--card)}
+  .tg.rem{color:var(--ok);border:1px dashed var(--ok);background:var(--card)}
+  ul.steps ul{margin:.3rem 0 .2rem;padding-left:1.1rem;list-style:circle} ul.steps ul li{margin:.25rem 0}
+  .remark{color:var(--muted);font-style:italic;font-size:.8rem;display:block;margin-top:.15rem}
+  .remark.quote{font-style:normal;color:var(--fg)}
+  .note{font-size:.8rem;color:var(--muted);margin:.8rem 0 0;padding-top:.6rem;border-top:1px dashed var(--line)}
+  .note strong{color:var(--fg)}
+  @page{size:A4;margin:13mm 12mm 15mm;
+    @bottom-left{content:"Antifragile AI \00B7  Regenold EU AI Act Q&A Challenge \00B7  expert review appendix \00B7  23 October 2026";font:7.5pt "Segoe UI",Arial,sans-serif;color:#6b645d}
+    @bottom-right{content:"Page " counter(page) " of " counter(pages);font:7.5pt "Segoe UI",Arial,sans-serif;color:#6b645d}}
+  @media print{
+    html{font-size:11.5px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{font-size:11.5px;background:#fff}
+    .wrap{padding:0}
+    header{padding-bottom:.9rem;margin-bottom:.9rem}
+    .cols{grid-template-columns:1fr 1fr;gap:.6rem}
+    thead{display:table-header-group}
+    tr,.panel,.case-head,.score{break-inside:avoid}
+    h2,h3,.case-head,.q,.part{break-after:avoid}
+    .case{break-before:page;break-inside:auto;-webkit-box-decoration-break:clone;box-decoration-break:clone;padding:1rem;margin:0}
+    .part + .case{break-before:auto}
+    h2.sec-remediation,h2.sec-cards,h2.sec-method,h2.sec-open{break-before:page;margin-top:0!important}
+    h2.sec-cards + .part{margin-top:.4rem}
+    #part-4b{break-before:page;margin-top:0!important}
+    .panel{padding:.6rem .75rem}
+    .answer{padding:.55rem .7rem;line-height:1.5}
+    .pt{margin:.35rem 0}
+    h2{margin-top:1.6rem}
+    th,td{padding:.32rem .5rem}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Regenold EU AI Act Q&amp;A Challenge: expert review appendix</h1>
+  <p class="lede">Appendix to the report update of 29 September 2026 · the ten reviewed questions, re-answered
+  on 23 October 2026</p>
+</header>
+<p>The report update of 29 September 2026 set out the system's answers to ten questions: the six representative
+cases from the official evaluation appendix of 25 August 2026, and Cases A–D from the Antifragile EU AI Act
+Compliance Advisor. An expert review in October 2026 assessed those answers against the text of the Act. Its points
+concern statutory precision rather than the choice of provision: conditions, qualifiers and exceptions the Act
+attaches, facts assumed rather than stated as conditions, abridged statutory wording, and application dates. This
+appendix sets each reviewed answer beside the answer the production system gives on 23 October 2026 and assesses it
+against every point the review raised. All quoted evidence is verbatim.</p>
+<div class="scores">
+  <div class="score"><div class="lab">Answers reviewed</div><div class="val">10</div><div class="sub2">6 official appendix cases and Cases A–D</div></div>
+  <div class="score"><div class="lab">Review verdict, 29 Sep</div><div class="val">6 wrong in part</div><div class="sub2">2 borderline; 4 correct, with precision points</div></div>
+  <div class="score"><div class="lab">Points raised</div><div class="val">32</div><div class="sub2">On 29 Sep: 30 not met, 1 partly met, 1 met</div></div>
+  <div class="score"><div class="lab">Resolved, 23 Oct</div><div class="val ok">32 of 32</div><div class="sub2">30 now stated, 2 by removing the wording at issue</div></div>
+</div>
+
+<h2>1 · Review findings and status</h2>
+<div class="scroll"><table>
+  <thead><tr><th>Question</th><th>Review verdict</th><th>Points raised by the review</th><th>Resolved</th></tr></thead>
+  <tbody>
+<tr><td><b>Q45</b><br><span style='color:var(--muted)'>Instructions for use (Article 13)</span></td><td>Wrong in part, borderline</td><td>Qualifiers attached to the Article 13(3) categories omitted; list not presented as a minimum; Article 13(2) requirements abridged</td><td class='ok'>3 of 3</td></tr>
+<tr><td><b>Q96</b><br><span style='color:var(--muted)'>Annex III areas and healthcare</span></td><td>Correct overall, 2 precision points</td><td>Annex III, point 5(a), paraphrased loosely; headings of areas 4 and 5 abridged</td><td class='ok'>2 of 2</td></tr>
+<tr><td><b>Q17</b><br><span style='color:var(--muted)'>Amendment of Annex III by delegated act</span></td><td>Correct overall, 2 precision points</td><td>Article 97(6) objection procedure omitted (“applies” for “enter into force”); area headings abridged</td><td class='ok'>2 of 2</td></tr>
+<tr><td><b>Q74</b><br><span style='color:var(--muted)'>AI-generated audio in an artistic work</span></td><td>Wrong in part</td><td>Deployer status and “evidently” artistic character assumed; provider route, application date, Article 3(60) wording and Article 50(5) omitted; non-statutory example</td><td class='ok'>7 of 7</td></tr>
+<tr><td><b>Q95</b><br><span style='color:var(--muted)'>“Area” and “use case” under Article 6(2)</span></td><td>Correct overall, 3 precision points</td><td>Use-case definition inapplicable to area 2; headings of areas 4 and 5 abridged</td><td class='ok'>3 of 3</td></tr>
+<tr><td><b>Q104</b><br><span style='color:var(--muted)'>Purpose and use of Annex X</span></td><td>Wrong in part, borderline</td><td>Annex X described as establishing the transitional regime; Article 5 reservation omitted</td><td class='ok'>2 of 2</td></tr>
+<tr><td><b>Q6 (Case A)</b><br><span style='color:var(--muted)'>Minimal-risk AI systems</span></td><td>Correct, 1 precision point</td><td>Product limb of Article 6(1) and third-party conformity assessment condition omitted</td><td class='ok'>1 of 1</td></tr>
+<tr><td><b>Q10 (Case B)</b><br><span style='color:var(--muted)'>Provider and deployer</span></td><td>Wrong in part</td><td>Roles presented as mutually exclusive; conditions of Article 25(1)(a) to (c) omitted</td><td class='ok'>4 of 4</td></tr>
+<tr><td><b>Q16 (Case C)</b><br><span style='color:var(--muted)'>Emotion and stress monitoring of workers</span></td><td>Wrong in part</td><td>Stress treated as an emotion; Annex III route and application dates omitted</td><td class='ok'>4 of 4</td></tr>
+<tr><td><b>Q17 (Case D)</b><br><span style='color:var(--muted)'>AI safety component in robotic surgery</span></td><td>Wrong in part</td><td>Device class assumed; Annex I point, MDR classification route and application date omitted</td><td class='ok'>4 of 4</td></tr>
+  </tbody>
+</table></div>
+<p class="note" style="border-top:none">Verdicts as stated in the review, on the 29 September answers. For Q16
+(Case C) and Q17 (Case D) the review set out a correct position rather than numbered points; the points counted
+are its elements.</p>
+
+<h2 class="sec-remediation">2 · Remediation</h2>
+<p>The remediation was made in the system's statutory content, not in the final language model. For each of the
+ten question families the system now holds a pre-drafted statutory answer that states the conditions the review
+identified in the same sentence as the provision imposing them: Article 13(3) with its qualifiers “where
+applicable”, “when appropriate” and “if any”; Article 25(1) with each of its three
+points; Article 50 with the marking obligation, the disclosure obligation and the manner of disclosure kept
+distinct. These answers are served as drafted and are not rewritten by the language model, so a condition cannot
+be paraphrased away. The summaries of Annex III, Annex X and Articles 5(1)(f), 7, 50 and 111 used elsewhere in the
+system were corrected at the same time.</p>
+<p>A second round on 23 October 2026 addressed how these answers behave when the question is phrased differently. For
+eight of the ten families (all but Case A and Case D), the statutory answer is no
+longer shortened when the question is read as a single request, and its citations are limited to the provisions
+it states. A separate statutory answer to Article 25(1) questions (“When does a deployer become a provider
+under Article 25(1)?”) now states the condition attached to each point. The Q74 answer names the medium asked
+about (audio, images or video), and an image question about an art project now reaches it. Wording was corrected
+against the Official Journal text in three answers: a self-developer is “also” the provider (Q74);
+Recital 83 “should” and general-purpose AI models in Article 3(3) (Q10); and the items of Article
+13(3)(b), introduced by “including” with items (ii), (iii) and (vi) in full (Q45). The answers still
+paraphrase the Act elsewhere. Section 5 reports the rephrased questions and section 6 what remains open.</p>
+<div class="scroll"><table>
+  <thead><tr><th>The ten reviewed answers</th><th class="num">29 Sep</th><th class="num">23 Oct</th></tr></thead>
+  <tbody>
+    <tr><td>Average length (characters)</td><td class="num">798</td><td class="num">1,358</td></tr>
+    <tr><td>Citations per answer</td><td class="num">2.8</td><td class="num">3.0</td></tr>
+    <tr><td>Official appendix cases: all expected references cited</td><td class="num">6 of 6</td><td class="num">6 of 6</td></tr>
+    <tr><td>Official appendix cases: citations identical to the expected set</td><td class="num">2 of 6</td><td class="num">3 of 6</td></tr>
+  </tbody>
+</table></div>
+<p class="note" style="border-top:none">In total the ten answers are 70%
+longer than on 29 September, mostly the conditions now stated in full; Q17 (Case D) is shorter. Some of the added text
+goes beyond the question, as the cards note (for example Articles 13(1) and 7(3)).</p>
+
+<h2>3 · Legal basis</h2>
+<p>The challenge rules define the scope as the AI Act, Regulation (EU) 2024/1689 of 13 June 2024, and the system
+answers on the text as adopted. Regulation (EU) 2026/1744 (Digital Omnibus on AI), published in the Official
+Journal on 24 July 2026 and in force since 27 July 2026, has since amended the Act. Five statements in the answers
+below differ under the amended text. The review's corrected answers likewise apply the adopted text.</p>
+<div class="scroll"><table>
+  <thead><tr><th>Answer</th><th>Statement (Act as adopted)</th><th>Position under Regulation (EU) 2026/1744</th></tr></thead>
+  <tbody>
+<tr><td class='nw'><b>Q16 (Case C)</b></td><td>Obligations for Annex III high-risk systems apply from 2 August 2026.</td><td>Chapter III, Sections 1 to 3, apply to Annex III systems from <b>2 December 2027</b> (Article 113, third paragraph, point (c)(i), as amended).</td></tr>
+<tr><td class='nw'><b>Q17 (Case D)</b></td><td>Article 6(1) and the corresponding obligations apply from 2 August 2027.</td><td>Chapter III, Sections 1 to 3, apply to Annex I systems from <b>2 August 2028</b> (Article 113, third paragraph, point (c)(ii), as amended).</td></tr>
+<tr><td class='nw'><b>Q104</b></td><td>The Article 5 prohibitions have applied since 2 February 2025.</td><td>Unchanged for the prohibitions of the adopted text. The prohibitions added as Article 5(1), first subparagraph, points (ba) and (bb), and Article 5(1a) and (1b) apply from <b>2 December 2026</b> (Article 113, third paragraph, point (a), as amended).</td></tr>
+<tr><td class='nw'><b>Q74</b></td><td>The Article 50 obligations apply from 2 August 2026.</td><td>Unchanged. New Article 111(4): providers of generative AI systems placed on the market before 2 August 2026 must comply with Article 50(2) by <b>2 December 2026</b>.</td></tr>
+<tr><td class='nw'><b>Q6 (Case A)</b></td><td>Providers and deployers remain subject to the Article 4 AI literacy obligation.</td><td>Article 4 replaced: the obligation remains with providers and deployers, now to “take measures to support the development of AI literacy”, without requiring any specific level of AI literacy.</td></tr>
+  </tbody>
+</table></div>
+<p>Not amended in substance: Articles 7, 13 and 26; Article 25(1); Article 50(2), (4) and (5); Article 97(6) as it
+applies to delegated acts under Article 7(1); Article 111(1); Annexes III and X. Regulation (EU) 2017/745 remains
+point 11 of Section A of Annex I.</p>
+
+<h2 class="sec-cards">4 · The ten answers, before and after</h2>
+<h3 class="part">Part 4A · Official evaluation appendix: six representative cases</h3>
+<article class="case" id="case-q45">
+  <div class="case-head">
+    <div><span class="tag">Q45</span> <h3 style="display:inline">Instructions for use (Article 13)</h3></div>
+    <div class="pills"><span class="pill bad">Review: wrong in part, borderline</span><span class="pill ok">23 Oct: 3 of 3 points resolved</span></div>
+  </div>
+  <p class="q">“Under the EU AI Act, what must a provider of a high-risk AI system supply to the deployer in the instructions for use? List the required categories of information.”</p>
+  <div class="cols">
+    <div class="panel before">
+      <div class="hd">29 September answer (as reviewed)</div>
+      <div class="answer">Under Article 13(2), the provider must accompany a high-risk AI system with instructions for use in an appropriate digital or other format that are concise, complete, correct and clear to deployers. Article 13(3) requires them to cover the following: the identity and contact details of the provider and its authorised representative; the system&#x27;s characteristics, capabilities and limitations of performance, including intended purpose, accuracy, robustness and cybersecurity levels, foreseeable risk circumstances, output-explanation capabilities, performance for specific persons or groups, input data specifications and information enabling output interpretation; predetermined changes; human oversight measures; computational and hardware resources, expected lifetime and maintenance measures, including software updates; and, where relevant, the mechanisms for collecting, storing and interpreting logs.</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Article 13.3</span><span class="req"><strong>Expected (official appendix):</strong> Article 13.3</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer (production)</div>
+      <div class="answer">Article 13(1) requires a high-risk AI system to be designed and developed so that its operation is sufficiently transparent to enable deployers to interpret its output and use it appropriately, with an appropriate type and degree of transparency. Article 13(2) requires it to be accompanied by instructions for use, in an appropriate digital format or otherwise, containing concise, complete, correct and clear information that is relevant, accessible and comprehensible to deployers. Article 13(3) then sets the minimum content: (a) the identity and contact details of the provider and, where applicable, of its authorised representative; (b) the characteristics, capabilities and limitations of performance, including (i) the intended purpose; (ii) the level of accuracy, including its metrics, robustness and cybersecurity under Article 15 against which the system has been tested and validated and which can be expected, and any known and foreseeable circumstances that may affect that expected level; (iii) any known or foreseeable circumstance, related to the use of the system in accordance with its intended purpose or under conditions of reasonably foreseeable misuse, that may lead to risks to health and safety or fundamental rights under Article 9(2); (iv) where applicable, the technical capabilities and characteristics that provide information relevant to explain its output; (v) when appropriate, its performance regarding specific persons or groups on which it is intended to be used; (vi) when appropriate, specifications for the input data, or any other relevant information on the training, validation and testing data sets used, taking into account the intended purpose; (vii) where applicable, information enabling deployers to interpret the output and use it appropriately; (c) the changes to the system and its performance predetermined by the provider at the initial conformity assessment, if any; (d) the human oversight measures under Article 14, including the technical measures that help deployers interpret the outputs; (e) the computational and hardware resources needed, the expected lifetime and any necessary maintenance and care measures, including their frequency and software updates, to ensure the proper functioning of the system; and (f) where relevant, the mechanisms enabling deployers to collect, store and interpret the logs under Article 12. The Article 13(3) list is a minimum, and the items qualified by where applicable, when appropriate or if any are required only where that condition is met.</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Article 13.2, Article 13.3</span><span class="req"><strong>Expected (official appendix):</strong> Article 13.3</span></div>
+    </div>
+  </div>
+  <div class="cols" style="margin-top:.85rem">
+    <div class="panel before">
+      <div class="hd">Expert review, October 2026: wrong in part, borderline</div>
+      <div class="pt"><span class="tg def">DEFECT</span><b>Qualifiers attached to the categories</b><span class="remark">Review: every category is named, but the conditions the Act attaches to them are omitted.</span></div>
+      <div class="pt"><span class="tg def">DEFECT</span><b>Article 13(3) as a minimum, points (a) to (f)</b><span class="remark">Review: “Art. 13(3) sets the minimum content of the instructions for use at points (a) to (f), and several items are required only where applicable, when appropriate or if any.”</span></div>
+      <div class="pt"><span class="tg def">DEFECT</span><b>Article 13(2): form and quality of the instructions</b><span class="remark">Review: Article 13(2) requires the instructions to accompany the system in an appropriate digital format or otherwise, with “concise, complete, correct and clear information that is relevant, accessible and comprehensible to deployers”.</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer: 3 of 3 points resolved</div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Qualifiers attached to the categories</b><span class="remark quote">“(a) the identity and contact details of the provider and, where applicable, of its authorised representative” … “(c) the changes to the system and its performance predetermined by the provider at the initial conformity assessment, if any” … “(f) where relevant, the mechanisms enabling deployers to collect, store and interpret the logs under Article 12”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Article 13(3) as a minimum, points (a) to (f)</b><span class="remark quote">“The Article 13(3) list is a minimum, and the items qualified by where applicable, when appropriate or if any are required only where that condition is met.”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Article 13(2): form and quality of the instructions</b><span class="remark quote">“Article 13(2) requires it to be accompanied by instructions for use, in an appropriate digital format or otherwise, containing concise, complete, correct and clear information that is relevant, accessible and comprehensible to deployers.”</span></div>
+    </div>
+  </div>
+  <p class="note"><strong>Note.</strong> The answer also states Article 13(1). It sets out point (b) as items (i) to (vii), introduced by “including” as in the Act and closely following its wording, with the testing and validation reference in (ii) and the intended purpose in (iii) and (vi).</p>
+</article>
+<article class="case" id="case-q96">
+  <div class="case-head">
+    <div><span class="tag">Q96</span> <h3 style="display:inline">Annex III areas and healthcare</h3></div>
+    <div class="pills"><span class="pill warn">Review: correct overall, 2 precision points</span><span class="pill ok">23 Oct: 2 of 2 points resolved</span></div>
+  </div>
+  <p class="q">“Name the areas of high-risk use cases. Is healthcare decision making one of them?”</p>
+  <div class="cols">
+    <div class="panel before">
+      <div class="hd">29 September answer (as reviewed)</div>
+      <div class="answer">Article 6(2) makes an AI system high-risk if it falls within a use case listed in Annex III, which groups those use cases into eight areas: biometrics, critical infrastructure, education and vocational training, employment and worker management, access to essential private and public services and benefits, law enforcement, migration, asylum and border control management, and administration of justice and democratic processes. No, healthcare decision making is not an area of its own. Some of it is covered under area 5: Annex III(5)(a) covers public-authority assessment of eligibility for essential services, including healthcare, and Annex III(5)(d) covers emergency healthcare patient triage. Clinical AI can also be high-risk under Article 6(1) through Annex I, where it is, or is a safety component of, a medical device that needs third-party conformity assessment.</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Article 6, Annex III, Annex I</span><span class="req"><strong>Expected (official appendix):</strong> Annex III</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer (production)</div>
+      <div class="answer">Annex III lists high-risk AI systems under eight numbered areas: biometrics, in so far as their use is permitted under relevant Union or national law; critical infrastructure; education and vocational training; employment, workers&#x27; management and access to self-employment; access to and enjoyment of essential private services and essential public services and benefits; law enforcement, in so far as their use is permitted under relevant Union or national law; migration, asylum and border control management, in so far as their use is permitted under relevant Union or national law; and administration of justice and democratic processes. Healthcare decision making is not one of them: Annex III places healthcare at point 5(a), which covers AI systems intended to be used by public authorities or on behalf of public authorities to evaluate the eligibility of natural persons for essential public assistance benefits and services, including healthcare services, and to grant, reduce, revoke or reclaim them, and at point 5(d), which covers emergency healthcare patient triage systems. Health also appears in Annex III at point 5(c), risk assessment and pricing in life and health insurance, and at point 7(b), a health risk posed by a person entering a Member State, and neither of those concerns healthcare decisions. Only a use case listed in Annex III makes a system high-risk on this route, so operating in an area is not enough on its own.</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Annex III</span><span class="req"><strong>Expected (official appendix):</strong> Annex III</span></div>
+    </div>
+  </div>
+  <div class="cols" style="margin-top:.85rem">
+    <div class="panel before">
+      <div class="hd">Expert review, October 2026: correct overall, 2 precision points</div>
+      <div class="pt"><span class="tg prc">PRECISION</span><b>Annex III, point 5(a), as worded in the Act</b><span class="remark">Review: point 5(a) is paraphrased loosely: it omits “on behalf of” and the granting, reducing, revoking or reclaiming of benefits, and reduces “essential public assistance benefits and services” to “essential services”.</span></div>
+      <div class="pt"><span class="tg prc">PRECISION</span><b>Headings of areas 4 and 5</b><span class="remark">Review: the names of areas 4 and 5 are compressed.</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer: 2 of 2 points resolved</div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Annex III, point 5(a), as worded in the Act</b><span class="remark quote">“AI systems intended to be used by public authorities or on behalf of public authorities to evaluate the eligibility of natural persons for essential public assistance benefits and services, including healthcare services, and to grant, reduce, revoke or reclaim them”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Headings of areas 4 and 5</b><span class="remark quote">“employment, workers&#x27; management and access to self-employment; access to and enjoyment of essential private services and essential public services and benefits”</span></div>
+    </div>
+  </div>
+  <p class="note"><strong>Note.</strong> In line with the review&#x27;s correct position, the answer also identifies points 5(c) and 7(b), neither of which concerns healthcare decision-making. The 29 September reference to Article 6(1) and Annex I is withdrawn; the answer cites Annex III only, the expected reference.</p>
+</article>
+<article class="case" id="case-q17">
+  <div class="case-head">
+    <div><span class="tag">Q17</span> <h3 style="display:inline">Amendment of Annex III by delegated act</h3></div>
+    <div class="pills"><span class="pill warn">Review: correct overall, 2 precision points</span><span class="pill ok">23 Oct: 2 of 2 points resolved</span></div>
+  </div>
+  <p class="q">“Can the European Commission amend Annex III of the EU AI Act to add or modify use-cases classified as high-risk AI systems? Under what conditions?”</p>
+  <div class="cols">
+    <div class="panel before">
+      <div class="hd">29 September answer (as reviewed)</div>
+      <div class="answer">Yes. Under Article 7(1), the Commission may adopt delegated acts under Article 97 to amend Annex III by adding or modifying high-risk use-cases. Two cumulative conditions apply. First, the systems must be intended for use in one of the eight areas already listed in Annex III: biometrics, critical infrastructure, education and vocational training, employment and workers&#x27; management, essential private and public services, law enforcement, migration, asylum and border control, and administration of justice and democratic processes. Second, they must pose a risk of harm to health and safety, or an adverse impact on fundamental rights, equivalent to or greater than that of existing Annex III systems, assessed against Article 7(2) criteria such as intended purpose, autonomy and severity of harm. Under Article 97, the Commission must consult Member State experts, and the act applies only if neither the European Parliament nor the Council objects.</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Annex III, Article 7.1, Article 97</span><span class="req"><strong>Expected (official appendix):</strong> Article 7.1</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer (production)</div>
+      <div class="answer">Yes, but only within the limits Article 7 sets. Under Article 7(1) the Commission may adopt delegated acts in accordance with Article 97 to amend Annex III by adding or modifying use cases of high-risk AI systems where both of the following conditions are fulfilled: the AI systems are intended to be used in any of the areas already listed in Annex III, and they pose a risk of harm to health and safety, or an adverse impact on fundamental rights, that is equivalent to or greater than the risk of harm or adverse impact posed by the high-risk AI systems already referred to in Annex III. Both conditions are cumulative, so a use case outside the existing areas cannot be added by delegated act; Article 7(2) lists the criteria for assessing that risk, and Article 7(3) allows a use case to be removed from Annex III where it no longer poses a significant risk and the overall level of protection is not reduced. Before adopting the delegated act the Commission must consult experts designated by each Member State (Article 97(4)), and the act enters into force only if neither the European Parliament nor the Council objects within three months of notification, a period extended by three months at the initiative of either of them, or earlier where both inform the Commission that they will not object (Article 97(6)).</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Article 7.1, Article 97.6, Annex III</span><span class="req"><strong>Expected (official appendix):</strong> Article 7.1</span></div>
+    </div>
+  </div>
+  <div class="cols" style="margin-top:.85rem">
+    <div class="panel before">
+      <div class="hd">Expert review, October 2026: correct overall, 2 precision points</div>
+      <div class="pt"><span class="tg prc">PRECISION</span><b>Article 97(6): entry into force, objection period and extension</b><span class="remark">Review: the delegated act “shall enter into force only if no objection has been expressed” within three months of notification, extendable by three months; the answer says “applies” and omits the period and its extension.</span></div>
+      <div class="pt"><span class="tg prc">PRECISION</span><b>Annex III area headings</b><span class="remark">Review: some area names are compressed.</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer: 2 of 2 points resolved</div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Article 97(6): entry into force, objection period and extension</b><span class="remark quote">“the act enters into force only if neither the European Parliament nor the Council objects within three months of notification, a period extended by three months at the initiative of either of them, or earlier where both inform the Commission that they will not object (Article 97(6))”</span></div>
+      <div class="pt"><span class="tg rem">REMOVED</span><b>Annex III area headings</b><span class="remark quote">“the AI systems are intended to be used in any of the areas already listed in Annex III”</span><span class="remark">The abridged names no longer appear: the answer refers to the areas listed in Annex III rather than naming them.</span></div>
+    </div>
+  </div>
+  <p class="note"><strong>Note.</strong> In line with the review&#x27;s correct position, the answer also states the consultation of experts designated by each Member State (Article 97(4)); it adds the power to remove use cases (Article 7(3)).</p>
+</article>
+<article class="case" id="case-q74">
+  <div class="case-head">
+    <div><span class="tag">Q74</span> <h3 style="display:inline">AI-generated audio in an artistic work</h3></div>
+    <div class="pills"><span class="pill bad">Review: wrong in part</span><span class="pill ok">23 Oct: 7 of 7 points resolved</span></div>
+  </div>
+  <p class="q">“I generated audio with AI for my artistic work (sole purpose). Do I need to provide some marking of its artificial nature? I feel that would compromise the enjoyment of the work.”</p>
+  <div class="cols">
+    <div class="panel before">
+      <div class="hd">29 September answer (as reviewed)</div>
+      <div class="answer">No, the deployer has no marking duty: machine-readable marking of AI-generated audio is a provider duty under Article 50(2), which falls on the provider of the generative system. A disclosure duty still applies under Article 50(4) where the audio is a deep fake, meaning it resembles existing persons, objects, places, entities or events and would falsely appear authentic or truthful. Because the audio forms part of an evidently artistic or creative work, Article 50(4) limits that duty to disclosing that such generated content exists, in an appropriate manner that does not hamper the display or enjoyment of the work, such as a credit or accompanying note.</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Article 50.4, Article 50.2</span><span class="req"><strong>Expected (official appendix):</strong> Article 50.4</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer (production)</div>
+      <div class="answer">Making AI-generated audio does not by itself put a marking duty on the person who made it: the Article 50(2) duty to mark outputs in a machine-readable format and make them detectable as artificially generated belongs to the provider of the system. A person using the system is a deployer under Article 3(4) only where the use is not in the course of a personal non-professional activity, and the Act does not apply to the obligations of a natural person using an AI system in the course of a purely personal non-professional activity (Article 2(10)); a person who develops the system, or has it developed, and puts it into service for their own use under their own name or trademark is also its provider (Article 3(3) and Article 3(11)) and so bears that marking duty. Where the audio is a deep fake, meaning AI-generated or manipulated content that resembles existing persons, objects, places, entities or events and would falsely appear to a person to be authentic or truthful (Article 3(60)), the deployer must disclose that it has been artificially generated or manipulated (Article 50(4)), and where it forms part of an evidently artistic, creative, satirical, fictional or analogous work that duty is limited to disclosing the existence of the generated content in an appropriate manner that does not hamper the display or enjoyment of the work. The information must be clear and distinguishable, given at the latest at the time of first exposure and accessible (Article 50(5)), and these duties apply from 2 August 2026.</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Article 50.4, Article 50.2, Article 50.5, Article 3.60, Article 3.4</span><span class="req"><strong>Expected (official appendix):</strong> Article 50.4</span></div>
+    </div>
+  </div>
+  <div class="cols" style="margin-top:.85rem">
+    <div class="panel before">
+      <div class="hd">Expert review, October 2026: wrong in part</div>
+      <div class="pt"><span class="tg def">DEFECT</span><b>Capacity of the asker: personal non-professional activity</b><span class="remark">Review: deployer status is assumed; the question does not state the asker&#x27;s capacity or whether the use is a personal non-professional activity, in which case there is no deployer and no disclosure obligation.</span></div>
+      <div class="pt"><span class="tg def">DEFECT</span><b>“Evidently” artistic character as a condition</b><span class="remark">Review: “evidently” is treated as implied from the outset; whether the work is evidently artistic to the persons exposed to it is a separate condition.</span></div>
+      <div class="pt"><span class="tg def">DEFECT</span><b>Provider route (Article 3(3) and (11))</b><span class="remark">Review: a person who developed the system, or had it developed, and put it into service for own use under their own name is its provider, bound by the Article 50(2) marking obligation, to which artistic purpose is no exception; on the question&#x27;s facts, an unlikely edge case.</span></div>
+      <div class="pt"><span class="tg def">DEFECT</span><b>Application date of Article 50</b><span class="remark">Review: the application date of the Article 50 obligations is not stated.</span></div>
+      <div class="pt"><span class="tg prc">PRECISION</span><b>Article 3(60): “to a person”</b><span class="remark">Review: the deep fake definition omits “to a person”.</span></div>
+      <div class="pt"><span class="tg prc">PRECISION</span><b>Article 50(5): manner, timing and accessibility</b><span class="remark">Review: Article 50(5) requires the disclosure to be clear and distinguishable, made at the latest at the time of first exposure, and accessible; the answer does not state it.</span></div>
+      <div class="pt"><span class="tg prc">PRECISION</span><b>No non-statutory wording</b><span class="remark">Review: “such as a credit or accompanying note” does not derive from the Act.</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer: 7 of 7 points resolved</div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Capacity of the asker: personal non-professional activity</b><span class="remark quote">“A person using the system is a deployer under Article 3(4) only where the use is not in the course of a personal non-professional activity, and the Act does not apply to the obligations of a natural person using an AI system in the course of a purely personal non-professional activity (Article 2(10))”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>“Evidently” artistic character as a condition</b><span class="remark quote">“where it forms part of an evidently artistic, creative, satirical, fictional or analogous work that duty is limited to disclosing the existence of the generated content in an appropriate manner that does not hamper the display or enjoyment of the work”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Provider route (Article 3(3) and (11))</b><span class="remark quote">“a person who develops the system, or has it developed, and puts it into service for their own use under their own name or trademark is also its provider (Article 3(3) and Article 3(11)) and so bears that marking duty”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Application date of Article 50</b><span class="remark quote">“these duties apply from 2 August 2026”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Article 3(60): “to a person”</b><span class="remark quote">“would falsely appear to a person to be authentic or truthful (Article 3(60))”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Article 50(5): manner, timing and accessibility</b><span class="remark quote">“The information must be clear and distinguishable, given at the latest at the time of first exposure and accessible (Article 50(5))”</span></div>
+      <div class="pt"><span class="tg rem">REMOVED</span><b>No non-statutory wording</b><span class="remark">The phrase is no longer in the answer.</span></div>
+    </div>
+  </div>
+  <p class="note"><strong>Note.</strong> The answer cites five provisions where the official appendix expects one (Article 50(4)); Article 2(10) and Article 3(3) and (11) are stated but not cited.</p>
+</article>
+<article class="case" id="case-q95">
+  <div class="case-head">
+    <div><span class="tag">Q95</span> <h3 style="display:inline">“Area” and “use case” under Article 6(2)</h3></div>
+    <div class="pills"><span class="pill warn">Review: correct overall, 3 precision points</span><span class="pill ok">23 Oct: 3 of 3 points resolved</span></div>
+  </div>
+  <p class="q">“What is an &#x27;area&#x27; and what is a &#x27;use case&#x27; for high-risk as per Article 6(2)? How many areas exist?”</p>
+  <div class="cols">
+    <div class="panel before">
+      <div class="hd">29 September answer (as reviewed)</div>
+      <div class="answer">Under Article 6(2), an AI system is high-risk where it falls within Annex III. Annex III is organised into areas, which are its numbered headings, and use cases, which are the specific lettered entries under each area. A system is high-risk only if it matches a listed use case, so belonging to an area is not enough on its own. There are eight areas: biometrics, critical infrastructure, education and vocational training, employment and workers management, access to essential private and public services and benefits, law enforcement, migration, asylum and border control management, and administration of justice and democratic processes. Under Article 7(1), the Commission may add or modify use cases only within these existing areas, and only where the risk is equivalent to or greater than that of the systems already listed.</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Article 6.2, Annex III, Article 7.1</span><span class="req"><strong>Expected (official appendix):</strong> Article 6.2, Annex III</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer (production)</div>
+      <div class="answer">Under Article 6(2), the AI systems referred to in Annex III are high-risk, and Annex III lists them under eight numbered area headings: biometrics; critical infrastructure; education and vocational training; employment, workers&#x27; management and access to self-employment; access to and enjoyment of essential private services and essential public services and benefits; law enforcement; migration, asylum and border control management; and administration of justice and democratic processes. An area is one of those eight numbered headings. A use case is a specific intended use listed within an area: in seven of the areas the uses are set out as lettered points, and for critical infrastructure the heading itself states the use, AI systems intended to be used as safety components in the management and operation of critical digital infrastructure, road traffic, or in the supply of water, gas, heating or electricity. Eight areas therefore exist, and a system is high-risk under Article 6(2) only where it matches a listed use case, so operating within an area is not enough on its own.</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Article 6.2, Annex III</span><span class="req"><strong>Expected (official appendix):</strong> Article 6.2, Annex III</span></div>
+    </div>
+  </div>
+  <div class="cols" style="margin-top:.85rem">
+    <div class="panel before">
+      <div class="hd">Expert review, October 2026: correct overall, 3 precision points</div>
+      <div class="pt"><span class="tg prc">PRECISION</span><b>Use-case definition applicable to area 2</b><span class="remark">Review: “the specific lettered entries under each area” fails for area 2 (critical infrastructure), which has no lettered points; its heading states the use.</span></div>
+      <div class="pt"><span class="tg prc">PRECISION</span><b>Heading of area 4</b><span class="remark">Review: area 4 is named “employment and workers management”; the heading reads “Employment, workers&#x27; management and access to self-employment”.</span></div>
+      <div class="pt"><span class="tg prc">PRECISION</span><b>Heading of area 5</b><span class="remark">Review: area 5 is compressed.</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer: 3 of 3 points resolved</div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Use-case definition applicable to area 2</b><span class="remark quote">“in seven of the areas the uses are set out as lettered points, and for critical infrastructure the heading itself states the use”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Heading of area 4</b><span class="remark quote">“employment, workers&#x27; management and access to self-employment”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Heading of area 5</b><span class="remark quote">“access to and enjoyment of essential private services and essential public services and benefits”</span></div>
+    </div>
+  </div>
+  <p class="note"><strong>Note.</strong> The review also observed that Article 6(2) uses neither term (“areas” derives from the Annex III heading, “use cases” from Articles 6(3)(d) and 7(1)) and treated the question as answerable. The 29 September sentence on Article 7(1) is withdrawn; the citations are the expected Article 6(2) and Annex III.</p>
+</article>
+<article class="case" id="case-q104">
+  <div class="case-head">
+    <div><span class="tag">Q104</span> <h3 style="display:inline">Purpose and use of Annex X</h3></div>
+    <div class="pills"><span class="pill bad">Review: wrong in part, borderline</span><span class="pill ok">23 Oct: 2 of 2 points resolved</span></div>
+  </div>
+  <p class="q">“What is Annex X about? What is it used for?”</p>
+  <div class="cols">
+    <div class="panel before">
+      <div class="hd">29 September answer (as reviewed)</div>
+      <div class="answer">Annex X lists the Union legislative acts that establish large-scale IT systems in the area of Freedom, Security and Justice, including the Schengen Information System, the Visa Information System and Eurodac. It imposes no obligations of its own. Its function is to set a transitional regime under Article 111(1). AI systems that are components of these large-scale IT systems and were placed on the market or put into service before 2 August 2027 must be brought into compliance with the Regulation by 31 December 2030. The Regulation&#x27;s requirements must also be taken into account when each of these systems is evaluated under its own legal act, or when that act is replaced or amended.</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Annex X, Article 111.1</span><span class="req"><strong>Expected (official appendix):</strong> Article 111.1, Annex X</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer (production)</div>
+      <div class="answer">Annex X lists the Union legislative acts establishing large-scale IT systems in the area of freedom, security and justice, under seven headings: the Schengen Information System (SIS), the Visa Information System (VIS), Eurodac, the Entry/Exit System (EES), the European Travel Information and Authorisation System (ETIAS), the European Criminal Records Information System on third-country nationals and stateless persons (ECRIS-TCN), and interoperability. It imposes no obligation itself; Article 111(1) uses it to identify the AI systems that receive a transitional rule. Under Article 111(1), AI systems that are components of those large-scale IT systems and were placed on the market or put into service before 2 August 2027 must be brought into compliance with the Regulation by 31 December 2030, and this is without prejudice to Article 5, whose prohibitions have applied to them since 2 February 2025 under Article 113, third paragraph, point (a). The Regulation&#x27;s requirements must also be taken into account in the evaluation of each of those IT systems under the legal acts listed in Annex X, and where those acts are replaced or amended.</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Article 111.1, Annex X</span><span class="req"><strong>Expected (official appendix):</strong> Article 111.1, Annex X</span></div>
+    </div>
+  </div>
+  <div class="cols" style="margin-top:.85rem">
+    <div class="panel before">
+      <div class="hd">Expert review, October 2026: wrong in part, borderline</div>
+      <div class="pt"><span class="tg def">DEFECT</span><b>Annex X as the list relied on by Article 111(1)</b><span class="remark">Review: “Its function is to set a transitional regime under Article 111(1)” is incorrect. Annex X sets nothing; Article 111(1) lays down the transitional rule by reference to the acts Annex X lists.</span></div>
+      <div class="pt"><span class="tg def">DEFECT</span><b>Reservation of Article 5</b><span class="remark">Review: Article 111(1) applies without prejudice to Article 5, whose prohibitions have applied since 2 February 2025; read alone, the answer places the whole Regulation, prohibitions included, on the 2030 timetable.</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer: 2 of 2 points resolved</div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Annex X as the list relied on by Article 111(1)</b><span class="remark quote">“It imposes no obligation itself; Article 111(1) uses it to identify the AI systems that receive a transitional rule.”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Reservation of Article 5</b><span class="remark quote">“this is without prejudice to Article 5, whose prohibitions have applied to them since 2 February 2025 under Article 113, third paragraph, point (a)”</span></div>
+    </div>
+  </div>
+  <p class="note"><strong>Note.</strong> As in the review&#x27;s corrected answer, all seven headings of Annex X are now named; the 29 September answer named three.</p>
+</article>
+<h3 class="part" id="part-4b">Part 4B · Compliance Advisor cases A–D</h3>
+<article class="case" id="case-q6-case-a">
+  <div class="case-head">
+    <div><span class="tag">Q6 · Case A</span> <h3 style="display:inline">Minimal-risk AI systems</h3></div>
+    <div class="pills"><span class="pill warn">Review: correct, 1 precision point</span><span class="pill ok">23 Oct: 1 of 1 point resolved</span></div>
+  </div>
+  <p class="q">“What are AI systems with minimal risks?”</p>
+  <div class="cols">
+    <div class="panel before">
+      <div class="hd">29 September answer (as reviewed)</div>
+      <div class="answer">The EU AI Act does not establish a formal minimal-risk category; minimal risk is descriptive shorthand for the residual class of systems that are neither prohibited under Article 5, nor high-risk under Article 6 (as an Annex I safety component or an Annex III use case), nor subject to the Article 50 transparency duties, nor general-purpose AI models. They have no mandatory obligations under the Chapter III high-risk regime, but their providers and deployers remain subject to Article 4 AI literacy duties and may adopt voluntary codes of conduct under Article 95.</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Article 4, Article 5, Article 6, Article 50, Article 95</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer (production)</div>
+      <div class="answer">The EU AI Act does not establish a formal minimal-risk category; minimal risk is descriptive shorthand for the residual class of systems that are neither prohibited under Article 5, nor high-risk under Article 6 (a safety component of, or itself, a product covered by the Union harmonisation legislation listed in Annex I and required to undergo a third-party conformity assessment, or an Annex III use case), nor subject to the Article 50 transparency duties, nor general-purpose AI models. They have no mandatory obligations under the Chapter III high-risk regime, but their providers and deployers remain subject to Article 4 AI literacy duties and may adopt voluntary codes of conduct under Article 95.</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Article 4, Article 5, Article 6, Article 50, Article 95</span></div>
+    </div>
+  </div>
+  <div class="cols" style="margin-top:.85rem">
+    <div class="panel before">
+      <div class="hd">Expert review, October 2026: correct, 1 precision point</div>
+      <div class="pt"><span class="tg prc">PRECISION</span><b>Both limbs of Article 6(1) and the third-party conformity assessment condition</b><span class="remark">Review: “(as an Annex I safety component or an Annex III use case)” omits an AI system that is itself a product covered by Annex I, and the condition that the product be required to undergo a third-party conformity assessment.</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer: 1 of 1 point resolved</div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Both limbs of Article 6(1) and the third-party conformity assessment condition</b><span class="remark quote">“(a safety component of, or itself, a product covered by the Union harmonisation legislation listed in Annex I and required to undergo a third-party conformity assessment, or an Annex III use case)”</span></div>
+    </div>
+  </div>
+  <p class="note"><strong>Note.</strong> The remainder of the answer, which the review found correct, is unchanged.</p>
+</article>
+<article class="case" id="case-q10-case-b">
+  <div class="case-head">
+    <div><span class="tag">Q10 · Case B</span> <h3 style="display:inline">Provider and deployer</h3></div>
+    <div class="pills"><span class="pill bad">Review: wrong in part</span><span class="pill ok">23 Oct: 4 of 4 points resolved</span></div>
+  </div>
+  <p class="q">“What is the difference between the deployer and the provider?”</p>
+  <div class="cols">
+    <div class="panel before">
+      <div class="hd">29 September answer (as reviewed)</div>
+      <div class="answer">A provider under Article 3(3) develops an AI system, or has one developed, and places it on the market or puts it into service under its own name or trademark. A deployer under Article 3(4) uses an AI system under its authority, other than in the course of a personal non-professional activity, so the difference lies in supplying the system as opposed to using it. Under Article 25(1), a deployer, distributor, importer or other third party is considered the provider of a high-risk AI system, and takes on the provider&#x27;s obligations, where it puts its name or trademark on a high-risk AI system already on the market, makes a substantial modification to it, or modifies a system&#x27;s intended purpose so that it becomes high-risk.</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Article 3.3, Article 3.4, Article 25.1</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer (production)</div>
+      <div class="answer">A provider under Article 3(3) is a natural or legal person, public authority, agency or other body that develops an AI system or a general-purpose AI model, or has one developed, and places it on the market or puts the AI system into service under its own name or trademark, whether for payment or free of charge, while a deployer under Article 3(4) is one that uses an AI system under its authority, except where the system is used in the course of a personal non-professional activity. The roles are not alternatives: putting into service includes the supply of a system for own use (Article 3(11)), so a party that develops a system and puts it into service for its own use under its own name or trademark is both its provider and its deployer, and Recital 83 states that an operator acting in more than one role at the same time should fulfil cumulatively all relevant obligations associated with those roles. Under Article 25(1) a distributor, importer, deployer or other third party is considered to be the provider of a high-risk AI system, and is subject to the obligations of the provider, where it puts its name or trademark on a high-risk AI system already placed on the market or put into service, without prejudice to contractual arrangements stipulating that the obligations are otherwise allocated; where it makes a substantial modification to such a system in such a way that it remains a high-risk AI system pursuant to Article 6; or where it modifies the intended purpose of an AI system, including a general-purpose AI system, that has not been classified as high-risk and has already been placed on the market or put into service, so that the system becomes high-risk in accordance with Article 6.</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Article 3.3, Article 3.4, Article 3.11, Article 25.1</span></div>
+    </div>
+  </div>
+  <div class="cols" style="margin-top:.85rem">
+    <div class="panel before">
+      <div class="hd">Expert review, October 2026: wrong in part</div>
+      <div class="pt"><span class="tg def">DEFECT</span><b>Provider and deployer roles are not mutually exclusive</b><span class="remark">Review: “the difference lies in supplying the system as opposed to using it” presents the roles as alternatives; a party that develops a system and puts it into service for its own use is both its provider and its deployer (Article 3(11), Recital 83).</span></div>
+      <div class="pt"><span class="tg def">DEFECT</span><b>Article 25(1)(a): placed on the market or put into service; contractual allocation</b><span class="remark">Review: the answer states only “already on the market” and omits the reservation for contractual arrangements.</span></div>
+      <div class="pt"><span class="tg def">DEFECT</span><b>Article 25(1)(b): the modified system must remain high-risk</b><span class="remark">Review: point (b) applies only where the modified system “remains a high-risk AI system pursuant to Article 6”; the answer omits this.</span></div>
+      <div class="pt"><span class="tg def">DEFECT</span><b>Article 25(1)(c): any AI system, including general-purpose, not classified as high-risk</b><span class="remark">Review: point (c) concerns an AI system “including a general-purpose AI system, which has not been classified as high-risk and has already been placed on the market or put into service”; the answer retains only the change of purpose and its result.</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer: 4 of 4 points resolved</div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Provider and deployer roles are not mutually exclusive</b><span class="remark quote">“The roles are not alternatives: putting into service includes the supply of a system for own use (Article 3(11)), so a party that develops a system and puts it into service for its own use under its own name or trademark is both its provider and its deployer” … “Recital 83 states that an operator acting in more than one role at the same time should fulfil cumulatively all relevant obligations associated with those roles”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Article 25(1)(a): placed on the market or put into service; contractual allocation</b><span class="remark quote">“already placed on the market or put into service, without prejudice to contractual arrangements stipulating that the obligations are otherwise allocated”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Article 25(1)(b): the modified system must remain high-risk</b><span class="remark quote">“in such a way that it remains a high-risk AI system pursuant to Article 6”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Article 25(1)(c): any AI system, including general-purpose, not classified as high-risk</b><span class="remark quote">“modifies the intended purpose of an AI system, including a general-purpose AI system, that has not been classified as high-risk and has already been placed on the market or put into service”</span></div>
+    </div>
+  </div>
+  <p class="note"><strong>Note.</strong> The answer also includes general-purpose AI models in the Article 3(3) definition. One difference from the review&#x27;s corrected answer remains by design: the Article 25(1) sentence omits the Act&#x27;s words “under Article 16”. An earlier version that allocated duties under Articles 16 and 26 failed the citation and tone criteria of an expert re-check.</p>
+</article>
+<article class="case" id="case-q16-case-c">
+  <div class="case-head">
+    <div><span class="tag">Q16 · Case C</span> <h3 style="display:inline">Emotion and stress monitoring of workers</h3></div>
+    <div class="pills"><span class="pill bad">Review: wrong in part</span><span class="pill ok">23 Oct: 4 of 4 points resolved</span></div>
+  </div>
+  <p class="q">“A pharmaceutical company wants to use an AI system to monitor the emotions and stress levels of their manufacturing line workers to improve efficiency. Is this allowed?”</p>
+  <div class="cols">
+    <div class="panel before">
+      <div class="hd">29 September answer (as reviewed)</div>
+      <div class="answer">No, this is not allowed. Using an AI system to infer the emotions of natural persons in the workplace is a prohibited practice under Article 5(1)(f). The ban covers placing such a system on the market, putting it into service for this purpose, and using it. The pharmaceutical company would be the deployer. Its manufacturing line workers are natural persons in a workplace, so the prohibition applies to its own use of the system. Inferring stress and emotions from workers&#x27; biometric data is exactly what the ban targets. The only carve-out in Article 5(1)(f) is for systems intended to be put in place or placed on the market for medical or safety reasons. Improving efficiency is neither a medical nor a safety reason. The purpose must be medical or safety from the start, so the carve-out cannot be applied afterwards to a system bought for productivity.</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Article 5.1.f</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer (production)</div>
+      <div class="answer">No as to the emotions: the use of AI systems to infer emotions of a natural person in the workplace is prohibited under Article 5(1)(f), which prohibits the placing on the market and the putting into service for that specific purpose as well, and the company commits the third of those acts by using the system on its own manufacturing line workers. The only Article 5(1)(f) exception is where the use of the AI system is intended to be put in place or placed on the market for medical or safety reasons, and improving efficiency is neither. Stress is separate: Recital 18 excludes physical states such as pain or fatigue from the notion of emotions and names stress in neither list, so a system inferring stress as a physical state may fall outside Article 5(1)(f), and on that branch a system intended to monitor and evaluate the performance and behaviour of persons in work-related relationships is high-risk under Article 6(2) and Annex III, point 4(b), unless Article 6(3) applies, and the company must then meet the Article 26 deployer obligations, while Article 5(1)(f) has applied since 2 February 2025 and the obligations attaching to a high-risk Annex III system apply from 2 August 2026.</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Article 5.1.f, Article 6.2, Annex III.4.b, Article 26</span></div>
+    </div>
+  </div>
+  <div class="cols" style="margin-top:.85rem">
+    <div class="panel before">
+      <div class="hd">Expert review, October 2026: wrong in part</div>
+      <div class="pt"><span class="tg met">MET</span><b>Emotion recognition: the prohibition and its sole exception</b><span class="remark">Answer: states the prohibition, its three acts, the medical or safety exception, and that improving efficiency is neither.</span></div>
+      <div class="pt"><span class="tg def">DEFECT</span><b>Stress addressed separately (Recital 18)</b><span class="remark">Answer: treats stress as an emotion (“Inferring stress and emotions from workers&#x27; biometric data is exactly what the ban targets”). Recital 18 names stress neither among the emotions nor among the excluded physical states.</span></div>
+      <div class="pt"><span class="tg def">DEFECT</span><b>Annex III route for stress monitoring</b><span class="remark">Answer: does not state that, on that branch, the use is permitted only on the conditions following from Annex III, point 4(b), Article 6(2) and (3) and Article 26.</span></div>
+      <div class="pt"><span class="tg def">DEFECT</span><b>Application dates</b><span class="remark">Answer: no dates stated.</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer: 4 of 4 points resolved</div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Emotion recognition: the prohibition and its sole exception</b><span class="remark quote">“The only Article 5(1)(f) exception is where the use of the AI system is intended to be put in place or placed on the market for medical or safety reasons, and improving efficiency is neither.”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Stress addressed separately (Recital 18)</b><span class="remark quote">“Stress is separate: Recital 18 excludes physical states such as pain or fatigue from the notion of emotions and names stress in neither list, so a system inferring stress as a physical state may fall outside Article 5(1)(f)”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Annex III route for stress monitoring</b><span class="remark quote">“a system intended to monitor and evaluate the performance and behaviour of persons in work-related relationships is high-risk under Article 6(2) and Annex III, point 4(b), unless Article 6(3) applies, and the company must then meet the Article 26 deployer obligations”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Application dates</b><span class="remark quote">“Article 5(1)(f) has applied since 2 February 2025 and the obligations attaching to a high-risk Annex III system apply from 2 August 2026”</span></div>
+    </div>
+  </div>
+  <p class="note"><strong>Note.</strong> The review set out a correct position rather than numbered points; the points above are its elements. The Annex III date follows the Act as adopted (section 3).</p>
+</article>
+<article class="case" id="case-q17-case-d">
+  <div class="case-head">
+    <div><span class="tag">Q17 · Case D</span> <h3 style="display:inline">AI safety component in robotic surgery</h3></div>
+    <div class="pills"><span class="pill bad">Review: wrong in part</span><span class="pill ok">23 Oct: 4 of 4 points resolved</span></div>
+  </div>
+  <p class="q">“Is an AI system intended to be used as a safety component in robotic surgery considered high-risk under the AI Act?”</p>
+  <div class="cols">
+    <div class="panel before">
+      <div class="hd">29 September answer (as reviewed)</div>
+      <div class="answer">Yes: under Article 6(1), an AI system intended as a safety component of a robotic surgical device is high-risk, because the device is covered by the Medical Device Regulation listed in Annex I and, as a Class IIb or Class III device, must undergo third-party conformity assessment by a notified body under that Regulation. Under Article 43(3) the provider follows the MDR conformity assessment procedure, the Chapter III Section 2 requirements apply as part of that assessment, and the MDR notified body may check the AI system&#x27;s compliance with them, while Article 14(4) requires oversight that lets the surgeon monitor the system, override or reverse its output and bring it to a safe stop. Under Article 72(4) the provider may integrate the AI Act post-market monitoring into the surveillance system and plan the MDR already requires (MDR Article 83), provided it achieves an equivalent level of protection.</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Article 6.1, Annex I, Article 43.3, Article 14.4, Article 72.4</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer (production)</div>
+      <div class="answer">Yes, where the surgical robot itself is required to undergo a third-party conformity assessment. Under Article 6(1) an AI system intended to be used as a safety component of a product, or which is itself a product, is high-risk where that product is covered by the Union harmonisation legislation listed in Annex I and is required to undergo a third-party conformity assessment under that legislation, and Regulation (EU) 2017/745 on medical devices is listed in Section A of Annex I at point 11. Under that Regulation the robot&#x27;s class follows its intended purpose (Article 51(1)), which the question does not state, and a notified body takes part in the conformity assessment of devices in classes IIa, IIb and III (Article 52(6), (4) and (3)), so the condition is met for a robot in any of those classes. Article 6(1) and the corresponding obligations apply from 2 August 2027.</div>
+      <div class="meta"><span class="refs"><strong>Citations:</strong> Article 6.1, Annex I</span></div>
+    </div>
+  </div>
+  <div class="cols" style="margin-top:.85rem">
+    <div class="panel before">
+      <div class="hd">Expert review, October 2026: wrong in part</div>
+      <div class="pt"><span class="tg def">DEFECT</span><b>Conclusion conditional on third-party assessment of the robot</b><span class="remark">Answer: asserts “a Class IIb or Class III device”, which the question does not state.</span></div>
+      <div class="pt"><span class="tg part">PARTLY MET</span><b>Regulation (EU) 2017/745: Annex I, Section A, point 11</b><span class="remark">Answer: refers to “the Medical Device Regulation listed in Annex I”, without section or point.</span></div>
+      <div class="pt"><span class="tg def">DEFECT</span><b>Classification by intended purpose; notified body for classes IIa, IIb and III</b><span class="remark">Answer: assumes the class, omits class IIa, and does not cite Articles 51(1) and 52 of Regulation (EU) 2017/745.</span></div>
+      <div class="pt"><span class="tg def">DEFECT</span><b>Application date of Article 6(1)</b><span class="remark">Answer: no date stated.</span></div>
+    </div>
+    <div class="panel after">
+      <div class="hd">23 October answer: 4 of 4 points resolved</div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Conclusion conditional on third-party assessment of the robot</b><span class="remark quote">“Yes, where the surgical robot itself is required to undergo a third-party conformity assessment.”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Regulation (EU) 2017/745: Annex I, Section A, point 11</b><span class="remark quote">“Regulation (EU) 2017/745 on medical devices is listed in Section A of Annex I at point 11”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Classification by intended purpose; notified body for classes IIa, IIb and III</b><span class="remark quote">“the robot&#x27;s class follows its intended purpose (Article 51(1)), which the question does not state, and a notified body takes part in the conformity assessment of devices in classes IIa, IIb and III (Article 52(6), (4) and (3))”</span></div>
+      <div class="pt"><span class="tg fix">ADDRESSED</span><b>Application date of Article 6(1)</b><span class="remark quote">“Article 6(1) and the corresponding obligations apply from 2 August 2027.”</span></div>
+    </div>
+  </div>
+  <p class="note"><strong>Note.</strong> The review set out a correct position rather than numbered points; the points above are its elements. The 29 September statements on Articles 43(3), 14(4) and 72(4), requested in the August critique, are not part of this answer; the review&#x27;s corrected answer addresses classification only. The date follows the Act as adopted (section 3).</p>
+</article>
+<h2 class="sec-method">5 · Method and rephrased questions</h2>
+<ul class="steps">
+  <li><b>Baseline.</b> The ten answers the review assessed, with their citations, as printed in the report
+  update of 29 September 2026.</li>
+  <li><b>Re-run.</b> One single-turn request per question, worded as in the review, to the production endpoint
+  on 23 October 2026, after the second round was deployed (build <code>cb2c75137ebb</code>). Response
+  times 1.4–13.7 s.</li>
+  <li><b>Provenance.</b> Replayed with no language model reachable, the system returned identical answers and
+  citations for all ten questions: these are the system's statutory
+  answers, not generated text. The
+  language model stage (Claude Opus 5.5) was operational on the same deployment and answers questions outside
+  the statutory answers.</li>
+  <li><b>Assessment.</b> A point is marked addressed where the 23 October answer states it, and removed where the
+  review objected to wording the answer no longer contains (two points).
+  When this document is generated, quoted evidence is verified verbatim against the live answer and removed
+  wording is verified absent. The 87 statutory passages the answers draw on were located verbatim in the
+  Official Journal text of Regulation (EU) 2024/1689 and, for Case D, in Regulation (EU) 2017/745 (consolidated
+  version of 19 July 2026); the answers quote some of them and paraphrase others.</li>
+  <li><b>Scope.</b> Single-turn answers only (the challenge's easy mode). The hard mode, nine prior turns and a
+  challenge to the answer, was not re-run.</li>
+  <li><b>Rephrasings prepared during the remediation.</b> 30 rephrasings, three per question, asked on
+  the same build. The remediation was adjusted in response to some of them, so this set is not out-of-sample.
+  21 were answered by the statutory answers: 15 identical to the reviewed
+  answer, 4 the same answer worded for the question, 2 another statutory answer
+  that fits the question, and none shortened. 9 were answered by the language model from retrieved
+  provisions.</li>
+  <li><b>Held-out rephrasings.</b> 20 further rephrasings, two per question, were recorded before the
+  second round and not consulted while its main changes were made; an intermediate run then prompted one further
+  change (see the note under the table). Each answer was graded by a separate model (Claude Sonnet 5)
+  against a reference position for its question family, which we condensed from the review's corrected answer or
+  correct position. The statutory answers were drafted from the same positions, so their grades are not
+  independent of the reference; the language-model answers are the stronger test. Grades: correct; partly
+  correct (no legal error, a material omission); incorrect (a legal error, including a fact the question does
+  not state taken as given). The judge sees the answer text, not the citations. Every answer and its citations,
+  in both runs, were also checked by hand.</li>
+</ul>
+<div class="scroll"><table>
+  <thead><tr><th>Held-out rephrasings (20)</th><th class="num">Before the second round</th><th class="num">After</th></tr></thead>
+  <tbody>
+    <tr class='legend'><td></td><td class='num'>correct / partly / incorrect</td><td class='num'>correct / partly / incorrect</td></tr>
+    <tr><td>Statutory answers (5 of 20)</td><td class='num'>3 / 2 / 0 <span class='hand'>[2 / 2 / 1]</span></td><td class='num'>5 / 0 / 0 <span class='hand'>[4 / 0 / 1]</span></td></tr>
+    <tr><td>Language-model answers (14 of 20)</td><td class='num'>8 / 3 / 3 <span class='hand'>[8 / 2 / 4]</span></td><td class='num'>9 / 1 / 4 <span class='hand'>[9 / 2 / 3]</span></td></tr>
+    <tr><td>Stored summary (1 of 20)</td><td class='num'>0 / 0 / 1</td><td class='num'>0 / 0 / 1</td></tr>
+    <tr><td>Answers citing a provision that does not fit the question (hand check)</td><td class='num'>6</td><td class='num'>4</td></tr>
+  </tbody>
+</table></div>
+<p class="note" style="border-top:none">Builds <code>f9761689f47a</code> (before) and <code>7ab8200c07f9</code> (after). The final build, <code>cb2c75137ebb</code>, changes only the wording of the Q45 answer, which no held-out question reaches. Judge's grades, with the hand-check grades in brackets where they differ. The second round changed only the statutory answers and which questions reach them; the language-model answers are generated afresh in each run. One statutory answer is not out-of-sample for the last change to it: an intermediate run of this set showed that the area-and-use-case answer still lost its two definitions on a single-ask question, and the change followed.</p>
+<p class="note" style="border-top:none"><strong>Hand check.</strong> Before: the answer to “Could the Commission add a brand-new area to Annex III through a delegated act?” opens “Yes” (judge: correct; hand: incorrect); an answer on fatigue monitoring says it falls outside the Article 5(1)(f) ban “unless … the safety purpose is not genuine”, but fatigue is a physical state outside the ban whatever the purpose (Recital 18) (judge: partly correct; hand: incorrect). After: the same “Yes” answer (judge: correct; hand: incorrect); a hospital decision-support answer was marked as assuming a device class, but states the Article 6(1) route as a condition (judge: incorrect; hand: correct); an answer on the Article 7 procedure omits the early entry into force under Article 97(6), which the judge lists as an omission (judge: correct; hand: partly correct).</p>
+<p class="note" style="border-top:none"><strong>Citations.</strong> Before: Annex I, point 20 (civil aviation) for a surgical robot, where Regulation (EU) 2017/745 is point 11; Annex III, point 5(a) alone for a question on whether healthcare is an Annex III area; Annex VIII, the AI Act&#x27;s registration-information annex, where the answer means Annex VIII of Regulation (EU) 2017/745 (classification rules); Article 2 (scope), which the answer does not use; Article 53 (general-purpose AI models) for a spam filter; Annex III for a question on Annex X. After: Annex I, point 20 again for the surgical robot; Article 16 (high-risk provider obligations) for the spam filter; Annex III again for the Annex X question; Article 2 again, unused.</p>
+<h2 class="sec-open">6 · Open limitations</h2>
+<p>Found by the rephrased questions in section 5 and not fixed in this round.</p>
+<ul class="steps">
+  <li><i>A statutory answer that does not fit one phrasing.</i> Asked “Could the Commission add a brand-new area to Annex III through a delegated act?”, the Article 7 answer opens “Yes, but only within the limits Article 7 sets.” The correct answer is no: Article 7(1) empowers the Commission to add use cases only within the areas already listed, and Article 112(2)(a) requires the Commission to evaluate and report on the need for amendments adding new area headings. The rest of the answer states the limit correctly.</li>
+  <li><i>Questions that do not reach a statutory answer.</i> Of the 20 held-out rephrasings, 14 are answered by the language model from retrieved provisions. Several of those answers repeat defects the review identified: the asker's capacity and the “evidently” artistic character taken as given, with a non-statutory example of disclosure (a musician's backing vocals, Q74); stress treated as an emotion (Q16); a surgical robot's device class assumed (Case D); the Article 13(3) qualifiers dropped and Article 13(2) abridged (Q45); and the headings of Annex III areas 4 and 5 abridged (Q96). The first three are graded incorrect in both runs. One answer renders a list as sentence fragments (“The other required contents are. The provider's identity and contact details.”).</li>
+  <li><i>A question routed to a stored summary.</i> “How does the AI Act distinguish a provider from a deployer?” receives the stored summary of Article 3, a list of defined terms, instead of the Q10 answer, identically in both runs; it is graded incorrect.</li>
+</ul>
+
+</div>
+</body>
+</html>
