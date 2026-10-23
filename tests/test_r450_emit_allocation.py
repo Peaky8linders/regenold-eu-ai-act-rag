@@ -157,23 +157,63 @@ def test_density_prefers_relevance_per_character_over_raw_rank() -> None:
     )
 
 
-def test_split_only_trades_when_a_sibling_actually_fits() -> None:
-    """The guard that stops ``split`` from losing rows with nothing to trade.
+def test_choose_units_admits_its_first_unit_unconditionally() -> None:
+    """The documented top-unit exception, and why ``split``'s tail must pre-filter.
 
-    An oversized top unit whose siblings are ALL oversized too must emit
-    exactly what ``rank`` emits — there is no smaller unit to buy, so capping
-    the top would only lose text.
+    ``_choose_units`` emits ``ranked[0]`` even when it alone exceeds the budget.
+    That is correct for the TOP-scoring unit only: ``split`` used to pass
+    ``ranked[1:]`` here, so the second-ranked sibling inherited the exception and
+    a 1,929-char unit was bought with a 200-char reserve.
     """
-    ref, budget = "Annex IV", 1200
-    big_top_no_siblings = pt.select_relevant_paragraphs(ref, _RG_069, budget, alloc="rank")
-    split = pt.select_relevant_paragraphs(ref, _RG_069, budget, alloc="split")
-    # Annex IV's items are long; when nothing fits whole the two agree.
-    if split == big_top_no_siblings:
-        assert split is not None
-    else:
-        # Otherwise the split arm must have reserved room for a whole sibling,
-        # i.e. it is strictly longer than the capped top unit alone.
-        assert len(split or "") > 0
+    out = pt._choose_units([(2, "B" * 400, 5.0), (3, "C" * 50, 1.0)], 200, "density")  # noqa: SLF001
+    assert list(out) == [2]
+
+
+#: R461 (V11) — a question that makes ``split`` fire on many provisions.
+_SPLIT_QUESTION = (
+    "Which obligations apply to providers regarding data governance, logging and "
+    "human oversight?"
+)
+_SPLIT_CELLS = [
+    (ref, budget)
+    for ref in ("Article 5", "Article 10", "Article 60", "Article 99", "Annex IV", "Annex III")
+    for budget in (500, 900)
+]
+
+
+@pytest.mark.parametrize(("ref", "budget"), _SPLIT_CELLS)
+def test_split_is_bounded_by_the_same_max_chars(ref: str, budget: int) -> None:
+    """R461 (V11) — ``split`` either IS the shipped emission or fits the budget.
+
+    The top-unit exception belongs to the shipped path. When ``split`` trades,
+    its drilled top AND its whole siblings must fit ``max_chars`` together; it
+    used to emit up to 4.75x the budget (Article 5 @500: 2,386 chars).
+    """
+    rank = pt.select_relevant_paragraphs(ref, _SPLIT_QUESTION, budget, alloc="rank")
+    split = pt.select_relevant_paragraphs(ref, _SPLIT_QUESTION, budget, alloc="split")
+    assert split == rank or len(split or "") <= budget, (ref, budget, len(split or ""))
+
+
+def test_split_tail_never_buys_an_oversized_sibling() -> None:
+    """R461 (V11) — the reproduced row: a smaller sibling fits, the 2nd-ranked does not."""
+    question = (
+        "We are a provider of a high-risk AI system. What must we do about data "
+        "governance and conformity?"
+    )
+    rank = pt.select_relevant_paragraphs("Article 10", question, 500, alloc="rank")
+    split = pt.select_relevant_paragraphs("Article 10", question, 500, alloc="split")
+    assert split == rank or len(split or "") <= 500, len(split or "")
+
+
+def test_the_bounded_split_still_trades_somewhere() -> None:
+    """Non-vacuity for the bound: a split that never fires would pass it trivially."""
+    traded = [
+        (ref, budget)
+        for ref, budget in _SPLIT_CELLS
+        if pt.select_relevant_paragraphs(ref, _SPLIT_QUESTION, budget, alloc="split")
+        != pt.select_relevant_paragraphs(ref, _SPLIT_QUESTION, budget, alloc="rank")
+    ]
+    assert traded, "split never differs from rank: the lever is inert"
 
 
 def test_oversized_top_unit_is_still_emitted_whole_under_every_policy() -> None:

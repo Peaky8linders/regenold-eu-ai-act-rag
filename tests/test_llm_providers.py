@@ -11,6 +11,8 @@ via the public factory so tests stay isolated.
 """
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 
@@ -43,6 +45,184 @@ class TestOpenAIWrapperHappyPath:
         result = provider.complete(OpenAIWrapperRequest(user="ping"))
         assert result.error is None
         assert result.text == "PONG"
+
+    @pytest.mark.parametrize(
+        "model,temperature_field",
+        [
+            ("claude-sonnet-5-5", False),
+            ("anthropic/claude-sonnet-5-5", False),
+            ("eu.anthropic.claude-sonnet-5-5-v1:0", False),
+            ("claude-sonnet-5", True),
+        ],
+    )
+    def test_model_sampling_compatibility(self, model: str, temperature_field: bool) -> None:
+        """Sonnet 5.5 rejects even temperature=0; legacy models keep their payload."""
+        from app.llm.openai_wrapper_provider import _OpenAIWrapperProvider
+
+        seen: list[dict[str, object]] = []
+
+        def _handler(request: httpx.Request) -> httpx.Response:
+            seen.append(json.loads(request.content))
+            return httpx.Response(
+                200,
+                json={"model": model, "choices": [{"message": {"content": "OK"}}]},
+            )
+
+        provider = _OpenAIWrapperProvider()
+        provider._client = httpx.Client(
+            transport=httpx.MockTransport(_handler),
+            base_url="https://api.wrapper.test",
+        )
+        result = provider.complete(
+            OpenAIWrapperRequest(user="probe", model=model, temperature=0.0)
+        )
+
+        assert result.error is None
+        assert ("temperature" in seen[0]) is temperature_field
+        assert seen[0]["model"] == model
+
+
+_WIRE_URL = "https://api.wrapper.test/chat/completions"
+
+
+def _post_body(model: str, *, temperature: float = 0.0) -> bytes:
+    """The exact bytes ``complete()`` posts for ``model``."""
+    from app.llm.openai_wrapper_provider import _OpenAIWrapperProvider
+
+    seen: list[bytes] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.content)
+        return httpx.Response(
+            200, json={"model": model, "choices": [{"message": {"content": "OK"}}]}
+        )
+
+    provider = _OpenAIWrapperProvider()
+    provider._client = httpx.Client(
+        transport=httpx.MockTransport(_handler),
+        base_url="https://api.wrapper.test",
+    )
+    result = provider.complete(
+        OpenAIWrapperRequest(
+            system="SYS", user="probe", model=model, max_tokens=64, temperature=temperature
+        )
+    )
+    assert result.error is None
+    assert len(seen) == 1
+    return seen[0]
+
+
+def _serialised(body: dict[str, object]) -> bytes:
+    """Serialise ``body`` with the same encoder the provider's client uses."""
+    return httpx.Request("POST", _WIRE_URL, json=body).content
+
+
+def _main_body(
+    model: str, *, temperature: float | None = 0.0, **tail: object
+) -> dict[str, object]:
+    """The request body ``main`` built: ``temperature`` sits between max_tokens and stream.
+
+    ``temperature=None`` drops the field (the Sonnet 5.5 shape). ``tail`` is whatever
+    the provider appends after ``stream`` (Groq's ``reasoning_effort``).
+    """
+    body: dict[str, object] = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": "SYS"},
+            {"role": "user", "content": "probe"},
+        ],
+        "max_tokens": 64,
+    }
+    if temperature is not None:
+        body["temperature"] = temperature
+    body["stream"] = False
+    body.update(tail)
+    return body
+
+
+class TestSamplingParameterWire:
+    """What actually goes on the wire, byte for byte.
+
+    The predicate lives in a choke point shared by Stage-2, Stage-0, the intent
+    classifier, query expansion, fusion and the judge, so it is asserted on the
+    posted bytes and never on the source text, and in both directions: Sonnet 5.5
+    loses ``temperature``, every other model posts exactly what ``main`` posted.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _plain_transport(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("REGENOLD_WRAPPER_MODEL_PREFIX", raising=False)
+        monkeypatch.delenv("REGENOLD_WRAPPER_MODEL_ALIAS", raising=False)
+
+    @pytest.mark.parametrize(
+        "model,tail",
+        [
+            ("claude-opus-5-5", {}),
+            ("claude-sonnet-5", {}),
+            ("claude-opus-5", {}),
+            ("claude-opus-4-8", {}),
+            ("claude-sonnet-4-6", {}),
+            ("claude-sonnet-5-50", {}),
+            ("anthropic/claude-opus-5-5", {}),
+            ("eu.anthropic.claude-opus-4-8", {}),
+            ("llama-3.3-70b-versatile", {}),
+            ("gemini-2.5-flash", {}),
+            ("mistral-large-latest", {}),
+            ("qwen/qwen3-32b", {"reasoning_effort": "none"}),
+            ("openai/gpt-oss-120b", {"reasoning_effort": "low"}),
+        ],
+    )
+    def test_other_models_post_the_exact_bytes_main_posted(
+        self, model: str, tail: dict[str, object]
+    ) -> None:
+        posted = _post_body(model)
+        assert posted == _serialised(_main_body(model, **tail))
+        assert json.loads(posted)["temperature"] == 0.0
+
+    @pytest.mark.parametrize("temperature", [0.0, 0.1, 0.3, 1.0])
+    def test_other_models_keep_whatever_temperature_the_caller_set(
+        self, temperature: float
+    ) -> None:
+        assert _post_body("claude-sonnet-5", temperature=temperature) == _serialised(
+            _main_body("claude-sonnet-5", temperature=temperature)
+        )
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-sonnet-5-5",
+            "anthropic/claude-sonnet-5-5",
+            "anthropic/claude-sonnet-5.5",
+            "claude-sonnet-5-5-20260901",
+            "eu.anthropic.claude-sonnet-5-5-v1:0",
+            "global.anthropic.claude-sonnet-5-5-v1:0",
+        ],
+    )
+    @pytest.mark.parametrize("temperature", [0.0, 0.1, 0.7])
+    def test_sonnet_55_posts_no_temperature_and_nothing_else_changes(
+        self, model: str, temperature: float
+    ) -> None:
+        posted = _post_body(model, temperature=temperature)
+        assert posted == _serialised(_main_body(model, temperature=None))
+        decoded = json.loads(posted)
+        assert "temperature" not in decoded
+        assert list(decoded) == ["model", "messages", "max_tokens", "stream"]
+        assert decoded["model"] == model
+        assert decoded["max_tokens"] == 64
+
+    def test_namespaced_transport_is_read_after_the_prefix_is_applied(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """R432: with REGENOLD_WRAPPER_MODEL_PREFIX set the id on the wire is namespaced."""
+        monkeypatch.setenv("REGENOLD_WRAPPER_MODEL_PREFIX", "anthropic/")
+
+        assert _post_body("claude-sonnet-5-5") == _serialised(
+            _main_body("anthropic/claude-sonnet-5-5", temperature=None)
+        )
+        # The shipped Stage-2 model on the same transport still carries temperature.
+        assert _post_body("claude-opus-5-5") == _serialised(
+            _main_body("anthropic/claude-opus-5-5")
+        )
 
 
 class TestOpenAIWrapperNotLoggedInSentinel:

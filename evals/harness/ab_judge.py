@@ -43,6 +43,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from app.llm.model_compatibility import rejects_sampling_parameters
 from evals.harness import pairwise_prompts
 from evals.harness.probe_set import ProbeRow, category_counts, load_probe_set
 
@@ -94,7 +95,9 @@ def _clear_engine_cache() -> None:
         pass
 
 
-def _wrapper_up(timeout: float = 4.0) -> bool:
+def _wrapper_up(
+    timeout: float = 4.0, *, probe_model: str | None = None
+) -> bool:
     url = _wrapper_auth_url()
     # A tunnel fronted by Cloudflare Access answers an unauthenticated probe
     # with an HTML login page and HTTP 401, which is indistinguishable here
@@ -114,7 +117,7 @@ def _wrapper_up(timeout: float = 4.0) -> bool:
         pass
     try:
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with urllib.request.urlopen(req, timeout=min(timeout, 4.0)) as r:
             if r.status != 200:
                 return False
     except Exception:  # noqa: BLE001
@@ -133,17 +136,42 @@ def _wrapper_up(timeout: float = 4.0) -> bool:
     # inert" from a run that measured nothing. That is strictly worse than the
     # quiet deterministic downgrade R360.2 fixed, because the deterministic tier
     # at least labels itself. So: dial a real completion and require real text.
-    return _wrapper_can_complete(url, headers, timeout)
+    completion_timeout = (
+        timeout
+        if rejects_sampling_parameters(
+            probe_model or os.getenv("REGENOLD_WRAPPER_PROBE_MODEL", "claude-sonnet-4-6")
+        )
+        else min(timeout, 30.0)
+    )
+    return _wrapper_can_complete(
+        url, headers, completion_timeout, model=probe_model
+    )
 
 
 def _wrapper_can_complete(
-    auth_url: str, headers: dict[str, str], timeout: float
+    auth_url: str,
+    headers: dict[str, str],
+    timeout: float,
+    *,
+    model: str | None = None,
 ) -> bool:
     """Smallest possible real completion — the only honest liveness signal."""
     base = auth_url.removesuffix("/v1/auth/status")
+    requested_model = model or os.getenv(
+        "REGENOLD_WRAPPER_PROBE_MODEL", "claude-sonnet-4-6"
+    )
+    try:
+        from app.llm.openai_wrapper_provider import resolve_wrapper_model
+
+        probe_model = resolve_wrapper_model(requested_model)
+    except Exception:  # noqa: BLE001 — retain the requested ID if resolver is unavailable
+        probe_model = requested_model
+    requires_sampling_defaults = rejects_sampling_parameters(probe_model)
     body = json.dumps({
-        "model": os.getenv("REGENOLD_WRAPPER_PROBE_MODEL", "claude-sonnet-4-6"),
-        "max_tokens": 8,
+        "model": probe_model,
+        # Give 5.5 the documented minimum room for default adaptive thinking;
+        # the older 8-token probe can false-fail before completion text appears.
+        "max_tokens": 1024 if requires_sampling_defaults else 8,
         "messages": [{"role": "user", "content": "reply OK"}],
     }).encode()
     req = urllib.request.Request(
@@ -178,6 +206,18 @@ def _wrapper_can_complete(
         print("[ab_judge] wrapper completion probe returned EMPTY text — "
               "treating the wrapper as DOWN", flush=True)
         return False
+    try:
+        from app.llm.openai_wrapper_provider import _WRAPPER_CLI_ERROR_SENTINELS
+
+        if any(marker in text.lower() for marker in _WRAPPER_CLI_ERROR_SENTINELS):
+            print(
+                "[ab_judge] wrapper completion probe returned a CLI/model error "
+                "sentinel — treating the wrapper as DOWN",
+                flush=True,
+            )
+            return False
+    except Exception:  # noqa: BLE001 — the text-presence check remains fail-safe
+        pass
     return True
 
 
@@ -432,12 +472,35 @@ def run_ab(
     judge_provider: str,
     timeout: float,
     label: str,
+    judge_model: str | None = None,
 ) -> dict[str, Any]:
-    live = not deterministic and _wrapper_up()
+    model = (
+        (judge_model or "").strip()
+        or os.environ.get("REGENOLD_AB_JUDGE_MODEL", "").strip()
+        or "claude-sonnet-4-6"
+    )
+    if (
+        not deterministic
+        and rejects_sampling_parameters(model)
+        and judge_provider != "wrapper"
+    ):
+        raise ValueError(
+            "claude-sonnet-5-5 can only be selected with --judge-provider wrapper"
+        )
+    # The liveness call must match the endpoint it is proving: when the judge
+    # uses the wrapper, probe the selected judge model; for a Bedrock judge,
+    # keep probing the configured/default wrapper model used by Stage-2.
+    wrapper_probe_model = model if judge_provider == "wrapper" else None
+    probe_timeout = timeout if rejects_sampling_parameters(model) else 4.0
+    live = not deterministic and _wrapper_up(
+        probe_timeout, probe_model=wrapper_probe_model
+    )
     if not deterministic and not live:
-        print(f"[ab_judge] WRAPPER DOWN at {_wrapper_auth_url()} — skipping the "
-              "live pairwise tier; running the DETERMINISTIC tier only. (Never "
-              "substituting token-overlap as a live win proxy.)", file=sys.stderr)
+        print(f"[ab_judge] WRAPPER DOWN at {_wrapper_auth_url()} "
+              f"(probe_model={wrapper_probe_model or 'configured Stage-2 model'}) — "
+              "skipping the live pairwise tier; running the DETERMINISTIC tier "
+              "only. (Never substituting token-overlap as a live win proxy.)",
+              file=sys.stderr)
         deterministic = True
 
     # In live mode both arms must run with a Stage-2 provider wired; in
@@ -481,12 +544,14 @@ def run_ab(
         }
         return result
 
+    result["judge_model"] = model
+    result["judge_provider"] = judge_provider
+
     # LIVE pairwise judge.
     from evals.judge.runner import _load_article_summaries, _resolve_caller, set_judge_model
 
-    model = os.environ.get("REGENOLD_AB_JUDGE_MODEL", "claude-sonnet-4-6")
     set_judge_model(model)
-    caller = _resolve_caller(judge_provider)
+    caller = _resolve_caller(judge_provider, timeout_s=timeout)
     summaries = _load_article_summaries()
     axes = {ax: AxisResult(axis=ax) for ax in pairwise_prompts.AXES}
     per_row: list[dict[str, Any]] = []
@@ -513,7 +578,6 @@ def run_ab(
         per_row.append({"id": row.id, "category": row.category, "verdicts": row_verdicts})
         print(f"  [judge] {i + 1}/{len(rows)} {row.id}  {row_verdicts}", flush=True)
 
-    result["judge_model"] = model
     _n_judged = len(per_row)
     result["axes"] = {
         ax: {
@@ -544,7 +608,10 @@ def _format(result: dict[str, Any]) -> str:
             lines.append(f"  {k:<16} A={d['baseline'][k]:.4f}  B={d['branch'][k]:.4f}  "
                          f"d={d['delta'][k]:+.4f}")
     else:
-        lines.append(f"[LIVE PAIRWISE — judge={result['judge_model']}, position-swapped]")
+        lines.append(
+            f"[LIVE PAIRWISE — judge={result['judge_model']} "
+            f"via {result.get('judge_provider', 'wrapper')}, position-swapped]"
+        )
         lines.append(f"  {'axis':<14} {'B-win':>5} {'A-win':>5} {'tie':>4} "
                      f"{'win%B':>7} {'p':>7}  verdict")
         for ax, r in result["axes"].items():
@@ -583,7 +650,13 @@ def main(argv: list[str] | None = None) -> int:
     # for answering, which is what it is reserved for.
     p.add_argument("--judge-provider", default="wrapper",
                    choices=["wrapper", "anthropic", "groq", "gemini", "bedrock"])
-    p.add_argument("--timeout", type=float, default=90.0)
+    p.add_argument(
+        "--judge-model",
+        default=os.environ.get("REGENOLD_AB_JUDGE_MODEL", "claude-sonnet-4-6"),
+        help="Model passed to the selected judge provider (e.g. claude-sonnet-5-5 for the wrapper/tunnel).",
+    )
+    p.add_argument("--timeout", type=float, default=90.0,
+                   help="Per-call timeout for answer capture and judging (default: 90s).")
     args = p.parse_args(argv)
 
     mt = {"only": True, "exclude": False}.get(args.multiturn or "")
@@ -605,6 +678,7 @@ def main(argv: list[str] | None = None) -> int:
         judge_provider=args.judge_provider,
         timeout=args.timeout,
         label=args.label,
+        judge_model=args.judge_model,
     )
     print("\n" + _format(result))
     _RESULTS.mkdir(parents=True, exist_ok=True)

@@ -75,7 +75,9 @@ def main() -> None:
         user = row["user"]
         system = row["system"]
         start, end = _evidence_span(user)
-        bundle = parse_evidence_block(user)
+        # The parser takes the bare block only (it never searches for the header),
+        # so hand it the span, exactly as the engine hands it ``reference_block``.
+        bundle = parse_evidence_block(user[start:end] if start >= 0 else "")
         bundle.verify()
         evidence_before = bundle.raw
         l1 = bundle.minified(level=1)

@@ -27,7 +27,6 @@ from app.engines.semantic_layer import (
     paragraph_extract,
 )
 
-
 # ──────────────────────────────────────────────────────────────────────────
 # Env gates.
 # ──────────────────────────────────────────────────────────────────────────
@@ -209,8 +208,27 @@ class TestCrossReferenceContext:
 
 
 class TestRRFFusionKnob:
-    def test_rrf_default_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_rrf_default_stays_off_pending_axis_evidence(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """R450 measured the premise but could NOT flip the default.
+
+        Rank-level fusion is membership-identical to additive fill on all 110
+        official questions (0/110 sets differ) and reorders 110/110, which makes
+        it the only candidate arm — but its paired gate VOIDED at the judge leg
+        (``missing_provenance``), so no axis was read, and two ordering pins fail
+        under it. Default stays OFF until a gate prints; see
+        ``docs/measurements/r450/CHECKPOINT.md`` §7.
+        """
         monkeypatch.delenv("REGENOLD_RRF_FUSION", raising=False)
+        from app.data.kb_search import _rrf_fusion_enabled
+
+        assert _rrf_fusion_enabled() is False
+
+    def test_rrf_explicit_zero_restores_the_additive_baseline(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("REGENOLD_RRF_FUSION", "0")
         from app.data.kb_search import _rrf_fusion_enabled
 
         assert _rrf_fusion_enabled() is False
@@ -226,8 +244,9 @@ class TestRRFFusionKnob:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Flag OFF — additive fill: BM25 winners kept in order, dense
-        # candidates only fill remaining slots.
-        monkeypatch.delenv("REGENOLD_RRF_FUSION", raising=False)
+        # candidates only fill remaining slots. The additive arm is selected
+        # explicitly so this pins the ARM; the default is pinned separately.
+        monkeypatch.setenv("REGENOLD_RRF_FUSION", "0")
         from app.data.kb_search import _fuse_dense
 
         bm25 = ["Art. 6", "Art. 13"]
@@ -255,8 +274,8 @@ class TestRRFFusionKnob:
     ) -> None:
         # With the knob OFF the retrieval result must be the Round-68
         # additive-fill behaviour — this is what keeps davidath
-        # byte-identical when R69 ships.
-        monkeypatch.delenv("REGENOLD_RRF_FUSION", raising=False)
+        # byte-identical when R69 ships. Selected explicitly, as above.
+        monkeypatch.setenv("REGENOLD_RRF_FUSION", "0")
         from app.data.kb_search import top_articles_by_relevance
 
         out = top_articles_by_relevance(

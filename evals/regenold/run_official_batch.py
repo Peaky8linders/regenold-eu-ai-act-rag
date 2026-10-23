@@ -116,6 +116,15 @@ def _heads(refs: list[str]) -> set[str]:
     return set(bench_metrics.article_heads(refs or []))
 
 
+_STAGE2_SKIP_REASONS = frozenset(
+    {
+        "stage2_skipped_simple_question_deterministic_ship",
+        "stage2_skipped_curated_authoritative",
+        "stage2_skipped_pure_definitional",
+    }
+)
+
+
 def _provenance(body: dict[str, Any] | None) -> dict[str, Any]:
     """Pull Stage-2 provenance out of the ``reasoning`` trace.
 
@@ -146,6 +155,7 @@ def _provenance(body: dict[str, Any] | None) -> dict[str, Any]:
         # not counted or delivered per model, so a row is only interpretable
         # when the sizes ride along with the counts.
         usage: dict[str, int] = {}
+        skip_reason = ""
         for note in trace.get("notes") or []:
             if not isinstance(note, str):
                 continue
@@ -165,11 +175,15 @@ def _provenance(body: dict[str, Any] | None) -> dict[str, Any]:
                         usage[key] = int(value)
                     except ValueError:
                         continue
+            if not skip_reason and note in _STAGE2_SKIP_REASONS:
+                skip_reason = note
         out: dict[str, Any] = {
             "stage2_polish": trace.get("stage2_polish"),
+            "stage2_skip_reason": skip_reason,
             "retrieval_path": trace.get("retrieval_path"),
             "engine_confidence": trace.get("engine_confidence"),
-            "stage2_model": model,            "stage2_served_by": served_by,
+            "stage2_model": model,
+            "stage2_served_by": served_by,
         }
         if usage:
             out.update(

@@ -138,8 +138,15 @@ boundary, never expanding a short answer) and report the answer axes next to the
 raw ones, in the console and in the payload (`length_controlled`, marked
 `cached: false`). This is the reference-based analogue of length-controlled
 debiasing: a correctness edge that survives the cut is knowledge; one that
-disappears was verbosity. A dead judge transport in that pass is loud (R393
-doctrine), and an end-to-end test drives the whole path with a faked transport.
+disappears was verbosity. R461 corrected three defects in the first version. The
+pass graded the cut answers against the first pass's verdict booleans instead of the
+gold criteria, so every length-controlled number recorded before R461 is void
+(`CHECKPOINT.md`, `GATE-CONCISENESS-BEDROCK.md` section 3); the cut could land
+inside `Article 13.3`, `Art. 5` or a word; and a degraded pass only printed a
+banner. Now a pass over the void fraction is withheld (`length_controlled.void`,
+axes `null`, exit 3, the R414 rule), dead and partial row counts are always
+recorded, and the tests assert on the criteria text the judge is sent. A live
+re-measure is outstanding.
 
 ## 5. The gates that were run - and the verdict
 

@@ -29,6 +29,8 @@
   "_mean_latency_s": 14.548
  },
  "length_controlled": {
+  "invalid": true,
+  "invalid_reason": "R461: VOID. The length-control pass judged each cut answer against the first pass's verdict booleans (the strings 'True'/'False') instead of the gold criteria text, so the axes below do not measure length. Numbers retained for the record only; a live re-measure with the fixed instrument is outstanding.",
   "answers_cut": 26,
   "cached": false,
   "axes": {

@@ -153,6 +153,59 @@ def test_on_path_changes_scores_of_title_bearing_documents(monkeypatch) -> None:
     assert any(a != b for a, b in zip(off_scores, on_scores, strict=True))
 
 
+#: R461 (V04) — questions whose top-8 the title field reorders (4 of 5 measured).
+_FLIP_QUESTIONS = (
+    "Which obligations apply to deployers of high-risk AI systems?",
+    "What must the instructions for use of a high-risk AI system contain?",
+    "What documentation must a provider keep for a high-risk system?",
+    "What must the technical documentation contain?",
+    "Is emotion recognition in the workplace prohibited?",
+)
+
+
+def _rank_all() -> list[tuple[str, ...]]:
+    return [tuple(kb_search.top_articles_by_relevance(q, k=8)) for q in _FLIP_QUESTIONS]
+
+
+def test_flag_flip_in_a_warm_process_reaches_the_index(monkeypatch) -> None:
+    """R461 (V04) — an in-process A/B must retrieve through ITS OWN index.
+
+    The index was ``lru_cache(maxsize=1)`` with the flag read once at build, so a
+    flip in a warm process kept serving the first arm's index (both directions)
+    while the engine cache key recorded the new value: a false null for every
+    in-process A/B of the flag, through the route included. No ``cache_clear``
+    between the flips below — that is the whole point.
+    """
+    monkeypatch.setenv(kb_search._CONTEXTUAL_FIELDS_ENV, "0")  # noqa: SLF001
+    plain = kb_search._build_index()  # noqa: SLF001
+    assert not plain.field_freqs
+    rank_off = _rank_all()
+
+    monkeypatch.setenv(kb_search._CONTEXTUAL_FIELDS_ENV, "1")  # noqa: SLF001
+    fielded = kb_search._build_index()  # noqa: SLF001
+    assert fielded is not plain
+    assert len(fielded.field_freqs) == len(fielded.docs) > 0
+    rank_on = _rank_all()
+    assert rank_on != rank_off, "the ON arm retrieved through the OFF arm's index"
+
+    # Back to OFF: memoised per value (not rebuilt), and no longer stuck fielded.
+    monkeypatch.setenv(kb_search._CONTEXTUAL_FIELDS_ENV, "0")  # noqa: SLF001
+    assert kb_search._build_index() is plain  # noqa: SLF001
+    assert _rank_all() == rank_off
+    assert kb_search._build_index.cache_info().currsize == 2  # noqa: SLF001
+
+
+def test_field_weight_bites_after_a_warm_flag_flip(monkeypatch) -> None:
+    """R461 (V04) — the weight knobs were inert behind a stale PLAIN index."""
+    monkeypatch.delenv("REGENOLD_FIELD_WEIGHT_TITLE", raising=False)
+    monkeypatch.setenv(kb_search._CONTEXTUAL_FIELDS_ENV, "0")  # noqa: SLF001
+    kb_search._build_index()  # noqa: SLF001 — warm a plain index first
+    monkeypatch.setenv(kb_search._CONTEXTUAL_FIELDS_ENV, "1")  # noqa: SLF001
+    shipped_weight = _rank_all()
+    monkeypatch.setenv("REGENOLD_FIELD_WEIGHT_TITLE", "5.0")
+    assert _rank_all() != shipped_weight, "title weight is inert after a warm flip"
+
+
 def test_engine_cache_key_includes_contextual_fields(monkeypatch) -> None:
     from app.routes.regenold import _engine_cache_key
 

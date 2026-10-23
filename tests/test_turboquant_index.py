@@ -17,12 +17,9 @@ Tests are organised in three layers:
 """
 from __future__ import annotations
 
-import importlib
-import os
 import threading
 
 import pytest
-
 
 pytestmark = [pytest.mark.usefixtures("_dense_singleton_reset")]
 
@@ -119,7 +116,7 @@ def test_index_diagnostics_when_disabled(monkeypatch):
 def test_index_excludes_definition_source(monkeypatch):
     """The dense corpus skips definition virtual docs — see _build()."""
     monkeypatch.setenv("REGENOLD_TURBOQUANT_DENSE", "1")
-    from app.data.kb_search import _build_index, _index_stats
+    from app.data.kb_search import _build_index
     from app.engines.turboquant_index import index_diagnostics
 
     # Trigger build
@@ -305,33 +302,42 @@ def test_top_articles_by_relevance_unchanged_when_dense_off(monkeypatch):
     )
 
 
-def test_top_articles_by_relevance_changes_when_dense_on(monkeypatch):
-    """The dense path CAN (not MUST) reshape the BM25 top-k.
+def test_dense_fill_appends_to_bm25_head_and_is_dialled_only_when_on(monkeypatch):
+    """Gate on: the dense index is dialled once and only APPENDS to the BM25 ranking.
 
-    We don't assert specific ranks because the fusion is parameter-dependent,
-    but we do assert that for at least one semantic query the dense path
-    surfaces an article that BM25 alone didn't.
+    "subliminal manipulation" leaves BM25 with a single ref, so the default
+    additive fill has vacant slots to fill. The call count proves the dense arm
+    ran; the prefix check proves it never reordered or dropped a BM25 ref.
     """
+    import app.engines.turboquant_index as ti
     from app.data.kb_search import top_articles_by_relevance
 
     q = "subliminal manipulation"
+    dialled: list[str] = []
+    real_dense_top_k = ti.dense_top_k
 
+    def spy(question, k=5):
+        dialled.append(question)
+        return real_dense_top_k(question, k=k)
+
+    monkeypatch.setattr(ti, "dense_top_k", spy)
+    # Isolate the TurboQuant arm: sentence-index embeddings and entity boosts
+    # otherwise influence the nominal BM25 control too.
+    monkeypatch.setenv("REGENOLD_EMBEDDINGS_INDEX", "0")
+    monkeypatch.setenv("REGENOLD_ENTITY_BOOST", "0")
     monkeypatch.setenv("REGENOLD_TURBOQUANT_DENSE", "0")
-    bm25_only = set(top_articles_by_relevance(q, k=5))
+    bm25_only = top_articles_by_relevance(q, k=5)
+    assert dialled == [], "gate off must not reach the dense index"
 
     monkeypatch.setenv("REGENOLD_TURBOQUANT_DENSE", "1")
-    fused = set(top_articles_by_relevance(q, k=5))
+    dense_enabled = top_articles_by_relevance(q, k=5)
+    assert dialled == [q], "gate on must dial the dense index exactly once"
 
-    # The fused set should be different (the dense path is doing something).
-    # Note: it can be a superset, a different ordering, or net-new refs.
-    assert fused != bm25_only or bm25_only == fused, (
-        "monkeypatch flips correctly; either ranking can be the same when "
-        "BM25 is already saturated"
-    )
-    # At minimum, Art. 5 is in BOTH (BM25 nails the obvious top hit
-    # regardless of the fusion path).
     assert "Art. 5" in bm25_only
-    assert "Art. 5" in fused
+    assert dense_enabled[: len(bm25_only)] == bm25_only
+    assert len(dense_enabled) > len(bm25_only), (
+        "BM25 left vacant slots and the dense arm surfaced nothing for them"
+    )
 
 
 # ── Round-31 eng-review BLOCK: env-flag-aware engine cache key ───────────
@@ -396,6 +402,7 @@ def test_index_diagnostics_includes_outlier_metadata(monkeypatch):
 def test_precomputed_assets_loaded_correctly(monkeypatch):
     """The index build should attempt to load precomputed assets from disk."""
     from pathlib import Path
+
     import app.engines.turboquant_index as ti
 
     assets_path = Path(ti.__file__).resolve().parent / "_assets" / "turboquant_precomputed.npz"

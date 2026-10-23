@@ -134,6 +134,69 @@ OPENAI_API_BASE=http://127.0.0.1:1/v1 python -m evals.harness.ab_judge \
   --judge-provider bedrock --timeout 180
 ```
 
+### Optional: Sonnet 5.5 as the judge over the Cloudflare tunnel
+
+Keep the Bedrock command above as the default when you want judging off the
+single Claude Max wrapper. To opt into Sonnet 5.5 for the pairwise judge, point
+`OPENAI_API_BASE` at the cloudflared endpoint and explicitly select both the
+wrapper provider and model. Cloudflare Access credentials are needed when the
+tunnel is Access-protected; the service token is sent only to the pinned wrapper
+host (pin a renamed tunnel with `CF_ACCESS_HOSTNAME`):
+
+```bash
+export OPENAI_API_BASE=https://wrapper.antifragile-ai.net/v1
+export OPENAI_API_KEY=dummy
+export CF_ACCESS_CLIENT_ID='<service token id>'
+export CF_ACCESS_CLIENT_SECRET='<service token secret>'
+
+# Smoke first; remove --limit 1 for the full probe set.
+python -m evals.harness.ab_judge \
+  --label sonnet-5-5-tunnel-smoke \
+  --judge-provider wrapper \
+  --judge-model claude-sonnet-5-5 \
+  --timeout 90 \
+  --limit 1
+```
+
+The generic judge runner can also target Sonnet 5.5 through its explicit model
+and provider options:
+
+```bash
+python -m evals.judge.runner \
+  --bench-sidecar evals/bench/results/your-run.json \
+  --label sonnet-5-5-grounded \
+  --provider wrapper \
+  --model claude-sonnet-5-5 \
+  --timeout 90
+```
+
+`ab_judge` probes the selected judge model through the tunnel before it runs (a
+real completion; for Sonnet 5.5 the probe reserves 1024 output tokens instead of
+8) and records the judge model and provider in a live result. Requests to
+Sonnet 5.5 omit `temperature`. Sonnet 5.5 is accepted only with the wrapper
+provider, in `ab_judge`, `evals.judge.runner` and `evals.official.score_arm`
+alike; any other provider is refused. Check that the reported tier is
+`live-pairwise`: a failed probe is labelled and the run falls back to the
+deterministic tier, which is not a live judge score. Do not run this at the same
+time as another wrapper-bound job.
+
+### Scoring a capture
+
+`evals.official.score_arm` refuses to grade a capture that contains a row served
+by a degraded Stage-2 leg (`deterministic`, `fallback`, `prior_turn`) or whose
+polish did not land, unless the row records one of the engine's intentional
+Stage-2 skip reasons. A row with no evidence either way (no provenance, or a
+capture older than the skip reasons that names no serve leg) is scored as
+recorded and listed under `stage2_unverified_rows` in the artifact, so an older
+checkpoint or a `--resume` of one still scores; only positive evidence of a
+degraded serve refuses.
+`--turn turn1|pushback` (hard mode) judges one captured turn under its own cache
+key and, unlike a graded run, also refuses a row with no provenance for that
+turn. `--judge-only` writes judge-cache entries and never publishes a score; a
+degraded row is judged there for comparison only, with its provenance kept on the
+cache entry. The scorer never overwrites an existing score artifact: use a new
+`--label` or `--out`.
+
 ## 2. Reference conciseness + strict recall
 
 ```bash

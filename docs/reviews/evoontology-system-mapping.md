@@ -156,3 +156,54 @@ Validation for this pass: **102 focused tests passed**, Ruff passed on all new a
 modified test/model files, and the live service health check remains HTTP 200.
 The next phase remains shadow-only browse/resolve access; no autonomous evolution
 or graph default has been enabled.
+
+## Phase 2: read-only browse/resolve adapter (falsified)
+
+* `app.data.ontology_browse` adds `browse_concepts` (a bounded, typed manifest of
+  the practices, Annex III categories, risk classes, role rows, phases and
+  explicitly named provisions a question engages), `resolve_concept`
+  (existence-checked anchors for one concept id) and `adapter_candidates`
+  (browse, resolve, one-hop cross-references). Caps are enforced inside the
+  adapters, every anchor passes `coordinate_exists` or `ARTICLE_EXISTENCE`
+  before it is returned, and unknown ids resolve to nothing. No flag exists and
+  no module under `app/` imports it; tests assert both.
+* An offline comparison with the Stage-1 sparse retriever on the four frozen
+  failure clusters (31 rows) failed five of the seven pre-registered conditions:
+  head-grain gold recall 0.957 to 0.935, excess references per row 16.8 to 22.9,
+  context 68,807 to 88,159 characters. Latency passed. The adapter stays offline
+  and unwired.
+* Two mechanisms explain the result. A risk tier resolves to the provider's
+  whole duty chapter (21 anchors for `high_risk_annex_iii`) instead of the
+  engaged branch. And the manifest has holes: the limited-risk marker
+  `deep[\s-]?fake\b` does not match `deep-fakes`, which empties the manifest for
+  that question, and role detection keys on role nouns, so "established outside
+  the Union" does not reach the `extraterritorial_non_eu` role row. Tests pin
+  both as measured behaviour, so a fix is a visible change.
+* The registries speak `Art. 13`, the wire speaks `Article 13`, and the
+  cross-reference graph is keyed on the first form, so `cross_refs("Article 13")`
+  returns nothing. `to_wire` and `to_internal` make the conversion explicit.
+
+## Phase 3: offline attribution ledger
+
+* `app.data.ontology_ledger` records a failure signature as measured facts plus a
+  typed kind. `attribute_signature` returns exactly one primary target
+  (`content`, `tool`, `schema`, `generation`, `transport`, `dataset` or
+  `unattributed`) with a falsifier, and only the three ontology targets yield a
+  candidate `OntologyPatchProposal`. Nothing is applied. No module under `app/`
+  imports it (asserted by a test) and it has no caller yet.
+* A signature whose rows were all served by a degraded leg (`fallback`,
+  `deterministic`, `prior_turn`, the legs the route refuses to cache) is
+  attributed to `transport` with no patch, unless a recorded healthy-leg retest
+  (`NonDegradedRecheck`) still fails the criterion.
+* The `tool`/`schema` split asks one checkable question: does a value slot
+  already exist for the fact? A marker list that cannot match a plural is
+  content. A hint table whose value form is a bare keyword, asked to represent
+  negation, is schema. Duty-level scope is schema because `Practice` has an
+  `exceptions` field and the role-obligation rows have no scope, exception or
+  limitation field.
+* `classify_judge_remark` types a failed criterion from its text and the judge's
+  remark and returns the phrase that decided it. All 20 failed criteria in the
+  R436 judge cache whose gold basis is still current are typed.
+* `fabricated_targets` returns every proposal target that is neither
+  `+`-prefixed (a declared introduction) nor resolvable in `ARTICLE_EXISTENCE`,
+  the registries or `coordinate_exists`.

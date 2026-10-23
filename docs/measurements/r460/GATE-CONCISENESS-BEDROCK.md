@@ -71,25 +71,34 @@ ref_loose, +3.5 ref_strict, **+5.4 ref_conc**, tone level, and Speed -1.1 (a
 transport artifact of Bedrock, not of the lever; the wrapper board reads 86.66 on
 the same axis). Overall 85.90 vs 81.7.
 
-## 3. The measurement finding: our correctness is not length-invariant
+## 3. RETRACTED (R461): the length-control finding is void
 
-`--length-control` re-judges every answer cut to its own reference length (LC
-debias, sentence-boundary cut, short answers verbatim). Both arms:
+This section used to report that `--length-control` (re-judge every answer cut to
+its own reference length) dropped ans_loose from 94.07 to 54.81 (A) and from 96.30
+to 51.85 (B), and concluded that ~40 pp of our answer correctness is
+length-mediated and that the program should be re-framed around it. **That
+measurement is void.** The second judge pass was built from rows the first pass had
+already judged. `judge_row` replaces `criteria` with verdict booleans, so the judge
+was asked whether each cut answer satisfied the strings "True" and "False" instead
+of the gold criteria. The recorded numbers measure that, not length. The two
+`length_controlled` blocks in `score-r460-bedrock-hard-s3-hard.json` and
+`score-r460-bedrockconc-hard-s3-hard.json` are marked `invalid` and kept only for
+the record:
 
-| arm | raw ans_loose | LC ans_loose | raw ans_strict | LC ans_strict | answers cut |
+| arm | raw ans_loose | LC ans_loose (void) | raw ans_strict | LC ans_strict (void) | answers cut |
 | :-- | --: | --: | --: | --: | --: |
-| A (OFF) | 94.07 | **54.81** | 89.19 | **48.65** | 26/37 |
-| B (ON) | 96.30 | **51.85** | 89.19 | **45.95** | 24/37 |
+| A (OFF) | 94.07 | ~~54.81~~ | 89.19 | ~~48.65~~ | 26/37 |
+| B (ON) | 96.30 | ~~51.85~~ | 89.19 | ~~45.95~~ | 24/37 |
 
-So ~40 pp of our answer-correctness is **length-mediated**: our answers reach
-94-96 % criteria coverage at 1.20x the reference length, and only ~52-55 % when
-constrained to it. The 2026 frontier prints 71.8 ans_conciseness, i.e. ~1.39x the
-reference length, so their correctness was *also* measured longer than the
-reference — this instrument can now measure any arm at equal length, which is the
-only way the comparison is honest. It also re-frames the program: the win is not
-"shorter answers", it is "the same coverage inside the reference length", and the
-calibration block is the first lever that moved *both* axes in that direction at
-once.
+The instrument now rebuilds each row from the gold criteria, withholds the
+controlled axes and exits 3 when its pass is degraded, records dead / partial row
+counts in the payload, and cuts at a real sentence end or word boundary (it also
+used to cut inside `Article 13.3`, `Art. 5` and mid-word on about 7 % of cut
+answers). A live re-measure with `--length-control` is outstanding. Until it runs,
+this gate says nothing about how much of our correctness depends on answer length,
+and the "same coverage inside the reference length" re-framing it proposed has no
+support. The 2026 frontier's printed ans_conciseness of 71.8 (~1.39x the reference
+length) is unaffected.
 
 ## 4. Verdict and what it does not yet say
 
@@ -103,8 +112,9 @@ once.
 * **The confirmation run to do next**, in priority order: (a) the same paired
   A/B on the wrapper transport when quota allows, n=37 with `--repeats 3`; (b) if
   (a) reproduces the conciseness direction, promote and re-measure the 110-row
-  board; (c) the LC axes should be reported on any future correctness claim, so
-  a length-mediated edge is never read as knowledge.
+  board; (c) run the fixed `--length-control` pass (section 3) and report its axes
+  on any future correctness claim, so a length-mediated edge is never read as
+  knowledge.
 * **Caveats.** Speed is not comparable across transports. `stage2_model` in
   provenance records the requested model, not the Bedrock-served one. The judge
   is the reconstructed instrument (pinned identity
