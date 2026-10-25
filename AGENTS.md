@@ -31,6 +31,18 @@ python -m evals.harness.ab_judge (run position-swapped live pairwise A/B evaluat
 python -m evals.harness.easyhard_ab (run ref conciseness & strict recall pairwise evaluation)
 ```
 
+⛔ **Measure on significant samples, never on the full official 110 (operator directive,
+2026-10-25).** Measure every change with a **paired A/B test on a seeded random sample**
+sized so the result can reach statistical significance, and report n, the discordant
+pairs, wins and losses, and the test (two-sided sign test, or a confidence interval).
+Do not replay or score the full official 110-question set to measure a change: it is the
+graded set, and measuring every change on all of it is slow and invites tuning to it.
+Draw samples from other pools where possible (probe corpus, review corpora, held-out
+sets). Pair the arms so only the change differs: for a post-generation change (the
+normaliser, the reference passes) put the same generated text through both arms. A unit
+test may still pin a specific official row; that is a regression check, not a
+measurement.
+
 ⚠ **`easyhard_ab` has THREE exit codes (R398): `0` PASS, `1` hard-rule-#8 FAIL,
 `2` INDETERMINATE.** A verdict is indeterminate when no Stage-2 completion landed
 (both arms then return the same deterministic answer and `delta=+0` is tautological,
