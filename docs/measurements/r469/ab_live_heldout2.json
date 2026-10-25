@@ -1,0 +1,47 @@
+{
+ "set": "heldout2",
+ "started_utc": "2026-10-25T18:57:00+00:00",
+ "commit": "16b85856ccc0",
+ "rows": [
+  {
+   "kind": "target",
+   "id": "M74_t2",
+   "family": "Q74",
+   "question": "A small publisher is bringing out a children's picture book whose illustrations were all made with an image generator. Does the book have to carry an 'AI-generated' label on its cover?",
+   "note": "Trap: inventing a cover-label requirement, putting the image provider's machine-readable marking duty on the publisher, or treating every generated illustration as a deep fake; the publisher's disclosure duty arises only for deep fakes and, in an evidently fictional work, is limited to disclosing the existence of generated content without hampering enjoyment of the book.",
+   "answer": "No. The Act does not require an \"AI-generated\" label on the cover, because the publisher is a deployer, and the duty to mark AI-generated images in a machine-readable, detectable format falls on the image generator's provider under Article 50(2). The publisher's own duty arises under Article 50(4) only if an illustration is a deep fake, meaning AI-generated imagery that resembles existing persons, objects, places or events and would falsely appear authentic. If an illustration does meet that test, the book is an evidently artistic, fictional work, so Article 50(4) limits the duty to disclosing that such content exists. That disclosure must be made in an appropriate manner that does not hamper the display or enjoyment of the book, and the Act does not require it to be on the cover.",
+   "references": [
+    "Article 50.4"
+   ],
+   "latency_s": 19.97
+  },
+  {
+   "kind": "target",
+   "id": "M96_t1",
+   "family": "Q96",
+   "question": "For an article in our physiotherapists' association newsletter: which fields does the AI Act's list of high-risk uses cover, and is healthcare among them?",
+   "note": "Trap: naming healthcare as a field or paraphrasing the eight official area headings, instead of stating that healthcare is not an area and appears only within area 5 (points 5(a) and 5(d)), with health also at 5(c) and 7(b).",
+   "answer": "Annex III, applied through Article 6(2), lists eight high-risk areas: biometrics, critical infrastructure, education and vocational training, employment and workers' management, access to essential private and public services and benefits, law enforcement, migration, asylum and border control management, and administration of justice and democratic processes. Healthcare is not one of the eight areas. Annex III(5)(c) covers risk assessment and pricing in life and health insurance, and Annex III(5)(d) covers emergency healthcare patient triage systems. Separately, Article 6(1) makes an AI system high-risk where it is a medical device, or a safety component of one, that needs third-party conformity assessment.",
+   "references": [
+    "Annex III.5.c",
+    "Article 6.2"
+   ],
+   "latency_s": 21.11
+  },
+  {
+   "kind": "target",
+   "id": "M17_t2",
+   "family": "Q17",
+   "question": "Banks increasingly use AI to decide who may open a basic current account, and that use isn't on the high-risk list today. Could the Commission add it by delegated act, and what conditions would have to be met?",
+   "note": "Shape (i), adding a use case within a listed area. Trap: missing that access to essential private services is already a listed area, so a delegated act is available, or dropping the cumulative condition that the risk be equivalent to or greater than that of the listed systems, or the Article 97 consultation and objection steps.",
+   "answer": "Yes. Article 7(1) lets the Commission add or modify Annex III use-cases by delegated act, but only where two conditions are both met. First, under Article 7(1)(a), the system must be intended for use in an area already listed in Annex III. AI that decides access to a basic current account fits Annex III(5), which covers access to and enjoyment of essential private services. Second, under Article 7(1)(b), the system must pose a risk of harm to health and safety, or an adverse impact on fundamental rights, that is equivalent to or greater than the risk posed by the high-risk AI systems already listed in Annex III. To assess that second condition, Article 7(2) requires the Commission to weigh criteria including the system's intended purpose, the extent of its use or likely use, and the nature and amount of data it processes, in particular special categories of personal data. Under Article 97, the Commission must consult experts designated by each Member State before adopting the act. The act enters into force only if neither the European Parliament nor the Council objects within three months of notification, a period either of them can extend by three months.",
+   "references": [
+    "Annex III.5.c",
+    "Article 7.1.b",
+    "Article 97"
+   ],
+   "latency_s": 20.6
+  }
+ ],
+ "finished_utc": "2026-10-25T18:58:02+00:00"
+}

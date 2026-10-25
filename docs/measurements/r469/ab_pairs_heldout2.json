@@ -1,0 +1,618 @@
+{
+ "set": "heldout2",
+ "live": "docs\\measurements\\r469\\ab_live_heldout2.json",
+ "commit": "16b85856ccc0",
+ "rows": [
+  {
+   "id": "M74_t1",
+   "family": "Q74",
+   "kind": "target",
+   "question": "Our town's tourist office used an AI video generator to make an advert showing our old harbour at sunset, crowded with visitors who were never there. Who has to flag that the clip is AI-made: the company behind the video tool, or us?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M74_t2",
+   "family": "Q74",
+   "kind": "target",
+   "question": "A small publisher is bringing out a children's picture book whose illustrations were all made with an image generator. Does the book have to carry an 'AI-generated' label on its cover?",
+   "label_main": null,
+   "label_branch": "deepfake_artistic_disclosure",
+   "A": "No. The Act does not require an \"AI-generated\" label on the cover, because the publisher is a deployer, and the duty to mark AI-generated images in a machine-readable, detectable format falls on the image generator's provider under Article 50(2). The publisher's own duty arises under Article 50(4) only if an illustration is a deep fake, meaning AI-generated imagery that resembles existing persons, objects, places or events and would falsely appear authentic. If an illustration does meet that test, the book is an evidently artistic, fictional work, so Article 50(4) limits the duty to disclosing that such content exists. That disclosure must be made in an appropriate manner that does not hamper the display or enjoyment of the book, and the Act does not require it to be on the cover.",
+   "A_refs": [
+    "Article 50.4"
+   ],
+   "B": "Making AI-generated images does not by itself put a marking duty on the person who made it: the Article 50(2) duty to mark outputs in a machine-readable format and make them detectable as artificially generated belongs to the provider of the system. A person using the system is a deployer under Article 3(4) only where the use is not in the course of a personal non-professional activity, and the Act does not apply to the obligations of a natural person using an AI system in the course of a purely personal non-professional activity (Article 2(10)); a person who develops the system, or has it developed, and puts it into service for their own use under their own name or trademark is also its provider (Article 3(3) and Article 3(11)) and so bears that marking duty. Where an image is a deep fake, meaning AI-generated or manipulated content that resembles existing persons, objects, places, entities or events and would falsely appear to a person to be authentic or truthful (Article 3(60)), the deployer must disclose that it has been artificially generated or manipulated (Article 50(4)), and where it forms part of an evidently artistic, creative, satirical, fictional or analogous work that duty is limited to disclosing the existence of the generated content in an appropriate manner that does not hamper the display or enjoyment of the work. The information must be clear and distinguishable, given at the latest at the time of first exposure and accessible (Article 50(5)), and these duties apply from 2 August 2026.",
+   "B_refs": [
+    "Article 50.4",
+    "Article 50.2",
+    "Article 50.5",
+    "Article 3.60",
+    "Article 3.4"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true,
+   "pairwise": {
+    "correctness": {
+     "verdict": "B",
+     "agreed": true
+    },
+    "conciseness": {
+     "verdict": "A",
+     "agreed": true
+    },
+    "tone": {
+     "verdict": "B",
+     "agreed": true
+    }
+   },
+   "grade": {
+    "A": {
+     "verdict": "correct",
+     "errors": [],
+     "omissions": [],
+     "reason": "The answer correctly applies Article 50(2) (provider's machine-readable marking duty, not the publisher's concern), Article 50(4) (deployer's deep-fake disclosure duty, conditioned on the deep-fake definition and limited by the artistic/fictional-work exception), and correctly concludes no cover label is required, matching the reference reasoning without legal error or material omission for what the question asks.",
+     "model": "claude-sonnet-5"
+    },
+    "B": {
+     "verdict": "correct",
+     "errors": [],
+     "omissions": [],
+     "reason": "The answer faithfully adapts the reference's provider/deployer/deep-fake/Article 50(5) framework from audio to the image-generator picture book scenario without introducing legal errors or dropping any required limb.",
+     "model": "claude-sonnet-5"
+    }
+   }
+  },
+  {
+   "id": "M74_t3",
+   "family": "Q74",
+   "kind": "target",
+   "question": "A satirical news website uses an image generator to create photorealistic pictures of real politicians in absurd situations. Does the satire exception in Article 50(4) free it from having to disclose anything?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M74_t4",
+   "family": "Q74",
+   "kind": "target",
+   "question": "I used an AI app to add my late father into our wedding photos. Do I have to label them as fake?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M74_c1",
+   "family": "Q74",
+   "kind": "control",
+   "question": "Is software that checks whether a voice recording was faked with AI treated as high-risk under the AI Act?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M74_c2",
+   "family": "Q74",
+   "kind": "control",
+   "question": "Our music streaming app uses AI to choose which songs to recommend to each listener. Do we have to tell listeners that the recommendations come from AI?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M16_t1",
+   "family": "Q16",
+   "kind": "target",
+   "question": "Our logistics company wants warehouse pickers to wear wristbands that read heart rate and skin response so that an AI can estimate how stressed each person is, and then use those scores to set individual pick targets and shift patterns. Would the EU AI Act treat this as a banned emotion-recognition system?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M16_t2",
+   "family": "Q16",
+   "kind": "target",
+   "question": "Is stress-tracking AI at work banned in the EU?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M16_t3",
+   "family": "Q16",
+   "kind": "target",
+   "question": "All of our personal trainers have signed consent forms, so can our gym chain now use AI cameras to work out whether they are enthusiastic or bored while running classes?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M16_t4",
+   "family": "Q16",
+   "kind": "target",
+   "question": "A mining client plans helmet sensors that infer miners' fatigue and stress levels and feed the scores into their annual performance reviews. Is that caught by Article 5(1)(f), and if not, how would the system be classified?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M16_c1",
+   "family": "Q16",
+   "kind": "control",
+   "question": "A chemical plant wants AI cameras that recognise panic among workers when the gas-leak alarm sounds, so that rescue teams can reach them first. Does the workplace ban on emotion recognition rule that out?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M16_c2",
+   "family": "Q16",
+   "kind": "control",
+   "question": "Our company wants AI to score employees' productivity from their computer activity and flag the lowest performers to managers. Is that banned in the same way as emotion recognition at work?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "MD_t1",
+   "family": "CASE_D",
+   "kind": "target",
+   "question": "Our chain of dental clinics is buying a robot that uses AI to guide the drill when placing implants. Does the AI Act treat that AI as high-risk?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "MD_t2",
+   "family": "CASE_D",
+   "kind": "target",
+   "question": "We're a 40-person company in Lyon writing the computer-vision software that keeps a laparoscopic robot's instruments away from blood vessels. When would that software count as high-risk under the AI Act, and from what date?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "MD_t3",
+   "family": "CASE_D",
+   "kind": "target",
+   "question": "Is it right that the AI module of a robotic prostatectomy system is high-risk under the AI Act only if the robot is a class III device under the MDR?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "MD_t4",
+   "family": "CASE_D",
+   "kind": "target",
+   "question": "Heart surgery robot with AI: high-risk or not?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "MD_c1",
+   "family": "CASE_D",
+   "kind": "control",
+   "question": "We're developing an AI-guided surgical robot for veterinary clinics to operate on dogs and cats. Is its AI high-risk in the same way as the AI in surgical robots for people?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "MD_c2",
+   "family": "CASE_D",
+   "kind": "control",
+   "question": "Our robotic-surgery training simulator uses AI to score surgical trainees and decide whether they pass each module. Is that AI high-risk?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M45_t1",
+   "family": "Q45",
+   "kind": "target",
+   "question": "We're a municipality buying a high-risk AI system that decides whether residents qualify for housing benefit. What information is the vendor legally required to hand over to us with it?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M45_t2",
+   "family": "Q45",
+   "kind": "target",
+   "question": "Our high-risk exam-proctoring system runs on servers in Ireland. Must the instructions for use we give universities report how accurately it performs for different groups of students?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M45_t3",
+   "family": "Q45",
+   "kind": "target",
+   "question": "We supply a high-risk AI system that controls chlorine dosing at drinking-water treatment plants. The utilities buying it want only a two-page quick-start leaflet instead of a full manual. Would that satisfy the AI Act?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M45_t4",
+   "family": "Q45",
+   "kind": "target",
+   "question": "What has to go in the operating manual of a high-risk AI product?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M45_c1",
+   "family": "Q45",
+   "kind": "control",
+   "question": "A bank used a high-risk AI system to turn down my loan application. Is the bank obliged to explain to me how the system reached that decision?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M45_c2",
+   "family": "Q45",
+   "kind": "control",
+   "question": "Our customer-service chatbot isn't high-risk. Do we still have to ship instructions for use with it?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M96_t1",
+   "family": "Q96",
+   "kind": "target",
+   "question": "For an article in our physiotherapists' association newsletter: which fields does the AI Act's list of high-risk uses cover, and is healthcare among them?",
+   "label_main": null,
+   "label_branch": "annex_iii_areas_healthcare",
+   "A": "Annex III, applied through Article 6(2), lists eight high-risk areas: biometrics, critical infrastructure, education and vocational training, employment and workers' management, access to essential private and public services and benefits, law enforcement, migration, asylum and border control management, and administration of justice and democratic processes. Healthcare is not one of the eight areas. Annex III(5)(c) covers risk assessment and pricing in life and health insurance, and Annex III(5)(d) covers emergency healthcare patient triage systems. Separately, Article 6(1) makes an AI system high-risk where it is a medical device, or a safety component of one, that needs third-party conformity assessment.",
+   "A_refs": [
+    "Annex III.5.c",
+    "Article 6.2"
+   ],
+   "B": "Annex III lists high-risk AI systems under eight numbered areas: biometrics, in so far as their use is permitted under relevant Union or national law; critical infrastructure; education and vocational training; employment, workers' management and access to self-employment; access to and enjoyment of essential private services and essential public services and benefits; law enforcement, in so far as their use is permitted under relevant Union or national law; migration, asylum and border control management, in so far as their use is permitted under relevant Union or national law; and administration of justice and democratic processes. Healthcare decision making is not one of them: Annex III places healthcare at point 5(a), which covers AI systems intended to be used by public authorities or on behalf of public authorities to evaluate the eligibility of natural persons for essential public assistance benefits and services, including healthcare services, and to grant, reduce, revoke or reclaim them, and at point 5(d), which covers emergency healthcare patient triage systems. Health also appears in Annex III at point 5(c), risk assessment and pricing in life and health insurance, and at point 7(b), a health risk posed by a person entering a Member State, and neither of those concerns healthcare decisions. Only a use case listed in Annex III makes a system high-risk on this route, so operating in an area is not enough on its own.",
+   "B_refs": [
+    "Annex III"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true,
+   "pairwise": {
+    "correctness": {
+     "verdict": "B",
+     "agreed": true
+    },
+    "conciseness": {
+     "verdict": "A",
+     "agreed": true
+    },
+    "tone": {
+     "verdict": "A",
+     "agreed": true
+    }
+   },
+   "grade": {
+    "A": {
+     "verdict": "partly",
+     "errors": [],
+     "omissions": [
+      "Does not mention Annex III point 5(a) — eligibility for essential public assistance benefits and services, including healthcare services, evaluated by or on behalf of public authorities — which is the main place healthcare decision-making actually appears in the list"
+     ],
+     "reason": "The eight areas and the 'healthcare is not a standalone area' conclusion are correct, but omitting point 5(a) leaves out the most directly relevant inclusion of healthcare in the list.",
+     "model": "claude-sonnet-5"
+    },
+    "B": {
+     "verdict": "correct",
+     "errors": [],
+     "omissions": [],
+     "reason": "The answer correctly identifies the same eight Annex III areas (with accurate official-heading qualifiers), correctly states healthcare is not one of them, and accurately locates healthcare at 5(a)/5(d) and health at 5(c)/7(b), matching the reference without legal error or material omission.",
+     "model": "claude-sonnet-5"
+    }
+   }
+  },
+  {
+   "id": "M96_t2",
+   "family": "Q96",
+   "kind": "target",
+   "question": "I'm auditing the AI tools used by a chain of care homes for the elderly. Can you give me the AI Act's high-risk areas so I can sort each tool into one of them?",
+   "label_main": "annex_iii_areas_healthcare",
+   "label_branch": "annex_iii_areas_healthcare",
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M96_t3",
+   "family": "Q96",
+   "kind": "target",
+   "question": "Does Annex III have a stand-alone heading for health, or does health only appear inside other headings?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M96_t4",
+   "family": "Q96",
+   "kind": "target",
+   "question": "Please, which are the high risk areas in annex 3 of the AI act, and medicine is also inside or not?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M96_c1",
+   "family": "Q96",
+   "kind": "control",
+   "question": "Would an AI that health insurers use to flag possibly fraudulent claims count as high-risk under Annex III?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M96_c2",
+   "family": "Q96",
+   "kind": "control",
+   "question": "From which date do the AI Act's high-risk rules apply to emergency-call triage software listed in Annex III?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M10_t1",
+   "family": "Q10",
+   "kind": "target",
+   "question": "Our city council's IT team trained a model to prioritise pothole repairs, and only the council's own roads department uses it. What role does that give the council under the AI Act?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M10_t2",
+   "family": "Q10",
+   "kind": "target",
+   "question": "Is it true that whoever builds an AI system is always its provider and whoever uses it is always the deployer?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M10_t3",
+   "family": "Q10",
+   "kind": "target",
+   "question": "Our ambulance service bought an ordinary customer-service chatbot and now wants to use it to sort incoming calls by medical urgency. Does that change our position under the AI Act?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M10_t4",
+   "family": "Q10",
+   "kind": "target",
+   "question": "We're a 12-person agency that builds chatbots for client companies, which launch them under their own brands, and we also run one of our own on our website. How does the AI Act split the provider and deployer roles between us and our clients?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M10_c1",
+   "family": "Q10",
+   "kind": "control",
+   "question": "What separates the provider of a general-purpose AI model from the provider of an AI system under the AI Act?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M10_c2",
+   "family": "Q10",
+   "kind": "control",
+   "question": "A lift manufacturer builds an AI safety module bought from a software firm into its lifts and sells them under its own name. Who is the provider of that AI module?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M17_t1",
+   "family": "Q17",
+   "kind": "target",
+   "question": "Annex III's critical-infrastructure entry covers water, gas, heating and electricity but not district cooling networks. Could the Commission add cooling networks on its own, and what has to happen before such a change takes effect?",
+   "label_main": "annex_iii_amendment",
+   "label_branch": "annex_iii_amendment",
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M17_t2",
+   "family": "Q17",
+   "kind": "target",
+   "question": "Banks increasingly use AI to decide who may open a basic current account, and that use isn't on the high-risk list today. Could the Commission add it by delegated act, and what conditions would have to be met?",
+   "label_main": null,
+   "label_branch": "annex_iii_amendment",
+   "A": "Yes. Article 7(1) lets the Commission add or modify Annex III use-cases by delegated act, but only where two conditions are both met. First, under Article 7(1)(a), the system must be intended for use in an area already listed in Annex III. AI that decides access to a basic current account fits Annex III(5), which covers access to and enjoyment of essential private services. Second, under Article 7(1)(b), the system must pose a risk of harm to health and safety, or an adverse impact on fundamental rights, that is equivalent to or greater than the risk posed by the high-risk AI systems already listed in Annex III. To assess that second condition, Article 7(2) requires the Commission to weigh criteria including the system's intended purpose, the extent of its use or likely use, and the nature and amount of data it processes, in particular special categories of personal data. Under Article 97, the Commission must consult experts designated by each Member State before adopting the act. The act enters into force only if neither the European Parliament nor the Council objects within three months of notification, a period either of them can extend by three months.",
+   "A_refs": [
+    "Annex III.5.c",
+    "Article 7.1.b",
+    "Article 97"
+   ],
+   "B": "Yes, but only within the limits Article 7 sets. Under Article 7(1) the Commission may adopt delegated acts in accordance with Article 97 to amend Annex III by adding or modifying use cases of high-risk AI systems where both of the following conditions are fulfilled: the AI systems are intended to be used in any of the areas already listed in Annex III, and they pose a risk of harm to health and safety, or an adverse impact on fundamental rights, that is equivalent to or greater than the risk of harm or adverse impact posed by the high-risk AI systems already referred to in Annex III. Both conditions are cumulative, so a use case outside the existing areas cannot be added by delegated act; Article 7(2) lists the criteria for assessing that risk, and Article 7(3) allows a use case to be removed from Annex III where it no longer poses a significant risk and the overall level of protection is not reduced. Before adopting the delegated act the Commission must consult experts designated by each Member State (Article 97(4)), and the act enters into force only if neither the European Parliament nor the Council objects within three months of notification, a period extended by three months at the initiative of either of them, or earlier where both inform the Commission that they will not object (Article 97(6)).",
+   "B_refs": [
+    "Article 7.1",
+    "Article 97.6",
+    "Annex III"
+   ],
+   "B_source": "branch offline",
+   "A_is_main_offline": false,
+   "changed": true,
+   "pairwise": {
+    "correctness": {
+     "verdict": "B",
+     "agreed": true
+    },
+    "conciseness": {
+     "verdict": "tie",
+     "agreed": false
+    },
+    "tone": {
+     "verdict": "tie",
+     "agreed": false
+    }
+   },
+   "grade": {
+    "A": {
+     "verdict": "correct",
+     "errors": [],
+     "omissions": [],
+     "reason": "The answer correctly states Article 7(1)(a)-(b) as cumulative conditions (existing Annex III area plus equivalent/greater risk), cites Article 7(2) criteria and Article 97 consultation, and correctly describes the three-month non-objection period extendable by three months, covering everything the question requires.",
+     "model": "claude-sonnet-5"
+    },
+    "B": {
+     "verdict": "correct",
+     "errors": [],
+     "omissions": [],
+     "reason": "The answer correctly states the Article 7(1) cumulative conditions, Article 7(2)/(3) criteria and removal mechanism, and the Article 97(4)/(6) consultation and non-objection procedure, matching the reference without legal error or material omission for what the question asks.",
+     "model": "claude-sonnet-5"
+    }
+   }
+  },
+  {
+   "id": "M17_t3",
+   "family": "Q17",
+   "kind": "target",
+   "question": "Could Annex III be extended by a delegated act under Article 7 to cover AI systems that personalise commercial advertising, which fall under none of its current headings, or would that require amending the Regulation itself?",
+   "label_main": "annex_iii_amendment",
+   "label_branch": "annex_iii_amendment",
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M17_t4",
+   "family": "Q17",
+   "kind": "target",
+   "question": "Could the EU make AI refereeing in professional football high-risk just by updating the annex, or would lawmakers have to change the AI Act itself?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M17_c1",
+   "family": "Q17",
+   "kind": "control",
+   "question": "Can our national government add its own AI uses to the EU's list of high-risk systems?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M17_c2",
+   "family": "Q17",
+   "kind": "control",
+   "question": "Is the Commission required to publish practical examples of AI uses that are and are not high-risk?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M95_t1",
+   "family": "Q95",
+   "kind": "target",
+   "question": "Our app recommends library books to university students. Since education is a high-risk area, is the app automatically high-risk?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M95_t2",
+   "family": "Q95",
+   "kind": "target",
+   "question": "'Biometrics' versus 'remote biometric identification systems': which one is a heading and which one a listed use in Annex III?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M104_t1",
+   "family": "Q104",
+   "kind": "target",
+   "question": "Is ECRIS-TCN one of the systems in Annex X, and if an AI component of it is first put into service in 2028, can it still rely on the end-2030 transitional deadline?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M104_t2",
+   "family": "Q104",
+   "kind": "target",
+   "question": "Does the AI Act's list of large EU border and police IT systems include the interoperability framework that links them, or only the individual databases?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M6_t1",
+   "family": "Q6",
+   "kind": "target",
+   "question": "We make a mobile puzzle game whose difficulty adapts through machine learning. Which AI Act duties, if any, apply to us?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  },
+  {
+   "id": "M6_t2",
+   "family": "Q6",
+   "kind": "target",
+   "question": "The AI Act is often drawn as a four-level pyramid. What legal rules actually attach to the bottom level?",
+   "label_main": null,
+   "label_branch": null,
+   "B_source": "unchanged offline",
+   "changed": false
+  }
+ ],
+ "changed": 3,
+ "judge_model": "claude-sonnet-5",
+ "judge_failed": 0
+}

@@ -3379,6 +3379,25 @@ def classify_scope(question: str) -> ScopeVerdict:
             )
     except ImportError:  # a scope gate must not fail on an import cycle
         pass
+    # R469 — the Q74 shape carries no anchor either: "If I upload them to
+    # streaming platforms, does EU law make me tag them as AI-made?" was refused
+    # as conversational offline. It is an Article 50 marking question the curated
+    # verdict answers, so the gate asks that detector too (same failure policy).
+    try:
+        from app.engines.statutory_precision import is_generated_content_marking_ask
+
+        if is_generated_content_marking_ask(cleaned_text):
+            return ScopeVerdict(
+                in_scope=True,
+                reason=ScopeReason.IN_SCOPE,
+                evidence=(
+                    "Article 50 marking/disclosure question for AI-generated "
+                    "content (statutory-precision shape)."
+                ),
+                referenced_articles=known,
+            )
+    except ImportError:  # a scope gate must not fail on an import cycle
+        pass
     if _has_ai_act_anchor(cleaned_text):
         return ScopeVerdict(
             in_scope=True,

@@ -130,12 +130,20 @@ def _route(monkeypatch, messages, answer, captured=None):
             "/api/v1/regenold/eu-ai-act/ask", json={"messages": messages}).json()
 
 
+#: R469 — both tests below used a content ask ("what must a provider supply in
+#: the instructions for use", "what must the instructions for use contain") as
+#: their carrier. That shape is now the CURATED Article 13 verdict, so the route
+#: skips Stage-2 and nothing is dispatched to inspect. The clause under test is
+#: generic, so the carriers are now Article 13 asks of the same topic that are
+#: not content asks and still reach Stage-2.
+IFU_YES_NO = "Does a provider of a high-risk AI system have to give the deployer instructions for use?"
+
+
 @pytest.mark.parametrize("flag,present", [("1", True), ("0", False)])
 def test_clause_reaches_a_single_turn_user_message(monkeypatch, flag, present):
     monkeypatch.setenv("REGENOLD_PROVISIONS_TO_NAME", flag)
     seen: list[str] = []
-    _route(monkeypatch, [{"role": "user", "content":
-                          "What must a provider of a high-risk AI system supply to the deployer in the instructions for use?"}],
+    _route(monkeypatch, [{"role": "user", "content": IFU_YES_NO}],
            "Article 13(3) requires the instructions for use to contain the listed information.", seen)
     assert seen, "Stage-2 was never dispatched"
     assert ("PROVISIONS TO NAME" in seen[0]) is present
@@ -147,7 +155,7 @@ def test_clause_is_not_sent_on_a_multi_turn_request(monkeypatch):
     _route(monkeypatch, [
         {"role": "user", "content": "What does Article 13 require?"},
         {"role": "assistant", "content": "Article 13 requires transparency toward deployers."},
-        {"role": "user", "content": "And what must the instructions for use contain under Article 13(3)?"},
+        {"role": "user", "content": "And does every high-risk AI system need instructions for use?"},
     ], "Article 13(3) requires the instructions for use to contain the listed information.", seen)
     assert seen and all("PROVISIONS TO NAME" not in s for s in seen)
 

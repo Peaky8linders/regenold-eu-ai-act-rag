@@ -5473,6 +5473,20 @@ _LIMITED_RISK_ASK_RE = re.compile(
 _RESIDUAL_TIER_WORD_RE = re.compile(r"\bminimal[-\s]?risk\b|\blow[-\s]?risk\b", re.IGNORECASE)
 
 
+#: R469 iteration 2 (held-out set 1) — "Since that isn't high-risk, are there any
+#: AI Act rules left for us to follow?" (a contraction, and "rules left") and "is
+#: 'minimal risk' a legal category the AI Act actually defines?" (a quote mark
+#: between the term and "category").
+_MINIMAL_RISK_WIDE_RE = re.compile(
+    r"(?:\bisn['’]t|\bis\s+not|\baren['’]t|\bare\s+not|\bnot)\s+(?:a\s+)?high[-\s]?risk\b"
+    r"[^?.]{0,80}?\b(?:rules?|left|follow|duties?|obligations?|apply|applies|still|remain"
+    r"|anything)\b"
+    r"|minimal[-\s]?risk['\"’]?\s+(?:[\w-]+\s+){0,3}?(?:category|tier|class|label|concept"
+    r"|term|level)\b",
+    re.IGNORECASE,
+)
+
+
 def _detect_minimal_risk_inquiry(question: str) -> bool:
     """True if the question asks what minimal-/low-risk AI systems are."""
     raw_q = question or ""
@@ -5482,7 +5496,12 @@ def _detect_minimal_risk_inquiry(question: str) -> bool:
         raw_q = raw_q[idx + len(marker):]
     if _MINIMAL_RISK_SCENARIO_OPENER_RE.search(raw_q):
         return False
-    if not _MINIMAL_RISK_RE.search(raw_q):
+    from app.engines.statutory_precision import rephrasings_enabled  # noqa: PLC0415
+
+    if not (
+        _MINIMAL_RISK_RE.search(raw_q)
+        or (rephrasings_enabled() and _MINIMAL_RISK_WIDE_RE.search(raw_q))
+    ):
         return False
     if _LIMITED_RISK_ASK_RE.search(raw_q) and not _RESIDUAL_TIER_WORD_RE.search(raw_q):
         return False
@@ -6004,6 +6023,14 @@ _RECLASSIFY_ACTION_RE = re.compile(
     r"|\bseen\s+as\s+(?:a\s+)?provider\b|\bregarded\s+as\s+(?:a\s+)?provider\b",
     re.IGNORECASE,
 )
+#: R469 iteration 2 (held-out set 1) — the flip in plain words: "That makes us
+#: only a deployer, right, or could we end up as its provider?"
+_RECLASSIFY_ACTION_WIDE_RE = re.compile(
+    r"\bend\s+up\s+(?:as|being)\s+(?:its|the|a)\s+provider\b"
+    r"|\bbecom\w*\s+(?:its|the)\s+provider\b"
+    r"|\bturn\w*\s+(?:us|it|them|you|me)\s+into\s+(?:a|the|its)\s+provider\b",
+    re.IGNORECASE,
+)
 
 
 # R411 — see the trailing-ask guard in :func:`_detect_reclassification_inquiry`.
@@ -6033,7 +6060,14 @@ def _detect_reclassification_inquiry(question: str) -> bool:
     idx = raw_q.rfind(marker)
     if idx >= 0:
         raw_q = raw_q[idx + len(marker):]
-    if _MINIMAL_RISK_SCENARIO_OPENER_RE.search(raw_q):
+    from app.engines.statutory_precision import rephrasings_enabled  # noqa: PLC0415
+
+    # R469 iteration 2 — "I'm the IT lead at a logistics firm ... could we end up
+    # as its provider?" (held-out set 1) asks the role flip in a scenario's
+    # voice; the scenario classifier answers a risk tier, not a role. No davidath
+    # scenario carries the role, provider and flip cues together (measured 0 of
+    # 339), so under the switch the opener no longer bars the verdict.
+    if _MINIMAL_RISK_SCENARIO_OPENER_RE.search(raw_q) and not rephrasings_enabled():
         return False
     # R411 — a curated single-issue intercept must not pre-empt a SYNTHESIS
     # request. ``"Compare the obligations of providers and deployers of
@@ -6059,7 +6093,10 @@ def _detect_reclassification_inquiry(question: str) -> bool:
     return bool(
         _RECLASSIFY_NONPROVIDER_ROLE_RE.search(raw_q)
         and _RECLASSIFY_PROVIDER_RE.search(raw_q)
-        and _RECLASSIFY_ACTION_RE.search(raw_q)
+        and (
+            _RECLASSIFY_ACTION_RE.search(raw_q)
+            or (rephrasings_enabled() and _RECLASSIFY_ACTION_WIDE_RE.search(raw_q))
+        )
     )
 
 
@@ -6527,6 +6564,38 @@ _ROLE_BOTH_CAPACITIES_RE = re.compile(
 )
 
 
+#: R469 — "How does the AI Act distinguish a provider from a deployer?" (R467
+#: held-out H10_a) shipped the stored 68-term Article 3 summary: "distinguish"
+#: and "different" were not contrast markers. Local to this detector, so the
+#: R137 obligation-contrast gate keeps its own marker set.
+_ROLE_DISTINGUISH_RE = re.compile(
+    r"\bdistinguish\w*|\bdifferen(?:t|ce|ces|tiate[sd]?|tiating|tiation)\b"
+    r"|\btell\s+(?:\w+\s+){1,6}?apart\b",
+    re.IGNORECASE,
+)
+#: A third role ("Does the Act distinguish providers and deployers and
+#: importers?", found by the R469 pool control) asks about more roles than the
+#: verdict defines, so the new markers do not count there.
+_THIRD_ROLE_RE = re.compile(
+    r"\b(?:importers?|distributors?|authori[sz]ed\s+representatives?|manufacturers?)\b",
+    re.IGNORECASE,
+)
+#: Iteration 2 (held-out set 1) — the roles named by what they do: "Developer
+#: versus user of an AI system: how does the AI Act tell them apart?"
+_PROVIDER_LIKE_RE = re.compile(
+    r"\b(?:providers?|developers?|makers?|vendors?|suppliers?)\b", re.IGNORECASE
+)
+_DEPLOYER_LIKE_RE = re.compile(r"\b(?:deployers?|users?)\b", re.IGNORECASE)
+#: Iteration 2 — the which-role ask: "Our bank built a fraud-scoring model
+#: in-house and runs it only on our own customers' transactions. Under the AI
+#: Act, are we the provider or the deployer?" (own use: both).
+_ROLE_WHICH_ASK_RE = re.compile(
+    r"\b(?:providers?|deployers?)\s+or\s+(?:just\s+|only\s+|merely\s+|simply\s+)?"
+    r"(?:an?\s+|the\s+)?(?:deployers?|providers?)\b",
+    re.IGNORECASE,
+)
+
+
 def _detect_role_difference_inquiry(question: str) -> bool:
     """True when the question contrasts the provider and deployer ROLES at the
     definition level, not their obligations."""
@@ -6536,8 +6605,21 @@ def _detect_role_difference_inquiry(question: str) -> bool:
     if idx >= 0:
         raw_q = raw_q[idx + len(marker):]
     low = raw_q.lower()
+    from app.engines.statutory_precision import rephrasings_enabled  # noqa: PLC0415
+
+    wide = rephrasings_enabled()
     if "provider" not in low or "deployer" not in low:
-        return False
+        # Iteration 2 — the two roles under their everyday names, with a contrast.
+        return bool(
+            wide
+            and _PROVIDER_LIKE_RE.search(low)
+            and _DEPLOYER_LIKE_RE.search(low)
+            and re.search(r"\bai\b", low)
+            and (_ROLE_CONTRAST_MARKER_RE.search(low) or _ROLE_DISTINGUISH_RE.search(low))
+            and not _ROLE_CONTRAST_OBLIGATION_RE.search(low)
+            and not _THIRD_ROLE_RE.search(low)
+            and not _MINIMAL_RISK_SCENARIO_OPENER_RE.search(raw_q)
+        )
     # R465b — the DUAL-CAPACITY shape. "Can a company be both the provider and
     # the deployer of the same AI system?" carries both role nouns but no
     # contrast marker (no "difference"/"vs"), so the marker gate rejected it and
@@ -6550,7 +6632,11 @@ def _detect_role_difference_inquiry(question: str) -> bool:
         if _MINIMAL_RISK_SCENARIO_OPENER_RE.search(raw_q):
             return False
         return not _ROLE_CONTRAST_OBLIGATION_RE.search(low)
-    if not _ROLE_CONTRAST_MARKER_RE.search(low):
+    if not (
+        _ROLE_CONTRAST_MARKER_RE.search(low)
+        or (wide and (_ROLE_DISTINGUISH_RE.search(low) or _ROLE_WHICH_ASK_RE.search(low))
+            and not _THIRD_ROLE_RE.search(low))
+    ):
         return False
     # Obligation-CONTRAST shapes stay on the R137 path (Art. 16/26 handling).
     if _ROLE_CONTRAST_OBLIGATION_RE.search(low):
@@ -6613,6 +6699,45 @@ def _detect_user_information_inquiry(question: str) -> bool:
     return bool(pattern.search(q))
 
 
+#: R469 — the robot named another way: "robot-assisted surgery", "a surgery
+#: robot", "robots used in surgery".
+_ROBOTIC_SURGERY_WIDE_RE = re.compile(
+    r"\brobotic\s+surg\w*|\bsurg\w*\s+robot\w*|\brobot\w*[-\s]+assisted\s+surg\w*"
+    r"|\bsurgery\s+robots?\b|\brobots?\s+(?:used\s+)?(?:in|for)\s+surg\w*"
+    # Iteration 2 (held-out set 1): the procedure named instead of "surgery".
+    r"|\brobotic\s+(?:endoscop\w*|biops\w*|sutur\w*|laparoscop\w*|catheter\w*"
+    r"|interventional|operating)\b"
+    r"|\brobot\w*[-\s]+assisted\s+(?:biops\w*|endoscop\w*|procedures?|interventions?"
+    r"|operations?)\b",
+    re.IGNORECASE,
+)
+#: Iteration 2 — the verdict asked in other shapes: "Does [the AI Act put us in
+#: the high-risk bucket]?", "What decides whether ... counts as high-risk?",
+#: "which ... condition would make that AI high-risk?", "Would the AI Act treat
+#: X as high-risk?".
+_ROBOT_VERDICT_ASK_RE = re.compile(
+    r"\b(?:the\s+(?:eu\s+)?ai\s+act|the\s+act|eu\s+law|the\s+regulation)\s+"
+    r"(?:would\s+|will\s+|might\s+)?(?:puts?|places?|makes?|treats?|classif(?:y|ies)"
+    r"|counts?|considers?|regards?)\b.{0,80}?\bhigh[-\s]?risk"
+    r"|\b(?:what|which)\s+(?:[\w-]+\s+){0,4}?(?:decides?|determines?|makes?|would\s+make"
+    r"|conditions?|criteri\w*)\b.{0,140}?\bhigh[-\s]?risk"
+    r"|\b(?:treat|treated|classif(?:y|ied)|consider(?:ed)?|regard(?:ed)?|count(?:ed)?)\s+"
+    r".{0,60}?\bas\s+(?:an?\s+)?high[-\s]?risk"
+    r"|\bhigh[-\s]?risk\s+(?:bucket|category|class|tier)\b",
+    re.IGNORECASE,
+)
+#: R469 — "Would an AI module that controls a surgical robot's movements be a
+#: high-risk AI system?" (R467 held-out HD_a): the verdict-ask gate opens on is /
+#: are / does / can and has no "would ... be" shape, so Stage-2 answered it,
+#: asserted a device class and cited ``Annex I.20``. Local to this detector.
+_WOULD_BE_HIGH_RISK_RE = re.compile(
+    r"(?:^|[.?!;]\s*)(?:would|will|might|should)\s+.{1,160}?\b"
+    r"(?:be|count\s+as|qualify\s+as)\s+(?:classed\s+as\s+|classified\s+as\s+|considered\s+)?"
+    r"(?:an?\s+)?high[-\s]?risk\b",
+    re.IGNORECASE,
+)
+
+
 def _detect_robotic_surgery_inquiry(question: str) -> bool:
     """True when the question asks whether robotic surgery / a surgical robot is high-risk.
 
@@ -6650,9 +6775,16 @@ def _detect_robotic_surgery_inquiry(question: str) -> bool:
     if _MINIMAL_RISK_SCENARIO_OPENER_RE.search(raw_q):
         return False
     q = raw_q.strip().lower()
-    if not ("robotic surgery" in q or "surgical robot" in q):
+    from app.engines.statutory_precision import rephrasings_enabled  # noqa: PLC0415
+
+    wide = rephrasings_enabled()
+    if not ("robotic surgery" in q or "surgical robot" in q
+            or (wide and _ROBOTIC_SURGERY_WIDE_RE.search(q))):
         return False
-    return bool(_is_classification_question(q) and _RISK_VERDICT_RE.search(q))
+    verdict_ask = _is_classification_question(q) or (
+        wide and (_WOULD_BE_HIGH_RISK_RE.search(q) or _ROBOT_VERDICT_ASK_RE.search(q))
+    )
+    return bool(verdict_ask and _RISK_VERDICT_RE.search(q))
 
 
 # R275 (Antifragile Q8) — pure single-term Article 3 definitional question.
