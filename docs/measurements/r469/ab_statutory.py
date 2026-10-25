@@ -54,6 +54,7 @@ import json
 import math
 import os
 import re
+import subprocess
 import sys
 import time
 import urllib.error
@@ -141,14 +142,25 @@ def _labeller():
 # ── arm A: production ────────────────────────────────────────────────────────
 
 
+def _api_key() -> str:
+    """The production key from this checkout's ``.env``, else the main checkout's:
+    a git worktree has no ``.env`` of its own, and copying the secret is worse."""
+    from dotenv import dotenv_values
+
+    common = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                            cwd=REPO, capture_output=True, text=True).stdout.strip()
+    for env in (REPO / ".env", Path(common).parent / ".env" if common else None):
+        if env is not None and env.exists():
+            key = dotenv_values(env).get("P2P_REGENOLD_API_KEY")
+            if key:
+                return key
+    raise SystemExit("P2P_REGENOLD_API_KEY missing from .env (this checkout and the main one)")
+
+
 def live(set_name: str, out: Path, questions: Path | None, ids: set[str] | None = None) -> int:
     """Ask production; with ``ids``, only those rows (the ones the change moves:
     every other row is a tie by construction and needs no production answer)."""
-    from dotenv import dotenv_values
-
-    key = dotenv_values(REPO / ".env").get("P2P_REGENOLD_API_KEY") or ""
-    if not key:
-        raise SystemExit("P2P_REGENOLD_API_KEY missing from .env")
+    key = _api_key()
     with urllib.request.urlopen(urllib.request.Request(
             BASE + "/healthz", headers={"User-Agent": UA}), timeout=30) as resp:
         commit = json.loads(resp.read().decode("utf-8")).get("commit")
