@@ -6527,6 +6527,24 @@ _ROLE_BOTH_CAPACITIES_RE = re.compile(
 )
 
 
+#: R469 — "How does the AI Act distinguish a provider from a deployer?" (R467
+#: held-out H10_a) shipped the stored 68-term Article 3 summary: "distinguish"
+#: and "different" were not contrast markers. Local to this detector, so the
+#: R137 obligation-contrast gate keeps its own marker set.
+_ROLE_DISTINGUISH_RE = re.compile(
+    r"\bdistinguish\w*|\bdifferen(?:t|ce|ces|tiate[sd]?|tiating|tiation)\b"
+    r"|\btell\s+(?:\w+\s+){1,6}?apart\b",
+    re.IGNORECASE,
+)
+#: A third role ("Does the Act distinguish providers and deployers and
+#: importers?", found by the R469 pool control) asks about more roles than the
+#: verdict defines, so the new markers do not count there.
+_THIRD_ROLE_RE = re.compile(
+    r"\b(?:importers?|distributors?|authori[sz]ed\s+representatives?|manufacturers?)\b",
+    re.IGNORECASE,
+)
+
+
 def _detect_role_difference_inquiry(question: str) -> bool:
     """True when the question contrasts the provider and deployer ROLES at the
     definition level, not their obligations."""
@@ -6550,7 +6568,13 @@ def _detect_role_difference_inquiry(question: str) -> bool:
         if _MINIMAL_RISK_SCENARIO_OPENER_RE.search(raw_q):
             return False
         return not _ROLE_CONTRAST_OBLIGATION_RE.search(low)
-    if not _ROLE_CONTRAST_MARKER_RE.search(low):
+    from app.engines.statutory_precision import rephrasings_enabled  # noqa: PLC0415
+
+    if not (
+        _ROLE_CONTRAST_MARKER_RE.search(low)
+        or (rephrasings_enabled() and _ROLE_DISTINGUISH_RE.search(low)
+            and not _THIRD_ROLE_RE.search(low))
+    ):
         return False
     # Obligation-CONTRAST shapes stay on the R137 path (Art. 16/26 handling).
     if _ROLE_CONTRAST_OBLIGATION_RE.search(low):
@@ -6613,6 +6637,25 @@ def _detect_user_information_inquiry(question: str) -> bool:
     return bool(pattern.search(q))
 
 
+#: R469 — the robot named another way: "robot-assisted surgery", "a surgery
+#: robot", "robots used in surgery".
+_ROBOTIC_SURGERY_WIDE_RE = re.compile(
+    r"\brobotic\s+surg\w*|\bsurg\w*\s+robot\w*|\brobot\w*[-\s]+assisted\s+surg\w*"
+    r"|\bsurgery\s+robots?\b|\brobots?\s+(?:used\s+)?(?:in|for)\s+surg\w*",
+    re.IGNORECASE,
+)
+#: R469 — "Would an AI module that controls a surgical robot's movements be a
+#: high-risk AI system?" (R467 held-out HD_a): the verdict-ask gate opens on is /
+#: are / does / can and has no "would ... be" shape, so Stage-2 answered it,
+#: asserted a device class and cited ``Annex I.20``. Local to this detector.
+_WOULD_BE_HIGH_RISK_RE = re.compile(
+    r"(?:^|[.?!;]\s*)(?:would|will|might|should)\s+.{1,160}?\b"
+    r"(?:be|count\s+as|qualify\s+as)\s+(?:classed\s+as\s+|classified\s+as\s+|considered\s+)?"
+    r"(?:an?\s+)?high[-\s]?risk\b",
+    re.IGNORECASE,
+)
+
+
 def _detect_robotic_surgery_inquiry(question: str) -> bool:
     """True when the question asks whether robotic surgery / a surgical robot is high-risk.
 
@@ -6650,9 +6693,14 @@ def _detect_robotic_surgery_inquiry(question: str) -> bool:
     if _MINIMAL_RISK_SCENARIO_OPENER_RE.search(raw_q):
         return False
     q = raw_q.strip().lower()
-    if not ("robotic surgery" in q or "surgical robot" in q):
+    from app.engines.statutory_precision import rephrasings_enabled  # noqa: PLC0415
+
+    wide = rephrasings_enabled()
+    if not ("robotic surgery" in q or "surgical robot" in q
+            or (wide and _ROBOTIC_SURGERY_WIDE_RE.search(q))):
         return False
-    return bool(_is_classification_question(q) and _RISK_VERDICT_RE.search(q))
+    verdict_ask = _is_classification_question(q) or (wide and _WOULD_BE_HIGH_RISK_RE.search(q))
+    return bool(verdict_ask and _RISK_VERDICT_RE.search(q))
 
 
 # R275 (Antifragile Q8) — pure single-term Article 3 definitional question.

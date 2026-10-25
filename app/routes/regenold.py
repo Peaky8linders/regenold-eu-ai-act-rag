@@ -1463,6 +1463,8 @@ def _engine_cache_key(
             "REGENOLD_CURATED_ANNEX_I_ACT_BACKING",
             # R454 — Annex I points are chosen by the Act the question describes.
             "REGENOLD_GRAIN_ANNEX_I_ACT_SUBJECT",
+            # R469 — the statutory verdicts catch the review's rephrasings.
+            "REGENOLD_STATUTORY_REPHRASINGS",
             # R454 — the ACT TERMS clause on the Stage-2 user message.
             "REGENOLD_ACT_TERMS_CLAUSE",
             # R456 — the PROVISIONS TO NAME clause on the Stage-2 user channel.

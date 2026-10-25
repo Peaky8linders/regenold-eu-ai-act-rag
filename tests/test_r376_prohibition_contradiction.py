@@ -154,6 +154,13 @@ class TestEndToEndVerdictRecovery:
         self, client, monkeypatch, question
     ):
         monkeypatch.setenv("REGENOLD_PROHIBITION_CONTRADICTION_GUARD", "0")
+        # R469 — the employees question now reaches the curated Article 5(1)(f)
+        # workplace verdict ("Can we use ..." reads as a legality ask there),
+        # which skips the generated path this guard repairs, so the contradiction
+        # cannot occur on it. The rollback is about that path, so the R469 cues
+        # are switched off with the guard. ``test_r469_statutory_rephrasings``
+        # pins the curated answer this question now gets.
+        monkeypatch.setenv("REGENOLD_STATUTORY_REPHRASINGS", "0")
         answer = client(question)["answer"]
         assert "not among the practices prohibited" in answer
 

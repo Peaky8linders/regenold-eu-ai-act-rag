@@ -62,6 +62,7 @@ deterministic bench stays byte-identical).
 """
 from __future__ import annotations
 
+import os
 import re
 
 #: The eight Annex III area headings, VERBATIM from the OJ text (points 1-8).
@@ -108,14 +109,26 @@ def _live_turn(question: str) -> str:
     return raw.strip()
 
 
+def rephrasings_enabled() -> bool:
+    """R469 — the rephrasing cues and the new-area answer (deny-list; ``=0`` reverts).
+
+    The R467 held-out run found seven rephrasings that missed these verdicts
+    (and the role-difference and robotic-surgery intercepts, which read this
+    switch too), so Stage-2 answered them and repeated the review's defects.
+    """
+    return os.getenv("REGENOLD_STATUTORY_REPHRASINGS", "1").strip().lower() not in {
+        "0", "off", "false", "no",
+    }
+
+
 # ── Detectors ────────────────────────────────────────────────────────────────
 
 #: An ENUMERATION ask is what this verdict answers: "list the required
-#: categories", "which categories", "what information must it contain". A bare
-#: "what must a provider supply in the instructions for use" stays on the
-#: ordinary path, which is where the R456 prompt-clause and R460 assembly
-#: tests exercise their passes, and where the route's own answer already names
-#: the categories at article level.
+#: categories", "which categories", "what information must it contain".
+#: R469 — a bare "what must a provider supply in the instructions for use" used
+#: to stay on the ordinary path, on the view that the route's own answer named
+#: the categories at article level. The R467 held-out run measured that view
+#: wrong: see ``_IFU_CONTENT_ASK_RE``.
 _IFU_ENUMERATION_ASK_RE = re.compile(
     r"\b(?:list\b"
     r"|categor(?:y|ies)"
@@ -125,14 +138,54 @@ _IFU_ENUMERATION_ASK_RE = re.compile(
     r"|enumerat\w*)",
     re.IGNORECASE,
 )
+#: R469 — the CONTENT ask in other words. "As a provider of a high-risk AI
+#: system, what do I have to put in the instructions for use I give to
+#: deployers?" (held-out H45_a) carried none of the words above, so Stage-2
+#: answered it, dropped the "where applicable" / "when appropriate" / "if any"
+#: qualifiers of Article 13(3) and kept nothing of Article 13(2): the review's
+#: Q45 defect. A what-question whose verb asks for the content (put, include,
+#: contain, cover, set out, supply ...) is the same ask. Who supplies the
+#: instructions, their language or format, and the deployer's duty to follow
+#: them are not content asks; neither is one about a single topic, below.
+#: ⚠ The passive "what must be included in the instructions for use" is the
+#: same ask too, but it is a davidath QA row, and these detectors fire on 0
+#: davidath rows (``test_r144_emotion_curated``), so it stays on the ordinary
+#: path.
+_IFU_CONTENT_ASK_RE = re.compile(
+    r"\bwhat\s+(?:do|does|must|should|shall|will|would)\s+(?:[\w'()-]+\s+){1,8}?"
+    r"(?:have\s+to\s+|need\s+to\s+)?"
+    r"(?:put|include|contain|cover|say|state|set\s+out|list|mention|describe|provide"
+    r"|supply|give|write)\b"
+    r"|\bwhat\s+goes\s+in(?:to)?\b"
+    r"|\bcontents?\s+of\s+(?:the\s+)?instructions?\b"
+    r"|\b(?:minimum|required|mandatory)\s+contents?\b",
+    re.IGNORECASE,
+)
+#: "What must the instructions for use say about human oversight?" asks for one
+#: item (Article 13(3)(d)); the whole list would answer it at ten times the
+#: length. "... say about the instructions for use" is still the content ask.
+_IFU_SINGLE_TOPIC_RE = re.compile(
+    r"\b(?:say|state|include|contain|cover|mention)\s+(?:about|regarding|concerning|on)\s+"
+    r"(?!(?:the\s+)?instructions?\b)",
+    re.IGNORECASE,
+)
 
 
 def _detect_instructions_for_use(question: str) -> bool:
-    """True on the "list the required categories" shape of the Article 13 ask."""
+    """True on the content ask of Article 13: list the categories, or what goes in."""
     low = _live_turn(question).lower()
+    if rephrasings_enabled():
+        # "the instructions-for-use document" is the same noun.
+        low = low.replace("-", " ")
     if "instruction for use" not in low and "instructions for use" not in low:
         return False
-    return bool(_IFU_ENUMERATION_ASK_RE.search(low))
+    if _IFU_ENUMERATION_ASK_RE.search(low):
+        return True
+    return bool(
+        rephrasings_enabled()
+        and _IFU_CONTENT_ASK_RE.search(low)
+        and not _IFU_SINGLE_TOPIC_RE.search(low)
+    )
 
 
 _AREA_WORD_RE = re.compile(r"\bareas?\b", re.IGNORECASE)
@@ -159,6 +212,31 @@ _AREA_MEMBERSHIP_ASK_RE = re.compile(
     r"|how\s+many\s+areas)",
     re.IGNORECASE,
 )
+#: R469 — what the questions call an area. "Which sectors does Annex III cover,
+#: and is a clinical decision-support AI in a hospital one of them?" (held-out
+#: H96_a) was answered by Stage-2, with the area headings abridged.
+_AREA_SYNONYM_RE = re.compile(r"\b(?:sectors?|fields?|domains?)\b", re.IGNORECASE)
+#: R469 — a clinical setting names healthcare without the word "health".
+_CLINICAL_WORD_RE = re.compile(
+    r"\b(?:hospitals?|clinic(?:s|al)?|patients?|medical|diagnos\w*|doctors?)\b", re.IGNORECASE
+)
+#: An ask for the areas themselves, in the plural. "Which Annex III area covers
+#: triage in a hospital?" asks where ONE use case sits, which the use-case
+#: intercepts answer.
+_AREAS_ASK_RE = re.compile(
+    r"\b(?:which|what)\s+(?:\w+\s+){0,3}?(?:areas|sectors|fields|domains)\b", re.IGNORECASE
+)
+
+
+def _healthcare_cue(low: str) -> bool:
+    """Does the ask bring healthcare into an areas question?"""
+    if _HEALTHCARE_WORD_RE.search(low):
+        return True
+    return bool(
+        rephrasings_enabled()
+        and _CLINICAL_WORD_RE.search(low)
+        and (_AREAS_ASK_RE.search(low) or _AREA_MEMBERSHIP_ASK_RE.search(low))
+    )
 
 
 def _detect_annex_iii_area_vs_use_case(question: str) -> bool:
@@ -188,9 +266,14 @@ def _detect_annex_iii_areas(question: str) -> bool:
     low = _live_turn(question).lower()
     if _detect_annex_iii_area_vs_use_case(question) or _detect_annex_iii_amendment(question):
         return False
-    if not _AREA_WORD_RE.search(low):
+    # R469 — "sectors" / "fields" stand for areas only on the healthcare shape this
+    # verdict answers; a sector word alone can mean anything.
+    has_area = _AREA_WORD_RE.search(low) or (
+        rephrasings_enabled() and _AREA_SYNONYM_RE.search(low) and _healthcare_cue(low)
+    )
+    if not has_area:
         return False
-    if _HEALTHCARE_WORD_RE.search(low) and _ANNEX_III_RE.search(low):
+    if _healthcare_cue(low) and _ANNEX_III_RE.search(low):
         # R465d (deep review) — an OPERATOR ask ("we are a hospital deploying
         # triage … what are our obligations?") is the hospital-deployer shape.
         # Enumerating the eight areas answers the wrong question and, because
@@ -204,11 +287,47 @@ def _detect_annex_iii_areas(question: str) -> bool:
     return bool(_AREA_MEMBERSHIP_ASK_RE.search(low))
 
 
+#: R469 — the high-risk list named without "Annex III": "What procedure applies
+#: when the Commission wants to update the list of high-risk use cases?"
+#: (held-out H17_b) went to Stage-2.
+_HIGH_RISK_LIST_RE = re.compile(
+    r"\bhigh[-\s]risk\s+(?:list|areas?|use[-\s]?cases?)\b"
+    r"|\blist\s+of\s+(?:high[-\s]risk\b|use[-\s]?cases\b)",
+    re.IGNORECASE,
+)
+#: Another annex: "Can the Commission amend Annex I?" is not an Article 7 ask.
+_OTHER_ANNEX_RE = re.compile(
+    r"\bannex\s+(?:i|ii|iv|v|vi|vii|viii|ix|x|xi|xii|xiii)\b", re.IGNORECASE
+)
+#: R469 — a NEW AREA, not a new use case. Article 7(1)(a) confines a delegated
+#: act to use cases in the areas Annex III already lists, so "Could the
+#: Commission add a brand-new area to Annex III through a delegated act?"
+#: (held-out H17_a) is answered No; the verdict opened "Yes". "A new high-risk
+#: use case" is not this shape.
+_NEW_AREA_RE = re.compile(
+    r"\b(?:new|additional|extra|further|another|ninth)\s+(?:high[-\s]risk\s+)?"
+    r"(?:areas?|sectors?|fields?|domains?|(?:area\s+)?headings?)\b"
+    r"|\b(?:add|adding|create|creating|introduce|introducing|insert|inserting)\s+"
+    r"(?:an?\s+|the\s+)?(?:areas?|sectors?|area\s+headings?)\b"
+    r"|\b(?:extend|extending|widen|widening|expand|expanding|broaden|broadening)\s+"
+    r"(?:an?\s+|the\s+)?(?:existing\s+)?(?:area\s+headings?|areas?|sectors?)\b",
+    re.IGNORECASE,
+)
+
+
 def _detect_annex_iii_amendment(question: str) -> bool:
     """True on the Article 7 delegated-act amendment ask."""
     low = _live_turn(question).lower()
     if "annex iii" not in low:
-        return False
+        # R469 — the list named another way counts only with the Commission or a
+        # delegated act in the question: "conditions" alone is too common.
+        if not (
+            rephrasings_enabled()
+            and _HIGH_RISK_LIST_RE.search(low)
+            and not _OTHER_ANNEX_RE.search(low)
+            and re.search(r"\bcommission\b|\bdelegated\s+acts?\b", low)
+        ):
+            return False
     # R465d (deep review) — "Can Annex III be expanded/extended/updated by the
     # Commission?" is the Article 7 ask; the verb list stopped at amend/modify.
     if not re.search(
@@ -234,6 +353,37 @@ _ARTISTIC_WORD_RE = re.compile(
 _MARKING_WORD_RE = re.compile(
     r"\b(?:mark\w*|label\w*|watermark\w*|disclos\w*|flag\w*)\b", re.IGNORECASE
 )
+#: R469 — a creative work named by its medium. "I'm a musician and use an AI
+#: tool to create backing vocals for my album. Do I have to label the tracks as
+#: AI-generated?" (held-out H74_a) named neither "artistic" nor "artist", so
+#: Stage-2 answered it, assumed the musician was a deployer and the album
+#: "evidently artistic", and offered liner notes as the disclosure. The verdict
+#: states both roles and the artistic limit conditionally, so naming the work is
+#: enough. Text works (novels, poems, lyrics) are left out: the Article 3(60)
+#: deep fake is image, audio or video content.
+_CREATIVE_WORK_RE = re.compile(
+    r"\b(?:musicians?|singers?|songwriters?|composers?|bands?|albums?|songs?|tracks?"
+    r"|vocals?|music|films?|movies?|animations?|comics?|paintings?|illustrations?)\b",
+    re.IGNORECASE,
+)
+#: R469 — AI-generated content in the words people use for it.
+_GENERATED_CONTENT_RE = re.compile(
+    r"\bai[-\s](?:made|created|produced|composed|vocals?|voices?|music|songs?|art|images?"
+    r"|pictures?|videos?|tracks?)\b"
+    r"|\b(?:made|created|produced|composed|generated)\s+(?:with|by|using)\s+(?:an?\s+)?"
+    r"(?:ai|artificial\s+intelligence|generative)\b"
+    r"|\b(?:use|uses|used|using)\s+(?:an?\s+)?(?:ai|artificial\s+intelligence|generative\s+ai)"
+    r"(?:\s+(?:tools?|systems?|apps?|models?|generators?|software|programs?))?\s+to\s+"
+    r"(?:create|generate|make|produce|compose|clone)\b"
+    r"|\bsynthetic\s+(?:voices?|vocals|audio|images?|videos?|media)\b"
+    r"|\bvoice[-\s]?clon\w*",
+    re.IGNORECASE,
+)
+#: R469 — the disclosure asked in plain words: "do I have to tell listeners".
+_DISCLOSURE_WORD_RE = re.compile(
+    r"\b(?:tell|inform\w*|notif\w*|declar\w*|mention\w*|indicat\w*|credit\w*)\b",
+    re.IGNORECASE,
+)
 
 
 def _detect_deepfake_artistic_disclosure(question: str) -> bool:
@@ -245,6 +395,7 @@ def _detect_deepfake_artistic_disclosure(question: str) -> bool:
     (``_detect_deepfake_criminal_exception_inquiry`` owns that one).
     """
     low = _live_turn(question).lower()
+    wide = rephrasings_enabled()
     # R465d (deep review) — the Act's own vocabulary is "AI-generated or
     # manipulated content", so "I made an AI-generated song for my art project"
     # is the question this verdict answers; the modality list only knew the
@@ -255,11 +406,12 @@ def _detect_deepfake_artistic_disclosure(question: str) -> bool:
         or "ai audio" in low
         or re.search(r"\bai[-\s]generated\b", low)
         or re.search(r"\bgenerated\s+(?:image|video|audio|song|music|voice)\b", low)
+        or (wide and _GENERATED_CONTENT_RE.search(low))
     ):
         return False
-    if not _MARKING_WORD_RE.search(low):
+    if not (_MARKING_WORD_RE.search(low) or (wide and _DISCLOSURE_WORD_RE.search(low))):
         return False
-    if not _ARTISTIC_WORD_RE.search(low):
+    if not (_ARTISTIC_WORD_RE.search(low) or (wide and _CREATIVE_WORK_RE.search(low))):
         return False
     return True
 
@@ -312,6 +464,34 @@ _PERMISSION_ASK_RE = re.compile(
     r"\b(?:allowed|permitted|lawful|unlawful|legal|prohibit\w*|forbidden|comply)\b",
     re.IGNORECASE,
 )
+#: R469 — "Can an employer use webcams with AI to detect whether call-centre
+#: staff are frustrated or stressed?" (held-out H16_a) missed all three cues:
+#: "stressed" is not "stress", "frustrated" is not "emotion", and "Can an
+#: employer use ..." carries no legality word. Stage-2 answered it and called
+#: stress an emotion, the review's Q16 defect. The new feeling words count only
+#: beside a verb of inference, so "can we use AI to keep staff happy?" is not an
+#: emotion-recognition ask.
+_STRESS_WIDE_RE = re.compile(r"\bstress(?:ed|ful)\b", re.IGNORECASE)
+_EMOTION_WIDE_RE = re.compile(
+    r"\b(?:frustrat\w*|angry|anger|annoy\w*|irritat\w*|upset|happy|happiness|sad|sadness"
+    r"|moods?|feelings?|anxious|anxiety|bored|boredom|emotionally)\b",
+    re.IGNORECASE,
+)
+_INFERENCE_VERB_RE = re.compile(
+    r"\b(?:detect\w*|monitor\w*|track\w*|infer\w*|recogn\w*|read(?:s|ing)?|analy[sz]\w*"
+    r"|measur\w*|assess\w*|scan\w*|identif\w*|gauge\w*|spot\w*|classif\w*|predict\w*"
+    r"|estimat\w*)\b",
+    re.IGNORECASE,
+)
+_PERMISSION_WIDE_RE = re.compile(
+    r"\b(?:can|could|may)\s+(?:an?\s+|the\s+|my\s+|our\s+|their\s+)?"
+    r"(?:employers?|compan(?:y|ies)|business(?:es)?|firms?|organi[sz]ations?|managers?"
+    r"|bosses|we|i|they)\s+(?:legally\s+)?"
+    r"(?:use|deploy|install|introduce|run|roll\s+out|monitor|track|analy[sz]e|detect|scan"
+    r"|infer|read|measure|assess|check)\b"
+    r"|\bis\s+it\s+(?:ok|okay|fine|acceptable)\b",
+    re.IGNORECASE,
+)
 
 
 def _detect_workplace_emotion_and_stress(question: str) -> bool:
@@ -345,11 +525,15 @@ def _detect_workplace_emotion_and_stress(question: str) -> bool:
     # R465d (deep review) — a stress TEST carries no emotion inference.
     if _STRESS_TEST_RE.search(low) and not _EMOTION_WORD_RE.search(low):
         return False
-    return bool(
-        (_STRESS_WORD_RE.search(low) or _EMOTION_WORD_RE.search(low))
-        and _WORKER_WORD_RE.search(low)
-        and _PERMISSION_ASK_RE.search(low)
-    )
+    wide = rephrasings_enabled()
+    feeling = bool(_STRESS_WORD_RE.search(low) or _EMOTION_WORD_RE.search(low))
+    if not feeling and wide:
+        feeling = bool(
+            (_STRESS_WIDE_RE.search(low) or _EMOTION_WIDE_RE.search(low))
+            and _INFERENCE_VERB_RE.search(low)
+        )
+    ask = _PERMISSION_ASK_RE.search(low) or (wide and _PERMISSION_WIDE_RE.search(low))
+    return bool(feeling and _WORKER_WORD_RE.search(low) and ask)
 
 
 #: Q10b — the Article 3(9)/(10)/(11) act vocabulary the question contrasts.
@@ -445,8 +629,26 @@ def _instructions_for_use() -> dict:
     }
 
 
-def _annex_iii_areas() -> dict:
-    """Q96 — the eight areas by their official names, plus the healthcare answer."""
+def _annex_iii_areas(question: str = "") -> dict:
+    """Q96 — the eight areas by their official names, plus the healthcare answer.
+
+    R469 — a question about a clinical system ("a clinical decision-support AI in
+    a hospital") also asks whether that system is high-risk, and Annex III is not
+    the only route: Article 6(1) reaches a medical device that needs a notified
+    body. The Stage-2 answer to held-out H96_a said so; this verdict, which the
+    question now reaches, would otherwise have dropped it.
+    """
+    clinical = rephrasings_enabled() and bool(_CLINICAL_WORD_RE.search(_live_turn(question).lower()))
+    tail = (
+        " A system used in clinical care can still be high-risk under Article 6(1), "
+        "outside Annex III, where it is itself a medical device or an in vitro "
+        "diagnostic medical device, or the safety component of one, under Regulation "
+        "(EU) 2017/745 or Regulation (EU) 2017/746 (Annex I, Section A, points 11 and "
+        "12), and that device is required to undergo a third-party conformity "
+        "assessment under that Regulation."
+        if clinical
+        else ""
+    )
     return {
         "name": "annex_iii_areas_healthcare",
         "answer": (
@@ -472,9 +674,9 @@ def _annex_iii_areas() -> dict:
             "a person entering a Member State, and neither of those concerns "
             "healthcare decisions. Only a use case listed in Annex III makes a "
             "system high-risk on this route, so operating in an area is not "
-            "enough on its own."
+            f"enough on its own.{tail}"
         ),
-        "refs": ["Annex III"],
+        "refs": ["Annex III", "Art. 6.1"] if clinical else ["Annex III"],
     }
 
 
@@ -505,8 +707,40 @@ def _annex_iii_area_vs_use_case() -> dict:
     }
 
 
-def _annex_iii_amendment() -> dict:
-    """Q17 — Article 7(1) cumulative conditions plus the Article 97 procedure."""
+def _annex_iii_amendment(question: str = "") -> dict:
+    """Q17 — Article 7(1) cumulative conditions plus the Article 97 procedure.
+
+    R469 — a NEW-AREA ask gets "No": Article 7(1)(a) confines a delegated act to
+    use cases in the areas already listed, and a new area heading needs an
+    amendment of the Regulation, which Article 112(2)(a) has the Commission
+    evaluate. The text below opened "Yes, but only within the limits ..." on
+    held-out H17_a, a yes to a question whose answer is no. Verbatim-checked
+    against the OJ text of Articles 7(1) and 112(2).
+    """
+    if rephrasings_enabled() and _NEW_AREA_RE.search(_live_turn(question).lower()):
+        return {
+            "name": "annex_iii_amendment",
+            "answer": (
+                "No: Article 7(1) empowers the Commission to adopt delegated acts in "
+                "accordance with Article 97 to amend Annex III by adding or modifying "
+                "use cases of high-risk AI systems only where two conditions are both "
+                "fulfilled, and the first is that the AI systems are intended to be used "
+                "in any of the areas listed in Annex III (Article 7(1)(a)), so a "
+                "delegated act cannot add a new area. Within the listed areas, a use "
+                "case can be added where the systems "
+                "pose a risk of harm to health and safety, or an adverse impact on "
+                "fundamental rights, equivalent to or greater than that posed by the "
+                "high-risk AI systems already referred to in Annex III (Article "
+                "7(1)(b)), assessed against the criteria in Article 7(2). A new area "
+                "heading, or the extension of an existing one, needs an amendment of "
+                "the Regulation itself: by 2 August 2028 and every four years "
+                "thereafter the Commission evaluates and reports to the European "
+                "Parliament and to the Council on the need for amendments extending "
+                "existing area headings or adding new area headings in Annex III "
+                "(Article 112(2)(a))."
+            ),
+            "refs": ["Art. 7.1", "Art. 112.2", "Annex III"],
+        }
     return {
         "name": "annex_iii_amendment",
         "answer": (
@@ -550,6 +784,10 @@ _MEDIUM_IMAGE_RE = re.compile(
     re.IGNORECASE,
 )
 _MEDIUM_AUDIO_RE = re.compile(r"\b(?:audio|sounds?|songs?|music|voices?|podcasts?)\b", re.IGNORECASE)
+#: R469 — sound named by the music it makes: backing vocals, an album's tracks.
+_MEDIUM_AUDIO_WIDE_RE = re.compile(
+    r"\b(?:vocals?|tracks?|albums?|singing|singers?|recordings?)\b", re.IGNORECASE
+)
 
 
 def _artistic_medium(question: str) -> tuple[str, str]:
@@ -559,7 +797,7 @@ def _artistic_medium(question: str) -> tuple[str, str]:
         return "video", "the video is"
     if _MEDIUM_IMAGE_RE.search(low):
         return "images", "an image is"
-    if _MEDIUM_AUDIO_RE.search(low):
+    if _MEDIUM_AUDIO_RE.search(low) or (rephrasings_enabled() and _MEDIUM_AUDIO_WIDE_RE.search(low)):
         return "audio", "the audio is"
     return "content", "the content is"
 
@@ -861,11 +1099,11 @@ def _statutory_verdict_builder(question: str):
     if _detect_annex_iii_area_vs_use_case(question):
         return _annex_iii_area_vs_use_case
     if _detect_annex_iii_amendment(question):
-        return _annex_iii_amendment
+        return lambda: _annex_iii_amendment(question)
     if _detect_market_service_use(question):
         return _market_service_use
     if _detect_annex_iii_areas(question):
-        return _annex_iii_areas
+        return lambda: _annex_iii_areas(question)
     if _detect_deepfake_artistic_disclosure(question):
         return lambda: _deepfake_artistic_disclosure(question)
     if _detect_annex_x_overview(question):
