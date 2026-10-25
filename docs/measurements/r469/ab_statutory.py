@@ -307,7 +307,21 @@ def _absolute_judge():
     return module._judge
 
 
+#: The pairwise judge dials the wrapper through the Stage-2 provider, which is
+#: off unless this environment is set; ``ab_judge`` scores a failed call as a
+#: tie. R468's first judge run lacked it and printed 41 ties of 41 with no call
+#: made, so every failed call here is retried, then recorded as a failure.
+JUDGE_ENV = {
+    "REGENOLD_SKIP_DOTENV": "1",
+    "P2P_GRAPH_RAG_PROVIDER": "openai_wrapper",
+    "OPENAI_API_BASE": "http://127.0.0.1:8000/v1",
+    "OPENAI_API_KEY": "dummy",
+    "P2P_GRAPH_RAG_ENABLE_STAGE2": "1",
+}
+
+
 def judge(pairs_path: Path) -> int:
+    os.environ.update(JUDGE_ENV)
     sys.path.insert(0, str(REPO))
     from evals.harness.ab_judge import ArmAnswer, _pairwise_verdict_detail
     from evals.judge.runner import _load_article_summaries, _resolve_caller, set_judge_model
@@ -315,7 +329,19 @@ def judge(pairs_path: Path) -> int:
     data = _load(pairs_path)
     positions = _load(REFERENCES)["positions"]
     set_judge_model(JUDGE_MODEL)
-    caller = _resolve_caller("wrapper", timeout_s=300)
+    resolved = _resolve_caller("wrapper", timeout_s=300)
+    errors: list[str] = []
+
+    def caller(prompt: str) -> dict:
+        # The CLI behind the wrapper sometimes ends a call with "Reached maximum
+        # number of turns (1)"; a retry usually clears it.
+        for _ in range(3):
+            out = resolved(prompt)
+            if "judge_error" not in out:
+                return out
+        errors.append(str(out["judge_error"])[:200])
+        return out
+
     summaries = _load_article_summaries()
     absolute = _absolute_judge()
     for row in data["rows"]:
@@ -325,26 +351,39 @@ def judge(pairs_path: Path) -> int:
             a = ArmAnswer(answer=row["A"], refs=row["A_refs"], latency_ms=0.0, http_status=200)
             b = ArmAnswer(answer=row["B"], refs=row["B_refs"], latency_ms=0.0, http_status=200)
             rd = {"question": row["question"], "expected_keywords": [], "expected_refs": []}
+            before = len(errors)
             verdicts = {}
             for ax in AXES:
                 verdict, agreed = _pairwise_verdict_detail(rd, ax, a, b, caller, summaries)
                 verdicts[ax] = {"verdict": verdict, "agreed": agreed}
+            if len(errors) > before:
+                row["judge_failed"] = errors[-1]
+                _save(pairs_path, data)
+                print(f"{row['id']}: pairwise judge failed after retries: {errors[-1]}", flush=True)
+                continue
+            row.pop("judge_failed", None)
             row["pairwise"] = verdicts
             _save(pairs_path, data)
         if row["kind"] == "target" and "grade" not in row:
             reference = positions[row["family"]]
-            row["grade"] = {}
+            grade = {}
             for arm in ("A", "B"):
-                try:
-                    row["grade"][arm] = absolute(row["question"], reference, row[arm])
-                except (urllib.error.URLError, TimeoutError, KeyError, ValueError) as exc:
-                    row["grade"][arm] = {"verdict": "judge_error", "error": repr(exc)[:200]}
+                for _ in range(3):
+                    try:
+                        grade[arm] = absolute(row["question"], reference, row[arm])
+                    except (urllib.error.URLError, TimeoutError, KeyError, ValueError) as exc:
+                        grade[arm] = {"verdict": "judge_error", "error": repr(exc)[:200]}
+                    if grade[arm].get("verdict") in GRADE:
+                        break
+            row["grade"] = grade
             _save(pairs_path, data)
         grades = {arm: row.get("grade", {}).get(arm, {}).get("verdict") for arm in ("A", "B")}
         print(f"{row['id']}: {({ax: row['pairwise'][ax]['verdict'] for ax in AXES})} {grades}",
               flush=True)
     data["judge_model"] = JUDGE_MODEL
+    data["judge_failed"] = sum(1 for r in data["rows"] if r.get("judge_failed"))
     _save(pairs_path, data)
+    print(f"judge failed on {data['judge_failed']} pairs (excluded, not ties)")
     return 0
 
 
@@ -391,6 +430,9 @@ def report(paths: list[Path]) -> int:
                 print(f"  absolute A {dist['A']}")
                 print(f"  absolute B {dist['B']}")
                 print(f"  absolute better {better}  worse {worse}  p={_sign_p(better, worse):.4f}")
+            failed = [r["id"] for r in changed if r.get("judge_failed")]
+            if failed:
+                print(f"  judge failed (excluded, not ties): {failed}")
             skipped = [r for r in data["rows"] if "skipped" in r and r["kind"] == kind]
             if skipped:
                 print(f"  skipped: {[(r['id'], r['skipped']) for r in skipped]}")
